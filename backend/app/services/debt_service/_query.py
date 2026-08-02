@@ -15,7 +15,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Account, Debt, LedgerMember
 from app.schemas import DebtListResponse, DebtResponse
-from app.services.currency_common import home_currency_code_or_none
+from app.services.currency_binding_service import persisted_home_currency_code
 from app.services.debt_service._fold import (
     _materialize_total,
     compute_paid,
@@ -254,7 +254,7 @@ def list_debts(db: Session, *, tenant_id: str, viewer_account_id: int | None = N
         if viewer_account_id is not None:
             response = response.model_copy(update={"viewer_is_debtor": _viewer_is_debtor(debt, viewer_account_id)})
         items.append(response)
-    return DebtListResponse(items=items, home_currency_code=home_currency_code_or_none())
+    return DebtListResponse(items=items, home_currency_code=persisted_home_currency_code(db))
 
 
 def _list_personal_ledger_debts(
@@ -308,7 +308,7 @@ def _list_personal_ledger_debts(
             if owner_name:
                 update["counterparty_label"] = owner_name
         items.append(_debt_response_with_fold(db, debt).model_copy(update=update))
-    return DebtListResponse(items=items, home_currency_code=home_currency_code_or_none())
+    return DebtListResponse(items=items, home_currency_code=persisted_home_currency_code(db))
 
 
 def list_payables_for_account(
@@ -364,7 +364,7 @@ def list_receivables_for_account(
             continue
         seen.add(debt.public_id)
         items.append(debt)
-    return DebtListResponse(items=items, home_currency_code=home_currency_code_or_none())
+    return DebtListResponse(items=items, home_currency_code=persisted_home_currency_code(db))
 
 
 def list_member_receivables_for_account(db: Session, *, account_id: int) -> DebtListResponse:
@@ -438,7 +438,7 @@ def list_member_receivables_for_account(db: Session, *, account_id: int) -> Debt
         if debtor_name:
             update["counterparty_label"] = debtor_name
         items.append(response.model_copy(update=update))
-    return DebtListResponse(items=items, home_currency_code=home_currency_code_or_none())
+    return DebtListResponse(items=items, home_currency_code=persisted_home_currency_code(db))
 
 
 def count_open_external_debts(db: Session, tenant_ids: list[str]) -> dict[str, int]:

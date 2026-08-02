@@ -20,6 +20,7 @@ from app.schemas import (
     GoalCreateRequest,
     GoalResponse,
 )
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import compute_remaining, derive_status
 from app.services.goal_debt_repayment_kpi import external_payoff_kpi
 from app.services.idempotency import (
@@ -236,6 +237,8 @@ def build_debt_repayment_goal_response(
     persist_achievement: bool,
 ) -> GoalResponse:
     """Evaluate, optionally persist a fresh latch, and serialize one goal."""
+    if persist_achievement:
+        resolve_write_capability(db)
     evaluation, latched = _evaluate_and_maybe_latch(
         db,
         goal,
@@ -282,6 +285,7 @@ def _stage_debt_repayment_goal(
         tenant_id=tenant_id,
         debt_public_ids=payload.debt_public_ids,
     )
+    resolve_write_capability(db)
     now = now_utc()
     goal = Goal(
         tenant_id=tenant_id,

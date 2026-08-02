@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import RuleApplicationBatch, RuleApplicationChange
 from app.services.category_service import normalize_category
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.merchant_alias_service import enabled_merchant_alias_map
 from app.services.rule_application_service._common import (
     _enabled_rules,
@@ -90,11 +91,10 @@ def _apply_rules_to_status(
     rules = _enabled_rules(db, tenant_id=tenant_id)
     if not rules:
         return len(expenses), 0, scan_limit_reached
+    authorize_currency_metadata_write(db)
 
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
-    ocr_text_by_id = _ocr_text_by_expense_id(
-        db, tenant_id=tenant_id, expenses=expenses
-    )
+    ocr_text_by_id = _ocr_text_by_expense_id(db, tenant_id=tenant_id, expenses=expenses)
     changes: list[tuple[int, int, str, str, str]] = []
     now = now_utc()
     for expense in expenses:

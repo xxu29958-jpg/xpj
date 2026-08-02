@@ -27,6 +27,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, Repayment
 from app.schemas import RepaymentCreateRequest
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import home_currency_code
 from app.services.debt_service._guards import guard_direct_fact_writable
 from app.services.debt_service._money import (
@@ -104,6 +105,7 @@ def record_repayment(
         original_currency=payload.original_currency,
         original_amount=payload.original_amount,
     )
+    resolve_write_capability(db)
     paid_at = payload.paid_at or now_utc()
     # PR#255 R12-C：外币还款的换算按 env home 进行（freeze_home_amount），随后整数按
     # parent debt 的冻结币种折叠 —— payload 带 original 币种字段且 debt.home_currency_code

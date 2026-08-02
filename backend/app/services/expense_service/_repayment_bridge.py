@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RepaymentDraft
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service._query import get_expense
 from app.services.time_service import ensure_utc, now_utc
 
@@ -46,9 +47,7 @@ def _expense_repayment_label(expense: Expense) -> str | None:
     return None
 
 
-def _expense_repayment_draft_key(
-    *, tenant_id: str, actor_account_id: int, expense_public_id: str
-) -> str:
+def _expense_repayment_draft_key(*, tenant_id: str, actor_account_id: int, expense_public_id: str) -> str:
     material = "|".join(
         [
             "repayment_expense",
@@ -77,6 +76,7 @@ def create_repayment_draft_from_expense(
     stable idempotency key, so repeated taps on the same Expense do not create
     twins but another member may still make their own review draft if needed.
     """
+    resolve_write_capability(db)
     expense = get_expense(db, expense_id, tenant_id)
     if expense.row_version != expected_row_version:
         raise AppError("state_conflict", status_code=409)

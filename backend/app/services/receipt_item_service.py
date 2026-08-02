@@ -20,6 +20,7 @@ from app.schemas import (
     ExpenseItemsResponse,
 )
 from app.services.category_service import normalize_category
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_query import EDITABLE_STATUSES, get_expense, resolve_expense
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.receipt_parse_service import ParsedReceiptItem
@@ -28,9 +29,7 @@ from app.services.time_service import now_utc
 # tolerance for rounding / floating drift between expense.amount_cents and
 # sum(items.amount_cents); 0 = strict integer equality (cents).
 _ITEMS_SUM_TOLERANCE_CENTS = 0
-_EXPENSE_ITEM_KINDS = frozenset(
-    {"product", "discount", "tax", "service_fee"}
-)
+_EXPENSE_ITEM_KINDS = frozenset({"product", "discount", "tax", "service_fee"})
 
 
 def validate_expense_item_money_command(
@@ -64,10 +63,7 @@ def _validate_item_amounts(
     )
     if type(kind) is not str or kind not in _EXPENSE_ITEM_KINDS:
         raise AppError("invalid_request", status_code=422)
-    if amount is not None and (
-        (kind == "discount" and amount > 0)
-        or (kind != "discount" and amount < 0)
-    ):
+    if amount is not None and ((kind == "discount" and amount > 0) or (kind != "discount" and amount < 0)):
         raise AppError("amount_invalid", status_code=422)
     return unit_price, amount
 
@@ -86,6 +82,7 @@ def replace_expense_items(
     commit: bool = True,
 ) -> ExpenseItemsResponse:
     validate_expense_item_money_command(payload.items)
+    resolve_write_capability(db)
     now = now_utc()
     rowcount = claim_row_with_token(
         db,
@@ -107,11 +104,7 @@ def replace_expense_items(
     expense = get_expense(db, expense_id, tenant_id)
 
     existing = list(
-        db.scalars(
-            ledger_scoped_select(ExpenseItem, tenant_id).where(
-                ExpenseItem.expense_id == expense.id
-            )
-        )
+        db.scalars(ledger_scoped_select(ExpenseItem, tenant_id).where(ExpenseItem.expense_id == expense.id))
     )
     for item in existing:
         db.delete(item)
@@ -138,12 +131,9 @@ def replace_ocr_draft_items(
         return
 
     validate_expense_item_money_command(parsed_items)
+    resolve_write_capability(db)
     existing = list(
-        db.scalars(
-            ledger_scoped_select(ExpenseItem, expense.tenant_id).where(
-                ExpenseItem.expense_id == expense.id
-            )
-        )
+        db.scalars(ledger_scoped_select(ExpenseItem, expense.tenant_id).where(ExpenseItem.expense_id == expense.id))
     )
     if any(not item.is_ocr_draft for item in existing):
         return
@@ -182,6 +172,7 @@ def acknowledge_items_sum_mismatch(
     - else → 409 ``state_conflict`` (peer edited amount/items between
       the user's read and this acknowledge)
     """
+    resolve_write_capability(db)
     now = now_utc()
     rowcount = claim_row_with_token(
         db,
@@ -250,11 +241,7 @@ def recompute_items_sum_status(db: Session, expense: Expense) -> None:
 
 def _compute_items_sum_cents(db: Session, expense: Expense) -> int | None:
     items = list(
-        db.scalars(
-            ledger_scoped_select(ExpenseItem, expense.tenant_id).where(
-                ExpenseItem.expense_id == expense.id
-            )
-        )
+        db.scalars(ledger_scoped_select(ExpenseItem, expense.tenant_id).where(ExpenseItem.expense_id == expense.id))
     )
     if not items:
         return None

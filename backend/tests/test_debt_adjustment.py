@@ -21,6 +21,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import Account, Debt, LedgerMember
 from app.money_contract import MONEY_AGGREGATE_MAX, MONEY_MINOR_MAX
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests._infra.debt_aggregate_assertions import (
     assert_adjustment_response_loss_recovery,
@@ -91,6 +92,7 @@ def _seed_manual_member_debt(*, principal_amount_cents: int = 10000) -> dict:
             created_at=now,
             updated_at=now,
         )
+        resolve_write_capability(db)
         db.add(debt)
         db.commit()
         return {"public_id": debt.public_id, "row_version": debt.row_version}

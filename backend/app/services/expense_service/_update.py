@@ -18,6 +18,10 @@ from app.services.bill_split_service import assert_no_immutable_field_changes
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.classify_service import classify_expense
 from app.services.cleanup_service import cleanup_after_confirm
+from app.services.currency_binding_service import (
+    authorize_currency_metadata_write,
+    resolve_write_capability,
+)
 from app.services.duplicate_service import (
     clear_duplicate_references_to,
     mark_duplicate_status,
@@ -57,6 +61,7 @@ def batch_update_confirmed_expenses(
     tenant_id: str,
     payload: ConfirmedExpenseBatchUpdateRequest,
 ) -> ConfirmedExpenseBatchUpdateResponse:
+    authorize_currency_metadata_write(db)
     expense_ids = list(dict.fromkeys(payload.expense_ids))
     expected_by_id = payload.expected_row_version_by_id
     if set(expected_by_id) != set(expense_ids):
@@ -72,13 +77,7 @@ def batch_update_confirmed_expenses(
         raise AppError("invalid_request", status_code=422)
 
     normalized_tags = normalize_tags(payload.tags) if tags_provided else None
-    rows = list(
-        db.scalars(
-            select(Expense)
-            .where(Expense.tenant_id == tenant_id)
-            .where(Expense.id.in_(expense_ids))
-        )
-    )
+    rows = list(db.scalars(select(Expense).where(Expense.tenant_id == tenant_id).where(Expense.id.in_(expense_ids))))
     rows_by_id = {row.id: row for row in rows}
 
     updated_count = 0
@@ -175,9 +174,7 @@ def update_expense(
     commit: bool = True,
     preserve_currency_snapshot: bool = False,
 ) -> Expense:
-    validate_currency_payload_money_command(
-        payload, amount_was_explicit="amount_cents" in payload.model_fields_set
-    )
+    validate_currency_payload_money_command(payload, amount_was_explicit="amount_cents" in payload.model_fields_set)
     # ADR-0038: atomic UPDATE WHERE id, tenant_id, status, updated_at =
     # expected. Race-rejected at the DB layer (rowcount=0 → 404/409),
     # so two clients that both read the same updated_at can't both
@@ -189,6 +186,7 @@ def update_expense(
     # "mutation committed but key not recorded" (and the inverse) can't happen.
     # The other 3 callers (/web edit, category recat, pending-review bulk) keep
     # the default and commit per-row.
+    authorize_currency_metadata_write(db)
     expense = _claim_expense_for_update(
         db,
         expense_id=expense_id,
@@ -197,9 +195,7 @@ def update_expense(
         claimed_at=now_utc(),
     )
 
-    updates = payload.model_dump(
-        exclude_unset=True, exclude={"expected_row_version"}
-    )
+    updates = payload.model_dump(exclude_unset=True, exclude={"expected_row_version"})
 
     # ADR-0029: received split expenses freeze their money / merchant /
     # time fields — those represent the agreed-upon debt with the sender
@@ -301,6 +297,7 @@ def confirm_expense(
     commit (§4.5); the route then runs ``cleanup_after_confirm`` as the same
     post-confirm side-effect commit this method does internally when ``commit``.
     """
+    resolve_write_capability(db)
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status == "confirmed":
         return expense
@@ -375,6 +372,7 @@ def reject_expense(
     409 on stale ``pending`` / ``confirmed`` rows. ADR-0042 ``commit=False``:
     the idempotent route owns the single commit (folds in the key record).
     """
+    resolve_write_capability(db)
     now = now_utc()
     rowcount = claim_row_with_token(
         db,
@@ -456,6 +454,7 @@ def undo_reject_expense(
     window — two operations within ~15ms could write equal ``updated_at``
     values and defeat the OCC check; an integer that only ever goes up can't.
     """
+    resolve_write_capability(db)
     now = now_utc()
     cutoff = now - SOFT_DELETE_RETENTION
     stmt = (

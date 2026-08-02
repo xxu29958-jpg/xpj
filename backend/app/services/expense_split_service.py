@@ -23,6 +23,7 @@ from app.schemas import (
     ExpenseSplitResponse,
     ExpenseSplitsResponse,
 )
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service import EDITABLE_STATUSES, get_expense, resolve_expense
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
@@ -93,6 +94,7 @@ def replace_expense_splits(
     commit: bool = True,
 ) -> ExpenseSplitsResponse:
     validated_amounts = validate_expense_split_money_command(payload.splits)
+    resolve_write_capability(db)
     members = _active_members_for_split_payload(db, tenant_id=tenant_id, payload=payload)
     now = now_utc()
     expense = _claim_expense_for_split_replace(
@@ -169,9 +171,7 @@ def _claim_expense_for_split_replace(
     return get_expense(db, expense_id, tenant_id)
 
 
-def _raise_split_replace_claim_conflict(
-    db: Session, *, tenant_id: str, expense_id: int
-) -> NoReturn:
+def _raise_split_replace_claim_conflict(db: Session, *, tenant_id: str, expense_id: int) -> NoReturn:
     db.expire_all()
     current = resolve_expense(db, tenant_id, expense_id)
     if current is None or current.status not in EDITABLE_STATUSES:
@@ -180,13 +180,7 @@ def _raise_split_replace_claim_conflict(
 
 
 def _expense_splits(db: Session, *, tenant_id: str, expense_id: int) -> list[ExpenseSplit]:
-    return list(
-        db.scalars(
-            ledger_scoped_select(ExpenseSplit, tenant_id).where(
-                ExpenseSplit.expense_id == expense_id
-            )
-        )
-    )
+    return list(db.scalars(ledger_scoped_select(ExpenseSplit, tenant_id).where(ExpenseSplit.expense_id == expense_id)))
 
 
 def _replace_split_rows(
@@ -203,9 +197,7 @@ def _replace_split_rows(
     db.flush()
 
     new_splits: list[ExpenseSplit] = []
-    for position, (request_split, amount_cents) in enumerate(
-        zip(payload.splits, validated_amounts, strict=True)
-    ):
+    for position, (request_split, amount_cents) in enumerate(zip(payload.splits, validated_amounts, strict=True)):
         split = ExpenseSplit(
             tenant_id=expense.tenant_id,
             expense_id=expense.id,
@@ -262,9 +254,7 @@ def _members_by_id(
     }
 
 
-def _members_for_existing_splits(
-    db: Session, *, tenant_id: str, splits: list[ExpenseSplit]
-) -> dict[int, _SplitMember]:
+def _members_for_existing_splits(db: Session, *, tenant_id: str, splits: list[ExpenseSplit]) -> dict[int, _SplitMember]:
     return _members_by_id(
         db,
         tenant_id=tenant_id,
@@ -315,9 +305,7 @@ def _build_response(db: Session, expense: Expense) -> ExpenseSplitsResponse:
     )
 
 
-def _split_response(
-    split: ExpenseSplit, member: _SplitMember | None
-) -> ExpenseSplitResponse:
+def _split_response(split: ExpenseSplit, member: _SplitMember | None) -> ExpenseSplitResponse:
     return ExpenseSplitResponse(
         public_id=split.public_id,
         position=split.position,
@@ -332,18 +320,12 @@ def _split_response(
     )
 
 
-def _audit_snapshot(
-    splits: list[ExpenseSplit], members: dict[int, _SplitMember]
-) -> list[dict[str, int | str | None]]:
+def _audit_snapshot(splits: list[ExpenseSplit], members: dict[int, _SplitMember]) -> list[dict[str, int | str | None]]:
     return [
         {
             "position": split.position,
             "member_id": split.member_id,
-            "account_public_id": (
-                members[split.member_id].account_public_id
-                if split.member_id in members
-                else None
-            ),
+            "account_public_id": (members[split.member_id].account_public_id if split.member_id in members else None),
             "amount_cents": split.amount_cents,
         }
         for split in sorted(splits, key=lambda item: (item.position, item.id or 0))

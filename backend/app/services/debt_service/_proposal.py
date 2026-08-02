@@ -44,7 +44,10 @@ from app.schemas import (
     MemberRepaymentProposalRejectRequest,
     MemberRepaymentProposalResponse,
 )
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import (
+    assert_currency_binding_consistent,
+    resolve_write_capability,
+)
 from app.services.currency_common import home_currency_code
 from app.services.debt_service._fold import compute_remaining_for_write
 from app.services.debt_service._guards import (
@@ -77,9 +80,7 @@ from app.services.time_service import now_utc
 PROPOSAL_TTL = timedelta(days=30)
 
 
-def _load_participant_debt(
-    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
-) -> Debt:
+def _load_participant_debt(db: Session, *, tenant_id: str, actor_account_id: int, public_id: str) -> Debt:
     """Load the member Debt for a proposal op, scoped by §5.2 participation.
 
     The repayment-proposal flow is a two-party (debtor↔creditor) workflow whose
@@ -92,15 +93,11 @@ def _load_participant_debt(
     ``tenant_id`` is the ACTOR's authenticated ledger (= the membership side of
     the union); the per-role debtor/creditor guard runs after this resolve.
     """
-    debt, _ = resolve_debt_for_participant(
-        db, public_id=public_id, ledger_id=tenant_id, account_id=actor_account_id
-    )
+    debt, _ = resolve_debt_for_participant(db, public_id=public_id, ledger_id=tenant_id, account_id=actor_account_id)
     return debt
 
 
-def _lock_creatable_member_debt(
-    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str
-) -> Debt:
+def _lock_creatable_member_debt(db: Session, *, tenant_id: str, actor_account_id: int, public_id: str) -> Debt:
     """Lock + gate the member Debt a debtor may file a NEW proposal against (§3.2 / §0).
 
     FOR UPDATE the parent Debt (``lock_debt_for_intent`` — read the fold under the lock,
@@ -121,9 +118,7 @@ def _lock_creatable_member_debt(
     ``guard_actor_is_debtor``, so a non-debtor never observes settled state, and the
     lock is released on the immediate AppError rollback — no leak, no meaningful DoS.
     """
-    debt = lock_debt_for_intent(
-        db, tenant_id=tenant_id, public_id=public_id, account_id=actor_account_id
-    )
+    debt = lock_debt_for_intent(db, tenant_id=tenant_id, public_id=public_id, account_id=actor_account_id)
     if debt.status == "voided":
         raise AppError("debt_already_voided", status_code=409)
     guard_member_debt(debt)
@@ -133,9 +128,7 @@ def _lock_creatable_member_debt(
     return debt
 
 
-def _load_proposal(
-    db: Session, *, debt_id: int, proposal_public_id: str
-) -> MemberRepaymentProposal:
+def _load_proposal(db: Session, *, debt_id: int, proposal_public_id: str) -> MemberRepaymentProposal:
     proposal = db.scalar(
         select(MemberRepaymentProposal)
         .where(MemberRepaymentProposal.public_id == proposal_public_id)
@@ -293,9 +286,7 @@ def create_repayment_proposal(
     )
     # Lock the parent Debt FOR UPDATE and gate it (§3.2 / §0): voided / non-member /
     # not-the-debtor / already-settled all refuse a new proposal (see helper).
-    debt = _lock_creatable_member_debt(
-        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
-    )
+    debt = _lock_creatable_member_debt(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     _, creditor_account_id = proposal_debtor_creditor(debt)
 
     paid_at = payload.paid_at or now_utc()
@@ -358,14 +349,11 @@ def withdraw_repayment_proposal(
     commit: bool = True,
 ) -> MemberRepaymentProposalResponse:
     """Debtor withdraws their own still-pending proposal (does NOT touch the fold)."""
-    debt = _load_participant_debt(
-        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
-    )
+    resolve_write_capability(db)
+    debt = _load_participant_debt(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     proposal = _load_proposal(db, debt_id=debt.id, proposal_public_id=proposal_public_id)
     guard_actor_is_debtor(debt, actor_account_id)
-    _latch_proposal_resolution(
-        db, proposal, status="withdrawn", actor_account_id=actor_account_id
-    )
+    _latch_proposal_resolution(db, proposal, status="withdrawn", actor_account_id=actor_account_id)
     if commit:
         db.commit()
     return proposal_response(db, proposal)
@@ -388,11 +376,7 @@ def _confirmed_amount(
         label="repayment_proposal.proposed_amount_cents",
         error_code="repayment_proposal_amount_invalid",
     )
-    amount = (
-        payload.confirmed_amount_cents
-        if payload.confirmed_amount_cents is not None
-        else proposed
-    )
+    amount = payload.confirmed_amount_cents if payload.confirmed_amount_cents is not None else proposed
     amount = ensure_money_minor(
         amount,
         sign=MoneySign.POSITIVE,
@@ -487,15 +471,11 @@ def confirm_repayment_proposal(
             label="repayment_proposal.confirmed_amount_cents",
             error_code="repayment_proposal_amount_invalid",
         )
-    debt = _load_participant_debt(
-        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
-    )
+    debt = _load_participant_debt(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     guard_actor_is_creditor(debt, actor_account_id)
 
     def _mutate(locked_debt: Debt, remaining_before: int) -> None:
-        proposal = _load_proposal(
-            db, debt_id=locked_debt.id, proposal_public_id=proposal_public_id
-        )
+        proposal = _load_proposal(db, debt_id=locked_debt.id, proposal_public_id=proposal_public_id)
         if proposal.status != "pending":
             raise AppError("repayment_proposal_not_pending", status_code=409)
         if now_utc() > proposal.expires_at:
@@ -530,9 +510,7 @@ def confirm_repayment_proposal(
     db.commit()
     db.expire_all()
     # §5.2: a cross-ledger creditor gets the Debt shell (ledger id redacted).
-    return get_participant_debt_response(
-        db, public_id=public_id, ledger_id=tenant_id, account_id=actor_account_id
-    )
+    return get_participant_debt_response(db, public_id=public_id, ledger_id=tenant_id, account_id=actor_account_id)
 
 
 def reject_repayment_proposal(
@@ -547,14 +525,11 @@ def reject_repayment_proposal(
     commit: bool = True,
 ) -> MemberRepaymentProposalResponse:
     """Creditor rejects a still-pending proposal (does NOT touch the fold)."""
-    debt = _load_participant_debt(
-        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
-    )
+    resolve_write_capability(db)
+    debt = _load_participant_debt(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     proposal = _load_proposal(db, debt_id=debt.id, proposal_public_id=proposal_public_id)
     guard_actor_is_creditor(debt, actor_account_id)
-    _latch_proposal_resolution(
-        db, proposal, status="rejected", actor_account_id=actor_account_id
-    )
+    _latch_proposal_resolution(db, proposal, status="rejected", actor_account_id=actor_account_id)
     if commit:
         db.commit()
     return proposal_response(db, proposal)
@@ -571,9 +546,7 @@ def get_repayment_proposal_response(
     actor is not a party to. The proposal response carries no ledger id, so there
     is no cross-ledger shell to redact here.
     """
-    debt = _load_participant_debt(
-        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
-    )
+    debt = _load_participant_debt(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     proposal = _load_proposal(db, debt_id=debt.id, proposal_public_id=proposal_public_id)
     return proposal_response(db, proposal)
 
@@ -587,9 +560,7 @@ def list_repayment_proposals(
     pending proposal awaiting their confirmation, so visibility follows the
     debtor/creditor participation union, not ledger scope alone.
     """
-    debt = _load_participant_debt(
-        db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id
-    )
+    debt = _load_participant_debt(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     proposals = list(
         db.scalars(
             select(MemberRepaymentProposal)
@@ -600,9 +571,7 @@ def list_repayment_proposals(
             )
         )
     )
-    return MemberRepaymentProposalListResponse(
-        items=[proposal_response(db, proposal) for proposal in proposals]
-    )
+    return MemberRepaymentProposalListResponse(items=[proposal_response(db, proposal) for proposal in proposals])
 
 
 def _public_id_for(db: Session, model: type, internal_id: int | None) -> str | None:
@@ -612,13 +581,9 @@ def _public_id_for(db: Session, model: type, internal_id: int | None) -> str | N
     return db.scalar(select(model.public_id).where(model.id == internal_id).limit(1))
 
 
-def proposal_response(
-    db: Session, proposal: MemberRepaymentProposal
-) -> MemberRepaymentProposalResponse:
+def proposal_response(db: Session, proposal: MemberRepaymentProposal) -> MemberRepaymentProposalResponse:
     """Map a proposal to its public response — internal int ids → public_ids (§3)."""
-    debt_public_id = db.scalar(
-        select(Debt.public_id).where(Debt.id == proposal.debt_id).limit(1)
-    )
+    debt_public_id = db.scalar(select(Debt.public_id).where(Debt.id == proposal.debt_id).limit(1))
     return MemberRepaymentProposalResponse(
         public_id=proposal.public_id,
         debt_public_id=debt_public_id,
@@ -643,10 +608,6 @@ def proposal_response(
         expires_at=proposal.expires_at,
         created_at=proposal.created_at,
         resolved_at=proposal.resolved_at,
-        supersedes_proposal_public_id=_public_id_for(
-            db, MemberRepaymentProposal, proposal.supersedes_proposal_id
-        ),
-        committed_repayment_public_id=_public_id_for(
-            db, Repayment, proposal.committed_repayment_id
-        ),
+        supersedes_proposal_public_id=_public_id_for(db, MemberRepaymentProposal, proposal.supersedes_proposal_id),
+        committed_repayment_public_id=_public_id_for(db, Repayment, proposal.committed_repayment_id),
     )

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import inspect, text
 
-from app.database._c07_contract import C07_SOURCE_REVISION
+from app.database._c07_contract import C07_SOURCE_REVISION, C07_TARGET_REVISION
 from app.database._lifecycle import DatabaseLifecycleKind
 
 pytestmark = pytest.mark.real_db
@@ -41,11 +41,7 @@ def _catalog_snapshot(db_pkg) -> tuple[tuple[tuple[str, str], ...], tuple[str, .
         )
         tables = set(inspect(connection).get_table_names())
         revisions = (
-            tuple(
-                connection.scalars(
-                    text("SELECT version_num FROM alembic_version ORDER BY version_num")
-                )
-            )
+            tuple(connection.scalars(text("SELECT version_num FROM alembic_version ORDER BY version_num")))
             if "alembic_version" in tables
             else ()
         )
@@ -133,12 +129,8 @@ def test_empty_database_first_start_uses_alembic_only(monkeypatch):
 
     with db_pkg.engine.connect() as connection:
         tables = set(inspect(connection).get_table_names())
-        category_rule_columns = {
-            column["name"] for column in inspect(connection).get_columns("category_rules")
-        }
-        audit_columns = {
-            column["name"] for column in inspect(connection).get_columns("ledger_audit_logs")
-        }
+        category_rule_columns = {column["name"] for column in inspect(connection).get_columns("category_rules")}
+        audit_columns = {column["name"] for column in inspect(connection).get_columns("ledger_audit_logs")}
     assert {"expenses", "app_meta", "alembic_version"}.issubset(tables)
     assert "deleted_at" in category_rule_columns
     assert {"resource_type", "resource_public_id"}.issubset(audit_columns)
@@ -154,7 +146,7 @@ def test_managed_schema_at_head_skips_lifecycle_backup(monkeypatch):
     monkeypatch.setattr(
         backup_service,
         "create_pre_upgrade_backup",
-        lambda: (calls.append("backup") or SimpleNamespace(file_name="at-head.dump")),
+        lambda: calls.append("backup") or SimpleNamespace(file_name="at-head.dump"),
     )
     monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
     _patch_database_writes(monkeypatch, db_pkg, calls)
@@ -163,6 +155,30 @@ def test_managed_schema_at_head_skips_lifecycle_backup(monkeypatch):
     assert "backup" not in calls
     assert "upgrade" not in calls
     assert "seed" in calls
+
+
+def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
+    """A proven C07 target may advance to the current head after a backup."""
+    from alembic import command
+
+    import app.database as db_pkg
+    from app.services import backup_service
+
+    alembic = db_pkg.load_alembic_context()
+    command.downgrade(alembic.config, C07_TARGET_REVISION)
+    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        backup_service,
+        "create_pre_upgrade_backup",
+        lambda: calls.append("backup") or SimpleNamespace(file_name="pre-c02.dump"),
+    )
+
+    db_pkg.init_db()
+
+    assert calls == ["backup"]
+    assert _head_revision(db_pkg) == alembic.head_revision
 
 
 def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):
@@ -174,7 +190,7 @@ def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):
     monkeypatch.setattr(
         backup_service,
         "create_pre_upgrade_backup",
-        lambda: (calls.append("backup") or SimpleNamespace(file_name="legacy.dump")),
+        lambda: calls.append("backup") or SimpleNamespace(file_name="legacy.dump"),
     )
     monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
     monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
@@ -190,15 +206,8 @@ def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):
     assert _catalog_snapshot(db_pkg) == before
 
     with db_pkg.engine.begin() as connection:
-        connection.execute(
-            text(
-                "CREATE TABLE alembic_version "
-                "(version_num VARCHAR(32) PRIMARY KEY)"
-            )
-        )
-        connection.execute(
-            text("INSERT INTO alembic_version (version_num) VALUES ('future_unknown')")
-        )
+        connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY)"))
+        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('future_unknown')"))
     before_unknown = _catalog_snapshot(db_pkg)
     with pytest.raises(db_pkg.DatabaseMigrationPreflightError, match="不属于当前 binary"):
         db_pkg.init_db()

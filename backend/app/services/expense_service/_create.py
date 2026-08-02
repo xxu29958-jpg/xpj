@@ -20,7 +20,10 @@ from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateRequest
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.classify_service import classify_expense
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import (
+    assert_currency_binding_consistent,
+    resolve_write_capability,
+)
 from app.services.currency_common import home_currency_code
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import (
@@ -74,16 +77,12 @@ __all__ = [
 
 
 def _materialize_category_preference(db: Session, expense: Expense) -> None:
-    ensure_category_preference_for_name(
-        db, tenant_id=expense.tenant_id, name=expense.category
-    )
+    ensure_category_preference_for_name(db, tenant_id=expense.tenant_id, name=expense.category)
 
 
 def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
     if not expense.thumbnail_path:
-        expense.thumbnail_path = _try_generate_thumbnail(
-            expense.image_path, expense.tenant_id
-        )
+        expense.thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
     for extraction in collect_auto_ocr_extractions(expense):
         apply_ocr_result_and_append_fact(
             db,
@@ -96,11 +95,7 @@ def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
     if expense.category == "其他":
         classify_expense(db, expense)
     _materialize_category_preference(db, expense)
-    if (
-        expense.amount_cents is not None
-        or expense.merchant
-        or expense.expense_time is not None
-    ):
+    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
         mark_duplicate_status(db, expense)
 
 
@@ -120,11 +115,7 @@ def create_pending_expense(
         # ADR-0061 C02 桥接门（PR#255 R9）：pending 行即按 env 盖章成持久事实，漂移时
         # 不得放行（与 freeze_home_amount / apply_currency_payload 同一防线）。
         assert_currency_binding_consistent(db, frozen_home_currency)
-        thumbnail_path = (
-            _try_generate_thumbnail(saved_file.relative_path, tenant_id)
-            if run_enrichment
-            else None
-        )
+        thumbnail_path = _try_generate_thumbnail(saved_file.relative_path, tenant_id) if run_enrichment else None
         expense = Expense(
             tenant_id=tenant_id,
             amount_cents=None,
@@ -162,9 +153,7 @@ def create_pending_expense(
             delete_relative_upload(saved_file.relative_path)
 
 
-def enrich_pending_expense(
-    expense_id: int, tenant_id: str, timezone_name: str | None = None
-) -> None:
+def enrich_pending_expense(expense_id: int, tenant_id: str, timezone_name: str | None = None) -> None:
     """Fill OCR/category draft fields after the upload response has been sent."""
     from app.database import SessionLocal
 
@@ -173,9 +162,7 @@ def enrich_pending_expense(
         if expense is None or expense.status != "pending":
             return
 
-        ocr_extractions = collect_auto_ocr_extractions(
-            expense, timezone_name=timezone_name
-        )
+        ocr_extractions = collect_auto_ocr_extractions(expense, timezone_name=timezone_name)
 
     generated_thumbnail_path: str | None = None
     with SessionLocal() as db:
@@ -191,10 +178,9 @@ def enrich_pending_expense(
             expense = resolve_expense(db, tenant_id, expense_id)
             if expense is None or expense.status != "pending":
                 return
+            resolve_write_capability(db)
             if not expense.thumbnail_path:
-                generated_thumbnail_path = _try_generate_thumbnail(
-                    expense.image_path, expense.tenant_id
-                )
+                generated_thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
                 expense.thumbnail_path = generated_thumbnail_path
             for extraction in ocr_extractions:
                 apply_ocr_result_and_append_fact(
@@ -205,17 +191,11 @@ def enrich_pending_expense(
                     ocr_model=extraction.ocr_model,
                     timezone_name=timezone_name,
                 )
-                _replace_ocr_draft_items_from_text(
-                    db, expense, extraction.result.raw_text, timezone_name=timezone_name
-                )
+                _replace_ocr_draft_items_from_text(db, expense, extraction.result.raw_text, timezone_name=timezone_name)
             if expense.category == "其他":
                 classify_expense(db, expense)
             _materialize_category_preference(db, expense)
-            if (
-                expense.amount_cents is not None
-                or expense.merchant
-                or expense.expense_time is not None
-            ):
+            if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
                 mark_duplicate_status(db, expense)
             expense.updated_at = now_utc()
             bump_row_version(expense)
@@ -226,6 +206,7 @@ def enrich_pending_expense(
             # — the row is still in `pending` and the user can retry OCR
             # manually. Record the failure so it isn't invisible.
             from app.services.expense_service._helpers import _record_background_failure
+
             _record_background_failure("auto_enrich")
             logger.exception(
                 "auto enrichment failed for expense_id=%s tenant_id=%s",
@@ -254,14 +235,8 @@ def _manual_request_fingerprint(payload: ExpenseManualCreateRequest) -> str:
     )
 
 
-def _find_manual_expense_by_key(
-    db: Session, tenant_id: str, key: str
-) -> Expense | None:
-    return db.scalar(
-        ledger_scoped_select(Expense, tenant_id).where(
-            Expense.draft_idempotency_key == key
-        )
-    )
+def _find_manual_expense_by_key(db: Session, tenant_id: str, key: str) -> Expense | None:
+    return db.scalar(ledger_scoped_select(Expense, tenant_id).where(Expense.draft_idempotency_key == key))
 
 
 def _resolve_existing_manual_create(existing: Expense, fingerprint: str) -> Expense:
@@ -280,6 +255,7 @@ def _insert_manual_expense(
     draft_idempotency_key: str | None,
     draft_request_fingerprint: str | None,
 ) -> Expense:
+    resolve_write_capability(db)
     now = now_utc()
     expense = Expense(
         tenant_id=tenant_id,
@@ -328,9 +304,7 @@ def _insert_manual_expense(
     return expense
 
 
-def create_manual_expense(
-    db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext
-) -> Expense:
+def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext) -> Expense:
     validate_currency_payload_money_command(
         payload,
         amount_was_explicit=payload.amount_cents is not None,
@@ -388,9 +362,7 @@ def _guard_notification_capture_currency(payload: NotificationDraftCreateRequest
     # R12-E 硬化：只有币种+金额**成对完整**才算显式 FX —— 仅其一的残缺 FX 载荷按无
     # original 处理（该路径不为部分 FX 设计：金额缺失会回落到 None 行值，汇率/金额
     # 语义不可判定）。CNY 下门不触发，行为与之前一致。
-    has_original_money = (
-        payload.original_currency is not None or payload.original_currency_code is not None
-    ) and (
+    has_original_money = (payload.original_currency is not None or payload.original_currency_code is not None) and (
         payload.original_amount is not None or payload.original_amount_minor is not None
     )
     if home_currency != DEFAULT_HOME_CURRENCY_CODE and not has_original_money:
@@ -420,13 +392,12 @@ def create_notification_draft(
         notification_key=payload.notification_key,
     )
     existing = db.scalar(
-        ledger_scoped_select(Expense, tenant_id).where(
-            Expense.draft_idempotency_key == idempotency_key
-        )
+        ledger_scoped_select(Expense, tenant_id).where(Expense.draft_idempotency_key == idempotency_key)
     )
     if existing is not None:
         return existing
 
+    resolve_write_capability(db)
     source_label = NOTIFICATION_DRAFT_SOURCE_LABELS[source]
     expense = Expense(
         tenant_id=tenant_id,
@@ -443,7 +414,9 @@ def create_notification_draft(
         ocr_draft_fields=_notification_draft_fields(payload),
         draft_idempotency_key=idempotency_key,
         status="pending",
-        expense_time=ensure_utc(payload.spent_at or payload.expense_time) if (payload.spent_at or payload.expense_time) else None,
+        expense_time=ensure_utc(payload.spent_at or payload.expense_time)
+        if (payload.spent_at or payload.expense_time)
+        else None,
         created_at=now,
         updated_at=now,
     )
@@ -460,9 +433,7 @@ def create_notification_draft(
     except IntegrityError:
         db.rollback()
         existing = db.scalar(
-            ledger_scoped_select(Expense, tenant_id).where(
-                Expense.draft_idempotency_key == idempotency_key
-            )
+            ledger_scoped_select(Expense, tenant_id).where(Expense.draft_idempotency_key == idempotency_key)
         )
         if existing is not None:
             return existing

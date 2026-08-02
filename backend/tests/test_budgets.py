@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.models import Budget, BudgetCategory, LedgerMember, RecurringItem
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -49,6 +50,10 @@ def _seed_recurring(
 ) -> None:
     now = created_at or now_utc()
     with SessionLocal() as db:
+        # This helper deliberately bypasses the recurring service to shape a
+        # dashboard fixture, so it must establish the same transaction-local
+        # currency proof that a real writer would establish.
+        resolve_write_capability(db)
         db.add(
             RecurringItem(
                 tenant_id=tenant_id,

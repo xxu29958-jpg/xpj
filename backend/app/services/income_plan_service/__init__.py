@@ -24,7 +24,10 @@ from app.errors import AppError
 from app.ledger_scope import add_ledger_scope, ledger_filter, ledger_scoped_select
 from app.models import MonthlyIncomePlan
 from app.money_contract import projection_sum_to_int
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import (
+    assert_currency_binding_consistent,
+    resolve_write_capability,
+)
 from app.services.currency_common import home_currency_code
 from app.services.income_plan_service._money import (
     updated_income_amount_cents as _updated_income_amount_cents,
@@ -201,6 +204,7 @@ def archive_income_plan(
 ) -> MonthlyIncomePlan:
     """Soft-delete an income row. Atomic optimistic concurrency."""
 
+    resolve_write_capability(db)
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "archived":
         return plan
@@ -236,6 +240,7 @@ def restore_income_plan(
 ) -> MonthlyIncomePlan:
     """Reactivate an archived income row. Atomic optimistic concurrency."""
 
+    resolve_write_capability(db)
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "active":
         return plan
@@ -261,9 +266,7 @@ def restore_income_plan(
     return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
 
 
-def get_income_plan(
-    db: Session, *, tenant_id: str, public_id: str
-) -> MonthlyIncomePlan:
+def get_income_plan(db: Session, *, tenant_id: str, public_id: str) -> MonthlyIncomePlan:
     """Tenant-scoped single read (404 when absent)."""
 
     return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
@@ -285,11 +288,7 @@ def total_monthly_income_cents(
     """
 
     clean_month = _normalize_month(month, field_label="月份") if month else None
-    as_of_date = (
-        _income_as_of_date(as_of=as_of, timezone_name=timezone_name)
-        if clean_month is not None
-        else None
-    )
+    as_of_date = _income_as_of_date(as_of=as_of, timezone_name=timezone_name) if clean_month is not None else None
     statement = add_ledger_scope(
         select(func.coalesce(func.sum(MonthlyIncomePlan.amount_cents), 0)),
         MonthlyIncomePlan,
@@ -351,9 +350,7 @@ def _updated_income_month(
     )
 
 
-def _raise_income_plan_edit_conflict(
-    db: Session, *, tenant_id: str, public_id: str
-) -> NoReturn:
+def _raise_income_plan_edit_conflict(db: Session, *, tenant_id: str, public_id: str) -> NoReturn:
     db.rollback()
     current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if current.status == "archived":
@@ -464,9 +461,7 @@ def _validate_pay_day(pay_day: int) -> None:
         )
 
 
-def _require_plan(
-    db: Session, *, tenant_id: str, public_id: str
-) -> MonthlyIncomePlan:
+def _require_plan(db: Session, *, tenant_id: str, public_id: str) -> MonthlyIncomePlan:
     plan = db.scalar(
         select(MonthlyIncomePlan)
         .where(ledger_filter(MonthlyIncomePlan, tenant_id))

@@ -21,7 +21,10 @@ from app.money_contract import (
     MoneySign,
     ensure_optional_money_minor,
 )
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import (
+    assert_currency_binding_consistent,
+    resolve_write_capability,
+)
 from app.services.currency_common import (
     RATE_QUANT,
     format_decimal_rate,
@@ -210,6 +213,7 @@ def upsert_exchange_rate(
     rate_to_cny: Decimal,
     source: str | None = None,
 ) -> ExchangeRate:
+    resolve_write_capability(db)
     code = normalize_currency_code(currency_code)
     home = home_currency_code()
     if code == home:
@@ -367,7 +371,6 @@ def apply_currency_payload(
     expense: Expense,
     payload: CurrencyPayload,
     amount_was_explicit: bool,
-    binding_checked: bool = False,
 ) -> None:
     validate_currency_payload_money_command(
         payload,
@@ -378,9 +381,7 @@ def apply_currency_payload(
         # R10②：纯元数据维护不读 env、不过门（不碰币种快照，漂移/配错 env 不拖死它）。
         return
     home = home_currency_code()
-    # R9 门（漂移 fail closed）；R10① 批量路径批首已校验一次，经 binding_checked 跳过。
-    if not binding_checked:
-        assert_currency_binding_consistent(db, home)
+    assert_currency_binding_consistent(db, home)
     if not has_original_fields:
         _apply_legacy_home_amount(expense, payload, home=home)
         return

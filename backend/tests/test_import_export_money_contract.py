@@ -6,18 +6,23 @@ import csv as csv_module
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import StringIO
+from urllib.parse import unquote
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.config import get_settings
+from app.currency_adoption_evidence import currency_adoption_evidence_sha256
+from app.currency_binding_contract import CURRENCY_ROUNDING_MODE
 from app.database import SessionLocal
 from app.main import app
-from app.models import CsvImportBatch, Expense
+from app.models import CsvImportBatch, Expense, InstallationCurrencyBinding
 from app.money_contract import MONEY_MINOR_MAX
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.import_service import parse_csv_preview
+from app.services.time_service import now_utc
 
 
 @pytest.fixture()
@@ -25,6 +30,23 @@ def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides[_web_require_local] = lambda: None
     yield client
     app.dependency_overrides.pop(_web_require_local, None)
+
+
+def _activate_jpy_binding_for_fixture(db) -> None:
+    binding = db.get(InstallationCurrencyBinding, 1)
+    assert binding is not None
+    activated_at = now_utc()
+    binding.state = "ACTIVE"
+    binding.home_currency_code = "JPY"
+    binding.minor_unit_exponent = 0
+    binding.rounding_mode = CURRENCY_ROUNDING_MODE
+    binding.binding_revision = 1
+    binding.provenance = "OWNER_ADOPTION"
+    binding.evidence_sha256 = currency_adoption_evidence_sha256(db.connection())
+    binding.updated_at = activated_at
+    binding.activated_at = activated_at
+    db.flush()
+    resolve_write_capability(db, expected_revision=1)
 
 
 def test_parse_csv_preview_uses_the_c07_minor_limit_not_the_legacy_int32_limit() -> None:
@@ -68,6 +90,7 @@ def test_csv_export_preserves_legacy_column_and_adds_exact_jpy_home_value(
     get_settings.cache_clear()
     try:
         with SessionLocal() as db:
+            _activate_jpy_binding_for_fixture(db)
             db.add(
                 Expense(
                     tenant_id="owner",
@@ -151,7 +174,7 @@ def test_parse_csv_preview_rejects_cross_home_currency_file(
         get_settings.cache_clear()
 
 
-def test_web_import_preview_renders_zero_fraction_home_amount(
+def test_web_import_preview_fails_closed_until_jpy_consumer_is_versioned(
     web_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -175,19 +198,13 @@ def test_web_import_preview_renders_zero_fraction_home_amount(
             follow_redirects=False,
         )
         assert response.status_code == 303, response.text
+        assert "当前客户端版本过旧" in unquote(response.headers["location"])
         with SessionLocal() as db:
             batch = db.scalar(
                 select(CsvImportBatch)
                 .where(CsvImportBatch.tenant_id == "owner")
                 .where(CsvImportBatch.file_name == "jpy.csv")
             )
-            assert batch is not None
-
-        detail = web_client.get(
-            f"/web/import/{batch.public_id}?ledger_id=owner"
-        )
-        assert detail.status_code == 200, detail.text
-        assert '<td class="num">¥1234</td>' in detail.text
-        assert "¥12.34" not in detail.text
+            assert batch is None
     finally:
         get_settings.cache_clear()

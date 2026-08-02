@@ -459,8 +459,7 @@ def import_rows(
             sign=MoneySign.NONNEGATIVE,
             label="csv_import.original_amount_minor",
         )
-    # PR#255 R10①：批量边界一次 binding 校验（行内 apply_currency_payload 经
-    # binding_checked 跳过），避免每行 3 次全表 distinct 把导入打成数千次扫描。
+    # Legacy import is one transaction; the database fence remains the final guard.
     assert_currency_binding_consistent(db, home_currency_code())
     inserted = 0
     now = now_utc()
@@ -487,7 +486,6 @@ def import_rows(
             expense=expense,
             payload=row,
             amount_was_explicit=row.original_currency_code == home_currency_code() and row.amount_cents is not None,
-            binding_checked=True,
         )
         db.add(expense)
         created.append(expense)

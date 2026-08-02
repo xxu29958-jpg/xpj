@@ -31,6 +31,7 @@ from app.models import (
     LedgerMember,
 )
 from app.services import bill_split_service as bsplit
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import create_bill_split_debt
 from app.services.time_service import now_utc
 
@@ -57,6 +58,7 @@ def _seed_receiver(name: str = "B", ledger_id: str = "receiver_b") -> int:
 
 def _make_expense_for_owner(*, amount_cents: int = 5000, merchant: str = "Pizza Place") -> int:
     with SessionLocal() as db:
+        resolve_write_capability(db)
         expense = Expense(
             tenant_id="owner",
             amount_cents=amount_cents,

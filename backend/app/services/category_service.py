@@ -21,6 +21,7 @@ from app.services.category_preference_service import (
     category_preference_option_state,
     default_category_keys,
 )
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.spending_contract_service import month_bounds_utc, stat_time_expr
 
@@ -52,11 +53,9 @@ def merge_categories(
     categories = {
         normalize_category(item)
         for item in values
-        if item and item.strip()
-        and (
-            (key := category_key_for_existing(item)) is not None
-            and (key not in suppressed or key in defaults)
-        )
+        if item
+        and item.strip()
+        and ((key := category_key_for_existing(item)) is not None and (key not in suppressed or key in defaults))
     }
     categories.update(DEFAULT_CATEGORIES)
     return sorted(categories, key=category_sort_key)
@@ -79,9 +78,7 @@ def list_ledger_category_options(db: Session, *, tenant_id: str) -> list[str]:
             .distinct()
         )
     )
-    active_names, deleted_keys = category_preference_option_state(
-        db, tenant_id=tenant_id
-    )
+    active_names, deleted_keys = category_preference_option_state(db, tenant_id=tenant_id)
     return merge_categories(
         [str(value) for value in used] + active_names,
         suppressed_keys=deleted_keys,
@@ -90,11 +87,16 @@ def list_ledger_category_options(db: Session, *, tenant_id: str) -> list[str]:
 
 def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
     changed = False
-    expenses = db.scalars(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.category.in_(LEGACY_CATEGORY_ALIASES.keys()))
+    expenses = list(
+        db.scalars(
+            select(Expense)
+            .where(Expense.tenant_id == tenant_id)
+            .where(Expense.category.in_(LEGACY_CATEGORY_ALIASES.keys()))
+        )
     )
+    if not expenses:
+        return
+    authorize_currency_metadata_write(db)
     for expense in expenses:
         normalized = normalize_category(expense.category)
         if normalized != expense.category:
@@ -113,6 +115,7 @@ def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
             changed = True
     if changed:
         db.commit()
+
 
 # ── /web/categories dashboard (v0.4-alpha3 slice 2 / M3 / T12-T13) ─────────
 
@@ -226,9 +229,7 @@ def _confirmed_summaries_by_category(
     return aggregated
 
 
-def _add_pending_only_summaries(
-    aggregated: dict[str, CategorySummary], pending_by_category: dict[str, int]
-) -> None:
+def _add_pending_only_summaries(aggregated: dict[str, CategorySummary], pending_by_category: dict[str, int]) -> None:
     for key, count in pending_by_category.items():
         if key in aggregated:
             continue
@@ -294,35 +295,41 @@ def list_uncategorized_pending(db: Session, *, tenant_id: str) -> list[Expense]:
     """Return pending rows in the triage backlog (see
     ``_is_cleanup_pending_category``): blank / 其他 / 未分类 / 未分類 /
     none / null, case-insensitive."""
-    categories = db.execute(
-        select(Expense.category)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "pending")
-        .distinct()
-    ).scalars().all()
+    categories = (
+        db.execute(
+            select(Expense.category).where(Expense.tenant_id == tenant_id).where(Expense.status == "pending").distinct()
+        )
+        .scalars()
+        .all()
+    )
     matching = [category for category in categories if _is_cleanup_pending_category(category)]
     if not matching:
         return []
-    rows = db.execute(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "pending")
-        .where(Expense.category.in_(matching))
-        .order_by(Expense.created_at.desc())
-        .limit(200)
-    ).scalars().all()
+    rows = (
+        db.execute(
+            select(Expense)
+            .where(Expense.tenant_id == tenant_id)
+            .where(Expense.status == "pending")
+            .where(Expense.category.in_(matching))
+            .order_by(Expense.created_at.desc())
+            .limit(200)
+        )
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
-def bulk_set_category(
-    db: Session, *, tenant_id: str, expense_ids: list[int], category: str
-) -> int:
+def bulk_set_category(db: Session, *, tenant_id: str, expense_ids: list[int], category: str) -> int:
     """Set ``category`` on the given pending rows. Returns the changed count.
 
     Skips any id not visible to ``tenant_id`` or not in ``pending`` status,
     instead of raising — the bulk action is best-effort and the page will
     re-render the remaining rows after the redirect.
     """
+    if not expense_ids:
+        return 0
+    authorize_currency_metadata_write(db)
     cleaned_category = (category or "").strip()
     if not cleaned_category:
         raise AppError("invalid_request", "请选择一个分类。", status_code=400)
@@ -330,12 +337,16 @@ def bulk_set_category(
         return 0
     from app.services.expense_service import update_expense  # lazy import: expense_service imports from this module
 
-    rows = db.execute(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.id.in_(expense_ids))
-        .where(Expense.status == "pending")
-    ).scalars().all()
+    rows = (
+        db.execute(
+            select(Expense)
+            .where(Expense.tenant_id == tenant_id)
+            .where(Expense.id.in_(expense_ids))
+            .where(Expense.status == "pending")
+        )
+        .scalars()
+        .all()
+    )
     changed = 0
     # ADR-0038 PR-2a / ADR-0041: 服务端 bulk 操作刚读到 row.row_version，可以直接
     # 当作 expected_row_version 喂给 update_expense（保留 PATCH 路径的原子

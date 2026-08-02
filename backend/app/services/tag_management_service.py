@@ -24,6 +24,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseTag, Tag, TagMutationUndoGroup, TagMutationUndoItem
 from app.services._tag_results import TagMutationResult, TagUsageItem
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.resource_audit import record_resource_action
 from app.services.tag_service import clean_tag_name, format_tags, tag_key
@@ -35,10 +36,7 @@ from app.services.time_service import now_utc
 # --------------------------------------------------------------------------- #
 def _live_tag(db: Session, tenant_id: str, public_id: str) -> Tag | None:
     return db.scalar(
-        ledger_scoped_select(Tag, tenant_id)
-        .where(Tag.public_id == public_id)
-        .where(Tag.deleted_at.is_(None))
-        .limit(1)
+        ledger_scoped_select(Tag, tenant_id).where(Tag.public_id == public_id).where(Tag.deleted_at.is_(None)).limit(1)
     )
 
 
@@ -52,9 +50,7 @@ def _require_live_tag(db: Session, tenant_id: str, public_id: str) -> Tag:
 def _tag_by_key_any_state(db: Session, tenant_id: str, key: str) -> Tag | None:
     """Tag by key INCLUDING soft-deleted (the unique (tenant,key) constraint
     spans soft-deleted rows, so a soft-deleted key stays reserved)."""
-    return db.scalar(
-        ledger_scoped_select(Tag, tenant_id).where(Tag.key == key).limit(1)
-    )
+    return db.scalar(ledger_scoped_select(Tag, tenant_id).where(Tag.key == key).limit(1))
 
 
 def list_tags_with_usage(db: Session, tenant_id: str) -> list[TagUsageItem]:
@@ -258,6 +254,7 @@ def rename_tag(
     and bumps them. Colliding with another key (incl. soft-deleted) → 409
     ``tag_conflict`` carrying the existing tag's public_id + row_version so the
     client can offer a merge (契约 5)."""
+    authorize_currency_metadata_write(db)
     tag = _require_live_tag(db, tenant_id, public_id)
     new_name = clean_tag_name(name)
     new_key = tag_key(new_name)
@@ -381,6 +378,7 @@ def delete_tag(
     does not bump its ``row_version``, so the OCC token alone can't catch it — the
     ``NOT EXISTS(expense_tags)`` predicate in the same UPDATE does. rowcount=0 then
     means stale token OR a link appeared (still-live tag → 409 via the helper)."""
+    authorize_currency_metadata_write(db)
     tag = _require_live_tag(db, tenant_id, public_id)
     rowcount = _claim_tag_soft_delete(
         db,
@@ -404,9 +402,7 @@ def delete_tag(
 
     affected = 0
     for expense in _expenses_linked_to_tag(db, tenant_id, tag.id):
-        _rewrite_expense_for_tag_change(
-            db, group=group, expense=expense, removed_tag_id=tag.id, replacement_tag=None
-        )
+        _rewrite_expense_for_tag_change(db, group=group, expense=expense, removed_tag_id=tag.id, replacement_tag=None)
         affected += 1
 
     record_resource_action(
@@ -443,6 +439,7 @@ def merge_tags(
     move A's links to B (dedup), rebuild + bump each affected expense, write the
     undo snapshot — one transaction. Both tokens are checked: either stale → 409
     (the undo token is A's, since A is the soft-deleted one, 契约 2/3)."""
+    authorize_currency_metadata_write(db)
     source = _require_live_tag(db, tenant_id, source_public_id)
     target = _require_live_tag(db, tenant_id, target_public_id)
     if source.id == target.id:

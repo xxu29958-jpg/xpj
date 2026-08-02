@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 
 
@@ -40,6 +41,7 @@ def _claim_csv_import_rows(
     )
     if not row_ids:
         return []
+    resolve_write_capability(db)
     now = now_utc()
     result = db.execute(
         update(CsvImportRow)
@@ -75,6 +77,7 @@ def _reset_claimed_csv_import_rows(
 ) -> None:
     if not row_ids:
         return
+    resolve_write_capability(db)
     db.execute(
         update(CsvImportRow)
         .where(CsvImportRow.tenant_id == tenant_id)
@@ -96,6 +99,7 @@ def _refresh_claimed_csv_import_row(
     apply_token: str,
     now: datetime,
 ) -> bool:
+    resolve_write_capability(db)
     result = db.execute(
         update(CsvImportRow)
         .where(CsvImportRow.tenant_id == tenant_id)
@@ -116,6 +120,7 @@ def _recover_stale_csv_import_rows(
     batch_id: int,
     stale_before: datetime,
 ) -> int:
+    resolve_write_capability(db)
     result = db.execute(
         update(CsvImportRow)
         .where(CsvImportRow.tenant_id == tenant_id)

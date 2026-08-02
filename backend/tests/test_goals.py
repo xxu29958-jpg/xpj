@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -49,6 +50,9 @@ def _insert_expense(
 ) -> None:
     now = now_utc()
     with SessionLocal() as db:
+        # Direct fixture insert: mirror the transaction-local proof required of
+        # the production expense writer instead of weakening the DB fence.
+        resolve_write_capability(db)
         db.add(
             Expense(
                 tenant_id=tenant_id,

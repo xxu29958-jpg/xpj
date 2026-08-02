@@ -18,6 +18,7 @@ from app.services.bill_split_service._common import (
     _display_name,
     _load_writer_member,
 )
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import normalize_currency_code
 from app.services.time_service import now_utc
 
@@ -32,8 +33,7 @@ def _is_pending_duplicate_error(exc: IntegrityError) -> bool:
     diagnostic = getattr(orig, "diag", None)
     return (
         getattr(orig, "sqlstate", None) == _UNIQUE_VIOLATION_SQLSTATE
-        and getattr(diagnostic, "constraint_name", None)
-        == _PENDING_DUPLICATE_INDEX
+        and getattr(diagnostic, "constraint_name", None) == _PENDING_DUPLICATE_INDEX
     )
 
 
@@ -55,10 +55,9 @@ def create_invitation(
         receiver_account_id=receiver_account_id,
         amount_cents=amount_cents,
     )
+    resolve_write_capability(db)
     sender_member = _load_writer_member(db, sender_ledger_id, sender_account_id)
-    expense = _load_split_parent_expense(
-        db, sender_ledger_id=sender_ledger_id, expense_id=expense_id
-    )
+    expense = _load_split_parent_expense(db, sender_ledger_id=sender_ledger_id, expense_id=expense_id)
     _ensure_parent_can_be_split(expense, amount_cents=amount_cents)
     sender, receiver = _load_invitation_parties(
         db,
@@ -97,9 +96,7 @@ def create_invitation(
     return invitation
 
 
-def _validate_invitation_request(
-    *, sender_account_id: int, receiver_account_id: int, amount_cents: int
-) -> None:
+def _validate_invitation_request(*, sender_account_id: int, receiver_account_id: int, amount_cents: int) -> None:
     ensure_money_minor(
         amount_cents,
         sign=MoneySign.POSITIVE,
@@ -111,16 +108,11 @@ def _validate_invitation_request(
         raise AppError("split_receiver_invalid", status_code=422)
 
 
-def _load_split_parent_expense(
-    db: Session, *, sender_ledger_id: str, expense_id: int
-) -> Expense:
+def _load_split_parent_expense(db: Session, *, sender_ledger_id: str, expense_id: int) -> Expense:
     # Row-lock the parent so active-split total + cap check + insert serialize
     # against concurrent invites on the same parent (PG locks, SQLite ignores).
     expense = db.scalar(
-        select(Expense)
-        .where(Expense.id == expense_id)
-        .where(Expense.tenant_id == sender_ledger_id)
-        .with_for_update()
+        select(Expense).where(Expense.id == expense_id).where(Expense.tenant_id == sender_ledger_id).with_for_update()
     )
     if expense is None:
         raise AppError("expense_not_found", status_code=404)

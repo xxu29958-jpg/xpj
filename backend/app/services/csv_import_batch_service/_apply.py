@@ -58,7 +58,10 @@ from app.services.csv_import_batch_service._row_claim import (
     _remaining_importable_rows,
     _reset_claimed_csv_import_rows,
 )
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import (
+    assert_currency_binding_consistent,
+    resolve_write_capability,
+)
 from app.services.desktop_switch_service import revalidate_desktop_session_under_lock
 from app.services.exchange_rate_service import apply_currency_payload, home_currency_code
 from app.services.import_service import DEFAULT_SOURCE
@@ -83,9 +86,7 @@ def _process_csv_import_apply_row(
     handled in place (insert_failed / already-applied idempotency hit /
     stale claim).
     """
-    if not _refresh_claimed_csv_import_row(
-        db, tenant_id=tenant_id, row_id=row.id, apply_token=apply_token, now=now
-    ):
+    if not _refresh_claimed_csv_import_row(db, tenant_id=tenant_id, row_id=row.id, apply_token=apply_token, now=now):
         return None
     if row.amount_cents is None and row.original_amount_minor is None:
         row.status = "insert_failed"
@@ -95,9 +96,7 @@ def _process_csv_import_apply_row(
         row.updated_at = now
         return None
     idempotency_key = _csv_import_row_idempotency_key(batch, row)
-    existing_expense_id = _existing_csv_import_expense_id(
-        db, tenant_id=tenant_id, idempotency_key=idempotency_key
-    )
+    existing_expense_id = _existing_csv_import_expense_id(db, tenant_id=tenant_id, idempotency_key=idempotency_key)
     if existing_expense_id is not None:
         row.status = "applied"
         row.apply_token = None
@@ -124,7 +123,6 @@ def _process_csv_import_apply_row(
         expense=expense,
         payload=row,
         amount_was_explicit=row.original_currency_code == home_currency_code() and row.amount_cents is not None,
-        binding_checked=True,
     )
     return expense
 
@@ -145,16 +143,10 @@ def _cleanup_csv_import_apply_app_error(
     403 — earlier rows already committed on their own, so only the
     still-claimed rows are reset and the batch is marked failed)."""
     if claimed_row_ids:
-        _reset_claimed_csv_import_rows(
-            db, tenant_id=tenant_id, row_ids=claimed_row_ids, apply_token=apply_token
-        )
-        _mark_csv_import_apply_failed(
-            db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token
-        )
+        _reset_claimed_csv_import_rows(db, tenant_id=tenant_id, row_ids=claimed_row_ids, apply_token=apply_token)
+        _mark_csv_import_apply_failed(db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token)
     else:
-        _release_csv_import_apply_lease(
-            db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token
-        )
+        _release_csv_import_apply_lease(db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token)
 
 
 def _cleanup_csv_import_apply_failure(
@@ -168,12 +160,8 @@ def _cleanup_csv_import_apply_failure(
     """Cleanup path for IntegrityError / unexpected Exception:
     rows were already claimed and partially mutated, so always reset
     + mark failed."""
-    _reset_claimed_csv_import_rows(
-        db, tenant_id=tenant_id, row_ids=claimed_row_ids, apply_token=apply_token
-    )
-    _mark_csv_import_apply_failed(
-        db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token
-    )
+    _reset_claimed_csv_import_rows(db, tenant_id=tenant_id, row_ids=claimed_row_ids, apply_token=apply_token)
+    _mark_csv_import_apply_failed(db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token)
 
 
 def _mark_csv_import_row_insert_failed(
@@ -186,6 +174,7 @@ def _mark_csv_import_row_insert_failed(
     error_message: str,
     now: datetime,
 ) -> None:
+    resolve_write_capability(db)
     row = db.scalar(
         select(CsvImportRow)
         .where(CsvImportRow.tenant_id == tenant_id)
@@ -213,6 +202,7 @@ def _mark_csv_import_row_applied_if_existing(
     apply_token: str,
     now: datetime,
 ) -> bool:
+    resolve_write_capability(db)
     row = db.scalar(
         select(CsvImportRow)
         .where(CsvImportRow.tenant_id == tenant_id)
@@ -248,6 +238,7 @@ def _apply_one_claimed_csv_import_row(
     apply_token: str,
     now: datetime,
 ) -> int:
+    resolve_write_capability(db)
     row = db.scalar(
         ledger_scoped_select(CsvImportRow, tenant_id)
         .where(CsvImportRow.batch_id == batch.id)
@@ -367,8 +358,7 @@ def _attempt_csv_import_apply(
         db,
         tenant_id=tenant_id,
         batch_id=batch.id,
-        stale_before=now_utc()
-        - timedelta(minutes=get_settings().csv_import_row_apply_lease_minutes),
+        stale_before=now_utc() - timedelta(minutes=get_settings().csv_import_row_apply_lease_minutes),
     )
     claimed_row_ids.extend(
         _claim_csv_import_rows(
@@ -434,12 +424,10 @@ def apply_csv_import_batch(
     it is revalidated under the identity advisory lock before every row, so a
     mid-batch revocation/demotion cannot ride the per-row commits.
     """
-    # R10①：批量边界一次 binding 校验（行内经 binding_checked 跳过）。
+    # The batch and every independently committed row revalidate the binding.
     assert_currency_binding_consistent(db, home_currency_code())
     apply_token = str(uuid4())
-    batch = _claim_apply_lease(
-        db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token
-    )
+    batch = _claim_apply_lease(db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token)
     claimed_row_ids: list[int] = []
     try:
         return _attempt_csv_import_apply(

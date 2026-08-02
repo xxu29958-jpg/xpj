@@ -18,6 +18,7 @@ from app.models import (
     ExchangeRate,
     LedgerMember,
 )
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.identity_service import hash_secret, new_session_token
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -30,6 +31,7 @@ def _idem(headers: dict[str, str]) -> dict[str, str]:
 def _seed_usd_rate(*, tenant_id: str, rate_date: date, rate_to_cny: str) -> None:
     """Seed one USD→CNY rate snapshot (mirrors ``test_debt_repayment._seed_usd_rate``)."""
     with SessionLocal() as db:
+        resolve_write_capability(db)
         db.add(
             ExchangeRate(
                 tenant_id=tenant_id,
@@ -121,6 +123,7 @@ def _create_member_debt(
             source_type="bill_split",
             source_id=str(uuid4()),
         )
+        resolve_write_capability(db)
         db.add(debt)
         db.commit()
         return {"public_id": debt.public_id, "row_version": debt.row_version}

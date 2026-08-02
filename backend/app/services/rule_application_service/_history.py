@@ -8,6 +8,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RuleApplicationBatch, RuleApplicationChange
 from app.services.category_service import normalize_category
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.rule_application_service._common import (
     _changed_after_rule_application,
     _try_rollback_rule_change,
@@ -37,10 +38,9 @@ def rollback_rule_application(
     tenant_id: str,
     public_id: str,
 ) -> tuple[RuleApplicationBatch, int, int]:
+    authorize_currency_metadata_write(db)
     batch = db.scalar(
-        ledger_scoped_select(RuleApplicationBatch, tenant_id).where(
-            RuleApplicationBatch.public_id == public_id
-        )
+        ledger_scoped_select(RuleApplicationBatch, tenant_id).where(RuleApplicationBatch.public_id == public_id)
     )
     if batch is None:
         raise AppError("rule_application_not_found", "规则应用批次不存在。", status_code=404)
@@ -60,11 +60,7 @@ def rollback_rule_application(
     if applied_expense_ids:
         expenses_by_id = {
             e.id: e
-            for e in db.scalars(
-                ledger_scoped_select(Expense, tenant_id).where(
-                    Expense.id.in_(applied_expense_ids)
-                )
-            )
+            for e in db.scalars(ledger_scoped_select(Expense, tenant_id).where(Expense.id.in_(applied_expense_ids)))
         }
     now = now_utc()
     changed = 0

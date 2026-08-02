@@ -55,6 +55,14 @@ ERROR_MESSAGES = {
     "currency_not_supported": "暂不支持这个币种。",
     "currency_binding_drift": "服务端币种配置与账本已有记录的币种不一致，已停止写入；请检查服务端币种配置后再试。",
     "currency_binding_unresolved": "账本里还有早期人民币口径的计划/预算/周期数据，当前币种配置无法判定它们的单位，已停止写入；请先把服务端币种配置改回人民币，或联系维护者迁移后再切换。",
+    "currency_adoption_required": "当前安装需要先由拥有者在本机确认历史金额的本位币。",
+    "currency_adoption_currency_conflict": "历史金额证据与所选本位币不一致，已拒绝绑定；请先完成迁移或修复冲突事实。",
+    "currency_binding_already_active": "当前安装已经完成本位币绑定。",
+    "currency_binding_configuration_drift": "服务端币种配置与已持久化的本位币绑定不一致，已停止写入。",
+    "currency_binding_corrupt": "本位币权威记录缺失或损坏，已停止写入；请导出诊断信息。",
+    "currency_binding_evidence_changed": "历史金额证据已变化，请重新预览后再确认。",
+    "currency_binding_revision_conflict": "本位币绑定已更新，请刷新后重试。",
+    "currency_binding_state_conflict": "本位币绑定状态已变化，请刷新后重试。",
     "repayment_draft_currency_unsupported": "还款通知草稿目前只支持人民币账本捕获（通知金额按人民币分解析），暂不能入账到其它币种的账本。",
     "notification_draft_currency_unsupported": "通知捕获目前只支持人民币账本：通知金额按人民币分解析，暂不能入账到其它币种的账本。",
     "exchange_rate_required": "请先填写这一天的汇率。",
@@ -67,6 +75,7 @@ ERROR_MESSAGES = {
     "rule_application_not_found": "规则应用批次不存在。",
     "rule_in_use": "分类规则仍在使用，不能删除。",
     "admin_api_local_only": "管理接口仅允许本机访问。",
+    "maintenance_local_only": "这项安装维护操作仅允许在本机执行。",
     "backup_in_progress": "正在备份中，请稍后再试。",
     "server_error": "服务器开小差了，请稍后再试。",
     "invalid_request": "请求参数不正确。",
@@ -357,9 +366,7 @@ async def app_error_handler(request: Request, exc: AppError) -> Response:
 
 def _validation_error_code(exc: RequestValidationError) -> str:
     errors = exc.errors()
-    if errors and all(
-        error.get("type") == "split_amount_invalid" for error in errors
-    ):
+    if errors and all(error.get("type") == "split_amount_invalid" for error in errors):
         return "split_amount_invalid"
     return "invalid_request"
 

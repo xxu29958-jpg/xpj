@@ -15,6 +15,7 @@ from app.schemas import (
     DebtGoalLinksReplaceRequest,
     DebtGoalTargetDateRequest,
 )
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.goal_debt_repayment_core import (
     _evaluate_and_maybe_latch,
     _require_debt_repayment_goal,
@@ -33,6 +34,7 @@ def replace_debt_repayment_goal_links(
     commit: bool = True,
 ) -> None:
     """Replace the linked debt set in a new, frozen goal version."""
+    resolve_write_capability(db)
     goal = _require_debt_repayment_goal(
         db,
         tenant_id=tenant_id,
@@ -99,6 +101,7 @@ def acknowledge_integrity_review(
     commit: bool = True,
 ) -> None:
     """Acknowledge an achieved version's linked-debt void for audit."""
+    resolve_write_capability(db)
     goal = _require_debt_repayment_goal(
         db,
         tenant_id=tenant_id,
@@ -162,6 +165,7 @@ def set_debt_goal_target_date(
     commit: bool = True,
 ) -> None:
     """Set or clear a debt goal payoff deadline without changing its version."""
+    resolve_write_capability(db)
     goal = _require_debt_repayment_goal(
         db,
         tenant_id=tenant_id,

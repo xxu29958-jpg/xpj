@@ -19,7 +19,7 @@ import subprocess
 
 from app.database._c07_contract import (
     C07_SOURCE_REVISION,
-    C07_TARGET_REVISION,
+    C07CeremonyError,
     C07ReceiptRepairRequiredError,
 )
 from app.database._core import (
@@ -80,19 +80,12 @@ def init_db() -> None:
     _warn_if_default_database_url()
     lifecycle = inspect_database_lifecycle()
     alembic = load_alembic_context()
-    if alembic.head_revision != C07_TARGET_REVISION:
-        raise DatabaseMigrationPreflightError(
-            "拒绝开放数据库 writer:当前 release 的 Alembic head 不是冻结的 "
-            f"C07 target(expected={C07_TARGET_REVISION}, "
-            f"actual={alembic.head_revision})；数据库未执行 backup/DDL/DML。"
-        )
+    _assert_revision_contains_c07(alembic.head_revision, alembic, label="release head")
     plan = plan_database_lifecycle(lifecycle, alembic)
     if lifecycle.has_existing_schema:
         _assert_existing_schema_compatible(lifecycle)
     if plan.action is DatabaseLifecycleAction.REFUSE:
-        raise DatabaseMigrationPreflightError(
-            f"拒绝自动变更数据库:{plan.refusal_reason}数据库未执行 backup/DDL/DML。"
-        )
+        raise DatabaseMigrationPreflightError(f"拒绝自动变更数据库:{plan.refusal_reason}数据库未执行 backup/DDL/DML。")
     if plan.action is DatabaseLifecycleAction.FRESH_UPGRADE:
         if _is_installed_host_database():
             raise DatabaseMigrationPreflightError(
@@ -100,16 +93,19 @@ def init_db() -> None:
                 "恢复/扩容动作建立 exact-target marker 与 SYSTEM READY "
                 "projection；数据库未执行 backup/DDL/DML。"
             )
-    elif (
-        plan.action is not DatabaseLifecycleAction.NOOP
-        or lifecycle.current_revision != C07_TARGET_REVISION
-    ):
+    elif plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
+        _assert_revision_contains_c07(
+            lifecycle.current_revision,
+            alembic,
+            label="installed revision",
+        )
+        _assert_c07_startup_lifecycle_ready(alembic)
+        _assert_existing_schema_owner_ready()
+        _backup_before_upgrade(lifecycle.current_revision, alembic.head_revision)
+    elif plan.action is not DatabaseLifecycleAction.NOOP:
         raise DatabaseMigrationPreflightError(
-            "拒绝由普通后端改变现有数据库:"
-            f"current={lifecycle.current_revision!r}, "
-            f"required={C07_TARGET_REVISION!r}。"
-            f"source={C07_SOURCE_REVISION!r} 只能由 C07 发布迁移动作推进；"
-            "更早、更晚、多头或未知 revision 同样 inspect-only REFUSED；"
+            "拒绝由普通后端改变未知数据库状态:"
+            f"current={lifecycle.current_revision!r}, head={alembic.head_revision!r}；"
             "数据库未执行 backup/DDL/DML。"
         )
     else:
@@ -118,10 +114,9 @@ def init_db() -> None:
         _apply_schema_lifecycle(plan, alembic)
     except C07ReceiptRepairRequiredError as exc:
         raise DatabaseMigrationPreflightError(
-            "拒绝执行数据库迁移:C07 生命周期证明未能与 DDL 原子登记"
-            f"({exc})，事务已回滚。"
+            f"拒绝执行数据库迁移:C07 生命周期证明未能与 DDL 原子登记({exc})，事务已回滚。"
         ) from exc
-    _assert_schema_at_head(C07_TARGET_REVISION)
+    _assert_schema_at_head(alembic.head_revision)
     _assert_c07_startup_lifecycle_ready(alembic)
     record_schema_migration(
         BASELINE_MIGRATION_NAME,
@@ -151,26 +146,52 @@ def _assert_c07_startup_lifecycle_ready(alembic: AlembicContext) -> None:
             production_authority_required=_is_installed_host_database(),
         )
     except C07ReceiptRepairRequiredError as exc:
-        raise DatabaseMigrationPreflightError(
-            f"拒绝开放数据库 writer:C07 生命周期回执未完成({exc})。"
-        ) from exc
+        raise DatabaseMigrationPreflightError(f"拒绝开放数据库 writer:C07 生命周期回执未完成({exc})。") from exc
 
 
 def _is_installed_host_database() -> bool:
     return bool(os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip())
 
 
-def _apply_schema_lifecycle(
-    plan: DatabaseLifecyclePlan, alembic: AlembicContext
+def _assert_revision_contains_c07(
+    revision: str | None,
+    alembic: AlembicContext,
+    *,
+    label: str,
 ) -> None:
+    from app.database._c07_execution import _revision_includes_c07
+
+    try:
+        includes_c07 = _revision_includes_c07(
+            revision,
+            alembic_config=alembic.config,
+        )
+    except C07CeremonyError as exc:
+        raise DatabaseMigrationPreflightError(
+            f"拒绝开放数据库 writer:{label} 的 C07 ancestry 无法验证({exc})；数据库未执行 backup/DDL/DML。"
+        ) from exc
+    if includes_c07:
+        return
+    raise DatabaseMigrationPreflightError(
+        "拒绝由普通后端跨越 C07 迁移边界:"
+        f"{label}={revision!r}；source={C07_SOURCE_REVISION!r} "
+        "只能由 C07 发布迁移动作推进；更早、多头或未知 revision 同样 "
+        "inspect-only REFUSED；数据库未执行 backup/DDL/DML。"
+    )
+
+
+def _apply_schema_lifecycle(plan: DatabaseLifecyclePlan, alembic: AlembicContext) -> None:
     from alembic import command
 
     if plan.action is DatabaseLifecycleAction.NOOP:
         return
+    if plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
+        with engine.begin() as connection:
+            alembic.config.attributes["connection"] = connection
+            command.upgrade(alembic.config, "head")
+        return
     if plan.action is not DatabaseLifecycleAction.FRESH_UPGRADE:
-        raise DatabaseMigrationPreflightError(
-            "拒绝执行非 fresh C07 普通启动迁移；数据库未执行 DDL/DML。"
-        )
+        raise DatabaseMigrationPreflightError("拒绝执行非 fresh C07 普通启动迁移；数据库未执行 DDL/DML。")
     from app.database._c07_ceremony import (
         C07_CEREMONY_MODE_FRESH,
         C07_FRESH_CEREMONY_ID,
@@ -179,9 +200,12 @@ def _apply_schema_lifecycle(
     from app.database._c07_contract import MAINTENANCE_WINDOW_SECONDS
     from app.database._c07_transaction_timeout import c07_prearmed_transaction
 
-    with engine.connect() as connection, c07_prearmed_transaction(
-        connection,
-        timeout_ms=MAINTENANCE_WINDOW_SECONDS * 1000,
+    with (
+        engine.connect() as connection,
+        c07_prearmed_transaction(
+            connection,
+            timeout_ms=MAINTENANCE_WINDOW_SECONDS * 1000,
+        ),
     ):
         alembic.config.attributes["connection"] = connection
         set_c07_migration_context(
@@ -191,7 +215,7 @@ def _apply_schema_lifecycle(
         )
         if "alembic_version" in plan.state.table_names:
             command.stamp(alembic.config, "base", purge=True)
-        command.upgrade(alembic.config, C07_TARGET_REVISION)
+        command.upgrade(alembic.config, "head")
 
 
 def _assert_existing_schema_compatible(lifecycle: DatabaseLifecycleState) -> None:
@@ -207,9 +231,7 @@ def _assert_existing_schema_compatible(lifecycle: DatabaseLifecycleState) -> Non
     with engine.connect() as connection:
         columns = {column["name"] for column in inspect(connection).get_columns("app_meta")}
         if not {"key", "value"}.issubset(columns):
-            raise DatabaseMigrationPreflightError(
-                "拒绝启动数据库:app_meta 缺少 compatibility 所需的 key/value 列。"
-            )
+            raise DatabaseMigrationPreflightError("拒绝启动数据库:app_meta 缺少 compatibility 所需的 key/value 列。")
         minimum = connection.scalar(
             text("SELECT value FROM app_meta WHERE key = :key LIMIT 1"),
             {"key": SCHEMA_MIN_COMPATIBLE_KEY},
@@ -226,11 +248,7 @@ def _assert_schema_at_head(expected_head: str) -> None:
     from sqlalchemy import text
 
     with engine.connect() as connection:
-        revisions = tuple(
-            connection.scalars(
-                text("SELECT version_num FROM alembic_version ORDER BY version_num")
-            )
-        )
+        revisions = tuple(connection.scalars(text("SELECT version_num FROM alembic_version ORDER BY version_num")))
     if revisions != (expected_head,):
         raise DatabaseMigrationPreflightError(
             f"数据库迁移后 revision 校验失败:expected={expected_head!r}, actual={revisions!r}。"

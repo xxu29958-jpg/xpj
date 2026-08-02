@@ -18,6 +18,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Account, Debt, ExchangeRate, LedgerMember
+from app.services.currency_binding_service import resolve_write_capability
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -36,6 +37,7 @@ def _seed_member_account(name: str = "家人") -> int:
 
 def _seed_usd_rate(*, tenant_id: str, rate_date: date, rate_to_cny: str) -> None:
     with SessionLocal() as db:
+        resolve_write_capability(db)
         db.add(
             ExchangeRate(
                 tenant_id=tenant_id,
@@ -159,6 +161,7 @@ def _seed_owner_ledger_member_debt(*, direction: str = "i_owe") -> str:
     owner as the Debt owner, so the API caller (the owner) is a party. ``POST /api/debts``
     only creates external Debt, so member obligations are seeded directly via ORM."""
     with SessionLocal() as db:
+        resolve_write_capability(db)
         counterparty = Account(display_name="家人")
         db.add(counterparty)
         db.flush()

@@ -17,7 +17,10 @@ from app.money_contract import (
     projection_sum_to_int,
 )
 from app.schemas import RecurringCandidateConfirmRequest
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import (
+    assert_currency_binding_consistent,
+    resolve_write_capability,
+)
 from app.services.currency_common import home_currency_code
 from app.services.insights_service import normalize_merchant, recurring_candidates
 from app.services.optimistic_concurrency import bump_row_version
@@ -203,6 +206,7 @@ def _reactivate_recurring_item_from_candidate(
     payload: RecurringCandidateConfirmRequest,
     timezone_name: str | None,
 ) -> RecurringItem:
+    resolve_write_capability(db)
     last_seen_at = _candidate_last_seen_at(payload, match)
     confidence = _candidate_confidence(payload, match)
     now = now_utc()
@@ -314,10 +318,13 @@ def _find_recurring_candidate(
     for item in recurring_candidates(db, tenant_id=tenant_id, timezone_name=timezone_name):
         if normalize_merchant(item.get("merchant")) != merchant_key:
             continue
-        if projection_sum_to_int(
-            item.get("amount_cents"),
-            label="recurring_candidate.match_amount",
-        ) != amount_cents:
+        if (
+            projection_sum_to_int(
+                item.get("amount_cents"),
+                label="recurring_candidate.match_amount",
+            )
+            != amount_cents
+        ):
             continue
         return item
     return None
@@ -348,9 +355,7 @@ def _candidate_last_seen_at(
     return ensure_utc(payload.last_seen_at) or ensure_utc(match.candidate.get("last_seen_at"))
 
 
-def _candidate_confidence(
-    payload: RecurringCandidateConfirmRequest, match: _RecurringCandidateMatch
-) -> object:
+def _candidate_confidence(payload: RecurringCandidateConfirmRequest, match: _RecurringCandidateMatch) -> object:
     return payload.confidence or match.candidate.get("confidence")
 
 
