@@ -1081,6 +1081,18 @@ function Test-TicketboxC07SuperuserRecoverySecurityEquals {
             Security.AccessControl.RawSecurityDescriptor($Left, 0)
         $rightDescriptor = New-Object `
             Security.AccessControl.RawSecurityDescriptor($Right, 0)
+        $leftSecurity = New-Object Security.AccessControl.FileSecurity
+        $rightSecurity = New-Object Security.AccessControl.FileSecurity
+        $leftSecurity.SetSecurityDescriptorBinaryForm($Left)
+        $rightSecurity.SetSecurityDescriptorBinaryForm($Right)
+        if (
+            -not $leftSecurity.AreAccessRulesCanonical -or
+            -not $rightSecurity.AreAccessRulesCanonical -or
+            -not $leftSecurity.AreAuditRulesCanonical -or
+            -not $rightSecurity.AreAuditRulesCanonical
+        ) {
+            return $false
+        }
         $leftFlags = [int]$leftDescriptor.ControlFlags -band (-bnot $ignoredMask)
         $rightFlags = [int]$rightDescriptor.ControlFlags -band (-bnot $ignoredMask)
         if (
@@ -1122,8 +1134,7 @@ function Test-TicketboxC07SuperuserRecoveryRawAclEquals {
     $aclBytes = @()
     foreach ($acl in @($Left, $Right)) {
         if ($NormalizeInheritedProvenance) {
-            $comparableAcl = New-Object `
-                Security.AccessControl.RawAcl($acl.Revision, $acl.Count)
+            $aceFingerprints = @()
             for ($index = 0; $index -lt $acl.Count; $index++) {
                 $aceBytes = New-Object byte[] $acl[$index].BinaryLength
                 $acl[$index].GetBinaryForm($aceBytes, 0)
@@ -1135,14 +1146,20 @@ function Test-TicketboxC07SuperuserRecoveryRawAclEquals {
                     [int]$ace.AceFlags -band
                         (-bnot [int][Security.AccessControl.AceFlags]::Inherited)
                 )
-                $comparableAcl.InsertAce($comparableAcl.Count, $ace)
+                $normalizedAceBytes = New-Object byte[] $ace.BinaryLength
+                $ace.GetBinaryForm($normalizedAceBytes, 0)
+                $aceFingerprints += [Convert]::ToBase64String($normalizedAceBytes)
             }
+            $canonicalAcl = (
+                [string]$acl.Revision + ":" +
+                (@($aceFingerprints | Sort-Object -CaseSensitive) -join ",")
+            )
+            $bytes = [Text.Encoding]::UTF8.GetBytes($canonicalAcl)
         }
         else {
-            $comparableAcl = $acl
+            $bytes = New-Object byte[] $acl.BinaryLength
+            $acl.GetBinaryForm($bytes, 0)
         }
-        $bytes = New-Object byte[] $comparableAcl.BinaryLength
-        $comparableAcl.GetBinaryForm($bytes, 0)
         $aclBytes += ,$bytes
     }
     return Test-TicketboxByteArrayEquals `

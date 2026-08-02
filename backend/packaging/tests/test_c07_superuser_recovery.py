@@ -298,17 +298,29 @@ if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
 }}
 $inheritanceSecurity = New-Object Security.AccessControl.FileSecurity
 $inheritanceSecurity.SetSecurityDescriptorSddlForm(
-    ("O:{{0}}G:{{0}}D:(A;;FA;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
+    ("O:{{0}}G:{{0}}D:(A;;FA;;;{{0}})(A;;FR;;;BA)S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
     $allSections
 )
 $inheritanceSecurityBytes = $inheritanceSecurity.GetSecurityDescriptorBinaryForm()
 $autoInheritedSecurity = New-Object `
     Security.AccessControl.RawSecurityDescriptor($inheritanceSecurityBytes,0)
-$autoInheritedSecurity.DiscretionaryAcl[0].AceFlags =
-    [Security.AccessControl.AceFlags](
-        [int]$autoInheritedSecurity.DiscretionaryAcl[0].AceFlags -bor
+$reorderedAcl = New-Object Security.AccessControl.RawAcl(
+    $autoInheritedSecurity.DiscretionaryAcl.Revision,
+    $autoInheritedSecurity.DiscretionaryAcl.Count
+)
+for (
+    $aceIndex = $autoInheritedSecurity.DiscretionaryAcl.Count - 1;
+    $aceIndex -ge 0;
+    $aceIndex--
+) {{
+    $ace = $autoInheritedSecurity.DiscretionaryAcl[$aceIndex]
+    $ace.AceFlags = [Security.AccessControl.AceFlags](
+        [int]$ace.AceFlags -bor
             [int][Security.AccessControl.AceFlags]::Inherited
     )
+    $reorderedAcl.InsertAce($reorderedAcl.Count,$ace)
+}}
+$autoInheritedSecurity.DiscretionaryAcl = $reorderedAcl
 $autoInheritedSecurity.SetFlags(
     $autoInheritedSecurity.ControlFlags -bor
         [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited
