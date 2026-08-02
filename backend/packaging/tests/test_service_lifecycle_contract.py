@@ -13,6 +13,13 @@ pytestmark = pytest.mark.xdist_group(name="windows_powershell_lifecycle")
 
 PACKAGING = Path(__file__).resolve().parents[1]
 
+# A fresh two-core Windows CI VM has to cold-start Windows PowerShell 5.1 and
+# compile the helper's native Add-Type substrate. Keep that successful path
+# bounded without conflating cold compilation with the fail-closed deadline
+# probes below, whose 1,000/3,200 ms limits remain unchanged.
+POWERSHELL_51_COLD_START_TIMEOUT_MS = 45_000
+POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS = 90
+
 
 def _read(name: str) -> str:
     return (PACKAGING / name).read_text(encoding="utf-8-sig")
@@ -595,7 +602,7 @@ $result = Invoke-TicketboxBoundedNativeProcess `
         '-File',
         '{_ps_literal(probe)}'
     ) `
-    -TimeoutMilliseconds 15000 `
+    -TimeoutMilliseconds {POWERSHELL_51_COLD_START_TIMEOUT_MS} `
     -TerminationSettlementMilliseconds 1000 `
     -Label 'heartbeat helper environment probe' `
     -ChildEnvironment $childEnvironment
@@ -626,7 +633,7 @@ $parentEnvironmentUnchanged =
             encoding="utf-8",
             errors="replace",
             check=False,
-            timeout=45,
+            timeout=POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS,
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
         evidence = json.loads(completed.stdout.strip().splitlines()[-1])
@@ -813,7 +820,7 @@ try {{
     ).Payload.sequence
     $returnedSequence = Invoke-TicketboxBoundedHeartbeatOperation `
         -Operation $productionHeartbeat `
-        -TimeoutMilliseconds 15000 `
+        -TimeoutMilliseconds {POWERSHELL_51_COLD_START_TIMEOUT_MS} `
         -SettlementMilliseconds 1000 `
         -Label 'production C07 heartbeat operation smoke'
     $after = [int64](
@@ -1116,7 +1123,7 @@ finally {{
             encoding="utf-8",
             errors="replace",
             check=False,
-            timeout=60,
+            timeout=POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS,
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
 
@@ -1271,7 +1278,7 @@ try {{
     $before = [int64](Read-TicketboxC07Heartbeat $authority).Payload.sequence
     $sequence = Invoke-TicketboxBoundedHeartbeatOperation `
         -Operation $operation `
-        -TimeoutMilliseconds 15000 `
+        -TimeoutMilliseconds {POWERSHELL_51_COLD_START_TIMEOUT_MS} `
         -SettlementMilliseconds 1000 `
         -Label 'external primary owner heartbeat'
     $after = [int64](Read-TicketboxC07Heartbeat $authority).Payload.sequence
@@ -1302,7 +1309,7 @@ finally {{
                 encoding="utf-8",
                 errors="replace",
                 check=False,
-                timeout=45,
+                timeout=POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS,
             )
             assert completed.returncode == 0, completed.stdout + completed.stderr
         finally:
