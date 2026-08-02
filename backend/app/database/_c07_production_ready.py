@@ -234,7 +234,11 @@ def _read_live_logical_database_identity(
     )
 
 
-def _read_live_alembic_revision(connection) -> str:
+def _read_live_alembic_revision(
+    connection,
+    *,
+    expected_revision: str = C07_TARGET_REVISION,
+) -> str:
     try:
         revisions = tuple(
             str(value)
@@ -249,9 +253,9 @@ def _read_live_alembic_revision(connection) -> str:
         raise C07ReceiptRepairRequiredError(
             "C07 cannot read the live Alembic authority"
         ) from exc
-    if revisions != (C07_TARGET_REVISION,):
+    if revisions != (expected_revision,):
         raise C07ReceiptRepairRequiredError(
-            "C07 live database is not at the exact C07 target"
+            "C07 live database does not match the expected managed revision"
         )
     return revisions[0]
 
@@ -272,6 +276,7 @@ def assert_c07_production_ready(
     connection,
     *,
     projection_path: Path | None = None,
+    expected_revision: str = C07_TARGET_REVISION,
 ) -> bool:
     marker = read_c07_production_database_marker(connection)
     if marker is None:
@@ -280,7 +285,10 @@ def assert_c07_production_ready(
     live_server_id, live_data_generation = (
         _read_live_logical_database_identity(connection)
     )
-    _read_live_alembic_revision(connection)
+    _read_live_alembic_revision(
+        connection,
+        expected_revision=expected_revision,
+    )
     expected_binding = _database_binding_sha256(
         installation_id=projection.installation_id,
         cluster_system_identifier=marker.cluster_system_identifier,

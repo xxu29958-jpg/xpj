@@ -40,7 +40,6 @@ def accept_invitation(
     received expense and receiver member fields. Losing races roll back the
     tentative expense and re-resolve the settled invitation idempotently.
     """
-    resolve_write_capability(db)
     inv = get_invitation(db, public_id)
     _ensure_accepting_receiver(inv, accepting_account_id)
 
@@ -48,6 +47,10 @@ def accept_invitation(
     if settled is not None:
         return settled
 
+    # A settled re-accept is a read-only idempotent replay.  Require currency
+    # writer authority only after that terminal fast path, before expiry or a
+    # new acceptance can mutate persisted facts.
+    resolve_write_capability(db)
     settled = _resolve_expired_or_peer_settled_accept(db, public_id, inv, target_ledger_id)
     if settled is not None:
         return settled

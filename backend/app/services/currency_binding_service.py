@@ -69,7 +69,12 @@ def _configured_home_or_none() -> str | None:
 def _load_binding(db: Session, *, for_update: bool = False) -> InstallationCurrencyBinding | None:
     statement = select(InstallationCurrencyBinding).where(InstallationCurrencyBinding.singleton_id == 1)
     if for_update:
-        statement = statement.with_for_update()
+        # The singleton may already be present in this Session's identity map
+        # from the optimistic EMPTY read above.  PostgreSQL's FOR UPDATE waits
+        # for a concurrent claimant and returns the winner's committed row, but
+        # SQLAlchemy otherwise keeps the already-loaded attributes.  Refresh
+        # them while taking the lock before re-evaluating the state.
+        statement = statement.with_for_update().execution_options(populate_existing=True)
     return db.scalar(statement)
 
 

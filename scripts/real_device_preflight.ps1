@@ -261,6 +261,14 @@ if (-not $SkipBackend) {
     }
     Write-Host "Session Token 检查通过。"
 
+    $currencyCapability = Invoke-Json -Uri "$baseUrl/api/system/currency-capability" -Headers $appHeaders
+    if ($currencyCapability.state -notin @("EMPTY", "ADOPTION_REQUIRED", "ACTIVE") -or
+        $null -eq $currencyCapability.currency_contract_version -or
+        $null -eq $currencyCapability.binding_revision) {
+        throw "币种能力握手返回了无效合同。"
+    }
+    Write-Host "币种能力握手检查通过。"
+
     $confirmedProbe = Invoke-Json -Uri "$baseUrl/api/expenses/confirmed?page=1&page_size=1" -Headers $appHeaders
     if ($confirmedProbe.items -and $confirmedProbe.items.Count -gt 0) {
         Assert-PublicId -Value $confirmedProbe.items[0].public_id -Context "已确认账单接口"

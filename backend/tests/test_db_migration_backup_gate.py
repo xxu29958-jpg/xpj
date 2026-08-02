@@ -162,6 +162,7 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
     from alembic import command
 
     import app.database as db_pkg
+    from app.database._c07_production_ready import _read_live_alembic_revision
     from app.services import backup_service
 
     alembic = db_pkg.load_alembic_context()
@@ -179,6 +180,14 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
 
     assert calls == ["backup"]
     assert _head_revision(db_pkg) == alembic.head_revision
+    with db_pkg.engine.connect() as connection:
+        assert (
+            _read_live_alembic_revision(
+                connection,
+                expected_revision=alembic.head_revision,
+            )
+            == alembic.head_revision
+        )
 
 
 def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):

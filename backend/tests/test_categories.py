@@ -17,13 +17,18 @@ from datetime import UTC, datetime
 import pytest
 from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
 from app.models import CategoryRule, Expense
 from app.routes.web_app import _require_local as _web_require_local
 from app.services.category_preference_service import ensure_category_preference_for_name
-from app.services.category_service import list_category_summary
+from app.services.category_service import (
+    list_category_summary,
+    normalize_existing_expense_categories,
+)
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.merchant_service import display_merchant, normalize_merchant
 from app.services.time_service import now_utc
 from tests._infra.env import BACKEND_ROOT
@@ -186,6 +191,33 @@ def test_category_summary_uses_stat_time_and_normalized_category_aliases(
     food = next(item for item in dashboard.summaries if item.category == "餐饮")
     assert food.confirmed_count == 2
     assert food.confirmed_amount_cents == 2000
+
+    # Once all Expense rows are canonical, a legacy CategoryRule still needs
+    # independent normalization; it must not be hidden by an Expense-only
+    # early return.
+    with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
+        legacy_expense = db.scalar(select(Expense).where(Expense.merchant == "旧分类五月"))
+        assert legacy_expense is not None
+        legacy_expense.category = "餐饮"
+        db.add(
+            CategoryRule(
+                tenant_id="owner",
+                keyword="legacy-food-rule",
+                category="吃饭",
+                enabled=True,
+                priority=10,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.commit()
+
+    with SessionLocal() as db:
+        normalize_existing_expense_categories(db, "owner")
+        rule = db.scalar(select(CategoryRule).where(CategoryRule.keyword == "legacy-food-rule"))
+        assert rule is not None
+        assert rule.category == "餐饮"
 
 
 # ── T13: /web/categories/uncategorized ─────────────────────────────────────

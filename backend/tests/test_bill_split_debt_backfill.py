@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +26,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Account, BillSplitInvitation, Debt, Expense, Ledger, LedgerMember
 from app.services import bill_split_service as bsplit
+from app.services.bill_split_service import _backfill as backfill_module
 from app.services.bill_split_service import (
     backfill_bill_split_debts,
     reconcile_bill_split_debts_if_enabled,
@@ -243,7 +245,11 @@ def test_backfill_ignores_non_accepted_invitations(client: TestClient, *, identi
 
 
 def test_reconcile_is_noop_when_rollout_off(
-    client: TestClient, *, identity, debt_rollout_off
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+    debt_rollout_off,
 ) -> None:
     # The safety invariant: a split accepted in the closed period legitimately has no
     # Debt, so the startup reconcile must NOT fabricate one while the rollout is OFF.
@@ -253,6 +259,19 @@ def test_reconcile_is_noop_when_rollout_off(
     assert _debts_for(public_id) == []
 
     assert reconcile_bill_split_debts_if_enabled() == 0
+    assert _debts_for(public_id) == []
+
+    monkeypatch.setenv("DEBT_ROLLOUT_ENABLED", "true")
+    monkeypatch.setattr(
+        backfill_module,
+        "get_capability",
+        lambda _db: SimpleNamespace(state="ADOPTION_REQUIRED"),
+    )
+    get_settings.cache_clear()
+    try:
+        assert reconcile_bill_split_debts_if_enabled() == 0
+    finally:
+        get_settings.cache_clear()
     assert _debts_for(public_id) == []
 
 

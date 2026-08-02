@@ -298,6 +298,9 @@ def reconcile_expense_tag_mirror(db: Session, tenant_id: str, *, batch_size: int
             db.expunge_all()
             continue
 
+        # Each page commits independently, so transaction-local writer proof
+        # must be acquired for every page that actually repairs Expense rows.
+        authorize_currency_metadata_write(db)
         drifted_ids = {expense.id for expense in drifted_expenses}
         desired_names = [name for expense in drifted_expenses for name in desired_names_by_id[expense.id]]
         tags_by_key = _tags_by_key_for_names(db, tenant_id, desired_names)

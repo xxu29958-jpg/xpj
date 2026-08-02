@@ -194,7 +194,11 @@ def test_accept_without_rollout_creates_no_debt(
 
 
 def test_reaccept_does_not_create_second_debt(
-    client: TestClient, *, identity, debt_rollout_on
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+    debt_rollout_on,
 ) -> None:
     # §4: a re-accept returns the existing accepted result and MUST NOT create
     # another Debt (the fast path returns before the insert; uq_debts_source
@@ -203,7 +207,14 @@ def test_reaccept_does_not_create_second_debt(
     public_id = _invite(client, identity, receiver_id)
 
     _accept(public_id, receiver_id)
-    _accept(public_id, receiver_id)  # idempotent re-accept
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        # Idempotent terminal replay is read-only and remains available while
+        # the mutable writer is blocked by configuration drift.
+        _accept(public_id, receiver_id)
+    finally:
+        get_settings.cache_clear()
 
     assert len(_debts_for(public_id)) == 1
 

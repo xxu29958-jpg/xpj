@@ -98,22 +98,42 @@ def test_local_admin_can_preview_adoption_state(client, identity) -> None:
     }
 
 
+@pytest.mark.real_db
 def test_first_fact_claim_is_transactional_and_audited(identity) -> None:
     _ = identity
-    with SessionLocal() as db:
-        capability = resolve_write_capability(db)
+    # Session A caches EMPTY before session B wins the first-fact claim.  The
+    # subsequent FOR UPDATE in A must refresh to B's committed ACTIVE row,
+    # not attempt a second state transition with stale ORM attributes.
+    with SessionLocal() as second_writer:
+        assert get_capability(second_writer).state == "EMPTY"
+        with SessionLocal() as first_writer:
+            capability = resolve_write_capability(first_writer)
+            assert capability.state == "ACTIVE"
+            assert capability.home_currency_code == "CNY"
+            first_writer.add(
+                Budget(
+                    tenant_id="owner",
+                    month="2026-08",
+                    total_amount_cents=100,
+                    non_monthly_amount_cents=0,
+                    rollover_amount_cents=0,
+                )
+            )
+            first_writer.commit()
+
+        capability = resolve_write_capability(second_writer)
         assert capability.state == "ACTIVE"
         assert capability.home_currency_code == "CNY"
-        db.add(
+        second_writer.add(
             Budget(
                 tenant_id="owner",
-                month="2026-08",
-                total_amount_cents=100,
+                month="2026-09",
+                total_amount_cents=200,
                 non_monthly_amount_cents=0,
                 rollover_amount_cents=0,
             )
         )
-        db.commit()
+        second_writer.commit()
 
     with SessionLocal() as db:
         binding = db.get(InstallationCurrencyBinding, 1)
@@ -126,6 +146,7 @@ def test_first_fact_claim_is_transactional_and_audited(identity) -> None:
         assert audit.action == "FIRST_FACT_CLAIM"
         assert audit.before_snapshot["state"] == "EMPTY"
         assert audit.after_snapshot["state"] == "ACTIVE"
+        assert db.query(Budget).count() == 2
 
 
 def test_first_fact_claim_rolls_back_with_abandoned_write(identity) -> None:

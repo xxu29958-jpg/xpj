@@ -7,9 +7,13 @@ rebuilds relation rows from the (source-of-truth) denormalised string and bumps
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+import app.database._seed as seed_module
+import app.services.currency_binding_service as currency_binding_service
 from app.database import SessionLocal
 from app.models import Expense, ExpenseTag
 from app.services import tag_service
@@ -104,7 +108,12 @@ def test_reconcile_removes_orphan_link_when_string_cleared(client: TestClient, *
     assert _row_version(expense_id) == before + 1
 
 
-def test_reconcile_is_noop_and_idempotent_when_consistent(client: TestClient, *, identity) -> None:
+def test_reconcile_is_noop_and_idempotent_when_consistent(
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+) -> None:
     _manual_with_tag(client, identity.app_headers, "食物")
     expense_id = _only_expense_id()
     before = _row_version(expense_id)
@@ -123,6 +132,19 @@ def test_reconcile_is_noop_and_idempotent_when_consistent(client: TestClient, *,
 
     # exactly one bump from the single repair, none from the two no-op passes.
     assert _row_version(expense_id) == before + 1
+
+    monkeypatch.setattr(seed_module, "_tag_mirror_reconcile_done", lambda: False)
+    monkeypatch.setattr(
+        currency_binding_service,
+        "get_capability",
+        lambda _db: SimpleNamespace(state="ADOPTION_REQUIRED"),
+    )
+
+    def unexpected_marker(*_args, **_kwargs) -> None:
+        raise AssertionError("adoption deferral must not consume the reconcile marker")
+
+    monkeypatch.setattr(seed_module, "record_schema_migration", unexpected_marker)
+    seed_module.reconcile_expense_tag_mirror_once()
 
 
 def test_reconcile_bump_is_occ_effective(client: TestClient, *, identity) -> None:

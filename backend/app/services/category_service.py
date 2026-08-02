@@ -94,20 +94,29 @@ def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
             .where(Expense.category.in_(LEGACY_CATEGORY_ALIASES.keys()))
         )
     )
-    if not expenses:
+    rules = list(
+        db.scalars(
+            select(CategoryRule)
+            .where(CategoryRule.tenant_id == tenant_id)
+            .where(CategoryRule.deleted_at.is_(None))
+            .where(CategoryRule.category.in_(LEGACY_CATEGORY_ALIASES.keys()))
+        )
+    )
+    if not expenses and not rules:
         return
-    authorize_currency_metadata_write(db)
+    rules_are_non_financial = all(
+        rule.amount_min_cents is None and rule.amount_max_cents is None
+        for rule in rules
+    )
+    authorize_currency_metadata_write(
+        db,
+        allow_empty_category_rule=not expenses and rules_are_non_financial,
+    )
     for expense in expenses:
         normalized = normalize_category(expense.category)
         if normalized != expense.category:
             expense.category = normalized
             changed = True
-    rules = db.scalars(
-        select(CategoryRule)
-        .where(CategoryRule.tenant_id == tenant_id)
-        .where(CategoryRule.deleted_at.is_(None))
-        .where(CategoryRule.category.in_(LEGACY_CATEGORY_ALIASES.keys()))
-    )
     for rule in rules:
         normalized = normalize_category(rule.category)
         if normalized != rule.category:

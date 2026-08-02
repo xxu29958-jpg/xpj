@@ -219,10 +219,16 @@ def reconcile_expense_tag_mirror_once() -> None:
     """
     if _tag_mirror_reconcile_done():
         return
+    from app.services.currency_binding_service import get_capability
     from app.services.identity_service import ledger_ids
     from app.services.tag_service import reconcile_expense_tag_mirror
 
     with SessionLocal() as db:
+        # Historical installations need the loopback adoption endpoint before
+        # any fenced Expense repair can run.  Do not write the once-only marker:
+        # the same repair will be retried after adoption completes.
+        if get_capability(db).state == "ADOPTION_REQUIRED":
+            return
         for ledger_id in ledger_ids(db):
             reconcile_expense_tag_mirror(db, ledger_id)
     record_schema_migration(

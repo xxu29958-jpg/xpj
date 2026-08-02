@@ -6,7 +6,7 @@ import csv
 from io import BytesIO, TextIOWrapper
 from typing import BinaryIO
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -62,13 +62,6 @@ def _assert_cells_bounded(row: list[str], *, max_cell_bytes: int) -> None:
                 f"CSV 单元格超过 {max_cell_bytes} 字节上限。",
                 status_code=400,
             )
-
-
-def _delete_partial_csv_import_batch(db: Session, *, batch_id: int, tenant_id: str) -> None:
-    resolve_write_capability(db)
-    db.execute(delete(CsvImportRow).where(CsvImportRow.tenant_id == tenant_id).where(CsvImportRow.batch_id == batch_id))
-    db.execute(delete(CsvImportBatch).where(CsvImportBatch.tenant_id == tenant_id).where(CsvImportBatch.id == batch_id))
-    db.commit()
 
 
 def _csv_import_limits() -> tuple[int, int, int, int, str]:
@@ -156,7 +149,7 @@ def _create_csv_import_batch_record(
         updated_at=now,
     )
     db.add(batch)
-    db.commit()
+    db.flush()
     db.refresh(batch)
     return batch
 
@@ -168,12 +161,16 @@ def _insert_csv_import_rows_in_chunks(
     parsed_rows: list[ParsedRow],
     chunk_size: int,
 ) -> None:
+    if not parsed_rows:
+        return
+    # One authority claim and one transaction for the whole staged batch.
+    # Chunked flushes bound ORM work without making a partial batch durable.
+    resolve_write_capability(db)
     for start in range(0, len(parsed_rows), chunk_size):
-        resolve_write_capability(db)
         chunk = parsed_rows[start : start + chunk_size]
         for parsed in chunk:
             db.add(_row_from_parsed(batch, parsed))
-        db.commit()
+        db.flush()
 
 
 def create_csv_import_batch(
@@ -194,7 +191,6 @@ def create_csv_import_batch(
             timezone_name=timezone_name,
             home_currency=parsed_home_currency,
         )
-        resolve_write_capability(db)
         batch = _create_csv_import_batch_record(
             db,
             tenant_id=tenant_id,
@@ -203,17 +199,8 @@ def create_csv_import_batch(
             valid_rows=valid_rows,
             error_rows=error_rows,
         )
-        try:
-            _insert_csv_import_rows_in_chunks(db, batch=batch, parsed_rows=parsed_rows, chunk_size=chunk_size)
-        except SQLAlchemyError:
-            db.rollback()
-            _delete_partial_csv_import_batch(
-                db,
-                batch_id=batch.id,
-                tenant_id=tenant_id,
-            )
-            raise
-
+        _insert_csv_import_rows_in_chunks(db, batch=batch, parsed_rows=parsed_rows, chunk_size=chunk_size)
+        db.commit()
         db.refresh(batch)
         return batch
     except UnicodeDecodeError as exc:
@@ -223,6 +210,9 @@ def create_csv_import_batch(
         db.rollback()
         raise AppError("invalid_request", f"CSV 格式无效：{exc}", status_code=400) from exc
     except AppError:
+        db.rollback()
+        raise
+    except SQLAlchemyError:
         db.rollback()
         raise
 

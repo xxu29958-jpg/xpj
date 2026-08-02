@@ -301,6 +301,7 @@ def assert_c07_lifecycle_ready(
         if assert_c07_production_ready(
             connection,
             projection_path=production_projection_path,
+            expected_revision=current_revision,
         ):
             try:
                 if not _revision_includes_c07(
