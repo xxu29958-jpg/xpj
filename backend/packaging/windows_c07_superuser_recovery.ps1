@@ -1309,6 +1309,40 @@ function Get-TicketboxC07SuperuserRecoveryCreationSecuritySddl {
     }
 }
 
+function Test-TicketboxC07SuperuserRecoveryCreationSecurityEquals {
+    param(
+        [Parameter(Mandatory = $true)][byte[]]$Left,
+        [Parameter(Mandatory = $true)][byte[]]$Right
+    )
+
+    try {
+        $leftDescriptor = New-Object `
+            Security.AccessControl.RawSecurityDescriptor($Left, 0)
+        $rightDescriptor = New-Object `
+            Security.AccessControl.RawSecurityDescriptor($Right, 0)
+        $saclFlags = [int](
+            [Security.AccessControl.ControlFlags]::SystemAclPresent -bor
+            [Security.AccessControl.ControlFlags]::SystemAclDefaulted -bor
+            [Security.AccessControl.ControlFlags]::SystemAclAutoInheritRequired -bor
+            [Security.AccessControl.ControlFlags]::SystemAclAutoInherited -bor
+            [Security.AccessControl.ControlFlags]::SystemAclProtected
+        )
+        $leftDescriptor.SystemAcl = $rightDescriptor.SystemAcl
+        $leftDescriptor.SetFlags([Security.AccessControl.ControlFlags](
+            ([int]$leftDescriptor.ControlFlags -band (-bnot $saclFlags)) -bor
+            ([int]$rightDescriptor.ControlFlags -band $saclFlags)
+        ))
+        $normalizedLeft = New-Object byte[] $leftDescriptor.BinaryLength
+        $leftDescriptor.GetBinaryForm($normalizedLeft, 0)
+        return Test-TicketboxC07SuperuserRecoverySecurityEquals `
+            -Left $normalizedLeft `
+            -Right $Right
+    }
+    catch {
+        return $false
+    }
+}
+
 function Get-TicketboxC07SuperuserRecoveryAuthCandidate {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -1344,7 +1378,12 @@ function Assert-TicketboxC07SuperuserRecoveryReplacementCandidate {
     $expectedSddl =
         Get-TicketboxC07SuperuserRecoveryCreationSecuritySddl `
             $ExpectedSecurityBytes
-    if ($candidateSddl -cne $expectedSddl) {
+    if (
+        $candidateSddl -cne $expectedSddl -and
+        -not (Test-TicketboxC07SuperuserRecoveryCreationSecurityEquals `
+            -Left $Candidate.SecurityBytes `
+            -Right $ExpectedSecurityBytes)
+    ) {
         throw "$Label owner/group/DACL 已漂移。"
     }
 }

@@ -3135,7 +3135,7 @@ finally {{ Exit-TicketboxLifecycleLock $lock }}
                 encoding="utf-8",
                 errors="replace",
             )
-            _wait_for_path(signal, child)
+            _wait_for_path(signal, child, timeout=45)
             child.communicate(timeout=10)
             state = json.loads(signal.read_text(encoding="utf-8"))
             assert state["binding_sequence"] == 0

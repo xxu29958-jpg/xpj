@@ -30,6 +30,9 @@ _INSTALLER_RESOURCE_SERIAL_COMMAND = (
     "-p no:cacheprovider -o addopts= -m xdist_group "
     "-n 0 --dist loadfile --max-worker-restart 0"
 )
+_INSTALLER_RESOURCE_MATRIX_COMMAND = _INSTALLER_RESOURCE_SERIAL_COMMAND.replace(
+    "-m xdist_group ", '-m xdist_group -k "${{ matrix.suite.selector }}" '
+)
 _SAFE_PYTEST_ENVIRONMENT = (("PYTEST_ADDOPTS", ""),)
 
 
@@ -126,6 +129,14 @@ def _assert_installer_safety_tuning_contract(mod: object) -> None:
     )
     assert "pytest installer resource-serial lane" not in mod._missing_ci_invocations(
         [resource_serial]
+    )
+    resource_matrix = mod.WorkflowCommand(
+        Path("ci.yml"),
+        _INSTALLER_RESOURCE_MATRIX_COMMAND,
+        environment=_SAFE_PYTEST_ENVIRONMENT,
+    )
+    assert "pytest installer resource-serial lane" not in mod._missing_ci_invocations(
+        [resource_matrix]
     )
     for workers in (2, 3, 4):
         tuned = mod.WorkflowCommand(

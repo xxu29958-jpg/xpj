@@ -153,6 +153,7 @@ def _installer_safety_pytest_mode(command: str) -> str | None:
         "-p",
         "-o",
         "-m",
+        "-k",
         "-n",
         "--dist",
         "--max-worker-restart",
@@ -184,7 +185,7 @@ def _installer_safety_pytest_mode(command: str) -> str | None:
     if not (
         "--strict-markers" in flags
         and flags <= {"-q", "--strict-markers"}
-        and set(options) == value_options
+        and value_options - {"-k"} <= set(options) <= value_options
         and options["-p"] == "no:cacheprovider"
         and options["-o"] == "addopts="
         and options["--dist"] == "loadfile"
@@ -193,9 +194,14 @@ def _installer_safety_pytest_mode(command: str) -> str | None:
     ):
         return None
     selection = options["-m"].strip().casefold()
-    if selection == "not xdist_group" and 2 <= workers <= 4:
+    selector = options.get("-k", "").strip().casefold()
+    if selection == "not xdist_group" and not selector and 2 <= workers <= 4:
         return "parallel"
-    if selection == "xdist_group" and workers == 0:
+    if (
+        selection == "xdist_group"
+        and selector in {"", "${{ matrix.suite.selector }}"}
+        and workers == 0
+    ):
         return "resource-serial"
     return None
 

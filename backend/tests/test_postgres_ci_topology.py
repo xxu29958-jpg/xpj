@@ -375,6 +375,8 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     _assert_bounded_timeout(jobs["backend_contracts"])
     _assert_bounded_timeout(jobs["backend_frozen"])
     assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [20, 20, 5]
+    expected_windows_suites = [{"label": "C07 lifecycle artifacts", "selector": "test_c07_lifecycle_artifacts"}, {"label": "C07 superuser recovery", "selector": "test_c07_superuser_recovery"}, {"label": "Service lifecycle heartbeat", "selector": "test_service_lifecycle_contract and heartbeat"}, {"label": "Service lifecycle remainder", "selector": "test_service_lifecycle_contract and not heartbeat"}]
+    assert jobs["windows_packaging_lifecycle"]["strategy"] == {"fail-fast": False, "matrix": {"suite": expected_windows_suites}}
     assert jobs["windows_packaging"]["needs"] == ["scope", *windows_jobs[:2]]
     windows_environment = _steps(jobs["windows_packaging"])["Enforce Windows release lane results"]["env"]
     assert windows_environment["LIFECYCLE_RESULT"] == "${{ needs.windows_packaging_lifecycle.result }}"

@@ -337,6 +337,14 @@ if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
     -Right $autoInheritedSecurityBytes)) {{
     throw 'descriptor comparison rejected OS-recomputed inheritance provenance'
 }}
+Assert-TicketboxC07SuperuserRecoveryReplacementCandidate `
+    -Candidate ([pscustomobject]@{{
+        Sha256 = 'A' * 64
+        SecurityBytes = $autoInheritedSecurityBytes
+    }}) `
+    -ExpectedSha256 ('A' * 64) `
+    -ExpectedSecurityBytes $inheritanceSecurityBytes `
+    -Label 'OS-recomputed creation security'
 foreach ($protectionFlag in @(
     [Security.AccessControl.ControlFlags]::DiscretionaryAclProtected,
     [Security.AccessControl.ControlFlags]::SystemAclProtected
