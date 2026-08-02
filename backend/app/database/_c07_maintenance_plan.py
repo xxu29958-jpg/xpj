@@ -19,6 +19,7 @@ from alembic.script import ScriptDirectory
 from alembic.script.revision import ResolutionError, RevisionError
 from alembic.util.exc import CommandError
 
+from app.alembic_revision_contract import assert_linear_descendant_chain
 from app.money_contract import (
     MONEY_COLUMNS_V1,
     MONEY_REMOVED_LEGACY_CHECKS_V1,
@@ -144,40 +145,6 @@ def _assert_forward_only_downgrade(path: Path) -> None:
         )
 
 
-def _assert_linear_descendant_chain(
-    scripts: ScriptDirectory,
-    *,
-    target_revision: str,
-    head_revision: str,
-) -> None:
-    """Allow later slices without letting them enter the frozen C07 plan."""
-
-    current = scripts.get_revision(target_revision)
-    visited = {target_revision}
-    while current is not None and current.revision != head_revision:
-        next_revisions = tuple(current.nextrev)
-        if len(next_revisions) != 1:
-            raise C07MaintenanceUpgradeError(
-                "C07 packaged Alembic graph differs from the exact release edge"
-            )
-        successor = scripts.get_revision(next_revisions[0])
-        if (
-            successor is None
-            or successor.revision in visited
-            or successor.down_revision != current.revision
-            or successor.dependencies is not None
-        ):
-            raise C07MaintenanceUpgradeError(
-                "C07 packaged Alembic graph differs from the exact release edge"
-            )
-        visited.add(successor.revision)
-        current = successor
-    if current is None or current.revision != head_revision:
-        raise C07MaintenanceUpgradeError(
-            "C07 packaged Alembic graph differs from the exact release edge"
-        )
-
-
 def _load_exact_plan() -> MaintenancePlan:
     root = _backend_root()
     ini_path = root / "alembic.ini"
@@ -216,10 +183,10 @@ def _load_exact_plan() -> MaintenancePlan:
         raise C07MaintenanceUpgradeError(
             "C07 packaged Alembic graph differs from the exact release edge"
         )
-    _assert_linear_descendant_chain(
-        scripts,
-        target_revision=C07_TARGET_REVISION,
-        head_revision=heads[0],
+    assert_linear_descendant_chain(
+        scripts, target_revision=C07_TARGET_REVISION, head_revision=heads[0],
+        error_factory=C07MaintenanceUpgradeError,
+        error_message="C07 packaged Alembic graph differs from the exact release edge",
     )
     path = Path(str(target.path)).resolve()
     expected_parent = (migrations_path / "versions").resolve()

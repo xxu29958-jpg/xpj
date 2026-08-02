@@ -237,8 +237,10 @@ def test_c07_actions_load_without_ordinary_database_facade() -> None:
 
 
 def test_c07_plan_is_one_exact_release_edge() -> None:
+    from app.alembic_revision_contract import assert_linear_descendant_chain
     from app.database import _c07_maintenance_plan as maintenance
 
+    assert maintenance.assert_linear_descendant_chain is assert_linear_descendant_chain
     plan = maintenance.get_installed_maintenance_plan(
         source_revision=SOURCE_REVISION,
     )

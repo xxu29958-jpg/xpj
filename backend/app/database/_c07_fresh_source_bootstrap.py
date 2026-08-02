@@ -26,6 +26,7 @@ from sqlalchemy.engine import URL, Connection, Engine, make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
+from app.alembic_revision_contract import assert_linear_descendant_chain
 from app.services.secure_file import hold_protected_file_for_read
 
 FRESH_SOURCE_BOOTSTRAP_RESULT_SCHEMA = "ticketbox-c07-fresh-source-bootstrap-result-v1"
@@ -41,6 +42,7 @@ SCHEMA_OWNER_ROLE = "ticketbox_owner"
 _RESULT_FIELDS = ("schema", "source_revision", "target_revision", "result", "alembic_revision")
 _CANONICAL_EMPTY_VERSION_RELATIONS = (("alembic_version", "r"), ("alembic_version_pkc", "i"))
 _PGPASS_NAME = re.compile(r"\.ticketbox-pgpass-[1-9][0-9]*-[0-9a-f]{32}\Z")
+_ALEMBIC_GRAPH_ERROR = "C07 fresh-source Alembic graph differs from the frozen release"
 
 
 class C07FreshSourceBootstrapError(RuntimeError):
@@ -60,45 +62,9 @@ def _backend_root() -> Path:
     root = Path(__file__).resolve().parents[2]
     root_text = str(root)
     if root_text not in sys.path:
-        # The baseline revision imports its frozen statement package by the
-        # top-level ``migrations`` name.  Add only the root that physically
-        # contains this attested action and that package.
+        # Add the root containing the baseline's frozen ``migrations`` package.
         sys.path.insert(0, root_text)
     return root
-
-
-def _assert_linear_descendant_chain(
-    scripts: ScriptDirectory,
-    *,
-    target_revision: str,
-    head_revision: str,
-) -> None:
-    """Accept later linear slices without widening the frozen C07 action."""
-
-    current = scripts.get_revision(target_revision)
-    visited = {target_revision}
-    while current is not None and current.revision != head_revision:
-        next_revisions = tuple(current.nextrev)
-        if len(next_revisions) != 1:
-            raise C07FreshSourceBootstrapError(
-                "C07 fresh-source Alembic graph differs from the frozen release"
-            )
-        successor = scripts.get_revision(next_revisions[0])
-        if (
-            successor is None
-            or successor.revision in visited
-            or successor.down_revision != current.revision
-            or successor.dependencies is not None
-        ):
-            raise C07FreshSourceBootstrapError(
-                "C07 fresh-source Alembic graph differs from the frozen release"
-            )
-        visited.add(successor.revision)
-        current = successor
-    if current is None or current.revision != head_revision:
-        raise C07FreshSourceBootstrapError(
-            "C07 fresh-source Alembic graph differs from the frozen release"
-        )
 
 
 def _load_frozen_alembic_plan() -> FreshSourceAlembicPlan:
@@ -120,10 +86,7 @@ def _load_frozen_alembic_plan() -> FreshSourceAlembicPlan:
         source = scripts.get_revision(C07_SOURCE_REVISION)
         target = scripts.get_revision(C07_TARGET_REVISION)
         source_chain = tuple(scripts.iterate_revisions(C07_SOURCE_REVISION, "base"))
-    except (
-        CommandError, ResolutionError, RevisionError, configparser.Error,
-        OSError, KeyError, ValueError,
-    ):
+    except (CommandError, ResolutionError, RevisionError, configparser.Error, OSError, KeyError, ValueError):
         raise C07FreshSourceBootstrapError(
             "C07 fresh-source Alembic graph could not be resolved"
         ) from None
@@ -150,17 +113,15 @@ def _load_frozen_alembic_plan() -> FreshSourceAlembicPlan:
             for revision in source_chain
         )
     ):
-        raise C07FreshSourceBootstrapError(
-            "C07 fresh-source Alembic graph differs from the frozen release"
-        )
-    _assert_linear_descendant_chain(
+        raise C07FreshSourceBootstrapError(_ALEMBIC_GRAPH_ERROR)
+    assert_linear_descendant_chain(
         scripts,
         target_revision=C07_TARGET_REVISION,
         head_revision=heads[0],
+        error_factory=C07FreshSourceBootstrapError,
+        error_message=_ALEMBIC_GRAPH_ERROR,
     )
-    return FreshSourceAlembicPlan(
-        config=config, source_revision=C07_SOURCE_REVISION, target_revision=C07_TARGET_REVISION
-    )
+    return FreshSourceAlembicPlan(config, C07_SOURCE_REVISION, C07_TARGET_REVISION)
 
 
 def _validated_migrator_url(database_url: str) -> URL:

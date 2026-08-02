@@ -89,29 +89,17 @@ def _seed_archived_jpy_money_facts() -> str:
         activate_test_currency_authority(db, "JPY")
         timestamp = now_utc()
         income = MonthlyIncomePlan(
-            tenant_id="owner",
-            label="JPY收入",
-            source_type="salary",
-            frequency="one_time",
-            income_month="2026-06",
+            tenant_id="owner", label="JPY收入",
+            frequency="one_time", income_month="2026-06",
             amount_cents=5000,
-            pay_day=28,
-            status="archived",
-            archived_at=timestamp,
-            created_at=timestamp,
-            updated_at=timestamp,
+            pay_day=28, status="archived", archived_at=timestamp,
         )
         budget = Budget(
-            tenant_id="owner",
-            month="2026-07",
-            total_amount_cents=66000,
-            archived_at=timestamp,
-            created_at=timestamp,
-            updated_at=timestamp,
+            tenant_id="owner", month="2026-07", total_amount_cents=66000, archived_at=timestamp
         )
         db.add_all([income, budget])
         db.commit()
-        return budget.month
+        return "2026-07"
 
 
 def _seed_deleted_category_preference() -> tuple[str, int]:
