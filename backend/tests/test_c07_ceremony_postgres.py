@@ -137,7 +137,9 @@ def test_c07_ceremony_restores_rolls_back_forwards_and_publishes_receipt(
         restore_engine.dispose()
 
     assert lock_observations == ["isolated_restore", "receipt_staging"]
-    assert not backup_service._lock_path().exists()  # noqa: SLF001
+    assert backup_service._lock_path().exists()  # noqa: SLF001
+    successor = backup_service.acquire_backup_job_lock()
+    successor.release()
     assert receipt_path.parent == receipt_dir
     c07_postgres.assert_success_receipt(receipt_path, tmp_path=tmp_path)
     _assert_live_target_and_ready(receipt_dir)
