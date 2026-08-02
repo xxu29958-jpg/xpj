@@ -226,8 +226,52 @@ jobs:
       - name: Frozen backend locked smoke build
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
 
-  windows_packaging:
-    name: Windows release packaging
+  windows_packaging_lifecycle:
+    name: Windows PowerShell lifecycle safety
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Verify qualification SHA
+        id: qualification
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Resource-isolated PowerShell lifecycle behavior
+        env:
+          PYTEST_ADDOPTS: ""
+        run: >-
+          python -m pytest -q packaging/tests -m xdist_group
+          --strict-markers -p no:cacheprovider -o addopts=
+          -n 0 --dist loadfile --max-worker-restart 0
+
+  windows_packaging_build:
+    name: Windows installer build
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
     runs-on: windows-latest
@@ -269,9 +313,9 @@ jobs:
         env:
           PYTEST_ADDOPTS: ""
         run: >-
-          python -m pytest -q packaging/tests
+          python -m pytest -q packaging/tests -m "not xdist_group"
           --strict-markers -p no:cacheprovider -o addopts=
-          -n 2 --dist loadgroup --max-worker-restart 0
+          -n 2 --dist loadfile --max-worker-restart 0
 
       - name: Windows database maintenance contract
         run: >-
@@ -384,6 +428,59 @@ jobs:
         run: |
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  windows_packaging:
+    name: Windows release packaging
+    needs:
+      - scope
+      - windows_packaging_lifecycle
+      - windows_packaging_build
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Enforce Windows release lane results
+        env:
+          BASH_ENV: ""
+          ENV: ""
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          WINDOWS_SCOPE: ${{ needs.scope.outputs.windows }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
+          AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+          SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
+          SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
+          LIFECYCLE_RESULT: ${{ needs.windows_packaging_lifecycle.result }}
+          LIFECYCLE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_sha }}
+          LIFECYCLE_SOURCE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_source_sha }}
+          BUILD_RESULT: ${{ needs.windows_packaging_build.result }}
+          BUILD_SHA: ${{ needs.windows_packaging_build.outputs.qualification_sha }}
+          BUILD_SOURCE_SHA: ${{ needs.windows_packaging_build.outputs.qualification_source_sha }}
+        run: >-
+          python -E -S backend/scripts/verify_scoped_ci_results.py
+          --label "Windows release packaging"
+          --scope-key WINDOWS_SCOPE
+          --lane LIFECYCLE
+          --lane BUILD
 
   backend:
     name: Backend

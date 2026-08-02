@@ -21,8 +21,14 @@ jobs:
 
 _INSTALLER_SAFETY_COMMAND = (
     "python -m pytest packaging/tests --strict-markers "
-    "-p no:cacheprovider -o addopts= -n 3 --dist loadgroup "
+    '-p no:cacheprovider -o addopts= -m "not xdist_group" '
+    "-n 3 --dist loadfile "
     "--max-worker-restart 0"
+)
+_INSTALLER_RESOURCE_SERIAL_COMMAND = (
+    "python -m pytest packaging/tests --strict-markers "
+    "-p no:cacheprovider -o addopts= -m xdist_group "
+    "-n 0 --dist loadfile --max-worker-restart 0"
 )
 _SAFE_PYTEST_ENVIRONMENT = (("PYTEST_ADDOPTS", ""),)
 
@@ -42,7 +48,10 @@ jobs:
       - run: .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests packaging/tests
       - env:
           PYTEST_ADDOPTS: ""
-        run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -n 2 --dist loadgroup --max-worker-restart 0
+        run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -m "not xdist_group" -n 2 --dist loadfile --max-worker-restart 0
+      - env:
+          PYTEST_ADDOPTS: ""
+        run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -m xdist_group -n 0 --dist loadfile --max-worker-restart 0
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\\build_backend_exe.ps1 -Clean
@@ -110,6 +119,14 @@ def _assert_installer_safety_tuning_contract(mod: object) -> None:
     assert "pytest installer safety lane" not in mod._missing_ci_invocations(
         [precedence]
     )
+    resource_serial = mod.WorkflowCommand(
+        Path("ci.yml"),
+        _INSTALLER_RESOURCE_SERIAL_COMMAND,
+        environment=_SAFE_PYTEST_ENVIRONMENT,
+    )
+    assert "pytest installer resource-serial lane" not in mod._missing_ci_invocations(
+        [resource_serial]
+    )
     for workers in (2, 3, 4):
         tuned = mod.WorkflowCommand(
             Path("ci.yml"),
@@ -168,6 +185,7 @@ jobs:
         "pytest ordinary business lane",
         "pytest real-db serial lane",
         "pytest installer safety lane",
+        "pytest installer resource-serial lane",
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
         "frozen backend locked release build",
@@ -194,12 +212,18 @@ def test_ci_gap_accepts_required_commands_across_workflows(tmp_path: Path) -> No
     assert "pytest ordinary business lane" in mod._missing_ci_invocations(installer_only)
     assert "pytest real-db serial lane" in mod._missing_ci_invocations(installer_only)
     assert "pytest installer safety lane" not in mod._missing_ci_invocations(installer_only)
+    assert "pytest installer resource-serial lane" not in mod._missing_ci_invocations(
+        installer_only
+    )
     business_only = [
         command
         for command in commands
         if "scripts.run_postgres_pytest_lane" in command.text
     ]
     assert "pytest installer safety lane" in mod._missing_ci_invocations(business_only)
+    assert "pytest installer resource-serial lane" in mod._missing_ci_invocations(
+        business_only
+    )
     assert "pytest ordinary business lane" not in mod._missing_ci_invocations(business_only)
     assert "pytest real-db serial lane" not in mod._missing_ci_invocations(business_only)
     narrowed_business = mod.WorkflowCommand(
@@ -244,6 +268,7 @@ jobs:
         "pytest ordinary business lane",
         "pytest real-db serial lane",
         "pytest installer safety lane",
+        "pytest installer resource-serial lane",
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
         "frozen backend locked release build",
@@ -412,6 +437,7 @@ jobs:
         "pytest ordinary business lane",
         "pytest real-db serial lane",
         "pytest installer safety lane",
+        "pytest installer resource-serial lane",
         "installer source preflight (Windows PowerShell 5.1)",
         "installer source preflight (PowerShell 7)",
         "frozen backend locked release build",

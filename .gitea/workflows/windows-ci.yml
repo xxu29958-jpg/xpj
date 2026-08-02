@@ -99,9 +99,18 @@ jobs:
         env:
           PYTEST_ADDOPTS: ""
         run: >-
-          .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests
+          .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests -m "not xdist_group"
           --strict-markers -p no:cacheprovider -o addopts=
-          -n 2 --dist loadgroup --max-worker-restart 0
+          -n 2 --dist loadfile --max-worker-restart 0
+
+      - name: Resource-isolated PowerShell lifecycle behavior
+        working-directory: backend
+        env:
+          PYTEST_ADDOPTS: ""
+        run: >-
+          .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests -m xdist_group
+          --strict-markers -p no:cacheprovider -o addopts=
+          -n 0 --dist loadfile --max-worker-restart 0
 
       - name: Windows database maintenance contract
         working-directory: backend

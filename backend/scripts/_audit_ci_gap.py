@@ -53,6 +53,7 @@ _CI_INVOCATION_SCOPES = {
     "end-to-end smoke": {"full", "postgres"},
     "backup/restore drill": {"full", "postgres"},
     "pytest installer safety lane": {"full", "windows"},
+    "pytest installer resource-serial lane": {"full", "windows"},
     "installer source preflight (Windows PowerShell 5.1)": {"full", "windows"},
     "installer source preflight (PowerShell 7)": {"full", "windows"},
     "frozen backend locked release build": {"full", "windows"},

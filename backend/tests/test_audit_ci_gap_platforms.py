@@ -26,7 +26,10 @@ jobs:
       - run: python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
       - env:
           PYTEST_ADDOPTS: ""
-        run: python -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -n 2 --dist loadgroup --max-worker-restart 0
+        run: python -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -m "not xdist_group" -n 2 --dist loadfile --max-worker-restart 0
+      - env:
+          PYTEST_ADDOPTS: ""
+        run: python -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -m xdist_group -n 0 --dist loadfile --max-worker-restart 0
       - run: powershell -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: pwsh -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
       - run: powershell -NoProfile -File scripts/build_backend_exe.ps1 -Clean

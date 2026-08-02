@@ -138,13 +138,13 @@ def _matches_real_db_pytest(command: str) -> bool:
     )
 
 
-def _matches_installer_safety_pytest(command: str) -> bool:
+def _installer_safety_pytest_mode(command: str) -> str | None:
     tokens = _command_tokens(command)
     if len(tokens) < 4:
-        return False
+        return None
     executable = tokens[0].replace("\\", "/").lower().rsplit("/", 1)[-1]
     if executable not in {"python", "python.exe"} or tokens[1:3] != ("-m", "pytest"):
-        return False
+        return None
 
     flags: set[str] = set()
     options: dict[str, str] = {}
@@ -152,6 +152,7 @@ def _matches_installer_safety_pytest(command: str) -> bool:
     value_options = {
         "-p",
         "-o",
+        "-m",
         "-n",
         "--dist",
         "--max-worker-restart",
@@ -161,36 +162,50 @@ def _matches_installer_safety_pytest(command: str) -> bool:
         token = tokens[index]
         if token in {"-q", "--strict-markers"}:
             if token in flags:
-                return False
+                return None
             flags.add(token)
             index += 1
             continue
         if token in value_options:
             if token in options or index + 1 >= len(tokens):
-                return False
+                return None
             options[token] = tokens[index + 1]
             index += 2
             continue
         if token.startswith("-"):
-            return False
+            return None
         targets.append(token.replace("\\", "/").removeprefix("./"))
         index += 1
 
     try:
         workers = int(options.get("-n", ""))
     except ValueError:
-        return False
-    return (
+        return None
+    if not (
         "--strict-markers" in flags
         and flags <= {"-q", "--strict-markers"}
         and set(options) == value_options
         and options["-p"] == "no:cacheprovider"
         and options["-o"] == "addopts="
-        and 2 <= workers <= 4
-        and options["--dist"] == "loadgroup"
+        and options["--dist"] == "loadfile"
         and options["--max-worker-restart"] == "0"
         and targets == ["packaging/tests"]
-    )
+    ):
+        return None
+    selection = options["-m"].strip().casefold()
+    if selection == "not xdist_group" and 2 <= workers <= 4:
+        return "parallel"
+    if selection == "xdist_group" and workers == 0:
+        return "resource-serial"
+    return None
+
+
+def _matches_installer_safety_pytest(command: str) -> bool:
+    return _installer_safety_pytest_mode(command) == "parallel"
+
+
+def _matches_installer_resource_serial_pytest(command: str) -> bool:
+    return _installer_safety_pytest_mode(command) == "resource-serial"
 
 
 def _clears_pytest_addopts(
@@ -327,6 +342,12 @@ REQUIRED_CI_INVOCATIONS = (
         "pytest installer safety lane",
         re.compile(_PYTEST_LINE),
         matcher=_matches_installer_safety_pytest,
+        environment_matcher=_clears_pytest_addopts,
+    ),
+    RequiredCommand(
+        "pytest installer resource-serial lane",
+        re.compile(_PYTEST_LINE),
+        matcher=_matches_installer_resource_serial_pytest,
         environment_matcher=_clears_pytest_addopts,
     ),
     RequiredCommand(

@@ -81,6 +81,22 @@ _BACKEND_TERMINAL = GithubTerminalContract(
     ),
 )
 
+_WINDOWS_TERMINAL = GithubTerminalContract(
+    job="windows_packaging",
+    command=_scoped_verifier_command(
+        "Windows release packaging",
+        "WINDOWS_SCOPE",
+        "LIFECYCLE",
+        "BUILD",
+    ),
+    shell=None,
+    scope_bindings=(("WINDOWS_SCOPE", "windows"),),
+    lane_bindings=(
+        ("windows_packaging_lifecycle", "LIFECYCLE"),
+        ("windows_packaging_build", "BUILD"),
+    ),
+)
+
 GITHUB_TERMINAL_JOBS = {
     ("ci.yml", "postgres"): GithubTerminalContract(
         job="backend-postgres",
@@ -129,7 +145,7 @@ GITHUB_TERMINAL_JOBS = {
         ),
         qualification_working_directory="${{ github.workspace }}",
     ),
-    ("ci.yml", "windows"): _BACKEND_TERMINAL,
+    ("ci.yml", "windows"): _WINDOWS_TERMINAL,
     ("codeql.yml", "android"): GithubTerminalContract(
         job="analyze-android",
         command=_scoped_verifier_command(
