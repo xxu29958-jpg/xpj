@@ -54,7 +54,9 @@ def test_runtime_compatibility_is_the_only_client_currency_capability(client) ->
     assert "/api/system/runtime-compatibility" in paths
 
 
-def test_adoption_boundary_ignores_public_admin_escape_hatch(client, identity, monkeypatch) -> None:
+def test_currency_adoption_enforces_local_and_admin_boundaries(
+    client, identity, monkeypatch
+) -> None:
     monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "true")
     get_settings.cache_clear()
     try:
@@ -67,8 +69,6 @@ def test_adoption_boundary_ignores_public_admin_escape_hatch(client, identity, m
     finally:
         get_settings.cache_clear()
 
-
-def test_currency_adoption_requires_admin_auth_after_local_boundary(client) -> None:
     # coverage: auth-401
     app.dependency_overrides[require_maintenance_local] = lambda: None
     try:
