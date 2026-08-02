@@ -67,6 +67,12 @@ def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -
         )
         assert _steps(job)["Verify qualification SHA"]["id"] == "qualification"
 
+    windows_safety = _steps(jobs["windows_packaging_build"])[
+        "Windows installer safety behavior"
+    ]["run"]
+    assert '-m "not xdist_group"' in windows_safety
+    assert "-n 4 --dist loadfile --max-worker-restart 0" in windows_safety
+
     steps = _steps(backend)
     assert steps["Verify qualification SHA"]["id"] == "qualification"
     enforcement = steps["Enforce required CI results"]
