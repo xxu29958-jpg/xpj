@@ -18,7 +18,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
 )
 from app.schemas import ExpenseSplitReplaceRequest
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.expense_service import get_expense
 from app.services.expense_split_service import replace_expense_splits
 
@@ -50,7 +50,7 @@ def web_splits_save(
             expense = get_expense(db, expense_id, selected_id)
             record_currency = (
                 expense.home_currency_code
-                or home_currency_code()
+                or require_runtime_home_currency_code(db)
             )
             payload = split_replace_payload(
                 currency_code=record_currency,

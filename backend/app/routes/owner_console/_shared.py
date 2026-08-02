@@ -17,9 +17,10 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.fx_constants import CURRENCY_SYMBOLS, DEFAULT_HOME_CURRENCY_CODE
+from app.fx_constants import CURRENCY_SYMBOLS
 from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.installation_health_service import owner_recovery_message
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
@@ -99,7 +100,7 @@ def _base(request: Request, db: Session) -> dict:
     """Common template context injected into every page."""
     cfg = get_settings()
     upload_status = "ok" if cfg.upload_dir.is_dir() else "missing"
-    home_currency = (cfg.fx_home_currency_code or DEFAULT_HOME_CURRENCY_CODE).upper()
+    home_currency = require_runtime_home_currency_code(db)
     return {
         "backend_version": BACKEND_VERSION,
         "asset_version": STATIC_ASSET_VERSION,

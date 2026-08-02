@@ -159,6 +159,7 @@ def _render_repayment_drafts(
     )
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="还款捕获",

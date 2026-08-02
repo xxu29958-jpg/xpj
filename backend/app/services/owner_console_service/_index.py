@@ -21,7 +21,7 @@ from app.models import Account
 from app.money_contract import projection_sum_to_int, round_minor_ratio_half_up
 from app.services.admin_service import list_devices
 from app.services.budget_service import get_monthly_budget
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.data_quality_service import DataQualitySummary, data_quality_summary
 from app.services.ledger_service import LedgerSummary
 from app.services.owner_console_service._common import (
@@ -189,7 +189,7 @@ def _budget_status_for_primary_ledger(
         budget.overspent_amount_cents,
         label="owner_console.budget_overspent",
     )
-    presentation_currency = home_currency_code()
+    presentation_currency = require_runtime_home_currency_code(db)
     return BudgetStatusVM(
         ledger_id=primary_ledger.ledger_id,
         ledger_name=primary_ledger.name,

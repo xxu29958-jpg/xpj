@@ -372,6 +372,7 @@ def web_debts(
     member_debts, external_debts = _split_debt_views(listing.items)
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="欠款",
@@ -423,6 +424,7 @@ def _render_debt_detail(
     )
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="欠款详情",

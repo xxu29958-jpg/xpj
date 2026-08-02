@@ -21,7 +21,7 @@ from app.services.budget_advisor_service._models import BudgetAdvice, BudgetInpu
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
 from app.services.budget_advisor_service._provider_names import canonical_provider_name
 from app.services.budget_advisor_service._providers import get_budget_advisor
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def run_budget_advisor(
     if provider_is_live:
         _assert_live_advisor_allowed(actor_role=actor_role)
 
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     inputs = build_budget_inputs(
         db,
         tenant_id=tenant_id,

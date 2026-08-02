@@ -53,12 +53,8 @@ from app.routes._web_session_common import (
 )
 from app.services import backup_status_service, web_stats_service
 from app.services.budget_service import get_monthly_budget
-from app.services.currency_common import (
-    home_currency_code,
-    minor_amount_major_number,
-    minor_amount_value,
-    minor_unit_digits,
-)
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import minor_amount_major_number, minor_amount_value, minor_unit_digits
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.goal_service import list_goals
 from app.services.insights_service import unclaimed_recurring_candidate_count
@@ -123,6 +119,7 @@ def _sidebar_counts(db: Session, ledger_id: str) -> tuple[int, int]:
 def _base_ctx(
     request: Request,
     *,
+    db: Session,
     options: list[LedgerOption],
     selected_ledger_id: str,
     page_title: str | None = None,
@@ -132,7 +129,7 @@ def _base_ctx(
 ) -> dict:
     selected = _selected_option(options, selected_ledger_id)
     pending_count, suspected_count = sidebar_counts or (0, 0)
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     return {
         "backend_version": BACKEND_VERSION,
         "asset_version": STATIC_ASSET_VERSION,
@@ -302,7 +299,7 @@ def _dashboard_cards(
     *,
     currency_code: str | None = None,
 ) -> dict:
-    home = currency_code or home_currency_code()
+    home = currency_code or require_runtime_home_currency_code(db)
     quality = web_stats_service.pending_quality_counts(db, ledger_id)
     timezone_name = default_accounting_timezone_name()
     month = current_month(timezone_name)
@@ -385,7 +382,7 @@ def _dashboard_category_share(
         selected_id,
         timezone_name=timezone_name,
     )
-    home = currency_code or home_currency_code()
+    home = currency_code or require_runtime_home_currency_code(db)
     by_category = list(stats.get("by_category", []))
     if len(by_category) > 6:
         head, tail = by_category[:5], by_category[5:]
@@ -446,7 +443,7 @@ def _dashboard_data_payload(
     *,
     include_trend: bool = True,
 ) -> dict:
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     cards = _dashboard_cards(db, selected_id, currency_code=home)
     return {
         "selected_ledger_id": selected_id,

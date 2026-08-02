@@ -23,6 +23,7 @@ from app.money_contract import (
 )
 from app.services.currency_binding_service import (
     assert_currency_binding_consistent,
+    require_runtime_home_currency_code,
     resolve_write_capability,
 )
 from app.services.currency_common import (
@@ -165,7 +166,7 @@ def get_exchange_rate(
         tenant_id=tenant_id,
         currency_code=currency_code,
         rate_date=rate_date,
-        home=home_currency_code(),
+        home=require_runtime_home_currency_code(db),
     )
 
 
@@ -215,7 +216,7 @@ def upsert_exchange_rate(
 ) -> ExchangeRate:
     resolve_write_capability(db)
     code = normalize_currency_code(currency_code)
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     if code == home:
         raise AppError("exchange_rate_base_currency", status_code=422)
     rate = format_decimal_rate(rate_to_cny)
@@ -266,7 +267,7 @@ def resolve_payload_rate(
     rate, so the requested date is echoed back.
     """
     code = normalize_currency_code(currency_code)
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     if code == home:
         return Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY, rate_date
     stored = _get_exchange_rate_for_home(

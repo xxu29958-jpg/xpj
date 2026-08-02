@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session
 
 from app.models import AuthToken, Device, Expense, LedgerMember
 from app.money_contract import projection_sum_to_int
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
-    home_currency_code,
     minor_amount_major_number,
     minor_amount_value,
 )
@@ -120,7 +120,7 @@ def trend14_amounts(
             ),
             label="web_stats.trend_day",
         )
-    home = currency_code or home_currency_code()
+    home = currency_code or require_runtime_home_currency_code(db)
     result: list[dict] = []
     for i in range(14):
         d = start + timedelta(days=i)
@@ -169,7 +169,7 @@ def confirmed_by_day(
             label="web_stats.calendar_day",
         )
         by_day[key]["count"] += 1
-    home = currency_code or home_currency_code()
+    home = currency_code or require_runtime_home_currency_code(db)
     return [
         {
             "date": day,

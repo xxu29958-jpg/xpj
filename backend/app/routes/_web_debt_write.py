@@ -173,6 +173,7 @@ def _debt_create_context(
 
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="新建欠款",

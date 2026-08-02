@@ -39,8 +39,8 @@ from app.services.classify_service import (
     update_rule,
     validate_rule_application_preview,
 )
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
-    home_currency_code,
     major_amount_to_minor,
     minor_amount_value,
 )
@@ -116,7 +116,7 @@ def web_rules(
             tenant_id=selected_id,
             limit=20,
         )
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     presentation_currency = ctx["home_currency_code"]
     ctx["minor_amount_label"] = lambda cents: minor_amount_value(
         cents, presentation_currency
@@ -155,7 +155,7 @@ def web_rules_create(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
-        presentation_currency = home_currency_code()
+        presentation_currency = require_runtime_home_currency_code(db)
         create_rule(
             db,
             tenant_id=selected_id,

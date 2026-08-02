@@ -28,7 +28,7 @@ from app.models import (
 from app.services.budget_service import list_archived_budgets, restore_monthly_budget
 from app.services.category_preference_service import restore_category_preference
 from app.services.classify_service import undo_delete_rule
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
 from app.services.merchant_alias_service import undo_delete_merchant_alias
@@ -81,7 +81,7 @@ class RecycleBinVM:
 
 def get_recycle_bin_vm(db: Session) -> RecycleBinVM:
     ledger_names = _active_ledger_names(db)
-    presentation_currency = home_currency_code()
+    presentation_currency = require_runtime_home_currency_code(db)
     rows: list[RecycleBinItemVM] = []
     rows.extend(_archived_ledger_rows(db))
     if ledger_names:

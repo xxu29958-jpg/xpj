@@ -89,6 +89,9 @@ from app.schemas._currency import (
     CurrencyAdoptionPreviewResponse,
     CurrencyAdoptionReceiptResponse,
     CurrencyCapabilityResponse,
+    RuntimeCompatibilitySnapshotResponse,
+    RuntimeCurrencyCapabilityResponse,
+    RuntimeProductCapabilitiesResponse,
 )
 from app.schemas._dashboard import (
     DashboardCardResponse,
@@ -345,6 +348,9 @@ __all__ = [
     "CurrencyAdoptionPreviewResponse",
     "CurrencyAdoptionReceiptResponse",
     "CurrencyCapabilityResponse",
+    "RuntimeCompatibilitySnapshotResponse",
+    "RuntimeCurrencyCapabilityResponse",
+    "RuntimeProductCapabilitiesResponse",
     "DashboardCardResponse",
     "DashboardCardUpdateRequest",
     "DashboardCardsResponse",

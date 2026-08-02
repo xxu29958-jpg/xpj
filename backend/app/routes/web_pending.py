@@ -27,6 +27,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.data_quality_service import is_ready_to_confirm_row, is_uncategorized_expense_category
 from app.services.expense_service import (
     fetch_expense_row_version_in_status,
@@ -141,8 +142,9 @@ def web_pending(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    raw_items = [_expense_view(e) for e in list_pending(db, selected_id)]
-
+    presentation_currency = require_runtime_home_currency_code(db)
+    pending = list_pending(db, selected_id)
+    raw_items = [_expense_view(e, presentation_currency_code=presentation_currency) for e in pending]
     filter_key = (filter or "all").strip().lower()
     if filter_key not in _PENDING_FILTERS:
         filter_key = "all"
@@ -152,6 +154,7 @@ def web_pending(
     suspected_total = sum(1 for it in raw_items if it["is_duplicate"])
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="待确认",

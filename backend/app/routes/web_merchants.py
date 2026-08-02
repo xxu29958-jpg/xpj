@@ -73,7 +73,7 @@ def web_merchants(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     catalog = list_merchant_catalog(db, tenant_id=selected_id, include_hidden=True)
     aliases = list_merchant_aliases(db, selected_id)
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx["catalog"] = catalog
     ctx["aliases"] = aliases
     ctx["flash_message"] = msg

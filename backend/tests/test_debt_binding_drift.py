@@ -20,6 +20,10 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Debt, Expense, InstallationCurrencyBinding, LedgerMember, MonthlyIncomePlan
+from app.runtime_compatibility_contract import (
+    RUNTIME_COMPATIBILITY_SESSION_KEY,
+    RuntimeCompatibilityRequest,
+)
 from app.schemas import RepaymentCreateRequest
 from app.services.currency_binding_service import (
     assert_currency_binding_consistent,
@@ -31,6 +35,13 @@ from app.services.exchange_rate_service import apply_currency_payload
 from app.services.time_service import now_utc
 
 pytestmark = pytest.mark.currency_binding_unbound
+
+
+def _mark_legacy_http_writer(db) -> None:
+    db.info[RUNTIME_COMPATIBILITY_SESSION_KEY] = RuntimeCompatibilityRequest(
+        api_version=None,
+        currency_binding=None,
+    )
 
 
 def _idem_headers(app_headers: dict[str, str]) -> dict[str, str]:
@@ -121,6 +132,7 @@ def test_non_cny_first_record_requires_versioned_writer(monkeypatch) -> None:
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     with SessionLocal() as db:
+        _mark_legacy_http_writer(db)
         with pytest.raises(AppError) as excinfo:
             assert_currency_binding_consistent(db, "JPY")
         assert excinfo.value.error == "client_upgrade_required"
@@ -324,6 +336,7 @@ def test_foreign_repayment_requires_versioned_writer_when_debt_currency_matches_
     public_id = _create_jpy_debt(client, identity, monkeypatch)
     try:
         with SessionLocal() as db, pytest.raises(AppError) as excinfo:
+            _mark_legacy_http_writer(db)
             record_repayment(
                 db,
                 tenant_id="owner",
@@ -428,6 +441,7 @@ def test_active_jpy_binding_rejects_legacy_unversioned_writer(client: TestClient
     # ACTIVE JPY 已是明确事实，但 C02 时期旧写者仍不得伪造 C03 版本证据。
     _create_jpy_debt(client, identity, monkeypatch)
     with SessionLocal() as db:
+        _mark_legacy_http_writer(db)
         with pytest.raises(AppError) as excinfo:
             from app.services.income_plan_service import create_income_plan
 

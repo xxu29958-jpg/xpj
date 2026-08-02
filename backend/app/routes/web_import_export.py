@@ -81,7 +81,7 @@ def web_import_form(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx["max_rows"] = MAX_CSV_IMPORT_ROWS
     ctx["flash_message"] = msg
     ctx["q"] = "?ledger_id=" + selected_id
@@ -144,7 +144,7 @@ def web_import_batch_detail(
     except AppError as exc:
         return _web_redirect("/web/import", selected_id, msg=exc.message)
     total_pages = max(1, (rows_page.total + rows_page.page_size - 1) // rows_page.page_size)
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx.update(
         {
             "batch": batch,

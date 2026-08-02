@@ -243,8 +243,7 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
         },
         follow_redirects=False,
     )
-    assert saved.status_code == 200, saved.text
-    assert "当前客户端版本过旧，无法安全完成此操作，请先升级。" in saved.text
+    assert saved.status_code in (302, 303), saved.text
 
     dashboard = web_client.get("/web?ledger_id=owner")
     assert dashboard.status_code == 200, dashboard.text
@@ -254,7 +253,7 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
     budgets = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
     assert budgets.status_code == 200, budgets.text
     assert "月度总预算（JPY · ¥，仅支持整数）" in budgets.text
-    assert 'name="total_amount_yuan" value="" min="0" step="1"' in budgets.text
+    assert 'name="total_amount_yuan" value="1200" min="0" step="1"' in budgets.text
     assert "预算（元）" not in budgets.text
     assert 'class="dt-pill danger">超支 ¥0' not in budgets.text
 

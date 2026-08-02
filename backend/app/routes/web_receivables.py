@@ -95,6 +95,7 @@ def web_receivables(
     rows = sorted(rows, key=lambda d: _STATUS_RANK.get(d.status, 0))
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="欠我的",

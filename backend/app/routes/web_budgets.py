@@ -21,7 +21,8 @@ from app.routes.web_common import (
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
 from app.services.budget_service import get_monthly_budget, upsert_monthly_budget
-from app.services.currency_common import home_currency_code, major_amount_to_minor
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import major_amount_to_minor
 from app.services.spending_contract_service import (
     current_accounting_month,
     default_accounting_timezone_name,
@@ -223,6 +224,7 @@ def _render_budgets(
     )
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         show_month_picker=True,
@@ -280,7 +282,7 @@ def web_budgets_save(
     timezone_name = _budget_timezone_name()
     target_month = (month or "").strip() or current_accounting_month(timezone_name)
     try:
-        presentation_currency = home_currency_code()
+        presentation_currency = require_runtime_home_currency_code(db)
         payload = BudgetMonthlyUpdateRequest(
             total_amount_cents=_parse_amount_yuan(
                 total_amount_yuan,

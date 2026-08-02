@@ -39,7 +39,8 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import ConfirmedExpenseBatchUpdateRequest
-from app.services.currency_common import average_minor_amount, home_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import average_minor_amount
 from app.services.expense_service import (
     batch_update_confirmed_expenses,
     ledger_has_any_expense,
@@ -64,6 +65,7 @@ def web_root(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="仪表盘",
@@ -182,7 +184,7 @@ def web_confirmed(
         month=month,
         tag=tag,
     )
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     items = [
         _expense_view(e, presentation_currency_code=home)
         for e in expenses
@@ -199,6 +201,7 @@ def web_confirmed(
     )
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="已确认",

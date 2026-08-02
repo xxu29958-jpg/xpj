@@ -374,6 +374,7 @@ def _render_debt_goals(
             goal["target_date_value"] = date_overrides[goal["public_id"]]
     ctx = _base_ctx(
         request,
+        db=db,
         options=options,
         selected_ledger_id=selected_id,
         page_title="还债目标",
