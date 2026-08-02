@@ -325,10 +325,14 @@ jobs:
       - name: Windows installer safety behavior
         env:
           PYTEST_ADDOPTS: ""
+        # This is a public repository, so GitHub's standard windows-latest
+        # runner has four vCPUs. These tests explicitly exclude the shared
+        # xdist_group lane and remain file-isolated; use all four CPUs without
+        # changing the collected tests or their fail-closed behavior.
         run: >-
           python -m pytest -q packaging/tests -m "not xdist_group"
           --strict-markers -p no:cacheprovider -o addopts=
-          -n 2 --dist loadfile --max-worker-restart 0
+          -n 4 --dist loadfile --max-worker-restart 0
 
       - name: Windows database maintenance contract
         run: >-
