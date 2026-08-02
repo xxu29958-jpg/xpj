@@ -18,6 +18,7 @@ from app.models.currency_binding import (
 )
 from app.network_boundary import require_maintenance_local
 from app.routes import currency_adoption, currency_system
+from app.schemas._currency import RuntimeCompatibilitySnapshotResponse
 from app.services import currency_binding_service
 from app.services.currency_binding_service import (
     get_capability,
@@ -43,6 +44,7 @@ def test_missing_binding_singleton_is_corruption(monkeypatch) -> None:
 def test_runtime_compatibility_is_the_only_client_currency_capability(client) -> None:
     assert currency_system.router.prefix == "/api/system"
     assert currency_adoption.router.prefix == "/api/maintenance/currency-binding"
+    assert "capabilities" in RuntimeCompatibilitySnapshotResponse.model_fields
     assert "expenses" in CURRENCY_EVIDENCE_TABLES
     assert callable(lock_currency_evidence_tables)
     assert callable(set_currency_writer_proof)
@@ -64,6 +66,29 @@ def test_adoption_boundary_ignores_public_admin_escape_hatch(client, identity, m
         assert response.json()["error"] == "maintenance_local_only"
     finally:
         get_settings.cache_clear()
+
+
+def test_currency_adoption_requires_admin_auth_after_local_boundary(client) -> None:
+    # coverage: auth-401
+    app.dependency_overrides[require_maintenance_local] = lambda: None
+    try:
+        response = client.post(
+            "/api/maintenance/currency-binding/adoption",
+            headers={"Idempotency-Key": "b588366e-c55c-4ecc-a928-8de4a4569767"},
+            json={
+                "currency_contract_version": 1,
+                "home_currency_code": "CNY",
+                "expected_state": "ADOPTION_REQUIRED",
+                "expected_binding_revision": 0,
+                "expected_evidence_sha256": "0" * 64,
+                "reason": "authentication boundary regression",
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(require_maintenance_local, None)
+
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
 
 
 def test_local_admin_can_preview_adoption_state(client, identity) -> None:
