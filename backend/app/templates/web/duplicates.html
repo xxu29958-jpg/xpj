@@ -120,13 +120,17 @@
           <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
           <button class="product-button" type="submit">不是重复，保留两条</button>
         </form>
+        {% if orig %}
         <form method="post" action="/web/duplicates/{{ cur.id }}/reject-original" class="product-inline-form"
               data-confirm="将参考记录移入回收站，并保留当前记录。继续吗？">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
           <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
+          <input type="hidden" name="original_expense_id" value="{{ orig.id }}">
+          <input type="hidden" name="expected_original_row_version" value="{{ orig.row_version }}">
           <button class="product-button" type="submit">忽略参考记录</button>
         </form>
+        {% endif %}
         <form method="post" action="/web/duplicates/{{ cur.id }}/reject-current" class="product-inline-form"
               data-confirm="将当前待核对记录移入回收站。继续吗？">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

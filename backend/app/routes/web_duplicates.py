@@ -41,6 +41,9 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.expense_review_command_service import (
+    reject_duplicate_original_keep_current,
+)
 from app.services.expense_service import (
     get_expense,
     list_duplicate_expenses,
@@ -280,6 +283,8 @@ def web_duplicate_reject_original(
     expense_id: int,
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    original_expense_id: str = Form(""),
+    expected_original_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -287,38 +292,24 @@ def web_duplicate_reject_original(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
-    if parsed is None:
+    parsed_original_id = parse_form_row_version_token(original_expense_id)
+    parsed_original_version = parse_form_row_version_token(expected_original_row_version)
+    if parsed is None or parsed_original_id is None or parsed_original_version is None:
         return _web_redirect(
             "/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG, flash_type="error"
         )
     msg = "已忽略参考记录，并保留当前记录。"
     error_msg: str | None = None
     try:
-        current, original = _load_pair(db, tenant_id=selected_id, expense_id=expense_id)
-        if original is None:
-            raise AppError("invalid_request", "找不到被复制的账单。", status_code=404)
-        # Claim the UI-visible current row first, then reject its linked row in
-        # the same transaction. If either OCC claim fails, the catch below
-        # rolls both mutations back; a duplicate decision can never land half
-        # applied. The linked original is server-internal, so its freshly read
-        # row_version is the internal token for that second claim.
-        mark_expense_not_duplicate(
+        reject_duplicate_original_keep_current(
             db,
-            current.id,
-            selected_id,
+            current_expense_id=expense_id,
+            original_expense_id=parsed_original_id,
+            tenant_id=selected_id,
             expected_row_version=parsed,
-            commit=False,
+            expected_original_row_version=parsed_original_version,
         )
-        reject_expense(
-            db,
-            original.id,
-            selected_id,
-            expected_row_version=original.row_version,
-            commit=False,
-        )
-        db.commit()
     except AppError as exc:
-        db.rollback()
         error_msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
         msg = error_msg
     return _web_redirect(

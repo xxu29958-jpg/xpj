@@ -122,6 +122,11 @@
     {% if error %}
     <div class="product-feedback product-feedback--error" role="alert" data-drawer-error>{{ error }}</div>
     {% endif %}
+    {% if conflict_current %}
+    <div class="product-feedback product-feedback--warning" role="status">
+      当前权威值：商家 {{ conflict_current.merchant or '未填写' }}，金额 {{ conflict_current.amount_label or '待补' }}，分类 {% if conflict_current.needs_category %}待分类{% else %}{{ conflict_current.category }}{% endif %}。你的提交值已保留，请刷新后对照处理。
+    </div>
+    {% endif %}
 
     <form method="post"
           action="/web/expenses/{{ e.id }}/save"
@@ -131,6 +136,7 @@
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
       <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ confirm_idempotency_key }}">
       <input type="hidden" name="save_before_confirm" value="1">
       {# 批10: hidden return_to sends a no-JS save back to the pending queue instead
          of the full edit page (fixes the "saved → popped out of queue" 303). The JS
@@ -204,7 +210,7 @@
                class="product-input"
                type="text"
                name="category"
-               value="{{ e.category }}"
+               value="{{ e.category_input }}"
                maxlength="64"
                list="category-options-drawer"
                {% if field_errors.get('category') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-category-error"{% endif %}

@@ -324,12 +324,25 @@ def web_duplicates_action(
         f"/api/expenses/{expense_id}", headers=identity.app_headers
     )
     assert snapshot.status_code == 200, snapshot.text
+    data = {
+        "ledger_id": ledger_id,
+        "expected_row_version": snapshot.json()["row_version"],
+    }
+    if action == "reject-original":
+        original_id = snapshot.json()["duplicate_of_id"]
+        original = client.get(
+            f"/api/expenses/{original_id}", headers=identity.app_headers
+        )
+        assert original.status_code == 200, original.text
+        data.update(
+            {
+                "original_expense_id": original_id,
+                "expected_original_row_version": original.json()["row_version"],
+            }
+        )
     return client.post(
         f"/web/duplicates/{expense_id}/{action}",
-        data={
-            "ledger_id": ledger_id,
-            "expected_row_version": snapshot.json()["row_version"],
-        },
+        data=data,
         follow_redirects=follow_redirects,
     )
 

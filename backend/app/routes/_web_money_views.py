@@ -243,6 +243,10 @@ def _expense_view(
         "fx_meta": fx_meta,
         "merchant": expense.merchant or "",
         "category": expense.category or "未分类",
+        # Display labels and legacy dirty tokens are not writable facts. Forms
+        # render every semantic-uncategorized value as blank so unrelated edits
+        # neither persist a display label nor normalize history to "其他".
+        "category_input": "" if needs_category else expense.category,
         "note": expense.note or "",
         "tags": getattr(expense, "tags", None) or "",
         "status": expense.status,

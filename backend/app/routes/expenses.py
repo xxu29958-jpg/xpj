@@ -46,16 +46,15 @@ from app.services.category_preference_service import (
     list_category_preferences,
     restore_category_preference,
 )
-from app.services.cleanup_service import cleanup_after_confirm
 from app.services.debt_service import repayment_draft_response
 from app.services.expense_response_service import (
     expense_raw_text_by_id,
     expense_to_response,
     expenses_to_responses,
 )
+from app.services.expense_review_command_service import confirm_expense_submission
 from app.services.expense_service import (
     batch_update_confirmed_expenses,
-    confirm_expense,
     create_manual_expense,
     create_notification_draft,
     create_repayment_draft_from_expense,
@@ -564,38 +563,19 @@ def post_confirm_expense(
         db, auth.tenant_id, expense_id,
         device_id=auth.device_id, expected_row_version=payload.expected_row_version,
     )
-    claim = claim_idempotent_request(
+    expense = confirm_expense_submission(
         db,
+        expense_id=expense_pk,
         idempotency_key=idempotency_key,
         tenant_id=auth.tenant_id,
-        operation="confirm_expense",
-        target_id=str(expense_pk),
-        body=payload.model_dump(
+        expected_row_version=effective_row_version,
+        request_expected_row_version=payload.expected_row_version,
+        intent_body=payload.model_dump(
             mode="json", exclude_unset=True, exclude={"expected_row_version"}
         ),
-        expected_row_version=payload.expected_row_version,
+        update_payload=None,
+        require_idempotency=True,
     )
-    if claim is None:  # §4.6 HIT — re-serialise current (already-confirmed) state
-        expense = get_expense(db, expense_pk, auth.tenant_id)
-        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
-
-    expense = confirm_expense(
-        db,
-        expense_pk,
-        auth.tenant_id,
-        expected_row_version=effective_row_version,
-        commit=False,
-    )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="expense", resource_id=str(expense_pk)
-    )
-    db.commit()
-    db.refresh(expense)
-    # Post-confirm image GC — the same side-effect commit confirm_expense runs
-    # internally when it owns the commit (kept out of the atomic key+confirm one).
-    if cleanup_after_confirm(db, expense):
-        db.commit()
-        db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
