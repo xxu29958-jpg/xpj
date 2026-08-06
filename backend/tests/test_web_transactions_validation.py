@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
+from html import unescape
 from types import SimpleNamespace
 
 import pytest
@@ -248,7 +250,11 @@ def test_web_edit_stale_write_returns_409_with_authoritative_values(
     assert response.status_code == 409, response.text
     assert "已在其它端被修改" in response.text
     assert "Authoritative Merchant" in response.text
-    assert "Stale Overwrite" not in response.text
+    assert "Stale Overwrite" in response.text
+    assert (
+        f'name="expected_row_version" value="{stale["row_version"]}"'
+        in response.text
+    )
     after = _expense_payload(web_client, expense_id, identity=identity)
     assert after["merchant"] == "Authoritative Merchant"
 
@@ -310,6 +316,21 @@ def test_web_search_rejects_long_query_in_place_without_silent_truncation(
     assert called is False
 
 
+def _expense_edit_href(body: str, expense_id: int) -> str:
+    match = re.search(
+        rf'href="([^"]*/web/expenses/{expense_id}/edit[^"]*)"',
+        body,
+    )
+    assert match is not None
+    return unescape(match.group(1))
+
+
+def _hidden_input(body: str, name: str) -> str:
+    match = re.search(rf'name="{name}" value="([^"]*)"', body)
+    assert match is not None, name
+    return unescape(match.group(1))
+
+
 def test_search_edit_save_returns_to_validated_search_context(
     web_client: TestClient,
     *,
@@ -320,26 +341,60 @@ def test_search_edit_save_returns_to_validated_search_context(
     )
     search = web_client.get("/web/search?ledger_id=owner&q=Return%20Search")
     assert search.status_code == 200, search.text
-    assert "return_to=search" in search.text
-    assert "return_query=Return+Search" in search.text
-    before = _expense_payload(web_client, expense_id, identity=identity)
+    edit_href = _expense_edit_href(search.text, expense_id)
+    assert "return_to=search" in edit_href
+    assert "return_query=Return+Search" in edit_href
+    edit = web_client.get(edit_href)
+    assert edit.status_code == 200, edit.text
 
     response = web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={
             "ledger_id": "owner",
-            "expected_row_version": str(before["row_version"]),
-            "original_currency": before["original_currency_code"],
+            "expected_row_version": _hidden_input(edit.text, "expected_row_version"),
+            "idempotency_key": _hidden_input(edit.text, "idempotency_key"),
+            "original_currency": _hidden_input(edit.text, "original_currency"),
             "amount_yuan": "17.00",
             "merchant": "Return Search Cafe",
             "category": "餐饮",
             "note": "",
             "tags": "",
-            "return_to": "search",
-            "return_query": "Return Search",
+            "return_to": _hidden_input(edit.text, "return_to"),
+            "return_query": _hidden_input(edit.text, "return_query"),
         },
         follow_redirects=False,
     )
 
     assert response.status_code == 303, response.text
     assert response.headers["location"] == "/web/search?ledger_id=owner&q=Return+Search"
+
+    returned_search = web_client.get(response.headers["location"])
+    returned_edit = web_client.get(_expense_edit_href(returned_search.text, expense_id))
+    assert returned_edit.status_code == 200, returned_edit.text
+
+    confirmed = web_client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": _hidden_input(
+                returned_edit.text, "expected_row_version"
+            ),
+            "idempotency_key": _hidden_input(returned_edit.text, "idempotency_key"),
+            "save_before_confirm": "1",
+            "original_currency": _hidden_input(
+                returned_edit.text, "original_currency"
+            ),
+            "amount_yuan": "17.00",
+            "merchant": "Return Search Cafe",
+            "category": "餐饮",
+            "note": "",
+            "tags": "",
+            "return_to": _hidden_input(returned_edit.text, "return_to"),
+            "return_query": _hidden_input(returned_edit.text, "return_query"),
+        },
+        follow_redirects=False,
+    )
+    assert confirmed.status_code == 303, confirmed.text
+    assert confirmed.headers["location"] == (
+        "/web/search?ledger_id=owner&q=Return+Search"
+    )
