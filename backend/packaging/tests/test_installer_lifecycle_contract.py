@@ -1057,44 +1057,53 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     strict_read = pending_install.index(
         "Read-TicketboxPersistentInstallationIdentity", inherited_repair
     )
-    pre_database_resolution = pending_install.index(
-        "Resolve-TicketboxPreDatabasePendingInstallationIdentity", strict_read
+    recovery_resolution = pending_install.index(
+        "Resolve-TicketboxRecoverableFreshInstallPendingIdentity", strict_read
     )
     receipt_binding = pending_install.index(
         "Set-TicketboxLifecycleReceiptC07InstallationOperation",
-        pre_database_resolution,
+        recovery_resolution,
     )
     assert (
         release_candidate
         < inherited_repair
         < strict_read
-        < pre_database_resolution
+        < recovery_resolution
         < receipt_binding
     )
 
-    pre_database_rebase = install[
-        install.index("function Resolve-TicketboxPreDatabasePendingInstallationIdentity") :
+    fresh_install_recovery = install[
+        install.index("function Resolve-TicketboxRecoverableFreshInstallPendingIdentity") :
         install.index("if ($ValidateInstalledServicesOnly)")
     ]
-    rebase_write = pre_database_rebase.index("Write-TicketboxInstallationIdentityState")
+    rebase_write = fresh_install_recovery.index("Write-TicketboxInstallationIdentityState")
     for proof in (
         '[string]$LifecycleReceipt.mode -cne "fresh_install"',
+        '[string]$LifecycleReceipt.previous_pg_state -cne "absent"',
+        '[string]$LifecycleReceipt.previous_backend_state -cne "absent"',
         '[bool]$LifecycleReceipt.backup_required',
         '[bool]$LifecycleReceipt.install_completed',
         '[string]$LifecycleReceipt.c07_installation_operation_id',
-        '(Service-Exists $PgServiceName)',
-        '(Service-Exists $BackendServiceName)',
+        '$pgServiceExists = Service-Exists $PgServiceName',
+        '$backendServiceExists = Service-Exists $BackendServiceName',
         'Join-Path $PgData "PG_VERSION"',
-        '(Test-Path -LiteralPath $EnvPath -PathType Leaf)',
+        'Get-PostgresBootstrapRecoveryPath',
+        '$InitdbServiceReceiptPath',
+        '$InitdbPasswordPath',
+        'Get-TicketboxServiceState $serviceName',
+        'Get-TicketboxServiceStartMode $serviceName',
+        'Read-PostgresBootstrapRecoveryState',
         'Get-TicketboxC07HostArtifactRoot',
         'Get-TicketboxC07RuntimeProjectionRoot',
     ):
-        assert pre_database_rebase.index(proof) < rebase_write
-    assert '-InstallationId ([string]$Identity.InstallationId)' in pre_database_rebase
-    assert '$canonicalOperationId = $parsedExpectedOperationId.ToString("D")' in pre_database_rebase
-    assert '-OperationId $canonicalOperationId' in pre_database_rebase
+        assert fresh_install_recovery.index(proof) < rebase_write
+    assert '-InstallationId ([string]$Identity.InstallationId)' in fresh_install_recovery
+    assert '$canonicalOperationId = $parsedExpectedOperationId.ToString("D")' in fresh_install_recovery
+    assert '-OperationId $canonicalOperationId' in fresh_install_recovery
     assert '-ExpectedOperationId $LifecycleFinalizationAttemptId' in pending_install
-    assert "-AllowPreDatabaseRebind:$allowPreDatabaseReceiptRebind" in pending_install
+    assert "-ExpectedPgMajor $TargetPgMajor" in pending_install
+    assert "-AllowFreshInstallRecoveryRebind:$(" in pending_install
+    assert "[bool]$c07PendingIdentityResolution.AllowReceiptOperationRebind" in pending_install
 
     transaction = receipt[
         receipt.index("function Complete-TicketboxInstalledLifecycleTransaction") : receipt.index(
@@ -5101,7 +5110,7 @@ def test_pre_database_pending_release_rebase_is_narrow_and_fail_closed(
 ) -> None:
     install = _read("install_bundled_services.ps1")
     function_text = install[
-        install.index("function Resolve-TicketboxPreDatabasePendingInstallationIdentity") :
+        install.index("function Resolve-TicketboxRecoverableFreshInstallPendingIdentity") :
         install.index("if ($ValidateInstalledServicesOnly)")
     ]
     for index, engine in enumerate(powershell_contract_engines()):
@@ -5111,6 +5120,9 @@ def test_pre_database_pending_release_rebase_is_narrow_and_fail_closed(
         c07_host = root / "c07-host"
         c07_runtime = root / "c07-runtime"
         env_path = root / "app" / ".env"
+        bootstrap = root / "app" / ".postgres-bootstrap-password"
+        initdb_receipt = root / "installer" / "initdb-one-shot-receipt.json"
+        initdb_password = root / "installer" / "initdb-password"
         harness = tmp_path / f"pre-database-rebase-{index}.ps1"
         harness.write_text(
             f"""
@@ -5119,6 +5131,8 @@ $PgServiceName = 'TicketboxPg'
 $BackendServiceName = 'TicketboxBackend'
 $PgData = '{_ps_literal(pgdata)}'
 $EnvPath = '{_ps_literal(env_path)}'
+$InitdbServiceReceiptPath = '{_ps_literal(initdb_receipt)}'
+$InitdbPasswordPath = '{_ps_literal(initdb_password)}'
 $script:writes = 0
 $script:serviceExists = $false
 function Assert-TicketboxInstallationIdentityBaseMatches {{ param($Identity,$Candidate) }}
@@ -5138,6 +5152,7 @@ function Get-TicketboxPathEntryKindNoFollow {{
     return 'Missing'
 }}
 function Assert-NoTicketboxReparsePoints {{ param([string]$Path) }}
+function Get-PostgresBootstrapRecoveryPath {{ return '{_ps_literal(bootstrap)}' }}
 function Get-TicketboxC07HostArtifactRoot {{ return '{_ps_literal(c07_host)}' }}
 function Get-TicketboxC07RuntimeProjectionRoot {{ return '{_ps_literal(c07_runtime)}' }}
 function Write-TicketboxInstallationIdentityState {{
@@ -5145,6 +5160,7 @@ function Write-TicketboxInstallationIdentityState {{
     $script:writes += 1
     return [pscustomobject]@{{
         State = 'PENDING'
+        LegacyCompleted = $false
         OperationId = [string]$OperationId
         InstallationId = [string]$InstallationId
         Release = [string]$Candidate.Release
@@ -5165,35 +5181,52 @@ $identity = [pscustomobject]@{{
 }}
 $receipt = [pscustomobject]@{{
     mode = 'fresh_install'
+    previous_pg_state = 'absent'
+    previous_backend_state = 'absent'
+    previous_pg_start_policy = 'absent'
+    previous_backend_start_policy = 'absent'
     preparation_stage = 'files_may_have_been_replaced'
+    files_may_have_been_replaced = $true
     backup_required = $false
     backup_completed = $false
+    backup_path = ''
+    backup_sha256 = ''
+    backup_byte_length = 0
     install_completed = $false
     temporary_pg_service_cleanup_pending = $false
     c07_installation_operation_id = ''
     c07_production_authority_sha256 = ''
     c07_runtime_projection_sha256 = ''
 }}
-$same = Resolve-TicketboxPreDatabasePendingInstallationIdentity `
+$sameResolution = Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
     -Candidate $candidate `
     -Identity $identity `
     -LifecycleReceipt $receipt `
     -ExpectedOperationId '33333333-3333-3333-3333-333333333333' `
     -HadExistingPgService $false `
-    -HadExistingBackendService $false
-if ($same.OperationId -cne $identity.OperationId -or $script:writes -ne 0) {{
+    -HadExistingBackendService $false `
+    -ExpectedPgMajor 17
+$same = $sameResolution.Identity
+if ($same.OperationId -cne $identity.OperationId -or
+    $sameResolution.RecoveryStage -cne 'same_release' -or
+    $sameResolution.AllowReceiptOperationRebind -or
+    $script:writes -ne 0) {{
     throw 'same release was rewritten'
 }}
 $receipt.c07_installation_operation_id = $identity.OperationId
 $identity.Release = 'predecessor'
-$rebased = Resolve-TicketboxPreDatabasePendingInstallationIdentity `
+$rebasedResolution = Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
     -Candidate $candidate `
     -Identity $identity `
     -LifecycleReceipt $receipt `
     -ExpectedOperationId '33333333-3333-3333-3333-333333333333' `
     -HadExistingPgService $false `
-    -HadExistingBackendService $false
+    -HadExistingBackendService $false `
+    -ExpectedPgMajor 17
+$rebased = $rebasedResolution.Identity
 if ($script:writes -ne 1 -or
+    $rebasedResolution.RecoveryStage -cne 'pre_database' -or
+    -not $rebasedResolution.AllowReceiptOperationRebind -or
     $rebased.Release -cne 'current' -or
     $rebased.InstallationId -cne $identity.InstallationId -or
     $rebased.OperationId -ceq $identity.OperationId) {{
@@ -5201,30 +5234,37 @@ if ($script:writes -ne 1 -or
 }}
 $receipt.c07_installation_operation_id = $identity.OperationId
 $identity = $rebased
-$recoveredPair = Resolve-TicketboxPreDatabasePendingInstallationIdentity `
+[IO.Directory]::Delete($PgData)
+$recoveredPairResolution = Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
     -Candidate $candidate `
     -Identity $identity `
     -LifecycleReceipt $receipt `
     -ExpectedOperationId '44444444-4444-4444-4444-444444444444' `
     -HadExistingPgService $false `
-    -HadExistingBackendService $false
+    -HadExistingBackendService $false `
+    -ExpectedPgMajor 17
+$recoveredPair = $recoveredPairResolution.Identity
 if ($script:writes -ne 2 -or
+    $recoveredPairResolution.RecoveryStage -cne 'pre_database' -or
+    -not $recoveredPairResolution.AllowReceiptOperationRebind -or
     $recoveredPair.Release -cne 'current' -or
     $recoveredPair.InstallationId -cne $identity.InstallationId -or
     $recoveredPair.OperationId -cne '44444444-4444-4444-4444-444444444444') {{
     throw 'partial identity/receipt pair did not converge to the current attempt'
 }}
+[IO.Directory]::CreateDirectory($PgData) | Out-Null
 $identity = $recoveredPair
 $receipt.c07_installation_operation_id = 'not-a-guid'
 $rejected = $false
 try {{
-    Resolve-TicketboxPreDatabasePendingInstallationIdentity `
+    Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
         -Candidate $candidate `
         -Identity $identity `
         -LifecycleReceipt $receipt `
         -ExpectedOperationId '55555555-5555-5555-5555-555555555555' `
         -HadExistingPgService $false `
-        -HadExistingBackendService $false | Out-Null
+        -HadExistingBackendService $false `
+        -ExpectedPgMajor 17 | Out-Null
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 2) {{
@@ -5235,13 +5275,14 @@ $identity.Release = 'predecessor'
 [IO.File]::WriteAllText((Join-Path $PgData 'partial'), 'partial')
 $rejected = $false
 try {{
-    Resolve-TicketboxPreDatabasePendingInstallationIdentity `
+    Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
         -Candidate $candidate `
         -Identity $identity `
         -LifecycleReceipt $receipt `
         -ExpectedOperationId '33333333-3333-3333-3333-333333333333' `
         -HadExistingPgService $false `
-        -HadExistingBackendService $false | Out-Null
+        -HadExistingBackendService $false `
+        -ExpectedPgMajor 17 | Out-Null
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 2) {{
@@ -5251,18 +5292,405 @@ if (-not $rejected -or $script:writes -ne 2) {{
 [IO.Directory]::CreateDirectory('{_ps_literal(c07_host)}') | Out-Null
 $rejected = $false
 try {{
-    Resolve-TicketboxPreDatabasePendingInstallationIdentity `
+    Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
         -Candidate $candidate `
         -Identity $identity `
         -LifecycleReceipt $receipt `
         -ExpectedOperationId '33333333-3333-3333-3333-333333333333' `
         -HadExistingPgService $false `
-        -HadExistingBackendService $false | Out-Null
+        -HadExistingBackendService $false `
+        -ExpectedPgMajor 17 | Out-Null
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 2) {{
     throw 'existing C07 authority root was accepted or mutated'
 }}
+""",
+            encoding="utf-8-sig",
+        )
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell installer retry contract")
+def test_post_initdb_pending_release_rebase_requires_exact_stopped_pre_schema_state(
+    tmp_path: Path,
+) -> None:
+    install = _read("install_bundled_services.ps1")
+    function_text = install[
+        install.index("function Resolve-TicketboxRecoverableFreshInstallPendingIdentity") :
+        install.index("if ($ValidateInstalledServicesOnly)")
+    ]
+    receipt_source = _read("windows_lifecycle_receipt.ps1")
+    receipt_function_text = receipt_source[
+        receipt_source.index("function Set-TicketboxLifecycleReceiptC07InstallationOperation") :
+        receipt_source.index("function Set-TicketboxLifecycleReceiptC07ReadyEvidence")
+    ]
+    for index, engine in enumerate(powershell_contract_engines()):
+        root = tmp_path / f"post-initdb-rebase-{index}"
+        pgdata = root / "pgdata"
+        ready = root / ".ticketbox-installation-identity"
+        c07_host = root / "c07-host"
+        c07_runtime = root / "c07-runtime"
+        env_path = root / "app" / ".env"
+        bootstrap = root / "app" / ".postgres-bootstrap-password"
+        initdb_receipt = root / "installer" / "initdb-one-shot-receipt.json"
+        initdb_password = root / "installer" / "initdb-password"
+        harness = tmp_path / f"post-initdb-rebase-{index}.ps1"
+        harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+$PgServiceName = 'TicketboxPg'
+$BackendServiceName = 'TicketboxBackend'
+$PgData = '{_ps_literal(pgdata)}'
+$EnvPath = '{_ps_literal(env_path)}'
+$InitdbServiceReceiptPath = '{_ps_literal(initdb_receipt)}'
+$InitdbPasswordPath = '{_ps_literal(initdb_password)}'
+$PgPort = 5440
+$BackendPort = 8001
+$PgBin = 'C:\\Program Files\\Ticketbox\\pg\\bin'
+$PgCtl = Join-Path $PgBin 'pg_ctl.exe'
+$BackendExe = 'C:\\Program Files\\Ticketbox\\program\\ticketbox-backend.exe'
+$ShawlExe = 'C:\\Program Files\\Ticketbox\\shawl\\shawl.exe'
+$ServiceWaitArguments = @{{ TimeoutMilliseconds = 100; PollMilliseconds = 1 }}
+$script:writes = 0
+$script:receiptWrites = 0
+$script:lastReceiptOperation = ''
+$script:bootstrapReads = 0
+$script:bootstrapReadFailure = $false
+$script:runtimeChecks = 0
+$script:runtimeProofs = @()
+$script:runtimeFailureService = ''
+$script:reparseFailure = $false
+$script:hadPgService = $true
+$script:hadBackendService = $true
+$script:services = @{{ TicketboxPg = $true; TicketboxBackend = $true }}
+$script:states = @{{ TicketboxPg = 'stopped'; TicketboxBackend = 'stopped' }}
+$script:startModes = @{{ TicketboxPg = 'Disabled'; TicketboxBackend = 'Disabled' }}
+function Assert-TicketboxInstallationIdentityBaseMatches {{ param($Identity,$Candidate) }}
+function Test-TicketboxInstallationIdentityReleaseMatches {{
+    param($Identity,$Candidate)
+    return [string]$Identity.Release -ceq [string]$Candidate.Release
+}}
+function Get-TicketboxPersistentInstallationIdentityPath {{
+    param([string]$DataRoot)
+    return '{_ps_literal(ready)}'
+}}
+function Service-Exists {{
+    param([string]$Name)
+    return [bool]$script:services[$Name]
+}}
+function Get-TicketboxServiceState {{
+    param([string]$Name)
+    return [string]$script:states[$Name]
+}}
+function Get-TicketboxServiceStartMode {{
+    param([string]$Name)
+    return [string]$script:startModes[$Name]
+}}
+function Wait-TicketboxBackendRuntimeStopped {{
+    param($Name,$BackendPort,$ExpectedRuntimeExecutables,$TimeoutMilliseconds,$PollMilliseconds)
+    $script:runtimeChecks += 1
+    $script:runtimeProofs += [pscustomobject]@{{
+        Name = [string]$Name
+        Port = [int]$BackendPort
+        Executables = @($ExpectedRuntimeExecutables | ForEach-Object {{ [string]$_ }})
+    }}
+    if ([string]$Name -ceq $script:runtimeFailureService) {{
+        throw "runtime still present for $Name"
+    }}
+}}
+function Get-TicketboxPathEntryKindNoFollow {{
+    param([string]$Path)
+    if (Test-Path -LiteralPath $Path -PathType Container) {{ return 'Directory' }}
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {{ return 'File' }}
+    return 'Missing'
+}}
+function Assert-NoTicketboxReparsePoints {{
+    param([string]$Path)
+    if ($script:reparseFailure) {{ throw 'reparse point found' }}
+}}
+function Get-PostgresBootstrapRecoveryPath {{ return '{_ps_literal(bootstrap)}' }}
+function Read-PostgresBootstrapRecoveryState {{
+    $script:bootstrapReads += 1
+    if ($script:bootstrapReadFailure) {{ throw 'bootstrap recovery invalid' }}
+    if (-not (Test-Path -LiteralPath '{_ps_literal(bootstrap)}' -PathType Leaf)) {{
+        throw 'bootstrap recovery missing'
+    }}
+    return [pscustomobject]@{{ Proven = $true }}
+}}
+function Get-TicketboxC07HostArtifactRoot {{ return '{_ps_literal(c07_host)}' }}
+function Get-TicketboxC07RuntimeProjectionRoot {{ return '{_ps_literal(c07_runtime)}' }}
+function Write-TicketboxInstallationIdentityState {{
+    param($State,$OperationId,$InstallationId,$Candidate,[switch]$ReplaceExisting)
+    $script:writes += 1
+    return [pscustomobject]@{{
+        State = 'PENDING'
+        LegacyCompleted = $false
+        OperationId = [string]$OperationId
+        InstallationId = [string]$InstallationId
+        Release = [string]$Candidate.Release
+    }}
+}}
+function Write-TicketboxLifecycleReceipt {{
+    $script:receiptWrites += 1
+    for ($argumentIndex = 0; $argumentIndex -lt $args.Count - 1; $argumentIndex++) {{
+        if ([string]$args[$argumentIndex] -ceq '-C07InstallationOperationId') {{
+            $script:lastReceiptOperation = [string]$args[$argumentIndex + 1]
+        }}
+    }}
+}}
+function Close-TicketboxLifecycleBackupGuard {{ param($Receipt) }}
+{function_text}
+{receipt_function_text}
+[IO.Directory]::CreateDirectory((Join-Path $PgData 'global')) | Out-Null
+[IO.Directory]::CreateDirectory((Split-Path -Parent '{_ps_literal(bootstrap)}')) | Out-Null
+[IO.Directory]::CreateDirectory((Split-Path -Parent '{_ps_literal(initdb_receipt)}')) | Out-Null
+[IO.File]::WriteAllText((Join-Path $PgData 'PG_VERSION'), "17`n")
+[IO.File]::WriteAllText((Join-Path $PgData 'global\\pg_control'), 'control')
+[IO.File]::WriteAllText('{_ps_literal(bootstrap)}', 'protected-state')
+$candidate = [pscustomobject]@{{
+    DataRoot = '{_ps_literal(root)}'
+    Release = 'current'
+}}
+$identity = [pscustomobject]@{{
+    State = 'PENDING'
+    LegacyCompleted = $false
+    OperationId = '11111111-1111-1111-1111-111111111111'
+    InstallationId = '22222222-2222-2222-2222-222222222222'
+    Release = 'predecessor'
+}}
+$receipt = [pscustomobject]@{{
+    mode = 'fresh_install'
+    install_dir = 'C:\\Program Files\\Ticketbox'
+    data_root = '{_ps_literal(root)}'
+    pg_port = 5440
+    backend_port = 8001
+    installed_release_config = [pscustomobject]@{{}}
+    target_backend_version_floor = '1.2.0'
+    previous_pg_state = 'absent'
+    previous_backend_state = 'absent'
+    previous_pg_start_policy = 'absent'
+    previous_backend_start_policy = 'absent'
+    preparation_stage = 'files_may_have_been_replaced'
+    files_may_have_been_replaced = $true
+    backup_required = $false
+    backup_completed = $false
+    backup_path = ''
+    backup_sha256 = ''
+    backup_byte_length = 0
+    install_completed = $false
+    temporary_pg_service_cleanup_pending = $false
+    c07_installation_operation_id = $identity.OperationId
+    c07_production_authority_sha256 = ''
+    c07_runtime_projection_sha256 = ''
+}}
+function Invoke-Recovery {{
+    param(
+        [string]$OperationId = '33333333-3333-3333-3333-333333333333'
+    )
+    Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
+        -Candidate $candidate `
+        -Identity $identity `
+        -LifecycleReceipt $receipt `
+        -ExpectedOperationId $OperationId `
+        -HadExistingPgService $script:hadPgService `
+        -HadExistingBackendService $script:hadBackendService `
+        -ExpectedPgMajor 17
+}}
+function Assert-RejectedWithoutWrite {{
+    param(
+        [string]$Label,
+        [string]$OperationId = '33333333-3333-3333-3333-333333333333'
+    )
+    $before = $script:writes
+    $beforeReceiptWrites = $script:receiptWrites
+    $rejected = $false
+    try {{ Invoke-Recovery -OperationId $OperationId | Out-Null }} catch {{ $rejected = $true }}
+    if (
+        -not $rejected -or
+        $script:writes -ne $before -or
+        $script:receiptWrites -ne $beforeReceiptWrites
+    ) {{
+        throw "$Label was accepted or mutated identity/receipt"
+    }}
+}}
+$resolution = Invoke-Recovery
+$rebased = $resolution.Identity
+if (
+    $script:writes -ne 1 -or
+    $script:bootstrapReads -ne 1 -or
+    $script:runtimeChecks -ne 2 -or
+    $script:runtimeProofs.Count -ne 2 -or
+    $script:runtimeProofs[0].Name -cne 'TicketboxPg' -or
+    $script:runtimeProofs[0].Port -ne 5440 -or
+    ($script:runtimeProofs[0].Executables -join '|') -cne
+        'C:\\Program Files\\Ticketbox\\pg\\bin\\pg_ctl.exe|C:\\Program Files\\Ticketbox\\pg\\bin\\postgres.exe' -or
+    $script:runtimeProofs[1].Name -cne 'TicketboxBackend' -or
+    $script:runtimeProofs[1].Port -ne 8001 -or
+    ($script:runtimeProofs[1].Executables -join '|') -cne
+        'C:\\Program Files\\Ticketbox\\program\\ticketbox-backend.exe|C:\\Program Files\\Ticketbox\\shawl\\shawl.exe' -or
+    $resolution.RecoveryStage -cne 'post_initdb_pre_schema' -or
+    -not $resolution.AllowReceiptOperationRebind -or
+    $rebased.Release -cne 'current' -or
+    $rebased.InstallationId -cne $identity.InstallationId -or
+    $rebased.OperationId -cne '33333333-3333-3333-3333-333333333333') {{
+    throw 'exact post-initdb pre-schema state did not rebind once'
+}}
+$identity = $rebased
+$retryResolution = Invoke-Recovery `
+    -OperationId '44444444-4444-4444-4444-444444444444'
+$retryIdentity = $retryResolution.Identity
+Set-TicketboxLifecycleReceiptC07InstallationOperation `
+    -Path 'unused' `
+    -Receipt $receipt `
+    -InstallerOwnerProcessId 1234 `
+    -OperationId $retryIdentity.OperationId `
+    -AllowFreshInstallRecoveryRebind:$(
+        [bool]$retryResolution.AllowReceiptOperationRebind
+    )
+if (
+    $script:writes -ne 2 -or
+    $script:receiptWrites -ne 1 -or
+    $script:lastReceiptOperation -cne $retryIdentity.OperationId -or
+    $retryResolution.RecoveryStage -cne 'post_initdb_pre_schema' -or
+    -not $retryResolution.AllowReceiptOperationRebind -or
+    $retryIdentity.OperationId -cne '44444444-4444-4444-4444-444444444444'
+) {{
+    throw 'identity-to-receipt recovery capability did not converge after partial commit'
+}}
+$identity = $retryIdentity
+
+Assert-RejectedWithoutWrite `
+    -Label 'invalid expected operation id' `
+    -OperationId 'not-a-guid'
+$identity.Release = 'predecessor'
+Assert-RejectedWithoutWrite `
+    -Label 'release mismatch reused old operation id' `
+    -OperationId $identity.OperationId
+$identity.Release = 'current'
+
+$receiptMutations = @(
+    [pscustomobject]@{{ Property = 'mode'; Bad = 'preserved_data_reinstall'; Good = 'fresh_install' }},
+    [pscustomobject]@{{ Property = 'previous_pg_state'; Bad = 'stopped'; Good = 'absent' }},
+    [pscustomobject]@{{ Property = 'previous_backend_state'; Bad = 'stopped'; Good = 'absent' }},
+    [pscustomobject]@{{ Property = 'previous_pg_start_policy'; Bad = 'disabled'; Good = 'absent' }},
+    [pscustomobject]@{{ Property = 'previous_backend_start_policy'; Bad = 'disabled'; Good = 'absent' }},
+    [pscustomobject]@{{ Property = 'preparation_stage'; Bad = 'prepared'; Good = 'files_may_have_been_replaced' }},
+    [pscustomobject]@{{ Property = 'files_may_have_been_replaced'; Bad = $false; Good = $true }},
+    [pscustomobject]@{{ Property = 'backup_required'; Bad = $true; Good = $false }},
+    [pscustomobject]@{{ Property = 'backup_completed'; Bad = $true; Good = $false }},
+    [pscustomobject]@{{ Property = 'backup_path'; Bad = 'C:\\protected\\backup.dump'; Good = '' }},
+    [pscustomobject]@{{ Property = 'backup_sha256'; Bad = ('A' * 64); Good = '' }},
+    [pscustomobject]@{{ Property = 'backup_byte_length'; Bad = 1; Good = 0 }},
+    [pscustomobject]@{{ Property = 'install_completed'; Bad = $true; Good = $false }},
+    [pscustomobject]@{{ Property = 'temporary_pg_service_cleanup_pending'; Bad = $true; Good = $false }},
+    [pscustomobject]@{{ Property = 'c07_production_authority_sha256'; Bad = ('B' * 64); Good = '' }},
+    [pscustomobject]@{{ Property = 'c07_runtime_projection_sha256'; Bad = ('C' * 64); Good = '' }}
+)
+foreach ($mutation in $receiptMutations) {{
+    $receipt.($mutation.Property) = $mutation.Bad
+    Assert-RejectedWithoutWrite "receipt $($mutation.Property)"
+    $receipt.($mutation.Property) = $mutation.Good
+}}
+
+$identity.State = 'READY'
+Assert-RejectedWithoutWrite 'non-PENDING identity'
+$identity.State = 'PENDING'
+$identity.LegacyCompleted = $true
+Assert-RejectedWithoutWrite 'legacy-completed identity'
+$identity.LegacyCompleted = $false
+
+[IO.File]::Move('{_ps_literal(bootstrap)}', '{_ps_literal(bootstrap)}.held')
+Assert-RejectedWithoutWrite 'missing bootstrap recovery'
+[IO.File]::Move('{_ps_literal(bootstrap)}.held', '{_ps_literal(bootstrap)}')
+
+$script:bootstrapReadFailure = $true
+Assert-RejectedWithoutWrite 'invalid bootstrap recovery'
+$script:bootstrapReadFailure = $false
+
+[IO.File]::WriteAllText($EnvPath, 'DATABASE_URL=unexpected')
+Assert-RejectedWithoutWrite 'existing env'
+[IO.File]::Delete($EnvPath)
+
+$script:services.TicketboxBackend = $false
+Assert-RejectedWithoutWrite 'missing backend service'
+$script:services.TicketboxBackend = $true
+$script:services.TicketboxPg = $false
+Assert-RejectedWithoutWrite 'missing PostgreSQL service'
+$script:services.TicketboxPg = $true
+
+$script:hadPgService = $false
+Assert-RejectedWithoutWrite 'missing original PostgreSQL service snapshot'
+$script:hadPgService = $true
+$script:hadBackendService = $false
+Assert-RejectedWithoutWrite 'missing original backend service snapshot'
+$script:hadBackendService = $true
+
+$script:states.TicketboxPg = 'running'
+Assert-RejectedWithoutWrite 'running postgres service'
+$script:states.TicketboxPg = 'stopped'
+
+$script:startModes.TicketboxBackend = 'Manual'
+Assert-RejectedWithoutWrite 'enabled backend service'
+$script:startModes.TicketboxBackend = 'Disabled'
+
+[IO.File]::WriteAllText((Join-Path $PgData 'PG_VERSION'), "16`n")
+Assert-RejectedWithoutWrite 'wrong PostgreSQL major'
+[IO.File]::WriteAllText((Join-Path $PgData 'PG_VERSION'), '')
+Assert-RejectedWithoutWrite 'empty PG_VERSION'
+[IO.File]::WriteAllText((Join-Path $PgData 'PG_VERSION'), 'not-a-major')
+Assert-RejectedWithoutWrite 'nonnumeric PG_VERSION'
+[IO.File]::WriteAllText((Join-Path $PgData 'PG_VERSION'), ('1' * 17))
+Assert-RejectedWithoutWrite 'oversized PG_VERSION'
+[IO.File]::WriteAllText((Join-Path $PgData 'PG_VERSION'), "17`n")
+
+$pgControlPath = Join-Path $PgData 'global\\pg_control'
+[IO.File]::Move($pgControlPath, "$pgControlPath.held")
+Assert-RejectedWithoutWrite 'missing pg_control'
+[IO.File]::Move("$pgControlPath.held", $pgControlPath)
+
+$script:reparseFailure = $true
+Assert-RejectedWithoutWrite 'pgdata reparse point'
+$script:reparseFailure = $false
+
+[IO.File]::WriteAllText((Join-Path $PgData 'postmaster.pid'), 'stale')
+Assert-RejectedWithoutWrite 'postmaster pid'
+[IO.File]::Delete((Join-Path $PgData 'postmaster.pid'))
+
+[IO.File]::WriteAllText('{_ps_literal(initdb_receipt)}', '{{}}')
+Assert-RejectedWithoutWrite 'unretired initdb receipt'
+[IO.File]::Delete('{_ps_literal(initdb_receipt)}')
+
+[IO.File]::WriteAllText('{_ps_literal(initdb_password)}', 'secret')
+Assert-RejectedWithoutWrite 'unretired initdb password'
+[IO.File]::Delete('{_ps_literal(initdb_password)}')
+
+[IO.File]::WriteAllText('{_ps_literal(ready)}', 'READY')
+Assert-RejectedWithoutWrite 'READY identity'
+[IO.File]::Delete('{_ps_literal(ready)}')
+
+[IO.Directory]::CreateDirectory('{_ps_literal(c07_host)}') | Out-Null
+Assert-RejectedWithoutWrite 'C07 authority root'
+[IO.Directory]::Delete('{_ps_literal(c07_host)}')
+
+[IO.Directory]::CreateDirectory('{_ps_literal(c07_runtime)}') | Out-Null
+Assert-RejectedWithoutWrite 'C07 runtime projection root'
+[IO.Directory]::Delete('{_ps_literal(c07_runtime)}')
+
+$script:runtimeFailureService = 'TicketboxPg'
+Assert-RejectedWithoutWrite 'PostgreSQL runtime residue'
+$script:runtimeFailureService = 'TicketboxBackend'
+Assert-RejectedWithoutWrite 'backend runtime residue'
+$script:runtimeFailureService = ''
 """,
             encoding="utf-8-sig",
         )

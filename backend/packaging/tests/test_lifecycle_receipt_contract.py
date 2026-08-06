@@ -24,12 +24,12 @@ def _literal(path: Path) -> str:
     return str(path).replace("'", "''")
 
 
-def test_pre_database_receipt_operation_rebind_is_narrow_and_cross_engine(
+def test_fresh_install_recovery_receipt_operation_rebind_is_narrow_and_cross_engine(
     tmp_path: Path,
 ) -> None:
     receipt_script = PACKAGING / "windows_lifecycle_receipt.ps1"
     for index, engine in enumerate(powershell_contract_engines()):
-        harness = tmp_path / f"receipt-pre-database-rebind-{index}.ps1"
+        harness = tmp_path / f"receipt-fresh-install-recovery-rebind-{index}.ps1"
         harness.write_text(
             f"""
 $ErrorActionPreference = 'Stop'
@@ -77,11 +77,45 @@ Set-TicketboxLifecycleReceiptC07InstallationOperation `
     -Receipt $receipt `
     -InstallerOwnerProcessId 1234 `
     -OperationId $newOperation `
-    -AllowPreDatabaseRebind
+    -AllowFreshInstallRecoveryRebind
 if ($script:writes -ne 1 -or $script:lastOperation -cne $newOperation) {{
-    throw 'safe pre-database receipt operation was not rebound'
+    throw 'safe fresh-install recovery receipt operation was not rebound'
 }}
-$receipt.backup_completed = $true
+$mutations = @(
+    [pscustomobject]@{{ Property = 'mode'; Bad = 'preserved_data_reinstall'; Good = 'fresh_install' }},
+    [pscustomobject]@{{ Property = 'previous_pg_state'; Bad = 'stopped'; Good = 'absent' }},
+    [pscustomobject]@{{ Property = 'previous_backend_state'; Bad = 'stopped'; Good = 'absent' }},
+    [pscustomobject]@{{ Property = 'previous_pg_start_policy'; Bad = 'disabled'; Good = 'absent' }},
+    [pscustomobject]@{{ Property = 'previous_backend_start_policy'; Bad = 'disabled'; Good = 'absent' }},
+    [pscustomobject]@{{ Property = 'preparation_stage'; Bad = 'prepared'; Good = 'files_may_have_been_replaced' }},
+    [pscustomobject]@{{ Property = 'files_may_have_been_replaced'; Bad = $false; Good = $true }},
+    [pscustomobject]@{{ Property = 'backup_required'; Bad = $true; Good = $false }},
+    [pscustomobject]@{{ Property = 'backup_completed'; Bad = $true; Good = $false }},
+    [pscustomobject]@{{ Property = 'backup_path'; Bad = 'C:\\protected\\backup.dump'; Good = '' }},
+    [pscustomobject]@{{ Property = 'backup_sha256'; Bad = ('A' * 64); Good = '' }},
+    [pscustomobject]@{{ Property = 'backup_byte_length'; Bad = 1; Good = 0 }},
+    [pscustomobject]@{{ Property = 'install_completed'; Bad = $true; Good = $false }},
+    [pscustomobject]@{{ Property = 'temporary_pg_service_cleanup_pending'; Bad = $true; Good = $false }},
+    [pscustomobject]@{{ Property = 'c07_production_authority_sha256'; Bad = ('B' * 64); Good = '' }},
+    [pscustomobject]@{{ Property = 'c07_runtime_projection_sha256'; Bad = ('C' * 64); Good = '' }}
+)
+foreach ($mutation in $mutations) {{
+    $receipt.($mutation.Property) = $mutation.Bad
+    $rejected = $false
+    try {{
+        Set-TicketboxLifecycleReceiptC07InstallationOperation `
+            -Path 'unused' `
+            -Receipt $receipt `
+            -InstallerOwnerProcessId 1234 `
+            -OperationId '33333333-3333-3333-3333-333333333333' `
+            -AllowFreshInstallRecoveryRebind
+    }}
+    catch {{ $rejected = $true }}
+    if (-not $rejected -or $script:writes -ne 1) {{
+        throw "receipt mutation $($mutation.Property) was rebound"
+    }}
+    $receipt.($mutation.Property) = $mutation.Good
+}}
 $rejected = $false
 try {{
     Set-TicketboxLifecycleReceiptC07InstallationOperation `
@@ -89,28 +123,13 @@ try {{
         -Receipt $receipt `
         -InstallerOwnerProcessId 1234 `
         -OperationId '33333333-3333-3333-3333-333333333333' `
-        -AllowPreDatabaseRebind
+        -SuccessorIntent ([pscustomobject]@{{ Payload = [pscustomobject]@{{}} }}) `
+        -AllowFreshInstallRecoveryRebind
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 1) {{
-    throw 'receipt with backup evidence was rebound'
+    throw 'fresh-install recovery accepted a successor intent'
 }}
-$receipt.backup_completed = $false
-$receipt.c07_production_authority_sha256 = ('A' * 64)
-$rejected = $false
-try {{
-    Set-TicketboxLifecycleReceiptC07InstallationOperation `
-        -Path 'unused' `
-        -Receipt $receipt `
-        -InstallerOwnerProcessId 1234 `
-        -OperationId '33333333-3333-3333-3333-333333333333' `
-        -AllowPreDatabaseRebind
-}}
-catch {{ $rejected = $true }}
-if (-not $rejected -or $script:writes -ne 1) {{
-    throw 'receipt with C07 authority evidence was rebound'
-}}
-$receipt.c07_production_authority_sha256 = ''
 $receipt.c07_installation_operation_id = 'not-a-guid'
 $rejected = $false
 try {{
@@ -119,7 +138,7 @@ try {{
         -Receipt $receipt `
         -InstallerOwnerProcessId 1234 `
         -OperationId '33333333-3333-3333-3333-333333333333' `
-        -AllowPreDatabaseRebind
+        -AllowFreshInstallRecoveryRebind
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 1) {{

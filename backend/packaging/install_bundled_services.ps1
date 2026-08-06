@@ -2734,14 +2734,15 @@ function Assert-DesktopManagerExpectedServiceNames {
     }
 }
 
-function Resolve-TicketboxPreDatabasePendingInstallationIdentity {
+function Resolve-TicketboxRecoverableFreshInstallPendingIdentity {
     param(
         [Parameter(Mandatory = $true)][object]$Candidate,
         [Parameter(Mandatory = $true)][object]$Identity,
         [Parameter(Mandatory = $true)][object]$LifecycleReceipt,
         [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
         [Parameter(Mandatory = $true)][bool]$HadExistingPgService,
-        [Parameter(Mandatory = $true)][bool]$HadExistingBackendService
+        [Parameter(Mandatory = $true)][bool]$HadExistingBackendService,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 99)][int]$ExpectedPgMajor
     )
 
     Assert-TicketboxInstallationIdentityBaseMatches $Identity $Candidate
@@ -2757,7 +2758,11 @@ function Resolve-TicketboxPreDatabasePendingInstallationIdentity {
             $receiptOperationId -ceq [string]$Identity.OperationId
         )
     ) {
-        return $Identity
+        return [pscustomobject]@{
+            Identity = $Identity
+            RecoveryStage = "same_release"
+            AllowReceiptOperationRebind = $false
+        }
     }
     $parsedExpectedOperationId = [guid]::Empty
     if (
@@ -2790,10 +2795,18 @@ function Resolve-TicketboxPreDatabasePendingInstallationIdentity {
         $Identity.State -cne "PENDING" -or
         [bool]$Identity.LegacyCompleted -or
         [string]$LifecycleReceipt.mode -cne "fresh_install" -or
+        [string]$LifecycleReceipt.previous_pg_state -cne "absent" -or
+        [string]$LifecycleReceipt.previous_backend_state -cne "absent" -or
+        [string]$LifecycleReceipt.previous_pg_start_policy -cne "absent" -or
+        [string]$LifecycleReceipt.previous_backend_start_policy -cne "absent" -or
         [string]$LifecycleReceipt.preparation_stage -cne
             "files_may_have_been_replaced" -or
+        -not [bool]$LifecycleReceipt.files_may_have_been_replaced -or
         [bool]$LifecycleReceipt.backup_required -or
         [bool]$LifecycleReceipt.backup_completed -or
+        -not [string]::IsNullOrEmpty([string]$LifecycleReceipt.backup_path) -or
+        -not [string]::IsNullOrEmpty([string]$LifecycleReceipt.backup_sha256) -or
+        [long]$LifecycleReceipt.backup_byte_length -ne 0 -or
         [bool]$LifecycleReceipt.install_completed -or
         [bool]$LifecycleReceipt.temporary_pg_service_cleanup_pending -or
         -not [string]::IsNullOrEmpty(
@@ -2803,7 +2816,7 @@ function Resolve-TicketboxPreDatabasePendingInstallationIdentity {
             [string]$LifecycleReceipt.c07_runtime_projection_sha256
         )
     ) {
-        throw "旧 PENDING installation identity 已越过可安全换包的前数据库阶段。"
+        throw "旧 PENDING installation identity 不属于可证明的首次安装恢复事务。"
     }
     $readyPath = Get-TicketboxPersistentInstallationIdentityPath (
         [string]$Candidate.DataRoot
@@ -2811,26 +2824,100 @@ function Resolve-TicketboxPreDatabasePendingInstallationIdentity {
     if (Test-Path -LiteralPath $readyPath) {
         throw "存在 READY installation identity，拒绝把旧 PENDING 当作首次安装残留。"
     }
-    if (
-        $HadExistingPgService -or
-        $HadExistingBackendService -or
-        (Service-Exists $PgServiceName) -or
-        (Service-Exists $BackendServiceName) -or
-        (Test-Path -LiteralPath (Join-Path $PgData "PG_VERSION") -PathType Leaf) -or
-        (Test-Path -LiteralPath $EnvPath -PathType Leaf)
-    ) {
-        throw "旧 PENDING installation identity 已伴随数据库、运行配置或服务状态。"
+    $envKind = Get-TicketboxPathEntryKindNoFollow $EnvPath
+    if ($envKind -cne "Missing") {
+        throw "旧 PENDING installation identity 已伴随运行配置。"
     }
-
+    $bootstrapRecoveryPath = Get-PostgresBootstrapRecoveryPath
+    $bootstrapRecoveryKind =
+        Get-TicketboxPathEntryKindNoFollow $bootstrapRecoveryPath
+    $initdbReceiptKind =
+        Get-TicketboxPathEntryKindNoFollow $InitdbServiceReceiptPath
+    $initdbPasswordKind =
+        Get-TicketboxPathEntryKindNoFollow $InitdbPasswordPath
     $pgDataKind = Get-TicketboxPathEntryKindNoFollow $PgData
-    if ($pgDataKind -ceq "Directory") {
-        Assert-NoTicketboxReparsePoints $PgData
-        if (@(Get-ChildItem -LiteralPath $PgData -Force -ErrorAction Stop).Count -ne 0) {
-            throw "旧 PENDING installation identity 的 pgdata 非空，拒绝自动换包。"
+    $pgServiceExists = Service-Exists $PgServiceName
+    $backendServiceExists = Service-Exists $BackendServiceName
+    $recoveryStage = ""
+    if (
+        -not $HadExistingPgService -and
+        -not $HadExistingBackendService -and
+        -not $pgServiceExists -and
+        -not $backendServiceExists -and
+        $bootstrapRecoveryKind -ceq "Missing" -and
+        $initdbReceiptKind -ceq "Missing" -and
+        $initdbPasswordKind -ceq "Missing"
+    ) {
+        if ($pgDataKind -ceq "Directory") {
+            Assert-NoTicketboxReparsePoints $PgData
+            if (@(Get-ChildItem -LiteralPath $PgData -Force -ErrorAction Stop).Count -ne 0) {
+                throw "旧 PENDING installation identity 的 pgdata 非空，拒绝前数据库换包。"
+            }
         }
+        elseif ($pgDataKind -cne "Missing") {
+            throw "旧 PENDING installation identity 的 pgdata 形态不可恢复。"
+        }
+        $recoveryStage = "pre_database"
     }
-    elseif ($pgDataKind -cne "Missing") {
-        throw "旧 PENDING installation identity 的 pgdata 形态不可恢复。"
+    elseif (
+        $HadExistingPgService -and
+        $HadExistingBackendService -and
+        $pgServiceExists -and
+        $backendServiceExists -and
+        $pgDataKind -ceq "Directory" -and
+        $bootstrapRecoveryKind -ceq "File" -and
+        $initdbReceiptKind -ceq "Missing" -and
+        $initdbPasswordKind -ceq "Missing"
+    ) {
+        Assert-NoTicketboxReparsePoints $PgData
+        $pgVersionPath = Join-Path $PgData "PG_VERSION"
+        $pgControlPath = Join-Path $PgData "global\pg_control"
+        if (
+            (Get-TicketboxPathEntryKindNoFollow $pgVersionPath) -cne "File" -or
+            (Get-TicketboxPathEntryKindNoFollow $pgControlPath) -cne "File" -or
+            (Get-TicketboxPathEntryKindNoFollow (Join-Path $PgData "postmaster.pid")) -cne
+                "Missing"
+        ) {
+            throw "旧 PENDING installation identity 的 PostgreSQL 簇未处于完整停止态。"
+        }
+        $versionItem = Get-Item -LiteralPath $pgVersionPath -Force -ErrorAction Stop
+        if ($versionItem.Length -le 0 -or $versionItem.Length -gt 16) {
+            throw "旧 PENDING installation identity 的 PG_VERSION 文件不安全。"
+        }
+        $versionText = [System.IO.File]::ReadAllText(
+            $pgVersionPath,
+            [System.Text.Encoding]::UTF8
+        ).Trim()
+        $actualPgMajor = 0
+        if (
+            -not [int]::TryParse($versionText, [ref]$actualPgMajor) -or
+            $actualPgMajor -ne $ExpectedPgMajor
+        ) {
+            throw "旧 PENDING installation identity 的 PostgreSQL major 与当前安装包不兼容。"
+        }
+        foreach ($serviceName in @($PgServiceName, $BackendServiceName)) {
+            if (
+                (Get-TicketboxServiceState $serviceName) -cne "stopped" -or
+                (Get-TicketboxServiceStartMode $serviceName) -cne "Disabled"
+            ) {
+                throw "旧 PENDING installation identity 的服务未保持停止和禁用。"
+            }
+        }
+        Wait-TicketboxBackendRuntimeStopped `
+            -Name $PgServiceName `
+            -BackendPort $PgPort `
+            -ExpectedRuntimeExecutables @($PgCtl, (Join-Path $PgBin "postgres.exe")) `
+            @ServiceWaitArguments
+        Wait-TicketboxBackendRuntimeStopped `
+            -Name $BackendServiceName `
+            -BackendPort $BackendPort `
+            -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe) `
+            @ServiceWaitArguments
+        [void](Read-PostgresBootstrapRecoveryState)
+        $recoveryStage = "post_initdb_pre_schema"
+    }
+    else {
+        throw "旧 PENDING installation identity 的数据库、服务和 bootstrap 状态不构成可证明的续装边界。"
     }
     foreach ($c07Root in @(
         (Get-TicketboxC07HostArtifactRoot),
@@ -2849,7 +2936,14 @@ function Resolve-TicketboxPreDatabasePendingInstallationIdentity {
         throw "前数据库 PENDING 换包缺少当前安装器绑定的新 operation id。"
     }
     if ($canonicalOperationId -ceq [string]$Identity.OperationId) {
-        return $Identity
+        return [pscustomobject]@{
+            Identity = $Identity
+            RecoveryStage = $recoveryStage
+            AllowReceiptOperationRebind = (
+                -not [string]::IsNullOrEmpty($receiptOperationId) -and
+                $receiptOperationId -cne $canonicalOperationId
+            )
+        }
     }
 
     $rebased = Write-TicketboxInstallationIdentityState `
@@ -2868,9 +2962,16 @@ function Resolve-TicketboxPreDatabasePendingInstallationIdentity {
                 $Candidate
         )
     ) {
-        throw "前数据库 PENDING installation identity 换包后未收敛。"
+        throw "首次安装 PENDING installation identity 恢复换包后未收敛。"
     }
-    return $rebased
+    return [pscustomobject]@{
+        Identity = $rebased
+        RecoveryStage = $recoveryStage
+        AllowReceiptOperationRebind = (
+            -not [string]::IsNullOrEmpty($receiptOperationId) -and
+            $receiptOperationId -cne $canonicalOperationId
+        )
+    }
 }
 
 if ($ValidateInstalledServicesOnly) {
@@ -3253,14 +3354,16 @@ try {
                     [string]$lifecycleReceipt.c07_installation_operation_id
                 )
         }
-        $c07InstallationIdentity =
-            Resolve-TicketboxPreDatabasePendingInstallationIdentity `
+        $c07PendingIdentityResolution =
+            Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
                 -Candidate $c07InstallationReleaseCandidate `
                 -Identity $c07InstallationIdentity `
                 -LifecycleReceipt $lifecycleReceipt `
                 -ExpectedOperationId $LifecycleFinalizationAttemptId `
                 -HadExistingPgService $hadExistingPgService `
-                -HadExistingBackendService $hadExistingBackendService
+                -HadExistingBackendService $hadExistingBackendService `
+                -ExpectedPgMajor $TargetPgMajor
+        $c07InstallationIdentity = $c07PendingIdentityResolution.Identity
     }
     catch {
         $identityFailure = [InvalidOperationException]::new(
@@ -3272,18 +3375,14 @@ try {
         throw $identityFailure
     }
     if ($c07InstallationIdentity.State -ceq "PENDING") {
-        $existingReceiptOperationId =
-            [string]$lifecycleReceipt.c07_installation_operation_id
-        $allowPreDatabaseReceiptRebind =
-            -not [string]::IsNullOrEmpty($existingReceiptOperationId) -and
-            $existingReceiptOperationId -cne
-                [string]$c07InstallationIdentity.OperationId
         Set-TicketboxLifecycleReceiptC07InstallationOperation `
             -Path $LifecycleReceiptPath `
             -Receipt $lifecycleReceipt `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -OperationId $c07InstallationIdentity.OperationId `
-            -AllowPreDatabaseRebind:$allowPreDatabaseReceiptRebind
+            -AllowFreshInstallRecoveryRebind:$(
+                [bool]$c07PendingIdentityResolution.AllowReceiptOperationRebind
+            )
         $lifecycleReceipt = Read-TicketboxLifecycleReceipt `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `

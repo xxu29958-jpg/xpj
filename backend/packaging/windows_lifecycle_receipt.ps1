@@ -1295,7 +1295,7 @@ function Set-TicketboxLifecycleReceiptC07InstallationOperation {
         [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
         [Parameter(Mandatory = $true)][string]$OperationId,
         [AllowNull()][object]$SuccessorIntent,
-        [switch]$AllowPreDatabaseRebind
+        [switch]$AllowFreshInstallRecoveryRebind
     )
     $canonicalOperationId = ([guid]$OperationId).ToString("D")
     $existingOperationId =
@@ -1315,14 +1315,22 @@ function Set-TicketboxLifecycleReceiptC07InstallationOperation {
             throw "安装事务已有的 C07 installation operation 不是规范 UUID。"
         }
         if ($existingOperationId -cne $canonicalOperationId) {
-            if ($AllowPreDatabaseRebind) {
+            if ($AllowFreshInstallRecoveryRebind) {
                 if (
                     $null -ne $SuccessorIntent -or
                     [string]$Receipt.mode -cne "fresh_install" -or
+                    [string]$Receipt.previous_pg_state -cne "absent" -or
+                    [string]$Receipt.previous_backend_state -cne "absent" -or
+                    [string]$Receipt.previous_pg_start_policy -cne "absent" -or
+                    [string]$Receipt.previous_backend_start_policy -cne "absent" -or
                     [string]$Receipt.preparation_stage -cne
                         "files_may_have_been_replaced" -or
+                    -not [bool]$Receipt.files_may_have_been_replaced -or
                     [bool]$Receipt.backup_required -or
                     [bool]$Receipt.backup_completed -or
+                    -not [string]::IsNullOrEmpty([string]$Receipt.backup_path) -or
+                    -not [string]::IsNullOrEmpty([string]$Receipt.backup_sha256) -or
+                    [long]$Receipt.backup_byte_length -ne 0 -or
                     [bool]$Receipt.install_completed -or
                     [bool]$Receipt.temporary_pg_service_cleanup_pending -or
                     -not [string]::IsNullOrEmpty(
@@ -1332,7 +1340,7 @@ function Set-TicketboxLifecycleReceiptC07InstallationOperation {
                         [string]$Receipt.c07_runtime_projection_sha256
                     )
                 ) {
-                    throw "只有零副作用的首次安装前数据库回执可以换绑 C07 operation。"
+                    throw "只有经安装闭环验证、且未产生备份或 C07 提交证据的首次安装恢复回执可以换绑 C07 operation。"
                 }
             }
             elseif (
