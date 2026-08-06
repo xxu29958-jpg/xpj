@@ -119,8 +119,13 @@ def test_failure_summary_is_an_allowlisted_projection_not_a_second_authority() -
     assert "successor_forward_repair" in windows
     assert "resume_same_operation" in windows
     assert "keep_services_stopped_contact_support" in windows
-    assert "结构化数据库失败摘要缺失、过期或校验失败" in windows
-    assert "安装器不会猜测当前 revision、恢复点或重试方式" in windows
+    assert "安全回执缺失、过期或校验失败" in windows
+    assert "无法安全判断失败发生在数据库维护前还是维护中" in windows
+    assert "TryLoadC07FailureSummary(Result)" in windows
+    assert "TryLoadInstallPublicFailure(Result)" in windows
+    assert windows.index("TryLoadC07FailureSummary(Result)") < windows.index(
+        "TryLoadInstallPublicFailure(Result)"
+    )
     assert "ticketbox-c07-installer-lifecycle-exit-veto-v2" in windows
     assert "'FINALIZATION_ATTEMPT_ID'" in windows
     assert "C07FailureSummaryReleaseAllowsRetry" in windows
@@ -141,11 +146,70 @@ def test_failure_summary_is_an_allowlisted_projection_not_a_second_authority() -
     assert "[guid]::TryParseExact(" in install
     assert install.count(
         "-FinalizationAttemptId $LifecycleFinalizationAttemptId"
-    ) == 4
+    ) == 5
     begin_attempt = flow.index("BeginLifecycleFinalizationAttempt()")
     pass_attempt = flow.index(" -LifecycleFinalizationAttemptId ", begin_attempt)
+    pass_public_failure = flow.index(" -PublicFailurePath ", pass_attempt)
     service_call = flow.index("'Ticketbox service installation'", pass_attempt)
-    assert begin_attempt < pass_attempt < service_call
+    assert begin_attempt < pass_attempt < pass_public_failure < service_call
+    assert "RecordInstallationFailure(LastPowerShellFailureMessage)" in flow
+    post_install = flow[
+        flow.index("if CurStep = ssPostInstall") : flow.index(
+            "function GetCustomSetupExitCode"
+        )
+    ]
+    assert "RaiseException" not in post_install
+    assert "ShowInstallationFailurePage" in flow
+    assert "LifecycleInstallFailed or" in flow
+    assert "Result := 4" in flow
+    assert "Ticketbox service installation failed." not in flow
+    assert "LifecycleBootstrapFilePath(InstallPublicFailureFileName)" in flow
+    assert "LifecycleInstallerStatePath(InstallPublicFailureFileName)" not in flow
+    runner = windows[
+        windows.index("function RunPowerShellChecked") : windows.index(
+            "function DataRootGuardStoppedAcknowledged"
+        )
+    ]
+    assert "PowerShell 退出码" not in runner
+    assert "详细日志：" not in runner
+    assert "日志目录：" not in runner
+    assert "TBX-PREP-FAILED" in runner
+    assert "TBX-INSTALL-LOG" in runner
+    assert "postgres_cluster_initialization_failed" in install
+    assert "TBX-INSTALL-INITDB" in install
+    assert "installation_identity_recovery_failed" in install
+    assert "TBX-INSTALL-IDENTITY" in install
+    preinstall = flow[
+        flow.index("if CurStep = ssInstall") : flow.index("if CurStep = ssPostInstall")
+    ]
+    assert "SuppressibleMsgBox(" in preinstall
+    assert "Abort();" in preinstall
+    assert "RaiseException(PreparationFailure)" not in preinstall
+    public_reader = windows[
+        windows.index("function TryLoadInstallPublicFailure") : windows.index(
+            "function C07ServiceInstallationFailureMessage"
+        )
+    ]
+    assert "LifecycleBootstrapFilePath(InstallPublicFailureFileName)" in public_reader
+    assert "postgres_cluster_initialization_failed" in public_reader
+    assert "TBX-INSTALL-INITDB" in public_reader
+    assert "installation_identity_recovery_failed" in public_reader
+    assert "TBX-INSTALL-IDENTITY" in public_reader
+    resolver = install[
+        install.index("function Resolve-TicketboxInstallPublicFailurePath") : install.index(
+            "function Publish-TicketboxInstallPublicFailureReceipt"
+        )
+    ]
+    assert "[Environment+SpecialFolder]::CommonProgramFiles" in resolver
+    assert '"Ticketbox-Installer-Bootstrap-$InstallerLockOwnerProcessId"' in resolver
+    assert "Assert-TicketboxProtectedDirectoryAcl $bootstrapRoot" in resolver
+    assert "$InstallerState" not in resolver
+    resolve_before_lease = install.index(
+        "Resolve-TicketboxInstallPublicFailurePath $PublicFailurePath",
+        install.index("$operationLock = Enter-TicketboxLifecycleLock"),
+    )
+    payload_lease = install.index("Enter-TicketboxInstalledC07PayloadAuthorityLease")
+    assert resolve_before_lease < payload_lease
 
 
 def test_failure_summary_is_packaged_and_bound_into_recipe_provenance() -> None:
@@ -156,6 +220,169 @@ def test_failure_summary_is_packaged_and_bound_into_recipe_provenance() -> None:
         'DestDir: "{app}\\installer"; Flags: ignoreversion'
     ) in installer
     assert '"packaging\\windows_c07_failure_summary.ps1"' in provenance
+
+
+def test_public_failure_receipt_is_bounded_and_contains_no_raw_exception(
+    tmp_path: Path,
+) -> None:
+    harness = tmp_path / "public-failure-receipt-contract.ps1"
+    bootstrap_dir = tmp_path / "Ticketbox-Installer-Bootstrap-4242"
+    bootstrap_dir.mkdir()
+    harness.write_text(
+        f"""
+#Requires -Version 5.1
+$ErrorActionPreference = 'Stop'
+$sourcePath = {_ps_literal(INSTALLER)}
+$tokens = $null
+$errors = $null
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    $sourcePath,
+    [ref]$tokens,
+    [ref]$errors
+)
+foreach ($functionName in @(
+    'Publish-TicketboxInstallPublicFailureReceipt',
+    'New-TicketboxInstallCompensationAggregateFailure'
+)) {{
+    $functionAst = $ast.FindAll({{
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -ceq $functionName
+    }}, $true) | Select-Object -First 1
+    if ($null -eq $functionAst) {{ throw "missing function $functionName" }}
+    Invoke-Expression $functionAst.Extent.Text
+}}
+$script:ExpectedReceipt = Join-Path `
+    {_ps_literal(bootstrap_dir)} `
+    'installer-public-failure-v1.txt'
+function Resolve-TicketboxInstallPublicFailurePath([string]$Path) {{
+    $actual = [IO.Path]::GetFullPath($Path)
+    $expected = [IO.Path]::GetFullPath($script:ExpectedReceipt)
+    if (-not [string]::Equals(
+        $actual,
+        $expected,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {{ throw 'public receipt path is outside lifecycle bootstrap' }}
+    return $actual
+}}
+function Write-TicketboxProtectedUtf8FileDurable {{
+    param($Path,$Text,$FullControlAccounts,$OwnerAccount,[switch]$ReplaceExisting)
+    [IO.File]::WriteAllText($Path,$Text,[Text.UTF8Encoding]::new($false))
+}}
+$owner = [pscustomobject]@{{
+    ProcessId = [uint32]4242
+    StartedFileTimeHigh = [uint32]123
+    StartedFileTimeLow = [uint32]456
+}}
+$lock = [pscustomobject]@{{ ExternalOwnerIdentity = $owner }}
+$attempt = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+$receipt = $script:ExpectedReceipt
+$failure = [IO.InvalidDataException]::new(
+    'raw DATABASE_URL=super-secret must never leave the protected log'
+)
+$failure.Data['TicketboxInstallPublicFailureCode'] =
+    'backend_payload_manifest_order_invalid'
+Publish-TicketboxInstallPublicFailureReceipt `
+    -Path $receipt `
+    -LifecycleLock $lock `
+    -FinalizationAttemptId $attempt `
+    -Failure $failure `
+    -MutationStarted $false
+$lines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
+if ($lines.Count -ne 9 -or
+    $lines[0] -cne 'SCHEMA=ticketbox-install-public-failure-v1' -or
+    $lines[1] -cne 'INSTALLER_OWNER_PID=4242' -or
+    $lines[4] -cne "FINALIZATION_ATTEMPT_ID=$attempt" -or
+    $lines[5] -cne 'CONTEXT=service_installation' -or
+    $lines[6] -cne 'FAILURE_CODE=backend_payload_manifest_order_invalid' -or
+    $lines[7] -cne 'DATABASE_MUTATION_STATE=not_started' -or
+    $lines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-PROVENANCE-ORDER') {{
+    throw 'public failure receipt shape or binding drifted'
+}}
+$text = [IO.File]::ReadAllText($receipt,[Text.UTF8Encoding]::new($false))
+if ($text.Length -gt 2048 -or $text -match 'DATABASE_URL|super-secret') {{
+    throw 'public failure receipt exposed raw exception material'
+}}
+$initdbFailure = [InvalidOperationException]::new('private initdb diagnostic')
+$initdbFailure.Data['TicketboxInstallPublicFailureCode'] =
+    'postgres_cluster_initialization_failed'
+Publish-TicketboxInstallPublicFailureReceipt `
+    -Path $receipt `
+    -LifecycleLock $lock `
+    -FinalizationAttemptId $attempt `
+    -Failure $initdbFailure `
+    -MutationStarted $true
+$initdbLines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
+if ($initdbLines[6] -cne 'FAILURE_CODE=postgres_cluster_initialization_failed' -or
+    $initdbLines[7] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
+    $initdbLines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-INITDB') {{
+    throw 'initdb public failure receipt drifted'
+}}
+$cleanupFailure = [InvalidOperationException]::new('private cleanup diagnostic')
+$aggregateFailure = New-TicketboxInstallCompensationAggregateFailure `
+    -InstallFailure $initdbFailure `
+    -CompensationFailure $cleanupFailure
+if (-not [bool]$aggregateFailure.Data['TicketboxInstallCompensationFailed'] -or
+    [string]$aggregateFailure.Data['TicketboxInstallPublicFailureCode'] -cne
+        'unclassified_service_install_failure') {{
+    throw 'incomplete compensation preserved a misleading retry classification'
+}}
+Publish-TicketboxInstallPublicFailureReceipt `
+    -Path $receipt `
+    -LifecycleLock $lock `
+    -FinalizationAttemptId $attempt `
+    -Failure $aggregateFailure `
+    -MutationStarted $true
+$aggregateLines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
+if ($aggregateLines[6] -cne 'FAILURE_CODE=unclassified_service_install_failure' -or
+    $aggregateLines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-UNKNOWN') {{
+    throw 'incomplete compensation did not fail closed to UNKNOWN support'
+}}
+$identityFailure = [InvalidOperationException]::new('private identity diagnostic')
+$identityFailure.Data['TicketboxInstallPublicFailureCode'] =
+    'installation_identity_recovery_failed'
+Publish-TicketboxInstallPublicFailureReceipt `
+    -Path $receipt `
+    -LifecycleLock $lock `
+    -FinalizationAttemptId $attempt `
+    -Failure $identityFailure `
+    -MutationStarted $true
+$identityLines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
+if ($identityLines[6] -cne 'FAILURE_CODE=installation_identity_recovery_failed' -or
+    $identityLines[7] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
+    $identityLines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-IDENTITY') {{
+    throw 'identity public failure receipt drifted'
+}}
+$unknown = [InvalidOperationException]::new('another private diagnostic')
+Publish-TicketboxInstallPublicFailureReceipt `
+    -Path $receipt `
+    -LifecycleLock $lock `
+    -FinalizationAttemptId $attempt `
+    -Failure $unknown `
+    -MutationStarted $true
+$updated = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
+if ($updated[6] -cne 'FAILURE_CODE=unclassified_service_install_failure' -or
+    $updated[7] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
+    $updated[8] -cne 'SUPPORT_CODE=TBX-INSTALL-UNKNOWN') {{
+    throw 'unknown public failure receipt did not fail closed'
+}}
+$outsideRejected = $false
+try {{
+    Publish-TicketboxInstallPublicFailureReceipt `
+        -Path (Join-Path (Split-Path -Parent {_ps_literal(bootstrap_dir)}) 'outside.txt') `
+        -LifecycleLock $lock `
+        -FinalizationAttemptId $attempt `
+        -Failure $failure `
+        -MutationStarted $false
+}}
+catch {{ $outsideRejected = $_.Exception.Message -like '*lifecycle bootstrap*' }}
+if (-not $outsideRejected) {{ throw 'out-of-scope public receipt path was accepted' }}
+""",
+        encoding="utf-8-sig",
+    )
+    for engine in powershell_contract_engines():
+        result = _run_ps(engine, harness)
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
 def test_failure_summary_round_trip_and_tamper_rejection_on_ps51_and_ps7(

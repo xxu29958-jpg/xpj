@@ -95,13 +95,32 @@ function Get-TicketboxOrdinalSortedPaths([string[]]$Paths) {
     return $sortedPaths
 }
 function Get-TicketboxFileSetSnapshot([string]$Root, [string[]]$Paths) {
-    $sortedPaths = Get-TicketboxOrdinalSortedPaths $Paths
-    $records = @(
-        $sortedPaths | ForEach-Object { Get-TicketboxFileEvidence $Root $_ }
-    )
-    if ($records.Count -eq 0) {
+    if ($Paths.Count -eq 0) {
         throw "构建 provenance 文件集合为空：$Root"
     }
+    $recordsByPath =
+        [System.Collections.Generic.SortedDictionary[string, object]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($path in $Paths) {
+        $record = Get-TicketboxFileEvidence $Root $path
+        $relativePath = [string]$record.path
+        if ($relativePath -cmatch "[^\x20-\x7e]") {
+            throw (
+                "构建 provenance canonical manifest 相对路径只允许可打印 ASCII；" +
+                "这可避免不同 .NET Unicode 版本改变 OrdinalIgnoreCase 结果：" +
+                $relativePath
+            )
+        }
+        if ($recordsByPath.ContainsKey($relativePath)) {
+            throw (
+                "构建 provenance 包含 ordinal-ignore-case 等价的重复相对路径：" +
+                $relativePath
+            )
+        }
+        $recordsByPath.Add($relativePath, $record)
+    }
+    $records = [object[]]@($recordsByPath.Values)
     $fingerprintInput = ($records | ForEach-Object {
         "{0}`0{1}`0{2}`n" -f $_.path, $_.size, $_.sha256
     }) -join ""
@@ -431,7 +450,9 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
     if ($records.Count -eq 0) {
         throw "已安装 frozen backend secondary payload 文件集为空。"
     }
-    $seen = @{}
+    $seen = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
     $paths = New-Object System.Collections.Generic.List[string]
     foreach ($record in $records) {
         $propertyNames = @($record.PSObject.Properties.Name)
@@ -450,6 +471,7 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
             [System.IO.Path]::IsPathRooted($relativePath) -or
             $relativePath.Contains("\") -or
             $relativePath.Contains(":") -or
+            $relativePath -cmatch "[^\x20-\x7e]" -or
             $relativePath.StartsWith("/") -or
             $relativePath.EndsWith("/") -or
             @($segments | Where-Object {
@@ -458,7 +480,7 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
         ) {
             throw "已安装 frozen backend secondary payload 路径不是 canonical 相对路径。"
         }
-        if ($seen.ContainsKey($relativePath)) {
+        if (-not $seen.Add($relativePath)) {
             throw "已安装 frozen backend secondary payload 路径大小写重复：$relativePath"
         }
         $size = [int64]0
@@ -469,18 +491,22 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
         ) {
             throw "已安装 frozen backend secondary payload size/SHA-256 无效：$relativePath"
         }
-        $seen[$relativePath] = $true
         $paths.Add($relativePath)
     }
     $sorted = [string[]]@($paths)
     [Array]::Sort($sorted, [System.StringComparer]::OrdinalIgnoreCase)
     for ($index = 0; $index -lt $sorted.Count; $index++) {
         if ($sorted[$index] -cne [string]$records[$index].path) {
-            throw "已安装 frozen backend secondary payload 文件记录未按 ordinal-ignore-case 排序。"
+            $failure = [System.IO.InvalidDataException]::new(
+                "已安装 frozen backend secondary payload 文件记录未按 ordinal-ignore-case 排序。"
+            )
+            $failure.Data["TicketboxInstallPublicFailureCode"] =
+                "backend_payload_manifest_order_invalid"
+            throw $failure
         }
     }
     foreach ($requiredPath in $script:TicketboxInstalledC07ExternalAuthorityPaths) {
-        if (-not $seen.ContainsKey($requiredPath)) {
+        if (-not $seen.Contains($requiredPath)) {
             throw "已安装 C07 外置迁移 authority 缺少必需文件：$requiredPath"
         }
     }

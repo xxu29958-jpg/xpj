@@ -31,6 +31,7 @@ param(
     [switch]$SkipServiceStart,
     [int]$InstallerLockOwnerProcessId = 0,
     [string]$LifecycleFinalizationAttemptId = "",
+    [string]$PublicFailurePath = "",
     [switch]$ValidateOnly,
     [string]$ExpectedBackendServiceName = "",
     [string]$ExpectedPgServiceName = "",
@@ -88,6 +89,7 @@ if ($Timezone.Trim().Length -eq 0) { $Timezone = [string]$ReleaseConfig.default_
 $PgHome = Join-Path $InstallDir "pg"
 $PgBin = Join-Path $PgHome "bin"
 $PgCtl = Join-Path $PgBin "pg_ctl.exe"
+$InitdbExe = Join-Path $PgBin "initdb.exe"
 $PgReady = Join-Path $PgBin "pg_isready.exe"
 $Psql = Join-Path $PgBin "psql.exe"
 $PgDump = Join-Path $PgBin "pg_dump.exe"
@@ -126,6 +128,11 @@ if (-not (Test-Path -LiteralPath $ReceiptScript -PathType Leaf)) {
     throw "缺少 Windows 生命周期回执脚本：$ReceiptScript"
 }
 . $ReceiptScript
+$DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
+if (-not (Test-Path -LiteralPath $DatabaseSafetyScript -PathType Leaf)) {
+    throw "缺少 Windows 数据库安全脚本：$DatabaseSafetyScript"
+}
+. $DatabaseSafetyScript
 $InstallerRuntimeRecoveryGuardPath = Get-TicketboxInstallerRuntimeRecoveryGuardPath
 $RuntimeDataBindingServiceAccounts = @(
     (Get-TicketboxServiceSid $PgServiceName),
@@ -208,6 +215,8 @@ if (-not (Test-Path -LiteralPath $LockScript -PathType Leaf)) {
     throw "缺少 Windows 生命周期锁脚本：$LockScript"
 }
 . $LockScript
+$InitdbPasswordPath = Get-TicketboxInitdbPasswordPath $DataRoot
+$InitdbServiceReceiptPath = Get-TicketboxInitdbServiceReceiptPath
 $InstallerState = Get-TicketboxInstallerStateDirectory
 $OwnerBootstrapPath = Join-Path $InstallerState "owner-bootstrap.txt"
 $OwnerHandoffPendingPath = Join-Path $InstallerState "owner-handoff-pending"
@@ -225,11 +234,6 @@ if (-not (Test-Path -LiteralPath $PgRecoveryToolsScript -PathType Leaf)) {
     throw "缺少 Windows PostgreSQL 恢复工具脚本：$PgRecoveryToolsScript"
 }
 . $PgRecoveryToolsScript
-$DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
-if (-not (Test-Path -LiteralPath $DatabaseSafetyScript -PathType Leaf)) {
-    throw "缺少 Windows 数据库安全脚本：$DatabaseSafetyScript"
-}
-. $DatabaseSafetyScript
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
 if (-not (Test-Path -LiteralPath $DatabaseScript -PathType Leaf)) {
     throw "缺少 Windows bundled database 脚本：$DatabaseScript"
@@ -271,6 +275,121 @@ if (-not (Test-Path -LiteralPath $C07FailureSummaryScript -PathType Leaf)) {
     throw "缺少 Windows C07 installer failure summary 脚本：$C07FailureSummaryScript"
 }
 . $C07FailureSummaryScript
+
+function Resolve-TicketboxInstallPublicFailurePath([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return "" }
+    if ($InstallerLockOwnerProcessId -le 0) {
+        throw "公开安装失败回执缺少当前 Inno owner。"
+    }
+    if (-not [Environment]::Is64BitProcess) {
+        throw "公开安装失败回执只允许由 64 位安装宿主发布。"
+    }
+    $commonProgramFiles = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::CommonProgramFiles
+    )
+    if ([string]::IsNullOrWhiteSpace($commonProgramFiles)) {
+        throw "无法定位受信任的 Common Program Files。"
+    }
+    $bootstrapRoot = [IO.Path]::GetFullPath(
+        (Join-Path `
+            $commonProgramFiles `
+            "Ticketbox-Installer-Bootstrap-$InstallerLockOwnerProcessId")
+    )
+    $expected = [IO.Path]::GetFullPath(
+        (Join-Path $bootstrapRoot "installer-public-failure-v1.txt")
+    )
+    $actual = [IO.Path]::GetFullPath($Path)
+    if (-not [string]::Equals(
+        $actual,
+        $expected,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "公开安装失败回执路径未绑定当前 lifecycle bootstrap。"
+    }
+    $bootstrapKind = Get-TicketboxPathEntryKindNoFollow $bootstrapRoot
+    if ($bootstrapKind -cne "Directory") {
+        throw "公开安装失败回执 lifecycle bootstrap 不是受信任目录。"
+    }
+    Assert-TicketboxProtectedDirectoryAcl $bootstrapRoot
+    $kind = Get-TicketboxPathEntryKindNoFollow $actual
+    if ($kind -notin @("Missing", "File")) {
+        throw "公开安装失败回执路径不是普通文件。"
+    }
+    if ($kind -ceq "File") {
+        Assert-TicketboxExactFileAcl `
+            -Path $actual `
+            -Accounts @("SYSTEM", "BUILTIN\Administrators") `
+            -OwnerAccount "SYSTEM"
+    }
+    return $actual
+}
+
+function Publish-TicketboxInstallPublicFailureReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock,
+        [Parameter(Mandatory = $true)][string]$FinalizationAttemptId,
+        [Parameter(Mandatory = $true)][Exception]$Failure,
+        [Parameter(Mandatory = $true)][bool]$MutationStarted
+    )
+
+    $canonicalPath = Resolve-TicketboxInstallPublicFailurePath $Path
+    if ($canonicalPath.Length -eq 0) { return }
+    $ownerIdentity = $LifecycleLock.ExternalOwnerIdentity
+    if ($null -eq $ownerIdentity -or [int]$ownerIdentity.ProcessId -lt 1) {
+        throw "公开安装失败回执缺少 Inno owner identity。"
+    }
+    $failureCode = "unclassified_service_install_failure"
+    if ($Failure.Data.Contains("TicketboxInstallPublicFailureCode")) {
+        $candidate = [string]$Failure.Data["TicketboxInstallPublicFailureCode"]
+        if ($candidate -in @(
+            "backend_payload_manifest_order_invalid",
+            "postgres_cluster_initialization_failed",
+            "installation_identity_recovery_failed"
+        )) {
+            $failureCode = $candidate
+        }
+    }
+    if ($failureCode -ceq "backend_payload_manifest_order_invalid") {
+        $supportCode = "TBX-INSTALL-PROVENANCE-ORDER"
+    }
+    elseif ($failureCode -ceq "postgres_cluster_initialization_failed") {
+        $supportCode = "TBX-INSTALL-INITDB"
+    }
+    elseif ($failureCode -ceq "installation_identity_recovery_failed") {
+        $supportCode = "TBX-INSTALL-IDENTITY"
+    }
+    else {
+        $supportCode = "TBX-INSTALL-UNKNOWN"
+    }
+    if ($MutationStarted) {
+        $databaseMutationState = "started_or_possible"
+    }
+    else {
+        $databaseMutationState = "not_started"
+    }
+    $text = @(
+        "SCHEMA=ticketbox-install-public-failure-v1",
+        "INSTALLER_OWNER_PID=$([uint32]$ownerIdentity.ProcessId)",
+        "INSTALLER_OWNER_STARTED_FILETIME_HIGH=$([uint32]$ownerIdentity.StartedFileTimeHigh)",
+        "INSTALLER_OWNER_STARTED_FILETIME_LOW=$([uint32]$ownerIdentity.StartedFileTimeLow)",
+        "FINALIZATION_ATTEMPT_ID=$FinalizationAttemptId",
+        "CONTEXT=service_installation",
+        "FAILURE_CODE=$failureCode",
+        "DATABASE_MUTATION_STATE=$databaseMutationState",
+        "SUPPORT_CODE=$supportCode"
+    ) -join "`r`n"
+    $text += "`r`n"
+    if ([Text.UTF8Encoding]::new($false).GetByteCount($text) -gt 2048) {
+        throw "公开安装失败回执超过大小上限。"
+    }
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $canonicalPath `
+        -Text $text `
+        -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+        -OwnerAccount "SYSTEM" `
+        -ReplaceExisting
+}
 $C07RecoveryGenerationScript = Join-Path `
     $ScriptDir `
     "windows_c07_recovery_generation.ps1"
@@ -353,6 +472,8 @@ function New-TicketboxInstallCompensationAggregateFailure {
         $causes
     )
     $aggregateFailure.Data["TicketboxInstallCompensationFailed"] = $true
+    $aggregateFailure.Data["TicketboxInstallPublicFailureCode"] =
+        "unclassified_service_install_failure"
     if ($InstallFailure.Data.Contains("TicketboxC07FailureCode")) {
         $aggregateFailure.Data["TicketboxC07FailureCode"] =
             $InstallFailure.Data["TicketboxC07FailureCode"]
@@ -405,7 +526,8 @@ function New-TicketboxInstallFinalizationAggregateFailure {
         foreach ($key in @(
             "TicketboxC07FailureCode",
             "TicketboxC07FailureCodes",
-            "TicketboxInstallCompensationFailed"
+            "TicketboxInstallCompensationFailed",
+            "TicketboxInstallPublicFailureCode"
         )) {
             if ($OperationFailure.Data.Contains($key)) {
                 $aggregateFailure.Data[$key] = $OperationFailure.Data[$key]
@@ -446,7 +568,8 @@ function New-TicketboxInstallFailureSummaryAggregateFailure {
     foreach ($key in @(
         "TicketboxC07FailureCode",
         "TicketboxC07FailureCodes",
-        "TicketboxInstallCompensationFailed"
+        "TicketboxInstallCompensationFailed",
+        "TicketboxInstallPublicFailureCode"
     )) {
         if ($InstallFailure.Data.Contains($key)) {
             $aggregateFailure.Data[$key] = $InstallFailure.Data[$key]
@@ -1748,18 +1871,400 @@ function Remove-ServiceIfExists {
         @ServiceWaitArguments
 }
 
+function Get-TicketboxInitdbReceiptOwnerProcessId {
+    if ($InstallerLockOwnerProcessId -gt 0) {
+        return $InstallerLockOwnerProcessId
+    }
+    return $PID
+}
+
+function Read-TicketboxCurrentInitdbServiceReceipt {
+    param([switch]$AllowPreviousInstallerOwnerProcessId)
+
+    return Read-TicketboxInitdbServiceReceipt `
+        -Path $InitdbServiceReceiptPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -ServiceName $PgServiceName `
+        -PgMajor $TargetPgMajor `
+        -StopTimeoutMs $StopTimeoutMs `
+        -InstallerOwnerProcessId (Get-TicketboxInitdbReceiptOwnerProcessId) `
+        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
+}
+
+function Set-TicketboxCurrentInitdbServiceReceiptPhase {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][ValidateSet(
+            "registered",
+            "start_authorized",
+            "initdb_succeeded",
+            "converted_to_pgctl"
+        )][string]$Phase
+    )
+
+    Set-TicketboxInitdbServiceReceiptPhase `
+        -Path $InitdbServiceReceiptPath `
+        -Receipt $Receipt `
+        -InstallerOwnerProcessId (Get-TicketboxInitdbReceiptOwnerProcessId) `
+        -Phase $Phase
+    return Read-TicketboxCurrentInitdbServiceReceipt
+}
+
+function Assert-TicketboxInitdbPasswordFileSecurity {
+    Assert-TicketboxInitdbPasswordFileAcl `
+        -Path $InitdbPasswordPath `
+        -ServiceName $PgServiceName
+}
+
+function Write-TicketboxInitdbPasswordFile([string]$SuperuserPassword) {
+    Assert-PostgresBootstrapPasswordValue `
+        $SuperuserPassword `
+        "superuser_password"
+    Write-TicketboxInitdbPasswordFileAtomically `
+        -Path $InitdbPasswordPath `
+        -Text $SuperuserPassword `
+        -ServiceName $PgServiceName
+    Assert-TicketboxInitdbPasswordFileSecurity
+}
+
+function Remove-TicketboxInitdbPasswordFileIfPresent([object]$Receipt = $null) {
+    $allowPreAuthorizationAcl =
+        $null -ne $Receipt -and
+        [string]$Receipt.phase -in @("intent_written", "registered")
+    Remove-TicketboxInitdbPasswordFileExact `
+        -Path $InitdbPasswordPath `
+        -ServiceName $PgServiceName `
+        -AllowServiceReadMissing:$allowPreAuthorizationAcl
+}
+
+function Assert-TicketboxInitdbServiceConfiguration {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][ValidateSet("Disabled", "Manual")][string]$StartMode
+    )
+
+    Assert-TicketboxServiceOwnership `
+        -Name $PgServiceName `
+        -ExpectedExecutable $ShawlExe | Out-Null
+    Assert-TicketboxServiceAccount `
+        -Name $PgServiceName `
+        -ExpectedAccount "NT SERVICE\$PgServiceName"
+    Assert-TicketboxInitdbServiceCommand `
+        -Name $PgServiceName `
+        -ExpectedShawl $ShawlExe `
+        -ExpectedServiceName $PgServiceName `
+        -ExpectedWorkingDirectory $PgBin `
+        -ExpectedInitdb $InitdbExe `
+        -ExpectedDataRoot $PgData `
+        -ExpectedPasswordFile $InitdbPasswordPath `
+        -ExpectedStopTimeoutMs $StopTimeoutMs `
+        -ExpectedImagePath ([string]$Receipt.image_path)
+    Assert-TicketboxServiceStartMode `
+        -Name $PgServiceName `
+        -ExpectedStartMode $StartMode
+    Assert-TicketboxServiceHasNoFailureActions $PgServiceName
+}
+
+function Assert-TicketboxFreshPgClusterComplete {
+    $pgVersionPath = Join-Path $PgData "PG_VERSION"
+    if (-not (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)) {
+        throw "initdb 未发布 PG_VERSION。"
+    }
+    $actualMajor = (Get-Content -LiteralPath $pgVersionPath -Raw -Encoding ASCII).Trim()
+    if ($actualMajor -cne [string]$TargetPgMajor) {
+        throw "initdb 数据簇主版本不匹配。"
+    }
+    foreach ($requiredPath in @(
+        (Join-Path $PgData "global\pg_control"),
+        (Join-Path $PgData "postgresql.conf"),
+        (Join-Path $PgData "pg_hba.conf")
+    )) {
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+            throw "initdb 数据簇缺少必要文件。"
+        }
+    }
+    if (
+        -not (Test-Path -LiteralPath (Join-Path $PgData "base") -PathType Container) -or
+        (Test-Path -LiteralPath (Join-Path $PgData "postmaster.pid"))
+    ) {
+        throw "initdb 数据簇结构或停止状态不可信。"
+    }
+    Assert-NoTicketboxReparsePoints $PgData
+}
+
+function New-TicketboxInstallServiceCompensationAuthority {
+    return [pscustomobject][ordered]@{
+        BackendService = "none"
+        PostgresService = "none"
+    }
+}
+
+function Assert-TicketboxInstallServiceCompensationAuthority([object]$Authority) {
+    if ($null -eq $Authority) {
+        throw "安装服务补偿 authority 缺失。"
+    }
+    $propertyNames = @($Authority.PSObject.Properties.Name | Sort-Object)
+    if (
+        $propertyNames.Count -ne 2 -or
+        $propertyNames[0] -cne "BackendService" -or
+        $propertyNames[1] -cne "PostgresService"
+    ) {
+        throw "安装服务补偿 authority 结构无效。"
+    }
+    foreach ($propertyName in $propertyNames) {
+        if ([string]$Authority.$propertyName -notin @(
+            "none",
+            "validated_preexisting",
+            "created_by_installer"
+        )) {
+            throw "安装服务补偿 authority 状态无效：$propertyName。"
+        }
+    }
+}
+
+function Grant-TicketboxInstallServiceCompensationAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][ValidateSet(
+            "BackendService",
+            "PostgresService"
+        )][string]$Service,
+        [Parameter(Mandatory = $true)][ValidateSet(
+            "validated_preexisting",
+            "created_by_installer"
+        )][string]$Grant
+    )
+
+    Assert-TicketboxInstallServiceCompensationAuthority $Authority
+    $current = [string]$Authority.$Service
+    if ($current -cne "none" -and $current -cne $Grant) {
+        throw "安装服务补偿 authority 拒绝越权转换：$Service $current -> $Grant。"
+    }
+    $Authority.$Service = $Grant
+    Assert-TicketboxInstallServiceCompensationAuthority $Authority
+}
+
+function Disable-TicketboxInitdbServiceIfPresent([object]$Receipt) {
+    if (-not (Service-Exists $PgServiceName)) { return }
+    $actualStartMode = Get-TicketboxServiceStartMode $PgServiceName
+    if ($actualStartMode -notin @("Disabled", "Manual")) {
+        throw "initdb one-shot 服务启动模式越界：$actualStartMode"
+    }
+    Assert-TicketboxInitdbServiceConfiguration `
+        -Receipt $Receipt `
+        -StartMode $actualStartMode
+    Stop-TicketboxOwnedServiceIfExists `
+        -Name $PgServiceName `
+        -ExpectedExecutable $ShawlExe `
+        -ExpectedRuntimeExecutables @($ShawlExe, $InitdbExe) `
+        @ServiceWaitArguments
+    Invoke-ScChecked @("config", $PgServiceName, "start=", "disabled") | Out-Null
+    Assert-TicketboxInitdbServiceConfiguration `
+        -Receipt $Receipt `
+        -StartMode "Disabled"
+}
+
+function Invoke-TicketboxServiceOwnedInitdb {
+    param(
+        [Parameter(Mandatory = $true)][object]$BootstrapState,
+        [Parameter(Mandatory = $true)][object]$CompensationAuthority
+    )
+
+    Assert-TicketboxInstallServiceCompensationAuthority $CompensationAuthority
+    $imagePath = New-TicketboxInitdbServiceImagePath `
+        -ShawlPath $ShawlExe `
+        -ServiceName $PgServiceName `
+        -WorkingDirectory $PgBin `
+        -InitdbPath $InitdbExe `
+        -DataRoot $PgData `
+        -PasswordFile $InitdbPasswordPath `
+        -StopTimeoutMs $StopTimeoutMs
+    if (Service-Exists $PgServiceName) {
+        throw "PostgreSQL 同名服务在 fresh initdb create-only 边界已存在。"
+    }
+    Write-TicketboxInitdbServiceReceipt `
+        -Path $InitdbServiceReceiptPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -ServiceName $PgServiceName `
+        -ImagePath $imagePath `
+        -PgMajor $TargetPgMajor `
+        -StopTimeoutMs $StopTimeoutMs `
+        -InstallerOwnerProcessId (Get-TicketboxInitdbReceiptOwnerProcessId) `
+        -Phase "intent_written"
+    $receipt = Read-TicketboxCurrentInitdbServiceReceipt
+    $operationFailure = $null
+    $createdByThisInvocation = $false
+    try {
+        Invoke-ScChecked @(
+            "create", $PgServiceName,
+            "binPath=", $imagePath,
+            "start=", "disabled",
+            "obj=", "NT SERVICE\$PgServiceName"
+        ) | Out-Null
+        $createdByThisInvocation = $true
+        Grant-TicketboxInstallServiceCompensationAuthority `
+            -Authority $CompensationAuthority `
+            -Service "PostgresService" `
+            -Grant "created_by_installer"
+        Assert-TicketboxInitdbServiceConfiguration `
+            -Receipt $receipt `
+            -StartMode "Disabled"
+        $receipt = Set-TicketboxCurrentInitdbServiceReceiptPhase `
+            -Receipt $receipt `
+            -Phase "registered"
+        Set-TicketboxAcl `
+            -IncludePgService $true `
+            -IncludeBackendService $false
+        Write-TicketboxInitdbPasswordFile `
+            ([string]$BootstrapState.SuperuserPassword)
+        $receipt = Set-TicketboxCurrentInitdbServiceReceiptPhase `
+            -Receipt $receipt `
+            -Phase "start_authorized"
+        Invoke-ScChecked @("config", $PgServiceName, "start=", "demand") | Out-Null
+        Assert-TicketboxInitdbServiceConfiguration `
+            -Receipt $receipt `
+            -StartMode "Manual"
+        $snapshot = Invoke-TicketboxOwnedOneShotService `
+            -Name $PgServiceName `
+            -ExpectedExecutable $ShawlExe `
+            -ExpectedRuntimeExecutables @($ShawlExe, $InitdbExe) `
+            @ServiceWaitArguments
+        Invoke-ScChecked @("config", $PgServiceName, "start=", "disabled") | Out-Null
+        Assert-TicketboxInitdbServiceConfiguration `
+            -Receipt $receipt `
+            -StartMode "Disabled"
+        if (
+            [uint32]$snapshot.ExitCode -ne 0 -or
+            [uint32]$snapshot.ServiceSpecificExitCode -ne 0
+        ) {
+            $nativeExit = if ([uint32]$snapshot.ServiceSpecificExitCode -ne 0) {
+                [int]$snapshot.ServiceSpecificExitCode
+            } else {
+                [int]$snapshot.ExitCode
+            }
+            throw (New-TicketboxInitdbFailure `
+                -FailureKind "service_process_failed" `
+                -ExitCode $nativeExit)
+        }
+        Assert-TicketboxFreshPgClusterComplete
+        Remove-TicketboxInitdbPasswordFileIfPresent $receipt
+        [void](Repair-PostgresBootstrapRecoveryFileAcl)
+        [void](Read-PostgresBootstrapRecoveryState)
+        $receipt = Set-TicketboxCurrentInitdbServiceReceiptPhase `
+            -Receipt $receipt `
+            -Phase "initdb_succeeded"
+        return [pscustomobject]@{
+            ExitCode = 0
+            StandardOutput = ""
+            StandardError = ""
+        }
+    }
+    catch {
+        $operationFailure = $_.Exception
+        $cleanupFailure = $null
+        try {
+            if ($createdByThisInvocation) {
+                Disable-TicketboxInitdbServiceIfPresent $receipt
+            }
+            Remove-TicketboxInitdbPasswordFileIfPresent $receipt
+            [void](Repair-PostgresBootstrapRecoveryFileAcl)
+            [void](Read-PostgresBootstrapRecoveryState)
+            if (
+                -not $createdByThisInvocation -and
+                (Get-TicketboxPathEntryKindNoFollow $InitdbServiceReceiptPath) -ceq "File"
+            ) {
+                Remove-TicketboxAbortedInitdbServiceReceipt `
+                    -Path $InitdbServiceReceiptPath `
+                    -Receipt $receipt
+            }
+        }
+        catch {
+            $cleanupFailure = $_.Exception
+        }
+        if ($null -ne $cleanupFailure) {
+            throw (New-TicketboxInstallCompensationAggregateFailure `
+                -InstallFailure $operationFailure `
+                -CompensationFailure $cleanupFailure)
+        }
+        if (
+            $createdByThisInvocation -and
+            -not $operationFailure.Data.Contains("TicketboxInstallPublicFailureCode")
+        ) {
+            $operationFailure.Data["TicketboxInstallPublicFailureCode"] =
+                "postgres_cluster_initialization_failed"
+        }
+        throw $operationFailure
+    }
+}
+
 function Register-PgService {
-    param([switch]$RuntimeBindingTransition)
+    param(
+        [switch]$RuntimeBindingTransition,
+        [Parameter(Mandatory = $true)][object]$CompensationAuthority
+    )
 
     Write-Step "注册 PostgreSQL 服务 $PgServiceName"
+    Assert-TicketboxInstallServiceCompensationAuthority $CompensationAuthority
+    $convertedInitdbReceipt = $null
     $pgImagePath = New-TicketboxPgServiceImagePath `
         -PgCtlPath $PgCtl `
         -ServiceName $PgServiceName `
         -DataRoot $ServicePgData
     if (Service-Exists $PgServiceName) {
-        Assert-TicketboxServiceOwnership -Name $PgServiceName -ExpectedExecutable $PgCtl | Out-Null
-        if (-not $RuntimeBindingTransition) {
-            Assert-ExpectedServiceConfiguration $PgServiceName
+        if ([string]$CompensationAuthority.PostgresService -ceq "none") {
+            throw "PostgreSQL 同名服务在预分类后出现；拒绝把竞争服务当作安装事务所有。"
+        }
+        $actualExecutable = Get-TicketboxServiceExecutablePath $PgServiceName
+        if (Test-TicketboxPathEquals $actualExecutable $ShawlExe) {
+            if (-not $RuntimeBindingTransition) {
+                throw "initdb one-shot 服务只能在 runtime binding 原子切换阶段转为正式服务。"
+            }
+            $convertedInitdbReceipt = Read-TicketboxCurrentInitdbServiceReceipt
+            if ([string]$convertedInitdbReceipt.phase -cne "initdb_succeeded") {
+                throw "initdb one-shot 服务尚未达到可提交阶段。"
+            }
+            Assert-TicketboxInitdbServiceConfiguration `
+                -Receipt $convertedInitdbReceipt `
+                -StartMode "Disabled"
+            Assert-TicketboxFreshPgClusterComplete
+            if ((Get-TicketboxPathEntryKindNoFollow $InitdbPasswordPath) -cne "Missing") {
+                throw "initdb 临时密码文件尚未退役，拒绝提交正式服务。"
+            }
+            [void](Repair-PostgresBootstrapRecoveryFileAcl)
+            [void](Read-PostgresBootstrapRecoveryState)
+            Invoke-ScChecked @(
+                "config", $PgServiceName,
+                "start=", "disabled",
+                "binPath=", $pgImagePath,
+                "obj=", "NT SERVICE\$PgServiceName"
+            ) | Out-Null
+            Assert-TicketboxServiceOwnership `
+                -Name $PgServiceName `
+                -ExpectedExecutable $PgCtl | Out-Null
+            Assert-TicketboxServiceAccount `
+                -Name $PgServiceName `
+                -ExpectedAccount "NT SERVICE\$PgServiceName"
+            Assert-TicketboxPgServiceCommand `
+                -Name $PgServiceName `
+                -ExpectedExecutable $PgCtl `
+                -ExpectedServiceName $PgServiceName `
+                -ExpectedDataRoot $ServicePgData
+            Assert-TicketboxServiceStartMode `
+                -Name $PgServiceName `
+                -ExpectedStartMode "Disabled"
+        }
+        elseif (Test-TicketboxPathEquals $actualExecutable $PgCtl) {
+            Assert-TicketboxServiceOwnership `
+                -Name $PgServiceName `
+                -ExpectedExecutable $PgCtl | Out-Null
+            if (-not $RuntimeBindingTransition) {
+                Assert-ExpectedServiceConfiguration $PgServiceName
+            }
+        }
+        else {
+            throw "拒绝转换 executable 不匹配的同名 PostgreSQL 服务。"
         }
         Invoke-ScChecked @("config", $PgServiceName, "start=", "demand") | Out-Null
     }
@@ -1770,6 +2275,10 @@ function Register-PgService {
             "start=", "demand",
             "obj=", "NT SERVICE\$PgServiceName"
         ) | Out-Null
+        Grant-TicketboxInstallServiceCompensationAuthority `
+            -Authority $CompensationAuthority `
+            -Service "PostgresService" `
+            -Grant "created_by_installer"
         Assert-ExpectedServiceConfiguration $PgServiceName
     }
     Invoke-ScChecked @("config", $PgServiceName, "start=", "demand") | Out-Null
@@ -1780,11 +2289,29 @@ function Register-PgService {
     ) | Out-Null
     Assert-ExpectedServiceConfiguration $PgServiceName
     Assert-TicketboxServiceStartMode -Name $PgServiceName -ExpectedStartMode "Manual"
+    Assert-TicketboxServiceFailurePolicy `
+        -Name $PgServiceName `
+        -ExpectedResetSeconds $ScmFailureResetSeconds `
+        -ExpectedRestartDelaysMs @($ReleaseConfig.scm_restart_delays_ms)
+    if ($null -ne $convertedInitdbReceipt) {
+        $convertedInitdbReceipt = Set-TicketboxCurrentInitdbServiceReceiptPhase `
+            -Receipt $convertedInitdbReceipt `
+            -Phase "converted_to_pgctl"
+        Remove-TicketboxInitdbServiceReceipt `
+            -Path $InitdbServiceReceiptPath `
+            -Receipt $convertedInitdbReceipt
+        if (Test-Path -LiteralPath $InitdbServiceReceiptPath) {
+            throw "initdb one-shot 回执未能在正式服务验证后退役。"
+        }
+    }
     Write-Ok "PG 服务已以 demand-start 注册为虚拟账户 NT SERVICE\$PgServiceName。"
 }
 
 function Register-BackendService {
+    param([Parameter(Mandatory = $true)][object]$CompensationAuthority)
+
     Write-Step "注册后端服务 $BackendServiceName"
+    Assert-TicketboxInstallServiceCompensationAuthority $CompensationAuthority
     $backendImagePath = New-TicketboxShawlServiceImagePath `
         -ShawlPath $ShawlExe `
         -ServiceName $BackendServiceName `
@@ -1801,6 +2328,9 @@ function Register-BackendService {
         -StopTimeoutMs $StopTimeoutMs `
         -RestartDelayMs $RestartDelayMs
     if (Service-Exists $BackendServiceName) {
+        if ([string]$CompensationAuthority.BackendService -ceq "none") {
+            throw "后端同名服务在预分类后出现；拒绝把竞争服务当作安装事务所有。"
+        }
         Assert-TicketboxServiceOwnership -Name $BackendServiceName -ExpectedExecutable $ShawlExe | Out-Null
         Invoke-ScChecked @("config", $BackendServiceName, "start=", "disabled") | Out-Null
         Invoke-ScChecked @("config", $BackendServiceName, "binPath=", $backendImagePath) | Out-Null
@@ -1815,12 +2345,20 @@ function Register-BackendService {
             "depend=", $PgServiceName,
             "obj=", "NT SERVICE\$BackendServiceName"
         ) | Out-Null
+        Grant-TicketboxInstallServiceCompensationAuthority `
+            -Authority $CompensationAuthority `
+            -Service "BackendService" `
+            -Grant "created_by_installer"
     }
     Invoke-ScChecked @(
         "failure", $BackendServiceName, "reset=", [string]$ScmFailureResetSeconds, "actions=", $ScmRestartActions
     ) | Out-Null
     Assert-ExpectedServiceConfiguration $BackendServiceName
     Assert-TicketboxServiceStartMode -Name $BackendServiceName -ExpectedStartMode "Disabled"
+    Assert-TicketboxServiceFailurePolicy `
+        -Name $BackendServiceName `
+        -ExpectedResetSeconds $ScmFailureResetSeconds `
+        -ExpectedRestartDelaysMs @($ReleaseConfig.scm_restart_delays_ms)
     Write-Ok "后端服务已以 disabled 注册；runtime recovery guard 发布前不可启动。"
 }
 
@@ -1834,7 +2372,9 @@ function Invoke-IcaclsChecked([string[]]$Arguments) {
 
 function Set-TicketboxAcl(
     [bool]$IncludePgService = $true,
-    [bool]$IncludeBackendService = $true
+    [bool]$IncludeBackendService = $true,
+    [string[]]$PrivilegedAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+    [string]$OwnerAccount = "SYSTEM"
 ) {
     Write-Step "收紧 ProgramData ACL"
     New-Item -ItemType Directory -Force -Path `
@@ -1845,7 +2385,7 @@ function Set-TicketboxAcl(
         $LogDir, `
         $BackupDir | Out-Null
 
-    $systemAndAdmins = @("SYSTEM", "BUILTIN\Administrators")
+    $systemAndAdmins = @($PrivilegedAccounts)
     $rootReadAccounts = @()
     $pgAccounts = @($systemAndAdmins)
     $appAccounts = @($systemAndAdmins)
@@ -1862,35 +2402,40 @@ function Set-TicketboxAcl(
     Set-TicketboxExactDirectoryAcl `
         -Path $DataRoot `
         -Accounts $systemAndAdmins `
-        -ReadExecuteAccounts $rootReadAccounts
+        -ReadExecuteAccounts $rootReadAccounts `
+        -OwnerAccount $OwnerAccount
     Set-TicketboxExactDirectoryAcl `
         -Path $PgData `
         -Accounts $pgAccounts `
+        -OwnerAccount $OwnerAccount `
         -Recurse
     Set-TicketboxExactDirectoryAcl `
         -Path $AppData `
         -Accounts $appAccounts `
+        -OwnerAccount $OwnerAccount `
         -Recurse
+    [void](Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
+        -ParentFullControlAccounts $appAccounts)
     Initialize-TicketboxInstallerStateDirectory $InstallerState | Out-Null
     if (Test-Path -LiteralPath $BootstrapExposureRecoveryGuardPath -PathType Leaf) {
         Set-TicketboxExactFileAcl `
             -Path $BootstrapExposureRecoveryGuardPath `
             -Accounts $systemAndAdmins `
             -ReadExecuteAccounts @("NT SERVICE\$BackendServiceName") `
-            -OwnerAccount "SYSTEM"
+            -OwnerAccount $OwnerAccount
     }
     if (Test-Path -LiteralPath $InstallerRuntimeRecoveryGuardPath -PathType Leaf) {
         Set-TicketboxExactFileAcl `
             -Path $InstallerRuntimeRecoveryGuardPath `
             -Accounts $systemAndAdmins `
             -ReadExecuteAccounts @("NT SERVICE\$BackendServiceName") `
-            -OwnerAccount "SYSTEM"
+            -OwnerAccount $OwnerAccount
     }
     Set-TicketboxExactFileAcl `
         -Path (Get-TicketboxDataRootMarkerPath $DataRoot) `
         -Accounts $systemAndAdmins `
         -ReadExecuteAccounts $markerReadAccounts `
-        -OwnerAccount "SYSTEM"
+        -OwnerAccount $OwnerAccount
     if ($IncludeBackendService) {
         Invoke-IcaclsChecked @($ProgramDir, "/grant", "NT SERVICE\${BackendServiceName}:(OI)(CI)RX")
     }
@@ -1953,39 +2498,97 @@ function Assert-TicketboxPgClusterStoppedAfterFailure {
 }
 
 function Invoke-TicketboxInstallFailureCompensation {
-    param([Parameter(Mandatory = $true)][string]$Reason)
+    param(
+        [Parameter(Mandatory = $true)][string]$Reason,
+        [Parameter(Mandatory = $true)][object]$ServiceCompensationAuthority
+    )
 
+    Assert-TicketboxInstallServiceCompensationAuthority `
+        $ServiceCompensationAuthority
     [Exception[]]$failures = @()
-    foreach ($service in @(
-        @{
-            Name = $BackendServiceName
-            Executable = $ShawlExe
-            BackendPort = $BackendPort
-            RuntimeExecutables = @($BackendExe, $ShawlExe)
-            CompensationStep = "backend_disable"
-        },
-        @{
-            Name = $PgServiceName
-            Executable = $PgCtl
-            BackendPort = 0
-            RuntimeExecutables = @($PgCtl, (Join-Path $PgBin "postgres.exe"))
-            CompensationStep = "postgres_disable"
+    try {
+        if ([string]$ServiceCompensationAuthority.BackendService -ceq "none") {
+            if (Service-Exists $BackendServiceName) {
+                throw "后端同名服务不属于当前安装事务；拒绝执行失败补偿 mutation。"
+            }
+            Assert-TicketboxRuntimeAbsent `
+                -Name $BackendServiceName `
+                -RuntimePort $BackendPort `
+                -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe)
         }
-    )) {
-        try {
+        else {
             Disable-TicketboxOwnedServiceIfExists `
-                -Name $service.Name `
-                -ExpectedExecutable $service.Executable `
-                -BackendPort ([int]$service.BackendPort) `
-                -ExpectedRuntimeExecutables @($service.RuntimeExecutables) `
+                -Name $BackendServiceName `
+                -ExpectedExecutable $ShawlExe `
+                -BackendPort $BackendPort `
+                -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe) `
                 @ServiceWaitArguments
         }
-        catch {
-            $compensationFailure = $_.Exception
-            $compensationFailure.Data["TicketboxInstallCompensationStep"] =
-                [string]$service.CompensationStep
-            $failures += $compensationFailure
+    }
+    catch {
+        $compensationFailure = $_.Exception
+        $compensationFailure.Data["TicketboxInstallCompensationStep"] =
+            "backend_disable"
+        $failures += $compensationFailure
+    }
+    try {
+        if ([string]$ServiceCompensationAuthority.PostgresService -ceq "none") {
+            if (Service-Exists $PgServiceName) {
+                throw "PostgreSQL 同名服务不属于当前安装事务；拒绝执行失败补偿 mutation。"
+            }
+            Assert-TicketboxRuntimeAbsent `
+                -Name $PgServiceName `
+                -RuntimePort $PgPort `
+                -ExpectedRuntimeExecutables @(
+                    $PgCtl,
+                    (Join-Path $PgBin "postgres.exe"),
+                    $ShawlExe,
+                    $InitdbExe
+                )
         }
+        elseif (-not (Service-Exists $PgServiceName)) {
+            Assert-TicketboxRuntimeAbsent `
+                -Name $PgServiceName `
+                -RuntimePort $PgPort `
+                -ExpectedRuntimeExecutables @(
+                    $PgCtl,
+                    (Join-Path $PgBin "postgres.exe"),
+                    $ShawlExe,
+                    $InitdbExe
+                )
+        }
+        else {
+            $actualPgExecutable = Get-TicketboxServiceExecutablePath $PgServiceName
+            if (Test-TicketboxPathEquals $actualPgExecutable $PgCtl) {
+                Disable-TicketboxOwnedServiceIfExists `
+                    -Name $PgServiceName `
+                    -ExpectedExecutable $PgCtl `
+                    -ExpectedRuntimeExecutables @(
+                        $PgCtl,
+                        (Join-Path $PgBin "postgres.exe")
+                    ) `
+                    @ServiceWaitArguments
+            }
+            elseif (Test-TicketboxPathEquals $actualPgExecutable $ShawlExe) {
+                if ((Get-TicketboxPathEntryKindNoFollow $InitdbServiceReceiptPath) -cne "File") {
+                    throw "检测到 initdb one-shot 服务但缺少受保护回执，拒绝推断归属。"
+                }
+                $initdbReceipt = Read-TicketboxCurrentInitdbServiceReceipt
+                Disable-TicketboxInitdbServiceIfPresent $initdbReceipt
+                Remove-TicketboxInitdbPasswordFileIfPresent $initdbReceipt
+                [void](Repair-PostgresBootstrapRecoveryFileAcl)
+                [void](Read-PostgresBootstrapRecoveryState)
+            }
+            else {
+                throw "拒绝补偿 executable 不匹配的同名 PostgreSQL 服务。"
+            }
+        }
+    }
+    catch {
+        $compensationFailure = $_.Exception
+        $compensationFailure.Data["TicketboxInstallCompensationStep"] =
+            "postgres_disable"
+        $failures += $compensationFailure
     }
     try {
         Assert-TicketboxPgClusterStoppedAfterFailure
@@ -2131,6 +2734,145 @@ function Assert-DesktopManagerExpectedServiceNames {
     }
 }
 
+function Resolve-TicketboxPreDatabasePendingInstallationIdentity {
+    param(
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [Parameter(Mandatory = $true)][object]$Identity,
+        [Parameter(Mandatory = $true)][object]$LifecycleReceipt,
+        [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
+        [Parameter(Mandatory = $true)][bool]$HadExistingPgService,
+        [Parameter(Mandatory = $true)][bool]$HadExistingBackendService
+    )
+
+    Assert-TicketboxInstallationIdentityBaseMatches $Identity $Candidate
+    $releaseMatches = Test-TicketboxInstallationIdentityReleaseMatches `
+        $Identity `
+        $Candidate
+    $receiptOperationId =
+        [string]$LifecycleReceipt.c07_installation_operation_id
+    if (
+        $releaseMatches -and
+        (
+            [string]::IsNullOrEmpty($receiptOperationId) -or
+            $receiptOperationId -ceq [string]$Identity.OperationId
+        )
+    ) {
+        return $Identity
+    }
+    $parsedExpectedOperationId = [guid]::Empty
+    if (
+        -not [guid]::TryParseExact(
+            $ExpectedOperationId,
+            "D",
+            [ref]$parsedExpectedOperationId
+        ) -or
+        $parsedExpectedOperationId -eq [guid]::Empty -or
+        $parsedExpectedOperationId.ToString("D") -cne $ExpectedOperationId
+    ) {
+        throw "前数据库 PENDING 换包缺少当前安装器绑定的新 operation id。"
+    }
+    if (-not [string]::IsNullOrEmpty($receiptOperationId)) {
+        $parsedReceiptOperationId = [guid]::Empty
+        if (
+            -not [guid]::TryParseExact(
+                $receiptOperationId,
+                "D",
+                [ref]$parsedReceiptOperationId
+            ) -or
+            $parsedReceiptOperationId -eq [guid]::Empty -or
+            $parsedReceiptOperationId.ToString("D") -cne
+                $receiptOperationId
+        ) {
+            throw "旧 PENDING installation receipt 的 operation id 不规范。"
+        }
+    }
+    if (
+        $Identity.State -cne "PENDING" -or
+        [bool]$Identity.LegacyCompleted -or
+        [string]$LifecycleReceipt.mode -cne "fresh_install" -or
+        [string]$LifecycleReceipt.preparation_stage -cne
+            "files_may_have_been_replaced" -or
+        [bool]$LifecycleReceipt.backup_required -or
+        [bool]$LifecycleReceipt.backup_completed -or
+        [bool]$LifecycleReceipt.install_completed -or
+        [bool]$LifecycleReceipt.temporary_pg_service_cleanup_pending -or
+        -not [string]::IsNullOrEmpty(
+            [string]$LifecycleReceipt.c07_production_authority_sha256
+        ) -or
+        -not [string]::IsNullOrEmpty(
+            [string]$LifecycleReceipt.c07_runtime_projection_sha256
+        )
+    ) {
+        throw "旧 PENDING installation identity 已越过可安全换包的前数据库阶段。"
+    }
+    $readyPath = Get-TicketboxPersistentInstallationIdentityPath (
+        [string]$Candidate.DataRoot
+    )
+    if (Test-Path -LiteralPath $readyPath) {
+        throw "存在 READY installation identity，拒绝把旧 PENDING 当作首次安装残留。"
+    }
+    if (
+        $HadExistingPgService -or
+        $HadExistingBackendService -or
+        (Service-Exists $PgServiceName) -or
+        (Service-Exists $BackendServiceName) -or
+        (Test-Path -LiteralPath (Join-Path $PgData "PG_VERSION") -PathType Leaf) -or
+        (Test-Path -LiteralPath $EnvPath -PathType Leaf)
+    ) {
+        throw "旧 PENDING installation identity 已伴随数据库、运行配置或服务状态。"
+    }
+
+    $pgDataKind = Get-TicketboxPathEntryKindNoFollow $PgData
+    if ($pgDataKind -ceq "Directory") {
+        Assert-NoTicketboxReparsePoints $PgData
+        if (@(Get-ChildItem -LiteralPath $PgData -Force -ErrorAction Stop).Count -ne 0) {
+            throw "旧 PENDING installation identity 的 pgdata 非空，拒绝自动换包。"
+        }
+    }
+    elseif ($pgDataKind -cne "Missing") {
+        throw "旧 PENDING installation identity 的 pgdata 形态不可恢复。"
+    }
+    foreach ($c07Root in @(
+        (Get-TicketboxC07HostArtifactRoot),
+        (Get-TicketboxC07RuntimeProjectionRoot)
+    )) {
+        if ((Get-TicketboxPathEntryKindNoFollow $c07Root) -cne "Missing") {
+            throw "旧 PENDING installation identity 已存在 C07 权威或运行投影目录。"
+        }
+    }
+
+    $canonicalOperationId = $parsedExpectedOperationId.ToString("D")
+    if (
+        -not $releaseMatches -and
+        $canonicalOperationId -ceq [string]$Identity.OperationId
+    ) {
+        throw "前数据库 PENDING 换包缺少当前安装器绑定的新 operation id。"
+    }
+    if ($canonicalOperationId -ceq [string]$Identity.OperationId) {
+        return $Identity
+    }
+
+    $rebased = Write-TicketboxInstallationIdentityState `
+        -State "PENDING" `
+        -OperationId $canonicalOperationId `
+        -InstallationId ([string]$Identity.InstallationId) `
+        -Candidate $Candidate `
+        -ReplaceExisting
+    if (
+        $rebased.State -cne "PENDING" -or
+        $rebased.InstallationId -cne [string]$Identity.InstallationId -or
+        $rebased.OperationId -ceq [string]$Identity.OperationId -or
+        -not (
+            Test-TicketboxInstallationIdentityReleaseMatches `
+                $rebased `
+                $Candidate
+        )
+    ) {
+        throw "前数据库 PENDING installation identity 换包后未收敛。"
+    }
+    return $rebased
+}
+
 if ($ValidateInstalledServicesOnly) {
     Assert-Admin
     Assert-DesktopManagerExpectedServiceNames
@@ -2213,8 +2955,11 @@ if (
 $operationLock = Enter-TicketboxLifecycleLock `
     -ExternalOwnerProcessId $InstallerLockOwnerProcessId
 $mutationStarted = $false
+$serviceCompensationAuthority =
+    New-TicketboxInstallServiceCompensationAuthority
 $DeferredPreservedDataBackup = $false
 $installedC07PayloadLease = $null
+$resolvedPublicFailurePath = ""
 $operationFailure = $null
 $lifecycleExitFailureProjection = $null
 $lifecycleExitProjectionPreparationFailure = $null
@@ -2222,9 +2967,90 @@ $lifecycleExitVetoProjection = $null
 $lifecycleExitVetoPreparationFailure = $null
 try {
     Assert-Admin
+    $resolvedPublicFailurePath =
+        Resolve-TicketboxInstallPublicFailurePath $PublicFailurePath
+    if ($resolvedPublicFailurePath.Length -eq 0) {
+        throw "正式安装缺少受保护的 lifecycle bootstrap 失败回执路径。"
+    }
     Set-TicketboxRuntimeServiceContractFromBinding
+    if ($InstallerLockOwnerProcessId -gt 0) {
+        if ($LifecycleReceiptPath.Trim().Length -eq 0) {
+            throw "Inno 安装缺少受保护的生命周期回执。"
+        }
+        $lifecycleReceipt = Read-TicketboxLifecycleReceipt `
+            -Path $LifecycleReceiptPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot `
+            -PgPort $PgPort `
+            -BackendPort $BackendPort `
+            -TargetReleaseConfig $ReleaseConfig `
+            -CurrentTargetBackendVersion $TargetBackendVersion `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+        $PreviousReleaseConfig = $lifecycleReceipt.installed_release_config
+        $PreviousStopTimeoutMs = [int]$PreviousReleaseConfig.stop_timeout_ms
+        $PreviousRestartDelayMs = [int]$PreviousReleaseConfig.restart_delay_ms
+        $PreUpgradeBackupAlreadyCompleted = [bool]$lifecycleReceipt.backup_completed
+        $FilesMayHaveBeenReplaced = [bool]$lifecycleReceipt.files_may_have_been_replaced
+    }
+    else {
+        if ($LifecycleReceiptPath.Trim().Length -gt 0) {
+            throw "直接运行安装脚本不能提交或伪造 Inno 生命周期回执。"
+        }
+        $lifecycleReceipt = $null
+        $PreUpgradeBackupAlreadyCompleted = $false
+        $FilesMayHaveBeenReplaced = $false
+    }
+
+    Assert-TicketboxDataRootDomain -DataRoot $DataRoot -InstallDir $InstallDir | Out-Null
+    Assert-PortAvailableForMissingServices
     $preExistingPgService = Service-Exists $PgServiceName
     $preExistingBackendService = Service-Exists $BackendServiceName
+    $allowTargetPolicyFallbackBeforeMutation =
+        $FilesMayHaveBeenReplaced -or
+        (
+            $null -ne $lifecycleReceipt -and
+            [string]$lifecycleReceipt.preparation_stage -eq "prepared"
+        )
+    Assert-ExpectedServiceConfiguration `
+        -Name $BackendServiceName `
+        -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
+        -ExpectedRestartDelayMs $PreviousRestartDelayMs `
+        -AllowTargetPolicyFallback:$allowTargetPolicyFallbackBeforeMutation `
+        -AllowMissingInstallerRecoveryGuard:$preExistingBackendService `
+        -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent `
+        -AllowMissingOwnerRecoveryChannel:$preExistingBackendService
+    Assert-ExpectedServiceConfiguration `
+        -Name $PgServiceName `
+        -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
+        -ExpectedRestartDelayMs $PreviousRestartDelayMs `
+        -AllowTargetPolicyFallback:$allowTargetPolicyFallbackBeforeMutation `
+        -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+    foreach ($existingServiceName in @(
+        $(if ($preExistingPgService) { $PgServiceName }),
+        $(if ($preExistingBackendService) { $BackendServiceName })
+    )) {
+        if ([string]::IsNullOrWhiteSpace([string]$existingServiceName)) { continue }
+        $existingStartMode = Get-TicketboxServiceStartMode $existingServiceName
+        if ($existingStartMode -notin @("Disabled", "Manual", "Automatic")) {
+            throw "既有服务 $existingServiceName 的启动模式不受支持：$existingStartMode"
+        }
+        Assert-TicketboxServiceFailurePolicy `
+            -Name $existingServiceName `
+            -ExpectedResetSeconds ([int]$PreviousReleaseConfig.scm_failure_reset_seconds) `
+            -ExpectedRestartDelaysMs @($PreviousReleaseConfig.scm_restart_delays_ms)
+    }
+    if ($preExistingPgService) {
+        Grant-TicketboxInstallServiceCompensationAuthority `
+            -Authority $serviceCompensationAuthority `
+            -Service "PostgresService" `
+            -Grant "validated_preexisting"
+    }
+    if ($preExistingBackendService) {
+        Grant-TicketboxInstallServiceCompensationAuthority `
+            -Authority $serviceCompensationAuthority `
+            -Service "BackendService" `
+            -Grant "validated_preexisting"
+    }
     $serviceReadAccounts = @()
     if ($preExistingPgService) {
         $serviceReadAccounts += "NT SERVICE\$PgServiceName"
@@ -2243,18 +3069,6 @@ try {
     $installedBuildManifest =
         $installedC07PayloadLease.InstalledBuildManifest
     if ($InstallerLockOwnerProcessId -gt 0) {
-        if ($LifecycleReceiptPath.Trim().Length -eq 0) {
-            throw "Inno 安装缺少受保护的生命周期回执。"
-        }
-        $lifecycleReceipt = Read-TicketboxLifecycleReceipt `
-            -Path $LifecycleReceiptPath `
-            -InstallDir $InstallDir `
-            -DataRoot $DataRoot `
-            -PgPort $PgPort `
-            -BackendPort $BackendPort `
-            -TargetReleaseConfig $ReleaseConfig `
-            -CurrentTargetBackendVersion $TargetBackendVersion `
-            -InstallerOwnerProcessId $InstallerLockOwnerProcessId
         if (
             [string]$lifecycleReceipt.preparation_stage -eq "program_files_installed_backup_pending" -and
             [string]$lifecycleReceipt.mode -eq "preserved_data_reinstall" -and
@@ -2274,39 +3088,10 @@ try {
         elseif ([string]$lifecycleReceipt.preparation_stage -ne "files_may_have_been_replaced") {
             throw "安装生命周期回执不允许服务安装阶段继续：$($lifecycleReceipt.preparation_stage)。"
         }
-        $PreviousReleaseConfig = $lifecycleReceipt.installed_release_config
-        $PreviousStopTimeoutMs = [int]$PreviousReleaseConfig.stop_timeout_ms
-        $PreviousRestartDelayMs = [int]$PreviousReleaseConfig.restart_delay_ms
-        $PreUpgradeBackupAlreadyCompleted = [bool]$lifecycleReceipt.backup_completed
-        $FilesMayHaveBeenReplaced = [bool]$lifecycleReceipt.files_may_have_been_replaced
-    }
-    else {
-        if ($LifecycleReceiptPath.Trim().Length -gt 0) {
-            throw "直接运行安装脚本不能提交或伪造 Inno 生命周期回执。"
-        }
-        $lifecycleReceipt = $null
-        $PreUpgradeBackupAlreadyCompleted = $false
-        $FilesMayHaveBeenReplaced = $false
     }
 
-    Assert-TicketboxDataRootDomain -DataRoot $DataRoot -InstallDir $InstallDir | Out-Null
-    Assert-PortAvailableForMissingServices
-    $hadExistingPgService = Service-Exists $PgServiceName
-    $hadExistingBackendService = Service-Exists $BackendServiceName
-    Assert-ExpectedServiceConfiguration `
-        -Name $BackendServiceName `
-        -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
-        -ExpectedRestartDelayMs $PreviousRestartDelayMs `
-        -AllowTargetPolicyFallback:$FilesMayHaveBeenReplaced `
-        -AllowMissingInstallerRecoveryGuard:$hadExistingBackendService `
-        -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent `
-        -AllowMissingOwnerRecoveryChannel:$hadExistingBackendService
-    Assert-ExpectedServiceConfiguration `
-        -Name $PgServiceName `
-        -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
-        -ExpectedRestartDelayMs $PreviousRestartDelayMs `
-        -AllowTargetPolicyFallback:$FilesMayHaveBeenReplaced `
-        -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+    $hadExistingPgService = $preExistingPgService
+    $hadExistingBackendService = $preExistingBackendService
 
     if ($DeferredPreservedDataBackup) {
         Assert-TicketboxLegacyPreservedDataLayout `
@@ -2381,14 +3166,22 @@ try {
         -InstallDir $InstallDir
 
     $mutationStarted = $true
-    Stop-ServiceIfExists `
-        -Name $BackendServiceName `
-        -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
-        -ExpectedRestartDelayMs $PreviousRestartDelayMs `
-        -AllowTargetPolicyFallback:$FilesMayHaveBeenReplaced `
-        -AllowMissingInstallerRecoveryGuard:$hadExistingBackendService `
-        -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent `
-        -AllowMissingOwnerRecoveryChannel:$hadExistingBackendService
+    if ($hadExistingBackendService) {
+        Stop-ServiceIfExists `
+            -Name $BackendServiceName `
+            -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
+            -ExpectedRestartDelayMs $PreviousRestartDelayMs `
+            -AllowTargetPolicyFallback:$FilesMayHaveBeenReplaced `
+            -AllowMissingInstallerRecoveryGuard `
+            -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent `
+            -AllowMissingOwnerRecoveryChannel
+    }
+    else {
+        Assert-TicketboxRuntimeAbsent `
+            -Name $BackendServiceName `
+            -RuntimePort $BackendPort `
+            -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe)
+    }
     if (-not $hadExistingPgService) {
         Initialize-TicketboxSecureDataRoot `
             -DataRoot $DataRoot `
@@ -2417,8 +3210,9 @@ try {
         -not $PreUpgradeBackupAlreadyCompleted -and
         (Test-Path -LiteralPath (Join-Path $PgData "PG_VERSION") -PathType Leaf) -and
         (Test-Path -LiteralPath $EnvPath -PathType Leaf)
-    if ($serviceLayerBackupRequired -and -not (Service-Exists $PgServiceName)) {
-        Register-PgService
+    if ($serviceLayerBackupRequired -and -not $hadExistingPgService) {
+        Register-PgService `
+            -CompensationAuthority $serviceCompensationAuthority
         Set-TicketboxAcl -IncludePgService $true -IncludeBackendService $false
     }
     Invoke-PreUpgradeBackupIfNeeded
@@ -2426,41 +3220,70 @@ try {
     $c07SuccessorResolution = $null
     $c07PendingIdentityPath =
         Get-TicketboxPendingInstallationIdentityPath $DataRoot
-    $c07InstallationIdentity = if (
-        Test-Path -LiteralPath $c07PendingIdentityPath
-    ) {
-        Read-TicketboxPersistentInstallationIdentity `
-            -DataRoot $DataRoot `
-            -Pending
-    }
-    else {
-        Initialize-TicketboxPendingInstallationIdentity `
+    $c07InstallationReleaseCandidate =
+        Get-TicketboxInstallationReleaseCandidate `
             -DataRoot $DataRoot `
             -InstallDir $InstallDir `
             -PgPort $PgPort `
             -BackendPort $BackendPort `
             -PgServiceName $PgServiceName `
             -BackendServiceName $BackendServiceName `
-            -BuildManifestPath $InstalledBuildManifestPath `
-            -ExpectedOperationId (
-                [string]$lifecycleReceipt.c07_installation_operation_id
-            )
+            -BuildManifestPath $InstalledBuildManifestPath
+    try {
+        $c07InstallationIdentity = if (
+            Test-Path -LiteralPath $c07PendingIdentityPath
+        ) {
+            Repair-TicketboxRecoverableInstallationIdentityAcl `
+                -Candidate $c07InstallationReleaseCandidate `
+                -Pending | Out-Null
+            Read-TicketboxPersistentInstallationIdentity `
+                -DataRoot $DataRoot `
+                -Pending
+        }
+        else {
+            Initialize-TicketboxPendingInstallationIdentity `
+                -DataRoot $DataRoot `
+                -InstallDir $InstallDir `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -PgServiceName $PgServiceName `
+                -BackendServiceName $BackendServiceName `
+                -BuildManifestPath $InstalledBuildManifestPath `
+                -ExpectedOperationId (
+                    [string]$lifecycleReceipt.c07_installation_operation_id
+                )
+        }
+        $c07InstallationIdentity =
+            Resolve-TicketboxPreDatabasePendingInstallationIdentity `
+                -Candidate $c07InstallationReleaseCandidate `
+                -Identity $c07InstallationIdentity `
+                -LifecycleReceipt $lifecycleReceipt `
+                -ExpectedOperationId $LifecycleFinalizationAttemptId `
+                -HadExistingPgService $hadExistingPgService `
+                -HadExistingBackendService $hadExistingBackendService
     }
-    if (
-        $c07InstallationIdentity.State -ceq "PENDING" -and
-        (
-            [string]::IsNullOrEmpty(
-                [string]$lifecycleReceipt.c07_installation_operation_id
-            ) -or
-            [string]$lifecycleReceipt.c07_installation_operation_id -ceq
-                [string]$c07InstallationIdentity.OperationId
+    catch {
+        $identityFailure = [InvalidOperationException]::new(
+            "安装身份恢复或前数据库换包未通过安全验证。",
+            $_.Exception
         )
-    ) {
+        $identityFailure.Data["TicketboxInstallPublicFailureCode"] =
+            "installation_identity_recovery_failed"
+        throw $identityFailure
+    }
+    if ($c07InstallationIdentity.State -ceq "PENDING") {
+        $existingReceiptOperationId =
+            [string]$lifecycleReceipt.c07_installation_operation_id
+        $allowPreDatabaseReceiptRebind =
+            -not [string]::IsNullOrEmpty($existingReceiptOperationId) -and
+            $existingReceiptOperationId -cne
+                [string]$c07InstallationIdentity.OperationId
         Set-TicketboxLifecycleReceiptC07InstallationOperation `
             -Path $LifecycleReceiptPath `
             -Receipt $lifecycleReceipt `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-            -OperationId $c07InstallationIdentity.OperationId
+            -OperationId $c07InstallationIdentity.OperationId `
+            -AllowPreDatabaseRebind:$allowPreDatabaseReceiptRebind
         $lifecycleReceipt = Read-TicketboxLifecycleReceipt `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
@@ -2508,14 +3331,22 @@ try {
     ) {
         throw "C07 PENDING installation identity 原子复读后发生 release/helper 漂移。"
     }
-    $superPassword = Initialize-PgClusterIfNeeded
+    $superPassword = Initialize-PgClusterIfNeeded -InitdbInvoker {
+        param($BootstrapState)
+        Invoke-TicketboxServiceOwnedInitdb `
+            -BootstrapState $BootstrapState `
+            -CompensationAuthority $serviceCompensationAuthority
+    }
     Initialize-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
         -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts | Out-Null
     Set-TicketboxRuntimeServiceContractFromBinding -RequireBinding
-    Register-PgService -RuntimeBindingTransition
-    Register-BackendService
+    Register-PgService `
+        -RuntimeBindingTransition `
+        -CompensationAuthority $serviceCompensationAuthority
+    Register-BackendService `
+        -CompensationAuthority $serviceCompensationAuthority
     Write-TicketboxInstallerRuntimeRecoveryGuard `
         -Path $InstallerRuntimeRecoveryGuardPath `
         -InstallDir $InstallDir `
@@ -2741,18 +3572,20 @@ try {
     }
 
     Write-Host ""
-    Write-Host "================ 安装完成 ================" -ForegroundColor Green
+    Write-Host "========== 服务初始化完成，等待安装器最终提交 ==========" -ForegroundColor Green
     Write-Host "安装目录 : $InstallDir"
     Write-Host "数据目录 : $DataRoot"
     Write-Host "后端地址 : http://127.0.0.1:$BackendPort"
     Write-Host "owner 凭证: $OwnerBootstrapPath（首次安装时生成）"
-    Write-Host "=========================================" -ForegroundColor Green
+    Write-Host "======================================================" -ForegroundColor Green
 }
 catch {
     $failure = $_.Exception
     if ($mutationStarted) {
         try {
-            Invoke-TicketboxInstallFailureCompensation $failure.Message
+            Invoke-TicketboxInstallFailureCompensation `
+                -Reason $failure.Message `
+                -ServiceCompensationAuthority $serviceCompensationAuthority
         }
         catch {
             $compensationFailure = $_.Exception
@@ -2760,6 +3593,20 @@ catch {
                 -InstallFailure $failure `
                 -CompensationFailure $compensationFailure
         }
+    }
+    try {
+        Publish-TicketboxInstallPublicFailureReceipt `
+            -Path $resolvedPublicFailurePath `
+            -LifecycleLock $operationLock `
+            -FinalizationAttemptId $LifecycleFinalizationAttemptId `
+            -Failure $failure `
+            -MutationStarted $mutationStarted
+    }
+    catch {
+        Write-Warning (
+            "无法发布公开安装失败回执；保留受保护原始日志。" +
+            $_.Exception.Message
+        )
     }
     try {
         Write-TicketboxInstallC07FailureSummaryIfPresent `

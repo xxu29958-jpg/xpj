@@ -180,6 +180,56 @@ function Test-TicketboxDirectoryPublicationIdentity([string]$Path, [object]$Expe
     )
 }
 
+function Move-TicketboxPublicationDirectoryAtomically {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceDirectory,
+        [Parameter(Mandatory = $true)][string]$DestinationDirectory,
+        [Parameter(Mandatory = $true)][string]$PublishRoot
+    )
+
+    $canonicalRoot = [System.IO.Path]::GetFullPath($PublishRoot).TrimEnd("\", "/")
+    $canonicalSource = (
+        Assert-TicketboxNoReparsePath `
+            -Path $SourceDirectory `
+            -AllowedRoot $canonicalRoot `
+            -InspectTree
+    ).TrimEnd("\", "/")
+    $canonicalDestination = (
+        Assert-TicketboxNoReparsePath `
+            -Path $DestinationDirectory `
+            -AllowedRoot $canonicalRoot
+    ).TrimEnd("\", "/")
+    $sourceVolume = [System.IO.Path]::GetPathRoot($canonicalSource).TrimEnd("\", "/")
+    $destinationVolume = [System.IO.Path]::GetPathRoot($canonicalDestination).TrimEnd("\", "/")
+    $sourcePrefix = $canonicalSource + [System.IO.Path]::DirectorySeparatorChar
+    if (
+        -not $sourceVolume.Equals(
+            $destinationVolume,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or
+        $canonicalDestination.StartsWith(
+            $sourcePrefix,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        throw "Publication directory moves must remain on one volume and cannot target their own tree."
+    }
+    if (-not (Test-Path -LiteralPath $canonicalSource -PathType Container)) {
+        throw "Publication move source is not a directory: $canonicalSource"
+    }
+    if (Test-Path -LiteralPath $canonicalDestination) {
+        throw "Publication move destination already exists: $canonicalDestination"
+    }
+
+    [System.IO.Directory]::Move($canonicalSource, $canonicalDestination)
+    if (
+        (Test-Path -LiteralPath $canonicalSource) -or
+        -not (Test-Path -LiteralPath $canonicalDestination -PathType Container)
+    ) {
+        throw "Atomic publication directory move did not reach its exact destination."
+    }
+}
+
 function Write-TicketboxDirectoryPublicationReceipt([string]$Path, [object]$Receipt) {
     $temporaryPath = "$Path.$PID.tmp"
     $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes(
@@ -234,15 +284,44 @@ function Read-TicketboxDirectoryPublicationReceipt(
     $canonicalTarget = [System.IO.Path]::GetFullPath([string]$receipt.target_path).TrimEnd("\", "/")
     $canonicalBackup = [System.IO.Path]::GetFullPath([string]$receipt.backup_path).TrimEnd("\", "/")
     $canonicalStaging = [System.IO.Path]::GetFullPath([string]$receipt.staging_path).TrimEnd("\", "/")
-    $pathsAreDistinct = @($canonicalTarget, $canonicalBackup, $canonicalStaging) |
-        Select-Object -Unique
-    $pathsHaveExactParent = @($canonicalTarget, $canonicalBackup, $canonicalStaging) |
+    $pathsAreDistinct =
+        -not $canonicalTarget.Equals(
+            $canonicalBackup,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -and
+        -not $canonicalTarget.Equals(
+            $canonicalStaging,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -and
+        -not $canonicalBackup.Equals(
+            $canonicalStaging,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    $pathsHaveExactParent = @($canonicalTarget, $canonicalBackup) |
         Where-Object {
             -not ([System.IO.Directory]::GetParent($_).FullName.TrimEnd("\", "/")).Equals(
                 $canonicalRoot,
                 [System.StringComparison]::OrdinalIgnoreCase
             )
         }
+    $separator = [System.IO.Path]::DirectorySeparatorChar
+    $stagingOverlapsAuthority =
+        $canonicalStaging.StartsWith(
+            $canonicalTarget + $separator,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or
+        $canonicalTarget.StartsWith(
+            $canonicalStaging + $separator,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or
+        $canonicalStaging.StartsWith(
+            $canonicalBackup + $separator,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or
+        $canonicalBackup.StartsWith(
+            $canonicalStaging + $separator,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
     if (
         ($actualNames -join "`n") -cne ($expectedNames -join "`n") -or
         [string]$receipt.schema -cne "ticketbox-directory-publication-v1" -or
@@ -250,8 +329,9 @@ function Read-TicketboxDirectoryPublicationReceipt(
         -not ([System.IO.Path]::GetFullPath([string]$receipt.publish_root).TrimEnd("\", "/")).Equals($canonicalRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
         -not $canonicalTarget.Equals([System.IO.Path]::GetFullPath($TargetDirectory).TrimEnd("\", "/"), [System.StringComparison]::OrdinalIgnoreCase) -or
         -not $canonicalBackup.Equals([System.IO.Path]::GetFullPath($BackupDirectory).TrimEnd("\", "/"), [System.StringComparison]::OrdinalIgnoreCase) -or
-        @($pathsAreDistinct).Count -ne 3 -or
-        @($pathsHaveExactParent).Count -ne 0
+        -not $pathsAreDistinct -or
+        @($pathsHaveExactParent).Count -ne 0 -or
+        $stagingOverlapsAuthority
     ) {
         throw "Windows publication receipt paths or schema do not match the requested publication."
     }
@@ -296,7 +376,10 @@ function Recover-TicketboxDirectoryPublication {
             if (-not $backupIsOld) {
                 throw "Published target is missing and no verified last-known-good backup is available."
             }
-            Move-Item -LiteralPath $BackupDirectory -Destination $TargetDirectory
+            Move-TicketboxPublicationDirectoryAtomically `
+                -SourceDirectory $BackupDirectory `
+                -DestinationDirectory $TargetDirectory `
+                -PublishRoot $PublishRoot
             if (-not (Test-TicketboxDirectoryPublicationIdentity $TargetDirectory $receipt.backup_identity)) {
                 throw "Restored last-known-good publication failed identity verification."
             }
@@ -307,9 +390,20 @@ function Recover-TicketboxDirectoryPublication {
         if ($backupExists -or -not $stagingIsNew -or $phase -ne "prepared") {
             throw "Initial publication recovery has no verified staging directory."
         }
-        Move-Item -LiteralPath $staging -Destination $TargetDirectory
+        Move-TicketboxPublicationDirectoryAtomically `
+            -SourceDirectory $staging `
+            -DestinationDirectory $TargetDirectory `
+            -PublishRoot $PublishRoot
         if (-not (Test-TicketboxDirectoryPublicationIdentity $TargetDirectory $receipt.new_identity)) {
             throw "Recovered initial publication failed identity verification."
+        }
+        Remove-Item -LiteralPath $ReceiptPath -Force -ErrorAction Stop
+        return
+    }
+
+    if ($targetIsOld -and -not $backupExists) {
+        if ($stagingIsNew) {
+            Remove-TicketboxKnownPublicationDirectory $staging $PublishRoot
         }
         Remove-Item -LiteralPath $ReceiptPath -Force -ErrorAction Stop
         return
@@ -324,11 +418,6 @@ function Recover-TicketboxDirectoryPublication {
             throw "Promoted publication has an invalid residual staging/backup combination."
         }
         if ($backupIsOld) { Remove-TicketboxKnownPublicationDirectory $BackupDirectory $PublishRoot }
-        Remove-Item -LiteralPath $ReceiptPath -Force -ErrorAction Stop
-        return
-    }
-    if ($targetIsOld -and -not $backupExists -and $stagingIsNew -and $phase -eq "prepared") {
-        Remove-TicketboxKnownPublicationDirectory $staging $PublishRoot
         Remove-Item -LiteralPath $ReceiptPath -Force -ErrorAction Stop
         return
     }
@@ -367,11 +456,17 @@ function Publish-TicketboxRecoverableDirectory {
     Write-TicketboxDirectoryPublicationReceipt $ReceiptPath $receipt
     try {
         if ($hadTarget) {
-            Move-Item -LiteralPath $TargetDirectory -Destination $BackupDirectory
+            Move-TicketboxPublicationDirectoryAtomically `
+                -SourceDirectory $TargetDirectory `
+                -DestinationDirectory $BackupDirectory `
+                -PublishRoot $PublishRoot
             $receipt.phase = "backed_up"
             Write-TicketboxDirectoryPublicationReceipt $ReceiptPath $receipt
         }
-        Move-Item -LiteralPath $StagingDirectory -Destination $TargetDirectory
+        Move-TicketboxPublicationDirectoryAtomically `
+            -SourceDirectory $StagingDirectory `
+            -DestinationDirectory $TargetDirectory `
+            -PublishRoot $PublishRoot
         $receipt.phase = "promoted"
         Write-TicketboxDirectoryPublicationReceipt $ReceiptPath $receipt
         if (-not (Test-TicketboxDirectoryPublicationIdentity $TargetDirectory $newIdentity)) {
@@ -385,7 +480,10 @@ function Publish-TicketboxRecoverableDirectory {
             Remove-TicketboxKnownPublicationDirectory $TargetDirectory $PublishRoot
         }
         if ($hadTarget -and (Test-TicketboxDirectoryPublicationIdentity $BackupDirectory $backupIdentity)) {
-            Move-Item -LiteralPath $BackupDirectory -Destination $TargetDirectory
+            Move-TicketboxPublicationDirectoryAtomically `
+                -SourceDirectory $BackupDirectory `
+                -DestinationDirectory $TargetDirectory `
+                -PublishRoot $PublishRoot
         }
         Remove-Item -LiteralPath $ReceiptPath -Force -ErrorAction SilentlyContinue
         throw $publishFailure

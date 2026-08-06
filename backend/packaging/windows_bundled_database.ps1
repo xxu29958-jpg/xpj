@@ -464,6 +464,134 @@ function Read-PostgresBootstrapRecoveryState {
     return ConvertFrom-PostgresBootstrapRecoveryPayload $bytes
 }
 
+function Repair-PostgresBootstrapRecoveryFileAcl {
+    $pwfile = Get-PostgresBootstrapRecoveryPath
+    if ((Get-TicketboxPathEntryKindNoFollow $pwfile) -cne "File") {
+        throw "PostgreSQL bootstrap 恢复文件不是普通文件，拒绝 ACL 恢复。"
+    }
+
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $canonicalAppData = ConvertTo-TicketboxWin32CanonicalPath $AppData
+    $expectedAppData = Join-Path $canonicalDataRoot "app"
+    $expectedRecoveryPath = Join-Path `
+        $canonicalAppData `
+        $script:PostgresBootstrapRecoveryFileName
+    if (
+        -not (Test-TicketboxPathEquals $canonicalAppData $expectedAppData) -or
+        -not (Test-TicketboxPathEquals $pwfile $expectedRecoveryPath)
+    ) {
+        throw "PostgreSQL bootstrap 恢复文件不在标准 DataRoot/app 域内。"
+    }
+
+    $acl = Get-TicketboxPathAcl $pwfile
+    if ($acl.AreAccessRulesProtected) {
+        [void](Read-PostgresBootstrapRecoveryState)
+        return $false
+    }
+
+    # A trusted machine-wide installer can be interrupted after publishing the
+    # bounded recovery payload but before converting its inherited DACL into a
+    # protected one.  Before the first ACL write, prove the entire generic
+    # first-install domain: protected DataRoot, exact inherited app directory,
+    # exact inherited file, canonical bounded payload, and unchanged bytes.
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $canonicalDataRoot `
+        -FullControlAccounts $script:PostgresBootstrapAclAccounts `
+        -OwnerAccount $script:PostgresBootstrapAclOwnerAccount
+    Assert-TicketboxRecoverableInheritedDirectoryAcl `
+        -Path $canonicalAppData `
+        -FullControlAccounts $script:PostgresBootstrapAclAccounts `
+        -OwnerAccount $script:PostgresBootstrapAclOwnerAccount
+    Assert-TicketboxRecoverableInheritedFileAcl `
+        -Path $pwfile `
+        -FullControlAccounts $script:PostgresBootstrapAclAccounts `
+        -OwnerAccount $script:PostgresBootstrapAclOwnerAccount
+
+    try {
+        $beforeBytes = [IO.File]::ReadAllBytes(
+            (ConvertTo-TicketboxWin32ExtendedPath $pwfile)
+        )
+    }
+    catch {
+        throw "无法读取待恢复的 PostgreSQL bootstrap 恢复文件。"
+    }
+    [void](ConvertFrom-PostgresBootstrapRecoveryPayload $beforeBytes)
+
+    Set-TicketboxExactFileAcl `
+        -Path $pwfile `
+        -Accounts $script:PostgresBootstrapAclAccounts `
+        -OwnerAccount $script:PostgresBootstrapAclOwnerAccount
+    Assert-PostgresBootstrapRecoveryFileSecurity -Path $pwfile
+    $afterBytes = [IO.File]::ReadAllBytes(
+        (ConvertTo-TicketboxWin32ExtendedPath $pwfile)
+    )
+    if (-not (Test-TicketboxByteArrayEquals $beforeBytes $afterBytes)) {
+        throw "PostgreSQL bootstrap 恢复文件 ACL 恢复改变了受保护字节。"
+    }
+    [void](Read-PostgresBootstrapRecoveryState)
+    return $true
+}
+
+function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$ParentFullControlAccounts
+    )
+
+    $pwfile = Get-PostgresBootstrapRecoveryPath
+    $pathKind = Get-TicketboxPathEntryKindNoFollow $pwfile
+    if ($pathKind -ceq "Missing") {
+        return $false
+    }
+    if ($pathKind -cne "File") {
+        throw "PostgreSQL bootstrap 恢复路径不是普通文件，拒绝 ACL 收敛。"
+    }
+
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $canonicalAppData = ConvertTo-TicketboxWin32CanonicalPath $AppData
+    if (
+        -not (Test-TicketboxPathEquals `
+            $canonicalAppData `
+            (Join-Path $canonicalDataRoot "app")) -or
+        -not (Test-TicketboxPathEquals `
+            $pwfile `
+            (Join-Path $canonicalAppData $script:PostgresBootstrapRecoveryFileName))
+    ) {
+        throw "PostgreSQL bootstrap 恢复文件越出标准 DataRoot/app 域。"
+    }
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $canonicalAppData `
+        -FullControlAccounts $ParentFullControlAccounts `
+        -OwnerAccount $script:PostgresBootstrapAclOwnerAccount
+
+    $acl = Get-TicketboxPathAcl $pwfile
+    if ($acl.AreAccessRulesProtected) {
+        [void](Read-PostgresBootstrapRecoveryState)
+        return $false
+    }
+    Assert-TicketboxRecoverableInheritedFileAcl `
+        -Path $pwfile `
+        -FullControlAccounts $ParentFullControlAccounts `
+        -OwnerAccount $script:PostgresBootstrapAclOwnerAccount
+    $beforeBytes = [IO.File]::ReadAllBytes(
+        (ConvertTo-TicketboxWin32ExtendedPath $pwfile)
+    )
+    [void](ConvertFrom-PostgresBootstrapRecoveryPayload $beforeBytes)
+
+    Set-TicketboxExactFileAcl `
+        -Path $pwfile `
+        -Accounts $script:PostgresBootstrapAclAccounts `
+        -OwnerAccount $script:PostgresBootstrapAclOwnerAccount
+    Assert-PostgresBootstrapRecoveryFileSecurity -Path $pwfile
+    $afterBytes = [IO.File]::ReadAllBytes(
+        (ConvertTo-TicketboxWin32ExtendedPath $pwfile)
+    )
+    if (-not (Test-TicketboxByteArrayEquals $beforeBytes $afterBytes)) {
+        throw "AppData ACL 收敛改变了 PostgreSQL bootstrap 恢复字节。"
+    }
+    [void](Read-PostgresBootstrapRecoveryState)
+    return $true
+}
+
 function Remove-PostgresBootstrapRecoveryTempIfPresent {
     $tempPath = (Get-PostgresBootstrapRecoveryPath) + ".tmp"
     if (-not (Test-Path -LiteralPath $tempPath)) {
@@ -536,6 +664,7 @@ function Get-OrCreatePostgresBootstrapRecoveryState {
     Remove-PostgresBootstrapRecoveryTempIfPresent
     $pwfile = Get-PostgresBootstrapRecoveryPath
     if (Test-Path -LiteralPath $pwfile) {
+        [void](Repair-PostgresBootstrapRecoveryFileAcl)
         return Read-PostgresBootstrapRecoveryState
     }
     $state = New-PostgresBootstrapRecoveryState
@@ -637,7 +766,84 @@ function Set-TicketboxPostgresInstallerConfiguration {
     }
 }
 
+function Remove-TicketboxEmptyPgDataBeforeInitdb {
+    $pgDataKind = Get-TicketboxPathEntryKindNoFollow $PgData
+    if ($pgDataKind -ceq "Missing") { return }
+    if ($pgDataKind -cne "Directory") {
+        throw "PostgreSQL 初始化目标不是普通目录，拒绝继续。"
+    }
+
+    $expectedPgData = Join-Path $DataRoot "pgdata"
+    if (-not (Test-TicketboxPathEquals $PgData $expectedPgData)) {
+        throw "PostgreSQL 初始化目标不在动态 DataRoot 契约位置。"
+    }
+    Assert-NoTicketboxReparsePoints $PgData
+    if (@(Get-ChildItem -LiteralPath $PgData -Force).Count -ne 0) {
+        throw "PostgreSQL 初始化目标含有未绑定恢复权威的内容，拒绝覆盖。"
+    }
+
+    Initialize-TicketboxExactTreeDeleteNativeMethods
+    $expectedPgData = [IO.Path]::GetFullPath($expectedPgData).TrimEnd('\', '/')
+    $expectedPgDataIdentity = @(
+        [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity($expectedPgData)
+    )
+    if ($expectedPgDataIdentity.Count -ne 2) {
+        throw "PostgreSQL 空初始化目录身份无法固定。"
+    }
+    $expectedPgVersionPath = Join-Path $expectedPgData "PG_VERSION"
+    $emptyCleanupGuard = {
+        param($GuardedPath)
+        $openedPath = [IO.Path]::GetFullPath($GuardedPath).TrimEnd('\', '/')
+        if (-not [string]::Equals(
+            $openedPath,
+            $expectedPgData,
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "PostgreSQL 空初始化目录句柄与已验证目标不一致。"
+        }
+        $openedIdentity = @(
+            [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity($openedPath)
+        )
+        if (
+            $openedIdentity.Count -ne 2 -or
+            [string]$openedIdentity[0] -cne [string]$expectedPgDataIdentity[0] -or
+            [string]$openedIdentity[1] -cne [string]$expectedPgDataIdentity[1]
+        ) {
+            throw "PostgreSQL 空初始化目录身份在清理前发生变化。"
+        }
+        if (
+            [TicketboxExactTreeDeleteNativeMethods]::InspectEntry(
+                $expectedPgVersionPath
+            ) -ne 0 -or
+            [IO.Directory]::GetFileSystemEntries($openedPath).Length -ne 0
+        ) {
+            throw "PostgreSQL 空初始化目录在清理前已出现内容。"
+        }
+    }.GetNewClosure()
+    Remove-TicketboxDataRootExact `
+        -Path $PgData `
+        -OnRootHandleAcquired $emptyCleanupGuard
+    Write-Ok "已清理 PostgreSQL 空初始化断点。"
+}
+
+function New-TicketboxInitdbFailure {
+    param(
+        [Parameter(Mandatory = $true)][string]$FailureKind,
+        [AllowNull()][Nullable[int]]$ExitCode
+    )
+
+    $exitText = if ($null -eq $ExitCode) { "unavailable" } else { [string]$ExitCode }
+    $failure = [InvalidOperationException]::new(
+        "initdb 未完成（kind=$FailureKind, exit=$exitText）。"
+    )
+    $failure.Data["TicketboxInstallPublicFailureCode"] =
+        "postgres_cluster_initialization_failed"
+    return $failure
+}
+
 function Initialize-PgClusterIfNeeded {
+    param([scriptblock]$InitdbInvoker)
+
     $pgVersionPath = Join-Path $PgData "PG_VERSION"
     $pwfile = Get-PostgresBootstrapRecoveryPath
     if ((Test-Path -LiteralPath $pgVersionPath) -and
@@ -647,6 +853,9 @@ function Initialize-PgClusterIfNeeded {
     if ((Test-Path -LiteralPath $EnvPath) -and
         -not (Test-Path -LiteralPath $EnvPath -PathType Leaf)) {
         throw ".env 路径不是普通文件，拒绝继续：$EnvPath"
+    }
+    if ((Get-TicketboxPathEntryKindNoFollow $pwfile) -ceq "File") {
+        [void](Repair-PostgresBootstrapRecoveryFileAcl)
     }
     $existingEnv = Read-EnvMap $EnvPath
     $hasDatabaseUrl = $existingEnv.ContainsKey("DATABASE_URL")
@@ -744,26 +953,38 @@ function Initialize-PgClusterIfNeeded {
     }
 
     Write-Step "初始化 PostgreSQL 簇"
-    New-Item -ItemType Directory -Force -Path $PgData | Out-Null
-    [void](Get-OrCreatePostgresBootstrapRecoveryState)
-    $initResult = Invoke-TicketboxBoundedNativeProcess `
-        -FilePath (Join-Path $PgBin "initdb.exe") `
-        -Arguments @(
-            '-D', $PgData,
-            '-U', 'postgres',
-            '--auth-local=scram-sha-256',
-            '--auth-host=scram-sha-256',
-            '--encoding=UTF8',
-            '--no-locale',
-            "--pwfile=$pwfile"
-        ) `
-        -TimeoutMilliseconds $DatabaseToolTimeoutMs `
-        -Label 'initdb'
+    Remove-TicketboxEmptyPgDataBeforeInitdb
+    if ((Get-TicketboxPathEntryKindNoFollow $PgData) -cne "Missing") {
+        throw "PostgreSQL 初始化前无法证明 PGDATA 不存在。"
+    }
+    $bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState
+    $initResult = if ($null -ne $InitdbInvoker) {
+        & $InitdbInvoker $bootstrapState
+    }
+    else {
+        Invoke-TicketboxBoundedNativeProcess `
+            -FilePath (Join-Path $PgBin "initdb.exe") `
+            -Arguments @(
+                '-D', $PgData,
+                '-U', 'postgres',
+                '--auth-local=scram-sha-256',
+                '--auth-host=scram-sha-256',
+                '--encoding=UTF8',
+                '--no-locale',
+                "--pwfile=$pwfile"
+            ) `
+            -TimeoutMilliseconds $DatabaseToolTimeoutMs `
+            -Label 'initdb'
+    }
     if ($initResult.ExitCode -ne 0) {
-        throw "initdb 失败（exit=$($initResult.ExitCode)）。"
+        throw (New-TicketboxInitdbFailure `
+            -FailureKind "native_process_failed" `
+            -ExitCode ([int]$initResult.ExitCode))
     }
     if (-not (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)) {
-        throw "initdb 未生成 PG_VERSION，拒绝继续。"
+        throw (New-TicketboxInitdbFailure `
+            -FailureKind "pg_version_missing" `
+            -ExitCode ([int]$initResult.ExitCode))
     }
     Set-TicketboxPostgresInstallerConfiguration
     Write-Ok "PG 簇已初始化（loopback-only, scram-sha-256）。"

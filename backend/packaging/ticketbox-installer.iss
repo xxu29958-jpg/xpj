@@ -82,6 +82,7 @@ DefaultDirName={autopf}\Ticketbox
 DefaultGroupName=小票夹
 DisableProgramGroupPage=yes
 DisableDirPage=yes
+DisableWelcomePage=no
 UsePreviousAppDir=no
 OutputDir=..\dist\installer
 OutputBaseFilename=Ticketbox-Setup-{#AppVersion}

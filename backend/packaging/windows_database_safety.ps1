@@ -1750,7 +1750,7 @@ function Invoke-TicketboxBoundedHeartbeatOperation {
 function Invoke-TicketboxBoundedNativeProcess {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
-        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string[]]$Arguments,
         [Parameter(Mandatory = $true)][ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds,
         [Parameter(Mandatory = $true)][string]$Label,
         [AllowEmptyString()][string]$StandardInputText,

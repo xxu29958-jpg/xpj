@@ -30,6 +30,26 @@ def _ps_literal(path: str | Path) -> str:
     return str(path).replace("'", "''")
 
 
+def _powershell_function_loader(source: Path, function_name: str) -> str:
+    return f"""
+$tokens = $null
+$errors = $null
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    '{_ps_literal(source)}',
+    [ref]$tokens,
+    [ref]$errors
+)
+if ($errors.Count -gt 0) {{ throw 'source parse failed' }}
+$functionAst = $ast.FindAll({{
+    param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq '{function_name}'
+}}, $true) | Select-Object -First 1
+if ($null -eq $functionAst) {{ throw 'missing production function: {function_name}' }}
+Invoke-Expression $functionAst.Extent.Text
+"""
+
+
 def test_database_tools_are_bounded_under_powershell_51_and_7(tmp_path: Path) -> None:
     installation_safety = PACKAGING / "windows_installation_safety.ps1"
     database_safety = PACKAGING / "windows_database_safety.ps1"
@@ -299,19 +319,51 @@ function Assert-TreeSettledAtReturn([string]$PidPath, [string]$MarkerPath) {{
         Get-Content -LiteralPath $PidPath -Encoding UTF8 -ErrorAction Stop |
             ForEach-Object {{ [int]$_ }}
     )
-    $alive = @(
-        $pids | Where-Object {{
-            $null -ne (Get-Process -Id $_ -ErrorAction SilentlyContinue)
+    if ($pids.Count -ne 3) {{
+        throw "process tree did not start fully: pids=$($pids -join ',')"
+    }}
+    $processHandles = @(
+        foreach ($processId in $pids) {{
+            $candidate = $null
+            $runningAtReturn = $false
+            try {{
+                $candidate = [Diagnostics.Process]::GetProcessById($processId)
+                $null = $candidate.Handle
+                $runningAtReturn = -not $candidate.WaitForExit(0)
+            }}
+            catch [System.ArgumentException] {{
+            }}
+            catch [System.InvalidOperationException] {{
+            }}
+            [pscustomobject]@{{
+                ProcessId = $processId
+                Process = $candidate
+                RunningAtReturn = $runningAtReturn
+            }}
         }}
     )
-    if ($pids.Count -ne 3 -or $alive.Count -ne 0) {{
-        throw "wrapper returned before process-tree settlement: pids=$($pids -join ',') alive=$($alive -join ',')"
+    try {{
+        $runningAtReturn = @(
+            $processHandles |
+                Where-Object {{ $_.RunningAtReturn }} |
+                ForEach-Object {{ $_.ProcessId }}
+        )
+        $before = (Get-Item -LiteralPath $MarkerPath -Force -ErrorAction Stop).Length
+        Start-Sleep -Milliseconds 200
+        $after = (Get-Item -LiteralPath $MarkerPath -Force -ErrorAction Stop).Length
+        if ($after -ne $before) {{
+            throw "descendant marker grew after wrapper return: before=$before after=$after"
+        }}
+        if ($runningAtReturn.Count -ne 0) {{
+            throw "wrapper returned before process-tree signal: pids=$($pids -join ',') running=$($runningAtReturn -join ',')"
+        }}
     }}
-    $before = (Get-Item -LiteralPath $MarkerPath -Force -ErrorAction Stop).Length
-    Start-Sleep -Milliseconds 200
-    $after = (Get-Item -LiteralPath $MarkerPath -Force -ErrorAction Stop).Length
-    if ($after -ne $before) {{
-        throw "descendant marker grew after wrapper return: before=$before after=$after"
+    finally {{
+        $processHandles | ForEach-Object {{
+            if ($null -ne $_.Process) {{
+                $_.Process.Dispose()
+            }}
+        }}
     }}
 }}
 
@@ -1581,7 +1633,8 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert 'Join-Path $systemDirectory "sc.exe"' in lifecycle
     assert "Test-Path -LiteralPath $scExecutable -PathType Leaf" in lifecycle
     assert "[System.IO.FileAttributes]::ReparsePoint" in lifecycle
-    assert "& $scExecutable @ScArgs" in lifecycle
+    assert "Invoke-TicketboxBoundedNativeProcess" in lifecycle
+    assert "& $scExecutable @ScArgs" not in lifecycle
     assert "& sc.exe @ScArgs" not in lifecycle
     assert "Set-TicketboxOwnedServiceDemandStartIfExists" in lifecycle
     assert "Set-TicketboxOwnedServiceDelayedAutoStartIfExists" in lifecycle
@@ -1631,11 +1684,58 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert "Get-TicketboxServiceSid" in lifecycle
     assert 'Invoke-TicketboxScChecked @("showsid", $Name)' in lifecycle
     assert "$initialAclAccounts" not in install
+    preclassification = install.index("$preExistingPgService = Service-Exists")
+    secure_install_root = install.index(
+        "Initialize-TicketboxSecureInstallRoot",
+        preclassification,
+    )
+    assert (
+        install.index("Assert-ExpectedServiceConfiguration", preclassification)
+        < secure_install_root
+    )
+    assert (
+        install.index("Assert-TicketboxServiceFailurePolicy", preclassification)
+        < secure_install_root
+    )
     stop_backend = install.index("Stop-ServiceIfExists", install.index("$hadExistingPgService"))
     isolate_acl = install.index("Set-TicketboxAcl", stop_backend)
     backup = install.index("Invoke-PreUpgradeBackupIfNeeded", isolate_acl)
     assert stop_backend < isolate_acl < backup
     assert "-IncludeBackendService $hadExistingBackendService" in install
+    prepare_commit = prepare[
+        prepare.index("function Complete-TicketboxInterruptedInitdbServiceCommit") : prepare.index(
+            "function Remove-TicketboxAbortedInitdbPgData"
+        )
+    ]
+    assert prepare_commit.index('"failure", $PgServiceName') < prepare_commit.index(
+        "Assert-TicketboxServiceFailurePolicy"
+    ) < prepare_commit.index("Remove-TicketboxInitdbServiceReceipt")
+    uninstall_recovery = uninstall[
+        uninstall.index("function Invoke-TicketboxInitdbServiceUninstallRecovery") : uninstall.index(
+            'Write-Host "=== 小票夹服务卸载 ==="'
+        )
+    ]
+    env_guard = uninstall_recovery.index('Join-Path $AppData ".env"')
+    formal_branch = uninstall_recovery.index('if ($serviceShape -ceq "formal_pg_ctl")')
+    formal_disable = uninstall_recovery.index(
+        "Disable-TicketboxOwnedServiceIfExists",
+        formal_branch,
+    )
+    formal_policy = uninstall_recovery.index(
+        '"failure", $PgServiceName',
+        formal_disable,
+    )
+    formal_policy_assert = uninstall_recovery.index(
+        "Assert-TicketboxServiceFailurePolicy",
+        formal_policy,
+    )
+    formal_receipt_retire = uninstall_recovery.index(
+        "Remove-TicketboxInitdbServiceReceipt",
+        formal_policy_assert,
+    )
+    assert env_guard < formal_branch < formal_disable < formal_policy
+    assert formal_policy < formal_policy_assert < formal_receipt_retire
+    assert "-RuntimePort $PgPort" in uninstall_recovery
     for runtime_contract in (install, prepare):
         assert "$ServiceBootstrapExposureRecoveryGuardPath" in runtime_contract
         assert (
@@ -1821,12 +1921,29 @@ def test_pre_copy_compensation_preserves_exact_start_policy_mutation() -> None:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell service contract")
 def test_service_policy_and_sid_contract_in_powershell_5_and_7(tmp_path: Path) -> None:
+    install = _read("install_bundled_services.ps1")
+    lifecycle_load = install.index(". $LifecycleScript")
+    safety_load = install.index(". $SafetyScript", lifecycle_load)
+    receipt_load = install.index(". $ReceiptScript", safety_load)
+    database_safety_load = install.index(". $DatabaseSafetyScript", receipt_load)
+    first_sid_query = install.index("Get-TicketboxServiceSid", database_safety_load)
+    assert lifecycle_load < safety_load < receipt_load < database_safety_load < first_sid_query
+    assert install.count('$DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"') == 1
+
     harness = tmp_path / "service-start-policy.ps1"
     lifecycle = str(PACKAGING / "windows_service_lifecycle.ps1").replace("'", "''")
+    installation_safety = str(
+        PACKAGING / "windows_installation_safety.ps1"
+    ).replace("'", "''")
+    database_safety = str(PACKAGING / "windows_database_safety.ps1").replace("'", "''")
+    receipt = str(PACKAGING / "windows_lifecycle_receipt.ps1").replace("'", "''")
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{lifecycle}'
+. '{installation_safety}'
+. '{receipt}'
+. '{database_safety}'
 $sid = Get-TicketboxServiceSid 'TicketboxPgRecoveryContractProbe'
 if ($sid -cnotmatch '^S-1-5-80-(?:[0-9]+-){{4}}[0-9]+$') {{
     throw "invalid virtual service SID: $sid"
@@ -1861,6 +1978,184 @@ if ($actual -ne 'disabled,demand,auto,delayed-auto') {{ throw "policy mapping ch
             timeout=20,
         )
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows SCM process boundary")
+def test_service_sc_uses_unified_bounded_process_cross_engine(
+    tmp_path: Path,
+) -> None:
+    lifecycle_path = PACKAGING / "windows_service_lifecycle.ps1"
+    lifecycle = _read("windows_service_lifecycle.ps1")
+    dispatcher = lifecycle[
+        lifecycle.index("function Invoke-TicketboxScProcess") : lifecycle.index(
+            "function Get-TicketboxServiceSid"
+        )
+    ]
+    assert "Invoke-TicketboxBoundedNativeProcess" in dispatcher
+    assert "-TimeoutMilliseconds 30000" in dispatcher
+    assert "& $scExecutable @ScArgs" not in lifecycle
+    assert "return Invoke-TicketboxScCreateChecked $ScArgs" not in dispatcher
+    assert "return Invoke-TicketboxScConfigWithBinaryPathChecked $ScArgs" not in dispatcher
+
+    harness = tmp_path / "service-sc-bounded-process-contract.ps1"
+    lifecycle_literal = str(lifecycle_path).replace("'", "''")
+    harness.write_text(
+        rf"""
+$ErrorActionPreference = 'Stop'
+. '{lifecycle_literal}'
+$script:calls = @()
+$script:exitCode = 0
+$script:standardOutput = '[SC] CreateService SUCCESS'
+$script:standardError = ''
+function Invoke-TicketboxBoundedNativeProcess {{
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [int]$TimeoutMilliseconds,
+        [string]$Label
+    )
+    $script:calls += [pscustomobject]@{{
+        FilePath = $FilePath
+        Arguments = [string[]]$Arguments
+        TimeoutMilliseconds = $TimeoutMilliseconds
+        Label = $Label
+    }}
+    return [pscustomobject]@{{
+        ExitCode = $script:exitCode
+        StandardOutput = $script:standardOutput
+        StandardError = $script:standardError
+    }}
+}}
+$image = '"C:\Program Files\Ticketbox 空格\shawl\shawl.exe" run --name TicketboxBackend -- "C:\Program Files\Ticketbox 空格\backend.exe"'
+$createResult = Invoke-TicketboxScChecked @(
+    'CREATE','TicketboxBackend','binPath=',$image,'start=','disabled',
+    'depend=','TicketboxPg/RpcSs','obj=','NT SERVICE\TicketboxBackend',
+    'displayName=','小票夹后端服务'
+)
+if ($createResult -cne '[SC] CreateService SUCCESS' -or $script:calls.Count -ne 1) {{
+    throw 'create did not cross the bounded sc.exe boundary exactly once'
+}}
+$createCall = $script:calls[0]
+$expectedSc = [IO.Path]::GetFullPath(
+    (Join-Path ([Environment]::SystemDirectory) 'sc.exe')
+)
+if ($createCall.FilePath -cne $expectedSc -or
+    $createCall.TimeoutMilliseconds -ne 30000 -or
+    $createCall.Label -cne 'Windows 服务控制器' -or
+    $createCall.Arguments.Count -ne 12 -or
+    $createCall.Arguments[0] -cne 'CREATE' -or
+    $createCall.Arguments[3] -cne $image -or
+    $createCall.Arguments[7] -cne 'TicketboxPg/RpcSs' -or
+    $createCall.Arguments[9] -cne 'NT SERVICE\TicketboxBackend' -or
+    $createCall.Arguments[11] -cne '小票夹后端服务') {{
+    throw 'bounded create lost an exact sc.exe argument'
+}}
+
+$script:standardOutput = '[SC] ChangeServiceConfig SUCCESS'
+$configResult = Invoke-TicketboxScChecked @(
+    'CONFIG','TicketboxPg','binPath=',$image,'start=','disabled',
+    'obj=','NT SERVICE\TicketboxPg'
+)
+if ($configResult -cne '[SC] ChangeServiceConfig SUCCESS' -or
+    $script:calls.Count -ne 2 -or
+    $script:calls[1].Arguments[3] -cne $image) {{
+    throw 'quoted config did not use the same bounded sc.exe boundary'
+}}
+$script:standardOutput = '[SC] ChangeServiceConfig SUCCESS'
+Invoke-TicketboxScChecked @(
+    'config','TicketboxPg','start=','delayed-auto'
+) | Out-Null
+if ($script:calls.Count -ne 3 -or
+    ($script:calls[2].Arguments -join ',') -cne 'config,TicketboxPg,start=,delayed-auto') {{
+    throw 'simple config did not use the unified sc.exe boundary'
+}}
+$script:standardOutput = '[SC] ChangeServiceConfig SUCCESS'
+Invoke-TicketboxScChecked @(
+    'config','TicketboxBackend','depend=',''
+) | Out-Null
+if ($script:calls.Count -ne 4 -or
+    $script:calls[3].Arguments.Count -ne 4 -or
+    $script:calls[3].Arguments[2] -cne 'depend=' -or
+    $script:calls[3].Arguments[3] -cne '') {{
+    throw 'explicit dependency clear lost its empty argv element'
+}}
+
+$callsBeforeReject = $script:calls.Count
+foreach ($case in @(
+    @('create','TicketboxPg','binPath=',$image,'start=','disabled','obj=','LocalSystem'),
+    @('config','TicketboxPg','obj=','LocalSystem'),
+    @('config','TicketboxPg','password=','DO_NOT_LOG_THIS_SECRET'),
+    @('config',("TicketboxPg" + [char]0 + 'tail'),'binPath=',$image),
+    @('config','TicketboxPg','binPath=',($image + [char]0 + 'tail')),
+    @('query',("TicketboxPg" + [char]13 + 'tail')),
+    @('query',("TicketboxPg" + [char]10 + 'tail'))
+)) {{
+    $rejected = $false
+    try {{ Invoke-TicketboxScChecked $case | Out-Null }}
+    catch {{ $rejected = $true }}
+    if (-not $rejected -or $script:calls.Count -ne $callsBeforeReject) {{
+        throw 'unsafe sc.exe request crossed the process boundary'
+    }}
+}}
+
+$script:exitCode = 1639
+$script:standardOutput = ''
+$script:standardError = 'SC_USAGE_PROBE'
+$failedClosed = $false
+try {{
+    Invoke-TicketboxScChecked @(
+        'config','TicketboxPg','binPath=',$image
+    ) | Out-Null
+}}
+catch {{
+    $failedClosed = (
+        $_.Exception.Message -like '*exit=1639*' -and
+        $_.Exception.Message -like '*SC_USAGE_PROBE*' -and
+        $_.Exception.Message -notlike "*$image*" -and
+        $_.Exception.Message -like '*options=binpath=*'
+    )
+}}
+if (-not $failedClosed) {{ throw 'sc.exe non-zero exit was hidden' }}
+
+$secretSummary = Format-TicketboxScOperationForLog @(
+    'config','TicketboxPg','password=','DO_NOT_LOG_THIS_SECRET'
+)
+if ($secretSummary -like '*DO_NOT_LOG_THIS_SECRET*' -or
+    $secretSummary -cne 'sc.exe config TicketboxPg options=password=') {{
+    throw 'sc.exe error summary exposed an option value'
+}}
+
+$script:exitCode = 0
+$script:standardError = ''
+$emptySuccess = Invoke-TicketboxScChecked @('query','TicketboxPg')
+if ($emptySuccess -cne '[SC] query SUCCESS (exit=0)') {{
+    throw 'empty successful sc.exe result lost exit=0 evidence'
+}}
+"SC_BOUNDED_PROCESS_OK"
+""",
+        encoding="utf-8-sig",
+    )
+    for engine in powershell_contract_engines():
+        result = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                harness,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows TCP cmdlet contract")
@@ -2210,5 +2505,751 @@ if (Test-Path -LiteralPath '{literal(secret_path)}') {{ throw 'sensitive file su
             encoding="utf-8",
             errors="replace",
             timeout=20,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+def test_initdb_one_shot_command_and_terminal_states_cross_engine(
+    tmp_path: Path,
+) -> None:
+    lifecycle = PACKAGING / "windows_service_lifecycle.ps1"
+    installation_safety = PACKAGING / "windows_installation_safety.ps1"
+    release_config = PACKAGING / "windows_release_config.ps1"
+    for index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"initdb-one-shot-{index}.ps1"
+        harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(release_config)}'
+. '{_ps_literal(installation_safety)}'
+. '{_ps_literal(lifecycle)}'
+$shawl = 'C:\\Program Files\\Ticketbox\\shawl\\shawl.exe'
+$pgBin = 'C:\\Program Files\\Ticketbox\\pg\\bin'
+$initdb = Join-Path $pgBin 'initdb.exe'
+$pgData = 'C:\\ProgramData\\Ticketbox\\pgdata'
+$pwfile = 'C:\\ProgramData\\Ticketbox\\.ticketbox-initdb-password'
+$imagePath = New-TicketboxInitdbServiceImagePath `
+    -ShawlPath $shawl `
+    -ServiceName 'TicketboxPg' `
+    -WorkingDirectory $pgBin `
+    -InitdbPath $initdb `
+    -DataRoot $pgData `
+    -PasswordFile $pwfile `
+    -StopTimeoutMs 25000
+$arguments = @(Split-TicketboxWindowsCommandLine $imagePath)
+$expected = @(
+    $shawl, 'run', '--name', 'TicketboxPg', '--no-restart', '--no-log',
+    '--kill-process-tree', '--stop-timeout', '25000', '--cwd', $pgBin,
+    '--', $initdb, '-D', $pgData, '-U', 'postgres',
+    '--auth-local=scram-sha-256', '--auth-host=scram-sha-256',
+    '--encoding=UTF8', '--no-locale', "--pwfile=$pwfile"
+)
+if ($arguments.Count -ne 22) {{ throw 'initdb command argument count drifted' }}
+for ($index = 0; $index -lt $expected.Count; $index++) {{
+    if ([string]$arguments[$index] -cne [string]$expected[$index]) {{
+        throw "initdb command mismatch at $index"
+    }}
+}}
+$script:serviceImagePath = $imagePath
+function Get-TicketboxServiceImagePath {{ param($Name) return $script:serviceImagePath }}
+function Get-TicketboxServiceDependencies {{ param($Name) return @() }}
+Assert-TicketboxInitdbServiceCommand `
+    -Name 'TicketboxPg' `
+    -ExpectedShawl $shawl `
+    -ExpectedServiceName 'TicketboxPg' `
+    -ExpectedWorkingDirectory $pgBin `
+    -ExpectedInitdb $initdb `
+    -ExpectedDataRoot $pgData `
+    -ExpectedPasswordFile $pwfile `
+    -ExpectedStopTimeoutMs 25000 `
+    -ExpectedImagePath $imagePath
+$script:serviceImagePath = $imagePath.Replace('--no-restart', '--restart')
+$poisonRejected = $false
+try {{
+    Assert-TicketboxInitdbServiceCommand `
+        -Name 'TicketboxPg' `
+        -ExpectedShawl $shawl `
+        -ExpectedServiceName 'TicketboxPg' `
+        -ExpectedWorkingDirectory $pgBin `
+        -ExpectedInitdb $initdb `
+        -ExpectedDataRoot $pgData `
+        -ExpectedPasswordFile $pwfile `
+        -ExpectedStopTimeoutMs 25000 `
+        -ExpectedImagePath $imagePath
+}}
+catch {{ $poisonRejected = $true }}
+if (-not $poisonRejected) {{ throw 'poisoned initdb command was accepted' }}
+
+function Assert-TicketboxServiceOwnership {{ param($Name,$ExpectedExecutable) return $true }}
+function Wait-TicketboxBackendRuntimeStopped {{ param($Name,$ExpectedRuntimeExecutables,$TimeoutMilliseconds,$PollMilliseconds,$SleepAction) }}
+$script:startCount = 0
+$startAction = {{ param($Name) $script:startCount += 1 }}
+$sleepAction = {{ param($Milliseconds) Start-Sleep -Milliseconds 10 }}
+$script:successRead = 0
+$successReader = {{
+    param($Name)
+    $script:successRead += 1
+    if ($script:successRead -eq 1) {{
+        return [pscustomobject]@{{ State='running'; ProcessId=41; ExitCode=0; ServiceSpecificExitCode=0 }}
+    }}
+    return [pscustomobject]@{{ State='stopped'; ProcessId=0; ExitCode=0; ServiceSpecificExitCode=0 }}
+}}
+$success = Invoke-TicketboxOwnedOneShotService `
+    -Name 'TicketboxPg' `
+    -ExpectedExecutable $shawl `
+    -ExpectedRuntimeExecutables @($shawl,$initdb) `
+    -TimeoutMilliseconds 2000 `
+    -PollMilliseconds 10 `
+    -SnapshotReader $successReader `
+    -StartAction $startAction `
+    -SleepAction $sleepAction
+if ($success.ExitCode -ne 0 -or $success.ServiceSpecificExitCode -ne 0) {{
+    throw 'successful one-shot terminal was lost'
+}}
+$exit23Reader = {{
+    param($Name)
+    return [pscustomobject]@{{ State='stopped'; ProcessId=0; ExitCode=0; ServiceSpecificExitCode=23 }}
+}}
+$exit23 = Invoke-TicketboxOwnedOneShotService `
+    -Name 'TicketboxPg' `
+    -ExpectedExecutable $shawl `
+    -ExpectedRuntimeExecutables @($shawl,$initdb) `
+    -TimeoutMilliseconds 2000 `
+    -PollMilliseconds 10 `
+    -SnapshotReader $exit23Reader `
+    -StartAction $startAction `
+    -SleepAction $sleepAction
+if ($exit23.ServiceSpecificExitCode -ne 23) {{
+    throw 'non-zero one-shot terminal was hidden'
+}}
+$hangReader = {{
+    param($Name)
+    return [pscustomobject]@{{ State='running'; ProcessId=42; ExitCode=0; ServiceSpecificExitCode=0 }}
+}}
+$hangRejected = $false
+try {{
+    Invoke-TicketboxOwnedOneShotService `
+        -Name 'TicketboxPg' `
+        -ExpectedExecutable $shawl `
+        -ExpectedRuntimeExecutables @($shawl,$initdb) `
+        -TimeoutMilliseconds 250 `
+        -PollMilliseconds 10 `
+        -SnapshotReader $hangReader `
+        -StartAction $startAction `
+        -SleepAction $sleepAction | Out-Null
+}}
+catch {{ $hangRejected = $_.Exception.Message -like '*未在*内停止*' }}
+if (-not $hangRejected) {{ throw 'hung one-shot service escaped its deadline' }}
+if ($script:startCount -ne 3) {{ throw 'one-shot service start count drifted' }}
+""",
+            encoding="utf-8-sig",
+        )
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+def test_service_owned_initdb_collision_and_public_failure_are_production_wired(
+    tmp_path: Path,
+) -> None:
+    install_script = PACKAGING / "install_bundled_services.ps1"
+    template = r"""
+$ErrorActionPreference = 'Stop'
+__FUNCTION_LOADER__
+
+$script:ShawlExe = 'C:\Program Files\Ticketbox\shawl\shawl.exe'
+$script:PgServiceName = 'TicketboxPg'
+$script:PgBin = 'C:\Program Files\Ticketbox\pg\bin'
+$script:InitdbExe = 'C:\Program Files\Ticketbox\pg\bin\initdb.exe'
+$script:PgData = 'C:\ProgramData\Ticketbox\pgdata'
+$script:InitdbPasswordPath = 'C:\ProgramData\Ticketbox\.ticketbox-initdb-password'
+$script:StopTimeoutMs = 25000
+$script:InitdbServiceReceiptPath = 'C:\ProgramData\Ticketbox\installer-state\initdb.json'
+$script:InstallDir = 'C:\Program Files\Ticketbox'
+$script:DataRoot = 'C:\ProgramData\Ticketbox'
+$script:TargetPgMajor = 17
+$script:ServiceWaitArguments = @{
+    TimeoutMilliseconds = 1000
+    PollMilliseconds = 1
+}
+$bootstrap = [pscustomobject]@{ SuperuserPassword = 'secret-value' }
+
+function New-TicketboxInitdbServiceImagePath {
+    param($ShawlPath,$ServiceName,$WorkingDirectory,$InitdbPath,$DataRoot,$PasswordFile,$StopTimeoutMs)
+    return 'trusted-initdb-image'
+}
+function Service-Exists {
+    param($Name)
+    return $script:scenario -ceq 'preexisting'
+}
+function Write-TicketboxInitdbServiceReceipt {
+    param($Path,$InstallDir,$DataRoot,$ServiceName,$ImagePath,$PgMajor,$StopTimeoutMs,$InstallerOwnerProcessId,$Phase)
+    $script:receiptWrites += 1
+    $script:receipt = [pscustomobject]@{ phase = 'intent_written' }
+}
+function Get-TicketboxInitdbReceiptOwnerProcessId { return 777 }
+function Read-TicketboxCurrentInitdbServiceReceipt { return $script:receipt }
+function Invoke-ScChecked {
+    param([string[]]$ScArgs)
+    $verb = [string]$ScArgs[0]
+    $script:scCalls += $verb
+    if ($script:scenario -ceq 'race' -and $verb -ceq 'create') {
+        throw [InvalidOperationException]::new('service appeared during create')
+    }
+    return 0
+}
+function Assert-TicketboxInitdbServiceConfiguration { param($Receipt,$StartMode) }
+function Set-TicketboxCurrentInitdbServiceReceiptPhase {
+    param($Receipt,$Phase)
+    $script:receipt.phase = $Phase
+    return $script:receipt
+}
+function Set-TicketboxAcl { param($IncludePgService,$IncludeBackendService) }
+function Write-TicketboxInitdbPasswordFile {
+    param($SuperuserPassword)
+    $script:passwordWrites += 1
+}
+function Invoke-TicketboxOwnedOneShotService {
+    param($Name,$ExpectedExecutable,$ExpectedRuntimeExecutables,$TimeoutMilliseconds,$PollMilliseconds)
+    if ($script:scenario -ceq 'hang') {
+        throw [TimeoutException]::new('one-shot deadline expired')
+    }
+    if ($script:scenario -ceq 'exit23') {
+        return [pscustomobject]@{ ExitCode = 0; ServiceSpecificExitCode = 23 }
+    }
+    return [pscustomobject]@{ ExitCode = 0; ServiceSpecificExitCode = 0 }
+}
+function Assert-TicketboxFreshPgClusterComplete {
+    if ($script:scenario -ceq 'cluster') {
+        throw [InvalidOperationException]::new('cluster incomplete')
+    }
+}
+function Remove-TicketboxInitdbPasswordFileIfPresent {
+    param($Receipt)
+    $script:passwordRemoves += 1
+}
+function Repair-PostgresBootstrapRecoveryFileAcl { return $false }
+function Read-PostgresBootstrapRecoveryState { return $null }
+function Disable-TicketboxInitdbServiceIfPresent {
+    param($Receipt)
+    $script:disableCalls += 1
+}
+function Get-TicketboxPathEntryKindNoFollow { param($Path) return 'File' }
+function Remove-TicketboxAbortedInitdbServiceReceipt {
+    param($Path,$Receipt)
+    $script:receiptRemoves += 1
+}
+function New-TicketboxInitdbFailure {
+    param($FailureKind,$ExitCode)
+    return [InvalidOperationException]::new("initdb failed: $FailureKind/$ExitCode")
+}
+function New-TicketboxInstallCompensationAggregateFailure {
+    param($InstallFailure,$CompensationFailure)
+    return [AggregateException]::new('cleanup failed', @($InstallFailure,$CompensationFailure))
+}
+
+function Invoke-TestScenario([string]$Scenario) {
+    $script:scenario = $Scenario
+    $script:receiptWrites = 0
+    $script:receiptRemoves = 0
+    $script:disableCalls = 0
+    $script:passwordWrites = 0
+    $script:passwordRemoves = 0
+    $script:scCalls = @()
+    $script:receipt = $null
+    $authority = New-TicketboxInstallServiceCompensationAuthority
+    $caught = $null
+    try {
+        Invoke-TicketboxServiceOwnedInitdb `
+            -BootstrapState $bootstrap `
+            -CompensationAuthority $authority | Out-Null
+    }
+    catch { $caught = $_.Exception }
+    if ($null -eq $caught) { throw "$Scenario did not fail" }
+    return [pscustomobject]@{
+        Failure = $caught
+        ReceiptWrites = $script:receiptWrites
+        ReceiptRemoves = $script:receiptRemoves
+        DisableCalls = $script:disableCalls
+        PasswordWrites = $script:passwordWrites
+        PasswordRemoves = $script:passwordRemoves
+        ScCalls = @($script:scCalls)
+        Authority = [string]$authority.PostgresService
+    }
+}
+
+$preexisting = Invoke-TestScenario 'preexisting'
+if ($preexisting.ReceiptWrites -ne 0 -or $preexisting.ScCalls.Count -ne 0 -or
+    $preexisting.DisableCalls -ne 0 -or $preexisting.PasswordRemoves -ne 0 -or
+    $preexisting.Authority -cne 'none') {
+    throw 'pre-existing collision crossed the create-only read boundary'
+}
+
+$race = Invoke-TestScenario 'race'
+if ($race.ReceiptWrites -ne 1 -or $race.ScCalls.Count -ne 1 -or
+    $race.ScCalls[0] -cne 'create' -or $race.DisableCalls -ne 0 -or
+    $race.ReceiptRemoves -ne 1 -or $race.PasswordWrites -ne 0 -or
+    $race.Authority -cne 'none') {
+    throw 'create race mutated or disabled the colliding foreign service'
+}
+
+foreach ($failureScenario in @('hang','cluster','exit23')) {
+    $failure = Invoke-TestScenario $failureScenario
+    if ($failure.Failure.Data['TicketboxInstallPublicFailureCode'] -cne
+        'postgres_cluster_initialization_failed') {
+        throw "$failureScenario was not mapped to the public initdb failure terminal"
+    }
+    if ($failure.ReceiptWrites -ne 1 -or $failure.ReceiptRemoves -ne 0 -or
+        $failure.DisableCalls -ne 1 -or $failure.PasswordRemoves -ne 1 -or
+        $failure.Authority -cne 'created_by_installer') {
+        throw "$failureScenario did not preserve the recoverable service receipt boundary"
+    }
+}
+"""
+    template = template.replace(
+        "__FUNCTION_LOADER__",
+        "\n".join(
+            _powershell_function_loader(install_script, function_name)
+            for function_name in (
+                "New-TicketboxInstallServiceCompensationAuthority",
+                "Assert-TicketboxInstallServiceCompensationAuthority",
+                "Grant-TicketboxInstallServiceCompensationAuthority",
+                "Invoke-TicketboxServiceOwnedInitdb",
+            )
+        ),
+    )
+    for index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"production-initdb-failures-{index}.ps1"
+        harness.write_text(template, encoding="utf-8-sig")
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+def test_outer_install_compensation_refuses_unclassified_service_races(
+    tmp_path: Path,
+) -> None:
+    install_script = PACKAGING / "install_bundled_services.ps1"
+    install = _read("install_bundled_services.ps1")
+    mutation = install[install.index("$mutationStarted = $true") :]
+    assert mutation.index("if ($hadExistingBackendService)") < mutation.index(
+        "Stop-ServiceIfExists"
+    )
+    assert (
+        "-ServiceCompensationAuthority $serviceCompensationAuthority" in mutation
+    )
+
+    loaders = "\n".join(
+        _powershell_function_loader(install_script, function_name)
+        for function_name in (
+            "New-TicketboxInstallServiceCompensationAuthority",
+            "Assert-TicketboxInstallServiceCompensationAuthority",
+            "Grant-TicketboxInstallServiceCompensationAuthority",
+            "Invoke-TicketboxInstallFailureCompensation",
+        )
+    )
+    template = r"""
+$ErrorActionPreference = 'Stop'
+__FUNCTION_LOADERS__
+
+$script:BackendServiceName = 'TicketboxBackend'
+$script:BackendPort = 8001
+$script:BackendExe = 'C:\Program Files\Ticketbox\backend.exe'
+$script:ShawlExe = 'C:\Program Files\Ticketbox\shawl.exe'
+$script:PgServiceName = 'TicketboxPg'
+$script:PgPort = 5440
+$script:PgCtl = 'C:\Program Files\Ticketbox\pg\bin\pg_ctl.exe'
+$script:PgBin = 'C:\Program Files\Ticketbox\pg\bin'
+$script:InitdbExe = 'C:\Program Files\Ticketbox\pg\bin\initdb.exe'
+$script:InitdbServiceReceiptPath = 'C:\ProgramData\Ticketbox\installer-state\initdb.json'
+$script:InstallerState = 'C:\ProgramData\Ticketbox\installer-state'
+$script:LegacyRecoveryRequiredPath = 'C:\ProgramData\Ticketbox\legacy-recovery'
+$script:RecoveryRequiredPath = 'C:\ProgramData\Ticketbox\installer-state\recovery.json'
+$script:InstallDir = 'C:\Program Files\Ticketbox'
+$script:DataRoot = 'C:\ProgramData\Ticketbox'
+$script:ServiceWaitArguments = @{ TimeoutMilliseconds = 1000; PollMilliseconds = 1 }
+
+function Service-Exists { param($Name) return $true }
+function Assert-TicketboxRuntimeAbsent {
+    param($Name,$RuntimePort,$ExpectedRuntimeExecutables)
+    $script:runtimeAbsenceChecks += 1
+}
+function Disable-TicketboxOwnedServiceIfExists {
+    param(
+        $Name,$ExpectedExecutable,$BackendPort,$ExpectedRuntimeExecutables,
+        $TimeoutMilliseconds,$PollMilliseconds
+    )
+    $script:disableNames += [string]$Name
+}
+function Get-TicketboxServiceExecutablePath {
+    param($Name)
+    $script:executableReads += 1
+    return $script:PgCtl
+}
+function Test-TicketboxPathEquals { param($Left,$Right) return $Left -ceq $Right }
+function Assert-TicketboxPgClusterStoppedAfterFailure {
+    $script:clusterChecks += 1
+}
+function Ensure-TicketboxInstallerRecoveryMarkerAfterFailure {
+    param($InstallerStatePath,$LegacyPath,$CurrentPath,$InstallDir,$DataRoot,$Reason)
+    $script:markerWrites += 1
+}
+
+$script:disableNames = @()
+$script:runtimeAbsenceChecks = 0
+$script:executableReads = 0
+$script:clusterChecks = 0
+$script:markerWrites = 0
+$unauthorized = New-TicketboxInstallServiceCompensationAuthority
+$caught = $null
+try {
+    Invoke-TicketboxInstallFailureCompensation `
+        -Reason 'injected install failure' `
+        -ServiceCompensationAuthority $unauthorized
+}
+catch { $caught = $_.Exception }
+if ($null -eq $caught -or
+    -not [bool]$caught.Data['TicketboxInstallCompensationFailed']) {
+    throw 'unclassified service race did not fail compensation closed'
+}
+if ($script:disableNames.Count -ne 0 -or $script:executableReads -ne 0 -or
+    $script:runtimeAbsenceChecks -ne 0) {
+    throw 'unclassified service race crossed a mutation or ownership-inference boundary'
+}
+if ($script:markerWrites -ne 1 -or $script:clusterChecks -ne 1) {
+    throw 'unclassified service race skipped independent recovery convergence'
+}
+
+$script:disableNames = @()
+$script:runtimeAbsenceChecks = 0
+$script:executableReads = 0
+$script:clusterChecks = 0
+$script:markerWrites = 0
+$backendOnly = New-TicketboxInstallServiceCompensationAuthority
+Grant-TicketboxInstallServiceCompensationAuthority `
+    -Authority $backendOnly `
+    -Service BackendService `
+    -Grant validated_preexisting
+$caught = $null
+try {
+    Invoke-TicketboxInstallFailureCompensation `
+        -Reason 'injected install failure' `
+        -ServiceCompensationAuthority $backendOnly
+}
+catch { $caught = $_.Exception }
+if ($null -eq $caught -or
+    -not [bool]$caught.Data['TicketboxInstallCompensationFailed'] -or
+    ($script:disableNames -join ',') -cne 'TicketboxBackend' -or
+    $script:executableReads -ne 0 -or $script:markerWrites -ne 1 -or
+    $script:clusterChecks -ne 1) {
+    throw 'backend-only authority crossed into PostgreSQL compensation'
+}
+
+$script:disableNames = @()
+$script:runtimeAbsenceChecks = 0
+$script:executableReads = 0
+$script:clusterChecks = 0
+$script:markerWrites = 0
+$postgresOnly = New-TicketboxInstallServiceCompensationAuthority
+Grant-TicketboxInstallServiceCompensationAuthority `
+    -Authority $postgresOnly `
+    -Service PostgresService `
+    -Grant created_by_installer
+$caught = $null
+try {
+    Invoke-TicketboxInstallFailureCompensation `
+        -Reason 'injected install failure' `
+        -ServiceCompensationAuthority $postgresOnly
+}
+catch { $caught = $_.Exception }
+if ($null -eq $caught -or
+    -not [bool]$caught.Data['TicketboxInstallCompensationFailed'] -or
+    ($script:disableNames -join ',') -cne 'TicketboxPg' -or
+    $script:executableReads -ne 1 -or $script:markerWrites -ne 1 -or
+    $script:clusterChecks -ne 1) {
+    throw 'PostgreSQL-only authority crossed into backend compensation'
+}
+
+$script:disableNames = @()
+$script:runtimeAbsenceChecks = 0
+$script:executableReads = 0
+$script:clusterChecks = 0
+$script:markerWrites = 0
+$authorized = New-TicketboxInstallServiceCompensationAuthority
+Grant-TicketboxInstallServiceCompensationAuthority `
+    -Authority $authorized `
+    -Service BackendService `
+    -Grant validated_preexisting
+Grant-TicketboxInstallServiceCompensationAuthority `
+    -Authority $authorized `
+    -Service PostgresService `
+    -Grant created_by_installer
+Invoke-TicketboxInstallFailureCompensation `
+    -Reason 'injected install failure' `
+    -ServiceCompensationAuthority $authorized
+if (($script:disableNames -join ',') -cne 'TicketboxBackend,TicketboxPg' -or
+    $script:executableReads -ne 1 -or $script:markerWrites -ne 1 -or
+    $script:clusterChecks -ne 1) {
+    throw 'classified service compensation did not converge through the production function'
+}
+""".replace("__FUNCTION_LOADERS__", loaders)
+
+    for index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"production-outer-compensation-{index}.ps1"
+        harness.write_text(template, encoding="utf-8-sig")
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+    registration_loaders = "\n".join(
+        _powershell_function_loader(install_script, function_name)
+        for function_name in (
+            "New-TicketboxInstallServiceCompensationAuthority",
+            "Assert-TicketboxInstallServiceCompensationAuthority",
+            "Grant-TicketboxInstallServiceCompensationAuthority",
+            "Register-PgService",
+            "Register-BackendService",
+        )
+    )
+    registration_template = r"""
+$ErrorActionPreference = 'Stop'
+__FUNCTION_LOADERS__
+
+$script:PgServiceName = 'TicketboxPg'
+$script:BackendServiceName = 'TicketboxBackend'
+$script:PgCtl = 'C:\Program Files\Ticketbox\pg\bin\pg_ctl.exe'
+$script:ServicePgData = 'C:\ProgramData\Ticketbox\pgdata'
+$script:ShawlExe = 'C:\Program Files\Ticketbox\shawl.exe'
+$script:ServiceAppData = 'C:\ProgramData\Ticketbox\app'
+$script:ServiceLogDir = 'C:\ProgramData\Ticketbox\logs'
+$script:BackendExe = 'C:\Program Files\Ticketbox\backend.exe'
+$script:PgDump = 'C:\Program Files\Ticketbox\pg\bin\pg_dump.exe'
+$script:PgRestore = 'C:\Program Files\Ticketbox\pg\bin\pg_restore.exe'
+$script:ServiceBootstrapExposureRecoveryGuardPath = 'C:\ProgramData\Ticketbox\bootstrap.guard'
+$script:InstallerRuntimeRecoveryGuardPath = 'C:\ProgramData\Ticketbox\runtime.guard'
+$script:ServiceDataRootMarkerPath = 'C:\ProgramData\Ticketbox\.ticketbox-data-root.json'
+$script:ServiceDataVolumeIdentity = '\\?\Volume{11111111-1111-1111-1111-111111111111}\'
+$script:OwnerRecoveryChannel = 'managed_host'
+$script:StopTimeoutMs = 25000
+$script:RestartDelayMs = 5000
+
+function Write-Step { param($Message) }
+function New-TicketboxPgServiceImagePath {
+    param($PgCtlPath,$ServiceName,$DataRoot)
+    return 'trusted-pg-image'
+}
+function New-TicketboxShawlServiceImagePath {
+    param(
+        $ShawlPath,$ServiceName,$WorkingDirectory,$LogDirectory,$BackendPath,
+        $PgDumpPath,$PgRestorePath,$BootstrapRecoveryGuardPath,
+        $InstallerRecoveryGuardPath,$DataRootMarkerPath,$DataVolumeIdentity,
+        $OwnerRecoveryChannel,$StopTimeoutMs,$RestartDelayMs
+    )
+    return 'trusted-backend-image'
+}
+function Service-Exists { param($Name) return $false }
+function Invoke-ScChecked {
+    param([string[]]$ScArgs)
+    $script:scCalls += (($ScArgs[0..1] -join ':'))
+    if ([string]$ScArgs[0] -ceq 'create') {
+        throw [InvalidOperationException]::new('injected sc create race')
+    }
+    return 0
+}
+function Get-TicketboxServiceExecutablePath {
+    param($Name)
+    $script:ownershipReads += 1
+    return 'foreign.exe'
+}
+function Assert-TicketboxServiceOwnership {
+    param($Name,$ExpectedExecutable)
+    $script:ownershipReads += 1
+}
+
+foreach ($serviceKind in @('PostgresService','BackendService')) {
+    $script:scCalls = @()
+    $script:ownershipReads = 0
+    $authority = New-TicketboxInstallServiceCompensationAuthority
+    $caught = $null
+    try {
+        if ($serviceKind -ceq 'PostgresService') {
+            Register-PgService -CompensationAuthority $authority
+        }
+        else {
+            Register-BackendService -CompensationAuthority $authority
+        }
+    }
+    catch { $caught = $_.Exception }
+    $serviceName = if ($serviceKind -ceq 'PostgresService') {
+        $script:PgServiceName
+    }
+    else {
+        $script:BackendServiceName
+    }
+    if ($null -eq $caught -or
+        ($script:scCalls -join ',') -cne "create:$serviceName" -or
+        $script:ownershipReads -ne 0 -or
+        [string]$authority.$serviceKind -cne 'none') {
+        throw "$serviceKind create race gained compensation authority or crossed ownership mutation"
+    }
+}
+""".replace("__FUNCTION_LOADERS__", registration_loaders)
+
+    for index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"production-registration-create-races-{index}.ps1"
+        harness.write_text(registration_template, encoding="utf-8-sig")
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+def test_pg_registration_reads_back_failure_policy_before_retiring_initdb_receipt(
+    tmp_path: Path,
+) -> None:
+    install_script = PACKAGING / "install_bundled_services.ps1"
+    loaders = "\n".join(
+        _powershell_function_loader(install_script, function_name)
+        for function_name in (
+            "New-TicketboxInstallServiceCompensationAuthority",
+            "Assert-TicketboxInstallServiceCompensationAuthority",
+            "Grant-TicketboxInstallServiceCompensationAuthority",
+            "Register-PgService",
+        )
+    )
+    template = r"""
+$ErrorActionPreference = 'Stop'
+__FUNCTION_LOADERS__
+
+$script:PgServiceName = 'TicketboxPg'
+$script:PgCtl = 'C:\Program Files\Ticketbox\pg\bin\pg_ctl.exe'
+$script:ShawlExe = 'C:\Program Files\Ticketbox\shawl.exe'
+$script:ServicePgData = 'C:\ProgramData\Ticketbox\pgdata'
+$script:InitdbPasswordPath = 'C:\ProgramData\Ticketbox\.ticketbox-initdb-password'
+$script:InitdbServiceReceiptPath = 'C:\ProgramData\Ticketbox\installer-state\initdb.json'
+$script:ScmFailureResetSeconds = 86400
+$script:ScmRestartActions = 'restart/5000/restart/5000/restart/5000'
+$script:ReleaseConfig = [pscustomobject]@{ scm_restart_delays_ms = @(5000,5000,5000) }
+
+function Write-Step { param($Message) }
+function Write-Ok { param($Message) }
+function New-TicketboxPgServiceImagePath {
+    param($PgCtlPath,$ServiceName,$DataRoot)
+    return 'trusted-pg-image'
+}
+function Service-Exists { param($Name) return $true }
+function Get-TicketboxServiceExecutablePath { param($Name) return $script:ShawlExe }
+function Test-TicketboxPathEquals { param($Left,$Right) return $Left -ceq $Right }
+function Read-TicketboxCurrentInitdbServiceReceipt {
+    return [pscustomobject]@{ phase = 'initdb_succeeded' }
+}
+function Assert-TicketboxInitdbServiceConfiguration { param($Receipt,$StartMode) }
+function Assert-TicketboxFreshPgClusterComplete {}
+function Get-TicketboxPathEntryKindNoFollow { param($Path) return 'Missing' }
+function Repair-PostgresBootstrapRecoveryFileAcl { return $false }
+function Read-PostgresBootstrapRecoveryState { return $null }
+function Invoke-ScChecked { param([string[]]$ScArgs) return 0 }
+function Assert-TicketboxServiceOwnership { param($Name,$ExpectedExecutable) return $true }
+function Assert-TicketboxServiceAccount { param($Name,$ExpectedAccount) }
+function Assert-TicketboxPgServiceCommand {
+    param($Name,$ExpectedExecutable,$ExpectedServiceName,$ExpectedDataRoot)
+}
+function Assert-TicketboxServiceStartMode { param($Name,$ExpectedStartMode) }
+function Assert-ExpectedServiceConfiguration { param($Name) }
+function Assert-TicketboxServiceFailurePolicy {
+    param($Name,$ExpectedResetSeconds,$ExpectedRestartDelaysMs)
+    $script:policyChecks += 1
+    if ($script:injectPolicyReadbackFailure) {
+        throw 'injected failure-command no-op detected by readback'
+    }
+}
+function Set-TicketboxCurrentInitdbServiceReceiptPhase {
+    param($Receipt,$Phase)
+    $script:receiptPhaseWrites += 1
+    $Receipt.phase = $Phase
+    return $Receipt
+}
+function Remove-TicketboxInitdbServiceReceipt {
+    param($Path,$Receipt)
+    $script:receiptRemoves += 1
+    $script:receiptPresent = $false
+}
+function Test-Path { param($LiteralPath) return $script:receiptPresent }
+
+$authority = New-TicketboxInstallServiceCompensationAuthority
+Grant-TicketboxInstallServiceCompensationAuthority `
+    -Authority $authority `
+    -Service PostgresService `
+    -Grant created_by_installer
+$script:policyChecks = 0
+$script:receiptPhaseWrites = 0
+$script:receiptRemoves = 0
+$script:receiptPresent = $true
+$script:injectPolicyReadbackFailure = $true
+$caught = $null
+try {
+    Register-PgService `
+        -RuntimeBindingTransition `
+        -CompensationAuthority $authority
+}
+catch { $caught = $_.Exception }
+if ($null -eq $caught -or $script:policyChecks -ne 1 -or
+    $script:receiptPhaseWrites -ne 0 -or $script:receiptRemoves -ne 0 -or
+    -not $script:receiptPresent) {
+    throw 'failure-policy no-op retired the initdb recovery receipt'
+}
+
+$script:policyChecks = 0
+$script:receiptPhaseWrites = 0
+$script:receiptRemoves = 0
+$script:receiptPresent = $true
+$script:injectPolicyReadbackFailure = $false
+Register-PgService `
+    -RuntimeBindingTransition `
+    -CompensationAuthority $authority
+if ($script:policyChecks -ne 1 -or $script:receiptPhaseWrites -ne 1 -or
+    $script:receiptRemoves -ne 1 -or $script:receiptPresent) {
+    throw 'verified failure policy did not retire the initdb recovery receipt exactly once'
+}
+""".replace("__FUNCTION_LOADERS__", loaders)
+
+    for index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"production-pg-policy-readback-{index}.ps1"
+        harness.write_text(template, encoding="utf-8-sig")
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
         )
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"

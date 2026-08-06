@@ -82,6 +82,51 @@ function New-TicketboxPgServiceImagePath {
     )
 }
 
+function Get-TicketboxInitdbPasswordPath {
+    param([Parameter(Mandatory = $true)][string]$DataRoot)
+
+    return Join-Path `
+        (ConvertTo-TicketboxFullPath $DataRoot) `
+        ".ticketbox-initdb-password"
+}
+
+function New-TicketboxInitdbServiceImagePath {
+    param(
+        [Parameter(Mandatory = $true)][string]$ShawlPath,
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [Parameter(Mandatory = $true)][string]$InitdbPath,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$PasswordFile,
+        [Parameter(Mandatory = $true)][ValidateRange(1000, 600000)][int]$StopTimeoutMs
+    )
+
+    return Join-TicketboxWindowsCommandLine @(
+        (ConvertTo-TicketboxFullPath $ShawlPath),
+        "run",
+        "--name",
+        $ServiceName,
+        "--no-restart",
+        "--no-log",
+        "--kill-process-tree",
+        "--stop-timeout",
+        [string]$StopTimeoutMs,
+        "--cwd",
+        (ConvertTo-TicketboxFullPath $WorkingDirectory),
+        "--",
+        (ConvertTo-TicketboxFullPath $InitdbPath),
+        "-D",
+        (ConvertTo-TicketboxFullPath $DataRoot),
+        "-U",
+        "postgres",
+        "--auth-local=scram-sha-256",
+        "--auth-host=scram-sha-256",
+        "--encoding=UTF8",
+        "--no-locale",
+        "--pwfile=$(ConvertTo-TicketboxFullPath $PasswordFile)"
+    )
+}
+
 function New-TicketboxShawlServiceImagePath {
     param(
         [Parameter(Mandatory = $true)][string]$ShawlPath,
@@ -281,18 +326,32 @@ public static class TicketboxServiceFailurePolicyNativeMethods
 '@
 }
 
+function Get-TicketboxServiceFailurePolicy([string]$Name) {
+    Initialize-TicketboxServiceFailurePolicyNativeMethods
+    return [TicketboxServiceFailurePolicyNativeMethods]::ReadPolicy($Name)
+}
+
+function Get-TicketboxExpectedServiceFailurePolicy {
+    param(
+        [Parameter(Mandatory = $true)][ValidateRange(1, 86400)][int]$ResetSeconds,
+        [Parameter(Mandatory = $true)][int[]]$RestartDelaysMs
+    )
+    $actions = @(
+        $RestartDelaysMs | ForEach-Object { "1:$([uint32]$_)" }
+    ) -join ","
+    return "${ResetSeconds}|${actions}"
+}
+
 function Assert-TicketboxServiceFailurePolicy {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
         [Parameter(Mandatory = $true)][ValidateRange(1, 86400)][int]$ExpectedResetSeconds,
         [Parameter(Mandatory = $true)][int[]]$ExpectedRestartDelaysMs
     )
-    Initialize-TicketboxServiceFailurePolicyNativeMethods
-    $expectedActions = @(
-        $ExpectedRestartDelaysMs | ForEach-Object { "1:$([uint32]$_)" }
-    ) -join ","
-    $expected = "${ExpectedResetSeconds}|${expectedActions}"
-    $actual = [TicketboxServiceFailurePolicyNativeMethods]::ReadPolicy($Name)
+    $expected = Get-TicketboxExpectedServiceFailurePolicy `
+        -ResetSeconds $ExpectedResetSeconds `
+        -RestartDelaysMs $ExpectedRestartDelaysMs
+    $actual = Get-TicketboxServiceFailurePolicy $Name
     if ($actual -cne $expected) {
         throw "Windows 服务 $Name 的 SCM failure policy 与安装配置不一致。"
     }
@@ -399,6 +458,95 @@ function Assert-TicketboxPgServiceCommand {
         $arguments[6] -ne "-w"
     ) {
         throw "拒绝操作命令契约不匹配的 PostgreSQL 服务 $Name。"
+    }
+}
+
+function Assert-TicketboxServiceHasNoFailureActions([string]$Name) {
+    $actual = Get-TicketboxServiceFailurePolicy $Name
+    if ($actual -cne "0|") {
+        throw "Windows 服务 $Name 的临时 one-shot 阶段含有未授权 failure actions。"
+    }
+}
+
+function Assert-TicketboxInitdbServiceCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$ExpectedShawl,
+        [Parameter(Mandatory = $true)][string]$ExpectedServiceName,
+        [Parameter(Mandatory = $true)][string]$ExpectedWorkingDirectory,
+        [Parameter(Mandatory = $true)][string]$ExpectedInitdb,
+        [Parameter(Mandatory = $true)][string]$ExpectedDataRoot,
+        [Parameter(Mandatory = $true)][string]$ExpectedPasswordFile,
+        [Parameter(Mandatory = $true)][ValidateRange(1000, 600000)][int]$ExpectedStopTimeoutMs,
+        [string]$ExpectedImagePath = ""
+    )
+
+    Assert-TicketboxServiceDependencies -Name $Name -ExpectedDependencies @()
+    $actualImagePath = Get-TicketboxServiceImagePath $Name
+    $arguments = @(Split-TicketboxWindowsCommandLine $actualImagePath)
+    if ($arguments.Count -ne 22) {
+        throw "PostgreSQL initdb one-shot 服务 $Name 含有未知、缺失或多余参数。"
+    }
+    $pathIndexes = @{
+        0 = $ExpectedShawl
+        10 = $ExpectedWorkingDirectory
+        12 = $ExpectedInitdb
+        14 = $ExpectedDataRoot
+    }
+    foreach ($entry in $pathIndexes.GetEnumerator()) {
+        if (-not [string]::Equals(
+            (ConvertTo-TicketboxFullPath $arguments[[int]$entry.Key]),
+            (ConvertTo-TicketboxFullPath ([string]$entry.Value)),
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "PostgreSQL initdb one-shot 服务 $Name 的路径参数不匹配。"
+        }
+    }
+    $pwfilePrefix = "--pwfile="
+    if (-not $arguments[21].StartsWith(
+        $pwfilePrefix,
+        [System.StringComparison]::Ordinal
+    )) {
+        throw "PostgreSQL initdb one-shot 服务 $Name 缺少规范 pwfile 参数。"
+    }
+    $actualPasswordFile = $arguments[21].Substring($pwfilePrefix.Length)
+    if (-not [string]::Equals(
+        (ConvertTo-TicketboxFullPath $actualPasswordFile),
+        (ConvertTo-TicketboxFullPath $ExpectedPasswordFile),
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "PostgreSQL initdb one-shot 服务 $Name 的 pwfile 路径不匹配。"
+    }
+    if (
+        $arguments[1] -cne "run" -or
+        $arguments[2] -cne "--name" -or
+        -not [string]::Equals(
+            $arguments[3],
+            $ExpectedServiceName,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or
+        $arguments[4] -cne "--no-restart" -or
+        $arguments[5] -cne "--no-log" -or
+        $arguments[6] -cne "--kill-process-tree" -or
+        $arguments[7] -cne "--stop-timeout" -or
+        $arguments[8] -cne [string]$ExpectedStopTimeoutMs -or
+        $arguments[9] -cne "--cwd" -or
+        $arguments[11] -cne "--" -or
+        $arguments[13] -cne "-D" -or
+        $arguments[15] -cne "-U" -or
+        $arguments[16] -cne "postgres" -or
+        $arguments[17] -cne "--auth-local=scram-sha-256" -or
+        $arguments[18] -cne "--auth-host=scram-sha-256" -or
+        $arguments[19] -cne "--encoding=UTF8" -or
+        $arguments[20] -cne "--no-locale"
+    ) {
+        throw "拒绝操作命令契约不匹配的 PostgreSQL initdb one-shot 服务 $Name。"
+    }
+    if (
+        -not [string]::IsNullOrEmpty($ExpectedImagePath) -and
+        $actualImagePath -cne $ExpectedImagePath
+    ) {
+        throw "PostgreSQL initdb one-shot 服务 $Name 与受保护回执的 ImagePath 不一致。"
     }
 }
 

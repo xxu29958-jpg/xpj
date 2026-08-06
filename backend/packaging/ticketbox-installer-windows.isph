@@ -8,12 +8,20 @@
   FileShareRead = $00000001;
   OpenExisting = 3;
   FileAttributeNormal = $00000080;
+  ScManagerConnect = $00000001;
+  ServiceQueryStatus = $00000004;
+  ErrorServiceDoesNotExist = 1060;
+  WindowsMessageCopy = $00000301;
+  WindowsMessagePaste = $00000302;
   ManagerMaintenanceRegistryPath = 'Software\Ticketbox';
   ManagerMaintenanceRegistryValue = 'MaintenanceOwner';
   ManagerMaintenanceRecordSchema = 'ticketbox-manager-maintenance-v1';
   C07FailureSummarySchema = 'ticketbox-c07-installer-failure-summary-v2';
   C07FailureSummaryFileName = 'c07-installer-failure-summary-v2.txt';
   C07FailureSummaryMaximumBytes = 4096;
+  InstallPublicFailureSchema = 'ticketbox-install-public-failure-v1';
+  InstallPublicFailureFileName = 'installer-public-failure-v1.txt';
+  InstallPublicFailureMaximumBytes = 2048;
   C07LifecycleExitVetoSchema =
     'ticketbox-c07-installer-lifecycle-exit-veto-v2';
   C07LifecycleExitVetoFileName =
@@ -58,6 +66,7 @@ var
   LifecycleLockRootValidatedPath: String;
   LifecycleLockHolderReadyPath: String;
   LifecycleLockHolderReleasePath: String;
+  LifecycleLockHolderFailurePath: String;
   LifecycleLockReleaseNonce: String;
   LifecycleFinalizationAttemptId: String;
   LifecycleFinalizationAttemptSequence: Integer;
@@ -75,12 +84,21 @@ var
   LifecyclePrepared: Boolean;
   LifecycleFilesMayBeReplaced: Boolean;
   LifecycleInstallCompleted: Boolean;
+  LifecycleInstallFailed: Boolean;
+  LifecycleFailureMessage: String;
   InstallerLogSequence: Integer;
-  LastInstallerLogPath: String;
   LastPowerShellChildSucceeded: Boolean;
+  LastPowerShellFailureMessage: String;
   OwnerHandoffExpected: Boolean;
   OwnerHandoffMemo: TNewMemo;
-  OwnerHandoffConfirmation: TNewCheckBox;
+  OwnerHandoffClipboardProbe: TNewMemo;
+  OwnerHandoffCopyButton: TNewButton;
+  OwnerHandoffCopied: Boolean;
+  OwnerHandoffSavedCheck: TNewCheckBox;
+  OwnerHandoffSavedConfirmed: Boolean;
+  InstallationFailureMemo: TNewMemo;
+  LaunchManagerAfterFinish: TNewCheckBox;
+  ManagerLaunchAttempted: Boolean;
   DataRootGuardProcessId: LongWord;
   DataRootGuardProcessHandle: LongWord;
   DataRootGuardProcessStartedFileTimeHigh: String;
@@ -93,15 +111,33 @@ var
   DataRootGuardActive: Boolean;
   ManagerMaintenanceOwnerRecord: String;
   InstallerSourceLeaseHandle: LongWord;
+  UninstallDeleteDataSelected: Boolean;
+  UninstallDataChoiceResolved: Boolean;
 
 function CloseHandle(Handle: LongWord): Boolean;
   external 'CloseHandle@kernel32.dll stdcall';
 function GetCurrentProcessId(): LongWord;
   external 'GetCurrentProcessId@kernel32.dll stdcall';
+function GetClipboardSequenceNumber(): LongWord;
+  external 'GetClipboardSequenceNumber@user32.dll stdcall';
 function GetLastError(): LongWord;
   external 'GetLastError@kernel32.dll stdcall';
 procedure SetLastError(ErrorCode: LongWord);
   external 'SetLastError@kernel32.dll stdcall';
+function OpenTicketboxScManager(
+  MachineName: LongWord;
+  DatabaseName: LongWord;
+  DesiredAccess: LongWord
+): LongWord;
+  external 'OpenSCManagerW@advapi32.dll stdcall';
+function OpenTicketboxService(
+  ServiceManager: LongWord;
+  ServiceName: String;
+  DesiredAccess: LongWord
+): LongWord;
+  external 'OpenServiceW@advapi32.dll stdcall';
+function CloseTicketboxServiceHandle(Handle: LongWord): Boolean;
+  external 'CloseServiceHandle@advapi32.dll stdcall';
 function CreateFileForLease(
   FileName: String;
   DesiredAccess: LongWord;
@@ -128,6 +164,45 @@ function GetProcessTimes(
   var UserTime: TTicketboxFileTime
 ): Boolean;
   external 'GetProcessTimes@kernel32.dll stdcall';
+
+function TicketboxServiceExistsNative(ServiceName: String): Boolean;
+var
+  ServiceManager: LongWord;
+  ServiceHandle: LongWord;
+  ErrorCode: LongWord;
+begin
+  { Treat SCM access failures as an existing marker so preflight fails closed. }
+  Result := True;
+  ServiceManager := OpenTicketboxScManager(0, 0, ScManagerConnect);
+  if ServiceManager = 0 then
+  begin
+    Log('Could not open the local SCM for a read-only service existence check.');
+    exit;
+  end;
+  try
+    SetLastError(0);
+    ServiceHandle := OpenTicketboxService(
+      ServiceManager,
+      ServiceName,
+      ServiceQueryStatus);
+    if ServiceHandle <> 0 then
+    begin
+      CloseTicketboxServiceHandle(ServiceHandle);
+      Result := True;
+    end
+    else
+    begin
+      ErrorCode := GetLastError();
+      Result := ErrorCode <> ErrorServiceDoesNotExist;
+      if Result then
+      begin
+        Log('SCM service existence check failed closed; error=' + IntToStr(ErrorCode));
+      end;
+    end;
+  finally
+    CloseTicketboxServiceHandle(ServiceManager);
+  end;
+end;
 
 procedure CloseInstallerSourceLease();
 begin
@@ -458,6 +533,10 @@ begin
   begin
     DeleteFile(LifecycleLockRootValidatedPath);
   end;
+  if LifecycleLockHolderFailurePath <> '' then
+  begin
+    DeleteFile(LifecycleLockHolderFailurePath);
+  end;
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'hold_installer_lifecycle_lock.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_lifecycle_lock.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_installation_safety.ps1');
@@ -480,6 +559,7 @@ begin
   end;
   LifecycleLockBootstrapDirectory := '';
   LifecycleLockRootValidatedPath := '';
+  LifecycleLockHolderFailurePath := '';
   LifecycleLockBootstrapFilesStaged := False;
   LifecycleLockHolderScriptPath := '';
 end;
@@ -773,6 +853,121 @@ begin
   Result := LifecycleFinalizationAttemptId <> '';
 end;
 
+function IsLifecycleHolderFailureCode(Value: String): Boolean;
+begin
+  Result :=
+    (Value = 'restore_privilege_unavailable') or
+    (Value = 'installer_identity_invalid') or
+    (Value = 'machine_root_invalid') or
+    (Value = 'bootstrap_dependency_missing') or
+    (Value = 'holder_start_failed');
+end;
+
+function ConsumeLifecycleHolderStartupFailure(): Boolean;
+var
+  FailureText: AnsiString;
+  FailureValue: String;
+  FailurePrefix: String;
+  MessageDelimiter: String;
+  FailureRemainder: String;
+  ErrorCode: String;
+  MessageText: String;
+  DelimiterPosition: Integer;
+  ExpectedFailureText: String;
+begin
+  Result := False;
+  if (LifecycleLockHolderFailurePath = '') or
+     (not FileExists(LifecycleLockHolderFailurePath)) then
+  begin
+    exit;
+  end;
+  Result := True;
+  if not LoadStringFromFile(LifecycleLockHolderFailurePath, FailureText) then
+  begin
+    LifecycleLockError := '机器级安装锁 holder 已退出，但启动诊断无法读取。';
+    exit;
+  end;
+  FailureValue := String(FailureText);
+  if Length(FailureValue) > 2048 then
+  begin
+    LifecycleLockError := '机器级安装锁 holder 启动诊断超出大小限制。';
+    exit;
+  end;
+  FailurePrefix :=
+    'SCHEMA=ticketbox-lifecycle-holder-failure-v1' + #13#10 +
+    'STATE=failed' + #13#10 +
+    'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10 +
+    'OWNER_STARTED_FILETIME_HIGH=' + LifecycleLockOwnerStartedFileTimeHigh + #13#10 +
+    'OWNER_STARTED_FILETIME_LOW=' + LifecycleLockOwnerStartedFileTimeLow + #13#10 +
+    'ERROR_CODE=';
+  if Copy(FailureValue, 1, Length(FailurePrefix)) <> FailurePrefix then
+  begin
+    LifecycleLockError := '机器级安装锁 holder 启动诊断与当前安装器身份不匹配。';
+    exit;
+  end;
+  FailureRemainder := Copy(
+    FailureValue,
+    Length(FailurePrefix) + 1,
+    Length(FailureValue));
+  MessageDelimiter := #13#10 + 'MESSAGE=';
+  DelimiterPosition := Pos(MessageDelimiter, FailureRemainder);
+  if DelimiterPosition <= 1 then
+  begin
+    LifecycleLockError := '机器级安装锁 holder 启动诊断格式无效。';
+    exit;
+  end;
+  ErrorCode := Copy(FailureRemainder, 1, DelimiterPosition - 1);
+  MessageText := Copy(
+    FailureRemainder,
+    DelimiterPosition + Length(MessageDelimiter),
+    Length(FailureRemainder));
+  if (Length(MessageText) < 3) or
+     (Copy(MessageText, Length(MessageText) - 1, 2) <> #13#10) then
+  begin
+    LifecycleLockError := '机器级安装锁 holder 启动诊断缺少终止标记。';
+    exit;
+  end;
+  Delete(MessageText, Length(MessageText) - 1, 2);
+  ExpectedFailureText :=
+    FailurePrefix + ErrorCode + MessageDelimiter + MessageText + #13#10;
+  if (FailureValue <> ExpectedFailureText) or
+     (not IsLifecycleHolderFailureCode(ErrorCode)) or
+     (Length(MessageText) > 512) then
+  begin
+    LifecycleLockError := '机器级安装锁 holder 启动诊断未通过完整性检查。';
+    exit;
+  end;
+  Log('Lifecycle lock holder startup failure code: ' + ErrorCode);
+  if ErrorCode = 'restore_privilege_unavailable' then
+  begin
+    LifecycleLockError :=
+      'Windows 安全策略未向安装器提供“还原文件和目录”权限，无法安全创建机器状态。' +
+      '安装尚未修改服务和数据；请让设备管理员或 IT 检查 SeRestorePrivilege 本机安全策略。' +
+      '支持代码：TBX-LOCK-PRIVILEGE。';
+  end
+  else if ErrorCode = 'installer_identity_invalid' then
+  begin
+    LifecycleLockError :=
+      '安装器与机器级锁进程的身份校验失败。请关闭其他安装器后重新双击此安装包。';
+  end
+  else if ErrorCode = 'machine_root_invalid' then
+  begin
+    LifecycleLockError :=
+      'Windows 机器状态目录不可用或不可信，安装器未修改服务和数据。请检查系统盘后重试。';
+  end
+  else if ErrorCode = 'bootstrap_dependency_missing' then
+  begin
+    LifecycleLockError :=
+      '安装包的受保护启动组件不完整，安装器未修改服务和数据。请重新获取可信安装包。';
+  end
+  else
+  begin
+    LifecycleLockError :=
+      '机器级安装锁启动失败（' + ErrorCode + '）。安装器未修改服务和数据；' +
+      '请关闭其他安装器后重试，若仍失败请联系支持。支持代码：TBX-LOCK-START。';
+  end;
+end;
+
 function AcquireLifecycleLock(): Boolean;
 var
   LockDirectory: String;
@@ -851,9 +1046,17 @@ begin
   LifecycleLockRootValidatedPath :=
     AddBackslash(LifecycleLockBootstrapDirectory) +
     'lifecycle-root-validated.ready';
+  LifecycleLockHolderFailurePath :=
+    AddBackslash(LifecycleLockBootstrapDirectory) +
+    'lifecycle-holder-failure.txt';
   if FileExists(LifecycleLockRootValidatedPath) then
   begin
     LifecycleLockError := '机器根验证信号已存在，拒绝复用。';
+    exit;
+  end;
+  if FileExists(LifecycleLockHolderFailurePath) then
+  begin
+    LifecycleLockError := '机器级安装锁 holder 启动诊断已存在，拒绝复用。';
     exit;
   end;
   LifecycleLockHolderReadyPath :=
@@ -871,7 +1074,8 @@ begin
      ' -ExpectedLockDirectory ' + Quote(LockDirectory) +
     ' -RootValidatedPath ' + Quote(LifecycleLockRootValidatedPath) +
     ' -ReadyPath ' + Quote(LifecycleLockHolderReadyPath) +
-    ' -ReleasePath ' + Quote(LifecycleLockHolderReleasePath);
+    ' -ReleasePath ' + Quote(LifecycleLockHolderReleasePath) +
+    ' -FailurePath ' + Quote(LifecycleLockHolderFailurePath);
   if not Exec(
     WindowsPowerShellExecutable(),
     Params,
@@ -898,6 +1102,10 @@ begin
   NonceDelimiter := #13#10 + 'NONCE=';
   for Attempt := 1 to 300 do
   begin
+    if ConsumeLifecycleHolderStartupFailure() then
+    begin
+      exit;
+    end;
     if not RootValidated then
     begin
       if FileExists(LifecycleLockRootValidatedPath) then
@@ -1093,10 +1301,12 @@ begin
   DeleteFile(LifecycleLockHolderReadyPath);
   DeleteFile(LifecycleLockHolderReleasePath);
   DeleteFile(LifecycleLockHolderReleasePath + '.tmp');
+  DeleteFile(LifecycleLockHolderFailurePath);
   LifecycleLockHolderProcessHandle := InvalidHandleValue;
   LifecycleLockHolderProcessId := 0;
   LifecycleLockHolderReadyPath := '';
   LifecycleLockHolderReleasePath := '';
+  LifecycleLockHolderFailurePath := '';
   LifecycleLockReleaseNonce := '';
   LifecycleFinalizationAttemptId := '';
   LifecycleFinalizationAttemptSequence := 0;
@@ -1108,10 +1318,16 @@ begin
   CleanupLifecycleLockBootstrapDirectory();
 end;
 
+function LifecycleLockActive(): Boolean;
+begin
+  Result :=
+    LifecycleLockHolderActive and
+    IsProcessHandleRunning(LifecycleLockHolderProcessHandle);
+end;
+
 procedure AssertLifecycleLockActive();
 begin
-  if (not LifecycleLockHolderActive) or
-     (not IsProcessHandleRunning(LifecycleLockHolderProcessHandle)) then
+  if not LifecycleLockActive() then
   begin
     RaiseException('机器级安装生命周期锁未持续持有，拒绝继续 mutation。');
   end;
@@ -1222,21 +1438,8 @@ begin
 end;
 
 function VersionGateServiceExists(ServiceName: String): Boolean;
-var
-  ResultCode: Integer;
 begin
-  if not Exec(
-    ExpandConstant('{sys}\sc.exe'),
-    'query ' + ServiceName,
-    '',
-    SW_HIDE,
-    ewWaitUntilTerminated,
-    ResultCode) then
-  begin
-    Result := True;
-    exit;
-  end;
-  Result := ResultCode = 0;
+  Result := TicketboxServiceExistsNative(ServiceName);
 end;
 
 function HasExistingTicketboxInstallMarkers(): Boolean;
@@ -1256,14 +1459,14 @@ var
   RegisteredValue: String;
 begin
   ParamValue := Trim(ExpandConstant('{param:TicketboxDataRoot|}'));
-  if ParamValue <> '' then
-  begin
-    Result := ExpandFileName(ParamValue);
-  end
-  else if RegQueryStringValue(HKLM64, 'Software\Ticketbox', 'DataRoot', RegisteredValue) and
-          (Trim(RegisteredValue) <> '') then
+  if RegQueryStringValue(HKLM64, 'Software\Ticketbox', 'DataRoot', RegisteredValue) and
+     (Trim(RegisteredValue) <> '') then
   begin
     Result := ExpandFileName(Trim(RegisteredValue));
+  end
+  else if ParamValue <> '' then
+  begin
+    Result := ExpandFileName(ParamValue);
   end
   else
   begin
@@ -1793,9 +1996,11 @@ begin
   LifecyclePrepared := False;
   LifecycleFilesMayBeReplaced := False;
   LifecycleInstallCompleted := False;
+  LifecycleInstallFailed := False;
+  LifecycleFailureMessage := '';
   ManagerMaintenanceOwnerRecord := '';
   InstallerLogSequence := 0;
-  LastInstallerLogPath := '';
+  LastPowerShellFailureMessage := '';
   DataRootGuardProcessId := 0;
   DataRootGuardProcessHandle := InvalidHandleValue;
   DataRootGuardProcessStartedFileTimeHigh := '';
@@ -1811,6 +2016,7 @@ begin
   LifecycleLockRootValidatedPath := '';
   LifecycleLockHolderReadyPath := '';
   LifecycleLockHolderReleasePath := '';
+  LifecycleLockHolderFailurePath := '';
   LifecycleLockReleaseNonce := '';
   LifecycleFinalizationAttemptId := '';
   LifecycleFinalizationAttemptSequence := 0;
@@ -1846,14 +2052,45 @@ begin
   Result := True;
 end;
 
+function TicketboxUninstallLockPublicMessage(): String;
+begin
+  Result :=
+    '无法取得小票夹机器级维护锁，卸载尚未修改服务、程序或数据。' +
+    '请关闭其他小票夹安装器或管理器后重试；若仍失败，请联系支持。' +
+    '支持代码：TBX-UNINSTALL-LOCK';
+end;
+
+function TicketboxUninstallPostMutationAuthorityMessage(
+  DeleteDataSelected: Boolean
+): String;
+begin
+  if DeleteDataSelected then
+  begin
+    Result :=
+      '卸载过程中维护权限已失效，无法证明本机数据的删除状态。' +
+      '请勿手工删除目录；保留现状并联系支持。支持代码：TBX-UNINSTALL-DATA';
+  end
+  else
+  begin
+    Result :=
+      '卸载过程中维护权限已失效，无法证明服务和程序的卸载状态；' +
+      '本机数据未被请求删除。请保留现状并重试。支持代码：TBX-UNINSTALL-FAILED';
+  end;
+end;
+
 function InitializeUninstall(): Boolean;
 begin
+  Result := False;
   ManagerMaintenanceOwnerRecord := '';
+  LastPowerShellFailureMessage := '';
+  UninstallDeleteDataSelected := False;
+  UninstallDataChoiceResolved := False;
   LifecycleLockHolderProcessHandle := InvalidHandleValue;
   LifecycleLockHolderProcessId := 0;
   LifecycleLockRootValidatedPath := '';
   LifecycleLockHolderReadyPath := '';
   LifecycleLockHolderReleasePath := '';
+  LifecycleLockHolderFailurePath := '';
   LifecycleLockReleaseNonce := '';
   LifecycleFinalizationAttemptId := '';
   LifecycleFinalizationAttemptSequence := 0;
@@ -1864,27 +2101,30 @@ begin
   LifecycleLockHolderActive := False;
   if not PrepareUninstallLifecycleLockHolderScript() then
   begin
-    MsgBox(LifecycleLockError, mbError, MB_OK);
-    Result := False;
+    Log('Uninstall lifecycle bootstrap failed; public code TBX-UNINSTALL-LOCK.');
+    MsgBox(TicketboxUninstallLockPublicMessage(), mbError, MB_OK);
     exit;
   end;
   Result := AcquireLifecycleLock();
   if not Result then
   begin
-    MsgBox(LifecycleLockError, mbError, MB_OK);
+    Log('Uninstall lifecycle lock acquisition failed; public code TBX-UNINSTALL-LOCK.');
+    MsgBox(TicketboxUninstallLockPublicMessage(), mbError, MB_OK);
     ReleaseLifecycleLock();
     exit;
   end;
   if not StartManagerMaintenanceGate() then
   begin
     MsgBox(
-      '无法建立小票夹管理器维护门；卸载尚未修改服务或文件。请关闭其他安装器后重试。',
+      '无法建立小票夹管理器维护门，卸载尚未修改服务、程序或数据。' +
+      '请关闭其他小票夹安装器或管理器后重试。支持代码：TBX-UNINSTALL-LOCK',
       mbError,
       MB_OK);
     CloseManagerMaintenanceGate();
     ReleaseLifecycleLock();
-    Result := False;
+    exit;
   end;
+  Result := True;
 end;
 
 procedure DeinitializeUninstall();
@@ -2557,18 +2797,156 @@ begin
   Result := True;
 end;
 
+function TryLoadInstallPublicFailure(var MessageText: String): Boolean;
+var
+  ReceiptPath: String;
+  ReceiptSize: Integer;
+  Lines: TArrayOfString;
+  Schema: String;
+  OwnerPid: String;
+  OwnerStartedHigh: String;
+  OwnerStartedLow: String;
+  FinalizationAttemptId: String;
+  Context: String;
+  FailureCode: String;
+  DatabaseMutationState: String;
+  SupportCode: String;
+begin
+  Result := False;
+  MessageText := '';
+  if (LifecycleLockBootstrapDirectory = '') or
+     (LifecycleFinalizationAttemptId = '') then
+  begin
+    exit;
+  end;
+  ReceiptPath := LifecycleBootstrapFilePath(InstallPublicFailureFileName);
+  if (not FileSize(ReceiptPath, ReceiptSize)) or
+     (ReceiptSize < 1) or
+     (ReceiptSize > InstallPublicFailureMaximumBytes) or
+     (not LoadStringsFromFile(ReceiptPath, Lines)) or
+     (GetArrayLength(Lines) <> 9) then
+  begin
+    exit;
+  end;
+  if (not ReadC07FailureSummaryField(Lines[0], 'SCHEMA', Schema)) or
+     (not ReadC07FailureSummaryField(
+       Lines[1],
+       'INSTALLER_OWNER_PID',
+       OwnerPid)) or
+     (not ReadC07FailureSummaryField(
+       Lines[2],
+       'INSTALLER_OWNER_STARTED_FILETIME_HIGH',
+       OwnerStartedHigh)) or
+     (not ReadC07FailureSummaryField(
+       Lines[3],
+       'INSTALLER_OWNER_STARTED_FILETIME_LOW',
+       OwnerStartedLow)) or
+     (not ReadC07FailureSummaryField(
+       Lines[4],
+       'FINALIZATION_ATTEMPT_ID',
+       FinalizationAttemptId)) or
+     (not ReadC07FailureSummaryField(Lines[5], 'CONTEXT', Context)) or
+     (not ReadC07FailureSummaryField(Lines[6], 'FAILURE_CODE', FailureCode)) or
+     (not ReadC07FailureSummaryField(
+       Lines[7],
+       'DATABASE_MUTATION_STATE',
+       DatabaseMutationState)) or
+     (not ReadC07FailureSummaryField(Lines[8], 'SUPPORT_CODE', SupportCode)) then
+  begin
+    exit;
+  end;
+  if (Schema <> InstallPublicFailureSchema) or
+     (OwnerPid <> IntToStr(LifecycleLockOwnerProcessId)) or
+     (OwnerStartedHigh <> LifecycleLockOwnerStartedFileTimeHigh) or
+     (OwnerStartedLow <> LifecycleLockOwnerStartedFileTimeLow) or
+     (FinalizationAttemptId <> LifecycleFinalizationAttemptId) or
+     (not IsC07FailureSummaryOperationId(FinalizationAttemptId)) or
+     (Context <> 'service_installation') or
+     ((DatabaseMutationState <> 'not_started') and
+      (DatabaseMutationState <> 'started_or_possible')) then
+  begin
+    exit;
+  end;
+  if FailureCode = 'backend_payload_manifest_order_invalid' then
+  begin
+    if (DatabaseMutationState <> 'not_started') or
+       (SupportCode <> 'TBX-INSTALL-PROVENANCE-ORDER') then
+    begin
+      exit;
+    end;
+    MessageText :=
+      '安装包自检未通过。' + #13#10 +
+      '程序文件已复制，但安装包内部构建清单不一致；安装器已在数据库迁移开始前停止。' + #13#10 +
+      '这不是账本数据损坏。请保留数据目录，获取修复版安装包后重新运行。' + #13#10 +
+      '支持代码：' + SupportCode;
+  end
+  else if FailureCode = 'postgres_cluster_initialization_failed' then
+  begin
+    if (DatabaseMutationState <> 'started_or_possible') or
+       (SupportCode <> 'TBX-INSTALL-INITDB') then
+    begin
+      exit;
+    end;
+    MessageText :=
+      '本机 PostgreSQL 数据簇初始化未完成。' + #13#10 +
+      '安装器已停止服务并保留受保护的恢复状态；请勿手动删除数据库或安装标记。' + #13#10 +
+      '请确认安装目标卷可写、没有安全软件拦截后，使用同一可信安装包重新运行。' + #13#10 +
+      '支持代码：' + SupportCode;
+  end
+  else if FailureCode = 'installation_identity_recovery_failed' then
+  begin
+    if SupportCode <> 'TBX-INSTALL-IDENTITY' then
+    begin
+      exit;
+    end;
+    MessageText :=
+      '上次中断留下的安装身份无法安全接续。' + #13#10 +
+      '安装器未能同时证明身份文件、数据库前置状态和当前安装包完全匹配，因此已保持服务停止。' + #13#10 +
+      '请保留数据目录和安装标记，使用同一可信安装包重新运行；若仍出现此代码，请保存日志并联系支持。' + #13#10 +
+      '支持代码：' + SupportCode;
+  end
+  else if FailureCode = 'unclassified_service_install_failure' then
+  begin
+    if SupportCode <> 'TBX-INSTALL-UNKNOWN' then
+    begin
+      exit;
+    end;
+    if DatabaseMutationState = 'not_started' then
+    begin
+      MessageText :=
+        '小票夹服务初始化前检查未通过，数据库迁移尚未开始。' + #13#10 +
+        '请保留数据目录并使用修复版安装包重试；不要手动删除数据库或安装标记。' + #13#10 +
+        '支持代码：' + SupportCode;
+    end
+    else
+    begin
+      MessageText :=
+        '小票夹服务初始化未完成，公开回执无法单独证明数据库最终状态。' + #13#10 +
+        '请保持服务停止，不要修改数据库或安装标记；保存日志并联系支持。' + #13#10 +
+        '支持代码：' + SupportCode;
+    end;
+  end
+  else
+  begin
+    exit;
+  end;
+  Result := True;
+end;
+
 function C07ServiceInstallationFailureMessage(): String;
 begin
-  if not TryLoadC07FailureSummary(Result) then
+  if TryLoadC07FailureSummary(Result) then
+  begin
+  end
+  else if TryLoadInstallPublicFailure(Result) then
+  begin
+  end
+  else
   begin
     Result :=
-      '小票夹服务安装失败，且结构化数据库失败摘要缺失、过期或校验失败。' + #13#10 +
-      '为防止误导，安装器不会猜测当前 revision、恢复点或重试方式。' + #13#10 +
+      '小票夹服务安装失败，且安全回执缺失、过期或校验失败。' + #13#10 +
+      '安装器无法安全判断失败发生在数据库维护前还是维护中，因此不会猜测当前状态。' + #13#10 +
       '请保持服务停止，不要修改数据库或 recovery 标记；保存日志并联系支持。';
-  end;
-  if LastInstallerLogPath <> '' then
-  begin
-    Result := Result + #13#10 + '详细日志：' + LastInstallerLogPath;
   end;
 end;
 
@@ -2597,7 +2975,6 @@ begin
     LogPath := '';
     exit;
   end;
-  LastInstallerLogPath := LogPath;
   Result := True;
 end;
 
@@ -2637,7 +3014,7 @@ begin
     '    $allowedByScript = @{' + #13#10 +
     '        "hold_data_root_mutation_guard.ps1" = @("InstallDir","DataRoot","InstallerLockOwnerProcessId","Hold","ConfirmStopped","DataRootGuardReadyPath","DataRootGuardReleasePath","ExpectedHolderProcessId","ExpectedHolderStartedFileTimeHigh","ExpectedHolderStartedFileTimeLow","ExpectedNonce")' + #13#10 +
     '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced")' + #13#10 +
-    '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","LifecycleReceiptPath","InstallerLockOwnerProcessId","LifecycleFinalizationAttemptId","CompleteOwnerHandoffOnly")' + #13#10 +
+    '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","LifecycleReceiptPath","InstallerLockOwnerProcessId","LifecycleFinalizationAttemptId","PublicFailurePath","CompleteOwnerHandoffOnly")' + #13#10 +
     '        "uninstall_bundled_services.ps1" = @("InstallDir","InstallerLockOwnerProcessId","DeleteData")' + #13#10 +
     '    }' + #13#10 +
     '    if (-not $allowedByScript.ContainsKey($scriptName)) { throw "Installer child script is not allowlisted: $scriptName" }' + #13#10 +
@@ -2719,25 +3096,18 @@ var
 begin
   ChineseContext := PowerShellContextChinese(Context);
   LastPowerShellChildSucceeded := False;
+  LastPowerShellFailureMessage := '';
   if not PrepareProtectedInstallerLog(LogPath) then
   begin
-    MsgBox(
-      '无法创建并收紧机器级安装日志，已拒绝运行 PowerShell 子脚本。' + #13#10 +
-      '操作：' + ChineseContext + #13#10 +
-      '日志目录：' + ExpandConstant('{commoncf64}\Ticketbox\installer-logs'),
-      mbError,
-      MB_OK);
+    LastPowerShellFailureMessage :=
+      '无法建立受保护的安装诊断记录，子步骤未执行。支持代码：TBX-INSTALL-LOG';
     Result := False;
     exit;
   end;
   if not EnsureLoggedPowerShellRunner(RunnerPath, RunnerSha256) then
   begin
-    MsgBox(
-      '无法创建 PowerShell 日志运行器，已拒绝继续。' + #13#10 +
-      '操作：' + ChineseContext + #13#10 +
-      '日志：' + LogPath,
-      mbError,
-      MB_OK);
+    LastPowerShellFailureMessage :=
+      '无法建立受验证的安装执行器，子步骤未执行。支持代码：TBX-INSTALL-RUNNER';
     Result := False;
     exit;
   end;
@@ -2748,12 +3118,8 @@ begin
   PowerShellPath := PowerShellExecutable();
   if not ValidateLoggedPowerShellRunner(RunnerPath, RunnerSha256) then
   begin
-    MsgBox(
-      '受保护 PowerShell 日志运行器在执行前完整性复核失败。' + #13#10 +
-      '操作：' + ChineseContext + #13#10 +
-      '日志：' + LogPath,
-      mbError,
-      MB_OK);
+    LastPowerShellFailureMessage :=
+      '安装执行器完整性复核失败，子步骤未执行。支持代码：TBX-INSTALL-RUNNER';
     Result := False;
     exit;
   end;
@@ -2762,15 +3128,15 @@ begin
   begin
     if not ValidateLoggedPowerShellRunner(RunnerPath, RunnerSha256) then
     begin
-      MsgBox(
-        '受保护 PowerShell 日志运行器在兼容宿主回退前完整性复核失败。',
-        mbError,
-        MB_OK);
+      LastPowerShellFailureMessage :=
+        '安装执行器兼容复核失败，子步骤未执行。支持代码：TBX-INSTALL-RUNNER';
       Result := False;
       exit;
     end;
+    SelectedPowerShellPath := WindowsPowerShellExecutable();
+    Log('Selected PowerShell 7 host could not start; pinned Windows PowerShell for the remaining transaction.');
     Started := Exec(
-      WindowsPowerShellExecutable(),
+      SelectedPowerShellPath,
       Params,
       '',
       SW_HIDE,
@@ -2780,43 +3146,18 @@ begin
   DeleteFile(RunnerPath);
   if not Started then
   begin
-    MsgBox(
-      '无法启动 PowerShell，安装子步骤未执行。' + #13#10 +
-      '操作：' + ChineseContext + #13#10 +
-      '日志：' + LogPath,
-      mbError,
-      MB_OK);
+    LastPowerShellFailureMessage :=
+      'Windows 无法启动受验证的安装子步骤。支持代码：TBX-INSTALL-POWERSHELL';
     Result := False;
     exit;
   end;
 
   LastPowerShellChildSucceeded := ResultCode = 0;
 
-  if CompareText(Context, 'Ticketbox installer lifecycle commit') = 0 then
-  begin
-    if ResultCode <> 0 then
-    begin
-      MsgBox(
-        '小票夹安装生命周期最终提交失败。' + #13#10 +
-        'PowerShell 退出码：' + IntToStr(ResultCode) + #13#10 +
-        '详细日志：' + LogPath,
-        mbError,
-        MB_OK);
-      Result := False;
-      exit;
-    end;
-    Result := True;
-    exit;
-  end;
-
   if not HardenLifecycleLockPath(LogPath, False) then
   begin
-    MsgBox(
-      'PowerShell 子脚本已结束，但无法确认机器级日志权限，已按失败处理。' + #13#10 +
-      '操作：' + ChineseContext + #13#10 +
-      '日志：' + LogPath,
-      mbError,
-      MB_OK);
+    LastPowerShellFailureMessage :=
+      '安装子步骤已结束，但诊断记录保护状态不可验证。支持代码：TBX-INSTALL-LOG-ACL';
     Result := False;
     exit;
   end;
@@ -2825,17 +3166,37 @@ begin
   begin
     if CompareText(Context, 'Ticketbox service installation') = 0 then
     begin
-      MsgBox(C07ServiceInstallationFailureMessage(), mbError, MB_OK);
+      LastPowerShellFailureMessage := C07ServiceInstallationFailureMessage();
+    end
+    else if CompareText(
+      Context,
+      'Ticketbox pre-upgrade backup and service preparation') = 0 then
+    begin
+      LastPowerShellFailureMessage :=
+        '安装准备未完成，新程序文件尚未复制。为保护已有数据，安装器已停止。' +
+        '请勿手工修改数据目录；关闭占用后重新运行同一可信安装包。' +
+        '支持代码：TBX-PREP-FAILED';
+    end
+    else if CompareText(Context, 'Ticketbox program-files copy boundary') = 0 then
+    begin
+      LastPowerShellFailureMessage :=
+        '程序文件复制边界未能安全持久化，安装交付已停止。支持代码：TBX-INSTALL-COPY';
+    end
+    else if CompareText(Context, 'Ticketbox installer lifecycle commit') = 0 then
+    begin
+      LastPowerShellFailureMessage :=
+        '服务初始化已返回，但安装生命周期提交未通过验证。支持代码：TBX-INSTALL-COMMIT';
+    end
+    else if CompareText(Context, 'Ticketbox owner bootstrap handoff completion') = 0 then
+    begin
+      LastPowerShellFailureMessage :=
+        '首次连接信息的安全清理未完成；一次性信息仍受保护。支持代码：TBX-INSTALL-HANDOFF';
     end
     else
     begin
-      MsgBox(
-        '小票夹安装子步骤失败。' + #13#10 +
-        '操作：' + ChineseContext + #13#10 +
-        'PowerShell 退出码：' + IntToStr(ResultCode) + #13#10 +
-        '详细日志：' + LogPath,
-        mbError,
-        MB_OK);
+      LastPowerShellFailureMessage :=
+        '安装子步骤未完成。操作：' + ChineseContext +
+        '。支持代码：TBX-INSTALL-CHILD';
     end;
     Result := False;
     exit;
@@ -2849,12 +3210,9 @@ begin
       'BackendVersion',
       '{#AppVersion}') then
     begin
-      MsgBox(
-        '服务已安装，但无法写入机器级 BackendVersion，无法建立防降级版本下限。' + #13#10 +
-        '安装器已按失败处理。' + #13#10 +
-        '日志：' + LogPath,
-        mbError,
-        MB_OK);
+      LastPowerShellFailureMessage :=
+        '服务已初始化，但无法建立机器级防降级版本下限，安装交付已停止。' +
+        '支持代码：TBX-INSTALL-VERSION-FLOOR';
       Result := False;
       exit;
     end;
@@ -3110,8 +3468,10 @@ begin
   Started := Exec(PowerShellPath, Params, '', SW_HIDE, ewNoWait, ResultCode);
   if (not Started) and (CompareText(PowerShellPath, WindowsPowerShellExecutable()) <> 0) then
   begin
+    SelectedPowerShellPath := WindowsPowerShellExecutable();
+    Log('Selected PowerShell 7 host could not start the DataRoot guard; pinned Windows PowerShell for the remaining transaction.');
     Started := Exec(
-      WindowsPowerShellExecutable(),
+      SelectedPowerShellPath,
       Params,
       '',
       SW_HIDE,

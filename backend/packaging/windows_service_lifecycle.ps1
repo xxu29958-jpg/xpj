@@ -155,18 +155,23 @@ function Assert-TicketboxRuntimeAbsent {
         },
         [scriptblock]$ProcessSnapshotReader = {
             Get-CimInstance -ClassName Win32_Process -ErrorAction Stop
+        },
+        [scriptblock]$RuntimeProcessReader = {
+            param($ExpectedExecutables, $SnapshotReader)
+            Get-TicketboxExpectedRuntimeProcessIds `
+                -ExpectedExecutables $ExpectedExecutables `
+                -ProcessSnapshotReader $SnapshotReader
         }
     )
-    $listeners = if ($RuntimePort -gt 0) {
-        @(& $ListenerReader $RuntimePort | Where-Object { [int]$_ -gt 0 } | Sort-Object -Unique)
-    }
-    else {
-        @()
-    }
+    $listeners = @(
+        if ($RuntimePort -gt 0) {
+            & $ListenerReader $RuntimePort |
+                Where-Object { [int]$_ -gt 0 } |
+                Sort-Object -Unique
+        }
+    )
     $runtimeProcesses = @(
-        Get-TicketboxExpectedRuntimeProcessIds `
-            -ExpectedExecutables $ExpectedRuntimeExecutables `
-            -ProcessSnapshotReader $ProcessSnapshotReader
+        & $RuntimeProcessReader $ExpectedRuntimeExecutables $ProcessSnapshotReader
     )
     if ($listeners.Count -gt 0 -or $runtimeProcesses.Count -gt 0) {
         throw "Windows 服务 $Name 缺失，但运行时仍存在（端口 PID：$($listeners -join ',')；安装路径 PID：$($runtimeProcesses -join ',')）。"
@@ -215,6 +220,85 @@ function Get-TicketboxServiceState([string]$Name) {
         return "absent"
     }
     return $service.Status.ToString().ToLowerInvariant()
+}
+
+function Get-TicketboxServiceRuntimeSnapshot([string]$Name) {
+    $escaped = $Name.Replace("'", "''")
+    $service = Get-CimInstance `
+        -ClassName Win32_Service `
+        -Filter "Name='$escaped'" `
+        -ErrorAction Stop
+    if ($null -eq $service) {
+        throw "Windows 服务 $Name 不存在，无法读取 one-shot 退出状态。"
+    }
+    return [pscustomobject]@{
+        State = ([string]$service.State).ToLowerInvariant()
+        ProcessId = [uint32]$service.ProcessId
+        ExitCode = [uint32]$service.ExitCode
+        ServiceSpecificExitCode = [uint32]$service.ServiceSpecificExitCode
+    }
+}
+
+function New-TicketboxRuntimeAbsentAssertion {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [ValidateRange(0, 65535)][int]$RuntimePort = 0,
+        [string[]]$ExpectedRuntimeExecutables = @()
+    )
+
+    $functionBodies = @{}
+    foreach ($functionName in @(
+        "Assert-TicketboxRuntimeAbsent",
+        "Get-TicketboxListeningProcessIds",
+        "Get-TicketboxExpectedRuntimeProcessIds"
+    )) {
+        $commands = @(
+            Get-Command `
+                -Name $functionName `
+                -CommandType Function `
+                -ErrorAction SilentlyContinue
+        )
+        if (
+            $commands.Count -ne 1 -or
+            -not ($commands[0] -is [Management.Automation.FunctionInfo]) -or
+            $null -eq $commands[0].ScriptBlock
+        ) {
+            throw "运行时缺失断言无法唯一捕获函数实现：$functionName"
+        }
+        $functionBodies[$functionName] = [scriptblock]$commands[0].ScriptBlock
+    }
+
+    $boundName = [string]$Name
+    $boundRuntimePort = [int]$RuntimePort
+    $boundExpectedExecutables = [string[]]@(
+        $ExpectedRuntimeExecutables | ForEach-Object { [string]$_ }
+    )
+    $listeningProcessIdsBody =
+        [scriptblock]$functionBodies["Get-TicketboxListeningProcessIds"]
+    $expectedRuntimeProcessIdsBody =
+        [scriptblock]$functionBodies["Get-TicketboxExpectedRuntimeProcessIds"]
+    $runtimeAbsentBody =
+        [scriptblock]$functionBodies["Assert-TicketboxRuntimeAbsent"]
+
+    $listenerReader = {
+        param($Port)
+        & $listeningProcessIdsBody -Port $Port
+    }.GetNewClosure()
+    $runtimeProcessReader = {
+        param($ExpectedExecutables, $SnapshotReader)
+        & $expectedRuntimeProcessIdsBody `
+            -ExpectedExecutables $ExpectedExecutables `
+            -ProcessSnapshotReader $SnapshotReader
+    }.GetNewClosure()
+    $assertion = {
+        & $runtimeAbsentBody `
+            -Name $boundName `
+            -RuntimePort $boundRuntimePort `
+            -ExpectedRuntimeExecutables $boundExpectedExecutables `
+            -ListenerReader $listenerReader `
+            -RuntimeProcessReader $runtimeProcessReader
+    }.GetNewClosure()
+    return $assertion
 }
 
 function Wait-TicketboxServiceSettledState {
@@ -288,21 +372,317 @@ function Get-TicketboxTrustedScExecutable {
     return $scExecutable
 }
 
-function Invoke-TicketboxScChecked([string[]]$ScArgs) {
+function ConvertFrom-TicketboxScCreateArguments([string[]]$ScArgs) {
+    if (
+        $null -eq $ScArgs -or
+        $ScArgs.Count -lt 8 -or
+        -not [string]::Equals(
+            [string]$ScArgs[0],
+            "create",
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        throw "sc.exe create 策略边界只接受完整参数。"
+    }
+    $serviceName = [string]$ScArgs[1]
+    if (
+        [string]::IsNullOrWhiteSpace($serviceName) -or
+        $serviceName.Length -gt 256 -or
+        $serviceName.IndexOfAny([char[]]@(0, 47, 92)) -ge 0
+    ) {
+        throw "sc.exe create 策略边界收到无效服务名。"
+    }
+    $options = @{}
+    for ($index = 2; $index -lt $ScArgs.Count; $index += 2) {
+        if ($index + 1 -ge $ScArgs.Count) {
+            throw "sc.exe create 选项缺少值：$($ScArgs[$index])"
+        }
+        $name = ([string]$ScArgs[$index]).ToLowerInvariant()
+        if ($name -notin @(
+            "binpath=",
+            "start=",
+            "obj=",
+            "depend=",
+            "displayname="
+        )) {
+            throw "sc.exe create 策略边界拒绝不受支持的选项：$name"
+        }
+        if ($options.ContainsKey($name)) {
+            throw "sc.exe create 选项重复：$name"
+        }
+        $value = [string]$ScArgs[$index + 1]
+        if ($value.IndexOf([char]0) -ge 0) {
+            throw "sc.exe create 选项包含 NUL：$name"
+        }
+        $options[$name] = $value
+    }
+    foreach ($required in @("binpath=", "start=", "obj=")) {
+        if (-not $options.ContainsKey($required)) {
+            throw "sc.exe create 缺少必要选项：$required"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$options["binpath="])) {
+        throw "sc.exe create 的 binPath 不能为空。"
+    }
+    $expectedAccount = "NT SERVICE\$serviceName"
+    if (-not [string]::Equals(
+        [string]$options["obj="],
+        $expectedAccount,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "sc.exe create 策略边界只允许与服务名绑定的虚拟服务账户。"
+    }
+    $startType = switch ([string]$options["start="]) {
+        "auto" { [uint32]2; break }
+        "demand" { [uint32]3; break }
+        "disabled" { [uint32]4; break }
+        default { throw "sc.exe create 策略边界不支持启动类型：$($options['start='])" }
+    }
+    $dependencies = @()
+    if ($options.ContainsKey("depend=")) {
+        $dependencies = @(
+            ([string]$options["depend="]).Split([char]47) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+        if ($dependencies.Count -eq 0) {
+            throw "sc.exe create 策略边界收到空依赖列表。"
+        }
+    }
+    $displayName = if ($options.ContainsKey("displayname=")) {
+        [string]$options["displayname="]
+    }
+    else {
+        $serviceName
+    }
+    if ([string]::IsNullOrWhiteSpace($displayName) -or $displayName.Length -gt 256) {
+        throw "sc.exe create 策略边界收到无效显示名。"
+    }
+    return [pscustomobject]@{
+        ServiceName = $serviceName
+        DisplayName = $displayName
+        BinaryPath = [string]$options["binpath="]
+        StartType = [uint32]$startType
+        ServiceStartName = $expectedAccount
+        Dependencies = [string[]]$dependencies
+    }
+}
+
+function ConvertFrom-TicketboxScConfigArguments([string[]]$ScArgs) {
+    if (
+        $null -eq $ScArgs -or
+        $ScArgs.Count -lt 4 -or
+        -not [string]::Equals(
+            [string]$ScArgs[0],
+            "config",
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        throw "sc.exe config 策略边界只接受完整参数。"
+    }
+    $serviceName = [string]$ScArgs[1]
+    if (
+        [string]::IsNullOrWhiteSpace($serviceName) -or
+        $serviceName.Length -gt 256 -or
+        $serviceName.IndexOfAny([char[]]@(0, 47, 92)) -ge 0
+    ) {
+        throw "sc.exe config 策略边界收到无效服务名。"
+    }
+    $options = @{}
+    for ($index = 2; $index -lt $ScArgs.Count; $index += 2) {
+        if ($index + 1 -ge $ScArgs.Count) {
+            throw "sc.exe config 选项缺少值：$($ScArgs[$index])"
+        }
+        $name = ([string]$ScArgs[$index]).ToLowerInvariant()
+        if ($name -notin @(
+            "binpath=",
+            "start=",
+            "obj=",
+            "depend=",
+            "displayname="
+        )) {
+            throw "sc.exe config 策略边界拒绝不受支持的选项：$name"
+        }
+        if ($options.ContainsKey($name)) {
+            throw "sc.exe config 选项重复：$name"
+        }
+        $value = [string]$ScArgs[$index + 1]
+        if ($value.IndexOf([char]0) -ge 0) {
+            throw "sc.exe config 选项包含 NUL：$name"
+        }
+        $options[$name] = $value
+    }
+    $changeBinaryPath = $options.ContainsKey("binpath=")
+    $binaryPath = if ($changeBinaryPath) {
+        [string]$options["binpath="]
+    }
+    else {
+        ""
+    }
+    if ($changeBinaryPath -and [string]::IsNullOrWhiteSpace($binaryPath)) {
+        throw "sc.exe config 的 binPath 不能为空。"
+    }
+    $changeStartType = $options.ContainsKey("start=")
+    $startType = [uint32]0
+    if ($changeStartType) {
+        $startType = switch ([string]$options["start="]) {
+            "auto" { [uint32]2; break }
+            "delayed-auto" { [uint32]2; break }
+            "demand" { [uint32]3; break }
+            "disabled" { [uint32]4; break }
+            default {
+                throw "sc.exe config 策略边界不支持启动类型：$($options['start='])"
+            }
+        }
+    }
+    $changeServiceStartName = $options.ContainsKey("obj=")
+    $serviceStartName = ""
+    if ($changeServiceStartName) {
+        $expectedAccount = "NT SERVICE\$serviceName"
+        if (-not [string]::Equals(
+            [string]$options["obj="],
+            $expectedAccount,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "sc.exe config 策略边界只允许与服务名绑定的虚拟服务账户。"
+        }
+        $serviceStartName = $expectedAccount
+    }
+    $changeDependencies = $options.ContainsKey("depend=")
+    $dependencies = @()
+    if ($changeDependencies) {
+        $dependencyText = [string]$options["depend="]
+        if ($dependencyText.Length -gt 0) {
+            $dependencies = @(
+                $dependencyText.Split([char]47) |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            )
+            if ($dependencies.Count -eq 0) {
+                throw "sc.exe config 策略边界收到无效依赖列表。"
+            }
+        }
+    }
+    $changeDisplayName = $options.ContainsKey("displayname=")
+    $displayName = if ($changeDisplayName) {
+        [string]$options["displayname="]
+    }
+    else {
+        ""
+    }
+    if (
+        $changeDisplayName -and
+        ([string]::IsNullOrWhiteSpace($displayName) -or $displayName.Length -gt 256)
+    ) {
+        throw "sc.exe config 策略边界收到无效显示名。"
+    }
+    return [pscustomobject]@{
+        ServiceName = $serviceName
+        ChangeBinaryPath = [bool]$changeBinaryPath
+        BinaryPath = $binaryPath
+        ChangeStartType = [bool]$changeStartType
+        StartType = [uint32]$startType
+        ChangeServiceStartName = [bool]$changeServiceStartName
+        ServiceStartName = $serviceStartName
+        ChangeDependencies = [bool]$changeDependencies
+        Dependencies = [string[]]$dependencies
+        ChangeDisplayName = [bool]$changeDisplayName
+        DisplayName = $displayName
+    }
+}
+
+function Invoke-TicketboxScProcess([string[]]$ScArgs) {
+    if ($null -eq $ScArgs -or $ScArgs.Count -eq 0) {
+        throw "Windows 服务控制器参数不能为空。"
+    }
+    foreach ($argument in $ScArgs) {
+        $value = [string]$argument
+        if (
+            $value.IndexOf([char]0) -ge 0 -or
+            $value.Contains("`r") -or
+            $value.Contains("`n")
+        ) {
+            throw "Windows 服务控制器参数不能包含 NUL 或换行。"
+        }
+    }
+
+    $verb = [string]$ScArgs[0]
+    if ([string]::Equals(
+        $verb,
+        "create",
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        ConvertFrom-TicketboxScCreateArguments $ScArgs | Out-Null
+    }
+    elseif ([string]::Equals(
+        $verb,
+        "config",
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        ConvertFrom-TicketboxScConfigArguments $ScArgs | Out-Null
+    }
+
+    # PowerShell 7.3 changed native argument passing relative to Windows
+    # PowerShell 5.1. Keep sc.exe argv construction inside the shared
+    # CreateProcessW boundary so both supported hosts reach identical SCM input.
     $scExecutable = Get-TicketboxTrustedScExecutable
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        $out = & $scExecutable @ScArgs 2>&1
-        $rc = $LASTEXITCODE
+    if ($null -eq (Get-Command `
+        Invoke-TicketboxBoundedNativeProcess `
+        -CommandType Function `
+        -ErrorAction SilentlyContinue)) {
+        throw "Windows 服务控制器缺少统一的有界原生进程执行器。"
     }
-    finally {
-        $ErrorActionPreference = $previousPreference
+    return Invoke-TicketboxBoundedNativeProcess `
+        -FilePath $scExecutable `
+        -Arguments $ScArgs `
+        -TimeoutMilliseconds 30000 `
+        -Label "Windows 服务控制器"
+}
+
+function Format-TicketboxScOperationForLog([string[]]$ScArgs) {
+    if ($null -eq $ScArgs -or $ScArgs.Count -eq 0) {
+        return "sc.exe"
     }
-    if ($rc -ne 0) {
-        throw "$scExecutable $($ScArgs -join ' ') 失败（exit=$rc）：`n$out"
+    $verb = [string]$ScArgs[0]
+    $serviceName = if ($ScArgs.Count -gt 1) { [string]$ScArgs[1] } else { "<missing>" }
+    $optionNames = @(
+        for ($index = 2; $index -lt $ScArgs.Count; $index++) {
+            $candidate = [string]$ScArgs[$index]
+            if ($candidate.EndsWith("=", [System.StringComparison]::Ordinal)) {
+                $candidate.ToLowerInvariant()
+            }
+        }
+    )
+    $optionSummary = if ($optionNames.Count -gt 0) {
+        " options=" + ($optionNames -join ",")
     }
-    return ($out | Out-String).Trim()
+    else {
+        ""
+    }
+    return "sc.exe $verb $serviceName$optionSummary"
+}
+
+function Invoke-TicketboxScChecked([string[]]$ScArgs) {
+    $result = Invoke-TicketboxScProcess $ScArgs
+    if (
+        $null -eq $result -or
+        $null -eq $result.PSObject.Properties["ExitCode"] -or
+        $null -eq $result.PSObject.Properties["StandardOutput"] -or
+        $null -eq $result.PSObject.Properties["StandardError"]
+    ) {
+        throw "Windows 服务控制器返回了无效结果。"
+    }
+    $output = @(
+        [string]$result.StandardOutput
+        [string]$result.StandardError
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    $outputText = ($output -join "`n").Trim()
+    if ([int]$result.ExitCode -ne 0) {
+        $operation = Format-TicketboxScOperationForLog $ScArgs
+        throw "$operation 失败（exit=$($result.ExitCode)）：`n$outputText"
+    }
+    if ([string]::IsNullOrWhiteSpace($outputText)) {
+        return "[SC] $([string]$ScArgs[0]) SUCCESS (exit=0)"
+    }
+    return $outputText
 }
 
 function Get-TicketboxServiceSid([string]$Name) {
@@ -507,6 +887,65 @@ function Start-TicketboxOwnedServiceIfExists {
         Wait-TicketboxServiceState @waitArguments -DesiredState "running"
     }
     return $true
+}
+
+function Invoke-TicketboxOwnedOneShotService {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$ExpectedExecutable,
+        [Parameter(Mandatory = $true)][string[]]$ExpectedRuntimeExecutables,
+        [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds,
+        [Parameter(Mandatory = $true)][int]$PollMilliseconds,
+        [scriptblock]$SnapshotReader = {
+            param($ServiceName)
+            Get-TicketboxServiceRuntimeSnapshot $ServiceName
+        },
+        [scriptblock]$StartAction = {
+            param($ServiceName)
+            Invoke-TicketboxScChecked @("start", $ServiceName) | Out-Null
+        },
+        [scriptblock]$SleepAction = {
+            param($Milliseconds)
+            Start-Sleep -Milliseconds $Milliseconds
+        }
+    )
+
+    if (-not (Assert-TicketboxServiceOwnership $Name $ExpectedExecutable)) {
+        throw "Windows one-shot 服务 $Name 不存在。"
+    }
+    & $StartAction $Name
+    $deadline = New-TicketboxWaitDeadline $TimeoutMilliseconds
+    $snapshot = $null
+    do {
+        $snapshot = & $SnapshotReader $Name
+        if ([string]$snapshot.State -ceq "stopped") {
+            break
+        }
+        if ([string]$snapshot.State -ceq "paused") {
+            throw "Windows one-shot 服务 $Name 意外进入 paused。"
+        }
+    } while (Wait-TicketboxPollBeforeDeadline `
+        -Deadline $deadline `
+        -TimeoutMilliseconds $TimeoutMilliseconds `
+        -PollMilliseconds $PollMilliseconds `
+        -SleepAction $SleepAction)
+    if ($null -eq $snapshot -or [string]$snapshot.State -cne "stopped") {
+        throw "Windows one-shot 服务 $Name 未在 $TimeoutMilliseconds ms 内停止。"
+    }
+    Wait-TicketboxBackendRuntimeStopped `
+        -Name $Name `
+        -ExpectedRuntimeExecutables $ExpectedRuntimeExecutables `
+        -TimeoutMilliseconds $TimeoutMilliseconds `
+        -PollMilliseconds $PollMilliseconds `
+        -SleepAction $SleepAction
+    $snapshot = & $SnapshotReader $Name
+    if (
+        [string]$snapshot.State -cne "stopped" -or
+        [uint32]$snapshot.ProcessId -ne 0
+    ) {
+        throw "Windows one-shot 服务 $Name 的终态或进程身份不可信。"
+    }
+    return $snapshot
 }
 
 function Restart-TicketboxOwnedServiceIfExists {

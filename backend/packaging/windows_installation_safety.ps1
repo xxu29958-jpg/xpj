@@ -282,6 +282,35 @@ public static class TicketboxDirectoryGuardNativeMethods
         StringBuilder volumeName,
         uint bufferLength);
 
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "GetVolumePathNameW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetVolumePathNameW(
+        string fileName,
+        StringBuilder volumePathName,
+        uint bufferLength);
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "GetVolumeInformationW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetVolumeInformationW(
+        string rootPathName,
+        StringBuilder volumeNameBuffer,
+        uint volumeNameSize,
+        out uint volumeSerialNumber,
+        out uint maximumComponentLength,
+        out uint fileSystemFlags,
+        StringBuilder fileSystemNameBuffer,
+        uint fileSystemNameSize);
+
     public static SafeFileHandle OpenDirectory(
         string fileName,
         uint desiredAccess,
@@ -308,6 +337,36 @@ public static class TicketboxDirectoryGuardNativeMethods
             volumeMountPoint,
             volumeName,
             bufferLength);
+    }
+
+    public static bool TryGetVolumePathName(
+        string fileName,
+        StringBuilder volumePathName,
+        uint bufferLength)
+    {
+        return GetVolumePathNameW(
+            fileName,
+            volumePathName,
+            bufferLength);
+    }
+
+    public static bool TryGetVolumeInformation(
+        string rootPathName,
+        StringBuilder fileSystemName,
+        uint fileSystemNameSize,
+        out uint fileSystemFlags)
+    {
+        uint volumeSerialNumber;
+        uint maximumComponentLength;
+        return GetVolumeInformationW(
+            rootPathName,
+            null,
+            0,
+            out volumeSerialNumber,
+            out maximumComponentLength,
+            out fileSystemFlags,
+            fileSystemName,
+            fileSystemNameSize);
     }
 }
 '@
@@ -559,6 +618,201 @@ function Write-TicketboxUtf8FileDurable {
     }
 }
 
+function Initialize-TicketboxRestorePrivilegeMethods {
+    if ("TicketboxRestorePrivilegeScope" -as [type]) {
+        return
+    }
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct TicketboxRestorePrivilegeLuid
+{
+    internal uint LowPart;
+    internal int HighPart;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct TicketboxRestorePrivilegeLuidAndAttributes
+{
+    internal TicketboxRestorePrivilegeLuid Luid;
+    internal uint Attributes;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct TicketboxRestorePrivilegeTokenPrivileges
+{
+    internal uint PrivilegeCount;
+    internal TicketboxRestorePrivilegeLuidAndAttributes Privileges;
+}
+
+public sealed class TicketboxRestorePrivilegeScope : IDisposable
+{
+    private const uint TokenQuery = 0x0008;
+    private const uint TokenAdjustPrivileges = 0x0020;
+    private const uint PrivilegeEnabled = 0x00000002;
+    private const int ErrorNotAllAssigned = 1300;
+    private IntPtr tokenHandle;
+    private TicketboxRestorePrivilegeTokenPrivileges previousState;
+    private bool restoreRequired;
+    private bool disposed;
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool OpenProcessToken(
+        IntPtr processHandle,
+        uint desiredAccess,
+        out IntPtr tokenHandle);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool LookupPrivilegeValue(
+        string systemName,
+        string name,
+        out TicketboxRestorePrivilegeLuid luid);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AdjustTokenPrivileges(
+        IntPtr tokenHandle,
+        [MarshalAs(UnmanagedType.Bool)] bool disableAllPrivileges,
+        ref TicketboxRestorePrivilegeTokenPrivileges newState,
+        int bufferLength,
+        out TicketboxRestorePrivilegeTokenPrivileges previousState,
+        out int returnLength);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AdjustTokenPrivileges(
+        IntPtr tokenHandle,
+        [MarshalAs(UnmanagedType.Bool)] bool disableAllPrivileges,
+        ref TicketboxRestorePrivilegeTokenPrivileges newState,
+        int bufferLength,
+        IntPtr previousState,
+        IntPtr returnLength);
+
+    private TicketboxRestorePrivilegeScope(IntPtr handle)
+    {
+        tokenHandle = handle;
+    }
+
+    public static TicketboxRestorePrivilegeScope Enter()
+    {
+        IntPtr handle;
+        if (!OpenProcessToken(
+            GetCurrentProcess(),
+            TokenQuery | TokenAdjustPrivileges,
+            out handle))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+        TicketboxRestorePrivilegeScope scope =
+            new TicketboxRestorePrivilegeScope(handle);
+        try
+        {
+            TicketboxRestorePrivilegeLuid luid;
+            if (!LookupPrivilegeValue(null, "SeRestorePrivilege", out luid))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            TicketboxRestorePrivilegeTokenPrivileges requested =
+                new TicketboxRestorePrivilegeTokenPrivileges();
+            requested.PrivilegeCount = 1;
+            requested.Privileges = new TicketboxRestorePrivilegeLuidAndAttributes
+            {
+                Luid = luid,
+                Attributes = PrivilegeEnabled
+            };
+            int returnLength;
+            bool adjusted = AdjustTokenPrivileges(
+                handle,
+                false,
+                ref requested,
+                Marshal.SizeOf(typeof(TicketboxRestorePrivilegeTokenPrivileges)),
+                out scope.previousState,
+                out returnLength);
+            int error = Marshal.GetLastWin32Error();
+            if (!adjusted || error == ErrorNotAllAssigned)
+            {
+                throw new Win32Exception(error);
+            }
+            scope.restoreRequired = true;
+            return scope;
+        }
+        catch
+        {
+            scope.Dispose();
+            throw;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+        disposed = true;
+        Exception restoreFailure = null;
+        if (restoreRequired)
+        {
+            bool restored = AdjustTokenPrivileges(
+                tokenHandle,
+                false,
+                ref previousState,
+                0,
+                IntPtr.Zero,
+                IntPtr.Zero);
+            int restoreError = Marshal.GetLastWin32Error();
+            if (!restored || restoreError == ErrorNotAllAssigned)
+            {
+                restoreFailure =
+                    new Win32Exception(restoreError);
+            }
+        }
+        if (tokenHandle != IntPtr.Zero)
+        {
+            CloseHandle(tokenHandle);
+            tokenHandle = IntPtr.Zero;
+        }
+        if (restoreFailure != null)
+        {
+            throw restoreFailure;
+        }
+    }
+}
+'@
+}
+
+function Enter-TicketboxRestorePrivilegeForSecurityDescriptor($Security) {
+    $ownerSid = $Security.GetOwner(
+        [System.Security.Principal.SecurityIdentifier]
+    ).Value
+    $currentUserSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    if ($ownerSid -eq $currentUserSid) {
+        return $null
+    }
+    Initialize-TicketboxRestorePrivilegeMethods
+    try {
+        return [TicketboxRestorePrivilegeScope]::Enter()
+    }
+    catch {
+        throw (
+            "Windows 未授予创建受保护对象所需的 SeRestorePrivilege：" +
+            $_.Exception.Message
+        )
+    }
+}
+
 function New-TicketboxProtectedFileSecurity {
     param(
         [Parameter(Mandatory = $true)][string[]]$FullControlAccounts,
@@ -701,18 +955,26 @@ function Initialize-TicketboxProtectedDirectoryAtomically {
         -ReadExecuteAccounts $ReadExecuteAccounts `
         -InheritableReadExecuteAccounts $InheritableReadExecuteAccounts `
         -OwnerAccount $OwnerAccount
+    $restorePrivilege = Enter-TicketboxRestorePrivilegeForSecurityDescriptor $security
     try {
-        if ($PSVersionTable.PSEdition -eq "Core") {
-            [System.IO.FileSystemAclExtensions]::CreateDirectory($security, $fullPath) | Out-Null
+        try {
+            if ($PSVersionTable.PSEdition -eq "Core") {
+                [System.IO.FileSystemAclExtensions]::CreateDirectory($security, $fullPath) | Out-Null
+            }
+            else {
+                (New-Object System.IO.DirectoryInfo($fullPath)).Create($security)
+            }
         }
-        else {
-            (New-Object System.IO.DirectoryInfo($fullPath)).Create($security)
+        catch {
+            $creationFailure = $_.Exception
+            if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
+                throw $creationFailure
+            }
         }
     }
-    catch {
-        $creationFailure = $_.Exception
-        if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
-            throw $creationFailure
+    finally {
+        if ($null -ne $restorePrivilege) {
+            $restorePrivilege.Dispose()
         }
     }
     Assert-NoTicketboxAncestorReparsePoints $fullPath
@@ -732,9 +994,21 @@ function New-TicketboxProtectedFileStream {
     )
 
     $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
-    if ($PSVersionTable.PSEdition -eq "Core") {
-        return [System.IO.FileSystemAclExtensions]::Create(
-            (New-Object System.IO.FileInfo($Path)),
+    $restorePrivilege = Enter-TicketboxRestorePrivilegeForSecurityDescriptor $Security
+    try {
+        if ($PSVersionTable.PSEdition -eq "Core") {
+            return [System.IO.FileSystemAclExtensions]::Create(
+                (New-Object System.IO.FileInfo($Path)),
+                [System.IO.FileMode]::CreateNew,
+                [System.Security.AccessControl.FileSystemRights]::Write,
+                [System.IO.FileShare]::None,
+                4096,
+                [System.IO.FileOptions]::WriteThrough,
+                $Security
+            )
+        }
+        return New-Object System.IO.FileStream(
+            $Path,
             [System.IO.FileMode]::CreateNew,
             [System.Security.AccessControl.FileSystemRights]::Write,
             [System.IO.FileShare]::None,
@@ -743,15 +1017,11 @@ function New-TicketboxProtectedFileStream {
             $Security
         )
     }
-    return New-Object System.IO.FileStream(
-        $Path,
-        [System.IO.FileMode]::CreateNew,
-        [System.Security.AccessControl.FileSystemRights]::Write,
-        [System.IO.FileShare]::None,
-        4096,
-        [System.IO.FileOptions]::WriteThrough,
-        $Security
-    )
+    finally {
+        if ($null -ne $restorePrivilege) {
+            $restorePrivilege.Dispose()
+        }
+    }
 }
 
 function Write-TicketboxProtectedUtf8FileDurable {
@@ -1178,25 +1448,77 @@ function ConvertTo-TicketboxCanonicalVolumeIdentity {
     return $Value.ToUpperInvariant()
 }
 
-function Get-TicketboxVolumeIdentityForPath {
+function Get-TicketboxVolumeDescriptorForPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     Initialize-TicketboxDirectoryGuardNativeMethods
     $canonicalPath = ConvertTo-TicketboxWin32CanonicalPath $Path
-    $volumeRoot = [System.IO.Path]::GetPathRoot($canonicalPath)
-    if ([string]::IsNullOrWhiteSpace($volumeRoot)) {
-        throw "DataRoot 没有可解析的本机卷根：$canonicalPath"
+    $volumePath = New-Object System.Text.StringBuilder 32768
+    if (-not [TicketboxDirectoryGuardNativeMethods]::TryGetVolumePathName(
+        $canonicalPath,
+        $volumePath,
+        [uint32]$volumePath.Capacity
+    )) {
+        $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "无法解析 DataRoot 的 Windows volume mount point（Win32=$errorCode）：$canonicalPath"
+    }
+    $volumeRoot = $volumePath.ToString()
+    if (
+        [string]::IsNullOrWhiteSpace($volumeRoot) -or
+        -not $volumeRoot.EndsWith("\", [StringComparison]::Ordinal)
+    ) {
+        throw "DataRoot 没有可解析的 Windows volume mount point：$canonicalPath"
     }
     $volumeName = New-Object System.Text.StringBuilder 1024
     if (-not [TicketboxDirectoryGuardNativeMethods]::TryGetVolumeNameForVolumeMountPoint(
-        (ConvertTo-TicketboxWin32CanonicalPath $volumeRoot),
+        $volumeRoot,
         $volumeName,
         [uint32]$volumeName.Capacity
     )) {
         $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw "无法解析 DataRoot 的稳定 Windows volume identity（Win32=$errorCode）：$volumeRoot"
     }
-    return ConvertTo-TicketboxCanonicalVolumeIdentity $volumeName.ToString()
+    $fileSystemName = New-Object System.Text.StringBuilder 1024
+    [uint32]$fileSystemFlags = 0
+    if (-not [TicketboxDirectoryGuardNativeMethods]::TryGetVolumeInformation(
+        $volumeRoot,
+        $fileSystemName,
+        [uint32]$fileSystemName.Capacity,
+        [ref]$fileSystemFlags
+    )) {
+        $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "无法读取 DataRoot 卷的文件系统能力（Win32=$errorCode）：$volumeRoot"
+    }
+    return [pscustomobject]@{
+        MountPoint = $volumeRoot
+        Identity = ConvertTo-TicketboxCanonicalVolumeIdentity $volumeName.ToString()
+        FileSystemName = $fileSystemName.ToString()
+        FileSystemFlags = $fileSystemFlags
+    }
+}
+
+function Get-TicketboxVolumeIdentityForPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    return (Get-TicketboxVolumeDescriptorForPath $Path).Identity
+}
+
+function Assert-TicketboxDataRootVolumeCapabilities {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $descriptor = Get-TicketboxVolumeDescriptorForPath $Path
+    [uint32]$filePersistentAcls = 0x00000008
+    [uint32]$fileReadOnlyVolume = 0x00080000
+    if (($descriptor.FileSystemFlags -band $filePersistentAcls) -eq 0) {
+        throw (
+            "数据目录所在卷不保存并强制执行 Windows ACL，不能安全安装小票夹：" +
+            "$($descriptor.MountPoint) ($($descriptor.FileSystemName))"
+        )
+    }
+    if (($descriptor.FileSystemFlags -band $fileReadOnlyVolume) -ne 0) {
+        throw "数据目录所在卷为只读卷，不能安装小票夹：$($descriptor.MountPoint)"
+    }
+    return $descriptor
 }
 
 function Assert-TicketboxVolumeIdentityForPath {
@@ -2654,6 +2976,91 @@ function Get-TicketboxPathAcl([string]$Path) {
     }
 }
 
+function Remove-TicketboxExplicitDirectoryAccessRulesBySidExact(
+    [string]$Path,
+    [string]$Sid
+) {
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
+    if ((Get-TicketboxPathEntryKindNoFollow $Path) -cne "Directory") {
+        throw "ACL SID 清理目标不是普通目录：$Path"
+    }
+    try {
+        $sidObject = New-Object System.Security.Principal.SecurityIdentifier($Sid)
+    }
+    catch {
+        throw "ACL SID 清理收到无效 SID，拒绝修改目录：$Path ($Sid)"
+    }
+    if ($sidObject.Value -cne $Sid) {
+        throw "ACL SID 清理只接受规范数值 SID：$Path ($Sid)"
+    }
+
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $Path
+    $item = Get-Item -LiteralPath $extendedPath -Force -ErrorAction Stop
+    if (
+        $item -isnot [System.IO.DirectoryInfo] -or
+        ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+    ) {
+        throw "ACL SID 清理目标不是普通目录：$Path"
+    }
+    if ($PSVersionTable.PSEdition -eq "Core") {
+        $descriptor = [System.IO.FileSystemAclExtensions]::GetAccessControl($item)
+    }
+    else {
+        $descriptor = $item.GetAccessControl()
+    }
+    if (-not $descriptor.AreAccessRulesProtected) {
+        throw "ACL SID 清理只允许在已断开继承的目录上执行：$Path"
+    }
+    $matchingRules = @($descriptor.GetAccessRules(
+        $true,
+        $false,
+        [System.Security.Principal.SecurityIdentifier]
+    ) | Where-Object { $_.IdentityReference.Value -ceq $sidObject.Value })
+    if ($matchingRules.Count -eq 0) {
+        throw "ACL SID 清理前目标规则已漂移：$Path ($Sid)"
+    }
+
+    try {
+        $descriptor.PurgeAccessRules($sidObject)
+    }
+    catch {
+        throw "无法按数值 SID 从目录 DACL 清理显式规则：$Path ($Sid)"
+    }
+    $inMemoryRemaining = @($descriptor.GetAccessRules(
+        $true,
+        $false,
+        [System.Security.Principal.SecurityIdentifier]
+    ) | Where-Object { $_.IdentityReference.Value -ceq $sidObject.Value })
+    if ($inMemoryRemaining.Count -ne 0) {
+        throw "目录 DACL 的 SID 规则未在内存中完全清理：$Path ($Sid)"
+    }
+
+    try {
+        if ($PSVersionTable.PSEdition -eq "Core") {
+            [System.IO.FileSystemAclExtensions]::SetAccessControl($item, $descriptor)
+        }
+        else {
+            $item.SetAccessControl($descriptor)
+        }
+    }
+    catch {
+        throw "无法持久化目录 DACL 的 SID 清理：$Path ($Sid)"
+    }
+
+    $persistedAcl = Get-TicketboxPathAcl $Path
+    if (-not $persistedAcl.AreAccessRulesProtected) {
+        throw "目录 DACL 的 SID 清理后继承状态漂移：$Path"
+    }
+    $persistedRules = @($persistedAcl.Access | Where-Object {
+        $_.IdentityReference.Translate(
+            [System.Security.Principal.SecurityIdentifier]
+        ).Value -ceq $sidObject.Value
+    })
+    if ($persistedRules.Count -ne 0) {
+        throw "目录 DACL 的 SID 规则未从磁盘完全清理：$Path ($Sid)"
+    }
+}
+
 function Set-TicketboxOwnerIfNeeded([string]$Path, [string]$ExpectedOwnerSid) {
     $acl = Get-TicketboxPathAcl $Path
     $ownerSid = ConvertTo-TicketboxAccountSid $acl.Owner
@@ -2667,11 +3074,45 @@ function Set-TicketboxOwnerIfNeeded([string]$Path, [string]$ExpectedOwnerSid) {
 }
 
 function Set-TicketboxWritableOwnerForAclUpdate([string]$Path) {
-    $currentUserSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $currentUserSid = $identity.User.Value
     $administratorsSid = ConvertTo-TicketboxAccountSid "BUILTIN\Administrators"
-    $ownerSid = ConvertTo-TicketboxAccountSid (Get-TicketboxPathAcl $Path).Owner
-    if ($ownerSid -notin @($currentUserSid, $administratorsSid)) {
-        Invoke-TicketboxIcaclsChecked $Path @("/setowner", "*$administratorsSid")
+    $acl = Get-TicketboxPathAcl $Path
+    $ownerSid = ConvertTo-TicketboxAccountSid $acl.Owner
+    if ($ownerSid -eq $currentUserSid) {
+        return
+    }
+
+    # Never take ownership merely to edit a DACL.  A crash between temporary
+    # Administrators ownership and owner restoration would leave a trusted
+    # installer artifact in a state that later retries cannot distinguish from
+    # external takeover.  Instead, prove that the current token already has
+    # WRITE_DAC through the existing exact ACL and fail closed otherwise.
+    $authorizedSids = @($currentUserSid)
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $authorizedSids += $administratorsSid
+    }
+    $changePermissions = [Security.AccessControl.FileSystemRights]::ChangePermissions
+    $authorized = $false
+    foreach ($rule in $acl.Access) {
+        $ruleSid = $rule.IdentityReference.Translate(
+            [Security.Principal.SecurityIdentifier]
+        ).Value
+        if ($rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Deny) {
+            throw "ACL 含 Deny 规则，拒绝通过 owner 过渡强制改写：$Path ($ruleSid)"
+        }
+        if (
+            $ruleSid -in $authorizedSids -and
+            $rule.AccessControlType -eq
+                [Security.AccessControl.AccessControlType]::Allow -and
+            ($rule.FileSystemRights -band $changePermissions) -eq $changePermissions
+        ) {
+            $authorized = $true
+        }
+    }
+    if (-not $authorized) {
+        throw "当前安装 token 未经既有 ACL 授予 WRITE_DAC，拒绝临时接管 owner：$Path"
     }
 }
 
@@ -2762,7 +3203,9 @@ function Set-TicketboxExactDirectoryAclCore(
     )
     foreach ($sid in $presentSids) {
         if ($sid -notin $allowedSids) {
-            Invoke-TicketboxIcaclsChecked $Path @("/remove", "*$sid")
+            Remove-TicketboxExplicitDirectoryAccessRulesBySidExact `
+                -Path $Path `
+                -Sid $sid
         }
     }
     foreach ($sid in $targetSids) {
@@ -2989,6 +3432,498 @@ function Assert-TicketboxExactFileAcl(
             throw "文件 ACL 缺少 ReadExecute 账户：$Path ($sid)"
         }
     }
+}
+
+function Test-TicketboxExactAllowFileSystemRights {
+    param(
+        [Parameter(Mandatory = $true)]
+        [Security.AccessControl.FileSystemRights]$ActualRights,
+        [Parameter(Mandatory = $true)]
+        [Security.AccessControl.FileSystemRights]$RequestedRights
+    )
+
+    # .NET/Windows automatically adds SYNCHRONIZE to an allow ACE.  Preserve
+    # exact-rights enforcement by accepting that documented normalization and
+    # no other bit.
+    $normalizedRights =
+        $RequestedRights -bor
+        [Security.AccessControl.FileSystemRights]::Synchronize
+    return [int64]$ActualRights -eq [int64]$normalizedRights
+}
+
+function New-TicketboxInitdbPasswordFileSecurity([string]$ServiceName) {
+    $security = New-Object System.Security.AccessControl.FileSecurity
+    $security.SetAccessRuleProtection($true, $false)
+    $ownerSid = New-Object System.Security.Principal.SecurityIdentifier(
+        (ConvertTo-TicketboxAccountSid "SYSTEM")
+    )
+    $security.SetOwner($ownerSid)
+    foreach ($account in @("SYSTEM", "BUILTIN\Administrators")) {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier(
+            (ConvertTo-TicketboxAccountSid $account)
+        )
+        $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $sid,
+            [Security.AccessControl.FileSystemRights]::FullControl,
+            [Security.AccessControl.AccessControlType]::Allow
+        )))
+    }
+    $serviceSid = New-Object System.Security.Principal.SecurityIdentifier(
+        (ConvertTo-TicketboxAccountSid "NT SERVICE\$ServiceName")
+    )
+    $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $serviceSid,
+        [Security.AccessControl.FileSystemRights]::Read,
+        [Security.AccessControl.AccessControlType]::Allow
+    )))
+    return $security
+}
+
+function Write-TicketboxInitdbPasswordFileAtomically {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$ServiceName
+    )
+
+    $canonicalPath = ConvertTo-TicketboxCanonicalPath $Path
+    if (
+        [string]::IsNullOrEmpty($Text) -or
+        $Text.IndexOf([char]0) -ge 0 -or
+        $Text.Contains("`r") -or
+        $Text.Contains("`n")
+    ) {
+        throw "initdb 临时密码必须是非空单行文本。"
+    }
+    if ((Get-TicketboxPathEntryKindNoFollow $canonicalPath) -cne "Missing") {
+        throw "initdb 临时密码路径已存在；必须先完成中断恢复。"
+    }
+    $parent = Split-Path -Parent $canonicalPath
+    if ((Get-TicketboxPathEntryKindNoFollow $parent) -cne "Directory") {
+        throw "initdb 临时密码父目录不存在或不可信。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $parent
+    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($Text)
+    if ($bytes.Length -le 0 -or $bytes.Length -gt 1024) {
+        throw "initdb 临时密码 UTF-8 字节长度无效。"
+    }
+    $security = New-TicketboxInitdbPasswordFileSecurity $ServiceName
+    $stream = New-TicketboxProtectedFileStream `
+        -Path $canonicalPath `
+        -Security $security
+    try {
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+    }
+    finally { $stream.Dispose() }
+    Set-TicketboxOwnerIfNeeded `
+        -Path $canonicalPath `
+        -ExpectedOwnerSid (ConvertTo-TicketboxAccountSid "SYSTEM")
+    Assert-TicketboxInitdbPasswordFileAcl `
+        -Path $canonicalPath `
+        -ServiceName $ServiceName
+}
+
+function Assert-TicketboxInitdbPasswordFileAcl {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [switch]$AllowEmpty,
+        [switch]$AllowServiceReadMissing
+    )
+
+    $canonicalPath = ConvertTo-TicketboxCanonicalPath $Path
+    if ((Get-TicketboxPathEntryKindNoFollow $canonicalPath) -cne "File") {
+        throw "initdb 临时密码文件不存在或不是普通文件。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $canonicalPath
+    $item = Get-Item -LiteralPath $canonicalPath -Force -ErrorAction Stop
+    if (
+        ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        ((-not $AllowEmpty) -and $item.Length -le 0) -or
+        $item.Length -gt 1024
+    ) {
+        throw "initdb 临时密码文件类型或大小无效。"
+    }
+
+    $fullControlSids = @(
+        @("SYSTEM", "BUILTIN\Administrators") |
+            ForEach-Object { ConvertTo-TicketboxAccountSid $_ } |
+            Sort-Object -Unique
+    )
+    $serviceSid = ConvertTo-TicketboxAccountSid "NT SERVICE\$ServiceName"
+    $ownerSid = ConvertTo-TicketboxAccountSid "SYSTEM"
+    $acl = Get-TicketboxPathAcl $canonicalPath
+    if (
+        -not $acl.AreAccessRulesProtected -or
+        (ConvertTo-TicketboxAccountSid $acl.Owner) -ne $ownerSid
+    ) {
+        throw "initdb 临时密码文件 owner 或继承状态不可信。"
+    }
+
+    $ruleCounts = @{}
+    foreach ($rule in $acl.Access) {
+        $ruleSid = $rule.IdentityReference.Translate(
+            [Security.Principal.SecurityIdentifier]
+        ).Value
+        if (
+            $rule.IsInherited -or
+            $rule.AccessControlType -ne
+                [Security.AccessControl.AccessControlType]::Allow -or
+            $rule.InheritanceFlags -ne
+                [Security.AccessControl.InheritanceFlags]::None -or
+            $rule.PropagationFlags -ne
+                [Security.AccessControl.PropagationFlags]::None
+        ) {
+            throw "initdb 临时密码文件含有继承或非 Allow 规则。"
+        }
+        if (-not $ruleCounts.ContainsKey($ruleSid)) {
+            $ruleCounts[$ruleSid] = 0
+        }
+        $ruleCounts[$ruleSid] = [int]$ruleCounts[$ruleSid] + 1
+        if ($ruleCounts[$ruleSid] -ne 1) {
+            throw "initdb 临时密码文件含有重复授权规则。"
+        }
+
+        if ($ruleSid -in $fullControlSids) {
+            if (
+                [int64]$rule.FileSystemRights -ne
+                    [int64][Security.AccessControl.FileSystemRights]::FullControl
+            ) {
+                throw "initdb 临时密码文件的管理员权限不是精确 FullControl。"
+            }
+            continue
+        }
+        if ($ruleSid -eq $serviceSid) {
+            if (
+                -not (Test-TicketboxExactAllowFileSystemRights `
+                    -ActualRights $rule.FileSystemRights `
+                    -RequestedRights ([Security.AccessControl.FileSystemRights]::Read))
+            ) {
+                throw (
+                    "initdb 临时密码文件给 PostgreSQL 服务的权限不是精确 Read " +
+                    "及 Windows 自动附加的 Synchronize。"
+                )
+            }
+            continue
+        }
+        throw "initdb 临时密码文件含有未授权账户。"
+    }
+    foreach ($sid in $fullControlSids) {
+        if (-not $ruleCounts.ContainsKey($sid)) {
+            throw "initdb 临时密码文件缺少必要账户权限。"
+        }
+    }
+    if (
+        -not $AllowServiceReadMissing -and
+        -not $ruleCounts.ContainsKey($serviceSid)
+    ) {
+        throw "initdb 临时密码文件缺少 PostgreSQL 服务 Read 权限。"
+    }
+}
+
+function Remove-TicketboxInitdbPasswordFileExact {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [switch]$AllowServiceReadMissing
+    )
+
+    $kind = Get-TicketboxPathEntryKindNoFollow $Path
+    if ($kind -ceq "Missing") { return }
+    if ($kind -cne "File") {
+        throw "initdb 临时密码路径不是普通文件，拒绝清理。"
+    }
+    Assert-TicketboxInitdbPasswordFileAcl `
+        -Path $Path `
+        -ServiceName $ServiceName `
+        -AllowEmpty `
+        -AllowServiceReadMissing:$AllowServiceReadMissing
+    Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ((Get-TicketboxPathEntryKindNoFollow $Path) -cne "Missing") {
+        throw "initdb 临时密码文件未能退役。"
+    }
+}
+
+function Remove-TicketboxInterruptedInitdbPgDataExact {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][string]$PgData,
+        [Parameter(Mandatory = $true)][string]$EnvPath,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$RuntimePort,
+        [Parameter(Mandatory = $true)][string[]]$ExpectedRuntimeExecutables
+    )
+
+    $expectedPgData = ConvertTo-TicketboxCanonicalPath (Join-Path $DataRoot "pgdata")
+    if (
+        -not (Test-TicketboxPathEquals ([string]$Receipt.pg_data) $expectedPgData) -or
+        -not (Test-TicketboxPathEquals $PgData $expectedPgData)
+    ) {
+        throw "中断 initdb 回执未绑定当前 PgData。"
+    }
+    if ((Get-TicketboxPathEntryKindNoFollow $EnvPath) -cne "Missing") {
+        throw "中断 initdb 回执与应用 .env 同时存在，拒绝删除可能已提交的数据。"
+    }
+    $postmasterPidPath = Join-Path $expectedPgData "postmaster.pid"
+    if ((Get-TicketboxPathEntryKindNoFollow $postmasterPidPath) -cne "Missing") {
+        throw "中断 initdb PgData 含有 postmaster.pid，拒绝删除可能运行的数据簇。"
+    }
+    $runtimeAbsentGuard = New-TicketboxRuntimeAbsentAssertion `
+        -Name $ServiceName `
+        -RuntimePort $RuntimePort `
+        -ExpectedRuntimeExecutables $ExpectedRuntimeExecutables
+    & $runtimeAbsentGuard
+    $kind = Get-TicketboxPathEntryKindNoFollow $expectedPgData
+    if ($kind -ceq "Missing") { return }
+    if ($kind -cne "Directory") {
+        throw "中断 initdb PgData 不是普通目录，拒绝清理。"
+    }
+    Assert-TicketboxDataRootMarker `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir
+    Assert-NoTicketboxReparsePoints $expectedPgData
+    Initialize-TicketboxExactTreeDeleteNativeMethods
+    $expectedIdentity = @(
+        [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity($expectedPgData)
+    )
+    if ($expectedIdentity.Count -ne 2) {
+        throw "中断 initdb PgData 目录身份无法固定。"
+    }
+    $deleteGuard = {
+        param($GuardedPath)
+        $openedPath = [IO.Path]::GetFullPath($GuardedPath).TrimEnd('\', '/')
+        if (-not [string]::Equals(
+            $openedPath,
+            $expectedPgData,
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "中断 initdb PgData 句柄与已验证目标不一致。"
+        }
+        $openedIdentity = @(
+            [TicketboxExactTreeDeleteNativeMethods]::GetDirectoryIdentity($openedPath)
+        )
+        if (
+            $openedIdentity.Count -ne 2 -or
+            [string]$openedIdentity[0] -cne [string]$expectedIdentity[0] -or
+            [string]$openedIdentity[1] -cne [string]$expectedIdentity[1]
+        ) {
+            throw "中断 initdb PgData 身份在删除前发生变化。"
+        }
+        if (
+            [TicketboxExactTreeDeleteNativeMethods]::InspectEntry($EnvPath) -ne 0 -or
+            [TicketboxExactTreeDeleteNativeMethods]::InspectEntry($postmasterPidPath) -ne 0
+        ) {
+            throw "中断 initdb 删除边界出现 .env 或 postmaster.pid。"
+        }
+        & $runtimeAbsentGuard
+    }.GetNewClosure()
+    Remove-TicketboxDataRootExact `
+        -Path $expectedPgData `
+        -OnRootHandleAcquired $deleteGuard
+}
+
+function Assert-TicketboxRecoverableInheritedFileAcl {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$FullControlAccounts,
+        [string[]]$ReadExecuteAccounts = @(),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $Path
+    if (-not (Test-Path -LiteralPath $extendedPath -PathType Leaf)) {
+        throw "可恢复 ACL 目标文件不存在：$Path"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $Path
+    $item = Get-Item -LiteralPath $extendedPath -Force -ErrorAction Stop
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "可恢复 ACL 目标不能是重解析点：$Path"
+    }
+
+    $fullControlSids = @($FullControlAccounts | ForEach-Object {
+        ConvertTo-TicketboxAccountSid $_
+    } | Sort-Object -Unique)
+    $readExecuteSids = @($ReadExecuteAccounts | ForEach-Object {
+        ConvertTo-TicketboxAccountSid $_
+    } | Sort-Object -Unique)
+    if (
+        $fullControlSids.Count -eq 0 -or
+        @($fullControlSids | Where-Object { $_ -in $readExecuteSids }).Count -gt 0
+    ) {
+        throw "可恢复文件 ACL 的账户配置无效：$Path"
+    }
+
+    $expectedOwnerSid = ConvertTo-TicketboxAccountSid $OwnerAccount
+    $acl = Get-TicketboxPathAcl $Path
+    if (
+        $acl.AreAccessRulesProtected -or
+        (ConvertTo-TicketboxAccountSid $acl.Owner) -ne $expectedOwnerSid
+    ) {
+        throw "文件不属于严格的继承 ACL 恢复形态：$Path"
+    }
+    foreach ($rule in $acl.Access) {
+        $ruleSid = $rule.IdentityReference.Translate(
+            [Security.Principal.SecurityIdentifier]
+        ).Value
+        if (
+            -not $rule.IsInherited -or
+            $rule.AccessControlType -ne
+                [Security.AccessControl.AccessControlType]::Allow -or
+            $rule.InheritanceFlags -ne
+                [Security.AccessControl.InheritanceFlags]::None -or
+            $rule.PropagationFlags -ne
+                [Security.AccessControl.PropagationFlags]::None
+        ) {
+            throw "可恢复文件 ACL 含有非继承或非 Allow 规则：$Path ($ruleSid)"
+        }
+        if ($ruleSid -in $fullControlSids) {
+            if (
+                [int64]$rule.FileSystemRights -ne
+                [int64][Security.AccessControl.FileSystemRights]::FullControl
+            ) {
+                throw "可恢复文件 ACL 的 FullControl 权限不精确：$Path ($ruleSid)"
+            }
+            continue
+        }
+        if ($ruleSid -in $readExecuteSids) {
+            if (
+                [int64]$rule.FileSystemRights -ne
+                [int64][Security.AccessControl.FileSystemRights]::ReadAndExecute
+            ) {
+                throw "可恢复文件 ACL 的 ReadExecute 权限不精确：$Path ($ruleSid)"
+            }
+            continue
+        }
+        throw "可恢复文件 ACL 含有未授权账户：$Path ($ruleSid)"
+    }
+    foreach ($sid in @($fullControlSids + $readExecuteSids)) {
+        $matchingRules = @($acl.Access | Where-Object {
+            $_.IdentityReference.Translate(
+                [Security.Principal.SecurityIdentifier]
+            ).Value -eq $sid
+        })
+        if ($matchingRules.Count -ne 1) {
+            throw "可恢复文件 ACL 的目标账户规则数不唯一：$Path ($sid)"
+        }
+    }
+}
+
+function Assert-TicketboxRecoverableInheritedDirectoryAcl {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$FullControlAccounts,
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $canonicalPath = ConvertTo-TicketboxWin32CanonicalPath $Path
+    if ((Get-TicketboxPathEntryKindNoFollow $canonicalPath) -cne "Directory") {
+        throw "可恢复 ACL 目标目录不存在或不是普通目录：$Path"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $canonicalPath
+
+    $fullControlSids = @($FullControlAccounts | ForEach-Object {
+        ConvertTo-TicketboxAccountSid $_
+    } | Sort-Object -Unique)
+    if ($fullControlSids.Count -eq 0) {
+        throw "可恢复目录 ACL 的账户配置无效：$Path"
+    }
+
+    $expectedOwnerSid = ConvertTo-TicketboxAccountSid $OwnerAccount
+    $acl = Get-TicketboxPathAcl $canonicalPath
+    if (
+        $acl.AreAccessRulesProtected -or
+        (ConvertTo-TicketboxAccountSid $acl.Owner) -ne $expectedOwnerSid
+    ) {
+        throw "目录不属于严格的继承 ACL 恢复形态：$Path"
+    }
+    $requiredInheritance =
+        [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+        [Security.AccessControl.InheritanceFlags]::ObjectInherit
+    foreach ($rule in $acl.Access) {
+        $ruleSid = $rule.IdentityReference.Translate(
+            [Security.Principal.SecurityIdentifier]
+        ).Value
+        if (
+            -not $rule.IsInherited -or
+            $rule.AccessControlType -ne
+                [Security.AccessControl.AccessControlType]::Allow -or
+            $rule.InheritanceFlags -ne $requiredInheritance -or
+            $rule.PropagationFlags -ne
+                [Security.AccessControl.PropagationFlags]::None -or
+            $ruleSid -notin $fullControlSids -or
+            [int64]$rule.FileSystemRights -ne
+                [int64][Security.AccessControl.FileSystemRights]::FullControl
+        ) {
+            throw "可恢复目录 ACL 含有非继承或非精确规则：$Path ($ruleSid)"
+        }
+    }
+    foreach ($sid in $fullControlSids) {
+        $matchingRules = @($acl.Access | Where-Object {
+            $_.IdentityReference.Translate(
+                [Security.Principal.SecurityIdentifier]
+            ).Value -eq $sid
+        })
+        if ($matchingRules.Count -ne 1) {
+            throw "可恢复目录 ACL 的目标账户规则数不唯一：$Path ($sid)"
+        }
+    }
+}
+
+function Repair-TicketboxRecoverableDataRootMarkerAcl {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string[]]$FullControlAccounts,
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
+    if ((Get-TicketboxPathEntryKindNoFollow $markerPath) -cne "File") {
+        throw "DataRoot marker 不是普通文件，拒绝 ACL 恢复。"
+    }
+
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $canonicalDataRoot `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    $markerAcl = Get-TicketboxPathAcl $markerPath
+    if ($markerAcl.AreAccessRulesProtected) {
+        Assert-TicketboxExactFileAcl `
+            -Path $markerPath `
+            -Accounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount
+        Assert-TicketboxDataRootMarker `
+            -DataRoot $canonicalDataRoot `
+            -InstallDir $InstallDir
+        return $false
+    }
+
+    # This is a deliberately narrow retry repair for the exact residual left
+    # by an earlier trusted installer after recursive ACL normalization.  The
+    # authority content and every ACL fact are proven before the first write.
+    Assert-TicketboxRecoverableInheritedFileAcl `
+        -Path $markerPath `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    Assert-TicketboxDataRootMarker `
+        -DataRoot $canonicalDataRoot `
+        -InstallDir $InstallDir
+    Set-TicketboxExactFileAcl `
+        -Path $markerPath `
+        -Accounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    Assert-TicketboxExactFileAcl `
+        -Path $markerPath `
+        -Accounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount
+    Assert-TicketboxDataRootMarker `
+        -DataRoot $canonicalDataRoot `
+        -InstallDir $InstallDir
+    return $true
 }
 
 function Get-TicketboxDataRootMarkerPath([string]$DataRoot) {
@@ -3239,7 +4174,8 @@ function Close-TicketboxC07MigrationHelperLease(
 function Read-TicketboxPersistentInstallationIdentity {
     param(
         [Parameter(Mandatory = $true)][string]$DataRoot,
-        [switch]$Pending
+        [switch]$Pending,
+        [switch]$AllowRecoverableInheritedAcl
     )
     $path = if ($Pending) {
         Get-TicketboxPendingInstallationIdentityPath $DataRoot
@@ -3248,10 +4184,26 @@ function Read-TicketboxPersistentInstallationIdentity {
         Get-TicketboxPersistentInstallationIdentityPath $DataRoot
     }
     Assert-NoTicketboxAncestorReparsePoints $path
-    Assert-TicketboxExactFileAcl `
-        -Path $path `
-        -Accounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
-        -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
+    if ($AllowRecoverableInheritedAcl) {
+        Assert-TicketboxRecoverableInheritedFileAcl `
+            -Path $path `
+            -FullControlAccounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
+            -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
+    }
+    else {
+        Assert-TicketboxExactFileAcl `
+            -Path $path `
+            -Accounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
+            -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
+    }
+    $identityItem = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+    if (
+        ($identityItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        [int64]$identityItem.Length -le 0 -or
+        [int64]$identityItem.Length -gt 4096
+    ) {
+        throw "持久安装身份不是有界的普通文件。"
+    }
     $legacyNames = @(
         "SCHEMA",
         "BACKEND_VERSION_FLOOR",
@@ -3548,6 +4500,96 @@ function Assert-TicketboxInstallationIdentityBaseMatches {
     }
 }
 
+function Repair-TicketboxRecoverableInstallationIdentityAcl {
+    param(
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [switch]$Pending
+    )
+
+    $dataRoot = ConvertTo-TicketboxWin32CanonicalPath (
+        [string]$Candidate.DataRoot
+    )
+    $path = if ($Pending) {
+        Get-TicketboxPendingInstallationIdentityPath $dataRoot
+    }
+    else {
+        Get-TicketboxPersistentInstallationIdentityPath $dataRoot
+    }
+    if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "File") {
+        throw "持久安装身份不是普通文件，拒绝 ACL 恢复。"
+    }
+    $acl = Get-TicketboxPathAcl $path
+    if ($acl.AreAccessRulesProtected) {
+        $identity = Read-TicketboxPersistentInstallationIdentity `
+            -DataRoot $dataRoot `
+            -Pending:$Pending
+        if (
+            ($Pending -and (
+                $identity.State -cne "PENDING" -or
+                [bool]$identity.LegacyCompleted
+            )) -or
+            (-not $Pending -and $identity.State -cne "READY")
+        ) {
+            throw "持久安装身份状态与 artifact 路径不一致。"
+        }
+        Assert-TicketboxInstallationIdentityBaseMatches $identity $Candidate
+        return $false
+    }
+
+    # A failed trusted installer can leave the exact parent-inherited ACL on
+    # an otherwise canonical identity artifact.  Prove the protected parent,
+    # the complete inherited ACL shape, the bounded identity schema/state and
+    # its base binding before the first ACL write.  Release evidence may differ
+    # because a newer signed installer is allowed to reconcile a predecessor.
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $dataRoot `
+        -FullControlAccounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
+        -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
+    Assert-TicketboxRecoverableInheritedFileAcl `
+        -Path $path `
+        -FullControlAccounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
+        -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
+    $identity = Read-TicketboxPersistentInstallationIdentity `
+        -DataRoot $dataRoot `
+        -Pending:$Pending `
+        -AllowRecoverableInheritedAcl
+    if (
+        ($Pending -and (
+            $identity.State -cne "PENDING" -or
+            [bool]$identity.LegacyCompleted
+        )) -or
+        (-not $Pending -and $identity.State -cne "READY")
+    ) {
+        throw "可恢复持久安装身份状态与 artifact 路径不一致。"
+    }
+    Assert-TicketboxInstallationIdentityBaseMatches $identity $Candidate
+    $beforeBytes = [IO.File]::ReadAllBytes(
+        (ConvertTo-TicketboxWin32ExtendedPath $path)
+    )
+
+    Set-TicketboxExactFileAcl `
+        -Path $path `
+        -Accounts $script:TicketboxPersistentInstallationIdentityAclAccounts `
+        -OwnerAccount $script:TicketboxPersistentInstallationIdentityOwnerAccount
+    $repaired = Read-TicketboxPersistentInstallationIdentity `
+        -DataRoot $dataRoot `
+        -Pending:$Pending
+    $afterBytes = [IO.File]::ReadAllBytes(
+        (ConvertTo-TicketboxWin32ExtendedPath $path)
+    )
+    if (
+        -not (Test-TicketboxByteArrayEquals $beforeBytes $afterBytes) -or
+        $repaired.State -cne $identity.State -or
+        $repaired.OperationId -cne $identity.OperationId -or
+        $repaired.InstallationId -cne $identity.InstallationId -or
+        $repaired.BuildManifestSha256 -cne $identity.BuildManifestSha256
+    ) {
+        throw "持久安装身份 ACL 恢复改变了受保护字节或绑定身份。"
+    }
+    Assert-TicketboxInstallationIdentityBaseMatches $repaired $Candidate
+    return $true
+}
+
 function Test-TicketboxInstallationIdentityReleaseMatches {
     param(
         [Parameter(Mandatory = $true)][object]$Identity,
@@ -3678,6 +4720,8 @@ function Initialize-TicketboxPendingInstallationIdentity {
     $ready = $null
     $pending = $null
     if (Test-Path -LiteralPath $readyPath) {
+        Repair-TicketboxRecoverableInstallationIdentityAcl `
+            -Candidate $candidate | Out-Null
         $ready = Read-TicketboxPersistentInstallationIdentity `
             -DataRoot $candidate.DataRoot
         if ($ready.State -cne "READY") {
@@ -3686,6 +4730,9 @@ function Initialize-TicketboxPendingInstallationIdentity {
         Assert-TicketboxInstallationIdentityBaseMatches $ready $candidate
     }
     if (Test-Path -LiteralPath $pendingPath) {
+        Repair-TicketboxRecoverableInstallationIdentityAcl `
+            -Candidate $candidate `
+            -Pending | Out-Null
         $pending = Read-TicketboxPersistentInstallationIdentity `
             -DataRoot $candidate.DataRoot `
             -Pending
@@ -3773,6 +4820,8 @@ function Promote-TicketboxPendingInstallationIdentity {
     $ready = $null
     $pending = $null
     if (Test-Path -LiteralPath $readyPath) {
+        Repair-TicketboxRecoverableInstallationIdentityAcl `
+            -Candidate $candidate | Out-Null
         $ready = Read-TicketboxPersistentInstallationIdentity `
             -DataRoot $candidate.DataRoot
         if ($ready.State -cne "READY") {
@@ -3781,6 +4830,9 @@ function Promote-TicketboxPendingInstallationIdentity {
         Assert-TicketboxInstallationIdentityBaseMatches $ready $candidate
     }
     if (Test-Path -LiteralPath $pendingPath) {
+        Repair-TicketboxRecoverableInstallationIdentityAcl `
+            -Candidate $candidate `
+            -Pending | Out-Null
         $pending = Read-TicketboxPersistentInstallationIdentity `
             -DataRoot $candidate.DataRoot `
             -Pending
@@ -4265,11 +5317,51 @@ function Initialize-TicketboxSecureDataRoot {
     }
     Assert-NoTicketboxAncestorReparsePoints $canonicalDataRoot
     Assert-NoTicketboxReparsePoints $canonicalDataRoot
-    Assert-TicketboxDataRootMarkerInitialization `
-        -DataRoot $canonicalDataRoot `
-        -InstallDir $InstallDir `
-        -AllowLegacyV1Migration:$AllowLegacyV1Migration
-    Set-TicketboxExactDirectoryAcl -Path $canonicalDataRoot -Accounts $Accounts -Recurse
+    $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
+    $markerKind = Get-TicketboxPathEntryKindNoFollow $markerPath
+    if ($markerKind -ceq "File") {
+        $markerAcl = Get-TicketboxPathAcl $markerPath
+        if ($markerAcl.AreAccessRulesProtected) {
+            Assert-TicketboxExactFileAcl `
+                -Path $markerPath `
+                -Accounts $Accounts `
+                -OwnerAccount $OwnerAccount
+            Assert-TicketboxDataRootMarker `
+                -DataRoot $canonicalDataRoot `
+                -InstallDir $InstallDir `
+                -AllowLegacyV1:$AllowLegacyV1Migration
+        }
+        else {
+            Repair-TicketboxRecoverableDataRootMarkerAcl `
+                -DataRoot $canonicalDataRoot `
+                -InstallDir $InstallDir `
+                -FullControlAccounts $Accounts `
+                -OwnerAccount $OwnerAccount | Out-Null
+        }
+    }
+    elseif ($markerKind -ceq "Missing") {
+        Assert-TicketboxDataRootMarkerInitialization `
+            -DataRoot $canonicalDataRoot `
+            -InstallDir $InstallDir `
+            -AllowLegacyV1Migration:$AllowLegacyV1Migration
+    }
+    else {
+        throw "DataRoot marker 不是普通文件或缺失路径，拒绝初始化。"
+    }
+    Set-TicketboxExactDirectoryAcl `
+        -Path $canonicalDataRoot `
+        -Accounts $Accounts `
+        -OwnerAccount $OwnerAccount `
+        -Recurse
+    if ($markerKind -ceq "File") {
+        # Recursive ACL normalization intentionally resets descendants to the
+        # root inheritance shape.  Restore the separately authoritative marker
+        # before any later code is allowed to trust it.
+        Set-TicketboxExactFileAcl `
+            -Path $markerPath `
+            -Accounts $Accounts `
+            -OwnerAccount $OwnerAccount
+    }
     Initialize-TicketboxDataRootMarker `
         -DataRoot $canonicalDataRoot `
         -InstallDir $InstallDir `
@@ -4396,6 +5488,7 @@ function Assert-TicketboxDataRootDomain {
     if ((Get-TicketboxDataRootDriveType $full) -ne [System.IO.DriveType]::Fixed) {
         throw "数据目录必须位于本机固定磁盘，不能使用映射网络盘或可移除介质：$full"
     }
+    Assert-TicketboxDataRootVolumeCapabilities $full | Out-Null
     if ($full.Length -lt 8 -or (Test-TicketboxPathEquals $full $root)) {
         throw "数据目录不能是磁盘根或过短路径：$full"
     }

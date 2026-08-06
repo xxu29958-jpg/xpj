@@ -16,7 +16,13 @@ BUNDLED_DATABASE = PACKAGING / "windows_bundled_database.ps1"
 
 
 def _function(source: str, name: str) -> str:
-    start = source.index(f"function {name} {{")
+    match = re.search(
+        rf"(?m)^function {re.escape(name)}(?=\s*(?:\{{|\())",
+        source,
+    )
+    if match is None:
+        raise ValueError(f"missing function boundary for {name}")
+    start = match.start()
     next_function = source.find("\nfunction ", start + 1)
     return source[start:] if next_function < 0 else source[start:next_function]
 
@@ -187,7 +193,7 @@ def test_installed_payload_authority_lease_spans_c07_under_lifecycle_lock() -> N
         "if (Test-Path -LiteralPath $LifecycleReceiptPath -PathType Leaf)"
     )
     stale_end = prepare.index(
-        "Initialize-TicketboxInstalledReleaseConfiguration",
+        "$hasPgService = Test-TicketboxServiceExists",
         stale_start,
     )
     stale_flow = prepare[stale_start:stale_end]
@@ -440,6 +446,18 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
                 source,
                 "New-TicketboxInstallFinalizationAggregateFailure",
             ),
+            _function(
+                source,
+                "New-TicketboxInstallServiceCompensationAuthority",
+            ),
+            _function(
+                source,
+                "Assert-TicketboxInstallServiceCompensationAuthority",
+            ),
+            _function(
+                source,
+                "Grant-TicketboxInstallServiceCompensationAuthority",
+            ),
             compensation_helper,
             "$script:BackendServiceName = 'TicketboxBackend'",
             "$script:PgServiceName = 'TicketboxPostgres'",
@@ -448,6 +466,10 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "$script:BackendPort = 8002",
             "$script:PgCtl = 'C:\\ticketbox\\pg_ctl.exe'",
             "$script:PgBin = 'C:\\ticketbox\\pg'",
+            "$script:PgPort = 5440",
+            "$script:InitdbExe = 'C:\\ticketbox\\initdb.exe'",
+            "$script:InitdbServiceReceiptPath = "
+            "'C:\\ticketbox-data\\initdb-one-shot-receipt.json'",
             "$script:InstallerState = 'C:\\ticketbox\\state'",
             "$script:LegacyRecoveryRequiredPath = 'C:\\legacy.json'",
             "$script:RecoveryRequiredPath = 'C:\\current.json'",
@@ -455,6 +477,19 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "$script:DataRoot = 'C:\\ticketbox-data'",
             "$script:ServiceWaitArguments = @{ "
             "TimeoutMilliseconds = 100; PollMilliseconds = 10 }",
+            "function Service-Exists { return $true }",
+            "function Get-TicketboxServiceExecutablePath {",
+            "  param($Name)",
+            "  if ($Name -ceq $script:PgServiceName) { return $script:PgCtl }",
+            "  return $script:ShawlExe",
+            "}",
+            "function Test-TicketboxPathEquals {",
+            "  param($Left, $Right)",
+            "  return ([string]$Left).Equals(",
+            "    [string]$Right,",
+            "    [StringComparison]::OrdinalIgnoreCase",
+            "  )",
+            "}",
             "function Disable-TicketboxOwnedServiceIfExists {",
             "  param($Name, $ExpectedExecutable, $BackendPort, "
             "$ExpectedRuntimeExecutables, $TimeoutMilliseconds, "
@@ -488,9 +523,19 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "'recovery_marker_write_failed'",
             "  throw $failure",
             "}",
+            "$compensationAuthority = "
+            "New-TicketboxInstallServiceCompensationAuthority",
+            "Grant-TicketboxInstallServiceCompensationAuthority "
+            "-Authority $compensationAuthority -Service BackendService "
+            "-Grant validated_preexisting",
+            "Grant-TicketboxInstallServiceCompensationAuthority "
+            "-Authority $compensationAuthority -Service PostgresService "
+            "-Grant validated_preexisting",
             "$compensation = $null",
             "try {",
-            "  Invoke-TicketboxInstallFailureCompensation 'install failed'",
+            "  Invoke-TicketboxInstallFailureCompensation "
+            "-Reason 'install failed' "
+            "-ServiceCompensationAuthority $compensationAuthority",
             "}",
             "catch { $compensation = $_.Exception }",
             "if ($null -eq $compensation) { "

@@ -144,16 +144,24 @@ $OwnerHandoffPendingPath = Join-Path $InstallerState "owner-handoff-pending"
 $RecoveryRequiredPath = Join-Path $InstallerState "installer-recovery-required.json"
 $DeleteDataIntentPath = Join-Path $InstallerState "delete-data-in-progress.json"
 $script:DeleteDataIntentValidated = $false
+$script:AbortedFreshInstallLifecycleReceipt = $null
 $BackendExe = Join-Path $InstallDir "program\ticketbox-backend\ticketbox-backend.exe"
 $ShawlExe = Join-Path $InstallDir "shawl\shawl.exe"
 $PgCtl = Join-Path $PgBin "pg_ctl.exe"
+$InitdbExe = Join-Path $PgBin "initdb.exe"
 $InstalledBuildManifestPath = Join-Path $ScriptDir "BUILD_PROVENANCE.json"
 $LifecycleReceiptPath = Get-TicketboxLifecycleReceiptPath
+$InitdbServiceReceiptPath = Get-TicketboxInitdbServiceReceiptPath
+$TargetPgMajor = ([Version][string]$ReleaseConfig.postgres_version_policy.minimum).Major
 
 function Set-TicketboxUninstallDataRoot([string]$ResolvedDataRoot) {
     $script:DataRoot = ConvertTo-TicketboxCanonicalPath $ResolvedDataRoot
     $script:PgData = Join-Path $script:DataRoot "pgdata"
     $script:AppData = Join-Path $script:DataRoot "app"
+    $script:InitdbPasswordPath = Get-TicketboxInitdbPasswordPath $script:DataRoot
+    $script:PgBootstrapRecoveryPath = Join-Path `
+        $script:AppData `
+        ".postgres-bootstrap-password"
     $script:LogDir = Join-Path $script:AppData "logs"
     $script:BootstrapExposureRecoveryGuardPath = Join-Path `
         $script:DataRoot `
@@ -601,7 +609,7 @@ function Get-TicketboxCompletedLifecycleReceiptForUninstall {
     ) {
         throw "旧注册安装目录与当前卸载目录不匹配，拒绝清理生命周期回执。"
     }
-    return Read-TicketboxCompletedLifecycleReceipt `
+    $receipt = Read-TicketboxUninstallLifecycleReceipt `
         -Path $LifecycleReceiptPath `
         -InstallDir $InstallDir `
         -DataRoot $DataRoot `
@@ -610,6 +618,13 @@ function Get-TicketboxCompletedLifecycleReceiptForUninstall {
         -ExpectedBackendPort $BackendPort `
         -ExpectedPgServiceName $RegisteredPgServiceName `
         -ExpectedBackendServiceName $RegisteredBackendServiceName
+    if ([bool]$receipt.install_completed) {
+        Assert-TicketboxCompletedLifecycleReceipt $receipt
+        return $receipt
+    }
+    Assert-TicketboxAbortedFreshInstallLifecycleReceipt $receipt
+    $script:AbortedFreshInstallLifecycleReceipt = $receipt
+    return $null
 }
 
 function Remove-TicketboxPreservedInstallationIdentity {
@@ -943,6 +958,198 @@ function Resolve-TicketboxDeleteDataRetryAuthority {
     return "retired"
 }
 
+function Get-TicketboxUninstallInitdbReceiptOwnerProcessId {
+    if ($InstallerLockOwnerProcessId -gt 0) {
+        return $InstallerLockOwnerProcessId
+    }
+    return $PID
+}
+
+function Read-TicketboxUninstallInitdbServiceReceipt {
+    param([switch]$AllowPreviousInstallerOwnerProcessId)
+
+    return Read-TicketboxBoundInitdbServiceReceipt `
+        -Path $InitdbServiceReceiptPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -ServiceName $PgServiceName `
+        -InstallerOwnerProcessId (Get-TicketboxUninstallInitdbReceiptOwnerProcessId) `
+        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
+}
+
+function Remove-TicketboxUninstallInitdbPasswordFile([object]$Receipt) {
+    $allowPreAuthorizationAcl =
+        [string]$Receipt.phase -in @("intent_written", "registered")
+    Remove-TicketboxInitdbPasswordFileExact `
+        -Path $InitdbPasswordPath `
+        -ServiceName $PgServiceName `
+        -AllowServiceReadMissing:$allowPreAuthorizationAcl
+}
+
+function Remove-TicketboxUninstallInitdbBootstrapRecoveryIfPresent {
+    $kind = Get-TicketboxPathEntryKindNoFollow $PgBootstrapRecoveryPath
+    if ($kind -ceq "Missing") { return }
+    if ($kind -cne "File") {
+        throw "中断首装的 PostgreSQL 凭据恢复路径不是普通文件。"
+    }
+    Assert-TicketboxExactFileAcl `
+        -Path $PgBootstrapRecoveryPath `
+        -Accounts @("SYSTEM", "BUILTIN\Administrators") `
+        -OwnerAccount "SYSTEM"
+    Remove-TicketboxProtectedUtf8Artifact `
+        -Path $PgBootstrapRecoveryPath `
+        -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+        -OwnerAccount "SYSTEM"
+}
+
+function Remove-TicketboxUninstallAbortedInitdbPgData([object]$Receipt) {
+    Remove-TicketboxInterruptedInitdbPgDataExact `
+        -Receipt $Receipt `
+        -PgData $PgData `
+        -EnvPath (Join-Path $AppData ".env") `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -ServiceName $PgServiceName `
+        -RuntimePort $PgPort `
+        -ExpectedRuntimeExecutables @(
+            $PgCtl,
+            (Join-Path $PgBin "postgres.exe"),
+            $ShawlExe,
+            $InitdbExe
+        )
+}
+
+function Invoke-TicketboxInitdbServiceUninstallRecovery {
+    $receiptKind = Get-TicketboxPathEntryKindNoFollow $InitdbServiceReceiptPath
+    if ($receiptKind -ceq "Missing") { return }
+    if ($receiptKind -cne "File") {
+        throw "initdb one-shot 回执路径形态不可信，拒绝卸载。"
+    }
+    $receipt = Read-TicketboxUninstallInitdbServiceReceipt `
+        -AllowPreviousInstallerOwnerProcessId
+    if ((Get-TicketboxPathEntryKindNoFollow (Join-Path $AppData ".env")) -cne "Missing") {
+        throw "未提交的 initdb 回执与应用 .env 同时存在，拒绝在卸载中改变服务或秘密。"
+    }
+    $phase = [string]$receipt.phase
+    $serviceShape = "absent"
+    if (Service-Exists $PgServiceName) {
+        $actualExecutable = Get-TicketboxServiceExecutablePath $PgServiceName
+        $startMode = Get-TicketboxServiceStartMode $PgServiceName
+        if ($startMode -notin @("Disabled", "Manual")) {
+            throw "中断首装 PostgreSQL 服务启动模式越界：$startMode"
+        }
+        Assert-TicketboxServiceAccount `
+            -Name $PgServiceName `
+            -ExpectedAccount "NT SERVICE\$PgServiceName"
+        Assert-TicketboxServiceDependencies `
+            -Name $PgServiceName `
+            -ExpectedDependencies @()
+        if (Test-TicketboxPathEquals $actualExecutable $ShawlExe) {
+            Assert-TicketboxInitdbServiceCommand `
+                -Name $PgServiceName `
+                -ExpectedShawl $ShawlExe `
+                -ExpectedServiceName $PgServiceName `
+                -ExpectedWorkingDirectory $PgBin `
+                -ExpectedInitdb $InitdbExe `
+                -ExpectedDataRoot $PgData `
+                -ExpectedPasswordFile $InitdbPasswordPath `
+                -ExpectedStopTimeoutMs ([int]$receipt.stop_timeout_ms) `
+                -ExpectedImagePath ([string]$receipt.image_path)
+            Assert-TicketboxServiceHasNoFailureActions $PgServiceName
+            $serviceShape = "initdb_one_shot"
+        }
+        elseif (Test-TicketboxPathEquals $actualExecutable $PgCtl) {
+            Assert-TicketboxPgServiceCommand `
+                -Name $PgServiceName `
+                -ExpectedExecutable $PgCtl `
+                -ExpectedServiceName $PgServiceName `
+                -ExpectedDataRoot $ServicePgData
+            $actualFailurePolicy = Get-TicketboxServiceFailurePolicy $PgServiceName
+            $expectedFailurePolicy = Get-TicketboxExpectedServiceFailurePolicy `
+                -ResetSeconds ([int]$ReleaseConfig.scm_failure_reset_seconds) `
+                -RestartDelaysMs @($ReleaseConfig.scm_restart_delays_ms)
+            if ($actualFailurePolicy -notin @("0|", $expectedFailurePolicy)) {
+                throw "中断首装的正式 PostgreSQL 服务 failure policy 不属于可恢复状态。"
+            }
+            $serviceShape = "formal_pg_ctl"
+        }
+        else {
+            throw "中断首装回执对应的同名 PostgreSQL 服务 executable 不匹配。"
+        }
+    }
+
+    if ($serviceShape -ceq "formal_pg_ctl") {
+        if ($phase -notin @("initdb_succeeded", "converted_to_pgctl")) {
+            throw "未提交的 initdb 回执却已指向正式 pg_ctl 服务。"
+        }
+        if ((Get-TicketboxPathEntryKindNoFollow $InitdbPasswordPath) -cne "Missing") {
+            throw "正式 pg_ctl 服务仍残留 initdb 临时密码文件。"
+        }
+        Disable-TicketboxOwnedServiceIfExists `
+            -Name $PgServiceName `
+            -ExpectedExecutable $PgCtl `
+            -ExpectedRuntimeExecutables @($PgCtl, (Join-Path $PgBin "postgres.exe")) `
+            @ServiceWaitArguments
+        Assert-TicketboxServiceStartMode `
+            -Name $PgServiceName `
+            -ExpectedStartMode "Disabled"
+        $scmRestartActions = @(
+            $ReleaseConfig.scm_restart_delays_ms |
+                ForEach-Object { "restart/$([int]$_)" }
+        ) -join "/"
+        Invoke-ScChecked @(
+            "failure", $PgServiceName,
+            "reset=", [string]$ReleaseConfig.scm_failure_reset_seconds,
+            "actions=", $scmRestartActions
+        ) | Out-Null
+        Assert-TicketboxServiceFailurePolicy `
+            -Name $PgServiceName `
+            -ExpectedResetSeconds ([int]$ReleaseConfig.scm_failure_reset_seconds) `
+            -ExpectedRestartDelaysMs @($ReleaseConfig.scm_restart_delays_ms)
+        if ($phase -ceq "initdb_succeeded") {
+            Set-TicketboxInitdbServiceReceiptPhase `
+                -Path $InitdbServiceReceiptPath `
+                -Receipt $receipt `
+                -InstallerOwnerProcessId (Get-TicketboxUninstallInitdbReceiptOwnerProcessId) `
+                -Phase "converted_to_pgctl"
+            $receipt = Read-TicketboxUninstallInitdbServiceReceipt
+        }
+        Remove-TicketboxInitdbServiceReceipt `
+            -Path $InitdbServiceReceiptPath `
+            -Receipt $receipt
+        return
+    }
+    if ($phase -ceq "converted_to_pgctl") {
+        throw "initdb 回执已提交但正式 PostgreSQL 服务缺失。"
+    }
+    if ($serviceShape -ceq "initdb_one_shot") {
+        Disable-TicketboxOwnedServiceIfExists `
+            -Name $PgServiceName `
+            -ExpectedExecutable $ShawlExe `
+            -ExpectedRuntimeExecutables @($ShawlExe, $InitdbExe) `
+            @ServiceWaitArguments
+        Remove-TicketboxUninstallInitdbPasswordFile $receipt
+        Remove-TicketboxOwnedServiceIfExists `
+            -Name $PgServiceName `
+            -ExpectedExecutable $ShawlExe `
+            -ExpectedRuntimeExecutables @($ShawlExe, $InitdbExe) `
+            @ServiceWaitArguments
+    }
+    else {
+        Assert-TicketboxRuntimeAbsent `
+            -Name $PgServiceName `
+            -RuntimePort $PgPort `
+            -ExpectedRuntimeExecutables @($PgCtl, (Join-Path $PgBin "postgres.exe"), $ShawlExe, $InitdbExe)
+        Remove-TicketboxUninstallInitdbPasswordFile $receipt
+    }
+    Remove-TicketboxUninstallAbortedInitdbPgData $receipt
+    Remove-TicketboxUninstallInitdbBootstrapRecoveryIfPresent
+    Remove-TicketboxAbortedInitdbServiceReceipt `
+        -Path $InitdbServiceReceiptPath `
+        -Receipt $receipt
+    Write-Warn2 "已清理正式提交前中断的 initdb one-shot 服务与临时数据。"
+}
+
 Write-Host "=== 小票夹服务卸载 ===" -ForegroundColor Yellow
 $operationLock = Enter-TicketboxLifecycleLock `
     -ExternalOwnerProcessId $InstallerLockOwnerProcessId
@@ -950,6 +1157,7 @@ try {
     Assert-Admin
     $deleteDataRetryAuthority = Resolve-TicketboxDeleteDataRetryAuthority
     Set-TicketboxUninstallRuntimeServiceContract
+    Invoke-TicketboxInitdbServiceUninstallRecovery
     $completedLifecycleReceipt = if ($deleteDataRetryAuthority -ceq "retired") {
         $null
     }
@@ -1023,6 +1231,15 @@ try {
     $safeRoot = Assert-UninstallInputs
     if ($DeleteData) {
         Assert-TicketboxInstallerStateForDataDeletion
+        if ($null -ne $script:AbortedFreshInstallLifecycleReceipt) {
+            Write-TicketboxAbortedFreshInstallDeleteDataIntent `
+                -Path $DeleteDataIntentPath `
+                -AuthorityReceiptPath $LifecycleReceiptPath `
+                -AuthorityReceipt $script:AbortedFreshInstallLifecycleReceipt `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot | Out-Null
+            $script:DeleteDataIntentValidated = $true
+        }
     }
     $preservedPgMajor = Get-TicketboxPreservedPgMajor
     Remove-TicketboxInstallerRuntimeProjectionForUninstall
@@ -1054,6 +1271,12 @@ try {
                 -Receipt $completedLifecycleReceipt
             $completedLifecycleReceipt = $null
         }
+        if ($null -ne $script:AbortedFreshInstallLifecycleReceipt) {
+            Remove-TicketboxAbortedFreshInstallLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -Receipt $script:AbortedFreshInstallLifecycleReceipt
+            $script:AbortedFreshInstallLifecycleReceipt = $null
+        }
         Remove-TicketboxDataRootForUninstall $safeRoot
         Remove-TicketboxPgRecoveryToolset `
             -ExpectedMajor $preservedPgMajor `
@@ -1069,6 +1292,12 @@ try {
                 -Path $LifecycleReceiptPath `
                 -Receipt $completedLifecycleReceipt
             $completedLifecycleReceipt = $null
+        }
+        if ($null -ne $script:AbortedFreshInstallLifecycleReceipt) {
+            Remove-TicketboxAbortedFreshInstallLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -Receipt $script:AbortedFreshInstallLifecycleReceipt
+            $script:AbortedFreshInstallLifecycleReceipt = $null
         }
     }
 

@@ -446,6 +446,8 @@ def test_installed_c07_external_assets_are_manifest_bound_and_held(
             "_internal/alembic.ini": b"[alembic]",
             "_internal/runtime.dat": b"runtime",
             "_internal/replacement.dat": b"replacement",
+            "_internal/tzdata/zoneinfo/America/Indianapolis": b"tz-file",
+            "_internal/tzdata/zoneinfo/America/Indiana/Indianapolis": b"tz-tree",
             "_internal/migrations/env.py": b"# env",
             (
                 "_internal/migrations/versions/"
@@ -642,6 +644,120 @@ try {{
 }}
 catch {{ $criticalRejected = $true }}
 if (-not $criticalRejected) {{ throw 'missing target migration authority was accepted' }}
+"""
+        result = _run_powershell(command, executable=engine)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_backend_payload_snapshot_round_trips_canonical_manifest_order(
+    tmp_path: Path,
+) -> None:
+    for index, engine in enumerate(powershell_contract_engines()):
+        payload_root = tmp_path / f"canonical-payload-{index}"
+        command = rf"""
+. '{_ps_literal(PROVENANCE_HELPER)}'
+$root = '{_ps_literal(payload_root)}'
+$relativePaths = [string[]]@(
+    @($script:TicketboxInstalledC07ExternalAuthorityPaths) +
+    @(
+        '_internal/tzdata/zoneinfo/America/Indianapolis',
+        '_internal/tzdata/zoneinfo/America/Indiana/Indianapolis',
+        'case/a-lower.bin',
+        'case/B-upper.bin',
+        'i18n/eclair.bin',
+        'i18n/omega.bin'
+    )
+)
+$fullPaths = [string[]]@($relativePaths | ForEach-Object {{
+    $path = Join-Path $root $_.Replace('/', '\')
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path)) | Out-Null
+    [IO.File]::WriteAllText($path, $_, [Text.UTF8Encoding]::new($false))
+    $path
+}})
+$snapshot = Get-TicketboxFileSetSnapshot $root $fullPaths
+$america = @($snapshot.files.path | Where-Object {{ $_ -like '*America/*' }})
+if (
+    ($america -join '|') -cne
+    '_internal/tzdata/zoneinfo/America/Indiana/Indianapolis|_internal/tzdata/zoneinfo/America/Indianapolis'
+) {{
+    throw "Canonical manifest OrdinalIgnoreCase path order drifted: $($america -join '|')"
+}}
+$roundTrip = $snapshot | ConvertTo-Json -Depth 8 -Compress | ConvertFrom-Json
+[void](ConvertTo-TicketboxInstalledPayloadRecords $roundTrip)
+$reversed = [string[]]@($fullPaths)
+[Array]::Reverse($reversed)
+$repeated = Get-TicketboxFileSetSnapshot $root $reversed
+Assert-TicketboxFileSetSnapshot 'canonical payload order' $snapshot $repeated
+
+$oldFullPathOrder = Get-TicketboxOrdinalSortedPaths $fullPaths
+$oldRecords = @($oldFullPathOrder | ForEach-Object {{
+    Get-TicketboxFileEvidence $root $_
+}})
+$oldPayload = [pscustomobject][ordered]@{{
+    algorithm = 'SHA-256'
+    fingerprint = ('f' * 64 -join '')
+    files = @($oldRecords)
+}}
+$oldRoundTrip = $oldPayload | ConvertTo-Json -Depth 8 -Compress | ConvertFrom-Json
+$legacyOrderRejected = $false
+try {{ [void](ConvertTo-TicketboxInstalledPayloadRecords $oldRoundTrip) }}
+catch {{ $legacyOrderRejected = $_.Exception.Message -like '*排序*' }}
+if (-not $legacyOrderRejected) {{
+    throw 'Legacy full-path ordering unexpectedly satisfied canonical manifest order.'
+}}
+
+$script:SyntheticEvidenceIndex = 0
+function Get-TicketboxFileEvidence([string]$Root, [string]$Path) {{
+    $script:SyntheticEvidenceIndex += 1
+    $syntheticPath = if ($script:SyntheticEvidenceIndex -eq 1) {{
+        'case/A.bin'
+    }} else {{
+        'case/a.bin'
+    }}
+    return [ordered]@{{
+        path = $syntheticPath
+        size = [int64]1
+        sha256 = ('a' * 64 -join '')
+    }}
+}}
+$duplicateRejected = $false
+try {{
+    [void](Get-TicketboxFileSetSnapshot $root @('synthetic-one', 'synthetic-two'))
+}}
+catch {{ $duplicateRejected = $_.Exception.Message -like '*重复相对路径*' }}
+if (-not $duplicateRejected) {{
+    throw 'Comparer-equal duplicate manifest path was accepted.'
+}}
+
+$script:SyntheticEvidenceIndex = 0
+function Get-TicketboxFileEvidence([string]$Root, [string]$Path) {{
+    return [ordered]@{{
+        path = 'case/k' + [char]0x212a + '.bin'
+        size = [int64]1
+        sha256 = ('b' * 64 -join '')
+    }}
+}}
+$unicodeProducerRejected = $false
+try {{ [void](Get-TicketboxFileSetSnapshot $root @('synthetic-unicode')) }}
+catch {{ $unicodeProducerRejected = $_.Exception.Message -like '*可打印 ASCII*' }}
+if (-not $unicodeProducerRejected) {{
+    throw 'Runtime-sensitive Unicode producer path was accepted.'
+}}
+$unicodePayload = [pscustomobject][ordered]@{{
+    algorithm = 'SHA-256'
+    fingerprint = ('c' * 64 -join '')
+    files = @([pscustomobject][ordered]@{{
+        path = 'case/k' + [char]0x212a + '.bin'
+        size = 1
+        sha256 = ('b' * 64 -join '')
+    }})
+}}
+$unicodeConsumerRejected = $false
+try {{ [void](ConvertTo-TicketboxInstalledPayloadRecords $unicodePayload) }}
+catch {{ $unicodeConsumerRejected = $_.Exception.Message -like '*canonical 相对路径*' }}
+if (-not $unicodeConsumerRejected) {{
+    throw 'Runtime-sensitive Unicode consumer path was accepted.'
+}}
 """
         result = _run_powershell(command, executable=engine)
         assert result.returncode == 0, result.stdout + result.stderr
@@ -1652,6 +1768,235 @@ def _assert_recoverable_directory_publication_handles_interrupted_swap_states(
     assert staging.exists()
     assert receipt.exists()
 
+    for index, engine in enumerate(powershell_contract_engines()):
+        case_alias_root = tmp_path / f"case-alias-{index}"
+        case_alias_target = case_alias_root / "TargetUnit"
+        case_alias_staging = case_alias_root / "targetunit"
+        case_alias_backup = case_alias_root / ".target.last-known-good"
+        case_alias_receipt = case_alias_root / ".target.publish-receipt.json"
+        case_alias_target.mkdir(parents=True)
+        (case_alias_target / "payload.txt").write_text("live", encoding="utf-8")
+        case_alias_rejected = _run_powershell(
+            f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+            f"$root = '{_ps_literal(case_alias_root)}'; "
+            f"$target = '{_ps_literal(case_alias_target)}'; "
+            f"$staging = '{_ps_literal(case_alias_staging)}'; "
+            f"$backup = '{_ps_literal(case_alias_backup)}'; "
+            f"$receipt = '{_ps_literal(case_alias_receipt)}'; "
+            "if ($target.Equals($staging, [StringComparison]::Ordinal) -or "
+            "-not $target.Equals($staging, [StringComparison]::OrdinalIgnoreCase)) { "
+            "throw 'case-alias fixture is not a Windows path alias' }; "
+            "$record = [ordered]@{schema='ticketbox-directory-publication-v1'; "
+            "phase='prepared'; publish_root=$root; target_path=$target; "
+            "backup_path=$backup; staging_path=$staging; had_target=$true; "
+            "new_identity=(Get-TicketboxDirectoryPublicationIdentity $staging); "
+            "backup_identity=(Get-TicketboxDirectoryPublicationIdentity $target)}; "
+            "Write-TicketboxDirectoryPublicationReceipt $receipt $record; "
+            "$payload = Join-Path $target 'payload.txt'; "
+            "$payloadBefore = [Convert]::ToBase64String([IO.File]::ReadAllBytes($payload)); "
+            "$before = [Convert]::ToBase64String([IO.File]::ReadAllBytes($receipt)); "
+            "$failed = $false; try { "
+            "Recover-TicketboxDirectoryPublication $target $backup $receipt $root "
+            "} catch { $failed = $true }; "
+            "$payloadAfter = [Convert]::ToBase64String([IO.File]::ReadAllBytes($payload)); "
+            "$after = [Convert]::ToBase64String([IO.File]::ReadAllBytes($receipt)); "
+            "if (-not $failed -or $payloadBefore -cne $payloadAfter -or "
+            "$before -cne $after -or "
+            "(Test-Path $backup)) { "
+            "throw 'case-only staging alias mutated live publication authority' }",
+            executable=engine,
+        )
+        assert case_alias_rejected.returncode == 0, (
+            case_alias_rejected.stdout + case_alias_rejected.stderr
+        )
+
+        nested_root = tmp_path / f"nested-staging-{index}"
+        nested_staging = nested_root / ".staging-parent" / "candidate"
+        nested_target = nested_root / "target"
+        nested_backup = nested_root / ".target.last-known-good"
+        nested_receipt = nested_root / ".target.publish-receipt.json"
+        nested_staging.mkdir(parents=True)
+        (nested_staging / "payload.txt").write_text("new", encoding="utf-8")
+        nested_publish = _run_powershell(
+            f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+            f"$root = '{_ps_literal(nested_root)}'; "
+            f"$staging = '{_ps_literal(nested_staging)}'; "
+            f"$target = '{_ps_literal(nested_target)}'; "
+            f"$backup = '{_ps_literal(nested_backup)}'; "
+            f"$receipt = '{_ps_literal(nested_receipt)}'; "
+            "Publish-TicketboxRecoverableDirectory "
+            "-StagingDirectory $staging -TargetDirectory $target "
+            "-BackupDirectory $backup -ReceiptPath $receipt -PublishRoot $root; "
+            "if ((Get-Content (Join-Path $target 'payload.txt') -Raw).Trim() -cne 'new' -or "
+            "(Test-Path $staging) -or (Test-Path $backup) -or (Test-Path $receipt)) { "
+            "throw 'nested staging did not publish as one directory unit' }",
+            executable=engine,
+        )
+        assert nested_publish.returncode == 0, (
+            nested_publish.stdout + nested_publish.stderr
+        )
+
+        nested_recovery_root = tmp_path / f"nested-recovery-{index}"
+        nested_recovery_staging = (
+            nested_recovery_root / ".staging-parent" / "candidate"
+        )
+        nested_recovery_target = nested_recovery_root / "target"
+        nested_recovery_backup = nested_recovery_root / ".target.last-known-good"
+        nested_recovery_receipt = (
+            nested_recovery_root / ".target.publish-receipt.json"
+        )
+        nested_recovery_staging.mkdir(parents=True)
+        (nested_recovery_staging / "payload.txt").write_text(
+            "recovered",
+            encoding="utf-8",
+        )
+        nested_recovery = _run_powershell(
+            f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+            f"$root = '{_ps_literal(nested_recovery_root)}'; "
+            f"$staging = '{_ps_literal(nested_recovery_staging)}'; "
+            f"$target = '{_ps_literal(nested_recovery_target)}'; "
+            f"$backup = '{_ps_literal(nested_recovery_backup)}'; "
+            f"$receipt = '{_ps_literal(nested_recovery_receipt)}'; "
+            "$record = [ordered]@{schema='ticketbox-directory-publication-v1'; "
+            "phase='prepared'; publish_root=$root; target_path=$target; "
+            "backup_path=$backup; staging_path=$staging; had_target=$false; "
+            "new_identity=(Get-TicketboxDirectoryPublicationIdentity $staging); "
+            "backup_identity=$null}; "
+            "Write-TicketboxDirectoryPublicationReceipt $receipt $record; "
+            "Recover-TicketboxDirectoryPublication $target $backup $receipt $root; "
+            "if ((Get-Content (Join-Path $target 'payload.txt') -Raw).Trim() -cne 'recovered' -or "
+            "(Test-Path $staging) -or (Test-Path $backup) -or (Test-Path $receipt)) { "
+            "throw 'nested prepared receipt did not recover initial publication' }",
+            executable=engine,
+        )
+        assert nested_recovery.returncode == 0, (
+            nested_recovery.stdout + nested_recovery.stderr
+        )
+
+        identical_root = tmp_path / f"identical-prepared-{index}"
+        identical_target = identical_root / "target"
+        identical_backup = identical_root / ".target.last-known-good"
+        identical_staging = identical_root / ".target.staging"
+        identical_receipt = identical_root / ".target.publish-receipt.json"
+        identical_target.mkdir(parents=True)
+        identical_staging.mkdir()
+        (identical_target / "payload.txt").write_text("same", encoding="utf-8")
+        (identical_staging / "payload.txt").write_text("same", encoding="utf-8")
+        identical_recovery = _run_powershell(
+            f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+            f"$root = '{_ps_literal(identical_root)}'; "
+            f"$target = '{_ps_literal(identical_target)}'; "
+            f"$backup = '{_ps_literal(identical_backup)}'; "
+            f"$staging = '{_ps_literal(identical_staging)}'; "
+            f"$receipt = '{_ps_literal(identical_receipt)}'; "
+            "$record = [ordered]@{schema='ticketbox-directory-publication-v1'; "
+            "phase='prepared'; publish_root=$root; target_path=$target; "
+            "backup_path=$backup; staging_path=$staging; had_target=$true; "
+            "new_identity=(Get-TicketboxDirectoryPublicationIdentity $staging); "
+            "backup_identity=(Get-TicketboxDirectoryPublicationIdentity $target)}; "
+            "if ($record.new_identity.fingerprint -cne "
+            "$record.backup_identity.fingerprint) { "
+            "throw 'identical fixture identities diverged' }; "
+            "Write-TicketboxDirectoryPublicationReceipt $receipt $record; "
+            "Recover-TicketboxDirectoryPublication $target $backup $receipt $root; "
+            "if ((Get-Content (Join-Path $target 'payload.txt') -Raw).Trim() -cne 'same' -or "
+            "(Test-Path $backup) -or (Test-Path $staging) -or (Test-Path $receipt)) { "
+            "throw 'identical prepared state did not converge to one target' }",
+            executable=engine,
+        )
+        assert identical_recovery.returncode == 0, (
+            identical_recovery.stdout + identical_recovery.stderr
+        )
+
+        locked_root = tmp_path / f"locked-publish-{index}"
+        locked_target = locked_root / "target"
+        locked_backup = locked_root / ".target.last-known-good"
+        locked_staging = locked_root / ".target.staging"
+        locked_receipt = locked_root / ".target.publish-receipt.json"
+        locked_target.mkdir(parents=True)
+        locked_staging.mkdir()
+        (locked_target / "a-before-lock.txt").write_text("old-a", encoding="utf-8")
+        locked_file = locked_target / "z-locked.txt"
+        locked_file.write_text("old-z", encoding="utf-8")
+        (locked_staging / "candidate.txt").write_text("new", encoding="utf-8")
+        locked_swap = _run_powershell(
+            f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+            f"$root = '{_ps_literal(locked_root)}'; "
+            f"$target = '{_ps_literal(locked_target)}'; "
+            f"$backup = '{_ps_literal(locked_backup)}'; "
+            f"$staging = '{_ps_literal(locked_staging)}'; "
+            f"$receipt = '{_ps_literal(locked_receipt)}'; "
+            f"$locked = '{_ps_literal(locked_file)}'; "
+            "$stream = [IO.File]::Open($locked, [IO.FileMode]::Open, "
+            "[IO.FileAccess]::Read, [IO.FileShare]::Read); "
+            "$identity = Get-TicketboxDirectoryPublicationIdentity $target; "
+            "if ([int]$identity.file_count -ne 2) { "
+            "throw 'locked target identity preflight did not read both files' }; "
+            "$failed = $false; try { "
+            "Publish-TicketboxRecoverableDirectory "
+            "-StagingDirectory $staging -TargetDirectory $target "
+            "-BackupDirectory $backup -ReceiptPath $receipt -PublishRoot $root "
+            "} catch { $failed = $true } finally { $stream.Dispose() }; "
+            "$oldIsWhole = "
+            "(Test-Path (Join-Path $target 'a-before-lock.txt') -PathType Leaf) -and "
+            "(Test-Path (Join-Path $target 'z-locked.txt') -PathType Leaf) -and "
+            "-not (Test-Path (Join-Path $target 'candidate.txt')) -and "
+            "-not (Test-Path $backup) -and (Test-Path $staging -PathType Container); "
+            "$newIsWhole = "
+            "(Test-Path (Join-Path $target 'candidate.txt') -PathType Leaf) -and "
+            "-not (Test-Path (Join-Path $target 'a-before-lock.txt')) -and "
+            "-not (Test-Path (Join-Path $target 'z-locked.txt')) -and "
+            "-not (Test-Path $backup) -and -not (Test-Path $staging); "
+            "if (-not ($oldIsWhole -xor $newIsWhole) -or (Test-Path $receipt)) { "
+            "throw 'locked publication produced a split or ambiguous directory state' }; "
+            "if ($failed -and -not $oldIsWhole) { "
+            "throw 'failed locked publication did not preserve the whole old unit' }",
+            executable=engine,
+        )
+        assert locked_swap.returncode == 0, locked_swap.stdout + locked_swap.stderr
+
+        rollback_root = tmp_path / f"rollback-recovery-{index}"
+        rollback_target = rollback_root / "target"
+        rollback_backup = rollback_root / ".target.last-known-good"
+        rollback_staging = rollback_root / ".target.staging"
+        rollback_receipt = rollback_root / ".target.publish-receipt.json"
+        rollback_target.mkdir(parents=True)
+        rollback_staging.mkdir()
+        (rollback_target / "payload.txt").write_text("old", encoding="utf-8")
+        (rollback_staging / "payload.txt").write_text("new", encoding="utf-8")
+        rollback_recovery = _run_powershell(
+            f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+            f"$root = '{_ps_literal(rollback_root)}'; "
+            f"$target = '{_ps_literal(rollback_target)}'; "
+            f"$backup = '{_ps_literal(rollback_backup)}'; "
+            f"$staging = '{_ps_literal(rollback_staging)}'; "
+            f"$receipt = '{_ps_literal(rollback_receipt)}'; "
+            "$script:testReceiptPath = $receipt; "
+            "$script:receiptLock = $null; $failed = $false; try { "
+            "Publish-TicketboxRecoverableDirectory "
+            "-StagingDirectory $staging -TargetDirectory $target "
+            "-BackupDirectory $backup -ReceiptPath $receipt -PublishRoot $root "
+            "-ValidatePublished { param($published) "
+            "$script:receiptLock = [IO.File]::Open($script:testReceiptPath, "
+            "[IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read); "
+            "throw 'injected validation failure while receipt is locked' } "
+            "} catch { $failed = $true } finally { "
+            "if ($null -ne $script:receiptLock) { $script:receiptLock.Dispose() } }; "
+            "if (-not $failed -or "
+            "(Get-Content -LiteralPath (Join-Path $target 'payload.txt') -Raw).Trim() -cne 'old' -or "
+            "(Test-Path $backup) -or (Test-Path $staging) -or "
+            "-not (Test-Path $receipt -PathType Leaf)) { "
+            "throw 'rollback did not retain the exact old target and stale receipt' }; "
+            "Recover-TicketboxDirectoryPublication $target $backup $receipt $root; "
+            "if ((Get-Content -LiteralPath (Join-Path $target 'payload.txt') -Raw).Trim() -cne 'old' -or "
+            "(Test-Path $backup) -or (Test-Path $staging) -or (Test-Path $receipt)) { "
+            "throw 'rollback-complete state did not converge after receipt unlock' }",
+            executable=engine,
+        )
+        assert rollback_recovery.returncode == 0, (
+            rollback_recovery.stdout + rollback_recovery.stderr
+        )
+
 
 def test_windows_build_lock_is_bound_to_current_requirement_inputs(tmp_path: Path) -> None:
     backend = tmp_path / "backend"
@@ -1709,8 +2054,8 @@ def test_inno_version_floor_and_protected_child_logs_are_fail_closed() -> None:
     assert "HardenLifecycleLockPath(LogPath, False)" in windows
     assert "could not start PowerShell" not in windows
     assert "failed. PowerShell exit code" not in windows
-    assert "\u9000\u51fa\u7801" in windows
-    assert "\u8be6\u7ec6\u65e5\u5fd7\uff1a" in windows
+    assert "\u9000\u51fa\u7801" not in windows
+    assert "\u8be6\u7ec6\u65e5\u5fd7\uff1a" not in windows
 
     decision_start = windows.index("function EvaluateBackendVersionFloorDecision")
     decision_end = windows.index("function CheckBackendVersionFloor", decision_start)

@@ -40,7 +40,7 @@
       "sha256": "f9aafca58e7026a1ef2caeee711acf761671e57904d430adc85f468374f5a821",
       "ci_service_image": "postgres:17.10@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d",
       "payload_file_count": 1535,
-      "payload_fingerprint": "86ac11295eca1d64e7042f6dfc98db9869cf8d2cd065929fa518bf71b75f3ed8"
+      "payload_fingerprint": "bb0db8fa9ba930d8dbc79d43656a74d765c4081c9978f74d7b92015d0f7a4a8b"
     },
     "shawl": {
       "version": "1.9.0",

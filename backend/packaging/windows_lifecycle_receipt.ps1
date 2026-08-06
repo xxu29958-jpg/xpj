@@ -28,9 +28,22 @@ $script:TicketboxLifecycleReceiptAclAccounts = @("SYSTEM", "BUILTIN\Administrato
 $script:TicketboxLifecycleReceiptOwnerAccount = "SYSTEM"
 $script:TicketboxLifecycleReceiptFileName = "installer-lifecycle-receipt.json"
 $script:TicketboxDeleteDataIntentSchema = "ticketbox-delete-data-intent-v1"
+$script:TicketboxAbortedFreshInstallDeleteDataIntentSchema =
+    "ticketbox-delete-data-intent-v2"
 $script:TicketboxInstallerRuntimeRecoveryGuardSchema = "ticketbox-installer-runtime-recovery-guard-v1"
 $script:TicketboxInstallerRuntimeRecoveryGuardFileName = "installer-runtime-recovery-pending"
 $script:TicketboxInstallerRuntimeStateDirectoryName = "TicketboxRuntimeState"
+$script:TicketboxInitdbServiceReceiptSchema =
+    "ticketbox-windows-initdb-service-receipt-v1"
+$script:TicketboxInitdbServiceReceiptFileName =
+    "initdb-one-shot-receipt.json"
+$script:TicketboxInitdbServiceReceiptPhases = @(
+    "intent_written",
+    "registered",
+    "start_authorized",
+    "initdb_succeeded",
+    "converted_to_pgctl"
+)
 
 function ConvertTo-TicketboxLifecycleVersion {
     param(
@@ -85,6 +98,307 @@ function Get-TicketboxLifecycleReceiptPath {
     return Join-Path `
         (Split-Path -Parent (Get-TicketboxLifecycleLockPath)) `
         $script:TicketboxLifecycleReceiptFileName
+}
+
+function Get-TicketboxInitdbServiceReceiptPath {
+    if ($null -eq (Get-Command Get-TicketboxLifecycleLockPath -ErrorAction SilentlyContinue)) {
+        throw "initdb one-shot 回执缺少机器级锁路径提供者。"
+    }
+    return Join-Path `
+        (Split-Path -Parent (Get-TicketboxLifecycleLockPath)) `
+        $script:TicketboxInitdbServiceReceiptFileName
+}
+
+function Assert-TicketboxInitdbServiceReceiptPath([string]$Path) {
+    $expected = Get-TicketboxInitdbServiceReceiptPath
+    $actual = [IO.Path]::GetFullPath($Path)
+    if (-not (Test-TicketboxPathEquals $actual $expected)) {
+        throw "initdb one-shot 回执必须位于受保护的机器级安装锁目录。"
+    }
+    return $actual
+}
+
+function Write-TicketboxInitdbServiceReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][string]$ImagePath,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 99)][int]$PgMajor,
+        [Parameter(Mandatory = $true)][ValidateRange(1000, 600000)][int]$StopTimeoutMs,
+        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
+        [Parameter(Mandatory = $true)][ValidateSet(
+            "intent_written",
+            "registered",
+            "start_authorized",
+            "initdb_succeeded",
+            "converted_to_pgctl"
+        )][string]$Phase,
+        [string]$CreatedAtUtc = "",
+        [switch]$ReplaceExisting
+    )
+
+    if ($InstallerOwnerProcessId -le 0) {
+        throw "initdb one-shot 回执必须绑定有效安装器进程。"
+    }
+    if (
+        [string]::IsNullOrWhiteSpace($ServiceName) -or
+        $ServiceName -notmatch '^[A-Za-z][A-Za-z0-9_.-]{0,79}$'
+    ) {
+        throw "initdb one-shot 回执服务名无效。"
+    }
+    if (
+        [string]::IsNullOrWhiteSpace($ImagePath) -or
+        $ImagePath.Length -gt 32767 -or
+        $ImagePath.IndexOf([char]0) -ge 0 -or
+        $ImagePath.Contains("`r") -or
+        $ImagePath.Contains("`n")
+    ) {
+        throw "initdb one-shot 回执 ImagePath 无效。"
+    }
+    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
+    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
+    $passwordFile = Get-TicketboxInitdbPasswordPath $canonicalDataRoot
+    $expectedImagePath = New-TicketboxInitdbServiceImagePath `
+        -ShawlPath (Join-Path $canonicalInstallDir "shawl\shawl.exe") `
+        -ServiceName $ServiceName `
+        -WorkingDirectory (Join-Path $canonicalInstallDir "pg\bin") `
+        -InitdbPath (Join-Path $canonicalInstallDir "pg\bin\initdb.exe") `
+        -DataRoot (Join-Path $canonicalDataRoot "pgdata") `
+        -PasswordFile $passwordFile `
+        -StopTimeoutMs $StopTimeoutMs
+    if ($ImagePath -cne $expectedImagePath) {
+        throw "initdb one-shot 回执拒绝非规范 ImagePath。"
+    }
+    $createdAt = [DateTimeOffset]::UtcNow
+    if (-not [string]::IsNullOrWhiteSpace($CreatedAtUtc)) {
+        if (-not [DateTimeOffset]::TryParse(
+            $CreatedAtUtc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$createdAt
+        )) {
+            throw "initdb one-shot 回执创建时间无效。"
+        }
+    }
+    $canonicalPath = Assert-TicketboxInitdbServiceReceiptPath $Path
+    if (Test-Path -LiteralPath $canonicalPath) {
+        if (-not $ReplaceExisting) {
+            throw "已存在 initdb one-shot 回执；必须先完成精确恢复。"
+        }
+        Assert-TicketboxProtectedLifecycleReceipt $canonicalPath
+    }
+    elseif ($ReplaceExisting) {
+        throw "无法更新不存在的 initdb one-shot 回执。"
+    }
+    $payload = [ordered]@{
+        schema = $script:TicketboxInitdbServiceReceiptSchema
+        phase = $Phase
+        install_dir = $canonicalInstallDir
+        data_root = $canonicalDataRoot
+        pg_data = Join-Path $canonicalDataRoot "pgdata"
+        password_file = $passwordFile
+        service_name = $ServiceName
+        service_account = "NT SERVICE\$ServiceName"
+        image_path = $ImagePath
+        pg_major = $PgMajor
+        stop_timeout_ms = $StopTimeoutMs
+        installer_owner_process_id = $InstallerOwnerProcessId
+        created_at_utc = $createdAt.ToString("o")
+        updated_at_utc = [DateTimeOffset]::UtcNow.ToString("o")
+    } | ConvertTo-Json -Depth 5
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $canonicalPath `
+        -Text $payload `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount `
+        -ReplaceExisting:$ReplaceExisting
+    Assert-TicketboxProtectedLifecycleReceipt $canonicalPath
+}
+
+function Read-TicketboxInitdbServiceReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 99)][int]$PgMajor,
+        [Parameter(Mandatory = $true)][ValidateRange(1000, 600000)][int]$StopTimeoutMs,
+        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
+        [switch]$AllowPreviousInstallerOwnerProcessId
+    )
+
+    $canonicalPath = Assert-TicketboxInitdbServiceReceiptPath $Path
+    Assert-TicketboxProtectedLifecycleReceipt $canonicalPath
+    $artifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path $canonicalPath `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount `
+        -MaximumBytes 65536
+    try { $receipt = ConvertFrom-Json -InputObject $artifact.Text }
+    catch { throw "initdb one-shot 回执不是有效 JSON。" }
+    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
+    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath $DataRoot
+    $expectedPasswordFile = Get-TicketboxInitdbPasswordPath $canonicalDataRoot
+    $expectedImagePath = New-TicketboxInitdbServiceImagePath `
+        -ShawlPath (Join-Path $canonicalInstallDir "shawl\shawl.exe") `
+        -ServiceName $ServiceName `
+        -WorkingDirectory (Join-Path $canonicalInstallDir "pg\bin") `
+        -InitdbPath (Join-Path $canonicalInstallDir "pg\bin\initdb.exe") `
+        -DataRoot (Join-Path $canonicalDataRoot "pgdata") `
+        -PasswordFile $expectedPasswordFile `
+        -StopTimeoutMs $StopTimeoutMs
+    $createdAt = [DateTimeOffset]::MinValue
+    $updatedAt = [DateTimeOffset]::MinValue
+    if (
+        [string]$receipt.schema -cne $script:TicketboxInitdbServiceReceiptSchema -or
+        [string]$receipt.phase -notin $script:TicketboxInitdbServiceReceiptPhases -or
+        -not (Test-TicketboxPathEquals ([string]$receipt.install_dir) $canonicalInstallDir) -or
+        -not (Test-TicketboxPathEquals ([string]$receipt.data_root) $canonicalDataRoot) -or
+        -not (Test-TicketboxPathEquals ([string]$receipt.pg_data) (Join-Path $canonicalDataRoot "pgdata")) -or
+        -not (Test-TicketboxPathEquals ([string]$receipt.password_file) $expectedPasswordFile) -or
+        [string]$receipt.service_name -cne $ServiceName -or
+        [string]$receipt.service_account -cne "NT SERVICE\$ServiceName" -or
+        [string]$receipt.image_path -cne $expectedImagePath -or
+        [int]$receipt.pg_major -ne $PgMajor -or
+        [int]$receipt.stop_timeout_ms -ne $StopTimeoutMs -or
+        [int]$receipt.installer_owner_process_id -le 0 -or
+        (
+            -not $AllowPreviousInstallerOwnerProcessId -and
+            [int]$receipt.installer_owner_process_id -ne $InstallerOwnerProcessId
+        ) -or
+        -not [DateTimeOffset]::TryParse(
+            [string]$receipt.created_at_utc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$createdAt
+        ) -or
+        -not [DateTimeOffset]::TryParse(
+            [string]$receipt.updated_at_utc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$updatedAt
+        )
+    ) {
+        throw "initdb one-shot 回执内容或安装绑定校验失败。"
+    }
+    return $receipt
+}
+
+function Read-TicketboxBoundInitdbServiceReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
+        [switch]$AllowPreviousInstallerOwnerProcessId
+    )
+
+    $canonicalPath = Assert-TicketboxInitdbServiceReceiptPath $Path
+    Assert-TicketboxProtectedLifecycleReceipt $canonicalPath
+    $artifact = Read-TicketboxProtectedUtf8Artifact `
+        -Path $canonicalPath `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount `
+        -MaximumBytes 65536
+    try { $envelope = ConvertFrom-Json -InputObject $artifact.Text }
+    catch { throw "initdb one-shot 回执不是有效 JSON。" }
+    $receiptPgMajor = 0
+    $receiptStopTimeoutMs = 0
+    if (
+        -not [int]::TryParse([string]$envelope.pg_major, [ref]$receiptPgMajor) -or
+        -not [int]::TryParse(
+            [string]$envelope.stop_timeout_ms,
+            [ref]$receiptStopTimeoutMs
+        ) -or
+        $receiptPgMajor -lt 1 -or $receiptPgMajor -gt 99 -or
+        $receiptStopTimeoutMs -lt 1000 -or $receiptStopTimeoutMs -gt 600000
+    ) {
+        throw "initdb one-shot 回执的原发布 major 或 stop timeout 无效。"
+    }
+    return Read-TicketboxInitdbServiceReceipt `
+        -Path $canonicalPath `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -ServiceName $ServiceName `
+        -PgMajor $receiptPgMajor `
+        -StopTimeoutMs $receiptStopTimeoutMs `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId `
+        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
+}
+
+function Set-TicketboxInitdbServiceReceiptPhase {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
+        [Parameter(Mandatory = $true)][ValidateSet(
+            "registered",
+            "start_authorized",
+            "initdb_succeeded",
+            "converted_to_pgctl"
+        )][string]$Phase
+    )
+
+    $allowedTransitions = @{
+        intent_written = @("registered")
+        registered = @("start_authorized")
+        start_authorized = @("initdb_succeeded")
+        initdb_succeeded = @("converted_to_pgctl")
+    }
+    $current = [string]$Receipt.phase
+    if (-not $allowedTransitions.ContainsKey($current) -or $Phase -notin $allowedTransitions[$current]) {
+        throw "initdb one-shot 回执拒绝非法阶段转换：$current -> $Phase"
+    }
+    Write-TicketboxInitdbServiceReceipt `
+        -Path $Path `
+        -InstallDir ([string]$Receipt.install_dir) `
+        -DataRoot ([string]$Receipt.data_root) `
+        -ServiceName ([string]$Receipt.service_name) `
+        -ImagePath ([string]$Receipt.image_path) `
+        -PgMajor ([int]$Receipt.pg_major) `
+        -StopTimeoutMs ([int]$Receipt.stop_timeout_ms) `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId `
+        -Phase $Phase `
+        -CreatedAtUtc ([string]$Receipt.created_at_utc) `
+        -ReplaceExisting
+}
+
+function Remove-TicketboxInitdbServiceReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Receipt
+    )
+
+    if ([string]$Receipt.phase -cne "converted_to_pgctl") {
+        throw "只有已原子转换为正式 pg_ctl 的 initdb one-shot 回执可以退役。"
+    }
+    Remove-TicketboxProtectedUtf8Artifact `
+        -Path (Assert-TicketboxInitdbServiceReceiptPath $Path) `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+}
+
+function Remove-TicketboxAbortedInitdbServiceReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Receipt
+    )
+
+    if ([string]$Receipt.phase -notin @(
+        "intent_written",
+        "registered",
+        "start_authorized",
+        "initdb_succeeded"
+    )) {
+        throw "只有未提交的 initdb one-shot 回执可以按中止路径退役。"
+    }
+    Remove-TicketboxProtectedUtf8Artifact `
+        -Path (Assert-TicketboxInitdbServiceReceiptPath $Path) `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
 }
 
 function Assert-TicketboxLifecycleReceiptPath([string]$Path) {
@@ -980,14 +1294,48 @@ function Set-TicketboxLifecycleReceiptC07InstallationOperation {
         [Parameter(Mandatory = $true)][object]$Receipt,
         [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
         [Parameter(Mandatory = $true)][string]$OperationId,
-        [AllowNull()][object]$SuccessorIntent
+        [AllowNull()][object]$SuccessorIntent,
+        [switch]$AllowPreDatabaseRebind
     )
     $canonicalOperationId = ([guid]$OperationId).ToString("D")
     $existingOperationId =
         [string]$Receipt.c07_installation_operation_id
     if (-not [string]::IsNullOrEmpty($existingOperationId)) {
+        $parsedExistingOperationId = [guid]::Empty
+        if (
+            -not [guid]::TryParseExact(
+                $existingOperationId,
+                "D",
+                [ref]$parsedExistingOperationId
+            ) -or
+            $parsedExistingOperationId -eq [guid]::Empty -or
+            $parsedExistingOperationId.ToString("D") -cne
+                $existingOperationId
+        ) {
+            throw "安装事务已有的 C07 installation operation 不是规范 UUID。"
+        }
         if ($existingOperationId -cne $canonicalOperationId) {
-            if (
+            if ($AllowPreDatabaseRebind) {
+                if (
+                    $null -ne $SuccessorIntent -or
+                    [string]$Receipt.mode -cne "fresh_install" -or
+                    [string]$Receipt.preparation_stage -cne
+                        "files_may_have_been_replaced" -or
+                    [bool]$Receipt.backup_required -or
+                    [bool]$Receipt.backup_completed -or
+                    [bool]$Receipt.install_completed -or
+                    [bool]$Receipt.temporary_pg_service_cleanup_pending -or
+                    -not [string]::IsNullOrEmpty(
+                        [string]$Receipt.c07_production_authority_sha256
+                    ) -or
+                    -not [string]::IsNullOrEmpty(
+                        [string]$Receipt.c07_runtime_projection_sha256
+                    )
+                ) {
+                    throw "只有零副作用的首次安装前数据库回执可以换绑 C07 operation。"
+                }
+            }
+            elseif (
                 $null -eq $SuccessorIntent -or
                 $null -eq $SuccessorIntent.Payload -or
                 [string]$SuccessorIntent.Payload.schema -cne
@@ -1867,7 +2215,7 @@ function Assert-TicketboxCompletedLifecycleReceipt([object]$Receipt) {
     }
 }
 
-function Read-TicketboxCompletedLifecycleReceipt {
+function Read-TicketboxUninstallLifecycleReceipt {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$InstallDir,
@@ -1936,7 +2284,6 @@ function Read-TicketboxCompletedLifecycleReceipt {
         $readArguments.CurrentTargetBackendVersion = $targetVersionFloor.Canonical
     }
     $receipt = Read-TicketboxLifecycleReceipt @readArguments
-    Assert-TicketboxCompletedLifecycleReceipt $receipt
     if (
         ($ExpectedPgPort -gt 0 -and $pgPort -ne $ExpectedPgPort) -or
         ($ExpectedBackendPort -gt 0 -and $backendPort -ne $ExpectedBackendPort) -or
@@ -1957,8 +2304,61 @@ function Read-TicketboxCompletedLifecycleReceipt {
             )
         )
     ) {
-        throw "已完成安装生命周期回执与旧注册安装身份不匹配。"
+        throw "安装生命周期回执与旧注册安装身份不匹配。"
     }
+    return $receipt
+}
+
+function Assert-TicketboxAbortedFreshInstallLifecycleReceipt([object]$Receipt) {
+    if (
+        $null -eq $Receipt -or
+        [string]$Receipt.mode -cne "fresh_install" -or
+        [string]$Receipt.preparation_stage -cne "files_may_have_been_replaced" -or
+        $Receipt.install_completed -isnot [bool] -or
+        [bool]$Receipt.install_completed -or
+        $Receipt.files_may_have_been_replaced -isnot [bool] -or
+        -not [bool]$Receipt.files_may_have_been_replaced -or
+        [string]$Receipt.previous_pg_state -cne "absent" -or
+        [string]$Receipt.previous_backend_state -cne "absent" -or
+        [string]$Receipt.previous_pg_start_policy -cne "absent" -or
+        [string]$Receipt.previous_backend_start_policy -cne "absent" -or
+        [bool]$Receipt.backup_required -or
+        [bool]$Receipt.backup_completed -or
+        [bool]$Receipt.temporary_pg_service_cleanup_pending
+    ) {
+        throw "只能按中止首装路径清理已替换文件、无既有服务且无保留数据义务的 fresh-install 回执。"
+    }
+}
+
+function Read-TicketboxCompletedLifecycleReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
+        [ValidateRange(0, 65535)][int]$ExpectedPgPort = 0,
+        [ValidateRange(0, 65535)][int]$ExpectedBackendPort = 0,
+        [string]$ExpectedPgServiceName = "",
+        [string]$ExpectedBackendServiceName = ""
+    )
+    $receipt = Read-TicketboxUninstallLifecycleReceipt @PSBoundParameters
+    Assert-TicketboxCompletedLifecycleReceipt $receipt
+    return $receipt
+}
+
+function Read-TicketboxAbortedFreshInstallLifecycleReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
+        [ValidateRange(0, 65535)][int]$ExpectedPgPort = 0,
+        [ValidateRange(0, 65535)][int]$ExpectedBackendPort = 0,
+        [string]$ExpectedPgServiceName = "",
+        [string]$ExpectedBackendServiceName = ""
+    )
+    $receipt = Read-TicketboxUninstallLifecycleReceipt @PSBoundParameters
+    Assert-TicketboxAbortedFreshInstallLifecycleReceipt $receipt
     return $receipt
 }
 
@@ -1968,6 +2368,15 @@ function Remove-TicketboxCompletedLifecycleReceipt {
         [Parameter(Mandatory = $true)][object]$Receipt
     )
     Assert-TicketboxCompletedLifecycleReceipt $Receipt
+    Remove-TicketboxLifecycleReceipt $Path
+}
+
+function Remove-TicketboxAbortedFreshInstallLifecycleReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Receipt
+    )
+    Assert-TicketboxAbortedFreshInstallLifecycleReceipt $Receipt
     Remove-TicketboxLifecycleReceipt $Path
 }
 
@@ -2133,9 +2542,23 @@ function Read-TicketboxDeleteDataIntent {
     catch { throw "删除数据意图无法读取为有效 JSON。" }
     $createdAt = [DateTimeOffset]::MinValue
     $intentDataRoot = [string]$intent.data_root
+    $isCompletedInstallIntent =
+        [string]$intent.schema -ceq $script:TicketboxDeleteDataIntentSchema
+    $isAbortedFreshInstallIntent =
+        [string]$intent.schema -ceq
+            $script:TicketboxAbortedFreshInstallDeleteDataIntentSchema
+    $authorityValid = if ($isCompletedInstallIntent) {
+        @($intent.PSObject.Properties).Count -eq 5 -and
+        [string]$intent.completed_receipt_sha256 -cmatch '^[0-9A-F]{64}$'
+    }
+    elseif ($isAbortedFreshInstallIntent) {
+        @($intent.PSObject.Properties).Count -eq 6 -and
+        [string]$intent.authority_kind -ceq "aborted_fresh_install" -and
+        [string]$intent.authority_receipt_sha256 -cmatch '^[0-9A-F]{64}$'
+    }
+    else { $false }
     if (
-        @($intent.PSObject.Properties).Count -ne 5 -or
-        [string]$intent.schema -cne $script:TicketboxDeleteDataIntentSchema -or
+        -not $authorityValid -or
         -not (Test-TicketboxPathEquals ([string]$intent.install_dir) $InstallDir) -or
         [string]::IsNullOrWhiteSpace($intentDataRoot) -or
         -not [System.IO.Path]::IsPathRooted($intentDataRoot) -or
@@ -2143,7 +2566,6 @@ function Read-TicketboxDeleteDataIntent {
             -not [string]::IsNullOrWhiteSpace($DataRoot) -and
             -not (Test-TicketboxPathEquals $intentDataRoot $DataRoot)
         ) -or
-        [string]$intent.completed_receipt_sha256 -cnotmatch '^[0-9A-F]{64}$' -or
         -not [DateTimeOffset]::TryParse(
             [string]$intent.created_at_utc,
             [Globalization.CultureInfo]::InvariantCulture,
@@ -2188,6 +2610,57 @@ function Write-TicketboxDeleteDataIntent {
         install_dir = ConvertTo-TicketboxCanonicalPath $InstallDir
         data_root = ConvertTo-TicketboxCanonicalPath $DataRoot
         completed_receipt_sha256 = $receiptSha256
+        created_at_utc = [DateTime]::UtcNow.ToString("o")
+    } | ConvertTo-Json
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $Path `
+        -Text $payload `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
+    return Read-TicketboxDeleteDataIntent `
+        -Path $Path `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot
+}
+
+function Write-TicketboxAbortedFreshInstallDeleteDataIntent {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$AuthorityReceiptPath,
+        [Parameter(Mandatory = $true)][object]$AuthorityReceipt,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$DataRoot
+    )
+
+    Assert-TicketboxAbortedFreshInstallLifecycleReceipt $AuthorityReceipt
+    Assert-TicketboxProtectedLifecycleReceipt $AuthorityReceiptPath
+    $receiptSha256 = Get-TicketboxPortableFileSha256 $AuthorityReceiptPath
+    $parent = Split-Path -Parent ([System.IO.Path]::GetFullPath($Path))
+    Initialize-TicketboxInstallerStateDirectory `
+        -Path $parent `
+        -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount | Out-Null
+    if (Test-Path -LiteralPath $Path) {
+        $existing = Read-TicketboxDeleteDataIntent `
+            -Path $Path `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot
+        if (
+            [string]$existing.schema -cne
+                $script:TicketboxAbortedFreshInstallDeleteDataIntentSchema -or
+            [string]$existing.authority_kind -cne "aborted_fresh_install" -or
+            [string]$existing.authority_receipt_sha256 -cne $receiptSha256
+        ) {
+            throw "既有删除数据意图绑定了另一份中止首装 lifecycle authority。"
+        }
+        return $existing
+    }
+    $payload = [ordered]@{
+        schema = $script:TicketboxAbortedFreshInstallDeleteDataIntentSchema
+        install_dir = ConvertTo-TicketboxCanonicalPath $InstallDir
+        data_root = ConvertTo-TicketboxCanonicalPath $DataRoot
+        authority_kind = "aborted_fresh_install"
+        authority_receipt_sha256 = $receiptSha256
         created_at_utc = [DateTime]::UtcNow.ToString("o")
     } | ConvertTo-Json
     Write-TicketboxProtectedUtf8FileDurable `

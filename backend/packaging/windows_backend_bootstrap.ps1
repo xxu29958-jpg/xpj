@@ -533,9 +533,10 @@ function Write-TicketboxOwnerBootstrapFile([object]$Response) {
         "admin token: $($Response.admin_token)",
         "iOS upload URL path: $($Response.upload_url_path)",
         "iOS upload key: $($Response.upload_key)",
-        "Android pairing code (requires a configured server URL): $($Response.pairing_code)",
-        "pairing expires at: $($Response.pairing_expires_at)",
-        "Android setup: open Ticketbox Manager, configure the phone connection, then use or regenerate this code"
+        "绑定此电脑码（仅供小票夹管理器首次连接）: $($Response.pairing_code)",
+        "绑定此电脑码过期时间: $($Response.pairing_expires_at)",
+        "下一步: 打开小票夹管理器，用此码绑定桌面账本",
+        "Android: 桌面绑定成功后，在管理器中配置手机连接并生成一枚新的单次码"
     )
     $expected = [string]::Join([Environment]::NewLine, $lines) + [Environment]::NewLine
     $credentialSha256 = Get-TicketboxOwnerHandoffTextSha256 $expected
