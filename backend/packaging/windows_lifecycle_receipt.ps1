@@ -678,10 +678,18 @@ function Write-TicketboxLifecycleReceipt {
     $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
         $TargetBackendVersionFloor `
         "生命周期回执目标版本下限"
+    $dataRootMarkerAclPhase = if ($PreparationStage -ceq "install_completed") {
+        "backend_read_required"
+    }
+    else {
+        "backend_read_optional"
+    }
     $dataRootMarker = Read-TicketboxProtectedDataRootMarker `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
         -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -AclPhase $dataRootMarkerAclPhase `
+        -ExpectedBackendServiceName ([string]$InstalledReleaseConfig.backend_service_name) `
         -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
     if ($PgPort -eq $BackendPort) {
         throw "安装生命周期回执中的 PostgreSQL 与后端端口不能相同。"
@@ -1015,10 +1023,20 @@ function Read-TicketboxLifecycleReceipt {
     catch {
         throw "安装生命周期回执的 Windows volume identity 无效。"
     }
+    $dataRootMarkerAclPhase = if (
+        [string]$receipt.preparation_stage -ceq "install_completed"
+    ) {
+        "backend_read_required"
+    }
+    else {
+        "backend_read_optional"
+    }
     $dataRootMarker = Read-TicketboxProtectedDataRootMarker `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
         -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -AclPhase $dataRootMarkerAclPhase `
+        -ExpectedBackendServiceName ([string]$TargetReleaseConfig.backend_service_name) `
         -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
     if ($receiptVolumeIdentity -cne $dataRootMarker.DataVolumeIdentity) {
         throw "安装生命周期回执与当前 DataRoot volume authority 不匹配。"
@@ -1743,7 +1761,9 @@ function Enable-TicketboxInstalledServicesAutoStart {
         -ServiceReadExecuteAccounts @(
             (Get-TicketboxServiceSid $pgServiceName),
             (Get-TicketboxServiceSid $backendServiceName)
-        )
+        ) `
+        -DataRootMarkerAclPhase backend_read_required `
+        -ExpectedBackendServiceName $backendServiceName
     Assert-TicketboxServiceAccount `
         -Name $pgServiceName `
         -ExpectedAccount "NT SERVICE\$pgServiceName"

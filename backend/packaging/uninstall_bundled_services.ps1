@@ -226,7 +226,9 @@ function Set-TicketboxUninstallRuntimeServiceContract {
     $binding = Read-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
-        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts
+        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts `
+        -DataRootMarkerAclPhase backend_read_optional `
+        -ExpectedBackendServiceName $BackendServiceName
     $script:RuntimeDataBindingPresent = $true
     $script:ServicePgData = $binding.RuntimePgData
     $script:ServiceAppData = $binding.RuntimeAppData
@@ -245,7 +247,9 @@ function Remove-TicketboxUninstallRuntimeDataBindingIfPresent {
     Remove-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
-        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts
+        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts `
+        -DataRootMarkerAclPhase backend_read_optional `
+        -ExpectedBackendServiceName $BackendServiceName
     $script:RuntimeDataBindingPresent = $false
 }
 $BackendPort = 0

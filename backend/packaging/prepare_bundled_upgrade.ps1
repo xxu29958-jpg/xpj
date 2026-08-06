@@ -124,6 +124,7 @@ function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded {
     param(
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$ExpectedBackendServiceName,
         [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
         [string]$OwnerAccount = "SYSTEM"
     )
@@ -137,6 +138,13 @@ function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded {
         throw "DataRoot marker 不是普通文件，拒绝安装生命周期恢复。"
     }
     if ((Get-TicketboxPathAcl $markerPath).AreAccessRulesProtected) {
+        Assert-TicketboxProtectedDataRootMarker `
+            -DataRoot $DataRoot `
+            -InstallDir $InstallDir `
+            -FullControlAccounts $FullControlAccounts `
+            -AclPhase backend_read_optional `
+            -ExpectedBackendServiceName $ExpectedBackendServiceName `
+            -OwnerAccount $OwnerAccount
         return
     }
     Repair-TicketboxRecoverableDataRootMarkerAcl `
@@ -267,7 +275,9 @@ function Set-TicketboxPreparedRuntimeServiceContract {
     $binding = Read-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
-        -ServiceReadExecuteAccounts $serviceAccounts
+        -ServiceReadExecuteAccounts $serviceAccounts `
+        -DataRootMarkerAclPhase backend_read_optional `
+        -ExpectedBackendServiceName $BackendServiceName
     $script:ServicePgData = $binding.RuntimePgData
     $script:ServiceAppData = $binding.RuntimeAppData
     $script:ServiceLogDir = Join-Path $binding.RuntimeAppData "logs"
@@ -1043,6 +1053,8 @@ function Invoke-TicketboxPreparedInstallRecovery([object]$Receipt, [bool]$Progra
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
         -FullControlAccounts $script:TicketboxLifecycleReceiptAclAccounts `
+        -AclPhase backend_read_optional `
+        -ExpectedBackendServiceName $BackendServiceName `
         -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
     if (-not $ProgramFilesWereReplaced) {
         Restore-PreviousServiceState `
@@ -1363,7 +1375,6 @@ $prepareOperationFailure = $null
 try {
     Assert-Admin
     Initialize-TicketboxInstalledReleaseConfiguration
-    Set-TicketboxPreparedRuntimeServiceContract
     if ($InstallerLockOwnerProcessId -le 0) {
         throw "升级预检只能由持有生命周期锁的 Inno 安装器调用。"
     }
@@ -1373,7 +1384,9 @@ try {
     # protected marker; all authority facts are checked before the ACL write.
     Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded `
         -DataRoot $DataRoot `
-        -InstallDir $InstallDir
+        -InstallDir $InstallDir `
+        -ExpectedBackendServiceName $BackendServiceName
+    Set-TicketboxPreparedRuntimeServiceContract
     Invoke-TicketboxInterruptedInitdbServiceRecovery
     Assert-TicketboxTargetPgMajor
     if ($MarkProgramFilesInstalledBackupPending) {
@@ -1740,7 +1753,9 @@ try {
         Initialize-TicketboxDataRootMarker `
             -DataRoot $DataRoot `
             -InstallDir $InstallDir `
-            -AllowLegacyV1Migration
+            -AllowLegacyV1Migration `
+            -AclPhase backend_read_optional `
+            -ExpectedBackendServiceName $BackendServiceName
     }
 
     Remove-TicketboxRecoveryPgServiceIfExists

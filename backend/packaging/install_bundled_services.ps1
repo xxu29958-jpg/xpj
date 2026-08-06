@@ -149,7 +149,10 @@ $ServiceDataVolumeIdentity = ""
 $AllowMissingRuntimeDataAuthority = $true
 
 function Set-TicketboxRuntimeServiceContractFromBinding {
-    param([switch]$RequireBinding)
+    param(
+        [switch]$RequireBinding,
+        [switch]$RequireBackendMarkerReadExecute
+    )
 
     $bindingDirectory = Get-TicketboxRuntimeDataBindingDirectory
     $bindingKind = Get-TicketboxPathEntryKindNoFollow $bindingDirectory
@@ -194,10 +197,18 @@ function Set-TicketboxRuntimeServiceContractFromBinding {
         $script:RuntimeDataBindingPresent = $false
         return
     }
+    $dataRootMarkerAclPhase = if ($RequireBackendMarkerReadExecute) {
+        "backend_read_required"
+    }
+    else {
+        "backend_read_optional"
+    }
     $binding = Read-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
-        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts
+        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts `
+        -DataRootMarkerAclPhase $dataRootMarkerAclPhase `
+        -ExpectedBackendServiceName $BackendServiceName
     $script:ServicePgData = $binding.RuntimePgData
     $script:ServiceAppData = $binding.RuntimeAppData
     $script:ServiceLogDir = Join-Path $binding.RuntimeAppData "logs"
@@ -2977,7 +2988,9 @@ function Resolve-TicketboxRecoverableFreshInstallPendingIdentity {
 if ($ValidateInstalledServicesOnly) {
     Assert-Admin
     Assert-DesktopManagerExpectedServiceNames
-    Set-TicketboxRuntimeServiceContractFromBinding -RequireBinding
+    Set-TicketboxRuntimeServiceContractFromBinding `
+        -RequireBinding `
+        -RequireBackendMarkerReadExecute
     if (-not (Service-Exists $BackendServiceName) -or -not (Service-Exists $PgServiceName)) {
         throw "正式安装服务不完整，拒绝桌面管理器执行 SCM 变更。"
     }
@@ -3264,7 +3277,9 @@ try {
     }
     Initialize-TicketboxDataRootMarker `
         -DataRoot $DataRoot `
-        -InstallDir $InstallDir
+        -InstallDir $InstallDir `
+        -AclPhase backend_read_optional `
+        -ExpectedBackendServiceName $BackendServiceName
 
     $mutationStarted = $true
     if ($hadExistingBackendService) {
@@ -3287,7 +3302,9 @@ try {
         Initialize-TicketboxSecureDataRoot `
             -DataRoot $DataRoot `
             -InstallDir $InstallDir `
-            -Accounts @("SYSTEM", "BUILTIN\Administrators")
+            -Accounts @("SYSTEM", "BUILTIN\Administrators") `
+            -DataRootMarkerAclPhase backend_read_optional `
+            -ExpectedBackendServiceName $BackendServiceName
     }
     New-Item -ItemType Directory -Force -Path `
         $AppData, `
@@ -3439,7 +3456,9 @@ try {
     Initialize-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
-        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts | Out-Null
+        -ServiceReadExecuteAccounts $RuntimeDataBindingServiceAccounts `
+        -DataRootMarkerAclPhase backend_read_optional `
+        -ExpectedBackendServiceName $BackendServiceName | Out-Null
     Set-TicketboxRuntimeServiceContractFromBinding -RequireBinding
     Register-PgService `
         -RuntimeBindingTransition `

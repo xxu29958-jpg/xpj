@@ -9,6 +9,8 @@ from _powershell_contract import powershell_contract_engines
 
 ROOT = Path(__file__).resolve().parents[3]
 SAFETY = ROOT / "backend" / "packaging" / "windows_installation_safety.ps1"
+SERVICE_LIFECYCLE = ROOT / "backend" / "packaging" / "windows_service_lifecycle.ps1"
+DATABASE_SAFETY = ROOT / "backend" / "packaging" / "windows_database_safety.ps1"
 PREPARE = ROOT / "backend" / "packaging" / "prepare_bundled_upgrade.ps1"
 DATABASE = ROOT / "backend" / "packaging" / "windows_bundled_database.ps1"
 
@@ -641,6 +643,229 @@ if (-not $untrustedRejected -or $untrustedAfter -cne $untrustedBefore) {{
             encoding="utf-8",
             errors="replace",
             timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="real Windows NTFS ACL contract")
+def test_protected_data_root_marker_allows_only_exact_backend_rx_cross_engine(
+    tmp_path: Path,
+) -> None:
+    for index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"marker-backend-rx-{index}.ps1"
+        install_dir = tmp_path / f"marker-backend-rx-install-{index}"
+        case_root = tmp_path / f"marker-backend-rx-cases-{index}"
+        harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(SERVICE_LIFECYCLE)}'
+. '{_ps_literal(SAFETY)}'
+. '{_ps_literal(DATABASE_SAFETY)}'
+$account = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+# Use built-in, SID-enabled services so this real NTFS test remains portable
+# without creating or mutating an SCM service as part of the pytest process.
+$backendServiceName = 'TrustedInstaller'
+$wrongServiceName = 'Schedule'
+$backendSid = Get-TicketboxServiceSid $backendServiceName
+$wrongSid = Get-TicketboxServiceSid $wrongServiceName
+
+# This behavior test exercises the real ACL and marker chain in a pytest-owned
+# profile path.  The production domain validator is covered separately.
+function Assert-TicketboxDataRootDomain {{
+    param([string]$DataRoot, [string]$InstallDir)
+    return ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+}}
+
+function Get-AclShape([string]$Path) {{
+    $acl = Get-TicketboxPathAcl $Path
+    $rules = @($acl.Access | ForEach-Object {{
+        [string]::Join(':', @(
+            $_.IdentityReference.Translate(
+                [Security.Principal.SecurityIdentifier]
+            ).Value,
+            [string]$_.AccessControlType,
+            [string][int64]$_.FileSystemRights,
+            [string]$_.InheritanceFlags,
+            [string]$_.PropagationFlags,
+            [string]$_.IsInherited
+        ))
+    }} | Sort-Object)
+    return [string]::Join('|', @(
+        $acl.Owner,
+        [string]$acl.AreAccessRulesProtected,
+        ($rules -join ',')
+    ))
+}}
+
+function Get-MarkerSnapshot([string]$Path) {{
+    return [pscustomobject]@{{
+        Bytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path))
+        Acl = Get-AclShape $Path
+        WriteTicks = (Get-Item -LiteralPath $Path -Force).LastWriteTimeUtc.Ticks
+    }}
+}}
+
+function Assert-MarkerSnapshot([string]$Path, [object]$Before, [string]$Label) {{
+    $after = Get-MarkerSnapshot $Path
+    if (
+        $after.Bytes -cne $Before.Bytes -or
+        $after.Acl -cne $Before.Acl -or
+        $after.WriteTicks -ne $Before.WriteTicks
+    ) {{
+        throw "$Label mutated marker bytes, ACL, or write time"
+    }}
+}}
+
+function New-TestMarker([string]$Root) {{
+    Initialize-TicketboxProtectedDirectoryAtomically `
+        -Path $Root `
+        -FullControlAccounts @($account) `
+        -OwnerAccount $account | Out-Null
+    Write-TicketboxDataRootMarker `
+        -DataRoot $Root `
+        -InstallDir '{_ps_literal(install_dir)}' `
+        -FullControlAccounts @($account) `
+        -OwnerAccount $account
+    return Get-TicketboxDataRootMarkerPath $Root
+}}
+
+[IO.Directory]::CreateDirectory('{_ps_literal(case_root)}') | Out-Null
+[IO.Directory]::CreateDirectory('{_ps_literal(install_dir)}') | Out-Null
+
+$privilegedRoot = Join-Path '{_ps_literal(case_root)}' 'privileged'
+$privilegedMarker = New-TestMarker $privilegedRoot
+$privilegedBefore = Get-MarkerSnapshot $privilegedMarker
+Read-TicketboxProtectedDataRootMarker `
+    -DataRoot $privilegedRoot `
+    -InstallDir '{_ps_literal(install_dir)}' `
+    -FullControlAccounts @($account) `
+    -AclPhase backend_read_optional `
+    -ExpectedBackendServiceName $backendServiceName `
+    -OwnerAccount $account | Out-Null
+$requiredMissingRejected = $false
+try {{
+    Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $privilegedRoot `
+        -InstallDir '{_ps_literal(install_dir)}' `
+        -FullControlAccounts @($account) `
+        -AclPhase backend_read_required `
+        -ExpectedBackendServiceName $backendServiceName `
+        -OwnerAccount $account | Out-Null
+}}
+catch {{ $requiredMissingRejected = $true }}
+if (-not $requiredMissingRejected) {{ throw 'required backend RX accepted a missing ACE' }}
+Assert-MarkerSnapshot $privilegedMarker $privilegedBefore 'privileged optional/required reads'
+
+$backendRoot = Join-Path '{_ps_literal(case_root)}' 'backend-rx'
+$backendMarker = New-TestMarker $backendRoot
+Set-TicketboxExactFileAcl `
+    -Path $backendMarker `
+    -Accounts @($account) `
+    -ReadExecuteAccounts @($backendSid) `
+    -OwnerAccount $account
+$backendBefore = Get-MarkerSnapshot $backendMarker
+foreach ($phase in @('backend_read_optional', 'backend_read_required')) {{
+    Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $backendRoot `
+        -InstallDir '{_ps_literal(install_dir)}' `
+        -FullControlAccounts @($account) `
+        -AclPhase $phase `
+        -ExpectedBackendServiceName $backendServiceName `
+        -OwnerAccount $account | Out-Null
+}}
+$unboundRejected = $false
+try {{
+    Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $backendRoot `
+        -InstallDir '{_ps_literal(install_dir)}' `
+        -FullControlAccounts @($account) `
+        -OwnerAccount $account | Out-Null
+}}
+catch {{ $unboundRejected = $true }}
+if (-not $unboundRejected) {{ throw 'generic marker reader silently accepted backend RX' }}
+Assert-MarkerSnapshot $backendMarker $backendBefore 'exact backend RX reads'
+
+$wrongRoot = Join-Path '{_ps_literal(case_root)}' 'wrong-rx'
+$wrongMarker = New-TestMarker $wrongRoot
+Set-TicketboxExactFileAcl `
+    -Path $wrongMarker `
+    -Accounts @($account) `
+    -ReadExecuteAccounts @($wrongSid) `
+    -OwnerAccount $account
+$wrongBefore = Get-MarkerSnapshot $wrongMarker
+$wrongRejected = $false
+try {{
+    Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $wrongRoot `
+        -InstallDir '{_ps_literal(install_dir)}' `
+        -FullControlAccounts @($account) `
+        -AclPhase backend_read_optional `
+        -ExpectedBackendServiceName $backendServiceName `
+        -OwnerAccount $account | Out-Null
+}}
+catch {{ $wrongRejected = $true }}
+if (-not $wrongRejected) {{ throw 'wrong service SID RX was accepted' }}
+Assert-MarkerSnapshot $wrongMarker $wrongBefore 'wrong service SID rejection'
+
+$writeRoot = Join-Path '{_ps_literal(case_root)}' 'backend-modify'
+$writeMarker = New-TestMarker $writeRoot
+Invoke-TicketboxIcaclsChecked $writeMarker @('/grant:r', "*$backendSid`:M")
+$writeBefore = Get-MarkerSnapshot $writeMarker
+$writeRejected = $false
+try {{
+    Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $writeRoot `
+        -InstallDir '{_ps_literal(install_dir)}' `
+        -FullControlAccounts @($account) `
+        -AclPhase backend_read_optional `
+        -ExpectedBackendServiceName $backendServiceName `
+        -OwnerAccount $account | Out-Null
+}}
+catch {{ $writeRejected = $true }}
+if (-not $writeRejected) {{ throw 'write-capable backend ACE was accepted' }}
+Assert-MarkerSnapshot $writeMarker $writeBefore 'write-capable backend rejection'
+
+$extraRoot = Join-Path '{_ps_literal(case_root)}' 'backend-extra-rx'
+$extraMarker = New-TestMarker $extraRoot
+Set-TicketboxExactFileAcl `
+    -Path $extraMarker `
+    -Accounts @($account) `
+    -ReadExecuteAccounts @($backendSid) `
+    -OwnerAccount $account
+Invoke-TicketboxIcaclsChecked $extraMarker @('/grant', "*$wrongSid`:RX")
+$extraBefore = Get-MarkerSnapshot $extraMarker
+$extraRejected = $false
+try {{
+    Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $extraRoot `
+        -InstallDir '{_ps_literal(install_dir)}' `
+        -FullControlAccounts @($account) `
+        -AclPhase backend_read_optional `
+        -ExpectedBackendServiceName $backendServiceName `
+        -OwnerAccount $account | Out-Null
+}}
+catch {{ $extraRejected = $true }}
+if (-not $extraRejected) {{ throw 'expected backend RX plus extra RX was accepted' }}
+Assert-MarkerSnapshot $extraMarker $extraBefore 'extra service SID rejection'
+""",
+            encoding="utf-8-sig",
+        )
+        result = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                harness,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=45,
         )
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 

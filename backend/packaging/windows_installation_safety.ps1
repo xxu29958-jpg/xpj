@@ -1606,6 +1606,12 @@ function Read-TicketboxRuntimeDataBinding {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][string[]]$ServiceReadExecuteAccounts,
+        [ValidateSet(
+            "privileged_only",
+            "backend_read_optional",
+            "backend_read_required"
+        )][string]$DataRootMarkerAclPhase = "privileged_only",
+        [string]$ExpectedBackendServiceName = "",
         [string]$CommonApplicationData = "",
         [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
         [string]$OwnerAccount = "SYSTEM"
@@ -1618,6 +1624,8 @@ function Read-TicketboxRuntimeDataBinding {
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
         -FullControlAccounts $FullControlAccounts `
+        -AclPhase $DataRootMarkerAclPhase `
+        -ExpectedBackendServiceName $ExpectedBackendServiceName `
         -OwnerAccount $OwnerAccount
     $bindingDirectory = Assert-TicketboxRuntimeDataBindingDomain `
         -DataRoot $DataRoot `
@@ -1667,6 +1675,12 @@ function Initialize-TicketboxRuntimeDataBinding {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][string[]]$ServiceReadExecuteAccounts,
+        [ValidateSet(
+            "privileged_only",
+            "backend_read_optional",
+            "backend_read_required"
+        )][string]$DataRootMarkerAclPhase = "privileged_only",
+        [string]$ExpectedBackendServiceName = "",
         [string]$CommonApplicationData = "",
         [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
         [string]$OwnerAccount = "SYSTEM"
@@ -1679,6 +1693,8 @@ function Initialize-TicketboxRuntimeDataBinding {
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
         -FullControlAccounts $FullControlAccounts `
+        -AclPhase $DataRootMarkerAclPhase `
+        -ExpectedBackendServiceName $ExpectedBackendServiceName `
         -OwnerAccount $OwnerAccount
     $bindingDirectory = Assert-TicketboxRuntimeDataBindingDomain `
         -DataRoot $DataRoot `
@@ -1728,6 +1744,8 @@ function Initialize-TicketboxRuntimeDataBinding {
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
         -ServiceReadExecuteAccounts $ServiceReadExecuteAccounts `
+        -DataRootMarkerAclPhase $DataRootMarkerAclPhase `
+        -ExpectedBackendServiceName $ExpectedBackendServiceName `
         -CommonApplicationData $CommonApplicationData `
         -FullControlAccounts $FullControlAccounts `
         -OwnerAccount $OwnerAccount
@@ -1738,6 +1756,12 @@ function Remove-TicketboxRuntimeDataBinding {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][string[]]$ServiceReadExecuteAccounts,
+        [ValidateSet(
+            "privileged_only",
+            "backend_read_optional",
+            "backend_read_required"
+        )][string]$DataRootMarkerAclPhase = "privileged_only",
+        [string]$ExpectedBackendServiceName = "",
         [string]$CommonApplicationData = "",
         [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
         [string]$OwnerAccount = "SYSTEM"
@@ -1768,6 +1792,8 @@ function Remove-TicketboxRuntimeDataBinding {
             -DataRoot $DataRoot `
             -InstallDir $InstallDir `
             -ServiceReadExecuteAccounts $ServiceReadExecuteAccounts `
+            -DataRootMarkerAclPhase $DataRootMarkerAclPhase `
+            -ExpectedBackendServiceName $ExpectedBackendServiceName `
             -CommonApplicationData $CommonApplicationData `
             -FullControlAccounts $FullControlAccounts `
             -OwnerAccount $OwnerAccount | Out-Null
@@ -5098,12 +5124,87 @@ function Read-TicketboxDataRootMarker {
         -AllowLegacyV1:$AllowLegacyV1
 }
 
+function Get-TicketboxExpectedBackendServiceSid {
+    param(
+        [Parameter(Mandatory = $true)][string]$ExpectedBackendServiceName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ExpectedBackendServiceName)) {
+        throw "DataRoot marker backend-read ACL 缺少目标 backend 服务名。"
+    }
+    if (
+        $null -eq (Get-Command `
+            -Name Get-TicketboxServiceSid `
+            -CommandType Function `
+            -ErrorAction SilentlyContinue)
+    ) {
+        throw "DataRoot marker backend-read ACL 缺少统一服务 SID 查询边界。"
+    }
+    $backendServiceSid = Get-TicketboxServiceSid $ExpectedBackendServiceName
+    if ($backendServiceSid -cnotmatch '^S-1-5-80-(?:[0-9]+-){4}[0-9]+$') {
+        throw "DataRoot marker backend-read ACL 的服务 SID 无效。"
+    }
+    return $backendServiceSid
+}
+
+function Get-TicketboxDataRootMarkerAclReadExecuteAccounts {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [ValidateSet(
+            "privileged_only",
+            "backend_read_optional",
+            "backend_read_required"
+        )][string]$AclPhase = "privileged_only",
+        [string]$ExpectedBackendServiceName = "",
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    Assert-NoTicketboxAncestorReparsePoints $Path
+    if ((Get-TicketboxPathEntryKindNoFollow $Path) -cne "File") {
+        throw "DataRoot marker 不存在或不是普通文件：$Path"
+    }
+    if ($AclPhase -ceq "privileged_only") {
+        if (-not [string]::IsNullOrWhiteSpace($ExpectedBackendServiceName)) {
+            throw "privileged-only DataRoot marker ACL 不能携带 backend 服务身份。"
+        }
+        Assert-TicketboxExactFileAcl `
+            -Path $Path `
+            -Accounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount
+        return
+    }
+
+    $backendServiceSid = Get-TicketboxExpectedBackendServiceSid `
+        $ExpectedBackendServiceName
+    if ($AclPhase -ceq "backend_read_optional") {
+        try {
+            Assert-TicketboxExactFileAcl `
+                -Path $Path `
+                -Accounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount
+            return
+        }
+        catch {
+            # The only second accepted shape is the same privileged ACL plus
+            # exact read/execute for the trusted backend service identity.
+        }
+    }
+    Assert-TicketboxExactFileAcl `
+        -Path $Path `
+        -Accounts $FullControlAccounts `
+        -ReadExecuteAccounts @($backendServiceSid) `
+        -OwnerAccount $OwnerAccount
+    return $backendServiceSid
+}
+
 function Write-TicketboxDataRootMarker {
     param(
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [string]$DataVolumeIdentity = "",
         [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string[]]$ReadExecuteAccounts = @(),
         [string]$OwnerAccount = "SYSTEM",
         [switch]$ReplaceExisting
     )
@@ -5127,6 +5228,7 @@ function Write-TicketboxDataRootMarker {
         -Path (Get-TicketboxDataRootMarkerPath $canonicalDataRoot) `
         -Text $payload `
         -FullControlAccounts $FullControlAccounts `
+        -ReadExecuteAccounts $ReadExecuteAccounts `
         -OwnerAccount $OwnerAccount `
         -ReplaceExisting:$ReplaceExisting
 }
@@ -5255,6 +5357,12 @@ function Initialize-TicketboxDataRootMarker {
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [switch]$AllowLegacyV1Migration,
         [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [ValidateSet(
+            "privileged_only",
+            "backend_read_optional",
+            "backend_read_required"
+        )][string]$AclPhase = "privileged_only",
+        [string]$ExpectedBackendServiceName = "",
         [string]$OwnerAccount = "SYSTEM"
     )
 
@@ -5262,12 +5370,37 @@ function Initialize-TicketboxDataRootMarker {
     if (-not (Test-Path -LiteralPath $canonicalDataRoot)) {
         New-Item -ItemType Directory -Path $canonicalDataRoot -ErrorAction Stop | Out-Null
     }
+    $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
+    $markerKind = Get-TicketboxPathEntryKindNoFollow $markerPath
+    $markerReadExecuteAccounts = @()
+    if ($markerKind -ceq "File") {
+        $markerReadExecuteAccounts = @(
+            Get-TicketboxDataRootMarkerAclReadExecuteAccounts `
+                -Path $markerPath `
+                -FullControlAccounts $FullControlAccounts `
+                -AclPhase $AclPhase `
+                -ExpectedBackendServiceName $ExpectedBackendServiceName `
+                -OwnerAccount $OwnerAccount
+        )
+    }
+    elseif ($markerKind -ceq "Missing") {
+        if ($AclPhase -ceq "privileged_only") {
+            if (-not [string]::IsNullOrWhiteSpace($ExpectedBackendServiceName)) {
+                throw "privileged-only DataRoot marker ACL 不能携带 backend 服务身份。"
+            }
+        }
+        else {
+            $backendServiceSid = Get-TicketboxExpectedBackendServiceSid `
+                $ExpectedBackendServiceName
+            if ($AclPhase -ceq "backend_read_required") {
+                $markerReadExecuteAccounts = @($backendServiceSid)
+            }
+        }
+    }
     Assert-TicketboxDataRootMarkerInitialization `
         -DataRoot $canonicalDataRoot `
         -InstallDir $InstallDir `
         -AllowLegacyV1Migration:$AllowLegacyV1Migration
-    $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
-    $markerKind = Get-TicketboxPathEntryKindNoFollow $markerPath
     if ($markerKind -ceq "File" -and $AllowLegacyV1Migration) {
         $existingMarker = Read-TicketboxDataRootMarker `
             -DataRoot $canonicalDataRoot `
@@ -5280,6 +5413,7 @@ function Initialize-TicketboxDataRootMarker {
                 -InstallDir $InstallDir `
                 -DataVolumeIdentity $targetVolumeIdentity `
                 -FullControlAccounts $FullControlAccounts `
+                -ReadExecuteAccounts $markerReadExecuteAccounts `
                 -OwnerAccount $OwnerAccount `
                 -ReplaceExisting
         }
@@ -5289,6 +5423,7 @@ function Initialize-TicketboxDataRootMarker {
             -DataRoot $canonicalDataRoot `
             -InstallDir $InstallDir `
             -FullControlAccounts $FullControlAccounts `
+            -ReadExecuteAccounts $markerReadExecuteAccounts `
             -OwnerAccount $OwnerAccount
     }
     elseif ($markerKind -cne "File") {
@@ -5298,6 +5433,8 @@ function Initialize-TicketboxDataRootMarker {
         -DataRoot $canonicalDataRoot `
         -InstallDir $InstallDir `
         -FullControlAccounts $FullControlAccounts `
+        -AclPhase $AclPhase `
+        -ExpectedBackendServiceName $ExpectedBackendServiceName `
         -OwnerAccount $OwnerAccount
 }
 
@@ -5307,10 +5444,26 @@ function Initialize-TicketboxSecureDataRoot {
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][string[]]$Accounts,
         [switch]$AllowLegacyV1Migration,
+        [ValidateSet(
+            "privileged_only",
+            "backend_read_optional",
+            "backend_read_required"
+        )][string]$DataRootMarkerAclPhase = "privileged_only",
+        [string]$ExpectedBackendServiceName = "",
         [string]$OwnerAccount = "SYSTEM"
     )
 
     $canonicalDataRoot = Assert-TicketboxDataRootDomain -DataRoot $DataRoot -InstallDir $InstallDir
+    $expectedBackendServiceSid = ""
+    if ($DataRootMarkerAclPhase -ceq "privileged_only") {
+        if (-not [string]::IsNullOrWhiteSpace($ExpectedBackendServiceName)) {
+            throw "privileged-only DataRoot marker ACL 不能携带 backend 服务身份。"
+        }
+    }
+    else {
+        $expectedBackendServiceSid = Get-TicketboxExpectedBackendServiceSid `
+            $ExpectedBackendServiceName
+    }
     Assert-NoTicketboxAncestorReparsePoints $canonicalDataRoot
     if (-not (Test-Path -LiteralPath $canonicalDataRoot)) {
         New-Item -ItemType Directory -Path $canonicalDataRoot -ErrorAction Stop | Out-Null
@@ -5319,13 +5472,23 @@ function Initialize-TicketboxSecureDataRoot {
     Assert-NoTicketboxReparsePoints $canonicalDataRoot
     $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
     $markerKind = Get-TicketboxPathEntryKindNoFollow $markerPath
+    $markerReadExecuteAccounts = if (
+        $DataRootMarkerAclPhase -ceq "backend_read_required"
+    ) {
+        @($expectedBackendServiceSid)
+    }
+    else { @() }
     if ($markerKind -ceq "File") {
         $markerAcl = Get-TicketboxPathAcl $markerPath
         if ($markerAcl.AreAccessRulesProtected) {
-            Assert-TicketboxExactFileAcl `
-                -Path $markerPath `
-                -Accounts $Accounts `
-                -OwnerAccount $OwnerAccount
+            $markerReadExecuteAccounts = @(
+                Get-TicketboxDataRootMarkerAclReadExecuteAccounts `
+                    -Path $markerPath `
+                    -FullControlAccounts $Accounts `
+                    -AclPhase $DataRootMarkerAclPhase `
+                    -ExpectedBackendServiceName $ExpectedBackendServiceName `
+                    -OwnerAccount $OwnerAccount
+            )
             Assert-TicketboxDataRootMarker `
                 -DataRoot $canonicalDataRoot `
                 -InstallDir $InstallDir `
@@ -5360,6 +5523,7 @@ function Initialize-TicketboxSecureDataRoot {
         Set-TicketboxExactFileAcl `
             -Path $markerPath `
             -Accounts $Accounts `
+            -ReadExecuteAccounts $markerReadExecuteAccounts `
             -OwnerAccount $OwnerAccount
     }
     Initialize-TicketboxDataRootMarker `
@@ -5367,6 +5531,8 @@ function Initialize-TicketboxSecureDataRoot {
         -InstallDir $InstallDir `
         -AllowLegacyV1Migration:$AllowLegacyV1Migration `
         -FullControlAccounts $Accounts `
+        -AclPhase $DataRootMarkerAclPhase `
+        -ExpectedBackendServiceName $ExpectedBackendServiceName `
         -OwnerAccount $OwnerAccount
 }
 
@@ -5393,14 +5559,31 @@ function Read-TicketboxProtectedDataRootMarker {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [ValidateSet(
+            "privileged_only",
+            "backend_read_optional",
+            "backend_read_required"
+        )][string]$AclPhase = "privileged_only",
+        [string]$ExpectedBackendServiceName = "",
         [string]$OwnerAccount = "SYSTEM"
     )
 
     $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
     $canonicalInstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
+    $markerPath = Get-TicketboxDataRootMarkerPath $canonicalDataRoot
+    $markerReadExecuteAccounts = @(
+        Get-TicketboxDataRootMarkerAclReadExecuteAccounts `
+            -Path $markerPath `
+            -FullControlAccounts $FullControlAccounts `
+            -AclPhase $AclPhase `
+            -ExpectedBackendServiceName $ExpectedBackendServiceName `
+            -OwnerAccount $OwnerAccount
+    )
+
     $artifact = Read-TicketboxProtectedUtf8Artifact `
-        -Path (Get-TicketboxDataRootMarkerPath $canonicalDataRoot) `
+        -Path $markerPath `
         -FullControlAccounts $FullControlAccounts `
+        -ReadExecuteAccounts $markerReadExecuteAccounts `
         -OwnerAccount $OwnerAccount `
         -MaximumBytes 16384
     $marker = ConvertFrom-TicketboxDataRootMarkerText `
@@ -5418,6 +5601,12 @@ function Assert-TicketboxProtectedDataRootMarker {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [ValidateSet(
+            "privileged_only",
+            "backend_read_optional",
+            "backend_read_required"
+        )][string]$AclPhase = "privileged_only",
+        [string]$ExpectedBackendServiceName = "",
         [string]$OwnerAccount = "SYSTEM"
     )
 
@@ -5425,6 +5614,8 @@ function Assert-TicketboxProtectedDataRootMarker {
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
         -FullControlAccounts $FullControlAccounts `
+        -AclPhase $AclPhase `
+        -ExpectedBackendServiceName $ExpectedBackendServiceName `
         -OwnerAccount $OwnerAccount | Out-Null
 }
 
