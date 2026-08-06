@@ -405,8 +405,33 @@ def test_service_owned_initdb_uses_a_separate_single_secret_authority() -> None:
     assert "HttpBootstrapSecret" not in transient_writer
     assert "Write-TicketboxInitdbPasswordFileAtomically" in transient_writer
     assert "Invoke-TicketboxIcaclsChecked" not in transient_writer
-    dispatch = install.index("Initialize-PgClusterIfNeeded -InitdbInvoker")
-    assert dispatch < install.index("Initialize-TicketboxRuntimeDataBinding", dispatch)
+    dispatch = install.index("[void](Initialize-PgClusterIfNeeded -InitdbInvoker")
+    runtime_binding = install.index("Initialize-TicketboxRuntimeDataBinding", dispatch)
+    disposition = install.index("$c07Disposition =", runtime_binding)
+    dispatch_composition = install[dispatch:disposition]
+    assert dispatch < runtime_binding
+    assert "[void](Initialize-PgClusterIfNeeded -InitdbInvoker" in dispatch_composition
+    assert "$superPassword" not in dispatch_composition
+    assert "Set-TicketboxC07DatabaseAuthorityCredential" not in dispatch_composition
+    prepare_dispatch = install[
+        install.index("[void](Prepare-DatabaseIfNeeded", disposition) : install.index(
+            "$c07Migration =", disposition
+        )
+    ]
+    assert "-BootstrapState" not in prepare_dispatch
+    runtime_ready = install[
+        install.index('if ($c07Disposition -ceq "runtime_ready")', disposition) : install.index(
+            "else {", disposition
+        )
+    ]
+    assert "Set-TicketboxC07DatabaseAuthorityCredential" not in runtime_ready
+    assert "ConvertTo-TicketboxC07InstalledSecureString" in runtime_ready
+    migration = install[
+        install.index("function Invoke-TicketboxC07InstalledReleaseMigration") : install.index(
+            "function Write-TicketboxC07InstalledRuntimeEnvironment"
+        )
+    ]
+    assert "Invoke-TicketboxC07RecoveredSuperuserAction" in migration
     assert "Invoke-TicketboxInterruptedInitdbServiceRecovery" in prepare
     assert "中断 initdb 回执对应的同名 PostgreSQL 服务 executable 不匹配" in prepare
     assert "Invoke-TicketboxInitdbServiceUninstallRecovery" in uninstall

@@ -3331,12 +3331,12 @@ try {
     ) {
         throw "C07 PENDING installation identity 原子复读后发生 release/helper 漂移。"
     }
-    $superPassword = Initialize-PgClusterIfNeeded -InitdbInvoker {
+    [void](Initialize-PgClusterIfNeeded -InitdbInvoker {
         param($BootstrapState)
         Invoke-TicketboxServiceOwnedInitdb `
             -BootstrapState $BootstrapState `
             -CompensationAuthority $serviceCompensationAuthority
-    }
+    })
     Initialize-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
@@ -3369,7 +3369,6 @@ try {
         -ExpectedExecutable (Get-ExpectedServiceExecutable $PgServiceName) `
         @ServiceWaitArguments | Out-Null
     Wait-PgReady
-    Set-TicketboxC07DatabaseAuthorityCredential $superPassword
     $c07SuccessorResolution =
         Initialize-TicketboxC07SuccessorInstallationIdentity `
             -DataRoot $DataRoot `
@@ -3488,9 +3487,7 @@ try {
                 )
         }
         elseif (-not (Test-Path -LiteralPath (Get-TicketboxC07AuthorityPath))) {
-            [void](Prepare-DatabaseIfNeeded `
-                -BootstrapState $superPassword `
-                -PreserveBootstrapRecovery)
+            [void](Prepare-DatabaseIfNeeded -PreserveBootstrapRecovery)
         }
         $c07Migration = Invoke-TicketboxC07InstalledReleaseMigration `
             -ReleaseIdentity $c07ReleaseIdentity `

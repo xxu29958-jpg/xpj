@@ -200,13 +200,164 @@ function Get-TicketboxServiceImagePath([string]$Name) {
     return [Environment]::ExpandEnvironmentVariables([string]$record.PathName).Trim()
 }
 
-function Get-TicketboxServiceDependencies([string]$Name) {
-    $escaped = $Name.Replace("'", "''")
-    $record = Get-CimInstance -ClassName Win32_Service -Filter "Name='$escaped'" -ErrorAction Stop
-    if ($null -eq $record) {
-        throw "无法读取 Windows 服务 $Name 的依赖。"
+function Initialize-TicketboxServiceDependencyNativeMethods {
+    if ("TicketboxServiceDependencyNativeMethods" -as [type]) {
+        return
     }
-    return @($record.Dependencies | ForEach-Object { [string]$_ })
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class TicketboxServiceDependencyNativeMethods
+{
+    private const uint SC_MANAGER_CONNECT = 0x0001;
+    private const uint SERVICE_QUERY_CONFIG = 0x0001;
+    private const int ERROR_INSUFFICIENT_BUFFER = 122;
+    private const uint MAX_QUERY_SERVICE_CONFIG_BYTES = 8192;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct QUERY_SERVICE_CONFIGW
+    {
+        public uint ServiceType;
+        public uint StartType;
+        public uint ErrorControl;
+        public IntPtr BinaryPathName;
+        public IntPtr LoadOrderGroup;
+        public uint TagId;
+        public IntPtr Dependencies;
+        public IntPtr ServiceStartName;
+        public IntPtr DisplayName;
+    }
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr OpenSCManagerW(
+        string machineName,
+        string databaseName,
+        uint desiredAccess);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr OpenServiceW(
+        IntPtr manager,
+        string serviceName,
+        uint desiredAccess);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryServiceConfigW(
+        IntPtr service,
+        IntPtr serviceConfig,
+        uint bufferSize,
+        out uint bytesNeeded);
+
+    [DllImport("advapi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseServiceHandle(IntPtr handle);
+
+    public static string[] ReadDependencies(string serviceName)
+    {
+        IntPtr manager = OpenSCManagerW(null, null, SC_MANAGER_CONNECT);
+        if (manager == IntPtr.Zero)
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+
+        IntPtr service = IntPtr.Zero;
+        IntPtr buffer = IntPtr.Zero;
+        try
+        {
+            service = OpenServiceW(manager, serviceName, SERVICE_QUERY_CONFIG);
+            if (service == IntPtr.Zero)
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+
+            uint bytesNeeded;
+            bool firstResult = QueryServiceConfigW(
+                service,
+                IntPtr.Zero,
+                0,
+                out bytesNeeded);
+            int firstError = Marshal.GetLastWin32Error();
+            if (firstResult || firstError != ERROR_INSUFFICIENT_BUFFER ||
+                bytesNeeded == 0 || bytesNeeded > MAX_QUERY_SERVICE_CONFIG_BYTES)
+            {
+                throw new Win32Exception(
+                    firstError,
+                    "Unable to size the SCM service configuration buffer.");
+            }
+
+            uint allocatedBufferSize = bytesNeeded;
+            buffer = Marshal.AllocHGlobal(checked((int)allocatedBufferSize));
+            uint returnedBytesNeeded;
+            if (!QueryServiceConfigW(
+                service,
+                buffer,
+                allocatedBufferSize,
+                out returnedBytesNeeded))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+
+            QUERY_SERVICE_CONFIGW configuration =
+                (QUERY_SERVICE_CONFIGW)Marshal.PtrToStructure(
+                    buffer,
+                    typeof(QUERY_SERVICE_CONFIGW));
+            if (configuration.Dependencies == IntPtr.Zero)
+                return new string[0];
+
+            long bufferStart = buffer.ToInt64();
+            long dependencyStart = configuration.Dependencies.ToInt64();
+            long bufferEnd = checked(bufferStart + allocatedBufferSize);
+            if (dependencyStart < bufferStart || dependencyStart >= bufferEnd)
+                throw new InvalidOperationException(
+                    "SCM returned an out-of-buffer dependency pointer.");
+
+            int availableBytes = checked((int)(bufferEnd - dependencyStart));
+            var dependencies = new List<string>();
+            int offset = 0;
+            while (offset + sizeof(char) <= availableBytes)
+            {
+                int valueStart = offset;
+                while (offset + sizeof(char) <= availableBytes &&
+                    Marshal.ReadInt16(configuration.Dependencies, offset) != 0)
+                {
+                    offset += sizeof(char);
+                }
+                if (offset + sizeof(char) > availableBytes)
+                    throw new InvalidOperationException(
+                        "SCM dependency MULTI_SZ is not null-terminated.");
+
+                int characterCount = (offset - valueStart) / sizeof(char);
+                if (characterCount == 0)
+                    return dependencies.ToArray();
+
+                string dependency = Marshal.PtrToStringUni(
+                    IntPtr.Add(configuration.Dependencies, valueStart),
+                    characterCount);
+                if (String.IsNullOrEmpty(dependency))
+                    throw new InvalidOperationException(
+                        "SCM dependency MULTI_SZ contains an invalid entry.");
+                dependencies.Add(dependency);
+                offset += sizeof(char);
+            }
+            throw new InvalidOperationException(
+                "SCM dependency MULTI_SZ is not double-null-terminated.");
+        }
+        finally
+        {
+            if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
+            if (service != IntPtr.Zero) CloseServiceHandle(service);
+            CloseServiceHandle(manager);
+        }
+    }
+}
+'@
+}
+
+function Get-TicketboxServiceDependencies([string]$Name) {
+    Initialize-TicketboxServiceDependencyNativeMethods
+    return @(
+        [TicketboxServiceDependencyNativeMethods]::ReadDependencies($Name) |
+            ForEach-Object { [string]$_ }
+    )
 }
 
 function Assert-TicketboxServiceDependencies(

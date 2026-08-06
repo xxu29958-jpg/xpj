@@ -1,8 +1,10 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,11 @@ PACKAGING = Path(__file__).resolve().parents[1]
 POWERSHELL_51_COLD_START_TIMEOUT_MS = 45_000
 POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS = 90
 POWERSHELL_51_MULTI_SCENARIO_HARNESS_TIMEOUT_SECONDS = 180
+SC_MANAGER_CONNECT = 0x0001
+SERVICE_QUERY_STATUS = 0x0004
+DELETE_SERVICE_ACCESS = 0x00010000
+ERROR_SERVICE_DOES_NOT_EXIST = 1060
+ERROR_SERVICE_MARKED_FOR_DELETE = 1072
 
 
 def _read(name: str) -> str:
@@ -48,6 +55,119 @@ $functionAst = $ast.FindAll({{
 if ($null -eq $functionAst) {{ throw 'missing production function: {function_name}' }}
 Invoke-Expression $functionAst.Extent.Text
 """
+
+
+def _windows_scm_api():
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    advapi32.OpenSCManagerW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+    ]
+    advapi32.OpenSCManagerW.restype = wintypes.HANDLE
+    advapi32.OpenServiceW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+    ]
+    advapi32.OpenServiceW.restype = wintypes.HANDLE
+    advapi32.DeleteService.argtypes = [wintypes.HANDLE]
+    advapi32.DeleteService.restype = wintypes.BOOL
+    advapi32.CloseServiceHandle.argtypes = [wintypes.HANDLE]
+    advapi32.CloseServiceHandle.restype = wintypes.BOOL
+    return ctypes, advapi32
+
+
+def _open_scm_manager(ctypes, advapi32):
+    manager = advapi32.OpenSCManagerW(None, None, SC_MANAGER_CONNECT)
+    if not manager:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return manager
+
+
+def _assert_scm_probe_services_absent(service_names: list[str]) -> None:
+    ctypes, advapi32 = _windows_scm_api()
+    manager = _open_scm_manager(ctypes, advapi32)
+    try:
+        for service_name in service_names:
+            handle = advapi32.OpenServiceW(
+                manager,
+                service_name,
+                SERVICE_QUERY_STATUS,
+            )
+            if handle:
+                advapi32.CloseServiceHandle(handle)
+                raise AssertionError(
+                    f"refusing to reuse pre-existing SCM probe: {service_name}"
+                )
+            error = ctypes.get_last_error()
+            if error != ERROR_SERVICE_DOES_NOT_EXIST:
+                raise ctypes.WinError(error)
+    finally:
+        advapi32.CloseServiceHandle(manager)
+
+
+def _delete_scm_probe_service(ctypes, advapi32, manager, service_name: str) -> None:
+    handle = advapi32.OpenServiceW(
+        manager,
+        service_name,
+        DELETE_SERVICE_ACCESS | SERVICE_QUERY_STATUS,
+    )
+    if not handle:
+        error = ctypes.get_last_error()
+        if error in {ERROR_SERVICE_DOES_NOT_EXIST, ERROR_SERVICE_MARKED_FOR_DELETE}:
+            return
+        raise ctypes.WinError(error)
+    try:
+        if not advapi32.DeleteService(handle):
+            error = ctypes.get_last_error()
+            if error != ERROR_SERVICE_MARKED_FOR_DELETE:
+                raise ctypes.WinError(error)
+    finally:
+        advapi32.CloseServiceHandle(handle)
+
+
+def _scm_probe_service_is_present(ctypes, advapi32, manager, service_name: str) -> bool:
+    handle = advapi32.OpenServiceW(manager, service_name, SERVICE_QUERY_STATUS)
+    if handle:
+        advapi32.CloseServiceHandle(handle)
+        return True
+    error = ctypes.get_last_error()
+    if error == ERROR_SERVICE_DOES_NOT_EXIST:
+        return False
+    if error == ERROR_SERVICE_MARKED_FOR_DELETE:
+        return True
+    raise ctypes.WinError(error)
+
+
+def _cleanup_scm_probe_services(service_names: list[str]) -> None:
+    ctypes, advapi32 = _windows_scm_api()
+    manager = _open_scm_manager(ctypes, advapi32)
+    try:
+        for service_name in reversed(service_names):
+            _delete_scm_probe_service(ctypes, advapi32, manager, service_name)
+
+        remaining = set(service_names)
+        deadline = time.monotonic() + 20
+        while remaining and time.monotonic() < deadline:
+            remaining = {
+                service_name
+                for service_name in remaining
+                if _scm_probe_service_is_present(
+                    ctypes,
+                    advapi32,
+                    manager,
+                    service_name,
+                )
+            }
+            if remaining:
+                time.sleep(0.1)
+        assert not remaining, f"SCM probe cleanup did not settle: {sorted(remaining)}"
+    finally:
+        advapi32.CloseServiceHandle(manager)
 
 
 def test_database_tools_are_bounded_under_powershell_51_and_7(tmp_path: Path) -> None:
@@ -1620,6 +1740,10 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert "New-TicketboxPgServiceImagePath" in lifecycle
     assert "New-TicketboxShawlServiceImagePath" in lifecycle
     assert "Get-TicketboxServiceDependencies" in lifecycle
+    assert "QueryServiceConfigW" in lifecycle
+    assert "QUERY_SERVICE_CONFIGW" in lifecycle
+    assert "SCM dependency MULTI_SZ" in lifecycle
+    assert "$record.Dependencies" not in lifecycle
     assert "Initialize-TicketboxServiceFailurePolicyNativeMethods" in lifecycle
     assert "QueryServiceConfig2" in lifecycle
     assert "Assert-TicketboxServiceFailurePolicy" in lifecycle
@@ -1917,6 +2041,92 @@ def test_pre_copy_compensation_preserves_exact_start_policy_mutation() -> None:
     assert '"manual"' in restore
     assert "Get-TicketboxServiceStartPolicy" in lifecycle
     assert "Set-TicketboxOwnedServiceStartPolicyIfExists" in lifecycle
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows SCM dependency contract")
+def test_real_scm_dependencies_are_exact_under_powershell_51_and_optional_7() -> None:
+    import ctypes
+
+    if not bool(ctypes.windll.shell32.IsUserAnAdmin()):
+        if any(
+            os.environ.get(marker, "").strip().lower() == "true"
+            for marker in ("CI", "GITHUB_ACTIONS", "GITEA_ACTIONS")
+        ):
+            pytest.fail(
+                "Windows packaging CI is not elevated; "
+                "the real SCM dependency contract is unqualified"
+            )
+        pytest.skip("real SCM dependency contract requires elevation")
+
+    powershell_51 = shutil.which("powershell.exe") or shutil.which("powershell")
+    assert powershell_51 is not None, "Windows PowerShell 5.1 is required"
+    engines = [(powershell_51, "Desktop51")]
+    powershell_7 = shutil.which("pwsh.exe") or shutil.which("pwsh")
+    if powershell_7 is not None:
+        engines.append((powershell_7, "Core7"))
+
+    harness = PACKAGING / "tests" / "elevated_scm_dependency_contract.ps1"
+    assert harness.is_file()
+    results: list[dict[str, object]] = []
+    for index, (engine, expected_host) in enumerate(engines):
+        suffix = f"{uuid.uuid4().hex[:8]}{index}"
+        probe_service_names = [
+            f"TbxScmDepA{suffix}",
+            f"TbxScmDepB{suffix}",
+            f"TbxScmTarget{suffix}",
+        ]
+        _assert_scm_probe_services_absent(probe_service_names)
+        try:
+            completed = subprocess.run(  # noqa: S603
+                [
+                    engine,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(harness),
+                    "-PackagingDirectory",
+                    str(PACKAGING),
+                    "-Suffix",
+                    suffix,
+                    "-ExpectedHost",
+                    expected_host,
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                timeout=120,
+            )
+        finally:
+            _cleanup_scm_probe_services(probe_service_names)
+        assert completed.returncode == 0, (
+            f"{engine}:\n{completed.stdout}\n{completed.stderr}"
+        )
+        output_lines = [line for line in completed.stdout.splitlines() if line.strip()]
+        assert output_lines, f"{engine} returned no real SCM evidence"
+        payload = json.loads(output_lines[-1])
+        assert payload["schema"] == "ticketbox-real-scm-dependency-contract-v1"
+        assert payload["create_exit_codes"] == [0, 0, 0]
+        assert payload["empty_dependency_count"] == 0
+        assert payload["mismatch_rejected"] is True
+        assert set(payload["two_dependencies"]) == {
+            f"TbxScmDepA{suffix}",
+            f"TbxScmDepB{suffix}",
+        }
+        assert payload["single_dependency"] == [f"TbxScmDepA{suffix}"]
+        assert payload["group_dependency"] == ["+NetworkProvider"]
+        results.append(payload)
+
+    assert results[0]["host"] == "Desktop"
+    assert str(results[0]["powershell_version"]).startswith("5.1.")
+    if powershell_7 is not None:
+        assert len(results) == 2
+        assert results[1]["host"] == "Core"
+        assert int(str(results[1]["powershell_version"]).split(".", 1)[0]) >= 7
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell service contract")
