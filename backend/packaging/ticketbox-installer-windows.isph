@@ -2984,13 +2984,21 @@ begin
   end;
 end;
 
-function PrepareProtectedInstallerLog(var LogPath: String): Boolean;
+function PrepareProtectedInstallerLog(Context: String; var LogPath: String): Boolean;
 var
   LogDirectory: String;
   LogName: String;
+  LogHeader: TArrayOfString;
 begin
   Result := False;
   LogPath := '';
+  if (LifecycleLockOwnerProcessId = 0) or
+     (Context = '') or
+     (Pos(#13, Context) <> 0) or
+     (Pos(#10, Context) <> 0) then
+  begin
+    exit;
+  end;
   LogDirectory := ExpandConstant('{commoncf64}\Ticketbox\installer-logs');
   if (not ForceDirectories(LogDirectory)) or
      (not HardenLifecycleLockPath(LogDirectory, True)) then
@@ -3002,7 +3010,12 @@ begin
     'installer-' + GetDateTimeString('yyyymmdd-hhnnss', #0, #0) + '-' +
     IntToStr(GetCurrentProcessId()) + '-' + IntToStr(InstallerLogSequence) + '.log';
   LogPath := AddBackslash(LogDirectory) + LogName;
-  if (not SaveStringToFile(LogPath, '小票夹安装子步骤日志' + #13#10, False)) or
+  SetArrayLength(LogHeader, 4);
+  LogHeader[0] := 'SCHEMA=ticketbox-installer-child-log-v1';
+  LogHeader[1] := 'INSTALLER_OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId);
+  LogHeader[2] := 'LOG_SEQUENCE=' + IntToStr(InstallerLogSequence);
+  LogHeader[3] := 'CONTEXT=' + Context;
+  if (not SaveStringsToUTF8File(LogPath, LogHeader, False)) or
      (not HardenLifecycleLockPath(LogPath, False)) then
   begin
     DeleteFile(LogPath);
@@ -3131,7 +3144,7 @@ begin
   ChineseContext := PowerShellContextChinese(Context);
   LastPowerShellChildSucceeded := False;
   LastPowerShellFailureMessage := '';
-  if not PrepareProtectedInstallerLog(LogPath) then
+  if not PrepareProtectedInstallerLog(Context, LogPath) then
   begin
     LastPowerShellFailureMessage :=
       '无法建立受保护的安装诊断记录，子步骤未执行。支持代码：TBX-INSTALL-LOG';

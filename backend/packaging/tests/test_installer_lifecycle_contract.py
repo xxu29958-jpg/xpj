@@ -507,9 +507,17 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
             "function Assert-PortAvailableForMissingServices"
         )
     ]
-    assert state_initialization.index("$LegacyRecoveryRequiredPath") < state_initialization.index(
+    state_directory = state_initialization.index(
+        "Initialize-TicketboxInstallerStateDirectory -Path $InstallerState"
+    )
+    recovery_migration = state_initialization.index(
+        "Move-TicketboxLegacyInstallerStateArtifact"
+    )
+    owner_migration = state_initialization.index(
         "Move-TicketboxLegacyOwnerHandoffArtifacts"
     )
+    assert state_directory < recovery_migration < owner_migration
+    assert state_initialization.index("$LegacyRecoveryRequiredPath") < owner_migration
     compensation = install[
         install.index("function Invoke-TicketboxInstallFailureCompensation") : install.index(
             'Write-Host "=== 小票夹 Inno 安装器服务配置 ==="'

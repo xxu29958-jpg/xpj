@@ -249,6 +249,26 @@ Set-TicketboxExactDirectoryAcl `
     -Path $lifecycleRoot `
     -Accounts @($currentAccount) `
     -OwnerAccount $currentAccount
+
+# A real fresh install has a protected lifecycle root but no installer-state
+# child yet. The current parent must exist before any legacy reconciliation.
+if (Test-Path -LiteralPath $installerState) {{
+    throw 'fresh installer-state fixture unexpectedly exists'
+}}
+Initialize-TicketboxInstallerStateDirectory `
+    -Path $installerState `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $legacyMarker `
+    -CurrentPath $currentMarker `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+if (-not (Test-Path -LiteralPath $installerState -PathType Container)) {{
+    throw 'fresh installer-state parent was not provisioned before reconciliation'
+}}
+Remove-Item -LiteralPath $installerState -Recurse -Force
+
 $testLockRoot = Join-Path $lifecycleRoot 'lock-root'
 Initialize-TicketboxLifecycleLockDirectory `
     -LockDirectory $testLockRoot `

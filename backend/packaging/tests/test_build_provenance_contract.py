@@ -2051,6 +2051,18 @@ def test_inno_version_floor_and_protected_child_logs_are_fail_closed() -> None:
     assert "'BackendVersion'," in windows
     assert "CompareText(Context, 'Ticketbox service installation') = 0" in windows
     assert "{commoncf64}\\Ticketbox\\installer-logs" in windows
+    assert (
+        "function PrepareProtectedInstallerLog(Context: String; var LogPath: String): Boolean;"
+        in windows
+    )
+    assert "SetArrayLength(LogHeader, 4);" in windows
+    assert "SCHEMA=ticketbox-installer-child-log-v1" in windows
+    assert "INSTALLER_OWNER_PID=" in windows
+    assert "LOG_SEQUENCE=" in windows
+    assert "CONTEXT=" in windows
+    assert "SaveStringsToUTF8File(LogPath, LogHeader, False)" in windows
+    assert "SaveStringToFile(LogPath" not in windows
+    assert "PrepareProtectedInstallerLog(Context, LogPath)" in windows
     assert "Start-Transcript -LiteralPath $LogPath -Append -Force" in windows
     assert "HardenLifecycleLockPath(LogPath, False)" in windows
     assert "could not start PowerShell" not in windows

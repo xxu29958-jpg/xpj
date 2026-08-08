@@ -2458,6 +2458,7 @@ function Set-TicketboxAcl(
 
 function Initialize-TicketboxInstallerStateArtifacts {
     Assert-TicketboxDataRootMarker -DataRoot $DataRoot -InstallDir $InstallDir
+    Initialize-TicketboxInstallerStateDirectory -Path $InstallerState | Out-Null
     Move-TicketboxLegacyInstallerStateArtifact `
         -LegacyPath $LegacyRecoveryRequiredPath `
         -CurrentPath $RecoveryRequiredPath
