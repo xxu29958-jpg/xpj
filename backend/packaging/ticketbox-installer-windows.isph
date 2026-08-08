@@ -22,6 +22,8 @@
   InstallPublicFailureSchema = 'ticketbox-install-public-failure-v1';
   InstallPublicFailureFileName = 'installer-public-failure-v1.txt';
   InstallPublicFailureMaximumBytes = 2048;
+  LifecycleCoordinationReadAttempts = 40;
+  LifecycleCoordinationReadDelayMilliseconds = 50;
   C07LifecycleExitVetoSchema =
     'ticketbox-c07-installer-lifecycle-exit-veto-v2';
   C07LifecycleExitVetoFileName =
@@ -863,6 +865,34 @@ begin
     (Value = 'holder_start_failed');
 end;
 
+function LoadLifecycleCoordinationArtifact(
+  const Path: String;
+  var Text: AnsiString
+): Boolean;
+var
+  Attempt: Integer;
+begin
+  Result := False;
+  for Attempt := 1 to LifecycleCoordinationReadAttempts do
+  begin
+    if LoadStringFromFile(Path, Text) then
+    begin
+      if Attempt > 1 then
+      begin
+        Log(
+          'Lifecycle coordination read recovered after a transient file-open conflict: ' +
+          Path + ' attempts=' + IntToStr(Attempt));
+      end;
+      Result := True;
+      exit;
+    end;
+    if Attempt < LifecycleCoordinationReadAttempts then
+    begin
+      Sleep(LifecycleCoordinationReadDelayMilliseconds);
+    end;
+  end;
+end;
+
 function ConsumeLifecycleHolderStartupFailure(): Boolean;
 var
   FailureText: AnsiString;
@@ -882,7 +912,9 @@ begin
     exit;
   end;
   Result := True;
-  if not LoadStringFromFile(LifecycleLockHolderFailurePath, FailureText) then
+  if not LoadLifecycleCoordinationArtifact(
+    LifecycleLockHolderFailurePath,
+    FailureText) then
   begin
     LifecycleLockError := '机器级安装锁 holder 已退出，但启动诊断无法读取。';
     exit;
@@ -1110,7 +1142,7 @@ begin
     begin
       if FileExists(LifecycleLockRootValidatedPath) then
       begin
-        if not LoadStringFromFile(
+        if not LoadLifecycleCoordinationArtifact(
           LifecycleLockRootValidatedPath,
           RootValidatedText) then
         begin
@@ -1128,7 +1160,9 @@ begin
     end
     else if FileExists(LifecycleLockHolderReadyPath) then
     begin
-      if not LoadStringFromFile(LifecycleLockHolderReadyPath, ReadyText) then
+      if not LoadLifecycleCoordinationArtifact(
+        LifecycleLockHolderReadyPath,
+        ReadyText) then
       begin
         LifecycleLockError := '无法读取机器级安装锁 ready IPC。';
         exit;
@@ -3295,7 +3329,9 @@ begin
   begin
     exit;
   end;
-  if not LoadStringFromFile(DataRootGuardReleasePath, AckText) then
+  if not LoadLifecycleCoordinationArtifact(
+    DataRootGuardReleasePath,
+    AckText) then
   begin
     exit;
   end;
@@ -3497,7 +3533,9 @@ begin
     begin
       if FileExists(DataRootGuardReadyPath) then
       begin
-        if not LoadStringFromFile(DataRootGuardReadyPath, ReadyText) then
+        if not LoadLifecycleCoordinationArtifact(
+          DataRootGuardReadyPath,
+          ReadyText) then
         begin
           MsgBox('无法读取 DataRoot guard ready artifact。', mbError, MB_OK);
           exit;

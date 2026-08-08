@@ -17,6 +17,9 @@ from _powershell_contract import powershell_contract_engines
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGING = ROOT / "backend" / "packaging"
+_WINDOWS_TRANSIENT_FILE_OPEN_ERRORS = frozenset({32, 33})
+_WINDOWS_COORDINATION_READ_ATTEMPTS = 40
+_WINDOWS_COORDINATION_READ_DELAY_SECONDS = 0.05
 
 
 class _WindowsFileTime(ctypes.Structure):
@@ -59,6 +62,29 @@ def _windows_process_creation_filetime_parts(process_id: int) -> tuple[int, int]
 
 def _read(name: str) -> str:
     return (PACKAGING / name).read_text(encoding="utf-8-sig")
+
+
+def _read_windows_published_text(path: Path, *, encoding: str) -> str:
+    last_error: PermissionError | None = None
+    for attempt in range(_WINDOWS_COORDINATION_READ_ATTEMPTS):
+        try:
+            return path.read_text(encoding=encoding)
+        except PermissionError as exc:
+            winerror = getattr(exc, "winerror", None)
+            if winerror not in _WINDOWS_TRANSIENT_FILE_OPEN_ERRORS:
+                raise AssertionError(
+                    f"non-retryable Windows file-open failure: "
+                    f"path={path} errno={exc.errno} winerror={winerror}"
+                ) from exc
+            last_error = exc
+            if attempt + 1 < _WINDOWS_COORDINATION_READ_ATTEMPTS:
+                time.sleep(_WINDOWS_COORDINATION_READ_DELAY_SECONDS)
+    assert last_error is not None
+    raise AssertionError(
+        f"transient Windows file-open failure did not clear: "
+        f"path={path} errno={last_error.errno} "
+        f"winerror={getattr(last_error, 'winerror', None)}"
+    ) from last_error
 
 
 def _ps_literal(path: Path) -> str:
@@ -285,6 +311,41 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     flow = _read("ticketbox-installer-flow.isph")
     windows = _read("ticketbox-installer-windows.isph")
     lifecycle_lock = _read("windows_lifecycle_lock.ps1")
+    assert "LifecycleCoordinationReadAttempts = 40;" in windows
+    assert "LifecycleCoordinationReadDelayMilliseconds = 50;" in windows
+    inno_coordination_reader = windows[
+        windows.index("function LoadLifecycleCoordinationArtifact") : windows.index(
+            "function ConsumeLifecycleHolderStartupFailure"
+        )
+    ]
+    assert (
+        "for Attempt := 1 to LifecycleCoordinationReadAttempts do"
+        in inno_coordination_reader
+    )
+    assert (
+        "Sleep(LifecycleCoordinationReadDelayMilliseconds)"
+        in inno_coordination_reader
+    )
+    assert windows.count("LoadStringFromFile(") == 1
+    assert windows.count("LoadLifecycleCoordinationArtifact(") == 6
+    assert "$script:TicketboxSharingViolationErrorCode = 32" in lifecycle_lock
+    assert "$script:TicketboxLockViolationErrorCode = 33" in lifecycle_lock
+    assert "$script:TicketboxLifecycleCoordinationReadAttempts = 40" in lifecycle_lock
+    assert (
+        "$script:TicketboxLifecycleCoordinationReadDelayMilliseconds = 50"
+        in lifecycle_lock
+    )
+    powershell_coordination_reader = lifecycle_lock[
+        lifecycle_lock.index(
+            "function Read-TicketboxLifecycleCoordinationArtifact"
+        ) : lifecycle_lock.index(
+            "function New-TicketboxLifecycleCoordinationNonce"
+        )
+    ]
+    assert "GetBaseException().HResult -band 0xFFFF" in powershell_coordination_reader
+    assert "$script:TicketboxSharingViolationErrorCode" in powershell_coordination_reader
+    assert "$script:TicketboxLockViolationErrorCode" in powershell_coordination_reader
+    assert "Start-Sleep" in powershell_coordination_reader
     assert "LifecycleInstallerStatePath('owner-bootstrap.txt')" in flow
     assert "LifecycleInstallerStatePath('owner-handoff-pending')" in flow
     assert "AddBackslash(LifecycleInstallerStateDirectory) + FileName" in windows
@@ -3081,6 +3142,128 @@ end;
             kernel32.LocalFree(argv)
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows coordination read contract")
+def test_lifecycle_coordination_reader_retries_transient_sharing_violation(
+    tmp_path: Path,
+) -> None:
+    safety = PACKAGING / "windows_installation_safety.ps1"
+    lifecycle = PACKAGING / "windows_lifecycle_lock.ps1"
+    for engine_index, engine in enumerate(powershell_contract_engines()):
+        protected_root = tmp_path / f"coordination-read-{engine_index}"
+        artifact_path = protected_root / "published.ready"
+        setup_script = tmp_path / f"coordination-read-setup-{engine_index}.ps1"
+        setup_script.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(safety)}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{_ps_literal(protected_root)}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path '{_ps_literal(artifact_path)}' `
+    -Text "STATE=published$([Environment]::NewLine)" `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+""",
+            encoding="utf-8-sig",
+        )
+        setup_result = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                setup_script,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert setup_result.returncode == 0, setup_result.stderr
+
+        lock_process, lock_release = _start_exclusive_file_lock(
+            engine,
+            tmp_path,
+            f"coordination-read-lock-{engine_index}",
+            artifact_path,
+        )
+        reader_ready = tmp_path / f"coordination-reader-{engine_index}.ready"
+        reader_output = tmp_path / f"coordination-reader-{engine_index}.txt"
+        reader_script = tmp_path / f"coordination-reader-{engine_index}.ps1"
+        reader_script.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(safety)}'
+. '{_ps_literal(lifecycle)}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+[System.IO.File]::WriteAllText('{_ps_literal(reader_ready)}', 'ready')
+$value = Read-TicketboxLifecycleCoordinationArtifact `
+    -Path '{_ps_literal(artifact_path)}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+[System.IO.File]::WriteAllText('{_ps_literal(reader_output)}', $value)
+""",
+            encoding="utf-8-sig",
+        )
+        reader_process = subprocess.Popen(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                reader_script,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        try:
+            deadline = time.monotonic() + 10
+            while (
+                not reader_ready.is_file()
+                and reader_process.poll() is None
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.05)
+            if not reader_ready.is_file():
+                stdout, stderr = reader_process.communicate(timeout=5)
+                pytest.fail(f"{engine} reader did not start:\n{stdout}\n{stderr}")
+
+            time.sleep(0.25)
+            assert reader_process.poll() is None, (
+                f"{engine} did not retry the transient sharing violation"
+            )
+            lock_release.write_text("release", encoding="utf-8")
+            lock_stdout, lock_stderr = lock_process.communicate(timeout=10)
+            assert lock_process.returncode == 0, (
+                f"{engine} lock holder:\n{lock_stdout}\n{lock_stderr}"
+            )
+            stdout, stderr = reader_process.communicate(timeout=10)
+            assert reader_process.returncode == 0, f"{engine}:\n{stdout}\n{stderr}"
+            assert reader_output.read_text(encoding="utf-8-sig").splitlines() == [
+                "STATE=published"
+            ]
+        finally:
+            if lock_process.poll() is None:
+                lock_release.write_text("release", encoding="utf-8")
+                lock_process.terminate()
+                lock_process.wait(timeout=5)
+            if reader_process.poll() is None:
+                reader_process.terminate()
+                reader_process.wait(timeout=5)
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows lifecycle lock holder contract")
 def test_external_lifecycle_lock_holder_keeps_authority_until_release(
     tmp_path: Path,
@@ -3181,7 +3364,10 @@ finally {{
             if not root_validated_path.is_file():
                 stdout, stderr = process.communicate(timeout=5)
                 pytest.fail(f"{engine} holder never validated its root:\n{stdout}\n{stderr}")
-            assert root_validated_path.read_text(encoding="utf-8") == (
+            assert _read_windows_published_text(
+                root_validated_path,
+                encoding="utf-8",
+            ) == (
                 f"STATE=root_validated\nOWNER_PID={os.getpid()}\n"
             )
             while (
@@ -3194,7 +3380,10 @@ finally {{
                 stdout, stderr = process.communicate(timeout=5)
                 pytest.fail(f"{engine} holder never became ready:\n{stdout}\n{stderr}")
             assert process.poll() is None
-            ready_text = ready_path.read_text(encoding="utf-8")
+            ready_text = _read_windows_published_text(
+                ready_path,
+                encoding="utf-8",
+            )
             match = re.fullmatch(
                 rf"STATE=holding\nOWNER_PID={os.getpid()}\nHOLDER_PID=(\d+)\n"
                 rf"HOLDER_STARTED_FILETIME_HIGH=(\d+)\n"
@@ -3208,7 +3397,10 @@ finally {{
                 _windows_process_creation_filetime_parts(process.pid)
             )
             assert Path(match.group(4)) == lock_root / "installer-state"
-            assert owner_path.read_text(encoding="utf-8") == (
+            assert _read_windows_published_text(
+                owner_path,
+                encoding="utf-8",
+            ) == (
                 "SCHEMA=ticketbox-lifecycle-owner-v2\n"
                 f"OWNER_PID={os.getpid()}\n"
                 f"OWNER_STARTED_FILETIME_HIGH={owner_started_high}\n"
