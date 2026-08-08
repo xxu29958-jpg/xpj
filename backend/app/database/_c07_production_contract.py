@@ -139,6 +139,9 @@ from app.database._c07_production_contract_types import (
     _require_lower_sha as _require_lower_sha,
 )
 from app.database._c07_production_contract_types import (
+    _require_operation_id as _require_operation_id,
+)
+from app.database._c07_production_contract_types import (
     _require_string as _require_string,
 )
 from app.database._c07_production_contract_types import (

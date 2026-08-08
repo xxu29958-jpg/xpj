@@ -33,6 +33,7 @@ def _run_harness(
                 engine,
                 "-NoLogo",
                 "-NoProfile",
+                "-NonInteractive",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-File",
@@ -106,6 +107,91 @@ def test_c07_database_source_is_narrow_and_secret_safe() -> None:
 
     raw = C07_DATABASE_SCRIPT.read_bytes()
     assert raw.startswith(b"\xef\xbb\xbf")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell GUID contract")
+def test_fresh_database_operation_id_matches_shared_canonical_guid_contract(
+    tmp_path: Path,
+) -> None:
+    script = f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(C07_DATABASE_SCRIPT)}'
+
+$historical = '1493b3d9-3721-0e51-0255-58aba5ba6e99'
+$rfcUuid = '123e4567-e89b-42d3-a456-426614174099'
+foreach ($accepted in @($historical, $rfcUuid)) {{
+    $parsed = ConvertTo-TicketboxC07OperationGuid $accepted
+    if ($parsed.ToString('D') -cne $accepted) {{
+        throw "database operation ID did not round-trip: $accepted"
+    }}
+}}
+
+foreach ($rejected in @(
+    '',
+    '00000000-0000-0000-0000-000000000000',
+    '1493B3D9-3721-0E51-0255-58ABA5BA6E99',
+    'not-a-guid'
+)) {{
+    $failedClosed = $false
+    try {{
+        ConvertTo-TicketboxC07OperationGuid $rejected | Out-Null
+    }}
+    catch {{
+        $failedClosed = $true
+    }}
+    if (-not $failedClosed) {{
+        throw "non-canonical database operation ID was accepted: $rejected"
+    }}
+}}
+
+$script:observedOperationIds = [System.Collections.Generic.List[string]]::new()
+function Assert-TicketboxC07SecureString {{ param($Value, $Label) }}
+function Assert-TicketboxC07MigratorCredentialWindow {{ param($Value) }}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    return [pscustomobject]@{{ Schema = 'test-host-authority' }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+function Assert-TicketboxC07FreshPreflight {{
+    param($Authority, $SuperuserPassword, [string]$OperationId)
+    $script:observedOperationIds.Add($OperationId)
+    return [pscustomobject]@{{ Phase = 'authority_ready' }}
+}}
+function Renew-TicketboxC07RoleCredentialWindow {{
+    param(
+        $Authority,
+        $SuperuserPassword,
+        $RuntimePassword,
+        $MigratorPassword,
+        $MigratorValidUntilUtc,
+        [string]$OperationId,
+        [string]$Mode
+    )
+    $script:observedOperationIds.Add($OperationId)
+}}
+function Assert-TicketboxC07RoleCatalog {{ param($Authority, $Password) }}
+function Get-TicketboxC07DatabaseIdentity {{
+    param($Authority, $SuperuserPassword, $Database)
+    return [pscustomobject]@{{ State = 'ready' }}
+}}
+
+$result = Initialize-TicketboxC07FreshDatabaseAuthority `
+    -SuperuserPassword $null `
+    -RuntimePassword $null `
+    -MigratorPassword $null `
+    -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(5)) `
+    -OperationId $historical
+if ([string]$result.State -cne 'ready') {{
+    throw 'fresh database authority did not complete the stubbed ready path'
+}}
+if (
+    $script:observedOperationIds.Count -ne 2 -or
+    $script:observedOperationIds[0] -cne $historical -or
+    $script:observedOperationIds[1] -cne $historical
+) {{
+    throw 'fresh database authority changed the historical operation ID'
+}}
+"""
+    _run_harness(tmp_path, "fresh-operation-guid", script)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell managed ACL contract")

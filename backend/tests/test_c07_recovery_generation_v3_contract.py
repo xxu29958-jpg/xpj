@@ -75,6 +75,7 @@ _DIRECTLY_REFERENCED_MODULES = (
 _CURRENT_OPERATION_ID = "11111111-1111-4111-8111-111111111111"
 _PREDECESSOR_OPERATION_ID = "33333333-3333-4333-8333-333333333333"
 _RESTORE_CREATE_ATTEMPT_ID = "44444444-4444-4444-8444-444444444444"
+_HISTORICAL_OPERATION_ID = "1493b3d9-3721-0e51-0255-58aba5ba6e99"
 _CURRENT_RELEASE_FINGERPRINT = "A" * 64
 _CURRENT_REVISION_MANIFEST_SHA256 = "B" * 64
 _CURRENT_FREEZE_PROOF_SHA256 = "C" * 64
@@ -363,6 +364,84 @@ def test_v5_context_parses_coordinator_ordered_bytes(
     assert context.successor_mode == successor_mode
     assert context.source_recovery_operation_id == payload["source_recovery_operation_id"]
     assert context.source_recovery_freeze_proof_sha256 == payload["source_recovery_freeze_proof_sha256"]
+
+
+def _historical_operation_context_payload() -> dict[str, object]:
+    payload = _context_payload("a" * 64)
+    payload["operation_id"] = _HISTORICAL_OPERATION_ID
+    payload["source_recovery_operation_id"] = _HISTORICAL_OPERATION_ID
+    for field in (
+        "writer_freeze_proof_path",
+        "recovery_manifest_path",
+        "isolated_restore_evidence_path",
+    ):
+        payload[field] = str(payload[field]).replace(
+            _CURRENT_OPERATION_ID,
+            _HISTORICAL_OPERATION_ID,
+        )
+    return payload
+
+
+def test_production_context_and_cli_accept_shared_canonical_operation_guid() -> None:
+    context = c07_production_context.parse_production_migration_context(
+        _historical_operation_context_payload()
+    )
+
+    c07_production_migration._validate_cli_binding(
+        operation_id=_HISTORICAL_OPERATION_ID,
+        source_revision=c07_contract_types.C07_SOURCE_REVISION,
+        target_revision=c07_contract_types.C07_TARGET_REVISION,
+        migration_context=context,
+    )
+
+    assert context.operation_id == _HISTORICAL_OPERATION_ID
+    assert context.source_recovery_operation_id == _HISTORICAL_OPERATION_ID
+
+
+def test_writer_freeze_binding_accepts_shared_canonical_operation_guid() -> None:
+    context = c07_production_context.parse_production_migration_context(
+        _historical_operation_context_payload()
+    )
+    payload = {
+        "schema": c07_contract_types.FREEZE_PROOF_SCHEMA,
+        "operation_id": _HISTORICAL_OPERATION_ID,
+        "operation_kind": context.operation_kind,
+        "target_alembic_revision": context.target_alembic_revision,
+        "revision_manifest_sha256": context.revision_manifest_sha256,
+        "release_fingerprint": context.release_fingerprint,
+        "database_binding_sha256": context.database_binding_sha256,
+        "recovery_epoch_id": context.recovery_epoch_id,
+        "backend_service_state": "stopped",
+        "backend_service_start_policy": "disabled",
+        "database_authority_role": "postgres",
+        "database_authority_scope": "process_local_secret_same_session_advisory_cut",
+        "database_public_connect": False,
+        "database_advisory_fence_available": True,
+        "writers_frozen_at_utc": "2026-08-02T00:00:00Z",
+        "coordinator_binding_sha256": context.coordinator_binding_sha256,
+    }
+
+    c07_production_authority._validate_freeze_binding(
+        payload,
+        declared_sha256=context.writer_freeze_proof_sha256,
+        context=context,
+        heartbeat=context.heartbeat_sequence,
+        freeze_binding_sequence=context.coordinator_binding_sequence,
+    )
+
+
+def test_maintenance_accepts_shared_guid_but_uuid_fields_remain_strict() -> None:
+    assert (
+        c07_maintenance_common._canonical_operation_id(
+            _HISTORICAL_OPERATION_ID
+        )
+        == _HISTORICAL_OPERATION_ID
+    )
+    with pytest.raises(c07_contract_types.C07ProductionMigrationError):
+        c07_contract_types._require_uuid(
+            _HISTORICAL_OPERATION_ID,
+            label="non-operation UUID",
+        )
 
 
 def test_v5_context_rejects_nonproducer_field_order() -> None:

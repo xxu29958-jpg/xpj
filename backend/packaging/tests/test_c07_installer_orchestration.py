@@ -964,7 +964,7 @@ function New-TestSecureString {
 $script:runtimePassword = New-TestSecureString ('R' * 40)
 $script:migratorPassword = New-TestSecureString ('M' * 40)
 $script:superuserPassword = New-TestSecureString ('S' * 40)
-$script:operationId = '11111111-1111-4111-8111-111111111111'
+$script:operationId = '1493b3d9-3721-0e51-0255-58aba5ba6e99'
 $releaseIdentity = [pscustomobject]@{
     InstallationIdentityState = 'PENDING'
     InstallationOperationId = $script:operationId
@@ -1000,6 +1000,9 @@ function Initialize-TicketboxC07FreshDatabaseAuthority {
         [DateTime]$MigratorValidUntilUtc,
         [string]$OperationId
     )
+    if ($OperationId -cne $script:operationId) {
+        throw 'installer changed the installation operation ID at the database boundary'
+    }
     $script:initCalls += 1
     return [pscustomobject]@{ Result = 'authority_ready' }
 }

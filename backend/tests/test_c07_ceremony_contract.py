@@ -173,6 +173,41 @@ def test_windows_ceremony_is_blocked_until_same_generation_assets_exist(
         c07._assert_asset_recovery_contract(evidence)  # noqa: SLF001
 
 
+def test_windows_freeze_path_accepts_shared_canonical_operation_guid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    historical_operation_id = "1493b3d9-3721-0e51-0255-58aba5ba6e99"
+    lifecycle = tmp_path / "c07-lifecycle"
+    lifecycle.mkdir()
+    path = lifecycle / (
+        f"operation-{historical_operation_id}-freeze-proof-binding-1.json"
+    )
+    release_identity, envelope = _windows_freeze_envelope(
+        operation_id=historical_operation_id
+    )
+    write_protected_file_exclusive(path, envelope)
+    monkeypatch.setattr(
+        host_freeze_evidence,
+        "hold_system_authority_file_for_read",
+        hold_protected_file_for_read,
+    )
+    process_times = {4242: (10, 20), 4243: (30, 40)}
+    monkeypatch.setattr(
+        host_freeze_evidence,
+        "windows_process_start_filetime",
+        process_times.__getitem__,
+    )
+
+    evidence = c07.read_host_freeze_evidence(
+        path,
+        expected_release_identity=release_identity,
+        expected_parent_pid=4242,
+    )
+
+    assert evidence.operation_id == historical_operation_id
+
+
 def _apply_writer_capability_drift(
     payload: dict[str, object],
     drift: str,

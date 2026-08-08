@@ -133,6 +133,43 @@ def test_recovery_source_is_host_authoritative_and_not_a_directory_mirror() -> N
     assert '"upload_root_binding_sha256"' in source
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell GUID contract")
+def test_recovery_operation_id_matches_shared_canonical_guid_contract(
+    tmp_path: Path,
+) -> None:
+    source = f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(SCRIPT)}'
+
+$historical = '1493b3d9-3721-0e51-0255-58aba5ba6e99'
+$rfcUuid = '123e4567-e89b-42d3-a456-426614174099'
+foreach ($accepted in @($historical, $rfcUuid)) {{
+    if ((ConvertTo-TicketboxC07CanonicalOperationId $accepted) -cne $accepted) {{
+        throw "canonical operation ID did not round-trip: $accepted"
+    }}
+}}
+
+foreach ($rejected in @(
+    '',
+    '00000000-0000-0000-0000-000000000000',
+    '1493B3D9-3721-0E51-0255-58ABA5BA6E99',
+    'not-a-guid'
+)) {{
+    $failedClosed = $false
+    try {{
+        ConvertTo-TicketboxC07CanonicalOperationId $rejected | Out-Null
+    }}
+    catch {{
+        $failedClosed = $true
+    }}
+    if (-not $failedClosed) {{
+        throw "non-canonical operation ID was accepted: $rejected"
+    }}
+}}
+"""
+    _run_harness(tmp_path, "canonical-operation-guid", source)
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows directory identity contract")
 def test_external_upload_root_is_operation_bound_and_identity_drift_fails_closed(
     tmp_path: Path,

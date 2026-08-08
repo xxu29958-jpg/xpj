@@ -109,6 +109,7 @@ parse_production_migration_context_bytes = (
 )
 read_production_migration_context = _contract.read_production_migration_context
 _require_lower_sha = _contract._require_lower_sha
+_require_operation_id = _contract._require_operation_id
 _require_upper_sha = _contract._require_upper_sha
 _require_uuid = _contract._require_uuid
 
@@ -139,7 +140,7 @@ def _validate_cli_binding(
     target_revision: str,
     migration_context: ProductionMigrationContext,
 ) -> None:
-    canonical_operation = _require_uuid(
+    canonical_operation = _require_operation_id(
         operation_id,
         label="production operation_id",
     )

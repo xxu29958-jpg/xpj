@@ -130,8 +130,8 @@ def _read_windows_freeze_payload(
 ) -> tuple[dict[str, object], str]:
     operation_path = re.fullmatch(
         (
-            r"operation-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
-            r"[89ab][0-9a-f]{3}-[0-9a-f]{12}-freeze-proof"
+            r"operation-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+            r"[0-9a-f]{4}-[0-9a-f]{12}-freeze-proof"
             r"(?:-binding-[1-9][0-9]*)?\.json"
         ),
         path.name,

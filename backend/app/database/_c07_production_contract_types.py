@@ -384,6 +384,21 @@ def _require_uuid(value: object, *, label: str) -> str:
     return text_value
 
 
+def _require_operation_id(value: object, *, label: str) -> str:
+    text_value = _require_string(value, label=label)
+    try:
+        parsed = UUID(text_value)
+    except ValueError as exc:
+        raise C07ProductionMigrationError(
+            f"{label} must be a canonical lowercase GUID"
+        ) from exc
+    if parsed.int == 0 or str(parsed) != text_value:
+        raise C07ProductionMigrationError(
+            f"{label} must be a canonical non-zero lowercase GUID"
+        )
+    return text_value
+
+
 def _require_decimal_string(
     value: object,
     *,

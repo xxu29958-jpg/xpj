@@ -5714,12 +5714,15 @@ function Disable-TicketboxC07MigratorLogin {
 function ConvertTo-TicketboxC07OperationGuid {
     param([Parameter(Mandatory = $true)][string]$OperationId)
 
-    if ($OperationId -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
-        throw "C07 operation ID 必须是 canonical lowercase UUID。"
-    }
     $parsed = [Guid]::Empty
-    if (-not [Guid]::TryParseExact($OperationId, "D", [ref]$parsed)) {
-        throw "C07 operation ID 无效。"
+    if (
+        -not [Guid]::TryParseExact($OperationId, "D", [ref]$parsed) -or
+        $parsed -eq [Guid]::Empty
+    ) {
+        throw "C07 operation ID 必须是非空 canonical GUID。"
+    }
+    if ($parsed.ToString("D") -cne $OperationId) {
+        throw "C07 operation ID 不是 canonical lowercase GUID。"
     }
     return $parsed
 }
