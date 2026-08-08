@@ -121,6 +121,23 @@ def _read_installer() -> str:
     )
 
 
+def test_inno_simplified_chinese_language_pins_cjk_ui_font() -> None:
+    language = _read("languages/ChineseSimplified.isl")
+    lang_options = language.split("[LangOptions]", 1)[1].split("[Messages]", 1)[0]
+    active_options = {}
+    for raw_line in lang_options.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(";") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        active_options[key] = value
+
+    assert active_options["DialogFontName"] == "Microsoft YaHei UI"
+    assert active_options["WelcomeFontName"] == "Microsoft YaHei UI"
+    assert active_options["DialogFontSize"] == "9"
+    assert active_options["WelcomeFontSize"] == "14"
+
+
 def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> None:
     installer = _read_installer()
 

@@ -35,7 +35,7 @@ Python、uv、PyInstaller 的精确版本只从
 2. 已裁出捆绑 PG:`backend\packaging\vendor\pg\bin\pg_ctl.exe`。
 3. 已放好 Shawl:`backend\packaging\vendor\shawl\shawl.exe`。
 4. 构建机安装 Inno Setup 6,或用 `-InnoCompiler` 指定 `ISCC.exe`。
-5. 仓库内置 Inno 简体中文语言文件:`backend\packaging\languages\ChineseSimplified.isl`。
+5. 仓库内置 Inno 简体中文语言文件:`backend\packaging\languages\ChineseSimplified.isl`；它显式使用 `Microsoft YaHei UI`，确保 en-US UI 的干净 Windows 不会把简中向导绑定到无中文字形的 `Segoe UI`。
 
 命令:
 
@@ -74,7 +74,7 @@ commit。CI gap gate 以 Windows 大小写不敏感语义合并 workflow/job/ste
 安装行为:
 
 - 安装包使用小票夹图标和“小票夹后端服务”显示名,开始菜单会创建“打开小票夹 Web”和“数据目录”快捷方式。
-- 安装器标准页面和按钮使用内置简体中文语言文件;自定义数据目录/端口页面也保持中文。
+- 安装器标准页面和按钮使用内置简体中文语言文件，并显式绑定可覆盖简中文字形的 Windows UI 字体；自定义数据目录/端口页面也保持中文。
 - 安装器只有一套脚本与配置真源,并同时兼容 Windows PowerShell 5.1 / PowerShell 7 两种宿主:只从 HKLM PowerShell Core 安装记录动态发现位于受保护 Program Files、Microsoft 签名有效、`PSEdition=Core`、主版本不低于 7 且为 64 位进程的机器级 `pwsh.exe`;候选按规范路径确定性选择,用户目录中的执行别名不会被提权运行。没有可信 PS7 时自动回退系统自带 5.1,普通用户无需额外安装运行时。
 - 安装向导会先让用户确认程序目录、数据目录和本机服务端口;若默认 `5432/8000` 被占用,会自动预填开发机常用隔离端口 `5440/8001`,也可以在界面中改成其它空闲端口。
 - 首次安装默认使用 `C:\ProgramData\Ticketbox\pgdata` + `C:\ProgramData\Ticketbox\app`；owner handoff 与 repair latch 放在从 OS `CommonProgramFiles` 动态解析的 `Ticketbox\installer-state` 机器生命周期域。
