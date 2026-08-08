@@ -1011,6 +1011,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "Creating process-private exact build venv" in backend_build
     assert "Get-Command uv" not in backend_build
     assert "Get-Command ISCC" not in build
+    assert "Get-FileHash" not in backend_build
     assert "-Component Inno" in build
     assert "compiler_sha256" in build
     assert "ISCC identity 与固定官方归档合同不一致" in build

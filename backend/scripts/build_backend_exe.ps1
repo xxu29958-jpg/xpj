@@ -143,8 +143,8 @@ try {
         "Frozen backend source before dependency sync" `
         $sourceBeforeFreeze `
         (Get-TicketboxBackendSourceSnapshot $BackendRoot)
-    $sourceLockHash = (Get-FileHash -LiteralPath $toolchain.lock_path -Algorithm SHA256).Hash
-    $snapshotLockHash = (Get-FileHash -LiteralPath $LockSnapshotPath -Algorithm SHA256).Hash
+    $sourceLockHash = Get-TicketboxFileSha256 $toolchain.lock_path
+    $snapshotLockHash = Get-TicketboxFileSha256 $LockSnapshotPath
     if ($sourceLockHash -cne $snapshotLockHash) {
         throw "Immutable dependency lock snapshot differs from the attested source lock."
     }
@@ -152,7 +152,7 @@ try {
     Write-Host "Synchronizing runtime dependencies and contracted PyInstaller from immutable lock snapshot ..."
     & $UvPath pip sync --strict --require-hashes --python $PyBuild $LockSnapshotPath
     if ($LASTEXITCODE -ne 0) { throw "uv pip sync failed (exit=$LASTEXITCODE)" }
-    $postSyncSnapshotLockHash = (Get-FileHash -LiteralPath $LockSnapshotPath -Algorithm SHA256).Hash
+    $postSyncSnapshotLockHash = Get-TicketboxFileSha256 $LockSnapshotPath
     if ($postSyncSnapshotLockHash -cne $sourceLockHash) {
         throw "Immutable dependency lock snapshot changed while uv consumed it."
     }
