@@ -826,18 +826,70 @@ function Remove-TicketboxEmptyPgDataBeforeInitdb {
     Write-Ok "已清理 PostgreSQL 空初始化断点。"
 }
 
+function Get-TicketboxNativeExitCodeEvidence {
+    param([AllowNull()][object]$ExitCode)
+
+    if ($null -eq $ExitCode) {
+        return $null
+    }
+    $text = [Convert]::ToString(
+        $ExitCode,
+        [Globalization.CultureInfo]::InvariantCulture
+    )
+    $numeric = 0L
+    if (-not [Int64]::TryParse(
+        $text,
+        [Globalization.NumberStyles]::Integer,
+        [Globalization.CultureInfo]::InvariantCulture,
+        [ref]$numeric
+    )) {
+        throw "原生进程退出码不是十进制整数：$text"
+    }
+    if ($numeric -lt [Int32]::MinValue -or $numeric -gt [UInt32]::MaxValue) {
+        throw "原生进程退出码超出 32-bit Windows 范围：$numeric"
+    }
+    $unsigned = if ($numeric -lt 0) {
+        [uint64]($numeric + 4294967296L)
+    } else {
+        [uint64]$numeric
+    }
+    $unsigned32 = [uint32]$unsigned
+    $signed32 = [BitConverter]::ToInt32(
+        [BitConverter]::GetBytes($unsigned32),
+        0
+    )
+    return [pscustomobject]@{
+        Unsigned = [uint64]$unsigned32
+        Signed = [int64]$signed32
+        Hex = ("0x{0:X8}" -f $unsigned32)
+    }
+}
+
 function New-TicketboxInitdbFailure {
     param(
         [Parameter(Mandatory = $true)][string]$FailureKind,
-        [AllowNull()][Nullable[int]]$ExitCode
+        [AllowNull()][object]$ExitCode
     )
 
-    $exitText = if ($null -eq $ExitCode) { "unavailable" } else { [string]$ExitCode }
+    $nativeExit = Get-TicketboxNativeExitCodeEvidence $ExitCode
+    $exitText = if ($null -eq $nativeExit) {
+        "unavailable"
+    } else {
+        "{0} ({1}; signed={2})" -f `
+            $nativeExit.Unsigned,
+            $nativeExit.Hex,
+            $nativeExit.Signed
+    }
     $failure = [InvalidOperationException]::new(
         "initdb 未完成（kind=$FailureKind, exit=$exitText）。"
     )
     $failure.Data["TicketboxInstallPublicFailureCode"] =
         "postgres_cluster_initialization_failed"
+    if ($null -ne $nativeExit) {
+        $failure.Data["TicketboxNativeExitCodeUnsigned"] = $nativeExit.Unsigned
+        $failure.Data["TicketboxNativeExitCodeSigned"] = $nativeExit.Signed
+        $failure.Data["TicketboxNativeExitCodeHex"] = $nativeExit.Hex
+    }
     return $failure
 }
 
@@ -979,12 +1031,12 @@ function Initialize-PgClusterIfNeeded {
     if ($initResult.ExitCode -ne 0) {
         throw (New-TicketboxInitdbFailure `
             -FailureKind "native_process_failed" `
-            -ExitCode ([int]$initResult.ExitCode))
+            -ExitCode $initResult.ExitCode)
     }
     if (-not (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)) {
         throw (New-TicketboxInitdbFailure `
             -FailureKind "pg_version_missing" `
-            -ExitCode ([int]$initResult.ExitCode))
+            -ExitCode $initResult.ExitCode)
     }
     Set-TicketboxPostgresInstallerConfiguration
     Write-Ok "PG 簇已初始化（loopback-only, scram-sha-256）。"

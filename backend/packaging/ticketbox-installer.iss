@@ -67,6 +67,15 @@
 #ifndef BackendBuildProvenanceScriptSha256
 #error BackendBuildProvenanceScriptSha256 must be injected by build_inno_installer.ps1
 #endif
+#ifndef WindowsPrerequisiteScriptSha256
+#error WindowsPrerequisiteScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef VisualCppRuntimeVersion
+#error VisualCppRuntimeVersion must be injected by build_inno_installer.ps1
+#endif
+#ifndef VisualCppRuntimeSha256
+#error VisualCppRuntimeSha256 must be injected by build_inno_installer.ps1
+#endif
 #define AppName "小票夹后端服务"
 #define AppPublisher "小票夹"
 #define TicketboxAppIdGuid "C97812CE-7486-41D0-AB68-7558A916F6E3"
@@ -126,6 +135,8 @@ Source: "windows_installation_safety.ps1"; Flags: dontcopy noencryption
 Source: "windows_lifecycle_receipt.ps1"; Flags: dontcopy noencryption
 Source: "windows_lifecycle_lock.ps1"; Flags: dontcopy noencryption
 Source: "hold_installer_lifecycle_lock.ps1"; Flags: dontcopy noencryption
+Source: "install_windows_prerequisites.ps1"; Flags: dontcopy noencryption
+Source: "vendor\vc-runtime\vc_redist.x64.exe"; DestName: "vc_redist.x64.exe"; Flags: dontcopy noencryption
 Source: "windows_database_safety.ps1"; Flags: dontcopy noencryption
 Source: "windows_pg_recovery_tools.ps1"; Flags: dontcopy noencryption
 Source: "windows_release_config.ps1"; Flags: dontcopy noencryption

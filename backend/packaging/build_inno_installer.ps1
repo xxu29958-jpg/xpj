@@ -45,6 +45,7 @@ $ManagerBuildProvenanceScript = Join-Path $RepoRoot "desktop\scripts\windows_man
 $PgBundle = Join-Path $ScriptDir "vendor\pg"
 $PgManifest = Join-Path $PgBundle "BUNDLE_MANIFEST.txt"
 $ShawlExe = Join-Path $ScriptDir "vendor\shawl\shawl.exe"
+$VisualCppRuntimeExe = Join-Path $ScriptDir "vendor\vc-runtime\vc_redist.x64.exe"
 $InstallerInputDir = Join-Path $BackendRoot "dist\installer-input"
 $InstallerBuildManifest = Join-Path $InstallerInputDir "BUILD_PROVENANCE.json"
 $ToolchainConfigPath = Join-Path $ScriptDir "windows-build-toolchain.json"
@@ -77,6 +78,7 @@ $BootstrapExposureRecoveryScript = Join-Path $ScriptDir "windows_bootstrap_expos
 $InstallScript = Join-Path $ScriptDir "install_bundled_services.ps1"
 $UninstallScript = Join-Path $ScriptDir "uninstall_bundled_services.ps1"
 $DataRootGuardScript = Join-Path $ScriptDir "hold_data_root_mutation_guard.ps1"
+$WindowsPrerequisiteScript = Join-Path $ScriptDir "install_windows_prerequisites.ps1"
 
 function Write-Step([string]$Message) {
     Write-Host ""
@@ -123,6 +125,7 @@ function Read-TicketboxInstallerVendorContracts([string]$Path) {
         $config = Get-Content -LiteralPath $Path -Encoding UTF8 -Raw | ConvertFrom-Json
         $postgres = $config.installer_vendor_sources.postgresql
         $shawl = $config.installer_vendor_sources.shawl
+        $visualCppRuntime = $config.installer_vendor_sources.visual_cpp_runtime
     }
     catch {
         throw "Windows 构建工具链合同缺少 installer vendor 来源：$Path"
@@ -139,13 +142,26 @@ function Read-TicketboxInstallerVendorContracts([string]$Path) {
         [string]$shawl.archive_name -notmatch '^[A-Za-z0-9._-]+\.zip$' -or
         [string]$shawl.url -notmatch '^https://' -or
         [string]$shawl.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
-        [string]$shawl.executable_sha256 -notmatch '^[0-9a-fA-F]{64}$'
+        [string]$shawl.executable_sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+        [string]$visualCppRuntime.version -notmatch '^\d+(?:\.\d+){3}$' -or
+        [string]$visualCppRuntime.archive_name -cne 'vc_redist.x64.exe' -or
+        [string]$visualCppRuntime.url -notmatch '^https://download\.visualstudio\.microsoft\.com/' -or
+        [string]$visualCppRuntime.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+        [string]$visualCppRuntime.architecture -cne 'x64' -or
+        [string]$visualCppRuntime.file_version -cne [string]$visualCppRuntime.version -or
+        [string]$visualCppRuntime.product_version -cne [string]$visualCppRuntime.version -or
+        [string]$visualCppRuntime.original_filename -cne 'VC_redist.x64.exe' -or
+        [string]$visualCppRuntime.company_name -cne 'Microsoft Corporation' -or
+        [string]$visualCppRuntime.signer_subject -notmatch '^CN=Microsoft Corporation,' -or
+        [string]$visualCppRuntime.signer_thumbprint -notmatch '^[0-9A-Fa-f]{40}$' -or
+        [string]$visualCppRuntime.runtime_file -cne 'VCRUNTIME140.dll'
     ) {
         throw "Windows 构建工具链合同中的 installer vendor 来源无效。"
     }
     return [pscustomobject]@{
         postgresql = $postgres
         shawl = $shawl
+        visual_cpp_runtime = $visualCppRuntime
     }
 }
 function Get-ValidatedPostgresProvenance([string]$BundlePath = $PgBundle) {
@@ -265,11 +281,61 @@ function Get-ValidatedShawlProvenance([string]$ExecutablePath = $ShawlExe) {
     }
 }
 
+function Get-ValidatedVisualCppRuntimeProvenance(
+    [string]$ExecutablePath = $VisualCppRuntimeExe
+) {
+    Assert-File $ExecutablePath "Microsoft Visual C++ x64 Redistributable"
+    $source = $installerVendorContracts.visual_cpp_runtime
+    $item = Get-Item -LiteralPath $ExecutablePath -Force -ErrorAction Stop
+    $versionInfo = $item.VersionInfo
+    if (
+        [string]$versionInfo.FileVersion -cne [string]$source.file_version -or
+        [string]$versionInfo.ProductVersion -cne [string]$source.product_version -or
+        [string]$versionInfo.OriginalFilename -cne [string]$source.original_filename -or
+        [string]$versionInfo.CompanyName -cne [string]$source.company_name
+    ) {
+        throw "Microsoft Visual C++ Redistributable 版本资源与工具链合同不一致。"
+    }
+    $executable = Get-TicketboxFileEvidence `
+        (Split-Path -Parent $ExecutablePath) `
+        $ExecutablePath
+    if ($executable.sha256 -cne ([string]$source.sha256).ToLowerInvariant()) {
+        throw "Microsoft Visual C++ Redistributable hash 与固定官方 payload pin 不一致。"
+    }
+    $signature = Get-AuthenticodeSignature -LiteralPath $ExecutablePath
+    if (
+        $signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or
+        $null -eq $signature.SignerCertificate -or
+        [string]$signature.SignerCertificate.Subject -cne [string]$source.signer_subject -or
+        [string]$signature.SignerCertificate.Thumbprint -ine [string]$source.signer_thumbprint
+    ) {
+        throw "Microsoft Visual C++ Redistributable Authenticode 身份与工具链合同不一致。"
+    }
+    return [pscustomobject]@{
+        version = [string]$source.version
+        architecture = [string]$source.architecture
+        runtime_file = [string]$source.runtime_file
+        source_archive = [string]$source.archive_name
+        source_url = [string]$source.url
+        executable = $executable
+        file_version = [string]$versionInfo.FileVersion
+        product_version = [string]$versionInfo.ProductVersion
+        original_filename = [string]$versionInfo.OriginalFilename
+        company_name = [string]$versionInfo.CompanyName
+        authenticode = [ordered]@{
+            status = [string]$signature.Status
+            signer_subject = [string]$signature.SignerCertificate.Subject
+            signer_thumbprint = [string]$signature.SignerCertificate.Thumbprint
+        }
+    }
+}
+
 function Get-InstallerBuildInputEvidence(
     [object]$BackendManifest,
     [object]$ManagerManifest,
     [object]$PostgresProvenance,
-    [object]$ShawlProvenance
+    [object]$ShawlProvenance,
+    [object]$VisualCppRuntimeProvenance
 ) {
     return [ordered]@{
         backend = [ordered]@{
@@ -321,6 +387,19 @@ function Get-InstallerBuildInputEvidence(
             version_output = $ShawlProvenance.version_output
             probes = @($ShawlProvenance.probes)
             executable = $ShawlProvenance.executable
+        }
+        visual_cpp_runtime = [ordered]@{
+            version = $VisualCppRuntimeProvenance.version
+            architecture = $VisualCppRuntimeProvenance.architecture
+            runtime_file = $VisualCppRuntimeProvenance.runtime_file
+            source_archive = $VisualCppRuntimeProvenance.source_archive
+            source_url = $VisualCppRuntimeProvenance.source_url
+            executable = $VisualCppRuntimeProvenance.executable
+            file_version = $VisualCppRuntimeProvenance.file_version
+            product_version = $VisualCppRuntimeProvenance.product_version
+            original_filename = $VisualCppRuntimeProvenance.original_filename
+            company_name = $VisualCppRuntimeProvenance.company_name
+            authenticode = $VisualCppRuntimeProvenance.authenticode
         }
     }
 }
@@ -835,6 +914,7 @@ Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"
 Assert-File $BootstrapExposureRecoveryScript "Windows bootstrap 暴露恢复脚本"
 Assert-File $InstallScript "install_bundled_services.ps1"
 Assert-File $UninstallScript "uninstall_bundled_services.ps1"
+Assert-File $WindowsPrerequisiteScript "Windows prerequisite 安装脚本"
 Write-Ok "输入齐备。"
 
 Write-Ok "安装包版本：$resolvedVersion"
@@ -877,6 +957,16 @@ $postgresProvenance = Get-ValidatedPostgresProvenance
 Write-Ok "PostgreSQL 探针：$($postgresProvenance.version_output)"
 $shawlProvenance = Get-ValidatedShawlProvenance
 Write-Ok "Shawl 探针：$($shawlProvenance.version_output)"
+Assert-TicketboxNoReparsePath `
+    -Path $VisualCppRuntimeExe `
+    -AllowedRoot $BackendRoot | Out-Null
+$visualCppRuntimeProvenance = Get-ValidatedVisualCppRuntimeProvenance
+Write-Ok (
+    "Microsoft Visual C++ runtime：version={0} sha256={1} signer={2}" -f `
+        $visualCppRuntimeProvenance.version,
+        $visualCppRuntimeProvenance.executable.sha256,
+        $visualCppRuntimeProvenance.authenticode.signer_thumbprint
+)
 if ($CheckInputsOnly) {
     Write-Host ""
     Write-Host "CheckInputsOnly OK（未生成安装器 provenance；真实构建必须探测 ISCC identity）。" -ForegroundColor Green
@@ -921,6 +1011,9 @@ $defines = @(
     "/DLifecycleLockScriptSha256=$(Get-TicketboxFileSha256 $LockScript)",
     "/DLifecycleHolderScriptSha256=$(Get-TicketboxFileSha256 $LockHolderScript)",
     "/DDataRootGuardScriptSha256=$(Get-TicketboxFileSha256 $DataRootGuardScript)",
+    "/DWindowsPrerequisiteScriptSha256=$(Get-TicketboxFileSha256 $WindowsPrerequisiteScript)",
+    "/DVisualCppRuntimeVersion=$($visualCppRuntimeProvenance.version)",
+    "/DVisualCppRuntimeSha256=$($visualCppRuntimeProvenance.executable.sha256)",
     "/DPrepareScriptSha256=$(Get-TicketboxFileSha256 $PrepareScript)",
     "/DServiceContractScriptSha256=$(Get-TicketboxFileSha256 $ServiceContractScript)",
     "/DServiceLifecycleScriptSha256=$(Get-TicketboxFileSha256 $LifecycleScript)",
@@ -936,7 +1029,8 @@ $verifiedBuildInputs = Get-InstallerBuildInputEvidence `
     $backendManifest `
     $managerManifest `
     $postgresProvenance `
-    $shawlProvenance
+    $shawlProvenance `
+    $visualCppRuntimeProvenance
 if ($VerifyOnly) {
     if ($ExpectedInstallerSha256 -notmatch '^[0-9A-Fa-f]{64}$') {
         throw "VerifyOnly 必须提供由本轮编译步骤外部保存的 ExpectedInstallerSha256。"
@@ -967,6 +1061,9 @@ $stagedBackendDist = Join-Path $stagedBackendRoot "dist\ticketbox-backend"
 $stagedManagerDist = Join-Path $stagedRepoRoot "desktop\dist\ticketbox-manager"
 $stagedPgBundle = Join-Path $stagedScriptDir "vendor\pg"
 $stagedShawlExe = Join-Path $stagedScriptDir "vendor\shawl\shawl.exe"
+$stagedVisualCppRuntimeExe = Join-Path `
+    $stagedScriptDir `
+    "vendor\vc-runtime\vc_redist.x64.exe"
 $stagedInstallerInputDir = Join-Path $stagedBackendRoot "dist\installer-input"
 $stagedInstallerManifest = Join-Path $stagedInstallerInputDir "BUILD_PROVENANCE.json"
 $compilerOutputDir = Join-Path $buildStagingRoot "compiler-output"
@@ -984,6 +1081,7 @@ try {
         $stagedManagerDist, `
         $stagedPgBundle, `
         (Split-Path -Parent $stagedShawlExe), `
+        (Split-Path -Parent $stagedVisualCppRuntimeExe), `
         $stagedInstallerInputDir, `
         $compilerOutputDir, `
         $publishStagingDir | Out-Null
@@ -995,6 +1093,9 @@ try {
     Copy-Item -Path (Join-Path $ManagerDist "*") -Destination $stagedManagerDist -Recurse -Force
     Copy-Item -Path (Join-Path $PgBundle "*") -Destination $stagedPgBundle -Recurse -Force
     Copy-Item -LiteralPath $ShawlExe -Destination $stagedShawlExe
+    Copy-Item `
+        -LiteralPath $VisualCppRuntimeExe `
+        -Destination $stagedVisualCppRuntimeExe
 
     Assert-TicketboxFileSetSnapshot `
         "安装器 staging 配方" `
@@ -1010,6 +1111,10 @@ try {
         "安装器 staging Shawl" `
         $shawlProvenance `
         (Get-ValidatedShawlProvenance $stagedShawlExe)
+    Assert-TicketboxStructuredEvidence `
+        "安装器 staging Microsoft Visual C++ runtime" `
+        $visualCppRuntimeProvenance `
+        (Get-ValidatedVisualCppRuntimeProvenance $stagedVisualCppRuntimeExe)
 
     $buildInputs = $verifiedBuildInputs
     $installerBuild = Write-InstallerBuildProvenance `
@@ -1059,11 +1164,13 @@ try {
     $currentManagerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $ManagerDist
     $currentPostgresProvenance = Get-ValidatedPostgresProvenance
     $currentShawlProvenance = Get-ValidatedShawlProvenance
+    $currentVisualCppRuntimeProvenance = Get-ValidatedVisualCppRuntimeProvenance
     $currentBuildInputs = Get-InstallerBuildInputEvidence `
         $currentBackendManifest `
         $currentManagerManifest `
         $currentPostgresProvenance `
-        $currentShawlProvenance
+        $currentShawlProvenance `
+        $currentVisualCppRuntimeProvenance
     $currentIsccProvenance = Get-TicketboxIsccProvenance $iscc
     $currentIsccProvenance | Add-Member `
         -NotePropertyName version_policy `

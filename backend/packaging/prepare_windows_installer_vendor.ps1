@@ -27,6 +27,7 @@ try {
     $toolchain = Get-Content -LiteralPath $ToolchainConfigPath -Encoding UTF8 -Raw | ConvertFrom-Json
     $postgresSource = $toolchain.installer_vendor_sources.postgresql
     $shawlSource = $toolchain.installer_vendor_sources.shawl
+    $visualCppRuntimeSource = $toolchain.installer_vendor_sources.visual_cpp_runtime
 }
 catch {
     throw "Windows 构建工具链合同缺少安装器 vendor 来源。"
@@ -34,12 +35,43 @@ catch {
 
 function Assert-TicketboxVendorSource([object]$Source, [string]$Label) {
     if (
-        [string]$Source.version -notmatch '^\d+\.\d+(?:\.\d+)?(?:-\d+)?$' -or
-        [string]$Source.archive_name -notmatch '^[A-Za-z0-9._-]+\.zip$' -or
+        [string]$Source.version -notmatch '^\d+(?:\.\d+){1,3}(?:-\d+)?$' -or
+        [string]$Source.archive_name -notmatch '^[A-Za-z0-9._-]+\.(?:zip|exe)$' -or
         [string]$Source.url -notmatch '^https://' -or
         [string]$Source.sha256 -notmatch '^[0-9a-fA-F]{64}$'
     ) {
         throw "$Label vendor 来源合同无效。"
+    }
+}
+
+function Assert-TicketboxVisualCppRuntimeIdentity(
+    [string]$Path,
+    [object]$Source,
+    [string]$Label
+) {
+    Assert-TicketboxVendorExecutableHash `
+        $Path `
+        ([string]$Source.sha256) `
+        $Label
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    $versionInfo = $item.VersionInfo
+    if (
+        [string]$Source.architecture -cne "x64" -or
+        [string]$versionInfo.FileVersion -cne [string]$Source.file_version -or
+        [string]$versionInfo.ProductVersion -cne [string]$Source.product_version -or
+        [string]$versionInfo.OriginalFilename -cne [string]$Source.original_filename -or
+        [string]$versionInfo.CompanyName -cne [string]$Source.company_name
+    ) {
+        throw "$Label 版本资源与工具链合同不一致。"
+    }
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
+    if (
+        $signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or
+        $null -eq $signature.SignerCertificate -or
+        [string]$signature.SignerCertificate.Subject -cne [string]$Source.signer_subject -or
+        [string]$signature.SignerCertificate.Thumbprint -ine [string]$Source.signer_thumbprint
+    ) {
+        throw "$Label Authenticode 身份与固定 Microsoft signer 合同不一致。"
     }
 }
 
@@ -294,6 +326,8 @@ $shawlStaging = Join-Path $processStagingRoot "shawl-extracted"
 $shawlOutput = Join-Path $vendorRoot "shawl"
 $shawlArchiveLease = $null
 $shawlExecutableLock = $null
+$visualCppRuntimeOutput = Join-Path $vendorRoot "vc-runtime"
+$visualCppRuntimeLease = $null
 $BuildLock = $null
 $PrimaryFailure = $null
 $CleanupFailures = New-Object System.Collections.Generic.List[string]
@@ -351,11 +385,38 @@ try {
         $shawlOutputExe `
         ([string]$shawlSource.executable_sha256) `
         "Published Shawl"
+
+    $visualCppRuntimeArchive = Get-TicketboxVerifiedVendorArchive `
+        $visualCppRuntimeSource `
+        $archiveRoot
+    $visualCppRuntimeLease = New-TicketboxVerifiedArchiveLease `
+        $visualCppRuntimeArchive `
+        ([string]$visualCppRuntimeSource.sha256) `
+        "Microsoft Visual C++ runtime"
+    Assert-TicketboxVisualCppRuntimeIdentity `
+        $visualCppRuntimeLease.Path `
+        $visualCppRuntimeSource `
+        "Microsoft Visual C++ runtime"
+    if (Test-Path -LiteralPath $visualCppRuntimeOutput) {
+        Remove-TicketboxVendorPath $visualCppRuntimeOutput
+    }
+    New-Item -ItemType Directory -Path $visualCppRuntimeOutput | Out-Null
+    $visualCppRuntimeOutputExe = Join-Path `
+        $visualCppRuntimeOutput `
+        ([string]$visualCppRuntimeSource.archive_name)
+    Copy-Item `
+        -LiteralPath $visualCppRuntimeLease.Path `
+        -Destination $visualCppRuntimeOutputExe
+    Assert-TicketboxVisualCppRuntimeIdentity `
+        $visualCppRuntimeOutputExe `
+        $visualCppRuntimeSource `
+        "Published Microsoft Visual C++ runtime"
 }
 catch { $PrimaryFailure = $_ }
 finally {
     try {
         foreach ($cleanup in @(
+            [pscustomobject]@{ Label = "Visual C++ runtime lease"; Action = { if ($null -ne $visualCppRuntimeLease) { $visualCppRuntimeLease.Handle.Dispose() } } },
             [pscustomobject]@{ Label = "Shawl executable lock"; Action = { if ($null -ne $shawlExecutableLock) { $shawlExecutableLock.Dispose() } } },
             [pscustomobject]@{ Label = "Shawl archive lease"; Action = { if ($null -ne $shawlArchiveLease) { $shawlArchiveLease.Handle.Dispose() } } },
             [pscustomobject]@{ Label = "vendor staging"; Action = { if (Test-Path -LiteralPath $processStagingRoot) { Remove-TicketboxVendorPath $processStagingRoot } } }

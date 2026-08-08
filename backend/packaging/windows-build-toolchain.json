@@ -48,6 +48,20 @@
       "url": "https://github.com/mtkennerly/shawl/releases/download/v1.9.0/shawl-v1.9.0-win64.zip",
       "sha256": "f883c5d09c9beae2efaeabd8513e7d3f57cd1d0864cec3df4f4a7b6ee904351c",
       "executable_sha256": "0985555b71e7f943b8f3fc639952a9890aa62e66617942a2d0996985fe8e7c6d"
+    },
+    "visual_cpp_runtime": {
+      "version": "14.44.35211.0",
+      "archive_name": "vc_redist.x64.exe",
+      "url": "https://download.visualstudio.microsoft.com/download/pr/9b0d1fa5-c16d-4ee8-97f0-c2734086ece8/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe",
+      "sha256": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b",
+      "architecture": "x64",
+      "file_version": "14.44.35211.0",
+      "product_version": "14.44.35211.0",
+      "original_filename": "VC_redist.x64.exe",
+      "company_name": "Microsoft Corporation",
+      "signer_subject": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "signer_thumbprint": "8F985BE8FD256085C90A95D3C74580511A1DB975",
+      "runtime_file": "VCRUNTIME140.dll"
     }
   }
 }

@@ -792,10 +792,11 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "installer-lifecycle.owner" in installer
     assert "GetCurrentProcessId@kernel32.dll" in installer
     assert "SaveStringToFile(" in installer
-    assert installer.count(" -InstallerLockOwnerProcessId ") == 8
+    assert installer.count(" -InstallerLockOwnerProcessId ") == 9
     assert "InstallerLockHeld" not in installer
     assert "Pos(#0, Value)" in installer
     assert '"prepare_bundled_upgrade.ps1" = @(' in installer
+    assert '"install_windows_prerequisites.ps1" = @(' in installer
     assert '"hold_data_root_mutation_guard.ps1" = @(' in installer
     assert '"install_bundled_services.ps1" = @(' in installer
     assert '"uninstall_bundled_services.ps1" = @(' in installer
@@ -2691,6 +2692,9 @@ def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Pa
         "ReleaseConfigJsonSha256": digest,
         "BuildProvenanceScriptSha256": digest,
         "BackendBuildProvenanceScriptSha256": digest,
+        "WindowsPrerequisiteScriptSha256": digest,
+        "VisualCppRuntimeVersion": "14.44.35211.0",
+        "VisualCppRuntimeSha256": digest,
     }
     preprocessor = "\n".join(f'#define {name} "{value}"' for name, value in defines.items())
     source = tmp_path / "manager-maintenance-contract.iss"

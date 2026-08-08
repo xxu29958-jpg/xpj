@@ -2151,9 +2151,9 @@ function Invoke-TicketboxServiceOwnedInitdb {
             [uint32]$snapshot.ServiceSpecificExitCode -ne 0
         ) {
             $nativeExit = if ([uint32]$snapshot.ServiceSpecificExitCode -ne 0) {
-                [int]$snapshot.ServiceSpecificExitCode
+                [uint64]([uint32]$snapshot.ServiceSpecificExitCode)
             } else {
-                [int]$snapshot.ExitCode
+                [uint64]([uint32]$snapshot.ExitCode)
             }
             throw (New-TicketboxInitdbFailure `
                 -FailureKind "service_process_failed" `

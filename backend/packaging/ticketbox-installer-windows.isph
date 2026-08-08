@@ -43,6 +43,9 @@
   ReleaseConfigJsonSha256 = '{#ReleaseConfigJsonSha256}';
   BuildProvenanceScriptSha256 = '{#BuildProvenanceScriptSha256}';
   BackendBuildProvenanceScriptSha256 = '{#BackendBuildProvenanceScriptSha256}';
+  WindowsPrerequisiteScriptSha256 = '{#WindowsPrerequisiteScriptSha256}';
+  VisualCppRuntimeVersion = '{#VisualCppRuntimeVersion}';
+  VisualCppRuntimeSha256 = '{#VisualCppRuntimeSha256}';
 
 type
   TTicketboxFileTime = record
@@ -91,6 +94,7 @@ var
   InstallerLogSequence: Integer;
   LastPowerShellChildSucceeded: Boolean;
   LastPowerShellFailureMessage: String;
+  LastPowerShellRestartRequired: Boolean;
   OwnerHandoffExpected: Boolean;
   OwnerHandoffMemo: TNewMemo;
   OwnerHandoffClipboardProbe: TNewMemo;
@@ -540,6 +544,8 @@ begin
     DeleteFile(LifecycleLockHolderFailurePath);
   end;
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'hold_installer_lifecycle_lock.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'install_windows_prerequisites.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'vc_redist.x64.exe');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_lifecycle_lock.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_installation_safety.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'hold_data_root_mutation_guard.ps1');
@@ -646,6 +652,10 @@ begin
     ValidateLifecycleLockBootstrapFile(
       'hold_installer_lifecycle_lock.ps1', LifecycleHolderScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
+      'install_windows_prerequisites.ps1', WindowsPrerequisiteScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'vc_redist.x64.exe', VisualCppRuntimeSha256) and
+    ValidateLifecycleLockBootstrapFile(
       'hold_data_root_mutation_guard.ps1', DataRootGuardScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
       'prepare_bundled_upgrade.ps1', PrepareScriptSha256) and
@@ -731,6 +741,12 @@ begin
      not StageLifecycleLockBootstrapFile(
     'hold_installer_lifecycle_lock.ps1',
     LifecycleHolderScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'install_windows_prerequisites.ps1',
+    WindowsPrerequisiteScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'vc_redist.x64.exe',
+    VisualCppRuntimeSha256) or
      not StageLifecycleLockBootstrapFile(
     'hold_data_root_mutation_guard.ps1',
     DataRootGuardScriptSha256) or
@@ -3059,6 +3075,7 @@ begin
     '    if ([IO.Path]::GetFullPath($command.Source) -ine [IO.Path]::GetFullPath($TargetScript)) { throw "Child script resolution mismatch." }' + #13#10 +
     '    $scriptName = [IO.Path]::GetFileName($command.Source)' + #13#10 +
     '    $allowedByScript = @{' + #13#10 +
+    '        "install_windows_prerequisites.ps1" = @("VcRedistPath","RequiredVersion","RequiredSha256","DiagnosticLogPath","InstallerLockOwnerProcessId")' + #13#10 +
     '        "hold_data_root_mutation_guard.ps1" = @("InstallDir","DataRoot","InstallerLockOwnerProcessId","Hold","ConfirmStopped","DataRootGuardReadyPath","DataRootGuardReleasePath","ExpectedHolderProcessId","ExpectedHolderStartedFileTimeHigh","ExpectedHolderStartedFileTimeLow","ExpectedNonce")' + #13#10 +
     '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced")' + #13#10 +
     '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","LifecycleReceiptPath","InstallerLockOwnerProcessId","LifecycleFinalizationAttemptId","PublicFailurePath","CompleteOwnerHandoffOnly")' + #13#10 +
@@ -3140,16 +3157,28 @@ var
   RunnerPath: String;
   RunnerSha256: String;
   ChineseContext: String;
+  PrerequisiteLogPath: String;
+  IsPrerequisiteStep: Boolean;
 begin
   ChineseContext := PowerShellContextChinese(Context);
   LastPowerShellChildSucceeded := False;
   LastPowerShellFailureMessage := '';
+  LastPowerShellRestartRequired := False;
+  IsPrerequisiteStep :=
+    CompareText(Context, 'Ticketbox Windows prerequisite installation') = 0;
+  PrerequisiteLogPath := '';
   if not PrepareProtectedInstallerLog(Context, LogPath) then
   begin
     LastPowerShellFailureMessage :=
       '无法建立受保护的安装诊断记录，子步骤未执行。支持代码：TBX-INSTALL-LOG';
     Result := False;
     exit;
+  end;
+  if IsPrerequisiteStep then
+  begin
+    PrerequisiteLogPath := LogPath + '.vc-redist.log';
+    Arguments :=
+      Arguments + ' -DiagnosticLogPath ' + Quote(PrerequisiteLogPath);
   end;
   if not EnsureLoggedPowerShellRunner(RunnerPath, RunnerSha256) then
   begin
@@ -3200,6 +3229,8 @@ begin
   end;
 
   LastPowerShellChildSucceeded := ResultCode = 0;
+  LastPowerShellRestartRequired :=
+    IsPrerequisiteStep and ((ResultCode = 1641) or (ResultCode = 3010));
 
   if not HardenLifecycleLockPath(LogPath, False) then
   begin
@@ -3208,10 +3239,38 @@ begin
     Result := False;
     exit;
   end;
+  if IsPrerequisiteStep and FileExists(PrerequisiteLogPath) and
+     (not HardenLifecycleLockPath(PrerequisiteLogPath, False)) then
+  begin
+    LastPowerShellFailureMessage :=
+      'Windows 前置条件已执行，但 Microsoft 诊断日志保护状态不可验证。' +
+      '支持代码：TBX-INSTALL-LOG-ACL';
+    Result := False;
+    exit;
+  end;
 
   if ResultCode <> 0 then
   begin
-    if CompareText(Context, 'Ticketbox service installation') = 0 then
+    if IsPrerequisiteStep then
+    begin
+      if LastPowerShellRestartRequired then
+      begin
+        LastPowerShellFailureMessage :=
+          'Microsoft Visual C++ 运行库已请求重新启动 Windows。' + #13#10 +
+          '小票夹程序文件、服务、数据库和安装身份尚未变更。' + #13#10 +
+          '请重新启动 Windows 后，再运行同一个可信安装包。' + #13#10 +
+          '支持代码：TBX-INSTALL-PREREQ-RESTART';
+      end
+      else
+      begin
+        LastPowerShellFailureMessage :=
+          'Microsoft Visual C++ 运行库前置条件未能建立。' + #13#10 +
+          '小票夹程序文件、服务、数据库和安装身份尚未变更。' + #13#10 +
+          '请保留受保护安装日志，修复 Windows 运行库后安全重试。' + #13#10 +
+          '支持代码：TBX-INSTALL-PREREQ';
+      end;
+    end
+    else if CompareText(Context, 'Ticketbox service installation') = 0 then
     begin
       LastPowerShellFailureMessage := C07ServiceInstallationFailureMessage();
     end

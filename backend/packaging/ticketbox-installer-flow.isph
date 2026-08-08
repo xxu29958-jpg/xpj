@@ -925,20 +925,15 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   VersionFailureReason: String;
+  PrerequisiteArguments: String;
 begin
   AssertLifecycleLockActive();
+  NeedsRestart := False;
   Result := ExistingDataRootParameterError();
   if Result <> '' then
   begin
     exit;
   end;
-  if not StartManagerMaintenanceGate() then
-  begin
-    Result :=
-      '无法建立小票夹管理器维护门；安装尚未备份、停服或复制文件。请关闭其他安装器后重试。';
-    exit;
-  end;
-  AssertManagerMaintenanceGateActive();
   OwnerHandoffExpected := False;
   if not CheckBackendVersionFloorForDataRoot(
     SelectedDataRoot(),
@@ -957,6 +952,41 @@ begin
     Result := '受保护 lifecycle bootstrap bundle 在安装前复核失败。';
     exit;
   end;
+  SetInstallerStage(
+    '正在检查 Windows 运行环境…',
+    '已安装的共享运行库满足要求时会直接跳过。');
+  PrerequisiteArguments :=
+    '-VcRedistPath ' +
+      Quote(LifecycleBootstrapFilePath('vc_redist.x64.exe')) +
+    ' -RequiredVersion ' + Quote(VisualCppRuntimeVersion) +
+    ' -RequiredSha256 ' + Quote(VisualCppRuntimeSha256) +
+    ' -InstallerLockOwnerProcessId ' +
+      IntToStr(LifecycleLockOwnerProcessId);
+  if not RunPowerShellChecked(
+    LifecycleBootstrapFilePath('install_windows_prerequisites.ps1'),
+    PrerequisiteArguments,
+    'Ticketbox Windows prerequisite installation') then
+  begin
+    NeedsRestart := LastPowerShellRestartRequired;
+    if LastPowerShellFailureMessage <> '' then
+    begin
+      Result := LastPowerShellFailureMessage;
+    end
+    else
+    begin
+      Result :=
+        'Windows 前置条件未完成；小票夹安装状态尚未变更。' +
+        '支持代码：TBX-INSTALL-PREREQ';
+    end;
+    exit;
+  end;
+  if not StartManagerMaintenanceGate() then
+  begin
+    Result :=
+      '无法建立小票夹管理器维护门；安装尚未备份、停服或复制文件。请关闭其他安装器后重试。';
+    exit;
+  end;
+  AssertManagerMaintenanceGateActive();
   Result := '';
 end;
 

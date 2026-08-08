@@ -24,6 +24,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "packaging\windows_lifecycle_lock.ps1",
     "packaging\hold_installer_lifecycle_lock.ps1",
     "packaging\hold_data_root_mutation_guard.ps1",
+    "packaging\install_windows_prerequisites.ps1",
     "packaging\windows_database_safety.ps1",
     "packaging\windows_pg_recovery_tools.ps1",
     "packaging\windows_bundled_database.ps1",
