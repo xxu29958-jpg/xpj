@@ -1268,6 +1268,21 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     for marker_consumer in (prepared_runtime, prepared_recovery):
         assert "backend_read_optional" in marker_consumer
         assert "-ExpectedBackendServiceName $BackendServiceName" in marker_consumer
+    legacy_runtime_repair = prepared_runtime.index(
+        "Repair-TicketboxLegacyMalformedRuntimeDataBindingIfNeeded `"
+    )
+    strict_runtime_read = prepared_runtime.index(
+        "Read-TicketboxRuntimeDataBinding `", legacy_runtime_repair
+    )
+    assert legacy_runtime_repair < strict_runtime_read
+    missing_binding_branch = prepared_runtime[
+        prepared_runtime.index(
+            '(Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -ceq "Missing"'
+        ) : strict_runtime_read
+    ]
+    assert "Initialize-TicketboxRuntimeDataBinding `" in missing_binding_branch
+    assert "$script:RuntimeDataBindingPresent = $false" not in missing_binding_branch
+    assert "return" not in missing_binding_branch
 
     safety = _read("windows_installation_safety.ps1")
     marker_acl_contract = safety[
@@ -1844,13 +1859,13 @@ def test_recovery_marker_refuses_to_create_installer_state_without_data_root_aut
     tmp_path: Path,
 ) -> None:
     data_root = tmp_path / "data"
-    install_dir = tmp_path / "program"
+    install_dir = tmp_path / "program 安装 中文"
     untrusted_fresh_root = tmp_path / "untrusted-fresh"
     forged_root_acl = tmp_path / "forged-root-acl"
     forged_marker_acl = tmp_path / "forged-marker-acl"
-    legacy_v1_root = tmp_path / "legacy-v1-root"
+    legacy_v1_root = tmp_path / "legacy data 中文 root"
     wrong_volume_root = tmp_path / "wrong-volume-root"
-    runtime_binding_parent = tmp_path / "runtime-binding-parent"
+    runtime_binding_parent = tmp_path / "runtime binding 中文 parent"
     trusted_fresh_root = tmp_path / "trusted-fresh"
     recoverable_fresh_root = tmp_path / "recoverable-fresh"
     machine_state_root = tmp_path / "machine-lifecycle"
@@ -1864,6 +1879,7 @@ def test_recovery_marker_refuses_to_create_installer_state_without_data_root_aut
     forged_marker_acl.mkdir()
     (forged_marker_acl / "unknown.txt").write_text("untrusted", encoding="utf-8")
     legacy_v1_root.mkdir()
+    (legacy_v1_root / "runtime probe 中文 child").mkdir()
     wrong_volume_root.mkdir()
     runtime_binding_parent.mkdir()
     trusted_fresh_root.mkdir()
@@ -2052,21 +2068,78 @@ $runtimeBinding = Initialize-TicketboxRuntimeDataBinding `
 if (
     -not (Test-TicketboxPathEquals $runtimeBinding.RuntimeAppData (Join-Path $runtimeBinding.RuntimeDataRoot 'app')) -or
     $runtimeBinding.DataVolumeIdentity -cne
-        (Get-TicketboxVolumeIdentityForPath '{_literal(legacy_v1_root)}')
+        (Get-TicketboxVolumeIdentityForPath '{_literal(legacy_v1_root)}') -or
+    -not (Test-Path `
+        -LiteralPath (Join-Path $runtimeBinding.RuntimeDataRoot 'runtime probe 中文 child') `
+        -PathType Container)
 ) {{
-    throw 'runtime binding did not project the v2 marker volume'
+    throw 'runtime binding did not create a traversable v2 marker volume projection'
 }}
+$expectedRuntimeTarget = Get-TicketboxVolumeBoundDataRootPath `
+    -DataRoot '{_literal(legacy_v1_root)}' `
+    -DataVolumeIdentity (Get-TicketboxVolumeIdentityForPath '{_literal(legacy_v1_root)}')
+if (
+    -not [string]::Equals(
+        (Get-TicketboxRuntimeDataJunctionTarget $runtimeBinding.RuntimeDataRoot),
+        $expectedRuntimeTarget,
+        [System.StringComparison]::OrdinalIgnoreCase
+    ) -or
+    -not [string]::Equals(
+        (Get-TicketboxRuntimeDataJunctionResolvedTarget $runtimeBinding.RuntimeDataRoot),
+        $expectedRuntimeTarget,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+) {{
+    throw 'runtime binding native readback did not preserve the exact volume target'
+}}
+$runtimeBinding = Initialize-TicketboxRuntimeDataBinding `
+    -DataRoot '{_literal(legacy_v1_root)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -ServiceReadExecuteAccounts @('BUILTIN\\Users') `
+    -CommonApplicationData '{_literal(runtime_binding_parent)}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+if (
+    -not [string]::Equals(
+        (Get-TicketboxRuntimeDataJunctionTarget $runtimeBinding.RuntimeDataRoot),
+        $expectedRuntimeTarget,
+        [System.StringComparison]::OrdinalIgnoreCase
+    ) -or
+    -not (Test-Path `
+        -LiteralPath (Join-Path $runtimeBinding.RuntimeDataRoot 'runtime probe 中文 child') `
+        -PathType Container)
+) {{
+    throw 'correct runtime junction was not idempotent on Initialize retry'
+}}
+$nativeCollision = Join-Path $runtimeBinding.BindingDirectory 'pre-existing collision 中文'
+[System.IO.Directory]::CreateDirectory($nativeCollision) | Out-Null
+$nativeCollisionSentinel = Join-Path $nativeCollision 'keep.txt'
+[System.IO.File]::WriteAllText($nativeCollisionSentinel, 'keep')
+$nativeCollisionRejected = $false
+try {{
+    New-TicketboxRuntimeDataJunction `
+        -Path $nativeCollision `
+        -Target $expectedRuntimeTarget
+}}
+catch {{ $nativeCollisionRejected = $true }}
+if (
+    -not $nativeCollisionRejected -or
+    (Get-TicketboxPathEntryKindNoFollow $nativeCollision) -cne 'Directory' -or
+    -not (Test-Path -LiteralPath $nativeCollisionSentinel -PathType Leaf)
+) {{
+    throw 'native junction creation changed a pre-existing path'
+}}
+[System.IO.Directory]::Delete($nativeCollision, $true)
 $wrongRuntimeTarget = Get-TicketboxVolumeBoundDataRootPath `
     -DataRoot '{_literal(wrong_volume_root)}' `
     -DataVolumeIdentity (Get-TicketboxVolumeIdentityForPath '{_literal(wrong_volume_root)}')
 [System.IO.Directory]::Delete($runtimeBinding.RuntimeDataRoot)
-New-Item `
-    -ItemType Junction `
+New-TicketboxRuntimeDataJunction `
     -Path $runtimeBinding.RuntimeDataRoot `
-    -Target $wrongRuntimeTarget | Out-Null
+    -Target $wrongRuntimeTarget
 $retargetRejected = $false
 try {{
-    Read-TicketboxRuntimeDataBinding `
+    Initialize-TicketboxRuntimeDataBinding `
         -DataRoot '{_literal(legacy_v1_root)}' `
         -InstallDir '{_literal(install_dir)}' `
         -ServiceReadExecuteAccounts @('BUILTIN\\Users') `
@@ -2075,8 +2148,71 @@ try {{
         -OwnerAccount $currentAccount | Out-Null
 }}
 catch {{ $retargetRejected = $true }}
-if (-not $retargetRejected) {{ throw 'retargeted runtime DataRoot junction was accepted' }}
+if (
+    -not $retargetRejected -or
+    (Get-TicketboxPathEntryKindNoFollow $runtimeBinding.RuntimeDataRoot) -cne 'Reparse' -or
+    -not [string]::Equals(
+        (Get-TicketboxRuntimeDataJunctionTarget $runtimeBinding.RuntimeDataRoot),
+        $wrongRuntimeTarget,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+) {{
+    throw 'retargeted runtime DataRoot junction was accepted or changed'
+}}
 [System.IO.Directory]::Delete($runtimeBinding.RuntimeDataRoot)
+New-Item `
+    -ItemType Junction `
+    -Path $runtimeBinding.RuntimeDataRoot `
+    -Target $wrongRuntimeTarget | Out-Null
+$wrongLegacySubstitute =
+    [TicketboxRuntimeJunctionNativeMethods]::ReadMountPointSubstituteName(
+        $runtimeBinding.RuntimeDataRoot
+    )
+$wrongLegacyRejected = $false
+try {{
+    Initialize-TicketboxRuntimeDataBinding `
+        -DataRoot '{_literal(legacy_v1_root)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -ServiceReadExecuteAccounts @('BUILTIN\\Users') `
+        -CommonApplicationData '{_literal(runtime_binding_parent)}' `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount | Out-Null
+}}
+catch {{ $wrongLegacyRejected = $true }}
+if (
+    -not $wrongLegacyRejected -or
+    (Get-TicketboxPathEntryKindNoFollow $runtimeBinding.RuntimeDataRoot) -cne 'Reparse' -or
+    [TicketboxRuntimeJunctionNativeMethods]::ReadMountPointSubstituteName(
+        $runtimeBinding.RuntimeDataRoot
+    ) -cne $wrongLegacySubstitute
+) {{
+    throw 'foreign malformed runtime junction was accepted or changed'
+}}
+[System.IO.Directory]::Delete($runtimeBinding.RuntimeDataRoot)
+New-Item `
+    -ItemType Junction `
+    -Path $runtimeBinding.RuntimeDataRoot `
+    -Target $expectedRuntimeTarget | Out-Null
+if (-not (Test-TicketboxLegacyMalformedRuntimeDataJunction `
+    -Path $runtimeBinding.RuntimeDataRoot `
+    -ExpectedTarget $expectedRuntimeTarget)) {{
+    throw 'legacy PowerShell volume-GUID junction fixture was not recognized exactly'
+}}
+if (Test-Path `
+    -LiteralPath (Join-Path $runtimeBinding.RuntimeDataRoot 'runtime probe 中文 child') `
+    -PathType Container) {{
+    throw 'legacy PowerShell volume-GUID junction fixture unexpectedly traversed'
+}}
+$legacyRepairApplied = Repair-TicketboxLegacyMalformedRuntimeDataBindingIfNeeded `
+    -DataRoot '{_literal(legacy_v1_root)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -ServiceReadExecuteAccounts @('BUILTIN\\Users') `
+    -CommonApplicationData '{_literal(runtime_binding_parent)}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+if (-not $legacyRepairApplied) {{
+    throw 'prepare retry helper did not repair the exact trusted malformed junction'
+}}
 $runtimeBinding = Initialize-TicketboxRuntimeDataBinding `
     -DataRoot '{_literal(legacy_v1_root)}' `
     -InstallDir '{_literal(install_dir)}' `
@@ -2084,6 +2220,18 @@ $runtimeBinding = Initialize-TicketboxRuntimeDataBinding `
     -CommonApplicationData '{_literal(runtime_binding_parent)}' `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount
+if (
+    Test-TicketboxLegacyMalformedRuntimeDataJunction `
+        -Path $runtimeBinding.RuntimeDataRoot `
+        -ExpectedTarget $expectedRuntimeTarget
+) {{
+    throw 'legacy malformed runtime junction was not repaired'
+}}
+if (-not (Test-Path `
+    -LiteralPath (Join-Path $runtimeBinding.RuntimeDataRoot 'runtime probe 中文 child') `
+    -PathType Container)) {{
+    throw 'repaired runtime junction is not traversable'
+}}
 Remove-TicketboxRuntimeDataBinding `
     -DataRoot '{_literal(legacy_v1_root)}' `
     -InstallDir '{_literal(install_dir)}' `

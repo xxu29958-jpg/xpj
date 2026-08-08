@@ -248,6 +248,14 @@ function Set-TicketboxPreparedRuntimeServiceContract {
         (Get-TicketboxServiceSid $BackendServiceName)
     )
     $runtimeDataRoot = Get-TicketboxRuntimeDataRootPath
+    # This runs under the installer lifecycle lock and recognizes only the
+    # exact Volume-GUID junction emitted by the previous trusted package.
+    Repair-TicketboxLegacyMalformedRuntimeDataBindingIfNeeded `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -ServiceReadExecuteAccounts $serviceAccounts `
+        -DataRootMarkerAclPhase backend_read_optional `
+        -ExpectedBackendServiceName $BackendServiceName | Out-Null
     if (
         $bindingKind -ceq "Directory" -and
         (Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -ceq "Missing"
@@ -263,14 +271,16 @@ function Set-TicketboxPreparedRuntimeServiceContract {
         if (@(Get-ChildItem -LiteralPath $validatedBindingDirectory -Force).Count -ne 0) {
             throw "runtime DataRoot binding provisioning 断点含有未知 artifact。"
         }
-        $script:ServicePgData = $PgData
-        $script:ServiceAppData = $AppData
-        $script:ServiceLogDir = $LogDir
-        $script:ServiceBootstrapExposureRecoveryGuardPath = $BootstrapExposureRecoveryGuardPath
-        $script:ServiceDataVolumeIdentity = ""
-        $script:AllowMissingRuntimeDataAuthority = $true
-        $script:RuntimeDataBindingPresent = $false
-        return
+        # A failed exact legacy repair can leave this same protected, empty
+        # provisioning boundary. Recreate the projection here, before service
+        # contract recovery, so a service already bound to the stable runtime
+        # path cannot strand every later installer retry.
+        Initialize-TicketboxRuntimeDataBinding `
+            -DataRoot $DataRoot `
+            -InstallDir $InstallDir `
+            -ServiceReadExecuteAccounts $serviceAccounts `
+            -DataRootMarkerAclPhase backend_read_optional `
+            -ExpectedBackendServiceName $BackendServiceName | Out-Null
     }
     $binding = Read-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `

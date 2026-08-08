@@ -1601,6 +1601,434 @@ function Get-TicketboxVolumeBoundDataRootPath {
     return (ConvertTo-TicketboxCanonicalVolumeIdentity $DataVolumeIdentity) + $relativePath
 }
 
+function Initialize-TicketboxRuntimeJunctionNativeMethods {
+    if ("TicketboxRuntimeJunctionNativeMethods" -as [type]) {
+        return
+    }
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+public static class TicketboxRuntimeJunctionNativeMethods
+{
+    private const uint GenericWrite = 0x40000000;
+    private const uint FileShareRead = 0x00000001;
+    private const uint FileShareWrite = 0x00000002;
+    private const uint FileShareDelete = 0x00000004;
+    private const uint OpenExisting = 3;
+    private const uint FileFlagBackupSemantics = 0x02000000;
+    private const uint FileFlagOpenReparsePoint = 0x00200000;
+    private const uint FsctlSetReparsePoint = 0x000900A4;
+    private const uint FsctlGetReparsePoint = 0x000900A8;
+    private const uint IoReparseTagMountPoint = 0xA0000003;
+    private const uint VolumeNameGuid = 0x00000001;
+    private const int MaximumReparseDataBufferSize = 16 * 1024;
+    private const string ExtendedVolumePrefix = @"\\?\Volume{";
+    private const string NtPrefix = @"\??\";
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "CreateFileW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(
+        string fileName,
+        uint desiredAccess,
+        uint shareMode,
+        IntPtr securityAttributes,
+        uint creationDisposition,
+        uint flagsAndAttributes,
+        IntPtr templateFile);
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "CreateDirectoryW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateDirectoryW(
+        string path,
+        IntPtr securityAttributes);
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "DeviceIoControl",
+        ExactSpelling = true,
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetReparsePoint(
+        SafeFileHandle device,
+        uint controlCode,
+        [In] byte[] inputBuffer,
+        uint inputBufferSize,
+        IntPtr outputBuffer,
+        uint outputBufferSize,
+        out uint bytesReturned,
+        IntPtr overlapped);
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "DeviceIoControl",
+        ExactSpelling = true,
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetReparsePoint(
+        SafeFileHandle device,
+        uint controlCode,
+        IntPtr inputBuffer,
+        uint inputBufferSize,
+        [Out] byte[] outputBuffer,
+        uint outputBufferSize,
+        out uint bytesReturned,
+        IntPtr overlapped);
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "GetFinalPathNameByHandleW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true,
+        SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(
+        SafeFileHandle file,
+        StringBuilder path,
+        uint pathLength,
+        uint flags);
+
+    public static void CreateVolumeBoundDirectoryJunction(
+        string junctionPath,
+        string volumeTarget)
+    {
+        AssertCanonicalJunctionPath(junctionPath);
+        AssertCanonicalVolumeTarget(volumeTarget);
+        if (!Directory.Exists(volumeTarget))
+        {
+            throw new DirectoryNotFoundException(
+                "The volume-bound junction target does not exist: " + volumeTarget);
+        }
+        string substituteName = NtPrefix + volumeTarget.Substring(4);
+        byte[] substituteBytes = Encoding.Unicode.GetBytes(substituteName);
+        byte[] printBytes = Encoding.Unicode.GetBytes(volumeTarget);
+        int reparseDataLength = checked(12 + substituteBytes.Length + printBytes.Length);
+        int bufferLength = checked(8 + reparseDataLength);
+        if (bufferLength > MaximumReparseDataBufferSize ||
+            substituteBytes.Length > UInt16.MaxValue ||
+            printBytes.Length > UInt16.MaxValue)
+        {
+            throw new PathTooLongException(
+                "The volume-bound junction target exceeds the reparse buffer limit.");
+        }
+
+        byte[] buffer = new byte[bufferLength];
+        WriteUInt32(buffer, 0, IoReparseTagMountPoint);
+        WriteUInt16(buffer, 4, checked((ushort)reparseDataLength));
+        WriteUInt16(buffer, 6, 0);
+        WriteUInt16(buffer, 8, 0);
+        WriteUInt16(buffer, 10, checked((ushort)substituteBytes.Length));
+        WriteUInt16(buffer, 12, checked((ushort)(substituteBytes.Length + 2)));
+        WriteUInt16(buffer, 14, checked((ushort)printBytes.Length));
+        Buffer.BlockCopy(substituteBytes, 0, buffer, 16, substituteBytes.Length);
+        Buffer.BlockCopy(
+            printBytes,
+            0,
+            buffer,
+            16 + substituteBytes.Length + 2,
+            printBytes.Length);
+
+        if (!CreateDirectoryW(junctionPath, IntPtr.Zero))
+        {
+            ThrowLastWin32("Unable to create the exact junction directory", junctionPath);
+        }
+        bool created = false;
+        try
+        {
+            using (SafeFileHandle handle = OpenJunction(junctionPath, GenericWrite))
+            {
+                uint returned;
+                if (!SetReparsePoint(
+                    handle,
+                    FsctlSetReparsePoint,
+                    buffer,
+                    (uint)buffer.Length,
+                    IntPtr.Zero,
+                    0,
+                    out returned,
+                    IntPtr.Zero))
+                {
+                    ThrowLastWin32("Unable to create the volume-bound junction", junctionPath);
+                }
+            }
+            created = true;
+        }
+        finally
+        {
+            if (!created && Directory.Exists(junctionPath))
+            {
+                Directory.Delete(junctionPath, false);
+            }
+        }
+    }
+
+    public static string ReadMountPointSubstituteName(string junctionPath)
+    {
+        AssertCanonicalJunctionPath(junctionPath);
+        byte[] buffer = new byte[MaximumReparseDataBufferSize];
+        uint returned;
+        using (SafeFileHandle handle = OpenJunction(junctionPath, 0))
+        {
+            if (!GetReparsePoint(
+                handle,
+                FsctlGetReparsePoint,
+                IntPtr.Zero,
+                0,
+                buffer,
+                (uint)buffer.Length,
+                out returned,
+                IntPtr.Zero))
+            {
+                ThrowLastWin32("Unable to read the runtime junction", junctionPath);
+            }
+        }
+        if (returned < 16 || ReadUInt32(buffer, 0) != IoReparseTagMountPoint)
+        {
+            throw new IOException(
+                "The runtime DataRoot reparse point is not a directory junction: " +
+                junctionPath);
+        }
+        int reparseDataLength = ReadUInt16(buffer, 4);
+        if (reparseDataLength < 12 || checked(reparseDataLength + 8) > returned)
+        {
+            throw new IOException("The runtime junction reparse buffer is malformed.");
+        }
+        int substituteOffset = ReadUInt16(buffer, 8);
+        int substituteLength = ReadUInt16(buffer, 10);
+        int pathBufferLength = reparseDataLength - 8;
+        if ((substituteOffset & 1) != 0 || (substituteLength & 1) != 0 ||
+            substituteOffset < 0 || substituteLength < 2 ||
+            checked(substituteOffset + substituteLength) > pathBufferLength)
+        {
+            throw new IOException("The runtime junction substitute name is malformed.");
+        }
+        return Encoding.Unicode.GetString(
+            buffer,
+            checked(16 + substituteOffset),
+            substituteLength);
+    }
+
+    public static string ReadVolumeBoundTarget(string junctionPath)
+    {
+        string substituteName = ReadMountPointSubstituteName(junctionPath);
+        if (!substituteName.StartsWith(NtPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException(
+                "The runtime junction does not use an absolute NT substitute name.");
+        }
+        string target = @"\\?\" + substituteName.Substring(NtPrefix.Length);
+        AssertCanonicalVolumeTarget(target);
+        return target;
+    }
+
+    public static string ResolveDirectoryTarget(string junctionPath)
+    {
+        AssertCanonicalJunctionPath(junctionPath);
+        using (SafeFileHandle handle = CreateFileW(
+            junctionPath,
+            0,
+            FileShareRead | FileShareWrite | FileShareDelete,
+            IntPtr.Zero,
+            OpenExisting,
+            FileFlagBackupSemantics,
+            IntPtr.Zero))
+        {
+            if (handle.IsInvalid)
+            {
+                ThrowLastWin32("Unable to traverse the runtime junction", junctionPath);
+            }
+            StringBuilder path = new StringBuilder(512);
+            uint length = GetFinalPathNameByHandleW(
+                handle,
+                path,
+                (uint)path.Capacity,
+                VolumeNameGuid);
+            if (length == 0)
+            {
+                ThrowLastWin32("Unable to resolve the runtime junction target", junctionPath);
+            }
+            if (length >= path.Capacity)
+            {
+                path = new StringBuilder(checked((int)length + 1));
+                length = GetFinalPathNameByHandleW(
+                    handle,
+                    path,
+                    (uint)path.Capacity,
+                    VolumeNameGuid);
+                if (length == 0 || length >= path.Capacity)
+                {
+                    ThrowLastWin32(
+                        "Unable to resolve the complete runtime junction target",
+                        junctionPath);
+                }
+            }
+            return path.ToString();
+        }
+    }
+
+    private static SafeFileHandle OpenJunction(string junctionPath, uint desiredAccess)
+    {
+        SafeFileHandle handle = CreateFileW(
+            junctionPath,
+            desiredAccess,
+            FileShareRead | FileShareWrite | FileShareDelete,
+            IntPtr.Zero,
+            OpenExisting,
+            FileFlagBackupSemantics | FileFlagOpenReparsePoint,
+            IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            ThrowLastWin32("Unable to open the exact runtime junction", junctionPath);
+        }
+        return handle;
+    }
+
+    private static void AssertCanonicalJunctionPath(string path)
+    {
+        if (String.IsNullOrEmpty(path) ||
+            !String.Equals(path, path.Trim(), StringComparison.Ordinal) ||
+            path.IndexOf('\0') >= 0 ||
+            !Path.IsPathRooted(path))
+        {
+            throw new ArgumentException(
+                "The junction path must be a canonical absolute Windows path.",
+                "path");
+        }
+    }
+
+    private static void AssertCanonicalVolumeTarget(string target)
+    {
+        if (String.IsNullOrEmpty(target) ||
+            !String.Equals(target, target.Trim(), StringComparison.Ordinal) ||
+            target.IndexOf('\0') >= 0 ||
+            target.IndexOf('/') >= 0 ||
+            !target.StartsWith(ExtendedVolumePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "The junction target must use a canonical volume GUID path.",
+                "target");
+        }
+        int closeBrace = target.IndexOf('}', ExtendedVolumePrefix.Length);
+        Guid volumeGuid;
+        if (closeBrace < 0 || closeBrace + 2 >= target.Length ||
+            target[closeBrace + 1] != '\\' ||
+            !Guid.TryParse(
+                target.Substring(
+                    ExtendedVolumePrefix.Length,
+                    closeBrace - ExtendedVolumePrefix.Length),
+                out volumeGuid))
+        {
+            throw new ArgumentException(
+                "The junction target contains an invalid or root-only volume GUID path.",
+                "target");
+        }
+    }
+
+    private static void WriteUInt16(byte[] buffer, int offset, ushort value)
+    {
+        byte[] encoded = BitConverter.GetBytes(value);
+        Buffer.BlockCopy(encoded, 0, buffer, offset, encoded.Length);
+    }
+
+    private static void WriteUInt32(byte[] buffer, int offset, uint value)
+    {
+        byte[] encoded = BitConverter.GetBytes(value);
+        Buffer.BlockCopy(encoded, 0, buffer, offset, encoded.Length);
+    }
+
+    private static ushort ReadUInt16(byte[] buffer, int offset)
+    {
+        return BitConverter.ToUInt16(buffer, offset);
+    }
+
+    private static uint ReadUInt32(byte[] buffer, int offset)
+    {
+        return BitConverter.ToUInt32(buffer, offset);
+    }
+
+    private static void ThrowLastWin32(string operation, string path)
+    {
+        int error = Marshal.GetLastWin32Error();
+        throw new Win32Exception(error, operation + ": " + path);
+    }
+}
+'@
+}
+
+function New-TicketboxRuntimeDataJunction {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Target
+    )
+
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
+    $Target = ConvertTo-TicketboxCanonicalVolumeIdentityTarget $Target
+    Initialize-TicketboxRuntimeJunctionNativeMethods
+    [TicketboxRuntimeJunctionNativeMethods]::CreateVolumeBoundDirectoryJunction(
+        $Path,
+        $Target
+    )
+}
+
+function ConvertTo-TicketboxCanonicalVolumeIdentityTarget([string]$Target) {
+    if ([string]::IsNullOrWhiteSpace($Target)) {
+        throw "Volume GUID target 不能为空。"
+    }
+    $separator = $Target.IndexOf("\", 4)
+    if ($separator -lt 0) {
+        throw "Volume GUID target 缺少卷内路径。"
+    }
+    $volumeIdentity = $Target.Substring(0, $separator + 1)
+    $relativePath = $Target.Substring($separator + 1)
+    if ([string]::IsNullOrWhiteSpace($relativePath)) {
+        throw "Volume GUID target 不能指向卷根。"
+    }
+    return (ConvertTo-TicketboxCanonicalVolumeIdentity $volumeIdentity) + $relativePath
+}
+
+function Get-TicketboxRuntimeDataJunctionTarget([string]$Path) {
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
+    Initialize-TicketboxRuntimeJunctionNativeMethods
+    return [TicketboxRuntimeJunctionNativeMethods]::ReadVolumeBoundTarget($Path)
+}
+
+function Get-TicketboxRuntimeDataJunctionResolvedTarget([string]$Path) {
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
+    Initialize-TicketboxRuntimeJunctionNativeMethods
+    return [TicketboxRuntimeJunctionNativeMethods]::ResolveDirectoryTarget($Path)
+}
+
+function Test-TicketboxLegacyMalformedRuntimeDataJunction {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$ExpectedTarget
+    )
+
+    $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
+    $ExpectedTarget = ConvertTo-TicketboxCanonicalVolumeIdentityTarget $ExpectedTarget
+    Initialize-TicketboxRuntimeJunctionNativeMethods
+    $actualSubstitute =
+        [TicketboxRuntimeJunctionNativeMethods]::ReadMountPointSubstituteName($Path)
+    $legacyMalformedSubstitute = "\??\$ExpectedTarget"
+    return [string]::Equals(
+        $actualSubstitute,
+        $legacyMalformedSubstitute,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+}
+
 function Read-TicketboxRuntimeDataBinding {
     param(
         [Parameter(Mandatory = $true)][string]$DataRoot,
@@ -1643,20 +2071,22 @@ function Read-TicketboxRuntimeDataBinding {
     if ((Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -cne "Reparse") {
         throw "runtime DataRoot binding 必须是专用 junction。"
     }
-    $junction = Get-Item -LiteralPath $runtimeDataRoot -Force -ErrorAction Stop
-    $targets = @($junction.Target)
     $expectedTarget = Get-TicketboxVolumeBoundDataRootPath `
         -DataRoot $DataRoot `
         -DataVolumeIdentity $marker.DataVolumeIdentity
+    $actualTarget = Get-TicketboxRuntimeDataJunctionTarget $runtimeDataRoot
+    $resolvedTarget = Get-TicketboxRuntimeDataJunctionResolvedTarget $runtimeDataRoot
     if (
-        [string]$junction.LinkType -cne "Junction" -or
-        $targets.Count -ne 1 -or
         -not [string]::Equals(
-            ([string]$targets[0]).TrimEnd("\"),
+            $actualTarget.TrimEnd("\"),
             $expectedTarget.TrimEnd("\"),
             [System.StringComparison]::OrdinalIgnoreCase
         ) -or
-        -not (Test-Path -LiteralPath $runtimeDataRoot -PathType Container)
+        -not [string]::Equals(
+            $resolvedTarget.TrimEnd("\"),
+            $expectedTarget.TrimEnd("\"),
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
     ) {
         throw "runtime DataRoot junction 与 v2 marker 的 Volume GUID 绑定不一致。"
     }
@@ -1668,6 +2098,80 @@ function Read-TicketboxRuntimeDataBinding {
         DataVolumeIdentity = $marker.DataVolumeIdentity
         VolumeBoundTarget = $expectedTarget
     }
+}
+
+function Repair-TicketboxLegacyMalformedRuntimeDataBindingIfNeeded {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string[]]$ServiceReadExecuteAccounts,
+        [ValidateSet(
+            "privileged_only",
+            "backend_read_optional",
+            "backend_read_required"
+        )][string]$DataRootMarkerAclPhase = "privileged_only",
+        [string]$ExpectedBackendServiceName = "",
+        [string]$CommonApplicationData = "",
+        [string[]]$FullControlAccounts = @("SYSTEM", "BUILTIN\Administrators"),
+        [string]$OwnerAccount = "SYSTEM"
+    )
+
+    $DataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+    $InstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
+    $bindingDirectory = Assert-TicketboxRuntimeDataBindingDomain `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -CommonApplicationData $CommonApplicationData
+    $bindingKind = Get-TicketboxPathEntryKindNoFollow $bindingDirectory
+    if ($bindingKind -ceq "Missing") {
+        return $false
+    }
+    if ($bindingKind -cne "Directory") {
+        throw "runtime DataRoot binding root 形态不安全：$bindingKind"
+    }
+    Assert-TicketboxProtectedDirectoryAcl `
+        -Path $bindingDirectory `
+        -FullControlAccounts $FullControlAccounts `
+        -InheritableReadExecuteAccounts $ServiceReadExecuteAccounts `
+        -OwnerAccount $OwnerAccount
+    $runtimeDataRoot = Get-TicketboxRuntimeDataRootPath $CommonApplicationData
+    if ((Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -cne "Reparse") {
+        return $false
+    }
+    $marker = Read-TicketboxProtectedDataRootMarker `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -FullControlAccounts $FullControlAccounts `
+        -AclPhase $DataRootMarkerAclPhase `
+        -ExpectedBackendServiceName $ExpectedBackendServiceName `
+        -OwnerAccount $OwnerAccount
+    $target = Get-TicketboxVolumeBoundDataRootPath `
+        -DataRoot $DataRoot `
+        -DataVolumeIdentity $marker.DataVolumeIdentity
+    if (-not (Test-TicketboxLegacyMalformedRuntimeDataJunction `
+        -Path $runtimeDataRoot `
+        -ExpectedTarget $target)) {
+        return $false
+    }
+
+    # Windows PowerShell and PowerShell 7 both pass the Volume-GUID target to
+    # New-Item, but the provider stores a double-prefixed NT substitute name.
+    # The protected parent and exact raw substitute are verified before this
+    # one known historical residual is replaced; all foreign reparses survive.
+    [System.IO.Directory]::Delete($runtimeDataRoot, $false)
+    New-TicketboxRuntimeDataJunction `
+        -Path $runtimeDataRoot `
+        -Target $target
+    Read-TicketboxRuntimeDataBinding `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -ServiceReadExecuteAccounts $ServiceReadExecuteAccounts `
+        -DataRootMarkerAclPhase $DataRootMarkerAclPhase `
+        -ExpectedBackendServiceName $ExpectedBackendServiceName `
+        -CommonApplicationData $CommonApplicationData `
+        -FullControlAccounts $FullControlAccounts `
+        -OwnerAccount $OwnerAccount | Out-Null
+    return $true
 }
 
 function Initialize-TicketboxRuntimeDataBinding {
@@ -1720,16 +2224,14 @@ function Initialize-TicketboxRuntimeDataBinding {
     }
     $runtimeDataRoot = Get-TicketboxRuntimeDataRootPath $CommonApplicationData
     $junctionKind = Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot
+    $target = Get-TicketboxVolumeBoundDataRootPath `
+        -DataRoot $DataRoot `
+        -DataVolumeIdentity $marker.DataVolumeIdentity
     if ($junctionKind -ceq "Missing") {
-        $target = Get-TicketboxVolumeBoundDataRootPath `
-            -DataRoot $DataRoot `
-            -DataVolumeIdentity $marker.DataVolumeIdentity
         try {
-            New-Item `
-                -ItemType Junction `
+            New-TicketboxRuntimeDataJunction `
                 -Path $runtimeDataRoot `
-                -Target $target `
-                -ErrorAction Stop | Out-Null
+                -Target $target
         }
         catch {
             if ((Get-TicketboxPathEntryKindNoFollow $runtimeDataRoot) -cne "Reparse") {
@@ -1737,7 +2239,18 @@ function Initialize-TicketboxRuntimeDataBinding {
             }
         }
     }
-    elseif ($junctionKind -cne "Reparse") {
+    elseif ($junctionKind -ceq "Reparse") {
+        Repair-TicketboxLegacyMalformedRuntimeDataBindingIfNeeded `
+            -DataRoot $DataRoot `
+            -InstallDir $InstallDir `
+            -ServiceReadExecuteAccounts $ServiceReadExecuteAccounts `
+            -DataRootMarkerAclPhase $DataRootMarkerAclPhase `
+            -ExpectedBackendServiceName $ExpectedBackendServiceName `
+            -CommonApplicationData $CommonApplicationData `
+            -FullControlAccounts $FullControlAccounts `
+            -OwnerAccount $OwnerAccount | Out-Null
+    }
+    else {
         throw "runtime DataRoot binding child 不是 junction 或缺失路径。"
     }
     return Read-TicketboxRuntimeDataBinding `
