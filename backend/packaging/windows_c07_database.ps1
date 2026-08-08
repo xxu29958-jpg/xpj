@@ -311,79 +311,38 @@ function ConvertTo-TicketboxC07ScramVerifier {
 }
 
 function Resolve-TicketboxC07DatabaseHostAuthority {
-    if (-not (Test-TicketboxServiceExists $script:TicketboxC07PostgresServiceName)) {
-        throw "C07 只接受已安装的 $script:TicketboxC07PostgresServiceName SCM authority。"
-    }
-    Assert-TicketboxServiceAccount `
-        -Name $script:TicketboxC07PostgresServiceName `
-        -ExpectedAccount "NT SERVICE\$script:TicketboxC07PostgresServiceName"
-
-    $imagePath = Get-TicketboxServiceImagePath $script:TicketboxC07PostgresServiceName
-    $arguments = @(Split-TicketboxWindowsCommandLine $imagePath)
     if (
-        $arguments.Count -ne 7 -or
-        $arguments[1] -cne "runservice" -or
-        $arguments[2] -cne "-N" -or
-        $arguments[3] -cne $script:TicketboxC07PostgresServiceName -or
-        $arguments[4] -cne "-D" -or
-        $arguments[6] -cne "-w"
+        $null -eq (Get-Command `
+            -Name Resolve-TicketboxPostgresServiceHostAuthority `
+            -CommandType Function `
+            -ErrorAction SilentlyContinue)
     ) {
-        throw "C07 PostgreSQL SCM ImagePath 不符合受管宿主合同。"
+        throw "C07 缺少通用 PostgreSQL SCM 宿主权威解析器。"
     }
-    $pgCtl = ConvertTo-TicketboxFullPath $arguments[0]
-    $pgData = ConvertTo-TicketboxFullPath $arguments[5]
-    Assert-TicketboxPgServiceCommand `
-        -Name $script:TicketboxC07PostgresServiceName `
-        -ExpectedExecutable $pgCtl `
-        -ExpectedServiceName $script:TicketboxC07PostgresServiceName `
-        -ExpectedDataRoot $pgData
-    Assert-NoTicketboxAncestorReparsePoints $pgData
-    if ((Get-TicketboxPathEntryKindNoFollow $pgData) -cne "Directory") {
-        throw "C07 SCM 声明的 PGDATA 不是受管普通目录。"
-    }
-
-    $postmasterPidPath = Join-Path $pgData "postmaster.pid"
-    if ((Get-TicketboxPathEntryKindNoFollow $postmasterPidPath) -cne "File") {
-        throw "C07 PostgreSQL 缺少受管 postmaster.pid。"
-    }
-    $pidLines = @(Get-Content -LiteralPath $postmasterPidPath -Encoding ASCII)
-    if ($pidLines.Count -lt 4) {
-        throw "C07 PostgreSQL postmaster.pid 结构不完整。"
-    }
-    $postmasterPid = 0
-    $port = 0
     if (
-        -not [int]::TryParse($pidLines[0].Trim(), [ref]$postmasterPid) -or
-        $postmasterPid -le 0 -or
-        -not [int]::TryParse($pidLines[3].Trim(), [ref]$port) -or
-        $port -lt 1 -or
-        $port -gt 65535
+        [string]::IsNullOrWhiteSpace([string]$DataRoot) -or
+        [string]::IsNullOrWhiteSpace([string]$InstallDir) -or
+        [string]::IsNullOrWhiteSpace([string]$BackendServiceName)
     ) {
-        throw "C07 PostgreSQL postmaster.pid 的 PID/port 无效。"
+        throw "C07 PostgreSQL 宿主权威缺少安装路径或服务合同。"
     }
-    if (-not (Test-TicketboxPathEquals $pidLines[1].Trim() $pgData)) {
-        throw "C07 PostgreSQL postmaster.pid 的 data directory 与 SCM 不一致。"
-    }
-    $servicePid = Get-TicketboxServiceProcessId $script:TicketboxC07PostgresServiceName
-    if ($servicePid -le 0) {
-        throw "C07 PostgreSQL SCM 服务没有有效宿主 PID。"
-    }
-
-    $pgBin = Split-Path -Parent $pgCtl
-    $psql = Join-Path $pgBin "psql.exe"
-    if ((Get-TicketboxPathEntryKindNoFollow $psql) -cne "File") {
-        throw "C07 PostgreSQL 受管 psql.exe 不存在。"
-    }
-    Assert-NoTicketboxAncestorReparsePoints $psql
+    $authority = Resolve-TicketboxPostgresServiceHostAuthority `
+        -ServiceName $script:TicketboxC07PostgresServiceName `
+        -ExpectedPgCtlPath (Join-Path $InstallDir "pg\bin\pg_ctl.exe") `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -BackendServiceName $BackendServiceName
     return [pscustomobject]@{
         Schema = "ticketbox-c07-host-db-authority-v1"
-        ServiceName = $script:TicketboxC07PostgresServiceName
-        ServiceProcessId = $servicePid
-        PostmasterProcessId = $postmasterPid
-        PgCtlPath = $pgCtl
-        PsqlPath = $psql
-        PgData = $pgData
-        Port = $port
+        ServiceName = [string]$authority.ServiceName
+        ServiceProcessId = [int]$authority.ServiceProcessId
+        PostmasterProcessId = [int]$authority.PostmasterProcessId
+        PgCtlPath = [string]$authority.PgCtlPath
+        PsqlPath = [string]$authority.PsqlPath
+        PgData = [string]$authority.PgData
+        Port = [int]$authority.Port
+        UsesRuntimeBinding = [bool]$authority.UsesRuntimeBinding
+        DataVolumeIdentity = [string]$authority.DataVolumeIdentity
     }
 }
 

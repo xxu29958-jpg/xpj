@@ -1299,6 +1299,16 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     assert '"backend_read_required"' in marker_acl_contract
     assert "Get-TicketboxServiceSid $ExpectedBackendServiceName" in marker_acl_contract
     assert "-ReadExecuteAccounts @($backendServiceSid)" in marker_acl_contract
+    optional_acl = marker_acl_contract[
+        marker_acl_contract.index('if ($AclPhase -ceq "backend_read_optional")') :
+        marker_acl_contract.index(
+            "Assert-TicketboxExactFileAcl `",
+            marker_acl_contract.index('if ($AclPhase -ceq "backend_read_optional")'),
+        )
+    ]
+    assert "$acl = Get-TicketboxPathAcl $Path" in optional_acl
+    assert "$backendRules.Count -eq 0" in optional_acl
+    assert "catch" not in optional_acl
     assert "Get-TicketboxDataRootMarkerAclReadExecuteAccounts" in marker_reader
     assert "Set-TicketboxExactFileAcl" not in marker_reader
 

@@ -2943,6 +2943,18 @@ begin
       '请确认安装目标卷可写、没有安全软件拦截后，使用同一可信安装包重新运行。' + #13#10 +
       '支持代码：' + SupportCode;
   end
+  else if FailureCode = 'postgres_host_authority_validation_failed' then
+  begin
+    if SupportCode <> 'TBX-INSTALL-POSTGRES-HOST' then
+    begin
+      exit;
+    end;
+    MessageText :=
+      '本机 PostgreSQL 服务宿主身份校验未通过。' + #13#10 +
+      '安装器检测到 SCM 命令、运行目录绑定或 postmaster 进程凭据与受管安装合同不一致，因此已停止继续。' + #13#10 +
+      '请勿手动删除数据库或安装标记；保存日志，并使用同版或更新的可信安装包安全重试。' + #13#10 +
+      '支持代码：' + SupportCode;
+  end
   else if FailureCode = 'installation_identity_recovery_failed' then
   begin
     if SupportCode <> 'TBX-INSTALL-IDENTITY' then

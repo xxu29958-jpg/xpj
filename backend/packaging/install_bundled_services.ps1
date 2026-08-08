@@ -356,7 +356,8 @@ function Publish-TicketboxInstallPublicFailureReceipt {
         if ($candidate -in @(
             "backend_payload_manifest_order_invalid",
             "postgres_cluster_initialization_failed",
-            "installation_identity_recovery_failed"
+            "installation_identity_recovery_failed",
+            "postgres_host_authority_validation_failed"
         )) {
             $failureCode = $candidate
         }
@@ -369,6 +370,9 @@ function Publish-TicketboxInstallPublicFailureReceipt {
     }
     elseif ($failureCode -ceq "installation_identity_recovery_failed") {
         $supportCode = "TBX-INSTALL-IDENTITY"
+    }
+    elseif ($failureCode -ceq "postgres_host_authority_validation_failed") {
+        $supportCode = "TBX-INSTALL-POSTGRES-HOST"
     }
     else {
         $supportCode = "TBX-INSTALL-UNKNOWN"

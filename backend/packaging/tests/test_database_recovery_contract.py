@@ -188,6 +188,216 @@ Add-Type -TypeDefinition $source -Language CSharp `
     return output_path
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL host contract")
+def test_postgres_host_authority_accepts_only_managed_physical_or_runtime_paths(
+    tmp_path: Path,
+) -> None:
+    for index, engine in enumerate(_powershell_engines()):
+        root = tmp_path / f"postgres-host-authority-{index}"
+        install_dir = root / "program"
+        data_root = root / "managed"
+        physical_pgdata = data_root / "pgdata"
+        runtime_data_root = root / "runtime-binding" / "data-root"
+        runtime_pgdata = runtime_data_root / "pgdata"
+        pg_bin = install_dir / "pg" / "bin"
+        for directory in (physical_pgdata, runtime_pgdata, pg_bin):
+            directory.mkdir(parents=True)
+        pg_ctl = pg_bin / "pg_ctl.exe"
+        psql = pg_bin / "psql.exe"
+        pg_ctl.write_bytes(b"stub")
+        psql.write_bytes(b"stub")
+        script = tmp_path / f"postgres-host-authority-{index}.ps1"
+        _write_ps1(
+            script,
+            rf"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(DATABASE_SAFETY_SCRIPT)}'
+
+$installDir = '{_ps_literal(install_dir)}'
+$dataRoot = '{_ps_literal(data_root)}'
+$physicalPgData = '{_ps_literal(physical_pgdata)}'
+$runtimeDataRoot = '{_ps_literal(runtime_data_root)}'
+$runtimePgData = '{_ps_literal(runtime_pgdata)}'
+$pgCtl = '{_ps_literal(pg_ctl)}'
+$psql = '{_ps_literal(psql)}'
+$script:activePgData = $physicalPgData
+$script:bindingMode = 'exact'
+$script:bindingReads = 0
+$script:reparseChecks = New-Object 'Collections.Generic.List[string]'
+
+function ConvertTo-TicketboxWin32CanonicalPath([string]$Path) {{
+    return [IO.Path]::GetFullPath($Path).TrimEnd('\')
+}}
+function Test-TicketboxPathEquals([string]$Left, [string]$Right) {{
+    return [string]::Equals(
+        (ConvertTo-TicketboxWin32CanonicalPath $Left),
+        (ConvertTo-TicketboxWin32CanonicalPath $Right),
+        [StringComparison]::OrdinalIgnoreCase
+    )
+}}
+function Test-TicketboxPathWithin([string]$Path, [string]$Parent) {{
+    $candidate = ConvertTo-TicketboxWin32CanonicalPath $Path
+    $container = ConvertTo-TicketboxWin32CanonicalPath $Parent
+    return (
+        (Test-TicketboxPathEquals $candidate $container) -or
+        $candidate.StartsWith($container + '\', [StringComparison]::OrdinalIgnoreCase)
+    )
+}}
+function Test-TicketboxServiceExists([string]$Name) {{
+    return $Name -ceq 'TicketboxPg'
+}}
+function Assert-TicketboxServiceAccount {{
+    param([string]$Name, [string]$ExpectedAccount)
+    if ($Name -cne 'TicketboxPg' -or $ExpectedAccount -cne 'NT SERVICE\TicketboxPg') {{
+        throw 'service account contract drifted'
+    }}
+}}
+function Get-TicketboxServiceImagePath([string]$Name) {{ return 'scm-owned' }}
+function Split-TicketboxWindowsCommandLine([string]$CommandLine) {{
+    return @(
+        $pgCtl, 'runservice', '-N', 'TicketboxPg',
+        '-D', $script:activePgData, '-w'
+    )
+}}
+function Get-TicketboxPathEntryKindNoFollow([string]$Path) {{
+    if ([IO.File]::Exists($Path)) {{ return 'File' }}
+    if ([IO.Directory]::Exists($Path)) {{ return 'Directory' }}
+    return 'Missing'
+}}
+function Assert-NoTicketboxAncestorReparsePoints([string]$Path) {{
+    $script:reparseChecks.Add((ConvertTo-TicketboxWin32CanonicalPath $Path))
+}}
+function Assert-TicketboxPgServiceCommand {{
+    param($Name, $ExpectedExecutable, $ExpectedServiceName, $ExpectedDataRoot)
+    if (
+        $Name -cne 'TicketboxPg' -or
+        $ExpectedServiceName -cne 'TicketboxPg' -or
+        -not (Test-TicketboxPathEquals $ExpectedExecutable $pgCtl) -or
+        -not (Test-TicketboxPathEquals $ExpectedDataRoot $script:activePgData)
+    ) {{
+        throw 'exact PostgreSQL SCM command was not revalidated'
+    }}
+}}
+function Get-TicketboxRuntimeDataRootPath {{ return $runtimeDataRoot }}
+function Get-TicketboxServiceSid([string]$Name) {{
+    if ($Name -ceq 'TicketboxPg') {{ return 'S-1-5-80-1-2-3-4-5' }}
+    if ($Name -ceq 'TicketboxBackend') {{ return 'S-1-5-80-6-7-8-9-10' }}
+    throw "unexpected service SID request: $Name"
+}}
+function Read-TicketboxRuntimeDataBinding {{
+    param(
+        $DataRoot,
+        $InstallDir,
+        [string[]]$ServiceReadExecuteAccounts,
+        $DataRootMarkerAclPhase,
+        $ExpectedBackendServiceName
+    )
+    $script:bindingReads += 1
+    if (
+        -not (Test-TicketboxPathEquals $DataRoot $dataRoot) -or
+        -not (Test-TicketboxPathEquals $InstallDir $installDir) -or
+        ($ServiceReadExecuteAccounts -join '|') -cne
+            'S-1-5-80-1-2-3-4-5|S-1-5-80-6-7-8-9-10' -or
+        $DataRootMarkerAclPhase -cne 'backend_read_optional' -or
+        $ExpectedBackendServiceName -cne 'TicketboxBackend'
+    ) {{
+        throw 'runtime binding was not read through the exact installation contract'
+    }}
+    if ($script:bindingMode -ceq 'reject') {{
+        throw 'runtime junction marker mismatch'
+    }}
+    $boundPgData = if ($script:bindingMode -ceq 'mismatch') {{
+        Join-Path $runtimeDataRoot 'foreign-pgdata'
+    }} else {{ $runtimePgData }}
+    $volumeIdentity = if (
+        $script:bindingMode -ceq 'drift' -and $script:bindingReads -eq 2
+    ) {{ 'volume-B' }} else {{ 'volume-A' }}
+    return [pscustomobject]@{{
+        RuntimePgData = $boundPgData
+        DataVolumeIdentity = $volumeIdentity
+        VolumeBoundTarget = 'volume-target-A'
+    }}
+}}
+function Get-TicketboxServiceProcessId([string]$Name) {{ return 9876 }}
+
+function Write-TestPostmasterPid([string]$PgData) {{
+    [IO.File]::WriteAllText(
+        (Join-Path $PgData 'postmaster.pid'),
+        "4321`r`n$PgData`r`n0`r`n5544`r`n",
+        [Text.Encoding]::ASCII
+    )
+}}
+function Resolve-TestAuthority {{
+    return Resolve-TicketboxPostgresServiceHostAuthority `
+        -ServiceName 'TicketboxPg' `
+        -ExpectedPgCtlPath $pgCtl `
+        -DataRoot $dataRoot `
+        -InstallDir $installDir `
+        -BackendServiceName 'TicketboxBackend'
+}}
+function Assert-RejectedBinding([string]$Mode, [string]$MessageFragment) {{
+    $script:bindingMode = $Mode
+    $script:bindingReads = 0
+    $accepted = $true
+    try {{ [void](Resolve-TestAuthority) }}
+    catch {{
+        $accepted = $false
+        if (
+            $_.Exception.Data['TicketboxInstallPublicFailureCode'] -cne
+                'postgres_host_authority_validation_failed' -or
+            $_.Exception.Message -notlike "*$MessageFragment*"
+        ) {{ throw }}
+    }}
+    if ($accepted) {{ throw "untrusted runtime binding was accepted: $Mode" }}
+}}
+
+Write-TestPostmasterPid $physicalPgData
+$physical = Resolve-TestAuthority
+if (
+    $physical.Schema -cne 'ticketbox-windows-postgres-host-authority-v1' -or
+    $physical.UsesRuntimeBinding -or
+    $physical.DataVolumeIdentity -cne '' -or
+    $physical.ServiceProcessId -ne 9876 -or
+    $physical.PostmasterProcessId -ne 4321 -or
+    $physical.Port -ne 5544 -or
+    -not (Test-TicketboxPathEquals $physical.PgData $physicalPgData) -or
+    $script:bindingReads -ne 0 -or
+    $script:reparseChecks.Count -ne 3 -or
+    -not ($script:reparseChecks | Where-Object {{
+        Test-TicketboxPathEquals $_ $physicalPgData
+    }})
+) {{
+    throw 'direct physical PGDATA authority drifted'
+}}
+
+$script:activePgData = $runtimePgData
+$script:bindingMode = 'exact'
+$script:bindingReads = 0
+$script:reparseChecks.Clear()
+Write-TestPostmasterPid $runtimePgData
+$runtime = Resolve-TestAuthority
+if (
+    -not $runtime.UsesRuntimeBinding -or
+    $runtime.DataVolumeIdentity -cne 'volume-A' -or
+    $script:bindingReads -ne 2 -or
+    $script:reparseChecks.Count -ne 2 -or
+    ($script:reparseChecks | Where-Object {{
+        (Test-TicketboxPathEquals $_ $runtimeDataRoot) -or
+        (Test-TicketboxPathEquals $_ $runtimePgData)
+    }})
+) {{
+    throw 'verified runtime PGDATA authority drifted or used legacy reparse rejection'
+}}
+
+Assert-RejectedBinding 'mismatch' 'runtime binding'
+Assert-RejectedBinding 'reject' 'runtime junction marker mismatch'
+Assert-RejectedBinding 'drift' '发生漂移'
+""",
+        )
+        result = _run_ps1(engine, script)
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
 def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     database = _read_database_script()
     database_safety = DATABASE_SAFETY_SCRIPT.read_text(encoding="utf-8-sig")

@@ -5691,17 +5691,23 @@ function Get-TicketboxDataRootMarkerAclReadExecuteAccounts {
     $backendServiceSid = Get-TicketboxExpectedBackendServiceSid `
         $ExpectedBackendServiceName
     if ($AclPhase -ceq "backend_read_optional") {
-        try {
+        $acl = Get-TicketboxPathAcl $Path
+        $backendRules = @($acl.Access | Where-Object {
+            $_.IdentityReference.Translate(
+                [System.Security.Principal.SecurityIdentifier]
+            ).Value -eq $backendServiceSid
+        })
+        if ($backendRules.Count -eq 0) {
             Assert-TicketboxExactFileAcl `
                 -Path $Path `
                 -Accounts $FullControlAccounts `
                 -OwnerAccount $OwnerAccount
             return
         }
-        catch {
-            # The only second accepted shape is the same privileged ACL plus
-            # exact read/execute for the trusted backend service identity.
-        }
+        # The only second accepted shape is the same privileged ACL plus exact
+        # read/execute for the trusted backend service identity. Select the
+        # shape from the ACL instead of using a caught exception as control
+        # flow; Start-Transcript otherwise records a false terminating error.
     }
     Assert-TicketboxExactFileAcl `
         -Path $Path `

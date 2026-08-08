@@ -97,6 +97,191 @@ function Get-TicketboxLocalDatabaseConnection {
     }
 }
 
+function Resolve-TicketboxPostgresServiceHostAuthority {
+    <#
+    .SYNOPSIS
+      Derives the live bundled PostgreSQL host only from the exact SCM contract.
+    .DESCRIPTION
+      A current service may use either the legacy direct PGDATA path or the
+      installer-owned runtime DataRoot projection. Arbitrary reparse points are
+      never accepted: the runtime form is authorized only after the protected
+      binding root, exact Volume-GUID junction target, DataRoot marker, ACLs,
+      and both service SIDs have been revalidated by the shared installation
+      safety boundary.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][string]$ExpectedPgCtlPath,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName
+    )
+
+    try {
+        $canonicalDataRoot = ConvertTo-TicketboxWin32CanonicalPath $DataRoot
+        $canonicalInstallDir = ConvertTo-TicketboxWin32CanonicalPath $InstallDir
+        $canonicalPgCtl = ConvertTo-TicketboxWin32CanonicalPath $ExpectedPgCtlPath
+        if (-not (Test-TicketboxPathWithin $canonicalPgCtl $canonicalInstallDir)) {
+            throw "PostgreSQL pg_ctl.exe 不在当前安装目录内。"
+        }
+        if (-not (Test-TicketboxServiceExists $ServiceName)) {
+            throw "受管 PostgreSQL 服务不存在：$ServiceName"
+        }
+        Assert-TicketboxServiceAccount `
+            -Name $ServiceName `
+            -ExpectedAccount "NT SERVICE\$ServiceName"
+
+        $imagePath = Get-TicketboxServiceImagePath $ServiceName
+        $arguments = @(Split-TicketboxWindowsCommandLine $imagePath)
+        if (
+            $arguments.Count -ne 7 -or
+            $arguments[1] -cne "runservice" -or
+            $arguments[2] -cne "-N" -or
+            $arguments[3] -cne $ServiceName -or
+            $arguments[4] -cne "-D" -or
+            $arguments[6] -cne "-w"
+        ) {
+            throw "PostgreSQL SCM ImagePath 不符合受管宿主合同。"
+        }
+        $actualPgCtl = ConvertTo-TicketboxWin32CanonicalPath $arguments[0]
+        $pgData = ConvertTo-TicketboxWin32CanonicalPath $arguments[5]
+        if (-not (Test-TicketboxPathEquals $actualPgCtl $canonicalPgCtl)) {
+            throw "PostgreSQL SCM executable 与当前安装目录不一致。"
+        }
+        if ((Get-TicketboxPathEntryKindNoFollow $canonicalPgCtl) -cne "File") {
+            throw "PostgreSQL SCM executable 不是受保护普通文件。"
+        }
+        Assert-NoTicketboxAncestorReparsePoints $canonicalPgCtl
+        Assert-TicketboxPgServiceCommand `
+            -Name $ServiceName `
+            -ExpectedExecutable $canonicalPgCtl `
+            -ExpectedServiceName $ServiceName `
+            -ExpectedDataRoot $pgData
+
+        $physicalPgData = Join-Path $canonicalDataRoot "pgdata"
+        $runtimeDataRoot = Get-TicketboxRuntimeDataRootPath
+        $expectedRuntimePgData = Join-Path $runtimeDataRoot "pgdata"
+        $runtimeBinding = $null
+        $usesRuntimeBinding = $false
+        if (Test-TicketboxPathEquals $pgData $physicalPgData) {
+            Assert-NoTicketboxAncestorReparsePoints $pgData
+        }
+        elseif (Test-TicketboxPathEquals $pgData $expectedRuntimePgData) {
+            $usesRuntimeBinding = $true
+            $serviceReadAccounts = @(
+                (Get-TicketboxServiceSid $ServiceName),
+                (Get-TicketboxServiceSid $BackendServiceName)
+            )
+            $runtimeBinding = Read-TicketboxRuntimeDataBinding `
+                -DataRoot $canonicalDataRoot `
+                -InstallDir $canonicalInstallDir `
+                -ServiceReadExecuteAccounts $serviceReadAccounts `
+                -DataRootMarkerAclPhase backend_read_optional `
+                -ExpectedBackendServiceName $BackendServiceName
+            if (-not (Test-TicketboxPathEquals `
+                $pgData `
+                $runtimeBinding.RuntimePgData)) {
+                throw "PostgreSQL SCM PGDATA 与已验证 runtime binding 不一致。"
+            }
+        }
+        else {
+            throw "PostgreSQL SCM PGDATA 不匹配物理 DataRoot 或受管 runtime binding。"
+        }
+        if ((Get-TicketboxPathEntryKindNoFollow $pgData) -cne "Directory") {
+            throw "PostgreSQL SCM 声明的 PGDATA 不是受管普通目录。"
+        }
+
+        $postmasterPidPath = Join-Path $pgData "postmaster.pid"
+        if ((Get-TicketboxPathEntryKindNoFollow $postmasterPidPath) -cne "File") {
+            throw "PostgreSQL 缺少受管 postmaster.pid。"
+        }
+        $pidLines = @(Get-Content -LiteralPath $postmasterPidPath -Encoding ASCII)
+        if ($pidLines.Count -lt 4) {
+            throw "PostgreSQL postmaster.pid 结构不完整。"
+        }
+        $postmasterPid = 0
+        $port = 0
+        if (
+            -not [int]::TryParse($pidLines[0].Trim(), [ref]$postmasterPid) -or
+            $postmasterPid -le 0 -or
+            -not [int]::TryParse($pidLines[3].Trim(), [ref]$port) -or
+            $port -lt 1 -or
+            $port -gt 65535
+        ) {
+            throw "PostgreSQL postmaster.pid 的 PID/port 无效。"
+        }
+        $declaredDataRoot = $pidLines[1].Trim()
+        $dataRootMatches = Test-TicketboxPathEquals $declaredDataRoot $pgData
+        if ($usesRuntimeBinding -and -not $dataRootMatches) {
+            # PostgreSQL may persist either the stable path supplied through
+            # pg_ctl or its already-verified physical target. No third shape is
+            # accepted.
+            $dataRootMatches = Test-TicketboxPathEquals `
+                $declaredDataRoot `
+                $physicalPgData
+        }
+        if (-not $dataRootMatches) {
+            throw "PostgreSQL postmaster.pid 的 data directory 与 SCM 不一致。"
+        }
+        $servicePid = Get-TicketboxServiceProcessId $ServiceName
+        if ($servicePid -le 0) {
+            throw "PostgreSQL SCM 服务没有有效宿主 PID。"
+        }
+
+        $psql = Join-Path (Split-Path -Parent $canonicalPgCtl) "psql.exe"
+        if ((Get-TicketboxPathEntryKindNoFollow $psql) -cne "File") {
+            throw "受管 PostgreSQL psql.exe 不存在。"
+        }
+        Assert-NoTicketboxAncestorReparsePoints $psql
+        if ($usesRuntimeBinding) {
+            $verifiedAgain = Read-TicketboxRuntimeDataBinding `
+                -DataRoot $canonicalDataRoot `
+                -InstallDir $canonicalInstallDir `
+                -ServiceReadExecuteAccounts $serviceReadAccounts `
+                -DataRootMarkerAclPhase backend_read_optional `
+                -ExpectedBackendServiceName $BackendServiceName
+            if (
+                -not (Test-TicketboxPathEquals `
+                    $verifiedAgain.RuntimePgData `
+                    $runtimeBinding.RuntimePgData) -or
+                [string]$verifiedAgain.DataVolumeIdentity -cne
+                    [string]$runtimeBinding.DataVolumeIdentity -or
+                [string]$verifiedAgain.VolumeBoundTarget -cne
+                    [string]$runtimeBinding.VolumeBoundTarget
+            ) {
+                throw "PostgreSQL runtime binding 在宿主权威读取期间发生漂移。"
+            }
+        }
+        return [pscustomobject][ordered]@{
+            Schema = "ticketbox-windows-postgres-host-authority-v1"
+            ServiceName = $ServiceName
+            ServiceProcessId = $servicePid
+            PostmasterProcessId = $postmasterPid
+            PgCtlPath = $canonicalPgCtl
+            PsqlPath = $psql
+            PgData = $pgData
+            PhysicalPgData = $physicalPgData
+            Port = $port
+            UsesRuntimeBinding = $usesRuntimeBinding
+            DataVolumeIdentity = $(if ($usesRuntimeBinding) {
+                [string]$runtimeBinding.DataVolumeIdentity
+            } else { "" })
+        }
+    }
+    catch {
+        if ($_.Exception.Data.Contains("TicketboxInstallPublicFailureCode")) {
+            throw
+        }
+        $failure = [InvalidOperationException]::new(
+            "PostgreSQL SCM 宿主权威校验失败：$($_.Exception.Message)",
+            $_.Exception
+        )
+        $failure.Data["TicketboxInstallPublicFailureCode"] =
+            "postgres_host_authority_validation_failed"
+        throw $failure
+    }
+}
+
 function ConvertTo-TicketboxPgPassField([string]$Value) {
     if ($Value.IndexOfAny([char[]]@("`r", "`n", [char]0)) -ge 0) {
         throw "PostgreSQL 连接字段不能写入 passfile。"

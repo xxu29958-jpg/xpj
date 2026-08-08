@@ -177,6 +177,8 @@ def test_failure_summary_is_an_allowlisted_projection_not_a_second_authority() -
     assert "TBX-INSTALL-LOG" in runner
     assert "postgres_cluster_initialization_failed" in install
     assert "TBX-INSTALL-INITDB" in install
+    assert "postgres_host_authority_validation_failed" in install
+    assert "TBX-INSTALL-POSTGRES-HOST" in install
     assert "installation_identity_recovery_failed" in install
     assert "TBX-INSTALL-IDENTITY" in install
     preinstall = flow[
@@ -193,6 +195,8 @@ def test_failure_summary_is_an_allowlisted_projection_not_a_second_authority() -
     assert "LifecycleBootstrapFilePath(InstallPublicFailureFileName)" in public_reader
     assert "postgres_cluster_initialization_failed" in public_reader
     assert "TBX-INSTALL-INITDB" in public_reader
+    assert "postgres_host_authority_validation_failed" in public_reader
+    assert "TBX-INSTALL-POSTGRES-HOST" in public_reader
     assert "installation_identity_recovery_failed" in public_reader
     assert "TBX-INSTALL-IDENTITY" in public_reader
     resolver = install[
@@ -317,6 +321,21 @@ if ($initdbLines[6] -cne 'FAILURE_CODE=postgres_cluster_initialization_failed' -
     $initdbLines[7] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
     $initdbLines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-INITDB') {{
     throw 'initdb public failure receipt drifted'
+}}
+$hostFailure = [InvalidOperationException]::new('private PostgreSQL host diagnostic')
+$hostFailure.Data['TicketboxInstallPublicFailureCode'] =
+    'postgres_host_authority_validation_failed'
+Publish-TicketboxInstallPublicFailureReceipt `
+    -Path $receipt `
+    -LifecycleLock $lock `
+    -FinalizationAttemptId $attempt `
+    -Failure $hostFailure `
+    -MutationStarted $true
+$hostLines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
+if ($hostLines[6] -cne 'FAILURE_CODE=postgres_host_authority_validation_failed' -or
+    $hostLines[7] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
+    $hostLines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-POSTGRES-HOST') {{
+    throw 'PostgreSQL host public failure receipt drifted'
 }}
 $cleanupFailure = [InvalidOperationException]::new('private cleanup diagnostic')
 $aggregateFailure = New-TicketboxInstallCompensationAggregateFailure `
