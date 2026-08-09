@@ -184,6 +184,18 @@ def test_installed_payload_authority_lease_spans_c07_under_lifecycle_lock() -> N
     repair_end = prepare.index("\nfunction ", repair_start + 1)
     repair = prepare[repair_start:repair_end]
     assert "Initialize-TicketboxSecureInstallRoot" in repair
+    interrupted_start = prepare.index(
+        "function Repair-TicketboxInterruptedPayloadLeaseAcl"
+    )
+    interrupted_end = prepare.index("\nfunction ", interrupted_start + 1)
+    interrupted_repair = prepare[interrupted_start:interrupted_end]
+    remove_stale_deny = interrupted_repair.index(
+        "Remove-TicketboxInterruptedInstalledPayloadMutationDeny"
+    )
+    normalize_install_root = interrupted_repair.index(
+        "Repair-TicketboxPreflightInstallAcl"
+    )
+    assert remove_stale_deny < normalize_install_root
     assert prepare.index("Repair-TicketboxPreflightInstallAcl") < prepare.index(
         "Disable-TicketboxOwnedServiceIfExists",
         prepare.index("$installAclMutationStarted = $false"),

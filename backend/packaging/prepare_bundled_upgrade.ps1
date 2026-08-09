@@ -404,6 +404,11 @@ function Repair-TicketboxInterruptedPayloadLeaseAcl {
     if (Test-TicketboxServiceExists $BackendServiceName) {
         $serviceReadAccounts += "NT SERVICE\$BackendServiceName"
     }
+    Remove-TicketboxInterruptedInstalledPayloadMutationDeny `
+        -InstallDir $InstallDir `
+        -InstallerManifestPath $InstalledBuildManifestPath `
+        -ExpectedPgMajor $TargetPgMajor `
+        -ServiceReadExecuteAccounts $serviceReadAccounts | Out-Null
     Repair-TicketboxPreflightInstallAcl `
         -ServiceReadAccounts $serviceReadAccounts
 }

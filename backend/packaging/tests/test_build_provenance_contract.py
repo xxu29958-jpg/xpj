@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parent
 PACKAGING = ROOT / "packaging"
 PROVENANCE_HELPER = ROOT / "scripts" / "windows_build_provenance.ps1"
+INSTALLATION_SAFETY = PACKAGING / "windows_installation_safety.ps1"
 
 
 def _ps_literal(path: Path) -> str:
@@ -808,6 +809,162 @@ if (
 """
         result = _run_powershell(command, executable=engine)
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_interrupted_payload_mutation_deny_is_exactly_recoverable(
+    tmp_path: Path,
+) -> None:
+    install_root = tmp_path / "install"
+    payload_root = install_root / "program" / "ticketbox-backend"
+    child = payload_root / "child"
+    child.mkdir(parents=True)
+    (child / "payload.bin").write_bytes(b"trusted-payload")
+
+    for engine in powershell_contract_engines():
+        command = rf"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
+. '{_ps_literal(PROVENANCE_HELPER)}'
+$installRoot = '{_ps_literal(install_root)}'
+$payloadRoot = '{_ps_literal(payload_root)}'
+$identitySid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+Set-TicketboxExactDirectoryAcl `
+    -Path $installRoot `
+    -Accounts @($identitySid) `
+    -OwnerAccount $identitySid `
+    -Recurse
+
+# This is the exact in-memory lease guard left durable when the installer
+# process is killed before its finally block can restore OriginalAcl.
+$guard = Add-TicketboxInstalledPayloadMutationDeny $payloadRoot
+try {{
+    $recovered = Remove-TicketboxInterruptedInstalledPayloadMutationDenyExact `
+        -PayloadRoot $payloadRoot `
+        -FullControlAccounts @($identitySid) `
+        -OwnerAccount $identitySid
+    if (-not $recovered) {{ throw 'exact stale mutation deny was not recovered' }}
+    foreach ($entry in Get-TicketboxInstalledPayloadEntries $payloadRoot) {{
+        $denyRules = @((Get-TicketboxInstalledPayloadAcl `
+            $entry.FullName).GetAccessRules(
+                $true,
+                $true,
+                [Security.Principal.SecurityIdentifier]
+            ) | Where-Object {{
+                $_.AccessControlType -eq
+                    [Security.AccessControl.AccessControlType]::Deny
+            }})
+        if ($denyRules.Count -ne 0) {{
+            throw "stale mutation deny remained on $($entry.FullName)"
+        }}
+    }}
+}}
+finally {{ Restore-TicketboxInstalledPayloadMutationDeny $guard }}
+
+# A post-write verification failure must restore the exact durable deny before
+# the operation error escapes, so a retry never observes a half-repaired ACL.
+$guard = Add-TicketboxInstalledPayloadMutationDeny $payloadRoot
+$script:originalStructuredEvidence =
+    ${{function:Assert-TicketboxStructuredEvidence}}
+function Assert-TicketboxStructuredEvidence {{
+    param($Label, $Recorded, $Expected)
+    if ($Label -ceq '中断 payload mutation deny 精确退役') {{
+        throw 'injected post-write verification failure'
+    }}
+    & $script:originalStructuredEvidence $Label $Recorded $Expected
+}}
+$verificationRejected = $false
+try {{
+    try {{
+        Remove-TicketboxInterruptedInstalledPayloadMutationDenyExact `
+            -PayloadRoot $payloadRoot `
+            -FullControlAccounts @($identitySid) `
+            -OwnerAccount $identitySid | Out-Null
+    }}
+    catch {{
+        $verificationRejected =
+            $_.Exception.Message -ceq 'injected post-write verification failure'
+    }}
+    if (-not $verificationRejected) {{
+        throw 'post-write verification failure was not preserved'
+    }}
+    $restoredDeny = @((Get-TicketboxInstalledPayloadAcl `
+        $payloadRoot).GetAccessRules(
+            $true,
+            $true,
+            [Security.Principal.SecurityIdentifier]
+        ) | Where-Object {{
+            $_.IdentityReference.Value -ceq 'S-1-1-0' -and
+            $_.AccessControlType -eq
+                [Security.AccessControl.AccessControlType]::Deny
+        }})
+    if ($restoredDeny.Count -ne 1) {{
+        throw 'post-write verification failure did not restore exact deny'
+    }}
+}}
+finally {{
+    Set-Item `
+        -LiteralPath Function:Assert-TicketboxStructuredEvidence `
+        -Value $script:originalStructuredEvidence
+    Restore-TicketboxInstalledPayloadMutationDeny $guard
+}}
+
+# A foreign/additional deny must not be normalized under cover of retry.
+$guard = Add-TicketboxInstalledPayloadMutationDeny $payloadRoot
+try {{
+    $acl = Get-TicketboxInstalledPayloadAcl $payloadRoot
+    $everyone = New-Object Security.Principal.SecurityIdentifier('S-1-1-0')
+    $foreignRule = New-Object Security.AccessControl.FileSystemAccessRule(
+        $everyone,
+        [Security.AccessControl.FileSystemRights]::Read,
+        [Security.AccessControl.AccessControlType]::Deny
+    )
+    [void]$acl.AddAccessRule($foreignRule)
+    Set-TicketboxInstalledPayloadAcl $payloadRoot $acl
+    $foreignRejected = $false
+    try {{
+        Remove-TicketboxInterruptedInstalledPayloadMutationDenyExact `
+            -PayloadRoot $payloadRoot `
+            -FullControlAccounts @($identitySid) `
+            -OwnerAccount $identitySid | Out-Null
+    }}
+    catch {{ $foreignRejected = $true }}
+    if (-not $foreignRejected) {{
+        throw 'additional deny was accepted as the installer mutation lease'
+    }}
+    $remainingExact = @((Get-TicketboxInstalledPayloadAcl `
+        $payloadRoot).GetAccessRules(
+            $true,
+            $true,
+            [Security.Principal.SecurityIdentifier]
+        ) | Where-Object {{
+            $_.IdentityReference.Translate(
+                [Security.Principal.SecurityIdentifier]
+            ).Value -ceq 'S-1-1-0' -and
+            $_.AccessControlType -eq
+                [Security.AccessControl.AccessControlType]::Deny
+        }})
+    if ($remainingExact.Count -lt 2) {{
+        throw 'failed closed recovery partially rewrote the drifted DACL'
+    }}
+}}
+finally {{ Restore-TicketboxInstalledPayloadMutationDeny $guard }}
+$finalDeny = @((Get-TicketboxInstalledPayloadAcl `
+    $payloadRoot).GetAccessRules(
+        $true,
+        $true,
+        [Security.Principal.SecurityIdentifier]
+    ) | Where-Object {{
+        $_.AccessControlType -eq
+            [Security.AccessControl.AccessControlType]::Deny
+    }})
+if ($finalDeny.Count -ne 0) {{
+    throw 'test fixture did not restore its original payload ACL'
+}}
+'OK'
+"""
+        result = _run_powershell(command, executable=engine)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout.strip().splitlines()[-1] == "OK"
 
 
 def test_installer_build_probes_and_records_local_vendor_provenance(

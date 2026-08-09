@@ -16,6 +16,7 @@ SCRIPT = PACKAGING / "windows_c07_superuser_recovery.ps1"
 SAFETY = PACKAGING / "windows_installation_safety.ps1"
 DATABASE_SAFETY = PACKAGING / "windows_database_safety.ps1"
 C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
+PG_RECOVERY_TOOLS = PACKAGING / "windows_pg_recovery_tools.ps1"
 
 
 def _ps_literal(value: str | Path) -> str:
@@ -48,6 +49,7 @@ def _function(source: str, name: str) -> str:
 
 def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     source = SCRIPT.read_text(encoding="utf-8-sig")
+    host_operations = PG_RECOVERY_TOOLS.read_text(encoding="utf-8-sig")
     safety = SAFETY.read_text(encoding="utf-8-sig")
     publish = _function(source, "Publish-TicketboxC07SuperuserRecoverySspi")
     restore = _function(source, "Restore-TicketboxC07SuperuserRecoveryAuthFiles")
@@ -116,12 +118,14 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     assert "map=$($Artifact.map_name)" in source
     assert "krb_realm=" not in source
     assert "127.0.0.1:$($Artifact.port):postgres:postgres:" in source
-    assert "$env:PGPASSFILE" in source
+    assert "$env:PGPASSFILE" in host_operations
     assert "ConvertTo-TicketboxC07ScramVerifier" in source
-    assert "StandardInputText" in source
+    assert "StandardInputText" in host_operations
     assert "ANSICodePage" in source
     assert "[Text.EncoderFallback]::ExceptionFallback" in source
-    assert "ALTER ROLE postgres WITH LOGIN PASSWORD" in rotate
+    assert "Invoke-TicketboxPostgresqlHostCredentialRotation" in rotate
+    assert "ALTER ROLE postgres WITH LOGIN PASSWORD" not in rotate
+    assert "ALTER ROLE postgres WITH LOGIN PASSWORD" in host_operations
     assert "ALTER ROLE postgres WITH LOGIN PASSWORD NULL" in retire
     assert "role.rolcanlogin::text" in retire
     assert "(role.rolpassword IS NULL)::text" in retire

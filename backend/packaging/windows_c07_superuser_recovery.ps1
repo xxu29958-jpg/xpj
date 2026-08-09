@@ -15,6 +15,19 @@
   the exact original authentication files needed to converge every retry.
 #>
 
+$postgresqlHostOperations = Join-Path `
+    (Split-Path -Parent $MyInvocation.MyCommand.Path) `
+    "windows_pg_recovery_tools.ps1"
+if (-not (Get-Command `
+    "Invoke-TicketboxPostgresqlHostCredentialRotation" `
+    -CommandType Function `
+    -ErrorAction SilentlyContinue)) {
+    if (-not (Test-Path -LiteralPath $postgresqlHostOperations -PathType Leaf)) {
+        throw "缺少通用 PostgreSQL host operations：$postgresqlHostOperations"
+    }
+    . $postgresqlHostOperations
+}
+
 $script:TicketboxC07SuperuserRecoverySchema =
     "ticketbox-c07-superuser-recovery-v1"
 $script:TicketboxC07SuperuserRecoveryArtifactName =
@@ -73,6 +86,10 @@ function Assert-TicketboxC07SuperuserRecoveryDependencies {
         "ConvertTo-TicketboxC07ScramVerifier",
         "Get-TicketboxPathEntryKindNoFollow",
         "Invoke-TicketboxBoundedNativeProcess",
+        "Invoke-TicketboxPostgresqlHostCredentialRotation",
+        "Invoke-TicketboxPostgresqlHostNative",
+        "Invoke-TicketboxPostgresqlHostPsql",
+        "ConvertFrom-TicketboxPostgresqlHostEvidenceRow",
         "New-TicketboxProtectedFileStream",
         "Read-TicketboxProtectedUtf8Artifact",
         "Replace-TicketboxFileDurablePreservingMetadata",
@@ -549,44 +566,7 @@ function Invoke-TicketboxC07SuperuserRecoveryNative {
         [AllowEmptyString()][string]$PgPassFile = ""
     )
 
-    $saved = @{}
-    foreach ($item in @(Get-ChildItem Env: -ErrorAction SilentlyContinue)) {
-        if ($item.Name -match '^(?i)PG') {
-            $saved[$item.Name] = [string]$item.Value
-        }
-    }
-    try {
-        foreach ($name in @($saved.Keys)) {
-            Remove-Item "Env:$name" -ErrorAction SilentlyContinue
-        }
-        if (-not [string]::IsNullOrWhiteSpace($PgPassFile)) {
-            $env:PGPASSFILE = [System.IO.Path]::GetFullPath($PgPassFile)
-        }
-        $parameters = @{
-            FilePath = $FilePath
-            Arguments = $Arguments
-            TimeoutMilliseconds = $TimeoutMilliseconds
-            Label = $Label
-        }
-        if ($PSBoundParameters.ContainsKey("StandardInputText")) {
-            $parameters.StandardInputText = $StandardInputText
-        }
-        return Invoke-TicketboxBoundedNativeProcess @parameters
-    }
-    finally {
-        foreach ($item in @(Get-ChildItem Env: -ErrorAction SilentlyContinue)) {
-            if ($item.Name -match '^(?i)PG') {
-                Remove-Item "Env:$($item.Name)" -ErrorAction SilentlyContinue
-            }
-        }
-        foreach ($entry in $saved.GetEnumerator()) {
-            [Environment]::SetEnvironmentVariable(
-                [string]$entry.Key,
-                [string]$entry.Value,
-                "Process"
-            )
-        }
-    }
+    return Invoke-TicketboxPostgresqlHostNative @PSBoundParameters
 }
 
 function Get-TicketboxC07SuperuserRecoveryClusterSystemIdentifier {
@@ -2258,28 +2238,18 @@ function Invoke-TicketboxC07SuperuserRecoveryPsql {
         throw "C07 SCRAM probe 缺少 sole protected recovery passfile。"
     }
     $parameters = @{
-        FilePath = [string]$HostContext.PsqlPath
-        Arguments = @(
-            "--no-psqlrc",
-            "--no-password",
-            "--tuples-only",
-            "--no-align",
-            "--field-separator", "`t",
-            "--set", "ON_ERROR_STOP=1",
-            "--dbname", (
-                New-TicketboxC07SuperuserRecoveryDatabaseUrl `
-                    -Host $HostContext `
-                    -Authentication $Authentication
-            )
-        )
-        StandardInputText = $Sql + "`n"
+        PsqlPath = [string]$HostContext.PsqlPath
+        DatabaseUrl = New-TicketboxC07SuperuserRecoveryDatabaseUrl `
+            -Host $HostContext `
+            -Authentication $Authentication
+        Sql = $Sql
         TimeoutMilliseconds = $TimeoutMilliseconds
         Label = $Label
     }
     if ($Authentication -ceq "scram-sha-256") {
         $parameters.PgPassFile = $ArtifactPath
     }
-    return Invoke-TicketboxC07SuperuserRecoveryNative @parameters
+    return Invoke-TicketboxPostgresqlHostPsql @parameters
 }
 
 function ConvertFrom-TicketboxC07SuperuserRecoveryRow {
@@ -2289,19 +2259,7 @@ function ConvertFrom-TicketboxC07SuperuserRecoveryRow {
         [Parameter(Mandatory = $true)][string]$Label
     )
 
-    $lines = @(
-        $Output -split "`r?`n" |
-            ForEach-Object { [string]$_ } |
-            Where-Object { $_.Trim().Length -gt 0 }
-    )
-    if ($lines.Count -ne 1) {
-        throw "$Label 未返回唯一结果行。"
-    }
-    $fields = @($lines[0].Split([char]9))
-    if ($fields.Count -ne $FieldCount) {
-        throw "$Label 返回字段数无效。"
-    }
-    return $fields
+    return ConvertFrom-TicketboxPostgresqlHostEvidenceRow @PSBoundParameters
 }
 
 function ConvertTo-TicketboxC07SuperuserRecoverySecureString {
@@ -2394,42 +2352,21 @@ function Invoke-TicketboxC07SuperuserRecoveryRotateCredential {
     $verifier = Get-TicketboxC07SuperuserRecoveryVerifier `
         -Artifact $Artifact `
         -Secret $Secret
-    $validUntil = [DateTime]::UtcNow.AddHours(1).ToString(
-        "yyyy-MM-dd HH:mm:ss.fffffff'+00'"
-    )
-    $sql = @"
-ALTER ROLE postgres WITH LOGIN PASSWORD '$verifier' VALID UNTIL '$validUntil';
-SELECT
-    session_user,
-    current_user,
-    control.system_identifier::text,
-    current_setting('data_directory'),
-    current_setting('port'),
-    role.rolcanlogin::text,
-    (role.rolpassword = '$verifier')::text
-FROM pg_catalog.pg_control_system() AS control
-CROSS JOIN pg_catalog.pg_authid AS role
-WHERE role.rolname = 'postgres';
-"@
-    $result = Invoke-TicketboxC07SuperuserRecoveryPsql `
-        -Host $HostContext `
-        -Authentication "sspi" `
-        -Sql $sql `
-        -Label "C07 SSPI one-shot credential rotation"
-    if ($result.ExitCode -ne 0) {
-        throw "C07 SSPI one-shot credential rotation 失败（原生输出已抑制）。"
+    Assert-TicketboxC07SuperuserRecoveryServerReady $HostContext
+    $expectedDataDirectories = @([string]$HostContext.PgData)
+    if ([bool]$HostContext.UsesRuntimeBinding) {
+        $expectedDataDirectories += [string]$HostContext.FilesystemPgData
     }
-    $fields = ConvertFrom-TicketboxC07SuperuserRecoveryRow `
-        -Output $result.StandardOutput `
-        -FieldCount 7 `
+    Invoke-TicketboxPostgresqlHostCredentialRotation `
+        -PsqlPath ([string]$HostContext.PsqlPath) `
+        -DatabaseUrl (New-TicketboxC07SuperuserRecoveryDatabaseUrl `
+            -Host $HostContext `
+            -Authentication "sspi") `
+        -Verifier $verifier `
+        -ClusterSystemIdentifier ([string]$HostContext.ClusterSystemIdentifier) `
+        -ExpectedDataDirectories $expectedDataDirectories `
+        -Port ([int]$HostContext.Port) `
         -Label "C07 SSPI rotation evidence"
-    Assert-TicketboxC07SuperuserRecoveryDatabaseIdentityRow `
-        -Fields $fields `
-        -Host $HostContext `
-        -Label "C07 SSPI rotation evidence"
-    if ($fields[5].Trim() -cne "true" -or $fields[6].Trim() -cne "true") {
-        throw "C07 postgres one-shot LOGIN/verifier 未 exact commit。"
-    }
 }
 
 function Test-TicketboxC07SuperuserRecoveryScramCredential {
