@@ -7,8 +7,6 @@ from pathlib import Path
 import pytest
 from _powershell_contract import powershell_contract_engines
 
-pytestmark = pytest.mark.xdist_group(name="windows_powershell_lifecycle")
-
 PACKAGING = Path(__file__).resolve().parents[1]
 
 
