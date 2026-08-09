@@ -1662,14 +1662,15 @@ $unsafe = New-InheritedRecoveryCase `
 $script:DataRoot = $unsafe.DataRoot
 $script:AppData = $unsafe.AppData
 $unsafeBeforeBytes = [IO.File]::ReadAllBytes($unsafe.Path)
+# Windows may materialize a grant as one or more ACEs depending on the
+# existing DACL.  The contract is the complete shape change, not an ACE count.
+$unsafeInheritedFileShape = Get-AclShape $unsafe.Path
 & icacls.exe $unsafe.Path /grant '*S-1-1-0:R' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'failed to seed explicit unsafe ACL' }
-$unsafeBeforeAcl = Get-TicketboxPathAcl $unsafe.Path
 $unsafeRootShape = Get-AclShape $unsafe.DataRoot
 $unsafeAppShape = Get-AclShape $unsafe.AppData
 $unsafeFileShape = Get-AclShape $unsafe.Path
-if ($unsafeBeforeAcl.AreAccessRulesProtected -or
-    @($unsafeBeforeAcl.Access | Where-Object { -not $_.IsInherited }).Count -ne 1) {
+if ($unsafeFileShape -ceq $unsafeInheritedFileShape) {
     throw 'unsafe ACL precondition was not established'
 }
 $unsafeRejected = $false
@@ -1732,11 +1733,15 @@ Set-TicketboxExactDirectoryAcl `
     -Accounts $parentAccounts `
     -OwnerAccount $currentAccount `
     -Recurse
+$postUnsafeInheritedFileShape = Get-AclShape $postUnsafe.Path
 & icacls.exe $postUnsafe.Path /grant '*S-1-1-0:R' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'failed to seed post-normalization unsafe ACL' }
 $postUnsafeRootShape = Get-AclShape $postUnsafe.DataRoot
 $postUnsafeAppShape = Get-AclShape $postUnsafe.AppData
 $postUnsafeFileShape = Get-AclShape $postUnsafe.Path
+if ($postUnsafeFileShape -ceq $postUnsafeInheritedFileShape) {
+    throw 'post-normalization unsafe ACL precondition was not established'
+}
 $postUnsafeBytes = [IO.File]::ReadAllBytes($postUnsafe.Path)
 $postUnsafeRejected = $false
 try {
