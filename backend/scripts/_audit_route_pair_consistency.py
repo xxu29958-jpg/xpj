@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-import re
 import sys
 from pathlib import Path
 
@@ -56,6 +55,17 @@ _INFRA_OPS = frozenset(
         "current_accounting_month",
     }
 )
+_READ_ONLY_SERVICE_PREFIXES = (
+    "current_",
+    "find_",
+    "get_",
+    "list_",
+    "require_",
+    "resolve_",
+    "serialize_",
+    "to_",
+    "validate_",
+)
 
 # A Web form adapter may deliberately strengthen a legacy JSON lifecycle
 # contract with actor-scoped idempotency/OCC while preserving the same domain
@@ -77,12 +87,22 @@ WEB_ONLY_ROUTES: dict[str, str] = {
     "POST /web/review/bulk": "web-only pending bulk-review action",
     "POST /web/import/confirm": "web-only preview→confirm step; the apply step has the /api pair",
     "POST /web/pending/batch-reject": "web-only pending bulk-reject action",
+    "POST /web/duplicates/{expense_id}/reject-original": (
+        "web-only atomic keep-current/reject-original decision; API exposes separate primitives"
+    ),
     "POST /web/auth/logout": "browser session teardown — web session is web-only",
 }
 
 
 ROUTE_PAIRS: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("POST", "/api/budget/advise", "POST", "/web/budget-advise", ("run_budget_advisor",)),
+    (
+        "POST",
+        "/api/expenses/{expense_id}/confirm",
+        "POST",
+        "/web/expenses/{expense_id}/confirm",
+        ("confirm_expense_submission",),
+    ),
     (
         "POST",
         "/api/bill-splits/{public_id}/accept",
@@ -103,6 +123,29 @@ ROUTE_PAIRS: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
         "POST",
         "/web/bill-splits/{public_id}/cancel",
         ("cancel_invitation",),
+    ),
+)
+
+_COMMAND_CONTRACTS: tuple[
+    tuple[str, str, frozenset[str], frozenset[str]], ...
+] = (
+    (
+        "POST",
+        "/api/expenses/{expense_id}/confirm",
+        frozenset({"confirm_expense_submission"}),
+        frozenset({"commit", "cleanup_after_confirm", "confirm_expense", "update_expense"}),
+    ),
+    (
+        "POST",
+        "/web/expenses/{expense_id}/confirm",
+        frozenset({"confirm_expense_submission"}),
+        frozenset({"commit", "cleanup_after_confirm", "confirm_expense", "update_expense"}),
+    ),
+    (
+        "POST",
+        "/web/duplicates/{expense_id}/reject-original",
+        frozenset({"reject_duplicate_original_keep_current"}),
+        frozenset({"commit", "mark_expense_not_duplicate", "reject_expense"}),
     ),
 )
 
@@ -128,16 +171,6 @@ def _source(endpoint: object) -> str:
         return ""
 
 
-def _module_source(endpoint: object) -> str:
-    module = inspect.getmodule(endpoint)
-    if module is None:
-        return ""
-    try:
-        return inspect.getsource(module)
-    except (OSError, TypeError):
-        return ""
-
-
 def _called_names(node: ast.AST) -> set[str]:
     names: set[str] = set()
     for child in ast.walk(node):
@@ -148,6 +181,83 @@ def _called_names(node: ast.AST) -> set[str]:
         elif isinstance(child.func, ast.Attribute):
             names.add(child.func.attr)
     return names
+
+
+def _resolve_call_target(node: ast.expr, namespace: dict[str, object]) -> object | None:
+    if isinstance(node, ast.Name):
+        return namespace.get(node.id)
+    if not isinstance(node, ast.Attribute):
+        return None
+    owner = _resolve_call_target(node.value, namespace)
+    if owner is None:
+        return None
+    return getattr(owner, node.attr, None)
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _function_belongs_to(target: object, package: str) -> bool:
+    if not inspect.isfunction(target):
+        return False
+    module_name = getattr(target, "__module__", "")
+    return module_name == package or module_name.startswith(f"{package}.")
+
+
+def _service_callback_names(
+    node: ast.Call,
+    namespace: dict[str, object],
+) -> set[str]:
+    names: set[str] = set()
+    callback_nodes = [*node.args, *(item.value for item in node.keywords)]
+    for callback_node in callback_nodes:
+        callback = _resolve_call_target(callback_node, namespace)
+        if _function_belongs_to(callback, "app.services"):
+            names.add(callback.__name__)
+    return names
+
+
+def _route_call_graph(endpoint: object) -> tuple[str, set[str], set[str], set[str]]:
+    """Return route source, calls, and proven service calls/callback references."""
+
+    pending = [endpoint]
+    visited: set[int] = set()
+    segments: list[str] = []
+    calls: set[str] = set()
+    service_calls: set[str] = set()
+    service_refs: set[str] = set()
+    while pending:
+        function = pending.pop()
+        if not inspect.isfunction(function) or id(function) in visited:
+            continue
+        visited.add(id(function))
+        source = _source(function)
+        if not source:
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        segments.append(source)
+        namespace = getattr(function, "__globals__", {})
+        call_nodes = (node for node in ast.walk(tree) if isinstance(node, ast.Call))
+        for node in call_nodes:
+            name = _call_name(node)
+            if name is not None:
+                calls.add(name)
+            target = _resolve_call_target(node.func, namespace)
+            if _function_belongs_to(target, "app.services"):
+                service_calls.add(target.__name__)
+                service_refs.add(target.__name__)
+            elif _function_belongs_to(target, "app.routes"):
+                pending.append(target)
+            service_refs.update(_service_callback_names(node, namespace))
+    return "\n".join(segments), calls, service_calls, service_refs
 
 
 def _service_func_names() -> frozenset[str]:
@@ -161,41 +271,15 @@ def _service_func_names() -> frozenset[str]:
         for node in tree.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_"):
                 names.add(node.name)
-    return frozenset(names - _INFRA_OPS)
+    return frozenset(
+        name
+        for name in names - _INFRA_OPS
+        if name.startswith("get_or_create_")
+        or not name.startswith(_READ_ONLY_SERVICE_PREFIXES)
+    )
 
 
 _SERVICE_FUNCS = _service_func_names()
-
-
-def _route_source_with_local_helpers(endpoint: object) -> str:
-    """Route source plus same-module helpers reachable from its handler."""
-    module_source = _module_source(endpoint)
-    endpoint_name = getattr(endpoint, "__name__", "")
-    if not module_source or not endpoint_name:
-        return _source(endpoint)
-    try:
-        tree = ast.parse(module_source)
-    except SyntaxError:
-        return _source(endpoint)
-    definitions = {
-        node.name: node
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    pending = [endpoint_name]
-    visited: set[str] = set()
-    segments: list[str] = []
-    while pending:
-        name = pending.pop()
-        if name in visited:
-            continue
-        visited.add(name)
-        node = definitions.get(name)
-        if node is None:
-            continue
-        segments.append(ast.get_source_segment(module_source, node) or "")
-        pending.extend(_called_names(node) & definitions.keys())
-    return "\n".join(segments) or _source(endpoint)
 
 
 def _expanded_service_ops(direct: set[str]) -> set[str]:
@@ -216,11 +300,8 @@ def _expanded_service_ops(direct: set[str]) -> set[str]:
 
 def _route_ops(endpoint: object) -> set[str]:
     """Service operations a route reaches through local/service adapters."""
-    source = _route_source_with_local_helpers(endpoint)
-    if not source:
-        return set()
-    direct = {fn for fn in _SERVICE_FUNCS if re.search(rf"\b{re.escape(fn)}\b", source)}
-    return _expanded_service_ops(direct)
+    _source_text, _calls, service_calls, service_refs = _route_call_graph(endpoint)
+    return _expanded_service_ops((service_calls | service_refs) & _SERVICE_FUNCS)
 
 
 def _check_explicit_pairs(routes: dict[tuple[str, str], object]) -> list[str]:
@@ -234,14 +315,85 @@ def _check_explicit_pairs(routes: dict[tuple[str, str], object]) -> list[str]:
         if web_endpoint is None:
             failures.append(f"missing Web route {web_method} {web_path}")
             continue
-        api_source = _source(api_endpoint)
-        web_source = _source(web_endpoint)
-        web_module_source = _module_source(web_endpoint)
         for term in required_terms:
-            if term not in api_source:
-                failures.append(f"{api_method} {api_path} no longer delegates to {term}")
-            if term not in web_source and term not in web_module_source:
-                failures.append(f"{web_method} {web_path} no longer delegates to {term}")
+            failures.extend(
+                _route_delegate_contract_failures(
+                    f"{api_method} {api_path}",
+                    api_endpoint,
+                    required=frozenset({term}),
+                    forbidden=frozenset(),
+                )
+            )
+            failures.extend(
+                _route_delegate_contract_failures(
+                    f"{web_method} {web_path}",
+                    web_endpoint,
+                    required=frozenset({term}),
+                    forbidden=frozenset(),
+                )
+            )
+    return failures
+
+
+def _delegate_contract_failures(
+    label: str,
+    source: str,
+    *,
+    required: frozenset[str],
+    forbidden: frozenset[str],
+) -> list[str]:
+    try:
+        calls = _called_names(ast.parse(source))
+    except SyntaxError:
+        return [f"{label} source could not be parsed"]
+    failures = [
+        f"{label} must delegate to {name}"
+        for name in sorted(required - calls)
+    ]
+    failures.extend(
+        f"{label} must not own {name}"
+        for name in sorted(forbidden & calls)
+    )
+    return failures
+
+
+def _route_delegate_contract_failures(
+    label: str,
+    endpoint: object,
+    *,
+    required: frozenset[str],
+    forbidden: frozenset[str],
+) -> list[str]:
+    _source_text, calls, service_calls, _service_refs = _route_call_graph(endpoint)
+    failures = [
+        f"{label} must call app.services.{name}"
+        for name in sorted(required - service_calls)
+    ]
+    failures.extend(
+        f"{label} route call graph must not own {name}"
+        for name in sorted(forbidden & calls)
+    )
+    return failures
+
+
+def _check_command_delegates(
+    routes: dict[tuple[str, str], object],
+) -> list[str]:
+    failures: list[str] = []
+    for method, path, required, forbidden in _COMMAND_CONTRACTS:
+        endpoint = routes.get((method, path))
+        label = f"{method} {path}"
+        if endpoint is None:
+            failures.append(f"missing Web route {label}")
+            continue
+        failures.extend(
+            _route_delegate_contract_failures(
+                label,
+                endpoint,
+                required=required,
+                forbidden=forbidden,
+            )
+        )
     return failures
 
 
@@ -292,6 +444,7 @@ def _check_web_coverage(routes: dict[tuple[str, str], object]) -> tuple[list[str
 def main() -> int:
     routes = _routes_by_key()
     failures = _check_explicit_pairs(routes)
+    failures.extend(_check_command_delegates(routes))
 
     coverage_failures, info = _check_web_coverage(routes)
     failures.extend(coverage_failures)

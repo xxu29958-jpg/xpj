@@ -16,6 +16,7 @@ from app.routes._web_expense_form import (
 )
 from app.routes._web_session_common import parse_form_row_version_token
 from app.schemas import ExpenseUpdateRequest
+from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.expense_service import get_expense, update_expense
 from app.services.tag_service import normalize_tags
 from app.services.time_service import ensure_utc
@@ -30,6 +31,7 @@ class WebExpenseSaveOutcome:
     form_values: dict[str, str] | None = None
     field_errors: dict[str, str] | None = None
     row_version: int | None = None
+    conflict: bool = False
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,7 @@ class WebExpenseConfirmOutcome:
     error_status: int = 422
     form_values: dict[str, str] | None = None
     field_errors: dict[str, str] | None = None
+    conflict: bool = False
 
 
 class _ExpenseCurrencySnapshot(Protocol):
@@ -71,6 +74,8 @@ class _ExpenseUpdateCommand(Protocol):
 
 def _submitted_form_values(
     *,
+    expected_row_version: str,
+    idempotency_key: str,
     amount_yuan: str | None,
     merchant: str | None,
     category: str | None,
@@ -79,6 +84,8 @@ def _submitted_form_values(
     expense_time: str | None,
 ) -> dict[str, str]:
     values = {
+        "expected_row_version": expected_row_version,
+        "idempotency_key": idempotency_key,
         "amount_yuan": amount_yuan,
         "merchant": merchant,
         "category": category,
@@ -87,6 +94,42 @@ def _submitted_form_values(
         "expense_time": expense_time,
     }
     return {key: value for key, value in values.items() if value is not None}
+
+
+def _validated_currency_snapshot(
+    expense: _ExpenseCurrencySnapshot,
+    *,
+    original_currency: str,
+    form_values: dict[str, str],
+) -> tuple[str | None, WebExpenseSaveOutcome | None]:
+    frozen_currency = (
+        expense.original_currency_code or expense.home_currency_code
+    ).strip().upper()
+    submitted_currency = (original_currency or "").strip().upper()
+    if submitted_currency and submitted_currency != frozen_currency:
+        message = "账单币种已冻结，不能在编辑金额时更改。"
+        return None, _failure(
+            message,
+            form_values=form_values,
+            field_errors={"amount_yuan": message},
+        )
+    return frozen_currency, None
+
+
+def _category_validation_error(
+    category: str | None,
+    *,
+    form_values: dict[str, str],
+) -> WebExpenseSaveOutcome | None:
+    submitted = (category or "").strip()
+    if not submitted or not is_uncategorized_expense_category(submitted):
+        return None
+    message = "请选择具体分类，不能使用“未分类”。"
+    return _failure(
+        message,
+        form_values=form_values,
+        field_errors={"category": message},
+    )
 
 
 def _schema_error(
@@ -119,12 +162,14 @@ def _failure(
     form_values: dict[str, str] | None,
     field_errors: dict[str, str] | None = None,
     status_code: int = 422,
+    conflict: bool = False,
 ) -> WebExpenseSaveOutcome:
     return WebExpenseSaveOutcome(
         error=message,
         error_status=status_code,
         form_values=form_values,
         field_errors=field_errors or {},
+        conflict=conflict,
     )
 
 
@@ -181,17 +226,17 @@ def _validated_update_request(
     expense_time: str | None,
     form_values: dict[str, str],
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome | None]:
-    frozen_currency = (
-        expense.original_currency_code or expense.home_currency_code
-    ).strip().upper()
-    submitted_currency = (original_currency or "").strip().upper()
-    if submitted_currency and submitted_currency != frozen_currency:
-        message = "账单币种已冻结，不能在编辑金额时更改。"
-        return None, _failure(
-            message,
-            form_values=form_values,
-            field_errors={"amount_yuan": message},
-        )
+    frozen_currency, currency_error = _validated_currency_snapshot(
+        expense,
+        original_currency=original_currency,
+        form_values=form_values,
+    )
+    if frozen_currency is None:
+        return None, currency_error
+
+    category_error = _category_validation_error(category, form_values=form_values)
+    if category_error is not None:
+        return None, category_error
 
     original_amount_minor = None
     amount_error = None
@@ -261,31 +306,18 @@ def apply_web_expense_form(
     note: str | None,
     tags: str | None,
     expense_time: str | None,
+    idempotency_key: str = "",
     commit: bool = True,
     update_command: _ExpenseUpdateCommand = update_expense,
 ) -> WebExpenseSaveOutcome:
     """Validate browser input against the persisted currency snapshot, then save."""
 
-    form_values = _submitted_form_values(
-        amount_yuan=amount_yuan,
-        merchant=merchant,
-        category=category,
-        note=note,
-        tags=tags,
-        expense_time=expense_time,
-    )
-    try:
-        expense = get_expense(db, expense_id, selected_ledger_id)
-    except AppError as exc:
-        db.rollback()
-        return _failure(
-            exc.message,
-            form_values=form_values,
-            status_code=web_form_error_status(exc),
-        )
-    payload, validation_error = _validated_update_request(
-        expense,
+    payload, prepared = prepare_web_expense_form(
+        db,
+        expense_id=expense_id,
+        selected_ledger_id=selected_ledger_id,
         expected_row_version=expected_row_version,
+        idempotency_key=idempotency_key,
         amount_yuan=amount_yuan,
         original_currency=original_currency,
         merchant=merchant,
@@ -293,13 +325,9 @@ def apply_web_expense_form(
         note=note,
         tags=tags,
         expense_time=expense_time,
-        form_values=form_values,
     )
-    if validation_error is not None or payload is None:
-        return validation_error or _failure(
-            "提交参数不正确，请检查后重试。",
-            form_values=form_values,
-        )
+    if payload is None:
+        return prepared
 
     try:
         updated = update_command(
@@ -317,11 +345,65 @@ def apply_web_expense_form(
         )
         return _failure(
             message,
-            form_values=None if conflict else form_values,
+            form_values=prepared.form_values,
             status_code=web_form_error_status(exc),
+            conflict=conflict,
         )
     return WebExpenseSaveOutcome(
-        form_values=form_values,
+        form_values=prepared.form_values,
         field_errors={},
         row_version=updated.row_version,
     )
+
+
+def prepare_web_expense_form(
+    db: Session,
+    *,
+    expense_id: int,
+    selected_ledger_id: str,
+    expected_row_version: str,
+    idempotency_key: str = "",
+    amount_yuan: str | None,
+    original_currency: str,
+    merchant: str | None,
+    category: str | None,
+    note: str | None,
+    tags: str | None,
+    expense_time: str | None,
+) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome]:
+    """Parse one browser snapshot without owning its write transaction."""
+
+    form_values = _submitted_form_values(
+        expected_row_version=expected_row_version,
+        idempotency_key=idempotency_key,
+        amount_yuan=amount_yuan,
+        merchant=merchant,
+        category=category,
+        note=note,
+        tags=tags,
+        expense_time=expense_time,
+    )
+    try:
+        expense = get_expense(db, expense_id, selected_ledger_id)
+    except AppError as exc:
+        db.rollback()
+        return None, _failure(
+            exc.message, form_values=form_values, status_code=web_form_error_status(exc)
+        )
+    payload, validation_error = _validated_update_request(
+        expense,
+        expected_row_version=expected_row_version,
+        amount_yuan=amount_yuan,
+        original_currency=original_currency,
+        merchant=merchant,
+        category=category,
+        note=note,
+        tags=tags,
+        expense_time=expense_time,
+        form_values=form_values,
+    )
+    if validation_error is not None or payload is None:
+        return None, validation_error or _failure(
+            "提交参数不正确，请检查后重试。", form_values=form_values
+        )
+    return payload, WebExpenseSaveOutcome(form_values=form_values, field_errors={})

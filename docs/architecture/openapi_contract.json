@@ -1585,6 +1585,11 @@
             "title": "Fragment",
             "type": "integer"
           },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -2118,6 +2123,11 @@
       },
       "Body_web_duplicate_reject_original_web_duplicates__expense_id__reject_original_post": {
         "properties": {
+          "expected_original_row_version": {
+            "default": "",
+            "title": "Expected Original Row Version",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -2126,6 +2136,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "original_expense_id": {
+            "default": "",
+            "title": "Original Expense Id",
             "type": "string"
           }
         },
@@ -3105,6 +3120,11 @@
             "default": 0,
             "title": "Fragment",
             "type": "integer"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
           },
           "ledger_id": {
             "default": "",

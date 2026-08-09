@@ -11,6 +11,7 @@ from app.errors import AppError
 from app.routes._web_expense_edit_command import (
     WebExpenseConfirmOutcome,
     apply_web_expense_form,
+    prepare_web_expense_form,
 )
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_helpers import (
@@ -33,25 +34,17 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
-from app.services.cleanup_service import cleanup_after_confirm
+from app.services.expense_review_command_service import confirm_expense_submission
 from app.services.expense_service import (
-    confirm_expense,
     reject_expense,
     undo_reject_expense,
     update_expense,
 )
 
 router = APIRouter(prefix="/web", tags=["web"])
-
-
-def _commit_saved_confirmation_and_cleanup(db: Session, confirmed) -> None:
-    """Commit the write transaction, then persist independent cleanup if needed."""
-
-    db.commit()
-    db.refresh(confirmed)
-    if cleanup_after_confirm(db, confirmed):
-        db.commit()
-        db.refresh(confirmed)
+_ROTATE_IDEMPOTENCY_ERRORS = frozenset(
+    {"idempotency_key_required", "idempotency_key_reused"}
+)
 
 
 def confirm_web_expense(
@@ -60,6 +53,7 @@ def confirm_web_expense(
     expense_id: int,
     selected_ledger_id: str,
     expected_row_version: str,
+    idempotency_key: str,
     save_before_confirm: bool,
     amount_yuan: str | None,
     original_currency: str,
@@ -71,17 +65,16 @@ def confirm_web_expense(
 ) -> WebExpenseConfirmOutcome:
     """Confirm the snapshot, atomically persisting submitted edits when requested."""
 
-    parsed = parse_form_row_version_token(expected_row_version)
-    if parsed is None:
-        return WebExpenseConfirmOutcome(error="页面已过期，请刷新后重新确认。")
     form_values: dict[str, str] | None = None
     field_errors: dict[str, str] | None = None
+    update_payload = None
     if save_before_confirm:
-        saved = apply_web_expense_form(
+        update_payload, prepared = prepare_web_expense_form(
             db,
             expense_id=expense_id,
             selected_ledger_id=selected_ledger_id,
             expected_row_version=expected_row_version,
+            idempotency_key=idempotency_key,
             amount_yuan=amount_yuan,
             original_currency=original_currency,
             merchant=merchant,
@@ -89,43 +82,60 @@ def confirm_web_expense(
             note=note,
             tags=tags,
             expense_time=expense_time,
-            commit=False,
-            update_command=update_expense,
         )
-        if saved.error is not None or saved.row_version is None:
+        if update_payload is None:
             return WebExpenseConfirmOutcome(
-                error=saved.error or "提交参数不正确，请检查后重试。",
-                error_status=saved.error_status,
-                form_values=saved.form_values,
-                field_errors=saved.field_errors,
+                error=prepared.error or "提交参数不正确，请检查后重试。",
+                error_status=prepared.error_status,
+                form_values=prepared.form_values,
+                field_errors=prepared.field_errors,
             )
-        parsed = saved.row_version
-        form_values = saved.form_values
-        field_errors = saved.field_errors
+        parsed = update_payload.expected_row_version
+        form_values = prepared.form_values
+        field_errors = prepared.field_errors
+    else:
+        parsed = parse_form_row_version_token(expected_row_version)
+        if parsed is None:
+            return WebExpenseConfirmOutcome(error="页面已过期，请刷新后重新确认。")
     try:
-        confirmed = confirm_expense(
+        confirm_expense_submission(
             db,
-            expense_id,
-            selected_ledger_id,
+            expense_id=expense_id,
+            tenant_id=selected_ledger_id,
             expected_row_version=parsed,
-            commit=not save_before_confirm,
+            request_expected_row_version=parsed,
+            idempotency_key=idempotency_key or None,
+            intent_body=_confirmation_intent_body(form_values),
+            update_payload=update_payload,
         )
-        if save_before_confirm:
-            _commit_saved_confirmation_and_cleanup(db, confirmed)
     except AppError as exc:
-        db.rollback()
         message = (
             "账单已在其它端被修改，请刷新后重新确认。"
             if exc.error == "state_conflict"
             else exc.message
         )
+        if form_values and exc.error in _ROTATE_IDEMPOTENCY_ERRORS:
+            form_values = {**form_values, "idempotency_key": ""}
         return WebExpenseConfirmOutcome(
             error=message,
             error_status=web_form_error_status(exc),
             form_values=form_values,
             field_errors=field_errors,
+            conflict=exc.error == "state_conflict",
         )
     return WebExpenseConfirmOutcome()
+
+
+def _confirmation_intent_body(
+    form_values: dict[str, str] | None,
+) -> dict[str, object]:
+    if form_values is None:
+        return {}
+    metadata = {"expected_row_version", "idempotency_key"}
+    return {
+        "save_before_confirm": True,
+        **{key: value for key, value in form_values.items() if key not in metadata},
+    }
 
 
 @router.get("/expenses/{expense_id}/edit", response_class=HTMLResponse)
@@ -215,6 +225,7 @@ def web_save(
     tags: str = Form(default=""),
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
     # 批10 review flow: ``return_to`` (whitelist, no-JS path) sends a successful
     # save back to a list page instead of /web/expenses/{id}/edit — fixing the
     # "saved → popped out of the queue" full-page bounce even with JS off.
@@ -238,6 +249,7 @@ def web_save(
         expense_id=expense_id,
         selected_ledger_id=selected_id,
         expected_row_version=expected_row_version,
+        idempotency_key=idempotency_key,
         amount_yuan=amount_yuan,
         original_currency=original_currency,
         merchant=merchant,
@@ -257,6 +269,7 @@ def web_save(
         error_status=outcome.error_status,
         form_values=outcome.form_values,
         field_errors=outcome.field_errors,
+        conflict=outcome.conflict,
         fragment=fragment,
         return_to=return_to,
         return_month=return_month,
@@ -273,6 +286,7 @@ def web_confirm(
     request: Request,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
     save_before_confirm: int = Form(default=0),
     amount_yuan: str | None = Form(default=None),
     original_currency: str = Form(default=""),
@@ -289,8 +303,7 @@ def web_confirm(
     return_query: str = Form(default=""),
     # 批10: ``fragment=1`` switches confirm to the drawer fetch-mutation contract
     # (success → tiny 200 so the client removes the row + opens the next drawer;
-    # error → the drawer fragment carrying the error). No ``return_to``: confirm's
-    # full-page success already lands on /web/pending.
+    # error → the drawer fragment carrying the error).
     fragment: int = Form(default=0),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -303,6 +316,7 @@ def web_confirm(
         expense_id=expense_id,
         selected_ledger_id=selected_id,
         expected_row_version=expected_row_version,
+        idempotency_key=idempotency_key,
         save_before_confirm=save_before_confirm == 1,
         amount_yuan=amount_yuan,
         original_currency=original_currency,
@@ -330,13 +344,22 @@ def web_confirm(
             return_query=return_query,
             form_values=outcome.form_values,
             field_errors=outcome.field_errors,
+            conflict=outcome.conflict,
         )
     if fragment:
         return drawer_fragment_ok("confirm")
+    success_return_to = return_to or "pending"
     return _web_redirect(
-        "/web/pending",
+        resolve_return_to(return_to, "/web/pending"),
         selected_id,
-        **return_context_params("pending", return_filter=return_filter),
+        **return_context_params(
+            success_return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+            return_query=return_query,
+        ),
     )
 
 

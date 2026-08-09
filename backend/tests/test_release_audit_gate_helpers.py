@@ -294,7 +294,37 @@ def test_mutate_token_ledger_review_overdue_fires_after_deadline() -> None:
     assert len(overdue) == len(ledger.RISK_REVIEW_BY)
 
 
-def test_route_pair_web_coverage_is_complete_and_gated() -> None:
+def confirm_expense_submission() -> None:
+    """A same-named non-service function used to prove provenance gating."""
+
+
+def _route_gate_fake_named_endpoint() -> None:
+    confirm_expense_submission()
+
+
+def _route_gate_api_string_only() -> str:
+    return "confirm_expense_submission"
+
+
+class _RouteGateDb:
+    def commit(self) -> None:
+        return None
+
+
+_ROUTE_GATE_DB = _RouteGateDb()
+
+
+def _route_gate_imported_helper() -> None:
+    _ROUTE_GATE_DB.commit()
+
+
+def _route_gate_importing_endpoint() -> None:
+    _route_gate_imported_helper()
+
+
+def test_route_pair_web_coverage_is_complete_and_gated(monkeypatch) -> None:
+    import app.routes.web_duplicates as web_duplicates_route
+
     mod = importlib.reload(importlib.import_module("_audit_route_pair_consistency"))
     routes = mod._routes_by_key()
 
@@ -302,6 +332,59 @@ def test_route_pair_web_coverage_is_complete_and_gated() -> None:
     # is a precise pair, or is explicitly web-only.
     failures, _info = mod._check_web_coverage(routes)
     assert failures == []
+    assert mod._check_command_delegates(routes) == []
+    assert routes[("POST", "/web/duplicates/{expense_id}/reject-original")] is (
+        web_duplicates_route.web_duplicate_reject_original
+    )
+    assert {
+        "get_expense",
+        "get_merchant_alias",
+        "list_expense_items",
+        "now_utc",
+    }.isdisjoint(mod._SERVICE_FUNCS)
+    assert "update_expense" in mod._route_ops(
+        routes[("POST", "/web/expenses/{expense_id}/save")]
+    )
+
+    # The thin-route contract is structural, not an alias/name-intersection
+    # heuristic: moving writes and commit ownership back into the handler reds.
+    broken = mod._delegate_contract_failures(
+        "POST /web/expenses/{expense_id}/confirm",
+        "def route():\n    update_expense()\n    db.commit()\n",
+        required=frozenset({"confirm_expense_submission"}),
+        forbidden=frozenset({"commit", "update_expense"}),
+    )
+    assert any("must delegate to confirm_expense_submission" in item for item in broken)
+    assert any("must not own commit" in item for item in broken)
+    assert any("must not own update_expense" in item for item in broken)
+
+    string_only = mod._route_delegate_contract_failures(
+        "POST /api/fake",
+        _route_gate_api_string_only,
+        required=frozenset({"confirm_expense_submission"}),
+        forbidden=frozenset(),
+    )
+    wrong_provenance = mod._route_delegate_contract_failures(
+        "POST /api/fake",
+        _route_gate_fake_named_endpoint,
+        required=frozenset({"confirm_expense_submission"}),
+        forbidden=frozenset(),
+    )
+    assert any("must call app.services.confirm_expense_submission" in item for item in string_only)
+    assert any("must call app.services.confirm_expense_submission" in item for item in wrong_provenance)
+
+    monkeypatch.setattr(
+        _route_gate_imported_helper,
+        "__module__",
+        "app.routes._route_gate_fixture",
+    )
+    imported_helper = mod._route_delegate_contract_failures(
+        "POST /web/fake",
+        _route_gate_importing_endpoint,
+        required=frozenset(),
+        forbidden=frozenset({"commit"}),
+    )
+    assert any("route call graph must not own commit" in item for item in imported_helper)
 
     # Emptying the opt-out must surface the genuinely web-only routes as
     # drift — proving the coverage check actually depends on classification.

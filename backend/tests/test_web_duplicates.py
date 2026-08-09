@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from api_contract_helpers import web_duplicates_action
+from api_contract_helpers import patch_expense, web_duplicates_action
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -69,6 +69,14 @@ def test_web_duplicates_renders_pair(web_client: TestClient, *, identity) -> Non
     assert "图片一致" in body
     assert "% 相似" not in body
     assert "置信度" not in body
+    assert f'name="original_expense_id" value="{first}"' in body
+    with SessionLocal() as db:
+        original = db.get(Expense, first)
+        assert original is not None
+        assert (
+            f'name="expected_original_row_version" value="{original.row_version}"'
+            in body
+        )
 
 
 # ── Loopback gate + secret leak ────────────────────────────────────────────
@@ -153,14 +161,23 @@ def test_web_duplicates_reject_original_is_atomic(
 ) -> None:
     first, second = _seed_duplicate_pair(web_client, identity=identity)
     token = _token(web_client, second, identity=identity)
+    original_token = _token(web_client, first, identity=identity)
 
     def fail_reject(*args, **kwargs):
         raise AppError("state_conflict", status_code=409)
 
-    monkeypatch.setattr("app.routes.web_duplicates.reject_expense", fail_reject)
+    monkeypatch.setattr(
+        "app.services.expense_review_command_service.reject_expense",
+        fail_reject,
+    )
     resp = web_client.post(
         f"/web/duplicates/{second}/reject-original",
-        data={"ledger_id": "owner", "expected_row_version": token},
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": token,
+            "original_expense_id": first,
+            "expected_original_row_version": original_token,
+        },
         follow_redirects=False,
     )
     assert resp.status_code == 303
@@ -174,6 +191,37 @@ def test_web_duplicates_reject_original_is_atomic(
         assert kept.duplicate_of_id == first
         assert kept.row_version == int(token)
         assert original.status == "pending"
+
+    monkeypatch.undo()
+    changed = patch_expense(
+        web_client,
+        first,
+        headers=identity.app_headers,
+        fields={"note": "Concurrent Original Truth"},
+    )
+    assert changed.status_code == 200, changed.text
+
+    stale = web_client.post(
+        f"/web/duplicates/{second}/reject-original",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": token,
+            "original_expense_id": first,
+            "expected_original_row_version": original_token,
+        },
+        follow_redirects=False,
+    )
+    assert stale.status_code == 303
+    assert "flash_type=error" in stale.headers.get("location", "")
+    with SessionLocal() as db:
+        kept = db.get(Expense, second)
+        original = db.get(Expense, first)
+        assert kept is not None and original is not None
+        assert kept.duplicate_status == "suspected"
+        assert kept.duplicate_of_id == first
+        assert kept.row_version == int(token)
+        assert original.status == "pending"
+        assert original.note == "Concurrent Original Truth"
 
 
 def test_web_duplicates_stale_token_renders_error_style(web_client: TestClient, *, identity) -> None:

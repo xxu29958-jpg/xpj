@@ -5,6 +5,8 @@ route files don't have to import from each other.
 """
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
@@ -45,6 +47,7 @@ def _edit_page_or_flash_redirect(
     status_code: int = 422,
     form_values: dict[str, str] | None = None,
     field_errors: dict[str, str] | None = None,
+    conflict: bool = False,
     receipt_item_rows: list[dict] | None = None,
     split_form_rows: list[dict] | None = None,
     return_to: str = "",
@@ -76,6 +79,7 @@ def _edit_page_or_flash_redirect(
             expense_id,
             form_values=form_values,
             field_errors=field_errors,
+            conflict=conflict,
             return_to=return_to,
             return_month=return_month,
             return_filter=return_filter,
@@ -134,6 +138,7 @@ def drawer_fragment_error(
     status_code: int = 422,
     form_values: dict[str, str] | None = None,
     field_errors: dict[str, str] | None = None,
+    conflict: bool = False,
 ) -> Response:
     """批10: re-render ``_edit_drawer.html`` carrying ``error_msg`` for a failed
     fetch-mutation — or the readable empty-cell snippet when the row vanished.
@@ -155,6 +160,7 @@ def drawer_fragment_error(
             expense_id,
             form_values=form_values,
             field_errors=field_errors,
+            conflict=conflict,
             return_to="pending",
         )
     except AppError as exc:
@@ -171,6 +177,26 @@ def drawer_fragment_error(
     )
 
 
+def _overlay_submitted_expense_values(
+    expense_view: dict,
+    form_values: dict[str, str] | None,
+) -> None:
+    if not form_values:
+        return
+    view_keys = {
+        "expected_row_version": "row_version",
+        "amount_yuan": "original_amount_value",
+        "merchant": "merchant",
+        "category": "category_input",
+        "note": "note",
+        "tags": "tags",
+        "expense_time": "expense_time_local",
+    }
+    for form_key, view_key in view_keys.items():
+        if form_key in form_values:
+            expense_view[view_key] = form_values[form_key]
+
+
 def web_edit_context(
     db: Session,
     request: Request,
@@ -180,6 +206,7 @@ def web_edit_context(
     *,
     form_values: dict[str, str] | None = None,
     field_errors: dict[str, str] | None = None,
+    conflict: bool = False,
     return_to: str = "",
     return_month: str = "",
     return_filter: str = "",
@@ -193,19 +220,13 @@ def web_edit_context(
         expense,
         presentation_currency_code=ctx["home_currency_code"],
     )
-    if form_values:
-        view_keys = {
-            "amount_yuan": "original_amount_value",
-            "merchant": "merchant",
-            "category": "category",
-            "note": "note",
-            "tags": "tags",
-            "expense_time": "expense_time_local",
-        }
-        for form_key, view_key in view_keys.items():
-            if form_key in form_values:
-                expense_view[view_key] = form_values[form_key]
+    current_expense_view = expense_view.copy()
+    _overlay_submitted_expense_values(expense_view, form_values)
     ctx["expense"] = expense_view
+    ctx["conflict_current"] = current_expense_view if conflict else None
+    ctx["confirm_idempotency_key"] = (
+        (form_values or {}).get("idempotency_key") or str(uuid4())
+    )
     ctx["error"] = None
     ctx["message"] = request.query_params.get("msg")
     ctx["items_error"] = None
@@ -363,6 +384,7 @@ def confirm_reject_error(
     return_query: str = "",
     form_values: dict[str, str] | None = None,
     field_errors: dict[str, str] | None = None,
+    conflict: bool = False,
 ) -> Response:
     if fragment:
         return drawer_fragment_error(
@@ -375,6 +397,7 @@ def confirm_reject_error(
             status_code=status_code,
             form_values=form_values,
             field_errors=field_errors,
+            conflict=conflict,
         )
     return _edit_page_or_flash_redirect(
         db,
@@ -387,6 +410,7 @@ def confirm_reject_error(
         status_code=status_code,
         form_values=form_values,
         field_errors=field_errors,
+        conflict=conflict,
         return_to=return_to,
         return_month=return_month,
         return_filter=return_filter,
@@ -407,6 +431,7 @@ def web_save_response(
     error_status: int,
     form_values: dict[str, str] | None,
     field_errors: dict[str, str] | None,
+    conflict: bool,
     fragment: int,
     return_to: str,
     return_month: str,
@@ -427,6 +452,7 @@ def web_save_response(
                 status_code=error_status,
                 form_values=form_values,
                 field_errors=field_errors,
+                conflict=conflict,
             )
         return _edit_page_or_flash_redirect(
             db,
@@ -439,6 +465,7 @@ def web_save_response(
             status_code=error_status,
             form_values=form_values,
             field_errors=field_errors,
+            conflict=conflict,
             return_to=return_to,
             return_month=return_month,
             return_filter=return_filter,
