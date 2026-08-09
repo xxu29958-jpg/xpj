@@ -947,10 +947,6 @@ class AppController:
                 raise RuntimeControlError(
                     "当前没有可用拥有者身份；管理器不能自动重建身份，请先导出诊断包。",
                 )
-            if destination == "pairing" and snapshot.android_binding_state != "configured_unverified":
-                raise RuntimeControlError(
-                    "电脑端运行正常，但尚未配置手机可达入口；请先在设置中完成连接配置。",
-                )
             if destination == "upload_links" and snapshot.iphone_upload_state != "configured_unverified":
                 raise RuntimeControlError(
                     "电脑端运行正常，但尚未配置 iPhone 上传入口；请先在设置中完成连接配置。",

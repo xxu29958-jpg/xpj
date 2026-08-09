@@ -134,7 +134,7 @@ POST https://api.我的域名.com/u/<upload_key>?tz=Asia/Shanghai
 
 ### 维护接口（Admin Token）
 
-Owner 初始化时通过 `POST /api/bootstrap/owner` 获得 `admin_token`，用于维护接口：
+源码/legacy 初始化可通过 `POST /api/bootstrap/owner` 获得 `admin_token`，用于维护接口。正式 Windows 安装器不调用该接口、不接收或保存 admin token；它只通过 installation-owner pairing 把普通用户的 Desktop Manager 接入现有身份体系。
 
 ```http
 Authorization: Bearer <admin_token>
@@ -150,7 +150,8 @@ Authorization: Bearer <admin_token>
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `/api/health` | GET | `backend/app/main.py` | 无 | 无 | `{"status":"ok"}` | 无 | `backend/tests/test_auth_bootstrap.py`, smoke | smoke |
 | `/api/status/private` | GET | `backend/app/main.py` | 无 | header `Authorization` | `HealthResponse` | Session Token | `backend/tests/test_auth_bootstrap.py` | 私有运行状态 |
-| `/api/bootstrap/owner` | POST | `backend/app/routes/bootstrap.py` | 无 | `BootstrapOwnerRequest` | `BootstrapOwnerResponse` | 默认禁用；启用后需 `X-Bootstrap-Secret`（一次性） | `backend/tests/test_auth_bootstrap.py` | owner 初始化 |
+| `/api/bootstrap/installation-owner` | POST | `backend/app/routes/bootstrap.py` | 无 | `InstallationOwnerBootstrapRequest` | `InstallationOwnerBootstrapResponse` | 默认禁用；正式安装时由受保护 installer 携 `X-Bootstrap-Secret` 调用 | `backend/tests/test_installation_owner_bootstrap.py`, packaging contract | Windows 首装：稳定 operation claim + 短期 pairing child；不返回长期凭据 |
+| `/api/bootstrap/owner` | POST | `backend/app/routes/bootstrap.py` | 无 | `BootstrapOwnerRequest` | `BootstrapOwnerResponse` | 默认禁用；启用后需 `X-Bootstrap-Secret`（一次性） | `backend/tests/test_auth_bootstrap.py` | 源码/legacy owner 初始化；不是正式安装器路径 |
 | `/api/bootstrap/pairing-codes` | POST | `backend/app/routes/bootstrap.py` | 无 | `PairingCodeCreateRequest` | `PairingCodeResponse` | Admin Token | `backend/tests/test_auth_bootstrap.py` | 生成新绑定码 |
 | `/api/auth/pair` | POST | `backend/app/routes/auth.py` | `pairDevice()` | `PairRequest` | `PairResponse` | 无 | `backend/tests/test_auth_bootstrap.py` | 设备绑定 |
 | `/api/auth/check` | GET | `backend/app/routes/auth.py` | `checkAuth()` | header `Authorization` | `AuthCheckDto` | Session Token | `backend/tests/test_auth_bootstrap.py` | 校验 session |
@@ -434,9 +435,52 @@ Authorization: Bearer <owner_session_token>
 
 > v0.4-beta1 起提供。当前账本 owner 停用非 owner 成员，并吊销该成员在此账本下的活跃 token。
 
+### POST /api/bootstrap/installation-owner
+
+正式 Windows 安装器的首次 owner claim。HTTP bootstrap 默认禁用；启用时必须提供至少 32 字节的 `X-Bootstrap-Secret`。loopback 仅是网络位置，不是授权依据。
+
+请求体：
+
+```json
+{
+  "operation_id": "<安装事务 ID>",
+  "installation_id": "<持久安装 ID>",
+  "account_name": "我",
+  "ledger_name": "我的小票夹",
+  "device_name": "Windows 后端"
+}
+```
+
+返回：
+
+```json
+{
+  "contract": "ticketbox-installation-owner-pairing-v1",
+  "operation_id": "<同一安装事务 ID>",
+  "installation_id": "<同一持久安装 ID>",
+  "account_name": "我",
+  "ledger_id": "owner",
+  "ledger_name": "我的小票夹",
+  "device_name": "Windows 后端",
+  "pairing_code": "73829401",
+  "pairing_expires_at": "2026-08-09T12:00:00Z",
+  "pairing_derivation_index": 0,
+  "claim_generation": 1
+}
+```
+
+响应明确不含 `admin_token`、`upload_key` 或用户长期 bearer。同一 operation/installation/request/secret 重试重放同一有效 pairing child；child 过期时只换代 child 并递增 generation，operation ID 不变。claim、owner/ledger/device、secret consumption 与 pairing child 在同一个数据库事务内提交；失败整体回滚。
+
+错误：
+
+- `bootstrap_disabled`（404）：HTTP bootstrap 未显式开启或 secret 配置不合格。
+- `bootstrap_secret_required` / `invalid_bootstrap_secret`（401）：请求未持有当前短命 secret，或绑定与既有 claim 不符。
+- `bootstrap_already_initialized`（409）：存在 foreign installation claim 或长期身份，拒绝另建 owner。
+- `installation_pairing_collision`（503）：确定性候选空间未能分配 child；事务保持可重试。
+
 ### POST /api/bootstrap/owner
 
-Owner 初始化，仅首次可用，并且只接受后端本机 loopback 请求。公网请求会返回 `invalid_token`（403）。
+源码开发、测试和明确 legacy 流程的 Owner 初始化；不是正式 Windows 安装器路径。接口默认禁用，启用后必须提供 `X-Bootstrap-Secret`。不能以 loopback 当授权判断，因为反向代理或 Tunnel 也可把公网流量表现为本机来源。
 
 请求体：
 
@@ -468,7 +512,8 @@ Owner 初始化，仅首次可用，并且只接受后端本机 loopback 请求�
 错误：
 
 - `bootstrap_already_initialized`：后端已有活跃身份数据，拒绝重复初始化。
-- `invalid_token`：请求不是从后端本机发起。
+- `bootstrap_disabled`：HTTP bootstrap 未显式开启或 secret 配置不合格。
+- `bootstrap_secret_required` / `invalid_bootstrap_secret`：缺少、错误或已消费的 bootstrap secret。
 
 ### POST /api/bootstrap/pairing-codes
 

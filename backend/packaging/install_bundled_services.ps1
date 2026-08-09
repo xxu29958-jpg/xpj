@@ -32,6 +32,7 @@ param(
     [int]$InstallerLockOwnerProcessId = 0,
     [string]$LifecycleFinalizationAttemptId = "",
     [string]$PublicFailurePath = "",
+    [string]$DiagnosticLogPath = "",
     [switch]$ValidateOnly,
     [string]$ExpectedBackendServiceName = "",
     [string]$ExpectedPgServiceName = "",
@@ -229,8 +230,9 @@ if (-not (Test-Path -LiteralPath $LockScript -PathType Leaf)) {
 $InitdbPasswordPath = Get-TicketboxInitdbPasswordPath $DataRoot
 $InitdbServiceReceiptPath = Get-TicketboxInitdbServiceReceiptPath
 $InstallerState = Get-TicketboxInstallerStateDirectory
-$OwnerBootstrapPath = Join-Path $InstallerState "owner-bootstrap.txt"
-$OwnerHandoffPendingPath = Join-Path $InstallerState "owner-handoff-pending"
+$OwnerHandoffPath = Join-Path $InstallerState "installation-owner-handoff-v2.txt"
+$RetiredOwnerBootstrapPath = Join-Path $InstallerState "owner-bootstrap.txt"
+$RetiredOwnerHandoffPendingPath = Join-Path $InstallerState "owner-handoff-pending"
 $RecoveryRequiredPath = Join-Path $InstallerState "installer-recovery-required.json"
 $BootstrapExposureRecoveryPath = Join-Path `
     (Split-Path -Parent (Get-TicketboxLifecycleLockPath)) `
@@ -307,7 +309,7 @@ function Resolve-TicketboxInstallPublicFailurePath([string]$Path) {
             "Ticketbox-Installer-Bootstrap-$InstallerLockOwnerProcessId")
     )
     $expected = [IO.Path]::GetFullPath(
-        (Join-Path $bootstrapRoot "installer-public-failure-v1.txt")
+        (Join-Path $bootstrapRoot "installer-public-failure-v2.txt")
     )
     $actual = [IO.Path]::GetFullPath($Path)
     if (-not [string]::Equals(
@@ -335,17 +337,94 @@ function Resolve-TicketboxInstallPublicFailurePath([string]$Path) {
     return $actual
 }
 
+function Resolve-TicketboxInstallDiagnosticLogPath([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        throw "正式安装缺少受保护的诊断日志路径。"
+    }
+    if (
+        $Path.Length -gt 1024 -or
+        $Path.Contains("`r") -or
+        $Path.Contains("`n")
+    ) {
+        throw "正式安装诊断日志路径格式无效。"
+    }
+    if (-not [Environment]::Is64BitProcess) {
+        throw "正式安装诊断日志只允许由 64 位安装宿主发布。"
+    }
+    $commonProgramFiles = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::CommonProgramFiles
+    )
+    if ([string]::IsNullOrWhiteSpace($commonProgramFiles)) {
+        throw "无法定位受信任的 Common Program Files。"
+    }
+    $logRoot = [IO.Path]::GetFullPath(
+        (Join-Path $commonProgramFiles "Ticketbox\installer-logs")
+    )
+    $actual = [IO.Path]::GetFullPath($Path)
+    if (
+        -not [string]::Equals(
+            [IO.Path]::GetDirectoryName($actual),
+            $logRoot,
+            [StringComparison]::OrdinalIgnoreCase
+        ) -or
+        [IO.Path]::GetFileName($actual) -cnotmatch
+            '^installer-[0-9]{8}-[0-9]{6}-[0-9]+-[0-9]+\.log$'
+    ) {
+        throw "正式安装诊断日志路径未绑定受保护的 installer log 根。"
+    }
+    if ((Get-TicketboxPathEntryKindNoFollow $logRoot) -cne "Directory") {
+        throw "正式安装诊断日志根不是受信任目录。"
+    }
+    Assert-TicketboxProtectedDirectoryAcl $logRoot
+    if ((Get-TicketboxPathEntryKindNoFollow $actual) -cne "File") {
+        throw "正式安装诊断日志不是普通文件。"
+    }
+    Assert-TicketboxExactFileAcl `
+        -Path $actual `
+        -Accounts @("SYSTEM", "BUILTIN\Administrators") `
+        -OwnerAccount "SYSTEM"
+    return $actual
+}
+
+function Assert-TicketboxInstallPublicIdentifier {
+    param(
+        [Parameter(Mandatory = $true)][string]$Value,
+        [Parameter(Mandatory = $true)][string]$Field
+    )
+
+    if ($Value -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$') {
+        throw "公开安装失败回执 $Field 不是安全标识符。"
+    }
+}
+
 function Publish-TicketboxInstallPublicFailureReceipt {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][object]$LifecycleLock,
         [Parameter(Mandatory = $true)][string]$FinalizationAttemptId,
+        [Parameter(Mandatory = $true)][string]$InstallationOperationId,
+        [Parameter(Mandatory = $true)][string]$InstallationId,
+        [Parameter(Mandatory = $true)][string]$LifecycleStage,
+        [Parameter(Mandatory = $true)][string]$ProtectedLogPath,
         [Parameter(Mandatory = $true)][Exception]$Failure,
         [Parameter(Mandatory = $true)][bool]$MutationStarted
     )
 
     $canonicalPath = Resolve-TicketboxInstallPublicFailurePath $Path
     if ($canonicalPath.Length -eq 0) { return }
+    $canonicalLogPath = Resolve-TicketboxInstallDiagnosticLogPath $ProtectedLogPath
+    Assert-TicketboxInstallPublicIdentifier `
+        -Value $FinalizationAttemptId `
+        -Field "FINALIZATION_ATTEMPT_ID"
+    Assert-TicketboxInstallPublicIdentifier `
+        -Value $InstallationOperationId `
+        -Field "INSTALLATION_OPERATION_ID"
+    Assert-TicketboxInstallPublicIdentifier `
+        -Value $InstallationId `
+        -Field "INSTALLATION_ID"
+    if ($LifecycleStage -cnotmatch '^[a-z][a-z0-9_]{0,63}$') {
+        throw "公开安装失败回执 LIFECYCLE_STAGE 不是受支持 token。"
+    }
     $ownerIdentity = $LifecycleLock.ExternalOwnerIdentity
     if ($null -eq $ownerIdentity -or [int]$ownerIdentity.ProcessId -lt 1) {
         throw "公开安装失败回执缺少 Inno owner identity。"
@@ -357,6 +436,7 @@ function Publish-TicketboxInstallPublicFailureReceipt {
             "backend_payload_manifest_order_invalid",
             "postgres_cluster_initialization_failed",
             "installation_identity_recovery_failed",
+            "installation_owner_binding_failed",
             "postgres_host_authority_validation_failed"
         )) {
             $failureCode = $candidate
@@ -371,6 +451,9 @@ function Publish-TicketboxInstallPublicFailureReceipt {
     elseif ($failureCode -ceq "installation_identity_recovery_failed") {
         $supportCode = "TBX-INSTALL-IDENTITY"
     }
+    elseif ($failureCode -ceq "installation_owner_binding_failed") {
+        $supportCode = "TBX-INSTALL-OWNER-BINDING"
+    }
     elseif ($failureCode -ceq "postgres_host_authority_validation_failed") {
         $supportCode = "TBX-INSTALL-POSTGRES-HOST"
     }
@@ -383,19 +466,43 @@ function Publish-TicketboxInstallPublicFailureReceipt {
     else {
         $databaseMutationState = "not_started"
     }
+    if ($failureCode -ceq "backend_payload_manifest_order_invalid") {
+        $retryClass = "replace_package_then_retry_no_cleanup"
+    }
+    elseif (
+        $failureCode -ceq "installation_identity_recovery_failed" -or
+        $failureCode -ceq "installation_owner_binding_failed"
+    ) {
+        $retryClass = "retry_same_operation_no_cleanup"
+    }
+    elseif (
+        $failureCode -ceq "postgres_cluster_initialization_failed" -or
+        $failureCode -ceq "postgres_host_authority_validation_failed"
+    ) {
+        $retryClass = "retry_no_cleanup"
+    }
+    else {
+        $retryClass = "manual_review_preserve_state"
+    }
     $text = @(
-        "SCHEMA=ticketbox-install-public-failure-v1",
+        "SCHEMA=ticketbox-install-public-failure-v2",
         "INSTALLER_OWNER_PID=$([uint32]$ownerIdentity.ProcessId)",
         "INSTALLER_OWNER_STARTED_FILETIME_HIGH=$([uint32]$ownerIdentity.StartedFileTimeHigh)",
         "INSTALLER_OWNER_STARTED_FILETIME_LOW=$([uint32]$ownerIdentity.StartedFileTimeLow)",
         "FINALIZATION_ATTEMPT_ID=$FinalizationAttemptId",
+        "INSTALLATION_OPERATION_ID=$InstallationOperationId",
+        "INSTALLATION_ID=$InstallationId",
+        "LIFECYCLE_STAGE=$LifecycleStage",
         "CONTEXT=service_installation",
         "FAILURE_CODE=$failureCode",
+        "RETRY_CLASS=$retryClass",
         "DATABASE_MUTATION_STATE=$databaseMutationState",
-        "SUPPORT_CODE=$supportCode"
+        "SUPPORT_CODE=$supportCode",
+        "PROTECTED_LOG_PATH=$canonicalLogPath",
+        "PUBLIC_RECEIPT_PATH=$canonicalPath"
     ) -join "`r`n"
     $text += "`r`n"
-    if ([Text.UTF8Encoding]::new($false).GetByteCount($text) -gt 2048) {
+    if ([Text.UTF8Encoding]::new($false).GetByteCount($text) -gt 4096) {
         throw "公开安装失败回执超过大小上限。"
     }
     Write-TicketboxProtectedUtf8FileDurable `
@@ -2466,10 +2573,12 @@ function Initialize-TicketboxInstallerStateArtifacts {
     Move-TicketboxLegacyInstallerStateArtifact `
         -LegacyPath $LegacyRecoveryRequiredPath `
         -CurrentPath $RecoveryRequiredPath
-    Move-TicketboxLegacyOwnerHandoffArtifacts `
+    Inspect-TicketboxRetiredOwnerHandoffArtifacts `
         -InstallerStatePath $InstallerState `
         -LegacyOwnerBootstrapPath $LegacyOwnerBootstrapPath `
-        -LegacyOwnerHandoffPendingPath $LegacyOwnerHandoffPendingPath
+        -LegacyOwnerHandoffPendingPath $LegacyOwnerHandoffPendingPath `
+        -RetiredOwnerBootstrapPath $RetiredOwnerBootstrapPath `
+        -RetiredOwnerHandoffPendingPath $RetiredOwnerHandoffPendingPath
 }
 
 function Assert-PortAvailableForMissingServices {
@@ -3076,15 +3185,13 @@ if ($CompleteOwnerHandoffOnly) {
         -ExternalOwnerProcessId $InstallerLockOwnerProcessId
     try {
         Assert-TicketboxDataRootMarker -DataRoot $DataRoot -InstallDir $InstallDir
-        if (
-            (Test-Path -LiteralPath $LegacyOwnerBootstrapPath) -or
-            (Test-Path -LiteralPath $LegacyOwnerHandoffPendingPath)
-        ) {
-            throw "完成页清理不迁移 legacy owner handoff；请重新运行 repair 安装。"
-        }
         Assert-TicketboxProtectedDirectoryAcl $InstallerState
-        Complete-TicketboxOwnerBootstrapHandoff
-        Write-Host "Owner bootstrap handoff artifacts removed OK。" -ForegroundColor Green
+        $handoffInstallationIdentity =
+            Read-TicketboxPersistentInstallationIdentity -DataRoot $DataRoot
+        Complete-TicketboxOwnerBootstrapHandoff `
+            -ExpectedOperationId ([string]$handoffInstallationIdentity.OperationId) `
+            -ExpectedInstallationId ([string]$handoffInstallationIdentity.InstallationId)
+        Write-Host "Installation owner pairing handoff artifacts removed OK。" -ForegroundColor Green
     }
     finally {
         Exit-TicketboxLifecycleLock $handoffLock
@@ -3119,6 +3226,10 @@ $serviceCompensationAuthority =
 $DeferredPreservedDataBackup = $false
 $installedC07PayloadLease = $null
 $resolvedPublicFailurePath = ""
+$resolvedDiagnosticLogPath = ""
+$receiptInstallationOperationId = $LifecycleFinalizationAttemptId
+$receiptInstallationId = "not-yet-assigned"
+$installLifecycleStage = "service_preflight"
 $operationFailure = $null
 $lifecycleExitFailureProjection = $null
 $lifecycleExitProjectionPreparationFailure = $null
@@ -3131,6 +3242,9 @@ try {
     if ($resolvedPublicFailurePath.Length -eq 0) {
         throw "正式安装缺少受保护的 lifecycle bootstrap 失败回执路径。"
     }
+    $resolvedDiagnosticLogPath =
+        Resolve-TicketboxInstallDiagnosticLogPath $DiagnosticLogPath
+    $installLifecycleStage = "package_provenance"
     Set-TicketboxRuntimeServiceContractFromBinding
     if ($InstallerLockOwnerProcessId -gt 0) {
         if ($LifecycleReceiptPath.Trim().Length -eq 0) {
@@ -3227,6 +3341,7 @@ try {
             -ExpectedPgMajor $TargetPgMajor
     $installedBuildManifest =
         $installedC07PayloadLease.InstalledBuildManifest
+    $installLifecycleStage = "host_preparation"
     if ($InstallerLockOwnerProcessId -gt 0) {
         if (
             [string]$lifecycleReceipt.preparation_stage -eq "program_files_installed_backup_pending" -and
@@ -3326,6 +3441,7 @@ try {
         -AclPhase backend_read_optional `
         -ExpectedBackendServiceName $BackendServiceName
 
+    $installLifecycleStage = "data_root_preparation"
     $mutationStarted = $true
     if ($hadExistingBackendService) {
         Stop-ServiceIfExists `
@@ -3357,13 +3473,6 @@ try {
         $LogDir, `
         $BackupDir | Out-Null
     Initialize-TicketboxInstallerStateArtifacts
-    $handoffDisposition = Adopt-TicketboxOwnerBootstrapHandoff
-    if ($handoffDisposition -ceq "pending") {
-        Write-Ok "已接管上次中断的 owner 绑定交付。"
-    }
-    elseif ($handoffDisposition -ceq "cleaned_confirmed") {
-        Write-Ok "已清理上次确认完成的 owner 绑定交付残留。"
-    }
     if ($hadExistingPgService) {
         Set-TicketboxAcl `
             -IncludePgService $true `
@@ -3380,6 +3489,7 @@ try {
     }
     Invoke-PreUpgradeBackupIfNeeded
 
+    $installLifecycleStage = "installation_identity"
     $c07SuccessorResolution = $null
     $c07PendingIdentityPath =
         Get-TicketboxPendingInstallationIdentityPath $DataRoot
@@ -3460,6 +3570,34 @@ try {
             "installation_identity_recovery_failed"
         throw $identityFailure
     }
+    $receiptInstallationOperationId =
+        [string]$c07InstallationIdentity.OperationId
+    $receiptInstallationId = [string]$c07InstallationIdentity.InstallationId
+    $installLifecycleStage = "owner_handoff_adoption"
+    try {
+        $handoffDisposition = Adopt-TicketboxOwnerBootstrapHandoff `
+            -ExpectedOperationId ([string]$c07InstallationIdentity.OperationId) `
+            -ExpectedInstallationId ([string]$c07InstallationIdentity.InstallationId)
+        if ($handoffDisposition -ceq "pending") {
+            Write-Ok "已接管上次中断的 installation owner 短期配对交付。"
+        }
+        elseif ($handoffDisposition -ceq "cleaned_confirmed") {
+            Write-Ok "已清理上次确认完成的 installation owner 配对交付残留。"
+        }
+    }
+    catch {
+        $ownerBindingFailure = [InvalidOperationException]::new(
+            "installation owner 绑定状态未通过安全验证。",
+            $_.Exception
+        )
+        $ownerBindingFailure.Data["TicketboxInstallPublicFailureCode"] =
+            "installation_owner_binding_failed"
+        $ownerBindingFailure.Data["TicketboxInstallationOperationId"] =
+            [string]$c07InstallationIdentity.OperationId
+        $ownerBindingFailure.Data["TicketboxInstallationId"] =
+            [string]$c07InstallationIdentity.InstallationId
+        throw $ownerBindingFailure
+    }
     if ($c07InstallationIdentity.State -ceq "PENDING") {
         Set-TicketboxLifecycleReceiptC07InstallationOperation `
             -Path $LifecycleReceiptPath `
@@ -3516,6 +3654,7 @@ try {
     ) {
         throw "C07 PENDING installation identity 原子复读后发生 release/helper 漂移。"
     }
+    $installLifecycleStage = "database_cluster"
     [void](Initialize-PgClusterIfNeeded -InitdbInvoker {
         param($BootstrapState)
         Invoke-TicketboxServiceOwnedInitdb `
@@ -3529,6 +3668,7 @@ try {
         -DataRootMarkerAclPhase backend_read_optional `
         -ExpectedBackendServiceName $BackendServiceName | Out-Null
     Set-TicketboxRuntimeServiceContractFromBinding -RequireBinding
+    $installLifecycleStage = "service_registration"
     Register-PgService `
         -RuntimeBindingTransition `
         -CompensationAuthority $serviceCompensationAuthority
@@ -3698,6 +3838,7 @@ try {
             -LifecycleLock $operationLock `
             -RecoveryArtifactPath $c07RecoveryArtifactPath
     }
+    $installLifecycleStage = "schema_migration"
     Write-Step "收敛 release schema 到 frozen head"
     $c07Authority = Read-TicketboxC07Authority $DataRoot
     $managedSchemaResult = Invoke-TicketboxInstalledManagedSchemaUpgrade `
@@ -3752,7 +3893,26 @@ try {
             -ExpectedExecutable (Get-ExpectedServiceExecutable $BackendServiceName) `
             @ServiceWaitArguments | Out-Null
         Wait-BackendHealth
-        Complete-FirstOwnerBootstrapIfEnabled $databaseUrl
+        $installLifecycleStage = "installation_owner_claim"
+        try {
+            Complete-FirstOwnerBootstrapIfEnabled `
+                -DatabaseUrl $databaseUrl `
+                -InstallationOperationId ([string]$c07InstallationIdentity.OperationId) `
+                -InstallationId ([string]$c07InstallationIdentity.InstallationId)
+        }
+        catch {
+            $ownerBindingFailure = [InvalidOperationException]::new(
+                "installation owner 短期配对未完成。",
+                $_.Exception
+            )
+            $ownerBindingFailure.Data["TicketboxInstallPublicFailureCode"] =
+                "installation_owner_binding_failed"
+            $ownerBindingFailure.Data["TicketboxInstallationOperationId"] =
+                [string]$c07InstallationIdentity.OperationId
+            $ownerBindingFailure.Data["TicketboxInstallationId"] =
+                [string]$c07InstallationIdentity.InstallationId
+            throw $ownerBindingFailure
+        }
     }
 
     Write-Host ""
@@ -3760,7 +3920,7 @@ try {
     Write-Host "安装目录 : $InstallDir"
     Write-Host "数据目录 : $DataRoot"
     Write-Host "后端地址 : http://127.0.0.1:$BackendPort"
-    Write-Host "owner 凭证: $OwnerBootstrapPath（首次安装时生成）"
+    Write-Host "首次配对: $OwnerHandoffPath（首次安装时生成，短期有效）"
     Write-Host "======================================================" -ForegroundColor Green
 }
 catch {
@@ -3783,6 +3943,10 @@ catch {
             -Path $resolvedPublicFailurePath `
             -LifecycleLock $operationLock `
             -FinalizationAttemptId $LifecycleFinalizationAttemptId `
+            -InstallationOperationId $receiptInstallationOperationId `
+            -InstallationId $receiptInstallationId `
+            -LifecycleStage $installLifecycleStage `
+            -ProtectedLogPath $resolvedDiagnosticLogPath `
             -Failure $failure `
             -MutationStarted $mutationStarted
     }

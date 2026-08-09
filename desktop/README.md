@@ -25,7 +25,7 @@ Manager BFF 只连接 `127.0.0.1`，从 WinCred 临时读取既有 app identity�
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop\scripts\build_manager_exe.ps1 -Clean
 ```
 
-输出是 `desktop\dist\ticketbox-manager\ticketbox-manager.exe` 与同目录 `BUILD_PROVENANCE.json`。Inno 构建会验证该 manifest 与当前 Manager 源码、版本和 payload hash 一致，再把整份 onedir 安装到 `{app}\manager` 并创建开始菜单入口。安装器不自动拉起 GUI：右键以管理员身份启动 Setup 时，Windows 无法安全恢复原登录用户上下文；完成页会明确提示从开始菜单打开。覆盖安装只有在生命周期预检、停服和升级前备份成功后，才先清空旧 Manager payload 再复制新 onedir，避免 N-1 独有 DLL/PYD 留在运行目录形成混合版本；真实 N-1 升级仍以 clean-machine E2E 为发布资格证据。
+输出是 `desktop\dist\ticketbox-manager\ticketbox-manager.exe` 与同目录 `BUILD_PROVENANCE.json`。Inno 构建会验证该 manifest 与当前 Manager 源码、版本和 payload hash 一致，再把整份 onedir 安装到 `{app}\manager` 并创建开始菜单入口。普通双击 Setup 后经 UAC 提权时，完成页会先释放安装生命周期锁，再用 Inno `ExecAsOriginalUser` 尝试在原登录用户上下文启动 Manager；若 Setup 本来就是直接提权启动、Windows 无法恢复原用户，安装仍成功并明确提示从开始菜单打开。Manager 由普通用户消费 8 位短期 pairing code，并由该进程通过 `CredWriteW` 把长期桌面 session 写入当前登录会话的 WinCred；提权安装器不接触用户长期凭据。覆盖安装只有在生命周期预检、停服和升级前备份成功后，才先清空旧 Manager payload 再复制新 onedir，避免 N-1 独有 DLL/PYD 留在运行目录形成混合版本；真实 N-1 升级仍以 clean-machine E2E 为发布资格证据。
 
 ## 结构（一文件一职责）
 

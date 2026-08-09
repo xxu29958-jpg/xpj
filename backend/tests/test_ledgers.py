@@ -223,7 +223,7 @@ def test_owner_pairing_shows_the_exact_android_server_address(
         "https://finance.example.test:0",
     ),
 )
-def test_owner_pairing_refuses_to_issue_code_without_phone_usable_server_address(
+def test_owner_pairing_allows_local_desktop_code_without_phone_usable_server_address(
     local_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     server_url: str,
@@ -249,9 +249,10 @@ def test_owner_pairing_refuses_to_issue_code_without_phone_usable_server_address
     )
 
     assert response.status_code == 200
-    assert "请先在设置中完成手机连接配置" in response.text
-    assert 'action="/owner/pairing"' not in response.text
-    assert issued == []
+    assert "当前绑定码可用于这台电脑上的小票夹管理器" in response.text
+    assert "请先在设置中完成手机连接配置" not in response.text
+    assert 'action="/owner/pairing"' in response.text
+    assert issued == [True]
 
 
 @pytest.mark.parametrize(

@@ -188,7 +188,7 @@ def derive_desktop_activation_token(secret: str, attempt_id: str) -> str:
     )
 
 
-def _derive_bootstrap_digest(secret: str, *, context: bytes) -> bytes:
+def derive_bootstrap_digest(secret: str, *, context: bytes) -> bytes:
     secret_bytes = secret.encode("utf-8")
     if len(secret_bytes) < BOOTSTRAP_SECRET_MIN_BYTES:
         raise ValueError("bootstrap secret must contain at least 32 UTF-8 bytes")
@@ -200,7 +200,7 @@ def _base64url_without_padding(value: bytes) -> str:
 
 
 def derive_bootstrap_admin_token(secret: str) -> str:
-    digest = _derive_bootstrap_digest(
+    digest = derive_bootstrap_digest(
         secret,
         context=BOOTSTRAP_ADMIN_TOKEN_CONTEXT,
     )
@@ -208,7 +208,7 @@ def derive_bootstrap_admin_token(secret: str) -> str:
 
 
 def derive_bootstrap_upload_key(secret: str) -> str:
-    digest = _derive_bootstrap_digest(
+    digest = derive_bootstrap_digest(
         secret,
         context=BOOTSTRAP_UPLOAD_KEY_CONTEXT,
     )
@@ -216,7 +216,7 @@ def derive_bootstrap_upload_key(secret: str) -> str:
 
 
 def derive_bootstrap_pairing_code(secret: str) -> str:
-    digest = _derive_bootstrap_digest(
+    digest = derive_bootstrap_digest(
         secret,
         context=BOOTSTRAP_PAIRING_CODE_CONTEXT,
     )

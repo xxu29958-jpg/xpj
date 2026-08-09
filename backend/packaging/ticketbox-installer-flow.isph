@@ -348,69 +348,6 @@ begin
      ((PortPage <> nil) and (PageID = PortPage.ID)));
 end;
 
-procedure ConfirmOwnerHandoffSaved(Sender: TObject);
-begin
-  OwnerHandoffSavedConfirmed :=
-    OwnerHandoffCopied and OwnerHandoffSavedCheck.Checked;
-  WizardForm.NextButton.Enabled := OwnerHandoffSavedConfirmed;
-end;
-
-procedure CopyOwnerHandoffToClipboard(Sender: TObject);
-var
-  ClipboardSequenceBefore: LongWord;
-  ClipboardSequenceAfter: LongWord;
-begin
-  if (OwnerHandoffMemo = nil) or
-     (OwnerHandoffClipboardProbe = nil) or
-     (not OwnerHandoffMemo.Visible) or
-     (OwnerHandoffMemo.Text = '') then
-  begin
-    MsgBox('首次连接信息尚未准备好，请运行修复安装。', mbError, MB_OK);
-    exit;
-  end;
-  ClipboardSequenceBefore := GetClipboardSequenceNumber();
-  OwnerHandoffSavedCheck.Checked := False;
-  OwnerHandoffSavedCheck.Enabled := False;
-  OwnerHandoffSavedConfirmed := False;
-  WizardForm.NextButton.Enabled := False;
-  OwnerHandoffMemo.SelectAll();
-  SendMessage(OwnerHandoffMemo.Handle, WindowsMessageCopy, 0, 0);
-  OwnerHandoffMemo.SelLength := 0;
-  ClipboardSequenceAfter := GetClipboardSequenceNumber();
-  if (ClipboardSequenceAfter = 0) or
-     (ClipboardSequenceAfter = ClipboardSequenceBefore) then
-  begin
-    OwnerHandoffCopied := False;
-    MsgBox(
-      'Windows 未确认复制成功。请关闭占用剪贴板的程序后重试。一次性信息尚未删除。',
-      mbError,
-      MB_OK);
-    exit;
-  end;
-  OwnerHandoffClipboardProbe.Text := '';
-  SendMessage(
-    OwnerHandoffClipboardProbe.Handle,
-    WindowsMessagePaste,
-    0,
-    0);
-  if CompareStr(
-       OwnerHandoffClipboardProbe.Text,
-       OwnerHandoffMemo.Text) <> 0 then
-  begin
-    OwnerHandoffClipboardProbe.Text := '';
-    OwnerHandoffCopied := False;
-    MsgBox(
-      '剪贴板内容与恢复信息不一致，可能已被其他程序替换。请重试；一次性信息尚未删除。',
-      mbError,
-      MB_OK);
-    exit;
-  end;
-  OwnerHandoffClipboardProbe.Text := '';
-  OwnerHandoffCopied := True;
-  OwnerHandoffSavedCheck.Enabled := True;
-  OwnerHandoffCopyButton.Caption := '已复制；保存后勾选下方确认';
-end;
-
 procedure SetInstallerStage(MessageText: String; DetailText: String);
 begin
   WizardForm.StatusLabel.Caption := MessageText;
@@ -481,10 +418,6 @@ begin
   OwnerHandoffMemo.ScrollBars := ssVertical;
   OwnerHandoffMemo.Visible := False;
 
-  OwnerHandoffClipboardProbe := TNewMemo.Create(WizardForm.FinishedPage);
-  OwnerHandoffClipboardProbe.Parent := WizardForm.FinishedPage;
-  OwnerHandoffClipboardProbe.Visible := False;
-
   InstallationFailureMemo := TNewMemo.Create(WizardForm.FinishedPage);
   InstallationFailureMemo.Parent := WizardForm.FinishedPage;
   InstallationFailureMemo.Left := 0;
@@ -507,35 +440,8 @@ begin
   LaunchManagerAfterFinish.Caption := '完成后打开小票夹管理器（推荐）';
   LaunchManagerAfterFinish.Checked := True;
   LaunchManagerAfterFinish.Visible := False;
-
-  OwnerHandoffSavedCheck := TNewCheckBox.Create(WizardForm.FinishedPage);
-  OwnerHandoffSavedCheck.Parent := WizardForm.FinishedPage;
-  OwnerHandoffSavedCheck.Left := 0;
-  OwnerHandoffSavedCheck.Width := WizardForm.FinishedPage.ClientWidth;
-  OwnerHandoffSavedCheck.Height := ScaleY(28);
-  OwnerHandoffSavedCheck.Top :=
-    LaunchManagerAfterFinish.Top - OwnerHandoffSavedCheck.Height - ScaleY(6);
-  OwnerHandoffSavedCheck.Caption :=
-    '我已将恢复信息粘贴并保存到安全位置';
-  OwnerHandoffSavedCheck.Checked := False;
-  OwnerHandoffSavedCheck.Enabled := False;
-  OwnerHandoffSavedCheck.Visible := False;
-  OwnerHandoffSavedCheck.OnClick := @ConfirmOwnerHandoffSaved;
-
-  OwnerHandoffCopyButton := TNewButton.Create(WizardForm.FinishedPage);
-  OwnerHandoffCopyButton.Parent := WizardForm.FinishedPage;
-  OwnerHandoffCopyButton.Left := 0;
-  OwnerHandoffCopyButton.Width := ScaleX(220);
-  OwnerHandoffCopyButton.Height := ScaleY(30);
-  OwnerHandoffCopyButton.Top :=
-    OwnerHandoffSavedCheck.Top - OwnerHandoffCopyButton.Height - ScaleY(6);
-  OwnerHandoffCopyButton.Caption := '复制恢复信息和“绑定此电脑”码';
-  OwnerHandoffCopyButton.OnClick := @CopyOwnerHandoffToClipboard;
-  OwnerHandoffCopyButton.Visible := False;
   OwnerHandoffMemo.Height :=
-    OwnerHandoffCopyButton.Top - OwnerHandoffMemo.Top - ScaleY(8);
-  OwnerHandoffCopied := False;
-  OwnerHandoffSavedConfirmed := False;
+    LaunchManagerAfterFinish.Top - OwnerHandoffMemo.Top - ScaleY(8);
   ManagerLaunchAttempted := False;
 end;
 
@@ -566,27 +472,109 @@ begin
   Result := Length(Text) > 0;
 end;
 
-function HasCurrentOwnerHandoffPendingArtifact(): Boolean;
+function IsEightDigitPairingCode(const Value: String): Boolean;
 var
-  PendingPath: String;
-  PendingValue: String;
+  Index: Integer;
 begin
-  Result := False;
-  PendingPath := LifecycleInstallerStatePath('owner-handoff-pending');
-  if not FileExists(PendingPath) then
+  Result := Length(Value) = 8;
+  if not Result then
   begin
     exit;
   end;
-  if LoadUtf8TextFile(PendingPath, 4096, PendingValue) then
+  for Index := 1 to Length(Value) do
   begin
-    Result :=
-      (Pos('SCHEMA=ticketbox-owner-handoff-v2' + #13#10, PendingValue) = 1) and
-      (Pos('STATE=pending' + #13#10, PendingValue) > 0) and
-      (Pos(
-        'INSTALLER_OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10,
-        PendingValue) > 0) and
-      (Pos('CREDENTIAL_SHA256=', PendingValue) > 0);
+    if (Value[Index] < '0') or (Value[Index] > '9') then
+    begin
+      Result := False;
+      exit;
+    end;
   end;
+end;
+
+function LoadCurrentOwnerHandoffDisplay(var DisplayText: String): Boolean;
+var
+  HandoffPath: String;
+  Lines: TArrayOfString;
+  ClaimGeneration: Integer;
+  PairingDerivationIndex: Integer;
+  PairingCode: String;
+  PairingExpiresAt: String;
+begin
+  Result := False;
+  DisplayText := '';
+  HandoffPath := LifecycleInstallerStatePath(
+    'installation-owner-handoff-v2.txt');
+  if not FileExists(HandoffPath) then
+  begin
+    exit;
+  end;
+  if not LoadStringsFromFile(HandoffPath, Lines) then
+  begin
+    exit;
+  end;
+  if (GetArrayLength(Lines) <> 11) or
+     (Lines[0] <> 'SCHEMA=ticketbox-installation-owner-handoff-v2') or
+     (Lines[1] <> 'STATE=pending') or
+     (Lines[2] <> 'CONTRACT=ticketbox-installation-owner-pairing-v1') or
+     (Pos('OPERATION_ID=', Lines[3]) <> 1) or
+     (Length(Lines[3]) <= Length('OPERATION_ID=')) or
+     (Pos('INSTALLATION_ID=', Lines[4]) <> 1) or
+     (Length(Lines[4]) <= Length('INSTALLATION_ID=')) or
+     (Pos('CLAIM_GENERATION=', Lines[5]) <> 1) or
+     (Pos('PAIRING_DERIVATION_INDEX=', Lines[6]) <> 1) or
+     (Pos('PAIRING_CODE=', Lines[7]) <> 1) or
+     (Pos('PAIRING_EXPIRES_AT=', Lines[8]) <> 1) or
+     (Lines[9] <>
+       'INSTALLER_OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId)) or
+     (Pos('INSTALLER_OWNER_STARTED_UTC=', Lines[10]) <> 1) or
+     (Length(Lines[10]) <= Length('INSTALLER_OWNER_STARTED_UTC=')) then
+  begin
+    exit;
+  end;
+  ClaimGeneration := StrToIntDef(
+    Copy(Lines[5], Length('CLAIM_GENERATION=') + 1, MaxInt), 0);
+  PairingDerivationIndex := StrToIntDef(
+    Copy(Lines[6], Length('PAIRING_DERIVATION_INDEX=') + 1, MaxInt), -1);
+  PairingCode := Copy(
+    Lines[7], Length('PAIRING_CODE=') + 1, MaxInt);
+  PairingExpiresAt := Copy(
+    Lines[8], Length('PAIRING_EXPIRES_AT=') + 1, MaxInt);
+  if (ClaimGeneration < 1) or
+     (PairingDerivationIndex < 0) or
+     (PairingDerivationIndex > 63) or
+     (not IsEightDigitPairingCode(PairingCode)) or
+     (PairingExpiresAt = '') or
+     (Length(PairingExpiresAt) > 64) then
+  begin
+    exit;
+  end;
+  DisplayText :=
+    '小票夹首次连接' + #13#10 +
+    '绑定此电脑码：' + PairingCode + #13#10 +
+    '有效期至：' + PairingExpiresAt + #13#10 +
+    '完成安装后，在小票夹管理器中输入这枚 8 位短期码。' + #13#10 +
+    '若代码过期或窗口已关闭，请从开始菜单打开“小票夹连接与恢复”生成新码。';
+  Result := True;
+end;
+
+function HasCurrentOwnerHandoffPendingArtifact(): Boolean;
+var
+  HandoffPath: String;
+  DisplayText: String;
+begin
+  HandoffPath := LifecycleInstallerStatePath(
+    'installation-owner-handoff-v2.txt');
+  if not FileExists(HandoffPath) then
+  begin
+    Result := False;
+    exit;
+  end;
+  if not LoadCurrentOwnerHandoffDisplay(DisplayText) then
+  begin
+    RaiseException(
+      'installation owner pairing handoff 记录存在但格式或 owner 绑定无效。');
+  end;
+  Result := True;
 end;
 
 procedure ShowInstallationFailurePage();
@@ -604,7 +592,6 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 var
-  HandoffPath: String;
   HandoffText: String;
 begin
   if CurPageID <> wpFinished then
@@ -613,14 +600,6 @@ begin
   end;
   OwnerHandoffMemo.Visible := False;
   OwnerHandoffMemo.Text := '';
-  OwnerHandoffClipboardProbe.Text := '';
-  OwnerHandoffCopyButton.Visible := False;
-  OwnerHandoffCopyButton.Caption := '复制恢复信息和“绑定此电脑”码';
-  OwnerHandoffCopied := False;
-  OwnerHandoffSavedCheck.Visible := False;
-  OwnerHandoffSavedCheck.Checked := False;
-  OwnerHandoffSavedCheck.Enabled := False;
-  OwnerHandoffSavedConfirmed := False;
   LaunchManagerAfterFinish.Visible := False;
   InstallationFailureMemo.Visible := False;
   InstallationFailureMemo.Text := '';
@@ -644,8 +623,7 @@ begin
     exit;
   end;
 
-  HandoffPath := LifecycleInstallerStatePath('owner-bootstrap.txt');
-  if not LoadUtf8TextFile(HandoffPath, 16384, HandoffText) then
+  if not LoadCurrentOwnerHandoffDisplay(HandoffText) then
   begin
     RecordInstallationFailure(
       '小票夹程序和服务已安装，但首次绑定信息不可读。一次性信息仍受保护且未删除。');
@@ -653,19 +631,16 @@ begin
     exit;
   end;
   WizardForm.FinishedLabel.Caption :=
-    '小票夹已安装。先复制并安全保存恢复信息，再点击“完成”打开管理器，用“绑定此电脑”码连接桌面账本。Android 请在桌面绑定成功后另行生成新码。';
+    '小票夹已安装。请记下下方 8 位短期配对码，再点击“完成”打开管理器。安装器不会创建、复制或保存用户长期凭据；代码过期后可从开始菜单打开“小票夹连接与恢复”重新生成。';
   OwnerHandoffMemo.Text := HandoffText;
   OwnerHandoffMemo.Visible := True;
-  OwnerHandoffCopyButton.Visible := True;
-  OwnerHandoffSavedCheck.Visible := True;
   LaunchManagerAfterFinish.Visible := True;
-  WizardForm.NextButton.Enabled := False;
+  WizardForm.NextButton.Enabled := True;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   HandoffPath: String;
-  HandoffPendingPath: String;
   Args: String;
   MessageText: String;
   VersionFailureReason: String;
@@ -686,24 +661,6 @@ begin
       exit;
     end;
     AssertDataRootMutationGuardActive();
-    if not OwnerHandoffCopied then
-    begin
-      MsgBox(
-        '请先点击“复制恢复信息和绑定此电脑码”。复制成功前，一次性信息不会删除。',
-        mbError,
-        MB_OK);
-      Result := False;
-      exit;
-    end;
-    if not OwnerHandoffSavedConfirmed then
-    begin
-      MsgBox(
-        '复制后，请先粘贴到安全位置，并勾选“我已将恢复信息粘贴并保存到安全位置”。确认前，一次性信息不会删除。',
-        mbError,
-        MB_OK);
-      Result := False;
-      exit;
-    end;
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
       ' -DataRoot ' + Quote(SelectedDataRoot()) +
@@ -728,9 +685,9 @@ begin
         exit;
       end;
     end;
-    HandoffPath := LifecycleInstallerStatePath('owner-bootstrap.txt');
-    HandoffPendingPath := LifecycleInstallerStatePath('owner-handoff-pending');
-    if FileExists(HandoffPath) or FileExists(HandoffPendingPath) then
+    HandoffPath := LifecycleInstallerStatePath(
+      'installation-owner-handoff-v2.txt');
+    if FileExists(HandoffPath) then
     begin
       MsgBox(
         '首次绑定信息清理后仍有敏感文件残留，拒绝完成安装。',
@@ -740,9 +697,6 @@ begin
       exit;
     end;
     OwnerHandoffMemo.Text := '';
-    OwnerHandoffClipboardProbe.Text := '';
-    OwnerHandoffCopyButton.Visible := False;
-    OwnerHandoffSavedCheck.Visible := False;
   end;
 
   if (CurPageID = wpFinished) and LifecycleInstallCompleted then

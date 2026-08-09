@@ -76,7 +76,7 @@ legacy ADR 由 [哈希 baseline](legacy-baseline.json) 冻结元数据与正文�
 | [0060](0060-debt-forgiveness-fold-calibration.md) | Debt forgiveness fold 与事实重建 | forgiveness 减少 remaining但不增加 paid，DebtVoid 必须进入纯事实灾难重建 | accepted / nonconformant / failed | amends 0049 |
 | [0061](0061-home-currency-minor-unit-semantics.md) | Home currency 与整数 minor-unit 绑定 | 兼容 *_cents 字段名，但金额语义由持久 installation currency revision 与显式 exponent 裁决 | accepted / nonconformant / failed | amends 0001; amends 0027; amended-by 0075 |
 | [0062](0062-windows-installer-lifecycle-transaction.md) | Windows 安装事务：生命周期回执、复制边界与恢复协议 | 用机器锁、持久回执和复制边界区分可补偿失败与必须 repair 的故障隔离 | accepted / nonconformant / failed | amends 0047; depends-on 0041; informational 0006; amended-by 0074 |
-| [0063](0063-recoverable-owner-bootstrap-ceremony.md) | 可恢复 Owner Bootstrap：确定性凭据、全局串行化与关闭窗口 | 以家庭 owner 身份 claim 为核心，隔离可恢复创建、可撤销子凭证和安装交接 | accepted / partial / failed | amends 0047; depends-on 0028; depends-on 0045; amended-by 0074 |
+| [0063](0063-recoverable-owner-bootstrap-ceremony.md) | 可恢复 Owner Bootstrap：确定性凭据、全局串行化与关闭窗口 | 以家庭 owner 身份 claim 为核心，隔离可恢复创建、可撤销子凭证和安装交接 | accepted / partial / failed | amends 0047; depends-on 0028; depends-on 0045; amended-by 0074; amended-by 0076 |
 | [0064](0064-windows-installer-build-provenance.md) | Windows 安装器构建 Provenance：本地快照证据与上游信任边界 | 区分本地 payload 完整性、actual-input binding、上游真实性与最终发布 attestation | accepted / partial / unverified | amends 0047; depends-on 0010; depends-on 0062 |
 | [0065](0065-executable-architecture-contract-governance.md) | ADR 可执行架构契约与渐进式治理 | 用 front matter、稳定 clause、base-relative ratchet、派生证据和生成 registry 把 ADR 变成可验证契约 | accepted / partial / unverified | supersedes 0056 |
 | [0066](0066-family-financial-fact-system-boundary.md) | 小票夹作为家庭账务事实系统的领域与适配边界 | 以家庭账务事实、身份和多端协作为核心，替代早期小票上传器产品边界 | accepted / partial / unverified | supersedes 0017; refines 0024; refines 0041 |
@@ -87,14 +87,15 @@ legacy ADR 由 [哈希 baseline](legacy-baseline.json) 冻结元数据与正文�
 | [0071](0071-receipt-asset-authority-and-recovery.md) | 收据附件的复合权威、崩溃一致性与同代恢复 | 规范化收据 bytes 与 PostgreSQL 中的账本归属、生命周期和预期摘要共同构成有效附件，缩略图仅是可重建缓存 | accepted / nonconformant / failed | refines 0003; refines 0059; refines 0066; depends-on 0067 |
 | [0072](0072-postgresql-capacity-backpressure-and-task-execution.md) | PostgreSQL 容量、背压与可恢复后台任务执行 | 用 PG 任务账本和可替换 executor 隔离长任务，替代 SQLite/进程内永久假设 | accepted / nonconformant / failed | supersedes 0016; supersedes 0030; refines 0066; depends-on 0067 |
 | [0073](0073-financial-facts-corrections-and-projections.md) | 家庭财务事实、更正、冲正与投影契约 | 区分建议、意图、计划、当前事实聚合、追加事实与投影，并为金额、更正、退款、债务重建和删除建立统一边界 | accepted / nonconformant / failed | refines 0001; refines 0027; refines 0029; refines 0035; refines 0015; refines 0036; refines 0037; refines 0049; refines 0051; refines 0052; refines 0060; refines 0061; refines 0066; refines 0070 |
-| [0074](0074-windows-installer-state-authority-and-owner-handoff.md) | Windows 安装器状态权限域与 owner handoff 原子交接 | 分置 installer 权威与 backend-readable 运行投影，以不可变进程身份、原子状态机和显式租约交接完成可重入安装事务 | accepted / partial / unverified | amends 0062; amends 0063; depends-on 0065; refines 0066; informational 0006 |
+| [0074](0074-windows-installer-state-authority-and-owner-handoff.md) | Windows 安装器状态权限域与 owner handoff 原子交接 | 分置 installer 权威与 backend-readable 运行投影，以不可变进程身份、原子状态机和显式租约交接完成可重入安装事务 | accepted / partial / unverified | amends 0062; amends 0063; depends-on 0065; refines 0066; informational 0006; amended-by 0076 |
 | [0075](0075-currency-binding-write-drift-gate.md) | 写时币种绑定 drift 门（ADR-0061 C02/C03 桥接） | 持久版本化绑定落地前，写入口以 env 盖章新事实前校验与已持久事实的 home_currency_code 一致，漂移 fail closed | accepted / implemented / verified | amends 0061; depends-on 0061 |
+| [0076](0076-windows-installation-owner-pairing-and-protocol-retirement.md) | Windows installation owner 短期配对与旧协议退役边界 | 提权安装器只提交机器安装事务和短期配对能力，普通用户进程自行建立并保存用户凭据，旧 handoff 永不成为新版权威或门禁 | accepted / partial / unverified | amends 0063; amends 0074; depends-on 0062; depends-on 0065; refines 0068 |
 <!-- ADR_INDEX_TABLE_END -->
 
 ## 编写新 ADR
 
 <!-- ADR_NEXT_ID_START -->
-下一编号 `0076`。
+下一编号 `0077`。
 <!-- ADR_NEXT_ID_END -->
 
 命名 `NNNN-kebab-case-topic.md`，从

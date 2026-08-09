@@ -186,6 +186,7 @@ Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "PgServi
 [Icons]
 Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\manager\ticketbox-manager.exe"; WorkingDir: "{app}\manager"; IconFilename: "{app}\ticketbox.ico"
 Name: "{autoprograms}\小票夹\打开小票夹 Web"; Filename: "http://127.0.0.1:{code:GetBackendPort}/web"; IconFilename: "{app}\ticketbox.ico"
+Name: "{autoprograms}\小票夹\小票夹连接与恢复"; Filename: "http://127.0.0.1:{code:GetBackendPort}/owner"; IconFilename: "{app}\ticketbox.ico"
 Name: "{autoprograms}\小票夹\数据目录"; Filename: "{code:GetDataRoot}"; IconFilename: "{app}\ticketbox.ico"
 
 [Code]

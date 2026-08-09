@@ -13,11 +13,14 @@ from app.network_boundary import require_admin_network_boundary
 from app.schemas import (
     BootstrapOwnerRequest,
     BootstrapOwnerResponse,
+    InstallationOwnerBootstrapRequest,
+    InstallationOwnerBootstrapResponse,
     PairingCodeCreateRequest,
     PairingCodeResponse,
 )
 from app.services.admin_scope_service import require_admin_manages_current_ledger
 from app.services.identity_service import (
+    bootstrap_installation_owner,
     bootstrap_owner,
     create_pairing_code,
 )
@@ -94,6 +97,35 @@ def post_bootstrap_owner(
             # transaction; no failed attempt may burn the recovery key.
             db.rollback()
     return BootstrapOwnerResponse(**result.__dict__)
+
+
+@router.post(
+    "/installation-owner",
+    response_model=InstallationOwnerBootstrapResponse,
+)
+def post_installation_owner_bootstrap(
+    payload: InstallationOwnerBootstrapRequest,
+    secret: str = Depends(require_http_bootstrap_secret),
+    db: Session = Depends(get_db),
+) -> InstallationOwnerBootstrapResponse:
+    committed = False
+    try:
+        result = bootstrap_installation_owner(
+            db,
+            operation_id=payload.operation_id,
+            installation_id=payload.installation_id,
+            account_name=payload.account_name,
+            ledger_name=payload.ledger_name,
+            device_name=payload.device_name,
+            bootstrap_secret=secret,
+            commit=False,
+        )
+        db.commit()
+        committed = True
+    finally:
+        if not committed:
+            db.rollback()
+    return InstallationOwnerBootstrapResponse(**result.__dict__)
 
 
 @router.post(

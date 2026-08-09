@@ -139,8 +139,9 @@ if (
 
 $PgBin = Join-Path $InstallDir "pg\bin"
 $InstallerState = Get-TicketboxInstallerStateDirectory
-$OwnerBootstrapPath = Join-Path $InstallerState "owner-bootstrap.txt"
-$OwnerHandoffPendingPath = Join-Path $InstallerState "owner-handoff-pending"
+$OwnerHandoffPath = Join-Path $InstallerState "installation-owner-handoff-v2.txt"
+$RetiredOwnerBootstrapPath = Join-Path $InstallerState "owner-bootstrap.txt"
+$RetiredOwnerHandoffPendingPath = Join-Path $InstallerState "owner-handoff-pending"
 $RecoveryRequiredPath = Join-Path $InstallerState "installer-recovery-required.json"
 $DeleteDataIntentPath = Join-Path $InstallerState "delete-data-in-progress.json"
 $script:DeleteDataIntentValidated = $false
@@ -773,8 +774,9 @@ function Get-TicketboxInstallerStateDataDeletionSnapshot {
         -OwnerAccount $script:TicketboxLifecycleReceiptOwnerAccount
     $kinds = @{}
     foreach ($path in @(
-        $OwnerBootstrapPath,
-        $OwnerHandoffPendingPath,
+        $OwnerHandoffPath,
+        $RetiredOwnerBootstrapPath,
+        $RetiredOwnerHandoffPendingPath,
         $RecoveryRequiredPath,
         $DeleteDataIntentPath
     )) {
@@ -790,8 +792,9 @@ function Get-TicketboxInstallerStateDataDeletionSnapshot {
 function Assert-TicketboxRetiredInstallerStateShape([object]$Snapshot) {
     if (-not $Snapshot.Exists) { return }
     foreach ($path in @(
-        $OwnerBootstrapPath,
-        $OwnerHandoffPendingPath,
+        $OwnerHandoffPath,
+        $RetiredOwnerBootstrapPath,
+        $RetiredOwnerHandoffPendingPath,
         $RecoveryRequiredPath,
         $DeleteDataIntentPath
     )) {
@@ -832,6 +835,7 @@ function Assert-TicketboxInstallerStateForDataDeletion {
     $snapshot = Get-TicketboxInstallerStateDataDeletionSnapshot
     if (-not $snapshot.Exists) { return $snapshot }
     $knownNames = @(
+        "installation-owner-handoff-v2.txt",
         "owner-bootstrap.txt",
         "owner-handoff-pending",
         "installer-recovery-required.json",
@@ -851,7 +855,11 @@ function Assert-TicketboxInstallerStateForDataDeletion {
             throw "installer-state staging artifact 不是普通文件：$($item.FullName)"
         }
     }
-    foreach ($path in @($OwnerBootstrapPath, $OwnerHandoffPendingPath)) {
+    foreach ($path in @(
+        $OwnerHandoffPath,
+        $RetiredOwnerBootstrapPath,
+        $RetiredOwnerHandoffPendingPath
+    )) {
         if ($snapshot.Kinds[$path] -ceq "File") {
             Read-TicketboxProtectedUtf8Artifact `
                 -Path $path `
@@ -873,15 +881,8 @@ function Assert-TicketboxInstallerStateForDataDeletion {
             -DataRoot $DataRoot | Out-Null
         $script:DeleteDataIntentValidated = $true
     }
-    if ($snapshot.Kinds[$OwnerHandoffPendingPath] -ceq "File") {
-        $record = Read-TicketboxOwnerHandoffRecord
-        if ($snapshot.Kinds[$OwnerBootstrapPath] -ceq "File") {
-            Assert-TicketboxOwnerHandoffCredential $record
-        }
-    }
-    elseif ($snapshot.Kinds[$OwnerBootstrapPath] -ceq "File") {
-        Assert-TicketboxOwnerHandoffArtifact $OwnerBootstrapPath
-        throw "installer-state 中存在无 handoff 标记的 owner 凭据；拒绝无来源证明的数据删除。"
+    if ($snapshot.Kinds[$OwnerHandoffPath] -ceq "File") {
+        Read-TicketboxOwnerHandoffRecord | Out-Null
     }
     return $snapshot
 }
@@ -901,7 +902,11 @@ function Remove-TicketboxInstallerStateAfterDataDeletion {
     if (-not $snapshot.Exists) { return }
     Remove-TicketboxInstallerStateStagingAfterRuntimeProjection
     $snapshot = Assert-TicketboxInstallerStateForDataDeletion
-    foreach ($path in @($OwnerBootstrapPath, $OwnerHandoffPendingPath)) {
+    foreach ($path in @(
+        $OwnerHandoffPath,
+        $RetiredOwnerBootstrapPath,
+        $RetiredOwnerHandoffPendingPath
+    )) {
         if ($snapshot.Kinds[$path] -ceq "File") {
             Remove-TicketboxProtectedUtf8Artifact `
                 -Path $path `

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import app.services.identity_service._installation_recovery as installation_recovery
 from app.errors import AppError
 from app.models import (
     Account,
@@ -27,7 +28,12 @@ from app.services.identity_service._bootstrap import (
     _load_completed_bootstrap_credentials,
     is_bootstrap_secret_consumed,
 )
-from app.services.identity_service._models import PAIRING_CODE_TTL_MINUTES, BootstrapResult
+from app.services.identity_service._models import (
+    PAIRING_CODE_TTL_MINUTES,
+    BootstrapResult,
+    InstallationOwnerBootstrapResult,
+    ReplacementCredentialCollisionError,
+)
 from app.services.identity_service._seed import auth_token_count
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import (
@@ -44,10 +50,6 @@ class _BootstrapPrincipalIdentity:
     device: Device
     ledger: Ledger
     membership: LedgerMember
-
-
-class ReplacementCredentialCollisionError(ValueError):
-    """A deterministic replacement credential already exists in history."""
 
 
 def _load_recoverable_bootstrap_identity(
@@ -381,26 +383,15 @@ def _recover_completed_rotation(
     )
 
 
-def rotate_exposed_bootstrap_credentials(
+def _rotate_legacy_bootstrap_credentials(
     db: Session,
     *,
-    exposed_secret: str,
-    replacement_secret: str,
-    commit: bool = True,
+    exposed: _BootstrapCredentials,
+    replacement: _BootstrapCredentials,
+    exposed_secret_hash: str,
+    replacement_secret_hash: str,
+    commit: bool,
 ) -> BootstrapResult | None:
-    """Invalidate a possibly exposed secret while preserving owner recovery.
-
-    ``None`` means the exposed request never committed an owner identity; the
-    replacement secret can perform the normal first bootstrap after restart.
-    """
-    if exposed_secret == replacement_secret:
-        raise ValueError("replacement bootstrap secret must differ")
-    exposed = _derive_bootstrap_credentials(exposed_secret)
-    replacement = _derive_bootstrap_credentials(replacement_secret)
-    replacement_secret_hash = hash_secret(replacement_secret)
-    exposed_secret_hash = hash_secret(exposed_secret)
-
-    lock_bootstrap_owner_transaction(db)
     records = _load_completed_bootstrap_credentials(
         db,
         admin_token=exposed.admin_token,
@@ -461,3 +452,39 @@ def rotate_exposed_bootstrap_credentials(
     if commit:
         db.commit()
     return result
+
+
+def rotate_exposed_bootstrap_credentials(
+    db: Session,
+    *,
+    exposed_secret: str,
+    replacement_secret: str,
+    commit: bool = True,
+) -> BootstrapResult | InstallationOwnerBootstrapResult | None:
+    """Invalidate an exposed child while preserving its owner operation."""
+
+    if exposed_secret == replacement_secret:
+        raise ValueError("replacement bootstrap secret must differ")
+    exposed = _derive_bootstrap_credentials(exposed_secret)
+    replacement = _derive_bootstrap_credentials(replacement_secret)
+    replacement_secret_hash = hash_secret(replacement_secret)
+    exposed_secret_hash = hash_secret(exposed_secret)
+
+    lock_bootstrap_owner_transaction(db)
+    handled, result = installation_recovery.rotate_installation_owner_claim(
+        db,
+        exposed_secret=exposed_secret,
+        replacement_secret=replacement_secret,
+    )
+    if handled:
+        if commit:
+            db.commit()
+        return result
+    return _rotate_legacy_bootstrap_credentials(
+        db,
+        exposed=exposed,
+        replacement=replacement,
+        exposed_secret_hash=exposed_secret_hash,
+        replacement_secret_hash=replacement_secret_hash,
+        commit=commit,
+    )

@@ -6,7 +6,6 @@ from pathlib import Path
 
 from _powershell_contract import powershell_contract_engines
 
-
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGING = ROOT / "backend" / "packaging"
 PREREQUISITE = PACKAGING / "install_windows_prerequisites.ps1"

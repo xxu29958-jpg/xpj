@@ -329,6 +329,30 @@ class BootstrapOwnerResponse(BaseModel):
     pairing_expires_at: str
 
 
+class InstallationOwnerBootstrapRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: str = Field(min_length=1, max_length=128)
+    installation_id: str = Field(min_length=1, max_length=128)
+    account_name: str | None = None
+    ledger_name: str | None = None
+    device_name: str | None = None
+
+
+class InstallationOwnerBootstrapResponse(BaseModel):
+    contract: str
+    operation_id: str
+    installation_id: str
+    account_name: str
+    ledger_id: str
+    ledger_name: str
+    device_name: str
+    pairing_code: str
+    pairing_expires_at: str
+    pairing_derivation_index: int
+    claim_generation: int
+
+
 class PairingCodeCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

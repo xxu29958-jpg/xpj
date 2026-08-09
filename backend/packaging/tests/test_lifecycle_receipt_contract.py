@@ -2439,7 +2439,7 @@ function Initialize-TicketboxInstallerStateDirectory {{
 Initialize-TicketboxInstallerStateDirectory $InstallerState | Out-Null
 Initialize-TicketboxRecoveryStateArtifact
 Write-TicketboxProtectedUtf8FileDurable `
-    -Path (Join-Path $InstallerState 'owner-handoff-pending') `
+    -Path (Join-Path $InstallerState 'installation-owner-handoff-v2.txt') `
     -Text 'machine-state-without-data-root-authority' `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount
@@ -2457,7 +2457,7 @@ if (-not $missingDataRootRejected) {{
     throw 'non-empty machine installer-state was accepted without a data root'
 }}
 New-Item -ItemType Directory -Path $DataRoot | Out-Null
-Remove-Item -LiteralPath (Join-Path $InstallerState 'owner-handoff-pending') -Force
+Remove-Item -LiteralPath (Join-Path $InstallerState 'installation-owner-handoff-v2.txt') -Force
 New-Item -ItemType Directory -Path (Split-Path -Parent $LegacyRecoveryRequiredPath) -Force | Out-Null
 New-Item -ItemType Directory -Path $LegacyRecoveryRequiredPath | Out-Null
 $legacyNonFileRejected = $false

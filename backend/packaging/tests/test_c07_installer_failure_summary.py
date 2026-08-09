@@ -181,6 +181,13 @@ def test_failure_summary_is_an_allowlisted_projection_not_a_second_authority() -
     assert "TBX-INSTALL-POSTGRES-HOST" in install
     assert "installation_identity_recovery_failed" in install
     assert "TBX-INSTALL-IDENTITY" in install
+    assert "installation_owner_binding_failed" in install
+    assert "TBX-INSTALL-OWNER-BINDING" in install
+    assert "ticketbox-install-public-failure-v2" in install
+    assert "INSTALLATION_OPERATION_ID=" in install
+    assert "LIFECYCLE_STAGE=" in install
+    assert "RETRY_CLASS=" in install
+    assert "PROTECTED_LOG_PATH=" in install
     preinstall = flow[
         flow.index("if CurStep = ssInstall") : flow.index("if CurStep = ssPostInstall")
     ]
@@ -199,6 +206,9 @@ def test_failure_summary_is_an_allowlisted_projection_not_a_second_authority() -
     assert "TBX-INSTALL-POSTGRES-HOST" in public_reader
     assert "installation_identity_recovery_failed" in public_reader
     assert "TBX-INSTALL-IDENTITY" in public_reader
+    assert "installation_owner_binding_failed" in public_reader
+    assert "TBX-INSTALL-OWNER-BINDING" in public_reader
+    assert "受保护日志：" in public_reader
     resolver = install[
         install.index("function Resolve-TicketboxInstallPublicFailurePath") : install.index(
             "function Publish-TicketboxInstallPublicFailureReceipt"
@@ -245,6 +255,7 @@ $ast = [Management.Automation.Language.Parser]::ParseFile(
     [ref]$errors
 )
 foreach ($functionName in @(
+    'Assert-TicketboxInstallPublicIdentifier',
     'Publish-TicketboxInstallPublicFailureReceipt',
     'New-TicketboxInstallCompensationAggregateFailure'
 )) {{
@@ -258,7 +269,13 @@ foreach ($functionName in @(
 }}
 $script:ExpectedReceipt = Join-Path `
     {_ps_literal(bootstrap_dir)} `
-    'installer-public-failure-v1.txt'
+    'installer-public-failure-v2.txt'
+$script:ExpectedLog = Join-Path {_ps_literal(bootstrap_dir)} 'installer-test.log'
+[IO.File]::WriteAllText(
+    $script:ExpectedLog,
+    'protected log without secret material',
+    [Text.UTF8Encoding]::new($false)
+)
 function Resolve-TicketboxInstallPublicFailurePath([string]$Path) {{
     $actual = [IO.Path]::GetFullPath($Path)
     $expected = [IO.Path]::GetFullPath($script:ExpectedReceipt)
@@ -267,6 +284,16 @@ function Resolve-TicketboxInstallPublicFailurePath([string]$Path) {{
         $expected,
         [StringComparison]::OrdinalIgnoreCase
     )) {{ throw 'public receipt path is outside lifecycle bootstrap' }}
+    return $actual
+}}
+function Resolve-TicketboxInstallDiagnosticLogPath([string]$Path) {{
+    $actual = [IO.Path]::GetFullPath($Path)
+    $expected = [IO.Path]::GetFullPath($script:ExpectedLog)
+    if (-not [string]::Equals(
+        $actual,
+        $expected,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {{ throw 'diagnostic log path is outside protected test root' }}
     return $actual
 }}
 function Write-TicketboxProtectedUtf8FileDurable {{
@@ -280,7 +307,10 @@ $owner = [pscustomobject]@{{
 }}
 $lock = [pscustomobject]@{{ ExternalOwnerIdentity = $owner }}
 $attempt = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+$installOperation = 'install-op:stable-recovery'
+$installation = 'install-id:machine-0001'
 $receipt = $script:ExpectedReceipt
+$protectedLog = $script:ExpectedLog
 $failure = [IO.InvalidDataException]::new(
     'raw DATABASE_URL=super-secret must never leave the protected log'
 )
@@ -290,21 +320,31 @@ Publish-TicketboxInstallPublicFailureReceipt `
     -Path $receipt `
     -LifecycleLock $lock `
     -FinalizationAttemptId $attempt `
+    -InstallationOperationId $installOperation `
+    -InstallationId $installation `
+    -LifecycleStage 'package_provenance' `
+    -ProtectedLogPath $protectedLog `
     -Failure $failure `
     -MutationStarted $false
 $lines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
-if ($lines.Count -ne 9 -or
-    $lines[0] -cne 'SCHEMA=ticketbox-install-public-failure-v1' -or
+if ($lines.Count -ne 15 -or
+    $lines[0] -cne 'SCHEMA=ticketbox-install-public-failure-v2' -or
     $lines[1] -cne 'INSTALLER_OWNER_PID=4242' -or
     $lines[4] -cne "FINALIZATION_ATTEMPT_ID=$attempt" -or
-    $lines[5] -cne 'CONTEXT=service_installation' -or
-    $lines[6] -cne 'FAILURE_CODE=backend_payload_manifest_order_invalid' -or
-    $lines[7] -cne 'DATABASE_MUTATION_STATE=not_started' -or
-    $lines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-PROVENANCE-ORDER') {{
+    $lines[5] -cne "INSTALLATION_OPERATION_ID=$installOperation" -or
+    $lines[6] -cne "INSTALLATION_ID=$installation" -or
+    $lines[7] -cne 'LIFECYCLE_STAGE=package_provenance' -or
+    $lines[8] -cne 'CONTEXT=service_installation' -or
+    $lines[9] -cne 'FAILURE_CODE=backend_payload_manifest_order_invalid' -or
+    $lines[10] -cne 'RETRY_CLASS=replace_package_then_retry_no_cleanup' -or
+    $lines[11] -cne 'DATABASE_MUTATION_STATE=not_started' -or
+    $lines[12] -cne 'SUPPORT_CODE=TBX-INSTALL-PROVENANCE-ORDER' -or
+    $lines[13] -cne "PROTECTED_LOG_PATH=$protectedLog" -or
+    $lines[14] -cne "PUBLIC_RECEIPT_PATH=$receipt") {{
     throw 'public failure receipt shape or binding drifted'
 }}
 $text = [IO.File]::ReadAllText($receipt,[Text.UTF8Encoding]::new($false))
-if ($text.Length -gt 2048 -or $text -match 'DATABASE_URL|super-secret') {{
+if ($text.Length -gt 4096 -or $text -match 'DATABASE_URL|super-secret') {{
     throw 'public failure receipt exposed raw exception material'
 }}
 $initdbFailure = [InvalidOperationException]::new('private initdb diagnostic')
@@ -314,12 +354,17 @@ Publish-TicketboxInstallPublicFailureReceipt `
     -Path $receipt `
     -LifecycleLock $lock `
     -FinalizationAttemptId $attempt `
+    -InstallationOperationId $installOperation `
+    -InstallationId $installation `
+    -LifecycleStage 'database_cluster' `
+    -ProtectedLogPath $protectedLog `
     -Failure $initdbFailure `
     -MutationStarted $true
 $initdbLines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
-if ($initdbLines[6] -cne 'FAILURE_CODE=postgres_cluster_initialization_failed' -or
-    $initdbLines[7] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
-    $initdbLines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-INITDB') {{
+if ($initdbLines[9] -cne 'FAILURE_CODE=postgres_cluster_initialization_failed' -or
+    $initdbLines[10] -cne 'RETRY_CLASS=retry_no_cleanup' -or
+    $initdbLines[11] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
+    $initdbLines[12] -cne 'SUPPORT_CODE=TBX-INSTALL-INITDB') {{
     throw 'initdb public failure receipt drifted'
 }}
 $hostFailure = [InvalidOperationException]::new('private PostgreSQL host diagnostic')
@@ -329,12 +374,17 @@ Publish-TicketboxInstallPublicFailureReceipt `
     -Path $receipt `
     -LifecycleLock $lock `
     -FinalizationAttemptId $attempt `
+    -InstallationOperationId $installOperation `
+    -InstallationId $installation `
+    -LifecycleStage 'service_registration' `
+    -ProtectedLogPath $protectedLog `
     -Failure $hostFailure `
     -MutationStarted $true
 $hostLines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
-if ($hostLines[6] -cne 'FAILURE_CODE=postgres_host_authority_validation_failed' -or
-    $hostLines[7] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
-    $hostLines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-POSTGRES-HOST') {{
+if ($hostLines[9] -cne 'FAILURE_CODE=postgres_host_authority_validation_failed' -or
+    $hostLines[10] -cne 'RETRY_CLASS=retry_no_cleanup' -or
+    $hostLines[11] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
+    $hostLines[12] -cne 'SUPPORT_CODE=TBX-INSTALL-POSTGRES-HOST') {{
     throw 'PostgreSQL host public failure receipt drifted'
 }}
 $cleanupFailure = [InvalidOperationException]::new('private cleanup diagnostic')
@@ -350,11 +400,16 @@ Publish-TicketboxInstallPublicFailureReceipt `
     -Path $receipt `
     -LifecycleLock $lock `
     -FinalizationAttemptId $attempt `
+    -InstallationOperationId $installOperation `
+    -InstallationId $installation `
+    -LifecycleStage 'service_registration' `
+    -ProtectedLogPath $protectedLog `
     -Failure $aggregateFailure `
     -MutationStarted $true
 $aggregateLines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
-if ($aggregateLines[6] -cne 'FAILURE_CODE=unclassified_service_install_failure' -or
-    $aggregateLines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-UNKNOWN') {{
+if ($aggregateLines[9] -cne 'FAILURE_CODE=unclassified_service_install_failure' -or
+    $aggregateLines[10] -cne 'RETRY_CLASS=manual_review_preserve_state' -or
+    $aggregateLines[12] -cne 'SUPPORT_CODE=TBX-INSTALL-UNKNOWN') {{
     throw 'incomplete compensation did not fail closed to UNKNOWN support'
 }}
 $identityFailure = [InvalidOperationException]::new('private identity diagnostic')
@@ -364,25 +419,57 @@ Publish-TicketboxInstallPublicFailureReceipt `
     -Path $receipt `
     -LifecycleLock $lock `
     -FinalizationAttemptId $attempt `
+    -InstallationOperationId $installOperation `
+    -InstallationId $installation `
+    -LifecycleStage 'installation_identity' `
+    -ProtectedLogPath $protectedLog `
     -Failure $identityFailure `
     -MutationStarted $true
 $identityLines = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
-if ($identityLines[6] -cne 'FAILURE_CODE=installation_identity_recovery_failed' -or
-    $identityLines[7] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
-    $identityLines[8] -cne 'SUPPORT_CODE=TBX-INSTALL-IDENTITY') {{
+if ($identityLines[9] -cne 'FAILURE_CODE=installation_identity_recovery_failed' -or
+    $identityLines[10] -cne 'RETRY_CLASS=retry_same_operation_no_cleanup' -or
+    $identityLines[11] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
+    $identityLines[12] -cne 'SUPPORT_CODE=TBX-INSTALL-IDENTITY') {{
     throw 'identity public failure receipt drifted'
+}}
+$ownerBindingFailure = [InvalidOperationException]::new('private owner binding diagnostic')
+$ownerBindingFailure.Data['TicketboxInstallPublicFailureCode'] =
+    'installation_owner_binding_failed'
+Publish-TicketboxInstallPublicFailureReceipt `
+    -Path $receipt `
+    -LifecycleLock $lock `
+    -FinalizationAttemptId $attempt `
+    -InstallationOperationId $installOperation `
+    -InstallationId $installation `
+    -LifecycleStage 'installation_owner_claim' `
+    -ProtectedLogPath $protectedLog `
+    -Failure $ownerBindingFailure `
+    -MutationStarted $true
+$ownerBindingLines = [IO.File]::ReadAllLines(
+    $receipt,
+    [Text.UTF8Encoding]::new($false)
+)
+if ($ownerBindingLines[9] -cne 'FAILURE_CODE=installation_owner_binding_failed' -or
+    $ownerBindingLines[10] -cne 'RETRY_CLASS=retry_same_operation_no_cleanup' -or
+    $ownerBindingLines[12] -cne 'SUPPORT_CODE=TBX-INSTALL-OWNER-BINDING') {{
+    throw 'installation owner binding public failure receipt drifted'
 }}
 $unknown = [InvalidOperationException]::new('another private diagnostic')
 Publish-TicketboxInstallPublicFailureReceipt `
     -Path $receipt `
     -LifecycleLock $lock `
     -FinalizationAttemptId $attempt `
+    -InstallationOperationId $installOperation `
+    -InstallationId $installation `
+    -LifecycleStage 'schema_migration' `
+    -ProtectedLogPath $protectedLog `
     -Failure $unknown `
     -MutationStarted $true
 $updated = [IO.File]::ReadAllLines($receipt,[Text.UTF8Encoding]::new($false))
-if ($updated[6] -cne 'FAILURE_CODE=unclassified_service_install_failure' -or
-    $updated[7] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
-    $updated[8] -cne 'SUPPORT_CODE=TBX-INSTALL-UNKNOWN') {{
+if ($updated[9] -cne 'FAILURE_CODE=unclassified_service_install_failure' -or
+    $updated[10] -cne 'RETRY_CLASS=manual_review_preserve_state' -or
+    $updated[11] -cne 'DATABASE_MUTATION_STATE=started_or_possible' -or
+    $updated[12] -cne 'SUPPORT_CODE=TBX-INSTALL-UNKNOWN') {{
     throw 'unknown public failure receipt did not fail closed'
 }}
 $outsideRejected = $false
@@ -391,6 +478,10 @@ try {{
         -Path (Join-Path (Split-Path -Parent {_ps_literal(bootstrap_dir)}) 'outside.txt') `
         -LifecycleLock $lock `
         -FinalizationAttemptId $attempt `
+        -InstallationOperationId $installOperation `
+        -InstallationId $installation `
+        -LifecycleStage 'package_provenance' `
+        -ProtectedLogPath $protectedLog `
         -Failure $failure `
         -MutationStarted $false
 }}

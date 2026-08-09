@@ -295,19 +295,28 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "LifecycleFilesMayBeReplaced" in installer
     assert "OwnerHandoffExpected" in installer
     assert "OwnerHandoffMemo" in installer
-    assert "OwnerHandoffClipboardProbe" in installer
-    assert "OwnerHandoffCopyButton" in installer
-    assert "OwnerHandoffCopied" in installer
-    assert "OwnerHandoffSavedCheck" in installer
-    assert "OwnerHandoffSavedConfirmed" in installer
-    assert "CopyOwnerHandoffToClipboard" in installer
-    assert "GetClipboardSequenceNumber" in installer
-    assert "owner-bootstrap.txt" in installer
-    assert "owner-handoff-pending" in installer
+    assert "OwnerHandoffClipboardProbe" not in installer
+    assert "OwnerHandoffCopyButton" not in installer
+    assert "OwnerHandoffCopied" not in installer
+    assert "OwnerHandoffSavedCheck" not in installer
+    assert "OwnerHandoffSavedConfirmed" not in installer
+    assert "CopyOwnerHandoffToClipboard" not in installer
+    assert "GetClipboardSequenceNumber" not in installer
+    assert "WindowsMessageCopy" not in installer
+    assert "WindowsMessagePaste" not in installer
+    assert "installation-owner-handoff-v2.txt" in installer
     assert "LoadStringsFromFile" in installer
-    assert "绑定此电脑" in installer
+    assert "8 位短期配对码" in installer
     assert "HasCurrentOwnerHandoffPendingArtifact" in installer
     assert "INSTALLER_OWNER_PID=" in installer
+    assert "SCHEMA=ticketbox-installation-owner-handoff-v2" in installer
+    assert "CONTRACT=ticketbox-installation-owner-pairing-v1" in installer
+    assert "OPERATION_ID=" in installer
+    assert "CLAIM_GENERATION=" in installer
+    assert "PAIRING_DERIVATION_INDEX=" in installer
+    assert "PAIRING_CODE=" in installer
+    assert "PAIRING_EXPIRES_AT=" in installer
+    assert "小票夹连接与恢复" in installer
     flow = _read("ticketbox-installer-flow.isph")
     windows = _read("ticketbox-installer-windows.isph")
     lifecycle_lock = _read("windows_lifecycle_lock.ps1")
@@ -346,8 +355,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "$script:TicketboxSharingViolationErrorCode" in powershell_coordination_reader
     assert "$script:TicketboxLockViolationErrorCode" in powershell_coordination_reader
     assert "Start-Sleep" in powershell_coordination_reader
-    assert "LifecycleInstallerStatePath('owner-bootstrap.txt')" in flow
-    assert "LifecycleInstallerStatePath('owner-handoff-pending')" in flow
+    assert "'installation-owner-handoff-v2.txt'" in flow
     assert "AddBackslash(LifecycleInstallerStateDirectory) + FileName" in windows
     assert "'installer-state\\' + FileName" not in windows
     assert '"INSTALLER_STATE=$(Join-Path $lockRoot $script:TicketboxInstallerStateDirectoryName)' in lifecycle_lock
@@ -446,34 +454,22 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     finished_page = flow[flow.index("procedure CurPageChanged") : flow.index("function NextButtonClick")]
     finish_click = flow[flow.index("function NextButtonClick") : flow.index("function PrepareToInstall")]
     assert "OwnerHandoffMemo.Visible := True" in finished_page
-    assert "OwnerHandoffCopyButton.Visible := True" in finished_page
-    assert "OwnerHandoffSavedCheck.Visible := True" in finished_page
-    assert "OwnerHandoffSavedCheck.Enabled := True" in flow
-    assert "WindowsMessagePaste" in flow
-    copy_flow = flow[
-        flow.index("procedure CopyOwnerHandoffToClipboard") : flow.index(
-            "procedure SetInstallerStage"
-        )
-    ]
-    copy_message = copy_flow.index("WindowsMessageCopy")
-    paste_probe = copy_flow.index("WindowsMessagePaste", copy_message)
-    exact_probe = copy_flow.index("CompareStr(", paste_probe)
-    copied = copy_flow.index("OwnerHandoffCopied := True", exact_probe)
-    assert copy_message < paste_probe < exact_probe < copied
-    assert "OwnerHandoffClipboardProbe.Text := ''" in copy_flow
-    assert "Android 请在桌面绑定成功后另行生成新码" in finished_page
+    assert "OwnerHandoffCopyButton" not in finished_page
+    assert "OwnerHandoffSavedCheck" not in finished_page
+    assert "安装器不会创建、复制或保存用户长期凭据" in finished_page
+    assert "小票夹连接与恢复" in finished_page
     assert "一次性信息仍受保护且未删除" in finished_page
-    unreadable = finished_page.index("if not LoadUtf8TextFile")
-    assert finished_page.index("WizardForm.NextButton.Enabled := False", unreadable) > unreadable
-    assert finished_page.index("LaunchManagerAfterFinish.Visible := True", unreadable) > unreadable
+    unreadable = finished_page.index("if not LoadCurrentOwnerHandoffDisplay")
+    assert finished_page.index("ShowInstallationFailurePage", unreadable) > unreadable
+    assert "owner-bootstrap.txt" not in finished_page
     assert "owner-handoff-pending" not in finished_page
-    confirmation = finish_click.index("if not OwnerHandoffCopied")
-    saved_confirmation = finish_click.index("if not OwnerHandoffSavedConfirmed")
     cleanup_call = finish_click.index("' -CompleteOwnerHandoffOnly'")
-    verify_deleted = finish_click.index("if FileExists(HandoffPath) or FileExists(HandoffPendingPath)")
+    verify_deleted = finish_click.index("if FileExists(HandoffPath)")
     clear_ui_secret = finish_click.index("OwnerHandoffMemo.Text := ''")
-    assert confirmation < saved_confirmation < cleanup_call < verify_deleted < clear_ui_secret
+    assert cleanup_call < verify_deleted < clear_ui_secret
     assert "if not OwnerHandoffMemo.Visible" in finish_click
+    assert "if not OwnerHandoffCopied" not in finish_click
+    assert "if not OwnerHandoffSavedConfirmed" not in finish_click
     assert "DeleteFile(HandoffPendingPath)" not in flow
     assert "Ticketbox owner bootstrap handoff completion" in finish_click
     assert "LastPowerShellChildSucceeded" in finish_click
@@ -488,8 +484,8 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert cleanup_mode.index("Complete-TicketboxOwnerBootstrapHandoff") < cleanup_mode.index(
         "Exit-TicketboxLifecycleLock"
     )
-    assert "复制成功前，一次性信息不会删除" in finish_click
-    assert "确认前，一次性信息不会删除" in finish_click
+    assert "复制成功前，一次性信息不会删除" not in finish_click
+    assert "确认前，一次性信息不会删除" not in finish_click
     assert finish_click.index("ReleaseManagerMaintenanceGate") < finish_click.index(
         "ExecAsOriginalUser"
     )
@@ -497,8 +493,11 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "ExecAsOriginalUser"
     )
     bootstrap = _read("windows_backend_bootstrap.ps1")
-    assert "绑定此电脑码（仅供小票夹管理器首次连接）" in bootstrap
-    assert "桌面绑定成功后，在管理器中配置手机连接并生成一枚新的单次码" in bootstrap
+    assert "-PairingCode ([string]$Response.pairing_code)" in bootstrap
+    assert "-PairingExpiresAt ([string]$Response.pairing_expires_at)" in bootstrap
+    assert "admin_token" not in bootstrap
+    assert "upload_key" not in bootstrap
+    assert '"http://127.0.0.1:$BackendPort/api/bootstrap/installation-owner"' in bootstrap
     assert "$InstallerState = Get-TicketboxInstallerStateDirectory" in install
     assert "$InstallerState = Get-TicketboxInstallerStateDirectory" in prepare
     assert '$RecoveryRequiredPath = Join-Path $InstallerState "installer-recovery-required.json"' in install
@@ -513,11 +512,11 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     recovery_migration = state_initialization.index(
         "Move-TicketboxLegacyInstallerStateArtifact"
     )
-    owner_migration = state_initialization.index(
-        "Move-TicketboxLegacyOwnerHandoffArtifacts"
+    owner_inspection = state_initialization.index(
+        "Inspect-TicketboxRetiredOwnerHandoffArtifacts"
     )
-    assert state_directory < recovery_migration < owner_migration
-    assert state_initialization.index("$LegacyRecoveryRequiredPath") < owner_migration
+    assert state_directory < recovery_migration < owner_inspection
+    assert state_initialization.index("$LegacyRecoveryRequiredPath") < owner_inspection
     compensation = install[
         install.index("function Invoke-TicketboxInstallFailureCompensation") : install.index(
             'Write-Host "=== 小票夹 Inno 安装器服务配置 ==="'
@@ -533,21 +532,28 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     preserve = recovery_compensation.index("Read-TicketboxInstallerRecoveryMarker", reconcile)
     create = recovery_compensation.index("Write-TicketboxInstallerRecoveryMarker", preserve)
     assert reconcile < preserve < create
-    owner_migration = bootstrap[
-        bootstrap.index("function Move-TicketboxLegacyOwnerHandoffArtifacts") : bootstrap.index(
+    owner_inspection = bootstrap[
+        bootstrap.index("function Inspect-TicketboxRetiredOwnerHandoffArtifacts") : bootstrap.index(
             "function Read-TicketboxOwnerHandoffRecord"
         )
     ]
-    preflight = owner_migration.index("Read-TicketboxProtectedUtf8Artifact")
-    retain_source = owner_migration.index("-RetainLegacySource")
-    bind_pending = owner_migration.index("Write-TicketboxOwnerHandoffPendingMarker")
-    retire_source = owner_migration.index("Remove-TicketboxProtectedUtf8Artifact")
-    assert preflight < retain_source < bind_pending < retire_source
+    observation = owner_inspection.index("Get-TicketboxPathEntryKindNoFollow")
+    audit_only = owner_inspection.index(
+        "不会读取内容、迁移、删除、展示、阻断安装或成为当前 pairing handoff 权威"
+    )
+    assert observation < audit_only
+    assert "Read-TicketboxProtectedUtf8Artifact" not in owner_inspection
+    assert "Move-TicketboxLegacyInstallerStateArtifact" not in owner_inspection
+    assert "Write-TicketboxOwnerHandoffRecord" not in owner_inspection
     assert "Initialize-TicketboxInstallerStateArtifacts" not in cleanup_mode
     assert cleanup_mode.index("Assert-TicketboxDataRootMarker") < cleanup_mode.index(
         "Assert-TicketboxProtectedDirectoryAcl"
     )
-    assert "完成页清理不迁移 legacy owner handoff" in cleanup_mode
+    assert cleanup_mode.index("Read-TicketboxPersistentInstallationIdentity") < cleanup_mode.index(
+        "Complete-TicketboxOwnerBootstrapHandoff"
+    )
+    assert "LegacyOwnerBootstrapPath" not in cleanup_mode
+    assert "RetiredOwnerBootstrapPath" not in cleanup_mode
     prepare_flow = flow[flow.index("function PrepareToInstall") : flow.index("procedure CurStepChanged")]
     assert "OwnerHandoffExpected := False" in prepare_flow
     assert "owner-bootstrap.txt" not in prepare_flow
@@ -1264,12 +1270,14 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
 def test_owner_handoff_uses_utf8_aware_inno_loading() -> None:
     flow = _read("ticketbox-installer-flow.isph")
     loader = flow[
-        flow.index("function LoadUtf8TextFile") : flow.index(
+        flow.index("function LoadCurrentOwnerHandoffDisplay") : flow.index(
             "function HasCurrentOwnerHandoffPendingArtifact"
         )
     ]
     assert "LoadStringsFromFile" in loader
     assert "LoadStringFromFile" not in loader
+    assert "SCHEMA=ticketbox-installation-owner-handoff-v2" in loader
+    assert "GetArrayLength(Lines) <> 11" in loader
     pending = flow[
         flow.index("function HasCurrentOwnerHandoffPendingArtifact") : flow.index(
             "procedure CurPageChanged"
@@ -1278,8 +1286,8 @@ def test_owner_handoff_uses_utf8_aware_inno_loading() -> None:
     finished = flow[
         flow.index("procedure CurPageChanged") : flow.index("function NextButtonClick")
     ]
-    assert "LoadUtf8TextFile" in pending
-    assert "LoadUtf8TextFile" in finished
+    assert "LoadCurrentOwnerHandoffDisplay" in pending
+    assert "LoadCurrentOwnerHandoffDisplay" in finished
     assert "AnsiString" not in pending + finished
 
 
@@ -1981,8 +1989,9 @@ $DeleteData = $true
 $LifecycleReceiptPath = '{str(receipt_path).replace("'", "''")}'
 $DeleteDataIntentPath = '{str(intent_path).replace("'", "''")}'
 $InstallerState = '{str(installer_state).replace("'", "''")}'
-$OwnerBootstrapPath = Join-Path $InstallerState 'owner-bootstrap.txt'
-$OwnerHandoffPendingPath = Join-Path $InstallerState 'owner-handoff-pending'
+$OwnerHandoffPath = Join-Path $InstallerState 'installation-owner-handoff-v2.txt'
+$RetiredOwnerBootstrapPath = Join-Path $InstallerState 'owner-bootstrap.txt'
+$RetiredOwnerHandoffPendingPath = Join-Path $InstallerState 'owner-handoff-pending'
 $RecoveryRequiredPath = Join-Path $InstallerState 'installer-recovery-required.json'
 $InstallDir = 'C:\\Program Files\\Ticketbox'
 $RegisteredInstallDir = $InstallDir
@@ -2112,10 +2121,10 @@ Remove-Item -LiteralPath $InstallerState -Recurse -Force
 $InstallationIdentityAlreadyRemoved = $true
 $InstallationIdentityCleanupIncomplete = $false
 New-Item -ItemType Directory -Path $InstallerState | Out-Null
-[System.IO.File]::WriteAllText($OwnerBootstrapPath, 'orphaned state')
+[System.IO.File]::WriteAllText($RetiredOwnerBootstrapPath, 'orphaned state')
 $missingIntentRejected = $false
 try {{ Resolve-TicketboxDeleteDataRetryAuthority | Out-Null }} catch {{ $missingIntentRejected = $true }}
-if (-not $missingIntentRejected -or -not (Test-Path -LiteralPath $OwnerBootstrapPath -PathType Leaf)) {{
+if (-not $missingIntentRejected -or -not (Test-Path -LiteralPath $RetiredOwnerBootstrapPath -PathType Leaf)) {{
     throw 'non-empty installer-state without delete intent was accepted or mutated'
 }}
 Remove-Item -LiteralPath $InstallerState -Recurse -Force
@@ -4960,8 +4969,9 @@ $DataRoot = Join-Path '{literal(base)}' 'state-data'
 $InstallDir = Join-Path '{literal(base)}' 'state-program'
 $machineRoot = Join-Path '{literal(base)}' 'state-machine'
 $InstallerState = Join-Path $machineRoot 'installer-state'
-$OwnerBootstrapPath = Join-Path $InstallerState 'owner-bootstrap.txt'
-$OwnerHandoffPendingPath = Join-Path $InstallerState 'owner-handoff-pending'
+$OwnerHandoffPath = Join-Path $InstallerState 'installation-owner-handoff-v2.txt'
+$RetiredOwnerBootstrapPath = Join-Path $InstallerState 'owner-bootstrap.txt'
+$RetiredOwnerHandoffPendingPath = Join-Path $InstallerState 'owner-handoff-pending'
 $RecoveryRequiredPath = Join-Path $InstallerState 'installer-recovery-required.json'
 $DeleteDataIntentPath = Join-Path $InstallerState 'delete-data-in-progress.json'
 New-Item -ItemType Directory -Path $DataRoot, $InstallDir, $machineRoot -Force | Out-Null
@@ -4989,66 +4999,59 @@ function Read-TicketboxOwnerHandoffArtifact([string]$Path) {{
         -OwnerAccount $currentAccount `
         -MaximumBytes 16384
 }}
-function Assert-TicketboxOwnerHandoffArtifact([string]$Path) {{
-    Read-TicketboxOwnerHandoffArtifact $Path | Out-Null
-}}
-$credential = 'owner-credential-for-delete-data'
-$credentialHash = Get-TicketboxOwnerHandoffTextSha256 $credential
 $ownerStarted = (Get-Process -Id $PID).StartTime.ToUniversalTime().ToString(
     'yyyy-MM-ddTHH:mm:ss.fffffffZ',
     [System.Globalization.CultureInfo]::InvariantCulture
 )
 $handoff = [string]::Join([Environment]::NewLine, @(
-    'SCHEMA=ticketbox-owner-handoff-v2',
+    'SCHEMA=ticketbox-installation-owner-handoff-v2',
     'STATE=pending',
-    "GENERATION=$([Guid]::NewGuid().ToString('D'))",
-    "INSTALLATION_ID=$(Get-TicketboxOwnerHandoffInstallationId)",
-    "CREDENTIAL_SHA256=$credentialHash",
+    'CONTRACT=ticketbox-installation-owner-pairing-v1',
+    'OPERATION_ID=install-op:delete-data',
+    'INSTALLATION_ID=install-id:delete-data',
+    'CLAIM_GENERATION=1',
+    'PAIRING_DERIVATION_INDEX=3',
+    'PAIRING_CODE=12345678',
+    'PAIRING_EXPIRES_AT=2026-07-12T01:17:03.1234567Z',
     "INSTALLER_OWNER_PID=$PID",
     "INSTALLER_OWNER_STARTED_UTC=$ownerStarted"
 )) + [Environment]::NewLine
 Write-TicketboxProtectedUtf8FileDurable `
-    -Path $OwnerBootstrapPath `
-    -Text $credential `
-    -FullControlAccounts @($currentAccount) `
-    -OwnerAccount $currentAccount
-Write-TicketboxProtectedUtf8FileDurable `
-    -Path $OwnerHandoffPendingPath `
+    -Path $OwnerHandoffPath `
     -Text $handoff `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount
-[System.IO.File]::WriteAllBytes($OwnerHandoffPendingPath, [byte[]](0xC3, 0x28))
+[System.IO.File]::WriteAllBytes($OwnerHandoffPath, [byte[]](0xC3, 0x28))
 $invalidOwnerMarkerRejected = $false
 try {{ Read-TicketboxOwnerHandoffRecord | Out-Null }} catch {{ $invalidOwnerMarkerRejected = $true }}
 if (-not $invalidOwnerMarkerRejected -or
-    -not (Test-Path -LiteralPath $OwnerHandoffPendingPath -PathType Leaf)) {{
-    throw 'invalid UTF-8 owner marker was accepted or destroyed'
+    -not (Test-Path -LiteralPath $OwnerHandoffPath -PathType Leaf)) {{
+    throw 'invalid UTF-8 owner handoff was accepted or destroyed'
 }}
 Write-TicketboxProtectedUtf8FileDurable `
-    -Path $OwnerHandoffPendingPath `
+    -Path $OwnerHandoffPath `
     -Text $handoff `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount `
     -ReplaceExisting
 Write-TicketboxProtectedUtf8FileDurable `
-    -Path $OwnerBootstrapPath `
+    -Path $OwnerHandoffPath `
     -Text ('x' * 16385) `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount `
     -ReplaceExisting
-$oversizedCredentialRejected = $false
+$oversizedHandoffRejected = $false
 try {{
-    $ownerRecord = Read-TicketboxOwnerHandoffRecord
-    Assert-TicketboxOwnerHandoffCredential $ownerRecord
+    Read-TicketboxOwnerHandoffRecord | Out-Null
 }}
-catch {{ $oversizedCredentialRejected = $true }}
-if (-not $oversizedCredentialRejected -or
-    -not (Test-Path -LiteralPath $OwnerBootstrapPath -PathType Leaf)) {{
-    throw 'oversized owner credential was accepted or destroyed'
+catch {{ $oversizedHandoffRejected = $true }}
+if (-not $oversizedHandoffRejected -or
+    -not (Test-Path -LiteralPath $OwnerHandoffPath -PathType Leaf)) {{
+    throw 'oversized owner handoff was accepted or destroyed'
 }}
 Write-TicketboxProtectedUtf8FileDurable `
-    -Path $OwnerBootstrapPath `
-    -Text $credential `
+    -Path $OwnerHandoffPath `
+    -Text $handoff `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount `
     -ReplaceExisting
@@ -5074,11 +5077,11 @@ Remove-TicketboxProtectedUtf8Artifact `
 Assert-TicketboxInstallerStateForDataDeletion
 $danglingChildTarget = Join-Path $machineRoot 'dangling-child-target'
 Remove-TicketboxProtectedUtf8Artifact `
-    -Path $OwnerHandoffPendingPath `
+    -Path $OwnerHandoffPath `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount
 New-Item -ItemType Directory -Path $danglingChildTarget | Out-Null
-New-Item -ItemType Junction -Path $OwnerHandoffPendingPath -Target $danglingChildTarget | Out-Null
+New-Item -ItemType Junction -Path $OwnerHandoffPath -Target $danglingChildTarget | Out-Null
 Remove-Item -LiteralPath $danglingChildTarget -Recurse -Force
 $danglingChildRejected = $false
 try {{ Assert-TicketboxInstallerStateForDataDeletion }}
@@ -5087,25 +5090,20 @@ catch {{
     $danglingChildRejected = $true
 }}
 if (-not $danglingChildRejected) {{ throw 'dangling known installer-state child was accepted' }}
-[System.IO.Directory]::Delete($OwnerHandoffPendingPath)
+[System.IO.Directory]::Delete($OwnerHandoffPath)
 Write-TicketboxProtectedUtf8FileDurable `
-    -Path $OwnerHandoffPendingPath `
+    -Path $OwnerHandoffPath `
     -Text $handoff `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount
-Remove-TicketboxProtectedUtf8Artifact `
-    -Path $OwnerHandoffPendingPath `
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path $RetiredOwnerBootstrapPath `
+    -Text 'retired-owner-credential-audit-object' `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount
-$unboundCredentialRejected = $false
-try {{ Assert-TicketboxInstallerStateForDataDeletion }} catch {{ $unboundCredentialRejected = $true }}
-if (-not $unboundCredentialRejected -or
-    -not (Test-Path -LiteralPath $OwnerBootstrapPath -PathType Leaf)) {{
-    throw 'unbound current owner credential was accepted or destroyed before data deletion'
-}}
 Write-TicketboxProtectedUtf8FileDurable `
-    -Path $OwnerHandoffPendingPath `
-    -Text $handoff `
+    -Path $RetiredOwnerHandoffPendingPath `
+    -Text 'retired-owner-marker-audit-object' `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount
 Assert-TicketboxInstallerStateForDataDeletion

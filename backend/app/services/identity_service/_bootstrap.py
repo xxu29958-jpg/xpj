@@ -16,6 +16,7 @@ from app.models import (
     AuthToken,
     BootstrapSecretConsumption,
     Device,
+    InstallationOwnerClaim,
     Ledger,
     LedgerMember,
     PairingCode,
@@ -332,7 +333,10 @@ def bootstrap_owner(
                 db.commit()
             return recovered
 
-    if auth_token_count(db) > 0:
+    installation_claim_exists = db.scalar(
+        select(InstallationOwnerClaim.operation_id).limit(1)
+    )
+    if installation_claim_exists is not None or auth_token_count(db) > 0:
         raise AppError("bootstrap_already_initialized", status_code=409)
 
     owner = _owner_account(db, _clean_name(account_name, DEFAULT_ACCOUNT_NAME))
