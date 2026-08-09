@@ -57,6 +57,7 @@ if ($ReleaseConfigOverride.Trim().Length -gt 0) {
 $ReleaseConfigScript = Join-Path $ScriptDir "windows_release_config.ps1"
 $PrepareScript = Join-Path $ScriptDir "prepare_bundled_upgrade.ps1"
 $ServiceContractScript = Join-Path $ScriptDir "windows_service_contract.ps1"
+$ServiceIdentityScript = Join-Path $ScriptDir "windows_service_identity.ps1"
 $LifecycleScript = Join-Path $ScriptDir "windows_service_lifecycle.ps1"
 $SafetyScript = Join-Path $ScriptDir "windows_installation_safety.ps1"
 $ReceiptScript = Join-Path $ScriptDir "windows_lifecycle_receipt.ps1"
@@ -893,6 +894,7 @@ Get-TicketboxVendorVersionPolicy $releaseConfig "shawl" | Out-Null
 Get-TicketboxVendorVersionPolicy $releaseConfig "iscc" | Out-Null
 Assert-File $PrepareScript "升级前预检脚本"
 Assert-File $ServiceContractScript "Windows 服务命令契约脚本"
+Assert-File $ServiceIdentityScript "Windows 服务身份契约脚本"
 Assert-File $LifecycleScript "Windows 服务生命周期脚本"
 Assert-File $SafetyScript "Windows 安装安全脚本"
 Assert-File $ReceiptScript "Windows 生命周期回执脚本"
@@ -1016,6 +1018,7 @@ $defines = @(
     "/DVisualCppRuntimeSha256=$($visualCppRuntimeProvenance.executable.sha256)",
     "/DPrepareScriptSha256=$(Get-TicketboxFileSha256 $PrepareScript)",
     "/DServiceContractScriptSha256=$(Get-TicketboxFileSha256 $ServiceContractScript)",
+    "/DServiceIdentityScriptSha256=$(Get-TicketboxFileSha256 $ServiceIdentityScript)",
     "/DServiceLifecycleScriptSha256=$(Get-TicketboxFileSha256 $LifecycleScript)",
     "/DLifecycleReceiptScriptSha256=$(Get-TicketboxFileSha256 $ReceiptScript)",
     "/DDatabaseSafetyScriptSha256=$(Get-TicketboxFileSha256 $DatabaseSafetyScript)",

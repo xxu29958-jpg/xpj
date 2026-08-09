@@ -326,12 +326,38 @@ function Resolve-TicketboxC07DatabaseHostAuthority {
     ) {
         throw "C07 PostgreSQL 宿主权威缺少安装路径或服务合同。"
     }
+    $targetConfigVariable = Get-Variable `
+        -Name ReleaseConfig `
+        -Scope Script `
+        -ErrorAction SilentlyContinue
+    if ($null -eq $targetConfigVariable -or $null -eq $targetConfigVariable.Value) {
+        throw "C07 PostgreSQL 宿主权威缺少通用 Windows release config。"
+    }
+    $targetConfig = $targetConfigVariable.Value
+    $installedConfigVariable = Get-Variable `
+        -Name PreviousReleaseConfig `
+        -Scope Script `
+        -ErrorAction SilentlyContinue
+    $installedConfig = if (
+        $null -ne $installedConfigVariable -and
+        $null -ne $installedConfigVariable.Value
+    ) {
+        $installedConfigVariable.Value
+    }
+    else {
+        $targetConfig
+    }
+    $serviceIdentityShapes = @(Get-TicketboxReleaseServiceIdentityShapes `
+        -InstalledConfig $installedConfig `
+        -TargetConfig $targetConfig `
+        -ServiceName $script:TicketboxC07PostgresServiceName)
     $authority = Resolve-TicketboxPostgresServiceHostAuthority `
         -ServiceName $script:TicketboxC07PostgresServiceName `
         -ExpectedPgCtlPath (Join-Path $InstallDir "pg\bin\pg_ctl.exe") `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
-        -BackendServiceName $BackendServiceName
+        -BackendServiceName $BackendServiceName `
+        -AllowedServiceIdentityShapes $serviceIdentityShapes
     return [pscustomobject]@{
         Schema = "ticketbox-c07-host-db-authority-v1"
         ServiceName = [string]$authority.ServiceName

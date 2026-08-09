@@ -1733,7 +1733,8 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert "Assert-TicketboxServiceArgumentPath" in lifecycle
     assert "Assert-TicketboxPgServiceCommand" in lifecycle
     assert "Assert-TicketboxShawlServiceCommand" in lifecycle
-    assert "Assert-TicketboxServiceAccount" in lifecycle
+    assert "Assert-TicketboxServiceIdentityShape" in lifecycle
+    assert "function Assert-TicketboxServiceAccount" not in lifecycle
     assert "Wait-TicketboxServiceSettledState" in lifecycle
     assert "New-TicketboxWaitDeadline" in lifecycle
     assert "Get-TicketboxWaitAttempts" not in lifecycle
@@ -1893,7 +1894,9 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert "Remove-ServiceIfExists" not in backend_registration
     assert '"create", $PgServiceName' in pg_registration
     assert '"binPath=", $pgImagePath' in pg_registration
-    assert '"obj=", "NT SERVICE\\$PgServiceName"' in pg_registration
+    assert '"obj=", $PgServiceLogonAccount' in pg_registration
+    assert "Set-TicketboxServiceIdentityContract" in pg_registration
+    assert "-SidType $TargetServiceSidType" in pg_registration
     assert "& $PgCtl register" not in pg_registration
     assert "password=" not in pg_registration.lower()
     fresh_pg = pg_registration[pg_registration.index("else {") :]
@@ -2239,7 +2242,7 @@ function Invoke-TicketboxBoundedNativeProcess {{
 $image = '"C:\Program Files\Ticketbox 空格\shawl\shawl.exe" run --name TicketboxBackend -- "C:\Program Files\Ticketbox 空格\backend.exe"'
 $createResult = Invoke-TicketboxScChecked @(
     'CREATE','TicketboxBackend','binPath=',$image,'start=','disabled',
-    'depend=','TicketboxPg/RpcSs','obj=','NT SERVICE\TicketboxBackend',
+    'depend=','TicketboxPg/RpcSs','obj=','NT AUTHORITY\LocalService',
     'displayName=','小票夹后端服务'
 )
 if ($createResult -cne '[SC] CreateService SUCCESS' -or $script:calls.Count -ne 1) {{
@@ -2256,44 +2259,55 @@ if ($createCall.FilePath -cne $expectedSc -or
     $createCall.Arguments[0] -cne 'CREATE' -or
     $createCall.Arguments[3] -cne $image -or
     $createCall.Arguments[7] -cne 'TicketboxPg/RpcSs' -or
-    $createCall.Arguments[9] -cne 'NT SERVICE\TicketboxBackend' -or
+    $createCall.Arguments[9] -cne 'NT AUTHORITY\LocalService' -or
     $createCall.Arguments[11] -cne '小票夹后端服务') {{
     throw 'bounded create lost an exact sc.exe argument'
 }}
 
 $script:standardOutput = '[SC] ChangeServiceConfig SUCCESS'
-$configResult = Invoke-TicketboxScChecked @(
-    'CONFIG','TicketboxPg','binPath=',$image,'start=','disabled',
-    'obj=','NT SERVICE\TicketboxPg'
-)
-if ($configResult -cne '[SC] ChangeServiceConfig SUCCESS' -or
-    $script:calls.Count -ne 2 -or
-    $script:calls[1].Arguments[3] -cne $image) {{
-    throw 'quoted config did not use the same bounded sc.exe boundary'
+$legacyMutationRejected = $false
+try {{
+    Invoke-TicketboxScChecked @(
+        'CONFIG','TicketboxPg','binPath=',$image,'start=','disabled',
+        'obj=','NT SERVICE\TicketboxPg'
+    ) | Out-Null
+}}
+catch {{ $legacyMutationRejected = $true }}
+if (-not $legacyMutationRejected -or $script:calls.Count -ne 1) {{
+    throw 'legacy audit identity crossed the current SCM mutation boundary'
 }}
 $script:standardOutput = '[SC] ChangeServiceConfig SUCCESS'
 Invoke-TicketboxScChecked @(
     'config','TicketboxPg','start=','delayed-auto'
 ) | Out-Null
-if ($script:calls.Count -ne 3 -or
-    ($script:calls[2].Arguments -join ',') -cne 'config,TicketboxPg,start=,delayed-auto') {{
+if ($script:calls.Count -ne 2 -or
+    ($script:calls[1].Arguments -join ',') -cne 'config,TicketboxPg,start=,delayed-auto') {{
     throw 'simple config did not use the unified sc.exe boundary'
 }}
 $script:standardOutput = '[SC] ChangeServiceConfig SUCCESS'
 Invoke-TicketboxScChecked @(
     'config','TicketboxBackend','depend=',''
 ) | Out-Null
-if ($script:calls.Count -ne 4 -or
-    $script:calls[3].Arguments.Count -ne 4 -or
-    $script:calls[3].Arguments[2] -cne 'depend=' -or
-    $script:calls[3].Arguments[3] -cne '') {{
+if ($script:calls.Count -ne 3 -or
+    $script:calls[2].Arguments.Count -ne 4 -or
+    $script:calls[2].Arguments[2] -cne 'depend=' -or
+    $script:calls[2].Arguments[3] -cne '') {{
     throw 'explicit dependency clear lost its empty argv element'
+}}
+$script:standardOutput = '[SC] ChangeServiceConfig SUCCESS'
+Invoke-TicketboxScChecked @(
+    'config','TicketboxBackend','obj=','nt authority\localservice'
+) | Out-Null
+if ($script:calls.Count -ne 4 -or
+    $script:calls[3].Arguments[3] -cne 'nt authority\localservice') {{
+    throw 'LocalService logon account did not cross the bounded SCM boundary'
 }}
 
 $callsBeforeReject = $script:calls.Count
 foreach ($case in @(
     @('create','TicketboxPg','binPath=',$image,'start=','disabled','obj=','LocalSystem'),
     @('config','TicketboxPg','obj=','LocalSystem'),
+    @('config','TicketboxPg','obj=','NT AUTHORITY\NetworkService'),
     @('config','TicketboxPg','password=','DO_NOT_LOG_THIS_SECRET'),
     @('config',("TicketboxPg" + [char]0 + 'tail'),'binPath=',$image),
     @('config','TicketboxPg','binPath=',($image + [char]0 + 'tail')),
@@ -2881,6 +2895,8 @@ $script:InitdbExe = 'C:\Program Files\Ticketbox\pg\bin\initdb.exe'
 $script:PgData = 'C:\ProgramData\Ticketbox\pgdata'
 $script:InitdbPasswordPath = 'C:\ProgramData\Ticketbox\.ticketbox-initdb-password'
 $script:StopTimeoutMs = 25000
+$script:PgServiceLogonAccount = 'NT AUTHORITY\LocalService'
+$script:TargetServiceSidType = 'unrestricted'
 $script:InitdbServiceReceiptPath = 'C:\ProgramData\Ticketbox\installer-state\initdb.json'
 $script:InstallDir = 'C:\Program Files\Ticketbox'
 $script:DataRoot = 'C:\ProgramData\Ticketbox'
@@ -2900,7 +2916,11 @@ function Service-Exists {
     return $script:scenario -ceq 'preexisting'
 }
 function Write-TicketboxInitdbServiceReceipt {
-    param($Path,$InstallDir,$DataRoot,$ServiceName,$ImagePath,$PgMajor,$StopTimeoutMs,$InstallerOwnerProcessId,$Phase)
+    param($Path,$InstallDir,$DataRoot,$ServiceName,$ServiceLogonAccount,$ServiceSidType,$ImagePath,$PgMajor,$StopTimeoutMs,$InstallerOwnerProcessId,$Phase)
+    if ($ServiceLogonAccount -cne 'NT AUTHORITY\LocalService' -or
+        $ServiceSidType -cne 'unrestricted') {
+        throw 'initdb receipt did not bind the current service identity'
+    }
     $script:receiptWrites += 1
     $script:receipt = [pscustomobject]@{ phase = 'intent_written' }
 }
@@ -2916,6 +2936,15 @@ function Invoke-ScChecked {
     return 0
 }
 function Assert-TicketboxInitdbServiceConfiguration { param($Receipt,$StartMode) }
+function Set-TicketboxServiceIdentityContract {
+    param($Name,$LogonAccount,$SidType)
+    if ($Name -cne 'TicketboxPg' -or
+        $LogonAccount -cne 'NT AUTHORITY\LocalService' -or
+        $SidType -cne 'unrestricted') {
+        throw 'initdb service identity publication drifted'
+    }
+    $script:identityPublishes += 1
+}
 function Set-TicketboxCurrentInitdbServiceReceiptPhase {
     param($Receipt,$Phase)
     $script:receipt.phase = $Phase
@@ -2972,6 +3001,7 @@ function Invoke-TestScenario([string]$Scenario) {
     $script:disableCalls = 0
     $script:passwordWrites = 0
     $script:passwordRemoves = 0
+    $script:identityPublishes = 0
     $script:scCalls = @()
     $script:receipt = $null
     $authority = New-TicketboxInstallServiceCompensationAuthority
@@ -2990,6 +3020,7 @@ function Invoke-TestScenario([string]$Scenario) {
         DisableCalls = $script:disableCalls
         PasswordWrites = $script:passwordWrites
         PasswordRemoves = $script:passwordRemoves
+        IdentityPublishes = $script:identityPublishes
         ScCalls = @($script:scCalls)
         Authority = [string]$authority.PostgresService
     }
@@ -2998,7 +3029,7 @@ function Invoke-TestScenario([string]$Scenario) {
 $preexisting = Invoke-TestScenario 'preexisting'
 if ($preexisting.ReceiptWrites -ne 0 -or $preexisting.ScCalls.Count -ne 0 -or
     $preexisting.DisableCalls -ne 0 -or $preexisting.PasswordRemoves -ne 0 -or
-    $preexisting.Authority -cne 'none') {
+    $preexisting.IdentityPublishes -ne 0 -or $preexisting.Authority -cne 'none') {
     throw 'pre-existing collision crossed the create-only read boundary'
 }
 
@@ -3006,7 +3037,7 @@ $race = Invoke-TestScenario 'race'
 if ($race.ReceiptWrites -ne 1 -or $race.ScCalls.Count -ne 1 -or
     $race.ScCalls[0] -cne 'create' -or $race.DisableCalls -ne 0 -or
     $race.ReceiptRemoves -ne 1 -or $race.PasswordWrites -ne 0 -or
-    $race.Authority -cne 'none') {
+    $race.IdentityPublishes -ne 0 -or $race.Authority -cne 'none') {
     throw 'create race mutated or disabled the colliding foreign service'
 }
 
@@ -3018,6 +3049,7 @@ foreach ($failureScenario in @('hang','cluster','exit23')) {
     }
     if ($failure.ReceiptWrites -ne 1 -or $failure.ReceiptRemoves -ne 0 -or
         $failure.DisableCalls -ne 1 -or $failure.PasswordRemoves -ne 1 -or
+        $failure.IdentityPublishes -ne 1 -or
         $failure.Authority -cne 'created_by_installer') {
         throw "$failureScenario did not preserve the recoverable service receipt boundary"
     }
@@ -3366,6 +3398,8 @@ $script:InitdbPasswordPath = 'C:\ProgramData\Ticketbox\.ticketbox-initdb-passwor
 $script:InitdbServiceReceiptPath = 'C:\ProgramData\Ticketbox\installer-state\initdb.json'
 $script:ScmFailureResetSeconds = 86400
 $script:ScmRestartActions = 'restart/5000/restart/5000/restart/5000'
+$script:PgServiceLogonAccount = 'NT AUTHORITY\LocalService'
+$script:TargetServiceSidType = 'unrestricted'
 $script:ReleaseConfig = [pscustomobject]@{ scm_restart_delays_ms = @(5000,5000,5000) }
 
 function Write-Step { param($Message) }
@@ -3387,7 +3421,20 @@ function Repair-PostgresBootstrapRecoveryFileAcl { return $false }
 function Read-PostgresBootstrapRecoveryState { return $null }
 function Invoke-ScChecked { param([string[]]$ScArgs) return 0 }
 function Assert-TicketboxServiceOwnership { param($Name,$ExpectedExecutable) return $true }
-function Assert-TicketboxServiceAccount { param($Name,$ExpectedAccount) }
+function Set-TicketboxServiceIdentityContract {
+    param($Name,$LogonAccount,$SidType)
+    if ($Name -cne 'TicketboxPg' -or
+        $LogonAccount -cne 'NT AUTHORITY\LocalService' -or
+        $SidType -cne 'unrestricted') {
+        throw 'service identity publish contract drifted'
+    }
+}
+function Assert-TicketboxReleaseServiceIdentity {
+    param($Name,$InstalledConfig,$TargetConfig)
+    if ($Name -cne 'TicketboxPg' -or $InstalledConfig -ne $TargetConfig) {
+        throw 'service identity readback contract drifted'
+    }
+}
 function Assert-TicketboxPgServiceCommand {
     param($Name,$ExpectedExecutable,$ExpectedServiceName,$ExpectedDataRoot)
 }

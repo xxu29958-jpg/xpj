@@ -1188,9 +1188,10 @@ function Invoke-TicketboxPreservedDataReinstallBackup {
     if (-not (Test-TicketboxServiceExists $PgServiceName)) {
         throw "保留数据重装备份必须由已验证的临时 PostgreSQL SCM 服务运行。"
     }
-    Assert-TicketboxServiceAccount `
+    Assert-TicketboxReleaseServiceIdentity `
         -Name $PgServiceName `
-        -ExpectedAccount "NT SERVICE\$PgServiceName"
+        -InstalledConfig $ReleaseConfig `
+        -TargetConfig $ReleaseConfig | Out-Null
     Assert-TicketboxPgServiceCommand `
         -Name $PgServiceName `
         -ExpectedExecutable $PgCtl `

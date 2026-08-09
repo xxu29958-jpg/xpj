@@ -1550,14 +1550,29 @@ $ErrorActionPreference = 'Stop'
 $DataRoot = '{_ps_literal(data_root)}'
 $InstallDir = '{_ps_literal(install_dir)}'
 $BackendServiceName = 'TicketboxBackend'
+$ReleaseConfig = [pscustomobject]@{{ schema = 'current' }}
+$PreviousReleaseConfig = [pscustomobject]@{{ schema = 'legacy' }}
 $script:resolverCalls = 0
+function Get-TicketboxReleaseServiceIdentityShapes {{
+    param($InstalledConfig,$TargetConfig,$ServiceName)
+    if ($InstalledConfig -ne $PreviousReleaseConfig -or
+        $TargetConfig -ne $ReleaseConfig -or
+        $ServiceName -cne 'TicketboxPg') {{
+        throw 'C07 adapter did not consume the generic release identity transition'
+    }}
+    return [pscustomobject]@{{
+        LogonAccount = 'NT AUTHORITY\\LocalService'
+        SidType = 'unrestricted'
+    }}
+}}
 function Resolve-TicketboxPostgresServiceHostAuthority {{
     param(
         [string]$ServiceName,
         [string]$ExpectedPgCtlPath,
         [string]$DataRoot,
         [string]$InstallDir,
-        [string]$BackendServiceName
+        [string]$BackendServiceName,
+        [object[]]$AllowedServiceIdentityShapes
     )
     $script:resolverCalls += 1
     if (
@@ -1568,7 +1583,11 @@ function Resolve-TicketboxPostgresServiceHostAuthority {{
             [IO.Path]::GetFullPath('{_ps_literal(data_root)}') -or
         [IO.Path]::GetFullPath($InstallDir) -cne
             [IO.Path]::GetFullPath('{_ps_literal(install_dir)}') -or
-        $BackendServiceName -cne 'TicketboxBackend'
+        $BackendServiceName -cne 'TicketboxBackend' -or
+        $AllowedServiceIdentityShapes.Count -ne 1 -or
+        $AllowedServiceIdentityShapes[0].LogonAccount -cne
+            'NT AUTHORITY\\LocalService' -or
+        $AllowedServiceIdentityShapes[0].SidType -cne 'unrestricted'
     ) {{
         throw 'C07 adapter changed the generic Windows host contract'
     }}

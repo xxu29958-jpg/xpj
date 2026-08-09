@@ -911,7 +911,9 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
     deferred_service_contract = install[
         install.index("function Register-TicketboxDeferredPreservedPgService") : backup
     ]
-    assert "NT SERVICE\\$PgServiceName" in deferred_service_contract
+    assert '"obj=",' in deferred_service_contract
+    assert "$PgServiceLogonAccount" in deferred_service_contract
+    assert "Set-TicketboxServiceIdentityContract" in deferred_service_contract
     assert "Get-TicketboxDeferredBackupRoot" in install[register_service : backup + 600]
     assert "-ExpectedPgMajor $TargetPgMajor" in install[service_phase:backup]
     assert "-ExpectedPgMajor $ExpectedPgMajor" not in install[service_phase:backup]
@@ -925,7 +927,8 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
     assert "& $PgCtl" not in direct_backup
     assert "Start-Process" not in direct_backup
     assert "Wait-TicketboxServiceSettledState" in direct_backup
-    assert "Assert-TicketboxServiceAccount" in direct_backup
+    assert "Assert-TicketboxReleaseServiceIdentity" in direct_backup
+    assert "-InstalledConfig $ReleaseConfig" in direct_backup
     assert "Assert-TicketboxPgServiceCommand" in direct_backup
     assert "Assert-TicketboxConnectedPostgresDataRoot" in direct_backup
     assert "Invoke-TicketboxPgDumpCustom" in direct_backup
@@ -2734,6 +2737,7 @@ def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Pa
         "DataRootGuardScriptSha256": digest,
         "PrepareScriptSha256": digest,
         "ServiceContractScriptSha256": digest,
+        "ServiceIdentityScriptSha256": digest,
         "ServiceLifecycleScriptSha256": digest,
         "LifecycleReceiptScriptSha256": digest,
         "DatabaseSafetyScriptSha256": digest,

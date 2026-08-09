@@ -33,6 +33,7 @@
   DataRootGuardScriptSha256 = '{#DataRootGuardScriptSha256}';
   PrepareScriptSha256 = '{#PrepareScriptSha256}';
   ServiceContractScriptSha256 = '{#ServiceContractScriptSha256}';
+  ServiceIdentityScriptSha256 = '{#ServiceIdentityScriptSha256}';
   ServiceLifecycleScriptSha256 = '{#ServiceLifecycleScriptSha256}';
   LifecycleReceiptScriptSha256 = '{#LifecycleReceiptScriptSha256}';
   DatabaseSafetyScriptSha256 = '{#DatabaseSafetyScriptSha256}';
@@ -542,6 +543,7 @@ begin
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'hold_data_root_mutation_guard.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'prepare_bundled_upgrade.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_service_contract.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_service_identity.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_service_lifecycle.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_lifecycle_receipt.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_safety.ps1');
@@ -653,6 +655,8 @@ begin
     ValidateLifecycleLockBootstrapFile(
       'windows_service_contract.ps1', ServiceContractScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
+      'windows_service_identity.ps1', ServiceIdentityScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
       'windows_service_lifecycle.ps1', ServiceLifecycleScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
       'windows_lifecycle_receipt.ps1', LifecycleReceiptScriptSha256) and
@@ -747,6 +751,9 @@ begin
      not StageLifecycleLockBootstrapFile(
     'windows_service_contract.ps1',
     ServiceContractScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_service_identity.ps1',
+    ServiceIdentityScriptSha256) or
      not StageLifecycleLockBootstrapFile(
     'windows_service_lifecycle.ps1',
     ServiceLifecycleScriptSha256) or

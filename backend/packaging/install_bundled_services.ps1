@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-  ADR-0047 Slice 4: install or upgrade the bundled Ticketbox Windows services.
+  Install or upgrade the bundled Ticketbox Windows services.
 
 .DESCRIPTION
   This is the script run by the Inno installer after files have been copied to
@@ -61,10 +61,18 @@ $ReleaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
 $PreviousReleaseConfig = $ReleaseConfig | ConvertTo-Json -Depth 8 | ConvertFrom-Json
 $PgServiceName = [string]$ReleaseConfig.pg_service_name
 $BackendServiceName = [string]$ReleaseConfig.backend_service_name
+$PgServiceLogonAccount = Get-TicketboxReleaseServiceLogonAccount `
+    -Config $ReleaseConfig `
+    -ServiceName $PgServiceName
+$BackendServiceLogonAccount = Get-TicketboxReleaseServiceLogonAccount `
+    -Config $ReleaseConfig `
+    -ServiceName $BackendServiceName
+$TargetServiceSidType = Get-TicketboxReleaseServiceSidType $ReleaseConfig
 $StopTimeoutMs = [int]$ReleaseConfig.stop_timeout_ms
 $RestartDelayMs = [int]$ReleaseConfig.restart_delay_ms
 $PreviousStopTimeoutMs = [int]$PreviousReleaseConfig.stop_timeout_ms
 $PreviousRestartDelayMs = [int]$PreviousReleaseConfig.restart_delay_ms
+$ServiceIdentityLifecycleReceipt = $null
 $ServiceWaitArguments = @{
     TimeoutMilliseconds = [int]$ReleaseConfig.service_state_timeout_ms
     PollMilliseconds = [int]$ReleaseConfig.service_poll_interval_ms
@@ -1849,6 +1857,7 @@ function Assert-ExpectedServiceConfiguration {
         [Parameter(Mandatory = $true)][string]$Name,
         [int]$ExpectedStopTimeoutMs = $StopTimeoutMs,
         [int]$ExpectedRestartDelayMs = $RestartDelayMs,
+        [object]$ExpectedReleaseConfig = $ReleaseConfig,
         [switch]$AllowTargetPolicyFallback,
         [switch]$AllowMissingInstallerRecoveryGuard,
         [switch]$AllowLegacyRuntimeDataContract,
@@ -1858,7 +1867,16 @@ function Assert-ExpectedServiceConfiguration {
         return
     }
     Assert-TicketboxServiceOwnership -Name $Name -ExpectedExecutable (Get-ExpectedServiceExecutable $Name) | Out-Null
-    Assert-TicketboxServiceAccount -Name $Name -ExpectedAccount "NT SERVICE\$Name"
+    $allowTargetSidTypePending =
+        $null -ne $ServiceIdentityLifecycleReceipt -and
+        (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+            -Receipt $ServiceIdentityLifecycleReceipt `
+            -ServiceName $Name)
+    Assert-TicketboxReleaseServiceIdentity `
+        -Name $Name `
+        -InstalledConfig $ExpectedReleaseConfig `
+        -TargetConfig $ReleaseConfig `
+        -AllowTargetSidTypePending:$allowTargetSidTypePending | Out-Null
     $targetError = $null
     try {
         Assert-TicketboxServiceRuntimeCommand `
@@ -2069,9 +2087,17 @@ function Assert-TicketboxInitdbServiceConfiguration {
     Assert-TicketboxServiceOwnership `
         -Name $PgServiceName `
         -ExpectedExecutable $ShawlExe | Out-Null
-    Assert-TicketboxServiceAccount `
+    $targetIdentityShape = @(Get-TicketboxReleaseServiceIdentityShapes `
+        -InstalledConfig $ReleaseConfig `
+        -TargetConfig $ReleaseConfig `
+        -ServiceName $PgServiceName)[0]
+    Assert-TicketboxServiceIdentityShape `
         -Name $PgServiceName `
-        -ExpectedAccount "NT SERVICE\$PgServiceName"
+        -AllowedShapes @(Get-TicketboxInitdbReceiptServiceIdentityShapes `
+            -Receipt $Receipt `
+            -ServiceName $PgServiceName `
+            -TargetShape $targetIdentityShape `
+            -AllowCurrentSidTypePending:([string]$Receipt.phase -ceq "intent_written")) | Out-Null
     Assert-TicketboxInitdbServiceCommand `
         -Name $PgServiceName `
         -ExpectedShawl $ShawlExe `
@@ -2210,6 +2236,8 @@ function Invoke-TicketboxServiceOwnedInitdb {
         -InstallDir $InstallDir `
         -DataRoot $DataRoot `
         -ServiceName $PgServiceName `
+        -ServiceLogonAccount $PgServiceLogonAccount `
+        -ServiceSidType $TargetServiceSidType `
         -ImagePath $imagePath `
         -PgMajor $TargetPgMajor `
         -StopTimeoutMs $StopTimeoutMs `
@@ -2223,13 +2251,17 @@ function Invoke-TicketboxServiceOwnedInitdb {
             "create", $PgServiceName,
             "binPath=", $imagePath,
             "start=", "disabled",
-            "obj=", "NT SERVICE\$PgServiceName"
+            "obj=", $PgServiceLogonAccount
         ) | Out-Null
         $createdByThisInvocation = $true
         Grant-TicketboxInstallServiceCompensationAuthority `
             -Authority $CompensationAuthority `
             -Service "PostgresService" `
             -Grant "created_by_installer"
+        Set-TicketboxServiceIdentityContract `
+            -Name $PgServiceName `
+            -LogonAccount $PgServiceLogonAccount `
+            -SidType $TargetServiceSidType
         Assert-TicketboxInitdbServiceConfiguration `
             -Receipt $receipt `
             -StartMode "Disabled"
@@ -2359,15 +2391,19 @@ function Register-PgService {
             Invoke-ScChecked @(
                 "config", $PgServiceName,
                 "start=", "disabled",
-                "binPath=", $pgImagePath,
-                "obj=", "NT SERVICE\$PgServiceName"
+                "binPath=", $pgImagePath
             ) | Out-Null
+            Set-TicketboxServiceIdentityContract `
+                -Name $PgServiceName `
+                -LogonAccount $PgServiceLogonAccount `
+                -SidType $TargetServiceSidType
             Assert-TicketboxServiceOwnership `
                 -Name $PgServiceName `
                 -ExpectedExecutable $PgCtl | Out-Null
-            Assert-TicketboxServiceAccount `
+            Assert-TicketboxReleaseServiceIdentity `
                 -Name $PgServiceName `
-                -ExpectedAccount "NT SERVICE\$PgServiceName"
+                -InstalledConfig $ReleaseConfig `
+                -TargetConfig $ReleaseConfig | Out-Null
             Assert-TicketboxPgServiceCommand `
                 -Name $PgServiceName `
                 -ExpectedExecutable $PgCtl `
@@ -2382,7 +2418,9 @@ function Register-PgService {
                 -Name $PgServiceName `
                 -ExpectedExecutable $PgCtl | Out-Null
             if (-not $RuntimeBindingTransition) {
-                Assert-ExpectedServiceConfiguration $PgServiceName
+                Assert-ExpectedServiceConfiguration `
+                    -Name $PgServiceName `
+                    -ExpectedReleaseConfig $PreviousReleaseConfig
             }
         }
         else {
@@ -2395,17 +2433,23 @@ function Register-PgService {
             "create", $PgServiceName,
             "binPath=", $pgImagePath,
             "start=", "demand",
-            "obj=", "NT SERVICE\$PgServiceName"
+            "obj=", $PgServiceLogonAccount
         ) | Out-Null
         Grant-TicketboxInstallServiceCompensationAuthority `
             -Authority $CompensationAuthority `
             -Service "PostgresService" `
             -Grant "created_by_installer"
-        Assert-ExpectedServiceConfiguration $PgServiceName
+        Set-TicketboxServiceIdentityContract `
+            -Name $PgServiceName `
+            -LogonAccount $PgServiceLogonAccount `
+            -SidType $TargetServiceSidType
     }
     Invoke-ScChecked @("config", $PgServiceName, "start=", "demand") | Out-Null
     Invoke-ScChecked @("config", $PgServiceName, "binPath=", $pgImagePath) | Out-Null
-    Invoke-ScChecked @("config", $PgServiceName, "obj=", "NT SERVICE\$PgServiceName") | Out-Null
+    Set-TicketboxServiceIdentityContract `
+        -Name $PgServiceName `
+        -LogonAccount $PgServiceLogonAccount `
+        -SidType $TargetServiceSidType
     Invoke-ScChecked @(
         "failure", $PgServiceName, "reset=", [string]$ScmFailureResetSeconds, "actions=", $ScmRestartActions
     ) | Out-Null
@@ -2426,7 +2470,7 @@ function Register-PgService {
             throw "initdb one-shot 回执未能在正式服务验证后退役。"
         }
     }
-    Write-Ok "PG 服务已以 demand-start 注册为虚拟账户 NT SERVICE\$PgServiceName。"
+    Write-Ok "PG 服务已以 demand-start 和独立服务 SID 注册。"
 }
 
 function Register-BackendService {
@@ -2457,7 +2501,6 @@ function Register-BackendService {
         Invoke-ScChecked @("config", $BackendServiceName, "start=", "disabled") | Out-Null
         Invoke-ScChecked @("config", $BackendServiceName, "binPath=", $backendImagePath) | Out-Null
         Invoke-ScChecked @("config", $BackendServiceName, "depend=", $PgServiceName) | Out-Null
-        Invoke-ScChecked @("config", $BackendServiceName, "obj=", "NT SERVICE\$BackendServiceName") | Out-Null
     }
     else {
         Invoke-ScChecked @(
@@ -2465,13 +2508,17 @@ function Register-BackendService {
             "binPath=", $backendImagePath,
             "start=", "disabled",
             "depend=", $PgServiceName,
-            "obj=", "NT SERVICE\$BackendServiceName"
+            "obj=", $BackendServiceLogonAccount
         ) | Out-Null
         Grant-TicketboxInstallServiceCompensationAuthority `
             -Authority $CompensationAuthority `
             -Service "BackendService" `
             -Grant "created_by_installer"
     }
+    Set-TicketboxServiceIdentityContract `
+        -Name $BackendServiceName `
+        -LogonAccount $BackendServiceLogonAccount `
+        -SidType $TargetServiceSidType
     Invoke-ScChecked @(
         "failure", $BackendServiceName, "reset=", [string]$ScmFailureResetSeconds, "actions=", $ScmRestartActions
     ) | Out-Null
@@ -2799,9 +2846,10 @@ function Assert-TicketboxDeferredPreservedPgServiceConfiguration {
     Assert-TicketboxServiceOwnership `
         -Name $PgServiceName `
         -ExpectedExecutable $PgCtl | Out-Null
-    Assert-TicketboxServiceAccount `
+    Assert-TicketboxReleaseServiceIdentity `
         -Name $PgServiceName `
-        -ExpectedAccount "NT SERVICE\$PgServiceName"
+        -InstalledConfig $ReleaseConfig `
+        -TargetConfig $ReleaseConfig | Out-Null
     Assert-TicketboxPgServiceCommand `
         -Name $PgServiceName `
         -ExpectedExecutable $PgCtl `
@@ -2825,8 +2873,12 @@ function Register-TicketboxDeferredPreservedPgService {
         "start=",
         "demand",
         "obj=",
-        "NT SERVICE\$PgServiceName"
+        $PgServiceLogonAccount
     ) | Out-Null
+    Set-TicketboxServiceIdentityContract `
+        -Name $PgServiceName `
+        -LogonAccount $PgServiceLogonAccount `
+        -SidType $TargetServiceSidType
     Assert-TicketboxDeferredPreservedPgServiceConfiguration
 }
 
@@ -3260,6 +3312,7 @@ try {
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId
         $PreviousReleaseConfig = $lifecycleReceipt.installed_release_config
+        $ServiceIdentityLifecycleReceipt = $lifecycleReceipt
         $PreviousStopTimeoutMs = [int]$PreviousReleaseConfig.stop_timeout_ms
         $PreviousRestartDelayMs = [int]$PreviousReleaseConfig.restart_delay_ms
         $PreUpgradeBackupAlreadyCompleted = [bool]$lifecycleReceipt.backup_completed
@@ -3288,6 +3341,7 @@ try {
         -Name $BackendServiceName `
         -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
         -ExpectedRestartDelayMs $PreviousRestartDelayMs `
+        -ExpectedReleaseConfig $PreviousReleaseConfig `
         -AllowTargetPolicyFallback:$allowTargetPolicyFallbackBeforeMutation `
         -AllowMissingInstallerRecoveryGuard:$preExistingBackendService `
         -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent `
@@ -3296,6 +3350,7 @@ try {
         -Name $PgServiceName `
         -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
         -ExpectedRestartDelayMs $PreviousRestartDelayMs `
+        -ExpectedReleaseConfig $PreviousReleaseConfig `
         -AllowTargetPolicyFallback:$allowTargetPolicyFallbackBeforeMutation `
         -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
     foreach ($existingServiceName in @(

@@ -1,5 +1,11 @@
 ﻿#Requires -Version 5.1
 
+$serviceIdentityScript = Join-Path $PSScriptRoot "windows_service_identity.ps1"
+if (-not (Test-Path -LiteralPath $serviceIdentityScript -PathType Leaf)) {
+    throw "Missing Windows service identity contract: $serviceIdentityScript"
+}
+. $serviceIdentityScript
+
 $serviceContractScript = Join-Path $PSScriptRoot "windows_service_contract.ps1"
 if (-not (Test-Path -LiteralPath $serviceContractScript -PathType Leaf)) {
     throw "缺少 Windows 服务命令契约脚本：$serviceContractScript"
@@ -21,15 +27,6 @@ function Assert-TicketboxServiceOwnership([string]$Name, [string]$ExpectedExecut
         throw "拒绝操作同名外部服务 $Name：ImagePath 为 $actual，预期为 $expected。请先更改服务名或修复原安装。"
     }
     return $true
-}
-
-function Assert-TicketboxServiceAccount([string]$Name, [string]$ExpectedAccount) {
-    $escaped = $Name.Replace("'", "''")
-    $record = Get-CimInstance -ClassName Win32_Service -Filter "Name='$escaped'" -ErrorAction Stop
-    $actual = [string]$record.StartName
-    if (-not [string]::Equals($actual, $ExpectedAccount, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "拒绝操作账户不匹配的服务 $Name：运行账户为 $actual，预期为 $ExpectedAccount。"
-    }
 }
 
 function Get-TicketboxServiceStartMode([string]$Name) {
@@ -424,14 +421,9 @@ function ConvertFrom-TicketboxScCreateArguments([string[]]$ScArgs) {
     if ([string]::IsNullOrWhiteSpace([string]$options["binpath="])) {
         throw "sc.exe create 的 binPath 不能为空。"
     }
-    $expectedAccount = "NT SERVICE\$serviceName"
-    if (-not [string]::Equals(
-        [string]$options["obj="],
-        $expectedAccount,
-        [System.StringComparison]::OrdinalIgnoreCase
-    )) {
-        throw "sc.exe create 策略边界只允许与服务名绑定的虚拟服务账户。"
-    }
+    $serviceStartName = ConvertTo-TicketboxServiceLogonAccount `
+        -Name $serviceName `
+        -Account ([string]$options["obj="])
     $startType = switch ([string]$options["start="]) {
         "auto" { [uint32]2; break }
         "demand" { [uint32]3; break }
@@ -462,7 +454,7 @@ function ConvertFrom-TicketboxScCreateArguments([string[]]$ScArgs) {
         DisplayName = $displayName
         BinaryPath = [string]$options["binpath="]
         StartType = [uint32]$startType
-        ServiceStartName = $expectedAccount
+        ServiceStartName = $serviceStartName
         Dependencies = [string[]]$dependencies
     }
 }
@@ -537,15 +529,9 @@ function ConvertFrom-TicketboxScConfigArguments([string[]]$ScArgs) {
     $changeServiceStartName = $options.ContainsKey("obj=")
     $serviceStartName = ""
     if ($changeServiceStartName) {
-        $expectedAccount = "NT SERVICE\$serviceName"
-        if (-not [string]::Equals(
-            [string]$options["obj="],
-            $expectedAccount,
-            [System.StringComparison]::OrdinalIgnoreCase
-        )) {
-            throw "sc.exe config 策略边界只允许与服务名绑定的虚拟服务账户。"
-        }
-        $serviceStartName = $expectedAccount
+        $serviceStartName = ConvertTo-TicketboxServiceLogonAccount `
+            -Name $serviceName `
+            -Account ([string]$options["obj="])
     }
     $changeDependencies = $options.ContainsKey("depend=")
     $dependencies = @()
@@ -700,6 +686,40 @@ function Get-TicketboxServiceSid([string]$Name) {
     return (New-Object System.Security.Principal.SecurityIdentifier(
         $matches[0].Value
     )).Value
+}
+
+function Set-TicketboxServiceIdentityContract {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$LogonAccount,
+        [Parameter(Mandatory = $true)][string]$SidType
+    )
+
+    $targetShape = New-TicketboxServiceIdentityShape `
+        -Name $Name `
+        -LogonAccount $LogonAccount `
+        -SidType $SidType
+    $snapshot = Get-TicketboxServiceIdentitySnapshot $Name
+    if ([string]$snapshot.SidType -cne [string]$targetShape.SidType) {
+        Set-TicketboxServiceSidType `
+            -Name $Name `
+            -SidType ([string]$targetShape.SidType)
+    }
+    if (-not [string]::Equals(
+        [string]$snapshot.LogonAccount,
+        [string]$targetShape.LogonAccount,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        Invoke-TicketboxScChecked @(
+            "config",
+            $Name,
+            "obj=",
+            [string]$targetShape.LogonAccount
+        ) | Out-Null
+    }
+    Assert-TicketboxServiceIdentityShape `
+        -Name $Name `
+        -AllowedShapes @($targetShape) | Out-Null
 }
 
 function Set-TicketboxOwnedServiceDemandStartIfExists {

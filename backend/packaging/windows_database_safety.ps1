@@ -114,7 +114,8 @@ function Resolve-TicketboxPostgresServiceHostAuthority {
         [Parameter(Mandatory = $true)][string]$ExpectedPgCtlPath,
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$InstallDir,
-        [Parameter(Mandatory = $true)][string]$BackendServiceName
+        [Parameter(Mandatory = $true)][string]$BackendServiceName,
+        [Parameter(Mandatory = $true)][object[]]$AllowedServiceIdentityShapes
     )
 
     try {
@@ -127,9 +128,9 @@ function Resolve-TicketboxPostgresServiceHostAuthority {
         if (-not (Test-TicketboxServiceExists $ServiceName)) {
             throw "受管 PostgreSQL 服务不存在：$ServiceName"
         }
-        Assert-TicketboxServiceAccount `
+        Assert-TicketboxServiceIdentityShape `
             -Name $ServiceName `
-            -ExpectedAccount "NT SERVICE\$ServiceName"
+            -AllowedShapes $AllowedServiceIdentityShapes | Out-Null
 
         $imagePath = Get-TicketboxServiceImagePath $ServiceName
         $arguments = @(Split-TicketboxWindowsCommandLine $imagePath)

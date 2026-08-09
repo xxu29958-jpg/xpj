@@ -33,8 +33,10 @@ $script:TicketboxAbortedFreshInstallDeleteDataIntentSchema =
 $script:TicketboxInstallerRuntimeRecoveryGuardSchema = "ticketbox-installer-runtime-recovery-guard-v1"
 $script:TicketboxInstallerRuntimeRecoveryGuardFileName = "installer-runtime-recovery-pending"
 $script:TicketboxInstallerRuntimeStateDirectoryName = "TicketboxRuntimeState"
-$script:TicketboxInitdbServiceReceiptSchema =
+$script:TicketboxLegacyInitdbServiceReceiptSchema =
     "ticketbox-windows-initdb-service-receipt-v1"
+$script:TicketboxInitdbServiceReceiptSchema =
+    "ticketbox-windows-initdb-service-receipt-v2"
 $script:TicketboxInitdbServiceReceiptFileName =
     "initdb-one-shot-receipt.json"
 $script:TicketboxInitdbServiceReceiptPhases = @(
@@ -44,6 +46,163 @@ $script:TicketboxInitdbServiceReceiptPhases = @(
     "initdb_succeeded",
     "converted_to_pgctl"
 )
+
+function Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][string]$ServiceName
+    )
+
+    if ($null -eq $Receipt.PSObject.Properties["installed_release_config"]) {
+        return $false
+    }
+    $installedConfig = $Receipt.installed_release_config
+    $stage = [string]$Receipt.preparation_stage
+    if (
+        [string]::Equals(
+            $ServiceName,
+            [string]$installedConfig.backend_service_name,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        return (
+            [string]$Receipt.previous_backend_state -ceq "absent" -and
+            $stage -ceq "files_may_have_been_replaced"
+        )
+    }
+    if (
+        [string]::Equals(
+            $ServiceName,
+            [string]$installedConfig.pg_service_name,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        $formalCreatePending =
+            [string]$Receipt.previous_pg_state -ceq "absent" -and
+            $stage -ceq "files_may_have_been_replaced"
+        $deferredBackupCleanupPending =
+            [string]$Receipt.mode -ceq "preserved_data_reinstall" -and
+            [bool]$Receipt.temporary_pg_service_cleanup_pending -and
+            $stage -ceq "program_files_installed_backup_pending"
+        return $formalCreatePending -or $deferredBackupCleanupPending
+    }
+    if (
+        [string]::Equals(
+            $ServiceName,
+            [string]$installedConfig.pg_recovery_service_name,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        return (
+            [string]$Receipt.mode -ceq "repair_install" -and
+            [string]$Receipt.previous_pg_state -ceq "absent" -and
+            [bool]$Receipt.backup_required -and
+            -not [bool]$Receipt.backup_completed -and
+            $stage -ceq "captured"
+        )
+    }
+    return $false
+}
+
+function Get-TicketboxInitdbReceiptServiceIdentityShapes {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][object]$TargetShape,
+        [switch]$AllowCurrentSidTypePending
+    )
+
+    if ([string]$Receipt.service_name -cne $ServiceName) {
+        throw "initdb one-shot 回执的服务名与身份校验目标不一致。"
+    }
+    $legacyAccount = Get-TicketboxServiceResourcePrincipal $ServiceName
+    $isLegacyReceipt =
+        [string]$Receipt.schema -ceq $script:TicketboxLegacyInitdbServiceReceiptSchema
+    $receiptShape = if ($isLegacyReceipt) {
+        New-TicketboxServiceIdentityShape `
+            -Name $ServiceName `
+            -LogonAccount ([string]$Receipt.service_account) `
+            -SidType ([string]$Receipt.service_sid_type) `
+            -AllowLegacyVirtualAccount
+    }
+    elseif ([string]$Receipt.schema -ceq $script:TicketboxInitdbServiceReceiptSchema) {
+        New-TicketboxServiceIdentityShape `
+            -Name $ServiceName `
+            -LogonAccount ([string]$Receipt.service_account) `
+            -SidType ([string]$Receipt.service_sid_type)
+    }
+    else {
+        throw "initdb one-shot 回执 schema 不支持服务身份恢复。"
+    }
+
+    $targetUsesLegacyAccount = [string]::Equals(
+        [string]$TargetShape.LogonAccount,
+        $legacyAccount,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+    $canonicalTarget = New-TicketboxServiceIdentityShape `
+        -Name $ServiceName `
+        -LogonAccount ([string]$TargetShape.LogonAccount) `
+        -SidType ([string]$TargetShape.SidType) `
+        -AllowLegacyVirtualAccount:$targetUsesLegacyAccount
+    if ($targetUsesLegacyAccount -and [string]$canonicalTarget.SidType -cne "none") {
+        throw "initdb one-shot 回执拒绝把旧虚拟登录账户发布为新目标。"
+    }
+
+    $shapes = @($receiptShape)
+    if ($isLegacyReceipt) {
+        $targetIsCurrent =
+            -not $targetUsesLegacyAccount -and
+            [string]$canonicalTarget.SidType -cne "none"
+        if ($targetIsCurrent) {
+            if ([string]$Receipt.phase -in @("initdb_succeeded", "converted_to_pgctl")) {
+                $shapes += New-TicketboxServiceIdentityShape `
+                    -Name $ServiceName `
+                    -LogonAccount $legacyAccount `
+                    -SidType ([string]$canonicalTarget.SidType) `
+                    -AllowLegacyVirtualAccount
+                $shapes += $canonicalTarget
+            }
+        }
+        elseif (
+            -not $targetUsesLegacyAccount -or
+            [string]$canonicalTarget.SidType -cne "none"
+        ) {
+            throw "initdb one-shot 回执的旧服务身份不存在已裁决的目标迁移。"
+        }
+    }
+    else {
+        if (
+            -not [string]::Equals(
+                [string]$receiptShape.LogonAccount,
+                [string]$canonicalTarget.LogonAccount,
+                [System.StringComparison]::OrdinalIgnoreCase
+            ) -or
+            [string]$receiptShape.SidType -cne [string]$canonicalTarget.SidType
+        ) {
+            throw "initdb one-shot 回执的当前服务身份与目标发布不一致。"
+        }
+        if ($AllowCurrentSidTypePending) {
+            if ([string]$Receipt.phase -cne "intent_written") {
+                throw "initdb one-shot 回执只能在 intent_written 阶段授权当前 SID pending 状态。"
+            }
+            $shapes += New-TicketboxServiceIdentityShape `
+                -Name $ServiceName `
+                -LogonAccount ([string]$canonicalTarget.LogonAccount) `
+                -SidType "none"
+        }
+    }
+
+    $deduplicated = @()
+    $seen = @{}
+    foreach ($shape in $shapes) {
+        $key = "$([string]$shape.LogonAccount.ToLowerInvariant())|$([string]$shape.SidType)"
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        $deduplicated += $shape
+    }
+    return [object[]]$deduplicated
+}
 
 function ConvertTo-TicketboxLifecycleVersion {
     param(
@@ -124,6 +283,8 @@ function Write-TicketboxInitdbServiceReceipt {
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][string]$ServiceLogonAccount,
+        [Parameter(Mandatory = $true)][string]$ServiceSidType,
         [Parameter(Mandatory = $true)][string]$ImagePath,
         [Parameter(Mandatory = $true)][ValidateRange(1, 99)][int]$PgMajor,
         [Parameter(Mandatory = $true)][ValidateRange(1000, 600000)][int]$StopTimeoutMs,
@@ -136,6 +297,10 @@ function Write-TicketboxInitdbServiceReceipt {
             "converted_to_pgctl"
         )][string]$Phase,
         [string]$CreatedAtUtc = "",
+        [ValidateSet(
+            "ticketbox-windows-initdb-service-receipt-v1",
+            "ticketbox-windows-initdb-service-receipt-v2"
+        )][string]$Schema = "ticketbox-windows-initdb-service-receipt-v2",
         [switch]$ReplaceExisting
     )
 
@@ -147,6 +312,37 @@ function Write-TicketboxInitdbServiceReceipt {
         $ServiceName -notmatch '^[A-Za-z][A-Za-z0-9_.-]{0,79}$'
     ) {
         throw "initdb one-shot 回执服务名无效。"
+    }
+    $serviceIdentity = if (
+        $Schema -ceq $script:TicketboxLegacyInitdbServiceReceiptSchema
+    ) {
+        New-TicketboxServiceIdentityShape `
+            -Name $ServiceName `
+            -LogonAccount $ServiceLogonAccount `
+            -SidType $ServiceSidType `
+            -AllowLegacyVirtualAccount
+    }
+    else {
+        New-TicketboxServiceIdentityShape `
+            -Name $ServiceName `
+            -LogonAccount $ServiceLogonAccount `
+            -SidType $ServiceSidType
+    }
+    if (
+        $Schema -ceq $script:TicketboxLegacyInitdbServiceReceiptSchema -and
+        (
+            [string]$serviceIdentity.LogonAccount -cne
+                (Get-TicketboxServiceResourcePrincipal $ServiceName) -or
+            [string]$serviceIdentity.SidType -cne "none"
+        )
+    ) {
+        throw "legacy initdb one-shot 回执只接受原始虚拟登录身份。"
+    }
+    if (
+        $Schema -ceq $script:TicketboxInitdbServiceReceiptSchema -and
+        [string]$serviceIdentity.SidType -ceq "none"
+    ) {
+        throw "当前 initdb one-shot 回执必须绑定启用的服务 SID。"
     }
     if (
         [string]::IsNullOrWhiteSpace($ImagePath) -or
@@ -193,21 +389,25 @@ function Write-TicketboxInitdbServiceReceipt {
         throw "无法更新不存在的 initdb one-shot 回执。"
     }
     $payload = [ordered]@{
-        schema = $script:TicketboxInitdbServiceReceiptSchema
+        schema = $Schema
         phase = $Phase
         install_dir = $canonicalInstallDir
         data_root = $canonicalDataRoot
         pg_data = Join-Path $canonicalDataRoot "pgdata"
         password_file = $passwordFile
         service_name = $ServiceName
-        service_account = "NT SERVICE\$ServiceName"
+        service_account = [string]$serviceIdentity.LogonAccount
         image_path = $ImagePath
         pg_major = $PgMajor
         stop_timeout_ms = $StopTimeoutMs
         installer_owner_process_id = $InstallerOwnerProcessId
         created_at_utc = $createdAt.ToString("o")
         updated_at_utc = [DateTimeOffset]::UtcNow.ToString("o")
-    } | ConvertTo-Json -Depth 5
+    }
+    if ($Schema -ceq $script:TicketboxInitdbServiceReceiptSchema) {
+        $payload.service_sid_type = [string]$serviceIdentity.SidType
+    }
+    $payload = $payload | ConvertTo-Json -Depth 5
     Write-TicketboxProtectedUtf8FileDurable `
         -Path $canonicalPath `
         -Text $payload `
@@ -251,15 +451,48 @@ function Read-TicketboxInitdbServiceReceipt {
         -StopTimeoutMs $StopTimeoutMs
     $createdAt = [DateTimeOffset]::MinValue
     $updatedAt = [DateTimeOffset]::MinValue
+    $isLegacyReceipt =
+        [string]$receipt.schema -ceq $script:TicketboxLegacyInitdbServiceReceiptSchema
+    $isCurrentReceipt =
+        [string]$receipt.schema -ceq $script:TicketboxInitdbServiceReceiptSchema
+    $receiptIdentityValid = $false
+    if ($isLegacyReceipt) {
+        $receiptIdentityValid =
+            [string]$receipt.service_account -ceq
+                (Get-TicketboxServiceResourcePrincipal $ServiceName) -and
+            $null -eq $receipt.PSObject.Properties["service_sid_type"]
+        if ($receiptIdentityValid) {
+            $receipt | Add-Member `
+                -NotePropertyName service_sid_type `
+                -NotePropertyValue "none"
+        }
+    }
+    elseif ($isCurrentReceipt) {
+        try {
+            $receiptIdentity = New-TicketboxServiceIdentityShape `
+                -Name $ServiceName `
+                -LogonAccount ([string]$receipt.service_account) `
+                -SidType ([string]$receipt.service_sid_type)
+            $receiptIdentityValid =
+                [string]$receiptIdentity.SidType -cne "none" -and
+                [string]$receipt.service_account -ceq
+                    [string]$receiptIdentity.LogonAccount -and
+                [string]$receipt.service_sid_type -ceq
+                    [string]$receiptIdentity.SidType
+        }
+        catch {
+            $receiptIdentityValid = $false
+        }
+    }
     if (
-        [string]$receipt.schema -cne $script:TicketboxInitdbServiceReceiptSchema -or
+        (-not $isLegacyReceipt -and -not $isCurrentReceipt) -or
+        -not $receiptIdentityValid -or
         [string]$receipt.phase -notin $script:TicketboxInitdbServiceReceiptPhases -or
         -not (Test-TicketboxPathEquals ([string]$receipt.install_dir) $canonicalInstallDir) -or
         -not (Test-TicketboxPathEquals ([string]$receipt.data_root) $canonicalDataRoot) -or
         -not (Test-TicketboxPathEquals ([string]$receipt.pg_data) (Join-Path $canonicalDataRoot "pgdata")) -or
         -not (Test-TicketboxPathEquals ([string]$receipt.password_file) $expectedPasswordFile) -or
         [string]$receipt.service_name -cne $ServiceName -or
-        [string]$receipt.service_account -cne "NT SERVICE\$ServiceName" -or
         [string]$receipt.image_path -cne $expectedImagePath -or
         [int]$receipt.pg_major -ne $PgMajor -or
         [int]$receipt.stop_timeout_ms -ne $StopTimeoutMs -or
@@ -357,12 +590,15 @@ function Set-TicketboxInitdbServiceReceiptPhase {
         -InstallDir ([string]$Receipt.install_dir) `
         -DataRoot ([string]$Receipt.data_root) `
         -ServiceName ([string]$Receipt.service_name) `
+        -ServiceLogonAccount ([string]$Receipt.service_account) `
+        -ServiceSidType ([string]$Receipt.service_sid_type) `
         -ImagePath ([string]$Receipt.image_path) `
         -PgMajor ([int]$Receipt.pg_major) `
         -StopTimeoutMs ([int]$Receipt.stop_timeout_ms) `
         -InstallerOwnerProcessId $InstallerOwnerProcessId `
         -Phase $Phase `
         -CreatedAtUtc ([string]$Receipt.created_at_utc) `
+        -Schema ([string]$Receipt.schema) `
         -ReplaceExisting
 }
 
@@ -834,7 +1070,9 @@ function Write-TicketboxLifecycleReceipt {
         c07_production_authority_sha256 = $C07ProductionAuthoritySha256
         c07_runtime_projection_sha256 = $C07RuntimeProjectionSha256
         temporary_pg_service_name = [string]$InstalledReleaseConfig.pg_service_name
-        temporary_pg_service_account = "NT SERVICE\$([string]$InstalledReleaseConfig.pg_service_name)"
+        temporary_pg_service_account = Get-TicketboxReleaseServiceLogonAccount `
+            -Config $InstalledReleaseConfig `
+            -ServiceName ([string]$InstalledReleaseConfig.pg_service_name)
         temporary_pg_service_data_root = Join-Path (ConvertTo-TicketboxCanonicalPath $DataRoot) "pgdata"
         backup_path = if ($null -ne $backupEvidence) { $backupEvidence.Path } else { "" }
         backup_sha256 = if ($null -ne $backupEvidence) { $backupEvidence.Sha256 } else { "" }
@@ -1048,9 +1286,16 @@ function Read-TicketboxLifecycleReceipt {
         -InstalledConfig $receipt.installed_release_config `
         -TargetConfig $TargetReleaseConfig
     $expectedTemporaryServiceName = [string]$receipt.installed_release_config.pg_service_name
+    $expectedTemporaryServiceAccount = Get-TicketboxReleaseServiceLogonAccount `
+        -Config $receipt.installed_release_config `
+        -ServiceName $expectedTemporaryServiceName
     if (
         [string]$receipt.temporary_pg_service_name -cne $expectedTemporaryServiceName -or
-        [string]$receipt.temporary_pg_service_account -cne "NT SERVICE\$expectedTemporaryServiceName" -or
+        -not [string]::Equals(
+            [string]$receipt.temporary_pg_service_account,
+            $expectedTemporaryServiceAccount,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or
         -not (Test-TicketboxPathEquals `
             ([string]$receipt.temporary_pg_service_data_root) `
             (Join-Path (ConvertTo-TicketboxCanonicalPath $DataRoot) "pgdata"))
@@ -1764,17 +2009,19 @@ function Enable-TicketboxInstalledServicesAutoStart {
         ) `
         -DataRootMarkerAclPhase backend_read_required `
         -ExpectedBackendServiceName $backendServiceName
-    Assert-TicketboxServiceAccount `
+    Assert-TicketboxReleaseServiceIdentity `
         -Name $pgServiceName `
-        -ExpectedAccount "NT SERVICE\$pgServiceName"
+        -InstalledConfig $TargetReleaseConfig `
+        -TargetConfig $TargetReleaseConfig | Out-Null
     Assert-TicketboxPgServiceCommand `
         -Name $pgServiceName `
         -ExpectedExecutable $pgCtl `
         -ExpectedServiceName $pgServiceName `
         -ExpectedDataRoot $binding.RuntimePgData
-    Assert-TicketboxServiceAccount `
+    Assert-TicketboxReleaseServiceIdentity `
         -Name $backendServiceName `
-        -ExpectedAccount "NT SERVICE\$backendServiceName"
+        -InstalledConfig $TargetReleaseConfig `
+        -TargetConfig $TargetReleaseConfig | Out-Null
     Assert-TicketboxShawlServiceCommand `
         -Name $backendServiceName `
         -ExpectedExecutable $shawl `

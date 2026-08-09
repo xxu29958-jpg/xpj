@@ -246,10 +246,20 @@ function Test-TicketboxPathWithin([string]$Path, [string]$Parent) {{
 function Test-TicketboxServiceExists([string]$Name) {{
     return $Name -ceq 'TicketboxPg'
 }}
-function Assert-TicketboxServiceAccount {{
-    param([string]$Name, [string]$ExpectedAccount)
-    if ($Name -cne 'TicketboxPg' -or $ExpectedAccount -cne 'NT SERVICE\TicketboxPg') {{
-        throw 'service account contract drifted'
+function Assert-TicketboxServiceIdentityShape {{
+    param([string]$Name, [object[]]$AllowedShapes)
+    if (
+        $Name -cne 'TicketboxPg' -or
+        $AllowedShapes.Count -ne 1 -or
+        $AllowedShapes[0].LogonAccount -cne 'NT AUTHORITY\LocalService' -or
+        $AllowedShapes[0].SidType -cne 'unrestricted'
+    ) {{
+        throw 'service identity shape contract drifted'
+    }}
+    return [pscustomobject]@{{
+        Name = $Name
+        LogonAccount = $AllowedShapes[0].LogonAccount
+        SidType = $AllowedShapes[0].SidType
     }}
 }}
 function Get-TicketboxServiceImagePath([string]$Name) {{ return 'scm-owned' }}
@@ -328,12 +338,17 @@ function Write-TestPostmasterPid([string]$PgData) {{
     )
 }}
 function Resolve-TestAuthority {{
+    $allowedIdentity = [pscustomobject]@{{
+        LogonAccount = 'NT AUTHORITY\LocalService'
+        SidType = 'unrestricted'
+    }}
     return Resolve-TicketboxPostgresServiceHostAuthority `
         -ServiceName 'TicketboxPg' `
         -ExpectedPgCtlPath $pgCtl `
         -DataRoot $dataRoot `
         -InstallDir $installDir `
-        -BackendServiceName 'TicketboxBackend'
+        -BackendServiceName 'TicketboxBackend' `
+        -AllowedServiceIdentityShapes @($allowedIdentity)
 }}
 function Assert-RejectedBinding([string]$Mode, [string]$MessageFragment) {{
     $script:bindingMode = $Mode

@@ -240,6 +240,10 @@ def test_initdb_one_shot_receipt_state_machine_and_recovery_contract(
     prepare = _read("prepare_bundled_upgrade.ps1")
     uninstall = _read("uninstall_bundled_services.ps1")
     assert '"ticketbox-windows-initdb-service-receipt-v1"' in receipt_text
+    assert '"ticketbox-windows-initdb-service-receipt-v2"' in receipt_text
+    assert "TicketboxLegacyInitdbServiceReceiptSchema" in receipt_text
+    assert "service_sid_type" in receipt_text
+    assert "function Get-TicketboxInitdbReceiptServiceIdentityShapes" in receipt_text
     for phase in (
         "intent_written",
         "registered",
@@ -252,6 +256,8 @@ def test_initdb_one_shot_receipt_state_machine_and_recovery_contract(
     assert "Invoke-TicketboxServiceOwnedInitdb" in install
     assert "Invoke-TicketboxInterruptedInitdbServiceRecovery" in prepare
     assert "Invoke-TicketboxInitdbServiceUninstallRecovery" in uninstall
+    for consumer in (install, prepare, uninstall):
+        assert "Get-TicketboxInitdbReceiptServiceIdentityShapes" in consumer
     operation_lock = prepare.index("$operationLock =")
     recovery_call = prepare.index(
         "Invoke-TicketboxInterruptedInitdbServiceRecovery", operation_lock
@@ -280,7 +286,7 @@ $ErrorActionPreference = 'Stop'
 $script:writes = @()
 $script:removes = 0
 function Write-TicketboxInitdbServiceReceipt {{
-    param($Path,$InstallDir,$DataRoot,$ServiceName,$ImagePath,$PgMajor,$StopTimeoutMs,$InstallerOwnerProcessId,$Phase,$CreatedAtUtc,[switch]$ReplaceExisting)
+    param($Path,$InstallDir,$DataRoot,$ServiceName,$ServiceLogonAccount,$ServiceSidType,$ImagePath,$PgMajor,$StopTimeoutMs,$InstallerOwnerProcessId,$Phase,$CreatedAtUtc,$Schema,[switch]$ReplaceExisting)
     $script:writes += [string]$Phase
 }}
 function Assert-TicketboxInitdbServiceReceiptPath {{ param($Path) return $Path }}
@@ -289,10 +295,13 @@ function Remove-TicketboxProtectedUtf8Artifact {{
     $script:removes += 1
 }}
 $receipt = [pscustomobject]@{{
+    schema = 'ticketbox-windows-initdb-service-receipt-v2'
     phase = 'intent_written'
     install_dir = 'C:\\Program Files\\Ticketbox'
     data_root = 'C:\\ProgramData\\Ticketbox'
     service_name = 'TicketboxPg'
+    service_account = 'NT AUTHORITY\\LocalService'
+    service_sid_type = 'unrestricted'
     image_path = 'exact-image-path'
     pg_major = 17
     stop_timeout_ms = 25000
@@ -402,6 +411,290 @@ catch {{ $invalidRejected = $true }}
 if (-not $invalidRejected -or $script:strictReads -ne 1) {{
     throw 'invalid self-described recovery values reached the strict reader'
 }}
+""",
+            encoding="utf-8-sig",
+        )
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+def test_initdb_receipt_v2_records_current_identity_and_v1_remains_audit_only(
+    tmp_path: Path,
+) -> None:
+    receipt_script = PACKAGING / "windows_lifecycle_receipt.ps1"
+    identity_script = PACKAGING / "windows_service_identity.ps1"
+    for index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"initdb-receipt-identity-{index}.ps1"
+        harness.write_text(
+            rf"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(identity_script)}'
+. '{_literal(receipt_script)}'
+$script:artifactText = ''
+function Assert-TicketboxInitdbServiceReceiptPath {{ param($Path); return [IO.Path]::GetFullPath($Path) }}
+function Assert-TicketboxProtectedLifecycleReceipt {{ param($Path) }}
+function ConvertTo-TicketboxCanonicalPath {{ param($Path); return [IO.Path]::GetFullPath($Path) }}
+function Get-TicketboxInitdbPasswordPath {{ param($DataRoot); return Join-Path $DataRoot 'initdb.pw' }}
+function New-TicketboxInitdbServiceImagePath {{ return 'canonical-initdb-image' }}
+function Test-TicketboxPathEquals {{
+    param($Left,$Right)
+    return [string]::Equals(
+        [IO.Path]::GetFullPath($Left),
+        [IO.Path]::GetFullPath($Right),
+        [StringComparison]::OrdinalIgnoreCase)
+}}
+function Write-TicketboxProtectedUtf8FileDurable {{
+    param($Path,$Text,$FullControlAccounts,$OwnerAccount,[switch]$ReplaceExisting)
+    $script:artifactText = [string]$Text
+}}
+function Read-TicketboxProtectedUtf8Artifact {{
+    param($Path,$FullControlAccounts,$OwnerAccount,$MaximumBytes)
+    return [pscustomobject]@{{ Text = $script:artifactText }}
+}}
+$path = '{_literal(tmp_path / 'initdb-receipt.json')}'
+$installDir = '{_literal(tmp_path / 'program')}'
+$dataRoot = '{_literal(tmp_path / 'data')}'
+$common = @{{
+    Path = $path
+    InstallDir = $installDir
+    DataRoot = $dataRoot
+    ServiceName = 'TicketboxPg'
+    ImagePath = 'canonical-initdb-image'
+    PgMajor = 17
+    StopTimeoutMs = 25000
+    InstallerOwnerProcessId = 4242
+    Phase = 'intent_written'
+}}
+Write-TicketboxInitdbServiceReceipt @common `
+    -ServiceLogonAccount 'NT AUTHORITY\LocalService' `
+    -ServiceSidType unrestricted
+$currentJson = $script:artifactText | ConvertFrom-Json
+if ($currentJson.schema -cne 'ticketbox-windows-initdb-service-receipt-v2' -or
+    $currentJson.service_account -cne 'NT AUTHORITY\LocalService' -or
+    $currentJson.service_sid_type -cne 'unrestricted') {{
+    throw 'current initdb receipt did not bind the current service identity'
+}}
+$current = Read-TicketboxInitdbServiceReceipt `
+    -Path $path `
+    -InstallDir $installDir `
+    -DataRoot $dataRoot `
+    -ServiceName TicketboxPg `
+    -PgMajor 17 `
+    -StopTimeoutMs 25000 `
+    -InstallerOwnerProcessId 4242
+if ($current.service_sid_type -cne 'unrestricted') {{
+    throw 'current initdb receipt identity failed strict readback'
+}}
+$currentTarget = New-TicketboxServiceIdentityShape `
+    -Name TicketboxPg `
+    -LogonAccount 'NT AUTHORITY\LocalService' `
+    -SidType unrestricted
+$currentPendingShapes = @(Get-TicketboxInitdbReceiptServiceIdentityShapes `
+    -Receipt $current `
+    -ServiceName TicketboxPg `
+    -TargetShape $currentTarget `
+    -AllowCurrentSidTypePending)
+$currentPendingKeys = @($currentPendingShapes | ForEach-Object {{
+    "$($_.LogonAccount)|$($_.SidType)"
+}})
+if ($currentPendingKeys.Count -ne 2 -or
+    $currentPendingKeys -notcontains 'NT AUTHORITY\LocalService|unrestricted' -or
+    $currentPendingKeys -notcontains 'NT AUTHORITY\LocalService|none') {{
+    throw 'current initdb receipt lost its exact pre-SID crash tuple'
+}}
+$current.phase = 'registered'
+$latePendingRejected = $false
+try {{
+    Get-TicketboxInitdbReceiptServiceIdentityShapes `
+        -Receipt $current `
+        -ServiceName TicketboxPg `
+        -TargetShape $currentTarget `
+        -AllowCurrentSidTypePending | Out-Null
+}}
+catch {{ $latePendingRejected = $true }}
+if (-not $latePendingRejected) {{
+    throw 'current initdb receipt authorized SID pending after registration'
+}}
+$current.phase = 'intent_written'
+
+Write-TicketboxInitdbServiceReceipt @common `
+    -ServiceLogonAccount 'NT SERVICE\TicketboxPg' `
+    -ServiceSidType none `
+    -Schema 'ticketbox-windows-initdb-service-receipt-v1'
+$legacyJson = $script:artifactText | ConvertFrom-Json
+if ($legacyJson.schema -cne 'ticketbox-windows-initdb-service-receipt-v1' -or
+    $legacyJson.service_account -cne 'NT SERVICE\TicketboxPg' -or
+    $null -ne $legacyJson.PSObject.Properties['service_sid_type']) {{
+    throw 'legacy audit receipt was rewritten with current identity semantics'
+}}
+$legacy = Read-TicketboxInitdbServiceReceipt `
+    -Path $path `
+    -InstallDir $installDir `
+    -DataRoot $dataRoot `
+    -ServiceName TicketboxPg `
+    -PgMajor 17 `
+    -StopTimeoutMs 25000 `
+    -InstallerOwnerProcessId 4242
+if ($legacy.schema -cne 'ticketbox-windows-initdb-service-receipt-v1' -or
+    $legacy.service_sid_type -cne 'none') {{
+    throw 'legacy audit receipt did not retain its original schema and SID semantics'
+}}
+$legacyEarlyShapes = @(Get-TicketboxInitdbReceiptServiceIdentityShapes `
+    -Receipt $legacy `
+    -ServiceName TicketboxPg `
+    -TargetShape $currentTarget)
+if ($legacyEarlyShapes.Count -ne 1 -or
+    "$($legacyEarlyShapes[0].LogonAccount)|$($legacyEarlyShapes[0].SidType)" -cne
+        'NT SERVICE\TicketboxPg|none') {{
+    throw 'legacy audit receipt became a migration authority before initdb success'
+}}
+$legacy.phase = 'initdb_succeeded'
+$legacyTransitionShapes = @(Get-TicketboxInitdbReceiptServiceIdentityShapes `
+    -Receipt $legacy `
+    -ServiceName TicketboxPg `
+    -TargetShape $currentTarget)
+$legacyTransitionKeys = @($legacyTransitionShapes | ForEach-Object {{
+    "$($_.LogonAccount)|$($_.SidType)"
+}})
+foreach ($required in @(
+    'NT SERVICE\TicketboxPg|none',
+    'NT SERVICE\TicketboxPg|unrestricted',
+    'NT AUTHORITY\LocalService|unrestricted'
+)) {{
+    if ($legacyTransitionKeys -notcontains $required) {{
+        throw "legacy initdb transition lost exact shape: $required"
+    }}
+}}
+if ($legacyTransitionKeys.Count -ne 3 -or
+    $legacyTransitionKeys -contains 'NT AUTHORITY\LocalService|none') {{
+    throw 'legacy initdb transition admitted an unprepared tuple'
+}}
+
+$mixedRejected = $false
+try {{
+    Write-TicketboxInitdbServiceReceipt @common `
+        -ServiceLogonAccount 'NT SERVICE\TicketboxPg' `
+        -ServiceSidType unrestricted
+}}
+catch {{ $mixedRejected = $true }}
+if (-not $mixedRejected) {{
+    throw 'current receipt accepted a legacy login identity'
+}}
+"INITDB_RECEIPT_IDENTITY_OK"
+""",
+            encoding="utf-8-sig",
+        )
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+def test_service_sid_pending_requires_exact_lifecycle_receipt_authority(
+    tmp_path: Path,
+) -> None:
+    receipt_script = PACKAGING / "windows_lifecycle_receipt.ps1"
+    install = _read("install_bundled_services.ps1")
+    prepare = _read("prepare_bundled_upgrade.ps1")
+    uninstall = _read("uninstall_bundled_services.ps1")
+    for consumer in (install, prepare, uninstall):
+        assert "Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending" in consumer
+
+    for index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"service-sid-pending-authority-{index}.ps1"
+        harness.write_text(
+            rf"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(receipt_script)}'
+function New-TestReceipt {{
+    return [pscustomobject]@{{
+        installed_release_config = [pscustomobject]@{{
+            pg_service_name = 'TicketboxPg'
+            pg_recovery_service_name = 'TicketboxPgRecovery'
+            backend_service_name = 'TicketboxBackend'
+        }}
+        mode = 'fresh_install'
+        preparation_stage = 'files_may_have_been_replaced'
+        previous_pg_state = 'absent'
+        previous_backend_state = 'absent'
+        backup_required = $false
+        backup_completed = $false
+        temporary_pg_service_cleanup_pending = $false
+    }}
+}}
+$receipt = New-TestReceipt
+foreach ($name in @('TicketboxPg','TicketboxBackend')) {{
+    if (-not (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+        -Receipt $receipt `
+        -ServiceName $name)) {{
+        throw "fresh formal service was not bound to its absent-state receipt: $name"
+    }}
+}}
+$receipt.previous_backend_state = 'stopped'
+if (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+    -Receipt $receipt `
+    -ServiceName TicketboxBackend) {{
+    throw 'pre-existing backend authorized a fresh-create SID gap'
+}}
+$receipt.previous_backend_state = 'absent'
+$receipt.preparation_stage = 'prepared'
+if (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+    -Receipt $receipt `
+    -ServiceName TicketboxBackend) {{
+    throw 'wrong lifecycle stage authorized a backend SID gap'
+}}
+
+$receipt = New-TestReceipt
+$receipt.mode = 'preserved_data_reinstall'
+$receipt.preparation_stage = 'program_files_installed_backup_pending'
+$receipt.temporary_pg_service_cleanup_pending = $true
+if (-not (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+    -Receipt $receipt `
+    -ServiceName TicketboxPg)) {{
+    throw 'deferred backup cleanup obligation did not authorize exact PG retry'
+}}
+$receipt.temporary_pg_service_cleanup_pending = $false
+if (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+    -Receipt $receipt `
+    -ServiceName TicketboxPg) {{
+    throw 'deferred PG SID gap survived after cleanup obligation cleared'
+}}
+
+$receipt = New-TestReceipt
+$receipt.mode = 'repair_install'
+$receipt.preparation_stage = 'captured'
+$receipt.backup_required = $true
+if (-not (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+    -Receipt $receipt `
+    -ServiceName TicketboxPgRecovery)) {{
+    throw 'exact recovery-service intent did not authorize its create gap'
+}}
+$receipt.backup_completed = $true
+if (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+    -Receipt $receipt `
+    -ServiceName TicketboxPgRecovery) {{
+    throw 'completed backup retained recovery-service create authority'
+}}
+if (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+    -Receipt (New-TestReceipt) `
+    -ServiceName ForeignService) {{
+    throw 'foreign service inherited lifecycle receipt authority'
+}}
+"SERVICE_SID_PENDING_AUTHORITY_OK"
 """,
             encoding="utf-8-sig",
         )
@@ -1234,7 +1527,8 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
             "function Assert-TicketboxPreparedServiceContracts"
         )
     ]
-    assert "Assert-TicketboxServiceAccount" in exact_contract
+    assert "Assert-TicketboxPreparedServiceIdentity" in exact_contract
+    assert 'ExpectedAccount "NT SERVICE\\$Name"' not in exact_contract
     assert "Assert-TicketboxPgServiceCommand" in exact_contract
     assert "Assert-TicketboxShawlServiceCommand" in exact_contract
 

@@ -170,6 +170,7 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_release_config.ps1",
     "packaging/prepare_bundled_upgrade.ps1",
     "packaging/windows_service_contract.ps1",
+    "packaging/windows_service_identity.ps1",
     "packaging/windows_service_lifecycle.ps1",
     "packaging/windows_installation_safety.ps1",
     "packaging/windows_lifecycle_receipt.ps1",

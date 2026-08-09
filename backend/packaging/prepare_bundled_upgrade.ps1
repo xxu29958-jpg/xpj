@@ -45,6 +45,7 @@ $TargetReleaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
 $DatabaseToolTimeoutMs = [int]$TargetReleaseConfig.database_tool_timeout_ms
 $HasPersistedInstalledReleaseConfig = $false
 $InstalledReleaseConfig = $TargetReleaseConfig | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$PreparedServiceIdentityLifecycleReceipt = $null
 $script:TicketboxPreparedRuntimeDatabaseRole = "ticketbox_runtime"
 
 function Set-TicketboxInstalledReleaseConfiguration([object]$Config, [bool]$Persisted) {
@@ -76,6 +77,37 @@ function Initialize-TicketboxInstalledReleaseConfiguration {
     }
     $targetClone = $TargetReleaseConfig | ConvertTo-Json -Depth 8 | ConvertFrom-Json
     Set-TicketboxInstalledReleaseConfiguration -Config $targetClone -Persisted $false
+}
+
+function Get-TicketboxPreparedServiceIdentityShapes {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [switch]$AllowTargetSidTypePending
+    )
+
+    return [object[]]@(Get-TicketboxReleaseServiceIdentityShapes `
+        -InstalledConfig $InstalledReleaseConfig `
+        -TargetConfig $TargetReleaseConfig `
+        -ServiceName $Name `
+        -AllowTargetSidTypePending:$AllowTargetSidTypePending)
+}
+
+function Assert-TicketboxPreparedServiceIdentity {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [switch]$AllowTargetSidTypePending
+    )
+
+    $receiptAuthorizesPending =
+        $null -ne $PreparedServiceIdentityLifecycleReceipt -and
+        (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+            -Receipt $PreparedServiceIdentityLifecycleReceipt `
+            -ServiceName $Name)
+    return Assert-TicketboxServiceIdentityShape `
+        -Name $Name `
+        -AllowedShapes @(Get-TicketboxPreparedServiceIdentityShapes `
+            -Name $Name `
+            -AllowTargetSidTypePending:($AllowTargetSidTypePending -or $receiptAuthorizesPending))
 }
 
 function Assert-TicketboxPreparedDataRootAuthorityGate {
@@ -538,7 +570,7 @@ function Assert-ExpectedServiceConfiguration {
     }
     $expectedExecutable = if ($Name -eq $PgServiceName) { $PgCtl } else { $ShawlExe }
     Assert-TicketboxServiceOwnership -Name $Name -ExpectedExecutable $expectedExecutable | Out-Null
-    Assert-TicketboxServiceAccount -Name $Name -ExpectedAccount "NT SERVICE\$Name"
+    Assert-TicketboxPreparedServiceIdentity -Name $Name | Out-Null
     $targetError = $null
     try {
         Assert-TicketboxPreparedServiceRuntimeCommand `
@@ -623,7 +655,7 @@ function Get-TicketboxRecoveryServiceDataAclShape {
             $RecoveryServiceSid = Get-TicketboxServiceSid $PgRecoveryServiceName
         }
         if ($RecoveryServiceSid -notmatch '^S-1-5-80-(?:[0-9]+-){4}[0-9]+$') {
-            throw "PostgreSQL 恢复服务 SID 不是规范虚拟服务账户 SID。"
+            throw "PostgreSQL 恢复服务 SID 不是规范的每服务 SID。"
         }
         $rootReadAccounts += $RecoveryServiceSid
         $pgAccounts += $RecoveryServiceSid
@@ -722,9 +754,8 @@ function Assert-TicketboxRecoveryPgServiceConfiguration {
     Assert-TicketboxServiceOwnership `
         -Name $PgRecoveryServiceName `
         -ExpectedExecutable $recoveryPgCtl | Out-Null
-    Assert-TicketboxServiceAccount `
-        -Name $PgRecoveryServiceName `
-        -ExpectedAccount "NT SERVICE\$PgRecoveryServiceName"
+    Assert-TicketboxPreparedServiceIdentity `
+        -Name $PgRecoveryServiceName | Out-Null
     Assert-TicketboxPgServiceCommand `
         -Name $PgRecoveryServiceName `
         -ExpectedExecutable $recoveryPgCtl `
@@ -751,8 +782,16 @@ function Register-TicketboxRecoveryPgService {
         "start=",
         "demand",
         "obj=",
-        "NT SERVICE\$PgRecoveryServiceName"
+        (Get-TicketboxReleaseServiceLogonAccount `
+            -Config $TargetReleaseConfig `
+            -ServiceName $PgRecoveryServiceName)
     ) | Out-Null
+    Set-TicketboxServiceIdentityContract `
+        -Name $PgRecoveryServiceName `
+        -LogonAccount (Get-TicketboxReleaseServiceLogonAccount `
+            -Config $TargetReleaseConfig `
+            -ServiceName $PgRecoveryServiceName) `
+        -SidType (Get-TicketboxReleaseServiceSidType $TargetReleaseConfig)
     Set-TicketboxRecoveryServiceDataAcl $true
     Assert-TicketboxRecoveryPgServiceConfiguration
 }
@@ -785,9 +824,7 @@ function Assert-TicketboxDeferredPreservedPgServiceConfiguration {
     Assert-TicketboxServiceOwnership `
         -Name $PgServiceName `
         -ExpectedExecutable $PgCtl | Out-Null
-    Assert-TicketboxServiceAccount `
-        -Name $PgServiceName `
-        -ExpectedAccount "NT SERVICE\$PgServiceName"
+    Assert-TicketboxPreparedServiceIdentity -Name $PgServiceName | Out-Null
     Assert-TicketboxPgServiceCommand `
         -Name $PgServiceName `
         -ExpectedExecutable $PgCtl `
@@ -1173,9 +1210,17 @@ function Get-TicketboxInterruptedInitdbServiceShape([object]$Receipt) {
     if ($startMode -notin @("Disabled", "Manual")) {
         throw "中断 initdb 服务启动模式越界：$startMode"
     }
-    Assert-TicketboxServiceAccount `
+    $targetIdentityShape = @(Get-TicketboxReleaseServiceIdentityShapes `
+        -InstalledConfig $TargetReleaseConfig `
+        -TargetConfig $TargetReleaseConfig `
+        -ServiceName $PgServiceName)[0]
+    Assert-TicketboxServiceIdentityShape `
         -Name $PgServiceName `
-        -ExpectedAccount "NT SERVICE\$PgServiceName"
+        -AllowedShapes @(Get-TicketboxInitdbReceiptServiceIdentityShapes `
+            -Receipt $Receipt `
+            -ServiceName $PgServiceName `
+            -TargetShape $targetIdentityShape `
+            -AllowCurrentSidTypePending:([string]$Receipt.phase -ceq "intent_written")) | Out-Null
     Assert-TicketboxServiceDependencies `
         -Name $PgServiceName `
         -ExpectedDependencies @()
@@ -1219,15 +1264,18 @@ function Complete-TicketboxInterruptedInitdbServiceCommit([object]$Receipt) {
     Invoke-TicketboxScChecked @(
         "config", $PgServiceName,
         "start=", "disabled",
-        "binPath=", $pgImagePath,
-        "obj=", "NT SERVICE\$PgServiceName"
+        "binPath=", $pgImagePath
     ) | Out-Null
+    Set-TicketboxServiceIdentityContract `
+        -Name $PgServiceName `
+        -LogonAccount (Get-TicketboxReleaseServiceLogonAccount `
+            -Config $TargetReleaseConfig `
+            -ServiceName $PgServiceName) `
+        -SidType (Get-TicketboxReleaseServiceSidType $TargetReleaseConfig)
     Assert-TicketboxServiceOwnership `
         -Name $PgServiceName `
         -ExpectedExecutable $PgCtl | Out-Null
-    Assert-TicketboxServiceAccount `
-        -Name $PgServiceName `
-        -ExpectedAccount "NT SERVICE\$PgServiceName"
+    Assert-TicketboxPreparedServiceIdentity -Name $PgServiceName | Out-Null
     Assert-TicketboxPgServiceCommand `
         -Name $PgServiceName `
         -ExpectedExecutable $PgCtl `
@@ -1471,6 +1519,7 @@ try {
             -TargetReleaseConfig $TargetReleaseConfig `
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+        $PreparedServiceIdentityLifecycleReceipt = $receipt
         $recoveryStage = [string]$receipt.preparation_stage
         if ([bool]$receipt.temporary_pg_service_cleanup_pending) {
             Remove-TicketboxDeferredPreservedPgServiceIfExists
@@ -1569,6 +1618,7 @@ try {
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -AllowPreviousInstallerOwnerProcessId
+        $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
         if ([bool]$staleReceipt.install_completed) {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
@@ -1588,6 +1638,7 @@ try {
                 -CurrentTargetBackendVersion $TargetBackendVersion `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
                 -AllowPreviousInstallerOwnerProcessId
+            $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
             Set-TicketboxLifecycleReceiptInstallerOwner `
                 -Path $LifecycleReceiptPath `
                 -Receipt $staleReceipt `
@@ -1613,6 +1664,7 @@ try {
                 -TargetReleaseConfig $TargetReleaseConfig `
                 -CurrentTargetBackendVersion $TargetBackendVersion `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+            $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
             Remove-TicketboxCompletedLifecycleReceipt `
                 -Path $LifecycleReceiptPath `
                 -Receipt $staleReceipt
@@ -1656,6 +1708,7 @@ try {
                 -CurrentTargetBackendVersion $TargetBackendVersion `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
                 -AllowPreviousInstallerOwnerProcessId
+            $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
             if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending) {
                 Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending `
                     -Path $LifecycleReceiptPath `
@@ -1694,6 +1747,7 @@ try {
                 -CurrentTargetBackendVersion $TargetBackendVersion `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
                 -AllowPreviousInstallerOwnerProcessId
+            $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
             Invoke-TicketboxPreparedInstallRecovery `
                 -Receipt $staleReceipt `
                 -ProgramFilesWereReplaced $true
@@ -1846,6 +1900,7 @@ try {
         -TargetReleaseConfig $TargetReleaseConfig `
         -CurrentTargetBackendVersion $TargetBackendVersion `
         -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+    $PreparedServiceIdentityLifecycleReceipt = $capturedReceipt
     if ($deferredPreservedBackup) {
         Set-TicketboxLifecycleReceiptDeferredBackup `
             -Path $LifecycleReceiptPath `

@@ -183,7 +183,7 @@ function New-ProbeService {
         'start=',
         'demand',
         'obj=',
-        "NT SERVICE\$Name"
+        'NT AUTHORITY\LocalService'
     )
     if ($Dependencies.Count -gt 0) {
         $arguments += @('depend=', ($Dependencies -join '/'))

@@ -34,6 +34,8 @@ if ($ReleaseConfigPath.Trim().Length -eq 0) {
     $ReleaseConfigPath = Join-Path $ScriptDir "windows-release-config.json"
 }
 $ReleaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
+$UninstallInstalledReleaseConfig = $ReleaseConfig
+$UninstallLifecycleReceipt = $null
 $PgServiceName = [string]$ReleaseConfig.pg_service_name
 $BackendServiceName = [string]$ReleaseConfig.backend_service_name
 $OwnerRecoveryChannel = [string]$ReleaseConfig.owner_recovery_channel
@@ -300,6 +302,24 @@ function Service-Exists([string]$Name) {
     return Test-TicketboxServiceExists $Name
 }
 
+function Assert-TicketboxUninstallServiceIdentity {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [switch]$AllowTargetSidTypePending
+    )
+
+    $receiptAuthorizesPending =
+        $null -ne $UninstallLifecycleReceipt -and
+        (Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending `
+            -Receipt $UninstallLifecycleReceipt `
+            -ServiceName $Name)
+    return Assert-TicketboxReleaseServiceIdentity `
+        -Name $Name `
+        -InstalledConfig $UninstallInstalledReleaseConfig `
+        -TargetConfig $ReleaseConfig `
+        -AllowTargetSidTypePending:($AllowTargetSidTypePending -or $receiptAuthorizesPending)
+}
+
 function Invoke-ScChecked([string[]]$ScArgs) {
     return Invoke-TicketboxScChecked $ScArgs
 }
@@ -319,7 +339,7 @@ function Assert-ExpectedServiceConfiguration([string]$Name) {
         return
     }
     Assert-TicketboxServiceOwnership -Name $Name -ExpectedExecutable (Get-ExpectedServiceExecutable $Name) | Out-Null
-    Assert-TicketboxServiceAccount -Name $Name -ExpectedAccount "NT SERVICE\$Name"
+    Assert-TicketboxUninstallServiceIdentity -Name $Name | Out-Null
     if ($Name -eq $PgServiceName) {
         Assert-TicketboxPgServiceCommand `
             -Name $Name `
@@ -1047,9 +1067,17 @@ function Invoke-TicketboxInitdbServiceUninstallRecovery {
         if ($startMode -notin @("Disabled", "Manual")) {
             throw "中断首装 PostgreSQL 服务启动模式越界：$startMode"
         }
-        Assert-TicketboxServiceAccount `
+        $targetIdentityShape = @(Get-TicketboxReleaseServiceIdentityShapes `
+            -InstalledConfig $ReleaseConfig `
+            -TargetConfig $ReleaseConfig `
+            -ServiceName $PgServiceName)[0]
+        Assert-TicketboxServiceIdentityShape `
             -Name $PgServiceName `
-            -ExpectedAccount "NT SERVICE\$PgServiceName"
+            -AllowedShapes @(Get-TicketboxInitdbReceiptServiceIdentityShapes `
+                -Receipt $receipt `
+                -ServiceName $PgServiceName `
+                -TargetShape $targetIdentityShape `
+                -AllowCurrentSidTypePending:($phase -ceq "intent_written")) | Out-Null
         Assert-TicketboxServiceDependencies `
             -Name $PgServiceName `
             -ExpectedDependencies @()
@@ -1172,6 +1200,17 @@ try {
     }
     else {
         Get-TicketboxCompletedLifecycleReceiptForUninstall
+    }
+    if ($null -ne $completedLifecycleReceipt) {
+        $UninstallLifecycleReceipt = $completedLifecycleReceipt
+        $UninstallInstalledReleaseConfig =
+            $completedLifecycleReceipt.installed_release_config
+    }
+    elseif ($null -ne $script:AbortedFreshInstallLifecycleReceipt) {
+        $UninstallLifecycleReceipt =
+            $script:AbortedFreshInstallLifecycleReceipt
+        $UninstallInstalledReleaseConfig =
+            $script:AbortedFreshInstallLifecycleReceipt.installed_release_config
     }
     if ($InstallationIdentityAlreadyRemoved -or $InstallationIdentityCleanupIncomplete) {
         if ((Service-Exists $BackendServiceName) -or (Service-Exists $PgServiceName)) {

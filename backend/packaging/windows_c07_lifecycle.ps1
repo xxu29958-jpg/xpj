@@ -191,7 +191,7 @@ function Get-TicketboxC07InstalledCredentialPath([string]$OperationId) {
 function Get-TicketboxC07RuntimeReadAccount([object]$ReleaseIdentity) {
     $serviceName = [string]$ReleaseIdentity.BackendServiceName
     if ($serviceName -cnotmatch "^[A-Za-z0-9_.-]{1,128}$") {
-        throw "C07 安装身份中的 backend service name 不能安全派生虚拟服务账户。"
+        throw "C07 安装身份中的 backend service name 不能安全派生每服务 SID ACL 主体。"
     }
     return "NT SERVICE\$serviceName"
 }
