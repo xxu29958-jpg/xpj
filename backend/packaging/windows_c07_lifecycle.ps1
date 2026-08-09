@@ -386,6 +386,240 @@ function Get-OrCreateTicketboxC07FreshBootstrapIntent {
     return Read-TicketboxC07FreshBootstrapIntent $releaseIdentity
 }
 
+function Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition {
+    param(
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [Parameter(Mandatory = $true)][object]$PreviousInstallationIdentity,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+
+    [void](Assert-TicketboxC07LifecycleLease $LifecycleLock)
+    Assert-TicketboxInstallationIdentityBaseMatches `
+        $PreviousInstallationIdentity `
+        $Candidate
+    $previousReleaseIdentity =
+        Get-TicketboxC07HistoricalReleaseIdentity $PreviousInstallationIdentity
+    $successorReleaseIdentity = Get-TicketboxC07CandidateReleaseIdentity `
+        -Candidate $Candidate `
+        -InstallationId ([string]$PreviousInstallationIdentity.InstallationId) `
+        -OperationId ([string]$PreviousInstallationIdentity.OperationId)
+    $roots = Assert-TicketboxC07ArtifactRoots $successorReleaseIdentity
+    $hostKind = Get-TicketboxPathEntryKindNoFollow $roots.HostRoot
+    $runtimeKind = Get-TicketboxPathEntryKindNoFollow $roots.RuntimeRoot
+    foreach ($rootState in @(
+        [pscustomobject]@{
+            Label = "host authority"
+            Path = $roots.HostRoot
+            Kind = $hostKind
+        },
+        [pscustomobject]@{
+            Label = "runtime projection"
+            Path = $roots.RuntimeRoot
+            Kind = $runtimeKind
+        }
+    )) {
+        if ([string]$rootState.Kind -cnotin @("Missing", "Directory")) {
+            throw "C07 $($rootState.Label) 恢复根不是受保护目录。"
+        }
+    }
+    if ($hostKind -ceq "Directory") {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $roots.HostRoot `
+            -FullControlAccounts $script:TicketboxC07HostFullControlAccounts `
+            -OwnerAccount $script:TicketboxC07HostOwnerAccount
+    }
+    if ($runtimeKind -ceq "Directory") {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $roots.RuntimeRoot `
+            -FullControlAccounts $script:TicketboxC07HostFullControlAccounts `
+            -ReadExecuteAccounts @(
+                Get-TicketboxC07RuntimeReadAccount $successorReleaseIdentity
+            ) `
+            -OwnerAccount $script:TicketboxC07HostOwnerAccount
+    }
+    $hostEntries = if ($hostKind -ceq "Directory") {
+        @(Get-ChildItem -LiteralPath $roots.HostRoot -Force -ErrorAction Stop)
+    }
+    else { @() }
+    $runtimeEntries = if ($runtimeKind -ceq "Directory") {
+        @(Get-ChildItem -LiteralPath $roots.RuntimeRoot -Force -ErrorAction Stop)
+    }
+    else { @() }
+    if ($runtimeEntries.Count -ne 0) {
+        throw "旧 PENDING installation identity 已存在 C07 runtime projection 工件。"
+    }
+    $intentPath = Get-TicketboxC07FreshBootstrapIntentPath
+    $hostStagingEntries = @($hostEntries | Where-Object {
+        [string]$_.Name -cmatch
+            '^\.ticketbox-(protected|durable)-[0-9a-f]{32}\.tmp$'
+    })
+    $hostDurableEntries = @($hostEntries | Where-Object {
+        [string]$_.Name -cnotmatch
+            '^\.ticketbox-(protected|durable)-[0-9a-f]{32}\.tmp$'
+    })
+    if (
+        $hostDurableEntries.Count -gt 1 -or
+        (
+            $hostDurableEntries.Count -eq 1 -and
+            (
+                [bool]$hostDurableEntries[0].PSIsContainer -or
+                -not (Test-TicketboxPathEquals `
+                    ([string]$hostDurableEntries[0].FullName) `
+                    $intentPath)
+            )
+        )
+    ) {
+        throw "旧 PENDING installation identity 的 C07 host 根包含未知工件。"
+    }
+    foreach ($stagingEntry in $hostStagingEntries) {
+        if (
+            [bool]$stagingEntry.PSIsContainer -or
+            ($stagingEntry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+        ) {
+            throw "C07 host 未提交 staging 不是受保护普通文件。"
+        }
+        Assert-TicketboxExactFileAcl `
+            -Path ([string]$stagingEntry.FullName) `
+            -Accounts $script:TicketboxC07HostFullControlAccounts `
+            -OwnerAccount $script:TicketboxC07HostOwnerAccount
+    }
+    if ($hostStagingEntries.Count -gt 0) {
+        Remove-TicketboxProtectedStagingArtifacts `
+            -Path $roots.HostRoot `
+            -FullControlAccounts $script:TicketboxC07HostFullControlAccounts `
+            -OwnerAccount $script:TicketboxC07HostOwnerAccount
+        $hostEntries = @(
+            Get-ChildItem -LiteralPath $roots.HostRoot -Force -ErrorAction Stop
+        )
+    }
+    if ($hostEntries.Count -eq 0) {
+        return [pscustomobject]@{
+            State = if (
+                $hostKind -ceq "Missing" -and
+                $runtimeKind -ceq "Missing"
+            ) { "absent" } else { "empty_roots" }
+            PreserveOperationId = $false
+            OperationId = ""
+            Rebound = $false
+            PreviousPayloadSha256 = ""
+            CurrentPayloadSha256 = ""
+            PreviousReleaseFingerprint =
+                [string]$previousReleaseIdentity.Fingerprint
+            CurrentReleaseFingerprint =
+                [string]$successorReleaseIdentity.Fingerprint
+            ObservedIntentReleaseFingerprint = ""
+        }
+    }
+    if (
+        $hostEntries.Count -ne 1 -or
+        [bool]$hostEntries[0].PSIsContainer -or
+        -not (Test-TicketboxPathEquals `
+            ([string]$hostEntries[0].FullName) `
+            $intentPath) -or
+        $runtimeKind -cne "Directory"
+    ) {
+        throw (
+            "旧 PENDING installation identity 的 C07 host/runtime 工件" +
+            "不构成唯一 fresh bootstrap intent。"
+        )
+    }
+    $envelope = Read-TicketboxC07HostEnvelope `
+        -Path $intentPath `
+        -ExpectedKind "fresh_bootstrap_intent"
+    $payloadFingerprint = [string]$envelope.Payload.release_fingerprint
+    $intent = $null
+    $requiresRebind = $false
+    # The intent and PENDING identity are separate durable files.  While the
+    # old identity remains authoritative, predecessor intent means the
+    # transition has not published its first file; successor intent means a
+    # prior process published that file and crashed before the identity write.
+    # Both states are replayable under the same operation/installation IDs.
+    # Any third fingerprint remains foreign and fails closed.
+    if (
+        $payloadFingerprint -ceq
+            [string]$successorReleaseIdentity.Fingerprint
+    ) {
+        $intent = Read-TicketboxC07FreshBootstrapIntent `
+            $successorReleaseIdentity
+    }
+    elseif (
+        $payloadFingerprint -ceq
+            [string]$previousReleaseIdentity.Fingerprint
+    ) {
+        $intent = Read-TicketboxC07FreshBootstrapIntent `
+            $previousReleaseIdentity
+        $requiresRebind = $true
+    }
+    else {
+        throw "C07 fresh bootstrap intent 不属于旧或当前 release identity。"
+    }
+    $preservedOperationId = ConvertTo-TicketboxC07CanonicalOperationId (
+        [string]$PreviousInstallationIdentity.OperationId
+    )
+    if (
+        [string]$intent.OperationId -cne $preservedOperationId -or
+        [string]$intent.Payload.installation_id -cne
+            [string]$PreviousInstallationIdentity.InstallationId
+    ) {
+        throw "C07 fresh bootstrap intent 未绑定旧 PENDING installation transaction。"
+    }
+    $previousPayloadSha256 = [string]$intent.PayloadSha256
+    if ($requiresRebind) {
+        $createdAtUtc = if ($intent.Payload.created_at_utc -is [DateTime]) {
+            ([DateTime]$intent.Payload.created_at_utc).ToUniversalTime().ToString("o")
+        }
+        else { [string]$intent.Payload.created_at_utc }
+        $successorPayload = [ordered]@{
+            schema = $script:TicketboxC07FreshBootstrapIntentSchema
+            operation_id = $preservedOperationId
+            mode = "fresh_install"
+            release_fingerprint =
+                [string]$successorReleaseIdentity.Fingerprint
+            installation_id =
+                [string]$PreviousInstallationIdentity.InstallationId
+            source_revision = [string]$intent.Payload.source_revision
+            target_revision = [string]$intent.Payload.target_revision
+            runtime_password = [string]$intent.Payload.runtime_password
+            migrator_password = [string]$intent.Payload.migrator_password
+            created_at_utc = $createdAtUtc
+        }
+        Write-TicketboxC07HostEnvelope `
+            -Path $intentPath `
+            -ArtifactKind "fresh_bootstrap_intent" `
+            -Payload $successorPayload `
+            -ReplaceExisting `
+            -ExpectedExistingPayloadSha256 $previousPayloadSha256 | Out-Null
+        $rebound = Read-TicketboxC07FreshBootstrapIntent `
+            $successorReleaseIdentity
+        if (
+            [string]$rebound.OperationId -cne $preservedOperationId -or
+            [string]$rebound.Payload.runtime_password -cne
+                [string]$intent.Payload.runtime_password -or
+            [string]$rebound.Payload.migrator_password -cne
+                [string]$intent.Payload.migrator_password
+        ) {
+            throw "C07 fresh bootstrap intent release 换包后未保持事务凭据。"
+        }
+        $intent = $rebound
+    }
+    return [pscustomobject]@{
+        State = if ($requiresRebind) {
+            "fresh_intent_rebound"
+        }
+        else { "fresh_intent_current" }
+        PreserveOperationId = $true
+        OperationId = $preservedOperationId
+        Rebound = $requiresRebind
+        PreviousPayloadSha256 = $previousPayloadSha256
+        CurrentPayloadSha256 = [string]$intent.PayloadSha256
+        PreviousReleaseFingerprint =
+            [string]$previousReleaseIdentity.Fingerprint
+        CurrentReleaseFingerprint =
+            [string]$successorReleaseIdentity.Fingerprint
+        ObservedIntentReleaseFingerprint = $payloadFingerprint
+    }
+}
+
 function Read-TicketboxC07InstalledCredentials {
     param(
         [Parameter(Mandatory = $true)][object]$Authority,

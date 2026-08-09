@@ -2758,7 +2758,8 @@ function Resolve-TicketboxRecoverableFreshInstallPendingIdentity {
         [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
         [Parameter(Mandatory = $true)][bool]$HadExistingPgService,
         [Parameter(Mandatory = $true)][bool]$HadExistingBackendService,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 99)][int]$ExpectedPgMajor
+        [Parameter(Mandatory = $true)][ValidateRange(1, 99)][int]$ExpectedPgMajor,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
 
     Assert-TicketboxInstallationIdentityBaseMatches $Identity $Candidate
@@ -2778,6 +2779,13 @@ function Resolve-TicketboxRecoverableFreshInstallPendingIdentity {
             Identity = $Identity
             RecoveryStage = "same_release"
             AllowReceiptOperationRebind = $false
+            C07RecoveryState = "same_release"
+            C07IntentRebound = $false
+            C07PreviousPayloadSha256 = ""
+            C07CurrentPayloadSha256 = ""
+            C07PreviousReleaseFingerprint = ""
+            C07CurrentReleaseFingerprint = ""
+            C07ObservedIntentReleaseFingerprint = ""
         }
     }
     $parsedExpectedOperationId = [guid]::Empty
@@ -2789,6 +2797,13 @@ function Resolve-TicketboxRecoverableFreshInstallPendingIdentity {
         ) -or
         $parsedExpectedOperationId -eq [guid]::Empty -or
         $parsedExpectedOperationId.ToString("D") -cne $ExpectedOperationId
+    ) {
+        throw "前数据库 PENDING 换包缺少当前安装器绑定的新 operation id。"
+    }
+    $canonicalOperationId = $parsedExpectedOperationId.ToString("D")
+    if (
+        -not $releaseMatches -and
+        $canonicalOperationId -ceq [string]$Identity.OperationId
     ) {
         throw "前数据库 PENDING 换包缺少当前安装器绑定的新 operation id。"
     }
@@ -2935,43 +2950,56 @@ function Resolve-TicketboxRecoverableFreshInstallPendingIdentity {
     else {
         throw "旧 PENDING installation identity 的数据库、服务和 bootstrap 状态不构成可证明的续装边界。"
     }
-    foreach ($c07Root in @(
-        (Get-TicketboxC07HostArtifactRoot),
-        (Get-TicketboxC07RuntimeProjectionRoot)
-    )) {
-        if ((Get-TicketboxPathEntryKindNoFollow $c07Root) -cne "Missing") {
-            throw "旧 PENDING installation identity 已存在 C07 权威或运行投影目录。"
+    $c07Recovery =
+        Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition `
+            -Candidate $Candidate `
+            -PreviousInstallationIdentity $Identity `
+            -LifecycleLock $LifecycleLock
+    $targetOperationId = $canonicalOperationId
+    if ([bool]$c07Recovery.PreserveOperationId) {
+        if (
+            [string]::IsNullOrEmpty($receiptOperationId) -or
+            $receiptOperationId -cne [string]$Identity.OperationId -or
+            [string]$c07Recovery.OperationId -cne
+                [string]$Identity.OperationId
+        ) {
+            throw "C07 fresh bootstrap 续接未绑定旧 installation receipt/identity。"
         }
+        $targetOperationId = [string]$c07Recovery.OperationId
     }
-
-    $canonicalOperationId = $parsedExpectedOperationId.ToString("D")
-    if (
-        -not $releaseMatches -and
-        $canonicalOperationId -ceq [string]$Identity.OperationId
-    ) {
-        throw "前数据库 PENDING 换包缺少当前安装器绑定的新 operation id。"
-    }
-    if ($canonicalOperationId -ceq [string]$Identity.OperationId) {
+    if ($targetOperationId -ceq [string]$Identity.OperationId -and $releaseMatches) {
         return [pscustomobject]@{
             Identity = $Identity
             RecoveryStage = $recoveryStage
             AllowReceiptOperationRebind = (
                 -not [string]::IsNullOrEmpty($receiptOperationId) -and
-                $receiptOperationId -cne $canonicalOperationId
+                $receiptOperationId -cne $targetOperationId
             )
+            C07RecoveryState = [string]$c07Recovery.State
+            C07IntentRebound = [bool]$c07Recovery.Rebound
+            C07PreviousPayloadSha256 =
+                [string]$c07Recovery.PreviousPayloadSha256
+            C07CurrentPayloadSha256 =
+                [string]$c07Recovery.CurrentPayloadSha256
+            C07PreviousReleaseFingerprint =
+                [string]$c07Recovery.PreviousReleaseFingerprint
+            C07CurrentReleaseFingerprint =
+                [string]$c07Recovery.CurrentReleaseFingerprint
+            C07ObservedIntentReleaseFingerprint =
+                [string]$c07Recovery.ObservedIntentReleaseFingerprint
         }
     }
 
     $rebased = Write-TicketboxInstallationIdentityState `
         -State "PENDING" `
-        -OperationId $canonicalOperationId `
+        -OperationId $targetOperationId `
         -InstallationId ([string]$Identity.InstallationId) `
         -Candidate $Candidate `
         -ReplaceExisting
     if (
         $rebased.State -cne "PENDING" -or
         $rebased.InstallationId -cne [string]$Identity.InstallationId -or
-        $rebased.OperationId -ceq [string]$Identity.OperationId -or
+        $rebased.OperationId -cne $targetOperationId -or
         -not (
             Test-TicketboxInstallationIdentityReleaseMatches `
                 $rebased `
@@ -2985,8 +3013,20 @@ function Resolve-TicketboxRecoverableFreshInstallPendingIdentity {
         RecoveryStage = $recoveryStage
         AllowReceiptOperationRebind = (
             -not [string]::IsNullOrEmpty($receiptOperationId) -and
-            $receiptOperationId -cne $canonicalOperationId
+            $receiptOperationId -cne $targetOperationId
         )
+        C07RecoveryState = [string]$c07Recovery.State
+        C07IntentRebound = [bool]$c07Recovery.Rebound
+        C07PreviousPayloadSha256 =
+            [string]$c07Recovery.PreviousPayloadSha256
+        C07CurrentPayloadSha256 =
+            [string]$c07Recovery.CurrentPayloadSha256
+        C07PreviousReleaseFingerprint =
+            [string]$c07Recovery.PreviousReleaseFingerprint
+        C07CurrentReleaseFingerprint =
+            [string]$c07Recovery.CurrentReleaseFingerprint
+        C07ObservedIntentReleaseFingerprint =
+            [string]$c07Recovery.ObservedIntentReleaseFingerprint
     }
 }
 
@@ -3384,8 +3424,32 @@ try {
                 -ExpectedOperationId $LifecycleFinalizationAttemptId `
                 -HadExistingPgService $hadExistingPgService `
                 -HadExistingBackendService $hadExistingBackendService `
-                -ExpectedPgMajor $TargetPgMajor
+                -ExpectedPgMajor $TargetPgMajor `
+                -LifecycleLock $operationLock
         $c07InstallationIdentity = $c07PendingIdentityResolution.Identity
+        if (
+            [string]$c07PendingIdentityResolution.C07RecoveryState -cin @(
+                "fresh_intent_rebound",
+                "fresh_intent_current"
+            )
+        ) {
+            Write-Warn2 (
+                "已验证并续接未提交的 C07 fresh bootstrap transaction；" +
+                "state=$($c07PendingIdentityResolution.C07RecoveryState)；" +
+                "operation_id=$($c07InstallationIdentity.OperationId)；" +
+                "previous_release_fingerprint=" +
+                "$($c07PendingIdentityResolution.C07PreviousReleaseFingerprint)；" +
+                "current_release_fingerprint=" +
+                "$($c07PendingIdentityResolution.C07CurrentReleaseFingerprint)；" +
+                "observed_intent_release_fingerprint=" +
+                "$($c07PendingIdentityResolution.C07ObservedIntentReleaseFingerprint)；" +
+                "previous_payload_sha256=" +
+                "$($c07PendingIdentityResolution.C07PreviousPayloadSha256)；" +
+                "current_payload_sha256=" +
+                "$($c07PendingIdentityResolution.C07CurrentPayloadSha256)；" +
+                "保留 operation id 与临时凭据并原地收敛 release binding。"
+            )
+        }
     }
     catch {
         $identityFailure = [InvalidOperationException]::new(

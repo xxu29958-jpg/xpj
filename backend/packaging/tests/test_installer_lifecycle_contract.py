@@ -993,6 +993,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     install = _read("install_bundled_services.ps1")
     safety = _read("windows_installation_safety.ps1")
     receipt = _read("windows_lifecycle_receipt.ps1")
+    c07_lifecycle = _read("windows_c07_lifecycle.ps1")
 
     initialize = windows[
         windows.index("function InitializeSetup") : windows.index("function InitializeUninstall")
@@ -1180,17 +1181,57 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
         'Get-TicketboxServiceState $serviceName',
         'Get-TicketboxServiceStartMode $serviceName',
         'Read-PostgresBootstrapRecoveryState',
-        'Get-TicketboxC07HostArtifactRoot',
-        'Get-TicketboxC07RuntimeProjectionRoot',
     ):
         assert fresh_install_recovery.index(proof) < rebase_write
+    c07_transition_call = fresh_install_recovery.index(
+        "Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition"
+    )
+    assert c07_transition_call < rebase_write
     assert '-InstallationId ([string]$Identity.InstallationId)' in fresh_install_recovery
     assert '$canonicalOperationId = $parsedExpectedOperationId.ToString("D")' in fresh_install_recovery
-    assert '-OperationId $canonicalOperationId' in fresh_install_recovery
+    assert '-OperationId $targetOperationId' in fresh_install_recovery
+    assert '$targetOperationId = [string]$c07Recovery.OperationId' in fresh_install_recovery
     assert '-ExpectedOperationId $LifecycleFinalizationAttemptId' in pending_install
     assert "-ExpectedPgMajor $TargetPgMajor" in pending_install
+    assert "-LifecycleLock $operationLock" in pending_install
     assert "-AllowFreshInstallRecoveryRebind:$(" in pending_install
     assert "[bool]$c07PendingIdentityResolution.AllowReceiptOperationRebind" in pending_install
+    for transition_log_field in (
+        "state=$($c07PendingIdentityResolution.C07RecoveryState)",
+        "operation_id=$($c07InstallationIdentity.OperationId)",
+        "previous_release_fingerprint=",
+        "current_release_fingerprint=",
+        "observed_intent_release_fingerprint=",
+        "previous_payload_sha256=",
+        "current_payload_sha256=",
+    ):
+        assert transition_log_field in pending_install
+
+    c07_transition = c07_lifecycle[
+        c07_lifecycle.index(
+            "function Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition"
+        ) : c07_lifecycle.index("function Read-TicketboxC07InstalledCredentials")
+    ]
+    intent_replace = c07_transition.index("Write-TicketboxC07HostEnvelope")
+    for proof in (
+        "Assert-TicketboxC07LifecycleLease $LifecycleLock",
+        "Assert-TicketboxInstallationIdentityBaseMatches",
+        "Assert-TicketboxC07ArtifactRoots",
+        "Assert-TicketboxProtectedDirectoryAcl",
+        "Remove-TicketboxProtectedStagingArtifacts",
+        "$runtimeEntries.Count -ne 0",
+        "$hostEntries.Count -ne 1",
+        "Read-TicketboxC07HostEnvelope",
+        "$successorReleaseIdentity.Fingerprint",
+        "$previousReleaseIdentity.Fingerprint",
+        "$intent.OperationId -cne $preservedOperationId",
+        "$intent.Payload.installation_id -cne",
+    ):
+        assert c07_transition.index(proof) < intent_replace
+    assert "-ExpectedExistingPayloadSha256 $previousPayloadSha256" in c07_transition
+    assert c07_transition.index("Read-TicketboxC07FreshBootstrapIntent", intent_replace) > (
+        intent_replace
+    )
 
     transaction = receipt[
         receipt.index("function Complete-TicketboxInstalledLifecycleTransaction") : receipt.index(
@@ -5356,6 +5397,7 @@ $InitdbServiceReceiptPath = '{_ps_literal(initdb_receipt)}'
 $InitdbPasswordPath = '{_ps_literal(initdb_password)}'
 $script:writes = 0
 $script:serviceExists = $false
+$lock = [pscustomobject]@{{ Kind = 'test-lifecycle-lock' }}
 function Assert-TicketboxInstallationIdentityBaseMatches {{ param($Identity,$Candidate) }}
 function Test-TicketboxInstallationIdentityReleaseMatches {{
     param($Identity,$Candidate)
@@ -5376,6 +5418,34 @@ function Assert-NoTicketboxReparsePoints {{ param([string]$Path) }}
 function Get-PostgresBootstrapRecoveryPath {{ return '{_ps_literal(bootstrap)}' }}
 function Get-TicketboxC07HostArtifactRoot {{ return '{_ps_literal(c07_host)}' }}
 function Get-TicketboxC07RuntimeProjectionRoot {{ return '{_ps_literal(c07_runtime)}' }}
+function Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition {{
+    param($Candidate,$PreviousInstallationIdentity,$LifecycleLock)
+    $state = 'absent'
+    foreach ($root in @(
+        (Get-TicketboxC07HostArtifactRoot),
+        (Get-TicketboxC07RuntimeProjectionRoot)
+    )) {{
+        $kind = Get-TicketboxPathEntryKindNoFollow $root
+        if ($kind -cnotin @('Missing', 'Directory')) {{
+            throw 'C07 recovery root has invalid shape'
+        }}
+        if ($kind -ceq 'Directory') {{
+            Assert-NoTicketboxReparsePoints $root
+            if (@(Get-ChildItem -LiteralPath $root -Force).Count -ne 0) {{
+                throw 'C07 recovery root contains an authoritative artifact'
+            }}
+            $state = 'empty_roots'
+        }}
+    }}
+    return [pscustomobject]@{{
+        State = $state
+        PreserveOperationId = $false
+        OperationId = ''
+        Rebound = $false
+        PreviousPayloadSha256 = ''
+        CurrentPayloadSha256 = ''
+    }}
+}}
 function Write-TicketboxInstallationIdentityState {{
     param($State,$OperationId,$InstallationId,$Candidate,[switch]$ReplaceExisting)
     $script:writes += 1
@@ -5426,7 +5496,8 @@ $sameResolution = Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
     -ExpectedOperationId '33333333-3333-3333-3333-333333333333' `
     -HadExistingPgService $false `
     -HadExistingBackendService $false `
-    -ExpectedPgMajor 17
+    -ExpectedPgMajor 17 `
+    -LifecycleLock $lock
 $same = $sameResolution.Identity
 if ($same.OperationId -cne $identity.OperationId -or
     $sameResolution.RecoveryStage -cne 'same_release' -or
@@ -5443,7 +5514,8 @@ $rebasedResolution = Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
     -ExpectedOperationId '33333333-3333-3333-3333-333333333333' `
     -HadExistingPgService $false `
     -HadExistingBackendService $false `
-    -ExpectedPgMajor 17
+    -ExpectedPgMajor 17 `
+    -LifecycleLock $lock
 $rebased = $rebasedResolution.Identity
 if ($script:writes -ne 1 -or
     $rebasedResolution.RecoveryStage -cne 'pre_database' -or
@@ -5463,7 +5535,8 @@ $recoveredPairResolution = Resolve-TicketboxRecoverableFreshInstallPendingIdenti
     -ExpectedOperationId '44444444-4444-4444-4444-444444444444' `
     -HadExistingPgService $false `
     -HadExistingBackendService $false `
-    -ExpectedPgMajor 17
+    -ExpectedPgMajor 17 `
+    -LifecycleLock $lock
 $recoveredPair = $recoveredPairResolution.Identity
 if ($script:writes -ne 2 -or
     $recoveredPairResolution.RecoveryStage -cne 'pre_database' -or
@@ -5485,7 +5558,8 @@ try {{
         -ExpectedOperationId '55555555-5555-5555-5555-555555555555' `
         -HadExistingPgService $false `
         -HadExistingBackendService $false `
-        -ExpectedPgMajor 17 | Out-Null
+        -ExpectedPgMajor 17 `
+        -LifecycleLock $lock | Out-Null
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 2) {{
@@ -5503,7 +5577,8 @@ try {{
         -ExpectedOperationId '33333333-3333-3333-3333-333333333333' `
         -HadExistingPgService $false `
         -HadExistingBackendService $false `
-        -ExpectedPgMajor 17 | Out-Null
+        -ExpectedPgMajor 17 `
+        -LifecycleLock $lock | Out-Null
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 2) {{
@@ -5511,6 +5586,7 @@ if (-not $rejected -or $script:writes -ne 2) {{
 }}
 [IO.File]::Delete((Join-Path $PgData 'partial'))
 [IO.Directory]::CreateDirectory('{_ps_literal(c07_host)}') | Out-Null
+[IO.File]::WriteAllText((Join-Path '{_ps_literal(c07_host)}' 'foreign.json'), '{{}}')
 $rejected = $false
 try {{
     Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
@@ -5520,7 +5596,8 @@ try {{
         -ExpectedOperationId '33333333-3333-3333-3333-333333333333' `
         -HadExistingPgService $false `
         -HadExistingBackendService $false `
-        -ExpectedPgMajor 17 | Out-Null
+        -ExpectedPgMajor 17 `
+        -LifecycleLock $lock | Out-Null
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 2) {{
@@ -5591,8 +5668,11 @@ $script:runtimeChecks = 0
 $script:runtimeProofs = @()
 $script:runtimeFailureService = ''
 $script:reparseFailure = $false
+$script:c07RecoveryMode = 'absent'
+$script:failNextIdentityWrite = $false
 $script:hadPgService = $true
 $script:hadBackendService = $true
+$lock = [pscustomobject]@{{ Kind = 'test-lifecycle-lock' }}
 $script:services = @{{ TicketboxPg = $true; TicketboxBackend = $true }}
 $script:states = @{{ TicketboxPg = 'stopped'; TicketboxBackend = 'stopped' }}
 $script:startModes = @{{ TicketboxPg = 'Disabled'; TicketboxBackend = 'Disabled' }}
@@ -5650,8 +5730,65 @@ function Read-PostgresBootstrapRecoveryState {{
 }}
 function Get-TicketboxC07HostArtifactRoot {{ return '{_ps_literal(c07_host)}' }}
 function Get-TicketboxC07RuntimeProjectionRoot {{ return '{_ps_literal(c07_runtime)}' }}
+function Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition {{
+    param($Candidate,$PreviousInstallationIdentity,$LifecycleLock)
+    if ($script:c07RecoveryMode -cin @('rebound', 'current')) {{
+        $mode = [string]$script:c07RecoveryMode
+        if ($mode -ceq 'rebound') {{
+            # Model the first durable-file publish before the caller can write
+            # the separate PENDING identity.
+            $script:c07RecoveryMode = 'current'
+        }}
+        return [pscustomobject]@{{
+            State = "fresh_intent_$mode"
+            PreserveOperationId = $true
+            OperationId = [string]$PreviousInstallationIdentity.OperationId
+            Rebound = ($mode -ceq 'rebound')
+            PreviousPayloadSha256 = ('A' * 64)
+            CurrentPayloadSha256 = ('B' * 64)
+            PreviousReleaseFingerprint = ('C' * 64)
+            CurrentReleaseFingerprint = ('D' * 64)
+            ObservedIntentReleaseFingerprint = $(
+                if ($mode -ceq 'rebound') {{ ('C' * 64) }}
+                else {{ ('D' * 64) }}
+            )
+        }}
+    }}
+    $state = 'absent'
+    foreach ($root in @(
+        (Get-TicketboxC07HostArtifactRoot),
+        (Get-TicketboxC07RuntimeProjectionRoot)
+    )) {{
+        $kind = Get-TicketboxPathEntryKindNoFollow $root
+        if ($kind -cnotin @('Missing', 'Directory')) {{
+            throw 'C07 recovery root has invalid shape'
+        }}
+        if ($kind -ceq 'Directory') {{
+            Assert-NoTicketboxReparsePoints $root
+            if (@(Get-ChildItem -LiteralPath $root -Force).Count -ne 0) {{
+                throw 'C07 recovery root contains an authoritative artifact'
+            }}
+            $state = 'empty_roots'
+        }}
+    }}
+    return [pscustomobject]@{{
+        State = $state
+        PreserveOperationId = $false
+        OperationId = ''
+        Rebound = $false
+        PreviousPayloadSha256 = ''
+        CurrentPayloadSha256 = ''
+        PreviousReleaseFingerprint = ('C' * 64)
+        CurrentReleaseFingerprint = ('D' * 64)
+        ObservedIntentReleaseFingerprint = ''
+    }}
+}}
 function Write-TicketboxInstallationIdentityState {{
     param($State,$OperationId,$InstallationId,$Candidate,[switch]$ReplaceExisting)
+    if ($script:failNextIdentityWrite) {{
+        $script:failNextIdentityWrite = $false
+        throw 'injected crash before PENDING identity durable publish'
+    }}
     $script:writes += 1
     return [pscustomobject]@{{
         State = 'PENDING'
@@ -5725,7 +5862,8 @@ function Invoke-Recovery {{
         -ExpectedOperationId $OperationId `
         -HadExistingPgService $script:hadPgService `
         -HadExistingBackendService $script:hadBackendService `
-        -ExpectedPgMajor 17
+        -ExpectedPgMajor 17 `
+        -LifecycleLock $lock
 }}
 function Assert-RejectedWithoutWrite {{
     param(
@@ -5790,14 +5928,55 @@ if (
 }}
 $identity = $retryIdentity
 
+$script:c07RecoveryMode = 'rebound'
+$identity.Release = 'predecessor'
+$receipt.c07_installation_operation_id = $identity.OperationId
+$script:failNextIdentityWrite = $true
+$interrupted = $false
+try {{
+    Invoke-Recovery `
+        -OperationId '55555555-5555-5555-5555-555555555555' | Out-Null
+}}
+catch {{
+    if (
+        $_.Exception.Message -cne
+            'injected crash before PENDING identity durable publish'
+    ) {{ throw }}
+    $interrupted = $true
+}}
+if (
+    -not $interrupted -or
+    $script:writes -ne 2 -or
+    $script:c07RecoveryMode -cne 'current' -or
+    $identity.Release -cne 'predecessor'
+) {{
+    throw 'intent-to-PENDING crash fixture did not preserve the old identity'
+}}
+$preservedResolution = Invoke-Recovery `
+    -OperationId '66666666-6666-4666-8666-666666666666'
+$preservedIdentity = $preservedResolution.Identity
+if (
+    $script:writes -ne 3 -or
+    $preservedResolution.RecoveryStage -cne 'post_initdb_pre_schema' -or
+    $preservedResolution.AllowReceiptOperationRebind -or
+    $preservedResolution.C07IntentRebound -or
+    $preservedResolution.C07RecoveryState -cne 'fresh_intent_current' -or
+    $preservedIdentity.Release -cne 'current' -or
+    $preservedIdentity.OperationId -cne $identity.OperationId
+) {{
+    throw 'two-file crash retry did not preserve its durable operation'
+}}
+$identity = $preservedIdentity
+$receipt.c07_installation_operation_id = $identity.OperationId
+$script:c07RecoveryMode = 'absent'
+$identity.Release = 'predecessor'
+
 Assert-RejectedWithoutWrite `
     -Label 'invalid expected operation id' `
     -OperationId 'not-a-guid'
-$identity.Release = 'predecessor'
 Assert-RejectedWithoutWrite `
     -Label 'release mismatch reused old operation id' `
     -OperationId $identity.OperationId
-$identity.Release = 'current'
 
 $receiptMutations = @(
     [pscustomobject]@{{ Property = 'mode'; Bad = 'preserved_data_reinstall'; Good = 'fresh_install' }},
@@ -5900,12 +6079,14 @@ Assert-RejectedWithoutWrite 'READY identity'
 [IO.File]::Delete('{_ps_literal(ready)}')
 
 [IO.Directory]::CreateDirectory('{_ps_literal(c07_host)}') | Out-Null
+[IO.File]::WriteAllText((Join-Path '{_ps_literal(c07_host)}' 'foreign.json'), '{{}}')
 Assert-RejectedWithoutWrite 'C07 authority root'
-[IO.Directory]::Delete('{_ps_literal(c07_host)}')
+[IO.Directory]::Delete('{_ps_literal(c07_host)}', $true)
 
 [IO.Directory]::CreateDirectory('{_ps_literal(c07_runtime)}') | Out-Null
+[IO.File]::WriteAllText((Join-Path '{_ps_literal(c07_runtime)}' 'projection.json'), '{{}}')
 Assert-RejectedWithoutWrite 'C07 runtime projection root'
-[IO.Directory]::Delete('{_ps_literal(c07_runtime)}')
+[IO.Directory]::Delete('{_ps_literal(c07_runtime)}', $true)
 
 $script:runtimeFailureService = 'TicketboxPg'
 Assert-RejectedWithoutWrite 'PostgreSQL runtime residue'

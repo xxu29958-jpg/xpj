@@ -1728,6 +1728,365 @@ finally {{ Exit-TicketboxLifecycleLock $lock }}
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows lifecycle contract")
+def test_c07_fresh_intent_release_transition_recovers_the_two_file_crash_window(
+    tmp_path: Path,
+) -> None:
+    operation_id = "123e4567-e89b-42d3-a456-4266141740a9"
+    for index, engine in enumerate(powershell_contract_engines()):
+        root = tmp_path / f"fresh-intent-release-transition-{index}"
+        prefix, data_root, install_dir, manifest = _common_harness(
+            root,
+            pending_operation_id=operation_id,
+        )
+        harness = root / "fresh-intent-release-transition.ps1"
+        _write_ps1(
+            harness,
+            prefix
+            + f"""
+$lock = Enter-TicketboxLifecycleLock `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+try {{
+    $candidate = Get-TicketboxInstallationReleaseCandidate `
+        -DataRoot '{_literal(data_root)}' `
+        -InstallDir '{_literal(install_dir)}' `
+        -PgPort 5544 `
+        -BackendPort 8765 `
+        -PgServiceName 'ConfiguredPg' `
+        -BackendServiceName 'ConfiguredBackend' `
+        -BuildManifestPath '{_literal(manifest)}'
+    $currentIdentity = Read-TicketboxPersistentInstallationIdentity `
+        -DataRoot '{_literal(data_root)}' `
+        -Pending
+    $previousIdentity = [pscustomobject]@{{
+        State = 'PENDING'
+        OperationId = '{operation_id}'
+        LegacyCompleted = $false
+        InstallationId = [string]$currentIdentity.InstallationId
+        BuildManifestSha256 = ('B' * 64)
+        BackendVersionFloor = [string]$currentIdentity.BackendVersionFloor
+        DataRoot = [string]$currentIdentity.DataRoot
+        InstallDir = [string]$currentIdentity.InstallDir
+        PgServiceName = [string]$currentIdentity.PgServiceName
+        BackendServiceName = [string]$currentIdentity.BackendServiceName
+        PgPort = [int]$currentIdentity.PgPort
+        BackendPort = [int]$currentIdentity.BackendPort
+        MigrationHelperRelativePath =
+            [string]$currentIdentity.MigrationHelperRelativePath
+        MigrationHelperSize = [int64]$currentIdentity.MigrationHelperSize
+        MigrationHelperSha256 = ('C' * 64)
+    }}
+    $previousRelease =
+        Get-TicketboxC07HistoricalReleaseIdentity $previousIdentity
+    $successorRelease = Get-TicketboxC07CandidateReleaseIdentity `
+        -Candidate $candidate `
+        -InstallationId ([string]$previousIdentity.InstallationId) `
+        -OperationId '{operation_id}'
+    if (
+        [string]$previousRelease.Fingerprint -ceq
+            [string]$successorRelease.Fingerprint
+    ) {{
+        throw 'test predecessor and successor fingerprints did not differ'
+    }}
+    Initialize-TicketboxC07ArtifactRoots $previousRelease | Out-Null
+    $emptyRoots =
+        Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition `
+            -Candidate $candidate `
+            -PreviousInstallationIdentity $previousIdentity `
+            -LifecycleLock $lock
+    if (
+        [string]$emptyRoots.State -cne 'empty_roots' -or
+        [bool]$emptyRoots.PreserveOperationId -or
+        [bool]$emptyRoots.Rebound -or
+        -not [string]::IsNullOrEmpty(
+            [string]$emptyRoots.ObservedIntentReleaseFingerprint
+        ) -or
+        [string]$emptyRoots.PreviousReleaseFingerprint -cne
+            [string]$previousRelease.Fingerprint -or
+        [string]$emptyRoots.CurrentReleaseFingerprint -cne
+            [string]$successorRelease.Fingerprint
+    ) {{
+        throw 'empty C07 roots were not classified as non-authoritative'
+    }}
+    $intentPath = Get-TicketboxC07FreshBootstrapIntentPath
+    $oldIntent = Write-TicketboxC07HostEnvelope `
+        -Path $intentPath `
+        -ArtifactKind fresh_bootstrap_intent `
+        -Payload ([ordered]@{{
+            schema = 'ticketbox-c07-fresh-bootstrap-intent-v1'
+            operation_id = '{operation_id}'
+            mode = 'fresh_install'
+            release_fingerprint = [string]$previousRelease.Fingerprint
+            installation_id = [string]$previousIdentity.InstallationId
+            source_revision = '20260722_0001'
+            target_revision = '20260729_0001'
+            runtime_password = ('r' * 32)
+            migrator_password = ('m' * 32)
+            created_at_utc = [DateTime]::UtcNow.ToString('o')
+        }})
+    $staleHostStaging = Join-Path (
+        Get-TicketboxC07HostArtifactRoot
+    ) '.ticketbox-protected-11111111111111111111111111111111.tmp'
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $staleHostStaging `
+        -Text 'uncommitted replacement bytes' `
+        -FullControlAccounts $script:TicketboxC07HostFullControlAccounts `
+        -OwnerAccount $script:TicketboxC07HostOwnerAccount
+
+    # First process publishes the successor intent and dies before it can
+    # replace the separate PENDING installation identity.
+    $first = Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition `
+        -Candidate $candidate `
+        -PreviousInstallationIdentity $previousIdentity `
+        -LifecycleLock $lock
+    $publishedAfterFirst = Read-TicketboxC07FreshBootstrapIntent `
+        $successorRelease
+    $textAfterFirst = [IO.File]::ReadAllText($intentPath)
+    if (
+        -not $first.PreserveOperationId -or
+        -not $first.Rebound -or
+        [string]$first.State -cne 'fresh_intent_rebound' -or
+        [string]$first.OperationId -cne '{operation_id}' -or
+        [string]$first.PreviousPayloadSha256 -cne
+            [string]$oldIntent.PayloadSha256 -or
+        [string]$first.PreviousReleaseFingerprint -cne
+            [string]$previousRelease.Fingerprint -or
+        [string]$first.CurrentReleaseFingerprint -cne
+            [string]$successorRelease.Fingerprint -or
+        [string]$first.ObservedIntentReleaseFingerprint -cne
+            [string]$previousRelease.Fingerprint -or
+        (Test-Path -LiteralPath $staleHostStaging) -or
+        [string]$publishedAfterFirst.OperationId -cne '{operation_id}' -or
+        [string]$publishedAfterFirst.Payload.runtime_password -cne ('r' * 32) -or
+        [string]$publishedAfterFirst.Payload.migrator_password -cne ('m' * 32)
+    ) {{
+        throw 'first transition did not preserve operation and credentials'
+    }}
+
+    # Second process observes old identity + successor intent. This is the
+    # allowed prepared crash state: it must reuse the exact intent and let the
+    # caller finish only the PENDING identity write.
+    $second = Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition `
+        -Candidate $candidate `
+        -PreviousInstallationIdentity $previousIdentity `
+        -LifecycleLock $lock
+    $textAfterSecond = [IO.File]::ReadAllText($intentPath)
+    if (
+        -not $second.PreserveOperationId -or
+        $second.Rebound -or
+        [string]$second.State -cne 'fresh_intent_current' -or
+        [string]$second.OperationId -cne '{operation_id}' -or
+        [string]$second.PreviousPayloadSha256 -cne
+            [string]$first.CurrentPayloadSha256 -or
+        [string]$second.CurrentPayloadSha256 -cne
+            [string]$first.CurrentPayloadSha256 -or
+        [string]$second.PreviousReleaseFingerprint -cne
+            [string]$previousRelease.Fingerprint -or
+        [string]$second.CurrentReleaseFingerprint -cne
+            [string]$successorRelease.Fingerprint -or
+        [string]$second.ObservedIntentReleaseFingerprint -cne
+            [string]$successorRelease.Fingerprint -or
+        $textAfterSecond -cne $textAfterFirst
+    ) {{
+        throw 'prepared transition crash state was not replayed idempotently'
+    }}
+
+    function Assert-TransitionRejectedWithoutMutation {{
+        param(
+            [Parameter(Mandatory = $true)][string]$Label,
+            [Parameter(Mandatory = $true)][string]$ExpectedText
+        )
+        $rejected = $false
+        try {{
+            Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition `
+                -Candidate $candidate `
+                -PreviousInstallationIdentity $previousIdentity `
+                -LifecycleLock $lock | Out-Null
+        }}
+        catch {{ $rejected = $true }}
+        if (
+            -not $rejected -or
+            [IO.File]::ReadAllText($intentPath) -cne $ExpectedText
+        ) {{
+            throw "$Label was accepted or changed the active intent"
+        }}
+    }}
+    function New-TestTransitionIntentPayload {{
+        param(
+            [Parameter(Mandatory = $true)][string]$ReleaseFingerprint,
+            [Parameter(Mandatory = $true)][string]$OperationId,
+            [Parameter(Mandatory = $true)][string]$InstallationId
+        )
+        $createdAtUtc = if (
+            $publishedAfterFirst.Payload.created_at_utc -is [DateTime]
+        ) {{
+            ([DateTime]$publishedAfterFirst.Payload.created_at_utc).
+                ToUniversalTime().ToString('o')
+        }}
+        else {{ [string]$publishedAfterFirst.Payload.created_at_utc }}
+        return [ordered]@{{
+            schema = 'ticketbox-c07-fresh-bootstrap-intent-v1'
+            operation_id = $OperationId
+            mode = 'fresh_install'
+            release_fingerprint = $ReleaseFingerprint
+            installation_id = $InstallationId
+            source_revision = '20260722_0001'
+            target_revision = '20260729_0001'
+            runtime_password =
+                [string]$publishedAfterFirst.Payload.runtime_password
+            migrator_password =
+                [string]$publishedAfterFirst.Payload.migrator_password
+            created_at_utc = $createdAtUtc
+        }}
+    }}
+
+    $corruptText = $textAfterFirst.Replace(
+        ('r' * 32),
+        ('x' + ('r' * 31))
+    )
+    if ($corruptText -ceq $textAfterFirst) {{
+        throw 'payload-hash corruption fixture was vacuous'
+    }}
+    [IO.File]::WriteAllText(
+        $intentPath,
+        $corruptText,
+        (New-Object Text.UTF8Encoding($false))
+    )
+    Assert-TransitionRejectedWithoutMutation `
+        -Label 'payload hash drift' `
+        -ExpectedText $corruptText
+    [IO.File]::WriteAllText(
+        $intentPath,
+        $textAfterFirst,
+        (New-Object Text.UTF8Encoding($false))
+    )
+
+    $foreignFingerprintEnvelope = Write-TicketboxC07HostEnvelope `
+        -Path $intentPath `
+        -ArtifactKind fresh_bootstrap_intent `
+        -Payload (New-TestTransitionIntentPayload `
+            -ReleaseFingerprint ('F' * 64) `
+            -OperationId '{operation_id}' `
+            -InstallationId ([string]$previousIdentity.InstallationId)) `
+        -ReplaceExisting `
+        -ExpectedExistingPayloadSha256 (
+            [string]$publishedAfterFirst.PayloadSha256
+        )
+    $foreignFingerprintText = [IO.File]::ReadAllText($intentPath)
+    Assert-TransitionRejectedWithoutMutation `
+        -Label 'third release fingerprint' `
+        -ExpectedText $foreignFingerprintText
+    [IO.File]::WriteAllText(
+        $intentPath,
+        $textAfterFirst,
+        (New-Object Text.UTF8Encoding($false))
+    )
+
+    $foreignOperationEnvelope = Write-TicketboxC07HostEnvelope `
+        -Path $intentPath `
+        -ArtifactKind fresh_bootstrap_intent `
+        -Payload (New-TestTransitionIntentPayload `
+            -ReleaseFingerprint ([string]$successorRelease.Fingerprint) `
+            -OperationId '123e4567-e89b-42d3-a456-4266141740ff' `
+            -InstallationId ([string]$previousIdentity.InstallationId)) `
+        -ReplaceExisting `
+        -ExpectedExistingPayloadSha256 (
+            [string]$publishedAfterFirst.PayloadSha256
+        )
+    $foreignOperationText = [IO.File]::ReadAllText($intentPath)
+    Assert-TransitionRejectedWithoutMutation `
+        -Label 'foreign operation id' `
+        -ExpectedText $foreignOperationText
+    [IO.File]::WriteAllText(
+        $intentPath,
+        $textAfterFirst,
+        (New-Object Text.UTF8Encoding($false))
+    )
+
+    $foreignInstallationEnvelope = Write-TicketboxC07HostEnvelope `
+        -Path $intentPath `
+        -ArtifactKind fresh_bootstrap_intent `
+        -Payload (New-TestTransitionIntentPayload `
+            -ReleaseFingerprint ([string]$successorRelease.Fingerprint) `
+            -OperationId '{operation_id}' `
+            -InstallationId '123e4567-e89b-42d3-a456-4266141740fe') `
+        -ReplaceExisting `
+        -ExpectedExistingPayloadSha256 (
+            [string]$publishedAfterFirst.PayloadSha256
+        )
+    $foreignInstallationText = [IO.File]::ReadAllText($intentPath)
+    Assert-TransitionRejectedWithoutMutation `
+        -Label 'foreign installation id' `
+        -ExpectedText $foreignInstallationText
+    [IO.File]::WriteAllText(
+        $intentPath,
+        $textAfterFirst,
+        (New-Object Text.UTF8Encoding($false))
+    )
+
+    $foreignPath = Join-Path (Get-TicketboxC07HostArtifactRoot) 'foreign.json'
+    [IO.File]::WriteAllText($foreignPath, '{{}}')
+    $foreignStateStaging = Join-Path (
+        Get-TicketboxC07HostArtifactRoot
+    ) '.ticketbox-protected-22222222222222222222222222222222.tmp'
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $foreignStateStaging `
+        -Text 'must survive foreign-state rejection' `
+        -FullControlAccounts $script:TicketboxC07HostFullControlAccounts `
+        -OwnerAccount $script:TicketboxC07HostOwnerAccount
+    $rejected = $false
+    try {{
+        Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition `
+            -Candidate $candidate `
+            -PreviousInstallationIdentity $previousIdentity `
+            -LifecycleLock $lock | Out-Null
+    }}
+    catch {{ $rejected = $true }}
+    if (
+        -not $rejected -or
+        -not (Test-Path -LiteralPath $foreignStateStaging -PathType Leaf) -or
+        [IO.File]::ReadAllText($intentPath) -cne $textAfterFirst
+    ) {{
+        throw 'foreign host artifact was accepted or changed the active intent'
+    }}
+    [IO.File]::Delete($foreignPath)
+    [IO.File]::Delete($foreignStateStaging)
+
+    $projectionPath = Join-Path (
+        Get-TicketboxC07RuntimeProjectionRoot
+    ) 'projection.json'
+    [IO.File]::WriteAllText($projectionPath, '{{}}')
+    $runtimeForeignStaging = Join-Path (
+        Get-TicketboxC07HostArtifactRoot
+    ) '.ticketbox-protected-33333333333333333333333333333333.tmp'
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $runtimeForeignStaging `
+        -Text 'must survive runtime-state rejection' `
+        -FullControlAccounts $script:TicketboxC07HostFullControlAccounts `
+        -OwnerAccount $script:TicketboxC07HostOwnerAccount
+    $rejected = $false
+    try {{
+        Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition `
+            -Candidate $candidate `
+            -PreviousInstallationIdentity $previousIdentity `
+            -LifecycleLock $lock | Out-Null
+    }}
+    catch {{ $rejected = $true }}
+    if (
+        -not $rejected -or
+        -not (Test-Path -LiteralPath $runtimeForeignStaging -PathType Leaf) -or
+        [IO.File]::ReadAllText($intentPath) -cne $textAfterFirst
+    ) {{
+        throw 'runtime projection artifact was accepted or changed the intent'
+    }}
+    [IO.File]::Delete($runtimeForeignStaging)
+}}
+finally {{ Exit-TicketboxLifecycleLock $lock }}
+""",
+        )
+        _run_harness(engine, harness)
+
+
 def test_c07_installed_coordinator_runs_and_resumes_the_entire_stage_machine(
     tmp_path: Path,
 ) -> None:
