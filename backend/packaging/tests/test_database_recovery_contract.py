@@ -1542,6 +1542,40 @@ function Get-AclShape([string]$Path) {
     ))
 }
 
+function Add-ExplicitUnsafeReadAcl([string]$Path) {
+    $extendedPath = ConvertTo-TicketboxWin32ExtendedPath $Path
+    $item = Get-Item -LiteralPath $extendedPath -Force -ErrorAction Stop
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $security = [IO.FileSystemAclExtensions]::GetAccessControl($item)
+    }
+    else {
+        $security = $item.GetAccessControl()
+    }
+    $everyoneSid = New-Object Security.Principal.SecurityIdentifier('S-1-1-0')
+    $security.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+        $everyoneSid,
+        [Security.AccessControl.FileSystemRights]::ReadData,
+        [Security.AccessControl.AccessControlType]::Allow
+    )))
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        [IO.FileSystemAclExtensions]::SetAccessControl($item, $security)
+    }
+    else {
+        $item.SetAccessControl($security)
+    }
+
+    $persistedAcl = Get-TicketboxPathAcl $Path
+    $unexpectedRules = @($persistedAcl.Access | Where-Object {
+        -not $_.IsInherited -and
+        $_.IdentityReference.Translate(
+            [Security.Principal.SecurityIdentifier]
+        ).Value -ceq $everyoneSid.Value
+    })
+    if ($persistedAcl.AreAccessRulesProtected -or $unexpectedRules.Count -lt 1) {
+        throw 'failed to persist an explicit unsafe inherited ACL'
+    }
+}
+
 function New-InheritedRecoveryCase {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -1662,11 +1696,8 @@ $unsafe = New-InheritedRecoveryCase `
 $script:DataRoot = $unsafe.DataRoot
 $script:AppData = $unsafe.AppData
 $unsafeBeforeBytes = [IO.File]::ReadAllBytes($unsafe.Path)
-# Windows may materialize a grant as one or more ACEs depending on the
-# existing DACL.  The contract is the complete shape change, not an ACE count.
 $unsafeInheritedFileShape = Get-AclShape $unsafe.Path
-& icacls.exe $unsafe.Path /grant '*S-1-1-0:R' | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'failed to seed explicit unsafe ACL' }
+Add-ExplicitUnsafeReadAcl $unsafe.Path
 $unsafeRootShape = Get-AclShape $unsafe.DataRoot
 $unsafeAppShape = Get-AclShape $unsafe.AppData
 $unsafeFileShape = Get-AclShape $unsafe.Path
@@ -1676,16 +1707,16 @@ if ($unsafeFileShape -ceq $unsafeInheritedFileShape) {
 $unsafeRejected = $false
 try { Repair-PostgresBootstrapRecoveryFileAcl | Out-Null }
 catch { $unsafeRejected = $true }
-$unsafeAfterAcl = Get-TicketboxPathAcl $unsafe.Path
-if (-not $unsafeRejected -or $unsafeAfterAcl.AreAccessRulesProtected -or
-    @($unsafeAfterAcl.Access | Where-Object { -not $_.IsInherited }).Count -ne 1 -or
-    (Get-AclShape $unsafe.DataRoot) -cne $unsafeRootShape -or
+if (-not $unsafeRejected) {
+    throw 'unsafe inherited bootstrap ACL was accepted'
+}
+if ((Get-AclShape $unsafe.DataRoot) -cne $unsafeRootShape -or
     (Get-AclShape $unsafe.AppData) -cne $unsafeAppShape -or
     (Get-AclShape $unsafe.Path) -cne $unsafeFileShape -or
     -not (Test-TicketboxByteArrayEquals `
         $unsafeBeforeBytes `
         ([IO.File]::ReadAllBytes($unsafe.Path)))) {
-    throw 'unsafe inherited bootstrap ACL was mutated or accepted'
+    throw 'rejected unsafe inherited bootstrap ACL was mutated'
 }
 
 $postMalformed = New-InheritedRecoveryCase `
@@ -1734,8 +1765,7 @@ Set-TicketboxExactDirectoryAcl `
     -OwnerAccount $currentAccount `
     -Recurse
 $postUnsafeInheritedFileShape = Get-AclShape $postUnsafe.Path
-& icacls.exe $postUnsafe.Path /grant '*S-1-1-0:R' | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'failed to seed post-normalization unsafe ACL' }
+Add-ExplicitUnsafeReadAcl $postUnsafe.Path
 $postUnsafeRootShape = Get-AclShape $postUnsafe.DataRoot
 $postUnsafeAppShape = Get-AclShape $postUnsafe.AppData
 $postUnsafeFileShape = Get-AclShape $postUnsafe.Path
@@ -1749,14 +1779,16 @@ try {
         -ParentFullControlAccounts $parentAccounts | Out-Null
 }
 catch { $postUnsafeRejected = $true }
-if (-not $postUnsafeRejected -or
-    (Get-AclShape $postUnsafe.DataRoot) -cne $postUnsafeRootShape -or
+if (-not $postUnsafeRejected) {
+    throw 'post-normalization unsafe ACL was accepted'
+}
+if ((Get-AclShape $postUnsafe.DataRoot) -cne $postUnsafeRootShape -or
     (Get-AclShape $postUnsafe.AppData) -cne $postUnsafeAppShape -or
     (Get-AclShape $postUnsafe.Path) -cne $postUnsafeFileShape -or
     -not (Test-TicketboxByteArrayEquals `
         $postUnsafeBytes `
         ([IO.File]::ReadAllBytes($postUnsafe.Path)))) {
-    throw 'post-normalization unsafe ACL was mutated or accepted'
+    throw 'rejected post-normalization unsafe ACL was mutated'
 }
 
 $actual = New-InheritedRecoveryCase `
