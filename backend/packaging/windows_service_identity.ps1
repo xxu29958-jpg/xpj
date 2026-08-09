@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 $script:TicketboxLocalServiceLogonAccount = "NT AUTHORITY\LocalService"
 $script:TicketboxServiceSidTypeByName = @{
