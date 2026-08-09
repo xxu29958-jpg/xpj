@@ -21,6 +21,12 @@ _SERVICE_IMAGE = re.compile(
     r"postgres:(?P<version>[1-9][0-9]*\.(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))?)"
     r"@sha256:[0-9a-f]{64}"
 )
+_SUPPORTED_WINDOWS_RELEASE_SCHEMAS = frozenset(
+    {
+        "ticketbox-windows-release-v1",
+        "ticketbox-windows-release-v2",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -126,7 +132,10 @@ def load_postgres_release_policy(
     toolchain_path: Path = BUILD_TOOLCHAIN_PATH,
 ) -> PostgresReleasePolicy:
     raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or raw.get("schema") != "ticketbox-windows-release-v1":
+    if (
+        not isinstance(raw, dict)
+        or raw.get("schema") not in _SUPPORTED_WINDOWS_RELEASE_SCHEMAS
+    ):
         raise RuntimeError("unsupported Windows release config schema")
     policy = raw.get("postgres_version_policy")
     if not isinstance(policy, dict) or set(policy) != {"minimum", "maximum_exclusive"}:
