@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import errno
 import json
 import os
 import re
@@ -71,7 +72,15 @@ def _read_windows_published_text(path: Path, *, encoding: str) -> str:
             return path.read_text(encoding=encoding)
         except PermissionError as exc:
             winerror = getattr(exc, "winerror", None)
-            if winerror not in _WINDOWS_TRANSIENT_FILE_OPEN_ERRORS:
+            # CPython's Windows text-file path can collapse a native sharing
+            # violation into EACCES without retaining ``winerror``.  Retry that
+            # lossy shape within the same bounded window; a durable ACL denial
+            # still fails after the final attempt.
+            lost_windows_error = winerror is None and exc.errno == errno.EACCES
+            if (
+                winerror not in _WINDOWS_TRANSIENT_FILE_OPEN_ERRORS
+                and not lost_windows_error
+            ):
                 raise AssertionError(
                     f"non-retryable Windows file-open failure: "
                     f"path={path} errno={exc.errno} winerror={winerror}"
@@ -85,6 +94,60 @@ def _read_windows_published_text(path: Path, *, encoding: str) -> str:
         f"path={path} errno={last_error.errno} "
         f"winerror={getattr(last_error, 'winerror', None)}"
     ) from last_error
+
+
+def test_windows_published_text_bounds_lossy_eacces_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    attempts = 0
+    sleeps = 0
+
+    def read_after_one_transient_failure(
+        _path: Path,
+        *,
+        encoding: str,
+    ) -> str:
+        nonlocal attempts
+        assert encoding == "utf-8"
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError(errno.EACCES, "Permission denied", str(_path))
+        return "STATE=published\n"
+
+    def record_sleep(delay: float) -> None:
+        nonlocal sleeps
+        assert delay == _WINDOWS_COORDINATION_READ_DELAY_SECONDS
+        sleeps += 1
+
+    monkeypatch.setattr(Path, "read_text", read_after_one_transient_failure)
+    monkeypatch.setattr(time, "sleep", record_sleep)
+    assert _read_windows_published_text(tmp_path / "published.ready", encoding="utf-8") == (
+        "STATE=published\n"
+    )
+    assert attempts == 2
+    assert sleeps == 1
+
+    attempts = 0
+    sleeps = 0
+
+    def always_denied(_path: Path, *, encoding: str) -> str:
+        nonlocal attempts
+        assert encoding == "utf-8"
+        attempts += 1
+        raise PermissionError(errno.EACCES, "Permission denied", str(_path))
+
+    monkeypatch.setattr(Path, "read_text", always_denied)
+    with pytest.raises(
+        AssertionError,
+        match="transient Windows file-open failure did not clear",
+    ):
+        _read_windows_published_text(
+            tmp_path / "persistently-denied.ready",
+            encoding="utf-8",
+        )
+    assert attempts == _WINDOWS_COORDINATION_READ_ATTEMPTS
+    assert sleeps == _WINDOWS_COORDINATION_READ_ATTEMPTS - 1
 
 
 def _ps_literal(path: Path) -> str:
@@ -3354,6 +3417,7 @@ def test_external_lifecycle_lock_holder_keeps_authority_until_release(
             harness.write_text(
                 f"""
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . '{str(PACKAGING / 'windows_installation_safety.ps1').replace("'", "''")}'
 . '{str(PACKAGING / 'windows_lifecycle_lock.ps1').replace("'", "''")}'
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
