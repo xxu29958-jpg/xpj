@@ -1196,7 +1196,9 @@ try {{
     $allProcessIds = @($businessProcessIds) + @($helperProcessIds)
     $alive = @(
         $allProcessIds | Where-Object {{
-            $null -ne (Get-Process -Id $_ -ErrorAction SilentlyContinue)
+            $candidateProcess =
+                Get-Process -Id $_ -ErrorAction SilentlyContinue
+            $null -ne $candidateProcess -and -not $candidateProcess.HasExited
         }}
     )
     if (
