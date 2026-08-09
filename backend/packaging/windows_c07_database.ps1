@@ -340,6 +340,7 @@ function Resolve-TicketboxC07DatabaseHostAuthority {
         PgCtlPath = [string]$authority.PgCtlPath
         PsqlPath = [string]$authority.PsqlPath
         PgData = [string]$authority.PgData
+        PhysicalPgData = [string]$authority.PhysicalPgData
         Port = [int]$authority.Port
         UsesRuntimeBinding = [bool]$authority.UsesRuntimeBinding
         DataVolumeIdentity = [string]$authority.DataVolumeIdentity

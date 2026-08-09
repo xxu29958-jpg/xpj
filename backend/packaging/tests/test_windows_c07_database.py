@@ -1541,6 +1541,7 @@ def test_c07_host_authority_is_a_compatibility_adapter_to_generic_windows_contra
     install_dir = tmp_path / "program"
     pg_ctl = install_dir / "pg" / "bin" / "pg_ctl.exe"
     pg_data = tmp_path / "runtime" / "data-root" / "pgdata"
+    physical_pg_data = data_root / "pgdata"
     psql = install_dir / "pg" / "bin" / "psql.exe"
     script = f"""
 $ErrorActionPreference = 'Stop'
@@ -1578,6 +1579,7 @@ function Resolve-TicketboxPostgresServiceHostAuthority {{
         PgCtlPath = '{_ps_literal(pg_ctl)}'
         PsqlPath = '{_ps_literal(psql)}'
         PgData = '{_ps_literal(pg_data)}'
+        PhysicalPgData = '{_ps_literal(physical_pg_data)}'
         Port = 5544
         UsesRuntimeBinding = $true
         DataVolumeIdentity = 'volume-A'
@@ -1594,6 +1596,8 @@ if (
     $authority.Port -ne 5544 -or
     [IO.Path]::GetFullPath($authority.PgData) -cne
         [IO.Path]::GetFullPath('{_ps_literal(pg_data)}') -or
+    [IO.Path]::GetFullPath($authority.PhysicalPgData) -cne
+        [IO.Path]::GetFullPath('{_ps_literal(physical_pg_data)}') -or
     [IO.Path]::GetFullPath($authority.PsqlPath) -cne
         [IO.Path]::GetFullPath('{_ps_literal(psql)}') -or
     -not $authority.UsesRuntimeBinding -or

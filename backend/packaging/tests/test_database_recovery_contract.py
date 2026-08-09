@@ -361,6 +361,7 @@ if (
     $physical.PostmasterProcessId -ne 4321 -or
     $physical.Port -ne 5544 -or
     -not (Test-TicketboxPathEquals $physical.PgData $physicalPgData) -or
+    -not (Test-TicketboxPathEquals $physical.PhysicalPgData $physicalPgData) -or
     $script:bindingReads -ne 0 -or
     $script:reparseChecks.Count -ne 3 -or
     -not ($script:reparseChecks | Where-Object {{
@@ -379,8 +380,12 @@ $runtime = Resolve-TestAuthority
 if (
     -not $runtime.UsesRuntimeBinding -or
     $runtime.DataVolumeIdentity -cne 'volume-A' -or
+    -not (Test-TicketboxPathEquals $runtime.PhysicalPgData $physicalPgData) -or
     $script:bindingReads -ne 2 -or
-    $script:reparseChecks.Count -ne 2 -or
+    $script:reparseChecks.Count -ne 3 -or
+    -not ($script:reparseChecks | Where-Object {{
+        Test-TicketboxPathEquals $_ $physicalPgData
+    }}) -or
     ($script:reparseChecks | Where-Object {{
         (Test-TicketboxPathEquals $_ $runtimeDataRoot) -or
         (Test-TicketboxPathEquals $_ $runtimePgData)

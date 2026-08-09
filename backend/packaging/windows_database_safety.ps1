@@ -164,7 +164,8 @@ function Resolve-TicketboxPostgresServiceHostAuthority {
         $runtimeBinding = $null
         $usesRuntimeBinding = $false
         if (Test-TicketboxPathEquals $pgData $physicalPgData) {
-            Assert-NoTicketboxAncestorReparsePoints $pgData
+            # The direct form is validated below through the same filesystem
+            # path used by privileged consumers.
         }
         elseif (Test-TicketboxPathEquals $pgData $expectedRuntimePgData) {
             $usesRuntimeBinding = $true
@@ -187,11 +188,19 @@ function Resolve-TicketboxPostgresServiceHostAuthority {
         else {
             throw "PostgreSQL SCM PGDATA 不匹配物理 DataRoot 或受管 runtime binding。"
         }
-        if ((Get-TicketboxPathEntryKindNoFollow $pgData) -cne "Directory") {
-            throw "PostgreSQL SCM 声明的 PGDATA 不是受管普通目录。"
+        $filesystemPgData = if ($usesRuntimeBinding) {
+            $physicalPgData
+        }
+        else { $pgData }
+        Assert-NoTicketboxAncestorReparsePoints $filesystemPgData
+        if (
+            (Get-TicketboxPathEntryKindNoFollow $filesystemPgData) -cne
+                "Directory"
+        ) {
+            throw "PostgreSQL SCM 声明的物理 PGDATA 不是受管普通目录。"
         }
 
-        $postmasterPidPath = Join-Path $pgData "postmaster.pid"
+        $postmasterPidPath = Join-Path $filesystemPgData "postmaster.pid"
         if ((Get-TicketboxPathEntryKindNoFollow $postmasterPidPath) -cne "File") {
             throw "PostgreSQL 缺少受管 postmaster.pid。"
         }
