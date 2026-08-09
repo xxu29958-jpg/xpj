@@ -29,11 +29,14 @@ $standardUser = $null
 $desktopProbe = $null
 $controlledFailure = $null
 $interruptedState = $null
+$firstContext = $null
+$successContext = $null
 $installerResult = $null
 $managerContext = $null
 $serviceLifecycle = $null
 $finalState = $null
 $validation = $null
+$failureProcessCleanup = $null
 $started = [DateTime]::UtcNow
 
 function Write-TbxHarnessBinding {
@@ -373,6 +376,18 @@ catch {
     catch {
         $failure.state_capture_error = [string]$_.Exception.Message
     }
+    try {
+        $rootIds = @()
+        foreach ($context in @($firstContext, $successContext)) {
+            if ($null -ne $context) { $rootIds += [int]$context.root_process_id }
+        }
+        $failureProcessCleanup = Stop-TbxHarnessOwnedInstallerProcesses `
+            -RootProcessIds $rootIds `
+            -OutputPath (Join-Path $evidence 'HARNESS_FAILURE_PROCESS_CLEANUP.json')
+    }
+    catch {
+        $failure.process_cleanup_error = [string]$_.Exception.Message
+    }
 }
 finally {
     $artifactHashAfter = Get-TbxSha256 $installer
@@ -411,6 +426,7 @@ finally {
         installer = $installerResult
         manager = $managerProof
         service_lifecycle = $serviceLifecycle
+        harness_failure_process_cleanup = $failureProcessCleanup
         validation_status = if ($null -eq $validation) { 'NOT_RUN' } else { [string]$validation.status }
         evidence_finalization_status = 'COMPLETE'
         failure = $failure

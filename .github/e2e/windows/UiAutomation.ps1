@@ -337,7 +337,11 @@ function Complete-TbxInteractiveInstaller {
             $failurePath = $Context.timeline_path + '.failure-window.json'
             Write-TbxJson (Get-TbxSafeWindowSnapshot $window) $failurePath
             $close = Get-TbxEnabledButtonContaining $window $script:TbxUiText.close
-            if ($null -ne $close) { Invoke-TbxButton $close }
+            if ($null -ne $close) {
+                Invoke-TbxButton $close
+                try { [void](Wait-TbxInstallerExit -Context $Context -TimeoutSeconds 30) }
+                catch { }
+            }
             throw 'Installer reached the explicit failure page.'
         }
         if (-not (Test-TbxWindowContainsName $window $script:TbxUiText.success_heading)) {
@@ -474,6 +478,62 @@ function Invoke-TbxInterruptedInstall {
     $receipt.cleanup_converged = $true
     $receipt.cleanup_observed_at_utc = [DateTime]::UtcNow.ToString('o')
     Write-TbxJson $receipt $OutputPath
+    return $receipt
+}
+
+function Get-TbxHarnessOwnedInstallerProcessIds {
+    param([int[]]$RootProcessIds = @())
+    $ids = @()
+    foreach ($rootId in @($RootProcessIds)) {
+        if ([int]$rootId -gt 0) { $ids += Get-TbxDescendantProcessIds @([int]$rootId) }
+    }
+    $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    $ids += @($all | Where-Object {
+        [string]$_.Name -like 'Ticketbox-Setup-*.exe' -or
+        [string]$_.CommandLine -match '(?i)(install_bundled_services|hold_installer_lifecycle_lock|hold_data_root_mutation_guard)\.ps1'
+    } | ForEach-Object { [int]$_.ProcessId })
+    return @($ids | Sort-Object -Unique)
+}
+
+function Stop-TbxHarnessOwnedInstallerProcesses {
+    param(
+        [int[]]$RootProcessIds = @(),
+        [Parameter(Mandatory = $true)][string]$OutputPath
+    )
+    $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    $ids = @(Get-TbxHarnessOwnedInstallerProcessIds -RootProcessIds $RootProcessIds)
+    $tree = @($all | Where-Object { $ids -contains [int]$_.ProcessId } | ForEach-Object {
+        [ordered]@{
+            process_id = [int]$_.ProcessId
+            parent_process_id = [int]$_.ParentProcessId
+            session_id = [int]$_.SessionId
+            name = [string]$_.Name
+            executable_path = [string]$_.ExecutablePath
+            command_line = [string]$_.CommandLine
+            owner = Get-TbxProcessOwner $_
+        }
+    })
+    foreach ($processId in @($ids | Sort-Object -Descending)) {
+        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+    }
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    $remaining = @()
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $remaining = @(Get-TbxHarnessOwnedInstallerProcessIds -RootProcessIds $RootProcessIds)
+        if ($remaining.Count -eq 0) { break }
+        Start-Sleep -Milliseconds 250
+    }
+    $receipt = [ordered]@{
+        schema = 'ticketbox-harness-failure-process-cleanup-v1'
+        captured_at_utc = [DateTime]::UtcNow.ToString('o')
+        process_tree_before_cleanup = $tree
+        stopped_process_ids = $ids
+        remaining_process_ids = $remaining
+        persisted_machine_state_removed = $false
+        converged = ($remaining.Count -eq 0)
+    }
+    Write-TbxJson $receipt $OutputPath -Depth 10
+    if ($remaining.Count -ne 0) { throw 'Harness-owned installer processes did not exit.' }
     return $receipt
 }
 

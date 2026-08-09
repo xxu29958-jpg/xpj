@@ -120,11 +120,15 @@ function Get-TbxServiceEvidence {
         }
     }
     $delayedAutoStart = $null
+    $dependencies = @()
     $serviceRegistryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$Name"
     if (Test-Path -LiteralPath $serviceRegistryPath) {
         $serviceRegistry = Get-ItemProperty -LiteralPath $serviceRegistryPath
         if ($null -ne $serviceRegistry.PSObject.Properties['DelayedAutostart']) {
             $delayedAutoStart = [int]$serviceRegistry.DelayedAutostart
+        }
+        if ($null -ne $serviceRegistry.PSObject.Properties['DependOnService']) {
+            $dependencies = @($serviceRegistry.DependOnService | ForEach-Object { [string]$_ })
         }
     }
     return [ordered]@{
@@ -136,7 +140,7 @@ function Get-TbxServiceEvidence {
         start_name = [string]$service.StartName
         process_id = [int]$service.ProcessId
         path_name = [string]$service.PathName
-        dependencies = @($service.Dependencies | ForEach-Object { [string]$_ })
+        dependencies = @($dependencies)
         exit_code = [uint64]([uint32]$service.ExitCode)
         service_specific_exit_code = [uint64]([uint32]$service.ServiceSpecificExitCode)
         delayed_auto_start = $delayedAutoStart
@@ -201,17 +205,38 @@ function Find-TbxJsonValue {
 
 function Get-TbxFreshIntentEvidence {
     param([Parameter(Mandatory = $true)][string]$Path)
-    $result = [ordered]@{ path = $Path; exists = $false; sha256 = '' }
+    $result = [ordered]@{
+        path = $Path
+        exists = $false
+        sha256 = ''
+        schema = ''
+        operation_id = ''
+        installation_id = ''
+        release_fingerprint = ''
+        build_manifest_sha256 = ''
+        payload_sha256 = ''
+        stage = ''
+        state = ''
+    }
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $result }
     $result.exists = $true
     $result.sha256 = Get-TbxSha256 $Path
     try {
         $document = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+        $payload = $document
+        $payloadText = Find-TbxJsonValue -Value $document -Name 'payload_json'
+        if ($payloadText -is [string] -and -not [string]::IsNullOrWhiteSpace($payloadText)) {
+            $payload = [string]$payloadText | ConvertFrom-Json
+        }
+        $payloadSha256 = Find-TbxJsonValue -Value $document -Name 'payload_sha256'
+        if ($payloadSha256 -is [string]) {
+            $result.payload_sha256 = [string]$payloadSha256
+        }
         foreach ($name in @(
             'schema', 'operation_id', 'installation_id', 'release_fingerprint',
-            'build_manifest_sha256', 'payload_sha256', 'stage', 'state'
+            'build_manifest_sha256', 'stage', 'state'
         )) {
-            $value = Find-TbxJsonValue -Value $document -Name $name
+            $value = Find-TbxJsonValue -Value $payload -Name $name
             if ($null -ne $value -and $value -isnot [System.Array]) {
                 $result[$name] = [string]$value
             }
@@ -457,6 +482,31 @@ function Get-TbxInstallerStateInventory {
     return @($rows)
 }
 
+function Copy-TbxLogTreeEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+    $receipt = [ordered]@{
+        source = $Source
+        destination = $Destination
+        source_exists = Test-Path -LiteralPath $Source -PathType Container
+        copied = $false
+        file_count = 0
+        error = ''
+    }
+    if (-not $receipt.source_exists) { return $receipt }
+    try {
+        Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force
+        $receipt.copied = $true
+        $receipt.file_count = @(
+            Get-ChildItem -LiteralPath $Destination -File -Recurse -Force
+        ).Count
+    }
+    catch { $receipt.error = [string]$_.Exception.Message }
+    return $receipt
+}
+
 function Capture-TbxState {
     param(
         [Parameter(Mandatory = $true)][string]$OutputDirectory,
@@ -575,11 +625,17 @@ function Capture-TbxState {
         database = $database
         installed_artifacts = $artifacts
     }
-    Write-TbxJson -Value $state -Path (Join-Path $OutputDirectory 'STATE.json') -Depth 24
-    if ($IncludeProductLogs -and (Test-Path -LiteralPath (Join-Path $dataRoot 'logs') -PathType Container)) {
-        Copy-Item -LiteralPath (Join-Path $dataRoot 'logs') `
-            -Destination (Join-Path $OutputDirectory 'product-logs') -Recurse -Force
+    if ($IncludeProductLogs) {
+        $state['log_capture'] = @(
+            Copy-TbxLogTreeEvidence `
+                -Source (Join-Path $dataRoot 'logs') `
+                -Destination (Join-Path $OutputDirectory 'product-logs')
+            Copy-TbxLogTreeEvidence `
+                -Source (Join-Path $env:CommonProgramFiles 'Ticketbox\installer-logs') `
+                -Destination (Join-Path $OutputDirectory 'installer-logs')
+        )
     }
+    Write-TbxJson -Value $state -Path (Join-Path $OutputDirectory 'STATE.json') -Depth 24
     return $state
 }
 
