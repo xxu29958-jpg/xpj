@@ -1,0 +1,76 @@
+name: Windows clean E2E 7eb77f1d
+
+on:
+  push:
+    branches:
+      - codex/windows-clean-e2e-harness-7eb77f1d
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: windows-clean-e2e-7eb77f1d-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  clean_windows_e2e:
+    name: Clean Windows E2E (${{ matrix.scenario }})
+    runs-on: windows-2022
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        scenario:
+          - first-install
+          - interrupted-retry
+    steps:
+      - name: Checkout evidence harness
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Create empty artifact and evidence roots
+        shell: powershell
+        run: |
+          $artifact = Join-Path $env:RUNNER_TEMP 'ticketbox-accepted-artifact'
+          $evidence = Join-Path $env:RUNNER_TEMP ('ticketbox-e2e-' + '${{ matrix.scenario }}')
+          foreach ($path in @($artifact, $evidence)) {
+            if (Test-Path -LiteralPath $path) { throw "Unexpected existing path: $path" }
+            [void](New-Item -ItemType Directory -Path $path)
+          }
+          [IO.File]::AppendAllText(
+            $env:GITHUB_ENV,
+            "TBX_ARTIFACT_ROOT=$artifact" + [Environment]::NewLine +
+              "TBX_EVIDENCE_ROOT=$evidence" + [Environment]::NewLine,
+            (New-Object Text.UTF8Encoding($false))
+          )
+
+      - name: Download accepted exact-head publish unit
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: "9043258694"
+          github-token: ${{ github.token }}
+          repository: xxu29958-jpg/xpj
+          run-id: "31331708842"
+          path: ${{ env.TBX_ARTIFACT_ROOT }}
+          merge-multiple: true
+
+      - name: Run interactive clean-Windows E2E with Windows PowerShell 5.1
+        shell: powershell
+        run: >-
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass
+          -File .github/e2e/windows/Invoke-CleanE2E.ps1
+          -Scenario '${{ matrix.scenario }}'
+          -ArtifactRoot "$env:TBX_ARTIFACT_ROOT"
+          -EvidenceRoot "$env:TBX_EVIDENCE_ROOT"
+
+      - name: Upload complete E2E evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ticketbox-clean-windows-e2e-${{ matrix.scenario }}-${{ github.sha }}
+          path: ${{ env.TBX_EVIDENCE_ROOT }}
+          if-no-files-found: error
+          retention-days: 30
