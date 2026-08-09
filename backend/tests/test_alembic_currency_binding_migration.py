@@ -38,6 +38,7 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
 PREVIOUS_REVISION = "20260729_0001"
 TARGET_REVISION = "20260802_0001"
+HEAD_REVISION = "20260809_0001"
 EVIDENCE_TABLES = (
     "bill_split_invitations",
     "budget_categories",
@@ -108,7 +109,7 @@ def test_fresh_upgrade_has_complete_authority_shape() -> None:
     reset_schema()
     run_alembic(command.upgrade, "head")
 
-    assert current_revision() == TARGET_REVISION
+    assert current_revision() == HEAD_REVISION
     binding = _binding_row()
     assert binding["state"] == "EMPTY"
     assert binding["currency_contract_version"] == 1
@@ -287,7 +288,7 @@ def test_empty_authority_downgrade_round_trips_but_active_refuses() -> None:
         match="Refusing to remove an ACTIVE installation currency binding",
     ):
         run_alembic(command.downgrade, PREVIOUS_REVISION)
-    assert current_revision() == TARGET_REVISION
+    assert current_revision() == HEAD_REVISION
     assert _binding_row()["state"] == "ACTIVE"
 
 

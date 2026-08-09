@@ -10,6 +10,7 @@ from alembic.config import Config
 from sqlalchemy import inspect, text
 
 from app.database import Base, SessionLocal, engine
+from app.database import _managed_schema_upgrade as managed_schema
 from app.services.identity_service import bootstrap_installation_owner
 from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
 
@@ -44,15 +45,28 @@ _UNIQUES = {
     "uq_installation_owner_claim_pairing_code_id": ("pairing_code_id",),
 }
 _FOREIGN_KEYS = {
-    "fk_installation_owner_claim_account": (("account_id",), "accounts", ("id",)),
-    "fk_installation_owner_claim_device": (("device_id",), "devices", ("id",)),
-    "fk_installation_owner_claim_ledger": (("ledger_id",), "ledgers", ("ledger_id",)),
-    "fk_installation_owner_claim_pairing": (("pairing_code_id",), "pairing_codes", ("id",)),
+    "fk_installation_owner_claim_account": (
+        ("account_id",), "accounts", ("id",), "RESTRICT",
+    ),
+    "fk_installation_owner_claim_device": (
+        ("device_id",), "devices", ("id",), "RESTRICT",
+    ),
+    "fk_installation_owner_claim_ledger": (
+        ("ledger_id",), "ledgers", ("ledger_id",), "RESTRICT",
+    ),
+    "fk_installation_owner_claim_pairing": (
+        ("pairing_code_id",), "pairing_codes", ("id",), "RESTRICT",
+    ),
     "fk_installation_owner_claim_secret": (
         ("active_secret_hash",),
         "bootstrap_secret_consumptions",
         ("secret_hash",),
+        "RESTRICT",
     ),
+}
+_INDEXES = {
+    "pk_installation_owner_claims",
+    *_UNIQUES,
 }
 
 
@@ -88,9 +102,21 @@ def _assert_full_shape() -> None:
             tuple(foreign_key["constrained_columns"]),
             foreign_key["referred_table"],
             tuple(foreign_key["referred_columns"]),
+            str(foreign_key.get("options", {}).get("ondelete", "")),
         )
         for foreign_key in inspector.get_foreign_keys(_TABLE)
     } == _FOREIGN_KEYS
+    with engine.connect() as connection:
+        assert {
+            str(index_name)
+            for (index_name,) in connection.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes "
+                    "WHERE schemaname = 'public' AND tablename = :table"
+                ),
+                {"table": _TABLE},
+            )
+        } == _INDEXES
 
 
 def test_installation_owner_claim_round_trips_on_postgres() -> None:
@@ -107,6 +133,10 @@ def test_installation_owner_claim_round_trips_on_postgres() -> None:
         _run_alembic(command.upgrade, "head")
         assert _current_revision() == _TARGET_REVISION
         _assert_full_shape()
+        plan = managed_schema._load_plan(_TARGET_REVISION)
+        postcondition = managed_schema._target_postcondition(plan)
+        with engine.connect() as connection:
+            postcondition(connection)
     finally:
         reset_public_schema(engine)
 

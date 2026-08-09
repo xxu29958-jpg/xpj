@@ -14,6 +14,82 @@ DATABASE_SAFETY = ROOT / "backend" / "packaging" / "windows_database_safety.ps1"
 PREPARE = ROOT / "backend" / "packaging" / "prepare_bundled_upgrade.ps1"
 DATABASE = ROOT / "backend" / "packaging" / "windows_bundled_database.ps1"
 
+_CREATOR_OWNER_HARNESS = r"""
+$ErrorActionPreference = 'Stop'
+. '__SAFETY__'
+$targetAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$targetSid = ConvertTo-TicketboxAccountSid $targetAccount
+$creatorTokenOwner = 'S-1-5-32-544'
+if ($targetSid -ceq $creatorTokenOwner) {
+    throw 'test requires the user SID and token-default group owner to differ'
+}
+
+function New-InheritedRule([bool]$directory, [bool]$inherited) {
+    $flags = if ($directory) {
+        [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+            [Security.AccessControl.InheritanceFlags]::ObjectInherit
+    }
+    else {
+        [Security.AccessControl.InheritanceFlags]::None
+    }
+    return [pscustomobject]@{
+        IdentityReference = [Security.Principal.SecurityIdentifier]::new($targetSid)
+        AccessControlType = [Security.AccessControl.AccessControlType]::Allow
+        FileSystemRights = [Security.AccessControl.FileSystemRights]::FullControl
+        InheritanceFlags = $flags
+        PropagationFlags = [Security.AccessControl.PropagationFlags]::None
+        IsInherited = $inherited
+    }
+}
+
+$script:ObservedAcl = [pscustomobject]@{
+    Owner = $creatorTokenOwner
+    AreAccessRulesProtected = $false
+    Access = @((New-InheritedRule $false $true))
+}
+function Get-TicketboxPathAcl([string]$Path) { return $script:ObservedAcl }
+
+Assert-TicketboxRecoverableInheritedFileAcl `
+    -Path '__FILE__' `
+    -FullControlAccounts @($targetAccount) `
+    -OwnerAccount $targetAccount
+
+$script:ObservedAcl = [pscustomobject]@{
+    Owner = $creatorTokenOwner
+    AreAccessRulesProtected = $false
+    Access = @((New-InheritedRule $true $true))
+}
+Assert-TicketboxRecoverableInheritedDirectoryAcl `
+    -Path '__DIRECTORY__' `
+    -FullControlAccounts @($targetAccount) `
+    -OwnerAccount $targetAccount
+
+$script:ObservedAcl = [pscustomobject]@{
+    Owner = $creatorTokenOwner
+    AreAccessRulesProtected = $false
+    Access = @((New-InheritedRule $false $false))
+}
+$explicitRejected = $false
+try {
+    Assert-TicketboxRecoverableInheritedFileAcl `
+        -Path '__FILE__' `
+        -FullControlAccounts @($targetAccount) `
+        -OwnerAccount $targetAccount
+}
+catch { $explicitRejected = $true }
+if (-not $explicitRejected) { throw 'an explicit child ACE was accepted' }
+
+$unknownOwnerRejected = $false
+try {
+    Assert-TicketboxRecoverableInheritedFileAcl `
+        -Path '__FILE__' `
+        -FullControlAccounts @($targetAccount) `
+        -OwnerAccount 'Ticketbox\UnresolvableOwner'
+}
+catch { $unknownOwnerRejected = $true }
+if (-not $unknownOwnerRejected) { throw 'an unresolvable final owner was accepted' }
+"""
+
 
 def _ps_literal(path: Path) -> str:
     return str(path).replace("'", "''")
@@ -74,6 +150,46 @@ def test_protected_creation_keeps_atomic_acl_and_restore_privilege_contract() ->
     )
     assert "New-Item" not in directory
     assert "New-Item" not in protected_file
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows ACL semantics")
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_inherited_dacl_shape_is_independent_of_creator_token_owner(
+    engine: str,
+    tmp_path: Path,
+) -> None:
+    """Windows inherits a DACL, but assigns ownership from the creator token."""
+
+    root = tmp_path / f"creator-owner-{Path(engine).stem}"
+    child_directory = root / "child"
+    child_directory.mkdir(parents=True)
+    child_file = child_directory / "receipt.txt"
+    child_file.write_text("bounded authority", encoding="utf-8")
+    harness = root / "creator-owner.ps1"
+    script = (
+        _CREATOR_OWNER_HARNESS.replace("__SAFETY__", _ps_literal(SAFETY))
+        .replace("__FILE__", _ps_literal(child_file))
+        .replace("__DIRECTORY__", _ps_literal(child_directory))
+    )
+    harness.write_text(script, encoding="utf-8-sig")
+    result = subprocess.run(
+        [
+            engine,
+            "-NoLogo",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            harness,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
 @pytest.mark.parametrize("engine", powershell_contract_engines())

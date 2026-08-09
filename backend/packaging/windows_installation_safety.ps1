@@ -4295,12 +4295,14 @@ function Assert-TicketboxRecoverableInheritedFileAcl {
         throw "可恢复文件 ACL 的账户配置无效：$Path"
     }
 
-    $expectedOwnerSid = ConvertTo-TicketboxAccountSid $OwnerAccount
+    # Windows assigns a new object's owner from the creator token's default
+    # owner.  That owner is independent of the DACL entries inherited from the
+    # parent, so it is not evidence for (or against) this inherited-only retry
+    # shape.  Resolve the intended final owner now, then let the exact ACL
+    # publisher below normalize and assert it after all pre-write proofs pass.
+    [void](ConvertTo-TicketboxAccountSid $OwnerAccount)
     $acl = Get-TicketboxPathAcl $Path
-    if (
-        $acl.AreAccessRulesProtected -or
-        (ConvertTo-TicketboxAccountSid $acl.Owner) -ne $expectedOwnerSid
-    ) {
+    if ($acl.AreAccessRulesProtected) {
         throw "文件不属于严格的继承 ACL 恢复形态：$Path"
     }
     foreach ($rule in $acl.Access) {
@@ -4370,12 +4372,12 @@ function Assert-TicketboxRecoverableInheritedDirectoryAcl {
         throw "可恢复目录 ACL 的账户配置无效：$Path"
     }
 
-    $expectedOwnerSid = ConvertTo-TicketboxAccountSid $OwnerAccount
+    # Object ownership comes from the creator token; it is not inherited with
+    # the directory DACL.  The target owner still has to resolve before any
+    # write, and the exact ACL publisher establishes it after this assertion.
+    [void](ConvertTo-TicketboxAccountSid $OwnerAccount)
     $acl = Get-TicketboxPathAcl $canonicalPath
-    if (
-        $acl.AreAccessRulesProtected -or
-        (ConvertTo-TicketboxAccountSid $acl.Owner) -ne $expectedOwnerSid
-    ) {
+    if ($acl.AreAccessRulesProtected) {
         throw "目录不属于严格的继承 ACL 恢复形态：$Path"
     }
     $requiredInheritance =

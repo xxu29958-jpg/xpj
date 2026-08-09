@@ -462,6 +462,10 @@ def test_installed_c07_external_assets_are_manifest_bound_and_held(
                 "_internal/migrations/versions/"
                 "20260802_0001_currency_binding_authority.py"
             ): b"# c02 target",
+            (
+                "_internal/migrations/versions/"
+                "20260809_0001_add_installation_owner_claim.py"
+            ): b"# release head",
         }.items():
             target = payload / relative
             target.parent.mkdir(parents=True, exist_ok=True)

@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -85,6 +86,10 @@ class InstallationOwnerClaim(Base):
 
     __tablename__ = "installation_owner_claims"
     __table_args__ = (
+        PrimaryKeyConstraint(
+            "operation_id",
+            name="pk_installation_owner_claims",
+        ),
         CheckConstraint(
             "request_fingerprint ~ '^[0-9a-f]{64}$'",
             name="ck_installation_owner_claim_request_fingerprint",
