@@ -1055,7 +1055,9 @@ def test_local_test_postgres_lock_serializes_same_data_dir_across_ports(
         f"$lease = Enter-XpjTestPostgresLifecycleLock -DataDir '{escaped_data_dir}' "
         f"-Port {first_port}; "
         "try { [Console]::Out.WriteLine('LOCKED'); [Console]::Out.Flush(); "
-        "Start-Sleep -Seconds 4 } finally { Exit-XpjTestPostgresLifecycleLock -Mutex $lease }"
+        "$release = [Console]::In.ReadLine(); "
+        "if ($release -cne 'RELEASE') { throw 'invalid lock-holder release handshake' } "
+        "} finally { Exit-XpjTestPostgresLifecycleLock -Mutex $lease }"
     )
     contender_command = (
         f". '{escaped_contract}'; "
@@ -1066,15 +1068,15 @@ def test_local_test_postgres_lock_serializes_same_data_dir_across_ports(
     )
     holder = subprocess.Popen(
         [powershell_7, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", holder_command],
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8-sig",
-        errors="replace",
     )
-    assert holder.stdout is not None
-    assert holder.stdout.readline().strip() == "LOCKED"
     try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().decode(
+            "utf-8-sig", errors="replace"
+        ).strip() == "LOCKED"
         contender = subprocess.run(
             [
                 powershell_51,
@@ -1094,7 +1096,9 @@ def test_local_test_postgres_lock_serializes_same_data_dir_across_ports(
         assert contender.returncode != 0, contender.stdout + contender.stderr
         assert "DataDir" in contender.stderr
     finally:
-        stdout, stderr = holder.communicate(timeout=10)
+        stdout_bytes, stderr_bytes = holder.communicate(input=b"RELEASE\n", timeout=10)
+        stdout = stdout_bytes.decode("utf-8-sig", errors="replace")
+        stderr = stderr_bytes.decode("utf-8-sig", errors="replace")
         assert holder.returncode == 0, stdout + stderr
 
 
