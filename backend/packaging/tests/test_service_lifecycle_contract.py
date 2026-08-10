@@ -615,9 +615,16 @@ def test_c07_heartbeat_helper_uses_minimal_real_ps51_environment(
 
     installation_safety = PACKAGING / "windows_installation_safety.ps1"
     lifecycle_lock = PACKAGING / "windows_lifecycle_lock.ps1"
-    c07_lifecycle = PACKAGING / "windows_c07_lifecycle.ps1"
+    heartbeat_authority = PACKAGING / "windows_c07_heartbeat_authority.ps1"
     database_safety = PACKAGING / "windows_database_safety.ps1"
     heartbeat_helper = PACKAGING / "windows_c07_heartbeat_helper.ps1"
+    lifecycle_source = _read("windows_c07_lifecycle.ps1")
+    assert (
+        ". $ticketboxC07HeartbeatAuthorityPath `\n"
+        "    -TicketboxC07DependencyProfile "
+        "$TicketboxC07DependencyProfile |\n"
+        "    Out-Null"
+    ) in lifecycle_source
     probe = tmp_path / "heartbeat-helper-environment-probe.ps1"
     probe.write_text(
         """
@@ -696,14 +703,14 @@ $missingModulePaths = @(
 $ErrorActionPreference = 'Stop'
 . '{_ps_literal(installation_safety)}'
 . '{_ps_literal(lifecycle_lock)}'
-. '{_ps_literal(c07_lifecycle)}'
+. '{_ps_literal(heartbeat_authority)}'
 $fullFailure = ''
 try {{ Assert-TicketboxC07Dependencies }}
 catch {{ $fullFailure = $_.Exception.Message }}
 if ($fullFailure -notlike '*full*Assert-TicketboxC07LiveHostConnection*') {{
     throw "full dependency profile did not fail closed: $fullFailure"
 }}
-. '{_ps_literal(c07_lifecycle)}' `
+. '{_ps_literal(heartbeat_authority)}' `
     -TicketboxC07DependencyProfile 'durable_heartbeat'
 Assert-TicketboxC07Dependencies
 Remove-Item `
