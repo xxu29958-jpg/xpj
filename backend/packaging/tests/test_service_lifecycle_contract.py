@@ -16,11 +16,12 @@ pytestmark = pytest.mark.xdist_group(name="windows_powershell_lifecycle")
 PACKAGING = Path(__file__).resolve().parents[1]
 
 # A fresh two-core Windows CI VM has to cold-start Windows PowerShell 5.1 and
-# compile the helper's native Add-Type substrate. Keep that successful path
-# bounded without conflating cold compilation with the fail-closed deadline
-# probes below, whose 1,000/3,200 ms limits remain unchanged.
-POWERSHELL_51_COLD_START_TIMEOUT_MS = 45_000
-POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS = 90
+# compile the helper's native Add-Type substrate. Hosted-runner tail latency has
+# exceeded the former 45-second success budget while the bounded process tree
+# remained live, so retain a finite 90-second inner deadline plus outer cleanup
+# margin. This does not relax the 1,000/3,200 ms fail-closed probes below.
+POWERSHELL_51_COLD_START_TIMEOUT_MS = 90_000
+POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS = 150
 POWERSHELL_51_MULTI_SCENARIO_HARNESS_TIMEOUT_SECONDS = 180
 SC_MANAGER_CONNECT = 0x0001
 SERVICE_QUERY_STATUS = 0x0004
