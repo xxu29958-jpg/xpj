@@ -17,8 +17,8 @@
   C07FailureSummarySchema = 'ticketbox-c07-installer-failure-summary-v2';
   C07FailureSummaryFileName = 'c07-installer-failure-summary-v2.txt';
   C07FailureSummaryMaximumBytes = 4096;
-  InstallPublicFailureSchema = 'ticketbox-install-public-failure-v2';
-  InstallPublicFailureFileName = 'installer-public-failure-v2.txt';
+  InstallPublicFailureSchema = 'ticketbox-install-public-failure-v3';
+  InstallPublicFailureFileName = 'installer-public-failure-v3.txt';
   InstallPublicFailureMaximumBytes = 4096;
   LifecycleCoordinationReadAttempts = 40;
   LifecycleCoordinationReadDelayMilliseconds = 50;
@@ -2856,6 +2856,7 @@ var
   OwnerStartedLow: String;
   FinalizationAttemptId: String;
   InstallationOperationId: String;
+  InstallationIdState: String;
   InstallationId: String;
   LifecycleStage: String;
   Context: String;
@@ -2866,6 +2867,7 @@ var
   ProtectedLogPath: String;
   PublicReceiptPath: String;
   ExpectedLogDirectory: String;
+  InstallationIdentityText: String;
 begin
   Result := False;
   MessageText := '';
@@ -2879,7 +2881,7 @@ begin
      (ReceiptSize < 1) or
      (ReceiptSize > InstallPublicFailureMaximumBytes) or
      (not LoadStringsFromFile(ReceiptPath, Lines)) or
-     (GetArrayLength(Lines) <> 15) then
+     (GetArrayLength(Lines) <> 16) then
   begin
     exit;
   end;
@@ -2906,29 +2908,33 @@ begin
        InstallationOperationId)) or
      (not ReadC07FailureSummaryField(
        Lines[6],
+       'INSTALLATION_ID_STATE',
+       InstallationIdState)) or
+     (not ReadC07FailureSummaryField(
+       Lines[7],
        'INSTALLATION_ID',
        InstallationId)) or
      (not ReadC07FailureSummaryField(
-       Lines[7],
+       Lines[8],
        'LIFECYCLE_STAGE',
        LifecycleStage)) or
-     (not ReadC07FailureSummaryField(Lines[8], 'CONTEXT', Context)) or
-     (not ReadC07FailureSummaryField(Lines[9], 'FAILURE_CODE', FailureCode)) or
+     (not ReadC07FailureSummaryField(Lines[9], 'CONTEXT', Context)) or
+     (not ReadC07FailureSummaryField(Lines[10], 'FAILURE_CODE', FailureCode)) or
      (not ReadC07FailureSummaryField(
-       Lines[10],
+       Lines[11],
        'RETRY_CLASS',
        RetryClass)) or
      (not ReadC07FailureSummaryField(
-       Lines[11],
+       Lines[12],
        'DATABASE_MUTATION_STATE',
        DatabaseMutationState)) or
-     (not ReadC07FailureSummaryField(Lines[12], 'SUPPORT_CODE', SupportCode)) or
+     (not ReadC07FailureSummaryField(Lines[13], 'SUPPORT_CODE', SupportCode)) or
      (not ReadC07FailureSummaryField(
-       Lines[13],
+       Lines[14],
        'PROTECTED_LOG_PATH',
        ProtectedLogPath)) or
      (not ReadC07FailureSummaryField(
-       Lines[14],
+       Lines[15],
        'PUBLIC_RECEIPT_PATH',
        PublicReceiptPath)) then
   begin
@@ -2943,7 +2949,12 @@ begin
      (FinalizationAttemptId <> LifecycleFinalizationAttemptId) or
      (not IsC07FailureSummaryOperationId(FinalizationAttemptId)) or
      (not IsC07FailureSummaryOperationId(InstallationOperationId)) or
-     (not IsC07FailureSummaryOperationId(InstallationId)) or
+     (((InstallationIdState <> 'not_assigned') and
+       (InstallationIdState <> 'assigned'))) or
+     ((InstallationIdState = 'not_assigned') and
+      (InstallationId <> '')) or
+     ((InstallationIdState = 'assigned') and
+      (not IsC07FailureSummaryOperationId(InstallationId))) or
      (not IsC07FailureSummaryLowerToken(LifecycleStage, 64)) or
      (Context <> 'service_installation') or
      ((RetryClass <> 'replace_package_then_retry_no_cleanup') and
@@ -2960,7 +2971,8 @@ begin
   end;
   if FailureCode = 'backend_payload_manifest_order_invalid' then
   begin
-    if (DatabaseMutationState <> 'not_started') or
+    if (InstallationIdState <> 'not_assigned') or
+       (DatabaseMutationState <> 'not_started') or
        (RetryClass <> 'replace_package_then_retry_no_cleanup') or
        (SupportCode <> 'TBX-INSTALL-PROVENANCE-ORDER') then
     begin
@@ -2974,7 +2986,8 @@ begin
   end
   else if FailureCode = 'postgres_cluster_initialization_failed' then
   begin
-    if (DatabaseMutationState <> 'started_or_possible') or
+    if (InstallationIdState <> 'assigned') or
+       (DatabaseMutationState <> 'started_or_possible') or
        (RetryClass <> 'retry_no_cleanup') or
        (SupportCode <> 'TBX-INSTALL-INITDB') then
     begin
@@ -3001,7 +3014,8 @@ begin
   end
   else if FailureCode = 'installation_identity_recovery_failed' then
   begin
-    if (RetryClass <> 'retry_same_operation_no_cleanup') or
+    if (InstallationIdState <> 'not_assigned') or
+       (RetryClass <> 'retry_same_operation_no_cleanup') or
        (SupportCode <> 'TBX-INSTALL-IDENTITY') then
     begin
       exit;
@@ -3014,7 +3028,8 @@ begin
   end
   else if FailureCode = 'installation_owner_binding_failed' then
   begin
-    if (RetryClass <> 'retry_same_operation_no_cleanup') or
+    if (InstallationIdState <> 'assigned') or
+       (RetryClass <> 'retry_same_operation_no_cleanup') or
        (SupportCode <> 'TBX-INSTALL-OWNER-BINDING') then
     begin
       exit;
@@ -3051,10 +3066,18 @@ begin
   begin
     exit;
   end;
+  if InstallationIdState = 'assigned' then
+  begin
+    InstallationIdentityText := 'installation ID：' + InstallationId;
+  end
+  else
+  begin
+    InstallationIdentityText := 'installation ID：尚未分配';
+  end;
   MessageText :=
     MessageText + #13#10 +
     '安装 operation：' + InstallationOperationId + #13#10 +
-    'installation ID：' + InstallationId + #13#10 +
+    InstallationIdentityText + #13#10 +
     '生命周期阶段：' + LifecycleStage + #13#10 +
     '重试分类：' + RetryClass + #13#10 +
     '受保护日志：' + ProtectedLogPath;

@@ -317,7 +317,7 @@ function Resolve-TicketboxInstallPublicFailurePath([string]$Path) {
             "Ticketbox-Installer-Bootstrap-$InstallerLockOwnerProcessId")
     )
     $expected = [IO.Path]::GetFullPath(
-        (Join-Path $bootstrapRoot "installer-public-failure-v2.txt")
+        (Join-Path $bootstrapRoot "installer-public-failure-v3.txt")
     )
     $actual = [IO.Path]::GetFullPath($Path)
     if (-not [string]::Equals(
@@ -394,14 +394,19 @@ function Resolve-TicketboxInstallDiagnosticLogPath([string]$Path) {
     return $actual
 }
 
-function Assert-TicketboxInstallPublicIdentifier {
+function Assert-TicketboxInstallPublicGuid {
     param(
         [Parameter(Mandatory = $true)][string]$Value,
         [Parameter(Mandatory = $true)][string]$Field
     )
 
-    if ($Value -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$') {
-        throw "公开安装失败回执 $Field 不是安全标识符。"
+    $parsed = [guid]::Empty
+    if (
+        -not [guid]::TryParseExact($Value, "D", [ref]$parsed) -or
+        $parsed -eq [guid]::Empty -or
+        $parsed.ToString("D") -cne $Value
+    ) {
+        throw "公开安装失败回执 $Field 不是规范非零 UUID。"
     }
 }
 
@@ -411,25 +416,37 @@ function Publish-TicketboxInstallPublicFailureReceipt {
         [Parameter(Mandatory = $true)][object]$LifecycleLock,
         [Parameter(Mandatory = $true)][string]$FinalizationAttemptId,
         [Parameter(Mandatory = $true)][string]$InstallationOperationId,
-        [Parameter(Mandatory = $true)][string]$InstallationId,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("not_assigned", "assigned")]
+        [string]$InstallationIdState,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$InstallationId,
         [Parameter(Mandatory = $true)][string]$LifecycleStage,
         [Parameter(Mandatory = $true)][string]$ProtectedLogPath,
         [Parameter(Mandatory = $true)][Exception]$Failure,
-        [Parameter(Mandatory = $true)][bool]$MutationStarted
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("not_started", "started_or_possible")]
+        [string]$DatabaseMutationState
     )
 
     $canonicalPath = Resolve-TicketboxInstallPublicFailurePath $Path
     if ($canonicalPath.Length -eq 0) { return }
     $canonicalLogPath = Resolve-TicketboxInstallDiagnosticLogPath $ProtectedLogPath
-    Assert-TicketboxInstallPublicIdentifier `
+    Assert-TicketboxInstallPublicGuid `
         -Value $FinalizationAttemptId `
         -Field "FINALIZATION_ATTEMPT_ID"
-    Assert-TicketboxInstallPublicIdentifier `
+    Assert-TicketboxInstallPublicGuid `
         -Value $InstallationOperationId `
         -Field "INSTALLATION_OPERATION_ID"
-    Assert-TicketboxInstallPublicIdentifier `
-        -Value $InstallationId `
-        -Field "INSTALLATION_ID"
+    if ($InstallationIdState -ceq "assigned") {
+        Assert-TicketboxInstallPublicGuid `
+            -Value $InstallationId `
+            -Field "INSTALLATION_ID"
+    }
+    elseif ($InstallationId.Length -ne 0) {
+        throw "公开安装失败回执未分配 installation ID 时不得携带伪造值。"
+    }
     if ($LifecycleStage -cnotmatch '^[a-z][a-z0-9_]{0,63}$') {
         throw "公开安装失败回执 LIFECYCLE_STAGE 不是受支持 token。"
     }
@@ -468,12 +485,6 @@ function Publish-TicketboxInstallPublicFailureReceipt {
     else {
         $supportCode = "TBX-INSTALL-UNKNOWN"
     }
-    if ($MutationStarted) {
-        $databaseMutationState = "started_or_possible"
-    }
-    else {
-        $databaseMutationState = "not_started"
-    }
     if ($failureCode -ceq "backend_payload_manifest_order_invalid") {
         $retryClass = "replace_package_then_retry_no_cleanup"
     }
@@ -493,18 +504,19 @@ function Publish-TicketboxInstallPublicFailureReceipt {
         $retryClass = "manual_review_preserve_state"
     }
     $text = @(
-        "SCHEMA=ticketbox-install-public-failure-v2",
+        "SCHEMA=ticketbox-install-public-failure-v3",
         "INSTALLER_OWNER_PID=$([uint32]$ownerIdentity.ProcessId)",
         "INSTALLER_OWNER_STARTED_FILETIME_HIGH=$([uint32]$ownerIdentity.StartedFileTimeHigh)",
         "INSTALLER_OWNER_STARTED_FILETIME_LOW=$([uint32]$ownerIdentity.StartedFileTimeLow)",
         "FINALIZATION_ATTEMPT_ID=$FinalizationAttemptId",
         "INSTALLATION_OPERATION_ID=$InstallationOperationId",
+        "INSTALLATION_ID_STATE=$InstallationIdState",
         "INSTALLATION_ID=$InstallationId",
         "LIFECYCLE_STAGE=$LifecycleStage",
         "CONTEXT=service_installation",
         "FAILURE_CODE=$failureCode",
         "RETRY_CLASS=$retryClass",
-        "DATABASE_MUTATION_STATE=$databaseMutationState",
+        "DATABASE_MUTATION_STATE=$DatabaseMutationState",
         "SUPPORT_CODE=$supportCode",
         "PROTECTED_LOG_PATH=$canonicalLogPath",
         "PUBLIC_RECEIPT_PATH=$canonicalPath"
@@ -1958,6 +1970,7 @@ function Stop-ServiceIfExists {
         [Parameter(Mandatory = $true)][string]$Name,
         [int]$ExpectedStopTimeoutMs = $StopTimeoutMs,
         [int]$ExpectedRestartDelayMs = $RestartDelayMs,
+        [object]$ExpectedReleaseConfig = $ReleaseConfig,
         [switch]$AllowTargetPolicyFallback,
         [switch]$AllowMissingInstallerRecoveryGuard,
         [switch]$AllowLegacyRuntimeDataContract,
@@ -1967,6 +1980,7 @@ function Stop-ServiceIfExists {
         -Name $Name `
         -ExpectedStopTimeoutMs $ExpectedStopTimeoutMs `
         -ExpectedRestartDelayMs $ExpectedRestartDelayMs `
+        -ExpectedReleaseConfig $ExpectedReleaseConfig `
         -AllowTargetPolicyFallback:$AllowTargetPolicyFallback `
         -AllowMissingInstallerRecoveryGuard:$AllowMissingInstallerRecoveryGuard `
         -AllowLegacyRuntimeDataContract:$AllowLegacyRuntimeDataContract `
@@ -3280,7 +3294,9 @@ $installedC07PayloadLease = $null
 $resolvedPublicFailurePath = ""
 $resolvedDiagnosticLogPath = ""
 $receiptInstallationOperationId = $LifecycleFinalizationAttemptId
-$receiptInstallationId = "not-yet-assigned"
+$receiptInstallationId = ""
+$receiptInstallationIdState = "not_assigned"
+$databaseMutationState = "not_started"
 $installLifecycleStage = "service_preflight"
 $operationFailure = $null
 $lifecycleExitFailureProjection = $null
@@ -3503,6 +3519,7 @@ try {
             -Name $BackendServiceName `
             -ExpectedStopTimeoutMs $PreviousStopTimeoutMs `
             -ExpectedRestartDelayMs $PreviousRestartDelayMs `
+            -ExpectedReleaseConfig $PreviousReleaseConfig `
             -AllowTargetPolicyFallback:$FilesMayHaveBeenReplaced `
             -AllowMissingInstallerRecoveryGuard `
             -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent `
@@ -3628,6 +3645,7 @@ try {
     $receiptInstallationOperationId =
         [string]$c07InstallationIdentity.OperationId
     $receiptInstallationId = [string]$c07InstallationIdentity.InstallationId
+    $receiptInstallationIdState = "assigned"
     $installLifecycleStage = "owner_handoff_adoption"
     try {
         $handoffDisposition = Adopt-TicketboxOwnerBootstrapHandoff `
@@ -3710,6 +3728,7 @@ try {
         throw "C07 PENDING installation identity 原子复读后发生 release/helper 漂移。"
     }
     $installLifecycleStage = "database_cluster"
+    $databaseMutationState = "started_or_possible"
     [void](Initialize-PgClusterIfNeeded -InitdbInvoker {
         param($BootstrapState)
         Invoke-TicketboxServiceOwnedInitdb `
@@ -3999,11 +4018,12 @@ catch {
             -LifecycleLock $operationLock `
             -FinalizationAttemptId $LifecycleFinalizationAttemptId `
             -InstallationOperationId $receiptInstallationOperationId `
+            -InstallationIdState $receiptInstallationIdState `
             -InstallationId $receiptInstallationId `
             -LifecycleStage $installLifecycleStage `
             -ProtectedLogPath $resolvedDiagnosticLogPath `
             -Failure $failure `
-            -MutationStarted $mutationStarted
+            -DatabaseMutationState $databaseMutationState
     }
     catch {
         Write-Warning (

@@ -2014,6 +2014,101 @@ def test_pre_upgrade_backup_uses_old_tools_before_stopping_postgres() -> None:
     assert "LifecycleReceiptPath" in installer
 
 
+def test_existing_backend_stop_reuses_preflight_identity_classification_cross_engine(
+    tmp_path: Path,
+) -> None:
+    install_script = PACKAGING / "install_bundled_services.ps1"
+    install = _read("install_bundled_services.ps1")
+    stop_start = install.index("if ($hadExistingBackendService)")
+    stop_call = install[stop_start : install.index("else {", stop_start)]
+    assert "-ExpectedReleaseConfig $PreviousReleaseConfig" in stop_call
+
+    harness = tmp_path / "stop-service-installed-identity-contract.ps1"
+    harness.write_text(
+        rf"""
+$ErrorActionPreference = 'Stop'
+{_powershell_function_loader(install_script, 'Stop-ServiceIfExists')}
+
+$script:BackendServiceName = 'TicketboxBackend'
+$script:BackendPort = 8001
+$script:BackendExe = 'C:\Program Files\Ticketbox\backend.exe'
+$script:ShawlExe = 'C:\Program Files\Ticketbox\shawl.exe'
+$script:PgCtl = 'C:\Program Files\Ticketbox\pg\bin\pg_ctl.exe'
+$script:PgBin = 'C:\Program Files\Ticketbox\pg\bin'
+$script:StopTimeoutMs = 30000
+$script:RestartDelayMs = 5000
+$script:ServiceWaitArguments = @{{
+    TimeoutMilliseconds = 1000
+    PollMilliseconds = 1
+}}
+$script:ReleaseConfig = [pscustomobject]@{{
+    schema = 'ticketbox-windows-release-v2'
+}}
+$installedConfig = [pscustomobject]@{{
+    schema = 'ticketbox-windows-release-v1'
+}}
+$script:observedInstalledConfig = $null
+$script:stopCalls = 0
+
+function Assert-ExpectedServiceConfiguration {{
+    param(
+        $Name,
+        $ExpectedStopTimeoutMs,
+        $ExpectedRestartDelayMs,
+        $ExpectedReleaseConfig,
+        [switch]$AllowTargetPolicyFallback,
+        [switch]$AllowMissingInstallerRecoveryGuard,
+        [switch]$AllowLegacyRuntimeDataContract,
+        [switch]$AllowMissingOwnerRecoveryChannel
+    )
+    $script:observedInstalledConfig = $ExpectedReleaseConfig
+}}
+function Get-ExpectedServiceExecutable {{ param($Name) return $script:ShawlExe }}
+function Stop-TicketboxOwnedServiceIfExists {{
+    param(
+        $Name,
+        $ExpectedExecutable,
+        $BackendPort,
+        $ExpectedRuntimeExecutables,
+        $TimeoutMilliseconds,
+        $PollMilliseconds
+    )
+    $script:stopCalls += 1
+}}
+
+Stop-ServiceIfExists `
+    -Name $script:BackendServiceName `
+    -ExpectedReleaseConfig $installedConfig `
+    -AllowTargetPolicyFallback `
+    -AllowMissingInstallerRecoveryGuard `
+    -AllowLegacyRuntimeDataContract `
+    -AllowMissingOwnerRecoveryChannel
+if (-not [object]::ReferenceEquals(
+        $script:observedInstalledConfig,
+        $installedConfig
+    )) {{
+    throw 'stop boundary discarded the already-classified installed identity contract'
+}}
+if ($script:stopCalls -ne 1) {{
+    throw 'validated existing backend was not passed to the bounded stop primitive'
+}}
+"STOP_SERVICE_INSTALLED_IDENTITY_OK"
+""",
+        encoding="utf-8-sig",
+    )
+    for engine in powershell_contract_engines():
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
 def test_pre_copy_compensation_preserves_exact_start_policy_mutation() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
     lifecycle = _read("windows_service_lifecycle.ps1")
