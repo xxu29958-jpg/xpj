@@ -67,12 +67,14 @@ def test_recovery_source_is_host_authoritative_and_not_a_directory_mirror() -> N
     ]
     target = source[
         source.index("function Get-TicketboxC07RecoverySnapshotSql") :
-        source.index("function Start-TicketboxC07RecoverySnapshotProcess")
+        source.index("function Read-TicketboxC07RecoverySnapshotProcess")
     ]
     assert "'transaction_timeout',\n    armed_transaction_ms::text || 'ms',\n    false" in preflight
     assert "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;" in target
     assert "PERFORM set_config(\n    'transaction_timeout'" not in target
-    assert source.count('"--command", (') >= 2
+    assert source.count("Get-TicketboxC07RecoverySnapshotPreflightSql") >= 2
+    assert source.count("Get-TicketboxC07RecoverySnapshotSql") >= 2
+    assert "-SqlCommands $sqlCommands" in source
     assert "activity.xact_start" in source
     assert "transaction_timeout_armed_ms" in source
     assert "transaction_timeout_derived_upper_bound_expiry_utc" in source
@@ -87,12 +89,10 @@ def test_recovery_source_is_host_authoritative_and_not_a_directory_mirror() -> N
     assert "TimeoutContract = $timeoutContract" in source
     assert "TransactionDeadlineUtc = " in source
     assert "exported snapshot 超过 transaction deadline" in source
-    assert "SELECT pg_sleep_until(" in source
-    assert "pg_sleep_until_active_statement" in source
-    assert (
-        source.index("SELECT 'TBX_TIMEOUTS:'")
-        < source.index("SELECT 'TBX_READY';")
-        < source.index("SELECT pg_sleep_until(")
+    assert "SELECT pg_sleep_until(" not in source
+    assert "psql_file_stdin_open_idle_transaction" in source
+    assert source.index("SELECT 'TBX_TIMEOUTS:'") < source.index(
+        "SELECT 'TBX_READY';"
     )
     assert "MaximumRemainingCeilingMilliseconds" in source
     assert "ticketbox.c07_snapshot_maintenance_deadline_utc" in source
@@ -136,6 +136,7 @@ def test_recovery_operation_id_matches_shared_canonical_guid_contract(
 ) -> None:
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 
 $historical = '1493b3d9-3721-0e51-0255-58aba5ba6e99'
@@ -342,6 +343,7 @@ def test_path_manifest_and_missing_original_fail_closed(tmp_path: Path) -> None:
 
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 
 function ConvertTo-TicketboxCanonicalPath([string]$Path) {{
@@ -496,6 +498,7 @@ def test_capacity_rejects_low_disk_tablespace_and_external_wal(
 
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 
 function ConvertTo-TicketboxCanonicalPath([string]$Path) {{
@@ -622,6 +625,7 @@ def test_restore_create_intent_refuses_preexisting_and_crash_window(
     restore_identity = generation_root / "restore-identity.json"
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 
 function Test-TicketboxPathEquals([string]$Left, [string]$Right) {{
@@ -898,6 +902,7 @@ def test_database_and_recovery_scripts_share_single_create_owner_and_cleanup_ret
     restore_identity = generation_root / "restore-identity.json"
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(DATABASE_SCRIPT)}'
 . '{_ps_literal(SCRIPT)}'
 
@@ -1333,6 +1338,7 @@ def test_native_destination_parent_lock_and_ready_write_through(
     ready_root = generation_root / "publish.ready"
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 
 function ConvertTo-TicketboxCanonicalPath([string]$Path) {{
@@ -1448,6 +1454,7 @@ def test_ready_publish_never_replaces_target_and_failed_move_converges(
     cleanup = generation_root / "generation-cleanup.json"
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 
 function ConvertTo-TicketboxCanonicalPath([string]$Path) {{
@@ -1600,6 +1607,7 @@ def test_generation_restore_reconcile_and_reentry_cleanup(tmp_path: Path) -> Non
 
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 
 function ConvertTo-TicketboxCanonicalPath([string]$Path) {{
@@ -2502,6 +2510,7 @@ def test_ready_generation_rejects_live_logical_generation_drift(
 ) -> None:
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 
 $script:liveGeneration = '123e4567-e89b-42d3-a456-426614174002'
@@ -2561,6 +2570,7 @@ def test_snapshot_id_injection_is_rejected_before_native_process(
 ) -> None:
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 
 function Assert-TicketboxC07RecoverySnapshotAlive {{ param([object]$Snapshot) }}
@@ -2606,6 +2616,7 @@ def test_dump_must_durably_flush_before_archive_validation(
     dump = partial / "database.dump"
     source = f"""
 $ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY)}'
 . '{_ps_literal(SCRIPT)}'
 . '{_ps_literal(DATABASE_SAFETY_SCRIPT)}'
 Initialize-TicketboxBoundedNativeProcessMethods
@@ -2638,7 +2649,11 @@ function Get-TicketboxC07RecoveryHeartbeatOperation {{
     return $script:testHeartbeatOperation
 }}
 
-function Assert-TicketboxC07RecoverySnapshotAlive {{ param([object]$Snapshot) }}
+$script:events = [Collections.Generic.List[string]]::new()
+function Assert-TicketboxC07RecoverySnapshotAlive {{
+    param([object]$Snapshot)
+    $script:events.Add('alive')
+}}
 function Test-TicketboxPathWithin {{ return $true }}
 function Assert-NoTicketboxAncestorReparsePoints {{ param([string]$Path) }}
 function Get-TicketboxPathEntryKindNoFollow {{
@@ -2670,6 +2685,25 @@ function Invoke-TicketboxBoundedNativeProcess {{
         throw 'recovery generation did not pass the typed heartbeat operation'
     }}
     if ($FilePath -ceq 'pg_dump.exe') {{
+        $script:events.Add('pg_dump')
+        $expectedArguments = @(
+            '--no-password',
+            '--lock-wait-timeout=30000',
+            '--format=custom',
+            '--no-owner',
+            '--no-privileges',
+            '--snapshot=00000003-0000001B-1',
+            '--file',
+            '{_ps_literal(dump)}',
+            '--dbname',
+            'postgresql://protected'
+        )
+        if (
+            [string]::Join("`n", $Arguments) -cne
+                [string]::Join("`n", $expectedArguments)
+        ) {{
+            throw 'pg_dump exported-snapshot argv changed'
+        }}
         $fileIndex = [Array]::IndexOf($Arguments, '--file')
         [IO.File]::WriteAllBytes(
             [string]$Arguments[$fileIndex + 1],
@@ -2682,6 +2716,7 @@ function Invoke-TicketboxBoundedNativeProcess {{
 }}
 function Sync-TicketboxDurableArtifactFile {{
     param([string]$Path)
+    $script:events.Add('flush')
     throw 'injected FlushFileBuffers failure'
 }}
 function Protect-TicketboxC07RecoveryFile {{ param([string]$Path) }}
@@ -2711,7 +2746,12 @@ catch {{
     if ($_.Exception.Message -notmatch 'FlushFileBuffers failure') {{ throw }}
     $rejected = $true
 }}
-if (-not $rejected -or $script:listCalls -ne 0) {{
+if (
+    -not $rejected -or
+    $script:listCalls -ne 0 -or
+    [string]::Join(',', $script:events) -cne
+        'alive,pg_dump,alive,flush'
+) {{
     throw 'undurable database.dump reached archive validation/evidence'
 }}
 """
