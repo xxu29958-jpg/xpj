@@ -84,6 +84,7 @@ function Assert-TicketboxC07RecoveryDependencies {
         "Get-TicketboxC07RestoreNamespaceDatabases",
         "Get-TicketboxPathEntryKindNoFollow",
         "Get-TicketboxVolumeIdentityForPath",
+        "Get-TicketboxWindowsDeadlineRemainingMilliseconds",
         "Initialize-TicketboxExactTreeDeleteNativeMethods",
         "Initialize-TicketboxProtectedDirectoryAtomically",
         "Invoke-TicketboxBoundedNativeProcess",
@@ -124,7 +125,7 @@ function Get-TicketboxC07RecoveryMaintenanceTimeoutMilliseconds {
     if ($null -eq $script:TicketboxC07ActiveMaintenanceBudget) {
         return $MaximumMilliseconds
     }
-    return Get-TicketboxC07RemainingMaintenanceMilliseconds `
+    return Get-TicketboxWindowsDeadlineRemainingMilliseconds `
         -Budget $script:TicketboxC07ActiveMaintenanceBudget `
         -MaximumMilliseconds $MaximumMilliseconds `
         -Label $Label
@@ -230,7 +231,7 @@ function Assert-TicketboxC07RecoveryMaintenanceBoundary {
         [object[]]$AllowedClientSessions = @()
     )
     if ($null -eq $script:TicketboxC07ActiveMaintenanceBudget) { return }
-    [void](Get-TicketboxC07RemainingMaintenanceMilliseconds `
+    [void](Get-TicketboxWindowsDeadlineRemainingMilliseconds `
         -Budget $script:TicketboxC07ActiveMaintenanceBudget `
         -Label "C07 recovery boundary")
     Assert-TicketboxC07WriterFenceWindow `
@@ -249,7 +250,7 @@ function Get-TicketboxC07RecoveryHeartbeatOperation {
     Assert-TicketboxC07OperationLease `
         -Authority $authority `
         -LifecycleLock $Context.LifecycleLock
-    $remaining = Get-TicketboxC07RemainingMaintenanceMilliseconds `
+    $remaining = Get-TicketboxWindowsDeadlineRemainingMilliseconds `
         -Budget $script:TicketboxC07ActiveMaintenanceBudget `
         -Label "C07 native maintenance heartbeat operation"
     $identity = $authority.Binding.CoordinatorIdentity
@@ -3966,7 +3967,7 @@ function Invoke-TicketboxC07RecoveryGeneration {
             -Generation $existing `
             -SuperuserPassword $SuperuserPassword
         $existingRemaining =
-            Get-TicketboxC07RemainingMaintenanceMilliseconds `
+            Get-TicketboxWindowsDeadlineRemainingMilliseconds `
                 -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                 -MaximumMilliseconds (
                     $script:TicketboxC07RecoveryNativeTimeoutMilliseconds
@@ -4024,7 +4025,7 @@ function Invoke-TicketboxC07RecoveryGeneration {
             throw "C07 snapshot 未证明同 session advisory-lock writer cut。"
         }
         $moneyRemaining =
-            Get-TicketboxC07RemainingMaintenanceMilliseconds `
+            Get-TicketboxWindowsDeadlineRemainingMilliseconds `
                 -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                 -MaximumMilliseconds (
                     $script:TicketboxC07RecoveryNativeTimeoutMilliseconds
@@ -4093,7 +4094,7 @@ function Invoke-TicketboxC07RecoveryGeneration {
         $copyRecords = New-Object System.Collections.Generic.List[object]
         foreach ($original in @($assetPlan.Originals)) {
             if ($null -ne $script:TicketboxC07ActiveMaintenanceBudget) {
-                [void](Get-TicketboxC07RemainingMaintenanceMilliseconds `
+                [void](Get-TicketboxWindowsDeadlineRemainingMilliseconds `
                     -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                     -Label "C07 recovery asset copy")
             }
@@ -6287,7 +6288,7 @@ function Test-TicketboxC07RecoveryGenerationRestore {
             -Label "C07 isolated replay migrator window open" | Out-Null
         try {
             $replayRemaining =
-                Get-TicketboxC07RemainingMaintenanceMilliseconds `
+                Get-TicketboxWindowsDeadlineRemainingMilliseconds `
                     -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                     -MaximumMilliseconds (
                         $script:TicketboxC07RecoveryNativeTimeoutMilliseconds
@@ -7139,7 +7140,7 @@ function Invoke-TicketboxC07TargetRecoveryGeneration {
             -Context $context `
             -Generation $existing `
             -SuperuserPassword $SuperuserPassword
-        $remaining = Get-TicketboxC07RemainingMaintenanceMilliseconds `
+        $remaining = Get-TicketboxWindowsDeadlineRemainingMilliseconds `
             -Budget $script:TicketboxC07ActiveMaintenanceBudget `
             -MaximumMilliseconds (
                 $script:TicketboxC07RecoveryNativeTimeoutMilliseconds
@@ -7222,7 +7223,7 @@ function Invoke-TicketboxC07TargetRecoveryGeneration {
         if (-not [bool]$snapshot.FenceCutVerified) {
             throw "C07 target snapshot 未证明 same-session writer cut。"
         }
-        $remaining = Get-TicketboxC07RemainingMaintenanceMilliseconds `
+        $remaining = Get-TicketboxWindowsDeadlineRemainingMilliseconds `
             -Budget $script:TicketboxC07ActiveMaintenanceBudget `
             -MaximumMilliseconds (
                 $script:TicketboxC07RecoveryNativeTimeoutMilliseconds
@@ -7320,7 +7321,7 @@ function Invoke-TicketboxC07TargetRecoveryGeneration {
             -Kind "inventory"
         $copyRecords = New-Object System.Collections.Generic.List[object]
         foreach ($original in @($assetPlan.Originals)) {
-            [void](Get-TicketboxC07RemainingMaintenanceMilliseconds `
+            [void](Get-TicketboxWindowsDeadlineRemainingMilliseconds `
                 -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                 -Label "C07 target recovery asset copy")
             Assert-TicketboxC07RecoverySnapshotAlive $snapshot
@@ -7748,7 +7749,7 @@ function Test-TicketboxC07TargetRecoveryGenerationRestore {
             ) `
             -Label "C07 target restore evidence window open" | Out-Null
         try {
-            $remaining = Get-TicketboxC07RemainingMaintenanceMilliseconds `
+            $remaining = Get-TicketboxWindowsDeadlineRemainingMilliseconds `
                 -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                 -MaximumMilliseconds (
                     $script:TicketboxC07RecoveryNativeTimeoutMilliseconds

@@ -8,6 +8,10 @@ from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
 SCRIPT = PACKAGING / "windows_deadline_budget.ps1"
+C07_HEARTBEAT = PACKAGING / "windows_c07_heartbeat_authority.ps1"
+C07_HEARTBEAT_HELPER = PACKAGING / "windows_c07_heartbeat_helper.ps1"
+C07_LIFECYCLE = PACKAGING / "windows_c07_lifecycle.ps1"
+C07_RECOVERY = PACKAGING / "windows_c07_recovery_generation.ps1"
 
 
 def _literal(path: Path) -> str:
@@ -61,6 +65,51 @@ def test_deadline_budget_is_focused_bom_safe_and_c07_free() -> None:
         "psql.exe",
     ):
         assert forbidden not in source
+
+
+def test_c07_consumers_use_one_explicit_generic_deadline_path() -> None:
+    heartbeat = C07_HEARTBEAT.read_text(encoding="utf-8-sig")
+    heartbeat_helper = C07_HEARTBEAT_HELPER.read_text(encoding="utf-8-sig")
+    lifecycle = C07_LIFECYCLE.read_text(encoding="utf-8-sig")
+    recovery = C07_RECOVERY.read_text(encoding="utf-8-sig")
+    production = "\n".join(
+        path.read_text(encoding="utf-8-sig")
+        for path in PACKAGING.rglob("*.ps1")
+        if "tests" not in path.parts
+    )
+
+    assert '"windows_deadline_budget.ps1"' in heartbeat
+    active_heartbeat = "\n".join(
+        line for line in heartbeat.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert ". $windowsDeadlineBudgetScript" in active_heartbeat
+    assert heartbeat_helper.index('"windows_deadline_budget.ps1"') < heartbeat_helper.index(
+        '"windows_c07_heartbeat_authority.ps1"'
+    )
+    assert "New-TicketboxWindowsDeadlineBudget" in lifecycle
+    assert "Measure-TicketboxWindowsPersistedDeadline" in lifecycle
+    assert "Get-TicketboxBoundedDeadlineUtc" in lifecycle
+    assert '"Get-TicketboxWindowsDeadlineRemainingMilliseconds",' in recovery
+    assert "Get-TicketboxWindowsDeadlineRemainingMilliseconds" in heartbeat
+    assert "Get-TicketboxWindowsDeadlineRemainingMilliseconds" in lifecycle
+    assert "Get-TicketboxWindowsDeadlineRemainingMilliseconds" in recovery
+
+    # C07 keeps operation/attempt binding policy while the generic layer owns
+    # only boot observation and deadline arithmetic.
+    for binding in (
+        "OperationId = [string]$Authority.Receipt.operation_id",
+        "AttemptId = [string]$attempt.Payload.attempt_id",
+        "AttemptSha256 = [string]$attempt.PayloadSha256",
+    ):
+        assert binding in lifecycle
+
+    for retired in (
+        "Get-TicketboxC07BootIdentity",
+        "Get-TicketboxC07RemainingMaintenanceMilliseconds",
+        "Get-TicketboxC07MaintenanceAttemptRemainingMilliseconds",
+        "Get-TicketboxC07BoundedMigratorValidUntilUtc",
+    ):
+        assert retired not in production
 
 
 @pytest.mark.parametrize("engine", powershell_contract_engines())
