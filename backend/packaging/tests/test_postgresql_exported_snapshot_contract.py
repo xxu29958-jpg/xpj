@@ -80,8 +80,10 @@ def test_exported_snapshot_components_are_one_way_and_retire_old_mechanics() -> 
     assert "-SqlCommands $sqlCommands" in opener
     assert "Stop-TicketboxPostgresqlExportedSnapshotSession" in opener
     assert "Assert-TicketboxPostgresqlExportedSnapshotSessionAlive" in alive
-    assert "Stop-TicketboxPostgresqlExportedSnapshotSession" in alive
+    assert "Close-TicketboxC07RecoverySnapshot $Snapshot" in alive
     assert "Stop-TicketboxPostgresqlExportedSnapshotSession" in closer
+    assert "finally {" in closer
+    assert "$Snapshot.Process = $null" in closer
 
 
 def test_exported_snapshot_packaging_topology_is_exact_and_active() -> None:

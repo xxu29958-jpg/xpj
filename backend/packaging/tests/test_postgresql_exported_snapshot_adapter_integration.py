@@ -84,7 +84,7 @@ function Start-TicketboxPostgresqlExportedSnapshotSession {{
         throw 'generic session authority input changed'
     }}
     $script:capturedCommands = @($SqlCommands)
-    return [pscustomobject]@{{ Id = 41 }}
+    return [pscustomobject]@{{ Id = 41; Disposed = $false }}
 }}
 function Read-TicketboxC07RecoverySnapshotProcess {{
     param(
@@ -99,7 +99,16 @@ function Read-TicketboxC07RecoverySnapshotProcess {{
 function Stop-TicketboxPostgresqlExportedSnapshotSession {{
     param([object]$Process, [int]$WaitTimeoutMilliseconds)
     $script:stopCalls++
-    if ($script:failStop) {{ throw 'injected stop failure' }}
+    if ($Process.Disposed) {{
+        throw [ObjectDisposedException]::new('Process')
+    }}
+    if ($script:failStop) {{
+        $Process.Disposed = $true
+        throw 'injected stop failure'
+    }}
+}}
+function Assert-TicketboxPostgresqlExportedSnapshotSessionAlive {{
+    param([object]$Process)
 }}
 function Get-TicketboxC07RecoveryMaintenanceTimeoutMilliseconds {{
     return 10000
@@ -147,5 +156,61 @@ if (
     $combinedFailure -notmatch 'injected read failure' -or
     $combinedFailure -notmatch 'injected stop failure'
 ) {{ throw 'C07 opener did not preserve read plus cleanup failure' }}
+
+$closeSnapshot = [pscustomobject]@{{
+    Process = [pscustomobject]@{{ Id = 42; Disposed = $false }}
+}}
+$closeFailure = ''
+try {{ Close-TicketboxC07RecoverySnapshot $closeSnapshot }}
+catch {{ $closeFailure = $_.Exception.Message }}
+$stopCallsAfterFailedClose = $script:stopCalls
+Close-TicketboxC07RecoverySnapshot $closeSnapshot
+if (
+    $closeFailure -notmatch 'injected stop failure' -or
+    $null -ne $closeSnapshot.Process -or
+    $script:stopCalls -ne $stopCallsAfterFailedClose
+) {{ throw 'C07 close did not detach a failed holder exactly once' }}
+
+$expiredSnapshot = [pscustomobject]@{{
+    Process = [pscustomobject]@{{ Id = 43; Disposed = $false }}
+    TransactionDeadlineUtc =
+        [DateTimeOffset]::UtcNow.AddSeconds(-1).UtcDateTime.ToString('o')
+}}
+$expiredFailure = ''
+try {{ Assert-TicketboxC07RecoverySnapshotAlive $expiredSnapshot }}
+catch {{ $expiredFailure = $_.Exception.Message }}
+$stopCallsAfterExpired = $script:stopCalls
+Close-TicketboxC07RecoverySnapshot $expiredSnapshot
+if (
+    $expiredFailure -notmatch 'injected stop failure' -or
+    $null -ne $expiredSnapshot.Process -or
+    $script:stopCalls -ne $stopCallsAfterExpired
+) {{ throw 'C07 deadline close did not preserve one cleanup failure' }}
+
+$primarySnapshot = [pscustomobject]@{{
+    Process = [pscustomobject]@{{ Id = 44; Disposed = $false }}
+}}
+$primaryFailure = [InvalidOperationException]::new(
+    'primary generation failure'
+)
+$combined = $null
+try {{
+    Close-TicketboxC07RecoverySnapshotAndRethrowFailure `
+        -Snapshot $primarySnapshot `
+        -Failure $primaryFailure `
+        -Context 'C07 generation probe'
+}}
+catch {{ $combined = $_.Exception }}
+if (
+    $null -eq $combined -or
+    $combined.Message -notmatch 'injected stop failure' -or
+    $combined.InnerException.Message -cne 'primary generation failure' -or
+    [string]$combined.Data['snapshot_cleanup_exception'] -notmatch
+        'injected stop failure' -or
+    $null -ne $primarySnapshot.Process
+) {{ throw 'C07 generation failure did not preserve primary plus cleanup evidence' }}
 """
+    assert recovery.count(
+        "Close-TicketboxC07RecoverySnapshotAndRethrowFailure `"
+    ) == 2
     run_harness(tmp_path, "c07-exported-snapshot-adapter", source)

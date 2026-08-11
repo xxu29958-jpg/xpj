@@ -44,8 +44,8 @@ $base = [pscustomobject][ordered]@{{
     snapshot_exporter_transaction_started_utc = $started.UtcDateTime.ToString('o')
     snapshot_exporter_deadline_utc = $deadline
     timeout_observed_at_utc = $observed.UtcDateTime.ToString('o')
-    idle_in_transaction_session_timeout_configured_ms = '20000'
-    idle_in_transaction_session_timeout_effective_ms = '20000'
+    idle_in_transaction_session_timeout_configured_ms = '60000'
+    idle_in_transaction_session_timeout_effective_ms = '60000'
     lock_timeout_configured_ceiling_ms = '5000'
     lock_timeout_applied_ms = '5000'
     enforcement_kind = 'pre_begin_transaction_plus_per_statement_absolute_v1'
@@ -59,6 +59,12 @@ if (
     $result.TransactionDeadlineUtc -cne $expiry.UtcDateTime.ToString('o') -or
     $result.SnapshotExporterTransactionStartedUtc -cne $started.UtcDateTime.ToString('o')
 ) {{ throw 'normalized deadline result changed' }}
+$idleDisabled = $base.PSObject.Copy()
+$idleDisabled.idle_in_transaction_session_timeout_configured_ms = '0'
+$idleDisabled.idle_in_transaction_session_timeout_effective_ms = '0'
+Assert-TicketboxPostgresqlExportedSnapshotDeadlineEvidence `
+    -Evidence $idleDisabled -ExpectedAbsoluteDeadlineUtc $deadline `
+    -MaximumRemainingCeilingMilliseconds 120000 -CurrentUtc $now | Out-Null
 
 $cases = @(
     @('absolute deadline', {{ param($e) $e.absolute_deadline_utc = $now.AddMinutes(3).UtcDateTime.ToString('o') }}),
@@ -78,7 +84,8 @@ $cases = @(
     @('statement zero', {{ param($e) $e.statement_timeout_applied_ms = '0' }}),
     @('statement cap', {{ param($e) $e.statement_timeout_applied_ms = '30001' }}),
     @('statement versus remaining', {{ param($e) $e.remaining_ms_before_statement = '25000' }}),
-    @('idle mismatch', {{ param($e) $e.idle_in_transaction_session_timeout_effective_ms = '19999' }}),
+    @('idle mismatch', {{ param($e) $e.idle_in_transaction_session_timeout_effective_ms = '60001' }}),
+    @('idle holder lifetime', {{ param($e) $e.idle_in_transaction_session_timeout_configured_ms = '59000'; $e.idle_in_transaction_session_timeout_effective_ms = '59000' }}),
     @('lock zero', {{ param($e) $e.lock_timeout_applied_ms = '0' }}),
     @('lock global cap', {{ param($e) $e.lock_timeout_configured_ceiling_ms = '0'; $e.lock_timeout_applied_ms = '5001' }}),
     @('lock configured cap', {{ param($e) $e.lock_timeout_configured_ceiling_ms = '4999' }}),

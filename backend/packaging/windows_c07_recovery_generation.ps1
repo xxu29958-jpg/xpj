@@ -1946,10 +1946,7 @@ function Assert-TicketboxC07RecoverySnapshotAlive {
             -Value ([string]$Snapshot.TransactionDeadlineUtc) `
             -Label "C07 recovery snapshot transaction deadline"
     if ([DateTimeOffset]::UtcNow -ge $transactionDeadline) {
-        Stop-TicketboxPostgresqlExportedSnapshotSession `
-            -Process $Snapshot.Process `
-            -WaitTimeoutMilliseconds 10000
-        $Snapshot.Process = $null
+        Close-TicketboxC07RecoverySnapshot $Snapshot
         throw "C07 recovery PostgreSQL exported snapshot 超过 transaction deadline。"
     }
 }
@@ -1957,10 +1954,43 @@ function Assert-TicketboxC07RecoverySnapshotAlive {
 function Close-TicketboxC07RecoverySnapshot {
     param([AllowNull()][object]$Snapshot)
     if ($null -eq $Snapshot -or $null -eq $Snapshot.Process) { return }
-    Stop-TicketboxPostgresqlExportedSnapshotSession `
-        -Process $Snapshot.Process `
-        -WaitTimeoutMilliseconds 10000
-    $Snapshot.Process = $null
+    $process = $Snapshot.Process
+    try {
+        Stop-TicketboxPostgresqlExportedSnapshotSession `
+            -Process $process `
+            -WaitTimeoutMilliseconds 10000
+    }
+    finally {
+        $Snapshot.Process = $null
+    }
+}
+
+function Close-TicketboxC07RecoverySnapshotAndRethrowFailure {
+    param(
+        [AllowNull()][object]$Snapshot,
+        [Parameter(Mandatory = $true)][Exception]$Failure,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+    try {
+        Close-TicketboxC07RecoverySnapshot $Snapshot
+    }
+    catch {
+        $cleanupFailure = $_.Exception
+        $combined = [InvalidOperationException]::new(
+            (
+                "$Context；snapshot cleanup 失败：" +
+                $cleanupFailure.Message
+            ),
+            $Failure
+        )
+        $combined.Data['snapshot_cleanup_exception'] =
+            $cleanupFailure.ToString()
+        throw $combined
+    }
+    [Runtime.ExceptionServices.ExceptionDispatchInfo]::Capture(
+        $Failure
+    ).Throw()
+    throw "unreachable"
 }
 
 function ConvertTo-TicketboxC07RecoveryUnsignedInt64 {
@@ -4001,7 +4031,7 @@ function Invoke-TicketboxC07RecoveryGeneration {
         if ($partialCreated -or (Test-Path -LiteralPath $context.Paths.PartialRoot)) {
             $cleanup = Clear-TicketboxC07RecoveryPartialGeneration $context
             if ($cleanup.State -cne "cleaned") {
-                throw [InvalidOperationException]::new(
+                $failure = [InvalidOperationException]::new(
                     (
                         "C07 recovery generation 失败且 cleanup_pending；" +
                         "原错误已保留在 exception chain。"
@@ -4010,10 +4040,10 @@ function Invoke-TicketboxC07RecoveryGeneration {
                 )
             }
         }
-        [Runtime.ExceptionServices.ExceptionDispatchInfo]::Capture(
-            $failure
-        ).Throw()
-        throw "unreachable"
+        Close-TicketboxC07RecoverySnapshotAndRethrowFailure `
+            -Snapshot $snapshot `
+            -Failure $failure `
+            -Context "C07 recovery generation 失败"
     }
     finally {
         if ($null -ne $snapshot) {
@@ -7232,16 +7262,16 @@ function Invoke-TicketboxC07TargetRecoveryGeneration {
         ) {
             $cleanup = Clear-TicketboxC07RecoveryPartialGeneration $context
             if ($cleanup.State -cne "cleaned") {
-                throw [InvalidOperationException]::new(
+                $failure = [InvalidOperationException]::new(
                     "C07 target generation 失败且 cleanup_pending。",
                     $failure
                 )
             }
         }
-        [Runtime.ExceptionServices.ExceptionDispatchInfo]::Capture(
-            $failure
-        ).Throw()
-        throw "unreachable"
+        Close-TicketboxC07RecoverySnapshotAndRethrowFailure `
+            -Snapshot $snapshot `
+            -Failure $failure `
+            -Context "C07 target generation 失败"
     }
     finally {
         if ($null -ne $snapshot) {

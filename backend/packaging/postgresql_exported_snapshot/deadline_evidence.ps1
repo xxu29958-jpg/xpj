@@ -123,6 +123,10 @@ function Assert-TicketboxPostgresqlExportedSnapshotDeadlineEvidence {
             $statementApplied -gt $statementConfigured
         ) -or
         $idleEffective -ne $idleConfigured -or
+        (
+            $idleEffective -gt 0 -and
+            $idleEffective -lt $transactionArmed
+        ) -or
         $lockApplied -lt 1 -or $lockApplied -gt 5000 -or
         $lockApplied -gt $remaining -or
         ($lockConfigured -gt 0 -and $lockApplied -gt $lockConfigured) -or
