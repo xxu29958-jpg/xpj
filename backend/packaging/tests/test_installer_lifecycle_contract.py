@@ -224,6 +224,12 @@ def test_inno_simplified_chinese_language_pins_cjk_ui_font() -> None:
 def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> None:
     installer = _read_installer()
     installer_lines = installer.splitlines()
+    files_section = installer[
+        installer.index("[Files]") : installer.index("[Registry]")
+    ]
+    assert not any(
+        line.lstrip().startswith("#") for line in files_section.splitlines()
+    ), "installer payload entries must not be conditionally preprocessed"
     active_installer_lines = {
         line.strip() for line in installer_lines if line.strip() and not line.lstrip().startswith(";")
     }
@@ -287,6 +293,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_c07_database.ps1",
         "windows_c07_superuser_recovery.ps1",
         "windows_deadline_budget.ps1",
+        "windows_c07_deadline_policy.ps1",
         "windows_c07_heartbeat_authority.ps1",
         "windows_c07_lifecycle.ps1",
         "windows_c07_heartbeat_helper.ps1",
@@ -5146,6 +5153,7 @@ def test_installer_input_gate_requires_lifecycle_scripts() -> None:
     assert '$DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"' in build
     assert ('$C07HeartbeatAuthorityScript = Join-Path $ScriptDir "windows_c07_heartbeat_authority.ps1"') in build
     assert '$WindowsDeadlineBudgetScript = Join-Path $ScriptDir "windows_deadline_budget.ps1"' in build
+    assert '$C07DeadlinePolicyScript = Join-Path $ScriptDir "windows_c07_deadline_policy.ps1"' in build
     assert ('$C07HeartbeatHelperScript = Join-Path $ScriptDir "windows_c07_heartbeat_helper.ps1"') in build
     assert '$BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"' in build
     assert '$ReleaseConfigScript = Join-Path $ScriptDir "windows_release_config.ps1"' in build
@@ -5155,6 +5163,7 @@ def test_installer_input_gate_requires_lifecycle_scripts() -> None:
     assert 'Assert-File $LifecycleScript "Windows 服务生命周期脚本"' in build
     assert ('Assert-File $C07HeartbeatAuthorityScript "Windows C07 shared heartbeat authority module"') in build
     assert 'Assert-File $WindowsDeadlineBudgetScript "Windows deadline-budget adapter"' in build
+    assert 'Assert-File $C07DeadlinePolicyScript "Windows C07 deadline policy adapter"' in build
     assert ('Assert-File $C07HeartbeatHelperScript "Windows C07 durable heartbeat helper"') in build
     assert 'Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"' in build
 

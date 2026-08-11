@@ -110,7 +110,7 @@ function Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds {
     if ($null -eq $script:TicketboxC07ActiveMaintenanceBudget) {
         return $MaximumMilliseconds
     }
-    return Get-TicketboxWindowsDeadlineRemainingMilliseconds `
+    return Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
         -Budget $script:TicketboxC07ActiveMaintenanceBudget `
         -MaximumMilliseconds $MaximumMilliseconds `
         -Label $Label
@@ -5060,7 +5060,7 @@ function Invoke-TicketboxC07ProductionLifecycleCoordinator {
               -CeilingDeadlineUtc ([DateTime]$maintenanceBudget.DeadlineUtc) `
               -Label "C07 migrator credential deadline"
       $currentMaintenanceCeiling =
-          Get-TicketboxWindowsDeadlineRemainingMilliseconds `
+          Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
         -Budget $maintenanceBudget `
         -MaximumMilliseconds $maintenanceWindowMilliseconds `
         -Label "C07 production DDL preflight"
@@ -5272,7 +5272,7 @@ function Invoke-TicketboxC07ProductionLifecycleCoordinator {
                 -FailureCode "resource_shape_mismatch")
         }
         $remainingCeiling =
-            Get-TicketboxWindowsDeadlineRemainingMilliseconds `
+            Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
                 -Budget $capturedMaintenanceBudget `
                 -MaximumMilliseconds $maintenanceWindowMilliseconds `
                 -Label "C07 post-DDL target resource attestation"
@@ -5959,7 +5959,7 @@ function Invoke-TicketboxC07InstalledProductionLifecycle {
             $stage -cne "ready" -and
             $stage -notin $script:TicketboxC07FailureStages
         ) {
-            [void](Get-TicketboxWindowsDeadlineRemainingMilliseconds `
+            [void](Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
                 -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                 -Label "C07 installed lifecycle stage $stage")
         }

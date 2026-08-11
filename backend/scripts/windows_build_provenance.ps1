@@ -44,6 +44,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "packaging\security_primitives\file_security.ps1",
     "packaging\windows_c07_superuser_recovery.ps1",
     "packaging\windows_deadline_budget.ps1",
+    "packaging\windows_c07_deadline_policy.ps1",
     "packaging\windows_c07_heartbeat_authority.ps1",
     "packaging\windows_c07_lifecycle.ps1",
     "packaging\windows_c07_heartbeat_helper.ps1",

@@ -20,13 +20,26 @@ param(
 )
 
 $script:TicketboxC07DependencyProfile = $TicketboxC07DependencyProfile
-$windowsDeadlineBudgetScript = Join-Path `
-    $PSScriptRoot `
-    "windows_deadline_budget.ps1"
-if (-not (Test-Path -LiteralPath $windowsDeadlineBudgetScript -PathType Leaf)) {
-    throw "Missing Windows deadline-budget adapter: $windowsDeadlineBudgetScript"
+foreach ($requiredDeadlineGuard in @(
+    "Assert-NoTicketboxAncestorReparsePoints",
+    "Get-TicketboxPathEntryKindNoFollow"
+)) {
+    if ($null -eq (Get-Command $requiredDeadlineGuard `
+        -CommandType Function -ErrorAction SilentlyContinue)) {
+        throw "Windows deadline-budget loader lacks guard: $requiredDeadlineGuard"
+    }
 }
-. $windowsDeadlineBudgetScript
+foreach ($deadlineDependencyLeaf in @(
+    "windows_deadline_budget.ps1",
+    "windows_c07_deadline_policy.ps1"
+)) {
+    $deadlineDependencyPath = Join-Path $PSScriptRoot $deadlineDependencyLeaf
+    Assert-NoTicketboxAncestorReparsePoints $deadlineDependencyPath
+    if ((Get-TicketboxPathEntryKindNoFollow $deadlineDependencyPath) -cne "File") {
+        throw "Windows deadline dependency is not a trusted ordinary file: $deadlineDependencyPath"
+    }
+    . $deadlineDependencyPath
+}
 
 $script:TicketboxC07EnvelopeSchema = "ticketbox-c07-host-envelope-v2"
 $script:TicketboxC07DescriptorSchema = "ticketbox-c07-operation-descriptor-v5"
@@ -3327,7 +3340,7 @@ function Write-TicketboxC07HeartbeatPayload {
             [string]$Authority.Receipt.operation_id
     ) {
         $MaintenanceRemainingCeilingMilliseconds =
-            Get-TicketboxWindowsDeadlineRemainingMilliseconds `
+            Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
                 -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                 -MaximumMilliseconds (
                     $script:TicketboxC07MaintenanceWindowSeconds * 1000

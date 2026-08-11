@@ -206,6 +206,7 @@ Source: "security_primitives\descriptor_diagnostic.ps1"; DestDir: "{app}\install
 Source: "security_primitives\file_security.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
 Source: "windows_c07_superuser_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_deadline_budget.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_c07_deadline_policy.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_heartbeat_authority.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_lifecycle.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_heartbeat_helper.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion

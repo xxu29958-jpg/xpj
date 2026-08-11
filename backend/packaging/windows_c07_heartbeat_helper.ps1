@@ -70,6 +70,7 @@ function Get-TicketboxC07HeartbeatHelperDependencyPaths {
         "windows_installation_safety.ps1",
         "windows_lifecycle_lock.ps1",
         "windows_deadline_budget.ps1",
+        "windows_c07_deadline_policy.ps1",
         "windows_c07_heartbeat_authority.ps1"
     )) {
         $path = Assert-TicketboxC07HeartbeatHelperBootstrapFile (
