@@ -290,7 +290,7 @@ function Resolve-TicketboxC07DatabaseHostAuthority {{
 }}
 function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
 function Invoke-TicketboxC07Sql {{ throw 'unit harness must not invoke psql' }}
-function Get-TicketboxC07DatabaseIdentity {{
+function Get-TicketboxC07DatabaseCatalogObservation {{
     return [pscustomobject]@{{ ClusterSystemIdentifier = '7123456789012345678'; DatabaseOid = 42 }}
 }}
 function Get-TicketboxC07LiveDatabaseAuthority {{

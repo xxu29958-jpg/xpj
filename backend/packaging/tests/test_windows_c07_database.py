@@ -169,7 +169,7 @@ function Renew-TicketboxC07RoleCredentialWindow {{
     $script:observedOperationIds.Add($OperationId)
 }}
 function Assert-TicketboxC07RoleCatalog {{ param($Authority, $Password) }}
-function Get-TicketboxC07DatabaseIdentity {{
+function Get-TicketboxC07DatabaseCatalogObservation {{
     param($Authority, $SuperuserPassword, $Database)
     return [pscustomobject]@{{ State = 'ready' }}
 }}
@@ -676,7 +676,7 @@ function Assert-TicketboxC07ProductionTargetRecoveryBinding {{
     ) {{ return $script:historicalTargetRecovery }}
     return $script:targetRecovery
 }}
-function Get-TicketboxC07DatabaseBootstrapCatalog {{
+function Get-TicketboxC07DatabaseCatalogObservation {{
     param(
         [object]$Authority,
         [Security.SecureString]$SuperuserPassword,
@@ -1660,7 +1660,6 @@ $identity = [pscustomobject]@{{
     State = 'active'
     CreateAttemptId = $attempt
 }}
-$script:liveIdentity = $null
 $script:liveCatalog = $null
 $script:dropCalls = 0
 $script:latchCalls = 0
@@ -1671,15 +1670,7 @@ function Resolve-TicketboxC07DatabaseHostAuthority {{
 function Assert-TicketboxC07LiveHostConnection {{
     param([object]$Authority, [Security.SecureString]$SuperuserPassword)
 }}
-function Get-TicketboxC07DatabaseIdentity {{
-    param(
-        [object]$Authority,
-        [Security.SecureString]$SuperuserPassword,
-        [string]$Database
-    )
-    return $script:liveIdentity
-}}
-function Get-TicketboxC07DatabaseBootstrapCatalog {{
+function Get-TicketboxC07DatabaseCatalogObservation {{
     param(
         [object]$Authority,
         [Security.SecureString]$SuperuserPassword,
@@ -1726,10 +1717,13 @@ function Invoke-TicketboxC07SqlResult {{
     return [pscustomobject]@{{ ExitCode = $script:dropExitCode; Output = '' }}
 }}
 
-$script:liveIdentity = [pscustomobject]@{{
+$script:liveCatalog = [pscustomobject]@{{
     ClusterSystemIdentifier = $identity.ClusterSystemIdentifier
     Database = $identity.Database
     DatabaseOid = [uint32]9999
+    OwnerRoleOid = [uint32]5001
+    AllowsConnections = $true
+    Marker = ''
     Exists = $true
 }}
 $replacedRejected = $false
@@ -1744,12 +1738,6 @@ if (-not $replacedRejected -or $script:dropCalls -ne 0) {{
     throw 'same-name database with a replacement OID was deleted'
 }}
 
-$script:liveIdentity = [pscustomobject]@{{
-    ClusterSystemIdentifier = $identity.ClusterSystemIdentifier
-    Database = $identity.Database
-    DatabaseOid = [uint32]4242
-    Exists = $true
-}}
 $script:liveCatalog = [pscustomobject]@{{
     ClusterSystemIdentifier = $identity.ClusterSystemIdentifier
     Database = $identity.Database
@@ -1818,10 +1806,13 @@ if (
     throw 'failed exact cleanup did not become cleanup_pending'
 }}
 
-$script:liveIdentity = [pscustomobject]@{{
+$script:liveCatalog = [pscustomobject]@{{
     ClusterSystemIdentifier = $identity.ClusterSystemIdentifier
     Database = $identity.Database
     DatabaseOid = [uint32]0
+    OwnerRoleOid = [uint32]0
+    AllowsConnections = $false
+    Marker = ''
     Exists = $false
 }}
 $cleaned = Remove-TicketboxC07RestoreDatabaseExact `
@@ -1925,7 +1916,7 @@ function Get-TicketboxC07RoleOid {{
     if ($Role -ceq 'ticketbox_migrator') {{ return [uint32]5002 }}
     throw 'unexpected role OID lookup'
 }}
-function Get-TicketboxC07DatabaseBootstrapCatalog {{
+function Get-TicketboxC07DatabaseCatalogObservation {{
     param(
         [object]$Authority,
         [Security.SecureString]$SuperuserPassword,
@@ -2196,7 +2187,7 @@ function Get-TicketboxC07RoleOid {{
     if ($Role -ceq 'ticketbox_migrator') {{ return [uint32]5002 }}
     throw 'unexpected role OID lookup'
 }}
-function Get-TicketboxC07DatabaseBootstrapCatalog {{
+function Get-TicketboxC07DatabaseCatalogObservation {{
     param(
         [object]$Authority,
         [Security.SecureString]$SuperuserPassword,

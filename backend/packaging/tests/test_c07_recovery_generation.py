@@ -684,7 +684,7 @@ $script:helperMutations = 0
 $script:cleanupMutations = 0
 $script:crashAfterCreate = $false
 $script:foreignLive = $false
-function Get-TicketboxC07DatabaseIdentity {{
+function Get-TicketboxC07DatabaseCatalogObservation {{
     return [pscustomobject]@{{
         Exists = $script:liveExists
         ClusterSystemIdentifier = '7123456789012345678'
@@ -1017,7 +1017,7 @@ function Get-TicketboxC07RoleOid {{
     if ($Role -ceq 'ticketbox_migrator') {{ return [uint32]5002 }}
     throw "unexpected role lookup: $Role"
 }}
-function Get-TicketboxC07DatabaseBootstrapCatalog {{
+function Get-TicketboxC07DatabaseCatalogObservation {{
     param(
         [object]$Authority,
         [Security.SecureString]$SuperuserPassword,
@@ -1027,22 +1027,6 @@ function Get-TicketboxC07DatabaseBootstrapCatalog {{
         throw 'database catalog name drifted'
     }}
     return $script:catalog
-}}
-function Get-TicketboxC07DatabaseIdentity {{
-    param(
-        [object]$Authority,
-        [Security.SecureString]$SuperuserPassword,
-        [string]$Database
-    )
-    return [pscustomobject]@{{
-        ClusterSystemIdentifier = $script:catalog.ClusterSystemIdentifier
-        Database = $Database
-        DatabaseOid = if ($script:catalog.Exists) {{
-            [uint32]$script:catalog.DatabaseOid
-        }}
-        else {{ [uint32]0 }}
-        Exists = [bool]$script:catalog.Exists
-    }}
 }}
 function Invoke-TicketboxC07Sql {{
     param(
@@ -2024,7 +2008,7 @@ function Assert-TicketboxC07RestoreIdentity {{
         )
         if ($foreign.Count -gt 0) {{ throw 'foreign restore namespace entry' }}
     }}
-function Get-TicketboxC07DatabaseIdentity {{
+function Get-TicketboxC07DatabaseCatalogObservation {{
     return [pscustomobject]@{{
         Exists = $script:restoreDbExists
         ClusterSystemIdentifier = '7123456789012345678'
