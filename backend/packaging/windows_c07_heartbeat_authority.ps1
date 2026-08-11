@@ -183,7 +183,7 @@ function Assert-TicketboxC07FullDependencies {
         -ProfileName "full" `
         -CommandNames @(
         "Assert-TicketboxC07LiveHostConnection",
-        "Get-TicketboxC07DatabaseIdentity",
+        "Get-TicketboxC07DatabaseCatalogObservation",
         "Get-TicketboxExpectedRuntimeProcessIds",
         "Get-TicketboxListeningProcessIds",
         "Get-TicketboxServiceProcessId",

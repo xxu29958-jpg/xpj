@@ -38,6 +38,32 @@ $script:TicketboxC07RecoveryRestoreCreateIntentSchema =
     "ticketbox-c07-recovery-restore-create-intent-v1"
 $script:TicketboxC07RecoveryIntegrityScope = "acl_hash_only"
 
+$postgresqlHostOperations = Join-Path `
+    (Split-Path -Parent $MyInvocation.MyCommand.Path) `
+    "windows_pg_recovery_tools.ps1"
+if (-not (Get-Command `
+    "Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile" `
+    -CommandType Function `
+    -ErrorAction SilentlyContinue)) {
+    if (-not (Test-Path -LiteralPath $postgresqlHostOperations -PathType Leaf)) {
+        throw "缺少通用 PostgreSQL host operations：$postgresqlHostOperations"
+    }
+    . $postgresqlHostOperations
+}
+
+$postgresqlDatabaseCatalog = Join-Path `
+    (Split-Path -Parent $MyInvocation.MyCommand.Path) `
+    "windows_postgresql_database_catalog.ps1"
+if (-not (Get-Command `
+    "Get-TicketboxPostgresqlDatabaseCatalogObservation" `
+    -CommandType Function `
+    -ErrorAction SilentlyContinue)) {
+    if (-not (Test-Path -LiteralPath $postgresqlDatabaseCatalog -PathType Leaf)) {
+        throw "缺少通用 PostgreSQL database-catalog 观察器：$postgresqlDatabaseCatalog"
+    }
+    . $postgresqlDatabaseCatalog
+}
+
 # Runtime DML is intentionally fail-closed. New tables do not inherit runtime
 # privileges: a release that adds a real runtime consumer must review and add
 # the table here. Migration/receipt/authority/audit objects live in separate
@@ -588,7 +614,7 @@ function ConvertFrom-TicketboxC07SingleRow {
     return $fields
 }
 
-function Get-TicketboxC07DatabaseIdentity {
+function Get-TicketboxC07DatabaseCatalogObservation {
     param(
         [Parameter(Mandatory = $true)][object]$Authority,
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
@@ -596,37 +622,46 @@ function Get-TicketboxC07DatabaseIdentity {
     )
 
     Assert-TicketboxC07SqlTarget -Database $Database -Role "postgres"
-    $databaseLiteral = Escape-SqlLiteral $Database
-    $output = Invoke-TicketboxC07Sql `
+    $timeoutMilliseconds = 30000
+    if (
+        $null -ne (
+            Get-Command `
+                -Name "Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds" `
+                -CommandType Function `
+                -ErrorAction SilentlyContinue
+        )
+    ) {
+        $timeoutMilliseconds =
+            Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds `
+                -MaximumMilliseconds $timeoutMilliseconds `
+                -Label "C07 database catalog observation"
+    }
+    $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
         -Authority $Authority `
         -Database "postgres" `
-        -Role "postgres" `
-        -Password $SuperuserPassword `
-        -Label "C07 database identity inspect" `
-        -Sql @"
-SELECT c.system_identifier::text || E'\t' || COALESCE(d.oid::text, '')
-FROM pg_control_system() AS c
-LEFT JOIN pg_database AS d ON d.datname = '$databaseLiteral';
-"@
-    $fields = ConvertFrom-TicketboxC07SingleRow `
-        -Output $output `
-        -FieldCount 2 `
-        -Label "C07 database identity inspect"
-    if ($fields[0] -cnotmatch '^[1-9][0-9]{0,19}$') {
-        throw "C07 cluster system identifier 无效。"
-    }
-    $databaseOid = [uint32]0
-    if (
-        $fields[1].Length -gt 0 -and
-        -not [uint32]::TryParse($fields[1], [ref]$databaseOid)
-    ) {
-        throw "C07 database OID 无效。"
-    }
-    return [pscustomobject]@{
-        ClusterSystemIdentifier = [string]$fields[0]
-        Database = $Database
-        DatabaseOid = $databaseOid
-        Exists = $databaseOid -gt 0
+        -Role "postgres"
+    return Invoke-TicketboxC07WithPlainSecret `
+        -Secret $SuperuserPassword `
+        -Action {
+            param([string]$PlainPassword)
+
+            $observation =
+                Get-TicketboxPostgresqlDatabaseCatalogObservation `
+                    -PsqlPath $Authority.PsqlPath `
+                    -DatabaseUrl $databaseUrl `
+                    -Password $PlainPassword `
+                    -TargetDatabase $Database `
+                    -TimeoutMilliseconds $timeoutMilliseconds
+            return [pscustomobject][ordered]@{
+                ClusterSystemIdentifier =
+                    [string]$observation.ClusterSystemIdentifier
+                Database = [string]$observation.Database
+                DatabaseOid = [uint32]$observation.DatabaseOid
+                OwnerRoleOid = [uint32]$observation.OwnerRoleOid
+                AllowsConnections = [bool]$observation.AllowsConnections
+                Marker = [string]$observation.Comment
+                Exists = [bool]$observation.Exists
+            }
     }
 }
 
@@ -746,67 +781,6 @@ function Get-TicketboxC07RoleOid {
         throw "C07 role $Role OID 无效。"
     }
     return $oid
-}
-
-function Get-TicketboxC07DatabaseBootstrapCatalog {
-    param(
-        [Parameter(Mandatory = $true)][object]$Authority,
-        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
-        [Parameter(Mandatory = $true)][string]$Database
-    )
-
-    Assert-TicketboxC07SqlTarget -Database $Database -Role "postgres"
-    $databaseLiteral = ConvertTo-TicketboxC07SqlLiteral $Database
-    $output = Invoke-TicketboxC07Sql `
-        -Authority $Authority `
-        -Database "postgres" `
-        -Role "postgres" `
-        -Password $SuperuserPassword `
-        -Label "C07 database bootstrap catalog inspect" `
-        -Sql @"
-SELECT
-    control.system_identifier::text || E'\t' ||
-    COALESCE(database.oid::text, '') || E'\t' ||
-    COALESCE(database.datdba::text, '') || E'\t' ||
-    COALESCE(database.datallowconn::text, '') || E'\t' ||
-    COALESCE(shobj_description(database.oid, 'pg_database'), '')
-FROM pg_control_system() AS control
-LEFT JOIN pg_database AS database ON database.datname = $databaseLiteral;
-"@
-    $fields = ConvertFrom-TicketboxC07SingleRow `
-        -Output $output `
-        -FieldCount 5 `
-        -Label "C07 database bootstrap catalog inspect"
-    if ($fields[0] -cnotmatch '^[1-9][0-9]{0,19}$') {
-        throw "C07 cluster system identifier 无效。"
-    }
-    if ($fields[1].Length -eq 0) {
-        return [pscustomobject]@{
-            ClusterSystemIdentifier = $fields[0]
-            Database = $Database
-            Exists = $false
-        }
-    }
-    $databaseOid = [uint32]0
-    $ownerOid = [uint32]0
-    if (
-        -not [uint32]::TryParse($fields[1], [ref]$databaseOid) -or
-        $databaseOid -lt 1 -or
-        -not [uint32]::TryParse($fields[2], [ref]$ownerOid) -or
-        $ownerOid -lt 1 -or
-        $fields[3] -cnotin @("true", "false")
-    ) {
-        throw "C07 database bootstrap catalog 的 OID/allow_connections 无效。"
-    }
-    return [pscustomobject]@{
-        ClusterSystemIdentifier = $fields[0]
-        Database = $Database
-        DatabaseOid = $databaseOid
-        OwnerRoleOid = $ownerOid
-        AllowsConnections = $fields[3] -ceq "true"
-        Marker = [string]$fields[4]
-        Exists = $true
-    }
 }
 
 function New-TicketboxC07DatabaseMarker {
@@ -3915,7 +3889,7 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
     else {
         $recovery
     }
-    $catalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $catalog = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -4191,7 +4165,7 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
                 -MigratorValidUntilUtc $MigratorValidUntilUtc `
                 -OperationId $operationText | Out-Null
         }
-        $catalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+        $catalog = Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
             -Database $script:TicketboxC07DatabaseName
@@ -4337,7 +4311,7 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
                     -FailureCode "money_facts_mismatch")
             }
         }
-        $catalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+        $catalog = Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
             -Database $script:TicketboxC07DatabaseName
@@ -4531,7 +4505,7 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
         $runtimeAclSha256 = Get-TicketboxC07RuntimeAclSha256 `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword
-        $catalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+        $catalog = Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
             -Database $script:TicketboxC07DatabaseName
@@ -4709,7 +4683,7 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
         }
     }
     if ($publishReady) {
-        $catalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+        $catalog = Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
             -Database $script:TicketboxC07DatabaseName
@@ -4778,7 +4752,7 @@ function Assert-TicketboxC07FreshPreflight {
         -OperationId $OperationId `
         -Mode "fresh_install" `
         -AllowAbsent
-    $database = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $database = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $Authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -4832,7 +4806,7 @@ function Initialize-TicketboxC07FreshDatabaseAuthority {
             -OperationId $operation.ToString("D") `
             -Mode "fresh_install"
         Assert-TicketboxC07RoleCatalog $authority $SuperuserPassword
-        return Get-TicketboxC07DatabaseIdentity `
+        return Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
             -Database $script:TicketboxC07DatabaseName
@@ -4858,7 +4832,7 @@ function Initialize-TicketboxC07FreshDatabaseAuthority {
         -SuperuserPassword $SuperuserPassword `
         -OperationId $operation.ToString("D") `
         -Mode "fresh_install"
-    $database = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $database = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -4874,7 +4848,7 @@ CREATE DATABASE "$script:TicketboxC07DatabaseName"
     OWNER "$script:TicketboxC07OwnerRole" TEMPLATE template0 ENCODING 'UTF8'
     ALLOW_CONNECTIONS false;
 "@ | Out-Null
-        $database = Get-TicketboxC07DatabaseBootstrapCatalog `
+        $database = Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
             -Database $script:TicketboxC07DatabaseName
@@ -4926,7 +4900,7 @@ ALTER DATABASE "$script:TicketboxC07DatabaseName" ALLOW_CONNECTIONS true;
 COMMIT;
 "@ | Out-Null
     }
-    $readyCatalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $readyCatalog = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -4954,7 +4928,7 @@ COMMIT;
         -Database $script:TicketboxC07DatabaseName `
         -Marker $readyMarker `
         -Label "C07 fresh authority READY publication"
-    $final = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $final = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -4966,7 +4940,7 @@ COMMIT;
     if ($finalPhase -cne "authority_ready" -or -not $final.AllowsConnections) {
         throw "C07 fresh database authority 未到达可复读 READY phase。"
     }
-    return Get-TicketboxC07DatabaseIdentity `
+    return Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -5017,7 +4991,7 @@ WHERE datname <> '$script:TicketboxC07DatabaseName'
         -OperationId $operation.ToString("D") `
         -Mode "legacy_adoption" `
         -AllowAbsent
-    $database = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $database = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -5051,7 +5025,7 @@ WHERE datname <> '$script:TicketboxC07DatabaseName'
                 -Authority $authority `
                 -SuperuserPassword $SuperuserPassword `
                 -LegacyRoleOid $legacyOid
-            return Get-TicketboxC07DatabaseIdentity `
+            return Get-TicketboxC07DatabaseCatalogObservation `
                 -Authority $authority `
                 -SuperuserPassword $SuperuserPassword `
                 -Database $script:TicketboxC07DatabaseName
@@ -5079,7 +5053,7 @@ WHERE datname <> '$script:TicketboxC07DatabaseName'
         -SuperuserPassword $SuperuserPassword `
         -OperationId $operation.ToString("D") `
         -Mode "legacy_adoption"
-    $database = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $database = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -5112,7 +5086,7 @@ WHERE datname <> '$script:TicketboxC07DatabaseName'
         $phase = "roles_created"
     }
     if ($phase -ceq "roles_created") {
-        $reassignedCatalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+        $reassignedCatalog = Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
             -Database $script:TicketboxC07DatabaseName
@@ -5167,7 +5141,7 @@ COMMIT;
 "@ | Out-Null
         $phase = "objects_reassigned"
     }
-    $readyCatalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $readyCatalog = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -5231,7 +5205,7 @@ END
         -Database $script:TicketboxC07DatabaseName `
         -Marker $readyMarker `
         -Label "C07 legacy authority READY publication"
-    $final = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $final = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -5244,7 +5218,7 @@ END
     if ($finalPhase -cne "authority_ready" -or -not $final.AllowsConnections) {
         throw "C07 legacy database authority 未到达可复读 READY phase。"
     }
-    return Get-TicketboxC07DatabaseIdentity `
+    return Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07DatabaseName
@@ -6142,7 +6116,7 @@ function New-TicketboxC07RestoreDatabase {
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -ExpectedDatabase $database | Out-Null
-    $catalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $catalog = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $database
@@ -6180,7 +6154,7 @@ function New-TicketboxC07RestoreDatabase {
         if ($null -ne $AfterCreateCrashProbe) {
             & $AfterCreateCrashProbe $database $intent.AttemptId
         }
-        $catalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+        $catalog = Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
             -Database $database
@@ -6253,7 +6227,7 @@ function New-TicketboxC07RestoreDatabase {
                 -ActiveMarker $activeMarker) | Out-Null
         $phase = "active"
     }
-    $final = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $final = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database $database
@@ -6461,7 +6435,7 @@ function Remove-TicketboxC07RestoreDatabaseExact {
     }
     $authority = Resolve-TicketboxC07DatabaseHostAuthority
     Assert-TicketboxC07LiveHostConnection $authority $SuperuserPassword
-    $live = Get-TicketboxC07DatabaseIdentity `
+    $live = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database ([string]$Identity.Database)
@@ -6485,7 +6459,7 @@ function Remove-TicketboxC07RestoreDatabaseExact {
     if ([uint32]$live.DatabaseOid -ne [uint32]$Identity.DatabaseOid) {
         throw "C07 restore cleanup database OID 已被替换；零 mutation 拒绝。"
     }
-    $catalog = Get-TicketboxC07DatabaseBootstrapCatalog `
+    $catalog = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database ([string]$Identity.Database)
@@ -6539,7 +6513,7 @@ COMMIT;
             CreateAttemptId = $attempt.ToString("D")
         }
     }
-    $after = Get-TicketboxC07DatabaseIdentity `
+    $after = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -Database ([string]$Identity.Database)

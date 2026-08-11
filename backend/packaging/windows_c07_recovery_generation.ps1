@@ -79,7 +79,7 @@ function Assert-TicketboxC07RecoveryDependencies {
         "ConvertTo-TicketboxCanonicalPath",
         "ConvertTo-TicketboxNativeCommandLineArgument",
         "Copy-TicketboxVerifiedArtifact",
-        "Get-TicketboxC07DatabaseIdentity",
+        "Get-TicketboxC07DatabaseCatalogObservation",
         "Get-TicketboxC07RestoreDatabaseName",
         "Get-TicketboxC07RestoreNamespaceDatabases",
         "Get-TicketboxPathEntryKindNoFollow",
@@ -779,7 +779,7 @@ function Get-TicketboxC07RecoveryContext {
     Assert-TicketboxC07LiveHostConnection `
         $databaseAuthority `
         $SuperuserPassword
-    $databaseIdentity = Get-TicketboxC07DatabaseIdentity `
+    $databaseIdentity = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $databaseAuthority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07RecoveryDatabaseName
@@ -4706,7 +4706,7 @@ function New-TicketboxC07RecoveryRestoreDatabaseBound {
         -Authority $Context.DatabaseAuthority `
         -SuperuserPassword $SuperuserPassword `
         -ExpectedDatabase $database | Out-Null
-    $liveAfterIntent = Get-TicketboxC07DatabaseIdentity `
+    $liveAfterIntent = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $Context.DatabaseAuthority `
         -SuperuserPassword $SuperuserPassword `
         -Database $database
@@ -4729,7 +4729,7 @@ function New-TicketboxC07RecoveryRestoreDatabaseBound {
         -RevisionManifestSha256 (
             [string]$Context.Authority.Descriptor.Payload.revision_manifest_sha256
         )
-    $liveAfterHelper = Get-TicketboxC07DatabaseIdentity `
+    $liveAfterHelper = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $Context.DatabaseAuthority `
         -SuperuserPassword $SuperuserPassword `
         -Database $database
@@ -5058,7 +5058,7 @@ function Repair-TicketboxC07RecoveryRestoreIdentityArtifact {
         -RevisionManifestSha256 (
             [string]$Context.Authority.Descriptor.Payload.revision_manifest_sha256
         )
-    $liveAfterRepair = Get-TicketboxC07DatabaseIdentity `
+    $liveAfterRepair = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $Context.DatabaseAuthority `
         -SuperuserPassword $SuperuserPassword `
         -Database $database
@@ -5140,7 +5140,7 @@ function Clear-TicketboxC07RecoveryRestoreDatabase {
         -OperationId $operationId `
         -CreateAttemptId ([string]$intent.AttemptId)
     if ($null -eq $protected) {
-        $live = Get-TicketboxC07DatabaseIdentity `
+        $live = Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $Context.DatabaseAuthority `
             -SuperuserPassword $SuperuserPassword `
             -Database $database
@@ -5812,7 +5812,7 @@ function Read-TicketboxC07HistoricalProductionRecoveryGeneration {
     Assert-TicketboxC07LiveHostConnection `
         $databaseAuthority `
         $SuperuserPassword
-    $databaseIdentity = Get-TicketboxC07DatabaseIdentity `
+    $databaseIdentity = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $databaseAuthority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07RecoveryDatabaseName
@@ -6000,7 +6000,7 @@ function Read-TicketboxC07HistoricalProductionTargetRecoveryGeneration {
     Assert-TicketboxC07LiveHostConnection `
         $databaseAuthority `
         $SuperuserPassword
-    $databaseIdentity = Get-TicketboxC07DatabaseIdentity `
+    $databaseIdentity = Get-TicketboxC07DatabaseCatalogObservation `
         -Authority $databaseAuthority `
         -SuperuserPassword $SuperuserPassword `
         -Database $script:TicketboxC07RecoveryDatabaseName

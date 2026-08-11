@@ -46,6 +46,7 @@ def test_host_psql_contract_is_generic_quiet_and_c07_only_orchestrates() -> None
 
     assert "function Invoke-TicketboxPostgresqlHostNative" in host
     assert "function Invoke-TicketboxPostgresqlHostPsql" in host
+    assert "function Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile" in host
     assert "function ConvertFrom-TicketboxPostgresqlHostEvidenceRow" in host
     assert "function Invoke-TicketboxPostgresqlHostCredentialRotation" in host
     assert '"--quiet",' in host
@@ -138,6 +139,76 @@ foreach ($databaseUrl in @(
     if (-not $rejected) {{ throw 'credential-bearing URL was not rejected' }}
 }}
 if ($script:nativeInvoked) {{ throw 'credential-bearing URL reached native launch' }}
+'OK'
+"""
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert result.stdout.strip().splitlines()[-1] == "OK"
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_host_psql_protected_passfile_composition_is_exact(engine: str) -> None:
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Invoke-TicketboxBoundedNativeProcess {{ throw 'unused' }}
+. {_ps_literal(HOST_OPERATIONS)}
+$script:observed = $null
+function Invoke-TicketboxWithPgPassFile {{
+    param($DatabaseUrl, $Password, $Action)
+    if ($DatabaseUrl -cne 'postgresql://runtime@127.0.0.1:55432/ticketbox' -or
+        $Password -cne 'not-a-real-secret') {{
+        throw 'protected passfile inputs drifted'
+    }}
+    $previous = [string]$env:PGPASSFILE
+    try {{
+        $env:PGPASSFILE = 'C:\\protected\\ticketbox.pgpass'
+        return & $Action 'postgresql://runtime@127.0.0.1:55432/ticketbox'
+    }}
+    finally {{ $env:PGPASSFILE = $previous }}
+}}
+function Invoke-TicketboxPostgresqlHostPsql {{
+    param(
+        $PsqlPath,
+        $DatabaseUrl,
+        $Sql,
+        $Label,
+        $PgPassFile,
+        $TimeoutMilliseconds
+    )
+    $script:observed = [pscustomobject]@{{
+        PsqlPath = $PsqlPath
+        DatabaseUrl = $DatabaseUrl
+        Sql = $Sql
+        Label = $Label
+        PgPassFile = $PgPassFile
+        TimeoutMilliseconds = $TimeoutMilliseconds
+    }}
+    return [pscustomobject]@{{
+        ExitCode = 3
+        StandardOutput = "one`ttwo`n"
+        StandardError = 'suppressed'
+    }}
+}}
+$result = Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile `
+    -PsqlPath 'C:\\pgsql\\psql.exe' `
+    -DatabaseUrl 'postgresql://runtime@127.0.0.1:55432/ticketbox' `
+    -Password 'not-a-real-secret' `
+    -Sql 'SELECT 1;' `
+    -Label 'generic protected psql' `
+    -TimeoutMilliseconds 43210
+if (
+    $result.ExitCode -ne 3 -or
+    $result.StandardOutput -cne "one`ttwo`n" -or
+    $script:observed.PsqlPath -cne 'C:\\pgsql\\psql.exe' -or
+    $script:observed.DatabaseUrl -cne
+        'postgresql://runtime@127.0.0.1:55432/ticketbox' -or
+    $script:observed.Sql -cne 'SELECT 1;' -or
+    $script:observed.Label -cne 'generic protected psql' -or
+    $script:observed.PgPassFile -cne 'C:\\protected\\ticketbox.pgpass' -or
+    $script:observed.TimeoutMilliseconds -ne 43210
+) {{
+    throw 'protected passfile transport lost exact invocation context'
+}}
 'OK'
 """
     result = _run_ps(engine, script)

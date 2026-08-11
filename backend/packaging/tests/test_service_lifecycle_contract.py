@@ -1639,7 +1639,7 @@ def test_bounded_native_process_uses_suspended_job_assignment_before_resume() ->
     assert "function Write-TicketboxC07DurableHeartbeat" not in c07_lifecycle
     for forbidden_definition in (
         "Assert-TicketboxC07LiveHostConnection",
-        "Get-TicketboxC07DatabaseIdentity",
+        "Get-TicketboxC07DatabaseCatalogObservation",
         "Get-TicketboxExpectedRuntimeProcessIds",
         "Get-TicketboxListeningProcessIds",
         "Get-TicketboxServiceProcessId",

@@ -1412,8 +1412,8 @@ def test_migrator_window_is_renewed_before_every_resumed_migration() -> None:
         "$migrationEvidence = & $MigrationAction"
     )
     assert fresh.index("Renew-TicketboxC07RoleCredentialWindow") < fresh.index(
-        "return Get-TicketboxC07DatabaseIdentity"
+        "return Get-TicketboxC07DatabaseCatalogObservation"
     )
     assert legacy.index("Renew-TicketboxC07RoleCredentialWindow") < legacy.index(
-        "return Get-TicketboxC07DatabaseIdentity"
+        "return Get-TicketboxC07DatabaseCatalogObservation"
     )

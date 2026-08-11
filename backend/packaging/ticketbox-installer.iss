@@ -189,6 +189,11 @@ Source: "windows_lifecycle_lock.ps1"; DestDir: "{app}\installer"; Flags: ignorev
 Source: "hold_installer_lifecycle_lock.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_safety.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_pg_recovery_tools.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_postgresql_database_catalog.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "postgresql_database_catalog\primitives.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
+Source: "postgresql_database_catalog\query.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
+Source: "postgresql_database_catalog\codec.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
+Source: "postgresql_database_catalog\observation.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
 Source: "windows_release_config.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_bundled_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
