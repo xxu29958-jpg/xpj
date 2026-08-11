@@ -392,7 +392,7 @@ function Read-TicketboxPgRecoveryStrictUtf8Text {
     $encoding = New-Object System.Text.UTF8Encoding($false, $true)
     try { $text = $encoding.GetString($bytes) }
     catch { throw "PostgreSQL 恢复工具状态文件不是严格 UTF-8：$fullPath" }
-    if (-not (Test-TicketboxByteArrayEquals -Left $bytes -Right $encoding.GetBytes($text))) {
+    if (-not (Test-TicketboxWindowsByteArrayEquals -Left $bytes -Right $encoding.GetBytes($text))) {
         throw "PostgreSQL 恢复工具状态文件不能无损 UTF-8 往返：$fullPath"
     }
     return $text

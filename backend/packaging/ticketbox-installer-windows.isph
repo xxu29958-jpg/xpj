@@ -28,6 +28,18 @@
     'c07-installer-lifecycle-exit-veto-v2.txt';
   C07LifecycleExitVetoMaximumBytes = 1024;
   LifecycleSafetyScriptSha256 = '{#LifecycleSafetyScriptSha256}';
+  WindowsSecurityPrimitivesScriptSha256 = '{#WindowsSecurityPrimitivesScriptSha256}';
+  WindowsSecurityByteArrayScriptSha256 = '{#WindowsSecurityByteArrayScriptSha256}';
+  WindowsSecurityTokenPrivilegeNativeScriptSha256 =
+    '{#WindowsSecurityTokenPrivilegeNativeScriptSha256}';
+  WindowsSecurityTokenPrivilegeScriptSha256 =
+    '{#WindowsSecurityTokenPrivilegeScriptSha256}';
+  WindowsSecurityDescriptorComparisonScriptSha256 =
+    '{#WindowsSecurityDescriptorComparisonScriptSha256}';
+  WindowsSecurityDescriptorDiagnosticScriptSha256 =
+    '{#WindowsSecurityDescriptorDiagnosticScriptSha256}';
+  WindowsSecurityFileSecurityScriptSha256 =
+    '{#WindowsSecurityFileSecurityScriptSha256}';
   LifecycleLockScriptSha256 = '{#LifecycleLockScriptSha256}';
   LifecycleHolderScriptSha256 = '{#LifecycleHolderScriptSha256}';
   DataRootGuardScriptSha256 = '{#DataRootGuardScriptSha256}';
@@ -540,6 +552,14 @@ begin
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'vc_redist.x64.exe');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_lifecycle_lock.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_installation_safety.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_security_primitives.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'security_primitives\byte_array.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'security_primitives\token_privilege_native.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'security_primitives\token_privilege.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'security_primitives\descriptor_comparison.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'security_primitives\descriptor_diagnostic.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'security_primitives\file_security.ps1');
+  RemoveDir(AddBackslash(LifecycleLockBootstrapDirectory) + 'security_primitives');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'hold_data_root_mutation_guard.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'prepare_bundled_upgrade.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_service_contract.ps1');
@@ -565,48 +585,86 @@ begin
   LifecycleLockHolderScriptPath := '';
 end;
 
-function StageLifecycleLockBootstrapFile(
-  FileName: String;
+function StageLifecycleLockBootstrapFileAs(
+  EmbeddedFileName: String;
+  ProtectedFileName: String;
   ExpectedSha256: String
 ): Boolean;
 var
   ExtractedPath: String;
   ProtectedPath: String;
+  ProtectedDirectory: String;
   ActualSha256: String;
 begin
   Result := False;
   try
-    ExtractTemporaryFile(FileName);
+    ExtractTemporaryFile(EmbeddedFileName);
   except
     LifecycleLockError :=
-      '无法从安装器内嵌 payload 提取 lifecycle bootstrap 文件 ' + FileName +
+      '无法从安装器内嵌 payload 提取 lifecycle bootstrap 文件 ' +
+      EmbeddedFileName +
       '：' + GetExceptionMessage();
     exit;
   end;
-  ExtractedPath := ExpandConstant('{tmp}\') + FileName;
-  ProtectedPath := AddBackslash(LifecycleLockBootstrapDirectory) + FileName;
+  ExtractedPath := ExpandConstant('{tmp}\') + EmbeddedFileName;
+  ProtectedPath :=
+    AddBackslash(LifecycleLockBootstrapDirectory) + ProtectedFileName;
+  ProtectedDirectory := ExtractFileDir(ProtectedPath);
+  if CompareText(ProtectedDirectory, LifecycleLockBootstrapDirectory) <> 0 then
+  begin
+    if not ForceDirectories(ProtectedDirectory) then
+    begin
+      LifecycleLockError :=
+        '无法创建 lifecycle bootstrap 组件目录：' + ProtectedFileName;
+      exit;
+    end;
+    if not HardenLifecycleLockPath(ProtectedDirectory, True) then
+    begin
+      LifecycleLockError :=
+        '无法收紧 lifecycle bootstrap 组件目录 ACL：' + ProtectedFileName;
+      exit;
+    end;
+  end;
   if not CopyFile(ExtractedPath, ProtectedPath, True) then
   begin
-    LifecycleLockError := '无法把 lifecycle bootstrap 文件复制到受保护 staging：' + FileName;
+    LifecycleLockError :=
+      '无法把 lifecycle bootstrap 文件复制到受保护 staging：' +
+      ProtectedFileName;
     exit;
   end;
   if not HardenLifecycleLockPath(ProtectedPath, False) then
   begin
-    LifecycleLockError := '无法收紧 lifecycle bootstrap 文件 ACL：' + FileName;
+    LifecycleLockError :=
+      '无法收紧 lifecycle bootstrap 文件 ACL：' + ProtectedFileName;
     exit;
   end;
   try
     ActualSha256 := Lowercase(GetSHA256OfFile(ProtectedPath));
   except
-    LifecycleLockError := '无法计算受保护 lifecycle bootstrap 文件 SHA-256：' + FileName;
+    LifecycleLockError :=
+      '无法计算受保护 lifecycle bootstrap 文件 SHA-256：' +
+      ProtectedFileName;
     exit;
   end;
   if CompareText(ActualSha256, ExpectedSha256) <> 0 then
   begin
-    LifecycleLockError := '受保护 lifecycle bootstrap 文件与构建时 SHA-256 不匹配：' + FileName;
+    LifecycleLockError :=
+      '受保护 lifecycle bootstrap 文件与构建时 SHA-256 不匹配：' +
+      ProtectedFileName;
     exit;
   end;
   Result := True;
+end;
+
+function StageLifecycleLockBootstrapFile(
+  FileName: String;
+  ExpectedSha256: String
+): Boolean;
+begin
+  Result := StageLifecycleLockBootstrapFileAs(
+    FileName,
+    FileName,
+    ExpectedSha256);
 end;
 
 function ValidateLifecycleLockBootstrapFile(
@@ -640,6 +698,27 @@ begin
   Result :=
     ValidateLifecycleLockBootstrapFile(
       'windows_installation_safety.ps1', LifecycleSafetyScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_security_primitives.ps1',
+      WindowsSecurityPrimitivesScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'security_primitives\byte_array.ps1',
+      WindowsSecurityByteArrayScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'security_primitives\token_privilege_native.ps1',
+      WindowsSecurityTokenPrivilegeNativeScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'security_primitives\token_privilege.ps1',
+      WindowsSecurityTokenPrivilegeScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'security_primitives\descriptor_comparison.ps1',
+      WindowsSecurityDescriptorComparisonScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'security_primitives\descriptor_diagnostic.ps1',
+      WindowsSecurityDescriptorDiagnosticScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'security_primitives\file_security.ps1',
+      WindowsSecurityFileSecurityScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
       'windows_lifecycle_lock.ps1', LifecycleLockScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
@@ -731,8 +810,35 @@ begin
     'windows_installation_safety.ps1',
     LifecycleSafetyScriptSha256) or
      not StageLifecycleLockBootstrapFile(
-    'windows_lifecycle_lock.ps1',
-    LifecycleLockScriptSha256) or
+       'windows_security_primitives.ps1',
+       WindowsSecurityPrimitivesScriptSha256) or
+     not StageLifecycleLockBootstrapFileAs(
+       'ticketbox-security-byte-array.ps1',
+       'security_primitives\byte_array.ps1',
+       WindowsSecurityByteArrayScriptSha256) or
+     not StageLifecycleLockBootstrapFileAs(
+       'ticketbox-security-token-privilege-native.ps1',
+       'security_primitives\token_privilege_native.ps1',
+       WindowsSecurityTokenPrivilegeNativeScriptSha256) or
+     not StageLifecycleLockBootstrapFileAs(
+       'ticketbox-security-token-privilege.ps1',
+       'security_primitives\token_privilege.ps1',
+       WindowsSecurityTokenPrivilegeScriptSha256) or
+     not StageLifecycleLockBootstrapFileAs(
+       'ticketbox-security-descriptor-comparison.ps1',
+       'security_primitives\descriptor_comparison.ps1',
+       WindowsSecurityDescriptorComparisonScriptSha256) or
+     not StageLifecycleLockBootstrapFileAs(
+       'ticketbox-security-descriptor-diagnostic.ps1',
+       'security_primitives\descriptor_diagnostic.ps1',
+       WindowsSecurityDescriptorDiagnosticScriptSha256) or
+     not StageLifecycleLockBootstrapFileAs(
+       'ticketbox-security-file-security.ps1',
+       'security_primitives\file_security.ps1',
+       WindowsSecurityFileSecurityScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+       'windows_lifecycle_lock.ps1',
+       LifecycleLockScriptSha256) or
      not StageLifecycleLockBootstrapFile(
     'hold_installer_lifecycle_lock.ps1',
     LifecycleHolderScriptSha256) or

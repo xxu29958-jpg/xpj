@@ -1194,7 +1194,7 @@ $second = Write-TicketboxDeleteDataIntent `
     -CompletedReceipt $receipt `
     -InstallDir $installDir `
     -DataRoot $dataRoot
-if (-not (Test-TicketboxByteArrayEquals $firstBytes ([System.IO.File]::ReadAllBytes($intentPath)))) {{
+if (-not (Test-TicketboxWindowsByteArrayEquals $firstBytes ([System.IO.File]::ReadAllBytes($intentPath)))) {{
     throw 'delete-data intent was replaced instead of reused for the same receipt'
 }}
 Remove-Item -LiteralPath $receiptPath -Force
@@ -2863,7 +2863,7 @@ $marker = Get-Content -LiteralPath $markerPath -Encoding UTF8 -Raw | ConvertFrom
 if ($marker.reason -cne 'first reason' -or
     $marker.schema -cne 'ticketbox-installer-recovery-required-v1' -or
     -not $marker.files_may_have_been_replaced -or
-    -not (Test-TicketboxByteArrayEquals $originalMarkerBytes ([System.IO.File]::ReadAllBytes($markerPath)))) {{
+    -not (Test-TicketboxWindowsByteArrayEquals $originalMarkerBytes ([System.IO.File]::ReadAllBytes($markerPath)))) {{
     throw 'recovery marker was replaced instead of preserving first-failure authority'
 }}
 if (@(Get-ChildItem -LiteralPath (Split-Path -Parent $markerPath) -Filter '.ticketbox-protected-*.tmp').Count -ne 0) {{
@@ -3006,7 +3006,7 @@ function Convert-TestLegacyReceipt(
     catch {{ $implicitLegacyReadRejected = $true }}
     if (
         -not $implicitLegacyReadRejected -or
-        -not (Test-TicketboxByteArrayEquals `
+        -not (Test-TicketboxWindowsByteArrayEquals `
             $legacyBytes `
             ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
     ) {{
@@ -3025,7 +3025,7 @@ function Convert-TestLegacyReceipt(
     if (
         [string]$compatibleReceipt.schema -cne 'ticketbox-windows-lifecycle-receipt-v7' -or
         [string]$compatibleReceipt.preparation_stage -cne $ExpectedStage -or
-        -not (Test-TicketboxByteArrayEquals `
+        -not (Test-TicketboxWindowsByteArrayEquals `
             $legacyBytes `
             ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
     ) {{
@@ -3158,7 +3158,7 @@ try {{
 catch {{ $malformedLegacyRejected = $true }}
 if (
     -not $malformedLegacyRejected -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $malformedLegacyBytes `
         ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
 ) {{
@@ -3192,7 +3192,7 @@ try {{
 catch {{ $missingDataRootAuthorityRejected = $true }}
 if (
     -not $missingDataRootAuthorityRejected -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $receiptBytesBeforeAuthorityFailure `
         ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
 ) {{
@@ -3228,7 +3228,7 @@ try {{
 catch {{ $wrongVolumeReceiptRejected = $true }}
 if (
     -not $wrongVolumeReceiptRejected -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $forgedReceiptBytes `
         ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
 ) {{
@@ -3449,7 +3449,7 @@ $legacyCompletedReceipt = Read-TicketboxCompletedLifecycleReceipt `
     -ExpectedBackendServiceName ([string]$config.backend_service_name)
 if (-not $legacyCompletedReceipt.install_completed -or
     $legacyCompletedReceipt.preparation_stage -cne 'install_completed' -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $legacyCompletedBytes `
         ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
     throw 'read-only legacy completed receipt adoption mutated or lost authority'
@@ -3487,7 +3487,7 @@ try {{
 }}
 catch {{ $adoptedDowngradeRejected = $true }}
 if (-not $adoptedDowngradeRejected -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $adoptedCompletedBytes `
         ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
     throw 'legacy adoption failed to establish a monotonic target version floor'
@@ -3671,7 +3671,7 @@ try {{
 }}
 catch {{ $olderTargetRejected = $true }}
 if (-not $olderTargetRejected -or
-    -not (Test-TicketboxByteArrayEquals $floorBytes ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
+    -not (Test-TicketboxWindowsByteArrayEquals $floorBytes ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
     throw 'older installer target was accepted or mutated the receipt before rejection'
 }}
 $newerReceipt = Read-TicketboxLifecycleReceipt `
@@ -3752,7 +3752,7 @@ try {{
 }}
 catch {{ $malformedFloorRejected = $true }}
 if (-not $malformedFloorRejected -or
-    -not (Test-TicketboxByteArrayEquals $malformedBytes ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
+    -not (Test-TicketboxWindowsByteArrayEquals $malformedBytes ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
     throw 'malformed target version floor was accepted or mutated before rejection'
 }}
 """,
