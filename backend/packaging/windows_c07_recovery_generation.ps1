@@ -19,9 +19,16 @@
   for accidental-corruption detection.  They are explicitly acl_hash_only and
   do not claim resistance to a malicious SYSTEM/Administrators writer.
 
-  Dot-source the installation-safety, lifecycle-lock, C07 lifecycle,
-  service/database-safety, and C07 database libraries before invoking this file.
+  Dot-source the installation-safety, atomic-artifact, lifecycle-lock, C07
+  lifecycle, service/database-safety, and C07 database libraries before
+  invoking this file.
 #>
+
+$atomicArtifactScript = Join-Path $PSScriptRoot "windows_atomic_artifacts.ps1"
+if (-not (Test-Path -LiteralPath $atomicArtifactScript -PathType Leaf)) {
+    throw "缺少 Windows atomic-artifact 适配脚本：$atomicArtifactScript"
+}
+. $atomicArtifactScript
 
 $script:TicketboxC07RecoveryGenerationSchema =
     "ticketbox-c07-recovery-generation-v3"
@@ -71,10 +78,12 @@ function Assert-TicketboxC07RecoveryDependencies {
         "Assert-TicketboxProtectedDirectoryAcl",
         "ConvertTo-TicketboxCanonicalPath",
         "ConvertTo-TicketboxNativeCommandLineArgument",
+        "Copy-TicketboxVerifiedArtifact",
         "Get-TicketboxC07DatabaseIdentity",
         "Get-TicketboxC07RestoreDatabaseName",
         "Get-TicketboxC07RestoreNamespaceDatabases",
         "Get-TicketboxPathEntryKindNoFollow",
+        "Get-TicketboxVolumeIdentityForPath",
         "Initialize-TicketboxExactTreeDeleteNativeMethods",
         "Initialize-TicketboxProtectedDirectoryAtomically",
         "Invoke-TicketboxBoundedNativeProcess",
@@ -88,11 +97,13 @@ function Assert-TicketboxC07RecoveryDependencies {
         "Read-TicketboxC07HostEnvelope",
         "Read-EnvMap",
         "Read-TicketboxProtectedUtf8Artifact",
+        "Publish-TicketboxVerifiedArtifactDirectory",
         "Remove-TicketboxC07RestoreDatabaseExact",
         "Remove-TicketboxProtectedUtf8Artifact",
         "Remove-TicketboxTreeExact",
         "Resolve-TicketboxC07DatabaseHostAuthority",
         "Set-TicketboxExactFileAcl",
+        "Sync-TicketboxDurableArtifactFile",
         "Test-TicketboxPathEquals",
         "Test-TicketboxPathWithin",
         "Write-TicketboxC07HostEnvelope",
@@ -287,38 +298,6 @@ function Protect-TicketboxC07RecoveryFile([string]$Path) {
         -Path $Path `
         -Accounts $script:TicketboxC07RecoveryFullControlAccounts `
         -OwnerAccount $script:TicketboxC07RecoveryOwnerAccount
-}
-
-function Sync-TicketboxC07RecoveryFile([string]$Path) {
-    Assert-NoTicketboxAncestorReparsePoints $Path
-    if ((Get-TicketboxPathEntryKindNoFollow $Path) -cne "File") {
-        throw "C07 recovery durable flush target 不是普通文件。"
-    }
-    Initialize-TicketboxC07RecoveryNativeMethods
-    $stream = $null
-    try {
-        $stream = [IO.FileStream]::new(
-            $Path,
-            [IO.FileMode]::Open,
-            [IO.FileAccess]::ReadWrite,
-            [IO.FileShare]::Read,
-            1048576,
-            [IO.FileOptions]::WriteThrough
-        )
-        $finalPath = [TicketboxC07RecoveryNativeMethods]::GetFinalPath(
-            $stream.SafeFileHandle
-        )
-        if (-not (Test-TicketboxPathEquals $finalPath $Path)) {
-            throw "C07 recovery durable flush handle identity 漂移。"
-        }
-        [TicketboxC07RecoveryNativeMethods]::AssertHandleIsNotReparsePoint(
-            $stream.SafeFileHandle
-        )
-        $stream.Flush($true)
-    }
-    finally {
-        if ($null -ne $stream) { $stream.Dispose() }
-    }
 }
 
 function Get-TicketboxC07RecoveryTextSha256([string]$Text) {
@@ -2546,346 +2525,6 @@ function Assert-TicketboxC07RecoveryCapacityEvidence {
     }
 }
 
-function Initialize-TicketboxC07RecoveryNativeMethods {
-    if ($null -ne ("TicketboxC07RecoveryNativeMethods" -as [type])) { return }
-    Add-Type -TypeDefinition @'
-using System;
-using System.ComponentModel;
-using System.IO;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
-using System.Text;
-
-public static class TicketboxC07RecoveryNativeMethods
-{
-    private const uint GENERIC_READ = 0x80000000;
-    private const uint GENERIC_WRITE = 0x40000000;
-    private const uint FILE_SHARE_READ = 0x00000001;
-    private const uint FILE_SHARE_WRITE = 0x00000002;
-    private const uint OPEN_EXISTING = 3;
-    private const uint CREATE_NEW = 1;
-    private const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
-    private const uint FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400;
-    private const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
-    private const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
-    private const uint FILE_FLAG_WRITE_THROUGH = 0x80000000;
-    private const uint MOVEFILE_WRITE_THROUGH = 0x00000008;
-
-    private enum FILE_INFO_BY_HANDLE_CLASS
-    {
-        FileAttributeTagInfo = 9
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct FILE_ATTRIBUTE_TAG_INFO
-    {
-        public uint FileAttributes;
-        public uint ReparseTag;
-    }
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern SafeFileHandle CreateFile(
-        string fileName,
-        uint desiredAccess,
-        uint shareMode,
-        IntPtr securityAttributes,
-        uint creationDisposition,
-        uint flagsAndAttributes,
-        IntPtr templateFile
-    );
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetFileInformationByHandleEx(
-        SafeFileHandle file,
-        FILE_INFO_BY_HANDLE_CLASS fileInformationClass,
-        out FILE_ATTRIBUTE_TAG_INFO fileInformation,
-        uint bufferSize
-    );
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool MoveFileEx(
-        string existingFileName,
-        string newFileName,
-        uint flags
-    );
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern uint GetFinalPathNameByHandle(
-        SafeFileHandle handle,
-        StringBuilder path,
-        uint pathLength,
-        uint flags
-    );
-
-    public static string GetFinalPath(SafeFileHandle handle)
-    {
-        StringBuilder buffer = new StringBuilder(32768);
-        uint result = GetFinalPathNameByHandle(
-            handle,
-            buffer,
-            (uint)buffer.Capacity,
-            0
-        );
-        if (result == 0 || result >= buffer.Capacity)
-        {
-            throw new Win32Exception(
-                Marshal.GetLastWin32Error(),
-                "GetFinalPathNameByHandle"
-            );
-        }
-        string path = buffer.ToString();
-        if (path.StartsWith(
-            @"\\?\UNC\",
-            StringComparison.OrdinalIgnoreCase
-        ))
-        {
-            path = @"\\" + path.Substring(8);
-        }
-        else if (path.StartsWith(
-            @"\\?\",
-            StringComparison.OrdinalIgnoreCase
-        ))
-        {
-            path = path.Substring(4);
-        }
-        return Path.GetFullPath(path);
-    }
-
-    public static SafeFileHandle OpenDirectoryNoFollowNoDelete(string path)
-    {
-        SafeFileHandle handle = CreateFile(
-            path,
-            GENERIC_READ,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            IntPtr.Zero,
-            OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-            IntPtr.Zero
-        );
-        if (handle.IsInvalid)
-        {
-            int error = Marshal.GetLastWin32Error();
-            handle.Dispose();
-            throw new Win32Exception(error, "CreateFile(directory)");
-        }
-        AssertHandleIsNotReparsePoint(handle);
-        return handle;
-    }
-
-    public static SafeFileHandle CreateNewFileNoFollow(string path)
-    {
-        SafeFileHandle handle = CreateFile(
-            path,
-            GENERIC_READ | GENERIC_WRITE,
-            FILE_SHARE_READ,
-            IntPtr.Zero,
-            CREATE_NEW,
-            FILE_ATTRIBUTE_NORMAL |
-                FILE_FLAG_OPEN_REPARSE_POINT |
-                FILE_FLAG_WRITE_THROUGH,
-            IntPtr.Zero
-        );
-        if (handle.IsInvalid)
-        {
-            int error = Marshal.GetLastWin32Error();
-            handle.Dispose();
-            throw new Win32Exception(error, "CreateFile(destination)");
-        }
-        AssertHandleIsNotReparsePoint(handle);
-        return handle;
-    }
-
-    public static void AssertHandleIsNotReparsePoint(SafeFileHandle handle)
-    {
-        FILE_ATTRIBUTE_TAG_INFO info;
-        uint size = (uint)Marshal.SizeOf(typeof(FILE_ATTRIBUTE_TAG_INFO));
-        if (!GetFileInformationByHandleEx(
-            handle,
-            FILE_INFO_BY_HANDLE_CLASS.FileAttributeTagInfo,
-            out info,
-            size
-        ))
-        {
-            throw new Win32Exception(
-                Marshal.GetLastWin32Error(),
-                "GetFileInformationByHandleEx"
-            );
-        }
-        if ((info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
-        {
-            throw new IOException("Handle resolves to a reparse point.");
-        }
-    }
-
-    public static void MoveDirectoryWriteThrough(
-        string existingPath,
-        string newPath
-    )
-    {
-        if (!MoveFileEx(existingPath, newPath, MOVEFILE_WRITE_THROUGH))
-        {
-            throw new Win32Exception(
-                Marshal.GetLastWin32Error(),
-                "MoveFileEx(MOVEFILE_WRITE_THROUGH)"
-            );
-        }
-    }
-}
-'@
-}
-
-function Copy-TicketboxC07RecoveryOriginal {
-    param(
-        [Parameter(Mandatory = $true)][string]$SourcePath,
-        [Parameter(Mandatory = $true)][string]$DestinationPath,
-        [Parameter(Mandatory = $true)][string]$ExpectedSourceSha256,
-        [Parameter(Mandatory = $true)][int64]$ExpectedLength
-    )
-    if ($ExpectedLength -le 0) {
-        throw "C07 recovery original expected length 无效。"
-    }
-    Assert-TicketboxC07RecoverySha256 `
-        $ExpectedSourceSha256 `
-        "C07 recovery source expected digest"
-    Assert-NoTicketboxAncestorReparsePoints $SourcePath
-    if ((Get-TicketboxPathEntryKindNoFollow $SourcePath) -cne "File") {
-        throw "C07 recovery original 在复制前缺失或经过 reparse point。"
-    }
-    $destinationParent = Split-Path -Parent $DestinationPath
-    Assert-NoTicketboxAncestorReparsePoints $destinationParent
-    if (
-        (Get-TicketboxPathEntryKindNoFollow $destinationParent) -cne
-        "Directory"
-    ) {
-        throw "C07 recovery destination parent 不是受保护普通目录。"
-    }
-    if ((Get-TicketboxPathEntryKindNoFollow $DestinationPath) -cne "Missing") {
-        throw "C07 recovery destination 已存在；拒绝覆盖。"
-    }
-
-    Initialize-TicketboxC07RecoveryNativeMethods
-    $source = $null
-    $destination = $null
-    $destinationParentHandle = $null
-    $destinationHandle = $null
-    $sourceSha = [Security.Cryptography.SHA256]::Create()
-    $destinationSha = [Security.Cryptography.SHA256]::Create()
-    try {
-        $destinationParentHandle =
-            [TicketboxC07RecoveryNativeMethods]::OpenDirectoryNoFollowNoDelete(
-                $destinationParent
-            )
-        $finalDestinationParent =
-            [TicketboxC07RecoveryNativeMethods]::GetFinalPath(
-                $destinationParentHandle
-            )
-        if (
-            -not (Test-TicketboxPathEquals `
-                $finalDestinationParent `
-                $destinationParent)
-        ) {
-            throw (
-                "C07 recovery destination parent handle 解析到不同路径；" +
-                "拒绝 junction/reparse/rename race。"
-            )
-        }
-        $source = [IO.FileStream]::new(
-            $SourcePath,
-            [IO.FileMode]::Open,
-            [IO.FileAccess]::Read,
-            [IO.FileShare]::Read,
-            1048576,
-            [IO.FileOptions]::SequentialScan
-        )
-        $finalSource = [TicketboxC07RecoveryNativeMethods]::GetFinalPath(
-            $source.SafeFileHandle
-        )
-        if (-not (Test-TicketboxPathEquals $finalSource $SourcePath)) {
-            throw (
-                "C07 recovery source handle 解析到不同路径；" +
-                "拒绝 symlink/junction/reparse race。"
-            )
-        }
-        if ($source.Length -ne $ExpectedLength) {
-            throw "C07 recovery source 在 preflight 后发生长度变化。"
-        }
-        $sourceDigest = ([BitConverter]::ToString(
-            $sourceSha.ComputeHash($source)
-        )).Replace("-", "").ToLowerInvariant()
-        if ($sourceDigest -cne $ExpectedSourceSha256) {
-            throw "C07 recovery source bytes 与 PostgreSQL image_hash 不一致。"
-        }
-        $source.Position = 0
-        $destinationHandle =
-            [TicketboxC07RecoveryNativeMethods]::CreateNewFileNoFollow(
-                $DestinationPath
-            )
-        $destination = [IO.FileStream]::new(
-            $destinationHandle,
-            [IO.FileAccess]::ReadWrite,
-            1048576,
-            $false
-        )
-        $destinationHandle = $null
-        $finalDestination =
-            [TicketboxC07RecoveryNativeMethods]::GetFinalPath(
-                $destination.SafeFileHandle
-            )
-        if (
-            -not (Test-TicketboxPathEquals `
-                $finalDestination `
-                $DestinationPath)
-        ) {
-            throw (
-                "C07 recovery destination handle 解析到不同路径；" +
-                "拒绝 junction/reparse/rename race。"
-            )
-        }
-        $buffer = New-Object byte[] 1048576
-        while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) {
-            $destination.Write($buffer, 0, $read)
-        }
-        $destination.Flush($true)
-        if ($destination.Length -ne $ExpectedLength) {
-            throw "C07 recovery copied original 长度与权威长度不一致。"
-        }
-        $destination.Position = 0
-        $destinationDigest = ([BitConverter]::ToString(
-            $destinationSha.ComputeHash($destination)
-        )).Replace("-", "").ToLowerInvariant()
-        if ($destinationDigest -cne $sourceDigest) {
-            throw "C07 recovery copied original 未通过 digest 复读。"
-        }
-        $destination.Flush($true)
-        Protect-TicketboxC07RecoveryFile $DestinationPath
-        $finalProtectedDestination =
-            [TicketboxC07RecoveryNativeMethods]::GetFinalPath(
-                $destination.SafeFileHandle
-            )
-        if (
-            -not (Test-TicketboxPathEquals `
-                $finalProtectedDestination `
-                $DestinationPath)
-        ) {
-            throw "C07 recovery protected destination handle identity 漂移。"
-        }
-        return [pscustomobject]@{
-            Sha256 = $sourceDigest
-            SizeBytes = [int64]$ExpectedLength
-        }
-    }
-    finally {
-        if ($null -ne $destination) { $destination.Dispose() }
-        if ($null -ne $destinationHandle) { $destinationHandle.Dispose() }
-        if ($null -ne $destinationParentHandle) {
-            $destinationParentHandle.Dispose()
-        }
-        if ($null -ne $source) { $source.Dispose() }
-        $sourceSha.Dispose()
-        $destinationSha.Dispose()
-    }
-}
-
 function ConvertTo-TicketboxC07RecoveryInventoryJson {
     param([Parameter(Mandatory = $true)][object]$Record)
     $canonical = ConvertTo-TicketboxC07AssetInventoryRecord $Record
@@ -3150,7 +2789,7 @@ function Invoke-TicketboxC07RecoverySnapshotDump {
     ) {
         throw "C07 recovery pg_dump 未产生非空普通 archive。"
     }
-    Sync-TicketboxC07RecoveryFile $OutputPath
+    Sync-TicketboxDurableArtifactFile $OutputPath
     Protect-TicketboxC07RecoveryFile $OutputPath
     $listResult = Invoke-TicketboxBoundedNativeProcess `
         -FilePath $Context.PgRestorePath `
@@ -4288,76 +3927,6 @@ function Clear-TicketboxC07RecoveryPartialGeneration {
     }
 }
 
-function Publish-TicketboxC07RecoveryReadyDirectory {
-    param([Parameter(Mandatory = $true)][object]$Context)
-
-    $paths = $Context.Paths
-    if (
-        (Get-TicketboxC07RecoveryVolumeKey $paths.PartialRoot) -cne
-            (Get-TicketboxC07RecoveryVolumeKey $paths.ReadyRoot)
-    ) {
-        throw "C07 recovery READY 只允许同卷 durable publish。"
-    }
-    Assert-NoTicketboxAncestorReparsePoints $paths.GenerationRoot
-    Assert-TicketboxProtectedDirectoryAcl `
-        -Path $paths.GenerationRoot `
-        -FullControlAccounts $script:TicketboxC07RecoveryFullControlAccounts `
-        -OwnerAccount $script:TicketboxC07RecoveryOwnerAccount
-    if (
-        (Get-TicketboxPathEntryKindNoFollow $paths.PartialRoot) -cne
-            "Directory" -or
-        (Get-TicketboxPathEntryKindNoFollow $paths.ReadyRoot) -cne "Missing"
-    ) {
-        throw "C07 recovery durable publish source/target 状态无效。"
-    }
-
-    Initialize-TicketboxC07RecoveryNativeMethods
-    $generationRootHandle = $null
-    $readyHandle = $null
-    try {
-        $generationRootHandle =
-            [TicketboxC07RecoveryNativeMethods]::OpenDirectoryNoFollowNoDelete(
-                $paths.GenerationRoot
-            )
-        $finalGenerationRoot =
-            [TicketboxC07RecoveryNativeMethods]::GetFinalPath(
-                $generationRootHandle
-            )
-        if (
-            -not (Test-TicketboxPathEquals `
-                $finalGenerationRoot `
-                $paths.GenerationRoot)
-        ) {
-            throw "C07 recovery generation root handle identity 漂移。"
-        }
-        [TicketboxC07RecoveryNativeMethods]::MoveDirectoryWriteThrough(
-            $paths.PartialRoot,
-            $paths.ReadyRoot
-        )
-        $readyHandle =
-            [TicketboxC07RecoveryNativeMethods]::OpenDirectoryNoFollowNoDelete(
-                $paths.ReadyRoot
-            )
-        $finalReady = [TicketboxC07RecoveryNativeMethods]::GetFinalPath(
-            $readyHandle
-        )
-        if (-not (Test-TicketboxPathEquals $finalReady $paths.ReadyRoot)) {
-            throw "C07 recovery READY handle identity 与发布目标不一致。"
-        }
-        Assert-TicketboxProtectedDirectoryAcl `
-            -Path $paths.ReadyRoot `
-            -FullControlAccounts $script:TicketboxC07RecoveryFullControlAccounts `
-            -OwnerAccount $script:TicketboxC07RecoveryOwnerAccount
-        return $paths.ReadyRoot
-    }
-    finally {
-        if ($null -ne $readyHandle) { $readyHandle.Dispose() }
-        if ($null -ne $generationRootHandle) {
-            $generationRootHandle.Dispose()
-        }
-    }
-}
-
 function Invoke-TicketboxC07RecoveryGeneration {
     param(
         [Parameter(Mandatory = $true)][string]$DataRoot,
@@ -4530,14 +4099,15 @@ function Invoke-TicketboxC07RecoveryGeneration {
             }
             Assert-TicketboxC07RecoverySnapshotAlive $snapshot
             $record = $original.Record
-            $copy = Copy-TicketboxC07RecoveryOriginal `
+            $copy = Copy-TicketboxVerifiedArtifact `
                 -SourcePath $original.SourcePath `
                 -DestinationPath (
                     Join-Path $assetsRoot $original.PackageFile
                 ) `
                 -ExpectedSourceSha256 ([string]$record.image_sha256) `
-                -ExpectedLength ([int64]$original.ExpectedLength
-                )
+                -ExpectedLength ([int64]$original.ExpectedLength) `
+                -FullControlAccounts $script:TicketboxC07RecoveryFullControlAccounts `
+                -OwnerAccount $script:TicketboxC07RecoveryOwnerAccount
             $copyRecords.Add([ordered]@{
                 expense_public_id = [string]$record.expense_public_id
                 ledger_id = [string]$record.ledger_id
@@ -4582,7 +4152,12 @@ function Invoke-TicketboxC07RecoveryGeneration {
         if ($partial.PayloadSha256 -cne $manifest.PayloadSha256) {
             throw "C07 recovery partial validation digest 不一致。"
         }
-        Publish-TicketboxC07RecoveryReadyDirectory $context | Out-Null
+        Publish-TicketboxVerifiedArtifactDirectory `
+            -GenerationRoot $context.Paths.GenerationRoot `
+            -PartialRoot $context.Paths.PartialRoot `
+            -ReadyRoot $context.Paths.ReadyRoot `
+            -FullControlAccounts $script:TicketboxC07RecoveryFullControlAccounts `
+            -OwnerAccount $script:TicketboxC07RecoveryOwnerAccount | Out-Null
         $partialCreated = $false
         $ready = Read-TicketboxC07RecoveryManifest `
             -Context $context `
@@ -5800,11 +5375,13 @@ function Test-TicketboxC07RecoveryIsolatedAssets {
                 -Root $isolatedUploadRoot
             $targetKind = Get-TicketboxPathEntryKindNoFollow $target.Path
             if ($targetKind -ceq "Missing") {
-                Copy-TicketboxC07RecoveryOriginal `
+                Copy-TicketboxVerifiedArtifact `
                     -SourcePath $source `
                     -DestinationPath $target.Path `
                     -ExpectedSourceSha256 ([string]$copy.source_sha256) `
-                    -ExpectedLength ([int64]$copy.size_bytes) | Out-Null
+                    -ExpectedLength ([int64]$copy.size_bytes) `
+                    -FullControlAccounts $script:TicketboxC07RecoveryFullControlAccounts `
+                    -OwnerAccount $script:TicketboxC07RecoveryOwnerAccount | Out-Null
             }
             elseif ($targetKind -ceq "File") {
                 Assert-TicketboxExactFileAcl `
@@ -7748,13 +7325,15 @@ function Invoke-TicketboxC07TargetRecoveryGeneration {
                 -Label "C07 target recovery asset copy")
             Assert-TicketboxC07RecoverySnapshotAlive $snapshot
             $record = $original.Record
-            $copy = Copy-TicketboxC07RecoveryOriginal `
+            $copy = Copy-TicketboxVerifiedArtifact `
                 -SourcePath $original.SourcePath `
                 -DestinationPath (
                     Join-Path $assetsRoot $original.PackageFile
                 ) `
                 -ExpectedSourceSha256 ([string]$record.image_sha256) `
-                -ExpectedLength ([int64]$original.ExpectedLength)
+                -ExpectedLength ([int64]$original.ExpectedLength) `
+                -FullControlAccounts $script:TicketboxC07RecoveryFullControlAccounts `
+                -OwnerAccount $script:TicketboxC07RecoveryOwnerAccount
             $copyRecords.Add([ordered]@{
                 expense_public_id = [string]$record.expense_public_id
                 ledger_id = [string]$record.ledger_id
@@ -7801,7 +7380,12 @@ function Invoke-TicketboxC07TargetRecoveryGeneration {
         if ($partial.PayloadSha256 -cne $manifest.PayloadSha256) {
             throw "C07 target recovery partial digest 不一致。"
         }
-        Publish-TicketboxC07RecoveryReadyDirectory $context | Out-Null
+        Publish-TicketboxVerifiedArtifactDirectory `
+            -GenerationRoot $context.Paths.GenerationRoot `
+            -PartialRoot $context.Paths.PartialRoot `
+            -ReadyRoot $context.Paths.ReadyRoot `
+            -FullControlAccounts $script:TicketboxC07RecoveryFullControlAccounts `
+            -OwnerAccount $script:TicketboxC07RecoveryOwnerAccount | Out-Null
         $partialCreated = $false
         $ready = Read-TicketboxC07TargetRecoveryManifest `
             -Context $context `

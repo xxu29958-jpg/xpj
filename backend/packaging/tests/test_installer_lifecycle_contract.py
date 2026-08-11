@@ -290,6 +290,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_c07_lifecycle.ps1",
         "windows_c07_heartbeat_helper.ps1",
         "windows_c07_failure_summary.ps1",
+        "windows_atomic_artifacts.ps1",
         "windows_c07_recovery_generation.ps1",
         "windows_c07_packaged_migration.ps1",
         "windows_backend_bootstrap.ps1",
@@ -304,6 +305,16 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
             f'Source: "security_primitives\\{name}"; '
             'DestDir: "{app}\\installer\\security_primitives"; Flags: ignoreversion' in active_installer_lines
         )
+    for source_path in (
+        r"atomic_artifacts\native.ps1",
+        r"atomic_artifacts\file.ps1",
+        r"atomic_artifacts\directory.ps1",
+    ):
+        assert (
+            f'Source: "{source_path}"; '
+            'DestDir: "{app}\\installer\\atomic_artifacts"; '
+            'Flags: ignoreversion'
+        ) in active_installer_lines
     assert (
         'Source: "..\\scripts\\windows_build_provenance.ps1"; DestName: "windows_build_provenance.ps1"; Flags: dontcopy noencryption'
         in active_installer_lines
