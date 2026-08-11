@@ -204,6 +204,10 @@ Source: "windows_c07_heartbeat_authority.ps1"; DestDir: "{app}\installer"; Flags
 Source: "windows_c07_lifecycle.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_heartbeat_helper.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_failure_summary.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_atomic_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "atomic_artifacts\native.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion
+Source: "atomic_artifacts\file.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion
+Source: "atomic_artifacts\directory.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion
 Source: "windows_c07_recovery_generation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_packaged_migration.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_backend_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
