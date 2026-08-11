@@ -19,6 +19,12 @@ def _literal(path: Path) -> str:
     return str(path).replace("'", "''")
 
 
+def _function(source: str, name: str) -> str:
+    start = source.index(f"function {name} {{")
+    next_function = source.find("\nfunction ", start + 1)
+    return source[start:] if next_function < 0 else source[start:next_function]
+
+
 def test_atomic_artifacts_are_focused_bom_safe_and_not_c07() -> None:
     entrypoint = ENTRYPOINT.read_text(encoding="utf-8-sig")
     native = NATIVE.read_text(encoding="utf-8-sig")
@@ -46,6 +52,96 @@ def test_atomic_artifacts_are_focused_bom_safe_and_not_c07() -> None:
     assert "Sync-TicketboxDurableArtifactFile" in file_source
     assert "Copy-TicketboxVerifiedArtifact" in file_source
     assert "Publish-TicketboxVerifiedArtifactDirectory" in directory
+
+
+def test_atomic_durability_identity_and_verify_before_publish_are_pinned() -> None:
+    file_source = FILE.read_text(encoding="utf-8-sig")
+    directory_source = DIRECTORY.read_text(encoding="utf-8-sig")
+    c07_source = C07_RECOVERY.read_text(encoding="utf-8-sig")
+
+    durable_sync = _function(file_source, "Sync-TicketboxDurableArtifactFile")
+    assert durable_sync.index("::GetFinalPath(") < durable_sync.index(
+        "Test-TicketboxPathEquals $finalPath $Path"
+    )
+    assert durable_sync.index("Test-TicketboxPathEquals $finalPath $Path") < (
+        durable_sync.index("::AssertHandleIsNotReparsePoint(")
+    )
+    assert durable_sync.index("::AssertHandleIsNotReparsePoint(") < durable_sync.index(
+        "$stream.Flush($true)"
+    )
+
+    verified_copy = _function(file_source, "Copy-TicketboxVerifiedArtifact")
+    assert verified_copy.count("::GetFinalPath(") == 4
+    assert verified_copy.count("Test-TicketboxPathEquals") == 4
+    first_flush = verified_copy.index("$destination.Flush($true)")
+    length_readback = verified_copy.index("$destination.Length -ne $ExpectedLength")
+    digest_seek = verified_copy.index("$destination.Position = 0")
+    digest_readback = verified_copy.index("$destinationSha.ComputeHash($destination)")
+    digest_compare = verified_copy.index("$destinationDigest -cne $sourceDigest")
+    second_flush = verified_copy.index("$destination.Flush($true)", first_flush + 1)
+    acl_set = verified_copy.index("Set-TicketboxExactFileAcl")
+    acl_readback = verified_copy.index("Assert-TicketboxExactFileAcl")
+    protected_identity = verified_copy.index("$finalProtectedDestination")
+    assert (
+        first_flush
+        < length_readback
+        < digest_seek
+        < digest_readback
+        < digest_compare
+        < second_flush
+        < acl_set
+        < acl_readback
+        < protected_identity
+    )
+
+    directory_publish = _function(
+        directory_source,
+        "Publish-TicketboxVerifiedArtifactDirectory",
+    )
+    assert directory_publish.count("::GetFinalPath(") == 2
+    assert directory_publish.count("Test-TicketboxPathEquals") == 4
+    assert directory_publish.index("$finalGenerationRoot") < directory_publish.index(
+        "::MoveDirectoryWriteThrough("
+    )
+    assert directory_publish.index("::MoveDirectoryWriteThrough(") < (
+        directory_publish.index("$finalReady")
+    )
+
+    source_generation = _function(
+        c07_source,
+        "Invoke-TicketboxC07RecoveryGeneration",
+    )
+    source_readback = source_generation.index(
+        "$partial = Read-TicketboxC07RecoveryManifest"
+    )
+    source_verify = source_generation.index(
+        "Assert-TicketboxC07RecoveryGenerationFiles $partial"
+    )
+    source_digest = source_generation.index(
+        "$partial.PayloadSha256 -cne $manifest.PayloadSha256"
+    )
+    source_publish = source_generation.index(
+        "Publish-TicketboxVerifiedArtifactDirectory"
+    )
+    assert source_readback < source_verify < source_digest < source_publish
+
+    target_generation = _function(
+        c07_source,
+        "Invoke-TicketboxC07TargetRecoveryGeneration",
+    )
+    target_readback = target_generation.index(
+        "$partial = Read-TicketboxC07TargetRecoveryManifest"
+    )
+    target_verify = target_generation.index(
+        "Assert-TicketboxC07TargetRecoveryGenerationFiles $partial"
+    )
+    target_digest = target_generation.index(
+        "$partial.PayloadSha256 -cne $manifest.PayloadSha256"
+    )
+    target_publish = target_generation.index(
+        "Publish-TicketboxVerifiedArtifactDirectory"
+    )
+    assert target_readback < target_verify < target_digest < target_publish
 
 
 def test_c07_consumes_atomic_artifacts_without_retaining_the_old_path() -> None:
