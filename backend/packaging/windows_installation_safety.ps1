@@ -1,5 +1,18 @@
 ﻿#Requires -Version 5.1
 
+$windowsSecurityPrimitives = Join-Path `
+    (Split-Path -Parent $MyInvocation.MyCommand.Path) `
+    "windows_security_primitives.ps1"
+if (-not (Get-Command `
+    "Enter-TicketboxWindowsTokenPrivilege" `
+    -CommandType Function `
+    -ErrorAction SilentlyContinue)) {
+    if (-not (Test-Path -LiteralPath $windowsSecurityPrimitives -PathType Leaf)) {
+        throw "缺少通用 Windows security primitives：$windowsSecurityPrimitives"
+    }
+    . $windowsSecurityPrimitives
+}
+
 $script:TicketboxDataRootMarkerName = ".ticketbox-data-root.json"
 $script:TicketboxLegacyDataRootMarkerSchema = "ticketbox-data-root-v1"
 $script:TicketboxDataRootMarkerSchema = "ticketbox-data-root-v2"
@@ -618,181 +631,6 @@ function Write-TicketboxUtf8FileDurable {
     }
 }
 
-function Initialize-TicketboxRestorePrivilegeMethods {
-    if ("TicketboxRestorePrivilegeScope" -as [type]) {
-        return
-    }
-    Add-Type -TypeDefinition @'
-using System;
-using System.ComponentModel;
-using System.Runtime.InteropServices;
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct TicketboxRestorePrivilegeLuid
-{
-    internal uint LowPart;
-    internal int HighPart;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct TicketboxRestorePrivilegeLuidAndAttributes
-{
-    internal TicketboxRestorePrivilegeLuid Luid;
-    internal uint Attributes;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct TicketboxRestorePrivilegeTokenPrivileges
-{
-    internal uint PrivilegeCount;
-    internal TicketboxRestorePrivilegeLuidAndAttributes Privileges;
-}
-
-public sealed class TicketboxRestorePrivilegeScope : IDisposable
-{
-    private const uint TokenQuery = 0x0008;
-    private const uint TokenAdjustPrivileges = 0x0020;
-    private const uint PrivilegeEnabled = 0x00000002;
-    private const int ErrorNotAllAssigned = 1300;
-    private IntPtr tokenHandle;
-    private TicketboxRestorePrivilegeTokenPrivileges previousState;
-    private bool restoreRequired;
-    private bool disposed;
-
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr GetCurrentProcess();
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CloseHandle(IntPtr handle);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool OpenProcessToken(
-        IntPtr processHandle,
-        uint desiredAccess,
-        out IntPtr tokenHandle);
-
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool LookupPrivilegeValue(
-        string systemName,
-        string name,
-        out TicketboxRestorePrivilegeLuid luid);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AdjustTokenPrivileges(
-        IntPtr tokenHandle,
-        [MarshalAs(UnmanagedType.Bool)] bool disableAllPrivileges,
-        ref TicketboxRestorePrivilegeTokenPrivileges newState,
-        int bufferLength,
-        out TicketboxRestorePrivilegeTokenPrivileges previousState,
-        out int returnLength);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AdjustTokenPrivileges(
-        IntPtr tokenHandle,
-        [MarshalAs(UnmanagedType.Bool)] bool disableAllPrivileges,
-        ref TicketboxRestorePrivilegeTokenPrivileges newState,
-        int bufferLength,
-        IntPtr previousState,
-        IntPtr returnLength);
-
-    private TicketboxRestorePrivilegeScope(IntPtr handle)
-    {
-        tokenHandle = handle;
-    }
-
-    public static TicketboxRestorePrivilegeScope Enter()
-    {
-        IntPtr handle;
-        if (!OpenProcessToken(
-            GetCurrentProcess(),
-            TokenQuery | TokenAdjustPrivileges,
-            out handle))
-        {
-            throw new Win32Exception(Marshal.GetLastWin32Error());
-        }
-        TicketboxRestorePrivilegeScope scope =
-            new TicketboxRestorePrivilegeScope(handle);
-        try
-        {
-            TicketboxRestorePrivilegeLuid luid;
-            if (!LookupPrivilegeValue(null, "SeRestorePrivilege", out luid))
-            {
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-            }
-            TicketboxRestorePrivilegeTokenPrivileges requested =
-                new TicketboxRestorePrivilegeTokenPrivileges();
-            requested.PrivilegeCount = 1;
-            requested.Privileges = new TicketboxRestorePrivilegeLuidAndAttributes
-            {
-                Luid = luid,
-                Attributes = PrivilegeEnabled
-            };
-            int returnLength;
-            bool adjusted = AdjustTokenPrivileges(
-                handle,
-                false,
-                ref requested,
-                Marshal.SizeOf(typeof(TicketboxRestorePrivilegeTokenPrivileges)),
-                out scope.previousState,
-                out returnLength);
-            int error = Marshal.GetLastWin32Error();
-            if (!adjusted || error == ErrorNotAllAssigned)
-            {
-                throw new Win32Exception(error);
-            }
-            scope.restoreRequired = true;
-            return scope;
-        }
-        catch
-        {
-            scope.Dispose();
-            throw;
-        }
-    }
-
-    public void Dispose()
-    {
-        if (disposed)
-        {
-            return;
-        }
-        disposed = true;
-        Exception restoreFailure = null;
-        if (restoreRequired)
-        {
-            bool restored = AdjustTokenPrivileges(
-                tokenHandle,
-                false,
-                ref previousState,
-                0,
-                IntPtr.Zero,
-                IntPtr.Zero);
-            int restoreError = Marshal.GetLastWin32Error();
-            if (!restored || restoreError == ErrorNotAllAssigned)
-            {
-                restoreFailure =
-                    new Win32Exception(restoreError);
-            }
-        }
-        if (tokenHandle != IntPtr.Zero)
-        {
-            CloseHandle(tokenHandle);
-            tokenHandle = IntPtr.Zero;
-        }
-        if (restoreFailure != null)
-        {
-            throw restoreFailure;
-        }
-    }
-}
-'@
-}
-
 function Enter-TicketboxRestorePrivilegeForSecurityDescriptor($Security) {
     $ownerSid = $Security.GetOwner(
         [System.Security.Principal.SecurityIdentifier]
@@ -801,9 +639,9 @@ function Enter-TicketboxRestorePrivilegeForSecurityDescriptor($Security) {
     if ($ownerSid -eq $currentUserSid) {
         return $null
     }
-    Initialize-TicketboxRestorePrivilegeMethods
     try {
-        return [TicketboxRestorePrivilegeScope]::Enter()
+        return Enter-TicketboxWindowsTokenPrivilege `
+            -PrivilegeName "SeRestorePrivilege"
     }
     catch {
         throw (
@@ -1141,19 +979,6 @@ function Remove-TicketboxProtectedStagingArtifacts {
     }
 }
 
-function Test-TicketboxByteArrayEquals {
-    param(
-        [Parameter(Mandatory = $true)][byte[]]$Left,
-        [Parameter(Mandatory = $true)][byte[]]$Right
-    )
-
-    if ($Left.Length -ne $Right.Length) { return $false }
-    for ($index = 0; $index -lt $Left.Length; $index++) {
-        if ($Left[$index] -ne $Right[$index]) { return $false }
-    }
-    return $true
-}
-
 function Read-TicketboxProtectedUtf8Artifact {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -1187,7 +1012,7 @@ function Read-TicketboxProtectedUtf8Artifact {
     try { $text = $encoding.GetString($bytes) }
     catch { throw "installer-state artifact 不是严格 UTF-8：$fullPath" }
     $roundTripBytes = $encoding.GetBytes($text)
-    if (-not (Test-TicketboxByteArrayEquals -Left $bytes -Right $roundTripBytes)) {
+    if (-not (Test-TicketboxWindowsByteArrayEquals -Left $bytes -Right $roundTripBytes)) {
         throw "installer-state artifact 不能无损 UTF-8 往返：$fullPath"
     }
     return [PSCustomObject]@{
@@ -1262,7 +1087,7 @@ function Move-TicketboxLegacyInstallerStateArtifact {
             -OwnerAccount $OwnerAccount
     }
     if ($legacyExists -and $currentExists) {
-        if (-not (Test-TicketboxByteArrayEquals -Left $legacyArtifact.Bytes -Right $currentArtifact.Bytes)) {
+        if (-not (Test-TicketboxWindowsByteArrayEquals -Left $legacyArtifact.Bytes -Right $currentArtifact.Bytes)) {
             throw "installer-state 新旧位置内容冲突，拒绝猜测权威文件：$currentFullPath"
         }
         if (-not $RetainLegacySource) {
@@ -1284,7 +1109,7 @@ function Move-TicketboxLegacyInstallerStateArtifact {
         -Path $currentFullPath `
         -FullControlAccounts $FullControlAccounts `
         -OwnerAccount $OwnerAccount
-    if (-not (Test-TicketboxByteArrayEquals -Left $legacyArtifact.Bytes -Right $publishedArtifact.Bytes)) {
+    if (-not (Test-TicketboxWindowsByteArrayEquals -Left $legacyArtifact.Bytes -Right $publishedArtifact.Bytes)) {
         throw "installer-state artifact 发布后复读不一致：$currentFullPath"
     }
     if (-not $RetainLegacySource) {
@@ -5119,7 +4944,7 @@ function Repair-TicketboxRecoverableInstallationIdentityAcl {
         (ConvertTo-TicketboxWin32ExtendedPath $path)
     )
     if (
-        -not (Test-TicketboxByteArrayEquals $beforeBytes $afterBytes) -or
+        -not (Test-TicketboxWindowsByteArrayEquals $beforeBytes $afterBytes) -or
         $repaired.State -cne $identity.State -or
         $repaired.OperationId -cne $identity.OperationId -or
         $repaired.InstallationId -cne $identity.InstallationId -or
@@ -5629,7 +5454,7 @@ function Read-TicketboxDataRootMarker {
     try { $text = $encoding.GetString($bytes) }
     catch { throw "数据目录标记不是严格 UTF-8：$markerPath" }
     $roundTripBytes = $encoding.GetBytes($text)
-    if (-not (Test-TicketboxByteArrayEquals -Left $bytes -Right $roundTripBytes)) {
+    if (-not (Test-TicketboxWindowsByteArrayEquals -Left $bytes -Right $roundTripBytes)) {
         throw "数据目录标记不能无损 UTF-8 往返：$markerPath"
     }
     return ConvertFrom-TicketboxDataRootMarkerText `

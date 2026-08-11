@@ -24,9 +24,7 @@ def _ps_literal(path: Path) -> str:
     return str(path).replace("'", "''")
 
 
-def _run_powershell(
-    command: str, executable: str = "powershell"
-) -> subprocess.CompletedProcess[str]:
+def _run_powershell(command: str, executable: str = "powershell") -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             executable,
@@ -64,9 +62,7 @@ def _write_minimal_backend(root: Path) -> Path:
     (root / "app" / "main.py").write_text("VALUE = 1\n", encoding="utf-8")
     (root / "migrations" / "env.py").write_text("# migration\n", encoding="utf-8")
     target_migration = "20260729_0001_money_minor_bigint_expand.py"
-    (root / "migrations" / "versions" / target_migration).write_text(
-        "# target migration\n", encoding="utf-8"
-    )
+    (root / "migrations" / "versions" / target_migration).write_text("# target migration\n", encoding="utf-8")
     for relative in (
         "alembic.ini",
         "requirements.txt",
@@ -105,9 +101,7 @@ def _write_minimal_backend(root: Path) -> Path:
                         "sha256": "2" * 64,
                         "archive_payload_root": "python",
                         "executable_relative_path": "python.exe",
-                        "executable_sha256": hashlib.sha256(
-                            python_source_payload
-                        ).hexdigest(),
+                        "executable_sha256": hashlib.sha256(python_source_payload).hexdigest(),
                         "runtime_relative_path": "python311.dll",
                         "runtime_sha256": "3" * 64,
                     },
@@ -125,8 +119,7 @@ def _write_minimal_backend(root: Path) -> Path:
         encoding="utf-8",
     )
     (root / "requirements-build.lock").write_text(
-        f"# ticketbox-lock-input-sha256: {_lock_input_fingerprint(root)}\n"
-        "pyinstaller==6.21.0\n",
+        f"# ticketbox-lock-input-sha256: {_lock_input_fingerprint(root)}\npyinstaller==6.21.0\n",
         encoding="utf-8",
     )
     for executable in (
@@ -183,6 +176,13 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_pg_recovery_tools.ps1",
     "packaging/windows_bundled_database.ps1",
     "packaging/windows_c07_database.ps1",
+    "packaging/windows_security_primitives.ps1",
+    "packaging/security_primitives/byte_array.ps1",
+    "packaging/security_primitives/token_privilege_native.ps1",
+    "packaging/security_primitives/token_privilege.ps1",
+    "packaging/security_primitives/descriptor_comparison.ps1",
+    "packaging/security_primitives/descriptor_diagnostic.ps1",
+    "packaging/security_primitives/file_security.ps1",
     "packaging/windows_c07_superuser_recovery.ps1",
     "packaging/windows_c07_heartbeat_authority.ps1",
     "packaging/windows_c07_lifecycle.ps1",
@@ -205,13 +205,7 @@ def _write_minimal_installer_recipe(root: Path) -> None:
 
 
 def _c07_smoke_evidence_command(dist: Path) -> str:
-    target_migration = (
-        dist
-        / "_internal"
-        / "migrations"
-        / "versions"
-        / "20260729_0001_money_minor_bigint_expand.py"
-    )
+    target_migration = dist / "_internal" / "migrations" / "versions" / "20260729_0001_money_minor_bigint_expand.py"
     return (
         f"$smokePayload = Get-TicketboxBackendPayloadSnapshot '{_ps_literal(dist)}'; "
         f"$helper = Get-TicketboxFileEvidence '{_ps_literal(dist)}' "
@@ -277,18 +271,13 @@ def _manifest_command(root: Path, dist: Path, operation: str) -> str:
     else:
         toolchain = ""
         invocation = f"{operation} '{_ps_literal(root)}' '{_ps_literal(dist)}' | Out-Null"
-    return (
-        f". '{_ps_literal(PROVENANCE_HELPER)}'; "
-        f"{toolchain}{invocation}"
-    )
+    return f". '{_ps_literal(PROVENANCE_HELPER)}'; {toolchain}{invocation}"
 
 
 def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path) -> None:
     backend = tmp_path / "backend"
     dist = _write_minimal_backend(backend)
-    write = _run_powershell(
-        _manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest")
-    )
+    write = _run_powershell(_manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest"))
     assert write.returncode == 0, write.stderr
 
     manifest_path = dist / "BUILD_PROVENANCE.json"
@@ -308,18 +297,14 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert manifest["toolchain"]["python"]["version"] == "3.11.15"
     assert manifest["toolchain"]["uv"]["version"] == "0.11.7"
     assert manifest["toolchain"]["pyinstaller"]["version"] == "6.21.0"
-    assert manifest["payload"]["executable"]["sha256"] == hashlib.sha256(
-        b"frozen-exe-v1"
-    ).hexdigest()
+    assert manifest["payload"]["executable"]["sha256"] == hashlib.sha256(b"frozen-exe-v1").hexdigest()
     smoke = manifest["payload"]["c07_migration_helper_smoke"]
     assert smoke["helper"] == manifest["payload"]["c07_migration_helper"]
     assert smoke["payload_algorithm"] == manifest["payload"]["algorithm"]
     assert smoke["payload_fingerprint"] == manifest["payload"]["fingerprint"]
     assert smoke["payload_file_count"] == len(manifest["payload"]["files"])
     assert smoke["stdin"] == "closed_empty_eof"
-    assert smoke["environment"] == (
-        "system-runtime-allowlist-without-pg-or-database-url-v1"
-    )
+    assert smoke["environment"] == ("system-runtime-allowlist-without-pg-or-database-url-v1")
     assert smoke["exit_code"] == 0
     assert smoke["stderr"] == "empty"
     assert smoke["result"]["source_revision"] == "20260722_0001"
@@ -328,18 +313,12 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     validate = _manifest_command(backend, dist, "Assert-TicketboxBackendBuildManifest")
     assert _run_powershell(validate).returncode == 0
 
-    manifest["payload"]["c07_migration_helper_smoke"]["result"][
-        "source_revision"
-    ] = "20260722_0000"
+    manifest["payload"]["c07_migration_helper_smoke"]["result"]["source_revision"] = "20260722_0000"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     tampered_helper_smoke = _run_powershell(validate)
     assert tampered_helper_smoke.returncode != 0
-    assert "smoke" in (
-        tampered_helper_smoke.stdout + tampered_helper_smoke.stderr
-    ).lower()
-    rewrite = _run_powershell(
-        _manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest")
-    )
+    assert "smoke" in (tampered_helper_smoke.stdout + tampered_helper_smoke.stderr).lower()
+    rewrite = _run_powershell(_manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest"))
     assert rewrite.returncode == 0, rewrite.stderr
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
@@ -348,9 +327,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     tampered_toolchain = _run_powershell(validate)
     assert tampered_toolchain.returncode != 0
     assert "toolchain" in (tampered_toolchain.stdout + tampered_toolchain.stderr).lower()
-    rewrite = _run_powershell(
-        _manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest")
-    )
+    rewrite = _run_powershell(_manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest"))
     assert rewrite.returncode == 0, rewrite.stderr
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
@@ -358,12 +335,8 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     tampered_source_record = _run_powershell(validate)
     assert tampered_source_record.returncode != 0
-    assert "source" in (
-        tampered_source_record.stdout + tampered_source_record.stderr
-    ).lower()
-    rewrite = _run_powershell(
-        _manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest")
-    )
+    assert "source" in (tampered_source_record.stdout + tampered_source_record.stderr).lower()
+    rewrite = _run_powershell(_manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest"))
     assert rewrite.returncode == 0, rewrite.stderr
 
     (backend / "app" / "main.py").write_text("VALUE = 2\n", encoding="utf-8")
@@ -371,32 +344,23 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert stale_source.returncode != 0
     assert "rebuild" in (stale_source.stdout + stale_source.stderr).lower()
 
-    rewrite = _run_powershell(
-        _manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest")
-    )
+    rewrite = _run_powershell(_manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest"))
     assert rewrite.returncode == 0, rewrite.stderr
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     runtime_record = next(
-        record
-        for record in manifest["payload"]["files"]
-        if record["path"] == "_internal/runtime.dat"
+        record for record in manifest["payload"]["files"] if record["path"] == "_internal/runtime.dat"
     )
     runtime_record["sha256"] = "f" * 64
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     tampered_non_exe_record = _run_powershell(validate)
     assert tampered_non_exe_record.returncode != 0
-    assert "payload" in (
-        tampered_non_exe_record.stdout + tampered_non_exe_record.stderr
-    ).lower()
+    assert "payload" in (tampered_non_exe_record.stdout + tampered_non_exe_record.stderr).lower()
 
-    rewrite = _run_powershell(
-        _manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest")
-    )
+    rewrite = _run_powershell(_manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest"))
     assert rewrite.returncode == 0, rewrite.stderr
     (dist / "ticketbox-backend.exe").write_bytes(b"frozen-exe-v2")
     stale_exe = _run_powershell(validate)
     assert stale_exe.returncode != 0
-
 
     assert "payload" in (stale_exe.stdout + stale_exe.stderr).lower()
 
@@ -411,9 +375,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     original = _run_powershell(snapshot_command)
     assert original.returncode == 0, original.stderr
     original_snapshot = json.loads(original.stdout)
-    assert {record["path"] for record in original_snapshot["files"]} == set(
-        _INSTALLER_RECIPE_PATHS
-    )
+    assert {record["path"] for record in original_snapshot["files"]} == set(_INSTALLER_RECIPE_PATHS)
     snapshot_path.write_text(json.dumps(original_snapshot), encoding="utf-8")
 
     changed_recipe = recipe_backend / "packaging" / "ticketbox-installer-flow.isph"
@@ -452,22 +414,10 @@ def test_installed_c07_external_assets_are_manifest_bound_and_held(
             "_internal/tzdata/zoneinfo/America/Indianapolis": b"tz-file",
             "_internal/tzdata/zoneinfo/America/Indiana/Indianapolis": b"tz-tree",
             "_internal/migrations/env.py": b"# env",
-            (
-                "_internal/migrations/versions/"
-                "20260722_0001_bind_repayment_draft_idem_to_account.py"
-            ): b"# source",
-            (
-                "_internal/migrations/versions/"
-                "20260729_0001_money_minor_bigint_expand.py"
-            ): b"# target",
-            (
-                "_internal/migrations/versions/"
-                "20260802_0001_currency_binding_authority.py"
-            ): b"# c02 target",
-            (
-                "_internal/migrations/versions/"
-                "20260809_0001_add_installation_owner_claim.py"
-            ): b"# release head",
+            ("_internal/migrations/versions/20260722_0001_bind_repayment_draft_idem_to_account.py"): b"# source",
+            ("_internal/migrations/versions/20260729_0001_money_minor_bigint_expand.py"): b"# target",
+            ("_internal/migrations/versions/20260802_0001_currency_binding_authority.py"): b"# c02 target",
+            ("_internal/migrations/versions/20260809_0001_add_installation_owner_claim.py"): b"# release head",
         }.items():
             target = payload / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -480,11 +430,7 @@ def test_installed_c07_external_assets_are_manifest_bound_and_held(
         replacement = payload / "_internal" / "replacement.dat"
         extra = payload / "_internal" / "migrations" / "versions" / "extra.py"
         required_target = (
-            payload
-            / "_internal"
-            / "migrations"
-            / "versions"
-            / "20260729_0001_money_minor_bigint_expand.py"
+            payload / "_internal" / "migrations" / "versions" / "20260729_0001_money_minor_bigint_expand.py"
         )
         renamed_target = required_target.with_name("renamed-target.py")
         versions_dir = required_target.parent
@@ -973,33 +919,21 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     build = (PACKAGING / "build_inno_installer.ps1").read_text(encoding="utf-8-sig")
     installer = (PACKAGING / "ticketbox-installer.iss").read_text(encoding="utf-8")
     backend_spec = (PACKAGING / "ticketbox-backend.spec").read_text(encoding="utf-8")
-    backend_build = (ROOT / "scripts" / "build_backend_exe.ps1").read_text(
-        encoding="utf-8-sig"
-    )
-    backend_provenance = (
-        ROOT / "scripts" / "windows_backend_build_provenance.ps1"
-    ).read_text(encoding="utf-8-sig")
-    ci_workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8"
-    )
-    toolchain_preparer = (PACKAGING / "prepare_windows_build_toolchain.ps1").read_text(
-        encoding="utf-8-sig"
-    )
-    vendor_preparer = (PACKAGING / "prepare_windows_installer_vendor.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    backend_build = (ROOT / "scripts" / "build_backend_exe.ps1").read_text(encoding="utf-8-sig")
+    backend_provenance = (ROOT / "scripts" / "windows_backend_build_provenance.ps1").read_text(encoding="utf-8-sig")
+    ci_workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    toolchain_preparer = (PACKAGING / "prepare_windows_build_toolchain.ps1").read_text(encoding="utf-8-sig")
+    vendor_preparer = (PACKAGING / "prepare_windows_installer_vendor.ps1").read_text(encoding="utf-8-sig")
     pg_bundler = (PACKAGING / "build_pg_bundle.ps1").read_text(encoding="utf-8-sig")
-    toolchain = json.loads(
-        (PACKAGING / "windows-build-toolchain.json").read_text(encoding="utf-8")
-    )
+    toolchain = json.loads((PACKAGING / "windows-build-toolchain.json").read_text(encoding="utf-8"))
     postgres_source = toolchain["installer_vendor_sources"]["postgresql"]
     shawl_source = toolchain["installer_vendor_sources"]["shawl"]
     build_tool_sources = toolchain["build_tool_sources"]
 
-    assert '$backendManifest = Assert-TicketboxBackendBuildManifest' in build
+    assert "$backendManifest = Assert-TicketboxBackendBuildManifest" in build
     assert "Remove-TicketboxPublishDirectoryVerified $targetPublishDir $publishRoot" not in build
     assert build.index("$InstallerBuildManifest") < build.index(
-        '$backendManifest = Assert-TicketboxBackendBuildManifest'
+        "$backendManifest = Assert-TicketboxBackendBuildManifest"
     )
     assert 'Invoke-TicketboxExecutableProbe $postgresExe @("--version")' in build
     assert 'Invoke-TicketboxExecutableProbe $ExecutablePath @("--version")' in build
@@ -1007,7 +941,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert 'Assert-TicketboxVendorVersionAllowed $releaseConfig "postgres" $version' in build
     assert 'Assert-TicketboxVendorVersionAllowed $releaseConfig "shawl" $version' in build
     assert 'foreach ($directory in @("bin", "lib", "share"))' in build
-    assert 'Read-TicketboxPgBundleManifest $bundleManifestPath' in build
+    assert "Read-TicketboxPgBundleManifest $bundleManifestPath" in build
     assert "PostgreSQL bundle manifest 与 Windows 工具链 archive/payload pin 不一致" in build
     assert "archive_payload_fingerprint" in build
     assert postgres_source["payload_file_count"] > 0
@@ -1026,9 +960,35 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "payload_fingerprint = $PostgresProvenance.bundle_snapshot.fingerprint" in build
     assert '"/DTargetPgMajor=$($postgresProvenance.major)"' in build
     assert '"/DLifecycleSafetyScriptSha256=$(Get-TicketboxFileSha256 $SafetyScript)"' in build
+    assert (
+        '"/DWindowsSecurityPrimitivesScriptSha256=$(Get-TicketboxFileSha256 $WindowsSecurityPrimitivesScript)"' in build
+    )
+    assert (
+        '"/DWindowsSecurityByteArrayScriptSha256=$(Get-TicketboxFileSha256 $WindowsSecurityByteArrayScript)"' in build
+    )
+    assert (
+        '"/DWindowsSecurityTokenPrivilegeNativeScriptSha256='
+        '$(Get-TicketboxFileSha256 $WindowsSecurityTokenPrivilegeNativeScript)"' in build
+    )
+    assert (
+        '"/DWindowsSecurityTokenPrivilegeScriptSha256='
+        '$(Get-TicketboxFileSha256 $WindowsSecurityTokenPrivilegeScript)"' in build
+    )
+    assert (
+        '"/DWindowsSecurityDescriptorComparisonScriptSha256='
+        '$(Get-TicketboxFileSha256 $WindowsSecurityDescriptorComparisonScript)"' in build
+    )
+    assert (
+        '"/DWindowsSecurityDescriptorDiagnosticScriptSha256='
+        '$(Get-TicketboxFileSha256 $WindowsSecurityDescriptorDiagnosticScript)"' in build
+    )
+    assert (
+        '"/DWindowsSecurityFileSecurityScriptSha256='
+        '$(Get-TicketboxFileSha256 $WindowsSecurityFileSecurityScript)"' in build
+    )
     assert '"/DLifecycleLockScriptSha256=$(Get-TicketboxFileSha256 $LockScript)"' in build
     assert '"/DLifecycleHolderScriptSha256=$(Get-TicketboxFileSha256 $LockHolderScript)"' in build
-    assert 'upstream_authenticity_verified = $false' in build
+    assert "upstream_authenticity_verified = $false" in build
     assert 'verification_scope = "build-time-local-payload-integrity-only"' in build
     assert "Get-TicketboxInstallerRecipeSnapshot" in build
     assert "Get-TicketboxGitProvenance $BackendRoot" in build
@@ -1040,24 +1000,18 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "status_fingerprint = $GitProvenance.status_fingerprint" in build
     assert "executable = $CompilerProvenance.executable" in build
     assert "engine_version = $CompilerProvenance.engine_version" in build
-    assert "Get-TicketboxIsccEngineVersion" in PROVENANCE_HELPER.read_text(
-        encoding="utf-8-sig"
-    )
+    assert "Get-TicketboxIsccEngineVersion" in PROVENANCE_HELPER.read_text(encoding="utf-8-sig")
     assert "compiler_defines = @(Get-TicketboxNormalizedCompilerDefines $CompilerDefines)" in build
     assert "toolchain = $BackendManifest.toolchain" in build
-    assert build.index("if ($CheckInputsOnly)") < build.index(
-        "$installerBuild = Write-InstallerBuildProvenance"
-    )
+    assert build.index("if ($CheckInputsOnly)") < build.index("$installerBuild = Write-InstallerBuildProvenance")
     assert build.index("Get-TicketboxIsccProvenance $iscc") < build.index(
-        "& $iscc @defines \"/O$compilerOutputDir\" $stagedIssPath"
+        '& $iscc @defines "/O$compilerOutputDir" $stagedIssPath'
     )
-    assert "Assert-File $stagedInstaller \"本轮 ISCC staging 安装包输出\"" in build
+    assert 'Assert-File $stagedInstaller "本轮 ISCC staging 安装包输出"' in build
     assert build.index("& $iscc @defines") < build.index(
         "$currentBackendManifest = Assert-TicketboxBackendBuildManifest"
     )
-    assert build.index("& $iscc @defines") < build.index(
-        "$currentPostgresProvenance = Get-ValidatedPostgresProvenance"
-    )
+    assert build.index("& $iscc @defines") < build.index("$currentPostgresProvenance = Get-ValidatedPostgresProvenance")
     assert "$currentShawlProvenance = Get-ValidatedShawlProvenance" in build
     assert "Get-TicketboxFileSha256 $stagedInstaller" in build
     assert "BUILD_COMPLETE.json" in build
@@ -1098,25 +1052,16 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "sys.path.insert(0, BACKEND)" in backend_spec
     assert 'collect_submodules("app", on_error="raise")' in backend_spec
     assert 'name="ticketbox-c07-migrator"' in backend_spec
-    assert (
-        '$stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"'
-        in backend_build
-    )
-    smoke_call = backend_build.index(
-        "$c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke"
-    )
+    assert '$stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"' in backend_build
+    smoke_call = backend_build.index("$c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke")
     payload_gate = backend_build.index("Assert-TicketboxPostgresOnlyFrozenPayload `")
     manifest_write = backend_build.index("Write-TicketboxBackendBuildManifest `")
     assert payload_gate < smoke_call < manifest_write
     assert "-HelperPath $stagedC07Helper" in backend_build
     assert "-PayloadSnapshot $c07SmokePayloadSnapshot" in backend_build
     assert "-C07MigrationHelperSmokeEvidence $c07MigrationHelperSmoke" in backend_build
-    payload_snapshot = backend_build.index(
-        "$c07SmokePayloadSnapshot = Get-TicketboxBackendPayloadSnapshot"
-    )
-    payload_lock = backend_build.index(
-        "$C07SmokePayloadLocks = @(Enter-TicketboxFileSetReadLocks"
-    )
+    payload_snapshot = backend_build.index("$c07SmokePayloadSnapshot = Get-TicketboxBackendPayloadSnapshot")
+    payload_lock = backend_build.index("$C07SmokePayloadLocks = @(Enter-TicketboxFileSetReadLocks")
     payload_unlock = backend_build.index(
         "Exit-TicketboxFileSetReadLocks $C07SmokePayloadLocks",
         manifest_write,
@@ -1125,45 +1070,33 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert payload_gate < payload_snapshot < payload_lock < smoke_call
     assert manifest_write < payload_unlock < publish
     assert "function Invoke-TicketboxC07MigrationHelperSmoke" in backend_provenance
-    assert '$startInfo.FileName = $HelperPath' in backend_provenance
-    assert '$startInfo.RedirectStandardInput = $true' in backend_provenance
-    assert (
-        '[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)'
-        in backend_provenance
-    )
-    assert '$process.StandardInput.Close()' in backend_provenance
+    assert "$startInfo.FileName = $HelperPath" in backend_provenance
+    assert "$startInfo.RedirectStandardInput = $true" in backend_provenance
+    assert "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)" in backend_provenance
+    assert "$process.StandardInput.Close()" in backend_provenance
     console_input_override = backend_provenance.index(
-        '[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)'
+        "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)"
     )
-    helper_start = backend_provenance.index('$process.Start()', console_input_override)
+    helper_start = backend_provenance.index("$process.Start()", console_input_override)
     console_input_restore = backend_provenance.index(
-        '[Console]::InputEncoding = $previousConsoleInputEncoding', helper_start
+        "[Console]::InputEncoding = $previousConsoleInputEncoding", helper_start
     )
-    stdin_close = backend_provenance.index(
-        '$process.StandardInput.Close()', console_input_restore
-    )
+    stdin_close = backend_provenance.index("$process.StandardInput.Close()", console_input_restore)
     assert console_input_override < helper_start < console_input_restore < stdin_close
     assert "$processStarted = $process.Start()" in backend_provenance
     assert "if ($processStarted -and -not $process.HasExited)" in backend_provenance
-    assert '$startInfo.EnvironmentVariables.Clear()' in backend_provenance
+    assert "$startInfo.EnvironmentVariables.Clear()" in backend_provenance
     assert '"--c07-installed-upgrade-plan --source-revision "' in backend_provenance
-    assert 'Assert-TicketboxC07MigrationHelperSmokeResult $result $DistDir' in (
-        backend_provenance
-    )
-    assert backend_provenance.count(
-        "Get-TicketboxBackendPayloadSnapshot $DistDir"
-    ) >= 2
-    assert "payload_fingerprint = [string]$PayloadSnapshot.fingerprint" in (
-        backend_provenance
-    )
-    assert ci_workflow.count(
-        "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass "
-        "-File scripts\\build_backend_exe.ps1 -Clean"
-    ) == 2
+    assert "Assert-TicketboxC07MigrationHelperSmokeResult $result $DistDir" in (backend_provenance)
+    assert backend_provenance.count("Get-TicketboxBackendPayloadSnapshot $DistDir") >= 2
+    assert "payload_fingerprint = [string]$PayloadSnapshot.fingerprint" in (backend_provenance)
     assert (
-        'Assert-File (Join-Path $BackendDist "ticketbox-c07-migrator.exe")'
-        in build
+        ci_workflow.count(
+            "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\\build_backend_exe.ps1 -Clean"
+        )
+        == 2
     )
+    assert 'Assert-File (Join-Path $BackendDist "ticketbox-c07-migrator.exe")' in build
     assert "Read-TicketboxWindowsBuildToolchain $BackendRoot" in backend_build
     assert "prepare_windows_build_toolchain.ps1" in backend_build
     assert "-Component Backend" in backend_build
@@ -1204,14 +1137,10 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert vendor_preparer.index("$actualHash = Get-TicketboxStreamSha256 $readHandle") < (
         vendor_preparer.index("return [pscustomobject]@{ Path = $privatePath; Handle = $readHandle }")
     )
-    assert vendor_preparer.index("$executableHash = Get-TicketboxStreamSha256") < (
-        vendor_preparer.index("--version")
-    )
+    assert vendor_preparer.index("$executableHash = Get-TicketboxStreamSha256") < (vendor_preparer.index("--version"))
     assert "Get-TicketboxValidatedPgZipEntry" in pg_bundler
     assert "Get-FileHash" not in pg_bundler
-    assert pg_bundler.index("Get-TicketboxValidatedPgZipEntry $entry") < pg_bundler.index(
-        '$full.StartsWith("pgsql/"'
-    )
+    assert pg_bundler.index("Get-TicketboxValidatedPgZipEntry $entry") < pg_bundler.index('$full.StartsWith("pgsql/"')
     assert "大小写冲突或重复 entry" in pg_bundler
     assert "symlink/reparse/特殊 entry" in pg_bundler
     assert "canonical path 逃逸 staging" in pg_bundler
@@ -1241,13 +1170,9 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         backend_build.index("Publish-TicketboxRecoverableDirectory `")
     )
     assert "-SourceSnapshot $sourceBeforeFreeze" in backend_build
-    before_tree = backend_build.index(
-        "$executionTreeBeforeFreeze = Get-TicketboxPythonExecutionTreeSnapshot $PyBuild"
-    )
+    before_tree = backend_build.index("$executionTreeBeforeFreeze = Get-TicketboxPythonExecutionTreeSnapshot $PyBuild")
     freeze = backend_build.index("& $PyBuild -I -B -m PyInstaller `")
-    after_tree = backend_build.index(
-        "$executionTreeAfterFreeze = Get-TicketboxPythonExecutionTreeSnapshot $PyBuild"
-    )
+    after_tree = backend_build.index("$executionTreeAfterFreeze = Get-TicketboxPythonExecutionTreeSnapshot $PyBuild")
     assert before_tree < freeze < after_tree
     assert "PyInstaller interpreter and site-packages during freeze" in backend_build
     assert "Enter-TicketboxWindowsBuildLock $BackendRoot" in backend_build
@@ -1256,9 +1181,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     for writer in (toolchain_preparer, vendor_preparer, pg_bundler):
         assert "Enter-TicketboxWindowsBuildLock $BackendRoot" in writer
         assert "Exit-TicketboxWindowsBuildLock $BuildLock" in writer
-    lock_helper = (ROOT / "scripts" / "windows_backend_build_provenance.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    lock_helper = (ROOT / "scripts" / "windows_backend_build_provenance.ps1").read_text(encoding="utf-8-sig")
     assert 'return "Global\\Ticketbox.WindowsBuild.$hex"' in lock_helper
     assert "[System.IO.FileShare]::None" in lock_helper
     assert "[AppDomain]::CurrentDomain.SetData" in lock_helper
@@ -1273,12 +1196,8 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert 'Source: "..\\dist\\installer-input\\BUILD_PROVENANCE.json"' in installer
     assert "#error TargetPgMajor must be probed" in installer
 
-    github_ci = (ROOT.parent / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8"
-    )
-    gitea_ci = (ROOT.parent / ".gitea" / "workflows" / "windows-ci.yml").read_text(
-        encoding="utf-8"
-    )
+    github_ci = (ROOT.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    gitea_ci = (ROOT.parent / ".gitea" / "workflows" / "windows-ci.yml").read_text(encoding="utf-8")
     assert 'pip install "uv==' not in github_ci
     assert "choco install innosetup" not in github_ci
     assert "prepare_windows_build_toolchain.ps1 -Component Inno -Force" in github_ci
@@ -1293,9 +1212,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "-VerifyPublishDirectory" in gitea_ci
     assert not re.search(r"uses:\s+[^\s]+@(?:v\d+|main|master)(?:\s|$)", github_ci)
 
-    config = json.loads(
-        (PACKAGING / "windows-release-config.json").read_text(encoding="utf-8")
-    )
+    config = json.loads((PACKAGING / "windows-release-config.json").read_text(encoding="utf-8"))
     config_path = tmp_path / "windows-release-config.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
     build_path = PACKAGING / "build_inno_installer.ps1"
@@ -1311,8 +1228,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert probe("shawl", "1.9.0").returncode == 0
     assert probe("iscc", "6.7.1").returncode == 0
     override_real_build = _run_powershell(
-        f"& '{_ps_literal(build_path)}' "
-        f"-ReleaseConfigOverride '{_ps_literal(config_path)}' -CheckSourceInputsOnly"
+        f"& '{_ps_literal(build_path)}' -ReleaseConfigOverride '{_ps_literal(config_path)}' -CheckSourceInputsOnly"
     )
     assert override_real_build.returncode != 0
     normalized_defines = _run_powershell(
@@ -1323,8 +1239,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert normalized_defines.returncode == 0, normalized_defines.stderr
     assert json.loads(normalized_defines.stdout) == ["/DAlpha=1", "/DZulu=2"]
     duplicate_define = _run_powershell(
-        f". '{_ps_literal(PROVENANCE_HELPER)}'; "
-        "Get-TicketboxNormalizedCompilerDefines @('/DAlpha=1','/DAlpha=2')"
+        f". '{_ps_literal(PROVENANCE_HELPER)}'; Get-TicketboxNormalizedCompilerDefines @('/DAlpha=1','/DAlpha=2')"
     )
     assert duplicate_define.returncode != 0
     config["postgres_version_policy"]["minimum"] = "17.11"
@@ -1347,12 +1262,8 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
 def _assert_frozen_database_payload_gate(build_script: str) -> None:
     call = "Assert-TicketboxPostgresOnlyFrozenPayload `"
     assert build_script.count(call) == 1
-    assert build_script.index(call) < build_script.index(
-        "$manifestPath = Write-TicketboxBackendBuildManifest"
-    )
-    assert build_script.index(call) < build_script.index(
-        "Publish-TicketboxRecoverableDirectory `"
-    )
+    assert build_script.index(call) < build_script.index("$manifestPath = Write-TicketboxBackendBuildManifest")
+    assert build_script.index(call) < build_script.index("Publish-TicketboxRecoverableDirectory `")
 
 
 def test_frozen_backend_rejects_forbidden_database_payloads_and_gate_mutation(
@@ -1401,9 +1312,7 @@ def test_frozen_backend_rejects_forbidden_database_payloads_and_gate_mutation(
     rejected_embedded = inspect("0, 1, 1, 1, 'm', 'MySQLdb.connections'")
     assert rejected_embedded.returncode != 0
 
-    backend_build = (ROOT / "scripts" / "build_backend_exe.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    backend_build = (ROOT / "scripts" / "build_backend_exe.ps1").read_text(encoding="utf-8-sig")
     _assert_frozen_database_payload_gate(backend_build)
     mutated = backend_build.replace(
         "Assert-TicketboxPostgresOnlyFrozenPayload `",
@@ -1419,9 +1328,7 @@ def _assert_publish_unit_gates(build_script: str) -> None:
     assert build_script.count(call) == 3
     publish_function = build_script.index("function Publish-TicketboxInstallerUnit")
     function_validation = build_script.index(call, publish_function)
-    recoverable_publish = build_script.index(
-        "Publish-TicketboxRecoverableDirectory `", publish_function
-    )
+    recoverable_publish = build_script.index("Publish-TicketboxRecoverableDirectory `", publish_function)
     assert function_validation < recoverable_publish
     staging_validation = build_script.rindex(call)
     publish_call = build_script.rindex("Publish-TicketboxInstallerUnit `")
@@ -1431,11 +1338,11 @@ def _assert_publish_unit_gates(build_script: str) -> None:
 def _assert_external_publish_directory_name_is_not_authority(build_script: str) -> None:
     verify_only = build_script[
         build_script.index("if ($VerifyOnly) {") : build_script.index(
-            '$buildStagingRoot = Join-Path $BackendRoot',
+            "$buildStagingRoot = Join-Path $BackendRoot",
         )
     ]
     assert "$expectedVerifyDirectoryName = if ($VerifyPublishDirectory.Trim().Length -eq 0)" in verify_only
-    assert '-ExpectedDirectoryName $expectedVerifyDirectoryName' in verify_only
+    assert "-ExpectedDirectoryName $expectedVerifyDirectoryName" in verify_only
     external_branch = verify_only[
         verify_only.index("$expectedVerifyDirectoryName = if") : verify_only.index(
             "$verifiedPublish = Assert-TicketboxInstallerPublishUnit",
@@ -1536,13 +1443,16 @@ def test_installer_publish_unit_validator_rejects_contract_mutations(
     )
     downloaded_valid = _run_powershell(downloaded_command)
     assert downloaded_valid.returncode == 0, downloaded_valid.stderr
-    assert _run_powershell(
-        downloaded_command.replace(
-            "-ExpectedDirectoryName ''",
-            f"-ExpectedDirectoryName 'Ticketbox-Setup-{version}'",
-            1,
-        )
-    ).returncode != 0
+    assert (
+        _run_powershell(
+            downloaded_command.replace(
+                "-ExpectedDirectoryName ''",
+                f"-ExpectedDirectoryName 'Ticketbox-Setup-{version}'",
+                1,
+            )
+        ).returncode
+        != 0
+    )
 
     write_valid_unit(b"coordinated replacement")
     assert _run_powershell(command).returncode != 0
@@ -1577,16 +1487,12 @@ def test_installer_publish_unit_validator_rejects_contract_mutations(
         _assert_publish_unit_gates(mutated)
     external_directory_mutation = build.replace(
         'else {\n        ""\n    }\n    $verifiedPublish',
-        'else {\n        $publishUnitName\n    }\n    $verifiedPublish',
+        "else {\n        $publishUnitName\n    }\n    $verifiedPublish",
         1,
     )
     with pytest.raises(AssertionError):
-        _assert_external_publish_directory_name_is_not_authority(
-            external_directory_mutation
-        )
-    _assert_installer_publish_swap_rolls_back_and_then_replaces_atomically(
-        tmp_path / "atomic-swap"
-    )
+        _assert_external_publish_directory_name_is_not_authority(external_directory_mutation)
+    _assert_installer_publish_swap_rolls_back_and_then_replaces_atomically(tmp_path / "atomic-swap")
     _assert_installer_hash_output_is_external_and_durable(
         build_path,
         tmp_path / "hash-output",
@@ -1624,9 +1530,7 @@ def _assert_installer_hash_output_is_external_and_durable(
             executable=engine,
         )
         assert write.returncode == 0, write.stdout + write.stderr
-        assert output_path.read_bytes() == (
-            f"installer_sha256={trusted_hash}{os.linesep}".encode()
-        )
+        assert output_path.read_bytes() == (f"installer_sha256={trusted_hash}{os.linesep}".encode())
 
         inside_publish = publish_root / f"engine-{index}.txt"
         rejected_inside = _run_powershell(
@@ -1970,9 +1874,7 @@ def _assert_recoverable_directory_publication_handles_interrupted_swap_states(
             "throw 'case-only staging alias mutated live publication authority' }",
             executable=engine,
         )
-        assert case_alias_rejected.returncode == 0, (
-            case_alias_rejected.stdout + case_alias_rejected.stderr
-        )
+        assert case_alias_rejected.returncode == 0, case_alias_rejected.stdout + case_alias_rejected.stderr
 
         nested_root = tmp_path / f"nested-staging-{index}"
         nested_staging = nested_root / ".staging-parent" / "candidate"
@@ -1996,19 +1898,13 @@ def _assert_recoverable_directory_publication_handles_interrupted_swap_states(
             "throw 'nested staging did not publish as one directory unit' }",
             executable=engine,
         )
-        assert nested_publish.returncode == 0, (
-            nested_publish.stdout + nested_publish.stderr
-        )
+        assert nested_publish.returncode == 0, nested_publish.stdout + nested_publish.stderr
 
         nested_recovery_root = tmp_path / f"nested-recovery-{index}"
-        nested_recovery_staging = (
-            nested_recovery_root / ".staging-parent" / "candidate"
-        )
+        nested_recovery_staging = nested_recovery_root / ".staging-parent" / "candidate"
         nested_recovery_target = nested_recovery_root / "target"
         nested_recovery_backup = nested_recovery_root / ".target.last-known-good"
-        nested_recovery_receipt = (
-            nested_recovery_root / ".target.publish-receipt.json"
-        )
+        nested_recovery_receipt = nested_recovery_root / ".target.publish-receipt.json"
         nested_recovery_staging.mkdir(parents=True)
         (nested_recovery_staging / "payload.txt").write_text(
             "recovered",
@@ -2033,9 +1929,7 @@ def _assert_recoverable_directory_publication_handles_interrupted_swap_states(
             "throw 'nested prepared receipt did not recover initial publication' }",
             executable=engine,
         )
-        assert nested_recovery.returncode == 0, (
-            nested_recovery.stdout + nested_recovery.stderr
-        )
+        assert nested_recovery.returncode == 0, nested_recovery.stdout + nested_recovery.stderr
 
         identical_root = tmp_path / f"identical-prepared-{index}"
         identical_target = identical_root / "target"
@@ -2068,9 +1962,7 @@ def _assert_recoverable_directory_publication_handles_interrupted_swap_states(
             "throw 'identical prepared state did not converge to one target' }",
             executable=engine,
         )
-        assert identical_recovery.returncode == 0, (
-            identical_recovery.stdout + identical_recovery.stderr
-        )
+        assert identical_recovery.returncode == 0, identical_recovery.stdout + identical_recovery.stderr
 
         locked_root = tmp_path / f"locked-publish-{index}"
         locked_target = locked_root / "target"
@@ -2157,17 +2049,14 @@ def _assert_recoverable_directory_publication_handles_interrupted_swap_states(
             "throw 'rollback-complete state did not converge after receipt unlock' }",
             executable=engine,
         )
-        assert rollback_recovery.returncode == 0, (
-            rollback_recovery.stdout + rollback_recovery.stderr
-        )
+        assert rollback_recovery.returncode == 0, rollback_recovery.stdout + rollback_recovery.stderr
 
 
 def test_windows_build_lock_is_bound_to_current_requirement_inputs(tmp_path: Path) -> None:
     backend = tmp_path / "backend"
     _write_minimal_backend(backend)
     command = (
-        f". '{_ps_literal(PROVENANCE_HELPER)}'; "
-        f"Read-TicketboxWindowsBuildToolchain '{_ps_literal(backend)}' | Out-Null"
+        f". '{_ps_literal(PROVENANCE_HELPER)}'; Read-TicketboxWindowsBuildToolchain '{_ps_literal(backend)}' | Out-Null"
     )
     assert _run_powershell(command).returncode == 0
 
@@ -2175,15 +2064,9 @@ def test_windows_build_lock_is_bound_to_current_requirement_inputs(tmp_path: Pat
     stale = _run_powershell(command)
     assert stale.returncode != 0
     assert "stale" in (stale.stdout + stale.stderr).lower()
-    _assert_windows_build_reparse_guard_rejects_ancestor_and_tree_junctions(
-        tmp_path / "reparse"
-    )
-    _assert_windows_build_lock_serializes_and_execution_tree_detects_drift(
-        tmp_path / "lock-and-drift"
-    )
-    _assert_recoverable_directory_publication_handles_interrupted_swap_states(
-        tmp_path / "publication-recovery"
-    )
+    _assert_windows_build_reparse_guard_rejects_ancestor_and_tree_junctions(tmp_path / "reparse")
+    _assert_windows_build_lock_serializes_and_execution_tree_detects_drift(tmp_path / "lock-and-drift")
+    _assert_recoverable_directory_publication_handles_interrupted_swap_states(tmp_path / "publication-recovery")
 
 
 def test_inno_version_floor_and_protected_child_logs_are_fail_closed() -> None:
@@ -2214,10 +2097,7 @@ def test_inno_version_floor_and_protected_child_logs_are_fail_closed() -> None:
     assert "'BackendVersion'," in windows
     assert "CompareText(Context, 'Ticketbox service installation') = 0" in windows
     assert "{commoncf64}\\Ticketbox\\installer-logs" in windows
-    assert (
-        "function PrepareProtectedInstallerLog(Context: String; var LogPath: String): Boolean;"
-        in windows
-    )
+    assert "function PrepareProtectedInstallerLog(Context: String; var LogPath: String): Boolean;" in windows
     assert "SetArrayLength(LogHeader, 4);" in windows
     assert "SCHEMA=ticketbox-installer-child-log-v1" in windows
     assert "INSTALLER_OWNER_PID=" in windows
@@ -2247,24 +2127,20 @@ def test_inno_version_floor_and_protected_child_logs_are_fail_closed() -> None:
     assert "exit;" not in decision[fresh + len(fresh_exit) : comparison]
 
     allow = _run_powershell(
-        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' "
-        "-VersionFloorContractProbe '1.2.0||1.1.9|true'"
+        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' -VersionFloorContractProbe '1.2.0||1.1.9|true'"
     )
     assert allow.returncode == 0, allow.stderr
     assert allow.stdout.strip() == "allow"
     downgrade = _run_powershell(
-        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' "
-        "-VersionFloorContractProbe '1.1.9||1.2.0|true'"
+        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' -VersionFloorContractProbe '1.1.9||1.2.0|true'"
     )
     assert downgrade.returncode != 0
     missing_trusted_version = _run_powershell(
-        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' "
-        "-VersionFloorContractProbe '1.2.0|||true'"
+        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' -VersionFloorContractProbe '1.2.0|||true'"
     )
     assert missing_trusted_version.returncode != 0
     fresh_probe = _run_powershell(
-        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' "
-        "-VersionFloorContractProbe '1.2.0|||false'"
+        f"& '{_ps_literal(PACKAGING / 'build_inno_installer.ps1')}' -VersionFloorContractProbe '1.2.0|||false'"
     )
     assert fresh_probe.returncode == 0, fresh_probe.stderr
     assert fresh_probe.stdout.strip() == "fresh"

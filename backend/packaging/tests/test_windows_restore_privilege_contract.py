@@ -9,6 +9,8 @@ from _powershell_contract import powershell_contract_engines
 
 ROOT = Path(__file__).resolve().parents[3]
 SAFETY = ROOT / "backend" / "packaging" / "windows_installation_safety.ps1"
+SECURITY_ENTRY = ROOT / "backend" / "packaging" / "windows_security_primitives.ps1"
+TOKEN_PRIVILEGE_NATIVE = ROOT / "backend" / "packaging" / "security_primitives" / "token_privilege_native.ps1"
 SERVICE_LIFECYCLE = ROOT / "backend" / "packaging" / "windows_service_lifecycle.ps1"
 DATABASE_SAFETY = ROOT / "backend" / "packaging" / "windows_database_safety.ps1"
 PREPARE = ROOT / "backend" / "packaging" / "prepare_bundled_upgrade.ps1"
@@ -97,8 +99,10 @@ def _ps_literal(path: Path) -> str:
 
 def test_protected_creation_keeps_atomic_acl_and_restore_privilege_contract() -> None:
     source = SAFETY.read_text(encoding="utf-8-sig")
-    privilege = source[
-        source.index("public sealed class TicketboxRestorePrivilegeScope") : source.index(
+    security_entry = SECURITY_ENTRY.read_text(encoding="utf-8-sig")
+    privilege = TOKEN_PRIVILEGE_NATIVE.read_text(encoding="utf-8-sig")
+    restore_adapter = source[
+        source.index("function Enter-TicketboxRestorePrivilegeForSecurityDescriptor") : source.index(
             "function New-TicketboxProtectedFileSecurity"
         )
     ]
@@ -123,12 +127,18 @@ def test_protected_creation_keeps_atomic_acl_and_restore_privilege_contract() ->
         )
     ]
 
-    assert 'LookupPrivilegeValue(null, "SeRestorePrivilege"' in privilege
+    assert "public sealed class TicketboxWindowsSecurityPrivilegeScope" in privilege
+    assert "LookupPrivilegeValue(null, privilegeName" in privilege
     assert "ErrorNotAllAssigned = 1300" in privilege
     assert "out scope.previousState" in privilege
     assert "ref previousState" in privilege
     assert "restoreError == ErrorNotAllAssigned" in privilege
-    assert "if ($ownerSid -eq $currentUserSid)" in privilege
+    assert "TicketboxRestorePrivilegeScope" not in source
+    assert "AdjustTokenPrivileges" not in source
+    assert '"token_privilege_native.ps1"' in security_entry
+    assert "if ($ownerSid -eq $currentUserSid)" in restore_adapter
+    assert "Enter-TicketboxWindowsTokenPrivilege" in restore_adapter
+    assert '-PrivilegeName "SeRestorePrivilege"' in restore_adapter
     assert "Enter-TicketboxRestorePrivilegeForSecurityDescriptor $security" in directory
     assert "DirectoryInfo($fullPath)).Create($security)" in directory
     assert "FileSystemAclExtensions]::CreateDirectory($security, $fullPath)" in directory
@@ -142,12 +152,8 @@ def test_protected_creation_keeps_atomic_acl_and_restore_privilege_contract() ->
     assert "拒绝临时接管 owner" in existing_acl_update
     assert durable_writer.count("Set-TicketboxOwnerIfNeeded") == 2
     assert durable_writer.count("Assert-TicketboxExactFileAcl") == 2
-    assert durable_writer.index("Assert-TicketboxExactFileAcl") < durable_writer.index(
-        "Move-TicketboxFileDurable"
-    )
-    assert durable_writer.rindex("Assert-TicketboxExactFileAcl") > durable_writer.index(
-        "Move-TicketboxFileDurable"
-    )
+    assert durable_writer.index("Assert-TicketboxExactFileAcl") < durable_writer.index("Move-TicketboxFileDurable")
+    assert durable_writer.rindex("Assert-TicketboxExactFileAcl") > durable_writer.index("Move-TicketboxFileDurable")
     assert "New-Item" not in directory
     assert "New-Item" not in protected_file
 
@@ -213,9 +219,7 @@ def test_data_root_volume_capabilities_use_win32_feature_flags(
     assert "FILE_PERSISTENT_ACLS" not in source
     assert "[uint32]$filePersistentAcls = 0x00000008" in source
     assert "[uint32]$fileReadOnlyVolume = 0x00080000" in source
-    assert domain.index("Assert-TicketboxDataRootVolumeCapabilities") < domain.index(
-        "$full.Length -lt 8"
-    )
+    assert domain.index("Assert-TicketboxDataRootVolumeCapabilities") < domain.index("$full.Length -lt 8")
 
     harness = tmp_path / f"volume-capabilities-{Path(engine).stem}.ps1"
     harness.write_text(
@@ -264,9 +268,7 @@ if (-not $rejected) {{ throw 'read-only ACL volume was accepted' }}
 def test_fresh_install_authority_gate_repairs_known_marker_residual_first() -> None:
     source = PREPARE.read_text(encoding="utf-8-sig")
     gate_start = source.index("function Assert-TicketboxPreparedDataRootAuthorityGate")
-    gate_end = source.index(
-        "function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded", gate_start
-    )
+    gate_end = source.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded", gate_start)
     gate = source[gate_start:gate_end]
 
     fresh_start = gate.index('if ($Mode -ceq "fresh_install")')
@@ -409,7 +411,7 @@ try {{
         -FullControlAccounts @($currentAccount) `
         -OwnerAccount $currentAccount | Out-Null
     Write-TicketboxProtectedUtf8FileDurable `
-        -Path '{_ps_literal(current_root / 'current.txt')}' `
+        -Path '{_ps_literal(current_root / "current.txt")}' `
         -Text 'current-owner' `
         -FullControlAccounts @($currentAccount) `
         -OwnerAccount $currentAccount
@@ -417,7 +419,7 @@ try {{
     if ($currentOwner -cne $currentSid) {{
         throw 'current-owner fast path changed the owner SID'
     }}
-    $currentFileAcl = Get-TicketboxPathAcl '{_ps_literal(current_root / 'current.txt')}'
+    $currentFileAcl = Get-TicketboxPathAcl '{_ps_literal(current_root / "current.txt")}'
     if (-not $currentFileAcl.AreAccessRulesProtected -or
         @($currentFileAcl.Access | Where-Object {{ $_.IsInherited }}).Count -ne 0) {{
         throw 'current-owner protected file retained inherited ACL state'
@@ -440,7 +442,7 @@ try {{
                         -FullControlAccounts @($currentAccount) `
                         -OwnerAccount $currentAccount | Out-Null
                     Write-TicketboxProtectedUtf8FileDurable `
-                        -Path '{_ps_literal(missing_file_parent / 'system.txt')}' `
+                        -Path '{_ps_literal(missing_file_parent / "system.txt")}' `
                         -Text 'must-not-exist' `
                         -FullControlAccounts $systemAccounts `
                         -OwnerAccount 'SYSTEM'
@@ -457,7 +459,7 @@ try {{
         if (Test-Path -LiteralPath '{_ps_literal(missing_directory)}') {{
             throw 'foreign-owner directory survived fail-closed path'
         }}
-        if (Test-Path -LiteralPath '{_ps_literal(missing_file_parent / 'system.txt')}') {{
+        if (Test-Path -LiteralPath '{_ps_literal(missing_file_parent / "system.txt")}') {{
             throw 'foreign-owner file survived fail-closed path'
         }}
         Write-Output 'MODE=privilege-missing-failed-closed'
@@ -476,7 +478,7 @@ try {{
         throw 'directory creation leaked SeRestorePrivilege enabled state'
     }}
     Write-TicketboxProtectedUtf8FileDurable `
-        -Path '{_ps_literal(system_root / 'system.txt')}' `
+        -Path '{_ps_literal(system_root / "system.txt")}' `
         -Text 'system-owner' `
         -FullControlAccounts $systemAccounts `
         -OwnerAccount 'SYSTEM'
@@ -484,7 +486,7 @@ try {{
         throw 'file creation leaked SeRestorePrivilege enabled state'
     }}
     Set-TicketboxExactFileAcl `
-        -Path '{_ps_literal(system_root / 'system.txt')}' `
+        -Path '{_ps_literal(system_root / "system.txt")}' `
         -Accounts $systemAccounts `
         -OwnerAccount 'SYSTEM'
     Set-TicketboxExactDirectoryAcl `
@@ -493,7 +495,7 @@ try {{
         -OwnerAccount 'SYSTEM' `
         -Recurse
     Set-TicketboxExactFileAcl `
-        -Path '{_ps_literal(system_root / 'system.txt')}' `
+        -Path '{_ps_literal(system_root / "system.txt")}' `
         -Accounts $systemAccounts `
         -OwnerAccount 'SYSTEM'
     if ([TicketboxTestRestorePrivilege]::GetAttributes() -ne 0) {{
@@ -530,7 +532,7 @@ try {{
     if ($bootstrapAcl.Owner -cne 'S-1-5-18' -or
         -not $bootstrapAcl.AreAccessRulesProtected -or
         @($bootstrapAcl.Access | Where-Object {{ $_.IsInherited }}).Count -ne 0 -or
-        -not (Test-TicketboxByteArrayEquals `
+        -not (Test-TicketboxWindowsByteArrayEquals `
             $bootstrapBeforeBytes `
             ([IO.File]::ReadAllBytes($bootstrapPath)))) {{
         throw 'SYSTEM-owned bootstrap repair changed owner, ACL, or bytes'
@@ -539,7 +541,7 @@ try {{
         throw 'SYSTEM-owned bootstrap repair changed SeRestorePrivilege state'
     }}
     $systemSid = 'S-1-5-18'
-    foreach ($path in @('{_ps_literal(system_root)}', '{_ps_literal(system_root / 'system.txt')}')) {{
+    foreach ($path in @('{_ps_literal(system_root)}', '{_ps_literal(system_root / "system.txt")}')) {{
         $acl = Get-TicketboxPathAcl $path
         if ($acl.Owner -cne $systemSid) {{
             throw "foreign-owner primitive did not persist SYSTEM owner: $path"
@@ -1049,7 +1051,7 @@ $changed = Repair-TicketboxRecoverableInstallationIdentityAcl `
     -Pending
 if (-not $changed) {{ throw 'exact inherited identity was not repaired' }}
 $afterBytes = [IO.File]::ReadAllBytes($acceptedPath)
-if (-not (Test-TicketboxByteArrayEquals $beforeBytes $afterBytes)) {{
+if (-not (Test-TicketboxWindowsByteArrayEquals $beforeBytes $afterBytes)) {{
     throw 'identity ACL repair changed protected bytes'
 }}
 $accepted = Read-TicketboxPersistentInstallationIdentity `
@@ -1079,7 +1081,7 @@ $rejectedText = Get-TicketboxPersistentInstallationIdentityText `
 $rejectedBytes = [IO.File]::ReadAllBytes($rejectedPath)
 $mismatchedCandidate = New-Candidate `
     '{_ps_literal(rejected_root)}' `
-    '{_ps_literal(tmp_path / 'different-install')}'
+    '{_ps_literal(tmp_path / "different-install")}'
 $rejected = $false
 try {{
     Repair-TicketboxRecoverableInstallationIdentityAcl `
@@ -1091,7 +1093,7 @@ $rejectedAcl = Get-TicketboxPathAcl $rejectedPath
 if (-not $rejected -or
     $rejectedAcl.AreAccessRulesProtected -or
     @($rejectedAcl.Access | Where-Object {{ -not $_.IsInherited }}).Count -ne 0 -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $rejectedBytes `
         ([IO.File]::ReadAllBytes($rejectedPath)))) {{
     throw 'mismatched inherited identity was mutated or accepted'

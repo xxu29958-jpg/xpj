@@ -1638,7 +1638,7 @@ if (-not (Repair-PostgresBootstrapRecoveryFileAcl)) {
     throw 'exact inherited bootstrap ACL was not repaired'
 }
 $afterBytes = [IO.File]::ReadAllBytes($accepted.Path)
-if (-not (Test-TicketboxByteArrayEquals $beforeBytes $afterBytes)) {
+if (-not (Test-TicketboxWindowsByteArrayEquals $beforeBytes $afterBytes)) {
     throw 'bootstrap ACL repair changed recovery bytes'
 }
 if ((Get-AclShape $accepted.DataRoot) -cne $acceptedRootShape -or
@@ -1670,7 +1670,7 @@ if (-not (Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
     -ParentFullControlAccounts $parentAccounts)) {
     throw 'post-normalization bootstrap ACL was not re-protected'
 }
-if (-not (Test-TicketboxByteArrayEquals `
+if (-not (Test-TicketboxWindowsByteArrayEquals `
     $beforeBytes `
     ([IO.File]::ReadAllBytes($accepted.Path)))) {
     throw 'post-normalization bootstrap protection changed recovery bytes'
@@ -1704,7 +1704,7 @@ if (-not $malformedRejected -or $malformedAfterAcl.AreAccessRulesProtected -or
     (Get-AclShape $malformed.DataRoot) -cne $malformedRootShape -or
     (Get-AclShape $malformed.AppData) -cne $malformedAppShape -or
     (Get-AclShape $malformed.Path) -cne $malformedFileShape -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $malformedBeforeBytes `
         ([IO.File]::ReadAllBytes($malformed.Path)))) {
     throw 'malformed inherited bootstrap payload was mutated or accepted'
@@ -1733,7 +1733,7 @@ if (-not $unsafeRejected) {
 if ((Get-AclShape $unsafe.DataRoot) -cne $unsafeRootShape -or
     (Get-AclShape $unsafe.AppData) -cne $unsafeAppShape -or
     (Get-AclShape $unsafe.Path) -cne $unsafeFileShape -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $unsafeBeforeBytes `
         ([IO.File]::ReadAllBytes($unsafe.Path)))) {
     throw 'rejected unsafe inherited bootstrap ACL was mutated'
@@ -1768,7 +1768,7 @@ if (-not $postMalformedRejected -or
     (Get-AclShape $postMalformed.DataRoot) -cne $postMalformedRootShape -or
     (Get-AclShape $postMalformed.AppData) -cne $postMalformedAppShape -or
     (Get-AclShape $postMalformed.Path) -cne $postMalformedFileShape -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $postMalformedBytes `
         ([IO.File]::ReadAllBytes($postMalformed.Path)))) {
     throw 'post-normalization malformed payload was mutated or accepted'
@@ -1805,7 +1805,7 @@ if (-not $postUnsafeRejected) {
 if ((Get-AclShape $postUnsafe.DataRoot) -cne $postUnsafeRootShape -or
     (Get-AclShape $postUnsafe.AppData) -cne $postUnsafeAppShape -or
     (Get-AclShape $postUnsafe.Path) -cne $postUnsafeFileShape -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $postUnsafeBytes `
         ([IO.File]::ReadAllBytes($postUnsafe.Path)))) {
     throw 'rejected post-normalization unsafe ACL was mutated'
@@ -1860,7 +1860,7 @@ Set-TicketboxAcl `
 $actualAfterAcl = Get-TicketboxPathAcl $actual.Path
 if (-not $actualAfterAcl.AreAccessRulesProtected -or
     @($actualAfterAcl.Access | Where-Object { $_.IsInherited }).Count -ne 0 -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         $actualBeforeBytes `
         ([IO.File]::ReadAllBytes($actual.Path)))) {
     throw 'actual Set-TicketboxAcl did not re-protect bootstrap recovery bytes'

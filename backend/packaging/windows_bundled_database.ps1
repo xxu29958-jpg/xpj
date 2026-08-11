@@ -525,7 +525,7 @@ function Repair-PostgresBootstrapRecoveryFileAcl {
     $afterBytes = [IO.File]::ReadAllBytes(
         (ConvertTo-TicketboxWin32ExtendedPath $pwfile)
     )
-    if (-not (Test-TicketboxByteArrayEquals $beforeBytes $afterBytes)) {
+    if (-not (Test-TicketboxWindowsByteArrayEquals $beforeBytes $afterBytes)) {
         throw "PostgreSQL bootstrap 恢复文件 ACL 恢复改变了受保护字节。"
     }
     [void](Read-PostgresBootstrapRecoveryState)
@@ -585,7 +585,7 @@ function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
     $afterBytes = [IO.File]::ReadAllBytes(
         (ConvertTo-TicketboxWin32ExtendedPath $pwfile)
     )
-    if (-not (Test-TicketboxByteArrayEquals $beforeBytes $afterBytes)) {
+    if (-not (Test-TicketboxWindowsByteArrayEquals $beforeBytes $afterBytes)) {
         throw "AppData ACL 收敛改变了 PostgreSQL bootstrap 恢复字节。"
     }
     [void](Read-PostgresBootstrapRecoveryState)

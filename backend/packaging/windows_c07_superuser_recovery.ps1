@@ -28,6 +28,19 @@ if (-not (Get-Command `
     . $postgresqlHostOperations
 }
 
+$windowsSecurityPrimitives = Join-Path `
+    (Split-Path -Parent $MyInvocation.MyCommand.Path) `
+    "windows_security_primitives.ps1"
+if (-not (Get-Command `
+    "Get-TicketboxWindowsFileSecurityBytes" `
+    -CommandType Function `
+    -ErrorAction SilentlyContinue)) {
+    if (-not (Test-Path -LiteralPath $windowsSecurityPrimitives -PathType Leaf)) {
+        throw "缺少通用 Windows security primitives：$windowsSecurityPrimitives"
+    }
+    . $windowsSecurityPrimitives
+}
+
 $script:TicketboxC07SuperuserRecoverySchema =
     "ticketbox-c07-superuser-recovery-v1"
 $script:TicketboxC07SuperuserRecoveryArtifactName =
@@ -89,13 +102,22 @@ function Assert-TicketboxC07SuperuserRecoveryDependencies {
         "Invoke-TicketboxPostgresqlHostCredentialRotation",
         "Invoke-TicketboxPostgresqlHostNative",
         "Invoke-TicketboxPostgresqlHostPsql",
+        "Enter-TicketboxWindowsTokenPrivilege",
+        "Get-TicketboxWindowsFileSecurityBytes",
+        "Get-TicketboxWindowsSecurityDescriptorDifferenceDiagnostic",
+        "Get-TicketboxWindowsCreationSecuritySddl",
+        "New-TicketboxWindowsFileCreationSecurity",
+        "Set-TicketboxWindowsFileSecurityBytes",
+        "Test-TicketboxWindowsCreationSecurityEquals",
+        "Test-TicketboxWindowsRawAclEquals",
+        "Test-TicketboxWindowsSecurityDescriptorEquals",
         "ConvertFrom-TicketboxPostgresqlHostEvidenceRow",
         "New-TicketboxProtectedFileStream",
         "Read-TicketboxProtectedUtf8Artifact",
         "Replace-TicketboxFileDurablePreservingMetadata",
         "Remove-TicketboxProtectedUtf8Artifact",
         "Sync-TicketboxFileDurable",
-        "Test-TicketboxByteArrayEquals",
+        "Test-TicketboxWindowsByteArrayEquals",
         "Test-TicketboxPathEquals",
         "Write-TicketboxProtectedUtf8FileDurable"
     )) {
@@ -105,188 +127,21 @@ function Assert-TicketboxC07SuperuserRecoveryDependencies {
     }
 }
 
-function Initialize-TicketboxC07SuperuserRecoverySecurityPrivilegeMethods {
-    if ("TicketboxC07SecurityPrivilegeScope" -as [type]) {
-        return
-    }
-    Add-Type -TypeDefinition @'
-using System;
-using System.ComponentModel;
-using System.Runtime.InteropServices;
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct TicketboxC07Luid
-{
-    internal uint LowPart;
-    internal int HighPart;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct TicketboxC07LuidAndAttributes
-{
-    internal TicketboxC07Luid Luid;
-    internal uint Attributes;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct TicketboxC07TokenPrivileges
-{
-    internal uint PrivilegeCount;
-    internal TicketboxC07LuidAndAttributes Privileges;
-}
-
-public sealed class TicketboxC07SecurityPrivilegeScope : IDisposable
-{
-    private const uint TokenQuery = 0x0008;
-    private const uint TokenAdjustPrivileges = 0x0020;
-    private const uint PrivilegeEnabled = 0x00000002;
-    private const int ErrorNotAllAssigned = 1300;
-    private IntPtr tokenHandle;
-    private TicketboxC07TokenPrivileges previousState;
-    private bool restoreRequired;
-    private bool disposed;
-
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr GetCurrentProcess();
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CloseHandle(IntPtr handle);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool OpenProcessToken(
-        IntPtr processHandle,
-        uint desiredAccess,
-        out IntPtr tokenHandle);
-
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool LookupPrivilegeValue(
-        string systemName,
-        string name,
-        out TicketboxC07Luid luid);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AdjustTokenPrivileges(
-        IntPtr tokenHandle,
-        [MarshalAs(UnmanagedType.Bool)] bool disableAllPrivileges,
-        ref TicketboxC07TokenPrivileges newState,
-        int bufferLength,
-        out TicketboxC07TokenPrivileges previousState,
-        out int returnLength);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AdjustTokenPrivileges(
-        IntPtr tokenHandle,
-        [MarshalAs(UnmanagedType.Bool)] bool disableAllPrivileges,
-        ref TicketboxC07TokenPrivileges newState,
-        int bufferLength,
-        IntPtr previousState,
-        IntPtr returnLength);
-
-    private TicketboxC07SecurityPrivilegeScope(IntPtr handle)
-    {
-        tokenHandle = handle;
-    }
-
-    public static TicketboxC07SecurityPrivilegeScope Enter()
-    {
-        IntPtr handle;
-        if (!OpenProcessToken(
-            GetCurrentProcess(),
-            TokenQuery | TokenAdjustPrivileges,
-            out handle))
-        {
-            throw new Win32Exception(Marshal.GetLastWin32Error());
-        }
-        TicketboxC07SecurityPrivilegeScope scope =
-            new TicketboxC07SecurityPrivilegeScope(handle);
-        try
-        {
-            TicketboxC07Luid luid;
-            if (!LookupPrivilegeValue(null, "SeSecurityPrivilege", out luid))
-            {
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-            }
-            TicketboxC07TokenPrivileges requested =
-                new TicketboxC07TokenPrivileges();
-            requested.PrivilegeCount = 1;
-            requested.Privileges = new TicketboxC07LuidAndAttributes
-            {
-                Luid = luid,
-                Attributes = PrivilegeEnabled
-            };
-            int returnLength;
-            bool adjusted = AdjustTokenPrivileges(
-                handle,
-                false,
-                ref requested,
-                Marshal.SizeOf(typeof(TicketboxC07TokenPrivileges)),
-                out scope.previousState,
-                out returnLength);
-            int error = Marshal.GetLastWin32Error();
-            if (!adjusted || error == ErrorNotAllAssigned)
-            {
-                throw new Win32Exception(error);
-            }
-            scope.restoreRequired = true;
-            return scope;
-        }
-        catch
-        {
-            scope.Dispose();
-            throw;
-        }
-    }
-
-    public void Dispose()
-    {
-        if (disposed)
-        {
-            return;
-        }
-        disposed = true;
-        Exception restoreFailure = null;
-        if (restoreRequired)
-        {
-            if (!AdjustTokenPrivileges(
-                tokenHandle,
-                false,
-                ref previousState,
-                0,
-                IntPtr.Zero,
-                IntPtr.Zero))
-            {
-                restoreFailure =
-                    new Win32Exception(Marshal.GetLastWin32Error());
-            }
-        }
-        if (tokenHandle != IntPtr.Zero)
-        {
-            CloseHandle(tokenHandle);
-            tokenHandle = IntPtr.Zero;
-        }
-        if (restoreFailure != null)
-        {
-            throw restoreFailure;
-        }
-    }
-}
-'@
-}
-
 function Enter-TicketboxC07SuperuserRecoverySecurityPrivilege {
-    Initialize-TicketboxC07SuperuserRecoverySecurityPrivilegeMethods
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("SeSecurityPrivilege", "SeRestorePrivilege")]
+        [string]$PrivilegeName
+    )
+
     try {
-        return [TicketboxC07SecurityPrivilegeScope]::Enter()
+        return Enter-TicketboxWindowsTokenPrivilege `
+            -PrivilegeName $PrivilegeName
     }
     catch {
         throw (
-            "C07 PostgreSQL auth-file SACL authority 不可用；" +
-            "拒绝在未启用 SeSecurityPrivilege 时读取或替换。" +
+            "C07 PostgreSQL auth-file Windows security authority 不可用；" +
+            "拒绝在未启用 $PrivilegeName 时读取或替换。" +
             $_.Exception.GetBaseException().Message
         )
     }
@@ -376,42 +231,22 @@ function Assert-TicketboxC07SuperuserRecoveryArtifactPath {
 function Get-TicketboxC07SuperuserRecoveryFileSecurityBytes {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    $privilege = Enter-TicketboxC07SuperuserRecoverySecurityPrivilege
-    try {
-        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-        $sections = [Security.AccessControl.AccessControlSections]::All
-        if ($PSVersionTable.PSEdition -eq "Core") {
-            $security = [System.IO.FileSystemAclExtensions]::GetAccessControl(
-                $item,
-                $sections
-            )
+    return Get-TicketboxWindowsFileSecurityBytes `
+        -Path $Path `
+        -PrivilegeName "SeSecurityPrivilege" `
+        -PrivilegeScopeFactory {
+            param([string]$RequestedPrivilegeName)
+            Enter-TicketboxC07SuperuserRecoverySecurityPrivilege `
+                -PrivilegeName $RequestedPrivilegeName
         }
-        else {
-            $security = $item.GetAccessControl($sections)
-        }
-        return $security.GetSecurityDescriptorBinaryForm()
-    }
-    finally {
-        $privilege.Dispose()
-    }
 }
 
 function New-TicketboxC07SuperuserRecoveryCreationSecurity {
     param([Parameter(Mandatory = $true)][byte[]]$SecurityBytes)
 
-    $captured = New-Object Security.AccessControl.FileSecurity
     try {
-        $captured.SetSecurityDescriptorBinaryForm($SecurityBytes)
-        $sections =
-            [Security.AccessControl.AccessControlSections]::Access -bor
-            [Security.AccessControl.AccessControlSections]::Owner -bor
-            [Security.AccessControl.AccessControlSections]::Group
-        $creation = New-Object Security.AccessControl.FileSecurity
-        $creation.SetSecurityDescriptorSddlForm(
-            $captured.GetSecurityDescriptorSddlForm($sections),
-            $sections
-        )
-        return $creation
+        return New-TicketboxWindowsFileCreationSecurity `
+            -SecurityBytes $SecurityBytes
     }
     catch {
         throw "C07 PostgreSQL auth-file captured security descriptor 无效。"
@@ -1062,294 +897,15 @@ function Assert-TicketboxC07SuperuserRecoveryArtifact {
     }
 }
 
-function Test-TicketboxC07SuperuserRecoverySecurityEquals {
-    param(
-        [Parameter(Mandatory = $true)][byte[]]$Left,
-        [Parameter(Mandatory = $true)][byte[]]$Right
-    )
-
-    if (Test-TicketboxByteArrayEquals -Left $Left -Right $Right) {
-        return $true
-    }
-
-    try {
-        # Windows may recompute DEFAULTED/automatic-inheritance provenance when
-        # an ACL is reapplied. Normalize those flags, inherited provenance and
-        # equivalent auto-inherited DACL mask splits only; identities, ACE type,
-        # inheritance behavior, PRESENT/PROTECTED and the SACL stay authoritative.
-        $ignoredFlags =
-            [Security.AccessControl.ControlFlags]::OwnerDefaulted -bor
-            [Security.AccessControl.ControlFlags]::GroupDefaulted -bor
-            [Security.AccessControl.ControlFlags]::DiscretionaryAclDefaulted -bor
-            [Security.AccessControl.ControlFlags]::SystemAclDefaulted -bor
-            [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInheritRequired -bor
-            [Security.AccessControl.ControlFlags]::SystemAclAutoInheritRequired -bor
-            [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited -bor
-            [Security.AccessControl.ControlFlags]::SystemAclAutoInherited
-        $ignoredMask = [int]$ignoredFlags
-        $leftDescriptor = New-Object `
-            Security.AccessControl.RawSecurityDescriptor($Left, 0)
-        $rightDescriptor = New-Object `
-            Security.AccessControl.RawSecurityDescriptor($Right, 0)
-        $leftSecurity = New-Object Security.AccessControl.FileSecurity
-        $rightSecurity = New-Object Security.AccessControl.FileSecurity
-        $leftSecurity.SetSecurityDescriptorBinaryForm($Left)
-        $rightSecurity.SetSecurityDescriptorBinaryForm($Right)
-        if (
-            -not $leftSecurity.AreAccessRulesCanonical -or
-            -not $rightSecurity.AreAccessRulesCanonical -or
-            -not $leftSecurity.AreAuditRulesCanonical -or
-            -not $rightSecurity.AreAuditRulesCanonical
-        ) {
-            return $false
-        }
-        $leftFlags = [int]$leftDescriptor.ControlFlags -band (-bnot $ignoredMask)
-        $rightFlags = [int]$rightDescriptor.ControlFlags -band (-bnot $ignoredMask)
-        if (
-            $leftFlags -ne $rightFlags -or
-            -not $leftDescriptor.Owner.Equals($rightDescriptor.Owner) -or
-            -not $leftDescriptor.Group.Equals($rightDescriptor.Group) -or
-            $leftDescriptor.ResourceManagerControl -ne
-                $rightDescriptor.ResourceManagerControl -or
-            $leftDescriptor.Revision -ne $rightDescriptor.Revision
-        ) {
-            return $false
-        }
-        $normalizeDaclMasks = (
-            ([int]$leftDescriptor.ControlFlags -bor
-                [int]$rightDescriptor.ControlFlags) -band
-                [int][Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited
-        ) -ne 0
-        return (
-            (Test-TicketboxC07SuperuserRecoveryRawAclEquals `
-                -Left $leftDescriptor.DiscretionaryAcl `
-                -Right $rightDescriptor.DiscretionaryAcl `
-                -NormalizeInheritedProvenance `
-                -NormalizeEquivalentQualifiedMasks:$normalizeDaclMasks) -and
-            (Test-TicketboxC07SuperuserRecoveryRawAclEquals `
-                -Left $leftDescriptor.SystemAcl `
-                -Right $rightDescriptor.SystemAcl `
-                -NormalizeInheritedProvenance)
-        )
-    }
-    catch {
-        return $false
-    }
-}
-
-function Test-TicketboxC07SuperuserRecoveryRawAclEquals {
-    param(
-        [AllowNull()][object]$Left,
-        [AllowNull()][object]$Right,
-        [switch]$NormalizeInheritedProvenance,
-        [switch]$NormalizeEquivalentQualifiedMasks
-    )
-
-    if ($null -eq $Left -or $null -eq $Right) {
-        return $null -eq $Left -and $null -eq $Right
-    }
-    $aclBytes = @()
-    foreach ($acl in @($Left, $Right)) {
-        if ($NormalizeInheritedProvenance) {
-            $aceFingerprints = @()
-            $qualifiedMasks = @{}
-            for ($index = 0; $index -lt $acl.Count; $index++) {
-                $aceBytes = New-Object byte[] $acl[$index].BinaryLength
-                $acl[$index].GetBinaryForm($aceBytes, 0)
-                $ace = [Security.AccessControl.GenericAce]::CreateFromBinaryForm(
-                    $aceBytes,
-                    0
-                )
-                $ace.AceFlags = [Security.AccessControl.AceFlags](
-                    [int]$ace.AceFlags -band
-                        (-bnot [int][Security.AccessControl.AceFlags]::Inherited)
-                )
-                $accessMask = $null
-                if (
-                    $NormalizeEquivalentQualifiedMasks -and
-                    $ace -is [Security.AccessControl.QualifiedAce]
-                ) {
-                    $accessMask = [int64]$ace.AccessMask -band 0xFFFFFFFFL
-                    $ace.AccessMask = 0
-                }
-                $normalizedAceBytes = New-Object byte[] $ace.BinaryLength
-                $ace.GetBinaryForm($normalizedAceBytes, 0)
-                $fingerprint = [Convert]::ToBase64String($normalizedAceBytes)
-                if ($null -eq $accessMask) {
-                    $aceFingerprints += $fingerprint
-                }
-                else {
-                    $qualifiedMasks[$fingerprint] =
-                        [int64]$qualifiedMasks[$fingerprint] -bor $accessMask
-                }
-            }
-            $aceFingerprints += @(
-                $qualifiedMasks.GetEnumerator() | ForEach-Object {
-                    "{0}:{1:X8}" -f $_.Key, [int64]$_.Value
-                }
-            )
-            $canonicalAcl = (
-                [string]$acl.Revision + ":" +
-                (@($aceFingerprints | Sort-Object -CaseSensitive) -join ",")
-            )
-            $bytes = [Text.Encoding]::UTF8.GetBytes($canonicalAcl)
-        }
-        else {
-            $bytes = New-Object byte[] $acl.BinaryLength
-            $acl.GetBinaryForm($bytes, 0)
-        }
-        $aclBytes += ,$bytes
-    }
-    return Test-TicketboxByteArrayEquals `
-        -Left $aclBytes[0] `
-        -Right $aclBytes[1]
-}
-
-function Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic {
-    param(
-        [Parameter(Mandatory = $true)][byte[]]$Left,
-        [Parameter(Mandatory = $true)][byte[]]$Right
-    )
-
-    try {
-        $leftDescriptor = New-Object `
-            Security.AccessControl.RawSecurityDescriptor($Left, 0)
-        $rightDescriptor = New-Object `
-            Security.AccessControl.RawSecurityDescriptor($Right, 0)
-        $leftFlags = [int]$leftDescriptor.ControlFlags -band 0xFFFF
-        $rightFlags = [int]$rightDescriptor.ControlFlags -band 0xFFFF
-        $flagsXor = ($leftFlags -bxor $rightFlags) -band 0xFFFF
-        $daclFlags = [int](
-            [Security.AccessControl.ControlFlags]::DiscretionaryAclPresent -bor
-            [Security.AccessControl.ControlFlags]::DiscretionaryAclDefaulted -bor
-            [Security.AccessControl.ControlFlags]::DiscretionaryAclUntrusted -bor
-            [Security.AccessControl.ControlFlags]::ServerSecurity -bor
-            [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInheritRequired -bor
-            [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited -bor
-            [Security.AccessControl.ControlFlags]::DiscretionaryAclProtected
-        )
-        $saclFlags = [int](
-            [Security.AccessControl.ControlFlags]::SystemAclPresent -bor
-            [Security.AccessControl.ControlFlags]::SystemAclDefaulted -bor
-            [Security.AccessControl.ControlFlags]::SystemAclAutoInheritRequired -bor
-            [Security.AccessControl.ControlFlags]::SystemAclAutoInherited -bor
-            [Security.AccessControl.ControlFlags]::SystemAclProtected
-        )
-        $ownerEqual = if (
-            $null -eq $leftDescriptor.Owner -or
-            $null -eq $rightDescriptor.Owner
-        ) {
-            $null -eq $leftDescriptor.Owner -and
-                $null -eq $rightDescriptor.Owner
-        }
-        else {
-            $leftDescriptor.Owner.Equals($rightDescriptor.Owner)
-        }
-        $groupEqual = if (
-            $null -eq $leftDescriptor.Group -or
-            $null -eq $rightDescriptor.Group
-        ) {
-            $null -eq $leftDescriptor.Group -and
-                $null -eq $rightDescriptor.Group
-        }
-        else {
-            $leftDescriptor.Group.Equals($rightDescriptor.Group)
-        }
-        $daclBinaryEqual =
-            Test-TicketboxC07SuperuserRecoveryRawAclEquals `
-                -Left $leftDescriptor.DiscretionaryAcl `
-                -Right $rightDescriptor.DiscretionaryAcl
-        $saclBinaryEqual =
-            Test-TicketboxC07SuperuserRecoveryRawAclEquals `
-                -Left $leftDescriptor.SystemAcl `
-                -Right $rightDescriptor.SystemAcl
-        $daclComponentEqual =
-            ($flagsXor -band $daclFlags) -eq 0 -and $daclBinaryEqual
-        $saclComponentEqual =
-            ($flagsXor -band $saclFlags) -eq 0 -and $saclBinaryEqual
-        $diagnosticFormat =
-            "security_descriptor_diagnostic " +
-            "control_flags_left=0x{0:X4} control_flags_right=0x{1:X4} " +
-            "control_flags_xor=0x{2:X4} owner_equal={3} group_equal={4} " +
-            "dacl_component_equal={5} dacl_binary_equal={6} " +
-            "sacl_component_equal={7} sacl_binary_equal={8} " +
-            "rm_control_equal={9} revision_equal={10}"
-        return $diagnosticFormat -f @(
-            $leftFlags,
-            $rightFlags,
-            $flagsXor,
-            $ownerEqual.ToString().ToLowerInvariant(),
-            $groupEqual.ToString().ToLowerInvariant(),
-            $daclComponentEqual.ToString().ToLowerInvariant(),
-            $daclBinaryEqual.ToString().ToLowerInvariant(),
-            $saclComponentEqual.ToString().ToLowerInvariant(),
-            $saclBinaryEqual.ToString().ToLowerInvariant(),
-            ($leftDescriptor.ResourceManagerControl -eq
-                $rightDescriptor.ResourceManagerControl).ToString().ToLowerInvariant(),
-            ($leftDescriptor.Revision -eq
-                $rightDescriptor.Revision).ToString().ToLowerInvariant()
-        )
-    }
-    catch {
-        return (
-            "security_descriptor_diagnostic control_flags_left=unavailable " +
-            "control_flags_right=unavailable control_flags_xor=unavailable " +
-            "owner_equal=unavailable group_equal=unavailable " +
-            "dacl_component_equal=unavailable dacl_binary_equal=unavailable " +
-            "sacl_component_equal=unavailable sacl_binary_equal=unavailable " +
-            "rm_control_equal=unavailable revision_equal=unavailable"
-        )
-    }
-}
-
 function Get-TicketboxC07SuperuserRecoveryCreationSecuritySddl {
     param([Parameter(Mandatory = $true)][byte[]]$SecurityBytes)
 
-    $security = New-Object Security.AccessControl.FileSecurity
     try {
-        $security.SetSecurityDescriptorBinaryForm($SecurityBytes)
-        $sections =
-            [Security.AccessControl.AccessControlSections]::Access -bor
-            [Security.AccessControl.AccessControlSections]::Owner -bor
-            [Security.AccessControl.AccessControlSections]::Group
-        return $security.GetSecurityDescriptorSddlForm($sections)
+        return Get-TicketboxWindowsCreationSecuritySddl `
+            -SecurityBytes $SecurityBytes
     }
     catch {
         throw "C07 auth-file sidecar security descriptor 无效。"
-    }
-}
-
-function Test-TicketboxC07SuperuserRecoveryCreationSecurityEquals {
-    param(
-        [Parameter(Mandatory = $true)][byte[]]$Left,
-        [Parameter(Mandatory = $true)][byte[]]$Right
-    )
-
-    try {
-        $leftDescriptor = New-Object `
-            Security.AccessControl.RawSecurityDescriptor($Left, 0)
-        $rightDescriptor = New-Object `
-            Security.AccessControl.RawSecurityDescriptor($Right, 0)
-        $saclFlags = [int](
-            [Security.AccessControl.ControlFlags]::SystemAclPresent -bor
-            [Security.AccessControl.ControlFlags]::SystemAclDefaulted -bor
-            [Security.AccessControl.ControlFlags]::SystemAclAutoInheritRequired -bor
-            [Security.AccessControl.ControlFlags]::SystemAclAutoInherited -bor
-            [Security.AccessControl.ControlFlags]::SystemAclProtected
-        )
-        $leftDescriptor.SystemAcl = $rightDescriptor.SystemAcl
-        $leftDescriptor.SetFlags([Security.AccessControl.ControlFlags](
-            ([int]$leftDescriptor.ControlFlags -band (-bnot $saclFlags)) -bor
-            ([int]$rightDescriptor.ControlFlags -band $saclFlags)
-        ))
-        $normalizedLeft = New-Object byte[] $leftDescriptor.BinaryLength
-        $leftDescriptor.GetBinaryForm($normalizedLeft, 0)
-        return Test-TicketboxC07SuperuserRecoverySecurityEquals `
-            -Left $normalizedLeft `
-            -Right $Right
-    }
-    catch {
-        return $false
     }
 }
 
@@ -1390,7 +946,7 @@ function Assert-TicketboxC07SuperuserRecoveryReplacementCandidate {
             $ExpectedSecurityBytes
     if (
         $candidateSddl -cne $expectedSddl -and
-        -not (Test-TicketboxC07SuperuserRecoveryCreationSecurityEquals `
+        -not (Test-TicketboxWindowsCreationSecurityEquals `
             -Left $Candidate.SecurityBytes `
             -Right $ExpectedSecurityBytes)
     ) {
@@ -1398,45 +954,28 @@ function Assert-TicketboxC07SuperuserRecoveryReplacementCandidate {
     }
 }
 
-function Set-TicketboxC07SuperuserRecoveryFileSecurityBytes {
+function Set-TicketboxC07SuperuserRecoveryFileAuditSecurityBytes {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][byte[]]$SecurityBytes,
         [Parameter(Mandatory = $true)][string]$Label
     )
 
-    $security = New-Object Security.AccessControl.FileSecurity
-    try {
-        $security.SetSecurityDescriptorBinaryForm($SecurityBytes)
-        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-        if ($PSVersionTable.PSEdition -eq "Core") {
-            [System.IO.FileSystemAclExtensions]::SetAccessControl(
-                $item,
-                $security
-            )
+    Set-TicketboxWindowsFileSecurityBytes `
+        -Path $Path `
+        -SecurityBytes $SecurityBytes `
+        -Label $Label `
+        -Sections ([Security.AccessControl.AccessControlSections]::Audit) `
+        -PrivilegeNames @("SeSecurityPrivilege") `
+        -PrivilegeScopeFactory {
+            param([string]$RequestedPrivilegeName)
+            Enter-TicketboxC07SuperuserRecoverySecurityPrivilege `
+                -PrivilegeName $RequestedPrivilegeName
+        } `
+        -AfterVerified {
+            param([string]$VerifiedPath)
+            Sync-TicketboxFileDurable $VerifiedPath
         }
-        else {
-            $item.SetAccessControl($security)
-        }
-    }
-    catch {
-        throw "$Label 无法恢复 captured full security descriptor。"
-    }
-    $persistedSecurity =
-        Get-TicketboxC07SuperuserRecoveryFileSecurityBytes $Path
-    if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
-        -Left $persistedSecurity `
-        -Right $SecurityBytes)) {
-        $securityDiagnostic =
-            Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic `
-                -Left $persistedSecurity `
-                -Right $SecurityBytes
-        throw (
-            "$Label full security descriptor 复读不一致。 " +
-            $securityDiagnostic
-        )
-    }
-    Sync-TicketboxFileDurable $Path
 }
 
 function Complete-TicketboxC07SuperuserRecoveryReplacementCandidate {
@@ -1453,10 +992,13 @@ function Complete-TicketboxC07SuperuserRecoveryReplacementCandidate {
         -ExpectedSha256 $ExpectedSha256 `
         -ExpectedSecurityBytes $ExpectedSecurityBytes `
         -Label $Label
-    if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+    if (-not (Test-TicketboxWindowsSecurityDescriptorEquals `
         -Left $Candidate.SecurityBytes `
         -Right $ExpectedSecurityBytes)) {
-        Set-TicketboxC07SuperuserRecoveryFileSecurityBytes `
+        # Creation already proved owner/group/DACL.  Apply only the captured
+        # SACL so Windows does not re-materialize the temporary file's DACL
+        # inheritance before ReplaceFileW merges the destination DACL.
+        Set-TicketboxC07SuperuserRecoveryFileAuditSecurityBytes `
             -Path $Path `
             -SecurityBytes $ExpectedSecurityBytes `
             -Label $Label
@@ -1466,7 +1008,7 @@ function Complete-TicketboxC07SuperuserRecoveryReplacementCandidate {
     }
     if (
         [string]$Candidate.Sha256 -cne $ExpectedSha256 -or
-        -not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+        -not (Test-TicketboxWindowsSecurityDescriptorEquals `
             -Left $Candidate.SecurityBytes `
             -Right $ExpectedSecurityBytes)
     ) {
@@ -1485,7 +1027,7 @@ function Assert-TicketboxC07SuperuserRecoveryBackupCandidate {
 
     if (
         [string]$Candidate.Sha256 -cne $PreviousSha256 -or
-        -not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+        -not (Test-TicketboxWindowsSecurityDescriptorEquals `
             -Left $Candidate.SecurityBytes `
             -Right $ExpectedSecurityBytes)
     ) {
@@ -1503,7 +1045,7 @@ function Assert-TicketboxC07SuperuserRecoveryDestinationCandidate {
 
     if (
         [string]$Candidate.Sha256 -cnotin $AllowedSha256 -or
-        -not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+        -not (Test-TicketboxWindowsSecurityDescriptorEquals `
             -Left $Candidate.SecurityBytes `
             -Right $ExpectedSecurityBytes)
     ) {
@@ -1589,12 +1131,14 @@ function Get-TicketboxC07SuperuserRecoveryAuthState {
         throw "live pg_ident.conf 既非 captured original 也非 exact temporary。"
     }
     if (
-        -not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+        -not (Test-TicketboxWindowsSecurityDescriptorEquals `
             -Left $hba.SecurityBytes `
-            -Right $Material.HbaSecurityBytes) -or
-        -not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+            -Right $Material.HbaSecurityBytes `
+            -AllowWindowsReplacementDaclProjection) -or
+        -not (Test-TicketboxWindowsSecurityDescriptorEquals `
             -Left $ident.SecurityBytes `
-            -Right $Material.IdentSecurityBytes)
+            -Right $Material.IdentSecurityBytes `
+            -AllowWindowsReplacementDaclProjection)
     ) {
         throw "C07 PostgreSQL auth file security descriptor 已偏离 captured authority。"
     }
@@ -1642,7 +1186,8 @@ function Write-TicketboxC07SuperuserRecoveryAuthFile {
     $backupPath = Join-Path `
         $parent `
         (".{0}.ticketbox-c07-backup" -f $leaf)
-    $privilege = Enter-TicketboxC07SuperuserRecoverySecurityPrivilege
+    $privilege = Enter-TicketboxC07SuperuserRecoverySecurityPrivilege `
+        -PrivilegeName "SeSecurityPrivilege"
     try {
         $destination = Get-TicketboxC07SuperuserRecoveryAuthCandidate `
             -Path $fullPath `
@@ -1657,14 +1202,16 @@ function Write-TicketboxC07SuperuserRecoveryAuthFile {
         }
 
         # A crash may occur after ReplaceFileW committed but before sidecar
-        # cleanup.  Exact destination bytes + the complete captured security
-        # descriptor are the only completion authority.
+        # cleanup.  Completion requires exact destination bytes plus either
+        # the captured descriptor or ReplaceFileW's directional DACL
+        # auto-inheritance projection; every authority component stays strict.
         if (
             $null -ne $destination -and
             [string]$destination.Sha256 -ceq $ExpectedSha256 -and
-            (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+            (Test-TicketboxWindowsSecurityDescriptorEquals `
                 -Left $destination.SecurityBytes `
-                -Right $SecurityBytes)
+                -Right $SecurityBytes `
+                -AllowWindowsReplacementDaclProjection)
         ) {
             Sync-TicketboxFileDurable $fullPath
             Remove-TicketboxC07SuperuserRecoveryReconciledSidecar `
@@ -1696,14 +1243,16 @@ function Write-TicketboxC07SuperuserRecoveryAuthFile {
                 -Label "$Label deterministic backup"
         }
 
-        # ReplaceFileW may have published the desired bytes without preserving
-        # the complete captured descriptor.  A verified backup is the only
-        # authority allowed to repair that state; retain every other sidecar.
+        # ReplaceFileW may have published the desired bytes with security drift
+        # beyond its allowed directional DACL projection.  A verified backup is
+        # the only authority allowed to repair that state; retain every other
+        # sidecar.
         if (
             $null -ne $destination -and
-            -not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+            -not (Test-TicketboxWindowsSecurityDescriptorEquals `
                 -Left $destination.SecurityBytes `
-                -Right $SecurityBytes)
+                -Right $SecurityBytes `
+                -AllowWindowsReplacementDaclProjection)
         ) {
             if ($null -ne $backup) {
                 Restore-TicketboxC07SuperuserRecoveryBackupDestination `
@@ -1873,6 +1422,14 @@ function Write-TicketboxC07SuperuserRecoveryAuthFile {
         $destinationAfter = Get-TicketboxC07SuperuserRecoveryAuthCandidate `
             -Path $fullPath `
             -Label "$Label destination after ReplaceFileW"
+        $destinationAfterSecurityDiagnostic = if ($null -eq $destinationAfter) {
+            "security_descriptor_diagnostic destination_missing=true"
+        }
+        else {
+            Get-TicketboxWindowsSecurityDescriptorDifferenceDiagnostic `
+                -Left $destinationAfter.SecurityBytes `
+                -Right $SecurityBytes
+        }
         $replacementAfter = Get-TicketboxC07SuperuserRecoveryAuthCandidate `
             -Path $replacementPath `
             -Label "$Label deterministic replacement"
@@ -1915,9 +1472,10 @@ function Write-TicketboxC07SuperuserRecoveryAuthFile {
         if (
             $null -ne $destinationAfter -and
             [string]$destinationAfter.Sha256 -ceq $ExpectedSha256 -and
-            (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+            (Test-TicketboxWindowsSecurityDescriptorEquals `
                 -Left $destinationAfter.SecurityBytes `
-                -Right $SecurityBytes)
+                -Right $SecurityBytes `
+                -AllowWindowsReplacementDaclProjection)
         ) {
             Sync-TicketboxFileDurable $fullPath
             Remove-TicketboxC07SuperuserRecoveryReconciledSidecar `
@@ -1933,9 +1491,10 @@ function Write-TicketboxC07SuperuserRecoveryAuthFile {
         }
         if (
             $null -ne $destinationAfter -and
-            -not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+            -not (Test-TicketboxWindowsSecurityDescriptorEquals `
                 -Left $destinationAfter.SecurityBytes `
-                -Right $SecurityBytes)
+                -Right $SecurityBytes `
+                -AllowWindowsReplacementDaclProjection)
         ) {
             if ($null -ne $backupAfter) {
                 Restore-TicketboxC07SuperuserRecoveryBackupDestination `
@@ -2010,7 +1569,8 @@ function Write-TicketboxC07SuperuserRecoveryAuthFile {
         else { [int]$replaceResult.NativeErrorCode }
         throw (
             "$Label ReplaceFileW 后未收敛" +
-            "（native_error=$nativeError）；有效副本与 sidecars 已保留供重试。"
+            "（native_error=$nativeError）；有效副本与 sidecars 已保留供重试。" +
+            " $destinationAfterSecurityDiagnostic"
         )
     }
     finally {

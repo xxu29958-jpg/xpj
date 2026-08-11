@@ -13,10 +13,150 @@ pytestmark = pytest.mark.xdist_group(name="windows_powershell_lifecycle")
 
 PACKAGING = Path(__file__).resolve().parents[1]
 SCRIPT = PACKAGING / "windows_c07_superuser_recovery.ps1"
+SECURITY_PRIMITIVES = PACKAGING / "windows_security_primitives.ps1"
+SECURITY_PRIMITIVE_COMPONENTS = tuple(
+    PACKAGING / "security_primitives" / name
+    for name in (
+        "byte_array.ps1",
+        "token_privilege_native.ps1",
+        "token_privilege.ps1",
+        "descriptor_comparison.ps1",
+        "descriptor_diagnostic.ps1",
+        "file_security.ps1",
+    )
+)
 SAFETY = PACKAGING / "windows_installation_safety.ps1"
 DATABASE_SAFETY = PACKAGING / "windows_database_safety.ps1"
 C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
 PG_RECOVERY_TOOLS = PACKAGING / "windows_pg_recovery_tools.ps1"
+
+_TOKEN_PRIVILEGE_ORACLE = r"""
+Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+[StructLayout(LayoutKind.Sequential)]
+public struct TicketboxTestLuid
+{
+    public uint LowPart;
+    public int HighPart;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct TicketboxTestLuidAndAttributes
+{
+    public TicketboxTestLuid Luid;
+    public uint Attributes;
+}
+
+public static class TicketboxTokenPrivilegeOracle
+{
+    private const uint TokenQuery = 0x0008;
+    private const int TokenPrivileges = 3;
+    private const uint PrivilegeEnabled = 0x00000002;
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool OpenProcessToken(
+        IntPtr processHandle,
+        uint desiredAccess,
+        out IntPtr tokenHandle);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool LookupPrivilegeValue(
+        string systemName,
+        string name,
+        out TicketboxTestLuid luid);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetTokenInformation(
+        IntPtr tokenHandle,
+        int tokenInformationClass,
+        IntPtr tokenInformation,
+        int tokenInformationLength,
+        out int returnLength);
+
+    public static bool IsEnabled(string privilegeName)
+    {
+        IntPtr tokenHandle;
+        if (!OpenProcessToken(GetCurrentProcess(), TokenQuery, out tokenHandle))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+        try
+        {
+            TicketboxTestLuid expectedLuid;
+            if (!LookupPrivilegeValue(null, privilegeName, out expectedLuid))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            int requiredLength;
+            GetTokenInformation(
+                tokenHandle,
+                TokenPrivileges,
+                IntPtr.Zero,
+                0,
+                out requiredLength);
+            if (requiredLength <= 0)
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            IntPtr buffer = Marshal.AllocHGlobal(requiredLength);
+            try
+            {
+                if (!GetTokenInformation(
+                    tokenHandle,
+                    TokenPrivileges,
+                    buffer,
+                    requiredLength,
+                    out requiredLength))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                }
+                int count = Marshal.ReadInt32(buffer);
+                int stride = Marshal.SizeOf(typeof(TicketboxTestLuidAndAttributes));
+                for (int index = 0; index < count; index++)
+                {
+                    IntPtr itemPointer = IntPtr.Add(buffer, 4 + (index * stride));
+                    TicketboxTestLuidAndAttributes item =
+                        (TicketboxTestLuidAndAttributes)Marshal.PtrToStructure(
+                            itemPointer,
+                            typeof(TicketboxTestLuidAndAttributes));
+                    if (item.Luid.LowPart == expectedLuid.LowPart &&
+                        item.Luid.HighPart == expectedLuid.HighPart)
+                    {
+                        return (item.Attributes & PrivilegeEnabled) != 0;
+                    }
+                }
+                return false;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+        finally
+        {
+            CloseHandle(tokenHandle);
+        }
+    }
+}
+'@
+function Test-IndependentTokenPrivilegeEnabled {
+    param([Parameter(Mandatory = $true)][string]$PrivilegeName)
+    return [TicketboxTokenPrivilegeOracle]::IsEnabled($PrivilegeName)
+}
+"""
 
 
 def _ps_literal(value: str | Path) -> str:
@@ -42,13 +182,504 @@ def _run_ps(engine: str, script: str, *, timeout: int = 120) -> subprocess.Compl
 
 
 def _function(source: str, name: str) -> str:
-    start = source.index(f"function {name}")
+    start = source.index(f"function {name} {{")
     next_function = source.find("\nfunction ", start + 1)
     return source[start:] if next_function < 0 else source[start:next_function]
 
 
+def _security_primitives_source() -> str:
+    return "\n".join(
+        path.read_text(encoding="utf-8-sig") for path in (SECURITY_PRIMITIVES, *SECURITY_PRIMITIVE_COMPONENTS)
+    )
+
+
+def test_windows_security_primitives_are_c07_free_and_wired() -> None:
+    source = SCRIPT.read_text(encoding="utf-8-sig")
+    primitives = _security_primitives_source()
+
+    for path in (SECURITY_PRIMITIVES, *SECURITY_PRIMITIVE_COMPONENTS):
+        component = path.read_text(encoding="utf-8-sig")
+        assert path.read_bytes().startswith(b"\xef\xbb\xbf")
+        assert len(component.splitlines()) <= 300
+        assert "c07" not in component.lower()
+    entrypoint = SECURITY_PRIMITIVES.read_text(encoding="utf-8-sig")
+    assert len(entrypoint.splitlines()) <= 30
+    for component in SECURITY_PRIMITIVE_COMPONENTS:
+        assert f'"{component.name}"' in entrypoint
+    assert "windows_security_primitives.ps1" in source
+    assert "TicketboxC07SecurityPrivilegeScope" not in source
+    assert "Add-Type -TypeDefinition" not in source
+
+    adapters = {
+        "Enter-TicketboxC07SuperuserRecoverySecurityPrivilege": "Enter-TicketboxWindowsTokenPrivilege",
+        "Get-TicketboxC07SuperuserRecoveryFileSecurityBytes": "Get-TicketboxWindowsFileSecurityBytes",
+        "New-TicketboxC07SuperuserRecoveryCreationSecurity": "New-TicketboxWindowsFileCreationSecurity",
+        "Get-TicketboxC07SuperuserRecoveryCreationSecuritySddl": "Get-TicketboxWindowsCreationSecuritySddl",
+        "Set-TicketboxC07SuperuserRecoveryFileAuditSecurityBytes": "Set-TicketboxWindowsFileSecurityBytes",
+    }
+    adapter_source = ""
+    dependency_contract = _function(
+        source,
+        "Assert-TicketboxC07SuperuserRecoveryDependencies",
+    )
+    for old_name, generic_name in adapters.items():
+        body = _function(source, old_name)
+        assert generic_name in body
+        assert generic_name in dependency_contract
+        adapter_source += body
+    for forbidden_implementation in (
+        "RawSecurityDescriptor",
+        "FileSystemAclExtensions",
+        ".GetAccessControl(",
+        ".SetAccessControl(",
+        "AdjustTokenPrivileges",
+    ):
+        assert forbidden_implementation not in adapter_source
+    for retired_entry in (
+        "Initialize-TicketboxC07SuperuserRecoverySecurityPrivilegeMethods",
+        "Test-TicketboxC07SuperuserRecoverySecurityEquals",
+        "Test-TicketboxC07SuperuserRecoveryRawAclEquals",
+        "Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic",
+        "Test-TicketboxC07SuperuserRecoveryCreationSecurityEquals",
+    ):
+        assert retired_entry not in source
+    generic_set = _function(
+        primitives,
+        "Set-TicketboxWindowsFileSecurityBytes",
+    )
+    generic_set_core = _function(
+        primitives,
+        "Set-TicketboxWindowsFileSecurityBytesCore",
+    )
+    auth_writer = _function(
+        source,
+        "Write-TicketboxC07SuperuserRecoveryAuthFile",
+    )
+    auth_state_reader = _function(
+        source,
+        "Get-TicketboxC07SuperuserRecoveryAuthState",
+    )
+    strict_candidate_functions = (
+        "Assert-TicketboxC07SuperuserRecoveryReplacementCandidate",
+        "Complete-TicketboxC07SuperuserRecoveryReplacementCandidate",
+        "Assert-TicketboxC07SuperuserRecoveryBackupCandidate",
+        "Assert-TicketboxC07SuperuserRecoveryDestinationCandidate",
+    )
+    token_scope = _function(
+        primitives,
+        "Initialize-TicketboxWindowsTokenPrivilegeMethods",
+    )
+    for official_privilege_contract in (
+        "ErrorNotAllAssigned = 1300",
+        "out scope.previousState",
+        "ref previousState",
+        "restoreError == ErrorNotAllAssigned",
+        "CloseHandle(tokenHandle)",
+    ):
+        assert official_privilege_contract in token_scope
+    assert "Invoke-TicketboxWindowsTokenPrivilegeScopes" in generic_set
+    assert '"SeSecurityPrivilege"' in generic_set
+    assert '"SeRestorePrivilege"' in generic_set
+    assert "Get-TicketboxWindowsFileSecurityBytesCore" in generic_set
+    assert "Set-TicketboxWindowsFileSecurityBytesCore" in generic_set
+    assert "-Sections $Context.Sections" in generic_set
+    assert (
+        "$security.SetSecurityDescriptorBinaryForm($SecurityBytes, $Sections)"
+        in generic_set_core
+    )
+    audit_adapter = _function(
+        source,
+        "Set-TicketboxC07SuperuserRecoveryFileAuditSecurityBytes",
+    )
+    assert "AccessControlSections]::Audit" in audit_adapter
+    assert '-PrivilegeNames @("SeSecurityPrivilege")' in audit_adapter
+    assert '"SeRestorePrivilege"' not in audit_adapter
+    assert (
+        "Enter-TicketboxC07SuperuserRecoverySecurityPrivilege `\n"
+        '        -PrivilegeName "SeSecurityPrivilege"' in auth_writer
+    )
+    assert "-AllowWindowsReplacementDaclProjection" in auth_state_reader
+    assert "-AllowWindowsReplacementDaclProjection" in auth_writer
+    for strict_candidate_function in strict_candidate_functions:
+        assert "-AllowWindowsReplacementDaclProjection" not in _function(
+            source,
+            strict_candidate_function,
+        )
+
+    production_sources = {
+        path: path.read_text(encoding="utf-8-sig") for path in PACKAGING.rglob("*.ps1") if "tests" not in path.parts
+    }
+    assert [path for path, candidate in production_sources.items() if "AdjustTokenPrivileges" in candidate] == [
+        PACKAGING / "security_primitives" / "token_privilege_native.ps1"
+    ]
+    assert [
+        path
+        for path, candidate in production_sources.items()
+        if "function Test-TicketboxWindowsByteArrayEquals" in candidate
+    ] == [PACKAGING / "security_primitives" / "byte_array.ps1"]
+    assert all("TicketboxRestorePrivilegeScope" not in candidate for candidate in production_sources.values())
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_windows_token_privilege_scope_restores_on_success_and_failure(
+    engine: str,
+) -> None:
+    script = f"""
+$ErrorActionPreference = 'Stop'
+. {_ps_literal(SECURITY_PRIMITIVES)}
+$script:disposeCount = 0
+function New-TestPrivilegeScope {{
+    $scope = New-Object psobject
+    $scope | Add-Member -MemberType ScriptMethod -Name Dispose -Value {{
+        $script:disposeCount++
+    }}
+    return $scope
+}}
+$value = Invoke-TicketboxWindowsTokenPrivilegeScope `
+    -PrivilegeName 'TestPrivilege' `
+    -PrivilegeScopeFactory {{ New-TestPrivilegeScope }} `
+    -Action {{ return 'success-value' }}
+if ($value -cne 'success-value' -or $script:disposeCount -ne 1) {{
+    throw 'success path did not restore the privilege scope exactly once'
+}}
+$caught = $false
+try {{
+    Invoke-TicketboxWindowsTokenPrivilegeScope `
+        -PrivilegeName 'TestPrivilege' `
+        -PrivilegeScopeFactory {{ New-TestPrivilegeScope }} `
+        -Action {{ throw 'injected action failure' }} | Out-Null
+}}
+catch {{
+    if (-not $_.Exception.GetBaseException().Message.Contains(
+        'injected action failure'
+    )) {{
+        throw
+    }}
+    $caught = $true
+}}
+if (-not $caught -or $script:disposeCount -ne 2) {{
+    throw 'failure path did not restore the privilege scope exactly once'
+}}
+$factoryRejected = $false
+try {{
+    Invoke-TicketboxWindowsTokenPrivilegeScope `
+        -PrivilegeName 'TestPrivilege' `
+        -PrivilegeScopeFactory {{
+            New-TestPrivilegeScope
+            'injected factory noise'
+        }} `
+        -Action {{ throw 'factory output validation failed open' }} | Out-Null
+}}
+catch {{
+    if (-not $_.Exception.GetBaseException().Message.Contains(
+        '必须返回一个 scope'
+    )) {{
+        throw
+    }}
+    $factoryRejected = $true
+}}
+if (-not $factoryRejected -or $script:disposeCount -ne 3) {{
+    throw 'invalid factory output leaked an acquired privilege scope'
+}}
+'OK'
+"""
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert result.stdout.strip().splitlines()[-1] == "OK"
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_native_token_privilege_restores_exact_process_state(engine: str) -> None:
+    script = f"""
+$ErrorActionPreference = 'Stop'
+. {_ps_literal(SECURITY_PRIMITIVES)}
+{_TOKEN_PRIVILEGE_ORACLE}
+$candidate = $null
+foreach ($privilegeName in @(
+    'SeIncreaseWorkingSetPrivilege',
+    'SeTimeZonePrivilege',
+    'SeShutdownPrivilege',
+    'SeBackupPrivilege',
+    'SeRestorePrivilege',
+    'SeSecurityPrivilege'
+)) {{
+    if (Test-IndependentTokenPrivilegeEnabled -PrivilegeName $privilegeName) {{
+        continue
+    }}
+    try {{
+        $scope = Enter-TicketboxWindowsTokenPrivilege -PrivilegeName $privilegeName
+        try {{
+            if (-not (Test-IndependentTokenPrivilegeEnabled `
+                -PrivilegeName $privilegeName)) {{
+                throw 'candidate privilege was not enabled inside scope'
+            }}
+        }}
+        finally {{
+            $scope.Dispose()
+        }}
+        if (Test-IndependentTokenPrivilegeEnabled -PrivilegeName $privilegeName) {{
+            throw 'candidate privilege was not restored after capability probe'
+        }}
+        $candidate = $privilegeName
+        break
+    }}
+    catch {{
+        $baseException = $_.Exception.GetBaseException()
+        if (
+            $baseException -is [System.ComponentModel.Win32Exception] -and
+            $baseException.NativeErrorCode -eq 1300
+        ) {{
+            continue
+        }}
+        throw
+    }}
+}}
+if ($null -eq $candidate) {{
+    if ($env:GITHUB_ACTIONS -ceq 'true') {{
+        throw 'Windows CI has no assigned disabled token privilege candidate'
+    }}
+    'SKIP_CAPABILITY:no assigned disabled token privilege'
+    exit 0
+}}
+$insideSuccess = Invoke-TicketboxWindowsTokenPrivilegeScope `
+    -PrivilegeName $candidate `
+    -Action {{ Test-IndependentTokenPrivilegeEnabled -PrivilegeName $candidate }}
+if (-not $insideSuccess -or
+    (Test-IndependentTokenPrivilegeEnabled -PrivilegeName $candidate)) {{
+    throw 'success path did not restore exact pre-scope token state'
+}}
+$caught = $false
+try {{
+    Invoke-TicketboxWindowsTokenPrivilegeScope `
+        -PrivilegeName $candidate `
+        -Action {{
+            if (-not (Test-IndependentTokenPrivilegeEnabled `
+                -PrivilegeName $candidate)) {{
+                throw 'failure path privilege was not enabled inside scope'
+            }}
+            throw 'injected native action failure'
+        }} | Out-Null
+}}
+catch {{
+    if (-not $_.Exception.GetBaseException().Message.Contains(
+        'injected native action failure'
+    )) {{
+        throw
+    }}
+    $caught = $true
+}}
+if (-not $caught -or
+    (Test-IndependentTokenPrivilegeEnabled -PrivilegeName $candidate)) {{
+    throw 'failure path did not restore exact pre-scope token state'
+}}
+'OK'
+"""
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr or result.stdout
+    last_line = result.stdout.strip().splitlines()[-1]
+    if last_line.startswith("SKIP_CAPABILITY:"):
+        pytest.skip(last_line)
+    assert last_line == "OK"
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_windows_security_apply_restores_privilege_before_callback_and_on_failure(
+    engine: str,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / f"{Path(engine).stem}-generic-security-target.txt"
+    missing = tmp_path / f"{Path(engine).stem}-generic-security-missing.txt"
+    drift = tmp_path / f"{Path(engine).stem}-generic-security-drift.txt"
+    script = f"""
+$ErrorActionPreference = 'Stop'
+. {_ps_literal(SECURITY_PRIMITIVES)}
+[IO.File]::WriteAllText({_ps_literal(target)}, 'payload')
+$item = Get-Item -LiteralPath {_ps_literal(target)} -Force
+$sections =
+    [Security.AccessControl.AccessControlSections]::Access -bor
+    [Security.AccessControl.AccessControlSections]::Owner -bor
+    [Security.AccessControl.AccessControlSections]::Group
+$security = if ($PSVersionTable.PSEdition -eq 'Core') {{
+    [System.IO.FileSystemAclExtensions]::GetAccessControl($item, $sections)
+}}
+else {{
+    $item.GetAccessControl($sections)
+}}
+$script:expectedSecurity = $security.GetSecurityDescriptorBinaryForm()
+$driftedDescriptor = New-Object `
+    Security.AccessControl.RawSecurityDescriptor($script:expectedSecurity, 0)
+$driftedGroup = New-Object Security.Principal.SecurityIdentifier(
+    'S-1-5-32-544'
+)
+if ($driftedDescriptor.Group.Equals($driftedGroup)) {{
+    $driftedGroup = New-Object Security.Principal.SecurityIdentifier('S-1-5-18')
+}}
+$driftedDescriptor.Group = $driftedGroup
+$script:driftedSecurity = New-Object byte[] $driftedDescriptor.BinaryLength
+$driftedDescriptor.GetBinaryForm($script:driftedSecurity, 0)
+$script:disposeCount = 0
+$script:callbackCount = 0
+function New-TestPrivilegeScope {{
+    $scope = New-Object psobject
+    $scope | Add-Member -MemberType ScriptMethod -Name Dispose -Value {{
+        $script:disposeCount++
+    }}
+    return $scope
+}}
+function Get-TicketboxWindowsFileSecurityBytesCore {{
+    param($Path)
+    if ($Path -ceq {_ps_literal(drift)}) {{
+        return $script:driftedSecurity
+    }}
+    return $script:expectedSecurity
+}}
+function Set-TicketboxWindowsFileSecurityBytesCore {{
+    param($Path, $SecurityBytes, $Label, $Sections)
+    if ($Sections -ne [Security.AccessControl.AccessControlSections]::All) {{
+        throw 'default security apply did not request every section'
+    }}
+    if ($Path -ceq {_ps_literal(missing)}) {{
+        throw "$Label injected apply failure"
+    }}
+}}
+Set-TicketboxWindowsFileSecurityBytes `
+    -Path {_ps_literal(target)} `
+    -SecurityBytes $script:expectedSecurity `
+    -Label 'generic security target' `
+    -PrivilegeScopeFactory {{ New-TestPrivilegeScope }} `
+    -AfterVerified {{
+        if ($script:disposeCount -ne 2) {{
+            throw 'verified callback ran before privilege restoration'
+        }}
+        $script:callbackCount++
+    }}
+if ($script:disposeCount -ne 2 -or $script:callbackCount -ne 1) {{
+    throw 'success path scope/callback count mismatch'
+}}
+$caught = $false
+try {{
+    Set-TicketboxWindowsFileSecurityBytes `
+        -Path {_ps_literal(missing)} `
+        -SecurityBytes $script:expectedSecurity `
+        -Label 'missing security target' `
+        -PrivilegeScopeFactory {{ New-TestPrivilegeScope }} `
+        -AfterVerified {{ $script:callbackCount++ }}
+}}
+catch {{
+    if (-not $_.Exception.GetBaseException().Message.Contains(
+        'missing security target'
+    )) {{
+        throw
+    }}
+    $caught = $true
+}}
+if (
+    -not $caught -or
+    $script:disposeCount -ne 4 -or
+    $script:callbackCount -ne 1
+) {{
+    throw 'failure path did not restore before suppressing callback'
+}}
+$driftRejected = $false
+try {{
+    Set-TicketboxWindowsFileSecurityBytes `
+        -Path {_ps_literal(drift)} `
+        -SecurityBytes $script:expectedSecurity `
+        -Label 'drifted security target' `
+        -PrivilegeScopeFactory {{ New-TestPrivilegeScope }} `
+        -AfterVerified {{ $script:callbackCount++ }}
+}}
+catch {{
+    if (-not $_.Exception.GetBaseException().Message.Contains(
+        '复读不一致'
+    )) {{
+        throw
+    }}
+    $driftRejected = $true
+}}
+if (
+    -not $driftRejected -or
+    $script:disposeCount -ne 6 -or
+    $script:callbackCount -ne 1
+) {{
+    throw 'descriptor readback drift did not fail before verified callback'
+}}
+'OK'
+"""
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert result.stdout.strip().splitlines()[-1] == "OK"
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_windows_security_apply_can_update_only_the_audit_section(
+    engine: str,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / f"{Path(engine).stem}-generic-audit-target.txt"
+    script = f"""
+$ErrorActionPreference = 'Stop'
+. {_ps_literal(SECURITY_PRIMITIVES)}
+[IO.File]::WriteAllText({_ps_literal(target)}, 'payload')
+$item = Get-Item -LiteralPath {_ps_literal(target)} -Force
+$sections =
+    [Security.AccessControl.AccessControlSections]::Access -bor
+    [Security.AccessControl.AccessControlSections]::Owner -bor
+    [Security.AccessControl.AccessControlSections]::Group
+$security = if ($PSVersionTable.PSEdition -eq 'Core') {{
+    [System.IO.FileSystemAclExtensions]::GetAccessControl($item, $sections)
+}}
+else {{ $item.GetAccessControl($sections) }}
+$script:expectedSecurity = $security.GetSecurityDescriptorBinaryForm()
+$script:observedSections = $null
+$script:disposeCount = 0
+$script:callbackCount = 0
+function New-TestPrivilegeScope {{
+    $scope = New-Object psobject
+    $scope | Add-Member -MemberType ScriptMethod -Name Dispose -Value {{
+        $script:disposeCount++
+    }}
+    return $scope
+}}
+function Set-TicketboxWindowsFileSecurityBytesCore {{
+    param($Path, $SecurityBytes, $Label, $Sections)
+    $script:observedSections = $Sections
+}}
+function Get-TicketboxWindowsFileSecurityBytesCore {{
+    param($Path)
+    return $script:expectedSecurity
+}}
+Set-TicketboxWindowsFileSecurityBytes `
+    -Path {_ps_literal(target)} `
+    -SecurityBytes $script:expectedSecurity `
+    -Label 'generic audit target' `
+    -Sections ([Security.AccessControl.AccessControlSections]::Audit) `
+    -PrivilegeNames @('SeSecurityPrivilege') `
+    -PrivilegeScopeFactory {{ New-TestPrivilegeScope }} `
+    -AfterVerified {{
+        if ($script:disposeCount -ne 1) {{
+            throw 'audit callback ran before privilege restoration'
+        }}
+        $script:callbackCount++
+    }}
+if (
+    $script:observedSections -ne
+        [Security.AccessControl.AccessControlSections]::Audit -or
+    $script:disposeCount -ne 1 -or
+    $script:callbackCount -ne 1
+) {{
+    throw 'audit-only apply did not retain its section/callback contract'
+}}
+'OK'
+"""
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert result.stdout.strip().splitlines()[-1] == "OK"
+
+
 def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     source = SCRIPT.read_text(encoding="utf-8-sig")
+    security_primitives = _security_primitives_source()
     host_operations = PG_RECOVERY_TOOLS.read_text(encoding="utf-8-sig")
     safety = SAFETY.read_text(encoding="utf-8-sig")
     publish = _function(source, "Publish-TicketboxC07SuperuserRecoverySspi")
@@ -76,16 +707,20 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
         "Assert-TicketboxC07SuperuserRecoveryDatabaseIdentityRow",
     )
     security_reader = _function(
-        source,
-        "Get-TicketboxC07SuperuserRecoveryFileSecurityBytes",
+        security_primitives,
+        "Get-TicketboxWindowsFileSecurityBytesCore",
     )
     security_diagnostic = _function(
-        source,
-        "Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic",
+        security_primitives,
+        "Get-TicketboxWindowsSecurityDescriptorDifferenceDiagnostic",
     )
     security_writer = _function(
+        security_primitives,
+        "Set-TicketboxWindowsFileSecurityBytes",
+    )
+    security_privilege = _function(
         source,
-        "Set-TicketboxC07SuperuserRecoveryFileSecurityBytes",
+        "Enter-TicketboxC07SuperuserRecoverySecurityPrivilege",
     )
     auth_writer = _function(
         source,
@@ -108,10 +743,7 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     assert "?require_auth=scram-sha-256" in database_url
     assert '[ValidateSet("sspi", "scram-sha-256")]' in database_url
     assert '[ValidateSet("sspi", "scram-sha-256")]' in psql
-    assert (
-        'host "postgres" "postgres" 127.0.0.1/32 sspi '
-        in source
-    )
+    assert 'host "postgres" "postgres" 127.0.0.1/32 sspi ' in source
     assert "include_realm=1" in source
     assert "compat_realm=1" in source
     assert "upn_username=0" in source
@@ -133,12 +765,8 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     assert publish.index("publish temporary pg_ident.conf") < publish.index(
         "Invoke-TicketboxC07SuperuserRecoveryReload"
     )
-    assert publish.index("Invoke-TicketboxC07SuperuserRecoveryReload") < publish.index(
-        "publish temporary pg_hba.conf"
-    )
-    assert restore.index("restore pg_hba.conf") < restore.index(
-        "restore pg_ident.conf"
-    )
+    assert publish.index("Invoke-TicketboxC07SuperuserRecoveryReload") < publish.index("publish temporary pg_hba.conf")
+    assert restore.index("restore pg_hba.conf") < restore.index("restore pg_ident.conf")
     assert 'stage -cne "completed"' in remove
     assert "Remove-TicketboxProtectedUtf8Artifact" in remove
     assert "$results = @(& $Action $secret)" in main
@@ -147,7 +775,8 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     assert "FilesystemPgData" in host
     assert "FilesystemPgData" in reload
     assert "Test-TicketboxC07SuperuserRecoveryDatabaseDataPath" in database_identity
-    assert "SeSecurityPrivilege" in source
+    assert "SeSecurityPrivilege" in security_privilege
+    assert "AdjustTokenPrivileges" in security_primitives
     assert "AccessControlSections]::All" in security_reader
     assert "control_flags_left=0x" in security_diagnostic
     assert "control_flags_right=0x" in security_diagnostic
@@ -157,10 +786,7 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     assert "GetSddlForm" not in security_diagnostic
     assert ".Owner.Value" not in security_diagnostic
     assert ".Group.Value" not in security_diagnostic
-    assert (
-        "Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic"
-        in security_writer
-    )
+    assert "Get-TicketboxWindowsSecurityDescriptorDifferenceDiagnostic" in security_writer
     assert "Replace-TicketboxFileDurablePreservingMetadata" in auth_writer
     assert "-Backup $backupPath" in auth_writer
     assert "PreviousSha256" in auth_writer
@@ -197,7 +823,7 @@ function Get-TicketboxPathEntryKindNoFollow {
     if (Test-Path -LiteralPath $Path -PathType Container) { return 'Directory' }
     return 'Missing'
 }
-function Test-TicketboxByteArrayEquals {
+function Test-TicketboxWindowsByteArrayEquals {
     param([byte[]]$Left, [byte[]]$Right)
     if ($Left.Length -ne $Right.Length) { return $false }
     for ($i = 0; $i -lt $Left.Length; $i++) {
@@ -278,8 +904,8 @@ function Get-TicketboxC07SuperuserRecoveryClusterSystemIdentifier {{
 }}
 $runtimeAuthority = [pscustomobject]@{{
     Schema = 'ticketbox-c07-host-db-authority-v1'
-    PgCtlPath = {_ps_literal(install_bin / 'pg_ctl.exe')}
-    PsqlPath = {_ps_literal(install_bin / 'psql.exe')}
+    PgCtlPath = {_ps_literal(install_bin / "pg_ctl.exe")}
+    PsqlPath = {_ps_literal(install_bin / "psql.exe")}
     PgData = {_ps_literal(runtime_pgdata)}
     PhysicalPgData = {_ps_literal(physical_pgdata)}
     Port = 5544
@@ -394,7 +1020,7 @@ $resourceManagerDerivedSecurity.GetBinaryForm(
     0
 )
 $providerMetadataDiagnostic =
-    Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic `
+    Get-TicketboxWindowsSecurityDescriptorDifferenceDiagnostic `
         -Left $semanticSecurityBytes `
         -Right $resourceManagerDerivedSecurityBytes
 $providerMetadataExpectedFields = @(
@@ -426,7 +1052,7 @@ if ($providerMetadataDiagnostic.Contains($identitySid) -or
     $providerMetadataDiagnostic.Contains('S-1-')) {{
     throw 'security diagnostic leaked descriptor identity content'
 }}
-if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+if (-not (Test-TicketboxWindowsSecurityDescriptorEquals `
     -Left $semanticSecurityBytes `
     -Right $resourceManagerDerivedSecurityBytes)) {{
     throw 'descriptor resource-manager provenance changed security authority'
@@ -467,19 +1093,40 @@ $autoInheritedSecurity.SetFlags(
 $autoInheritedSecurityBytes =
     New-Object byte[] $autoInheritedSecurity.BinaryLength
 $autoInheritedSecurity.GetBinaryForm($autoInheritedSecurityBytes,0)
-if (-not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+if (Test-TicketboxWindowsSecurityDescriptorEquals `
     -Left $inheritanceSecurityBytes `
-    -Right $autoInheritedSecurityBytes)) {{
-    throw 'descriptor comparison rejected OS-recomputed inheritance provenance'
+    -Right $autoInheritedSecurityBytes) {{
+    throw 'descriptor comparison treated explicit and inherited ACEs as one authority'
 }}
-Assert-TicketboxC07SuperuserRecoveryReplacementCandidate `
-    -Candidate ([pscustomobject]@{{
-        Sha256 = 'A' * 64
-        SecurityBytes = $autoInheritedSecurityBytes
-    }}) `
-    -ExpectedSha256 ('A' * 64) `
-    -ExpectedSecurityBytes $inheritanceSecurityBytes `
-    -Label 'OS-recomputed creation security'
+if (-not (Test-TicketboxWindowsSecurityDescriptorEquals `
+    -Left $autoInheritedSecurityBytes `
+    -Right $inheritanceSecurityBytes `
+    -AllowWindowsReplacementDaclProjection)) {{
+    throw 'ReplaceFileW projection did not accept exact auto-inherited DACL semantics'
+}}
+if (Test-TicketboxWindowsSecurityDescriptorEquals `
+    -Left $inheritanceSecurityBytes `
+    -Right $autoInheritedSecurityBytes `
+    -AllowWindowsReplacementDaclProjection) {{
+    throw 'ReplaceFileW projection accepted the inverse provenance transition'
+}}
+$inheritedCandidateRejected = $false
+try {{
+    Assert-TicketboxC07SuperuserRecoveryReplacementCandidate `
+        -Candidate ([pscustomobject]@{{
+            Sha256 = 'A' * 64
+            SecurityBytes = $autoInheritedSecurityBytes
+        }}) `
+        -ExpectedSha256 ('A' * 64) `
+        -ExpectedSecurityBytes $inheritanceSecurityBytes `
+        -Label 'inherited creation security'
+}}
+catch {{
+    $inheritedCandidateRejected = $true
+}}
+if (-not $inheritedCandidateRejected) {{
+    throw 'replacement candidate accepted changed ACE inheritance provenance'
+}}
 foreach ($protectionFlag in @(
     [Security.AccessControl.ControlFlags]::DiscretionaryAclProtected,
     [Security.AccessControl.ControlFlags]::SystemAclProtected
@@ -495,7 +1142,7 @@ foreach ($protectionFlag in @(
     $unprotectedSecurityBytes =
         New-Object byte[] $unprotectedSecurity.BinaryLength
     $unprotectedSecurity.GetBinaryForm($unprotectedSecurityBytes,0)
-    if (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+    if (Test-TicketboxWindowsSecurityDescriptorEquals `
         -Left $semanticSecurityBytes `
         -Right $unprotectedSecurityBytes) {{
         throw 'descriptor comparison ignored ACL protection authority'
@@ -503,11 +1150,13 @@ foreach ($protectionFlag in @(
 }}
 $mutatedSecuritySddls = @(
     ("O:S-1-5-32-544G:{{0}}D:P(A;;FA;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
+    ("O:{{0}}G:BAD:P(A;;FA;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
     ("O:{{0}}G:{{0}}D:P(A;;FR;;;{{0}})S:P(AU;SA;WD;;;{{0}})" -f $identitySid),
     ("O:{{0}}G:{{0}}D:P(A;;FA;;;{{0}})S:P(AU;FA;WD;;;{{0}})" -f $identitySid)
 )
 $expectedMutationDiagnostics = @(
     'owner_equal=false',
+    'group_equal=false',
     'dacl_binary_equal=false',
     'sacl_binary_equal=false'
 )
@@ -521,7 +1170,7 @@ for ($mutationIndex = 0;
         $allSections
     )
     $mutationDiagnostic =
-        Get-TicketboxC07SuperuserRecoverySecurityDifferenceDiagnostic `
+        Get-TicketboxWindowsSecurityDescriptorDifferenceDiagnostic `
             -Left $semanticSecurityBytes `
             -Right $mutatedSecurity.GetSecurityDescriptorBinaryForm()
     if (-not $mutationDiagnostic.Contains(
@@ -533,10 +1182,44 @@ for ($mutationIndex = 0;
         $mutationDiagnostic.Contains('S-1-')) {{
         throw 'security diagnostic leaked mutated descriptor identity content'
     }}
-    if (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+    if (Test-TicketboxWindowsSecurityDescriptorEquals `
         -Left $semanticSecurityBytes `
         -Right $mutatedSecurity.GetSecurityDescriptorBinaryForm()) {{
-        throw 'descriptor comparison ignored an owner/DACL/SACL mutation'
+        throw 'descriptor comparison ignored an owner/group/DACL/SACL mutation'
+    }}
+    if (Test-TicketboxWindowsSecurityDescriptorEquals `
+        -Left $semanticSecurityBytes `
+        -Right $mutatedSecurity.GetSecurityDescriptorBinaryForm() `
+        -AllowWindowsReplacementDaclProjection) {{
+        throw 'ReplaceFileW projection ignored an authority component mutation'
+    }}
+    $projectedMutation = New-Object `
+        Security.AccessControl.RawSecurityDescriptor(
+            $autoInheritedSecurityBytes,
+            0
+        )
+    $mutationDescriptor = New-Object `
+        Security.AccessControl.RawSecurityDescriptor(
+            $mutatedSecurity.GetSecurityDescriptorBinaryForm(),
+            0
+        )
+    switch ($mutationIndex) {{
+        0 {{ $projectedMutation.Owner = $mutationDescriptor.Owner }}
+        1 {{ $projectedMutation.Group = $mutationDescriptor.Group }}
+        2 {{
+            $projectedMutation.DiscretionaryAcl =
+                $mutationDescriptor.DiscretionaryAcl
+        }}
+        3 {{ $projectedMutation.SystemAcl = $mutationDescriptor.SystemAcl }}
+    }}
+    $projectedMutationBytes =
+        New-Object byte[] $projectedMutation.BinaryLength
+    $projectedMutation.GetBinaryForm($projectedMutationBytes,0)
+    if (Test-TicketboxWindowsSecurityDescriptorEquals `
+        -Left $projectedMutationBytes `
+        -Right $inheritanceSecurityBytes `
+        -AllowWindowsReplacementDaclProjection) {{
+        throw 'ReplaceFileW projection ignored a projected authority mutation'
     }}
 }}
 $target = {_ps_literal(target)}
@@ -587,7 +1270,7 @@ function Set-TestUniqueTargetDescriptor {{
 Set-TestUniqueTargetDescriptor $target
 $targetDescriptor = Get-TestDescriptorBytes $target
 $replacementDescriptor = Get-TestDescriptorBytes $replacement
-if (Test-TicketboxByteArrayEquals $targetDescriptor $replacementDescriptor) {{
+if (Test-TicketboxWindowsByteArrayEquals $targetDescriptor $replacementDescriptor) {{
     throw 'descriptor fixture was vacuous before ReplaceFileW'
 }}
 $replaceResult = Replace-TicketboxFileDurablePreservingMetadata `
@@ -598,7 +1281,7 @@ if (-not $replaceResult.Succeeded -or $replaceResult.NativeErrorCode -ne 0) {{
     throw 'ReplaceFileW unexpectedly reported failure'
 }}
 $replaceDescriptor = Get-TestDescriptorBytes $target
-if (-not (Test-TicketboxByteArrayEquals `
+if (-not (Test-TicketboxWindowsByteArrayEquals `
     $targetDescriptor `
     $replaceDescriptor)) {{
     throw 'ReplaceFileW failed to retain the replaced-file descriptor'
@@ -610,7 +1293,7 @@ if ([IO.File]::ReadAllText($target,[Text.Encoding]::UTF8) -cne 'replacement') {{
 
 [IO.File]::WriteAllText($mutation,'mutation',[Text.Encoding]::UTF8)
 $mutationDescriptor = Get-TestDescriptorBytes $mutation
-if (Test-TicketboxByteArrayEquals $targetDescriptor $mutationDescriptor) {{
+if (Test-TicketboxWindowsByteArrayEquals $targetDescriptor $mutationDescriptor) {{
     throw 'descriptor mutation fixture was vacuous before MoveFileEx'
 }}
 Move-TicketboxFileDurable `
@@ -618,10 +1301,10 @@ Move-TicketboxFileDurable `
     -Destination $target `
     -ReplaceExisting
 $moveDescriptor = Get-TestDescriptorBytes $target
-if (Test-TicketboxByteArrayEquals $targetDescriptor $moveDescriptor) {{
+if (Test-TicketboxWindowsByteArrayEquals $targetDescriptor $moveDescriptor) {{
     throw 'MoveFileEx mutation unexpectedly preserved target descriptor'
 }}
-if (-not (Test-TicketboxByteArrayEquals `
+if (-not (Test-TicketboxWindowsByteArrayEquals `
     $mutationDescriptor `
     $moveDescriptor)) {{
     throw 'MoveFileEx mutation did not replace with source descriptor'
@@ -660,6 +1343,10 @@ $script:testSecurity = [byte[]](7,8,9)
 $nativeError = {native_error}
 
 function Enter-TicketboxC07SuperuserRecoverySecurityPrivilege {{
+    param([string]$PrivilegeName)
+    if ($PrivilegeName -cne 'SeSecurityPrivilege') {{
+        throw "unexpected privilege: $PrivilegeName"
+    }}
     $scope = [pscustomobject]@{{}}
     Add-Member -InputObject $scope -MemberType ScriptMethod -Name Dispose -Value {{}}
     return $scope
@@ -890,6 +1577,10 @@ $baseSecurityBytes = $baseSecurity.GetSecurityDescriptorBinaryForm()
 
 # Privilege loss must stop before the target bytes change.
 function Enter-TicketboxC07SuperuserRecoverySecurityPrivilege {{
+    param([string]$PrivilegeName)
+    if ($PrivilegeName -cne 'SeSecurityPrivilege') {{
+        throw "unexpected privilege: $PrivilegeName"
+    }}
     throw 'injected SeSecurityPrivilege denial'
 }}
 $denied = $false
@@ -906,7 +1597,7 @@ try {{
 }}
 catch {{ $denied = $true }}
 if (-not $denied -or
-    -not (Test-TicketboxByteArrayEquals `
+    -not (Test-TicketboxWindowsByteArrayEquals `
         ([IO.File]::ReadAllBytes($path)) `
         $original)) {{
     throw 'privilege denial did not fail before auth-file mutation'
@@ -915,7 +1606,10 @@ if (-not $denied -or
 # Restore the production privilege function after the injected denial.
 . {_ps_literal(SCRIPT)}
 $probe = $null
-try {{ $probe = Enter-TicketboxC07SuperuserRecoverySecurityPrivilege }}
+try {{
+    $probe = Enter-TicketboxC07SuperuserRecoverySecurityPrivilege `
+        -PrivilegeName 'SeSecurityPrivilege'
+}}
 catch {{
     'SKIP_SACL_OK'
     exit 0
@@ -981,15 +1675,16 @@ $persisted = Get-TicketboxC07SuperuserRecoveryAuthFile `
     -Path $path `
     -Label 'SACL-preserving replacement'
 if ($persisted.Sha256 -cne $replacementSha -or
-    -not (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+    -not (Test-TicketboxWindowsSecurityDescriptorEquals `
         -Left $persisted.SecurityBytes `
-        -Right $captured.SecurityBytes)) {{
-    throw 'ReplaceFileW did not preserve the full security descriptor'
+        -Right $captured.SecurityBytes `
+        -AllowWindowsReplacementDaclProjection)) {{
+    throw 'ReplaceFileW did not preserve the captured security authority'
 }}
 
 # Mutation intent: publish a source whose SACL was deliberately corrupted via
 # the former MoveFileEx path. A same-volume move preserves the source security
-# descriptor, so the full post-publication verification must reject it.
+# descriptor, so the strict candidate and full-SACL verification must reject it.
 function Replace-TicketboxFileDurablePreservingMetadata {{
     param($Replacement,$Destination,$Backup)
     $replacementItem = Get-Item -LiteralPath $Replacement -Force
@@ -1014,7 +1709,7 @@ function Replace-TicketboxFileDurablePreservingMetadata {{
     $mutatedSource = Get-TicketboxC07SuperuserRecoveryAuthFile `
         -Path $Replacement `
         -Label 'MoveFileEx mutation source'
-    if (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+    if (Test-TicketboxWindowsSecurityDescriptorEquals `
         -Left $mutatedSource.SecurityBytes `
         -Right $captured.SecurityBytes) {{
         throw 'MoveFileEx mutation source retained the captured SACL'
@@ -1045,7 +1740,7 @@ if (-not $mutationRejected) {{
 $mutated = Get-TicketboxC07SuperuserRecoveryAuthFile `
     -Path $path `
     -Label 'MoveFileEx mutation result'
-if (Test-TicketboxC07SuperuserRecoverySecurityEquals `
+if (Test-TicketboxWindowsSecurityDescriptorEquals `
     -Left $mutated.SecurityBytes `
     -Right $captured.SecurityBytes) {{
     throw 'MoveFileEx mutation did not exercise explicit-SACL loss'
@@ -1057,13 +1752,9 @@ if (Test-TicketboxC07SuperuserRecoverySecurityEquals `
     output = result.stdout.strip().splitlines()[-1]
     if output == "SKIP_SACL_OK":
         if any(
-            os.environ.get(marker, "").strip().lower() == "true"
-            for marker in ("CI", "GITHUB_ACTIONS", "GITEA_ACTIONS")
+            os.environ.get(marker, "").strip().lower() == "true" for marker in ("CI", "GITHUB_ACTIONS", "GITEA_ACTIONS")
         ):
-            pytest.fail(
-                "Windows packaging CI lacks SeSecurityPrivilege; "
-                "explicit-SACL preservation is unqualified"
-            )
+            pytest.fail("Windows packaging CI lacks SeSecurityPrivilege; explicit-SACL preservation is unqualified")
         pytest.skip("current token lacks SeSecurityPrivilege; fail-closed path passed")
     assert output == "OK"
 
@@ -1116,10 +1807,10 @@ $persisted = Write-TicketboxC07SuperuserRecoveryArtifact `
 $material = Assert-TicketboxC07SuperuserRecoveryArtifact `
     -Artifact $persisted `
     -Host $HostContext
-if (-not (Test-TicketboxByteArrayEquals $material.HbaOriginalBytes $hbaBytes)) {{
+if (-not (Test-TicketboxWindowsByteArrayEquals $material.HbaOriginalBytes $hbaBytes)) {{
     throw 'hba original bytes were not preserved'
 }}
-if (-not (Test-TicketboxByteArrayEquals $material.IdentOriginalBytes $identBytes)) {{
+if (-not (Test-TicketboxWindowsByteArrayEquals $material.IdentOriginalBytes $identBytes)) {{
     throw 'ident original bytes were not preserved'
 }}
 if ($material.HbaTemporaryBytes[0] -ne 0xEF -or
@@ -1450,9 +2141,7 @@ def test_real_pg17_sspi_gate_fails_closed_when_required(
         pytest.fail.Exception,
         match="bundled PostgreSQL binaries are not available",
     ):
-        _require_or_skip_real_pg17_sspi(
-            "bundled PostgreSQL binaries are not available"
-        )
+        _require_or_skip_real_pg17_sspi("bundled PostgreSQL binaries are not available")
 
 
 def test_real_pg17_sspi_exact_principal_round_trip(tmp_path: Path) -> None:
@@ -1460,19 +2149,11 @@ def test_real_pg17_sspi_exact_principal_round_trip(tmp_path: Path) -> None:
         _require_or_skip_real_pg17_sspi("SSPI is Windows-only")
     pg_bin = _vendor_pg_bin()
     if pg_bin is None:
-        _require_or_skip_real_pg17_sspi(
-            "bundled PostgreSQL binaries are not available"
-        )
-    required = {
-        name: pg_bin / f"{name}.exe"
-        for name in ("initdb", "pg_ctl", "psql")
-    }
+        _require_or_skip_real_pg17_sspi("bundled PostgreSQL binaries are not available")
+    required = {name: pg_bin / f"{name}.exe" for name in ("initdb", "pg_ctl", "psql")}
     missing = [name for name, path in required.items() if not path.is_file()]
     if missing:
-        _require_or_skip_real_pg17_sspi(
-            "bundled PostgreSQL SSPI toolset is incomplete: "
-            + ", ".join(sorted(missing))
-        )
+        _require_or_skip_real_pg17_sspi("bundled PostgreSQL SSPI toolset is incomplete: " + ", ".join(sorted(missing)))
 
     data_dir = tmp_path / "pgdata"
     pwfile = tmp_path / "bootstrap-password"
@@ -1527,16 +2208,14 @@ def test_real_pg17_sspi_exact_principal_round_trip(tmp_path: Path) -> None:
     map_name = "ticketbox_c07_sspi_test"
     ident = data_dir / "pg_ident.conf"
     ident.write_text(
-        f"{map_name} {quote(system_username)} \"postgres\"\r\n"
-        + ident.read_text(encoding="utf-8-sig"),
+        f'{map_name} {quote(system_username)} "postgres"\r\n' + ident.read_text(encoding="utf-8-sig"),
         encoding="mbcs",
     )
     hba = data_dir / "pg_hba.conf"
     hba.write_text(
         'host "postgres" "postgres" 127.0.0.1/32 sspi '
         "include_realm=1 compat_realm=1 upn_username=0 "
-        f"map={map_name}\r\n"
-        + hba.read_text(encoding="utf-8-sig"),
+        f"map={map_name}\r\n" + hba.read_text(encoding="utf-8-sig"),
         encoding="utf-8",
     )
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -1563,15 +2242,9 @@ def test_real_pg17_sspi_exact_principal_round_trip(tmp_path: Path) -> None:
         timeout=45,
         check=False,
     )
-    assert start.returncode == 0, log.read_text(
-        encoding="utf-8-sig", errors="replace"
-    )
+    assert start.returncode == 0, log.read_text(encoding="utf-8-sig", errors="replace")
     try:
-        clean_env = {
-            key: value
-            for key, value in os.environ.items()
-            if not key.upper().startswith("PG")
-        }
+        clean_env = {key: value for key, value in os.environ.items() if not key.upper().startswith("PG")}
         result = subprocess.run(
             [
                 str(required["psql"]),
@@ -1595,9 +2268,7 @@ def test_real_pg17_sspi_exact_principal_round_trip(tmp_path: Path) -> None:
             timeout=30,
             check=False,
         )
-        assert result.returncode == 0, result.stderr + log.read_text(
-            encoding="utf-8-sig", errors="replace"
-        )
+        assert result.returncode == 0, result.stderr + log.read_text(encoding="utf-8-sig", errors="replace")
         assert result.stdout.strip() == "postgres|postgres"
     finally:
         subprocess.run(

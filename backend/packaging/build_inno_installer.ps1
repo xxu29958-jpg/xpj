@@ -67,6 +67,30 @@ $DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
 $PgRecoveryToolsScript = Join-Path $ScriptDir "windows_pg_recovery_tools.ps1"
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
 $C07DatabaseScript = Join-Path $ScriptDir "windows_c07_database.ps1"
+$WindowsSecurityPrimitivesScript = Join-Path `
+    $ScriptDir `
+    "windows_security_primitives.ps1"
+$WindowsSecurityPrimitivesComponentDir = Join-Path `
+    $ScriptDir `
+    "security_primitives"
+$WindowsSecurityByteArrayScript = Join-Path `
+    $WindowsSecurityPrimitivesComponentDir `
+    "byte_array.ps1"
+$WindowsSecurityTokenPrivilegeNativeScript = Join-Path `
+    $WindowsSecurityPrimitivesComponentDir `
+    "token_privilege_native.ps1"
+$WindowsSecurityTokenPrivilegeScript = Join-Path `
+    $WindowsSecurityPrimitivesComponentDir `
+    "token_privilege.ps1"
+$WindowsSecurityDescriptorComparisonScript = Join-Path `
+    $WindowsSecurityPrimitivesComponentDir `
+    "descriptor_comparison.ps1"
+$WindowsSecurityDescriptorDiagnosticScript = Join-Path `
+    $WindowsSecurityPrimitivesComponentDir `
+    "descriptor_diagnostic.ps1"
+$WindowsSecurityFileSecurityScript = Join-Path `
+    $WindowsSecurityPrimitivesComponentDir `
+    "file_security.ps1"
 $C07SuperuserRecoveryScript = Join-Path $ScriptDir "windows_c07_superuser_recovery.ps1"
 $C07HeartbeatAuthorityScript = Join-Path $ScriptDir "windows_c07_heartbeat_authority.ps1"
 $C07LifecycleScript = Join-Path $ScriptDir "windows_c07_lifecycle.ps1"
@@ -905,6 +929,19 @@ Assert-File $DatabaseSafetyScript "Windows 数据库安全脚本"
 Assert-File $PgRecoveryToolsScript "Windows PostgreSQL 恢复工具脚本"
 Assert-File $DatabaseScript "Windows bundled database 脚本"
 Assert-File $C07DatabaseScript "Windows C07 数据库权威脚本"
+Assert-File $WindowsSecurityPrimitivesScript "Windows security primitives 脚本"
+Assert-File $WindowsSecurityByteArrayScript "Windows security byte-array primitives 脚本"
+Assert-File `
+    $WindowsSecurityTokenPrivilegeNativeScript `
+    "Windows native token privilege primitives 脚本"
+Assert-File $WindowsSecurityTokenPrivilegeScript "Windows token privilege primitives 脚本"
+Assert-File `
+    $WindowsSecurityDescriptorComparisonScript `
+    "Windows security descriptor comparison primitives 脚本"
+Assert-File `
+    $WindowsSecurityDescriptorDiagnosticScript `
+    "Windows security descriptor diagnostic primitives 脚本"
+Assert-File $WindowsSecurityFileSecurityScript "Windows file-security primitives 脚本"
 Assert-File $C07SuperuserRecoveryScript "Windows C07 superuser recovery 脚本"
 Assert-File $C07HeartbeatAuthorityScript "Windows C07 shared heartbeat authority module"
 Assert-File $C07LifecycleScript "Windows C07 生命周期脚本"
@@ -1010,6 +1047,13 @@ $defines = @(
     "/DFallbackBackendPort=$($releaseConfig.fallback_backend_port)",
     "/DTargetPgMajor=$($postgresProvenance.major)",
     "/DLifecycleSafetyScriptSha256=$(Get-TicketboxFileSha256 $SafetyScript)",
+    "/DWindowsSecurityPrimitivesScriptSha256=$(Get-TicketboxFileSha256 $WindowsSecurityPrimitivesScript)",
+    "/DWindowsSecurityByteArrayScriptSha256=$(Get-TicketboxFileSha256 $WindowsSecurityByteArrayScript)",
+    "/DWindowsSecurityTokenPrivilegeNativeScriptSha256=$(Get-TicketboxFileSha256 $WindowsSecurityTokenPrivilegeNativeScript)",
+    "/DWindowsSecurityTokenPrivilegeScriptSha256=$(Get-TicketboxFileSha256 $WindowsSecurityTokenPrivilegeScript)",
+    "/DWindowsSecurityDescriptorComparisonScriptSha256=$(Get-TicketboxFileSha256 $WindowsSecurityDescriptorComparisonScript)",
+    "/DWindowsSecurityDescriptorDiagnosticScriptSha256=$(Get-TicketboxFileSha256 $WindowsSecurityDescriptorDiagnosticScript)",
+    "/DWindowsSecurityFileSecurityScriptSha256=$(Get-TicketboxFileSha256 $WindowsSecurityFileSecurityScript)",
     "/DLifecycleLockScriptSha256=$(Get-TicketboxFileSha256 $LockScript)",
     "/DLifecycleHolderScriptSha256=$(Get-TicketboxFileSha256 $LockHolderScript)",
     "/DDataRootGuardScriptSha256=$(Get-TicketboxFileSha256 $DataRootGuardScript)",

@@ -28,6 +28,27 @@
 #ifndef LifecycleSafetyScriptSha256
 #error LifecycleSafetyScriptSha256 must be injected by build_inno_installer.ps1
 #endif
+#ifndef WindowsSecurityPrimitivesScriptSha256
+#error WindowsSecurityPrimitivesScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef WindowsSecurityByteArrayScriptSha256
+#error WindowsSecurityByteArrayScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef WindowsSecurityTokenPrivilegeNativeScriptSha256
+#error WindowsSecurityTokenPrivilegeNativeScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef WindowsSecurityTokenPrivilegeScriptSha256
+#error WindowsSecurityTokenPrivilegeScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef WindowsSecurityDescriptorComparisonScriptSha256
+#error WindowsSecurityDescriptorComparisonScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef WindowsSecurityDescriptorDiagnosticScriptSha256
+#error WindowsSecurityDescriptorDiagnosticScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef WindowsSecurityFileSecurityScriptSha256
+#error WindowsSecurityFileSecurityScriptSha256 must be injected by build_inno_installer.ps1
+#endif
 #ifndef LifecycleLockScriptSha256
 #error LifecycleLockScriptSha256 must be injected by build_inno_installer.ps1
 #endif
@@ -136,6 +157,13 @@ Source: "windows_service_contract.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_identity.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_lifecycle.ps1"; Flags: dontcopy noencryption
 Source: "windows_installation_safety.ps1"; Flags: dontcopy noencryption
+Source: "windows_security_primitives.ps1"; Flags: dontcopy noencryption
+Source: "security_primitives\byte_array.ps1"; DestName: "ticketbox-security-byte-array.ps1"; Flags: dontcopy noencryption
+Source: "security_primitives\token_privilege_native.ps1"; DestName: "ticketbox-security-token-privilege-native.ps1"; Flags: dontcopy noencryption
+Source: "security_primitives\token_privilege.ps1"; DestName: "ticketbox-security-token-privilege.ps1"; Flags: dontcopy noencryption
+Source: "security_primitives\descriptor_comparison.ps1"; DestName: "ticketbox-security-descriptor-comparison.ps1"; Flags: dontcopy noencryption
+Source: "security_primitives\descriptor_diagnostic.ps1"; DestName: "ticketbox-security-descriptor-diagnostic.ps1"; Flags: dontcopy noencryption
+Source: "security_primitives\file_security.ps1"; DestName: "ticketbox-security-file-security.ps1"; Flags: dontcopy noencryption
 Source: "windows_lifecycle_receipt.ps1"; Flags: dontcopy noencryption
 Source: "windows_lifecycle_lock.ps1"; Flags: dontcopy noencryption
 Source: "hold_installer_lifecycle_lock.ps1"; Flags: dontcopy noencryption
@@ -164,6 +192,13 @@ Source: "windows_pg_recovery_tools.ps1"; DestDir: "{app}\installer"; Flags: igno
 Source: "windows_release_config.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_bundled_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_security_primitives.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "security_primitives\byte_array.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
+Source: "security_primitives\token_privilege_native.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
+Source: "security_primitives\token_privilege.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
+Source: "security_primitives\descriptor_comparison.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
+Source: "security_primitives\descriptor_diagnostic.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
+Source: "security_primitives\file_security.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
 Source: "windows_c07_superuser_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_heartbeat_authority.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_lifecycle.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
