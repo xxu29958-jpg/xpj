@@ -117,6 +117,36 @@ function Invoke-TicketboxPostgresqlHostPsql {
     return Invoke-TicketboxPostgresqlHostNative @parameters
 }
 
+function Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile {
+    param(
+        [Parameter(Mandatory = $true)][string]$PsqlPath,
+        [Parameter(Mandatory = $true)][string]$DatabaseUrl,
+        [Parameter(Mandatory = $true)][string]$Password,
+        [Parameter(Mandatory = $true)][string]$Sql,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds = 600000
+    )
+
+    return Invoke-TicketboxWithPgPassFile `
+        -DatabaseUrl $DatabaseUrl `
+        -Password $Password `
+        -Action {
+            param([string]$ProtectedDatabaseUrl)
+
+            $protectedPgPassFile = [string]$env:PGPASSFILE
+            if ([string]::IsNullOrWhiteSpace($protectedPgPassFile)) {
+                throw "$Label 缺少受保护的 PostgreSQL passfile。"
+            }
+            return Invoke-TicketboxPostgresqlHostPsql `
+                -PsqlPath $PsqlPath `
+                -DatabaseUrl $ProtectedDatabaseUrl `
+                -Sql $Sql `
+                -Label $Label `
+                -PgPassFile $protectedPgPassFile `
+                -TimeoutMilliseconds $TimeoutMilliseconds
+        }
+}
+
 function ConvertFrom-TicketboxPostgresqlHostEvidenceRow {
     param(
         [AllowEmptyString()][Parameter(Mandatory = $true)][string]$Output,
