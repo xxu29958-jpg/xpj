@@ -20,6 +20,26 @@ param(
 )
 
 $script:TicketboxC07DependencyProfile = $TicketboxC07DependencyProfile
+foreach ($requiredDeadlineGuard in @(
+    "Assert-NoTicketboxAncestorReparsePoints",
+    "Get-TicketboxPathEntryKindNoFollow"
+)) {
+    if ($null -eq (Get-Command $requiredDeadlineGuard `
+        -CommandType Function -ErrorAction SilentlyContinue)) {
+        throw "Windows deadline-budget loader lacks guard: $requiredDeadlineGuard"
+    }
+}
+foreach ($deadlineDependencyLeaf in @(
+    "windows_deadline_budget.ps1",
+    "windows_c07_deadline_policy.ps1"
+)) {
+    $deadlineDependencyPath = Join-Path $PSScriptRoot $deadlineDependencyLeaf
+    Assert-NoTicketboxAncestorReparsePoints $deadlineDependencyPath
+    if ((Get-TicketboxPathEntryKindNoFollow $deadlineDependencyPath) -cne "File") {
+        throw "Windows deadline dependency is not a trusted ordinary file: $deadlineDependencyPath"
+    }
+    . $deadlineDependencyPath
+}
 
 $script:TicketboxC07EnvelopeSchema = "ticketbox-c07-host-envelope-v2"
 $script:TicketboxC07DescriptorSchema = "ticketbox-c07-operation-descriptor-v5"
@@ -296,50 +316,6 @@ function ConvertTo-TicketboxC07CanonicalUtcTimestamp {
         throw "$Label 不是 canonical UTC。"
     }
     return $parsed.UtcDateTime.ToString("o")
-}
-
-function Get-TicketboxC07BootIdentity {
-    try {
-        $operatingSystem = Get-CimInstance `
-            -ClassName Win32_OperatingSystem `
-            -Property LastBootUpTime `
-            -ErrorAction Stop
-        $bootUtc = ([DateTime]$operatingSystem.LastBootUpTime).ToUniversalTime()
-        return $bootUtc.ToString("o")
-    }
-    catch {
-        throw "C07 无法取得当前 Windows boot identity。"
-    }
-}
-
-function Get-TicketboxC07RemainingMaintenanceMilliseconds {
-    param(
-        [Parameter(Mandatory = $true)][object]$Budget,
-        [ValidateRange(1000, 3600000)][int]$MaximumMilliseconds = 3600000,
-        [ValidateRange(1, 60000)][int]$MinimumMilliseconds = 1000,
-        [string]$Label = "C07 maintenance action"
-    )
-    if (
-        $null -eq $Budget.Stopwatch -or
-        -not [bool]$Budget.Stopwatch.IsRunning -or
-        [string]::IsNullOrEmpty([string]$Budget.OperationId)
-    ) {
-        throw "$Label 缺少 active whole-operation monotonic budget。"
-    }
-    $monotonicRemaining = (
-        [double]$Budget.RemainingAtStartMilliseconds -
-        [double]$Budget.Stopwatch.Elapsed.TotalMilliseconds
-    )
-    $wallRemaining = (
-        ([DateTime]$Budget.DeadlineUtc) - [DateTime]::UtcNow
-    ).TotalMilliseconds
-    $remaining = [Math]::Min($monotonicRemaining, $wallRemaining)
-    if ($remaining -lt $MinimumMilliseconds) {
-        throw "$Label 超出 C07 whole-operation maintenance window。"
-    }
-    return [int][Math]::Floor(
-        [Math]::Min([double]$MaximumMilliseconds, $remaining)
-    )
 }
 
 function ConvertTo-TicketboxC07CanonicalUuid {
@@ -3364,7 +3340,7 @@ function Write-TicketboxC07HeartbeatPayload {
             [string]$Authority.Receipt.operation_id
     ) {
         $MaintenanceRemainingCeilingMilliseconds =
-            Get-TicketboxC07RemainingMaintenanceMilliseconds `
+            Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
                 -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                 -MaximumMilliseconds (
                     $script:TicketboxC07MaintenanceWindowSeconds * 1000
@@ -3468,7 +3444,7 @@ function Write-TicketboxC07DurableHeartbeat {
     }
     if (
         [string]$attempt.Payload.started_boot_identity -cne
-            (Get-TicketboxC07BootIdentity)
+            (Get-TicketboxWindowsBootIdentity)
     ) {
         throw "C07 heartbeat helper maintenance attempt 已跨 reboot。"
     }

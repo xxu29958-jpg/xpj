@@ -79,50 +79,26 @@ function New-TicketboxC07MaintenanceBudget {
         -ExpectedPayloadSha256 (
             [string]$heartbeat.Payload.maintenance_attempt_sha256
         )
-    $deadlineUtc = [DateTime]$attempt.DeadlineUtc
-    $windowMilliseconds = [double](
+    $windowMilliseconds = [int64](
         $script:TicketboxC07MaintenanceWindowSeconds * 1000
     )
-    $capturedTick = [int64]$attempt.Payload.started_tick_count64
-    $currentTick = [int64][Environment]::TickCount64
-    if (
-        [string]$attempt.Payload.started_boot_identity -cne
-            (Get-TicketboxC07BootIdentity) -or
-        $capturedTick -lt 0 -or
-        $currentTick -lt $capturedTick
-    ) {
-        throw (
-            "C07 maintenance attempt 跨越 reboot/tick rollback；" +
-            "必须建立下一 attempt。"
-        )
-    }
-    $tickRemaining = $windowMilliseconds - (
-        [double]($currentTick - $capturedTick)
-    )
-    $durableCeiling = [double](
-        [int64]$heartbeat.Payload.maintenance_remaining_ceiling_ms
-    )
-    $remainingAtStart = [Math]::Min(
-        $windowMilliseconds,
-        [Math]::Min(
-            $durableCeiling,
-            [Math]::Min(
-                $tickRemaining,
-                ($deadlineUtc - [DateTime]::UtcNow).TotalMilliseconds
-            )
-        )
-    )
-    if ($remainingAtStart -lt 1000) {
-        throw "C07 whole-operation maintenance window 已耗尽。"
-    }
+    $mechanics = New-TicketboxWindowsDeadlineBudget `
+        -DeadlineUtc ([DateTime]$attempt.DeadlineUtc) `
+        -WindowMilliseconds $windowMilliseconds `
+        -DurableRemainingCeilingMilliseconds (
+            [int64]$heartbeat.Payload.maintenance_remaining_ceiling_ms
+        ) `
+        -StartedTickCount64 ([int64]$attempt.Payload.started_tick_count64) `
+        -StartedBootIdentity ([string]$attempt.Payload.started_boot_identity)
     return [pscustomobject]@{
         OperationId = [string]$Authority.Receipt.operation_id
         AttemptId = [string]$attempt.Payload.attempt_id
         AttemptSequence = [int64]$attempt.Payload.attempt_sequence
         AttemptSha256 = [string]$attempt.PayloadSha256
-        DeadlineUtc = $deadlineUtc
-        RemainingAtStartMilliseconds = [double]$remainingAtStart
-        Stopwatch = [Diagnostics.Stopwatch]::StartNew()
+        DeadlineUtc = [DateTime]$mechanics.DeadlineUtc
+        RemainingAtStartMilliseconds =
+            [double]$mechanics.RemainingAtStartMilliseconds
+        Stopwatch = $mechanics.Stopwatch
     }
 }
 
@@ -134,34 +110,10 @@ function Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds {
     if ($null -eq $script:TicketboxC07ActiveMaintenanceBudget) {
         return $MaximumMilliseconds
     }
-    return Get-TicketboxC07RemainingMaintenanceMilliseconds `
+    return Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
         -Budget $script:TicketboxC07ActiveMaintenanceBudget `
         -MaximumMilliseconds $MaximumMilliseconds `
         -Label $Label
-}
-
-function Get-TicketboxC07BoundedMigratorValidUntilUtc {
-    param(
-        [Parameter(Mandatory = $true)][DateTime]$RequestedValidUntilUtc,
-        [Parameter(Mandatory = $true)][object]$Budget
-    )
-    if ($RequestedValidUntilUtc.Kind -eq [DateTimeKind]::Unspecified) {
-        throw "C07 migrator credential deadline 必须是显式 UTC 时间。"
-    }
-    $requestedUtc = $RequestedValidUntilUtc.ToUniversalTime()
-    $operationDeadlineUtc = (
-        [DateTime]$Budget.DeadlineUtc
-    ).ToUniversalTime()
-    $boundedUtc = if ($requestedUtc -lt $operationDeadlineUtc) {
-        $requestedUtc
-    }
-    else {
-        $operationDeadlineUtc
-    }
-    if ($boundedUtc -le [DateTime]::UtcNow) {
-        throw "C07 migrator credential deadline 已耗尽。"
-    }
-    return $boundedUtc
 }
 
 function Get-TicketboxC07TerminalAuthorityArchivePath([string]$OperationId) {
@@ -2959,28 +2911,6 @@ function Assert-TicketboxC07PrecommittedMaintenanceAttempt {
     Assert-TicketboxC07PriorProcessIdentityDead $Attempt.CoordinatorIdentity
 }
 
-function Get-TicketboxC07MaintenanceAttemptRemainingMilliseconds {
-    param([Parameter(Mandatory = $true)][object]$Attempt)
-    $windowMilliseconds = [double](
-        $script:TicketboxC07MaintenanceWindowSeconds * 1000
-    )
-    $capturedTick = [int64]$Attempt.Payload.started_tick_count64
-    $currentTick = [int64][Environment]::TickCount64
-    if (
-        [string]$Attempt.Payload.started_boot_identity -cne
-            (Get-TicketboxC07BootIdentity) -or
-        $capturedTick -lt 0 -or
-        $currentTick -lt $capturedTick
-    ) {
-        return [int64]0
-    }
-    $remaining = [Math]::Min(
-        $windowMilliseconds - [double]($currentTick - $capturedTick),
-        (([DateTime]$Attempt.DeadlineUtc) - [DateTime]::UtcNow).TotalMilliseconds
-    )
-    return [int64][Math]::Max(0, [Math]::Floor($remaining))
-}
-
 function Write-TicketboxC07MaintenanceAttemptHeartbeat {
     param(
         [Parameter(Mandatory = $true)][object]$Authority,
@@ -2996,7 +2926,18 @@ function Write-TicketboxC07MaintenanceAttemptHeartbeat {
     }
     $identity = $Authority.Binding.CoordinatorIdentity
     $remaining = if ($ResetBudget) {
-        Get-TicketboxC07MaintenanceAttemptRemainingMilliseconds $Attempt
+        $deadlineObservation = Measure-TicketboxWindowsPersistedDeadline `
+            -DeadlineUtc ([DateTime]$Attempt.DeadlineUtc) `
+            -WindowMilliseconds ([int64](
+                $script:TicketboxC07MaintenanceWindowSeconds * 1000
+            )) `
+            -StartedTickCount64 (
+                [int64]$Attempt.Payload.started_tick_count64
+            ) `
+            -StartedBootIdentity (
+                [string]$Attempt.Payload.started_boot_identity
+            )
+        [int64]$deadlineObservation.RemainingMilliseconds
     }
     else {
         [int64]$CurrentHeartbeat.Payload.maintenance_remaining_ceiling_ms
@@ -3176,7 +3117,7 @@ function Start-TicketboxC07MaintenanceAttempt {
             $previousAttempt.CoordinatorIdentity `
             $Authority.Binding.CoordinatorIdentity
         $sameBoot = [string]$previousAttempt.Payload.started_boot_identity -ceq
-            (Get-TicketboxC07BootIdentity)
+            (Get-TicketboxWindowsBootIdentity)
         $active = (
             [string]::IsNullOrEmpty($previousFailureSha256) -and
             $sameCoordinator -and
@@ -3312,7 +3253,7 @@ function Start-TicketboxC07MaintenanceAttempt {
             $script:TicketboxC07MaintenanceWindowSeconds * 1000
         )
         started_tick_count64 = [int64][Environment]::TickCount64
-        started_boot_identity = Get-TicketboxC07BootIdentity
+        started_boot_identity = Get-TicketboxWindowsBootIdentity
         started_at_utc = $startedAt.ToString("o")
         deadline_utc = $startedAt.AddSeconds(
             $script:TicketboxC07MaintenanceWindowSeconds
@@ -3879,7 +3820,7 @@ function New-TicketboxC07InitialOperation {
     else {
         $capturedAtUtc = [DateTime]::UtcNow
         $capturedTickCount64 = [int64][Environment]::TickCount64
-        $capturedBootIdentity = Get-TicketboxC07BootIdentity
+        $capturedBootIdentity = Get-TicketboxWindowsBootIdentity
         $descriptorPayload = [ordered]@{
             schema = $script:TicketboxC07DescriptorSchema
             operation_id = $operationId
@@ -5114,11 +5055,12 @@ function Invoke-TicketboxC07ProductionLifecycleCoordinator {
         $script:TicketboxC07MaintenanceWindowSeconds * 1000
     try {
       $boundedMigratorValidUntilUtc =
-          Get-TicketboxC07BoundedMigratorValidUntilUtc `
-              -RequestedValidUntilUtc $MigratorValidUntilUtc `
-              -Budget $maintenanceBudget
+          Get-TicketboxBoundedDeadlineUtc `
+              -RequestedDeadlineUtc $MigratorValidUntilUtc `
+              -CeilingDeadlineUtc ([DateTime]$maintenanceBudget.DeadlineUtc) `
+              -Label "C07 migrator credential deadline"
       $currentMaintenanceCeiling =
-          Get-TicketboxC07RemainingMaintenanceMilliseconds `
+          Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
         -Budget $maintenanceBudget `
         -MaximumMilliseconds $maintenanceWindowMilliseconds `
         -Label "C07 production DDL preflight"
@@ -5330,7 +5272,7 @@ function Invoke-TicketboxC07ProductionLifecycleCoordinator {
                 -FailureCode "resource_shape_mismatch")
         }
         $remainingCeiling =
-            Get-TicketboxC07RemainingMaintenanceMilliseconds `
+            Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
                 -Budget $capturedMaintenanceBudget `
                 -MaximumMilliseconds $maintenanceWindowMilliseconds `
                 -Label "C07 post-DDL target resource attestation"
@@ -6003,9 +5945,12 @@ function Invoke-TicketboxC07InstalledProductionLifecycle {
           $script:TicketboxC07ActiveMaintenanceBudget =
               New-TicketboxC07MaintenanceBudget $initialAuthority
           $boundedMigratorValidUntilUtc =
-              Get-TicketboxC07BoundedMigratorValidUntilUtc `
-                  -RequestedValidUntilUtc $MigratorValidUntilUtc `
-                  -Budget $script:TicketboxC07ActiveMaintenanceBudget
+              Get-TicketboxBoundedDeadlineUtc `
+                  -RequestedDeadlineUtc $MigratorValidUntilUtc `
+                  -CeilingDeadlineUtc ([DateTime](
+                      $script:TicketboxC07ActiveMaintenanceBudget.DeadlineUtc
+                  )) `
+                  -Label "C07 migrator credential deadline"
       }
       while ($true) {
         $authority = Read-TicketboxC07Authority $DataRoot
@@ -6014,7 +5959,7 @@ function Invoke-TicketboxC07InstalledProductionLifecycle {
             $stage -cne "ready" -and
             $stage -notin $script:TicketboxC07FailureStages
         ) {
-            [void](Get-TicketboxC07RemainingMaintenanceMilliseconds `
+            [void](Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds `
                 -Budget $script:TicketboxC07ActiveMaintenanceBudget `
                 -Label "C07 installed lifecycle stage $stage")
         }

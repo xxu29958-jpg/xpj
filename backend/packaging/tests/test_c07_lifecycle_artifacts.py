@@ -96,6 +96,8 @@ def test_c07_writer_fence_commits_all_effective_writer_authorities() -> None:
 
 def test_c07_whole_operation_deadline_is_monotonic_and_durable() -> None:
     source = (
+        PACKAGING / "windows_deadline_budget.ps1"
+    ).read_text(encoding="utf-8-sig") + (
         PACKAGING / "windows_c07_heartbeat_authority.ps1"
     ).read_text(encoding="utf-8-sig") + (
         PACKAGING / "windows_c07_lifecycle.ps1"
@@ -113,14 +115,14 @@ def test_c07_whole_operation_deadline_is_monotonic_and_durable() -> None:
         "[Environment]::TickCount64",
         "Win32_OperatingSystem",
         "maintenance_remaining_ceiling_ms",
-        "Get-TicketboxC07RemainingMaintenanceMilliseconds",
-        "Get-TicketboxC07BoundedMigratorValidUntilUtc",
+        "Get-TicketboxWindowsDeadlineRemainingMilliseconds",
+        "Get-TicketboxBoundedDeadlineUtc",
     ):
         assert required in source
 
-    assert "$currentTick -lt $capturedTick" in source
+    assert "$CurrentTickCount64 -lt $StartedTickCount64" in source
     assert "$remainingCeiling = [Math]::Min(" in source
-    assert "$requestedUtc -lt $operationDeadlineUtc" in source
+    assert "$requested -lt $ceiling" in source
 
 
 def _common_harness(
@@ -893,11 +895,12 @@ def test_c07_maintenance_budget_rejects_ceiling_reboot_and_tick_rollback(
             f"""
 $ErrorActionPreference = 'Stop'
 . '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_deadline_budget.ps1")}'
 . '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
 $script:testCeiling = [int64]1200000
 $script:testAttemptId = '123e4567-e89b-42d3-a456-4266141740ab'
 $script:testAttemptSha256 = '{SUBJECT_SHA256}'
-function Get-TicketboxC07BootIdentity {{ return 'test-boot' }}
+function Get-TicketboxWindowsBootIdentity {{ return 'test-boot' }}
 function Read-TicketboxC07Heartbeat {{
     return [pscustomobject]@{{
         Payload = [pscustomobject]@{{
@@ -928,9 +931,9 @@ $authority = [pscustomobject]@{{
     Receipt = [pscustomobject]@{{ operation_id = 'operation' }}
 }}
 $budget = New-TicketboxC07MaintenanceBudget $authority
-$bounded = Get-TicketboxC07BoundedMigratorValidUntilUtc `
-    -RequestedValidUntilUtc ([DateTime]::UtcNow.AddMinutes(55)) `
-    -Budget $budget
+$bounded = Get-TicketboxBoundedDeadlineUtc `
+    -RequestedDeadlineUtc ([DateTime]::UtcNow.AddMinutes(55)) `
+    -CeilingDeadlineUtc ([DateTime]$budget.DeadlineUtc)
 if ($bounded -gt [DateTime]$budget.DeadlineUtc) {{
     throw 'migrator credential exceeded operation deadline'
 }}

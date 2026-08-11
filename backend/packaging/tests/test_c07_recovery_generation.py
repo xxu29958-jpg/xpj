@@ -1732,7 +1732,7 @@ $context = [pscustomobject]@{{
         MaintenanceDeadlineUtc =
             [DateTime]::UtcNow.AddMinutes(20).ToString('o')
     }}
-    function Get-TicketboxC07RemainingMaintenanceMilliseconds {{
+    function Get-TicketboxC07AuthorityBoundDeadlineRemainingMilliseconds {{
         param(
             [object]$Budget,
             [int]$MaximumMilliseconds = 600000,
