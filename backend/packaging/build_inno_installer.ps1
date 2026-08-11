@@ -83,6 +83,21 @@ $PostgresqlDatabaseCatalogCodecScript = Join-Path `
 $PostgresqlDatabaseCatalogObservationScript = Join-Path `
     $PostgresqlDatabaseCatalogComponentDir `
     "observation.ps1"
+$PostgresqlExportedSnapshotScript = Join-Path `
+    $ScriptDir `
+    "windows_postgresql_exported_snapshot.ps1"
+$PostgresqlExportedSnapshotComponentDir = Join-Path `
+    $ScriptDir `
+    "postgresql_exported_snapshot"
+$PostgresqlExportedSnapshotPrimitivesScript = Join-Path `
+    $PostgresqlExportedSnapshotComponentDir `
+    "primitives.ps1"
+$PostgresqlExportedSnapshotSessionScript = Join-Path `
+    $PostgresqlExportedSnapshotComponentDir `
+    "session.ps1"
+$PostgresqlExportedSnapshotDeadlineEvidenceScript = Join-Path `
+    $PostgresqlExportedSnapshotComponentDir `
+    "deadline_evidence.ps1"
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
 $C07DatabaseScript = Join-Path $ScriptDir "windows_c07_database.ps1"
 $WindowsSecurityPrimitivesScript = Join-Path `
@@ -969,6 +984,18 @@ Assert-File `
 Assert-File `
     $PostgresqlDatabaseCatalogObservationScript `
     "Windows PostgreSQL database-catalog observation"
+Assert-File `
+    $PostgresqlExportedSnapshotScript `
+    "Windows PostgreSQL exported-snapshot adapter"
+Assert-File `
+    $PostgresqlExportedSnapshotPrimitivesScript `
+    "Windows PostgreSQL exported-snapshot primitives"
+Assert-File `
+    $PostgresqlExportedSnapshotSessionScript `
+    "Windows PostgreSQL exported-snapshot session"
+Assert-File `
+    $PostgresqlExportedSnapshotDeadlineEvidenceScript `
+    "Windows PostgreSQL exported-snapshot deadline evidence"
 Assert-File $DatabaseScript "Windows bundled database 脚本"
 Assert-File $C07DatabaseScript "Windows C07 数据库权威脚本"
 Assert-File $WindowsSecurityPrimitivesScript "Windows security primitives 脚本"
