@@ -108,13 +108,10 @@ def test_recovery_source_is_host_authoritative_and_not_a_directory_mirror() -> N
     assert "RestoreIdentityPath" in source
     assert "RestoreCreateIntentPath" in source
     assert "generation_payload_sha256" in source
-    assert "GetFinalPathNameByHandle" in source
-    assert "OpenDirectoryNoFollowNoDelete" in source
-    assert "CreateNewFileNoFollow" in source
-    assert "MoveDirectoryWriteThrough" in source
-    assert "MOVEFILE_WRITE_THROUGH" in source
-    assert "Sync-TicketboxC07RecoveryFile $OutputPath" in source
-    assert "$stream.Flush($true)" in source
+    assert '"windows_atomic_artifacts.ps1"' in source
+    assert "Copy-TicketboxVerifiedArtifact" in source
+    assert "Publish-TicketboxVerifiedArtifactDirectory" in source
+    assert "Sync-TicketboxDurableArtifactFile $OutputPath" in source
     assert "acl_hash_only" in source
     assert "-CreateIntent $intent" in source
     assert "-CreateAttemptId ([string]$protected.CreateAttemptId)" in source
@@ -1376,6 +1373,7 @@ function Get-TicketboxPathEntryKindNoFollow([string]$Path) {{
     if ([IO.Directory]::Exists($Path)) {{ return 'Directory' }}
     return 'File'
 }}
+function Get-TicketboxVolumeIdentityForPath {{ param([string]$Path) 'TEST-VOLUME' }}
 function Set-TicketboxExactFileAcl {{ param([string]$Path) }}
 function Assert-TicketboxExactFileAcl {{ param([string]$Path) }}
 function Assert-TicketboxProtectedDirectoryAcl {{ param([string]$Path) }}
@@ -1399,9 +1397,9 @@ if (-not [IO.Directory]::Exists('{_ps_literal(ready_partial)}')) {{
     [Text.UTF8Encoding]::new($false)
 )
 
-Initialize-TicketboxC07RecoveryNativeMethods
+Initialize-TicketboxAtomicArtifactNativeMethods
 $parentHandle =
-    [TicketboxC07RecoveryNativeMethods]::OpenDirectoryNoFollowNoDelete(
+    [TicketboxAtomicArtifactNativeMethods]::OpenDirectoryNoFollowNoDelete(
         '{_ps_literal(destination_parent)}'
     )
 $renameBlocked = $false
@@ -1417,11 +1415,13 @@ if (-not $renameBlocked) {{
     throw 'destination parent rename was not blocked by the live handle'
 }}
 
-$copy = Copy-TicketboxC07RecoveryOriginal `
+$copy = Copy-TicketboxVerifiedArtifact `
     -SourcePath '{_ps_literal(source_file)}' `
     -DestinationPath '{_ps_literal(destination)}' `
     -ExpectedSourceSha256 '{source_sha}' `
-    -ExpectedLength ([int64]{source_file.stat().st_size})
+    -ExpectedLength ([int64]{source_file.stat().st_size}) `
+    -FullControlAccounts @('SYSTEM') `
+    -OwnerAccount 'SYSTEM'
 if (
     $copy.Sha256 -cne '{source_sha}' -or
     -not [IO.File]::Exists('{_ps_literal(destination)}')
@@ -1436,7 +1436,12 @@ $context = [pscustomobject]@{{
         ReadyRoot = '{_ps_literal(ready_root)}'
     }}
 }}
-Publish-TicketboxC07RecoveryReadyDirectory $context | Out-Null
+Publish-TicketboxVerifiedArtifactDirectory `
+    -GenerationRoot $context.Paths.GenerationRoot `
+    -PartialRoot $context.Paths.PartialRoot `
+    -ReadyRoot $context.Paths.ReadyRoot `
+    -FullControlAccounts @('SYSTEM') `
+    -OwnerAccount 'SYSTEM' | Out-Null
 if (
     [IO.Directory]::Exists('{_ps_literal(ready_partial)}') -or
     -not [IO.File]::Exists(
@@ -1491,6 +1496,7 @@ function Get-TicketboxPathEntryKindNoFollow([string]$Path) {{
     if ([IO.Directory]::Exists($Path)) {{ return 'Directory' }}
     return 'File'
 }}
+function Get-TicketboxVolumeIdentityForPath {{ param([string]$Path) 'TEST-VOLUME' }}
 function Assert-TicketboxProtectedDirectoryAcl {{ param([string]$Path) }}
 function Remove-TicketboxTreeExact {{
     param([string]$Path)
@@ -1535,7 +1541,12 @@ Reset-PublishFixture
 )
 $targetRejected = $false
 try {{
-    Publish-TicketboxC07RecoveryReadyDirectory $context | Out-Null
+    Publish-TicketboxVerifiedArtifactDirectory `
+        -GenerationRoot $context.Paths.GenerationRoot `
+        -PartialRoot $context.Paths.PartialRoot `
+        -ReadyRoot $context.Paths.ReadyRoot `
+        -FullControlAccounts @('SYSTEM') `
+        -OwnerAccount 'SYSTEM' | Out-Null
 }}
 catch {{ $targetRejected = $true }}
 if (
@@ -1559,7 +1570,12 @@ $locked = [IO.File]::Open(
 )
 $moveFailed = $false
 try {{
-    Publish-TicketboxC07RecoveryReadyDirectory $context | Out-Null
+    Publish-TicketboxVerifiedArtifactDirectory `
+        -GenerationRoot $context.Paths.GenerationRoot `
+        -PartialRoot $context.Paths.PartialRoot `
+        -ReadyRoot $context.Paths.ReadyRoot `
+        -FullControlAccounts @('SYSTEM') `
+        -OwnerAccount 'SYSTEM' | Out-Null
 }}
 catch {{
     $moveFailed = $_.Exception.ToString() -match
@@ -1632,6 +1648,7 @@ function Get-TicketboxPathEntryKindNoFollow([string]$Path) {{
     if ([IO.Directory]::Exists($Path)) {{ return 'Directory' }}
     return 'Missing'
 }}
+function Get-TicketboxVolumeIdentityForPath {{ param([string]$Path) 'TEST-VOLUME' }}
 function Assert-TicketboxProtectedDirectoryAcl {{ param([string]$Path) }}
 function Initialize-TicketboxProtectedDirectoryAtomically {{
     param([string]$Path)
@@ -2679,7 +2696,7 @@ function Invoke-TicketboxBoundedNativeProcess {{
     $script:listCalls++
     return [pscustomobject]@{{ ExitCode = 0; StandardOutput = 'archive list' }}
 }}
-function Sync-TicketboxC07RecoveryFile {{
+function Sync-TicketboxDurableArtifactFile {{
     param([string]$Path)
     throw 'injected FlushFileBuffers failure'
 }}
