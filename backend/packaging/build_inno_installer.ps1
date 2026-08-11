@@ -65,6 +65,24 @@ $LockScript = Join-Path $ScriptDir "windows_lifecycle_lock.ps1"
 $LockHolderScript = Join-Path $ScriptDir "hold_installer_lifecycle_lock.ps1"
 $DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
 $PgRecoveryToolsScript = Join-Path $ScriptDir "windows_pg_recovery_tools.ps1"
+$PostgresqlDatabaseCatalogScript = Join-Path `
+    $ScriptDir `
+    "windows_postgresql_database_catalog.ps1"
+$PostgresqlDatabaseCatalogComponentDir = Join-Path `
+    $ScriptDir `
+    "postgresql_database_catalog"
+$PostgresqlDatabaseCatalogPrimitivesScript = Join-Path `
+    $PostgresqlDatabaseCatalogComponentDir `
+    "primitives.ps1"
+$PostgresqlDatabaseCatalogQueryScript = Join-Path `
+    $PostgresqlDatabaseCatalogComponentDir `
+    "query.ps1"
+$PostgresqlDatabaseCatalogCodecScript = Join-Path `
+    $PostgresqlDatabaseCatalogComponentDir `
+    "codec.ps1"
+$PostgresqlDatabaseCatalogObservationScript = Join-Path `
+    $PostgresqlDatabaseCatalogComponentDir `
+    "observation.ps1"
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
 $C07DatabaseScript = Join-Path $ScriptDir "windows_c07_database.ps1"
 $WindowsSecurityPrimitivesScript = Join-Path `
@@ -934,6 +952,21 @@ Assert-File $LockHolderScript "Windows 生命周期锁 holder 脚本"
 Assert-File $DataRootGuardScript "Windows DataRoot guard holder 脚本"
 Assert-File $DatabaseSafetyScript "Windows 数据库安全脚本"
 Assert-File $PgRecoveryToolsScript "Windows PostgreSQL 恢复工具脚本"
+Assert-File `
+    $PostgresqlDatabaseCatalogScript `
+    "Windows PostgreSQL database-catalog adapter"
+Assert-File `
+    $PostgresqlDatabaseCatalogPrimitivesScript `
+    "Windows PostgreSQL database-catalog primitives"
+Assert-File `
+    $PostgresqlDatabaseCatalogQueryScript `
+    "Windows PostgreSQL database-catalog query"
+Assert-File `
+    $PostgresqlDatabaseCatalogCodecScript `
+    "Windows PostgreSQL database-catalog codec"
+Assert-File `
+    $PostgresqlDatabaseCatalogObservationScript `
+    "Windows PostgreSQL database-catalog observation"
 Assert-File $DatabaseScript "Windows bundled database 脚本"
 Assert-File $C07DatabaseScript "Windows C07 数据库权威脚本"
 Assert-File $WindowsSecurityPrimitivesScript "Windows security primitives 脚本"
