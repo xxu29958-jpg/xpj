@@ -184,7 +184,11 @@ FROM pg_catalog.pg_control_system() AS control
 LEFT JOIN pg_catalog.pg_database AS database
   ON database.datname OPERATOR(pg_catalog.=) 'target_db';
 "@
-    if ($Sql -cne $expectedSql) {{ throw 'catalog query was not exact' }}
+    $normalizedSql = $Sql.Replace("`r`n", "`n")
+    $normalizedExpectedSql = $expectedSql.Replace("`r`n", "`n")
+    if ($normalizedSql -cne $normalizedExpectedSql) {{
+        throw 'catalog query was not exact'
+    }}
     return [pscustomobject]@{{ ExitCode = 0; StandardOutput = $script:output }}
 }}
 . '{_literal(ENTRYPOINT)}'
