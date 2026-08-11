@@ -286,6 +286,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_bundled_database.ps1",
         "windows_c07_database.ps1",
         "windows_c07_superuser_recovery.ps1",
+        "windows_deadline_budget.ps1",
         "windows_c07_heartbeat_authority.ps1",
         "windows_c07_lifecycle.ps1",
         "windows_c07_heartbeat_helper.ps1",
@@ -5144,6 +5145,7 @@ def test_installer_input_gate_requires_lifecycle_scripts() -> None:
     assert '$LifecycleScript = Join-Path $ScriptDir "windows_service_lifecycle.ps1"' in build
     assert '$DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"' in build
     assert ('$C07HeartbeatAuthorityScript = Join-Path $ScriptDir "windows_c07_heartbeat_authority.ps1"') in build
+    assert '$WindowsDeadlineBudgetScript = Join-Path $ScriptDir "windows_deadline_budget.ps1"' in build
     assert ('$C07HeartbeatHelperScript = Join-Path $ScriptDir "windows_c07_heartbeat_helper.ps1"') in build
     assert '$BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"' in build
     assert '$ReleaseConfigScript = Join-Path $ScriptDir "windows_release_config.ps1"' in build
@@ -5152,6 +5154,7 @@ def test_installer_input_gate_requires_lifecycle_scripts() -> None:
     assert 'Assert-File $ServiceContractScript "Windows 服务命令契约脚本"' in build
     assert 'Assert-File $LifecycleScript "Windows 服务生命周期脚本"' in build
     assert ('Assert-File $C07HeartbeatAuthorityScript "Windows C07 shared heartbeat authority module"') in build
+    assert 'Assert-File $WindowsDeadlineBudgetScript "Windows deadline-budget adapter"' in build
     assert ('Assert-File $C07HeartbeatHelperScript "Windows C07 durable heartbeat helper"') in build
     assert 'Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"' in build
 
