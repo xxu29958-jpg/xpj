@@ -21,6 +21,7 @@ from backend_manager.elevation import HELPER_EXIT_CONFIG
 from backend_manager.instance_owner import InstanceRegistration
 from backend_manager.manager_startup import ManagerWindowSession, run_manager, run_owned_manager
 from backend_manager.runtime import RuntimeControlError, RuntimeStatus
+from backend_manager.windows_user_security import show_manager_startup_failure_warning
 
 
 @contextmanager
@@ -415,6 +416,65 @@ def test_frozen_manager_validates_payload_before_normal_runtime(monkeypatch, tmp
 
     assert main([]) == 0
     assert events == ["identity", "runtime", "run"]
+
+
+def test_frozen_manager_shows_native_recovery_when_window_runtime_is_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    warnings: list[str] = []
+    executable = tmp_path / "manager" / "ticketbox-manager.exe"
+    config = replace(_config(), expected_backend_version="1.2.0")
+    monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: False)
+    monkeypatch.setattr(
+        "backend_manager.__main__.load_frozen_manager_identity",
+        lambda: FrozenManagerIdentity(executable, "1.2.0"),
+    )
+    monkeypatch.setattr("backend_manager.__main__.load_config", lambda: config)
+    monkeypatch.setattr(
+        "backend_manager.__main__.run_manager",
+        lambda _config: (_ for _ in ()).throw(
+            ConfigError("无法打开小票夹管理器窗口，请确认 Microsoft Edge 可用。"),
+        ),
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.show_manager_startup_failure_warning",
+        warnings.append,
+    )
+
+    assert main([]) == 4
+    assert warnings == ["无法打开小票夹管理器窗口，请确认 Microsoft Edge 可用。"]
+
+
+def test_native_startup_warning_never_displays_raw_exception_details(monkeypatch) -> None:
+    shown: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "backend_manager.windows_user_security._show_warning",
+        lambda message, title: shown.append((message, title)),
+    )
+
+    raw_detail = (
+        r"C:\Users\Alice\Ticketbox TOKEN=do-not-display "
+        "https://127.0.0.1/private"
+    )
+    show_manager_startup_failure_warning(raw_detail)
+
+    assert shown == [
+        (
+            "小票夹服务已经保留，但管理器窗口未能启动。请从 Windows 开始菜单重试；"
+            "仍失败时请运行小票夹修复安装。\n\n支持代码：TBX-MANAGER-STARTUP",
+            "无法打开小票夹管理器",
+        )
+    ]
+    message = shown[0][0]
+    assert "Alice" not in message
+    assert "TOKEN" not in message
+    assert "https://" not in message
+
+    shown.clear()
+    show_manager_startup_failure_warning("Microsoft Edge runtime is missing at C:\\secret")
+    assert shown[0][0].endswith("支持代码：TBX-MANAGER-EDGE")
+    assert "C:\\secret" not in shown[0][0]
 
 
 def test_frozen_manager_rejects_invalid_payload_before_runtime_discovery(monkeypatch) -> None:

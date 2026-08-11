@@ -16,7 +16,13 @@ BUNDLED_DATABASE = PACKAGING / "windows_bundled_database.ps1"
 
 
 def _function(source: str, name: str) -> str:
-    start = source.index(f"function {name} {{")
+    match = re.search(
+        rf"(?m)^function {re.escape(name)}(?=\s*(?:\{{|\())",
+        source,
+    )
+    if match is None:
+        raise ValueError(f"missing function boundary for {name}")
+    start = match.start()
     next_function = source.find("\nfunction ", start + 1)
     return source[start:] if next_function < 0 else source[start:next_function]
 
@@ -178,6 +184,18 @@ def test_installed_payload_authority_lease_spans_c07_under_lifecycle_lock() -> N
     repair_end = prepare.index("\nfunction ", repair_start + 1)
     repair = prepare[repair_start:repair_end]
     assert "Initialize-TicketboxSecureInstallRoot" in repair
+    interrupted_start = prepare.index(
+        "function Repair-TicketboxInterruptedPayloadLeaseAcl"
+    )
+    interrupted_end = prepare.index("\nfunction ", interrupted_start + 1)
+    interrupted_repair = prepare[interrupted_start:interrupted_end]
+    remove_stale_deny = interrupted_repair.index(
+        "Remove-TicketboxInterruptedInstalledPayloadMutationDeny"
+    )
+    normalize_install_root = interrupted_repair.index(
+        "Repair-TicketboxPreflightInstallAcl"
+    )
+    assert remove_stale_deny < normalize_install_root
     assert prepare.index("Repair-TicketboxPreflightInstallAcl") < prepare.index(
         "Disable-TicketboxOwnedServiceIfExists",
         prepare.index("$installAclMutationStarted = $false"),
@@ -187,7 +205,7 @@ def test_installed_payload_authority_lease_spans_c07_under_lifecycle_lock() -> N
         "if (Test-Path -LiteralPath $LifecycleReceiptPath -PathType Leaf)"
     )
     stale_end = prepare.index(
-        "Initialize-TicketboxInstalledReleaseConfiguration",
+        "$hasPgService = Test-TicketboxServiceExists",
         stale_start,
     )
     stale_flow = prepare[stale_start:stale_end]
@@ -440,6 +458,18 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
                 source,
                 "New-TicketboxInstallFinalizationAggregateFailure",
             ),
+            _function(
+                source,
+                "New-TicketboxInstallServiceCompensationAuthority",
+            ),
+            _function(
+                source,
+                "Assert-TicketboxInstallServiceCompensationAuthority",
+            ),
+            _function(
+                source,
+                "Grant-TicketboxInstallServiceCompensationAuthority",
+            ),
             compensation_helper,
             "$script:BackendServiceName = 'TicketboxBackend'",
             "$script:PgServiceName = 'TicketboxPostgres'",
@@ -448,6 +478,10 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "$script:BackendPort = 8002",
             "$script:PgCtl = 'C:\\ticketbox\\pg_ctl.exe'",
             "$script:PgBin = 'C:\\ticketbox\\pg'",
+            "$script:PgPort = 5440",
+            "$script:InitdbExe = 'C:\\ticketbox\\initdb.exe'",
+            "$script:InitdbServiceReceiptPath = "
+            "'C:\\ticketbox-data\\initdb-one-shot-receipt.json'",
             "$script:InstallerState = 'C:\\ticketbox\\state'",
             "$script:LegacyRecoveryRequiredPath = 'C:\\legacy.json'",
             "$script:RecoveryRequiredPath = 'C:\\current.json'",
@@ -455,6 +489,19 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "$script:DataRoot = 'C:\\ticketbox-data'",
             "$script:ServiceWaitArguments = @{ "
             "TimeoutMilliseconds = 100; PollMilliseconds = 10 }",
+            "function Service-Exists { return $true }",
+            "function Get-TicketboxServiceExecutablePath {",
+            "  param($Name)",
+            "  if ($Name -ceq $script:PgServiceName) { return $script:PgCtl }",
+            "  return $script:ShawlExe",
+            "}",
+            "function Test-TicketboxPathEquals {",
+            "  param($Left, $Right)",
+            "  return ([string]$Left).Equals(",
+            "    [string]$Right,",
+            "    [StringComparison]::OrdinalIgnoreCase",
+            "  )",
+            "}",
             "function Disable-TicketboxOwnedServiceIfExists {",
             "  param($Name, $ExpectedExecutable, $BackendPort, "
             "$ExpectedRuntimeExecutables, $TimeoutMilliseconds, "
@@ -488,9 +535,19 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "'recovery_marker_write_failed'",
             "  throw $failure",
             "}",
+            "$compensationAuthority = "
+            "New-TicketboxInstallServiceCompensationAuthority",
+            "Grant-TicketboxInstallServiceCompensationAuthority "
+            "-Authority $compensationAuthority -Service BackendService "
+            "-Grant validated_preexisting",
+            "Grant-TicketboxInstallServiceCompensationAuthority "
+            "-Authority $compensationAuthority -Service PostgresService "
+            "-Grant validated_preexisting",
             "$compensation = $null",
             "try {",
-            "  Invoke-TicketboxInstallFailureCompensation 'install failed'",
+            "  Invoke-TicketboxInstallFailureCompensation "
+            "-Reason 'install failed' "
+            "-ServiceCompensationAuthority $compensationAuthority",
             "}",
             "catch { $compensation = $_.Exception }",
             "if ($null -eq $compensation) { "
@@ -919,7 +976,7 @@ function New-TestSecureString {
 $script:runtimePassword = New-TestSecureString ('R' * 40)
 $script:migratorPassword = New-TestSecureString ('M' * 40)
 $script:superuserPassword = New-TestSecureString ('S' * 40)
-$script:operationId = '11111111-1111-4111-8111-111111111111'
+$script:operationId = '1493b3d9-3721-0e51-0255-58aba5ba6e99'
 $releaseIdentity = [pscustomobject]@{
     InstallationIdentityState = 'PENDING'
     InstallationOperationId = $script:operationId
@@ -955,6 +1012,9 @@ function Initialize-TicketboxC07FreshDatabaseAuthority {
         [DateTime]$MigratorValidUntilUtc,
         [string]$OperationId
     )
+    if ($OperationId -cne $script:operationId) {
+        throw 'installer changed the installation operation ID at the database boundary'
+    }
     $script:initCalls += 1
     return [pscustomobject]@{ Result = 'authority_ready' }
 }

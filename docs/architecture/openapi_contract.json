@@ -9200,6 +9200,125 @@
         "title": "InstallationMobileCapabilitiesResponse",
         "type": "object"
       },
+      "InstallationOwnerBootstrapRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "account_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Name"
+          },
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
+          },
+          "installation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Installation Id",
+            "type": "string"
+          },
+          "ledger_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Name"
+          },
+          "operation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Operation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "installation_id"
+        ],
+        "title": "InstallationOwnerBootstrapRequest",
+        "type": "object"
+      },
+      "InstallationOwnerBootstrapResponse": {
+        "properties": {
+          "account_name": {
+            "title": "Account Name",
+            "type": "string"
+          },
+          "claim_generation": {
+            "title": "Claim Generation",
+            "type": "integer"
+          },
+          "contract": {
+            "title": "Contract",
+            "type": "string"
+          },
+          "device_name": {
+            "title": "Device Name",
+            "type": "string"
+          },
+          "installation_id": {
+            "title": "Installation Id",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "ledger_name": {
+            "title": "Ledger Name",
+            "type": "string"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "pairing_code": {
+            "title": "Pairing Code",
+            "type": "string"
+          },
+          "pairing_derivation_index": {
+            "title": "Pairing Derivation Index",
+            "type": "integer"
+          },
+          "pairing_expires_at": {
+            "title": "Pairing Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract",
+          "operation_id",
+          "installation_id",
+          "account_name",
+          "ledger_id",
+          "ledger_name",
+          "device_name",
+          "pairing_code",
+          "pairing_expires_at",
+          "pairing_derivation_index",
+          "claim_generation"
+        ],
+        "title": "InstallationOwnerBootstrapResponse",
+        "type": "object"
+      },
       "InvitationAcceptRequest": {
         "additionalProperties": false,
         "properties": {
@@ -15949,6 +16068,65 @@
         "summary": "Reject Split Invitation",
         "tags": [
           "bill-splits"
+        ]
+      }
+    },
+    "/api/bootstrap/installation-owner": {
+      "post": {
+        "operationId": "post_installation_owner_bootstrap_api_bootstrap_installation_owner_post",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallationOwnerBootstrapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationOwnerBootstrapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Installation Owner Bootstrap",
+        "tags": [
+          "bootstrap"
         ]
       }
     },

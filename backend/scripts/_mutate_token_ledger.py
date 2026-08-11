@@ -128,6 +128,7 @@ _BOOTSTRAP_IDENTITY = (
     "auth_tokens",
     "pairing_codes",
     "bootstrap_secret_consumptions",
+    "installation_owner_claims",
 )
 _ACCEPT_INVITE = ("ledger_members", "invitations", "auth_tokens")
 _SWITCH = ("auth_tokens", "devices")
@@ -176,6 +177,9 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/auth/desktop/activate": Exempt("session_rotation", "identity", _DESKTOP_ACTIVATE, "medium"),
     "POST /api/app/upload-screenshot": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/bootstrap/owner": Exempt("session_rotation", "identity", _BOOTSTRAP_IDENTITY, "medium"),
+    "POST /api/bootstrap/installation-owner": Exempt(
+        "session_rotation", "identity", _BOOTSTRAP_IDENTITY, "medium"
+    ),
     "POST /api/bootstrap/pairing-codes": Exempt("create_row", "identity", ("pairing_codes",)),
     # ADR-0049 slice 1: external/manual Debt create. No prior row to version;
     # safe replay rests on the [[0042]] Idempotency-Key the route requires, not

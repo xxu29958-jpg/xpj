@@ -19,6 +19,7 @@ from app.database._c07_production_contract_types import (
     _require_exact_string,
     _require_int,
     _require_lower_sha,
+    _require_operation_id,
     _require_string,
     _require_upper_sha,
     _require_utc,
@@ -28,11 +29,11 @@ from app.database._c07_production_contract_types import (
 _SUCCESSOR_MODES = frozenset({"", "pre_ddl", "forward_repair"})
 
 
-def _optional_uuid(value: object, *, label: str) -> str:
+def _optional_operation_id(value: object, *, label: str) -> str:
     text = _require_string(value, label=label, allow_empty=True)
     if not text:
         return ""
-    return _require_uuid(text, label=label)
+    return _require_operation_id(text, label=label)
 
 
 def _optional_upper_sha(value: object, *, label: str) -> str:
@@ -44,7 +45,9 @@ def _optional_upper_sha(value: object, *, label: str) -> str:
 
 def _identity_fields(payload: Mapping[str, object]) -> dict[str, object]:
     return {
-        "operation_id": _require_uuid(payload.get("operation_id"), label="context operation_id"),
+        "operation_id": _require_operation_id(
+            payload.get("operation_id"), label="context operation_id"
+        ),
         "release_fingerprint": _require_upper_sha(
             payload.get("release_fingerprint"), label="context release_fingerprint"
         ),
@@ -91,7 +94,7 @@ def _lifecycle_fields(payload: Mapping[str, object]) -> dict[str, object]:
         payload.get("successor_intent_sha256"),
         label="context successor_intent_sha256",
     )
-    predecessor_operation_id = _optional_uuid(
+    predecessor_operation_id = _optional_operation_id(
         payload.get("predecessor_operation_id"),
         label="context predecessor_operation_id",
     )
@@ -134,7 +137,7 @@ def _lifecycle_fields(payload: Mapping[str, object]) -> dict[str, object]:
 
 def _source_recovery_fields(payload: Mapping[str, object]) -> dict[str, object]:
     return {
-        "source_recovery_operation_id": _require_uuid(
+        "source_recovery_operation_id": _require_operation_id(
             payload.get("source_recovery_operation_id"),
             label="context source_recovery_operation_id",
         ),

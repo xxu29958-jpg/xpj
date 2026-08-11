@@ -42,7 +42,7 @@ def test_manager_frozen_payload_is_a_separate_windowed_adapter() -> None:
     assert "Assert-TicketboxManagerToolchainEvidence" in provenance
 
 
-def test_inno_installs_manager_without_unsafe_elevated_auto_launch() -> None:
+def test_inno_installs_manager_and_launches_only_as_the_original_user() -> None:
     installer = _read(PACKAGING / "ticketbox-installer.iss")
     flow = _read(PACKAGING / "ticketbox-installer-flow.isph")
     build = _read(PACKAGING / "build_inno_installer.ps1", sig=True)
@@ -59,9 +59,11 @@ def test_inno_installs_manager_without_unsafe_elevated_auto_launch() -> None:
     assert 'Filename: "{app}\\manager\\ticketbox-manager.exe"' in installer
     assert "CloseApplications=yes" in installer
     assert "RestartApplications=no" in installer
-    assert "runasoriginaluser" not in installer
     assert "postinstall" not in installer
-    assert "从 Windows 开始菜单打开" in flow
+    assert "ExecAsOriginalUser(" in flow
+    assert "Exec(" not in flow[flow.index("ManagerLaunchAttempted := True") :]
+    assert "完成后打开小票夹管理器（推荐）" in flow
+    assert flow.index("ReleaseLifecycleLock") < flow.index("ExecAsOriginalUser(")
     assert "$managerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $ManagerDist" in build
     assert "manager = [ordered]@{" in build
     assert "manager = $BuildInputs.manager" in build

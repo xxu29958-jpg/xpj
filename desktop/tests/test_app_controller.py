@@ -159,7 +159,7 @@ def test_task_link_browser_failure_is_actionable(monkeypatch) -> None:
     )
 
 
-def test_mobile_tasks_fail_closed_when_backend_reports_local_only(monkeypatch) -> None:
+def test_local_pairing_stays_available_while_mobile_upload_tasks_fail_closed(monkeypatch) -> None:
     opened: list[str] = []
 
     class LocalOnlyRuntime(FakeRuntime):
@@ -178,10 +178,10 @@ def test_mobile_tasks_fail_closed_when_backend_reports_local_only(monkeypatch) -
     controller = AppController(LocalOnlyRuntime(), _config())
 
     controller.open_pairing()
-    assert "尚未配置手机可达入口" in controller.status()["control_error"]
+    assert opened == ["http://127.0.0.1:8000/owner/pairing"]
     controller.open_upload_links()
     assert "尚未配置 iPhone 上传入口" in controller.status()["control_error"]
-    assert opened == []
+    assert opened == ["http://127.0.0.1:8000/owner/pairing"]
 
 
 def test_task_link_revalidates_backend_identity_before_opening(monkeypatch) -> None:

@@ -84,6 +84,7 @@ from app.models.ocr_facts import OcrFact
 from app.models.recurring import RecurringItem
 from app.models.system import (
     BootstrapSecretConsumption,
+    InstallationOwnerClaim,
     SchedulerLease,
     SchemaMigration,
     UserUiPreference,
@@ -128,6 +129,7 @@ __all__ = [
     "InstallationCurrencyAuditLog",
     "InstallationCurrencyBinding",
     "InstallationIdempotencyKey",
+    "InstallationOwnerClaim",
     "Ledger",
     "LedgerAuditLog",
     "LedgerLearningEvent",

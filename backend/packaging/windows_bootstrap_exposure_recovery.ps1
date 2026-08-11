@@ -175,8 +175,8 @@ function Read-TicketboxBootstrapExposureRecoveryIntent {
     ) {
         throw "bootstrap 暴露恢复 intent 不完整或已损坏。"
     }
-    Get-TicketboxBootstrapCredentials $intent["EXPOSED_SECRET"] | Out-Null
-    Get-TicketboxBootstrapCredentials $intent["REPLACEMENT_SECRET"] | Out-Null
+    Assert-TicketboxBootstrapSecret $intent["EXPOSED_SECRET"]
+    Assert-TicketboxBootstrapSecret $intent["REPLACEMENT_SECRET"]
     return [pscustomobject]@{
         ExposedSecret = [string]$intent["EXPOSED_SECRET"]
         ReplacementSecret = [string]$intent["REPLACEMENT_SECRET"]

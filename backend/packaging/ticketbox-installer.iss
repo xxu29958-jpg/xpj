@@ -43,6 +43,9 @@
 #ifndef ServiceContractScriptSha256
 #error ServiceContractScriptSha256 must be injected by build_inno_installer.ps1
 #endif
+#ifndef ServiceIdentityScriptSha256
+#error ServiceIdentityScriptSha256 must be injected by build_inno_installer.ps1
+#endif
 #ifndef ServiceLifecycleScriptSha256
 #error ServiceLifecycleScriptSha256 must be injected by build_inno_installer.ps1
 #endif
@@ -67,6 +70,15 @@
 #ifndef BackendBuildProvenanceScriptSha256
 #error BackendBuildProvenanceScriptSha256 must be injected by build_inno_installer.ps1
 #endif
+#ifndef WindowsPrerequisiteScriptSha256
+#error WindowsPrerequisiteScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef VisualCppRuntimeVersion
+#error VisualCppRuntimeVersion must be injected by build_inno_installer.ps1
+#endif
+#ifndef VisualCppRuntimeSha256
+#error VisualCppRuntimeSha256 must be injected by build_inno_installer.ps1
+#endif
 #define AppName "小票夹后端服务"
 #define AppPublisher "小票夹"
 #define TicketboxAppIdGuid "C97812CE-7486-41D0-AB68-7558A916F6E3"
@@ -82,6 +94,7 @@ DefaultDirName={autopf}\Ticketbox
 DefaultGroupName=小票夹
 DisableProgramGroupPage=yes
 DisableDirPage=yes
+DisableWelcomePage=no
 UsePreviousAppDir=no
 OutputDir=..\dist\installer
 OutputBaseFilename=Ticketbox-Setup-{#AppVersion}
@@ -120,11 +133,14 @@ Source: "..\scripts\windows_backend_build_provenance.ps1"; DestName: "windows_ba
 Source: "hold_data_root_mutation_guard.ps1"; Flags: dontcopy noencryption
 Source: "prepare_bundled_upgrade.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_contract.ps1"; Flags: dontcopy noencryption
+Source: "windows_service_identity.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_lifecycle.ps1"; Flags: dontcopy noencryption
 Source: "windows_installation_safety.ps1"; Flags: dontcopy noencryption
 Source: "windows_lifecycle_receipt.ps1"; Flags: dontcopy noencryption
 Source: "windows_lifecycle_lock.ps1"; Flags: dontcopy noencryption
 Source: "hold_installer_lifecycle_lock.ps1"; Flags: dontcopy noencryption
+Source: "install_windows_prerequisites.ps1"; Flags: dontcopy noencryption
+Source: "vendor\vc-runtime\vc_redist.x64.exe"; DestName: "vc_redist.x64.exe"; Flags: dontcopy noencryption
 Source: "windows_database_safety.ps1"; Flags: dontcopy noencryption
 Source: "windows_pg_recovery_tools.ps1"; Flags: dontcopy noencryption
 Source: "windows_release_config.ps1"; Flags: dontcopy noencryption
@@ -137,6 +153,7 @@ Source: "vendor\shawl\shawl.exe"; DestDir: "{app}\shawl"; Flags: ignoreversion
 Source: "hold_data_root_mutation_guard.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "prepare_bundled_upgrade.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_service_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_service_identity.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_service_lifecycle.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_installation_safety.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_lifecycle_receipt.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
@@ -174,6 +191,7 @@ Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "PgServi
 [Icons]
 Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\manager\ticketbox-manager.exe"; WorkingDir: "{app}\manager"; IconFilename: "{app}\ticketbox.ico"
 Name: "{autoprograms}\小票夹\打开小票夹 Web"; Filename: "http://127.0.0.1:{code:GetBackendPort}/web"; IconFilename: "{app}\ticketbox.ico"
+Name: "{autoprograms}\小票夹\小票夹连接与恢复"; Filename: "http://127.0.0.1:{code:GetBackendPort}/owner"; IconFilename: "{app}\ticketbox.ico"
 Name: "{autoprograms}\小票夹\数据目录"; Filename: "{code:GetDataRoot}"; IconFilename: "{app}\ticketbox.ico"
 
 [Code]

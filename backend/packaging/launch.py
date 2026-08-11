@@ -1301,7 +1301,13 @@ def _installer_runtime_recovery_is_pending(guard_path: Path | None) -> bool:
 
 
 class _InstallerRuntimeRecoveryGuard:
-    _ALLOWED_PATHS = frozenset({"/api/health/installation", "/api/bootstrap/owner"})
+    _ALLOWED_PATHS = frozenset(
+        {
+            "/api/health/installation",
+            "/api/bootstrap/installation-owner",
+            "/api/bootstrap/owner",
+        }
+    )
 
     def __init__(self, app, guard_path: Path | None):
         self._app = app

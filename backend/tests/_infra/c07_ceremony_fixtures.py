@@ -61,12 +61,14 @@ def _role_capabilities() -> list[dict[str, object]]:
     ]
 
 
-def windows_freeze_envelope() -> tuple[str, str]:
+def windows_freeze_envelope(
+    *, operation_id: str = _CEREMONY_ID
+) -> tuple[str, str]:
     now = datetime.now(UTC)
     release_identity = "A" * 64
     payload = {
         "schema": host_freeze_evidence.WINDOWS_FREEZE_SCHEMA,
-        "operation_id": _CEREMONY_ID,
+        "operation_id": operation_id,
         "descriptor_sha256": "B" * 64,
         "operation_kind": "c07_money_minor_bigint_v1",
         "target_alembic_revision": "20260729_0001",

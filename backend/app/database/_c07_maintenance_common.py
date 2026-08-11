@@ -45,7 +45,6 @@ def _canonical_operation_id(value: object) -> str:
     if (
         operation.int == 0
         or canonical != value
-        or operation.version not in {1, 2, 3, 4, 5}
     ):
         raise C07MaintenanceUpgradeError(
             "maintenance operation id is not canonical"

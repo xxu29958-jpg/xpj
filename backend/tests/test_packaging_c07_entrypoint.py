@@ -14,7 +14,7 @@ import pytest
 
 SOURCE_REVISION = "20260722_0001"
 TARGET_REVISION = "20260729_0001"
-C02_TARGET_REVISION = "20260802_0001"
+RELEASE_HEAD_REVISION = "20260809_0001"
 OPERATION_ID = "11111111-1111-4111-8111-111111111111"
 RESTORE_DATABASE = "ticketbox_c07_restore_11111111111141118111111111111111"
 MIGRATOR_URL = (
@@ -92,9 +92,9 @@ assert len(plan["revision_manifest"]["revisions"]) == 1
 managed = launch._load_managed_schema_upgrade_module()
 managed_plan = managed.get_managed_schema_plan(source_revision="{TARGET_REVISION}")
 assert managed_plan["source_revision"] == "{TARGET_REVISION}"
-assert managed_plan["target_revision"] == "{C02_TARGET_REVISION}"
+assert managed_plan["target_revision"] == "{RELEASE_HEAD_REVISION}"
 assert managed_plan["upgrade_required"] is True
-assert managed_plan["revision_count"] == 1
+assert managed_plan["revision_count"] == 2
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
 """
 
@@ -205,7 +205,7 @@ def _managed_schema_args() -> list[str]:
         "--source-revision",
         TARGET_REVISION,
         "--target-revision",
-        C02_TARGET_REVISION,
+        RELEASE_HEAD_REVISION,
         "--expected-revision-manifest-sha256",
         SHA_A,
     ]

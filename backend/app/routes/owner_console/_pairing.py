@@ -103,17 +103,6 @@ def owner_pairing_post(
             ctx["error"] = "请选择一个有权限的账本。"
         return templates.TemplateResponse(request=request, name="pairing.html", context=ctx)
     android_server_url = configured_mobile_endpoint_url(get_settings().public_base_url)
-    if android_server_url is None:
-        ctx = _base(request, db)
-        ctx["pairing_result"] = None
-        ctx["ledger_choices"] = choices
-        ctx["ledger_id"] = ledger_id
-        ctx["selected_ledger_id"] = ledger_id
-        ctx["owner_recovery_message"] = _runtime_recovery_message()
-        ctx.update(recovery_context)
-        ctx["android_server_url"] = None
-        ctx["error"] = "请先在设置中完成手机连接配置，再生成绑定码。"
-        return templates.TemplateResponse(request=request, name="pairing.html", context=ctx)
     result = svc.do_create_pairing_code(
         db,
         ledger_id=ledger_id,

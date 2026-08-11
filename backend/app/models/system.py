@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -72,6 +74,108 @@ class BootstrapSecretConsumption(Base):
 
     secret_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     consumed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+class InstallationOwnerClaim(Base):
+    """One recoverable Windows installation-owner transaction.
+
+    The operation ID remains stable across retries and bootstrap-secret
+    rotation.  This machine-owned receipt intentionally carries no long-lived
+    user credential.
+    """
+
+    __tablename__ = "installation_owner_claims"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "operation_id",
+            name="pk_installation_owner_claims",
+        ),
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_installation_owner_claim_request_fingerprint",
+        ),
+        CheckConstraint(
+            "active_secret_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_installation_owner_claim_secret_hash",
+        ),
+        CheckConstraint(
+            "generation >= 1",
+            name="ck_installation_owner_claim_generation",
+        ),
+        CheckConstraint(
+            "pairing_derivation_index BETWEEN 0 AND 63",
+            name="ck_installation_owner_claim_pairing_index",
+        ),
+        UniqueConstraint(
+            "installation_id",
+            name="uq_installation_owner_claim_installation_id",
+        ),
+        UniqueConstraint(
+            "active_secret_hash",
+            name="uq_installation_owner_claim_active_secret_hash",
+        ),
+        UniqueConstraint(
+            "pairing_code_id",
+            name="uq_installation_owner_claim_pairing_code_id",
+        ),
+    )
+
+    operation_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    installation_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    active_secret_hash: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey(
+            "bootstrap_secret_consumptions.secret_hash",
+            name="fk_installation_owner_claim_secret",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    account_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "accounts.id",
+            name="fk_installation_owner_claim_account",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "devices.id",
+            name="fk_installation_owner_claim_device",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    ledger_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey(
+            "ledgers.ledger_id",
+            name="fk_installation_owner_claim_ledger",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    pairing_code_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "pairing_codes.id",
+            name="fk_installation_owner_claim_pairing",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    pairing_derivation_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False
+    )
 
 
 class UserUiPreference(Base):

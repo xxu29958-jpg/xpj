@@ -332,7 +332,10 @@ def bootstrap_owner(
                 db.commit()
             return recovered
 
-    if auth_token_count(db) > 0:
+    # Device predates the installation-owner receipt and proves initialized
+    # identity without querying a table absent from older upgrade sources.
+    initialized_device_exists = db.scalar(select(Device.id).limit(1))
+    if initialized_device_exists is not None or auth_token_count(db) > 0:
         raise AppError("bootstrap_already_initialized", status_code=409)
 
     owner = _owner_account(db, _clean_name(account_name, DEFAULT_ACCOUNT_NAME))

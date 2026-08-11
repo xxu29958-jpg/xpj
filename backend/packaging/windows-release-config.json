@@ -1,5 +1,5 @@
 {
-  "schema": "ticketbox-windows-release-v1",
+  "schema": "ticketbox-windows-release-v2",
   "postgres_version_policy": {
     "minimum": "17.10",
     "maximum_exclusive": "18.0"
@@ -15,6 +15,8 @@
   "pg_service_name": "TicketboxPg",
   "pg_recovery_service_name": "TicketboxPgRecovery",
   "backend_service_name": "TicketboxBackend",
+  "service_logon_account": "NT AUTHORITY\\LocalService",
+  "service_sid_type": "unrestricted",
   "owner_recovery_channel": "managed_host",
   "default_pg_port": 5432,
   "fallback_pg_port": 5440,

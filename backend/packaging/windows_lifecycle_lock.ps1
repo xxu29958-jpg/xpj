@@ -16,6 +16,9 @@ $script:TicketboxLifecycleOperationLockFileName = "installer-operation.lock"
 $script:TicketboxInstallerStateDirectoryName = "installer-state"
 $script:TicketboxLifecycleOwnerRecordSchema = "ticketbox-lifecycle-owner-v2"
 $script:TicketboxSharingViolationErrorCode = 32
+$script:TicketboxLockViolationErrorCode = 33
+$script:TicketboxLifecycleCoordinationReadAttempts = 40
+$script:TicketboxLifecycleCoordinationReadDelayMilliseconds = 50
 $script:TicketboxValidatedExternalLifecycleOwnerIdentity = $null
 
 function Initialize-TicketboxProcessIdentityNativeMethods {
@@ -552,12 +555,35 @@ function Read-TicketboxLifecycleCoordinationArtifact {
         [string]$OwnerAccount = "SYSTEM"
     )
 
-    $artifact = Read-TicketboxProtectedUtf8Artifact `
-        -Path $Path `
-        -FullControlAccounts $FullControlAccounts `
-        -OwnerAccount $OwnerAccount `
-        -MaximumBytes 256
-    return $artifact.Text
+    for (
+        $attempt = 1;
+        $attempt -le $script:TicketboxLifecycleCoordinationReadAttempts;
+        $attempt++
+    ) {
+        try {
+            $artifact = Read-TicketboxProtectedUtf8Artifact `
+                -Path $Path `
+                -FullControlAccounts $FullControlAccounts `
+                -OwnerAccount $OwnerAccount `
+                -MaximumBytes 256
+            return $artifact.Text
+        }
+        catch {
+            $nativeError = $_.Exception.GetBaseException().HResult -band 0xFFFF
+            if (
+                $nativeError -notin @(
+                    $script:TicketboxSharingViolationErrorCode,
+                    $script:TicketboxLockViolationErrorCode
+                ) -or
+                $attempt -eq $script:TicketboxLifecycleCoordinationReadAttempts
+            ) {
+                throw
+            }
+        }
+        Start-Sleep `
+            -Milliseconds $script:TicketboxLifecycleCoordinationReadDelayMilliseconds
+    }
+    throw "生命周期锁 IPC 读取重试循环异常退出：$Path"
 }
 
 function New-TicketboxLifecycleCoordinationNonce {

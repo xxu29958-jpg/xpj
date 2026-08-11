@@ -18,12 +18,14 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "packaging\windows_release_config.ps1",
     "packaging\prepare_bundled_upgrade.ps1",
     "packaging\windows_service_contract.ps1",
+    "packaging\windows_service_identity.ps1",
     "packaging\windows_service_lifecycle.ps1",
     "packaging\windows_installation_safety.ps1",
     "packaging\windows_lifecycle_receipt.ps1",
     "packaging\windows_lifecycle_lock.ps1",
     "packaging\hold_installer_lifecycle_lock.ps1",
     "packaging\hold_data_root_mutation_guard.ps1",
+    "packaging\install_windows_prerequisites.ps1",
     "packaging\windows_database_safety.ps1",
     "packaging\windows_pg_recovery_tools.ps1",
     "packaging\windows_bundled_database.ps1",
@@ -95,13 +97,32 @@ function Get-TicketboxOrdinalSortedPaths([string[]]$Paths) {
     return $sortedPaths
 }
 function Get-TicketboxFileSetSnapshot([string]$Root, [string[]]$Paths) {
-    $sortedPaths = Get-TicketboxOrdinalSortedPaths $Paths
-    $records = @(
-        $sortedPaths | ForEach-Object { Get-TicketboxFileEvidence $Root $_ }
-    )
-    if ($records.Count -eq 0) {
+    if ($Paths.Count -eq 0) {
         throw "构建 provenance 文件集合为空：$Root"
     }
+    $recordsByPath =
+        [System.Collections.Generic.SortedDictionary[string, object]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($path in $Paths) {
+        $record = Get-TicketboxFileEvidence $Root $path
+        $relativePath = [string]$record.path
+        if ($relativePath -cmatch "[^\x20-\x7e]") {
+            throw (
+                "构建 provenance canonical manifest 相对路径只允许可打印 ASCII；" +
+                "这可避免不同 .NET Unicode 版本改变 OrdinalIgnoreCase 结果：" +
+                $relativePath
+            )
+        }
+        if ($recordsByPath.ContainsKey($relativePath)) {
+            throw (
+                "构建 provenance 包含 ordinal-ignore-case 等价的重复相对路径：" +
+                $relativePath
+            )
+        }
+        $recordsByPath.Add($relativePath, $record)
+    }
+    $records = [object[]]@($recordsByPath.Values)
     $fingerprintInput = ($records | ForEach-Object {
         "{0}`0{1}`0{2}`n" -f $_.path, $_.size, $_.sha256
     }) -join ""
@@ -217,7 +238,8 @@ $script:TicketboxInstalledC07ExternalAuthorityPaths = @(
     "_internal/migrations/env.py",
     "_internal/migrations/versions/20260722_0001_bind_repayment_draft_idem_to_account.py",
     "_internal/migrations/versions/20260729_0001_money_minor_bigint_expand.py",
-    "_internal/migrations/versions/20260802_0001_currency_binding_authority.py"
+    "_internal/migrations/versions/20260802_0001_currency_binding_authority.py",
+    "_internal/migrations/versions/20260809_0001_add_installation_owner_claim.py"
 )
 
 function Get-TicketboxOpenFileSha256Lower(
@@ -346,6 +368,360 @@ function Get-TicketboxInstalledPayloadEntries([string]$PayloadRoot) {
     return @($entries)
 }
 
+function Get-TicketboxInstalledPayloadMutationDeniedRights {
+    return (
+        [System.Security.AccessControl.FileSystemRights]::CreateFiles -bor
+        [System.Security.AccessControl.FileSystemRights]::CreateDirectories -bor
+        [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+        [System.Security.AccessControl.FileSystemRights]::Delete -bor
+        [System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
+        [System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes
+    )
+}
+
+function Test-TicketboxInstalledPayloadMutationDenyRule(
+    [Parameter(Mandatory = $true)]
+    [System.Security.AccessControl.FileSystemAccessRule]$Rule,
+    [Parameter(Mandatory = $true)][bool]$ExpectedInherited,
+    [Parameter(Mandatory = $true)]
+    [System.Security.AccessControl.InheritanceFlags]$ExpectedInheritanceFlags
+) {
+    $everyoneSid = "S-1-1-0"
+    return (
+        $Rule.IdentityReference.Translate(
+            [System.Security.Principal.SecurityIdentifier]
+        ).Value -ceq $everyoneSid -and
+        $Rule.AccessControlType -eq
+            [System.Security.AccessControl.AccessControlType]::Deny -and
+        [int64]$Rule.FileSystemRights -eq
+            [int64](Get-TicketboxInstalledPayloadMutationDeniedRights) -and
+        $Rule.InheritanceFlags -eq $ExpectedInheritanceFlags -and
+        $Rule.PropagationFlags -eq
+            [System.Security.AccessControl.PropagationFlags]::None -and
+        [bool]$Rule.IsInherited -eq $ExpectedInherited
+    )
+}
+
+function Remove-TicketboxInterruptedInstalledPayloadMutationDenyExact {
+    param(
+        [Parameter(Mandatory = $true)][string]$PayloadRoot,
+        [Parameter(Mandatory = $true)][string[]]$FullControlAccounts,
+        [string[]]$RequiredReadExecuteAccounts = @(),
+        [string[]]$AllowedReadExecuteAccounts = @(),
+        [Parameter(Mandatory = $true)][string]$OwnerAccount
+    )
+
+    if ((Get-TicketboxPathEntryKindNoFollow $PayloadRoot) -cne "Directory") {
+        throw "中断 payload mutation lease root 不是普通目录。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $PayloadRoot
+    $entries = @(Get-TicketboxInstalledPayloadEntries $PayloadRoot)
+    $rootAcl = Get-TicketboxInstalledPayloadAcl $PayloadRoot
+    $rootRules = @($rootAcl.GetAccessRules(
+        $true,
+        $true,
+        [System.Security.Principal.SecurityIdentifier]
+    ))
+    $requiredInheritance =
+        [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+        [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+    $rootDenyRules = @($rootRules | Where-Object {
+        $_.AccessControlType -eq
+            [System.Security.AccessControl.AccessControlType]::Deny
+    })
+    if ($rootDenyRules.Count -eq 0) {
+        return $false
+    }
+    if (
+        $rootDenyRules.Count -ne 1 -or
+        -not (Test-TicketboxInstalledPayloadMutationDenyRule `
+            -Rule $rootDenyRules[0] `
+            -ExpectedInherited $false `
+            -ExpectedInheritanceFlags $requiredInheritance)
+    ) {
+        throw "中断 payload DACL 不只含唯一的 installer mutation deny。"
+    }
+
+    $fullControlSids = @(
+        $FullControlAccounts |
+            ForEach-Object { ConvertTo-TicketboxAccountSid $_ } |
+            Sort-Object -Unique
+    )
+    $requiredReadExecuteSids = @(
+        $RequiredReadExecuteAccounts |
+            ForEach-Object { ConvertTo-TicketboxAccountSid $_ } |
+            Sort-Object -Unique
+    )
+    $allowedReadExecuteSids = @(
+        @($RequiredReadExecuteAccounts) + @($AllowedReadExecuteAccounts) |
+            ForEach-Object { ConvertTo-TicketboxAccountSid $_ } |
+            Sort-Object -Unique
+    )
+    if (
+        $fullControlSids.Count -eq 0 -or
+        @($fullControlSids | Where-Object {
+            $_ -in $allowedReadExecuteSids
+        }).Count -ne 0
+    ) {
+        throw "中断 payload DACL 的预期账户集合无效。"
+    }
+    $expectedOwnerSid = ConvertTo-TicketboxAccountSid $OwnerAccount
+    $actualOwnerSid = $rootAcl.GetOwner(
+        [System.Security.Principal.SecurityIdentifier]
+    ).Value
+    if ($actualOwnerSid -cne $expectedOwnerSid) {
+        throw "中断 payload DACL owner 不是 installer-authored owner。"
+    }
+
+    $seenFullControlSids = New-Object System.Collections.Generic.HashSet[string]
+    $seenReadExecuteSids = New-Object System.Collections.Generic.HashSet[string]
+    $readExecuteForbidden =
+        [System.Security.AccessControl.FileSystemRights]::Write -bor
+        [System.Security.AccessControl.FileSystemRights]::Delete -bor
+        [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+        [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+        [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+    foreach ($rule in @($rootRules | Where-Object {
+        $_.AccessControlType -eq
+            [System.Security.AccessControl.AccessControlType]::Allow
+    })) {
+        $sid = $rule.IdentityReference.Value
+        $hasInheritance =
+            ($rule.InheritanceFlags -band $requiredInheritance) -eq
+                $requiredInheritance
+        if ($sid -in $fullControlSids) {
+            if (
+                ($rule.FileSystemRights -band
+                    [System.Security.AccessControl.FileSystemRights]::FullControl) -ne
+                    [System.Security.AccessControl.FileSystemRights]::FullControl -or
+                -not $hasInheritance
+            ) {
+                throw "中断 payload DACL 的 privileged allow 已漂移：$sid"
+            }
+            [void]$seenFullControlSids.Add($sid)
+            continue
+        }
+        if ($sid -in $allowedReadExecuteSids) {
+            if (
+                ($rule.FileSystemRights -band
+                    [System.Security.AccessControl.FileSystemRights]::ReadAndExecute) -ne
+                    [System.Security.AccessControl.FileSystemRights]::ReadAndExecute -or
+                ($rule.FileSystemRights -band $readExecuteForbidden) -ne 0 -or
+                -not $hasInheritance
+            ) {
+                throw "中断 payload DACL 的 read-execute allow 已漂移：$sid"
+            }
+            [void]$seenReadExecuteSids.Add($sid)
+            continue
+        }
+        throw "中断 payload DACL 含未知 allow SID：$sid"
+    }
+    foreach ($sid in $fullControlSids) {
+        if (-not $seenFullControlSids.Contains($sid)) {
+            throw "中断 payload DACL 缺少 privileged allow：$sid"
+        }
+    }
+    foreach ($sid in $requiredReadExecuteSids) {
+        if (-not $seenReadExecuteSids.Contains($sid)) {
+            throw "中断 payload DACL 缺少 required read-execute allow：$sid"
+        }
+    }
+
+    foreach ($entry in $entries) {
+        $entryDenyRules = @((Get-TicketboxInstalledPayloadAcl `
+            $entry.FullName).GetAccessRules(
+                $true,
+                $true,
+                [System.Security.Principal.SecurityIdentifier]
+            ) | Where-Object {
+                $_.AccessControlType -eq
+                    [System.Security.AccessControl.AccessControlType]::Deny
+            })
+        $expectedInherited = -not [string]::Equals(
+            [System.IO.Path]::GetFullPath($entry.FullName),
+            [System.IO.Path]::GetFullPath($PayloadRoot),
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+        $expectedInheritanceFlags = if ($entry.PSIsContainer) {
+            $requiredInheritance
+        }
+        else {
+            [System.Security.AccessControl.InheritanceFlags]::None
+        }
+        if (
+            $entryDenyRules.Count -ne 1 -or
+            -not (Test-TicketboxInstalledPayloadMutationDenyRule `
+                -Rule $entryDenyRules[0] `
+                -ExpectedInherited $expectedInherited `
+                -ExpectedInheritanceFlags $expectedInheritanceFlags)
+        ) {
+            throw "中断 payload 项的 mutation deny 已漂移：$($entry.FullName)"
+        }
+    }
+
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $tokenSids = @([string]$identity.User.Value)
+    $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+    if ($principal.IsInRole(
+        [System.Security.Principal.WindowsBuiltInRole]::Administrator
+    )) {
+        $tokenSids += ConvertTo-TicketboxAccountSid "BUILTIN\Administrators"
+    }
+    $changePermissions =
+        [System.Security.AccessControl.FileSystemRights]::ChangePermissions
+    $authorized = @($rootRules | Where-Object {
+        $_.AccessControlType -eq
+            [System.Security.AccessControl.AccessControlType]::Allow -and
+        $_.IdentityReference.Value -in $tokenSids -and
+        ($_.FileSystemRights -band $changePermissions) -eq $changePermissions
+    }).Count -gt 0
+    if (-not $authorized) {
+        throw "当前安装 token 未由精确 payload DACL 授予 WRITE_DAC。"
+    }
+
+    $originalAcl = Copy-TicketboxInstalledPayloadAcl $rootAcl -Directory
+    $originalEvidence = Get-TicketboxInstalledPayloadAclEvidence $originalAcl
+    $cleanAcl = Copy-TicketboxInstalledPayloadAcl $rootAcl -Directory
+    $cleanRules = @($cleanAcl.GetAccessRules(
+        $true,
+        $false,
+        [System.Security.Principal.SecurityIdentifier]
+    ) | Where-Object {
+        $_.AccessControlType -eq
+            [System.Security.AccessControl.AccessControlType]::Deny
+    })
+    if (
+        $cleanRules.Count -ne 1 -or
+        -not (Test-TicketboxInstalledPayloadMutationDenyRule `
+            -Rule $cleanRules[0] `
+            -ExpectedInherited $false `
+            -ExpectedInheritanceFlags $requiredInheritance)
+    ) {
+        throw "中断 payload root 的显式 mutation deny 已漂移。"
+    }
+    [void]$cleanAcl.RemoveAccessRuleSpecific($cleanRules[0])
+    $expectedEvidence = Get-TicketboxInstalledPayloadAclEvidence $cleanAcl
+    $aclMutationStarted = $false
+    try {
+        $aclMutationStarted = $true
+        Set-TicketboxInstalledPayloadAcl $PayloadRoot $cleanAcl
+        $persisted = Get-TicketboxInstalledPayloadAcl $PayloadRoot
+        Assert-TicketboxStructuredEvidence `
+            "中断 payload mutation deny 精确退役" `
+            (Get-TicketboxInstalledPayloadAclEvidence $persisted) `
+            $expectedEvidence
+        foreach ($entry in Get-TicketboxInstalledPayloadEntries $PayloadRoot) {
+            $remainingDeny = @((Get-TicketboxInstalledPayloadAcl `
+                $entry.FullName).GetAccessRules(
+                    $true,
+                    $true,
+                    [System.Security.Principal.SecurityIdentifier]
+                ) | Where-Object {
+                    $_.AccessControlType -eq
+                        [System.Security.AccessControl.AccessControlType]::Deny
+                })
+            if ($remainingDeny.Count -ne 0) {
+                throw "中断 payload mutation deny 未从磁盘完全退役：$($entry.FullName)"
+            }
+        }
+        return $true
+    }
+    catch {
+        $operationFailure = $_.Exception
+        if (-not $aclMutationStarted) {
+            throw
+        }
+        try {
+            Set-TicketboxInstalledPayloadAcl $PayloadRoot $originalAcl
+            $restored = Get-TicketboxInstalledPayloadAcl $PayloadRoot
+            Assert-TicketboxStructuredEvidence `
+                "中断 payload mutation deny 失败补偿" `
+                (Get-TicketboxInstalledPayloadAclEvidence $restored) `
+                $originalEvidence
+            foreach ($entry in Get-TicketboxInstalledPayloadEntries $PayloadRoot) {
+                $restoredDenyRules = @((Get-TicketboxInstalledPayloadAcl `
+                    $entry.FullName).GetAccessRules(
+                        $true,
+                        $true,
+                        [System.Security.Principal.SecurityIdentifier]
+                    ) | Where-Object {
+                        $_.AccessControlType -eq
+                            [System.Security.AccessControl.AccessControlType]::Deny
+                    })
+                $restoredInherited = -not [string]::Equals(
+                    [System.IO.Path]::GetFullPath($entry.FullName),
+                    [System.IO.Path]::GetFullPath($PayloadRoot),
+                    [System.StringComparison]::OrdinalIgnoreCase
+                )
+                $restoredInheritanceFlags = if ($entry.PSIsContainer) {
+                    $requiredInheritance
+                }
+                else {
+                    [System.Security.AccessControl.InheritanceFlags]::None
+                }
+                if (
+                    $restoredDenyRules.Count -ne 1 -or
+                    -not (Test-TicketboxInstalledPayloadMutationDenyRule `
+                        -Rule $restoredDenyRules[0] `
+                        -ExpectedInherited $restoredInherited `
+                        -ExpectedInheritanceFlags $restoredInheritanceFlags)
+                ) {
+                    throw "中断 payload mutation deny 失败补偿未恢复 exact ACE：$($entry.FullName)"
+                }
+            }
+        }
+        catch {
+            $compensationFailure = $_.Exception
+            $aggregate = [System.AggregateException]::new(
+                "中断 payload mutation deny 退役与 ACL 补偿均失败。",
+                [Exception[]]@($operationFailure, $compensationFailure)
+            )
+            $aggregate.Data["TicketboxPayloadLeaseRecoveryFailureCode"] =
+                "mutation_deny_recovery_compensation_failed"
+            throw $aggregate
+        }
+        throw $operationFailure
+    }
+}
+
+function Remove-TicketboxInterruptedInstalledPayloadMutationDeny {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$InstallerManifestPath,
+        [ValidateRange(1, 99)][int]$ExpectedPgMajor,
+        [string[]]$ServiceReadExecuteAccounts = @()
+    )
+
+    $canonicalInstallDir = Assert-TicketboxInstallRootDomain $InstallDir
+    $expectedManifestPath = [System.IO.Path]::GetFullPath(
+        (Join-Path $canonicalInstallDir "installer\BUILD_PROVENANCE.json")
+    )
+    $actualManifestPath = [System.IO.Path]::GetFullPath($InstallerManifestPath)
+    if (-not [string]::Equals(
+        $actualManifestPath,
+        $expectedManifestPath,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "中断 payload lease recovery 只接受安装目录内 primary manifest。"
+    }
+    if ((Get-TicketboxPathEntryKindNoFollow $actualManifestPath) -cne "File") {
+        throw "中断 payload lease recovery 缺少普通 primary manifest。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $actualManifestPath
+    Read-TicketboxInstalledBuildManifest `
+        -Path $actualManifestPath `
+        -ExpectedPgMajor $ExpectedPgMajor | Out-Null
+    $payloadRoot = Join-Path `
+        $canonicalInstallDir `
+        "program\ticketbox-backend"
+    return Remove-TicketboxInterruptedInstalledPayloadMutationDenyExact `
+        -PayloadRoot $payloadRoot `
+        -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+        -RequiredReadExecuteAccounts @("BUILTIN\Users") `
+        -AllowedReadExecuteAccounts $ServiceReadExecuteAccounts `
+        -OwnerAccount "SYSTEM"
+}
+
 function Add-TicketboxInstalledPayloadMutationDeny([string]$PayloadRoot) {
     $sourceAcl = Get-TicketboxInstalledPayloadAcl $PayloadRoot
     $originalAcl = Copy-TicketboxInstalledPayloadAcl $sourceAcl -Directory
@@ -353,13 +729,7 @@ function Add-TicketboxInstalledPayloadMutationDeny([string]$PayloadRoot) {
     $everyone = New-Object System.Security.Principal.SecurityIdentifier(
         "S-1-1-0"
     )
-    $deniedRights =
-        [System.Security.AccessControl.FileSystemRights]::CreateFiles -bor
-        [System.Security.AccessControl.FileSystemRights]::CreateDirectories -bor
-        [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
-        [System.Security.AccessControl.FileSystemRights]::Delete -bor
-        [System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
-        [System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes
+    $deniedRights = Get-TicketboxInstalledPayloadMutationDeniedRights
     $inheritance =
         [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
         [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
@@ -431,7 +801,9 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
     if ($records.Count -eq 0) {
         throw "已安装 frozen backend secondary payload 文件集为空。"
     }
-    $seen = @{}
+    $seen = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
     $paths = New-Object System.Collections.Generic.List[string]
     foreach ($record in $records) {
         $propertyNames = @($record.PSObject.Properties.Name)
@@ -450,6 +822,7 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
             [System.IO.Path]::IsPathRooted($relativePath) -or
             $relativePath.Contains("\") -or
             $relativePath.Contains(":") -or
+            $relativePath -cmatch "[^\x20-\x7e]" -or
             $relativePath.StartsWith("/") -or
             $relativePath.EndsWith("/") -or
             @($segments | Where-Object {
@@ -458,7 +831,7 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
         ) {
             throw "已安装 frozen backend secondary payload 路径不是 canonical 相对路径。"
         }
-        if ($seen.ContainsKey($relativePath)) {
+        if (-not $seen.Add($relativePath)) {
             throw "已安装 frozen backend secondary payload 路径大小写重复：$relativePath"
         }
         $size = [int64]0
@@ -469,18 +842,22 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
         ) {
             throw "已安装 frozen backend secondary payload size/SHA-256 无效：$relativePath"
         }
-        $seen[$relativePath] = $true
         $paths.Add($relativePath)
     }
     $sorted = [string[]]@($paths)
     [Array]::Sort($sorted, [System.StringComparer]::OrdinalIgnoreCase)
     for ($index = 0; $index -lt $sorted.Count; $index++) {
         if ($sorted[$index] -cne [string]$records[$index].path) {
-            throw "已安装 frozen backend secondary payload 文件记录未按 ordinal-ignore-case 排序。"
+            $failure = [System.IO.InvalidDataException]::new(
+                "已安装 frozen backend secondary payload 文件记录未按 ordinal-ignore-case 排序。"
+            )
+            $failure.Data["TicketboxInstallPublicFailureCode"] =
+                "backend_payload_manifest_order_invalid"
+            throw $failure
         }
     }
     foreach ($requiredPath in $script:TicketboxInstalledC07ExternalAuthorityPaths) {
-        if (-not $seen.ContainsKey($requiredPath)) {
+        if (-not $seen.Contains($requiredPath)) {
             throw "已安装 C07 外置迁移 authority 缺少必需文件：$requiredPath"
         }
     }

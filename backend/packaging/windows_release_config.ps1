@@ -1,5 +1,14 @@
 ﻿#Requires -Version 5.1
 
+$serviceIdentityScript = Join-Path $PSScriptRoot "windows_service_identity.ps1"
+if (-not (Test-Path -LiteralPath $serviceIdentityScript -PathType Leaf)) {
+    throw "Missing Windows service identity contract: $serviceIdentityScript"
+}
+. $serviceIdentityScript
+
+$script:TicketboxLegacyWindowsReleaseSchema = "ticketbox-windows-release-v1"
+$script:TicketboxCurrentWindowsReleaseSchema = "ticketbox-windows-release-v2"
+
 function Assert-TicketboxReleaseConfigInteger {
     param(
         [Parameter(Mandatory = $true)][object]$Config,
@@ -59,7 +68,10 @@ function Read-TicketboxWindowsReleaseConfig {
     catch {
         throw "Windows release config 不是有效 JSON：$Path"
     }
-    if ($config.schema -ne "ticketbox-windows-release-v1") {
+    if ([string]$config.schema -notin @(
+        $script:TicketboxLegacyWindowsReleaseSchema,
+        $script:TicketboxCurrentWindowsReleaseSchema
+    )) {
         throw "Windows release config schema 不受支持：$($config.schema)"
     }
 
@@ -139,6 +151,29 @@ function Read-TicketboxWindowsReleaseConfig {
     if (@($serviceNames | Sort-Object -Unique).Count -ne $serviceNames.Count) {
         throw "Windows release config 的正式 PostgreSQL、恢复 PostgreSQL 与后端服务名必须互不相同。"
     }
+    if ([string]$config.schema -ceq $script:TicketboxCurrentWindowsReleaseSchema) {
+        Assert-TicketboxReleaseConfigText `
+            $config `
+            "service_logon_account" `
+            '^NT AUTHORITY\\LocalService$' `
+            64 | Out-Null
+        Assert-TicketboxReleaseConfigText `
+            $config `
+            "service_sid_type" `
+            '^(unrestricted|restricted)$' `
+            32 | Out-Null
+        $canonicalAccount = ConvertTo-TicketboxServiceLogonAccount `
+            -Name ([string]$config.pg_service_name) `
+            -Account ([string]$config.service_logon_account)
+        if ([string]$config.service_logon_account -cne $canonicalAccount) {
+            throw "Windows release config 的 service_logon_account 必须使用 SCM 规范名称。"
+        }
+        $canonicalSidType = ConvertFrom-TicketboxServiceSidTypeValue `
+            (ConvertTo-TicketboxServiceSidTypeValue ([string]$config.service_sid_type))
+        if ([string]$config.service_sid_type -cne $canonicalSidType) {
+            throw "Windows release config 的 service_sid_type 必须使用规范小写值。"
+        }
+    }
     if (
         $config.service_poll_interval_ms -gt $config.service_state_timeout_ms -or
         $config.postgres_ready_poll_interval_ms -gt $config.postgres_ready_timeout_ms -or
@@ -148,6 +183,171 @@ function Read-TicketboxWindowsReleaseConfig {
         throw "Windows release config 的轮询间隔不能大于对应超时。"
     }
     return $config
+}
+
+function Get-TicketboxReleaseServiceLogonAccount {
+    param(
+        [Parameter(Mandatory = $true)][object]$Config,
+        [Parameter(Mandatory = $true)][string]$ServiceName
+    )
+
+    if ([string]$Config.schema -ceq $script:TicketboxLegacyWindowsReleaseSchema) {
+        return Get-TicketboxServiceResourcePrincipal $ServiceName
+    }
+    if ([string]$Config.schema -cne $script:TicketboxCurrentWindowsReleaseSchema) {
+        throw "Windows release config schema 不受支持：$($Config.schema)"
+    }
+    $property = $Config.PSObject.Properties["service_logon_account"]
+    if ($null -eq $property) {
+        throw "Windows release config 缺少 service_logon_account。"
+    }
+    return ConvertTo-TicketboxServiceLogonAccount `
+        -Name $ServiceName `
+        -Account ([string]$property.Value)
+}
+
+function Get-TicketboxReleaseServiceSidType([object]$Config) {
+    if ([string]$Config.schema -ceq $script:TicketboxLegacyWindowsReleaseSchema) {
+        return "none"
+    }
+    if ([string]$Config.schema -cne $script:TicketboxCurrentWindowsReleaseSchema) {
+        throw "Windows release config schema 不受支持：$($Config.schema)"
+    }
+    $property = $Config.PSObject.Properties["service_sid_type"]
+    if ($null -eq $property) {
+        throw "Windows release config 缺少 service_sid_type。"
+    }
+    $sidType = ConvertFrom-TicketboxServiceSidTypeValue `
+        (ConvertTo-TicketboxServiceSidTypeValue ([string]$property.Value))
+    if ($sidType -ceq "none") {
+        throw "当前 Windows release config 不允许关闭服务 SID。"
+    }
+    return $sidType
+}
+
+function Get-TicketboxReleaseServiceIdentityTransition {
+    param(
+        [Parameter(Mandatory = $true)][object]$InstalledConfig,
+        [Parameter(Mandatory = $true)][object]$TargetConfig
+    )
+
+    $installedSchema = [string]$InstalledConfig.schema
+    $targetSchema = [string]$TargetConfig.schema
+    if (
+        $installedSchema -ceq $script:TicketboxLegacyWindowsReleaseSchema -and
+        $targetSchema -ceq $script:TicketboxLegacyWindowsReleaseSchema
+    ) {
+        return "legacy_virtual_unchanged"
+    }
+    if (
+        $installedSchema -ceq $script:TicketboxLegacyWindowsReleaseSchema -and
+        $targetSchema -ceq $script:TicketboxCurrentWindowsReleaseSchema
+    ) {
+        Get-TicketboxReleaseServiceLogonAccount `
+            -Config $TargetConfig `
+            -ServiceName ([string]$TargetConfig.pg_service_name) | Out-Null
+        Get-TicketboxReleaseServiceSidType $TargetConfig | Out-Null
+        return "legacy_virtual_to_service_sid"
+    }
+    if (
+        $installedSchema -ceq $script:TicketboxCurrentWindowsReleaseSchema -and
+        $targetSchema -ceq $script:TicketboxCurrentWindowsReleaseSchema
+    ) {
+        $installedAccount = Get-TicketboxReleaseServiceLogonAccount `
+            -Config $InstalledConfig `
+            -ServiceName ([string]$InstalledConfig.pg_service_name)
+        $targetAccount = Get-TicketboxReleaseServiceLogonAccount `
+            -Config $TargetConfig `
+            -ServiceName ([string]$TargetConfig.pg_service_name)
+        $installedSidType = Get-TicketboxReleaseServiceSidType $InstalledConfig
+        $targetSidType = Get-TicketboxReleaseServiceSidType $TargetConfig
+        if (
+            $installedAccount -cne $targetAccount -or
+            $installedSidType -cne $targetSidType
+        ) {
+            throw "Windows 服务身份策略已变化；必须先提供显式服务身份迁移。"
+        }
+        return "current_unchanged"
+    }
+    if (
+        $installedSchema -ceq $script:TicketboxCurrentWindowsReleaseSchema -and
+        $targetSchema -ceq $script:TicketboxLegacyWindowsReleaseSchema
+    ) {
+        throw "拒绝把当前 Windows 服务身份策略降级为旧虚拟登录账户。"
+    }
+    throw "Windows release config schema 转换不受支持。"
+}
+
+function Get-TicketboxReleaseServiceIdentityShapes {
+    param(
+        [Parameter(Mandatory = $true)][object]$InstalledConfig,
+        [Parameter(Mandatory = $true)][object]$TargetConfig,
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [switch]$AllowTargetSidTypePending
+    )
+
+    $transition = Get-TicketboxReleaseServiceIdentityTransition `
+        -InstalledConfig $InstalledConfig `
+        -TargetConfig $TargetConfig
+    $installedAccount = Get-TicketboxReleaseServiceLogonAccount `
+        -Config $InstalledConfig `
+        -ServiceName $ServiceName
+    $installedSidType = Get-TicketboxReleaseServiceSidType $InstalledConfig
+    $targetAccount = Get-TicketboxReleaseServiceLogonAccount `
+        -Config $TargetConfig `
+        -ServiceName $ServiceName
+    $targetSidType = Get-TicketboxReleaseServiceSidType $TargetConfig
+    $shapes = @(
+        New-TicketboxServiceIdentityShape `
+            -Name $ServiceName `
+            -LogonAccount $installedAccount `
+            -SidType $installedSidType `
+            -AllowLegacyVirtualAccount
+    )
+    if ($transition -ceq "legacy_virtual_to_service_sid") {
+        $shapes += New-TicketboxServiceIdentityShape `
+            -Name $ServiceName `
+            -LogonAccount $installedAccount `
+            -SidType $targetSidType `
+            -AllowLegacyVirtualAccount
+        $shapes += New-TicketboxServiceIdentityShape `
+            -Name $ServiceName `
+            -LogonAccount $targetAccount `
+            -SidType $targetSidType
+    }
+    if ($AllowTargetSidTypePending -and $targetSidType -cne "none") {
+        $shapes += New-TicketboxServiceIdentityShape `
+            -Name $ServiceName `
+            -LogonAccount $targetAccount `
+            -SidType "none"
+    }
+    $deduplicated = @()
+    $seen = @{}
+    foreach ($shape in $shapes) {
+        $key = "$([string]$shape.LogonAccount.ToLowerInvariant())|$([string]$shape.SidType)"
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        $deduplicated += $shape
+    }
+    return [object[]]$deduplicated
+}
+
+function Assert-TicketboxReleaseServiceIdentity {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][object]$InstalledConfig,
+        [Parameter(Mandatory = $true)][object]$TargetConfig,
+        [switch]$AllowTargetSidTypePending
+    )
+
+    $shapes = @(Get-TicketboxReleaseServiceIdentityShapes `
+        -InstalledConfig $InstalledConfig `
+        -TargetConfig $TargetConfig `
+        -ServiceName $Name `
+        -AllowTargetSidTypePending:$AllowTargetSidTypePending)
+    return Assert-TicketboxServiceIdentityShape `
+        -Name $Name `
+        -AllowedShapes $shapes
 }
 
 function Assert-TicketboxReleaseIdentityCompatible {
@@ -174,6 +374,9 @@ function Assert-TicketboxReleaseIdentityCompatible {
             throw "Windows release config 的安装身份 $name 已变化；必须先提供显式数据库迁移，拒绝直接覆盖升级。"
         }
     }
+    Get-TicketboxReleaseServiceIdentityTransition `
+        -InstalledConfig $InstalledConfig `
+        -TargetConfig $TargetConfig | Out-Null
 }
 
 function New-TicketboxWaitDeadline([int]$TimeoutMilliseconds) {

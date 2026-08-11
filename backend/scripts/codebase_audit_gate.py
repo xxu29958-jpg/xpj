@@ -129,7 +129,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 93,
-    "mutate_token_exempted": 128,
+    "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
@@ -138,7 +138,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_external_side_effect": 4,
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 4,
-    "mutate_token_reason_session_rotation": 7,
+    "mutate_token_reason_session_rotation": 8,
     "mutate_token_reason_terminal_flag_flip": 31,
     "mutate_token_reason_upsert_bucket": 8,
 }
@@ -169,9 +169,9 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _ADR_0049_EXEMPTED_GRANDFATHER = (
-    127,
     128,
-)  # Desktop two-phase switch-prepare (218-E): POST /api/ledgers/{ledger_id}/switch/prepare is exempted with the session_rotation reason (stages the client-derived desktop_pending credential + activation receipt; replay safety rests on the attempt proof, not a row-version token). The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (128, 129) for the 218-C4 debt-goal web write loop.
+    129,
+)  # Windows installation-owner bootstrap: POST /api/bootstrap/installation-owner atomically claims one installation operation and issues only a short-lived pairing child. Replay safety rests on the bootstrap secret + stable operation receipt, not a row-version token. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (127, 128) for Desktop switch-prepare.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``

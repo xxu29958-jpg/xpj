@@ -34,6 +34,7 @@ pytestmark = pytest.mark.real_db
 
 _C07_TARGET_REVISION = "20260729_0001"
 _C02_TARGET_REVISION = "20260802_0001"
+_RELEASE_HEAD_REVISION = "20260809_0001"
 _OWNER_PASSWORD = "ManagedOwnerRuntimePassword0001"
 _MIGRATOR_PASSWORD = "ManagedMigratorRuntimePassword01"
 _RUNTIME_PASSWORD = "ManagedApplicationRuntimePassword1"
@@ -331,26 +332,26 @@ def _assert_rollback_retry_and_replay(
         "verify_postcondition": postcondition,
     }
     assert topology.runtime.run(**arguments) == "target_committed"
-    assert _revision(topology.owner_url) == _C02_TARGET_REVISION
+    assert _revision(topology.owner_url) == _RELEASE_HEAD_REVISION
     assert topology.runtime.run(**arguments) == "target_observed_after_interruption"
 
     monkeypatch.setattr(managed_schema, "DATABASE_NAME", topology.database)
     monkeypatch.setattr(managed_schema, "MIGRATOR_ROLE", topology.migrator)
     monkeypatch.setattr(managed_schema, "SCHEMA_OWNER_ROLE", topology.owner)
     noop_plan = managed_schema.get_managed_schema_plan(
-        source_revision=_C02_TARGET_REVISION,
+        source_revision=_RELEASE_HEAD_REVISION,
     )
     noop_result = managed_schema.run_managed_schema_upgrade_action(
         database_url=topology.migrator_url.render_as_string(hide_password=False),
         pgpassfile=topology.pgpass,
-        source_revision=_C02_TARGET_REVISION,
-        target_revision=_C02_TARGET_REVISION,
+        source_revision=_RELEASE_HEAD_REVISION,
+        target_revision=_RELEASE_HEAD_REVISION,
         expected_revision_manifest_sha256=str(
             noop_plan["revision_manifest_sha256"]
         ),
     )
     assert noop_result["result"] == "target_observed_after_interruption"
-    assert noop_result["alembic_revision"] == _C02_TARGET_REVISION
+    assert noop_result["alembic_revision"] == _RELEASE_HEAD_REVISION
     assert (
         _migrator_sessions(
             topology.admin,

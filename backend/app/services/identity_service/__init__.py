@@ -36,7 +36,6 @@ from app.services.identity_service._bootstrap import (
     record_bootstrap_secret_consumption,
 )
 from app.services.identity_service._bootstrap_recovery import (
-    ReplacementCredentialCollisionError,
     rotate_exposed_bootstrap_credentials,
 )
 from app.services.identity_service._device import (
@@ -46,6 +45,9 @@ from app.services.identity_service._device import (
     create_pairing_code,
 )
 from app.services.identity_service._enrollment import ENROLLMENT_PROOF_COOKIE_SECONDS
+from app.services.identity_service._installation_bootstrap import (
+    bootstrap_installation_owner,
+)
 from app.services.identity_service._legacy_compat import (
     is_legacy_app_token,
     is_legacy_upload_token,
@@ -58,8 +60,10 @@ from app.services.identity_service._models import (
     PAIRING_MAX_FAILED_ATTEMPTS,
     WEB_SESSION_TTL_SECONDS,
     BootstrapResult,
+    InstallationOwnerBootstrapResult,
     PairingCodeResult,
     PairingResult,
+    ReplacementCredentialCollisionError,
     WebSessionAuthResult,
 )
 from app.services.identity_service._pair import pair_device
@@ -95,6 +99,7 @@ __all__ = [
     "WEB_SESSION_TTL_SECONDS",
     # DTOs
     "BootstrapResult",
+    "InstallationOwnerBootstrapResult",
     "PairingCodeResult",
     "PairingResult",
     "ReplacementCredentialCollisionError",
@@ -109,6 +114,7 @@ __all__ = [
     "find_active_upload_link",
     "lock_and_revalidate_upload_link_commit_context",
     "bootstrap_owner",
+    "bootstrap_installation_owner",
     "create_pairing_code",
     "is_bootstrap_secret_consumed",
     "record_bootstrap_secret_consumption",

@@ -54,6 +54,23 @@ def show_manager_repair_required_warning() -> None:
     )
 
 
+def show_manager_startup_failure_warning(detail: str) -> None:
+    diagnostic_detail = " ".join(str(detail).splitlines()).strip()
+    if "Microsoft Edge" in diagnostic_detail:
+        message = (
+            "无法打开小票夹管理器窗口。请确认 Microsoft Edge 可用并已更新，"
+            "然后从 Windows 开始菜单重试；仍失败时请运行小票夹修复安装。"
+            "\n\n支持代码：TBX-MANAGER-EDGE"
+        )
+    else:
+        message = (
+            "小票夹服务已经保留，但管理器窗口未能启动。请从 Windows 开始菜单重试；"
+            "仍失败时请运行小票夹修复安装。"
+            "\n\n支持代码：TBX-MANAGER-STARTUP"
+        )
+    _show_warning(message, "无法打开小票夹管理器")
+
+
 def windows_system_directory() -> Path:
     if os.name != "nt":
         raise RuntimeControlError("Windows 服务提权操作只支持 Windows。")

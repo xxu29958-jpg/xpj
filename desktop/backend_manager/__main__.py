@@ -46,6 +46,7 @@ from backend_manager.runtime_factory import build_direct_service_runtime
 from backend_manager.windows_user_security import (
     show_elevated_manager_warning,
     show_manager_repair_required_warning,
+    show_manager_startup_failure_warning,
 )
 
 
@@ -193,7 +194,13 @@ def main(argv: list[str] | None = None) -> int:
                 startup_failure_code="manager_identity_mismatch",
                 startup_failure_stage="manager_identity",
             )
-    return run_manager(config)
+    try:
+        return run_manager(config)
+    except (ConfigError, OSError, RuntimeControlError) as exc:
+        if identity is None:
+            raise
+        show_manager_startup_failure_warning(str(exc))
+        return 4
 
 
 if __name__ == "__main__":

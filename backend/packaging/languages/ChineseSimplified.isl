@@ -25,14 +25,16 @@ LanguageID=$0804
 ; LanguageCodePage should always be set if possible, even if this file is Unicode
 ; For English it's set to zero anyway because English only uses ASCII characters
 LanguageCodePage=936
-; If the language you are translating to requires special font faces or
-; sizes, uncomment any of the following entries and change them accordingly.
-;DialogFontName=
-;DialogFontSize=9
-;DialogFontBaseScaleWidth=7
-;DialogFontBaseScaleHeight=15
-;WelcomeFontName=Segoe UI
-;WelcomeFontSize=14
+; Ticketbox must remain readable when the Windows UI culture is not zh-CN.
+; An empty dialog font resolves to Segoe UI in that environment, and GDI does
+; not provide the Simplified Chinese glyphs used by this installer. Pin the
+; installed Windows CJK UI font for both normal controls and welcome headings.
+DialogFontName=Microsoft YaHei UI
+DialogFontSize=9
+DialogFontBaseScaleWidth=7
+DialogFontBaseScaleHeight=15
+WelcomeFontName=Microsoft YaHei UI
+WelcomeFontSize=14
 
 [Messages]
 

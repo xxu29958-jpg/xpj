@@ -1,17 +1,64 @@
-# v0.3 Bootstrap Owner
+# Owner Bootstrap 与 Windows 首装配对
 
-首次启动或迁移到 v0.3 后，先初始化 owner 身份。
+正式 Windows 分发与源码/legacy 初始化是两份不同合同，不能互相借权威：
 
-> 安全基线：HTTP `/api/bootstrap/owner` **默认禁用**，不能再依赖 loopback 判断。Cloudflare Tunnel 会把所有公网请求转发到本机 loopback，因此 loopback 不等于真实本机用户。**默认运行下，公网（含 Tunnel）调用 `/api/bootstrap/owner` 会得到 `404 bootstrap_disabled`。**
+- Inno 正式安装器只调用 `POST /api/bootstrap/installation-owner`，得到一个 8 位短期 pairing code；
+- `scripts/bootstrap_owner.ps1` 与 `POST /api/bootstrap/owner` 只供源码开发、测试或明确的 legacy 人工流程，不是正式安装器路径。
 
-## 本地脚本（推荐）
+> 安全基线：两个 HTTP bootstrap endpoint 都**默认禁用**，不能依赖 loopback 判断。Cloudflare Tunnel 会把公网请求转发到本机 loopback，因此 loopback 不等于真实本机用户。只有 `ENABLE_HTTP_BOOTSTRAP=true` 且 `HTTP_BOOTSTRAP_SECRET` 至少 32 字节时才开放；默认调用得到 `404 bootstrap_disabled`。
+
+## 正式 Windows 安装器（面向用户）
+
+安装器以受保护、短命的 bootstrap secret 调用：
+
+```http
+POST /api/bootstrap/installation-owner
+Content-Type: application/json
+X-Bootstrap-Secret: <安装事务短命 secret>
+```
+
+```json
+{
+  "operation_id": "<安装事务 ID，失败重试保持不变>",
+  "installation_id": "<持久安装 ID>",
+  "account_name": "我",
+  "ledger_name": "我的小票夹",
+  "device_name": "Windows 后端"
+}
+```
+
+返回只包含 installation claim 投影与 pairing child：
+
+```json
+{
+  "contract": "ticketbox-installation-owner-pairing-v1",
+  "operation_id": "<原 operation_id>",
+  "installation_id": "<原 installation_id>",
+  "account_name": "我",
+  "ledger_id": "owner",
+  "ledger_name": "我的小票夹",
+  "device_name": "Windows 后端",
+  "pairing_code": "73829401",
+  "pairing_expires_at": "2026-08-09T12:00:00Z",
+  "pairing_derivation_index": 0,
+  "claim_generation": 1
+}
+```
+
+这里没有 `admin_token`、`upload_key` 或用户长期 bearer。安装器只在受保护的单文件 handoff 中短暂保存 pairing-only 结果并在完成页显示；Desktop Manager 由原登录用户启动，消费该码后由普通用户进程把桌面 session 写入自己的 Windows Credential Manager。
+
+同一 `operation_id` + `installation_id` + 请求 fingerprint + secret 重试是幂等重放；pairing child 过期时在同一数据库事务中撤销旧 child、创建下一 generation，installation operation 不变。任一绑定不符都拒绝，失败事务不会只消费 secret 或留下半个 owner。系统中已有 foreign installation claim 或长期 token 时返回 `409 bootstrap_already_initialized`。
+
+旧 `owner-bootstrap.txt`、`owner-handoff-pending` 和旧 ADR/交接记录只是审计对象。正式安装器不读取其内容、不迁移、不删除、不展示，也不允许它们阻断当前协议；需要清理旧敏感材料时必须走另一个版本化退役流程并保留脱敏回执。
+
+## 源码/legacy 本地脚本（开发兼容）
 
 ```powershell
 cd E:\projects\xiaopiaojia\backend
 powershell -ExecutionPolicy Bypass -File scripts\bootstrap_owner.ps1
 ```
 
-本地脚本直接调用 Python 服务层，不走 HTTP，因此不受 `ENABLE_HTTP_BOOTSTRAP` 开关影响。
+本地脚本直接调用 Python 服务层，不走 HTTP，因此不受 `ENABLE_HTTP_BOOTSTRAP` 开关影响。它会产生长期凭据文件，不属于 Inno 正式分发流程。
 
 输出文件：
 
@@ -22,9 +69,9 @@ backend\bootstrap\owner-pairing.json
 
 这些文件包含只显示一次的 admin token、iOS upload key 和 Android pairing code，已被 `.gitignore` 覆盖，不要提交、截图或转发给无关人员。
 
-## HTTP API（受限场景）
+## Legacy HTTP API（受限开发场景）
 
-仅在确实需要通过 HTTP 自动化或烟测时才启用。启用步骤：
+`POST /api/bootstrap/owner` 会返回长期 admin/upload 凭据，只在确实需要通过 HTTP 自动化或烟测时才启用；正式 Windows 安装器禁止调用。启用步骤：
 
 1. 在后端运行环境（不是 Tunnel 暴露的环境）设置环境变量：
 

@@ -23,6 +23,7 @@ from app.database._c07_production_contract import (
     _require_exact_fields,
     _require_int,
     _require_lower_sha,
+    _require_operation_id,
     _require_string,
     _require_upper_sha,
     _require_utc,
@@ -398,7 +399,7 @@ def _validate_freeze_binding(
         )
     ):
         raise C07ProductionMigrationError("writer-freeze proof does not bind the stopped production writer")
-    _require_uuid(
+    _require_operation_id(
         payload.get("operation_id"),
         label="writer-freeze operation_id",
     )

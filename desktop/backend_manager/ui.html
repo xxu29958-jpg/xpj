@@ -281,8 +281,8 @@
       </div>
       <div class="service-actions product-actions">
         <span class="product-actions" id="productPairGroup" hidden>
-          <input type="text" id="pairingCodeInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="8 位绑定码" aria-label="8 位绑定码">
-          <button class="button button-primary" id="pairAction" type="button" onclick="pairProduct()">绑定</button>
+          <input type="text" id="pairingCodeInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="安装器提供的 8 位码" aria-label="绑定此电脑的 8 位码">
+          <button class="button button-primary" id="pairAction" type="button" onclick="pairProduct()">绑定此电脑</button>
         </span>
         <span class="product-actions" id="productManageGroup" hidden>
           <select id="ledgerSelect" aria-label="切换账本"></select>
@@ -312,7 +312,7 @@
         <div class="task-title">连接设备</div>
         <div class="task-state" id="connectState">服务正常后可以生成一次性绑定码。</div>
         <div class="task-actions">
-          <button class="button manager-action owner-action" id="androidAction" type="button" onclick="act('open_pairing', this)">Android 绑定</button>
+          <button class="button manager-action owner-action" id="androidAction" type="button" onclick="act('open_pairing', this)">设备绑定</button>
           <button class="button manager-action owner-action" id="iphoneAction" type="button" onclick="act('open_upload_links', this)">iPhone 上传</button>
           <button class="button manager-action owner-action" type="button" title="查看已连接设备" onclick="act('open_devices', this)">设备</button>
         </div>
@@ -526,7 +526,7 @@
       $("productManageGroup").hidden = !showManage;
       if (!configured) {
         $("productState").textContent = available
-          ? "输入绑定码把这台电脑连接到账本。"
+          ? "输入安装器提供的“绑定此电脑”码，连接桌面账本。"
           : "服务正常后可以把这台电脑连接到账本。";
         $("pairAction").disabled = productBusy || !available;
         $("pairingCodeInput").disabled = productBusy || !available;
@@ -621,7 +621,7 @@
     async function pairProduct() {
       const code = $("pairingCodeInput").value.trim();
       if (!/^\d{8}$/.test(code)) {
-        setMessage("productError", "请输入 8 位数字绑定码。");
+        setMessage("productError", "请输入安装器提供的 8 位“绑定此电脑”码。");
         return;
       }
       await productAction(async () => {

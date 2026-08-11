@@ -57,6 +57,15 @@
 - `schtasks create`：https://learn.microsoft.com/windows-server/administration/windows-commands/schtasks-create
 - PowerShell `Register-ScheduledTask`：https://learn.microsoft.com/powershell/module/scheduledtasks/register-scheduledtask
 - PowerShell character encoding：https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding
+- PowerShell 5.1 `Start-Transcript` append encoding：https://learn.microsoft.com/powershell/module/microsoft.powershell.host/start-transcript?view=powershell-5.1
+- Win32 `CreateFile` access/share modes and `ERROR_SHARING_VIOLATION`：https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilew
+- Win32 `MoveFileEx` and same-volume security descriptor behavior：https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-movefileexw
+- Win32 file security and access rights：https://learn.microsoft.com/windows/win32/fileio/file-security-and-access-rights
+- Inno Setup `LoadStringFromFile`：https://jrsoftware.org/ishelp/topic_isxfunc_loadstringfromfile.htm
+- Inno Setup `LoadStringFromLockedFile`：https://jrsoftware.org/ishelp/topic_isxfunc_loadstringfromlockedfile.htm
+- Inno Setup `SaveStringsToUTF8File`：https://jrsoftware.org/ishelp/topic_isxfunc_savestringstoutf8file.htm
+- Inno Setup Unicode notes：https://jrsoftware.org/ishelp/topic_unicode.htm
+- CPython 3.13 Win32 error-to-`errno` mapping：https://github.com/python/cpython/blob/v3.13.13/PC/errmap.h
 
 ## CI
 

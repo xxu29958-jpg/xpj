@@ -16,6 +16,7 @@ SCRIPT = PACKAGING / "windows_c07_superuser_recovery.ps1"
 SAFETY = PACKAGING / "windows_installation_safety.ps1"
 DATABASE_SAFETY = PACKAGING / "windows_database_safety.ps1"
 C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
+PG_RECOVERY_TOOLS = PACKAGING / "windows_pg_recovery_tools.ps1"
 
 
 def _ps_literal(value: str | Path) -> str:
@@ -48,6 +49,7 @@ def _function(source: str, name: str) -> str:
 
 def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     source = SCRIPT.read_text(encoding="utf-8-sig")
+    host_operations = PG_RECOVERY_TOOLS.read_text(encoding="utf-8-sig")
     safety = SAFETY.read_text(encoding="utf-8-sig")
     publish = _function(source, "Publish-TicketboxC07SuperuserRecoverySspi")
     restore = _function(source, "Restore-TicketboxC07SuperuserRecoveryAuthFiles")
@@ -66,6 +68,12 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     main = _function(
         source,
         "Invoke-TicketboxC07RecoveredSuperuserAction",
+    )
+    host = _function(source, "Resolve-TicketboxC07SuperuserRecoveryHost")
+    reload = _function(source, "Invoke-TicketboxC07SuperuserRecoveryReload")
+    database_identity = _function(
+        source,
+        "Assert-TicketboxC07SuperuserRecoveryDatabaseIdentityRow",
     )
     security_reader = _function(
         source,
@@ -110,12 +118,14 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     assert "map=$($Artifact.map_name)" in source
     assert "krb_realm=" not in source
     assert "127.0.0.1:$($Artifact.port):postgres:postgres:" in source
-    assert "$env:PGPASSFILE" in source
+    assert "$env:PGPASSFILE" in host_operations
     assert "ConvertTo-TicketboxC07ScramVerifier" in source
-    assert "StandardInputText" in source
+    assert "StandardInputText" in host_operations
     assert "ANSICodePage" in source
     assert "[Text.EncoderFallback]::ExceptionFallback" in source
-    assert "ALTER ROLE postgres WITH LOGIN PASSWORD" in rotate
+    assert "Invoke-TicketboxPostgresqlHostCredentialRotation" in rotate
+    assert "ALTER ROLE postgres WITH LOGIN PASSWORD" not in rotate
+    assert "ALTER ROLE postgres WITH LOGIN PASSWORD" in host_operations
     assert "ALTER ROLE postgres WITH LOGIN PASSWORD NULL" in retire
     assert "role.rolcanlogin::text" in retire
     assert "(role.rolpassword IS NULL)::text" in retire
@@ -134,6 +144,9 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     assert "$results = @(& $Action $secret)" in main
     assert "$results.Count -ne 1" in main
     assert "$null = Invoke-TicketboxC07SuperuserRecoveryClearCredential" in main
+    assert "FilesystemPgData" in host
+    assert "FilesystemPgData" in reload
+    assert "Test-TicketboxC07SuperuserRecoveryDatabaseDataPath" in database_identity
     assert "SeSecurityPrivilege" in source
     assert "AccessControlSections]::All" in security_reader
     assert "control_flags_left=0x" in security_diagnostic
@@ -214,6 +227,128 @@ function Replace-TicketboxFileDurablePreservingMetadata { throw 'unused' }
 function New-TicketboxProtectedFileStream { throw 'unused' }
 function Sync-TicketboxFileDurable { param($Path) }
 """
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_managed_runtime_binding_uses_only_physical_pgdata_for_native_filesystem(
+    engine: str,
+    tmp_path: Path,
+) -> None:
+    install_bin = tmp_path / "install" / "pg" / "bin"
+    physical_pgdata = tmp_path / "data" / "pgdata"
+    runtime_pgdata = tmp_path / "runtime" / "data-root" / "pgdata"
+    third_pgdata = tmp_path / "foreign" / "pgdata"
+    for directory in (install_bin, physical_pgdata, runtime_pgdata, third_pgdata):
+        directory.mkdir(parents=True)
+    for path in (
+        install_bin / "pg_ctl.exe",
+        install_bin / "psql.exe",
+        physical_pgdata / "postgresql.conf",
+        physical_pgdata / "PG_VERSION",
+        physical_pgdata / "pg_hba.conf",
+        physical_pgdata / "pg_ident.conf",
+    ):
+        path.write_text("managed\n", encoding="utf-8")
+
+    script = f"""
+{_STUBS}
+. {_ps_literal(SCRIPT)}
+$script:reparseChecks = [Collections.Generic.List[string]]::new()
+$script:authPaths = [Collections.Generic.List[string]]::new()
+$script:clusterPgData = ''
+$script:reloadArguments = @()
+function Assert-NoTicketboxAncestorReparsePoints {{
+    param([string]$Path)
+    $script:reparseChecks.Add([IO.Path]::GetFullPath($Path))
+}}
+function Get-TicketboxC07SuperuserRecoveryAuthFile {{
+    param([string]$Path, [string]$Label)
+    $script:authPaths.Add([IO.Path]::GetFullPath($Path))
+    return [pscustomobject]@{{
+        Path = [IO.Path]::GetFullPath($Path)
+        Bytes = [byte[]](1)
+        Sha256 = ('A' * 64)
+        SecurityBytes = [byte[]](2)
+    }}
+}}
+function Get-TicketboxC07SuperuserRecoveryClusterSystemIdentifier {{
+    param([object]$HostAuthority, [string]$FilesystemPgData)
+    $script:clusterPgData = [IO.Path]::GetFullPath($FilesystemPgData)
+    return '7123456789012345678'
+}}
+$runtimeAuthority = [pscustomobject]@{{
+    Schema = 'ticketbox-c07-host-db-authority-v1'
+    PgCtlPath = {_ps_literal(install_bin / 'pg_ctl.exe')}
+    PsqlPath = {_ps_literal(install_bin / 'psql.exe')}
+    PgData = {_ps_literal(runtime_pgdata)}
+    PhysicalPgData = {_ps_literal(physical_pgdata)}
+    Port = 5544
+    UsesRuntimeBinding = $true
+    DataVolumeIdentity = 'volume-A'
+}}
+$runtimeHostContext = Resolve-TicketboxC07SuperuserRecoveryHost $runtimeAuthority
+if (
+    -not $runtimeHostContext.UsesRuntimeBinding -or
+    -not (Test-TicketboxPathEquals `
+        $runtimeHostContext.PgData {_ps_literal(runtime_pgdata)}) -or
+    -not (Test-TicketboxPathEquals `
+        $runtimeHostContext.FilesystemPgData {_ps_literal(physical_pgdata)}) -or
+    -not (Test-TicketboxPathEquals `
+        $script:clusterPgData {_ps_literal(physical_pgdata)}) -or
+    $script:authPaths.Count -ne 2 -or
+    ($script:authPaths | Where-Object {{
+        -not (Test-TicketboxPathEquals `
+            (Split-Path -Parent $_) {_ps_literal(physical_pgdata)})
+    }}) -or
+    ($script:reparseChecks | Where-Object {{
+        Test-TicketboxPathEquals $_ {_ps_literal(runtime_pgdata)}
+    }})
+) {{
+    throw 'managed runtime binding escaped the physical filesystem authority'
+}}
+function Invoke-TicketboxC07SuperuserRecoveryNative {{
+    param($FilePath, $Arguments, $TimeoutMilliseconds, $Label)
+    $script:reloadArguments = @($Arguments)
+    return [pscustomobject]@{{ ExitCode = 0 }}
+}}
+Invoke-TicketboxC07SuperuserRecoveryReload -HostContext $runtimeHostContext
+if (
+    $script:reloadArguments.Count -ne 4 -or
+    $script:reloadArguments[0] -cne 'reload' -or
+    $script:reloadArguments[1] -cne '-D' -or
+    -not (Test-TicketboxPathEquals `
+        $script:reloadArguments[2] {_ps_literal(physical_pgdata)}) -or
+    $script:reloadArguments[3] -cne '-s'
+) {{ throw 'pg_ctl reload did not use exact physical PGDATA' }}
+$baseFields = @(
+    'postgres', 'postgres', '7123456789012345678', '', '5544'
+)
+foreach ($acceptedPath in @(
+    {_ps_literal(runtime_pgdata)}, {_ps_literal(physical_pgdata)}
+)) {{
+    $fields = @($baseFields)
+    $fields[3] = $acceptedPath
+    Assert-TicketboxC07SuperuserRecoveryDatabaseIdentityRow `
+        -Fields $fields -HostContext $runtimeHostContext -Label 'runtime identity'
+}}
+$rejected = $false
+try {{
+    $fields = @($baseFields)
+    $fields[3] = {_ps_literal(third_pgdata)}
+    Assert-TicketboxC07SuperuserRecoveryDatabaseIdentityRow `
+        -Fields $fields -HostContext $runtimeHostContext -Label 'foreign identity'
+}}
+catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'third PGDATA identity was accepted' }}
+$missingPhysical = $runtimeAuthority.PSObject.Copy()
+$missingPhysical.PhysicalPgData = ''
+$rejected = $false
+try {{ Resolve-TicketboxC07SuperuserRecoveryHost $missingPhysical | Out-Null }}
+catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'runtime authority without physical PGDATA was accepted' }}
+"""
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 @pytest.mark.parametrize("engine", powershell_contract_engines())

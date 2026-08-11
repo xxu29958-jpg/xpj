@@ -103,6 +103,11 @@ flowchart LR
   A0074["0074"] -->|informational| A0006["0006"]
   A0075["0075"] -->|amends| A0061["0061"]
   A0075["0075"] -->|depends on| A0061["0061"]
+  A0076["0076"] -->|amends| A0063["0063"]
+  A0076["0076"] -->|amends| A0074["0074"]
+  A0076["0076"] -->|depends on| A0062["0062"]
+  A0076["0076"] -->|depends on| A0065["0065"]
+  A0076["0076"] -->|refines| A0068["0068"]
 ```
 
 ## 未迁移 legacy ADR
@@ -212,3 +217,8 @@ flowchart LR
 | 0074 | informational | 0006 | PS5.1/PS7 只是同一 Windows 脚本合同的兼容宿主 |
 | 0075 | amends | 0061 | C02/C03 全量持久绑定未落地期间的最小写时桥接门；不替代版本化绑定行与修订握手 |
 | 0075 | depends-on | 0061 | home currency 语义身份与 fail-closed 原则来自 0061 C01-C03 |
+| 0076 | amends | 0063 | ADR-0063-C01 至 C06 在正式 Windows 安装器中的用户凭据派生、恢复与交接方式 |
+| 0076 | amends | 0074 | ADR-0074-C01 至 C03 的 owner handoff 内容、单文件状态机与 legacy 协议退役语义 |
+| 0076 | depends-on | 0062 | 机器生命周期锁、安装回执、失败补偿与 exact operation 事务边界 |
+| 0076 | depends-on | 0065 | 旧 ADR 不改写、后继修订、clause 证据与 exact-head 发布门 |
+| 0076 | refines | 0068 | 安装机器身份、家庭 owner、短期 pairing child 与用户桌面 session 的信任边界 |

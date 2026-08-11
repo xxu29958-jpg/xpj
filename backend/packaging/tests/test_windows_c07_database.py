@@ -33,6 +33,7 @@ def _run_harness(
                 engine,
                 "-NoLogo",
                 "-NoProfile",
+                "-NonInteractive",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-File",
@@ -106,6 +107,91 @@ def test_c07_database_source_is_narrow_and_secret_safe() -> None:
 
     raw = C07_DATABASE_SCRIPT.read_bytes()
     assert raw.startswith(b"\xef\xbb\xbf")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell GUID contract")
+def test_fresh_database_operation_id_matches_shared_canonical_guid_contract(
+    tmp_path: Path,
+) -> None:
+    script = f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(C07_DATABASE_SCRIPT)}'
+
+$historical = '1493b3d9-3721-0e51-0255-58aba5ba6e99'
+$rfcUuid = '123e4567-e89b-42d3-a456-426614174099'
+foreach ($accepted in @($historical, $rfcUuid)) {{
+    $parsed = ConvertTo-TicketboxC07OperationGuid $accepted
+    if ($parsed.ToString('D') -cne $accepted) {{
+        throw "database operation ID did not round-trip: $accepted"
+    }}
+}}
+
+foreach ($rejected in @(
+    '',
+    '00000000-0000-0000-0000-000000000000',
+    '1493B3D9-3721-0E51-0255-58ABA5BA6E99',
+    'not-a-guid'
+)) {{
+    $failedClosed = $false
+    try {{
+        ConvertTo-TicketboxC07OperationGuid $rejected | Out-Null
+    }}
+    catch {{
+        $failedClosed = $true
+    }}
+    if (-not $failedClosed) {{
+        throw "non-canonical database operation ID was accepted: $rejected"
+    }}
+}}
+
+$script:observedOperationIds = [System.Collections.Generic.List[string]]::new()
+function Assert-TicketboxC07SecureString {{ param($Value, $Label) }}
+function Assert-TicketboxC07MigratorCredentialWindow {{ param($Value) }}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    return [pscustomobject]@{{ Schema = 'test-host-authority' }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+function Assert-TicketboxC07FreshPreflight {{
+    param($Authority, $SuperuserPassword, [string]$OperationId)
+    $script:observedOperationIds.Add($OperationId)
+    return [pscustomobject]@{{ Phase = 'authority_ready' }}
+}}
+function Renew-TicketboxC07RoleCredentialWindow {{
+    param(
+        $Authority,
+        $SuperuserPassword,
+        $RuntimePassword,
+        $MigratorPassword,
+        $MigratorValidUntilUtc,
+        [string]$OperationId,
+        [string]$Mode
+    )
+    $script:observedOperationIds.Add($OperationId)
+}}
+function Assert-TicketboxC07RoleCatalog {{ param($Authority, $Password) }}
+function Get-TicketboxC07DatabaseIdentity {{
+    param($Authority, $SuperuserPassword, $Database)
+    return [pscustomobject]@{{ State = 'ready' }}
+}}
+
+$result = Initialize-TicketboxC07FreshDatabaseAuthority `
+    -SuperuserPassword $null `
+    -RuntimePassword $null `
+    -MigratorPassword $null `
+    -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(5)) `
+    -OperationId $historical
+if ([string]$result.State -cne 'ready') {{
+    throw 'fresh database authority did not complete the stubbed ready path'
+}}
+if (
+    $script:observedOperationIds.Count -ne 2 -or
+    $script:observedOperationIds[0] -cne $historical -or
+    $script:observedOperationIds[1] -cne $historical
+) {{
+    throw 'fresh database authority changed the historical operation ID'
+}}
+"""
+    _run_harness(tmp_path, "fresh-operation-guid", script)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell managed ACL contract")
@@ -1448,82 +1534,98 @@ if ($phase -cne 'objects_reassigned') {{
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell SCM contract")
-def test_host_authority_is_derived_from_scm_and_postmaster_pid(
+def test_c07_host_authority_is_a_compatibility_adapter_to_generic_windows_contract(
     tmp_path: Path,
 ) -> None:
-    pg_data = tmp_path / "managed" / "pgdata"
-    pg_bin = tmp_path / "program" / "pg" / "bin"
-    pg_data.mkdir(parents=True)
-    pg_bin.mkdir(parents=True)
-    pg_ctl = pg_bin / "pg_ctl.exe"
-    psql = pg_bin / "psql.exe"
-    pg_ctl.write_bytes(b"stub")
-    psql.write_bytes(b"stub")
-    (pg_data / "postmaster.pid").write_text(
-        f"4321\n{pg_data}\n0\n5544\n",
-        encoding="ascii",
-    )
+    data_root = tmp_path / "managed"
+    install_dir = tmp_path / "program"
+    pg_ctl = install_dir / "pg" / "bin" / "pg_ctl.exe"
+    pg_data = tmp_path / "runtime" / "data-root" / "pgdata"
+    physical_pg_data = data_root / "pgdata"
+    psql = install_dir / "pg" / "bin" / "psql.exe"
     script = f"""
 $ErrorActionPreference = 'Stop'
 . '{_ps_literal(C07_DATABASE_SCRIPT)}'
 
-$script:imageArguments = @(
-    '{_ps_literal(pg_ctl)}', 'runservice', '-N', 'TicketboxPg',
-    '-D', '{_ps_literal(pg_data)}', '-w'
-)
-function Test-TicketboxServiceExists([string]$Name) {{ return $Name -ceq 'TicketboxPg' }}
-function Assert-TicketboxServiceAccount {{
-    param([string]$Name, [string]$ExpectedAccount)
-    if ($Name -cne 'TicketboxPg' -or $ExpectedAccount -cne 'NT SERVICE\\TicketboxPg') {{
-        throw 'service account contract mismatch'
+$DataRoot = '{_ps_literal(data_root)}'
+$InstallDir = '{_ps_literal(install_dir)}'
+$BackendServiceName = 'TicketboxBackend'
+$ReleaseConfig = [pscustomobject]@{{ schema = 'current' }}
+$PreviousReleaseConfig = [pscustomobject]@{{ schema = 'legacy' }}
+$script:resolverCalls = 0
+function Get-TicketboxReleaseServiceIdentityShapes {{
+    param($InstalledConfig,$TargetConfig,$ServiceName)
+    if ($InstalledConfig -ne $PreviousReleaseConfig -or
+        $TargetConfig -ne $ReleaseConfig -or
+        $ServiceName -cne 'TicketboxPg') {{
+        throw 'C07 adapter did not consume the generic release identity transition'
+    }}
+    return [pscustomobject]@{{
+        LogonAccount = 'NT AUTHORITY\\LocalService'
+        SidType = 'unrestricted'
     }}
 }}
-function Get-TicketboxServiceImagePath([string]$Name) {{ return 'host-owned-image-path' }}
-function Split-TicketboxWindowsCommandLine([string]$CommandLine) {{
-    return $script:imageArguments
-}}
-function ConvertTo-TicketboxFullPath([string]$Path) {{
-    return [IO.Path]::GetFullPath($Path)
-}}
-function Assert-TicketboxPgServiceCommand {{
+function Resolve-TicketboxPostgresServiceHostAuthority {{
     param(
-        [string]$Name,
-        [string]$ExpectedExecutable,
-        [string]$ExpectedServiceName,
-        [string]$ExpectedDataRoot
+        [string]$ServiceName,
+        [string]$ExpectedPgCtlPath,
+        [string]$DataRoot,
+        [string]$InstallDir,
+        [string]$BackendServiceName,
+        [object[]]$AllowedServiceIdentityShapes
     )
-    if ($Name -cne 'TicketboxPg' -or $ExpectedServiceName -cne 'TicketboxPg') {{
-        throw 'SCM command validation was not called'
+    $script:resolverCalls += 1
+    if (
+        $ServiceName -cne 'TicketboxPg' -or
+        [IO.Path]::GetFullPath($ExpectedPgCtlPath) -cne
+            [IO.Path]::GetFullPath('{_ps_literal(pg_ctl)}') -or
+        [IO.Path]::GetFullPath($DataRoot) -cne
+            [IO.Path]::GetFullPath('{_ps_literal(data_root)}') -or
+        [IO.Path]::GetFullPath($InstallDir) -cne
+            [IO.Path]::GetFullPath('{_ps_literal(install_dir)}') -or
+        $BackendServiceName -cne 'TicketboxBackend' -or
+        $AllowedServiceIdentityShapes.Count -ne 1 -or
+        $AllowedServiceIdentityShapes[0].LogonAccount -cne
+            'NT AUTHORITY\\LocalService' -or
+        $AllowedServiceIdentityShapes[0].SidType -cne 'unrestricted'
+    ) {{
+        throw 'C07 adapter changed the generic Windows host contract'
+    }}
+    return [pscustomobject]@{{
+        ServiceName = 'TicketboxPg'
+        ServiceProcessId = 9876
+        PostmasterProcessId = 4321
+        PgCtlPath = '{_ps_literal(pg_ctl)}'
+        PsqlPath = '{_ps_literal(psql)}'
+        PgData = '{_ps_literal(pg_data)}'
+        PhysicalPgData = '{_ps_literal(physical_pg_data)}'
+        Port = 5544
+        UsesRuntimeBinding = $true
+        DataVolumeIdentity = 'volume-A'
     }}
 }}
-function Assert-NoTicketboxAncestorReparsePoints([string]$Path) {{}}
-function Get-TicketboxPathEntryKindNoFollow([string]$Path) {{
-    if ([IO.Directory]::Exists($Path)) {{ return 'Directory' }}
-    if ([IO.File]::Exists($Path)) {{ return 'File' }}
-    return 'Missing'
-}}
-function Test-TicketboxPathEquals([string]$Left, [string]$Right) {{
-    return [string]::Equals(
-        [IO.Path]::GetFullPath($Left),
-        [IO.Path]::GetFullPath($Right),
-        [StringComparison]::OrdinalIgnoreCase
-    )
-}}
-function Get-TicketboxServiceProcessId([string]$Name) {{ return 9876 }}
 
 $authority = Resolve-TicketboxC07DatabaseHostAuthority
 if (
+    $script:resolverCalls -ne 1 -or
+    $authority.Schema -cne 'ticketbox-c07-host-db-authority-v1' -or
     $authority.ServiceName -cne 'TicketboxPg' -or
     $authority.ServiceProcessId -ne 9876 -or
     $authority.PostmasterProcessId -ne 4321 -or
     $authority.Port -ne 5544 -or
-    -not (Test-TicketboxPathEquals $authority.PgData '{_ps_literal(pg_data)}') -or
-    -not (Test-TicketboxPathEquals $authority.PsqlPath '{_ps_literal(psql)}')
+    [IO.Path]::GetFullPath($authority.PgData) -cne
+        [IO.Path]::GetFullPath('{_ps_literal(pg_data)}') -or
+    [IO.Path]::GetFullPath($authority.PhysicalPgData) -cne
+        [IO.Path]::GetFullPath('{_ps_literal(physical_pg_data)}') -or
+    [IO.Path]::GetFullPath($authority.PsqlPath) -cne
+        [IO.Path]::GetFullPath('{_ps_literal(psql)}') -or
+    -not $authority.UsesRuntimeBinding -or
+    $authority.DataVolumeIdentity -cne 'volume-A'
 ) {{
-    throw 'host authority accepted caller data or failed to derive SCM data'
+    throw 'C07 compatibility schema did not preserve generic host authority'
 }}
 """
-    _run_harness(tmp_path, "host-authority", script)
+    _run_harness(tmp_path, "c07-host-authority-adapter", script)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell restore contract")

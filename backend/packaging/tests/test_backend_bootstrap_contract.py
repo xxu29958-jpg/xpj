@@ -24,7 +24,7 @@ def _read() -> str:
     return BOOTSTRAP_SCRIPT.read_text(encoding="utf-8-sig")
 
 
-def test_bootstrap_checks_listener_chain_and_durable_credentials() -> None:
+def test_bootstrap_checks_listener_chain_and_pairing_only_handoff() -> None:
     script = _read()
     recovery = (PACKAGING / "windows_bootstrap_exposure_recovery.ps1").read_text(
         encoding="utf-8-sig"
@@ -37,7 +37,8 @@ def test_bootstrap_checks_listener_chain_and_durable_credentials() -> None:
     assert "Win32_Process" in script
     assert "listener.ParentProcessId" in script
     assert "Assert-TicketboxBackendListenerUnchanged" in script
-    assert "Invoke-TicketboxOwnerBootstrapHttpRequest" in script
+    assert "Invoke-TicketboxInstallationOwnerBootstrapHttpRequest" in script
+    assert '"http://127.0.0.1:$BackendPort/api/bootstrap/installation-owner"' in script
     assert "bootstrap secret 可能已暴露" in script
     assert "catch [System.Security.SecurityException]" in script
     assert '"http://127.0.0.1:$BackendPort/api/health/installation"' in script
@@ -59,31 +60,44 @@ def test_bootstrap_checks_listener_chain_and_durable_credentials() -> None:
     assert "$script:BootstrapMaximumResponseBytes" in script
     assert "Invoke-RestMethod" not in script
     assert "Invoke-WebRequest" not in script
-    assert "Assert-TicketboxBootstrapResponse" in script
+    assert "Assert-TicketboxInstallationOwnerBootstrapResponse" in script
+    assert '"ticketbox-installation-owner-pairing-v1"' in script
+    assert 'operation_id = $InstallationOperationId' in script
+    assert 'installation_id = $InstallationId' in script
+    assert "admin_token" not in script
+    assert "upload_key" not in script
     assert "Write-TicketboxProtectedUtf8FileDurable" in script
     assert "Read-TicketboxProtectedUtf8Artifact" in script
-    assert "Write-TicketboxOwnerHandoffPendingMarker" in script
+    assert "Write-TicketboxOwnerHandoffRecord" in script
+    assert "Write-TicketboxOwnerHandoffFromResponse" in script
     assert "Complete-TicketboxOwnerBootstrapHandoff" in script
     handoff_cleanup = script[script.index("function Complete-TicketboxOwnerBootstrapHandoff") :]
     read_state = handoff_cleanup.index("Read-TicketboxOwnerHandoffState")
-    confirm = handoff_cleanup.index("Set-TicketboxOwnerHandoffConfirmed")
-    remove_credential = handoff_cleanup.index("Remove-TicketboxSensitiveFile $OwnerBootstrapPath")
-    remove_marker = handoff_cleanup.index("Remove-TicketboxSensitiveFile $OwnerHandoffPendingPath")
-    assert read_state < confirm < remove_credential < remove_marker
-    assert 'if (Test-Path -LiteralPath $OwnerBootstrapPath)' in handoff_cleanup
-    assert "STATE=confirmed" in script
+    remove_handoff = handoff_cleanup.index("Remove-TicketboxSensitiveFile $OwnerHandoffPath")
+    assert read_state < remove_handoff
+    assert 'if (-not (Test-Path -LiteralPath $OwnerHandoffPath))' in handoff_cleanup
+    assert "STATE=confirmed" not in script
+    assert "SCHEMA=ticketbox-installation-owner-handoff-v2" in script
+    assert "STATE=pending" in script
+    assert "CONTRACT=$script:InstallationOwnerContract" in script
+    assert "OPERATION_ID=" in script
+    assert "INSTALLATION_ID=" in script
+    assert "CLAIM_GENERATION=" in script
+    assert "PAIRING_DERIVATION_INDEX=" in script
+    assert "PAIRING_CODE=" in script
+    assert "PAIRING_EXPIRES_AT=" in script
     assert "INSTALLER_OWNER_PID=" in script
     assert "Get-TicketboxOwnerHandoffLifecycleIdentity" in script
     handoff_writer = script[
-        script.index("function Write-TicketboxOwnerHandoffMarker") :
-        script.index("function Write-TicketboxOwnerHandoffPendingMarker")
+        script.index("function Write-TicketboxOwnerHandoffRecord") :
+        script.index("function Write-TicketboxOwnerHandoffFromResponse")
     ]
     assert "Get-TicketboxOwnerHandoffLifecycleIdentity" in handoff_writer
     assert "Get-Process" not in handoff_writer
-    assert script.index("Write-TicketboxOwnerHandoffPendingMarker") < script.index(
-        "-Path $OwnerBootstrapPath"
-    )
-    persisted_owner = script.index("Write-TicketboxOwnerBootstrapFile $response")
+    assert handoff_writer.count("-Path $OwnerHandoffPath") == 2
+    assert "$OwnerBootstrapPath" not in handoff_writer
+    assert "$OwnerHandoffPendingPath" not in handoff_writer
+    persisted_owner = script.index("Write-TicketboxOwnerHandoffFromResponse `")
     assert persisted_owner < script.index("Write-EnvNoBom -Path $EnvPath", persisted_owner)
     assert "bootstrap_already_initialized" not in script
     assert "Write-TicketboxBootstrapExposureRecoveryIntent" in recovery
@@ -121,17 +135,21 @@ def test_bootstrap_checks_listener_chain_and_durable_credentials() -> None:
     )
 
 
-def test_installer_state_migration_is_ordered_and_resumable_before_service_start() -> None:
+def test_retired_owner_handoff_is_inspected_without_becoming_current_authority() -> None:
     bootstrap = _read()
     install = (PACKAGING / "install_bundled_services.ps1").read_text(encoding="utf-8-sig")
-    migration = bootstrap[
-        bootstrap.index("function Move-TicketboxLegacyOwnerHandoffArtifacts") :
+    inspection = bootstrap[
+        bootstrap.index("function Inspect-TicketboxRetiredOwnerHandoffArtifacts") :
         bootstrap.index("function Read-TicketboxOwnerHandoffRecord")
     ]
-    migration_calls = migration[migration.index("Initialize-TicketboxInstallerStateDirectory") :]
-    assert migration_calls.index("$LegacyOwnerBootstrapPath") < migration_calls.index(
+    inspection_calls = inspection[inspection.index("Initialize-TicketboxInstallerStateDirectory") :]
+    assert inspection_calls.index("$LegacyOwnerBootstrapPath") < inspection_calls.index(
         "$LegacyOwnerHandoffPendingPath"
     )
+    assert "Move-TicketboxLegacyInstallerStateArtifact" not in inspection
+    assert "Get-TicketboxPathEntryKindNoFollow" in inspection
+    assert "Read-TicketboxProtectedUtf8Artifact" not in inspection
+    assert "不会读取内容、迁移、删除、展示、阻断安装或成为当前 pairing handoff 权威" in inspection
 
     main = install[install.index("$operationLock = Enter-TicketboxLifecycleLock") :]
     marker = main.index("Initialize-TicketboxDataRootMarker")
@@ -139,10 +157,11 @@ def test_installer_state_migration_is_ordered_and_resumable_before_service_start
     stopped = main.index("Stop-ServiceIfExists", mutation)
     acl_reset = main.index("Initialize-TicketboxSecureDataRoot", stopped)
     migrated = main.index("Initialize-TicketboxInstallerStateArtifacts", acl_reset)
-    adopted = main.index("Adopt-TicketboxOwnerBootstrapHandoff", migrated)
-    service_acl = main.index("Set-TicketboxAcl", adopted)
-    backend_start = main.index('Write-Step "启动后端服务"', service_acl)
-    assert marker < mutation < stopped < acl_reset < migrated < adopted < service_acl < backend_start
+    service_acl = main.index("Set-TicketboxAcl", migrated)
+    identity = main.index("Resolve-TicketboxRecoverableFreshInstallPendingIdentity", service_acl)
+    adopted = main.index("Adopt-TicketboxOwnerBootstrapHandoff", identity)
+    backend_start = main.index('Write-Step "启动后端服务"', adopted)
+    assert marker < mutation < stopped < acl_reset < migrated < service_acl < identity < adopted < backend_start
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell durable file contract")
@@ -249,6 +268,26 @@ Set-TicketboxExactDirectoryAcl `
     -Path $lifecycleRoot `
     -Accounts @($currentAccount) `
     -OwnerAccount $currentAccount
+
+# A real fresh install has a protected lifecycle root but no installer-state
+# child yet. The current parent must exist before any legacy reconciliation.
+if (Test-Path -LiteralPath $installerState) {{
+    throw 'fresh installer-state fixture unexpectedly exists'
+}}
+Initialize-TicketboxInstallerStateDirectory `
+    -Path $installerState `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+Move-TicketboxLegacyInstallerStateArtifact `
+    -LegacyPath $legacyMarker `
+    -CurrentPath $currentMarker `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+if (-not (Test-Path -LiteralPath $installerState -PathType Container)) {{
+    throw 'fresh installer-state parent was not provisioned before reconciliation'
+}}
+Remove-Item -LiteralPath $installerState -Recurse -Force
+
 $testLockRoot = Join-Path $lifecycleRoot 'lock-root'
 Initialize-TicketboxLifecycleLockDirectory `
     -LockDirectory $testLockRoot `
@@ -570,8 +609,8 @@ if ($LASTEXITCODE -eq 0) {{
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell owner migration provenance contract")
-def test_legacy_credential_only_migration_binds_before_retiring_source(tmp_path: Path) -> None:
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell retired owner audit contract")
+def test_legacy_credential_without_transaction_marker_remains_audit_only(tmp_path: Path) -> None:
     harness = tmp_path / "owner-legacy-provenance.ps1"
     harness.write_text(
         f"""
@@ -579,25 +618,13 @@ $ErrorActionPreference = 'Stop'
 . '{str(SAFETY_SCRIPT).replace("'", "''")}'
 . '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
 $InstallerState = '{str(tmp_path / 'installer-state').replace("'", "''")}'
-$OwnerBootstrapPath = Join-Path $InstallerState 'owner-bootstrap.txt'
-$OwnerHandoffPendingPath = Join-Path $InstallerState 'owner-handoff-pending'
+$OwnerHandoffPath = Join-Path $InstallerState 'installation-owner-handoff-v2.txt'
+$RetiredOwnerBootstrapPath = Join-Path $InstallerState 'owner-bootstrap.txt'
+$RetiredOwnerHandoffPendingPath = Join-Path $InstallerState 'owner-handoff-pending'
 $LegacyRoot = '{str(tmp_path / 'legacy').replace("'", "''")}'
 $LegacyOwnerBootstrapPath = Join-Path $LegacyRoot 'owner-bootstrap.txt'
 $LegacyOwnerHandoffPendingPath = Join-Path $LegacyRoot 'owner-handoff-pending'
-$InstallDir = '{str(tmp_path / 'program').replace("'", "''")}'
-$DataRoot = '{str(tmp_path / 'data').replace("'", "''")}'
-$InstallerLockOwnerProcessId = $PID
-function Get-TicketboxValidatedExternalLifecycleOwnerIdentity([int]$OwnerProcessId) {{
-    $process = Get-Process -Id $OwnerProcessId -ErrorAction Stop
-    return [pscustomobject]@{{
-        ProcessId = $OwnerProcessId
-        StartedUtc = $process.StartTime.ToUniversalTime().ToString(
-            'yyyy-MM-ddTHH:mm:ss.fffffffZ',
-            [Globalization.CultureInfo]::InvariantCulture
-        )
-    }}
-}}
-New-Item -ItemType Directory -Path $LegacyRoot, $InstallDir, $DataRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $LegacyRoot -Force | Out-Null
 function Initialize-TicketboxInstallerStateDirectory {{
     param($Path, $FullControlAccounts, $OwnerAccount)
     New-Item -ItemType Directory -Path $Path -Force | Out-Null
@@ -606,6 +633,7 @@ function Initialize-TicketboxInstallerStateDirectory {{
 function Assert-TicketboxProtectedDirectoryAcl {{ param($Path, $FullControlAccounts, $OwnerAccount) }}
 function Assert-TicketboxExactFileAcl {{ param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount) }}
 function Assert-NoTicketboxAncestorReparsePoints {{ param($Path) }}
+function Write-Warn2 {{ param($Message) }}
 function Read-TicketboxProtectedUtf8Artifact {{
     param($Path, $FullControlAccounts, $OwnerAccount, $MaximumBytes = 65536)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {{ throw 'artifact is not a file' }}
@@ -614,55 +642,31 @@ function Read-TicketboxProtectedUtf8Artifact {{
     $encoding = New-Object System.Text.UTF8Encoding($false, $true)
     return [pscustomobject]@{{ Text = $encoding.GetString($bytes); Bytes = $bytes }}
 }}
-function Write-TicketboxProtectedUtf8FileDurable {{
-    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount, [switch]$ReplaceExisting)
-    if ((Test-Path -LiteralPath $Path) -and -not $ReplaceExisting) {{ throw 'CreateNew collision' }}
-    [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding($false)))
-}}
-function Remove-TicketboxProtectedUtf8Artifact {{
-    param($Path, $FullControlAccounts, $OwnerAccount)
-    Read-TicketboxProtectedUtf8Artifact -Path $Path | Out-Null
-    Remove-Item -LiteralPath $Path -Force
-}}
 [System.IO.File]::WriteAllText($LegacyOwnerBootstrapPath, 'legacy-owner-credential')
-
-# Simulate a crash immediately after current credential publication.
-Initialize-TicketboxInstallerStateDirectory $InstallerState | Out-Null
-Move-TicketboxLegacyInstallerStateArtifact `
-    -LegacyPath $LegacyOwnerBootstrapPath `
-    -CurrentPath $OwnerBootstrapPath `
-    -RetainLegacySource
-if (-not (Test-Path $LegacyOwnerBootstrapPath) -or -not (Test-Path $OwnerBootstrapPath)) {{
-    throw 'migration source proof was retired before marker binding'
-}}
-Move-TicketboxLegacyOwnerHandoffArtifacts `
+Inspect-TicketboxRetiredOwnerHandoffArtifacts `
     -InstallerStatePath $InstallerState `
     -LegacyOwnerBootstrapPath $LegacyOwnerBootstrapPath `
-    -LegacyOwnerHandoffPendingPath $LegacyOwnerHandoffPendingPath
-if ((Test-Path $LegacyOwnerBootstrapPath) -or -not (Test-Path $OwnerHandoffPendingPath)) {{
-    throw 'legacy-only credential did not converge to a bound current handoff'
-}}
-$record = Read-TicketboxOwnerHandoffRecord
-Assert-TicketboxOwnerHandoffCredential $record
-if ($record.State -cne 'pending' -or $record.OwnerProcessId -ne $PID) {{
-    throw 'migrated handoff binding is not owned by the current installer'
+    -LegacyOwnerHandoffPendingPath $LegacyOwnerHandoffPendingPath `
+    -RetiredOwnerBootstrapPath $RetiredOwnerBootstrapPath `
+    -RetiredOwnerHandoffPendingPath $RetiredOwnerHandoffPendingPath
+if (-not (Test-Path -LiteralPath $LegacyOwnerBootstrapPath -PathType Leaf) -or
+    (Test-Path -LiteralPath $OwnerHandoffPath) -or
+    (Test-Path -LiteralPath $RetiredOwnerBootstrapPath) -or
+    (Test-Path -LiteralPath $RetiredOwnerHandoffPendingPath)) {{
+    throw 'retired credential was mutated or promoted into current authority'
 }}
 
-# Malformed sibling state is preflighted before the credential can move.
-Remove-Item -LiteralPath $InstallerState -Recurse -Force
-New-Item -ItemType Directory -Path $InstallerState -Force | Out-Null
-[System.IO.File]::WriteAllText($LegacyOwnerBootstrapPath, 'second-legacy-credential')
+# Retired malformed state is observed but cannot become a current gate.
 New-Item -ItemType Directory -Path $LegacyOwnerHandoffPendingPath | Out-Null
-$preflightRejected = $false
-try {{
-    Move-TicketboxLegacyOwnerHandoffArtifacts `
-        -InstallerStatePath $InstallerState `
-        -LegacyOwnerBootstrapPath $LegacyOwnerBootstrapPath `
-        -LegacyOwnerHandoffPendingPath $LegacyOwnerHandoffPendingPath
-}}
-catch {{ $preflightRejected = $true }}
-if (-not $preflightRejected -or (Test-Path -LiteralPath $OwnerBootstrapPath)) {{
-    throw 'owner migration mutated credential before preflighting all legacy artifacts'
+Inspect-TicketboxRetiredOwnerHandoffArtifacts `
+    -InstallerStatePath $InstallerState `
+    -LegacyOwnerBootstrapPath $LegacyOwnerBootstrapPath `
+    -LegacyOwnerHandoffPendingPath $LegacyOwnerHandoffPendingPath `
+    -RetiredOwnerBootstrapPath $RetiredOwnerBootstrapPath `
+    -RetiredOwnerHandoffPendingPath $RetiredOwnerHandoffPendingPath
+if (-not (Test-Path -LiteralPath $LegacyOwnerHandoffPendingPath -PathType Container) -or
+    (Test-Path -LiteralPath $OwnerHandoffPath)) {{
+    throw 'retired malformed audit object was mutated, promoted, or blocked current setup'
 }}
 """,
         encoding="utf-8-sig",
@@ -687,32 +691,49 @@ def test_owner_handoff_parser_rejects_noncanonical_equivalent_authority(
     tmp_path: Path,
 ) -> None:
     harness = tmp_path / "owner-handoff-canonical-parser.ps1"
-    generation = "22222222-2222-4222-8222-222222222222"
+    operation_id = "install-op:canonical-2222"
     installation_id = "11111111-1111-4111-8111-111111111111"
-    credential_hash = "a" * 64
     canonical_time = "2026-07-12T01:02:03.1234567Z"
+    pairing_expiry = "2026-07-12T01:17:03.1234567Z"
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
-$OwnerHandoffPendingPath = 'unused-owner-handoff-path'
+$OwnerHandoffPath = 'unused-owner-handoff-path'
 function Read-TicketboxOwnerHandoffArtifact {{
     param($Path)
     return [pscustomobject]@{{ Text = $script:recordText }}
 }}
-function Get-TicketboxOwnerHandoffInstallationId {{ return '{installation_id}' }}
-function Set-TestRecord([string]$Generation, [string]$OwnerPid, [string]$StartedUtc) {{
+function Set-TestRecord(
+    [string]$OperationId,
+    [string]$ClaimGeneration,
+    [string]$DerivationIndex,
+    [string]$PairingCode,
+    [string]$OwnerPid,
+    [string]$StartedUtc
+) {{
     $script:recordText =
-        "SCHEMA=ticketbox-owner-handoff-v2$([Environment]::NewLine)" +
+        "SCHEMA=ticketbox-installation-owner-handoff-v2$([Environment]::NewLine)" +
         "STATE=pending$([Environment]::NewLine)" +
-        "GENERATION=$Generation$([Environment]::NewLine)" +
+        "CONTRACT=ticketbox-installation-owner-pairing-v1$([Environment]::NewLine)" +
+        "OPERATION_ID=$OperationId$([Environment]::NewLine)" +
         "INSTALLATION_ID={installation_id}$([Environment]::NewLine)" +
-        "CREDENTIAL_SHA256={credential_hash}$([Environment]::NewLine)" +
+        "CLAIM_GENERATION=$ClaimGeneration$([Environment]::NewLine)" +
+        "PAIRING_DERIVATION_INDEX=$DerivationIndex$([Environment]::NewLine)" +
+        "PAIRING_CODE=$PairingCode$([Environment]::NewLine)" +
+        "PAIRING_EXPIRES_AT={pairing_expiry}$([Environment]::NewLine)" +
         "INSTALLER_OWNER_PID=$OwnerPid$([Environment]::NewLine)" +
         "INSTALLER_OWNER_STARTED_UTC=$StartedUtc$([Environment]::NewLine)"
 }}
-function Assert-TestRecordRejected([string]$Generation, [string]$OwnerPid, [string]$StartedUtc) {{
-    Set-TestRecord $Generation $OwnerPid $StartedUtc
+function Assert-TestRecordRejected(
+    [string]$OperationId,
+    [string]$ClaimGeneration,
+    [string]$DerivationIndex,
+    [string]$PairingCode,
+    [string]$OwnerPid,
+    [string]$StartedUtc
+) {{
+    Set-TestRecord $OperationId $ClaimGeneration $DerivationIndex $PairingCode $OwnerPid $StartedUtc
     $before = $script:recordText
     $rejected = $false
     try {{ Read-TicketboxOwnerHandoffRecord | Out-Null }}
@@ -721,16 +742,24 @@ function Assert-TestRecordRejected([string]$Generation, [string]$OwnerPid, [stri
         throw 'noncanonical owner handoff authority was accepted or mutated'
     }}
 }}
-Set-TestRecord '{generation}' '123' '{canonical_time}'
+Set-TestRecord '{operation_id}' '2' '3' '12345678' '123' '{canonical_time}'
 $valid = Read-TicketboxOwnerHandoffRecord
-if ($valid.Generation -cne '{generation}' -or
+if ($valid.OperationId -cne '{operation_id}' -or
+    $valid.InstallationId -cne '{installation_id}' -or
+    $valid.ClaimGeneration -ne 2 -or
+    $valid.PairingDerivationIndex -ne 3 -or
+    $valid.PairingCode -cne '12345678' -or
+    $valid.PairingExpiresAt -cne '{pairing_expiry}' -or
     $valid.OwnerProcessId -ne 123 -or
     $valid.OwnerStartedUtc -cne '{canonical_time}') {{
     throw 'canonical owner handoff record did not round-trip'
 }}
-Assert-TestRecordRejected '{{{generation}}}' '123' '{canonical_time}'
-Assert-TestRecordRejected '{generation}' '+123' '{canonical_time}'
-Assert-TestRecordRejected '{generation}' '123' '2026-07-12T01:02:03.1234567+00:00'
+Assert-TestRecordRejected ' invalid-operation' '2' '3' '12345678' '123' '{canonical_time}'
+Assert-TestRecordRejected '{operation_id}' '+2' '3' '12345678' '123' '{canonical_time}'
+Assert-TestRecordRejected '{operation_id}' '2' '+3' '12345678' '123' '{canonical_time}'
+Assert-TestRecordRejected '{operation_id}' '2' '3' '1234567x' '123' '{canonical_time}'
+Assert-TestRecordRejected '{operation_id}' '2' '3' '12345678' '+123' '{canonical_time}'
+Assert-TestRecordRejected '{operation_id}' '2' '3' '12345678' '123' '2026-07-12T01:02:03.1234567+00:00'
 """,
         encoding="utf-8-sig",
     )
@@ -860,7 +889,9 @@ function New-HttpBootstrapSecret {{
     if ($script:newSecretCalls -eq 3) {{ return 'colliding-replacement-secret-with-32-bytes' }}
     return 'collision-retry-secret-with-at-least-32-bytes'
 }}
-function Get-TicketboxBootstrapCredentials([string]$Secret) {{ return [pscustomobject]@{{ Secret = $Secret }} }}
+function Assert-TicketboxBootstrapSecret([string]$Secret) {{
+    if ([Text.Encoding]::UTF8.GetByteCount($Secret) -lt 32) {{ throw 'low entropy secret' }}
+}}
 function Set-TicketboxExactFileAcl {{ param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount) }}
 function Assert-TicketboxExactFileAcl {{ param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount) }}
 function Remove-TicketboxSensitiveFile([string]$Path) {{ Remove-Item -LiteralPath $Path -Force }}
@@ -992,20 +1023,18 @@ if ($collisionEnabled['HTTP_BOOTSTRAP_SECRET'] -cne $collisionRetry) {{
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell owner handoff cleanup contract")
-def test_owner_handoff_cleanup_is_confirmed_before_crash_idempotent_deletion(tmp_path: Path) -> None:
+def test_owner_handoff_single_file_cleanup_is_crash_idempotent(tmp_path: Path) -> None:
     harness = tmp_path / "owner-handoff-cleanup.ps1"
     bootstrap_script = str(BOOTSTRAP_SCRIPT).replace("'", "''")
-    owner_path = str(tmp_path / "owner-bootstrap.txt").replace("'", "''")
-    pending_path = str(tmp_path / "owner-handoff-pending").replace("'", "''")
+    handoff_path = str(tmp_path / "installation-owner-handoff-v2.txt").replace("'", "''")
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{bootstrap_script}'
-$OwnerBootstrapPath = '{owner_path}'
-$OwnerHandoffPendingPath = '{pending_path}'
-$InstallDir = '{str(tmp_path / "install").replace("'", "''")}'
-$DataRoot = '{str(tmp_path / "data").replace("'", "''")}'
+$OwnerHandoffPath = '{handoff_path}'
 $InstallerLockOwnerProcessId = $PID
+$operationId = 'install-op:cleanup'
+$installationId = 'install-id:cleanup'
 $validatedLifecycleStartedUtc = '2001-02-03T04:05:06.0000000Z'
 function Get-TicketboxValidatedExternalLifecycleOwnerIdentity([int]$OwnerProcessId) {{
     return [pscustomobject]@{{
@@ -1013,15 +1042,14 @@ function Get-TicketboxValidatedExternalLifecycleOwnerIdentity([int]$OwnerProcess
         StartedUtc = $validatedLifecycleStartedUtc
     }}
 }}
-$script:rejectMarkerAcl = $false
-$script:crashBeforeMarkerDeletion = $false
+$script:rejectHandoffAcl = $false
+$script:removeFailureMode = ''
 function Assert-NoTicketboxAncestorReparsePoints([string]$Path) {{ }}
 function Assert-TicketboxProtectedDirectoryAcl([string]$Path) {{ }}
-function ConvertTo-TicketboxCanonicalPath([string]$Path) {{ return [IO.Path]::GetFullPath($Path) }}
 function Assert-TicketboxExactFileAcl {{
     param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount)
-    if ($script:rejectMarkerAcl -and $Path -ceq $OwnerHandoffPendingPath) {{
-        throw 'simulated marker ACL substitution'
+    if ($script:rejectHandoffAcl -and $Path -ceq $OwnerHandoffPath) {{
+        throw 'simulated handoff ACL substitution'
     }}
 }}
 function Read-TicketboxProtectedUtf8Artifact {{
@@ -1040,46 +1068,69 @@ function Remove-TicketboxSensitiveFile([string]$Path) {{
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {{ throw 'not a leaf' }}
     $item = Get-Item -LiteralPath $Path -Force
     if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {{ throw 'reparse point' }}
-    if ($script:crashBeforeMarkerDeletion -and $Path -ceq $OwnerHandoffPendingPath) {{
-        $script:crashBeforeMarkerDeletion = $false
-        throw 'simulated crash before marker deletion'
+    if ($script:removeFailureMode -ceq 'before') {{
+        $script:removeFailureMode = ''
+        throw 'simulated crash before handoff deletion'
     }}
     Remove-Item -LiteralPath $Path -Force
+    if ($script:removeFailureMode -ceq 'after') {{
+        $script:removeFailureMode = ''
+        throw 'simulated crash after handoff deletion'
+    }}
     if (Test-Path -LiteralPath $Path) {{ throw 'deletion not durable' }}
 }}
-[System.IO.File]::WriteAllText($OwnerBootstrapPath, 'credential')
-$credentialHash = Get-TicketboxOwnerHandoffTextSha256 'credential'
-Write-TicketboxOwnerHandoffMarker `
-    -State 'pending' `
-    -Generation ([Guid]::NewGuid().ToString('D')) `
-    -CredentialSha256 $credentialHash
+Write-TicketboxOwnerHandoffRecord `
+    -OperationId $operationId `
+    -InstallationId $installationId `
+    -ClaimGeneration 1 `
+    -PairingDerivationIndex 3 `
+    -PairingCode '12345678' `
+    -PairingExpiresAt '2026-07-12T01:17:03.1234567Z'
 $initialRecord = Read-TicketboxOwnerHandoffRecord
 if ($initialRecord.OwnerStartedUtc -cne $validatedLifecycleStartedUtc) {{
-    throw 'owner marker re-read PID StartTime instead of using validated lifecycle identity'
+    throw 'owner record re-read PID StartTime instead of using validated lifecycle identity'
 }}
-$script:rejectMarkerAcl = $true
-if (-not (Test-Path $OwnerBootstrapPath) -or -not (Test-Path $OwnerHandoffPendingPath)) {{
-    throw 'pending handoff did not retain both files'
-}}
+$script:rejectHandoffAcl = $true
 $blocked = $false
-try {{ Complete-TicketboxOwnerBootstrapHandoff }} catch {{ $blocked = $true }}
-if (-not $blocked) {{ throw 'invalid marker ACL did not block cleanup' }}
-if (-not (Test-Path $OwnerBootstrapPath) -or -not (Test-Path $OwnerHandoffPendingPath)) {{
-    throw 'partial cleanup occurred before both artifacts were validated'
+try {{
+    Complete-TicketboxOwnerBootstrapHandoff `
+        -ExpectedOperationId $operationId `
+        -ExpectedInstallationId $installationId
 }}
-$script:rejectMarkerAcl = $false
-$script:crashBeforeMarkerDeletion = $true
+catch {{ $blocked = $true }}
+if (-not $blocked) {{ throw 'invalid handoff ACL did not block cleanup' }}
+if (-not (Test-Path $OwnerHandoffPath)) {{
+    throw 'handoff was deleted before ACL validation'
+}}
+$script:rejectHandoffAcl = $false
+$script:removeFailureMode = 'before'
 $crashed = $false
-try {{ Complete-TicketboxOwnerBootstrapHandoff }} catch {{ $crashed = $true }}
-if (-not $crashed) {{ throw 'simulated crash was not observed' }}
-if (Test-Path $OwnerBootstrapPath) {{ throw 'credential survived confirmed cleanup phase' }}
-$confirmed = Read-TicketboxOwnerHandoffRecord
-if ($confirmed.State -cne 'confirmed' -or $confirmed.OwnerProcessId -ne $PID) {{
-    throw 'confirmed state was not durable before credential deletion'
+try {{
+    Complete-TicketboxOwnerBootstrapHandoff `
+        -ExpectedOperationId $operationId `
+        -ExpectedInstallationId $installationId
 }}
-Complete-TicketboxOwnerBootstrapHandoff
-if ((Test-Path $OwnerBootstrapPath) -or (Test-Path $OwnerHandoffPendingPath)) {{
-    throw 'confirmed handoff artifacts survived cleanup'
+catch {{ $crashed = $true }}
+if (-not $crashed) {{ throw 'simulated crash was not observed' }}
+if (-not (Test-Path $OwnerHandoffPath)) {{
+    throw 'pre-delete crash lost the single handoff record'
+}}
+$script:removeFailureMode = 'after'
+$crashedAfter = $false
+try {{
+    Complete-TicketboxOwnerBootstrapHandoff `
+        -ExpectedOperationId $operationId `
+        -ExpectedInstallationId $installationId | Out-Null
+}}
+catch {{ $crashedAfter = $true }}
+if (-not $crashedAfter -or (Test-Path $OwnerHandoffPath)) {{
+    throw 'post-delete crash did not leave the atomically absent state'
+}}
+$retry = Complete-TicketboxOwnerBootstrapHandoff `
+    -ExpectedOperationId $operationId `
+    -ExpectedInstallationId $installationId
+if ($retry -cne 'already_absent') {{
+    throw 'post-delete retry did not converge idempotently'
 }}
 """,
         encoding="utf-8-sig",
@@ -1102,19 +1153,17 @@ if ((Test-Path $OwnerBootstrapPath) -or (Test-Path $OwnerHandoffPendingPath)) {{
 def test_owner_handoff_takeover_requires_dead_previous_installer(tmp_path: Path) -> None:
     harness = tmp_path / "owner-handoff-takeover.ps1"
     bootstrap_script = str(BOOTSTRAP_SCRIPT).replace("'", "''")
-    owner_path = str(tmp_path / "owner-bootstrap.txt").replace("'", "''")
-    pending_path = str(tmp_path / "owner-handoff-pending").replace("'", "''")
+    handoff_path = str(tmp_path / "installation-owner-handoff-v2.txt").replace("'", "''")
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{bootstrap_script}'
-$OwnerBootstrapPath = '{owner_path}'
-$OwnerHandoffPendingPath = '{pending_path}'
-$InstallDir = '{str(tmp_path / "install").replace("'", "''")}'
-$DataRoot = '{str(tmp_path / "data").replace("'", "''")}'
+$OwnerHandoffPath = '{handoff_path}'
 $EnvPath = '{str(tmp_path / ".env").replace("'", "''")}'
 $currentInstallerPid = $PID
 $InstallerLockOwnerProcessId = $currentInstallerPid
+$operationId = 'install-op:takeover'
+$installationId = 'install-id:takeover'
 function Get-TicketboxValidatedExternalLifecycleOwnerIdentity([int]$OwnerProcessId) {{
     $process = Get-Process -Id $OwnerProcessId -ErrorAction Stop
     return [pscustomobject]@{{
@@ -1153,25 +1202,28 @@ function New-OldOwnerProcess {{
         -WindowStyle Hidden `
         -PassThru
 }}
-function Write-OldOwnerHandoff([object]$OldOwner, [string]$State, [bool]$IncludeCredential) {{
-    $credential = 'credential-for-takeover'
-    $hash = Get-TicketboxOwnerHandoffTextSha256 $credential
-    if ($IncludeCredential) {{
-        [System.IO.File]::WriteAllText($OwnerBootstrapPath, $credential)
-    }}
+function Write-OldOwnerHandoff([object]$OldOwner) {{
     $script:InstallerLockOwnerProcessId = $OldOwner.Id
-    Write-TicketboxOwnerHandoffMarker `
-        -State $State `
-        -Generation ([Guid]::NewGuid().ToString('D')) `
-        -CredentialSha256 $hash
+    Write-TicketboxOwnerHandoffRecord `
+        -OperationId $operationId `
+        -InstallationId $installationId `
+        -ClaimGeneration 1 `
+        -PairingDerivationIndex 4 `
+        -PairingCode '87654321' `
+        -PairingExpiresAt '2026-07-12T01:17:03.1234567Z'
     $script:InstallerLockOwnerProcessId = $currentInstallerPid
 }}
 
 $liveOwner = New-OldOwnerProcess
 try {{
-    Write-OldOwnerHandoff $liveOwner 'pending' $true
+    Write-OldOwnerHandoff $liveOwner
     $blocked = $false
-    try {{ Adopt-TicketboxOwnerBootstrapHandoff | Out-Null }} catch {{ $blocked = $true }}
+    try {{
+        Adopt-TicketboxOwnerBootstrapHandoff `
+            -ExpectedOperationId $operationId `
+            -ExpectedInstallationId $installationId | Out-Null
+    }}
+    catch {{ $blocked = $true }}
     if (-not $blocked) {{ throw 'live previous installer was adopted' }}
     $stillOld = Read-TicketboxOwnerHandoffRecord
     if ($stillOld.OwnerProcessId -ne $liveOwner.Id) {{ throw 'live-owner marker was rewritten' }}
@@ -1180,40 +1232,37 @@ finally {{
     Stop-Process -Id $liveOwner.Id -Force -ErrorAction SilentlyContinue
     $liveOwner.WaitForExit()
 }}
-$adopted = Adopt-TicketboxOwnerBootstrapHandoff
+$adopted = Adopt-TicketboxOwnerBootstrapHandoff `
+    -ExpectedOperationId $operationId `
+    -ExpectedInstallationId $installationId
 if ($adopted -cne 'pending') {{ throw 'dead previous installer was not adopted' }}
 $current = Read-TicketboxOwnerHandoffRecord
-if ($current.OwnerProcessId -ne $currentInstallerPid) {{ throw 'adopted marker owner mismatch' }}
+if ($current.OwnerProcessId -ne $currentInstallerPid -or
+    $current.OperationId -cne $operationId -or
+    $current.InstallationId -cne $installationId -or
+    $current.ClaimGeneration -ne 1 -or
+    $current.PairingDerivationIndex -ne 4 -or
+    $current.PairingCode -cne '87654321') {{
+    throw 'adopted record changed transaction or pairing identity'
+}}
 $uncertainOwnerAlive = Test-TicketboxOwnerHandoffProcessIsAlive `
     -Record $current `
     -ProcessReader {{ [pscustomobject]@{{ ProcessId = $current.OwnerProcessId }} }} `
     -StartedUtcReader {{ throw 'simulated StartTime access denied after PID reuse' }}
 if ($uncertainOwnerAlive) {{ throw 'unverifiable reused PID retained stale owner authority' }}
-Complete-TicketboxOwnerBootstrapHandoff
+Complete-TicketboxOwnerBootstrapHandoff `
+    -ExpectedOperationId $operationId `
+    -ExpectedInstallationId $installationId
 
-$confirmedOwner = New-OldOwnerProcess
-try {{
-    Write-OldOwnerHandoff $confirmedOwner 'confirmed' $true
-    Remove-Item -LiteralPath $OwnerBootstrapPath -Force
-}}
-finally {{
-    Stop-Process -Id $confirmedOwner.Id -Force -ErrorAction SilentlyContinue
-    $confirmedOwner.WaitForExit()
-}}
-$cleaned = Adopt-TicketboxOwnerBootstrapHandoff
-if ($cleaned -cne 'cleaned_confirmed') {{ throw 'confirmed handoff was redisplayed' }}
-if ((Test-Path $OwnerBootstrapPath) -or (Test-Path $OwnerHandoffPendingPath)) {{
-    throw 'confirmed handoff cleanup left artifacts'
-}}
-
-# Crash after credential persistence but before .env retirement resumes without replaying bootstrap.
-$credential = 'persisted-owner-credential'
-[System.IO.File]::WriteAllText($OwnerBootstrapPath, $credential)
+# Crash after pairing handoff persistence but before .env retirement resumes without replaying bootstrap.
 $script:InstallerLockOwnerProcessId = $currentInstallerPid
-Write-TicketboxOwnerHandoffMarker `
-    -State 'pending' `
-    -Generation ([Guid]::NewGuid().ToString('D')) `
-    -CredentialSha256 (Get-TicketboxOwnerHandoffTextSha256 $credential)
+Write-TicketboxOwnerHandoffRecord `
+    -OperationId $operationId `
+    -InstallationId $installationId `
+    -ClaimGeneration 1 `
+    -PairingDerivationIndex 4 `
+    -PairingCode '87654321' `
+    -PairingExpiresAt '2026-07-12T01:17:03.1234567Z'
 $script:httpCalls = 0
 $script:envWrites = 0
 $script:restartCalls = 0
@@ -1233,28 +1282,24 @@ function Restart-TicketboxOwnedServiceIfExists {{
     $script:restartCalls++
 }}
 function Wait-BackendHealth {{ $script:healthCalls++ }}
-function Invoke-TicketboxOwnerBootstrapHttpRequest {{
+function Invoke-TicketboxInstallationOwnerBootstrapHttpRequest {{
     $script:httpCalls++
     throw 'bootstrap HTTP must not be replayed'
 }}
-Complete-FirstOwnerBootstrapIfEnabled 'postgresql://local/test'
+Complete-FirstOwnerBootstrapIfEnabled `
+    -DatabaseUrl 'postgresql://local/test' `
+    -InstallationOperationId $operationId `
+    -InstallationId $installationId
 if ($script:httpCalls -ne 0 -or $script:envWrites -ne 1 -or
     $script:restartCalls -ne 1 -or $script:healthCalls -ne 1) {{
     throw 'persisted owner handoff did not resume through secret retirement only'
 }}
-if (-not (Test-Path $OwnerBootstrapPath) -or -not (Test-Path $OwnerHandoffPendingPath)) {{
+if (-not (Test-Path $OwnerHandoffPath)) {{
     throw 'resumed pending handoff was removed before user confirmation'
 }}
-Complete-TicketboxOwnerBootstrapHandoff
-
-# A current-location credential without migration provenance is corruption, not legacy state.
-[System.IO.File]::WriteAllText($OwnerBootstrapPath, 'unbound-current-credential')
-$unboundRejected = $false
-try {{ Adopt-TicketboxOwnerBootstrapHandoff | Out-Null }} catch {{ $unboundRejected = $true }}
-if (-not $unboundRejected -or -not (Test-Path -LiteralPath $OwnerBootstrapPath -PathType Leaf)) {{
-    throw 'unbound current credential was accepted or deleted'
-}}
-Remove-Item -LiteralPath $OwnerBootstrapPath -Force
+Complete-TicketboxOwnerBootstrapHandoff `
+    -ExpectedOperationId $operationId `
+    -ExpectedInstallationId $installationId
 """,
         encoding="utf-8-sig",
     )
@@ -1273,23 +1318,27 @@ Remove-Item -LiteralPath $OwnerBootstrapPath -Force
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell cross-runtime contract")
-def test_bootstrap_hmac_vector_matches_backend_in_powershell_5_and_7(tmp_path: Path) -> None:
+def test_installation_owner_pairing_vector_matches_backend_in_powershell_5_and_7(
+    tmp_path: Path,
+) -> None:
     engines = powershell_contract_engines()
     harness = tmp_path / "bootstrap-vector.ps1"
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
-$value = Get-TicketboxBootstrapCredentials 'ticketbox-bootstrap-vector-2026-07-10'
-if ($value.AdminToken -cne 'tbx_f1cz5I0IKi0r6iUzmoexescoDH0xYOF7_-R39LpN7lY') {{
-    throw 'admin token vector mismatch'
+$secret = 'ticketbox-bootstrap-vector-2026-07-10'
+if ((Get-TicketboxInstallationOwnerPairingCode $secret 0) -cne '21724002') {{
+    throw 'pairing index 0 vector mismatch'
 }}
-if ($value.UploadKey -cne 'upl_I8Q7_d0BrxgzKxMlkZFUtd9eFF1xe40zM8dt2h1cyeU') {{
-    throw 'upload key vector mismatch'
+if ((Get-TicketboxInstallationOwnerPairingCode $secret 1) -cne '18467518') {{
+    throw 'pairing index 1 vector mismatch'
 }}
-if ($value.PairingCode -cne '05747978') {{ throw 'pairing vector mismatch' }}
+if ((Get-TicketboxInstallationOwnerPairingCode $secret 63) -cne '00912538') {{
+    throw 'pairing index 63 vector mismatch'
+}}
 $rejected = $false
-try {{ Get-TicketboxBootstrapCredentials 'human-password' | Out-Null }}
+try {{ Get-TicketboxInstallationOwnerPairingCode 'human-password' 0 | Out-Null }}
 catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'weak bootstrap secret accepted' }}
 """,
@@ -1419,7 +1468,7 @@ def test_bootstrap_request_bypasses_default_proxy(tmp_path: Path) -> None:
                 return
 
         def do_POST(self) -> None:  # noqa: N802
-            assert self.path == "/api/bootstrap/owner"
+            assert self.path == "/api/bootstrap/installation-owner"
             assert self.headers["X-Bootstrap-Secret"] == "proxy-bypass-test-secret-with-32-byte-minimum"
             content_length = int(self.headers["Content-Length"])
             assert self.rfile.read(content_length) == b"{}"
@@ -1483,8 +1532,8 @@ try {{
     [TicketboxThrowingProxy]::Calls = 0
     [System.Net.WebRequest]::DefaultWebProxy = New-Object TicketboxThrowingProxy
     $body = [System.Text.Encoding]::UTF8.GetBytes('{{}}')
-    $response = Invoke-TicketboxOwnerBootstrapHttpRequest `
-        -Url 'http://127.0.0.1:{server.server_port}/api/bootstrap/owner' `
+    $response = Invoke-TicketboxInstallationOwnerBootstrapHttpRequest `
+        -Url 'http://127.0.0.1:{server.server_port}/api/bootstrap/installation-owner' `
         -Secret 'proxy-bypass-test-secret-with-32-byte-minimum' `
         -BodyBytes $body `
         -TimeoutMilliseconds 5000
@@ -1613,8 +1662,8 @@ function Assert-TicketboxBackendListenerUnchanged([object]$ExpectedIdentity) {{
 $body = [System.Text.Encoding]::UTF8.GetBytes('{{}}')
 $retryable = $false
 try {{
-    Invoke-TicketboxOwnerBootstrapHttpRequest `
-        -Url 'http://127.0.0.1:{closed_port}/api/bootstrap/owner' `
+    Invoke-TicketboxInstallationOwnerBootstrapHttpRequest `
+        -Url 'http://127.0.0.1:{closed_port}/api/bootstrap/installation-owner' `
         -Secret 'test-bootstrap-secret-that-must-not-be-printed' `
         -BodyBytes $body `
         -TimeoutMilliseconds 1000 | Out-Null
@@ -1628,8 +1677,8 @@ if (-not $retryable -or $script:listenerChecks -ne 1) {{
 $script:listenerFails = $true
 $fatal = $false
 try {{
-    Invoke-TicketboxOwnerBootstrapHttpRequest `
-        -Url 'http://127.0.0.1:{closed_port}/api/bootstrap/owner' `
+    Invoke-TicketboxInstallationOwnerBootstrapHttpRequest `
+        -Url 'http://127.0.0.1:{closed_port}/api/bootstrap/installation-owner' `
         -Secret 'test-bootstrap-secret-that-must-not-be-printed' `
         -BodyBytes $body `
         -TimeoutMilliseconds 1000 | Out-Null

@@ -8,6 +8,7 @@ import pytest
 from scripts.postgres_release_policy import (
     POSTGRES_RELEASE_POLICY,
     PostgresReleasePolicy,
+    load_postgres_release_policy,
     postgres_server_version,
 )
 from scripts.verify_scoped_ci_results import Verification, verify
@@ -89,6 +90,42 @@ def test_release_policy_covers_the_pinned_windows_postgres_artifact() -> None:
             current_major=18,
             service_image="postgres:18.0@sha256:" + ("a" * 64),
         )
+
+
+@pytest.mark.parametrize(
+    "schema",
+    ["ticketbox-windows-release-v1", "ticketbox-windows-release-v2"],
+)
+def test_postgres_policy_accepts_known_windows_release_schemas(
+    tmp_path: Path,
+    schema: str,
+) -> None:
+    release_config = json.loads(
+        (_ROOT / "backend" / "packaging" / "windows-release-config.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    release_config["schema"] = schema
+    candidate = tmp_path / "windows-release-config.json"
+    candidate.write_text(json.dumps(release_config), encoding="utf-8")
+
+    assert load_postgres_release_policy(candidate) == POSTGRES_RELEASE_POLICY
+
+
+def test_postgres_policy_rejects_unknown_windows_release_schema(
+    tmp_path: Path,
+) -> None:
+    release_config = json.loads(
+        (_ROOT / "backend" / "packaging" / "windows-release-config.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    release_config["schema"] = "ticketbox-windows-release-v3"
+    candidate = tmp_path / "windows-release-config.json"
+    candidate.write_text(json.dumps(release_config), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="unsupported Windows release config schema"):
+        load_postgres_release_policy(candidate)
 
 
 @pytest.mark.parametrize("scope", ["true", "false"])

@@ -19,6 +19,10 @@ PAIRING_ATTEMPT_WINDOW = timedelta(minutes=10)
 WEB_SESSION_TTL_SECONDS = 8 * 60 * 60
 
 
+class ReplacementCredentialCollisionError(ValueError):
+    """A deterministic replacement credential already exists in history."""
+
+
 @dataclass(frozen=True)
 class BootstrapResult:
     account_name: str
@@ -30,6 +34,21 @@ class BootstrapResult:
     upload_url_path: str
     pairing_code: str
     pairing_expires_at: str
+
+
+@dataclass(frozen=True)
+class InstallationOwnerBootstrapResult:
+    contract: str
+    operation_id: str
+    installation_id: str
+    account_name: str
+    ledger_id: str
+    ledger_name: str
+    device_name: str
+    pairing_code: str
+    pairing_expires_at: str
+    pairing_derivation_index: int
+    claim_generation: int
 
 
 @dataclass(frozen=True)

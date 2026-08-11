@@ -1,9 +1,6 @@
 ﻿function ServiceExists(ServiceName: String): Boolean;
-var
-  ResultCode: Integer;
 begin
-  Exec(ExpandConstant('{sys}\sc.exe'), 'query ' + ServiceName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Result := ResultCode = 0;
+  Result := TicketboxServiceExistsNative(ServiceName);
 end;
 
 procedure LoadExistingConfig();
@@ -66,13 +63,13 @@ var
   ParamValue: String;
 begin
   ParamValue := ExpandConstant('{param:TicketboxDataRoot|}');
-  if ParamValue <> '' then
-  begin
-    Result := ParamValue;
-  end
-  else if ExistingDataRoot <> '' then
+  if ExistingDataRoot <> '' then
   begin
     Result := ExistingDataRoot;
+  end
+  else if ParamValue <> '' then
+  begin
+    Result := ParamValue;
   end
   else
   begin
@@ -85,10 +82,11 @@ begin
   Result := Trim(ExpandConstant('{param:' + ParamName + '|}'));
 end;
 
-function AdvancedPortsRequested(): Boolean;
+function AdvancedSettingsRequested(): Boolean;
 begin
   Result :=
     (CompareText(Trim(ExpandConstant('{param:TicketboxAdvancedPorts|0}')), '1') = 0) or
+    (Trim(ExpandConstant('{param:TicketboxDataRoot|}')) <> '') or
     (PortParameter('TicketboxPgPort') <> '') or
     (PortParameter('TicketboxBackendPort') <> '');
 end;
@@ -198,7 +196,7 @@ begin
   end;
 end;
 
-function ManualPortSettingsEnabled(): Boolean;
+function AdvancedInstallSettingsEnabled(): Boolean;
 begin
   Result :=
     (not ExistingInstall) and
@@ -208,7 +206,11 @@ end;
 
 function SelectedDataRoot(): String;
 begin
-  if DataRootPage <> nil then
+  if ExistingInstall and (ExistingDataRoot <> '') then
+  begin
+    Result := ExistingDataRoot;
+  end
+  else if (DataRootPage <> nil) and AdvancedInstallSettingsEnabled() then
   begin
     Result := Trim(DataRootPage.Values[0]);
   end
@@ -218,9 +220,26 @@ begin
   end;
 end;
 
+function ExistingDataRootParameterError(): String;
+var
+  ParameterValue: String;
+begin
+  Result := '';
+  ParameterValue := Trim(ExpandConstant('{param:TicketboxDataRoot|}'));
+  if ExistingInstall and (ExistingDataRoot <> '') and
+     (ParameterValue <> '') and
+     (CanonicalVersionGateInstallPath(ParameterValue) <>
+      CanonicalVersionGateInstallPath(ExistingDataRoot)) then
+  begin
+    Result :=
+      '升级安装不支持通过命令行迁移数据目录。' +
+      '请移除 /TicketboxDataRoot 参数并保持已安装数据目录：' + ExistingDataRoot;
+  end;
+end;
+
 function SelectedPgPort(): String;
 begin
-  if (PortPage <> nil) and ManualPortSettingsEnabled() then
+  if (PortPage <> nil) and AdvancedInstallSettingsEnabled() then
   begin
     Result := Trim(PortPage.Values[0]);
   end
@@ -232,7 +251,7 @@ end;
 
 function SelectedBackendPort(): String;
 begin
-  if (PortPage <> nil) and ManualPortSettingsEnabled() then
+  if (PortPage <> nil) and AdvancedInstallSettingsEnabled() then
   begin
     Result := Trim(PortPage.Values[1]);
   end
@@ -304,7 +323,7 @@ begin
   Result := '';
   if FreshInstall() then
   begin
-    if not ManualPortSettingsEnabled() then
+    if not AdvancedInstallSettingsEnabled() then
     begin
       ResolveInstallationPorts();
       if PortPage <> nil then
@@ -324,8 +343,34 @@ end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := (PortPage <> nil) and (PageID = PortPage.ID) and
-    (not ManualPortSettingsEnabled());
+  Result := (not AdvancedInstallSettingsEnabled()) and
+    (((DataRootPage <> nil) and (PageID = DataRootPage.ID)) or
+     ((PortPage <> nil) and (PageID = PortPage.ID)));
+end;
+
+procedure SetInstallerStage(MessageText: String; DetailText: String);
+begin
+  WizardForm.StatusLabel.Caption := MessageText;
+  WizardForm.FilenameLabel.Caption := DetailText;
+end;
+
+procedure RecordInstallationFailure(MessageText: String);
+begin
+  LifecycleInstallFailed := True;
+  if Trim(MessageText) = '' then
+  begin
+    LifecycleFailureMessage :=
+      '小票夹安装交付未完成，未取得可验证的失败摘要。';
+  end
+  else
+  begin
+    LifecycleFailureMessage := MessageText;
+  end;
+  Log('Ticketbox installation outcome marked as failed: ' +
+    LifecycleFailureMessage);
+  SetInstallerStage(
+    '安装未完成',
+    '正在保留恢复事实；请在结束页仅按当前故障的安全指引处理。');
 end;
 
 procedure InitializeWizard();
@@ -334,24 +379,23 @@ begin
   ResolveInstallationPorts();
 
   DataRootPage := CreateInputDirPage(
-    wpSelectDir,
-    '选择小票夹数据目录',
+    wpWelcome,
+    '高级设置：小票夹数据目录',
     '数据库、上传图片、日志和备份会保存到这里。',
-    '普通用户保持默认即可。开发机或想放到 D 盘时，可以在这里更改。',
+    '仅在需要使用其他本地磁盘时更改；普通安装不会显示本页。',
     False,
     ''
   );
   DataRootPage.Add('数据目录');
   DataRootPage.Values[0] := SelectInitialDataRoot();
 
-  AdvancedPortSettings := TNewCheckBox.Create(DataRootPage.Surface);
-  AdvancedPortSettings.Parent := DataRootPage.Surface;
-  AdvancedPortSettings.Left := DataRootPage.Edits[0].Left;
-  AdvancedPortSettings.Top :=
-    DataRootPage.Edits[0].Top + DataRootPage.Edits[0].Height + ScaleY(18);
-  AdvancedPortSettings.Width := DataRootPage.Edits[0].Width;
-  AdvancedPortSettings.Caption := '高级设置：手动指定服务端口';
-  AdvancedPortSettings.Checked := AdvancedPortsRequested();
+  AdvancedPortSettings := TNewCheckBox.Create(WizardForm.WelcomePage);
+  AdvancedPortSettings.Parent := WizardForm.WelcomePage;
+  AdvancedPortSettings.Left := ScaleX(24);
+  AdvancedPortSettings.Top := WizardForm.WelcomePage.ClientHeight - ScaleY(52);
+  AdvancedPortSettings.Width := WizardForm.WelcomePage.ClientWidth - ScaleX(48);
+  AdvancedPortSettings.Caption := '高级设置：自定义数据目录和服务端口';
+  AdvancedPortSettings.Checked := AdvancedSettingsRequested();
   AdvancedPortSettings.Enabled := not ExistingInstall;
 
   PortPage := CreateInputQueryPage(
@@ -374,19 +418,31 @@ begin
   OwnerHandoffMemo.ScrollBars := ssVertical;
   OwnerHandoffMemo.Visible := False;
 
-  OwnerHandoffConfirmation := TNewCheckBox.Create(WizardForm.FinishedPage);
-  OwnerHandoffConfirmation.Parent := WizardForm.FinishedPage;
-  OwnerHandoffConfirmation.Left := 0;
-  OwnerHandoffConfirmation.Width := WizardForm.FinishedPage.ClientWidth;
-  OwnerHandoffConfirmation.Height := ScaleY(24);
-  OwnerHandoffConfirmation.Top :=
-    WizardForm.FinishedPage.ClientHeight - OwnerHandoffConfirmation.Height;
-  OwnerHandoffConfirmation.Caption :=
-    '我已复制并妥善保存上面的一次性绑定信息';
-  OwnerHandoffConfirmation.Checked := False;
-  OwnerHandoffConfirmation.Visible := False;
+  InstallationFailureMemo := TNewMemo.Create(WizardForm.FinishedPage);
+  InstallationFailureMemo.Parent := WizardForm.FinishedPage;
+  InstallationFailureMemo.Left := 0;
+  InstallationFailureMemo.Top :=
+    WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(12);
+  InstallationFailureMemo.Width := WizardForm.FinishedPage.ClientWidth;
+  InstallationFailureMemo.Height :=
+    WizardForm.FinishedPage.ClientHeight - InstallationFailureMemo.Top - ScaleY(12);
+  InstallationFailureMemo.ReadOnly := True;
+  InstallationFailureMemo.ScrollBars := ssVertical;
+  InstallationFailureMemo.Visible := False;
+
+  LaunchManagerAfterFinish := TNewCheckBox.Create(WizardForm.FinishedPage);
+  LaunchManagerAfterFinish.Parent := WizardForm.FinishedPage;
+  LaunchManagerAfterFinish.Left := 0;
+  LaunchManagerAfterFinish.Width := WizardForm.FinishedPage.ClientWidth;
+  LaunchManagerAfterFinish.Height := ScaleY(24);
+  LaunchManagerAfterFinish.Top :=
+    WizardForm.FinishedPage.ClientHeight - LaunchManagerAfterFinish.Height;
+  LaunchManagerAfterFinish.Caption := '完成后打开小票夹管理器（推荐）';
+  LaunchManagerAfterFinish.Checked := True;
+  LaunchManagerAfterFinish.Visible := False;
   OwnerHandoffMemo.Height :=
-    OwnerHandoffConfirmation.Top - OwnerHandoffMemo.Top - ScaleY(8);
+    LaunchManagerAfterFinish.Top - OwnerHandoffMemo.Top - ScaleY(8);
+  ManagerLaunchAttempted := False;
 end;
 
 function LoadUtf8TextFile(FileName: String; MaximumLength: Integer; var Text: String): Boolean;
@@ -416,32 +472,126 @@ begin
   Result := Length(Text) > 0;
 end;
 
-function HasCurrentOwnerHandoffPendingArtifact(): Boolean;
+function IsEightDigitPairingCode(const Value: String): Boolean;
 var
-  PendingPath: String;
-  PendingValue: String;
+  Index: Integer;
 begin
-  Result := False;
-  PendingPath := LifecycleInstallerStatePath('owner-handoff-pending');
-  if not FileExists(PendingPath) then
+  Result := Length(Value) = 8;
+  if not Result then
   begin
     exit;
   end;
-  if LoadUtf8TextFile(PendingPath, 4096, PendingValue) then
+  for Index := 1 to Length(Value) do
   begin
-    Result :=
-      (Pos('SCHEMA=ticketbox-owner-handoff-v2' + #13#10, PendingValue) = 1) and
-      (Pos('STATE=pending' + #13#10, PendingValue) > 0) and
-      (Pos(
-        'INSTALLER_OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10,
-        PendingValue) > 0) and
-      (Pos('CREDENTIAL_SHA256=', PendingValue) > 0);
+    if (Value[Index] < '0') or (Value[Index] > '9') then
+    begin
+      Result := False;
+      exit;
+    end;
   end;
+end;
+
+function LoadCurrentOwnerHandoffDisplay(var DisplayText: String): Boolean;
+var
+  HandoffPath: String;
+  Lines: TArrayOfString;
+  ClaimGeneration: Integer;
+  PairingDerivationIndex: Integer;
+  PairingCode: String;
+  PairingExpiresAt: String;
+begin
+  Result := False;
+  DisplayText := '';
+  HandoffPath := LifecycleInstallerStatePath(
+    'installation-owner-handoff-v2.txt');
+  if not FileExists(HandoffPath) then
+  begin
+    exit;
+  end;
+  if not LoadStringsFromFile(HandoffPath, Lines) then
+  begin
+    exit;
+  end;
+  if (GetArrayLength(Lines) <> 11) or
+     (Lines[0] <> 'SCHEMA=ticketbox-installation-owner-handoff-v2') or
+     (Lines[1] <> 'STATE=pending') or
+     (Lines[2] <> 'CONTRACT=ticketbox-installation-owner-pairing-v1') or
+     (Pos('OPERATION_ID=', Lines[3]) <> 1) or
+     (Length(Lines[3]) <= Length('OPERATION_ID=')) or
+     (Pos('INSTALLATION_ID=', Lines[4]) <> 1) or
+     (Length(Lines[4]) <= Length('INSTALLATION_ID=')) or
+     (Pos('CLAIM_GENERATION=', Lines[5]) <> 1) or
+     (Pos('PAIRING_DERIVATION_INDEX=', Lines[6]) <> 1) or
+     (Pos('PAIRING_CODE=', Lines[7]) <> 1) or
+     (Pos('PAIRING_EXPIRES_AT=', Lines[8]) <> 1) or
+     (Lines[9] <>
+       'INSTALLER_OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId)) or
+     (Pos('INSTALLER_OWNER_STARTED_UTC=', Lines[10]) <> 1) or
+     (Length(Lines[10]) <= Length('INSTALLER_OWNER_STARTED_UTC=')) then
+  begin
+    exit;
+  end;
+  ClaimGeneration := StrToIntDef(
+    Copy(Lines[5], Length('CLAIM_GENERATION=') + 1, MaxInt), 0);
+  PairingDerivationIndex := StrToIntDef(
+    Copy(Lines[6], Length('PAIRING_DERIVATION_INDEX=') + 1, MaxInt), -1);
+  PairingCode := Copy(
+    Lines[7], Length('PAIRING_CODE=') + 1, MaxInt);
+  PairingExpiresAt := Copy(
+    Lines[8], Length('PAIRING_EXPIRES_AT=') + 1, MaxInt);
+  if (ClaimGeneration < 1) or
+     (PairingDerivationIndex < 0) or
+     (PairingDerivationIndex > 63) or
+     (not IsEightDigitPairingCode(PairingCode)) or
+     (PairingExpiresAt = '') or
+     (Length(PairingExpiresAt) > 64) then
+  begin
+    exit;
+  end;
+  DisplayText :=
+    '小票夹首次连接' + #13#10 +
+    '绑定此电脑码：' + PairingCode + #13#10 +
+    '有效期至：' + PairingExpiresAt + #13#10 +
+    '完成安装后，在小票夹管理器中输入这枚 8 位短期码。' + #13#10 +
+    '若代码过期或窗口已关闭，请从开始菜单打开“小票夹连接与恢复”生成新码。';
+  Result := True;
+end;
+
+function HasCurrentOwnerHandoffPendingArtifact(): Boolean;
+var
+  HandoffPath: String;
+  DisplayText: String;
+begin
+  HandoffPath := LifecycleInstallerStatePath(
+    'installation-owner-handoff-v2.txt');
+  if not FileExists(HandoffPath) then
+  begin
+    Result := False;
+    exit;
+  end;
+  if not LoadCurrentOwnerHandoffDisplay(DisplayText) then
+  begin
+    RaiseException(
+      'installation owner pairing handoff 记录存在但格式或 owner 绑定无效。');
+  end;
+  Result := True;
+end;
+
+procedure ShowInstallationFailurePage();
+begin
+  WizardForm.FinishedHeadingLabel.Caption := '小票夹安装未完成';
+  WizardForm.FinishedLabel.Caption :=
+    '本次安装交付未完整通过验证，因此不会打开管理器。数据不会被自动删除。';
+  InstallationFailureMemo.Text :=
+    LifecycleFailureMessage + #13#10#13#10 +
+    '请仅按上述故障说明操作；无法确认状态时，请保持服务停止并联系支持。';
+  InstallationFailureMemo.Visible := True;
+  WizardForm.NextButton.Caption := '关闭';
+  WizardForm.NextButton.Enabled := True;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 var
-  HandoffPath: String;
   HandoffText: String;
 begin
   if CurPageID <> wpFinished then
@@ -449,55 +599,68 @@ begin
     exit;
   end;
   OwnerHandoffMemo.Visible := False;
-  OwnerHandoffConfirmation.Checked := False;
-  OwnerHandoffConfirmation.Visible := False;
-  if (not OwnerHandoffExpected) or (not LifecycleInstallCompleted) then
+  OwnerHandoffMemo.Text := '';
+  LaunchManagerAfterFinish.Visible := False;
+  InstallationFailureMemo.Visible := False;
+  InstallationFailureMemo.Text := '';
+  WizardForm.NextButton.Enabled := True;
+  if not LifecycleInstallCompleted then
   begin
-    if LifecycleInstallCompleted then
+    if not LifecycleInstallFailed then
     begin
-      WizardForm.FinishedLabel.Caption :=
-        '小票夹安装维护已完成。请从 Windows 开始菜单打开“小票夹管理器”。';
+      RecordInstallationFailure(
+        '安装器未取得完整的服务与生命周期提交结果。');
     end;
+    ShowInstallationFailurePage();
+    exit;
+  end;
+  WizardForm.FinishedHeadingLabel.Caption := '小票夹已安装';
+  if not OwnerHandoffExpected then
+  begin
+    LaunchManagerAfterFinish.Visible := True;
+    WizardForm.FinishedLabel.Caption :=
+      '小票夹安装维护已完成。保持下方勾选并点击“完成”将打开管理器；取消勾选则只结束安装。';
     exit;
   end;
 
-  HandoffPath := LifecycleInstallerStatePath('owner-bootstrap.txt');
-  if not LoadUtf8TextFile(HandoffPath, 16384, HandoffText) then
+  if not LoadCurrentOwnerHandoffDisplay(HandoffText) then
   begin
-    WizardForm.FinishedLabel.Caption :=
-      '小票夹已安装，但无法读取首次绑定信息。请保留安装日志并运行修复安装。';
+    RecordInstallationFailure(
+      '小票夹程序和服务已安装，但首次绑定信息不可读。一次性信息仍受保护且未删除。');
+    ShowInstallationFailurePage();
     exit;
   end;
   WizardForm.FinishedLabel.Caption :=
-    '小票夹已安装。请先复制下面的一次性绑定信息；关闭安装器后，从 Windows 开始菜单打开“小票夹管理器”。Android 绑定前须先在管理器中完成手机连接配置。';
+    '小票夹已安装。请记下下方 8 位短期配对码，再点击“完成”打开管理器。安装器不会创建、复制或保存用户长期凭据；代码过期后可从开始菜单打开“小票夹连接与恢复”重新生成。';
   OwnerHandoffMemo.Text := HandoffText;
   OwnerHandoffMemo.Visible := True;
-  OwnerHandoffConfirmation.Visible := True;
+  LaunchManagerAfterFinish.Visible := True;
+  WizardForm.NextButton.Enabled := True;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   HandoffPath: String;
-  HandoffPendingPath: String;
   Args: String;
   MessageText: String;
   VersionFailureReason: String;
+  ManagerResultCode: Integer;
 begin
   Result := True;
 
   if (CurPageID = wpFinished) and OwnerHandoffExpected and
-     LifecycleInstallCompleted and OwnerHandoffMemo.Visible then
+     LifecycleInstallCompleted then
   begin
-    AssertDataRootMutationGuardActive();
-    if not OwnerHandoffConfirmation.Checked then
+    if not OwnerHandoffMemo.Visible then
     begin
       MsgBox(
-        '请先复制一次性绑定信息，并勾选确认后再完成安装。',
+        '首次绑定信息不可读，当前不能完成交付或打开管理器。请关闭向导并运行修复安装。',
         mbError,
         MB_OK);
       Result := False;
       exit;
     end;
+    AssertDataRootMutationGuardActive();
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
       ' -DataRoot ' + Quote(SelectedDataRoot()) +
@@ -514,13 +677,17 @@ begin
     begin
       if not LastPowerShellChildSucceeded then
       begin
+        if LastPowerShellFailureMessage <> '' then
+        begin
+          MsgBox(LastPowerShellFailureMessage, mbError, MB_OK);
+        end;
         Result := False;
         exit;
       end;
     end;
-    HandoffPath := LifecycleInstallerStatePath('owner-bootstrap.txt');
-    HandoffPendingPath := LifecycleInstallerStatePath('owner-handoff-pending');
-    if FileExists(HandoffPath) or FileExists(HandoffPendingPath) then
+    HandoffPath := LifecycleInstallerStatePath(
+      'installation-owner-handoff-v2.txt');
+    if FileExists(HandoffPath) then
     begin
       MsgBox(
         '首次绑定信息清理后仍有敏感文件残留，拒绝完成安装。',
@@ -542,6 +709,26 @@ begin
         MB_OK);
       Result := False;
       exit;
+    end;
+    ReleaseDataRootMutationGuard();
+    ReleaseLifecycleLock();
+    CloseInstallerSourceLease();
+    if LaunchManagerAfterFinish.Checked and (not ManagerLaunchAttempted) then
+    begin
+      ManagerLaunchAttempted := True;
+      if not ExecAsOriginalUser(
+        ExpandConstant('{app}\manager\ticketbox-manager.exe'),
+        '',
+        ExpandConstant('{app}\manager'),
+        SW_SHOWNORMAL,
+        ewNoWait,
+        ManagerResultCode) then
+      begin
+        MsgBox(
+          '小票夹已安装，但未能自动打开管理器。请从 Windows 开始菜单打开“小票夹管理器”。',
+          mbInformation,
+          MB_OK);
+      end;
     end;
   end;
 
@@ -626,6 +813,9 @@ var
 begin
   AssertLifecycleLockActive();
   AssertManagerMaintenanceGateActive();
+  SetInstallerStage(
+    '正在安全检查数据目录…',
+    '不会覆盖未完成备份的数据，请勿关闭安装器。');
   if not ValidateLifecycleLockBootstrapFiles() then
   begin
     Result := '受保护 lifecycle bootstrap bundle 在复制前复核失败。';
@@ -651,7 +841,10 @@ begin
     ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
     ' -InstalledReleaseConfigPath ' + Quote(ExpandConstant('{app}\installer\windows-release-config.json')) +
     ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
-    ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);
+      ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);
+  SetInstallerStage(
+    '正在备份并准备本机服务…',
+    '慢速磁盘或安全软件扫描时可能需要几分钟。');
   if not RunPowerShellChecked(
     LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
     Args,
@@ -662,10 +855,22 @@ begin
       LifecyclePrepared := True;
     end;
     ReleaseDataRootMutationGuard();
-    Result := '升级前备份或服务检查失败。本次安装尚未复制程序文件；若已有 recovery-required 标记，请按提示重新运行安装器修复。';
+    if LastPowerShellFailureMessage <> '' then
+    begin
+      Result := LastPowerShellFailureMessage;
+    end
+    else
+    begin
+      Result :=
+        '安装准备未完成，新程序文件尚未复制。为保护已有数据，安装器已停止。' +
+        '支持代码：TBX-PREP-UNKNOWN';
+    end;
     exit;
   end;
   LifecyclePrepared := True;
+  SetInstallerStage(
+    '正在安装小票夹程序文件…',
+    '服务与数据已进入受保护维护状态。');
   AssertLifecycleLockActive();
   AssertDataRootMutationGuardActive();
   Result := '';
@@ -674,15 +879,15 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   VersionFailureReason: String;
+  PrerequisiteArguments: String;
 begin
   AssertLifecycleLockActive();
-  if not StartManagerMaintenanceGate() then
+  NeedsRestart := False;
+  Result := ExistingDataRootParameterError();
+  if Result <> '' then
   begin
-    Result :=
-      '无法建立小票夹管理器维护门；安装尚未备份、停服或复制文件。请关闭其他安装器后重试。';
     exit;
   end;
-  AssertManagerMaintenanceGateActive();
   OwnerHandoffExpected := False;
   if not CheckBackendVersionFloorForDataRoot(
     SelectedDataRoot(),
@@ -701,6 +906,41 @@ begin
     Result := '受保护 lifecycle bootstrap bundle 在安装前复核失败。';
     exit;
   end;
+  SetInstallerStage(
+    '正在检查 Windows 运行环境…',
+    '已安装的共享运行库满足要求时会直接跳过。');
+  PrerequisiteArguments :=
+    '-VcRedistPath ' +
+      Quote(LifecycleBootstrapFilePath('vc_redist.x64.exe')) +
+    ' -RequiredVersion ' + Quote(VisualCppRuntimeVersion) +
+    ' -RequiredSha256 ' + Quote(VisualCppRuntimeSha256) +
+    ' -InstallerLockOwnerProcessId ' +
+      IntToStr(LifecycleLockOwnerProcessId);
+  if not RunPowerShellChecked(
+    LifecycleBootstrapFilePath('install_windows_prerequisites.ps1'),
+    PrerequisiteArguments,
+    'Ticketbox Windows prerequisite installation') then
+  begin
+    NeedsRestart := LastPowerShellRestartRequired;
+    if LastPowerShellFailureMessage <> '' then
+    begin
+      Result := LastPowerShellFailureMessage;
+    end
+    else
+    begin
+      Result :=
+        'Windows 前置条件未完成；小票夹安装状态尚未变更。' +
+        '支持代码：TBX-INSTALL-PREREQ';
+    end;
+    exit;
+  end;
+  if not StartManagerMaintenanceGate() then
+  begin
+    Result :=
+      '无法建立小票夹管理器维护门；安装尚未备份、停服或复制文件。请关闭其他安装器后重试。';
+    exit;
+  end;
+  AssertManagerMaintenanceGateActive();
   Result := '';
 end;
 
@@ -714,15 +954,26 @@ var
   Args: String;
   PreparationFailure: String;
   VersionFailureReason: String;
+  PublicFailurePath: String;
 begin
   if CurStep = ssInstall then
   begin
+    SetInstallerStage(
+      '正在准备安装…',
+      '正在验证安装包、服务和数据状态。');
     AssertLifecycleLockActive();
     AssertManagerMaintenanceGateActive();
     PreparationFailure := PrepareAuthoritativePayloadReplacement();
     if PreparationFailure <> '' then
     begin
-      RaiseException(PreparationFailure);
+      LifecycleInstallFailed := True;
+      LifecycleFailureMessage := PreparationFailure;
+      SuppressibleMsgBox(
+        PreparationFailure,
+        mbError,
+        MB_OK,
+        IDOK);
+      Abort();
     end;
     if not CheckBackendVersionFloorForDataRoot(
       SelectedDataRoot(),
@@ -758,13 +1009,24 @@ begin
   end;
   if CurStep = ssPostInstall then
   begin
-    AssertLifecycleLockActive();
-    AssertManagerMaintenanceGateActive();
-    AssertDataRootMutationGuardActive();
+    try
+      AssertLifecycleLockActive();
+      AssertManagerMaintenanceGateActive();
+      AssertDataRootMutationGuardActive();
     if not BeginLifecycleFinalizationAttempt() then
     begin
-      RaiseException(
-        'Unable to derive the protected C07 lifecycle finalization attempt.');
+      RecordInstallationFailure(
+        '无法建立受保护的服务初始化尝试；安装交付未完成。');
+      exit;
+    end;
+    PublicFailurePath :=
+      LifecycleBootstrapFilePath(InstallPublicFailureFileName);
+    if FileExists(PublicFailurePath) and
+       (not DeleteFile(PublicFailurePath)) then
+    begin
+      RecordInstallationFailure(
+        '无法清理上一次受保护的安装失败回执；为避免误报，本次安装已停止。');
+      exit;
     end;
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
@@ -776,13 +1038,29 @@ begin
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
       ' -LifecycleFinalizationAttemptId ' +
-        LifecycleFinalizationAttemptId;
+        LifecycleFinalizationAttemptId +
+      ' -PublicFailurePath ' + Quote(PublicFailurePath);
+    SetInstallerStage(
+      '正在初始化数据库和后端服务…',
+      '首次初始化可能需要几分钟，安装器仍在工作。');
     if not RunPowerShellChecked(
       ExpandConstant('{app}\installer\install_bundled_services.ps1'),
       Args,
       'Ticketbox service installation') then
     begin
-      RaiseException('Ticketbox service installation failed.');
+      if LastPowerShellFailureMessage <> '' then
+      begin
+        RecordInstallationFailure(LastPowerShellFailureMessage);
+        exit;
+      end;
+      RecordInstallationFailure(
+        '小票夹服务初始化未完成，且没有取得可验证的公开失败回执。');
+      exit;
+    end;
+    if FileExists(PublicFailurePath) and
+       (not DeleteFile(PublicFailurePath)) then
+    begin
+      Log('Unable to remove the no-longer-needed public failure receipt.');
     end;
     AssertLifecycleLockActive();
     OwnerHandoffExpected := HasCurrentOwnerHandoffPendingArtifact();
@@ -798,16 +1076,39 @@ begin
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
       ' -CommitCompletedInstall';
+    SetInstallerStage(
+      '正在验证安装结果…',
+      '正在确认服务、版本和首次连接材料。');
     if not RunPowerShellChecked(
       LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
       Args,
       'Ticketbox installer lifecycle commit') then
     begin
-      RaiseException('Ticketbox installer lifecycle commit failed.');
+      RecordInstallationFailure(
+        '服务初始化已返回，但安装生命周期提交未通过最终验证。');
+      exit;
     end;
     AssertLifecycleLockActive();
     AssertDataRootMutationGuardActive();
     LifecycleInstallCompleted := True;
+      SetInstallerStage('安装完成', '服务已就绪，正在准备首次连接。');
+    except
+      RecordInstallationFailure(
+        '安装后安全验证发生内部错误，安装交付未完成。');
+    end;
+  end;
+end;
+
+function GetCustomSetupExitCode(): Integer;
+begin
+  if LifecycleInstallFailed or
+     (LifecyclePrepared and (not LifecycleInstallCompleted)) then
+  begin
+    Result := 4;
+  end
+  else
+  begin
+    Result := 0;
   end;
 end;
 
@@ -849,24 +1150,237 @@ begin
   CloseManagerMaintenanceGate();
 end;
 
+function GetTicketboxRegisteredUninstallDataRoot(var DataRoot: String): Boolean;
+begin
+  DataRoot := '';
+  Result :=
+    RegQueryStringValue(
+      HKLM64,
+      'Software\Ticketbox',
+      'DataRoot',
+      DataRoot) and
+    (Trim(DataRoot) <> '');
+  if Result then
+  begin
+    DataRoot := Trim(DataRoot);
+  end;
+end;
+
+function ConfirmTicketboxUninstallDataDisposition(): Boolean;
+var
+  Form: TSetupForm;
+  HeadingLabel: TNewStaticText;
+  ExplanationLabel: TNewStaticText;
+  DataRootLabel: TNewStaticText;
+  DataRootEdit: TNewEdit;
+  DeleteDataCheck: TNewCheckBox;
+  WarningLabel: TNewStaticText;
+  ContinueButton: TNewButton;
+  CancelButton: TNewButton;
+  RegisteredDataRoot: String;
+  HasRegisteredDataRoot: Boolean;
+  ButtonWidth: Integer;
+  ConfirmationResult: Integer;
+begin
+  Result := False;
+  if UninstallDataChoiceResolved then
+  begin
+    Result := True;
+    exit;
+  end;
+  UninstallDeleteDataSelected := False;
+  if UninstallSilent then
+  begin
+    Log('Silent uninstall defaults to preserving local data.');
+    UninstallDataChoiceResolved := True;
+    Result := True;
+    exit;
+  end;
+
+  HasRegisteredDataRoot :=
+    GetTicketboxRegisteredUninstallDataRoot(RegisteredDataRoot);
+  if not HasRegisteredDataRoot then
+  begin
+    RegisteredDataRoot :=
+      '未找到 HKLM64\Software\Ticketbox\DataRoot；已强制保留数据';
+  end;
+
+  Form := CreateCustomForm(ScaleX(600), ScaleY(285), False, False);
+  try
+    Form.Caption := '卸载小票夹';
+
+    HeadingLabel := TNewStaticText.Create(Form);
+    HeadingLabel.Parent := Form;
+    HeadingLabel.Left := ScaleX(16);
+    HeadingLabel.Top := ScaleY(16);
+    HeadingLabel.Width := Form.ClientWidth - ScaleX(32);
+    HeadingLabel.Caption := '选择本机数据的处理方式';
+    HeadingLabel.Font.Style := [fsBold];
+
+    ExplanationLabel := TNewStaticText.Create(Form);
+    ExplanationLabel.Parent := Form;
+    ExplanationLabel.Left := ScaleX(16);
+    ExplanationLabel.Top := ScaleY(45);
+    ExplanationLabel.Width := Form.ClientWidth - ScaleX(32);
+    ExplanationLabel.Height := ScaleY(34);
+    ExplanationLabel.AutoSize := False;
+    ExplanationLabel.WordWrap := True;
+    ExplanationLabel.Caption :=
+      '默认只卸载程序并保留数据库、上传文件、日志和备份，便于以后重装恢复。';
+
+    DataRootLabel := TNewStaticText.Create(Form);
+    DataRootLabel.Parent := Form;
+    DataRootLabel.Left := ScaleX(16);
+    DataRootLabel.Top := ScaleY(86);
+    DataRootLabel.Caption := '当前安装登记的数据目录：';
+
+    DataRootEdit := TNewEdit.Create(Form);
+    DataRootEdit.Parent := Form;
+    DataRootEdit.Left := ScaleX(16);
+    DataRootEdit.Top := ScaleY(106);
+    DataRootEdit.Width := Form.ClientWidth - ScaleX(32);
+    DataRootEdit.Height := ScaleY(23);
+    DataRootEdit.ReadOnly := True;
+    DataRootEdit.Text := RegisteredDataRoot;
+
+    DeleteDataCheck := TNewCheckBox.Create(Form);
+    DeleteDataCheck.Parent := Form;
+    DeleteDataCheck.Left := ScaleX(16);
+    DeleteDataCheck.Top := ScaleY(148);
+    DeleteDataCheck.Width := Form.ClientWidth - ScaleX(32);
+    DeleteDataCheck.Caption :=
+      '永久删除全部本地数据（数据库、上传文件、日志和备份）';
+    DeleteDataCheck.Checked := False;
+    DeleteDataCheck.Enabled := HasRegisteredDataRoot;
+
+    WarningLabel := TNewStaticText.Create(Form);
+    WarningLabel.Parent := Form;
+    WarningLabel.Left := ScaleX(36);
+    WarningLabel.Top := ScaleY(177);
+    WarningLabel.Width := Form.ClientWidth - ScaleX(52);
+    WarningLabel.Height := ScaleY(38);
+    WarningLabel.AutoSize := False;
+    WarningLabel.WordWrap := True;
+    WarningLabel.Caption :=
+      '删除不可恢复。只有勾选此项并在下一步再次明确确认，卸载器才会请求删除数据。';
+
+    ContinueButton := TNewButton.Create(Form);
+    ContinueButton.Parent := Form;
+    ContinueButton.Caption := '继续卸载';
+    ContinueButton.Top := Form.ClientHeight - ScaleY(39);
+    ContinueButton.Height := ScaleY(23);
+    ContinueButton.ModalResult := mrOk;
+    ContinueButton.Default := True;
+
+    CancelButton := TNewButton.Create(Form);
+    CancelButton.Parent := Form;
+    CancelButton.Caption := '取消';
+    CancelButton.Top := ContinueButton.Top;
+    CancelButton.Height := ContinueButton.Height;
+    CancelButton.ModalResult := mrCancel;
+    CancelButton.Cancel := True;
+
+    ButtonWidth :=
+      Form.CalculateButtonWidth([ContinueButton.Caption, CancelButton.Caption]);
+    ContinueButton.Width := ButtonWidth;
+    CancelButton.Width := ButtonWidth;
+    CancelButton.Left := Form.ClientWidth - ScaleX(16) - CancelButton.Width;
+    ContinueButton.Left := CancelButton.Left - ScaleX(8) - ContinueButton.Width;
+    if HasRegisteredDataRoot then
+    begin
+      Form.ActiveControl := DeleteDataCheck;
+    end
+    else
+    begin
+      Form.ActiveControl := ContinueButton;
+    end;
+    Form.FlipAndCenterIfNeeded(True, UninstallProgressForm, False);
+
+    if Form.ShowModal() <> mrOk then
+    begin
+      exit;
+    end;
+    if DeleteDataCheck.Checked and HasRegisteredDataRoot then
+    begin
+      ConfirmationResult := SuppressibleTaskDialogMsgBox(
+        '确认是否永久删除全部本地数据',
+        '将删除以下数据目录中的数据库、上传文件、日志和备份：' + #13#10 +
+          RegisteredDataRoot + #13#10#13#10 +
+          '此操作不可恢复。若不确定，请选择“保留数据并卸载”。',
+        mbConfirmation,
+        MB_YESNO, [
+          '永久删除数据并卸载'#13#10'不可恢复',
+          '保留数据并卸载'#13#10'可供以后重装恢复'
+        ],
+        0,
+        IDNO);
+      UninstallDeleteDataSelected := ConfirmationResult = IDYES;
+    end;
+    UninstallDataChoiceResolved := True;
+    Result := True;
+  finally
+    Form.Free();
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Args: String;
 begin
   if CurUninstallStep = usUninstall then
   begin
-    AssertLifecycleLockActive();
-    AssertManagerMaintenanceGateActive();
+    if (not LifecycleLockActive()) or (not ManagerMaintenanceGateActive()) then
+    begin
+      Log('Uninstall authority check failed; public code TBX-UNINSTALL-LOCK.');
+      RaiseException(TicketboxUninstallLockPublicMessage());
+    end;
+    if not ConfirmTicketboxUninstallDataDisposition() then
+    begin
+      Abort();
+    end;
+    if (not LifecycleLockActive()) or (not ManagerMaintenanceGateActive()) then
+    begin
+      Log('Uninstall authority changed during confirmation; public code TBX-UNINSTALL-LOCK.');
+      RaiseException(TicketboxUninstallLockPublicMessage());
+    end;
     Args :=
       '-InstallDir ' + Quote(ExpandConstant('{app}')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId);
+    if UninstallDeleteDataSelected then
+    begin
+      Args := Args + ' -DeleteData';
+    end;
     if not RunPowerShellChecked(
       ExpandConstant('{app}\installer\uninstall_bundled_services.ps1'),
       Args,
       'Ticketbox service uninstall') then
     begin
-      RaiseException('Ticketbox service uninstall failed.');
+      if (not LifecycleLockActive()) or (not ManagerMaintenanceGateActive()) then
+      begin
+        Log('Uninstall authority changed after child start; public post-mutation code selected.');
+        RaiseException(
+          TicketboxUninstallPostMutationAuthorityMessage(
+            UninstallDeleteDataSelected));
+      end
+      else if UninstallDeleteDataSelected then
+      begin
+        RaiseException(
+          '卸载器无法证明本机数据已完整删除。请勿手工删除目录；' +
+          '保留现状并联系支持。支持代码：TBX-UNINSTALL-DATA');
+      end
+      else
+      begin
+        RaiseException(
+          '小票夹程序卸载未完整完成；本机数据未被请求删除。' +
+          '请保留现状并重试。支持代码：TBX-UNINSTALL-FAILED');
+      end;
     end;
-    AssertLifecycleLockActive();
+    if (not LifecycleLockActive()) or (not ManagerMaintenanceGateActive()) then
+    begin
+      Log('Uninstall authority changed after child success; public post-mutation code selected.');
+      RaiseException(
+        TicketboxUninstallPostMutationAuthorityMessage(
+          UninstallDeleteDataSelected));
+    end;
   end;
 end;

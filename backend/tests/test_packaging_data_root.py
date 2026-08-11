@@ -315,7 +315,14 @@ def test_installer_runtime_guard_blocks_normal_http_until_removed(tmp_path):
     assert malformed_downstream == []
 
 
-@pytest.mark.parametrize("path", ["/api/health/installation", "/api/bootstrap/owner"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/health/installation",
+        "/api/bootstrap/installation-owner",
+        "/api/bootstrap/owner",
+    ],
+)
 def test_installer_runtime_guard_allows_only_repair_endpoints(tmp_path, path):
     from app.services.installation_health_service import installation_runtime_access_state
 

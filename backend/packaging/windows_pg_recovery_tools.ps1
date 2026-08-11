@@ -8,6 +8,215 @@ $script:TicketboxPgRecoveryStagingPrefix = ".postgresql-recovery-staging-"
 $script:TicketboxPgRecoveryFullControlAccounts = @("SYSTEM", "BUILTIN\Administrators")
 $script:TicketboxPgRecoveryOwnerAccount = "SYSTEM"
 
+function Invoke-TicketboxPostgresqlHostNative {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [AllowEmptyString()][string]$StandardInputText,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds = 600000,
+        [AllowEmptyString()][string]$PgPassFile = ""
+    )
+
+    # PostgreSQL client environment is process-global. Snapshot every PG*
+    # variable, run the bounded host operation with an explicit environment,
+    # and restore the caller exactly without ever copying a credential to argv.
+    $saved = @{}
+    foreach ($item in @(Get-ChildItem Env: -ErrorAction SilentlyContinue)) {
+        if ($item.Name -match '^(?i)PG') {
+            $saved[$item.Name] = [string]$item.Value
+        }
+    }
+    try {
+        foreach ($name in @($saved.Keys)) {
+            Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+        }
+        if (-not [string]::IsNullOrWhiteSpace($PgPassFile)) {
+            $env:PGPASSFILE = [System.IO.Path]::GetFullPath($PgPassFile)
+        }
+        $parameters = @{
+            FilePath = $FilePath
+            Arguments = $Arguments
+            TimeoutMilliseconds = $TimeoutMilliseconds
+            Label = $Label
+        }
+        if ($PSBoundParameters.ContainsKey("StandardInputText")) {
+            $parameters.StandardInputText = $StandardInputText
+        }
+        return Invoke-TicketboxBoundedNativeProcess @parameters
+    }
+    finally {
+        foreach ($item in @(Get-ChildItem Env: -ErrorAction SilentlyContinue)) {
+            if ($item.Name -match '^(?i)PG') {
+                Remove-Item "Env:$($item.Name)" -ErrorAction SilentlyContinue
+            }
+        }
+        foreach ($entry in $saved.GetEnumerator()) {
+            [Environment]::SetEnvironmentVariable(
+                [string]$entry.Key,
+                [string]$entry.Value,
+                "Process"
+            )
+        }
+    }
+}
+
+function Invoke-TicketboxPostgresqlHostPsql {
+    param(
+        [Parameter(Mandatory = $true)][string]$PsqlPath,
+        [Parameter(Mandatory = $true)][string]$DatabaseUrl,
+        [Parameter(Mandatory = $true)][string]$Sql,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [AllowEmptyString()][string]$PgPassFile = "",
+        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds = 600000
+    )
+
+    if (
+        [string]::IsNullOrWhiteSpace($PsqlPath) -or
+        [string]::IsNullOrWhiteSpace($DatabaseUrl) -or
+        $DatabaseUrl.IndexOfAny([char[]]@("`r", "`n", [char]0)) -ge 0
+    ) {
+        throw "$Label 缺少有效的 PostgreSQL host invocation。"
+    }
+    $databaseUri = $null
+    if (
+        -not [Uri]::TryCreate(
+            $DatabaseUrl,
+            [UriKind]::Absolute,
+            [ref]$databaseUri
+        ) -or
+        $databaseUri.Scheme -cnotin @("postgres", "postgresql") -or
+        [Uri]::UnescapeDataString([string]$databaseUri.UserInfo).Contains(":") -or
+        [string]$databaseUri.Query -match
+            '(?i)(?:^|[?&])(?:password|sslpassword)='
+    ) {
+        throw "$Label 的 PostgreSQL URL 含无效 scheme 或 argv credential。"
+    }
+    $parameters = @{
+        FilePath = $PsqlPath
+        Arguments = @(
+            "--no-psqlrc",
+            "--no-password",
+            # PostgreSQL 15+ prints every result in a multi-command input.
+            # tuples-only removes table decoration but not command status;
+            # quiet is therefore part of the machine-readable row contract.
+            "--quiet",
+            "--tuples-only",
+            "--no-align",
+            "--field-separator", "`t",
+            "--set", "ON_ERROR_STOP=1",
+            "--dbname", $DatabaseUrl
+        )
+        StandardInputText = $Sql + "`n"
+        TimeoutMilliseconds = $TimeoutMilliseconds
+        Label = $Label
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PgPassFile)) {
+        $parameters.PgPassFile = $PgPassFile
+    }
+    return Invoke-TicketboxPostgresqlHostNative @parameters
+}
+
+function ConvertFrom-TicketboxPostgresqlHostEvidenceRow {
+    param(
+        [AllowEmptyString()][Parameter(Mandatory = $true)][string]$Output,
+        [ValidateRange(1, 16)][int]$FieldCount,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    $lines = @(
+        $Output -split "`r?`n" |
+            ForEach-Object { [string]$_ } |
+            Where-Object { $_.Trim().Length -gt 0 }
+    )
+    if ($lines.Count -ne 1) {
+        throw "$Label 未返回唯一结果行。"
+    }
+    $fields = @($lines[0].Split([char]9))
+    if ($fields.Count -ne $FieldCount) {
+        throw "$Label 返回字段数无效。"
+    }
+    return $fields
+}
+
+function Invoke-TicketboxPostgresqlHostCredentialRotation {
+    param(
+        [Parameter(Mandatory = $true)][string]$PsqlPath,
+        [Parameter(Mandatory = $true)][string]$DatabaseUrl,
+        [Parameter(Mandatory = $true)][string]$Verifier,
+        [Parameter(Mandatory = $true)][string]$ClusterSystemIdentifier,
+        [Parameter(Mandatory = $true)][string[]]$ExpectedDataDirectories,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds = 600000
+    )
+
+    if (
+        $Verifier -cnotmatch
+            '^SCRAM-SHA-256\$4096:[A-Za-z0-9+/]+={0,2}\$' +
+            '[A-Za-z0-9+/]+={0,2}:[A-Za-z0-9+/]+={0,2}$'
+    ) {
+        throw "$Label 的 locally-derived verifier shape 无效。"
+    }
+    $expectedDirectories = @(
+        $ExpectedDataDirectories |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+            Select-Object -Unique
+    )
+    if ($expectedDirectories.Count -eq 0) {
+        throw "$Label 缺少 exact PostgreSQL data directory。"
+    }
+    $validUntil = [DateTime]::UtcNow.AddHours(1).ToString(
+        "yyyy-MM-dd HH:mm:ss.fffffff'+00'"
+    )
+    $sql = @"
+ALTER ROLE postgres WITH LOGIN PASSWORD '$Verifier' VALID UNTIL '$validUntil';
+SELECT
+    session_user,
+    current_user,
+    control.system_identifier::text,
+    current_setting('data_directory'),
+    current_setting('port'),
+    role.rolcanlogin::text,
+    (role.rolpassword = '$Verifier')::text
+FROM pg_catalog.pg_control_system() AS control
+CROSS JOIN pg_catalog.pg_authid AS role
+WHERE role.rolname = 'postgres';
+"@
+    $result = Invoke-TicketboxPostgresqlHostPsql `
+        -PsqlPath $PsqlPath `
+        -DatabaseUrl $DatabaseUrl `
+        -Sql $sql `
+        -Label $Label `
+        -TimeoutMilliseconds $TimeoutMilliseconds
+    if ($result.ExitCode -ne 0) {
+        throw "$Label 失败（原生输出已抑制）。"
+    }
+    $fields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
+        -Output $result.StandardOutput `
+        -FieldCount 7 `
+        -Label $Label
+    $dataDirectoryMatches = $false
+    foreach ($expectedDirectory in $expectedDirectories) {
+        if (Test-TicketboxPathEquals $fields[3].Trim() $expectedDirectory) {
+            $dataDirectoryMatches = $true
+            break
+        }
+    }
+    if (
+        $fields[0].Trim() -cne "postgres" -or
+        $fields[1].Trim() -cne "postgres" -or
+        $fields[2].Trim() -cne $ClusterSystemIdentifier -or
+        -not $dataDirectoryMatches -or
+        $fields[4].Trim() -cne [string]$Port
+    ) {
+        throw "$Label 未绑定 exact postgres/cluster/data-dir/port。"
+    }
+    if ($fields[5].Trim() -cne "true" -or $fields[6].Trim() -cne "true") {
+        throw "$Label 未 exact commit PostgreSQL host LOGIN/verifier。"
+    }
+}
+
 function Get-TicketboxPgRecoveryRoot {
     $lifecycleDirectory = Split-Path -Parent (Get-TicketboxLifecycleLockPath)
     return Join-Path $lifecycleDirectory $script:TicketboxPgRecoveryDirectoryName

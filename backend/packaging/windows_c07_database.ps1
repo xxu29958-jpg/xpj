@@ -311,79 +311,65 @@ function ConvertTo-TicketboxC07ScramVerifier {
 }
 
 function Resolve-TicketboxC07DatabaseHostAuthority {
-    if (-not (Test-TicketboxServiceExists $script:TicketboxC07PostgresServiceName)) {
-        throw "C07 只接受已安装的 $script:TicketboxC07PostgresServiceName SCM authority。"
-    }
-    Assert-TicketboxServiceAccount `
-        -Name $script:TicketboxC07PostgresServiceName `
-        -ExpectedAccount "NT SERVICE\$script:TicketboxC07PostgresServiceName"
-
-    $imagePath = Get-TicketboxServiceImagePath $script:TicketboxC07PostgresServiceName
-    $arguments = @(Split-TicketboxWindowsCommandLine $imagePath)
     if (
-        $arguments.Count -ne 7 -or
-        $arguments[1] -cne "runservice" -or
-        $arguments[2] -cne "-N" -or
-        $arguments[3] -cne $script:TicketboxC07PostgresServiceName -or
-        $arguments[4] -cne "-D" -or
-        $arguments[6] -cne "-w"
+        $null -eq (Get-Command `
+            -Name Resolve-TicketboxPostgresServiceHostAuthority `
+            -CommandType Function `
+            -ErrorAction SilentlyContinue)
     ) {
-        throw "C07 PostgreSQL SCM ImagePath 不符合受管宿主合同。"
+        throw "C07 缺少通用 PostgreSQL SCM 宿主权威解析器。"
     }
-    $pgCtl = ConvertTo-TicketboxFullPath $arguments[0]
-    $pgData = ConvertTo-TicketboxFullPath $arguments[5]
-    Assert-TicketboxPgServiceCommand `
-        -Name $script:TicketboxC07PostgresServiceName `
-        -ExpectedExecutable $pgCtl `
-        -ExpectedServiceName $script:TicketboxC07PostgresServiceName `
-        -ExpectedDataRoot $pgData
-    Assert-NoTicketboxAncestorReparsePoints $pgData
-    if ((Get-TicketboxPathEntryKindNoFollow $pgData) -cne "Directory") {
-        throw "C07 SCM 声明的 PGDATA 不是受管普通目录。"
-    }
-
-    $postmasterPidPath = Join-Path $pgData "postmaster.pid"
-    if ((Get-TicketboxPathEntryKindNoFollow $postmasterPidPath) -cne "File") {
-        throw "C07 PostgreSQL 缺少受管 postmaster.pid。"
-    }
-    $pidLines = @(Get-Content -LiteralPath $postmasterPidPath -Encoding ASCII)
-    if ($pidLines.Count -lt 4) {
-        throw "C07 PostgreSQL postmaster.pid 结构不完整。"
-    }
-    $postmasterPid = 0
-    $port = 0
     if (
-        -not [int]::TryParse($pidLines[0].Trim(), [ref]$postmasterPid) -or
-        $postmasterPid -le 0 -or
-        -not [int]::TryParse($pidLines[3].Trim(), [ref]$port) -or
-        $port -lt 1 -or
-        $port -gt 65535
+        [string]::IsNullOrWhiteSpace([string]$DataRoot) -or
+        [string]::IsNullOrWhiteSpace([string]$InstallDir) -or
+        [string]::IsNullOrWhiteSpace([string]$BackendServiceName)
     ) {
-        throw "C07 PostgreSQL postmaster.pid 的 PID/port 无效。"
+        throw "C07 PostgreSQL 宿主权威缺少安装路径或服务合同。"
     }
-    if (-not (Test-TicketboxPathEquals $pidLines[1].Trim() $pgData)) {
-        throw "C07 PostgreSQL postmaster.pid 的 data directory 与 SCM 不一致。"
+    $targetConfigVariable = Get-Variable `
+        -Name ReleaseConfig `
+        -Scope Script `
+        -ErrorAction SilentlyContinue
+    if ($null -eq $targetConfigVariable -or $null -eq $targetConfigVariable.Value) {
+        throw "C07 PostgreSQL 宿主权威缺少通用 Windows release config。"
     }
-    $servicePid = Get-TicketboxServiceProcessId $script:TicketboxC07PostgresServiceName
-    if ($servicePid -le 0) {
-        throw "C07 PostgreSQL SCM 服务没有有效宿主 PID。"
+    $targetConfig = $targetConfigVariable.Value
+    $installedConfigVariable = Get-Variable `
+        -Name PreviousReleaseConfig `
+        -Scope Script `
+        -ErrorAction SilentlyContinue
+    $installedConfig = if (
+        $null -ne $installedConfigVariable -and
+        $null -ne $installedConfigVariable.Value
+    ) {
+        $installedConfigVariable.Value
     }
-
-    $pgBin = Split-Path -Parent $pgCtl
-    $psql = Join-Path $pgBin "psql.exe"
-    if ((Get-TicketboxPathEntryKindNoFollow $psql) -cne "File") {
-        throw "C07 PostgreSQL 受管 psql.exe 不存在。"
+    else {
+        $targetConfig
     }
-    Assert-NoTicketboxAncestorReparsePoints $psql
+    $serviceIdentityShapes = @(Get-TicketboxReleaseServiceIdentityShapes `
+        -InstalledConfig $installedConfig `
+        -TargetConfig $targetConfig `
+        -ServiceName $script:TicketboxC07PostgresServiceName)
+    $authority = Resolve-TicketboxPostgresServiceHostAuthority `
+        -ServiceName $script:TicketboxC07PostgresServiceName `
+        -ExpectedPgCtlPath (Join-Path $InstallDir "pg\bin\pg_ctl.exe") `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -BackendServiceName $BackendServiceName `
+        -AllowedServiceIdentityShapes $serviceIdentityShapes
     return [pscustomobject]@{
         Schema = "ticketbox-c07-host-db-authority-v1"
-        ServiceName = $script:TicketboxC07PostgresServiceName
-        ServiceProcessId = $servicePid
-        PostmasterProcessId = $postmasterPid
-        PgCtlPath = $pgCtl
-        PsqlPath = $psql
-        PgData = $pgData
-        Port = $port
+        ServiceName = [string]$authority.ServiceName
+        ServiceProcessId = [int]$authority.ServiceProcessId
+        PostmasterProcessId = [int]$authority.PostmasterProcessId
+        PgCtlPath = [string]$authority.PgCtlPath
+        PsqlPath = [string]$authority.PsqlPath
+        PgData = [string]$authority.PgData
+        PhysicalPgData = [string]$authority.PhysicalPgData
+        Port = [int]$authority.Port
+        UsesRuntimeBinding = [bool]$authority.UsesRuntimeBinding
+        DataVolumeIdentity = [string]$authority.DataVolumeIdentity
     }
 }
 
@@ -5714,12 +5700,15 @@ function Disable-TicketboxC07MigratorLogin {
 function ConvertTo-TicketboxC07OperationGuid {
     param([Parameter(Mandatory = $true)][string]$OperationId)
 
-    if ($OperationId -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
-        throw "C07 operation ID 必须是 canonical lowercase UUID。"
-    }
     $parsed = [Guid]::Empty
-    if (-not [Guid]::TryParseExact($OperationId, "D", [ref]$parsed)) {
-        throw "C07 operation ID 无效。"
+    if (
+        -not [Guid]::TryParseExact($OperationId, "D", [ref]$parsed) -or
+        $parsed -eq [Guid]::Empty
+    ) {
+        throw "C07 operation ID 必须是非空 canonical GUID。"
+    }
+    if ($parsed.ToString("D") -cne $OperationId) {
+        throw "C07 operation ID 不是 canonical lowercase GUID。"
     }
     return $parsed
 }
