@@ -211,6 +211,20 @@ function Set-TicketboxC07DatabaseAuthorityCredential(
     $script:TicketboxC07DatabaseAuthorityPassword = $SuperuserPassword
 }
 
+function Clear-TicketboxC07DatabaseAuthorityCredential(
+    [Security.SecureString]$ExpectedCredential
+) {
+    $current = $script:TicketboxC07DatabaseAuthorityPassword
+    if ($null -eq $current) { return }
+    if (
+        $null -eq $ExpectedCredential -or
+        -not [object]::ReferenceEquals($current, $ExpectedCredential)
+    ) {
+        throw "C07 拒绝清除不属于当前 scoped action 的 database authority credential。"
+    }
+    $script:TicketboxC07DatabaseAuthorityPassword = $null
+}
+
 function ConvertTo-TicketboxC07InstalledSecureString {
     param(
         [Parameter(Mandatory = $true)][string]$Value,
@@ -721,7 +735,7 @@ function Remove-TicketboxC07InstalledCredentials {
         [ValidateSet("fresh_install", "legacy_adoption")]
         [string]$Mode
     )
-    $authority = Read-TicketboxC07Authority $DataRoot
+    $authority = Read-TicketboxC07DurableHeartbeatAuthority $DataRoot
     Assert-TicketboxC07OperationLease $authority $LifecycleLock
     if ([string]$authority.Receipt.stage -cne "ready") {
         throw "C07 installed credentials 只能在 durable READY 后清理。"
@@ -743,7 +757,7 @@ function Remove-TicketboxC07FreshBootstrapIntent {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
-    $authority = Read-TicketboxC07Authority $DataRoot
+    $authority = Read-TicketboxC07DurableHeartbeatAuthority $DataRoot
     Assert-TicketboxC07OperationLease $authority $LifecycleLock
     if ([string]$authority.Receipt.stage -cne "ready") {
         throw "C07 fresh bootstrap intent 只能在 durable READY 后清理。"
@@ -1613,7 +1627,7 @@ function New-TicketboxC07ReadyVerification {
         database_unexpected_worker_count =
             [int64]$database.UnexpectedDatabaseWorkerCount
         database_advisory_fence_available = $true
-        verified_at_utc = [DateTime]::UtcNow.ToString("o")
+        verified_at_utc = ""
     }
     $path = Get-TicketboxC07ReadyVerificationPath (
         [string]$Authority.Receipt.operation_id
@@ -1622,18 +1636,24 @@ function New-TicketboxC07ReadyVerification {
         $existing = Read-TicketboxC07HostEnvelope `
             -Path $path `
             -ExpectedKind "ready_verification"
-        if (
-            [string]$existing.Payload.operation_id -ceq
-                [string]$Authority.Receipt.operation_id -and
-            [string]$existing.Payload.descriptor_sha256 -ceq
-                $Authority.Descriptor.PayloadSha256 -and
-            [string]$existing.Payload.database_binding_sha256 -ceq
-                [string]$Authority.Receipt.database_binding_sha256
-        ) {
+        if ([string]$existing.Payload.schema -cne $script:TicketboxC07ReadyVerificationSchema) {
+            throw (
+                "C07 READY verification 路径含历史 schema；拒绝在同一 " +
+                "operation 原地升级或覆盖。"
+            )
+        }
+        $payload.verified_at_utc = ConvertTo-TicketboxC07CanonicalUtcTimestamp `
+            -Value ([string]$existing.Payload.verified_at_utc) `
+            -Label "C07 existing READY verified_at_utc"
+        $expectedText = New-TicketboxC07EnvelopeText `
+            -ArtifactKind "ready_verification" `
+            -Payload $payload
+        if ([string]$existing.Text -ceq $expectedText) {
             return $existing
         }
-        throw "C07 READY verification 已存在但不属于当前 operation/database。"
+        throw "C07 READY verification 已存在但不是本次完整 live proof。"
     }
+    $payload.verified_at_utc = [DateTime]::UtcNow.ToString("o")
     return Write-TicketboxC07HostEnvelope `
         -Path $path `
         -ArtifactKind "ready_verification" `
@@ -2455,8 +2475,10 @@ function Write-TicketboxC07RuntimeProjection {
     return $persisted
 }
 
-function Read-TicketboxC07RuntimeProjection([string]$DataRoot) {
-    $authority = Read-TicketboxC07Authority $DataRoot
+function Read-TicketboxC07RuntimeProjectionForAuthority {
+    param([Parameter(Mandatory = $true)][object]$Authority)
+
+    $authority = $Authority
     $runtimeAccount = Get-TicketboxC07RuntimeReadAccount $authority.ReleaseIdentity
     Assert-TicketboxProtectedDirectoryAcl `
         -Path (Get-TicketboxC07RuntimeProjectionRoot) `
@@ -2583,6 +2605,12 @@ function Read-TicketboxC07RuntimeProjection([string]$DataRoot) {
         Payload = $payload
         PayloadSha256 = $envelope.PayloadSha256
     }
+}
+
+function Read-TicketboxC07RuntimeProjection([string]$DataRoot) {
+    $authority = Read-TicketboxC07DurableHeartbeatAuthority $DataRoot
+    return Read-TicketboxC07RuntimeProjectionForAuthority `
+        -Authority $authority
 }
 
 function Assert-TicketboxC07CommitReadyArtifacts {

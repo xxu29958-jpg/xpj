@@ -129,6 +129,9 @@ function New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql {
         [Parameter(Mandatory = $true)][string]$ManagedSchemaSql
     )
 
+    $relationWriteAuthority =
+        New-TicketboxPostgresqlWriterFenceRelationWriteAuthoritySql `
+            -RoleOidSql "role.oid"
     return @"
     IF EXISTS (
         SELECT 1
@@ -152,7 +155,7 @@ function New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql {
                   JOIN pg_namespace AS namespace
                     ON namespace.oid = relation.relnamespace
                   WHERE namespace.nspname = $ManagedSchemaSql
-                    AND relation.relkind IN ('r', 'p', 'f', 'S')
+                    AND relation.relkind IN ('r', 'p', 'f', 'S', 'v')
                     AND relation.relowner = role.oid
               )
               OR has_database_privilege(role.oid, current_database(), 'CREATE')
@@ -162,15 +165,7 @@ function New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql {
                   JOIN pg_namespace AS namespace
                     ON namespace.oid = relation.relnamespace
                   WHERE namespace.nspname = $ManagedSchemaSql
-                    AND relation.relkind IN ('r', 'p', 'f')
-                    AND (
-                        has_table_privilege(role.oid, relation.oid, 'INSERT')
-                        OR has_table_privilege(role.oid, relation.oid, 'UPDATE')
-                        OR has_table_privilege(role.oid, relation.oid, 'DELETE')
-                        OR has_table_privilege(role.oid, relation.oid, 'TRUNCATE')
-                        OR has_table_privilege(role.oid, relation.oid, 'REFERENCES')
-                        OR has_table_privilege(role.oid, relation.oid, 'TRIGGER')
-                    )
+                    AND ($relationWriteAuthority)
               )
               OR EXISTS (
                   SELECT 1 FROM pg_class AS relation

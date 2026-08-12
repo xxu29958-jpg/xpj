@@ -15,6 +15,9 @@ function New-TicketboxPostgresqlWriterFenceObservationSql {
     $schema = ConvertTo-TicketboxPostgresqlWriterFenceSqlLiteral $ManagedSchemaName
     $lease = ConvertTo-TicketboxPostgresqlWriterFenceSqlLiteral $AdvisoryLockLabel
     $application = ConvertTo-TicketboxPostgresqlWriterFenceSqlLiteral $ApplicationName
+    $relationWriteAuthority =
+        New-TicketboxPostgresqlWriterFenceRelationWriteAuthoritySql `
+            -RoleOidSql "role.oid"
     return @"
 SET application_name = $application;
 SET statement_timeout = '$($StatementTimeoutMilliseconds)ms';
@@ -54,7 +57,7 @@ user_roles AS MATERIALIZED (
             JOIN pg_namespace AS namespace
               ON namespace.oid = relation.relnamespace
             WHERE namespace.nspname = $schema
-              AND relation.relkind IN ('r', 'p', 'f', 'S')
+              AND relation.relkind IN ('r', 'p', 'f', 'S', 'v')
               AND relation.relowner = role.oid
         ) AS owns_managed_relations,
         EXISTS (
@@ -102,15 +105,7 @@ user_roles AS MATERIALIZED (
             JOIN pg_namespace AS namespace
               ON namespace.oid = relation.relnamespace
             WHERE namespace.nspname = $schema
-              AND relation.relkind IN ('r', 'p', 'f')
-              AND (
-                  has_table_privilege(role.oid, relation.oid, 'INSERT')
-                  OR has_table_privilege(role.oid, relation.oid, 'UPDATE')
-                  OR has_table_privilege(role.oid, relation.oid, 'DELETE')
-                  OR has_table_privilege(role.oid, relation.oid, 'TRUNCATE')
-                  OR has_table_privilege(role.oid, relation.oid, 'REFERENCES')
-                  OR has_table_privilege(role.oid, relation.oid, 'TRIGGER')
-              )
+              AND ($relationWriteAuthority)
         ) AS can_table_write,
         EXISTS (
             SELECT 1
@@ -138,7 +133,7 @@ user_roles AS MATERIALIZED (
                 JOIN pg_namespace AS namespace
                   ON namespace.oid = relation.relnamespace
                 WHERE namespace.nspname = $schema
-                  AND relation.relkind IN ('r', 'p', 'f', 'S')
+                  AND relation.relkind IN ('r', 'p', 'f', 'S', 'v')
                 UNION
                 SELECT routine.proowner
                 FROM pg_proc AS routine

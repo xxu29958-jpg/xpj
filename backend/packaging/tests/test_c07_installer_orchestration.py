@@ -13,6 +13,9 @@ INSTALLER = PACKAGING / "install_bundled_services.ps1"
 PREPARE = PACKAGING / "prepare_bundled_upgrade.ps1"
 C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
 BUNDLED_DATABASE = PACKAGING / "windows_bundled_database.ps1"
+C07_WRITER_FENCE_ADAPTER = (
+    PACKAGING / "c07_lifecycle" / "writer_fence" / "adapter.ps1"
+)
 
 
 def _function(source: str, name: str) -> str:
@@ -51,6 +54,7 @@ def _run_ps(engine: str, script: str) -> subprocess.CompletedProcess[str]:
 
 def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
     source = INSTALLER.read_text(encoding="utf-8-sig")
+    adapter = C07_WRITER_FENCE_ADAPTER.read_text(encoding="utf-8-sig")
     main = source[source.rindex("    $c07Disposition =") :]
     assert main.index("$c07Disposition =") < main.index(
         "Invoke-TicketboxC07InstalledReleaseMigration"
@@ -69,7 +73,74 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
         "Start-TicketboxOwnedServiceIfExists `\n            -Name $BackendServiceName"
     )
 
+    residue = _function(source, "Complete-TicketboxC07RecoveredSuperuserResidue")
+    assert residue.index("Set-TicketboxC07DatabaseAuthorityCredential") < residue.index(
+        "Get-TicketboxC07PublishedRuntimeQualification"
+    )
+    qualification = _function(
+        adapter,
+        "Get-TicketboxC07PublishedRuntimeQualification",
+    )
+    assert qualification.index("Read-TicketboxC07Authority") < qualification.index(
+        "Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority"
+    )
+    assert qualification.index('AuthorityPhase "published_runtime"') < qualification.index(
+        "Assert-TicketboxC07PublishedDatabaseAuthority"
+    )
+    assert qualification.index("Assert-TicketboxC07PublishedDatabaseAuthority") < qualification.index(
+        "Assert-TicketboxC07RuntimeCredential"
+    )
+    assert "finally {" in residue
+    assert "Clear-TicketboxC07DatabaseAuthorityCredential" in residue
+    runtime_ready = main[main.index('if ($c07Disposition -ceq "runtime_ready")') :]
+    assert runtime_ready.index("Read-EnvMap $EnvPath") < runtime_ready.index(
+        "Complete-TicketboxC07RecoveredSuperuserResidue"
+    )
+    assert runtime_ready.index("Complete-TicketboxC07RecoveredSuperuserResidue") < runtime_ready.index(
+        "Complete-TicketboxC07InstalledSecretCleanup"
+    )
     release = _function(source, "Invoke-TicketboxC07InstalledReleaseMigration")
+    assert release.index("Invoke-TicketboxC07InstalledProductionLifecycle") < release.index(
+        "Get-TicketboxC07PublishedRuntimeQualification"
+    )
+    environment = _function(source, "Write-TicketboxC07InstalledRuntimeEnvironment")
+    assert environment.index("Assert-TicketboxC07PublishedRuntimeQualification") < environment.index(
+        "Write-EnvNoBom"
+    )
+    cleanup = _function(source, "Complete-TicketboxC07InstalledSecretCleanup")
+    assert cleanup.index("Assert-TicketboxC07PublishedRuntimeQualification") < cleanup.index(
+        "Remove-TicketboxC07InstalledCredentials"
+    )
+
+    managed = _function(source, "Invoke-TicketboxInstalledManagedSchemaUpgrade")
+    assert managed.index("Set-TicketboxC07DatabaseAuthorityCredential") < managed.index(
+        "Read-TicketboxC07Authority"
+    )
+    assert managed.index("Read-TicketboxC07Authority") < managed.index(
+        "Get-TicketboxC07InstalledAlembicRevision"
+    )
+    assert "Clear-TicketboxC07DatabaseAuthorityCredential" in managed
+    assert re.search(
+        r"Set-TicketboxC07DatabaseAuthorityCredential[\s\S]*?"
+        r"try\s*\{[\s\S]*?finally\s*\{\s*"
+        r"Clear-TicketboxC07DatabaseAuthorityCredential",
+        managed,
+    )
+
+    successor_start = source.index("$c07SuccessorResolution =")
+    successor_end = source.index("    $c07Disposition =", successor_start)
+    successor = source[successor_start:successor_end]
+    assert "Read-TicketboxC07Authority $DataRoot" in successor
+    assert "Read-TicketboxC07DurableHeartbeatAuthority $DataRoot" not in successor
+
+    release = _function(source, "Invoke-TicketboxC07InstalledReleaseMigration")
+    assert "Clear-TicketboxC07DatabaseAuthorityCredential" in release
+    assert re.search(
+        r"Set-TicketboxC07DatabaseAuthorityCredential[\s\S]*?"
+        r"try\s*\{[\s\S]*?finally\s*\{\s*"
+        r"Clear-TicketboxC07DatabaseAuthorityCredential",
+        release,
+    )
     assert release.index("Get-TicketboxC07AuthorityPath") < release.index(
         "Initialize-TicketboxC07FreshDatabaseAuthority"
     )
@@ -295,6 +366,8 @@ def test_installer_c07_failure_terminal_preserves_code_without_budget_or_secrets
             "$script:secretCalls = 0",
             "$script:budgetCalls = 0",
             "$script:lifecycleCalls = 0",
+            "$script:credentialSetCalls = 0",
+            "$script:credentialClearCalls = 0",
             "$script:testStage = 'refused_pre_ddl'",
             lifecycle_failure,
             release_migration,
@@ -307,6 +380,10 @@ def test_installer_c07_failure_terminal_preserves_code_without_budget_or_secrets
             "upgrade_required = $true; revision_manifest_sha256 = "
             "('a' * 64) } }",
             "function Assert-TicketboxC07LowerSha256 { param($Value, $Label) }",
+            "function Set-TicketboxC07DatabaseAuthorityCredential { "
+            "$script:credentialSetCalls += 1 }",
+            "function Clear-TicketboxC07DatabaseAuthorityCredential { "
+            "$script:credentialClearCalls += 1 }",
             "function Invoke-TicketboxC07RecoveredSuperuserAction { "
             "param($HostAuthority, $RecoveryArtifactPath, $Action); "
             "$secret = [Security.SecureString]::new(); "
@@ -327,13 +404,24 @@ def test_installer_c07_failure_terminal_preserves_code_without_budget_or_secrets
             "function New-TicketboxC07MaintenanceBudget { "
             "$script:budgetCalls += 1; [pscustomobject]@{ "
             "DeadlineUtc = [DateTime]::UtcNow.AddMinutes(20) } }",
-            "function Invoke-TicketboxC07InstalledProductionLifecycle { "
+                "function Invoke-TicketboxC07InstalledProductionLifecycle { "
             "$script:lifecycleCalls += 1; [pscustomobject]@{ "
             "result = 'ready'; operation_id = '"
             + operation_id
             + "'; target_revision = '20260729_0001'; "
             "production_authority_sha256 = ('A' * 64); "
-            "runtime_projection_sha256 = ('B' * 64) } }",
+                "runtime_projection_sha256 = ('B' * 64) } }",
+                "function Get-TicketboxC07PublishedRuntimeQualification { "
+                "param($DataRoot, $HostAuthority, $DatabaseAuthorityCredential, "
+                "$RuntimePassword, $ExpectedOperationId, "
+                "$ObservationTimeoutMilliseconds); "
+                "[pscustomobject]@{ schema = "
+                "'ticketbox-c07-published-runtime-qualification-v1'; "
+                "operation_id = $ExpectedOperationId; "
+                "ready_verification_sha256 = ('c' * 64); "
+                "ready_semantics = 'published_runtime'; "
+                "production_authority_sha256 = ('A' * 64); "
+                "runtime_projection_sha256 = ('B' * 64) } }",
             "$releaseIdentity = [pscustomobject]@{ "
             "InstallationIdentityState = 'PENDING'; "
             "InstallationOperationId = '"
@@ -365,6 +453,8 @@ def test_installer_c07_failure_terminal_preserves_code_without_budget_or_secrets
             "  ready_secret_calls = $script:secretCalls",
             "  ready_budget_calls = $script:budgetCalls",
             "  ready_lifecycle_calls = $script:lifecycleCalls",
+            "  credential_set_calls = $script:credentialSetCalls",
+            "  credential_clear_calls = $script:credentialClearCalls",
             "} | ConvertTo-Json -Compress",
         )
     )
@@ -386,6 +476,8 @@ def test_installer_c07_failure_terminal_preserves_code_without_budget_or_secrets
         "ready_secret_calls": 1,
         "ready_budget_calls": 0,
         "ready_lifecycle_calls": 1,
+        "credential_set_calls": 2,
+        "credential_clear_calls": 2,
     }
 
 
@@ -977,6 +1069,11 @@ $script:runtimePassword = New-TestSecureString ('R' * 40)
 $script:migratorPassword = New-TestSecureString ('M' * 40)
 $script:superuserPassword = New-TestSecureString ('S' * 40)
 $script:operationId = '1493b3d9-3721-0e51-0255-58aba5ba6e99'
+$script:recoveryExists = $true
+$script:qualificationCalls = 0
+$script:environmentCalls = 0
+$script:cleanupCalls = 0
+$script:failQualification = $false
 $releaseIdentity = [pscustomobject]@{
     InstallationIdentityState = 'PENDING'
     InstallationOperationId = $script:operationId
@@ -999,10 +1096,14 @@ function Assert-TicketboxC07LowerSha256 {
     param([string]$Value, [string]$Label)
     if ($Value -cnotmatch '^[0-9a-f]{64}$') { throw "$Label is invalid" }
 }
+function Set-TicketboxC07DatabaseAuthorityCredential {}
+function Clear-TicketboxC07DatabaseAuthorityCredential {}
 function Get-TicketboxC07AuthorityPath { return $script:authorityPath }
 function Invoke-TicketboxC07RecoveredSuperuserAction {
     param($HostAuthority, [string]$RecoveryArtifactPath, [scriptblock]$Action)
-    return & $Action $script:superuserPassword
+    $result = & $Action $script:superuserPassword
+    $script:recoveryExists = $false
+    return $result
 }
 function Initialize-TicketboxC07FreshDatabaseAuthority {
     param(
@@ -1082,6 +1183,28 @@ function Invoke-TicketboxC07InstalledProductionLifecycle {
         runtime_projection_sha256 = ('B' * 64)
     }
 }
+function Get-TicketboxC07PublishedRuntimeQualification {
+    param(
+        $DataRoot,
+        $HostAuthority,
+        $DatabaseAuthorityCredential,
+        $RuntimePassword,
+        [string]$ExpectedOperationId,
+        $ObservationTimeoutMilliseconds
+    )
+    $script:qualificationCalls += 1
+    if ($script:failQualification) {
+        throw 'injected published runtime qualification failure'
+    }
+    return [pscustomobject]@{
+        schema = 'ticketbox-c07-published-runtime-qualification-v1'
+        operation_id = $ExpectedOperationId
+        ready_verification_sha256 = ('c' * 64)
+        ready_semantics = 'historical_ambiguous'
+        production_authority_sha256 = ('A' * 64)
+        runtime_projection_sha256 = ('B' * 64)
+    }
+}
 function Read-TicketboxC07Authority {
     param($DataRoot)
     return [pscustomobject]@{ Receipt = [pscustomobject]@{ stage = 'operation' } }
@@ -1098,32 +1221,61 @@ $intent = [pscustomobject]@{
 }
 $lock = [pscustomobject]@{ Lease = 'held' }
 function Invoke-TestRun {
-    param([string]$Revision, [bool]$HasAuthority)
+    param(
+        [string]$Revision,
+        [bool]$HasAuthority,
+        [string]$Mode = 'fresh_install',
+        [bool]$FailQualification = $false
+    )
     $script:revision = $Revision
     $script:initCalls = 0
     $script:freshCalls = 0
+    $script:qualificationCalls = 0
+    $script:environmentCalls = 0
+    $script:cleanupCalls = 0
+    $script:recoveryExists = $true
+    $script:failQualification = $FailQualification
     if ($HasAuthority) {
         [IO.File]::WriteAllText($script:authorityPath, '{}')
     }
     elseif (Test-Path -LiteralPath $script:authorityPath) {
         Remove-Item -LiteralPath $script:authorityPath -Force
     }
-    $result = Invoke-TicketboxC07InstalledReleaseMigration `
-        -ReleaseIdentity $releaseIdentity `
-        -Mode fresh_install `
-        -LifecycleLock $lock `
-        -FreshIntent $intent `
-        -RecoveryArtifactPath 'C:\\protected\\c07-superuser-recovery.pgpass'
+    $selectedIntent = if ($Mode -ceq 'fresh_install') { $intent } else { $null }
+    $failed = $false
+    try {
+        $result = Invoke-TicketboxC07InstalledReleaseMigration `
+            -ReleaseIdentity $releaseIdentity `
+            -Mode $Mode `
+            -LifecycleLock $lock `
+            -FreshIntent $selectedIntent `
+            -RecoveryArtifactPath 'C:\\protected\\c07-superuser-recovery.pgpass'
+        $script:environmentCalls += 1
+        $script:cleanupCalls += 1
+    }
+    catch {
+        $failed = $_.Exception.Message.Contains(
+            'injected published runtime qualification failure'
+        )
+        $result = [pscustomobject]@{ result = 'blocked' }
+    }
     return [pscustomobject]@{
         result = $result.result
         init = $script:initCalls
         fresh = $script:freshCalls
+        failed = $failed
+        recovery_exists = [bool]$script:recoveryExists
+        qualification_calls = $script:qualificationCalls
+        environment_calls = $script:environmentCalls
+        cleanup_calls = $script:cleanupCalls
     }
 }
 @(
     Invoke-TestRun '' $false
     Invoke-TestRun '20260722_0001' $false
     Invoke-TestRun '20260729_0001' $true
+    Invoke-TestRun '20260729_0001' $true fresh_install $true
+    Invoke-TestRun '20260729_0001' $true legacy_adoption $true
 ) | ConvertTo-Json -Compress
 """,
         )
@@ -1131,11 +1283,33 @@ function Invoke-TestRun {
     result = _run_ps(engine, script)
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload == [
-        {"result": "ready", "init": 1, "fresh": 1},
-        {"result": "ready", "init": 1, "fresh": 0},
-        {"result": "ready", "init": 0, "fresh": 0},
-    ]
+    for result, init_calls, fresh_calls in zip(
+        payload[:3],
+        (1, 1, 0),
+        (1, 0, 0),
+        strict=True,
+    ):
+        assert result == {
+            "result": "ready",
+            "init": init_calls,
+            "fresh": fresh_calls,
+            "failed": False,
+            "recovery_exists": False,
+            "qualification_calls": 1,
+            "environment_calls": 1,
+            "cleanup_calls": 1,
+        }
+    for result in payload[3:]:
+        assert result == {
+            "result": "blocked",
+            "init": 0,
+            "fresh": 0,
+            "failed": True,
+            "recovery_exists": True,
+            "qualification_calls": 1,
+            "environment_calls": 0,
+            "cleanup_calls": 0,
+        }
 
 
 @pytest.mark.parametrize("engine", powershell_contract_engines())
@@ -1203,12 +1377,15 @@ def test_runtime_environment_is_published_and_verified_before_secret_cleanup(
     tmp_path: Path,
 ) -> None:
     source = INSTALLER.read_text(encoding="utf-8-sig")
+    adapter = C07_WRITER_FENCE_ADAPTER.read_text(encoding="utf-8-sig")
     env_path = tmp_path / ".env"
     script = "\n".join(
         (
             "$ErrorActionPreference = 'Stop'",
+            _function(adapter, "Assert-TicketboxC07PublishedRuntimeQualification"),
             _function(source, "Write-TicketboxC07InstalledRuntimeEnvironment"),
             f"$EnvPath = {_ps_literal(env_path)}",
+            "$DataRoot = 'C:\\protected\\data'",
             "$PgPort = 5432",
             "$PgData = 'C:\\protected\\pgdata'",
             "$Psql = 'C:\\protected\\psql.exe'",
@@ -1218,6 +1395,7 @@ def test_runtime_environment_is_published_and_verified_before_secret_cleanup(
             "$script:order = @()",
             "$script:envMap = @{}",
             "$script:writtenLines = @()",
+            "$script:envMutationCalls = 0",
             """
 function New-TestSecureString {
     $secret = New-Object Security.SecureString
@@ -1228,13 +1406,29 @@ function New-TestSecureString {
     return $secret
 }
 $runtimePassword = New-TestSecureString
-function Read-TicketboxC07Authority {
+function Read-TicketboxC07DurableHeartbeatAuthority {
     return [pscustomobject]@{
-        Receipt = [pscustomobject]@{ stage = 'ready' }
+        Receipt = [pscustomobject]@{
+            stage = 'ready'
+            operation_id = '11111111-1111-4111-8111-111111111111'
+            ready_verification_sha256 = ('c' * 64)
+        }
+        ReadyVerification = [pscustomobject]@{
+            ReadySemantics = 'historical_ambiguous'
+        }
     }
 }
-function Read-TicketboxC07RuntimeProjection {
-    return [pscustomobject]@{ PayloadSha256 = ('A' * 64) }
+function Assert-TicketboxC07LowerSha256 {
+    param([string]$Value, [string]$Label)
+    if ($Value -cnotmatch '^[0-9a-f]{64}$') {
+        throw "$Label invalid"
+    }
+}
+function Read-TicketboxC07ProductionAuthority {
+    return [pscustomobject]@{ PayloadSha256 = ('a' * 64) }
+}
+function Read-TicketboxC07RuntimeProjectionForAuthority {
+    return [pscustomobject]@{ PayloadSha256 = ('b' * 64) }
 }
 function Resolve-TicketboxC07DatabaseHostAuthority {
     return [pscustomobject]@{ Schema = 'host' }
@@ -1252,11 +1446,16 @@ function New-BaseEnvLines {
 }
 function Write-EnvNoBom {
     param([string]$Path, [string[]]$Lines)
+    $script:envMutationCalls += 1
     $script:writtenLines = @($Lines)
     $databaseLine = @($Lines | Where-Object { $_.StartsWith('DATABASE_URL=') })
     $script:envMap = @{ DATABASE_URL = $databaseLine[0].Substring(13) }
 }
-function Set-EnvDatabaseUrl { throw 'fresh harness must create the complete env' }
+function Set-EnvDatabaseUrl {
+    param([string]$Path, [string]$DatabaseUrl)
+    $script:envMutationCalls += 1
+    $script:envMap = @{ DATABASE_URL = $DatabaseUrl }
+}
 function Read-EnvMap { return $script:envMap }
 function Get-TicketboxLocalDatabaseConnection {
     param(
@@ -1285,12 +1484,74 @@ function Assert-TicketboxC07RuntimeCredential {
     param($Authority, [Security.SecureString]$RuntimePassword)
     $script:order += 'runtime_credential'
 }
+$qualification = [pscustomobject][ordered]@{
+    schema = 'ticketbox-c07-published-runtime-qualification-v1'
+    operation_id = '11111111-1111-4111-8111-111111111111'
+    ready_verification_sha256 = ('c' * 64)
+    ready_semantics = 'historical_ambiguous'
+    production_authority_sha256 = ('a' * 64)
+    runtime_projection_sha256 = ('b' * 64)
+}
+$script:order += 'qualification'
 $result = Write-TicketboxC07InstalledRuntimeEnvironment `
-    -RuntimePassword $runtimePassword
+    -RuntimePassword $runtimePassword `
+    -Qualification $qualification
+$mutationsBefore = $script:envMutationCalls
+$acceptedDrift = @()
+foreach ($mutation in @(
+    @('schema', 'ticketbox-c07-published-runtime-qualification-v0'),
+    @('operation_id', '22222222-2222-4222-8222-222222222222'),
+    @('ready_verification_sha256', ('d' * 64)),
+    @('ready_semantics', 'published_runtime'),
+    @('production_authority_sha256', ('d' * 64)),
+    @('runtime_projection_sha256', ('d' * 64))
+)) {
+    $candidate = [pscustomobject][ordered]@{
+        schema = [string]$qualification.schema
+        operation_id = [string]$qualification.operation_id
+        ready_verification_sha256 = [string]$qualification.ready_verification_sha256
+        ready_semantics = [string]$qualification.ready_semantics
+        production_authority_sha256 = [string]$qualification.production_authority_sha256
+        runtime_projection_sha256 = [string]$qualification.runtime_projection_sha256
+    }
+    $candidate.([string]$mutation[0]) = [string]$mutation[1]
+    try {
+        [void](Write-TicketboxC07InstalledRuntimeEnvironment `
+            -RuntimePassword $runtimePassword `
+            -Qualification $candidate)
+        $acceptedDrift += [string]$mutation[0]
+    }
+    catch {}
+}
+$missingField = [pscustomobject][ordered]@{
+    schema = [string]$qualification.schema
+    operation_id = [string]$qualification.operation_id
+    ready_verification_sha256 = [string]$qualification.ready_verification_sha256
+    ready_semantics = [string]$qualification.ready_semantics
+    production_authority_sha256 = [string]$qualification.production_authority_sha256
+}
+try {
+    [void](Write-TicketboxC07InstalledRuntimeEnvironment `
+        -RuntimePassword $runtimePassword `
+        -Qualification $missingField)
+    $acceptedDrift += 'missing_field'
+}
+catch {}
+$extraField = $qualification | Select-Object *, @{Name='extra'; Expression={'x'}}
+try {
+    [void](Write-TicketboxC07InstalledRuntimeEnvironment `
+        -RuntimePassword $runtimePassword `
+        -Qualification $extraField)
+    $acceptedDrift += 'extra_field'
+}
+catch {}
 [pscustomobject]@{
     result = $result
     order = $script:order
     lines = $script:writtenLines
+    accepted_drift = $acceptedDrift
+    mutation_calls_before = $mutationsBefore
+    mutation_calls_after = $script:envMutationCalls
 } | ConvertTo-Json -Compress
 """,
         )
@@ -1299,9 +1560,429 @@ $result = Write-TicketboxC07InstalledRuntimeEnvironment `
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert "ticketbox_runtime:" in payload["result"]
-    assert payload["order"] == ["data_root", "runtime_credential"]
+    assert payload["order"] == ["qualification", "data_root", "runtime_credential"]
+    assert payload["accepted_drift"] == []
+    assert payload["mutation_calls_before"] == 1
+    assert payload["mutation_calls_after"] == payload["mutation_calls_before"]
     assert "ENABLE_HTTP_BOOTSTRAP=true" in payload["lines"]
     assert "HTTP_BOOTSTRAP_SECRET=http-bootstrap-secret" in payload["lines"]
+
+
+@pytest.mark.parametrize("ready_semantics", ["historical_ambiguous", "published_runtime"])
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_historical_ready_requires_live_published_proof_before_recovery_cleanup(
+    engine: str,
+    ready_semantics: str,
+) -> None:
+    source = INSTALLER.read_text(encoding="utf-8-sig")
+    adapter = C07_WRITER_FENCE_ADAPTER.read_text(encoding="utf-8-sig")
+    script = "\n".join(
+        (
+            "$ErrorActionPreference = 'Stop'",
+            _function(adapter, "Assert-TicketboxC07PublishedRuntimeQualification"),
+            _function(adapter, "Get-TicketboxC07PublishedRuntimeQualification"),
+            _function(source, "Complete-TicketboxC07RecoveredSuperuserResidue"),
+            "$DataRoot = 'C:\\poison\\global'",
+            "$DatabaseToolTimeoutMs = 7000",
+            "$script:order = @()",
+            "$script:failPublished = $true",
+            "$script:durableStageDrift = $false",
+            "$script:rawCalls = 0",
+            "$script:recoveryExists = $true",
+            r"""
+function New-TestSecureString {
+    $secret = New-Object Security.SecureString
+    foreach ($character in ('R' * 40).ToCharArray()) {
+        $secret.AppendChar($character)
+    }
+    $secret.MakeReadOnly()
+    return $secret
+}
+$runtimePassword = New-TestSecureString
+function Resolve-TicketboxC07DatabaseHostAuthority {
+    $script:resolveCalls += 1
+    if ($script:resolveCalls -gt 1) { throw 'host authority re-resolved' }
+    return [pscustomobject]@{ Schema = 'host'; Nonce = 'bound' }
+}
+function Set-TicketboxC07DatabaseAuthorityCredential {
+    param($Credential)
+    $script:databaseAuthorityCredential = $Credential
+    $script:order += 'set_authority'
+}
+function Clear-TicketboxC07DatabaseAuthorityCredential {
+    param($ExpectedCredential)
+    if (-not [object]::ReferenceEquals(
+        $script:databaseAuthorityCredential,
+        $ExpectedCredential
+    )) { throw 'scope credential mismatch' }
+    $script:databaseAuthorityCredential = $null
+    $script:order += 'clear_authority'
+}
+function Get-TicketboxC07DatabaseAuthorityCredential {
+    return $script:databaseAuthorityCredential
+}
+function Read-TicketboxC07Authority {
+    param($BoundDataRoot)
+    if ($BoundDataRoot -cne 'C:\expected\bound') { throw 'poison data root used' }
+    $script:order += 'full_authority'
+    return [pscustomobject]@{
+        Receipt = [pscustomobject]@{
+            stage = 'ready'
+            operation_id = '11111111-1111-4111-8111-111111111111'
+            ready_verification_sha256 = ('c' * 64)
+        }
+        ReadyVerification = [pscustomobject]@{
+            ReadySemantics = '__READY_SEMANTICS__'
+        }
+    }
+}
+function Read-TicketboxC07ProductionAuthority {
+    $script:order += 'production'
+    return [pscustomobject]@{ PayloadSha256 = ('a' * 64) }
+}
+function Read-TicketboxC07RuntimeProjectionForAuthority {
+    $script:order += 'projection'
+    return [pscustomobject]@{ PayloadSha256 = ('b' * 64) }
+}
+function Get-TicketboxC07WriterDatabaseFenceObservation {
+    param([string]$AuthorityPhase)
+    $script:order += "observe:$AuthorityPhase"
+    return [pscustomobject]@{ AuthorityPhase = $AuthorityPhase }
+}
+function Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority {
+    param($HostAuthority, $DatabaseAuthorityCredential, $TimeoutMilliseconds)
+    if (
+        [string]$HostAuthority.Nonce -cne 'bound' -or
+        -not [object]::ReferenceEquals(
+            $script:databaseAuthorityCredential,
+            $DatabaseAuthorityCredential
+        ) -or
+        [int]$TimeoutMilliseconds -ne 7000
+    ) { throw 'explicit observation boundary drift' }
+    $script:rawCalls += 1
+    return [pscustomobject]@{ AuthorityPhase = 'raw' }
+}
+function ConvertTo-TicketboxC07WriterFenceObservation {
+    param($RawObservation, [string]$AuthorityPhase)
+    $script:order += "observe:$AuthorityPhase"
+    return [pscustomobject]@{ AuthorityPhase = $AuthorityPhase }
+}
+function Assert-TicketboxC07PublishedDatabaseAuthority {
+    $script:order += 'assert_published'
+    if ($script:failPublished) { throw 'injected frozen historical READY' }
+}
+function Assert-TicketboxC07RuntimeCredential {
+    param($Authority, $RuntimePassword)
+    if ([string]$Authority.Nonce -cne 'bound') { throw 'host authority drift' }
+    $script:order += 'runtime_credential'
+}
+function Assert-TicketboxC07LowerSha256 {
+    param([string]$Value, [string]$Label)
+    if ($Value -cnotmatch '^[0-9a-f]{64}$') { throw "$Label invalid" }
+}
+function Read-TicketboxC07DurableHeartbeatAuthority {
+    param($BoundDataRoot)
+    $authority = Read-TicketboxC07Authority $BoundDataRoot
+    if ($script:durableStageDrift) {
+        $authority.Receipt.stage = 'runtime_acl_verified'
+    }
+    return $authority
+}
+function Invoke-TicketboxC07RecoveredSuperuserAction {
+    param($HostAuthority, [string]$RecoveryArtifactPath, [scriptblock]$Action)
+    $script:order += 'recovered_action'
+    $result = & $Action (New-TestSecureString)
+    $script:recoveryExists = $false
+    $script:order += 'recovery_cleanup'
+    return $result
+}
+$failedClosed = $false
+try {
+    Complete-TicketboxC07RecoveredSuperuserResidue `
+        -DataRoot 'C:\expected\bound' `
+        -RecoveryArtifactPath 'recovery.pgpass' `
+        -RuntimePassword $runtimePassword `
+        -ExpectedOperationId '11111111-1111-4111-8111-111111111111' | Out-Null
+}
+catch { $failedClosed = $_.Exception.Message.Contains('injected frozen') }
+$failureOrder = @($script:order)
+$recoveryPreserved = [bool]$script:recoveryExists
+$rawCallsAfterPublishedFailure = $script:rawCalls
+$script:order = @()
+$script:resolveCalls = 0
+$script:failPublished = $false
+$wrongOperationRejected = $false
+try {
+    Complete-TicketboxC07RecoveredSuperuserResidue `
+        -DataRoot 'C:\expected\bound' `
+        -RecoveryArtifactPath 'recovery.pgpass' `
+        -RuntimePassword $runtimePassword `
+        -ExpectedOperationId '22222222-2222-4222-8222-222222222222' | Out-Null
+}
+catch { $wrongOperationRejected = $_.Exception.Message.Contains('exact operation') }
+$wrongOperationRecoveryPreserved = [bool]$script:recoveryExists
+$rawCallsAfterWrongOperation = $script:rawCalls
+$script:order = @()
+$script:resolveCalls = 0
+$scopeCredential = New-TestSecureString
+$foreignCredential = New-TestSecureString
+Set-TicketboxC07DatabaseAuthorityCredential $scopeCredential
+$foreignCredentialRejected = $false
+try {
+    [void](Get-TicketboxC07PublishedRuntimeQualification `
+        -DataRoot 'C:\expected\bound' `
+        -HostAuthority ([pscustomobject]@{ Nonce = 'bound' }) `
+        -DatabaseAuthorityCredential $foreignCredential `
+        -RuntimePassword $runtimePassword `
+        -ExpectedOperationId '11111111-1111-4111-8111-111111111111' `
+        -ObservationTimeoutMilliseconds 7000)
+}
+catch { $foreignCredentialRejected = $_.Exception.Message.Contains('scoped') }
+Clear-TicketboxC07DatabaseAuthorityCredential -ExpectedCredential $scopeCredential
+$rawCallsAfterForeignCredential = $script:rawCalls
+$script:order = @()
+$script:resolveCalls = 0
+$script:durableStageDrift = $true
+$receiptDriftRejected = $false
+try {
+    Complete-TicketboxC07RecoveredSuperuserResidue `
+        -DataRoot 'C:\expected\bound' `
+        -RecoveryArtifactPath 'recovery.pgpass' `
+        -RuntimePassword $runtimePassword `
+        -ExpectedOperationId '11111111-1111-4111-8111-111111111111' | Out-Null
+}
+catch { $receiptDriftRejected = $_.Exception.Message.Contains('durable READY') }
+$receiptDriftRecoveryPreserved = [bool]$script:recoveryExists
+$script:order = @()
+$script:resolveCalls = 0
+$script:durableStageDrift = $false
+$qualified = Complete-TicketboxC07RecoveredSuperuserResidue `
+    -DataRoot 'C:\expected\bound' `
+    -RecoveryArtifactPath 'recovery.pgpass' `
+    -RuntimePassword $runtimePassword `
+    -ExpectedOperationId '11111111-1111-4111-8111-111111111111'
+[pscustomobject]@{
+    failed_closed = $failedClosed
+    recovery_preserved = $recoveryPreserved
+    wrong_operation_rejected = $wrongOperationRejected
+    wrong_operation_recovery_preserved = $wrongOperationRecoveryPreserved
+    foreign_credential_rejected = $foreignCredentialRejected
+    raw_calls_after_published_failure = $rawCallsAfterPublishedFailure
+    raw_calls_after_wrong_operation = $rawCallsAfterWrongOperation
+    raw_calls_after_foreign_credential = $rawCallsAfterForeignCredential
+    receipt_drift_rejected = $receiptDriftRejected
+    receipt_drift_recovery_preserved = $receiptDriftRecoveryPreserved
+    failure_order = $failureOrder
+    success_order = @($script:order)
+    semantics = [string]$qualified.ready_semantics
+} | ConvertTo-Json -Compress
+""",
+        )
+    )
+    script = script.replace("__READY_SEMANTICS__", ready_semantics)
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["failed_closed"] is True
+    assert payload["recovery_preserved"] is True
+    assert payload["wrong_operation_rejected"] is True
+    assert payload["wrong_operation_recovery_preserved"] is True
+    assert payload["foreign_credential_rejected"] is True
+    assert payload["raw_calls_after_published_failure"] == 1
+    assert payload["raw_calls_after_wrong_operation"] == 1
+    assert payload["raw_calls_after_foreign_credential"] == 1
+    assert payload["receipt_drift_rejected"] is True
+    assert payload["receipt_drift_recovery_preserved"] is True
+    assert payload["failure_order"] == [
+        "recovered_action",
+        "set_authority",
+        "full_authority",
+        "production",
+        "projection",
+        "observe:published_runtime",
+        "assert_published",
+        "clear_authority",
+    ]
+    assert payload["success_order"] == [
+        "recovered_action",
+        "set_authority",
+        "full_authority",
+        "production",
+        "projection",
+        "observe:published_runtime",
+        "assert_published",
+        "runtime_credential",
+        "full_authority",
+        "production",
+        "projection",
+        "clear_authority",
+        "recovery_cleanup",
+    ]
+    assert payload["semantics"] == ready_semantics
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_release_schema_target_mismatch_fails_before_recovery_or_mutation(
+    engine: str,
+) -> None:
+    source = INSTALLER.read_text(encoding="utf-8-sig")
+    script = "\n".join(
+        (
+            "$ErrorActionPreference = 'Stop'",
+            _function(source, "Invoke-TicketboxInstalledManagedSchemaUpgrade"),
+            "$script:recoveryCalls = 0",
+            "$script:passwordCalls = 0",
+            r"""
+$DataRoot = 'C:\protected\data'
+function New-TestSecureString {
+    $secret = New-Object Security.SecureString
+    1..32 | ForEach-Object { $secret.AppendChar('R') }
+    $secret.MakeReadOnly()
+    return $secret
+}
+function Resolve-TicketboxC07DatabaseHostAuthority {
+    return [pscustomobject]@{ Schema = 'host' }
+}
+function Get-TicketboxRuntimeAlembicRevision { return '20260729_0001' }
+function Get-TicketboxInstalledManagedSchemaPlan {
+    return [pscustomobject]@{
+        source_revision = '20260729_0001'
+        target_revision = '20260809_0001'
+        upgrade_required = $true
+    }
+}
+function New-StrongPassword {
+    $script:passwordCalls += 1
+    return ('M' * 40)
+}
+function Invoke-TicketboxC07RecoveredSuperuserAction {
+    $script:recoveryCalls += 1
+    throw 'recovery action must not run for an unpublished generation target'
+}
+$authority = [pscustomobject]@{
+    Receipt = [pscustomobject]@{
+        operation_id = '11111111-1111-4111-8111-111111111111'
+    }
+    Descriptor = [pscustomobject]@{
+        Payload = [pscustomobject]@{
+            target_alembic_revision = '20260729_0001'
+        }
+    }
+}
+$rejected = $false
+try {
+    Invoke-TicketboxInstalledManagedSchemaUpgrade `
+        -ReleaseIdentity ([pscustomobject]@{}) `
+        -C07Authority $authority `
+        -RuntimePassword (New-TestSecureString) `
+        -LifecycleReceipt ([pscustomobject]@{}) `
+        -RecoveryArtifactPath 'recovery.pgpass' `
+        -Mode fresh_install | Out-Null
+}
+catch {
+    $rejected = $_.Exception.Message.Contains('generation authority')
+}
+if (-not $rejected -or $script:recoveryCalls -ne 0 -or
+    $script:passwordCalls -ne 0) {
+    throw 'unpublished release-schema generation reached credential or mutation path'
+}
+""",
+        )
+    )
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_managed_schema_scoped_authority_clears_exact_credential_on_failure(
+    engine: str,
+) -> None:
+    source = INSTALLER.read_text(encoding="utf-8-sig")
+    script = "\n".join(
+        (
+            "$ErrorActionPreference = 'Stop'",
+            _function(source, "Invoke-TicketboxInstalledManagedSchemaUpgrade"),
+            r"""
+$DataRoot = 'C:\protected\data'
+$script:setCalls = 0
+$script:clearCalls = 0
+$script:clearedExactCredential = $false
+function New-TestSecureString {
+    $secret = New-Object Security.SecureString
+    1..32 | ForEach-Object { $secret.AppendChar('R') }
+    $secret.MakeReadOnly()
+    return $secret
+}
+function Resolve-TicketboxC07DatabaseHostAuthority {
+    return [pscustomobject]@{ Schema = 'host' }
+}
+function Get-TicketboxRuntimeAlembicRevision { return '20260729_0001' }
+function Get-TicketboxInstalledManagedSchemaPlan {
+    return [pscustomobject]@{
+        source_revision = '20260729_0001'
+        target_revision = '20260729_0001'
+        revision_manifest_sha256 = ('A' * 64)
+        upgrade_required = $false
+    }
+}
+function New-StrongPassword { return ('M' * 40) }
+function ConvertTo-TicketboxC07InstalledSecureString { return New-TestSecureString }
+function Set-TicketboxC07DatabaseAuthorityCredential {
+    param([Security.SecureString]$Credential)
+    $script:setCalls += 1
+    $script:setCredential = $Credential
+}
+function Clear-TicketboxC07DatabaseAuthorityCredential {
+    param([Security.SecureString]$ExpectedCredential)
+    $script:clearCalls += 1
+    $script:clearedExactCredential = [object]::ReferenceEquals(
+        $script:setCredential,
+        $ExpectedCredential
+    )
+}
+function Read-TicketboxC07Authority {
+    throw 'injected managed authority failure'
+}
+function Invoke-TicketboxC07RecoveredSuperuserAction {
+    param($HostAuthority, [string]$RecoveryArtifactPath, [scriptblock]$Action)
+    $secret = New-TestSecureString
+    try { return & $Action $secret }
+    finally { $secret.Dispose() }
+}
+$authority = [pscustomobject]@{
+    Receipt = [pscustomobject]@{
+        operation_id = '11111111-1111-4111-8111-111111111111'
+    }
+    Descriptor = [pscustomobject]@{
+        Payload = [pscustomobject]@{
+            target_alembic_revision = '20260729_0001'
+        }
+    }
+}
+$failedWithPrimary = $false
+try {
+    Invoke-TicketboxInstalledManagedSchemaUpgrade `
+        -ReleaseIdentity ([pscustomobject]@{}) `
+        -C07Authority $authority `
+        -RuntimePassword (New-TestSecureString) `
+        -LifecycleReceipt ([pscustomobject]@{}) `
+        -RecoveryArtifactPath 'recovery.pgpass' `
+        -Mode fresh_install | Out-Null
+}
+catch {
+    $failedWithPrimary = $_.Exception.Message.Contains(
+        'injected managed authority failure'
+    )
+}
+if (-not $failedWithPrimary -or $script:setCalls -ne 1 -or
+    $script:clearCalls -ne 1 -or -not $script:clearedExactCredential) {
+    throw 'managed schema action did not clear its exact scoped credential'
+}
+""",
+        )
+    )
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize("engine", powershell_contract_engines())
@@ -1328,7 +2009,21 @@ def test_ready_secret_cleanup_is_ordered_fail_closed_and_idempotent(
             "$script:order = @()",
             """
 $lock = [pscustomobject]@{ Lease = 'held' }
-function Read-TicketboxC07Authority {
+function Assert-TicketboxC07PublishedRuntimeQualification {
+    param($DataRoot, $Qualification)
+    $script:order += 'qualification'
+    return [pscustomobject]@{
+        Receipt = [pscustomobject]@{
+            stage = 'ready'
+            operation_id = '11111111-1111-4111-8111-111111111111'
+        }
+    }
+}
+$qualification = [pscustomobject]@{
+    schema = 'ticketbox-c07-published-runtime-qualification-v1'
+    operation_id = '11111111-1111-4111-8111-111111111111'
+}
+function Read-TicketboxC07DurableHeartbeatAuthority {
     return [pscustomobject]@{
         Receipt = [pscustomobject]@{
             stage = 'ready'
@@ -1357,7 +2052,8 @@ try {
     Complete-TicketboxC07InstalledSecretCleanup `
         -Mode fresh_install `
         -LifecycleLock $lock `
-        -RecoveryArtifactPath $recovery
+        -RecoveryArtifactPath $recovery `
+        -Qualification $qualification
 }
 catch { $blockedByRecovery = $true }
 $orderBeforeRecoveryConverged = @($script:order)
@@ -1365,12 +2061,14 @@ Remove-Item -LiteralPath $recovery -Force
 Complete-TicketboxC07InstalledSecretCleanup `
     -Mode fresh_install `
     -LifecycleLock $lock `
-    -RecoveryArtifactPath $recovery
+    -RecoveryArtifactPath $recovery `
+    -Qualification $qualification
 $firstOrder = @($script:order)
 Complete-TicketboxC07InstalledSecretCleanup `
     -Mode fresh_install `
     -LifecycleLock $lock `
-    -RecoveryArtifactPath $recovery
+    -RecoveryArtifactPath $recovery `
+    -Qualification $qualification
 $idempotentOrder = @($script:order)
 [IO.File]::WriteAllText($script:intent, 'protected')
 $legacyIntentRejected = $false
@@ -1378,7 +2076,8 @@ try {
     Complete-TicketboxC07InstalledSecretCleanup `
         -Mode legacy_adoption `
         -LifecycleLock $lock `
-        -RecoveryArtifactPath $recovery
+        -RecoveryArtifactPath $recovery `
+        -Qualification $qualification
 }
 catch { $legacyIntentRejected = $true }
 [pscustomobject]@{
@@ -1396,8 +2095,13 @@ catch { $legacyIntentRejected = $true }
     payload = json.loads(result.stdout)
     assert payload["blocked_by_recovery"] is True
     assert payload["order_before_recovery"] == []
-    assert payload["first_order"] == ["credentials", "fresh_intent", "bootstrap"]
-    assert payload["idempotent_order"] == ["credentials", "fresh_intent", "bootstrap"]
+    assert payload["first_order"] == [
+        "qualification",
+        "credentials",
+        "fresh_intent",
+        "bootstrap",
+    ]
+    assert payload["idempotent_order"] == payload["first_order"] + ["qualification"]
     assert payload["legacy_intent_rejected"] is True
 
 

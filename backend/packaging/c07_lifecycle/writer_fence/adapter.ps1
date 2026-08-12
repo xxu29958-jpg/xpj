@@ -1,23 +1,30 @@
 ﻿#Requires -Version 5.1
 
-function Get-TicketboxC07RawWriterDatabaseFenceObservation {
-    $password = Get-TicketboxC07DatabaseAuthorityCredential
-    $hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
-    Assert-TicketboxC07LiveHostConnection $hostAuthority $password
-    $nativeTimeoutMilliseconds =
-        Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds `
-            -MaximumMilliseconds 30000 `
-            -Label "C07 writer-fence observation"
+function Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)]
+        [Security.SecureString]$DatabaseAuthorityCredential,
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1000, 30000)][int]$TimeoutMilliseconds
+    )
+
+    Assert-TicketboxC07LiveHostConnection `
+        $HostAuthority `
+        $DatabaseAuthorityCredential
+    $nativeTimeoutMilliseconds = $TimeoutMilliseconds
     $statementTimeoutMilliseconds = [Math]::Min(5000, $nativeTimeoutMilliseconds)
     $lockTimeoutMilliseconds = [Math]::Min(1000, $statementTimeoutMilliseconds)
     $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
-        -Authority $hostAuthority `
+        -Authority $HostAuthority `
         -Database $script:TicketboxC07DatabaseName `
         -Role "postgres"
-    return Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {
+    return Invoke-TicketboxC07WithPlainSecret `
+        -Secret $DatabaseAuthorityCredential `
+        -Action {
         param([string]$PlainPassword)
         Get-TicketboxPostgresqlWriterFenceObservation `
-            -PsqlPath $hostAuthority.PsqlPath `
+            -PsqlPath $HostAuthority.PsqlPath `
             -DatabaseUrl $databaseUrl `
             -Password $PlainPassword `
             -ManagedSchemaName "public" `
@@ -68,25 +75,6 @@ function Resolve-TicketboxC07ManagedOrPublishedWriterFenceObservation {
         )
     }
     return $matches[0]
-}
-
-function Test-TicketboxC07WriterFenceRoleIdentitySetEquals {
-    param(
-        [Parameter(Mandatory = $true)][object[]]$Left,
-        [Parameter(Mandatory = $true)][object[]]$Right
-    )
-    if ($Left.Count -ne $Right.Count) { return $false }
-    foreach ($leftRole in $Left) {
-        if (@(
-            $Right | Where-Object {
-                [string]$_.name -ceq [string]$leftRole.name -and
-                [int64]$_.oid -eq [int64]$leftRole.oid
-            }
-        ).Count -ne 1) {
-            return $false
-        }
-    }
-    return $true
 }
 
 function Initialize-TicketboxC07WriterFenceIntent {
@@ -238,4 +226,142 @@ function Enter-TicketboxC07WriterDatabaseFence {
         throw "C07 writer-fence reconcile 改变了 role identity set。"
     }
     return $after
+}
+
+function Get-TicketboxC07PublishedRuntimeQualification {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)]
+        [Security.SecureString]$DatabaseAuthorityCredential,
+        [Parameter(Mandatory = $true)]
+        [Security.SecureString]$RuntimePassword,
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()][string]$ExpectedOperationId,
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1000, 30000)][int]$ObservationTimeoutMilliseconds
+    )
+
+    $scopedCredential = Get-TicketboxC07DatabaseAuthorityCredential
+    if (-not [object]::ReferenceEquals(
+        $scopedCredential,
+        $DatabaseAuthorityCredential
+    )) {
+        throw "C07 published runtime qualification 未绑定 scoped database authority。"
+    }
+    $authority = Read-TicketboxC07Authority $DataRoot
+    if ([string]$authority.Receipt.stage -cne "ready") {
+        throw "C07 published runtime qualification 只接受 READY authority。"
+    }
+    if (
+        [string]$authority.Receipt.operation_id -cne $ExpectedOperationId
+    ) {
+        throw "C07 published runtime qualification 未绑定 exact operation。"
+    }
+    $production = Read-TicketboxC07ProductionAuthority $authority
+    $projection = Read-TicketboxC07RuntimeProjectionForAuthority `
+        -Authority $authority
+    $rawPublished =
+        Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority `
+            -HostAuthority $HostAuthority `
+            -DatabaseAuthorityCredential $DatabaseAuthorityCredential `
+            -TimeoutMilliseconds $ObservationTimeoutMilliseconds
+    $published = ConvertTo-TicketboxC07WriterFenceObservation `
+        -RawObservation $rawPublished `
+        -AuthorityPhase "published_runtime"
+    Assert-TicketboxC07PublishedDatabaseAuthority -Observation $published
+    Assert-TicketboxC07RuntimeCredential `
+        -Authority $HostAuthority `
+        -RuntimePassword $RuntimePassword
+    $qualification = [pscustomobject][ordered]@{
+        schema = "ticketbox-c07-published-runtime-qualification-v1"
+        operation_id = [string]$authority.Receipt.operation_id
+        ready_verification_sha256 =
+            [string]$authority.Receipt.ready_verification_sha256
+        ready_semantics =
+            [string]$authority.ReadyVerification.ReadySemantics
+        production_authority_sha256 = [string]$production.PayloadSha256
+        runtime_projection_sha256 = [string]$projection.PayloadSha256
+    }
+    [void](Assert-TicketboxC07PublishedRuntimeQualification `
+        -DataRoot $DataRoot `
+        -Qualification $qualification)
+    return $qualification
+}
+
+function Get-TicketboxC07RawWriterDatabaseFenceObservation {
+    $password = Get-TicketboxC07DatabaseAuthorityCredential
+    $hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+    $timeoutMilliseconds = Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds `
+        -MaximumMilliseconds 30000 `
+        -Label "C07 writer-fence observation"
+    return Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority `
+        -HostAuthority $hostAuthority `
+        -DatabaseAuthorityCredential $password `
+        -TimeoutMilliseconds $timeoutMilliseconds
+}
+
+function Assert-TicketboxC07PublishedRuntimeQualification {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][object]$Qualification
+    )
+
+    $expectedProperties = @(
+        "operation_id",
+        "production_authority_sha256",
+        "ready_semantics",
+        "ready_verification_sha256",
+        "runtime_projection_sha256",
+        "schema"
+    ) | Sort-Object
+    $actualProperties = @(
+        $Qualification.PSObject.Properties.Name | Sort-Object
+    )
+    if (
+        $actualProperties.Count -ne $expectedProperties.Count -or
+        (Compare-Object `
+            -ReferenceObject $expectedProperties `
+            -DifferenceObject $actualProperties).Count -ne 0 -or
+        [string]$Qualification.schema -cne
+            "ticketbox-c07-published-runtime-qualification-v1" -or
+        [string]$Qualification.ready_semantics -cnotin @(
+            "historical_ambiguous", "published_runtime"
+        )
+    ) {
+        throw "C07 published runtime qualification receipt shape 无效。"
+    }
+    foreach ($propertyName in @(
+        "ready_verification_sha256",
+        "production_authority_sha256",
+        "runtime_projection_sha256"
+    )) {
+        Assert-TicketboxC07LowerSha256 `
+            ([string]$Qualification.$propertyName) `
+            "C07 published runtime qualification $propertyName"
+    }
+    $authority = Read-TicketboxC07DurableHeartbeatAuthority $DataRoot
+    if (
+        [string]$authority.Receipt.stage -cne "ready" -or
+        [string]$authority.Receipt.operation_id -cne
+            [string]$Qualification.operation_id -or
+        [string]$authority.Receipt.ready_verification_sha256 -cne
+            [string]$Qualification.ready_verification_sha256 -or
+        [string]$authority.ReadyVerification.ReadySemantics -cne
+            [string]$Qualification.ready_semantics
+    ) {
+        throw "C07 published runtime qualification 与 durable READY 漂移。"
+    }
+    $production = Read-TicketboxC07ProductionAuthority $authority
+    $projection = Read-TicketboxC07RuntimeProjectionForAuthority `
+        -Authority $authority
+    if (
+        [string]$production.PayloadSha256 -cne
+            [string]$Qualification.production_authority_sha256 -or
+        [string]$projection.PayloadSha256 -cne
+            [string]$Qualification.runtime_projection_sha256
+    ) {
+        throw "C07 published runtime qualification 与 production projection 漂移。"
+    }
+    return $authority
 }

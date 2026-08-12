@@ -249,7 +249,8 @@ function Assert-TicketboxC07WriterFenceRolePolicy {
     if (-not $valid) {
         throw (
             "C07 PostgreSQL role 不符合显式 authority phase：role=" +
-            [string]$Role.name + ", disposition=$Disposition。"
+            [string]$Role.name + ", disposition=$Disposition, facts=" +
+            ($Role | ConvertTo-Json -Compress -Depth 6) + "。"
         )
     }
 }
@@ -441,5 +442,132 @@ function Assert-TicketboxC07PublishedDatabaseAuthority {
         -not [bool]$Observation.AdvisoryFenceReleased
     ) {
         throw "C07 published runtime authority 的 session/advisory 边界无效。"
+    }
+}
+
+function Assert-TicketboxC07PublishedReadyRoleSet {
+    param([Parameter(Mandatory = $true)][object[]]$Roles)
+
+    if ($Roles.Count -lt 4 -or $Roles.Count -gt 128) {
+        throw "C07 published READY role set count 无效。"
+    }
+    $expectedNames = @(
+        "name", "oid", "disposition", "can_login", "connection_limit",
+        "is_superuser", "can_create_db", "can_create_role", "can_replicate",
+        "can_bypass_rls", "is_database_owner", "owns_public_schema",
+        "owns_user_relations", "owns_security_definer_routines",
+        "can_execute_unowned_security_definer_routines", "direct_connect",
+        "effective_connect", "can_database_create", "can_public_schema_create",
+        "can_table_write", "can_sequence_write", "can_assume_write_owner",
+        "predefined_role_usage", "predefined_role_set"
+    )
+    $booleanNames = @(
+        "can_login", "is_superuser", "can_create_db", "can_create_role",
+        "can_replicate", "can_bypass_rls", "is_database_owner",
+        "owns_public_schema", "owns_user_relations",
+        "owns_security_definer_routines",
+        "can_execute_unowned_security_definer_routines", "direct_connect",
+        "effective_connect", "can_database_create", "can_public_schema_create",
+        "can_table_write", "can_sequence_write", "can_assume_write_owner"
+    )
+    $names = @{}
+    $oids = @{}
+    $validated = @()
+    foreach ($role in $Roles) {
+        Assert-TicketboxC07ExactProperties `
+            -Value $role `
+            -ExpectedNames $expectedNames `
+            -ArtifactName "published READY role"
+        $name = [string]$role.name
+        $oid = [int64]0
+        if (
+            [string]::IsNullOrEmpty($name) -or $name.Length -gt 63 -or
+            ($role.oid -isnot [int] -and $role.oid -isnot [long]) -or
+            -not [int64]::TryParse([string]$role.oid, [ref]$oid) -or
+            $oid -lt 1 -or $oid -gt [uint32]::MaxValue -or
+            $names.ContainsKey($name) -or $oids.ContainsKey([string]$oid) -or
+            ($role.connection_limit -isnot [int] -and
+                $role.connection_limit -isnot [long]) -or
+            [int64]$role.connection_limit -lt -1 -or
+            [int64]$role.connection_limit -gt [int]::MaxValue -or
+            @($booleanNames | Where-Object { $role.$_ -isnot [bool] }).Count -ne 0
+        ) {
+            throw "C07 published READY role shape 无效。"
+        }
+        foreach ($setName in @("predefined_role_usage", "predefined_role_set")) {
+            $setValue = $role.$setName
+            if (
+                $null -eq $setValue -or
+                $setValue -is [string] -or
+                $setValue -isnot [System.Collections.IEnumerable]
+            ) {
+                throw "C07 published READY role $setName 必须是 string array。"
+            }
+            $seenSetItems = @{}
+            foreach ($setItem in @($setValue)) {
+                if (
+                    $setItem -isnot [string] -or
+                    [string]::IsNullOrEmpty([string]$setItem) -or
+                    $seenSetItems.ContainsKey([string]$setItem)
+                ) {
+                    throw "C07 published READY role $setName 含无效或重复项。"
+                }
+                $seenSetItems[[string]$setItem] = $true
+            }
+        }
+        $names[$name] = $true
+        $oids[[string]$oid] = $true
+        $expectedDisposition = Get-TicketboxC07WriterFenceRoleDisposition `
+            -Name $name `
+            -AuthorityPhase "published_runtime"
+        if ([string]$role.disposition -cne $expectedDisposition) {
+            throw (
+                "C07 published READY role disposition 与产品 policy 不一致：" +
+                "role=$name, actual=$([string]$role.disposition), " +
+                "expected=$expectedDisposition。"
+            )
+        }
+        $policyRole = [pscustomobject]@{
+            name = $name
+            oid = $oid
+            can_login = [bool]$role.can_login
+            connection_limit = [int]$role.connection_limit
+            is_superuser = [bool]$role.is_superuser
+            can_create_db = [bool]$role.can_create_db
+            can_create_role = [bool]$role.can_create_role
+            can_replicate = [bool]$role.can_replicate
+            can_bypass_rls = [bool]$role.can_bypass_rls
+            is_database_owner = [bool]$role.is_database_owner
+            owns_managed_schema = [bool]$role.owns_public_schema
+            owns_managed_relations = [bool]$role.owns_user_relations
+            owns_security_definer_routines =
+                [bool]$role.owns_security_definer_routines
+            can_execute_unowned_security_definer_routines =
+                [bool]$role.can_execute_unowned_security_definer_routines
+            direct_connect = [bool]$role.direct_connect
+            effective_connect = [bool]$role.effective_connect
+            can_database_create = [bool]$role.can_database_create
+            can_managed_schema_create = [bool]$role.can_public_schema_create
+            can_table_write = [bool]$role.can_table_write
+            can_sequence_write = [bool]$role.can_sequence_write
+            can_assume_write_owner = [bool]$role.can_assume_write_owner
+            predefined_role_usage = @($role.predefined_role_usage)
+            predefined_role_set = @($role.predefined_role_set)
+        }
+        Assert-TicketboxC07WriterFenceRolePolicy `
+            -Role $policyRole `
+            -Disposition $expectedDisposition `
+            -PublicConnect $false
+        $validated += $role
+    }
+    foreach ($required in @(
+        "database_authority", "retired_migration_authority",
+        "nologin_owner", "published_runtime"
+    )) {
+        if (@($validated | Where-Object {
+            [string]$_.disposition -ceq $required
+        }).Count -ne 1) {
+            throw "C07 published READY 缺少唯一 $required role。"
+        }
     }
 }

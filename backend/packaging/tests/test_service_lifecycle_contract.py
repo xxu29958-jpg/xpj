@@ -1017,6 +1017,33 @@ try {{
         throw 'normal heartbeat error path terminated the coordinator'
     }}
 
+    Set-TicketboxC07LifecycleStage `
+        -DataRoot '{_ps_literal(data_root)}' `
+        -LifecycleLock $lifecycleLock `
+        -TargetStage writers_frozen | Out-Null
+    $authority = Read-TicketboxC07Authority '{_ps_literal(data_root)}'
+    $context = [pscustomobject]@{{
+        Authority = $authority
+        LifecycleLock = $lifecycleLock
+    }}
+    $script:TicketboxC07ActiveMaintenanceBudget =
+        New-TicketboxC07MaintenanceBudget $authority
+    $productionHeartbeat = Get-TicketboxC07RecoveryHeartbeatOperation $context
+    $frozenBefore = [int64](
+        Read-TicketboxC07Heartbeat $authority
+    ).Payload.sequence
+    $frozenSequence = Invoke-TicketboxBoundedHeartbeatOperation `
+        -Operation $productionHeartbeat `
+        -TimeoutMilliseconds {POWERSHELL_51_COLD_START_TIMEOUT_MS} `
+        -SettlementMilliseconds 1000 `
+        -Label 'production C07 frozen-v4 heartbeat operation smoke'
+    $frozenAfter = [int64](
+        Read-TicketboxC07Heartbeat $authority
+    ).Payload.sequence
+    if ($frozenAfter -le $frozenBefore -or $frozenSequence -ne $frozenAfter) {{
+        throw 'isolated helper could not validate and renew v4 frozen authority'
+    }}
+
     # The ordinary authority reader must retain the live database probe. The
     # helper's durable projection is the only credential-free exception.
     $liveDatabaseReader = (Get-Command `

@@ -58,6 +58,86 @@ function ConvertTo-TicketboxPostgresqlWriterFenceTextArray {
     return "ARRAY[" + ($literals -join ", ") + "]::text[]"
 }
 
+function New-TicketboxPostgresqlWriterFenceRelationWriteAuthoritySql {
+    param([Parameter(Mandatory = $true)][string]$RoleOidSql)
+
+    if ($RoleOidSql -cnotmatch '^[a-z][a-z0-9_]*\.oid$') {
+        throw "PostgreSQL writer-fence role OID expression is not trusted."
+    }
+    return @"
+(
+    relation.relkind IN ('r', 'p', 'f')
+    AND (
+        has_any_column_privilege($RoleOidSql, relation.oid, 'INSERT')
+        OR has_any_column_privilege($RoleOidSql, relation.oid, 'UPDATE')
+        OR has_table_privilege($RoleOidSql, relation.oid, 'DELETE')
+        OR has_table_privilege($RoleOidSql, relation.oid, 'TRUNCATE')
+        OR has_table_privilege($RoleOidSql, relation.oid, 'REFERENCES')
+        OR has_table_privilege($RoleOidSql, relation.oid, 'TRIGGER')
+    )
+)
+OR (
+    relation.relkind = 'v'
+    AND (
+        EXISTS (
+            SELECT 1
+            FROM information_schema.views AS view_capability
+            WHERE view_capability.table_schema = namespace.nspname
+              AND view_capability.table_name = relation.relname
+              AND (
+                  (
+                      has_any_column_privilege(
+                          $RoleOidSql, relation.oid, 'INSERT'
+                      )
+                      AND (
+                          view_capability.is_insertable_into = 'YES'
+                          OR view_capability.is_trigger_insertable_into = 'YES'
+                      )
+                  )
+                  OR (
+                      has_any_column_privilege(
+                          $RoleOidSql, relation.oid, 'UPDATE'
+                      )
+                      AND (
+                          view_capability.is_updatable = 'YES'
+                          OR view_capability.is_trigger_updatable = 'YES'
+                      )
+                  )
+                  OR (
+                      has_table_privilege(
+                          $RoleOidSql, relation.oid, 'DELETE'
+                      )
+                      AND (
+                          view_capability.is_updatable = 'YES'
+                          OR view_capability.is_trigger_deletable = 'YES'
+                      )
+                  )
+              )
+        )
+        OR (
+            NOT EXISTS (
+                SELECT 1
+                FROM information_schema.views AS view_capability
+                WHERE view_capability.table_schema = namespace.nspname
+                  AND view_capability.table_name = relation.relname
+            )
+            AND (
+                has_any_column_privilege(
+                    $RoleOidSql, relation.oid, 'INSERT'
+                )
+                OR has_any_column_privilege(
+                    $RoleOidSql, relation.oid, 'UPDATE'
+                )
+                OR has_table_privilege(
+                    $RoleOidSql, relation.oid, 'DELETE'
+                )
+            )
+        )
+    )
+)
+"@
+}
+
 function Assert-TicketboxPostgresqlWriterFenceExactProperties {
     param(
         [AllowNull()][Parameter(Mandatory = $true)][object]$Value,

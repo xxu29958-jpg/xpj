@@ -216,8 +216,34 @@ def test_writer_fence_has_small_c07_free_components_and_retires_old_mechanics() 
         "NOT EXISTS (\n                      SELECT 1\n                      FROM pg_stat_activity AS visible_activity",
         "ALTER ROLE %I NOLOGIN CONNECTION LIMIT 0",
         "REVOKE CONNECT ON DATABASE %I FROM %I",
+        "relation.relkind IN ('r', 'p', 'f', 'S', 'v')",
+        "relation.relkind = 'v'",
+        "has_any_column_privilege(",
+        "FROM information_schema.views AS view_capability",
+        "view_capability.is_insertable_into = 'YES'",
+        "view_capability.is_trigger_insertable_into = 'YES'",
+        "view_capability.is_updatable = 'YES'",
+        "view_capability.is_trigger_updatable = 'YES'",
+        "view_capability.is_trigger_deletable = 'YES'",
     ):
         assert required in generic
+    assert generic.count("relation.relkind IN ('r', 'p', 'f', 'S', 'v')") == 3
+    assert generic.count("relation.relkind = 'v'") == 1
+    assert generic.count(
+        "FROM information_schema.views AS view_capability"
+    ) == 2
+    assert generic.count("has_any_column_privilege(") == 6
+    assert "OR (\n            NOT EXISTS (" in generic
+
+    authority_source = (PACKAGING / "windows_c07_heartbeat_authority.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+    adapter_source = C07_POLICY_COMPONENTS[1].read_text(encoding="utf-8-sig")
+    comparator_definition = (
+        "function Test-TicketboxC07WriterFenceRoleIdentitySetEquals"
+    )
+    assert authority_source.count(comparator_definition) == 1
+    assert comparator_definition not in adapter_source
 
     for retired in (
         "pg_try_advisory_lock(",
@@ -997,13 +1023,24 @@ $script:TicketboxC07ActiveMaintenanceBudget = $null
 $script:fenced = $false
 $script:observationCalls = @()
 $script:reconcileCalls = @()
-function Get-TicketboxC07DatabaseAuthorityCredential {{ 'secret' }}
+$script:databaseAuthorityCredential = New-Object Security.SecureString
+foreach ($character in 'secret'.ToCharArray()) {{
+    $script:databaseAuthorityCredential.AppendChar($character)
+}}
+$script:databaseAuthorityCredential.MakeReadOnly()
+$script:poisonAmbient = $false
+function Get-TicketboxC07DatabaseAuthorityCredential {{
+    if ($script:poisonAmbient) {{ throw 'ambient credential used' }}
+    $script:databaseAuthorityCredential
+}}
 function Resolve-TicketboxC07DatabaseHostAuthority {{
+    if ($script:poisonAmbient) {{ throw 'ambient host authority used' }}
     [pscustomobject]@{{ PsqlPath = 'C:\\pg\\psql.exe' }}
 }}
 function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
 function Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds {{
     param($MaximumMilliseconds, $Label)
+    if ($script:poisonAmbient) {{ throw 'ambient deadline used' }}
     return [int]$MaximumMilliseconds
 }}
 function New-TicketboxC07LocalDatabaseUrl {{
@@ -1013,9 +1050,20 @@ function New-TicketboxC07LocalDatabaseUrl {{
     }}
     'postgresql://postgres@127.0.0.1:5432/ticketbox'
 }}
-function Invoke-TicketboxC07WithPlainSecret {{
-    param($Secret, [scriptblock]$Action)
-    & $Action ([string]$Secret)
+    function Invoke-TicketboxC07WithPlainSecret {{
+        param($Secret, [scriptblock]$Action)
+        & $Action 'secret'
+    }}
+function Test-TicketboxC07WriterFenceRoleIdentitySetEquals {{
+    param($Left, $Right)
+    if (@($Left).Count -ne @($Right).Count) {{ return $false }}
+    for ($index = 0; $index -lt @($Left).Count; $index++) {{
+        if (
+            [string]$Left[$index].name -cne [string]$Right[$index].name -or
+            [int64]$Left[$index].oid -ne [int64]$Right[$index].oid
+        ) {{ return $false }}
+    }}
+    return $true
 }}
 function New-GenericRole(
     [string]$Name,
@@ -1184,6 +1232,36 @@ if (
     $call.TerminationTimeoutMilliseconds -ne 3000 -or
     [bool]$after.PublicConnect
 ) {{ throw 'C07 reconcile policy binding or post-fence proof drifted' }}
+$script:poisonAmbient = $true
+$explicitAuthority = [pscustomobject]@{{ PsqlPath = 'C:\\pg\\psql.exe' }}
+[void](Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority `
+    -HostAuthority $explicitAuthority `
+    -DatabaseAuthorityCredential $script:databaseAuthorityCredential `
+    -TimeoutMilliseconds 7000)
+[void](Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority `
+    -HostAuthority $explicitAuthority `
+    -DatabaseAuthorityCredential $script:databaseAuthorityCredential `
+    -TimeoutMilliseconds 1200)
+$invalidTimeoutsRejected = 0
+foreach ($invalidTimeout in @(999, 30001)) {{
+    try {{
+        [void](Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority `
+            -HostAuthority $explicitAuthority `
+            -DatabaseAuthorityCredential $script:databaseAuthorityCredential `
+            -TimeoutMilliseconds $invalidTimeout)
+    }}
+    catch {{ $invalidTimeoutsRejected += 1 }}
+}}
+if (
+    $script:observationCalls.Count -ne 5 -or
+    $invalidTimeoutsRejected -ne 2 -or
+    $script:observationCalls[3].TimeoutMilliseconds -ne 7000 -or
+    $script:observationCalls[3].StatementTimeoutMilliseconds -ne 5000 -or
+    $script:observationCalls[3].LockTimeoutMilliseconds -ne 1000 -or
+    $script:observationCalls[4].TimeoutMilliseconds -ne 1200 -or
+    $script:observationCalls[4].StatementTimeoutMilliseconds -ne 1200 -or
+    $script:observationCalls[4].LockTimeoutMilliseconds -ne 1000
+) {{ throw 'explicit raw observation boundary drifted' }}
 """
     result = _run(engine, script)
     assert result.returncode == 0, result.stderr or result.stdout

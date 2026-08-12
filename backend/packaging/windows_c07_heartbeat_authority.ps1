@@ -72,6 +72,8 @@ $script:TicketboxC07InstalledCredentialSchema =
     "ticketbox-c07-installed-credentials-v1"
 $script:TicketboxC07FreshBootstrapIntentSchema =
     "ticketbox-c07-fresh-bootstrap-intent-v1"
+$script:TicketboxC07HistoricalLegacyRuntimeRole = "ticketbox"
+$script:TicketboxC07HistoricalOwnerRole = "ticketbox_owner"
 $script:TicketboxC07TargetRevision = "20260729_0001"
 $script:TicketboxC07MaintenanceWindowSeconds = 20 * 60
 $script:TicketboxC07MaximumMaintenanceAttempts = 64
@@ -213,6 +215,7 @@ function Assert-TicketboxC07FullDependencies {
         "Get-TicketboxServiceProcessId",
         "Get-TicketboxServiceStartPolicy",
         "Get-TicketboxServiceState",
+        "Assert-TicketboxC07PublishedReadyRoleSet",
         "Invoke-TicketboxC07Sql",
         "Resolve-TicketboxC07DatabaseHostAuthority",
         "Disable-TicketboxOwnedServiceIfExists"
@@ -1002,6 +1005,12 @@ function Read-TicketboxC07WriterFenceIntent([object]$Authority) {
             $roleNames `
             "writer-fence intent role"
     }
+    $authorityPhase = if ($isLegacyV3) {
+        Resolve-TicketboxC07HistoricalWriterFenceAuthorityPhase -Roles $roles
+    }
+    else {
+        [string]$payload.authority_phase
+    }
     $envelope | Add-Member -NotePropertyName IntentSchema -NotePropertyValue $schema
     $envelope | Add-Member `
         -NotePropertyName IsLegacyV3 `
@@ -1013,9 +1022,7 @@ function Read-TicketboxC07WriterFenceIntent([object]$Authority) {
         })
     $envelope | Add-Member `
         -NotePropertyName AuthorityPhase `
-        -NotePropertyValue $(if ($isLegacyV3) { "managed_frozen" } else {
-            [string]$payload.authority_phase
-        })
+        -NotePropertyValue $authorityPhase
     $envelope | Add-Member `
         -NotePropertyName PublicConnect `
         -NotePropertyValue ([bool]$payload.public_connect)
@@ -1023,6 +1030,58 @@ function Read-TicketboxC07WriterFenceIntent([object]$Authority) {
         -NotePropertyName Roles `
         -NotePropertyValue @($roles)
     return $envelope
+}
+
+function Resolve-TicketboxC07HistoricalWriterFenceAuthorityPhase {
+    param([Parameter(Mandatory = $true)][object[]]$Roles)
+
+    $databaseOwners = @($Roles | Where-Object { [bool]$_.is_database_owner })
+    $legacyOwnerRoles = @($Roles | Where-Object {
+        [string]$_.name -ceq $script:TicketboxC07HistoricalLegacyRuntimeRole -and
+        [bool]$_.is_database_owner
+    })
+    $managedOwnerRoles = @($Roles | Where-Object {
+        [string]$_.name -ceq $script:TicketboxC07HistoricalOwnerRole -and
+        [bool]$_.is_database_owner
+    })
+    if (
+        $databaseOwners.Count -eq 1 -and
+        $legacyOwnerRoles.Count -eq 1 -and
+        $managedOwnerRoles.Count -eq 0
+    ) {
+        return "legacy_owner_frozen"
+    }
+    if (
+        $databaseOwners.Count -eq 1 -and
+        $legacyOwnerRoles.Count -eq 0 -and
+        $managedOwnerRoles.Count -eq 1 -and
+        [bool]$managedOwnerRoles[0].is_database_owner
+    ) {
+        return "managed_frozen"
+    }
+    throw (
+        "C07 historical v3 intent 无法从不可变 database-owner facts " +
+        "唯一分类 frozen authority phase。"
+    )
+}
+
+function Test-TicketboxC07WriterFenceRoleIdentitySetEquals {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Left,
+        [Parameter(Mandatory = $true)][object[]]$Right
+    )
+    if ($Left.Count -ne $Right.Count) { return $false }
+    foreach ($leftRole in $Left) {
+        if (@(
+            $Right | Where-Object {
+                [string]$_.name -ceq [string]$leftRole.name -and
+                [int64]$_.oid -eq [int64]$leftRole.oid
+            }
+        ).Count -ne 1) {
+            return $false
+        }
+    }
+    return $true
 }
 
 function Test-TicketboxC07LegacyV3WriterFenceRoleSetEquals {
@@ -2137,18 +2196,25 @@ function Read-TicketboxC07ReadyVerification([object]$Authority) {
         $expectedReadyNames `
         "ready verification"
     $intent = Read-TicketboxC07WriterFenceIntent $Authority
-    if ($isLegacyV3Ready) {
-        throw (
-            "C07 historical READY v3 仅证明旧 frozen writer policy；" +
-            "必须经 lifecycle generation transition 重新核验 published runtime。"
-        )
+    $readyRoles = @($payload.database_role_capabilities)
+    $rolesMatch = if ($isLegacyV3Ready) {
+        [bool]$intent.IsLegacyV3 -and
+            (Test-TicketboxC07LegacyV3WriterFenceRoleSetEquals `
+                -Left @($intent.Roles) `
+                -Right $readyRoles `
+                -AllowFencedRight)
     }
-    $rolesMatch =
+    else {
+        Assert-TicketboxC07PublishedReadyRoleSet -Roles $readyRoles
         Test-TicketboxC07WriterFenceRoleIdentitySetEquals `
             -Left @($intent.Roles) `
-            -Right @($payload.database_role_capabilities)
+            -Right $readyRoles
+    }
     if (
-        $readySchema -cne $script:TicketboxC07ReadyVerificationSchema -or
+        $readySchema -cnotin @(
+            $script:TicketboxC07LegacyReadyVerificationSchema,
+            $script:TicketboxC07ReadyVerificationSchema
+        ) -or
         [string]$payload.operation_id -cne [string]$Authority.Receipt.operation_id -or
         [string]$payload.descriptor_sha256 -cne
             $Authority.Descriptor.PayloadSha256 -or
@@ -2156,10 +2222,15 @@ function Read-TicketboxC07ReadyVerification([object]$Authority) {
             [string]$Authority.Receipt.database_binding_sha256 -or
         [string]$payload.writer_fence_intent_sha256 -cne
             $intent.PayloadSha256 -or
-        [string]$payload.writer_fence_intent_schema -cne
-            [string]$intent.IntentSchema -or
-        [string]$payload.writer_fence_authority_phase -cne
-            "published_runtime" -or
+        (
+            -not $isLegacyV3Ready -and
+            (
+                [string]$payload.writer_fence_intent_schema -cne
+                    [string]$intent.IntentSchema -or
+                [string]$payload.writer_fence_authority_phase -cne
+                    "published_runtime"
+            )
+        ) -or
         [string]$payload.operation_kind -cne
             [string]$Authority.Descriptor.Payload.operation_kind -or
         [string]$payload.alembic_target -cne
@@ -2173,7 +2244,7 @@ function Read-TicketboxC07ReadyVerification([object]$Authority) {
         [int]$payload.runtime_process_count -ne 0 -or
         [int]$payload.database_runtime_session_count -ne 0 -or
         @($payload.database_client_sessions).Count -ne 0 -or
-        @($payload.database_role_capabilities).Count -ne
+        $readyRoles.Count -ne
             [int64]$payload.database_role_capability_count -or
         -not $rolesMatch -or
         [int64]$payload.database_max_prepared_transactions -ne 0 -or
@@ -2188,6 +2259,19 @@ function Read-TicketboxC07ReadyVerification([object]$Authority) {
     ) {
         throw "C07 READY receipt 未绑定受保护二次 live verification。"
     }
+    [void](ConvertTo-TicketboxC07CanonicalUtcTimestamp `
+        -Value ([string]$payload.verified_at_utc) `
+        -Label "C07 READY verified_at_utc")
+    $envelope | Add-Member `
+        -NotePropertyName ReadySchema `
+        -NotePropertyValue $readySchema `
+        -Force
+    $envelope | Add-Member `
+        -NotePropertyName ReadySemantics `
+        -NotePropertyValue $(if ($isLegacyV3Ready) {
+            "historical_ambiguous"
+        } else { "published_runtime" }) `
+        -Force
     return $envelope
 }
 
@@ -2770,7 +2854,10 @@ function Read-TicketboxC07AuthorityCore {
         }
     }
     if ($stage -eq "ready") {
-        Read-TicketboxC07ReadyVerification $result | Out-Null
+        $readyVerification = Read-TicketboxC07ReadyVerification $result
+        $result | Add-Member `
+            -NotePropertyName ReadyVerification `
+            -NotePropertyValue $readyVerification
     }
     return $result
 }
