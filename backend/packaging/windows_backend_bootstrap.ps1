@@ -777,6 +777,11 @@ function Test-TicketboxOwnerHandoffProcessIsAlive {
             param($ProcessId)
             Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
         },
+        [scriptblock]$HasExitedReader = {
+            param($Process)
+            $Process.Refresh()
+            $Process.HasExited
+        },
         [scriptblock]$StartedUtcReader = {
             param($Process)
             $Process.StartTime.ToUniversalTime().ToString(
@@ -790,8 +795,10 @@ function Test-TicketboxOwnerHandoffProcessIsAlive {
     catch { return $false }
     if ($null -eq $process) { return $false }
     try {
+        if ([bool](& $HasExitedReader $process)) { return $false }
         $started = & $StartedUtcReader $process
-        return $started -ceq $Record.OwnerStartedUtc
+        if ($started -cne $Record.OwnerStartedUtc) { return $false }
+        return -not [bool](& $HasExitedReader $process)
     }
     catch {
         # The current installer already owns the exclusive machine lifecycle lock.

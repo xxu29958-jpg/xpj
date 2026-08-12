@@ -1227,14 +1227,45 @@ try {{
     if (-not $blocked) {{ throw 'live previous installer was adopted' }}
     $stillOld = Read-TicketboxOwnerHandoffRecord
     if ($stillOld.OwnerProcessId -ne $liveOwner.Id) {{ throw 'live-owner marker was rewritten' }}
+    $differentStartIsAlive = Test-TicketboxOwnerHandoffProcessIsAlive `
+        -Record $stillOld `
+        -ProcessReader {{ param($ProcessId) $liveOwner }} `
+        -HasExitedReader {{ $false }} `
+        -StartedUtcReader {{ '2000-01-01T00:00:00.0000000Z' }}
+    if ($differentStartIsAlive) {{ throw 'reused PID with a different start retained owner authority' }}
+
+    $script:exitChecks = 0
+    $exitedDuringIdentityReadIsAlive = Test-TicketboxOwnerHandoffProcessIsAlive `
+        -Record $stillOld `
+        -ProcessReader {{ param($ProcessId) $liveOwner }} `
+        -HasExitedReader {{
+            param($Process)
+            $script:exitChecks = $script:exitChecks + 1
+            return $script:exitChecks -ge 2
+        }}
+    if ($exitedDuringIdentityReadIsAlive) {{ throw 'owner exit during identity read was missed' }}
 }}
 finally {{
     Stop-Process -Id $liveOwner.Id -Force -ErrorAction SilentlyContinue
     $liveOwner.WaitForExit()
 }}
-$adopted = Adopt-TicketboxOwnerBootstrapHandoff `
-    -ExpectedOperationId $operationId `
-    -ExpectedInstallationId $installationId
+try {{
+    # Keep the Process handle open while adopting: Windows retains exited-process
+    # metadata until the component is disposed, but that is not a live owner.
+    if (-not $liveOwner.HasExited) {{ throw 'old owner did not exit' }}
+    $retainedExitedHandleIsAlive = Test-TicketboxOwnerHandoffProcessIsAlive `
+        -Record (Read-TicketboxOwnerHandoffRecord) `
+        -ProcessReader {{ param($ProcessId) $liveOwner }}
+    if ($retainedExitedHandleIsAlive) {{
+        throw 'retained exited Process handle was treated as a live owner'
+    }}
+    $adopted = Adopt-TicketboxOwnerBootstrapHandoff `
+        -ExpectedOperationId $operationId `
+        -ExpectedInstallationId $installationId
+}}
+finally {{
+    $liveOwner.Dispose()
+}}
 if ($adopted -cne 'pending') {{ throw 'dead previous installer was not adopted' }}
 $current = Read-TicketboxOwnerHandoffRecord
 if ($current.OwnerProcessId -ne $currentInstallerPid -or
@@ -1248,6 +1279,7 @@ if ($current.OwnerProcessId -ne $currentInstallerPid -or
 $uncertainOwnerAlive = Test-TicketboxOwnerHandoffProcessIsAlive `
     -Record $current `
     -ProcessReader {{ [pscustomobject]@{{ ProcessId = $current.OwnerProcessId }} }} `
+    -HasExitedReader {{ $false }} `
     -StartedUtcReader {{ throw 'simulated StartTime access denied after PID reuse' }}
 if ($uncertainOwnerAlive) {{ throw 'unverifiable reused PID retained stale owner authority' }}
 Complete-TicketboxOwnerBootstrapHandoff `
