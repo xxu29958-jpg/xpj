@@ -135,6 +135,10 @@ function New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql {
     $relationWriteAuthority =
         New-TicketboxPostgresqlWriterFenceRelationWriteAuthoritySql `
             -RoleOidSql "role.oid"
+    $executableRelationScope =
+        New-TicketboxPostgresqlWriterFenceExecutableRelationScopeSql `
+            -ManagedSchemaSql $ManagedSchemaSql `
+            -RoleOidSql "role.oid"
     $userNamespace =
         New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql `
             -NamespaceAlias "namespace"
@@ -170,7 +174,7 @@ function New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql {
                   SELECT 1 FROM pg_class AS relation
                   JOIN pg_namespace AS namespace
                     ON namespace.oid = relation.relnamespace
-                  WHERE namespace.nspname = $ManagedSchemaSql
+                  WHERE ($executableRelationScope)
                     AND ($relationWriteAuthority)
               )
               OR EXISTS (

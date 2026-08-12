@@ -18,6 +18,10 @@ function New-TicketboxPostgresqlWriterFenceObservationSql {
     $relationWriteAuthority =
         New-TicketboxPostgresqlWriterFenceRelationWriteAuthoritySql `
             -RoleOidSql "role.oid"
+    $executableRelationScope =
+        New-TicketboxPostgresqlWriterFenceExecutableRelationScopeSql `
+            -ManagedSchemaSql $schema `
+            -RoleOidSql "role.oid"
     $userNamespace =
         New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql `
             -NamespaceAlias "namespace"
@@ -108,7 +112,7 @@ user_roles AS MATERIALIZED (
             FROM pg_class AS relation
             JOIN pg_namespace AS namespace
               ON namespace.oid = relation.relnamespace
-            WHERE namespace.nspname = $schema
+            WHERE ($executableRelationScope)
               AND ($relationWriteAuthority)
         ) AS can_table_write,
         EXISTS (

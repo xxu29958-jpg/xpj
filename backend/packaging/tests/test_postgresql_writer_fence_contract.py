@@ -231,12 +231,15 @@ def test_writer_fence_has_small_c07_free_components_and_retires_old_mechanics() 
     ):
         assert required in generic
     assert generic.count("relation.relkind IN ('r', 'p', 'f', 'S', 'v')") == 3
-    assert generic.count("relation.relkind = 'v'") == 1
+    assert generic.count("relation.relkind = 'v'") == 2
     assert generic.count(
         "FROM information_schema.views AS view_capability"
     ) == 2
     assert generic.count("has_any_column_privilege(") == 6
-    assert generic.count("New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql") == 4
+    assert generic.count("New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql") == 5
+    assert generic.count(
+        "New-TicketboxPostgresqlWriterFenceExecutableRelationScopeSql"
+    ) == 3
     assert generic.count("$NamespaceAlias.nspname <> 'information_schema'") == 1
     assert generic.count("$NamespaceAlias.nspname !~ '^pg_'") == 1
     assert "OR (\n            NOT EXISTS (" in generic

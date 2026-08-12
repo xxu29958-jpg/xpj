@@ -61,22 +61,15 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
     )
     migration_path = main[main.index("$c07Migration =") :]
     assert migration_path.index("Invoke-TicketboxC07InstalledReleaseMigration") < migration_path.index(
-        "Write-TicketboxC07InstalledRuntimeEnvironment"
+        "Complete-TicketboxInstalledRuntimePublication"
     )
-    assert migration_path.index("Write-TicketboxC07InstalledRuntimeEnvironment") < migration_path.index(
-        "Complete-TicketboxC07InstalledSecretCleanup"
-    )
-    assert migration_path.index("Complete-TicketboxC07InstalledSecretCleanup") < migration_path.index(
+    assert migration_path.index("Complete-TicketboxInstalledRuntimePublication") < migration_path.index(
         "Resolve-TicketboxBootstrapExposureRecoveryIntent"
     )
     assert main.index("Resolve-TicketboxBootstrapExposureRecoveryIntent") < main.index(
         "Start-TicketboxOwnedServiceIfExists `\n            -Name $BackendServiceName"
     )
 
-    residue = _function(source, "Complete-TicketboxC07RecoveredSuperuserResidue")
-    assert residue.index("Set-TicketboxC07DatabaseAuthorityCredential") < residue.index(
-        "Get-TicketboxC07PublishedRuntimeQualification"
-    )
     qualification = _function(
         adapter,
         "Get-TicketboxC07PublishedRuntimeQualification",
@@ -90,14 +83,42 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
     assert qualification.index("Assert-TicketboxC07PublishedDatabaseAuthority") < qualification.index(
         "Assert-TicketboxC07RuntimeCredential"
     )
-    assert "finally {" in residue
-    assert "Clear-TicketboxC07DatabaseAuthorityCredential" in residue
     runtime_ready = main[main.index('if ($c07Disposition -ceq "runtime_ready")') :]
     assert runtime_ready.index("Read-EnvMap $EnvPath") < runtime_ready.index(
-        "Complete-TicketboxC07RecoveredSuperuserResidue"
+        "Complete-TicketboxInstalledRuntimePublication"
     )
-    assert runtime_ready.index("Complete-TicketboxC07RecoveredSuperuserResidue") < runtime_ready.index(
-        "Complete-TicketboxC07InstalledSecretCleanup"
+    assert runtime_ready.index("Complete-TicketboxInstalledRuntimePublication") < runtime_ready.index(
+        "Resolve-TicketboxBootstrapExposureRecoveryIntent"
+    )
+    runtime_publication_start = main.index(
+        "$runtimePublication = Complete-TicketboxInstalledRuntimePublication"
+    )
+    runtime_publication_call = main[
+        runtime_publication_start : main.index(
+            "    $databaseUrl =", runtime_publication_start
+        )
+    ]
+    for exact_binding in (
+        "-Disposition $c07Disposition",
+        "-DataRoot $DataRoot",
+        "-HostAuthority $c07HostAuthority",
+        "-ReleaseIdentity $c07ReleaseIdentity",
+        "-C07Authority $c07Authority",
+        "-RuntimePassword $runtimePassword",
+        "-LifecycleReceipt $lifecycleReceipt",
+        "-LifecycleLock $operationLock",
+        "-RecoveryArtifactPath $c07RecoveryArtifactPath",
+        "-RuntimeConnection $runtimeConnection",
+        "-PsqlPath $Psql",
+        "-ExpectedDataRoot $PgData",
+        "-ExpectedPort $PgPort",
+        "-DatabaseToolTimeoutMilliseconds $DatabaseToolTimeoutMs",
+    ):
+        assert exact_binding in runtime_publication_call
+    assert re.search(
+        r"-ObservationTimeoutMilliseconds\s+`?\s*"
+        r"\$c07QualificationTimeoutMilliseconds\s+`",
+        runtime_publication_call,
     )
     release = _function(source, "Invoke-TicketboxC07InstalledReleaseMigration")
     assert release.index("Invoke-TicketboxC07InstalledProductionLifecycle") < release.index(
@@ -120,6 +141,12 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
         "Get-TicketboxC07InstalledAlembicRevision"
     )
     assert "Clear-TicketboxC07DatabaseAuthorityCredential" in managed
+    assert managed.index("Invoke-TicketboxInstalledManagedSchemaUpgradeAction") < managed.index(
+        "Get-TicketboxC07PublishedRuntimeQualification"
+    )
+    assert managed.index("Get-TicketboxC07PublishedRuntimeQualification") < managed.index(
+        "Invoke-TicketboxC07RecoveredSuperuserAction"
+    )
     assert re.search(
         r"Set-TicketboxC07DatabaseAuthorityCredential[\s\S]*?"
         r"try\s*\{[\s\S]*?finally\s*\{\s*"
@@ -202,15 +229,33 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
             managed,
         )
     ]
-    return_calls = [
-        match.start() for match in re.finditer(r"return \$upgradeResult", managed)
-    ]
-    assert len(action_calls) == len(enable_calls) == len(acl_calls) == len(return_calls) == 2
-    assert len(retire_calls) == 3
+    assert len(action_calls) == len(enable_calls) == len(acl_calls) == 2
+    assert len(retire_calls) == 4
     assert retire_calls[0] < enable_calls[0] < action_calls[0] < acl_calls[0]
-    assert acl_calls[0] < return_calls[0] < retire_calls[1] < enable_calls[1]
-    assert enable_calls[1] < action_calls[1] < acl_calls[1] < return_calls[1]
-    assert return_calls[1] < retire_calls[2]
+    assert acl_calls[0] < retire_calls[1]
+    assert retire_calls[1] < retire_calls[2] < enable_calls[1]
+    assert enable_calls[1] < action_calls[1] < acl_calls[1] < retire_calls[3]
+    assert retire_calls[3] < managed.index("Get-TicketboxC07PublishedRuntimeQualification")
+    publication = _function(
+        source,
+        "Complete-TicketboxInstalledManagedSchemaPublication",
+    )
+    assert publication.index("Invoke-TicketboxInstalledManagedSchemaUpgrade") < publication.index(
+        "Read-TicketboxC07DurableHeartbeatAuthority"
+    )
+    assert publication.index("Read-TicketboxC07DurableHeartbeatAuthority") < publication.index(
+        "return [pscustomobject][ordered]"
+    )
+    runtime_publication = _function(
+        source,
+        "Complete-TicketboxInstalledRuntimePublication",
+    )
+    assert runtime_publication.index(
+        "Complete-TicketboxInstalledManagedSchemaPublication"
+    ) < runtime_publication.index("Write-TicketboxC07InstalledRuntimeEnvironment")
+    assert runtime_publication.index(
+        "Write-TicketboxC07InstalledRuntimeEnvironment"
+    ) < runtime_publication.index("Complete-TicketboxC07InstalledSecretCleanup")
 
 
 def test_installed_payload_authority_lease_spans_c07_under_lifecycle_lock() -> None:
@@ -1071,6 +1116,8 @@ $script:superuserPassword = New-TestSecureString ('S' * 40)
 $script:operationId = '1493b3d9-3721-0e51-0255-58aba5ba6e99'
 $script:recoveryExists = $true
 $script:qualificationCalls = 0
+$script:invalidEvidence = $false
+$script:failQualification = $false
 $script:environmentCalls = 0
 $script:cleanupCalls = 0
 $script:failQualification = $false
@@ -1574,14 +1621,49 @@ def test_historical_ready_requires_live_published_proof_before_recovery_cleanup(
     engine: str,
     ready_semantics: str,
 ) -> None:
-    source = INSTALLER.read_text(encoding="utf-8-sig")
     adapter = C07_WRITER_FENCE_ADAPTER.read_text(encoding="utf-8-sig")
     script = "\n".join(
         (
             "$ErrorActionPreference = 'Stop'",
             _function(adapter, "Assert-TicketboxC07PublishedRuntimeQualification"),
             _function(adapter, "Get-TicketboxC07PublishedRuntimeQualification"),
-            _function(source, "Complete-TicketboxC07RecoveredSuperuserResidue"),
+            r"""
+function Complete-TicketboxC07RecoveredSuperuserResidue {
+    param(
+        [string]$DataRoot,
+        [string]$RecoveryArtifactPath,
+        [Security.SecureString]$RuntimePassword,
+        [string]$ExpectedOperationId
+    )
+    $hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+    $capturedDataRoot = $DataRoot
+    $capturedHostAuthority = $hostAuthority
+    $capturedRuntimePassword = $RuntimePassword
+    $capturedExpectedOperationId = $ExpectedOperationId
+    $capturedTimeoutMilliseconds = [Math]::Min(30000, [int]$DatabaseToolTimeoutMs)
+    $boundedAction = {
+        param([Security.SecureString]$RecoveredSuperuserPassword)
+        Set-TicketboxC07DatabaseAuthorityCredential $RecoveredSuperuserPassword
+        try {
+            return Get-TicketboxC07PublishedRuntimeQualification `
+                -DataRoot $capturedDataRoot `
+                -HostAuthority $capturedHostAuthority `
+                -DatabaseAuthorityCredential $RecoveredSuperuserPassword `
+                -RuntimePassword $capturedRuntimePassword `
+                -ExpectedOperationId $capturedExpectedOperationId `
+                -ObservationTimeoutMilliseconds $capturedTimeoutMilliseconds
+        }
+        finally {
+            Clear-TicketboxC07DatabaseAuthorityCredential `
+                -ExpectedCredential $RecoveredSuperuserPassword
+        }
+    }.GetNewClosure()
+    return Invoke-TicketboxC07RecoveredSuperuserAction `
+        -HostAuthority $hostAuthority `
+        -RecoveryArtifactPath $RecoveryArtifactPath `
+        -Action $boundedAction
+}
+""",
             "$DataRoot = 'C:\\poison\\global'",
             "$DatabaseToolTimeoutMs = 7000",
             "$script:order = @()",
@@ -1861,10 +1943,12 @@ function Invoke-TicketboxC07RecoveredSuperuserAction {
 }
 $authority = [pscustomobject]@{
     Receipt = [pscustomobject]@{
+        stage = 'ready'
         operation_id = '11111111-1111-4111-8111-111111111111'
     }
-    Descriptor = [pscustomobject]@{
-        Payload = [pscustomobject]@{
+        Descriptor = [pscustomobject]@{
+            PayloadSha256 = ('9' * 64)
+            Payload = [pscustomobject]@{
             target_alembic_revision = '20260729_0001'
         }
     }
@@ -1872,11 +1956,16 @@ $authority = [pscustomobject]@{
 $rejected = $false
 try {
     Invoke-TicketboxInstalledManagedSchemaUpgrade `
-        -ReleaseIdentity ([pscustomobject]@{}) `
+        -DataRoot 'C:\protected\data' `
+        -HostAuthority ([pscustomobject]@{ Schema = 'host' }) `
+        -ReleaseIdentity ([pscustomobject]@{
+            InstallationOperationId = '11111111-1111-4111-8111-111111111111'
+        }) `
         -C07Authority $authority `
         -RuntimePassword (New-TestSecureString) `
         -LifecycleReceipt ([pscustomobject]@{}) `
         -RecoveryArtifactPath 'recovery.pgpass' `
+        -ObservationTimeoutMilliseconds 7000 `
         -Mode fresh_install | Out-Null
 }
 catch {
@@ -1891,6 +1980,829 @@ if (-not $rejected -or $script:recoveryCalls -ne 0 -or
     )
     result = _run_ps(engine, script)
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_managed_schema_retry_retires_exact_active_migrator_before_replay(
+    engine: str,
+) -> None:
+    source = INSTALLER.read_text(encoding="utf-8-sig")
+    script = "\n".join(
+        (
+            "$ErrorActionPreference = 'Stop'",
+            _function(source, "Invoke-TicketboxInstalledManagedSchemaUpgrade"),
+            _function(
+                C07_WRITER_FENCE_ADAPTER.read_text(encoding="utf-8-sig"),
+                "Assert-TicketboxC07PublishedRuntimeQualification",
+            ),
+            _function(
+                C07_WRITER_FENCE_ADAPTER.read_text(encoding="utf-8-sig"),
+                "Get-TicketboxC07PublishedRuntimeQualification",
+            ),
+            r"""
+$DataRoot = 'C:\protected\data'
+$script:operationId = '11111111-1111-4111-8111-111111111111'
+$script:currentRevision = ''
+$script:mode = ''
+$script:migratorDisposition = 'retired'
+$script:events = @()
+$script:recoveryExists = $true
+$script:backupPath = [IO.Path]::GetTempFileName()
+$script:qualificationCalls = 0
+function New-TestSecureString {
+    $secret = New-Object Security.SecureString
+    1..40 | ForEach-Object { $secret.AppendChar('R') }
+    $secret.MakeReadOnly()
+    return $secret
+}
+function Resolve-TicketboxC07DatabaseHostAuthority {
+    return [pscustomobject]@{ Schema = 'host'; Nonce = 'bound' }
+}
+function Get-TicketboxC07DatabaseAuthorityCredential {
+    return $script:scopedCredential
+}
+function Get-TicketboxRuntimeAlembicRevision {
+    $script:events += "outer_revision:$($script:currentRevision)"
+    return $script:currentRevision
+}
+function Get-TicketboxInstalledManagedSchemaPlan {
+    return [pscustomobject]@{
+        source_revision = '20260722_0001'
+        target_revision = '20260729_0001'
+        revision_manifest_sha256 = ('a' * 64)
+        upgrade_required = $true
+    }
+}
+function New-StrongPassword { return ('M' * 40) }
+function ConvertTo-TicketboxC07InstalledSecureString { return New-TestSecureString }
+function Set-TicketboxC07DatabaseAuthorityCredential {
+    param($Credential)
+    $script:scopedCredential = $Credential
+    $script:events += 'set_authority'
+}
+function Clear-TicketboxC07DatabaseAuthorityCredential {
+    param($ExpectedCredential)
+    if (-not [object]::ReferenceEquals(
+        $script:scopedCredential,
+        $ExpectedCredential
+    )) { throw 'scope credential drift' }
+    $script:scopedCredential = $null
+    $script:events += 'clear_authority'
+}
+function Read-TicketboxC07Authority {
+    $script:events += 'read_exact_ready'
+    return [pscustomobject]@{
+        Receipt = [pscustomobject]@{
+            stage = 'ready'
+            operation_id = $script:operationId
+            ready_verification_sha256 = ('d' * 64)
+        }
+        ReadyVerification = [pscustomobject]@{
+            ReadySemantics = 'published_runtime'
+        }
+        Descriptor = [pscustomobject]@{
+            PayloadSha256 = $(if ($script:liveDescriptorDrift) {
+                ('8' * 64)
+            } else { ('9' * 64) })
+            Payload = [pscustomobject]@{
+                target_alembic_revision = $(if ($script:liveTargetDrift) {
+                    '20260809_0001'
+                } else { '20260729_0001' })
+                revision_manifest_sha256 = $(if ($script:liveManifestDrift) {
+                    ('7' * 64)
+                } else { ('a' * 64) })
+            }
+        }
+    }
+}
+function Read-TicketboxC07DurableHeartbeatAuthority {
+    param($BoundDataRoot)
+    return Read-TicketboxC07Authority $BoundDataRoot
+}
+function Read-TicketboxC07ProductionAuthority {
+    return [pscustomobject]@{ PayloadSha256 = ('b' * 64) }
+}
+function Read-TicketboxC07RuntimeProjectionForAuthority {
+    return [pscustomobject]@{ PayloadSha256 = ('c' * 64) }
+}
+function Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority {
+    $script:qualificationCalls += 1
+    $script:events += 'post_schema_observation'
+    return [pscustomobject]@{}
+}
+function ConvertTo-TicketboxC07WriterFenceObservation {
+    return [pscustomobject]@{ AuthorityPhase = 'published_runtime' }
+}
+function Assert-TicketboxC07PublishedDatabaseAuthority {
+    $script:events += 'post_schema_assertion'
+    if ($script:failQualification) {
+        throw 'injected post-schema qualification failure'
+    }
+}
+function Assert-TicketboxC07RuntimeCredential {
+    $script:events += 'post_schema_runtime_credential'
+}
+function Assert-TicketboxC07PublishedRuntimeQualification {
+    param($DataRoot, $Qualification)
+    $script:events += 'qualification_receipt_asserted'
+    return Read-TicketboxC07DurableHeartbeatAuthority $DataRoot
+}
+function Get-TicketboxC07InstalledAlembicRevision {
+    $script:events += "live_revision:$($script:currentRevision)"
+    return $script:currentRevision
+}
+function Get-TicketboxC07MigratorRetirementState {
+    $script:events += "migrator_state:$($script:migratorDisposition)"
+    return [pscustomobject]@{
+        IsActive = [string]$script:migratorDisposition -ceq 'active' -or
+            [string]$script:migratorDisposition -ceq 'partial'
+        IsRetired = [string]$script:migratorDisposition -ceq 'retired' -or
+            [string]$script:migratorDisposition -ceq 'partial'
+    }
+}
+function Disable-TicketboxC07MigratorLogin {
+    param($SuperuserPassword, [string]$OperationId, [string]$Mode)
+    if (
+        -not [object]::ReferenceEquals(
+            $script:scopedCredential,
+            $SuperuserPassword
+        ) -or
+        $OperationId -cne $script:operationId -or
+        $Mode -cne $script:mode
+    ) { throw 'migrator retirement binding drift' }
+    $script:events += "disable:$Mode"
+    $script:migratorDisposition = 'retired'
+}
+function Enable-TicketboxC07MigratorForManagedSchemaUpgrade {
+    param($OperationId, [string]$Mode)
+    if ($OperationId -cne $script:operationId -or $Mode -cne $script:mode -or
+        [string]$script:migratorDisposition -cne 'retired') {
+        throw 'migrator re-enable binding drift'
+    }
+    $script:events += "enable:$Mode"
+    $script:migratorDisposition = 'active'
+}
+function Invoke-TicketboxInstalledManagedSchemaUpgradeAction {
+    $script:events += 'upgrade_action'
+    return [pscustomobject]@{
+        alembic_revision = $(if ($script:invalidEvidence) {
+            '20260722_0001'
+        } else { '20260729_0001' })
+        revision_manifest_sha256 = $(if ($script:invalidManifestEvidence) {
+            ('f' * 64)
+        } else { ('a' * 64) })
+    }
+}
+function Set-TicketboxManagedSchemaRuntimeAcl {
+    $script:events += 'runtime_acl'
+}
+function Invoke-TicketboxC07RecoveredSuperuserAction {
+    param($HostAuthority, [string]$RecoveryArtifactPath, [scriptblock]$Action)
+    $script:events += 'recovered_action'
+    try {
+        $result = & $Action (New-TestSecureString)
+        $script:recoveryExists = $false
+        $script:events += 'recovery_cleanup'
+        return $result
+    }
+    catch { throw }
+}
+$authority = [pscustomobject]@{
+    Receipt = [pscustomobject]@{
+        stage = 'ready'
+        operation_id = $script:operationId
+        ready_verification_sha256 = ('d' * 64)
+    }
+    ReadyVerification = [pscustomobject]@{
+        ReadySemantics = 'published_runtime'
+    }
+    Descriptor = [pscustomobject]@{
+        PayloadSha256 = ('9' * 64)
+        Payload = [pscustomobject]@{
+            target_alembic_revision = '20260729_0001'
+            revision_manifest_sha256 = ('a' * 64)
+        }
+    }
+}
+$receipt = [pscustomobject]@{
+    backup_required = $true
+    backup_completed = $true
+    backup_path = $script:backupPath
+}
+function Invoke-TestCase {
+    param(
+        [string]$Revision,
+        [string]$Mode,
+        [string]$Disposition,
+        [string]$FailureKind = '',
+        [string]$AuthorityStage = 'ready',
+        [string]$AuthorityOperationId = '',
+        [bool]$LiveDescriptorDrift = $false
+    )
+    $script:currentRevision = $Revision
+    $script:mode = $Mode
+    $script:migratorDisposition = $Disposition
+    $script:events = @()
+    $script:recoveryExists = $true
+    $script:invalidEvidence = $FailureKind -ceq 'evidence'
+    $script:invalidManifestEvidence = $FailureKind -ceq 'manifest_evidence'
+    $script:failQualification = $FailureKind -ceq 'qualification'
+    $script:liveDescriptorDrift = $LiveDescriptorDrift
+    $script:liveTargetDrift = $FailureKind -ceq 'live_target'
+    $script:liveManifestDrift = $FailureKind -ceq 'live_manifest'
+    $authority.Descriptor.PayloadSha256 = $(if (
+        $FailureKind -ceq 'captured_payload_empty'
+    ) { '' } else { ('9' * 64) })
+    $authority.Descriptor.Payload.revision_manifest_sha256 = $(if (
+        $FailureKind -ceq 'captured_manifest'
+    ) { ('e' * 64) } else { ('a' * 64) })
+    $authority.Receipt.stage = $AuthorityStage
+    $authority.Receipt.operation_id = $(if (
+        [string]::IsNullOrEmpty($AuthorityOperationId)
+    ) { $script:operationId } else { $AuthorityOperationId })
+    $failed = $false
+    $errorMessage = ''
+    try {
+        $result = Invoke-TicketboxInstalledManagedSchemaUpgrade `
+            -DataRoot $DataRoot `
+            -HostAuthority (Resolve-TicketboxC07DatabaseHostAuthority) `
+            -ReleaseIdentity ([pscustomobject]@{
+                InstallationOperationId = $script:operationId
+            }) `
+            -C07Authority $authority `
+            -RuntimePassword (New-TestSecureString) `
+            -LifecycleReceipt $receipt `
+            -RecoveryArtifactPath 'recovery.pgpass' `
+            -ObservationTimeoutMilliseconds 7000 `
+            -Mode $Mode
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        $failed = (
+            $_.Exception.Message.Contains('unknown/partial') -or
+            $_.Exception.Message.Contains('exact-head evidence') -or
+            $_.Exception.Message.Contains('post-schema qualification') -or
+            $_.Exception.Message.Contains('exact C07 READY') -or
+            $_.Exception.Message.Contains('generation authority') -or
+            $_.Exception.Message.Contains('exact live C07 READY authority')
+        )
+        $result = [pscustomobject]@{ alembic_revision = 'blocked' }
+    }
+    return [pscustomobject]@{
+        revision = $Revision
+        mode = $Mode
+        disposition = $Disposition
+        failure_kind = $FailureKind
+        failed = $failed
+        error = $errorMessage
+        recovery_exists = [bool]$script:recoveryExists
+        result = [string]$result.alembic_revision
+        events = @($script:events)
+    }
+}
+@(
+    Invoke-TestCase '20260722_0001' fresh_install active
+    Invoke-TestCase '20260729_0001' fresh_install active
+    Invoke-TestCase '20260722_0001' legacy_adoption active
+    Invoke-TestCase '20260729_0001' legacy_adoption active
+    Invoke-TestCase '20260722_0001' fresh_install unknown
+    Invoke-TestCase '20260729_0001' legacy_adoption unknown
+    Invoke-TestCase '20260729_0001' fresh_install retired evidence
+    Invoke-TestCase '20260729_0001' fresh_install retired manifest_evidence
+    Invoke-TestCase '20260729_0001' legacy_adoption retired qualification
+    Invoke-TestCase '20260729_0001' fresh_install retired captured_manifest
+    Invoke-TestCase '20260729_0001' fresh_install retired '' runtime_acl_verified
+    Invoke-TestCase `
+        '20260729_0001' `
+        legacy_adoption `
+        retired `
+        '' `
+        ready `
+        '22222222-2222-4222-8222-222222222222'
+    Invoke-TestCase `
+        '20260729_0001' `
+        fresh_install `
+        retired `
+        '' `
+        ready `
+        '' `
+        $true
+    Invoke-TestCase '20260729_0001' fresh_install retired captured_payload_empty
+    Invoke-TestCase '20260729_0001' fresh_install retired live_target
+    Invoke-TestCase '20260729_0001' legacy_adoption retired live_manifest
+    Invoke-TestCase '20260729_0001' legacy_adoption partial
+) | ConvertTo-Json -Depth 5 -Compress
+""",
+        )
+    )
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    for item in payload[:4]:
+        assert item["failed"] is False
+        assert item["recovery_exists"] is False, item
+        assert item["result"] == "20260729_0001"
+        events = item["events"]
+        first_state = events.index("migrator_state:active")
+        first_disable = events.index(f"disable:{item['mode']}")
+        first_retired = events.index("migrator_state:retired", first_disable)
+        enable = events.index(f"enable:{item['mode']}")
+        assert first_state < first_disable < first_retired < enable
+        assert enable < events.index("upgrade_action") < events.index("runtime_acl")
+        assert events.index("runtime_acl") < events.index("post_schema_observation")
+        assert events.index("post_schema_runtime_credential") < events.index("clear_authority")
+        assert events.index("qualification_receipt_asserted") < events.index("clear_authority")
+        assert events[-2:] == ["clear_authority", "recovery_cleanup"]
+    for partial in payload[4:6]:
+        assert partial["failed"] is True
+        assert partial["recovery_exists"] is True
+        assert f"disable:{partial['mode']}" not in partial["events"]
+        assert f"enable:{partial['mode']}" not in partial["events"]
+        assert "upgrade_action" not in partial["events"]
+    evidence = payload[6]
+    assert evidence["failed"] is True
+    assert evidence["recovery_exists"] is True
+    assert "upgrade_action" in evidence["events"]
+    assert "post_schema_observation" not in evidence["events"]
+    manifest_evidence = payload[7]
+    assert manifest_evidence["failed"] is True
+    assert manifest_evidence["recovery_exists"] is True
+    assert "upgrade_action" in manifest_evidence["events"]
+    assert "post_schema_observation" not in manifest_evidence["events"]
+    qualification = payload[8]
+    assert qualification["failed"] is True
+    assert qualification["recovery_exists"] is True
+    assert qualification["events"].index("runtime_acl") < qualification["events"].index(
+        "post_schema_observation"
+    )
+    assert "recovery_cleanup" not in qualification["events"]
+    for authority_drift in payload[9:12]:
+        assert authority_drift["failed"] is True
+        assert authority_drift["recovery_exists"] is True
+        assert "recovered_action" not in authority_drift["events"]
+        assert f"disable:{authority_drift['mode']}" not in authority_drift["events"]
+        assert f"enable:{authority_drift['mode']}" not in authority_drift["events"]
+    live_descriptor_drift = payload[12]
+    assert live_descriptor_drift["failed"] is True
+    assert live_descriptor_drift["recovery_exists"] is True
+    assert "recovered_action" in live_descriptor_drift["events"]
+    assert "disable:fresh_install" not in live_descriptor_drift["events"]
+    assert "enable:fresh_install" not in live_descriptor_drift["events"]
+    captured_payload_empty = payload[13]
+    assert captured_payload_empty["failed"] is True
+    assert captured_payload_empty["recovery_exists"] is True
+    assert "recovered_action" not in captured_payload_empty["events"]
+    for live_authority_drift in payload[14:16]:
+        assert live_authority_drift["failed"] is True
+        assert live_authority_drift["recovery_exists"] is True
+        assert "recovered_action" in live_authority_drift["events"]
+        assert not any(
+            event.startswith("live_revision:")
+            or event.startswith("migrator_state:")
+            or event.startswith("disable:")
+            or event.startswith("enable:")
+            or event == "upgrade_action"
+            or event == "recovery_cleanup"
+            for event in live_authority_drift["events"]
+        )
+    partial = payload[16]
+    assert partial["failed"] is True
+    assert partial["recovery_exists"] is True
+    assert "migrator_state:partial" in partial["events"]
+    assert not any(
+        event.startswith("disable:")
+        or event.startswith("enable:")
+        or event == "upgrade_action"
+        or event == "recovery_cleanup"
+        for event in partial["events"]
+    )
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_managed_schema_publication_rebinds_post_schema_qualification(
+    engine: str,
+) -> None:
+    source = INSTALLER.read_text(encoding="utf-8-sig")
+    script = "\n".join(
+        (
+            "$ErrorActionPreference = 'Stop'",
+            _function(
+                source,
+                "Complete-TicketboxInstalledManagedSchemaPublication",
+            ),
+            r"""
+$script:operationId = '11111111-1111-4111-8111-111111111111'
+$script:managedCalls = 0
+$script:durableReads = 0
+$script:productionMode = 'fresh_install'
+$script:productionHash = ('b' * 64)
+$script:projectionHash = ('c' * 64)
+$script:qualificationProductionHash = ('b' * 64)
+$script:qualificationProjectionHash = ('c' * 64)
+$script:managedRevision = '20260729_0001'
+$script:managedManifest = ('a' * 64)
+$script:durableStage = 'ready'
+$script:durableOperationId = $script:operationId
+$runtimePassword = New-Object Security.SecureString
+1..32 | ForEach-Object { $runtimePassword.AppendChar('R') }
+$runtimePassword.MakeReadOnly()
+$hostAuthority = [pscustomobject]@{ Nonce = 'bound-host' }
+$releaseIdentity = [pscustomobject]@{
+    InstallationOperationId = $script:operationId
+}
+$c07Authority = [pscustomobject]@{
+    Receipt = [pscustomobject]@{
+        stage = 'ready'
+        operation_id = $script:operationId
+    }
+    Descriptor = [pscustomobject]@{
+        PayloadSha256 = ('9' * 64)
+        Payload = [pscustomobject]@{
+            target_alembic_revision = '20260729_0001'
+            revision_manifest_sha256 = ('a' * 64)
+        }
+    }
+}
+$lifecycleReceipt = [pscustomobject]@{ schema = 'receipt-v3' }
+function Invoke-TicketboxInstalledManagedSchemaUpgrade {
+    param(
+        $DataRoot,
+        $HostAuthority,
+        $ReleaseIdentity,
+        $C07Authority,
+        $RuntimePassword,
+        $LifecycleReceipt,
+        [string]$RecoveryArtifactPath,
+        [int]$ObservationTimeoutMilliseconds,
+        [string]$Mode
+    )
+    if (
+        $DataRoot -cne 'C:\expected\data' -or
+        -not [object]::ReferenceEquals($HostAuthority, $hostAuthority) -or
+        -not [object]::ReferenceEquals($RuntimePassword, $runtimePassword) -or
+        $ReleaseIdentity.InstallationOperationId -cne $script:operationId -or
+        $C07Authority.Receipt.operation_id -cne $script:operationId -or
+        -not [object]::ReferenceEquals($LifecycleReceipt, $lifecycleReceipt) -or
+        $RecoveryArtifactPath -cne 'C:\expected\recovery.pgpass' -or
+        $ObservationTimeoutMilliseconds -ne 7000 -or
+        $Mode -cnotin @('fresh_install', 'legacy_adoption')
+    ) {
+        throw 'managed publication argument binding drift'
+    }
+    $script:managedCalls += 1
+    $script:lastQualification = [pscustomobject]@{
+        schema = 'ticketbox-c07-published-runtime-qualification-v1'
+        operation_id = $script:operationId
+        production_authority_sha256 =
+            $script:qualificationProductionHash
+        runtime_projection_sha256 =
+            $script:qualificationProjectionHash
+    }
+    return [pscustomobject]@{
+        schema = 'ticketbox-managed-schema-publication-v1'
+        alembic_revision = $script:managedRevision
+        revision_manifest_sha256 = $script:managedManifest
+        published_runtime_qualification = $script:lastQualification
+    }
+}
+function Read-TicketboxC07DurableHeartbeatAuthority {
+    param([string]$DataRoot)
+    if ($DataRoot -cne 'C:\expected\data') {
+        throw 'publication reread used an ambient DataRoot'
+    }
+    $script:durableReads += 1
+    $c07Authority.Receipt.stage = $script:durableStage
+    $c07Authority.Receipt.operation_id = $script:durableOperationId
+    return $c07Authority
+}
+function Read-TicketboxC07ProductionAuthority {
+    param($Authority)
+    if (-not [object]::ReferenceEquals($Authority, $c07Authority)) {
+        throw 'production reread authority drift'
+    }
+    return [pscustomobject]@{
+        Payload = [pscustomobject]@{ mode = $script:productionMode }
+        PayloadSha256 = $script:productionHash
+    }
+}
+function Read-TicketboxC07RuntimeProjectionForAuthority {
+    param($Authority)
+    if (-not [object]::ReferenceEquals($Authority, $c07Authority)) {
+        throw 'projection reread authority drift'
+    }
+    return [pscustomobject]@{ PayloadSha256 = $script:projectionHash }
+}
+function Invoke-Publication {
+    param([string]$Mode = 'fresh_install')
+    $beforeManaged = $script:managedCalls
+    $beforeDurable = $script:durableReads
+    try {
+        $result = Complete-TicketboxInstalledManagedSchemaPublication `
+            -DataRoot 'C:\expected\data' `
+            -HostAuthority $hostAuthority `
+            -ReleaseIdentity $releaseIdentity `
+            -C07Authority $c07Authority `
+            -RuntimePassword $runtimePassword `
+            -LifecycleReceipt $lifecycleReceipt `
+            -RecoveryArtifactPath 'C:\expected\recovery.pgpass' `
+            -ObservationTimeoutMilliseconds 7000 `
+            -Mode $Mode
+        return [pscustomobject]@{
+            rejected = $false
+            schema = [string]$result.schema
+            mode = [string]$result.mode
+            revision = [string]$result.alembic_revision
+            manifest = [string]$result.revision_manifest_sha256
+            production = [string]$result.production_authority_sha256
+            projection = [string]$result.runtime_projection_sha256
+            qualification_same = [object]::ReferenceEquals(
+                $result.published_runtime_qualification,
+                $script:lastQualification
+            )
+            managed_delta = $script:managedCalls - $beforeManaged
+            durable_delta = $script:durableReads - $beforeDurable
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            rejected = $true
+            error = $_.Exception.Message
+            managed_delta = $script:managedCalls - $beforeManaged
+            durable_delta = $script:durableReads - $beforeDurable
+        }
+    }
+}
+$acceptedFresh = Invoke-Publication fresh_install
+$script:productionMode = 'legacy_adoption'
+$acceptedLegacy = Invoke-Publication legacy_adoption
+$modeDrift = Invoke-Publication fresh_install
+$script:productionMode = 'fresh_install'
+$script:qualificationProductionHash = ('d' * 64)
+$productionDrift = Invoke-Publication
+$script:qualificationProductionHash = ('b' * 64)
+$script:qualificationProjectionHash = ('e' * 64)
+$projectionDrift = Invoke-Publication
+$script:qualificationProjectionHash = ('c' * 64)
+$script:managedRevision = '20260722_0001'
+$revisionDrift = Invoke-Publication
+$script:managedRevision = '20260729_0001'
+$script:managedManifest = ('f' * 64)
+$manifestDrift = Invoke-Publication
+$script:managedManifest = ('a' * 64)
+$script:durableStage = 'runtime_acl_verified'
+$stageDrift = Invoke-Publication
+$script:durableStage = 'ready'
+$script:durableOperationId = '22222222-2222-4222-8222-222222222222'
+$operationDrift = Invoke-Publication
+@(
+    $acceptedFresh,
+    $acceptedLegacy,
+    $modeDrift,
+    $productionDrift,
+    $projectionDrift,
+    $revisionDrift,
+    $manifestDrift,
+    $stageDrift,
+    $operationDrift
+) |
+    ConvertTo-Json -Depth 5 -Compress
+""",
+        )
+    )
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr
+    (
+        accepted_fresh,
+        accepted_legacy,
+        mode_drift,
+        production_drift,
+        projection_drift,
+        revision_drift,
+        manifest_drift,
+        stage_drift,
+        operation_drift,
+    ) = json.loads(result.stdout)
+    for accepted, mode in (
+        (accepted_fresh, "fresh_install"),
+        (accepted_legacy, "legacy_adoption"),
+    ):
+        assert accepted == {
+            "rejected": False,
+            "schema": "ticketbox-installed-schema-publication-v1",
+            "mode": mode,
+            "revision": "20260729_0001",
+            "manifest": "a" * 64,
+            "production": "b" * 64,
+            "projection": "c" * 64,
+            "qualification_same": True,
+            "managed_delta": 1,
+            "durable_delta": 1,
+        }
+    for drift in (
+        mode_drift,
+        production_drift,
+        projection_drift,
+        revision_drift,
+        manifest_drift,
+        stage_drift,
+        operation_drift,
+    ):
+        assert drift["rejected"] is True
+        assert drift["managed_delta"] == 1
+        assert drift["durable_delta"] == 1
+
+
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_runtime_publication_dispatches_all_three_dispositions(engine: str) -> None:
+    source = INSTALLER.read_text(encoding="utf-8-sig")
+    script = "\n".join(
+        (
+            "$ErrorActionPreference = 'Stop'",
+            _function(source, "Complete-TicketboxInstalledRuntimePublication"),
+            r"""
+$script:operationId = '11111111-1111-4111-8111-111111111111'
+$script:publishedMode = 'legacy_adoption'
+$script:events = @()
+$script:failSchema = $false
+$runtimePassword = New-Object Security.SecureString
+1..32 | ForEach-Object { $runtimePassword.AppendChar('R') }
+$runtimePassword.MakeReadOnly()
+$hostAuthority = [pscustomobject]@{ Nonce = 'host' }
+$releaseIdentity = [pscustomobject]@{
+    InstallationOperationId = $script:operationId
+}
+$authority = [pscustomobject]@{
+    Receipt = [pscustomobject]@{ operation_id = $script:operationId }
+}
+$receipt = [pscustomobject]@{ schema = 'receipt-v3' }
+$lock = [pscustomobject]@{ Nonce = 'lock' }
+$runtimeConnection = [pscustomobject]@{
+    DatabaseUrl = 'postgresql://runtime@127.0.0.1/ticketbox'
+    PersistedDatabaseUrl = 'postgresql://runtime@localhost/ticketbox'
+    Password = 'runtime-secret'
+}
+function Read-TicketboxC07ProductionAuthority {
+    return [pscustomobject]@{
+        Payload = [pscustomobject]@{ mode = $script:publishedMode }
+    }
+}
+function Complete-TicketboxInstalledManagedSchemaPublication {
+    param(
+        $DataRoot,
+        $HostAuthority,
+        $ReleaseIdentity,
+        $C07Authority,
+        $RuntimePassword,
+        $LifecycleReceipt,
+        [string]$RecoveryArtifactPath,
+        [int]$ObservationTimeoutMilliseconds,
+        [string]$Mode
+    )
+    if ($script:failSchema) { throw 'injected schema publication failure' }
+    if (
+        $DataRoot -cne 'C:\bound\data' -or
+        -not [object]::ReferenceEquals($HostAuthority, $hostAuthority) -or
+        -not [object]::ReferenceEquals($ReleaseIdentity, $releaseIdentity) -or
+        -not [object]::ReferenceEquals($C07Authority, $authority) -or
+        -not [object]::ReferenceEquals($RuntimePassword, $runtimePassword) -or
+        -not [object]::ReferenceEquals($LifecycleReceipt, $receipt) -or
+        $RecoveryArtifactPath -cne 'C:\bound\recovery.pgpass' -or
+        $ObservationTimeoutMilliseconds -ne 7000
+    ) { throw 'dispatcher argument binding drift' }
+    $script:events += "schema:$Mode"
+    $script:lastQualification = [pscustomobject]@{
+        schema = 'ticketbox-c07-published-runtime-qualification-v1'
+    }
+    return [pscustomobject]@{
+        published_runtime_qualification = $script:lastQualification
+    }
+}
+function Assert-TicketboxConnectedPostgresDataRoot {
+    param(
+        [string]$PsqlPath,
+        [string]$DatabaseUrl,
+        [string]$ExpectedDataRoot,
+        [int]$ExpectedPort,
+        [string]$Password,
+        [int]$TimeoutMilliseconds
+    )
+    if (
+        $PsqlPath -cne 'C:\bound\psql.exe' -or
+        $DatabaseUrl -cne $runtimeConnection.DatabaseUrl -or
+        $ExpectedDataRoot -cne 'C:\bound\pgdata' -or
+        $ExpectedPort -ne 5432 -or
+        $Password -cne 'runtime-secret' -or
+        $TimeoutMilliseconds -ne 9000
+    ) { throw 'runtime connection binding drift' }
+    $script:events += 'data_root'
+}
+function Assert-TicketboxC07RuntimeCredential {
+    param($Authority, $RuntimePassword)
+    if (
+        -not [object]::ReferenceEquals($Authority, $hostAuthority) -or
+        -not [object]::ReferenceEquals($RuntimePassword, $runtimePassword)
+    ) { throw 'runtime credential binding drift' }
+    $script:events += 'runtime_credential'
+}
+function Write-TicketboxC07InstalledRuntimeEnvironment {
+    param($RuntimePassword, $Qualification)
+    if (
+        -not [object]::ReferenceEquals($RuntimePassword, $runtimePassword) -or
+        -not [object]::ReferenceEquals(
+            $Qualification,
+            $script:lastQualification
+        )
+    ) {
+        throw 'environment password binding drift'
+    }
+    $script:events += 'environment'
+    return 'postgresql://published'
+}
+function Complete-TicketboxC07InstalledSecretCleanup {
+    param($Mode, $LifecycleLock, $RecoveryArtifactPath, $Qualification)
+    if (
+        -not [object]::ReferenceEquals($LifecycleLock, $lock) -or
+        $RecoveryArtifactPath -cne 'C:\bound\recovery.pgpass' -or
+        -not [object]::ReferenceEquals(
+            $Qualification,
+            $script:lastQualification
+        )
+    ) { throw 'cleanup binding drift' }
+    $script:events += "cleanup:$Mode"
+}
+function Invoke-Case {
+    param([string]$Disposition, [object]$Connection)
+    $script:events = @()
+    try {
+        $result = Complete-TicketboxInstalledRuntimePublication `
+            -Disposition $Disposition `
+            -DataRoot 'C:\bound\data' `
+            -HostAuthority $hostAuthority `
+            -ReleaseIdentity $releaseIdentity `
+            -C07Authority $authority `
+            -RuntimePassword $runtimePassword `
+            -LifecycleReceipt $receipt `
+            -LifecycleLock $lock `
+            -RecoveryArtifactPath 'C:\bound\recovery.pgpass' `
+            -ObservationTimeoutMilliseconds 7000 `
+            -RuntimeConnection $Connection `
+            -PsqlPath 'C:\bound\psql.exe' `
+            -ExpectedDataRoot 'C:\bound\pgdata' `
+            -ExpectedPort 5432 `
+            -DatabaseToolTimeoutMilliseconds 9000
+        return [pscustomobject]@{
+            rejected = $false
+            disposition = $Disposition
+            mode = [string]$result.mode
+            database_url = [string]$result.database_url
+            events = @($script:events)
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            rejected = $true
+            disposition = $Disposition
+            error = $_.Exception.Message
+            events = @($script:events)
+        }
+    }
+}
+$fresh = Invoke-Case fresh_install $null
+$legacy = Invoke-Case legacy_adoption $null
+$runtime = Invoke-Case runtime_ready $runtimeConnection
+$missingConnection = Invoke-Case runtime_ready $null
+$script:failSchema = $true
+$failedSchema = Invoke-Case runtime_ready $runtimeConnection
+@($fresh, $legacy, $runtime, $missingConnection, $failedSchema) |
+    ConvertTo-Json -Depth 5 -Compress
+""",
+        )
+    )
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr
+    fresh, legacy, runtime, missing_connection, failed_schema = json.loads(
+        result.stdout
+    )
+    assert fresh["mode"] == "fresh_install"
+    assert fresh["events"] == ["schema:fresh_install", "environment", "cleanup:fresh_install"]
+    assert legacy["mode"] == "legacy_adoption"
+    assert legacy["events"] == [
+        "schema:legacy_adoption",
+        "environment",
+        "cleanup:legacy_adoption",
+    ]
+    assert runtime["mode"] == "legacy_adoption"
+    assert runtime["database_url"] == "postgresql://runtime@localhost/ticketbox"
+    assert runtime["events"] == [
+        "schema:legacy_adoption",
+        "data_root",
+        "runtime_credential",
+        "cleanup:legacy_adoption",
+    ]
+    assert missing_connection["rejected"] is True
+    assert missing_connection["events"] == ["schema:legacy_adoption"]
+    assert failed_schema["rejected"] is True
+    assert failed_schema["events"] == []
 
 
 @pytest.mark.parametrize("engine", powershell_contract_engines())
@@ -1951,22 +2863,30 @@ function Invoke-TicketboxC07RecoveredSuperuserAction {
 }
 $authority = [pscustomobject]@{
     Receipt = [pscustomobject]@{
+        stage = 'ready'
         operation_id = '11111111-1111-4111-8111-111111111111'
     }
     Descriptor = [pscustomobject]@{
+        PayloadSha256 = ('9' * 64)
         Payload = [pscustomobject]@{
             target_alembic_revision = '20260729_0001'
+            revision_manifest_sha256 = ('A' * 64)
         }
     }
 }
 $failedWithPrimary = $false
 try {
     Invoke-TicketboxInstalledManagedSchemaUpgrade `
-        -ReleaseIdentity ([pscustomobject]@{}) `
+        -DataRoot 'C:\protected\data' `
+        -HostAuthority ([pscustomobject]@{ Schema = 'host' }) `
+        -ReleaseIdentity ([pscustomobject]@{
+            InstallationOperationId = '11111111-1111-4111-8111-111111111111'
+        }) `
         -C07Authority $authority `
         -RuntimePassword (New-TestSecureString) `
         -LifecycleReceipt ([pscustomobject]@{}) `
         -RecoveryArtifactPath 'recovery.pgpass' `
+        -ObservationTimeoutMilliseconds 7000 `
         -Mode fresh_install | Out-Null
 }
 catch {

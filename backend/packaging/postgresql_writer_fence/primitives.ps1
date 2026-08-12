@@ -152,6 +152,35 @@ OR (
 "@
 }
 
+function New-TicketboxPostgresqlWriterFenceExecutableRelationScopeSql {
+    param(
+        [Parameter(Mandatory = $true)][string]$ManagedSchemaSql,
+        [Parameter(Mandatory = $true)][string]$RoleOidSql
+    )
+
+    if ($RoleOidSql -cnotmatch '^[a-z][a-z0-9_]*\.oid$') {
+        throw "PostgreSQL writer-fence role OID expression is not trusted."
+    }
+    $userNamespace =
+        New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql `
+            -NamespaceAlias "namespace"
+    return @"
+(
+    (
+        namespace.nspname = $ManagedSchemaSql
+        AND relation.relkind IN ('r', 'p', 'f')
+    )
+    OR (
+        $userNamespace
+        AND relation.relkind = 'v'
+        AND has_schema_privilege(
+            $RoleOidSql, namespace.oid, 'USAGE'
+        )
+    )
+)
+"@
+}
+
 function Assert-TicketboxPostgresqlWriterFenceExactProperties {
     param(
         [AllowNull()][Parameter(Mandatory = $true)][object]$Value,

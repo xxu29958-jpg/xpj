@@ -7010,6 +7010,230 @@ if ($thirdParty.Count -ne 1 -or [bool]$thirdParty[0].can_table_write) {{
             read_only_cleanup.stdout + read_only_cleanup.stderr
         )
 
+        external_view_created = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+BEGIN;
+CREATE ROLE "External View Writer" NOLOGIN NOINHERIT;
+SET LOCAL ROLE ticketbox_owner;
+CREATE SCHEMA ticketbox_writer_fence_view_helper
+    AUTHORIZATION ticketbox_owner;
+CREATE VIEW ticketbox_writer_fence_view_helper.external_accounts AS
+    SELECT id, value FROM public.accounts;
+GRANT USAGE ON SCHEMA ticketbox_writer_fence_view_helper
+    TO "External View Writer";
+GRANT INSERT ON ticketbox_writer_fence_view_helper.external_accounts
+    TO "External View Writer";
+COMMIT;
+""",
+        )
+        assert external_view_created.returncode == 0, (
+            external_view_created.stdout + external_view_created.stderr
+        )
+        external_view_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "External View Writer"; '
+            "INSERT INTO ticketbox_writer_fence_view_helper.external_accounts"
+            "(id, value) VALUES (9810, 110);",
+        )
+        assert external_view_write.returncode == 0, (
+            external_view_write.stdout + external_view_write.stderr
+        )
+        external_view_effect = run_sql(
+            "ticketbox",
+            "postgres",
+            "SELECT count(*) FROM public.accounts WHERE (id, value) = (9810, 110);",
+        )
+        assert external_view_effect.returncode == 0, (
+            external_view_effect.stdout + external_view_effect.stderr
+        )
+        assert external_view_effect.stdout.strip() == "1"
+        external_view_harness = tmp_path / "real-pg-external-view-writer.ps1"
+        _write_ps1(
+            external_view_harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$raw = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$externalWriter = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'External View Writer'
+}})
+if ($externalWriter.Count -ne 1 -or
+    -not [bool]$externalWriter[0].can_table_write -or
+    [bool]$externalWriter[0].owns_managed_relations) {{
+    throw 'external-schema updatable view writer authority was not observed'
+}}
+$classifiedRejected = $false
+try {{ [void](Get-TicketboxC07WriterDatabaseFenceObservation) }}
+catch {{ $classifiedRejected = $true }}
+if (-not $classifiedRejected) {{
+    throw 'C07 policy accepted an external-schema updatable-view writer'
+}}
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+$databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres'
+$preconditionRejected = $false
+try {{
+    [void](Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {{
+        param([string]$PlainPassword)
+        Invoke-TicketboxPostgresqlWriterFenceReconcile `
+            -PsqlPath $hostAuthority.PsqlPath `
+            -DatabaseUrl $databaseUrl `
+            -Password $PlainPassword `
+            -AuthorityRole 'postgres' `
+            -ManagedSchemaName 'public' `
+            -AdvisoryLockLabel 'xiaopiaojia:schema' `
+            -ApplicationName 'ticketbox-c07-external-view-precondition' `
+            -ManagedWriterRoles @('ticketbox', 'ticketbox_runtime') `
+            -AuthorizedRoleNames @(
+                'postgres', 'ticketbox', 'ticketbox_owner',
+                'ticketbox_migrator', 'ticketbox_runtime'
+            ) `
+            -AllowedLoginRolesAfterFence @('postgres', 'ticketbox_migrator') `
+            -AllowedDatabaseOwnerRoles @('ticketbox_owner') `
+            -AllowedManagedWriterOwnerRoles @() `
+            -AllowedDatabaseOwnerTransitionRoles @('ticketbox_migrator') `
+            -TimeoutMilliseconds 10000 `
+            -LockTimeoutMilliseconds 1000 `
+            -TerminationTimeoutMilliseconds 3000
+    }})
+}}
+catch {{ $preconditionRejected = $true }}
+if (-not $preconditionRejected) {{
+    throw 'generic reconcile accepted an external-schema updatable-view writer'
+}}
+$after = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$runtime = @($after.Roles | Where-Object {{
+    [string]$_.name -ceq 'ticketbox_runtime'
+}})
+if ($runtime.Count -ne 1 -or -not [bool]$runtime[0].can_login -or
+    [int]$runtime[0].connection_limit -ne -1 -or
+    -not [bool]$runtime[0].direct_connect -or
+    -not [bool]$runtime[0].effective_connect) {{
+    throw 'external-view precondition rejection occurred after mutation'
+}}
+""",
+        )
+        _run_harness(engine, external_view_harness, timeout=60)
+        external_view_usage_revoked = run_sql(
+            "ticketbox",
+            "postgres",
+            'REVOKE USAGE ON SCHEMA ticketbox_writer_fence_view_helper '
+            'FROM "External View Writer";',
+        )
+        assert external_view_usage_revoked.returncode == 0, (
+            external_view_usage_revoked.stdout + external_view_usage_revoked.stderr
+        )
+        external_view_usage_control = (
+            tmp_path / "real-pg-external-view-schema-usage-control.ps1"
+        )
+        _write_ps1(
+            external_view_usage_control,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$raw = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$externalWriter = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'External View Writer'
+}})
+if ($externalWriter.Count -ne 1 -or [bool]$externalWriter[0].can_table_write) {{
+    throw 'external view without schema USAGE was misclassified as executable'
+}}
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+$databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    -Authority $hostAuthority -Database 'ticketbox' -Role 'postgres'
+$authorizedRolesSql = ConvertTo-TicketboxPostgresqlWriterFenceTextArray `
+    @('postgres', 'ticketbox', 'ticketbox_owner',
+      'ticketbox_migrator', 'ticketbox_runtime') `
+    'authorized roles'
+$managedSchemaSql =
+    ConvertTo-TicketboxPostgresqlWriterFenceSqlLiteral 'public'
+$guard = New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql `
+    -AuthorizedRolesSql $authorizedRolesSql `
+    -ManagedSchemaSql $managedSchemaSql
+Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {{
+    param([string]$PlainPassword)
+    [void](Invoke-TicketboxPostgresqlWriterFenceSql `
+        -PsqlPath $hostAuthority.PsqlPath `
+        -DatabaseUrl $databaseUrl `
+        -Password $PlainPassword `
+        -Sql @"
+DO `$writer_fence`$
+BEGIN
+$guard
+END
+`$writer_fence`$;
+"@ `
+        -Label 'external view no-USAGE precondition control' `
+        -TimeoutMilliseconds 30000)
+}}
+""",
+        )
+        _run_harness(engine, external_view_usage_control, timeout=60)
+        external_view_cleanup = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+DROP SCHEMA ticketbox_writer_fence_view_helper CASCADE;
+DROP OWNED BY "External View Writer";
+DROP ROLE "External View Writer";
+DELETE FROM public.accounts WHERE id = 9810;
+""",
+        )
+        assert external_view_cleanup.returncode == 0, (
+            external_view_cleanup.stdout + external_view_cleanup.stderr
+        )
+
         definer_created = run_sql(
             "ticketbox",
             "postgres",
