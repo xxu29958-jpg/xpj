@@ -211,6 +211,20 @@ function Set-TicketboxC07DatabaseAuthorityCredential(
     $script:TicketboxC07DatabaseAuthorityPassword = $SuperuserPassword
 }
 
+function Clear-TicketboxC07DatabaseAuthorityCredential(
+    [Security.SecureString]$ExpectedCredential
+) {
+    $current = $script:TicketboxC07DatabaseAuthorityPassword
+    if ($null -eq $current) { return }
+    if (
+        $null -eq $ExpectedCredential -or
+        -not [object]::ReferenceEquals($current, $ExpectedCredential)
+    ) {
+        throw "C07 拒绝清除不属于当前 scoped action 的 database authority credential。"
+    }
+    $script:TicketboxC07DatabaseAuthorityPassword = $null
+}
+
 function ConvertTo-TicketboxC07InstalledSecureString {
     param(
         [Parameter(Mandatory = $true)][string]$Value,
@@ -721,7 +735,7 @@ function Remove-TicketboxC07InstalledCredentials {
         [ValidateSet("fresh_install", "legacy_adoption")]
         [string]$Mode
     )
-    $authority = Read-TicketboxC07Authority $DataRoot
+    $authority = Read-TicketboxC07DurableHeartbeatAuthority $DataRoot
     Assert-TicketboxC07OperationLease $authority $LifecycleLock
     if ([string]$authority.Receipt.stage -cne "ready") {
         throw "C07 installed credentials 只能在 durable READY 后清理。"
@@ -743,7 +757,7 @@ function Remove-TicketboxC07FreshBootstrapIntent {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
-    $authority = Read-TicketboxC07Authority $DataRoot
+    $authority = Read-TicketboxC07DurableHeartbeatAuthority $DataRoot
     Assert-TicketboxC07OperationLease $authority $LifecycleLock
     if ([string]$authority.Receipt.stage -cne "ready") {
         throw "C07 fresh bootstrap intent 只能在 durable READY 后清理。"
@@ -868,1063 +882,62 @@ JOIN pg_database AS database ON database.datname = current_database();
     }
 }
 
-function Get-TicketboxC07WriterDatabaseFenceObservation {
-    param([Parameter(Mandatory = $true)][object]$ReleaseIdentity)
-    $password = Get-TicketboxC07DatabaseAuthorityCredential
-    $hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
-    Assert-TicketboxC07LiveHostConnection $hostAuthority $password
-    $nativeTimeoutMilliseconds =
-        Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds `
-            -MaximumMilliseconds 30000 `
-            -Label "C07 writer-fence observation"
-    $statementTimeoutMilliseconds = [Math]::Min(
-        5000,
-        $nativeTimeoutMilliseconds
-    )
-    $lockTimeoutMilliseconds = [Math]::Min(
-        1000,
-        $statementTimeoutMilliseconds
-    )
-    $sql = @"
-SET application_name = 'ticketbox-c07-fence-observation';
-SET statement_timeout = '$($statementTimeoutMilliseconds)ms';
-SET lock_timeout = '$($lockTimeoutMilliseconds)ms';
-SELECT pg_stat_clear_snapshot();
-WITH database_record AS (
-    SELECT oid, datacl, datdba
-    FROM pg_database
-    WHERE datname = current_database()
-),
-advisory_acquire AS MATERIALIZED (
-    SELECT pg_try_advisory_lock(
-        hashtext(current_database()),
-        hashtext('xiaopiaojia:schema')
-    ) AS held
-),
-user_roles AS MATERIALIZED (
-    SELECT
-        role.oid,
-        role.rolname,
-        role.rolcanlogin,
-        role.rolconnlimit,
-        role.rolsuper,
-        role.rolcreatedb,
-        role.rolcreaterole,
-        role.rolreplication,
-        role.rolbypassrls,
-        role.oid = database_record.datdba AS is_database_owner,
-        EXISTS (
-            SELECT 1
-            FROM pg_namespace AS namespace
-            WHERE namespace.nspname = 'public'
-              AND namespace.nspowner = role.oid
-        ) AS owns_public_schema,
-        EXISTS (
-            SELECT 1
-            FROM pg_class AS relation
-            JOIN pg_namespace AS namespace
-              ON namespace.oid = relation.relnamespace
-            WHERE namespace.nspname = 'public'
-              AND relation.relkind IN ('r', 'p', 'f', 'S')
-              AND relation.relowner = role.oid
-        ) AS owns_user_relations,
-        EXISTS (
-            SELECT 1
-            FROM aclexplode(
-                COALESCE(
-                    database_record.datacl,
-                    acldefault('d', database_record.datdba)
-                )
-            ) AS privilege
-            WHERE privilege.grantee = role.oid
-              AND privilege.privilege_type = 'CONNECT'
-        ) AS direct_connect,
-        has_database_privilege(
-            role.oid,
-            database_record.oid,
-            'CONNECT'
-        ) AS effective_connect,
-        has_database_privilege(
-            role.oid,
-            database_record.oid,
-            'CREATE'
-        ) AS can_database_create,
-        has_schema_privilege(
-            role.oid,
-            'public',
-            'CREATE'
-        ) AS can_public_schema_create,
-        EXISTS (
-            SELECT 1
-            FROM pg_class AS relation
-            JOIN pg_namespace AS namespace
-              ON namespace.oid = relation.relnamespace
-            WHERE namespace.nspname = 'public'
-              AND relation.relkind IN ('r', 'p', 'f')
-              AND (
-                  has_table_privilege(role.oid, relation.oid, 'INSERT')
-                  OR has_table_privilege(role.oid, relation.oid, 'UPDATE')
-                  OR has_table_privilege(role.oid, relation.oid, 'DELETE')
-                  OR has_table_privilege(role.oid, relation.oid, 'TRUNCATE')
-                  OR has_table_privilege(role.oid, relation.oid, 'REFERENCES')
-                  OR has_table_privilege(role.oid, relation.oid, 'TRIGGER')
-              )
-        ) AS can_table_write,
-        EXISTS (
-            SELECT 1
-            FROM pg_class AS relation
-            JOIN pg_namespace AS namespace
-              ON namespace.oid = relation.relnamespace
-            WHERE namespace.nspname = 'public'
-              AND relation.relkind = 'S'
-              AND (
-                  has_sequence_privilege(role.oid, relation.oid, 'USAGE')
-                  OR has_sequence_privilege(role.oid, relation.oid, 'UPDATE')
-              )
-        ) AS can_sequence_write,
-        EXISTS (
-            SELECT 1
-            FROM (
-                SELECT database_record.datdba AS owner_oid
-                UNION
-                SELECT namespace.nspowner
-                FROM pg_namespace AS namespace
-                WHERE namespace.nspname = 'public'
-                UNION
-                SELECT relation.relowner
-                FROM pg_class AS relation
-                JOIN pg_namespace AS namespace
-                  ON namespace.oid = relation.relnamespace
-                WHERE namespace.nspname = 'public'
-                  AND relation.relkind IN ('r', 'p', 'f', 'S')
-            ) AS write_owner
-            WHERE write_owner.owner_oid <> role.oid
-              AND pg_has_role(role.oid, write_owner.owner_oid, 'MEMBER')
-        ) AS can_assume_write_owner
-    FROM pg_roles AS role
-    CROSS JOIN database_record
-    CROSS JOIN advisory_acquire
-    WHERE role.rolname !~ '^pg_'
-      AND advisory_acquire.held
-),
-public_privilege AS MATERIALIZED (
-    SELECT EXISTS (
-        SELECT 1
-        FROM database_record
-        CROSS JOIN LATERAL aclexplode(
-            COALESCE(
-                database_record.datacl,
-                acldefault('d', database_record.datdba)
-            )
-        ) AS privilege
-        WHERE privilege.grantee = 0
-          AND privilege.privilege_type = 'CONNECT'
-    ) AS direct_connect
-    FROM advisory_acquire
-    WHERE advisory_acquire.held
-),
-session_observation AS MATERIALIZED (
-    SELECT
-        count(*) AS session_count,
-        COALESCE(
-            json_agg(
-                json_build_object(
-                    'pid', pid,
-                    'role', usename,
-                    'application_name', application_name,
-                    'state', state
-                )
-                ORDER BY pid
-            ),
-            '[]'::json
-        ) AS sessions
-    FROM pg_stat_activity
-    CROSS JOIN advisory_acquire
-    WHERE datid = (SELECT oid FROM database_record)
-      AND pid <> pg_backend_pid()
-      AND backend_type = 'client backend'
-      AND advisory_acquire.held
-),
-writer_catalog_observation AS MATERIALIZED (
-    SELECT
-        current_setting('max_prepared_transactions')::bigint
-            AS max_prepared_transactions,
-        (
-            SELECT count(*)
-            FROM pg_prepared_xacts
-            WHERE database = current_database()
-        ) AS prepared_transaction_count,
-        (
-            SELECT count(*)
-            FROM pg_subscription
-            WHERE subdbid = (SELECT oid FROM database_record)
-        ) AS logical_subscription_count,
-        (
-            SELECT count(*)
-            FROM pg_stat_activity
-            WHERE datid = (SELECT oid FROM database_record)
-              AND pid <> pg_backend_pid()
-              AND backend_type = 'logical replication worker'
-        ) AS logical_apply_worker_count,
-        (
-            SELECT count(*)
-            FROM pg_stat_activity
-            WHERE datid = (SELECT oid FROM database_record)
-              AND pid <> pg_backend_pid()
-              AND backend_type NOT IN (
-                  'client backend',
-                  'autovacuum worker',
-                  'parallel worker'
-              )
-        ) AS unexpected_database_worker_count
-    FROM advisory_acquire
-    WHERE advisory_acquire.held
-),
-advisory_release AS MATERIALIZED (
-    SELECT CASE
-        WHEN held
-          AND (SELECT count(*) FROM user_roles) >= 0
-          AND (SELECT count(*) FROM public_privilege) = 1
-          AND (
-              SELECT session_count FROM session_observation
-          ) >= 0
-          AND (SELECT count(*) FROM writer_catalog_observation) = 1
-        THEN pg_advisory_unlock(
-            hashtext(current_database()),
-            hashtext('xiaopiaojia:schema')
-        )
-        ELSE false
-    END AS released
-    FROM advisory_acquire
+$postgresqlWriterFenceScript = Join-Path `
+    $PSScriptRoot `
+    "windows_postgresql_writer_fence.ps1"
+$postgresqlWriterFenceCommands = @(
+    "Get-TicketboxPostgresqlWriterFenceObservation",
+    "Invoke-TicketboxPostgresqlWriterFenceReconcile"
 )
-SELECT json_build_object(
-    'public_connect', (SELECT direct_connect FROM public_privilege),
-    'client_session_count', (SELECT session_count FROM session_observation),
-    'client_sessions', (SELECT sessions FROM session_observation),
-    'max_prepared_transactions', (
-        SELECT max_prepared_transactions FROM writer_catalog_observation
-    ),
-    'prepared_transaction_count', (
-        SELECT prepared_transaction_count FROM writer_catalog_observation
-    ),
-    'logical_subscription_count', (
-        SELECT logical_subscription_count FROM writer_catalog_observation
-    ),
-    'logical_apply_worker_count', (
-        SELECT logical_apply_worker_count FROM writer_catalog_observation
-    ),
-    'unexpected_database_worker_count', (
-        SELECT unexpected_database_worker_count
-        FROM writer_catalog_observation
-    ),
-    'advisory_available', (SELECT held FROM advisory_acquire),
-    'advisory_released', (SELECT released FROM advisory_release),
-    'roles', COALESCE(
-        (
-            SELECT json_agg(
-                json_build_object(
-                    'name', rolname,
-                    'oid', oid,
-                    'can_login', rolcanlogin,
-                    'connection_limit', rolconnlimit,
-                    'is_superuser', rolsuper,
-                    'can_create_db', rolcreatedb,
-                    'can_create_role', rolcreaterole,
-                    'can_replicate', rolreplication,
-                    'can_bypass_rls', rolbypassrls,
-                    'is_database_owner', is_database_owner,
-                    'owns_public_schema', owns_public_schema,
-                    'owns_user_relations', owns_user_relations,
-                    'direct_connect', direct_connect,
-                    'effective_connect', effective_connect,
-                    'can_database_create', can_database_create,
-                    'can_public_schema_create', can_public_schema_create,
-                    'can_table_write', can_table_write,
-                    'can_sequence_write', can_sequence_write,
-                    'can_assume_write_owner', can_assume_write_owner
+if (
+    @(
+        $postgresqlWriterFenceCommands |
+            Where-Object {
+                $null -eq (
+                    Get-Command `
+                        $_ `
+                        -CommandType Function `
+                        -ErrorAction SilentlyContinue
                 )
-                ORDER BY rolname
-            )
-            FROM user_roles
-        ),
-        '[]'::json
-    )
-);
-"@
-    $output = Invoke-TicketboxC07Sql `
-        -Authority $hostAuthority `
-        -Database "ticketbox" `
-        -Role "postgres" `
-        -Password $password `
-        -Sql $sql `
-        -Label "C07 writer session and advisory fence inspect" `
-        -TimeoutMilliseconds $nativeTimeoutMilliseconds
-    try {
-        $payload = ConvertFrom-TicketboxC07JsonText `
-            -Text ([string]$output).Trim() `
-            -Label "PostgreSQL writer-fence observation"
-    }
-    catch { throw "C07 PostgreSQL writer-fence observation 不是 JSON。" }
-    Assert-TicketboxC07ExactProperties `
-        $payload `
-        @(
-            "public_connect",
-            "client_session_count",
-            "client_sessions",
-            "max_prepared_transactions",
-            "prepared_transaction_count",
-            "logical_subscription_count",
-            "logical_apply_worker_count",
-            "unexpected_database_worker_count",
-            "advisory_available",
-            "advisory_released",
-            "roles"
-        ) `
-        "writer-fence observation"
-    $roles = @($payload.roles)
-    if (
-        $payload.public_connect -isnot [bool] -or
-        $payload.advisory_available -isnot [bool] -or
-        $payload.advisory_released -isnot [bool] -or
-        (
-            $payload.client_session_count -isnot [int] -and
-            $payload.client_session_count -isnot [long]
-        ) -or
-        [int64]$payload.client_session_count -lt 0 -or
-        [int64]$payload.max_prepared_transactions -ne 0 -or
-        [int64]$payload.prepared_transaction_count -ne 0 -or
-        [int64]$payload.logical_subscription_count -ne 0 -or
-        [int64]$payload.logical_apply_worker_count -ne 0 -or
-        [int64]$payload.unexpected_database_worker_count -ne 0 -or
-        -not [bool]$payload.advisory_available -or
-        -not [bool]$payload.advisory_released -or
-        $roles.Count -lt 2 -or
-        $roles.Count -gt 128
-    ) {
-        throw "C07 PostgreSQL session/fence observation 无效或 migration lease 忙。"
-    }
-    $validatedSessions = @()
-    foreach ($session in @($payload.client_sessions)) {
-        Assert-TicketboxC07ExactProperties `
-            $session `
-            @("pid", "role", "application_name", "state") `
-            "writer-fence client session observation"
-        $sessionPid = 0
-        if (
-            -not [int]::TryParse([string]$session.pid, [ref]$sessionPid) -or
-            $sessionPid -lt 1 -or
-            [string]::IsNullOrEmpty([string]$session.role) -or
-            ([string]$session.role).Length -gt 63 -or
-            ([string]$session.application_name).Length -gt 63 -or
-            ([string]$session.state).Length -gt 64
-        ) {
-            throw "C07 PostgreSQL client session observation 无效。"
-        }
-        $validatedSessions += [pscustomobject][ordered]@{
-            pid = $sessionPid
-            role = [string]$session.role
-            application_name = [string]$session.application_name
-            state = [string]$session.state
-        }
-    }
-    if ($validatedSessions.Count -ne [int64]$payload.client_session_count) {
-        throw "C07 PostgreSQL client session count/set 不一致。"
-    }
-    $validatedRoles = @()
-    foreach ($role in $roles) {
-        Assert-TicketboxC07ExactProperties `
-            $role `
-            @(
-                "name",
-                "oid",
-                "can_login",
-                "connection_limit",
-                "is_superuser",
-                "can_create_db",
-                "can_create_role",
-                "can_replicate",
-                "can_bypass_rls",
-                "is_database_owner",
-                "owns_public_schema",
-                "owns_user_relations",
-                "direct_connect",
-                "effective_connect",
-                "can_database_create",
-                "can_public_schema_create",
-                "can_table_write",
-                "can_sequence_write",
-                "can_assume_write_owner"
-            ) `
-            "writer-fence role observation"
-        $roleOid = [int64]0
-        $connectionLimit = 0
-        if (
-            -not [int64]::TryParse([string]$role.oid, [ref]$roleOid) -or
-            $roleOid -lt 1 -or
-            $role.can_login -isnot [bool] -or
-            -not [int]::TryParse(
-                [string]$role.connection_limit,
-                [ref]$connectionLimit
-            ) -or
-            $role.direct_connect -isnot [bool] -or
-            $role.effective_connect -isnot [bool] -or
-            @(
-                "is_superuser",
-                "can_create_db",
-                "can_create_role",
-                "can_replicate",
-                "can_bypass_rls",
-                "is_database_owner",
-                "owns_public_schema",
-                "owns_user_relations",
-                "can_database_create",
-                "can_public_schema_create",
-                "can_table_write",
-                "can_sequence_write",
-                "can_assume_write_owner"
-            ).Where({ $role.$_ -isnot [bool] }).Count -ne 0
-        ) {
-            throw "C07 PostgreSQL writer-fence role observation 无效。"
-        }
-        $disposition = switch -CaseSensitive ([string]$role.name) {
-            "postgres" { "database_authority"; break }
-            $script:TicketboxC07MigratorRole {
-                "migration_authority"
-                break
             }
-            $script:TicketboxC07OwnerRole { "nologin_owner"; break }
-            $script:TicketboxC07LegacyRuntimeRole {
-                "fenced_runtime"
-                break
-            }
-            $script:TicketboxC07RuntimeRole { "fenced_runtime"; break }
-            default { "inert_unregistered" }
-        }
-        $elevated = (
-            [bool]$role.is_superuser -or
-            [bool]$role.can_create_db -or
-            [bool]$role.can_create_role -or
-            [bool]$role.can_replicate -or
-            [bool]$role.can_bypass_rls
-        )
-        $writeAuthority = (
-            [bool]$role.is_database_owner -or
-            [bool]$role.owns_public_schema -or
-            [bool]$role.owns_user_relations -or
-            [bool]$role.can_database_create -or
-            [bool]$role.can_public_schema_create -or
-            [bool]$role.can_table_write -or
-            [bool]$role.can_sequence_write -or
-            [bool]$role.can_assume_write_owner
-        )
-        if (
-            (
-                $disposition -ceq "database_authority" -and
-                (
-                    -not [bool]$role.can_login -or
-                    -not [bool]$role.is_superuser
-                )
-            ) -or
-            (
-                $disposition -ceq "migration_authority" -and
-                (
-                    -not [bool]$role.can_login -or
-                    $elevated
-                )
-            ) -or
-            (
-                $disposition -ceq "nologin_owner" -and
-                ([bool]$role.can_login -or $elevated)
-            ) -or
-            (
-                $disposition -ceq "fenced_runtime" -and
-                $elevated
-            ) -or
-            (
-                $disposition -ceq "inert_unregistered" -and
-                (
-                    [bool]$role.can_login -or
-                    [bool]$role.direct_connect -or
-                    $elevated -or
-                    $writeAuthority
-                )
-            )
-        ) {
-            throw (
-                "C07 检测到未登记或越权 PostgreSQL writer/owner/superuser " +
-                "role，拒绝接管。"
-            )
-        }
-        $validatedRoles += [pscustomobject][ordered]@{
-            name = [string]$role.name
-            oid = $roleOid
-            disposition = $disposition
-            can_login = [bool]$role.can_login
-            connection_limit = $connectionLimit
-            is_superuser = [bool]$role.is_superuser
-            can_create_db = [bool]$role.can_create_db
-            can_create_role = [bool]$role.can_create_role
-            can_replicate = [bool]$role.can_replicate
-            can_bypass_rls = [bool]$role.can_bypass_rls
-            is_database_owner = [bool]$role.is_database_owner
-            owns_public_schema = [bool]$role.owns_public_schema
-            owns_user_relations = [bool]$role.owns_user_relations
-            direct_connect = [bool]$role.direct_connect
-            effective_connect = [bool]$role.effective_connect
-            can_database_create = [bool]$role.can_database_create
-            can_public_schema_create = [bool]$role.can_public_schema_create
-            can_table_write = [bool]$role.can_table_write
-            can_sequence_write = [bool]$role.can_sequence_write
-            can_assume_write_owner = [bool]$role.can_assume_write_owner
-        }
-    }
+    ).Count -ne 0
+) {
     if (
-        @(
-            $validatedRoles |
-                Where-Object {
-                    $_.disposition -ceq "database_authority"
-                }
-        ).Count -ne 1
-    ) {
-        throw "C07 PostgreSQL 缺少唯一受管 database authority role。"
-    }
-    if (
-        @(
-            $validatedRoles |
-                Where-Object { $_.disposition -ceq "fenced_runtime" }
-        ).Count -lt 1
-    ) {
-        throw "C07 PostgreSQL 缺少受管 runtime writer role。"
-    }
-    return [pscustomobject]@{
-        PublicConnect = [bool]$payload.public_connect
-        OtherClientSessionCount = [int64]$payload.client_session_count
-        ClientSessions = @($validatedSessions)
-        MaxPreparedTransactions = [int64]$payload.max_prepared_transactions
-        PreparedTransactionCount = [int64]$payload.prepared_transaction_count
-        LogicalSubscriptionCount = [int64]$payload.logical_subscription_count
-        LogicalApplyWorkerCount = [int64]$payload.logical_apply_worker_count
-        UnexpectedDatabaseWorkerCount =
-            [int64]$payload.unexpected_database_worker_count
-        AdvisoryFenceAvailable = $true
-        AdvisoryFenceReleased = $true
-        Roles = @($validatedRoles)
-    }
-}
-
-function Test-TicketboxC07ClientSessionSetEquals {
-    param(
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyCollection()]
-        [object[]]$Left,
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyCollection()]
-        [object[]]$Right
-    )
-    if ($Left.Count -ne $Right.Count) { return $false }
-    foreach ($leftSession in $Left) {
-        $matches = @(
-            $Right |
-                Where-Object {
-                    [int]$_.pid -eq [int]$leftSession.pid -and
-                    [string]$_.role -ceq [string]$leftSession.role -and
-                    [string]$_.application_name -ceq
-                        [string]$leftSession.application_name
-                }
-        )
-        if ($matches.Count -ne 1) { return $false }
-    }
-    return $true
-}
-
-function Initialize-TicketboxC07WriterFenceIntent {
-    param(
-        [Parameter(Mandatory = $true)][object]$Authority,
-        [Parameter(Mandatory = $true)][string]$ServiceStartPolicy,
-        [Parameter(Mandatory = $true)][object]$Observation
-    )
-    $path = Get-TicketboxC07WriterFenceIntentPath (
-        [string]$Authority.Receipt.operation_id
-    )
-    if (Test-Path -LiteralPath $path) {
-        return Read-TicketboxC07WriterFenceIntent $Authority
-    }
-    $payload = [ordered]@{
-        schema = $script:TicketboxC07WriterFenceIntentSchema
-        operation_id = [string]$Authority.Receipt.operation_id
-        descriptor_sha256 = $Authority.Descriptor.PayloadSha256
-        database_binding_sha256 = [string]$Authority.Receipt.database_binding_sha256
-        backend_service_start_policy = $ServiceStartPolicy
-        public_connect = [bool]$Observation.PublicConnect
-        client_session_count_before_fence =
-            [int64]$Observation.OtherClientSessionCount
-        client_sessions_before_fence = @($Observation.ClientSessions)
-        max_prepared_transactions =
-            [int64]$Observation.MaxPreparedTransactions
-        prepared_transaction_count =
-            [int64]$Observation.PreparedTransactionCount
-        logical_subscription_count =
-            [int64]$Observation.LogicalSubscriptionCount
-        logical_apply_worker_count =
-            [int64]$Observation.LogicalApplyWorkerCount
-        unexpected_database_worker_count =
-            [int64]$Observation.UnexpectedDatabaseWorkerCount
-        roles = @($Observation.Roles)
-        created_at_utc = [DateTime]::UtcNow.ToString("o")
-    }
-    Write-TicketboxC07HostEnvelope `
-        -Path $path `
-        -ArtifactKind "writer_fence_intent" `
-        -Payload $payload | Out-Null
-    return Read-TicketboxC07WriterFenceIntent $Authority
-}
-
-function Enter-TicketboxC07WriterDatabaseFence {
-    param(
-        [Parameter(Mandatory = $true)][object]$Authority,
-        [Parameter(Mandatory = $true)][object]$Intent
-    )
-    $before = Get-TicketboxC07WriterDatabaseFenceObservation `
-        $Authority.ReleaseIdentity
-    $expectedRoles = @($Intent.Payload.roles)
-    if (
-        (
-            [bool]$before.PublicConnect -ne
-                [bool]$Intent.Payload.public_connect -and
-            [bool]$before.PublicConnect
-        ) -or
         -not (
-            Test-TicketboxC07WriterFenceRoleSetEquals `
-                -Left $expectedRoles `
-                -Right @($before.Roles) `
-                -AllowFencedRight
+            Test-Path `
+                -LiteralPath $postgresqlWriterFenceScript `
+                -PathType Leaf
         )
     ) {
-        throw "C07 writer-fence acquire 前 live role/database ACL 已漂移。"
-    }
-    $password = Get-TicketboxC07DatabaseAuthorityCredential
-    $hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
-    Assert-TicketboxC07LiveHostConnection $hostAuthority $password
-    $databaseFenceSqlTimeout = if (
-        $null -eq $script:TicketboxC07ActiveMaintenanceBudget
-    ) {
-        5000
-    }
-    else {
-        Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds `
-            -MaximumMilliseconds 5000 `
-            -Label "C07 durable writer-fence SQL"
-    }
-    $terminationConfirmationTimeoutMilliseconds = [Math]::Max(
-        1,
-        [Math]::Min(
-            3000,
-            [Math]::Floor($databaseFenceSqlTimeout / 2)
+        throw (
+            "Missing PostgreSQL writer-fence adapter: " +
+            $postgresqlWriterFenceScript
         )
-    )
-    Invoke-TicketboxC07Sql `
-        -Authority $hostAuthority `
-        -Database "ticketbox" `
-        -Role "postgres" `
-        -Password $password `
-        -Label "C07 durable writer fence acquire" `
-        -TimeoutMilliseconds $databaseFenceSqlTimeout `
-        -Sql @"
-SET application_name =
-    'ticketbox-c07-fence:$([string]$Authority.Receipt.operation_id)';
-SET statement_timeout = '$($databaseFenceSqlTimeout)ms';
-SET lock_timeout = '1000ms';
-DO `$ticketbox`$
-BEGIN
-    IF NOT pg_try_advisory_lock(
-        hashtext(current_database()),
-        hashtext('xiaopiaojia:schema')
-    ) THEN
-        RAISE EXCEPTION 'C07 writer-fence schema lease is busy';
-    END IF;
-END
-`$ticketbox`$;
-SELECT pg_stat_clear_snapshot();
-DO `$ticketbox`$
-BEGIN
-    IF session_user <> 'postgres' OR current_user <> 'postgres' THEN
-        RAISE EXCEPTION
-            'C07 writer fence is not held by the database authority session';
-    END IF;
-    IF EXISTS (
-        SELECT 1
-        FROM pg_stat_activity
-        WHERE datid = (
-            SELECT oid FROM pg_database
-            WHERE datname = '$script:TicketboxC07DatabaseName'
-        )
-          AND pid <> pg_backend_pid()
-          AND backend_type = 'client backend'
-          AND usename NOT IN (
-              '$script:TicketboxC07LegacyRuntimeRole',
-              '$script:TicketboxC07RuntimeRole'
-          )
-    ) THEN
-        RAISE EXCEPTION
-            'C07 unknown client session blocks writer-fence mutation';
-    END IF;
-    IF current_setting('max_prepared_transactions')::bigint <> 0
-       OR EXISTS (
-           SELECT 1 FROM pg_prepared_xacts
-           WHERE database = current_database()
-       )
-       OR EXISTS (
-           SELECT 1 FROM pg_subscription
-           WHERE subdbid = (
-               SELECT oid FROM pg_database
-               WHERE datname = current_database()
-           )
-       )
-       OR EXISTS (
-           SELECT 1
-           FROM pg_stat_activity
-           WHERE datid = (
-               SELECT oid FROM pg_database
-               WHERE datname = current_database()
-           )
-             AND pid <> pg_backend_pid()
-             AND backend_type NOT IN (
-                 'client backend',
-                 'autovacuum worker',
-                 'parallel worker'
-             )
-       )
-    THEN
-        RAISE EXCEPTION
-            'C07 prepared/logical/background writer authority is unsupported';
-    END IF;
-    IF EXISTS (
-        SELECT 1
-        FROM pg_roles AS role
-        WHERE role.rolname !~ '^pg_'
-          AND role.rolname NOT IN (
-              'postgres',
-              '$script:TicketboxC07LegacyRuntimeRole',
-              '$script:TicketboxC07OwnerRole',
-              '$script:TicketboxC07MigratorRole',
-              '$script:TicketboxC07RuntimeRole'
-          )
-          AND (
-              role.rolcanlogin
-              OR role.rolsuper
-              OR role.rolcreatedb
-              OR role.rolcreaterole
-              OR role.rolreplication
-              OR role.rolbypassrls
-              OR role.oid = (
-                  SELECT datdba FROM pg_database
-                  WHERE datname = current_database()
-              )
-              OR EXISTS (
-                  SELECT 1
-                  FROM pg_namespace AS namespace
-                  WHERE namespace.nspname = 'public'
-                    AND namespace.nspowner = role.oid
-              )
-              OR EXISTS (
-                  SELECT 1
-                  FROM pg_class AS relation
-                  JOIN pg_namespace AS namespace
-                    ON namespace.oid = relation.relnamespace
-                  WHERE namespace.nspname = 'public'
-                    AND relation.relkind IN ('r', 'p', 'f', 'S')
-                    AND relation.relowner = role.oid
-              )
-              OR has_database_privilege(
-                  role.oid,
-                  current_database(),
-                  'CREATE'
-              )
-              OR has_schema_privilege(role.oid, 'public', 'CREATE')
-              OR EXISTS (
-                  SELECT 1
-                  FROM pg_class AS relation
-                  JOIN pg_namespace AS namespace
-                    ON namespace.oid = relation.relnamespace
-                  WHERE namespace.nspname = 'public'
-                    AND relation.relkind IN ('r', 'p', 'f')
-                    AND (
-                        has_table_privilege(role.oid, relation.oid, 'INSERT')
-                        OR has_table_privilege(role.oid, relation.oid, 'UPDATE')
-                        OR has_table_privilege(role.oid, relation.oid, 'DELETE')
-                        OR has_table_privilege(role.oid, relation.oid, 'TRUNCATE')
-                        OR has_table_privilege(role.oid, relation.oid, 'REFERENCES')
-                        OR has_table_privilege(role.oid, relation.oid, 'TRIGGER')
-                    )
-              )
-              OR EXISTS (
-                  SELECT 1
-                  FROM pg_class AS relation
-                  JOIN pg_namespace AS namespace
-                    ON namespace.oid = relation.relnamespace
-                  WHERE namespace.nspname = 'public'
-                    AND relation.relkind = 'S'
-                    AND (
-                        has_sequence_privilege(role.oid, relation.oid, 'USAGE')
-                        OR has_sequence_privilege(role.oid, relation.oid, 'UPDATE')
-                    )
-              )
-          )
-    ) THEN
-        RAISE EXCEPTION
-            'C07 unregistered effective writer/owner/superuser role';
-    END IF;
-    IF EXISTS (
-        SELECT 1
-        FROM pg_roles AS role
-        WHERE role.rolname <> 'postgres'
-          AND (
-              role.rolsuper
-              OR role.rolcreatedb
-              OR role.rolcreaterole
-              OR role.rolreplication
-              OR role.rolbypassrls
-          )
-    ) THEN
-        RAISE EXCEPTION
-            'C07 non-authority elevated role blocks writer fence';
-    END IF;
-END
-`$ticketbox`$;
-BEGIN;
-DO `$ticketbox`$
-DECLARE fence_role text;
-BEGIN
-    FOREACH fence_role IN ARRAY ARRAY[
-        '$script:TicketboxC07LegacyRuntimeRole',
-        '$script:TicketboxC07RuntimeRole'
-    ] LOOP
-        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = fence_role) THEN
-            EXECUTE format(
-                'ALTER ROLE %I NOLOGIN CONNECTION LIMIT 0',
-                fence_role
-            );
-            EXECUTE format(
-                'REVOKE CONNECT ON DATABASE %I FROM %I',
-                '$script:TicketboxC07DatabaseName',
-                fence_role
-            );
-        END IF;
-    END LOOP;
-END
-`$ticketbox`$;
-REVOKE CONNECT ON DATABASE "$script:TicketboxC07DatabaseName" FROM PUBLIC;
-COMMIT;
-WITH runtime_targets AS MATERIALIZED (
-    SELECT pid
-    FROM pg_stat_activity
-    WHERE datid = (
-        SELECT oid FROM pg_database
-        WHERE datname = '$script:TicketboxC07DatabaseName'
-    )
-      AND pid <> pg_backend_pid()
-      AND backend_type = 'client backend'
-      AND usename IN (
-          '$script:TicketboxC07LegacyRuntimeRole',
-          '$script:TicketboxC07RuntimeRole'
-      )
-),
-terminated AS MATERIALIZED (
-    SELECT pg_terminate_backend(pid) AS stopped
-    FROM runtime_targets
-)
-SELECT count(*)::text
-FROM terminated
-WHERE stopped;
-WITH remaining_runtime_targets AS MATERIALIZED (
-    SELECT pid
-    FROM pg_stat_activity
-    WHERE datid = (
-        SELECT oid FROM pg_database
-        WHERE datname = '$script:TicketboxC07DatabaseName'
-    )
-      AND pid <> pg_backend_pid()
-      AND backend_type = 'client backend'
-      AND usename IN (
-          '$script:TicketboxC07LegacyRuntimeRole',
-          '$script:TicketboxC07RuntimeRole'
-      )
-),
-confirmed AS MATERIALIZED (
-    SELECT pg_terminate_backend(
-        pid,
-        $terminationConfirmationTimeoutMilliseconds
-    ) AS stopped
-    FROM remaining_runtime_targets
-)
-SELECT count(*)::text
-FROM confirmed
-WHERE NOT stopped;
-SELECT pg_stat_clear_snapshot();
-DO `$ticketbox`$
-BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM pg_stat_activity
-        WHERE datid = (
-            SELECT oid FROM pg_database
-            WHERE datname = '$script:TicketboxC07DatabaseName'
-        )
-          AND pid <> pg_backend_pid()
-          AND backend_type = 'client backend'
-    ) THEN
-        RAISE EXCEPTION
-            'C07 client session appeared before writer fence completed';
-    END IF;
-    IF current_setting('max_prepared_transactions')::bigint <> 0
-       OR EXISTS (
-           SELECT 1 FROM pg_prepared_xacts
-           WHERE database = current_database()
-       )
-       OR EXISTS (
-           SELECT 1 FROM pg_subscription
-           WHERE subdbid = (
-               SELECT oid FROM pg_database
-               WHERE datname = current_database()
-           )
-       )
-       OR EXISTS (
-           SELECT 1
-           FROM pg_stat_activity
-           WHERE datid = (
-               SELECT oid FROM pg_database
-               WHERE datname = current_database()
-           )
-             AND pid <> pg_backend_pid()
-             AND backend_type NOT IN (
-                 'client backend',
-                 'autovacuum worker',
-                 'parallel worker'
-             )
-       )
-    THEN
-        RAISE EXCEPTION
-            'C07 prepared/logical/background writer appeared during fence';
-    END IF;
-    IF EXISTS (
-        SELECT 1
-        FROM pg_roles AS role
-        WHERE role.rolname !~ '^pg_'
-          AND role.rolname NOT IN (
-              'postgres',
-              '$script:TicketboxC07MigratorRole'
-          )
-          AND role.rolcanlogin
-    ) THEN
-        RAISE EXCEPTION
-            'C07 writer role regained LOGIN before fence completed';
-    END IF;
-    IF EXISTS (
-        SELECT 1
-        FROM pg_roles AS role
-        WHERE role.rolname IN (
-              '$script:TicketboxC07LegacyRuntimeRole',
-              '$script:TicketboxC07RuntimeRole'
-          )
-          AND (
-              role.rolcanlogin
-              OR role.rolconnlimit <> 0
-              OR EXISTS (
-                  SELECT 1
-                  FROM pg_database AS database_record
-                  CROSS JOIN LATERAL aclexplode(
-                      COALESCE(
-                          database_record.datacl,
-                          acldefault('d', database_record.datdba)
-                      )
-                  ) AS privilege
-                  WHERE database_record.datname = current_database()
-                    AND privilege.grantee = role.oid
-                    AND privilege.privilege_type = 'CONNECT'
-              )
-          )
-    ) THEN
-        RAISE EXCEPTION
-            'C07 durable runtime LOGIN/direct CONNECT fence is incomplete';
-    END IF;
-END
-`$ticketbox`$;
-SELECT pg_advisory_unlock(
-    hashtext(current_database()),
-    hashtext('xiaopiaojia:schema')
-);
-"@ | Out-Null
-    $after = Get-TicketboxC07WriterDatabaseFenceObservation `
-        $Authority.ReleaseIdentity
-    Assert-TicketboxC07WriterDatabaseFence `
-        -Observation $after `
-        -ExpectedRoles $expectedRoles
-    return $after
+    }
+    . $postgresqlWriterFenceScript
 }
-
-function Assert-TicketboxC07WriterDatabaseFence {
-    param(
-        [Parameter(Mandatory = $true)][object]$Observation,
-        [Parameter(Mandatory = $true)][object[]]$ExpectedRoles,
-        [object[]]$AllowedClientSessions = @()
-    )
+foreach ($postgresqlWriterFenceCommand in $postgresqlWriterFenceCommands) {
     if (
-        [bool]$Observation.PublicConnect -or
-        [int64]$Observation.OtherClientSessionCount -ne
-            $AllowedClientSessions.Count -or
-        -not (
-            Test-TicketboxC07ClientSessionSetEquals `
-                -Left @($AllowedClientSessions) `
-                -Right @($Observation.ClientSessions)
-        ) -or
-        -not [bool]$Observation.AdvisoryFenceAvailable -or
-        -not [bool]$Observation.AdvisoryFenceReleased -or
-        [int64]$Observation.MaxPreparedTransactions -ne 0 -or
-        [int64]$Observation.PreparedTransactionCount -ne 0 -or
-        [int64]$Observation.LogicalSubscriptionCount -ne 0 -or
-        [int64]$Observation.LogicalApplyWorkerCount -ne 0 -or
-        [int64]$Observation.UnexpectedDatabaseWorkerCount -ne 0 -or
-        -not (
-            Test-TicketboxC07WriterFenceRoleSetEquals `
-                -Left $ExpectedRoles `
-                -Right @($Observation.Roles) `
-                -AllowFencedRight
+        $null -eq (
+            Get-Command `
+                $postgresqlWriterFenceCommand `
+                -CommandType Function `
+                -ErrorAction SilentlyContinue
         )
     ) {
-        throw "C07 durable writer fence 未阻断 runtime login/CONNECT/session。"
-    }
-    foreach ($role in @($Observation.Roles)) {
-        if (
-            [string]$role.disposition -ceq "fenced_runtime" -and
-            (
-                [bool]$role.can_login -or
-                [int]$role.connection_limit -ne 0 -or
-                [bool]$role.direct_connect -or
-                (
-                    [bool]$role.effective_connect -and
-                    -not [bool]$role.is_database_owner
-                )
-            )
-        ) {
-            throw "C07 durable writer fence 的 runtime role 仍可连接写入。"
-        }
-        if (
-            [string]$role.disposition -ceq "inert_unregistered" -and
-            (
-                [bool]$role.can_login -or
-                [bool]$role.direct_connect -or
-                [bool]$role.effective_connect -or
-                [bool]$role.can_database_create -or
-                [bool]$role.can_public_schema_create -or
-                [bool]$role.can_table_write -or
-                [bool]$role.can_sequence_write -or
-                [bool]$role.can_assume_write_owner
-            )
-        ) {
-            throw "C07 durable writer fence 检测到未登记 effective writer。"
-        }
+        throw (
+            "PostgreSQL writer-fence API is incomplete: " +
+            $postgresqlWriterFenceCommand
+        )
     }
 }
+$c07WriterFenceScript = Join-Path `
+    (Join-Path $PSScriptRoot "c07_lifecycle") `
+    "writer_fence.ps1"
+if (-not (Test-Path -LiteralPath $c07WriterFenceScript -PathType Leaf)) {
+    throw "Missing C07 writer-fence policy: $c07WriterFenceScript"
+}
+. $c07WriterFenceScript
 
 function Assert-TicketboxC07LifecycleLease([object]$LifecycleLock) {
     if (
@@ -2475,6 +1488,35 @@ function Assert-TicketboxC07WriterFenceWindow {
         [object[]]$AllowedClientSessions = @()
     )
     $intent = Read-TicketboxC07WriterFenceIntent $Authority
+    $authorityPhase = [string]$intent.AuthorityPhase
+    if ($authorityPhase -ceq "legacy_owner_frozen") {
+        $catalog = Get-TicketboxC07DatabaseCatalogObservation `
+            -Authority (Resolve-TicketboxC07DatabaseHostAuthority) `
+            -SuperuserPassword (Get-TicketboxC07DatabaseAuthorityCredential) `
+            -Database $script:TicketboxC07DatabaseName
+        if (-not [string]::IsNullOrEmpty([string]$catalog.Marker)) {
+            $catalogMarker = [string]$catalog.Marker
+            if ($catalogMarker.StartsWith(
+                "$script:TicketboxC07DatabaseMarkerSchema|",
+                [StringComparison]::Ordinal
+            )) {
+                $markerParts = $catalogMarker.Split('|')
+                if (
+                    $markerParts.Count -eq 10 -and
+                    @("objects_reassigned", "authority_ready") -ccontains
+                        [string]$markerParts[3]
+                ) {
+                    $authorityPhase = "managed_frozen"
+                }
+            }
+            elseif ($catalogMarker.StartsWith(
+                "$script:TicketboxC07ProductionMarkerSchema|",
+                [StringComparison]::Ordinal
+            )) {
+                $authorityPhase = "managed_frozen"
+            }
+        }
+    }
     $serviceState = [string](
         Get-TicketboxServiceState $Authority.ReleaseIdentity.BackendServiceName
     )
@@ -2495,10 +1537,9 @@ function Assert-TicketboxC07WriterFenceWindow {
             )
     )
     $observation = Get-TicketboxC07WriterDatabaseFenceObservation `
-        $Authority.ReleaseIdentity
+        -AuthorityPhase $authorityPhase
     Assert-TicketboxC07WriterDatabaseFence `
         -Observation $observation `
-        -ExpectedRoles @($intent.Payload.roles) `
         -AllowedClientSessions @($AllowedClientSessions)
     if (
         $serviceState.ToLowerInvariant() -cne "stopped" -or
@@ -2537,11 +1578,13 @@ function New-TicketboxC07ReadyVerification {
             )
     )
     $database = Get-TicketboxC07WriterDatabaseFenceObservation `
-        $Authority.ReleaseIdentity
+        -AuthorityPhase "published_runtime"
     $intent = Read-TicketboxC07WriterFenceIntent $Authority
-    Assert-TicketboxC07WriterDatabaseFence `
-        -Observation $database `
-        -ExpectedRoles @($intent.Payload.roles)
+    Assert-TicketboxC07PublishedDatabaseAuthority -Observation $database
+    Assert-TicketboxC07PublishedReadyRoleIdentityAuthority `
+        -Authority $Authority `
+        -Intent $intent `
+        -ReadyRoles @($database.Roles)
     if (
         $serviceState.ToLowerInvariant() -cne "stopped" -or
         $servicePolicy.ToLowerInvariant() -cne "disabled" -or
@@ -2560,6 +1603,8 @@ function New-TicketboxC07ReadyVerification {
         descriptor_sha256 = $Authority.Descriptor.PayloadSha256
         database_binding_sha256 = [string]$Authority.Receipt.database_binding_sha256
         writer_fence_intent_sha256 = $intent.PayloadSha256
+        writer_fence_intent_schema = [string]$intent.IntentSchema
+        writer_fence_authority_phase = "published_runtime"
         operation_kind = [string]$Authority.Descriptor.Payload.operation_kind
         alembic_target =
             [string]$Authority.Descriptor.Payload.target_alembic_revision
@@ -2586,7 +1631,7 @@ function New-TicketboxC07ReadyVerification {
         database_unexpected_worker_count =
             [int64]$database.UnexpectedDatabaseWorkerCount
         database_advisory_fence_available = $true
-        verified_at_utc = [DateTime]::UtcNow.ToString("o")
+        verified_at_utc = ""
     }
     $path = Get-TicketboxC07ReadyVerificationPath (
         [string]$Authority.Receipt.operation_id
@@ -2595,22 +1640,77 @@ function New-TicketboxC07ReadyVerification {
         $existing = Read-TicketboxC07HostEnvelope `
             -Path $path `
             -ExpectedKind "ready_verification"
-        if (
-            [string]$existing.Payload.operation_id -ceq
-                [string]$Authority.Receipt.operation_id -and
-            [string]$existing.Payload.descriptor_sha256 -ceq
-                $Authority.Descriptor.PayloadSha256 -and
-            [string]$existing.Payload.database_binding_sha256 -ceq
-                [string]$Authority.Receipt.database_binding_sha256
-        ) {
+        if ([string]$existing.Payload.schema -cne $script:TicketboxC07ReadyVerificationSchema) {
+            throw (
+                "C07 READY verification 路径含历史 schema；拒绝在同一 " +
+                "operation 原地升级或覆盖。"
+            )
+        }
+        $payload.verified_at_utc = ConvertTo-TicketboxC07CanonicalUtcTimestamp `
+            -Value ([string]$existing.Payload.verified_at_utc) `
+            -Label "C07 existing READY verified_at_utc"
+        $expectedText = New-TicketboxC07EnvelopeText `
+            -ArtifactKind "ready_verification" `
+            -Payload $payload
+        if ([string]$existing.Text -ceq $expectedText) {
             return $existing
         }
-        throw "C07 READY verification 已存在但不属于当前 operation/database。"
+        throw "C07 READY verification 已存在但不是本次完整 live proof。"
     }
+    $payload.verified_at_utc = [DateTime]::UtcNow.ToString("o")
     return Write-TicketboxC07HostEnvelope `
         -Path $path `
         -ArtifactKind "ready_verification" `
         -Payload $payload
+}
+
+function Assert-TicketboxC07PublishedReadyRoleIdentityAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object[]]$ReadyRoles
+    )
+
+    if (-not (Test-TicketboxC07PublishedReadyRoleIdentityTransition `
+        -Intent $Intent `
+        -ReadyRoles $ReadyRoles)) {
+        throw "C07 published READY role identities 未绑定 durable writer-fence intent。"
+    }
+    if (
+        [bool]$Intent.IsLegacyV3 -or
+        [string]$Intent.OperationMode -cne "legacy_adoption" -or
+        [string]$Intent.AuthorityPhase -cne "legacy_owner_frozen" -or
+        @($Intent.Roles | Where-Object {
+            [string]$_.name -cin @(
+                $script:TicketboxC07OwnerRole,
+                $script:TicketboxC07MigratorRole,
+                $script:TicketboxC07RuntimeRole
+            )
+        }).Count -ne 0
+    ) {
+        return
+    }
+    $hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+    $credential = Get-TicketboxC07DatabaseAuthorityCredential
+    Assert-TicketboxC07LiveHostConnection $hostAuthority $credential
+    $bootstrap = Get-TicketboxC07RoleBootstrapIdentity `
+        -Authority $hostAuthority `
+        -SuperuserPassword $credential `
+        -OperationId ([string]$Authority.Receipt.operation_id) `
+        -Mode "legacy_adoption"
+    $expected = [ordered]@{
+        $script:TicketboxC07OwnerRole = [uint32]$bootstrap.OwnerRoleOid
+        $script:TicketboxC07MigratorRole = [uint32]$bootstrap.MigratorRoleOid
+        $script:TicketboxC07RuntimeRole = [uint32]$bootstrap.RuntimeRoleOid
+    }
+    foreach ($roleName in $expected.Keys) {
+        if (@($ReadyRoles | Where-Object {
+            [string]$_.name -ceq $roleName -and
+            [uint32]$_.oid -eq [uint32]$expected[$roleName]
+        }).Count -ne 1) {
+            throw "C07 published READY 新增 role identity 未绑定本 operation marker。"
+        }
+    }
 }
 
 function Assert-TicketboxC07LiveDatabaseBinding {
@@ -3428,8 +2528,10 @@ function Write-TicketboxC07RuntimeProjection {
     return $persisted
 }
 
-function Read-TicketboxC07RuntimeProjection([string]$DataRoot) {
-    $authority = Read-TicketboxC07Authority $DataRoot
+function Read-TicketboxC07RuntimeProjectionForAuthority {
+    param([Parameter(Mandatory = $true)][object]$Authority)
+
+    $authority = $Authority
     $runtimeAccount = Get-TicketboxC07RuntimeReadAccount $authority.ReleaseIdentity
     Assert-TicketboxProtectedDirectoryAcl `
         -Path (Get-TicketboxC07RuntimeProjectionRoot) `
@@ -3556,6 +2658,12 @@ function Read-TicketboxC07RuntimeProjection([string]$DataRoot) {
         Payload = $payload
         PayloadSha256 = $envelope.PayloadSha256
     }
+}
+
+function Read-TicketboxC07RuntimeProjection([string]$DataRoot) {
+    $authority = Read-TicketboxC07DurableHeartbeatAuthority $DataRoot
+    return Read-TicketboxC07RuntimeProjectionForAuthority `
+        -Authority $authority
 }
 
 function Assert-TicketboxC07CommitReadyArtifacts {
@@ -4555,12 +3663,18 @@ function New-TicketboxC07FreezeProof {
     ) {
         throw "C07 writers_frozen 前 backend 服务/进程/监听未先静止。"
     }
-    $beforeFence = Get-TicketboxC07WriterDatabaseFenceObservation `
-        $Authority.ReleaseIdentity
+    $beforeFence = Get-TicketboxC07WriterDatabaseFenceObservation
+    $authorityPhase = [string]$beforeFence.AuthorityPhase
+    $operationMode = if ($authorityPhase -ceq "legacy_owner_frozen") {
+        "legacy_adoption"
+    }
+    else { "fresh_install" }
     $intent = Initialize-TicketboxC07WriterFenceIntent `
         -Authority $Authority `
         -ServiceStartPolicy $serviceStartPolicy `
-        -Observation $beforeFence
+        -Observation $beforeFence `
+        -OperationMode $operationMode `
+        -AuthorityPhase $authorityPhase
     $serviceStopTimeoutMilliseconds =
         Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds `
             -MaximumMilliseconds 60000 `
@@ -6006,7 +5120,7 @@ function Invoke-TicketboxC07InstalledProductionLifecycle {
                         ) | Out-Null
                     continue
                 }
-                Renew-TicketboxC07RoleCredentialWindow `
+                Renew-TicketboxC07FrozenMigratorCredentialWindow `
                     -Authority (Resolve-TicketboxC07DatabaseHostAuthority) `
                     -SuperuserPassword $SuperuserPassword `
                     -RuntimePassword $RuntimePassword `
@@ -6048,7 +5162,7 @@ function Invoke-TicketboxC07InstalledProductionLifecycle {
                         ) | Out-Null
                     continue
                 }
-                Renew-TicketboxC07RoleCredentialWindow `
+                Renew-TicketboxC07FrozenMigratorCredentialWindow `
                     -Authority (Resolve-TicketboxC07DatabaseHostAuthority) `
                     -SuperuserPassword $SuperuserPassword `
                     -RuntimePassword $RuntimePassword `

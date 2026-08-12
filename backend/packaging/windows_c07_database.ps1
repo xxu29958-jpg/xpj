@@ -685,12 +685,18 @@ function Get-TicketboxC07RoleBootstrapIdentity {
         -Label "C07 role bootstrap identity inspect" `
         -Sql @"
 SELECT
+    (
+        (owner_role.oid IS NOT NULL)::int +
+        (migrator_role.oid IS NOT NULL)::int +
+        (runtime_role.oid IS NOT NULL)::int
+    )::text || E'\t' ||
     COALESCE(owner_role.oid::text, '') || E'\t' ||
     COALESCE(shobj_description(owner_role.oid, 'pg_authid'), '') || E'\t' ||
     COALESCE(migrator_role.oid::text, '') || E'\t' ||
     COALESCE(shobj_description(migrator_role.oid, 'pg_authid'), '') || E'\t' ||
     COALESCE(runtime_role.oid::text, '') || E'\t' ||
-    COALESCE(shobj_description(runtime_role.oid, 'pg_authid'), '')
+    COALESCE(shobj_description(runtime_role.oid, 'pg_authid'), '') || E'\t' ||
+    'TBX_ROLE_IDENTITY_END'
 FROM (SELECT 1) AS singleton
 LEFT JOIN pg_roles AS owner_role
   ON owner_role.rolname = '$script:TicketboxC07OwnerRole'
@@ -701,12 +707,15 @@ LEFT JOIN pg_roles AS runtime_role
 "@
     $fields = ConvertFrom-TicketboxC07SingleRow `
         -Output $output `
-        -FieldCount 6 `
+        -FieldCount 8 `
         -Label "C07 role bootstrap identity inspect"
-    $present = @(
-        @($fields[0], $fields[2], $fields[4]) |
-            Where-Object { [string]$_ -ne "" }
-    ).Count
+    if ($fields[7] -cne "TBX_ROLE_IDENTITY_END") {
+        throw "C07 role bootstrap identity 尾哨兵无效。"
+    }
+    $present = 0
+    if (-not [int]::TryParse($fields[0], [ref]$present) -or $present -notin 0..3) {
+        throw "C07 target role presence evidence 无效。"
+    }
     if ($present -eq 0) {
         if (-not $AllowAbsent) {
             throw "C07 target roles 尚未建立。"
@@ -720,7 +729,7 @@ LEFT JOIN pg_roles AS runtime_role
     foreach ($index in 0..2) {
         $parsedOid = [uint32]0
         if (
-            -not [uint32]::TryParse($fields[$index * 2], [ref]$parsedOid) -or
+            -not [uint32]::TryParse($fields[1 + ($index * 2)], [ref]$parsedOid) -or
             $parsedOid -lt 1
         ) {
             throw "C07 target role OID 无效。"
@@ -737,7 +746,7 @@ LEFT JOIN pg_roles AS runtime_role
             "$script:TicketboxC07RoleMarkerSchema|" +
             "$($operation.ToString('D'))|$Mode|roles_created|$($oids[$index])"
         )
-        if ($fields[$index * 2 + 1] -cne $expected) {
+        if ($fields[2 + ($index * 2)] -cne $expected) {
             throw "C07 role $($roleNames[$index]) 不属于本 operation/phase。"
         }
     }
@@ -765,19 +774,29 @@ function Get-TicketboxC07RoleOid {
         -Role "postgres" `
         -Password $SuperuserPassword `
         -Label "C07 role OID inspect" `
-        -Sql "SELECT COALESCE((SELECT oid::text FROM pg_roles WHERE rolname = $roleLiteral), '');"
+        -Sql @"
+SELECT
+    (role.oid IS NOT NULL)::int::text || E'\t' ||
+    COALESCE(role.oid::text, '')
+FROM (SELECT 1) AS singleton
+LEFT JOIN pg_roles AS role ON role.rolname = $roleLiteral;
+"@
     $fields = ConvertFrom-TicketboxC07SingleRow `
         -Output $output `
-        -FieldCount 1 `
+        -FieldCount 2 `
         -Label "C07 role OID inspect"
-    if ($fields[0].Length -eq 0) {
+    if ($fields[0] -ceq "0") {
         if (-not $AllowAbsent) {
             throw "C07 role $Role 不存在。"
         }
         return [uint32]0
     }
     $oid = [uint32]0
-    if (-not [uint32]::TryParse($fields[0], [ref]$oid) -or $oid -lt 1) {
+    if (
+        $fields[0] -cne "1" -or
+        -not [uint32]::TryParse($fields[1], [ref]$oid) -or
+        $oid -lt 1
+    ) {
         throw "C07 role $Role OID 无效。"
     }
     return $oid
@@ -913,7 +932,9 @@ function Get-TicketboxC07RoleBootstrapSql {
         [Parameter(Mandatory = $true)][string]$OperationId,
         [Parameter(Mandatory = $true)]
         [ValidateSet("fresh_install", "legacy_adoption")]
-        [string]$Mode
+        [string]$Mode,
+        [ValidateSet("published", "frozen")]
+        [string]$RuntimeAdmissionState = "published"
     )
 
     $operation = ConvertTo-TicketboxC07OperationGuid $OperationId
@@ -931,6 +952,42 @@ function Get-TicketboxC07RoleBootstrapSql {
     )
     $operationSql = ConvertTo-TicketboxC07SqlLiteral $operation.ToString("D")
     $modeSql = ConvertTo-TicketboxC07SqlLiteral $Mode
+    $runtimeRoleCreateSql = if ($RuntimeAdmissionState -ceq "frozen") {
+        'NOLOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE ' +
+            "NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 0 PASSWORD '$runtimeVerifierSql'"
+    }
+    else {
+        'LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE ' +
+            "NOREPLICATION NOBYPASSRLS CONNECTION LIMIT -1 PASSWORD '$runtimeVerifierSql'"
+    }
+    $runtimeRoleAlterSql = if ($RuntimeAdmissionState -ceq "frozen") {
+        'NOLOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE ' +
+            'NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 0'
+    }
+    else {
+        'LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE ' +
+            'NOREPLICATION NOBYPASSRLS CONNECTION LIMIT -1'
+    }
+    $databaseAdmissionSql = if ($RuntimeAdmissionState -ceq "frozen") {
+        @"
+DO `$ticketbox_database_admission`$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_database
+        WHERE datname = '$script:TicketboxC07DatabaseName'
+    ) THEN
+        EXECUTE 'REVOKE CONNECT ON DATABASE '
+            || quote_ident('$script:TicketboxC07DatabaseName')
+            || ' FROM ' || quote_ident('$script:TicketboxC07RuntimeRole');
+        EXECUTE 'GRANT CONNECT ON DATABASE '
+            || quote_ident('$script:TicketboxC07DatabaseName')
+            || ' TO ' || quote_ident('$script:TicketboxC07MigratorRole');
+    END IF;
+END
+`$ticketbox_database_admission`$;
+"@
+    }
+    else { "" }
     $markerSchemaSql = ConvertTo-TicketboxC07SqlLiteral (
         $script:TicketboxC07RoleMarkerSchema
     )
@@ -987,9 +1044,7 @@ BEGIN
             NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
             NOREPLICATION NOBYPASSRLS;
         CREATE ROLE "$script:TicketboxC07RuntimeRole"
-            LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-            NOREPLICATION NOBYPASSRLS CONNECTION LIMIT -1
-            PASSWORD '$runtimeVerifierSql';
+            $runtimeRoleCreateSql;
         CREATE ROLE "$script:TicketboxC07MigratorRole"
             LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
             NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1
@@ -1025,8 +1080,7 @@ BEGIN
         NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
         NOREPLICATION NOBYPASSRLS;
     ALTER ROLE "$script:TicketboxC07RuntimeRole"
-        LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-        NOREPLICATION NOBYPASSRLS CONNECTION LIMIT -1;
+        $runtimeRoleAlterSql;
     ALTER ROLE "$script:TicketboxC07MigratorRole"
         LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
         NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1
@@ -1063,6 +1117,7 @@ BEGIN
     REVOKE "$script:TicketboxC07OwnerRole" FROM "$script:TicketboxC07RuntimeRole";
 END
 `$ticketbox`$;
+$databaseAdmissionSql
 SELECT rolname || E'\t' || oid::text
 FROM pg_roles
 WHERE rolname IN (
@@ -1075,20 +1130,16 @@ COMMIT;
 "@
 }
 
-function Renew-TicketboxC07RoleCredentialWindow {
+function Renew-TicketboxC07FrozenMigratorCredentialWindow {
     param(
         [Parameter(Mandatory = $true)][object]$Authority,
-        [Parameter(Mandatory = $true)]
-        [Security.SecureString]$SuperuserPassword,
-        [Parameter(Mandatory = $true)]
-        [Security.SecureString]$RuntimePassword,
-        [Parameter(Mandatory = $true)]
-        [Security.SecureString]$MigratorPassword,
+        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
+        [Parameter(Mandatory = $true)][Security.SecureString]$RuntimePassword,
+        [Parameter(Mandatory = $true)][Security.SecureString]$MigratorPassword,
         [Parameter(Mandatory = $true)][DateTime]$MigratorValidUntilUtc,
         [Parameter(Mandatory = $true)][string]$OperationId,
         [Parameter(Mandatory = $true)]
-        [ValidateSet("fresh_install", "legacy_adoption")]
-        [string]$Mode
+        [ValidateSet("fresh_install", "legacy_adoption")][string]$Mode
     )
 
     Assert-TicketboxC07MigratorCredentialWindow $MigratorValidUntilUtc
@@ -1104,18 +1155,19 @@ function Renew-TicketboxC07RoleCredentialWindow {
             -MigratorVerifier $migratorVerifier `
             -MigratorValidUntilUtc $MigratorValidUntilUtc `
             -OperationId $OperationId `
-            -Mode $Mode) `
-        -Label "C07 exact role credential-window renewal" | Out-Null
-    Assert-TicketboxC07RoleCredentials `
+            -Mode $Mode `
+            -RuntimeAdmissionState "frozen") `
+        -Label "C07 frozen migrator credential-window renewal" | Out-Null
+    Assert-TicketboxC07MigratorCredential `
         -Authority $Authority `
-        -RuntimePassword $RuntimePassword `
         -MigratorPassword $MigratorPassword
 }
 
 function Get-TicketboxC07DatabasePrivilegeSql {
     param(
         [AllowEmptyString()][string]$ReadyMarker = "",
-        [switch]$IncludeManagedSchemaCurrencyAuthority
+        [switch]$IncludeManagedSchemaCurrencyAuthority,
+        [switch]$PreserveRuntimeFence
     )
 
     $businessTables = ConvertTo-TicketboxC07SqlTextArray (
@@ -1156,6 +1208,19 @@ function Get-TicketboxC07DatabasePrivilegeSql {
             $script:TicketboxManagedSchemaAuditInsertTables
         )
     }
+    $databaseConnectSql = if ($PreserveRuntimeFence) {
+        @"
+GRANT CONNECT ON DATABASE "$script:TicketboxC07DatabaseName"
+    TO "$script:TicketboxC07MigratorRole";
+ALTER ROLE "$script:TicketboxC07RuntimeRole" NOLOGIN CONNECTION LIMIT 0;
+"@
+    }
+    else {
+        @"
+GRANT CONNECT ON DATABASE "$script:TicketboxC07DatabaseName"
+    TO "$script:TicketboxC07RuntimeRole", "$script:TicketboxC07MigratorRole";
+"@
+    }
     $readyMarkerSql = ""
     if (-not [string]::IsNullOrEmpty($ReadyMarker)) {
         $readyMarkerLiteral = ConvertTo-TicketboxC07SqlLiteral $ReadyMarker
@@ -1170,8 +1235,7 @@ ALTER DATABASE "$script:TicketboxC07DatabaseName" OWNER TO "$script:TicketboxC07
 REVOKE ALL ON DATABASE "$script:TicketboxC07DatabaseName" FROM PUBLIC;
 REVOKE ALL ON DATABASE "$script:TicketboxC07DatabaseName" FROM "$script:TicketboxC07RuntimeRole";
 REVOKE ALL ON DATABASE "$script:TicketboxC07DatabaseName" FROM "$script:TicketboxC07MigratorRole";
-GRANT CONNECT ON DATABASE "$script:TicketboxC07DatabaseName"
-    TO "$script:TicketboxC07RuntimeRole", "$script:TicketboxC07MigratorRole";
+$databaseConnectSql
 ALTER SCHEMA public OWNER TO "$script:TicketboxC07OwnerRole";
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 REVOKE ALL ON SCHEMA public FROM "$script:TicketboxC07RuntimeRole";
@@ -2135,6 +2199,34 @@ function Assert-TicketboxC07RoleCredentials {
                 -Message "C07 durable credential/search_path authority 不匹配。" `
                 -FailureCode "role_authority_invariant_failed")
         }
+    }
+}
+
+function Assert-TicketboxC07MigratorCredential {
+    param(
+        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][Security.SecureString]$MigratorPassword
+    )
+
+    $output = Invoke-TicketboxC07Sql `
+        -Authority $Authority `
+        -Database $script:TicketboxC07DatabaseName `
+        -Role $script:TicketboxC07MigratorRole `
+        -Password $MigratorPassword `
+        -Label "C07 frozen migrator credential authority probe" `
+        -Sql ("SELECT current_user || E'\t' || " +
+            "current_setting('search_path');")
+    $fields = ConvertFrom-TicketboxC07SingleRow `
+        -Output $output `
+        -FieldCount 2 `
+        -Label "C07 frozen migrator credential authority probe"
+    if (
+        $fields[0] -cne $script:TicketboxC07MigratorRole -or
+        $fields[1] -cne "pg_catalog, public"
+    ) {
+        throw (New-TicketboxC07DatabaseClassifiedFailure `
+            -Message "C07 frozen migrator credential/search_path authority 不匹配。" `
+            -FailureCode "role_authority_invariant_failed")
     }
 }
 
@@ -4220,12 +4312,31 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
     $migrationEvidenceSha256 = [string]$production.MigrationEvidenceSha256
     $migrationEvidence = $null
     $migratorCredentialWindowRenewed = $false
+    $retryRuntimeAdmission = $false
+    if ($phase -ceq "runtime_acl_verified") {
+        $runtimeAclResidue =
+            Resolve-TicketboxC07ManagedOrPublishedWriterFenceObservation
+        if ([string]$runtimeAclResidue.AuthorityPhase -ceq "managed_frozen") {
+            $residueMigratorState = Get-TicketboxC07MigratorRetirementState `
+                -Authority $authority `
+                -SuperuserPassword $SuperuserPassword
+            if (-not [bool]$residueMigratorState.IsActive) {
+                throw (New-TicketboxC07DatabaseClassifiedFailure `
+                    -Message (
+                        "C07 runtime ACL marker 的 frozen residue 缺少可控 migrator；" +
+                        "拒绝猜测 admission。"
+                    ) `
+                    -FailureCode "role_authority_invariant_failed")
+            }
+            $retryRuntimeAdmission = $true
+        }
+    }
     if ($phase -ceq "migration_started") {
         $databaseState = Get-TicketboxC07ProductionDatabaseState `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword
         if ($databaseState.AlembicRevision -ceq $sourceRevision) {
-            Renew-TicketboxC07RoleCredentialWindow `
+            Renew-TicketboxC07FrozenMigratorCredentialWindow `
                 -Authority $authority `
                 -SuperuserPassword $SuperuserPassword `
                 -RuntimePassword $RuntimePassword `
@@ -4244,7 +4355,7 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
             }
         }
         elseif ($databaseState.AlembicRevision -ceq $targetRevision) {
-            Renew-TicketboxC07RoleCredentialWindow `
+            Renew-TicketboxC07FrozenMigratorCredentialWindow `
                 -Authority $authority `
                 -SuperuserPassword $SuperuserPassword `
                 -RuntimePassword $RuntimePassword `
@@ -4342,7 +4453,7 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
             throw "C07 DDL-only coordinator 未停在 durable migration_completed。"
         }
         if ($null -eq $migrationEvidence) {
-            Renew-TicketboxC07RoleCredentialWindow `
+            Renew-TicketboxC07FrozenMigratorCredentialWindow `
                 -Authority $authority `
                 -SuperuserPassword $SuperuserPassword `
                 -RuntimePassword $RuntimePassword `
@@ -4428,7 +4539,12 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
             -MigrationEvidence $migrationEvidence
     }
 
-    if ($phase -ceq "migration_completed") {
+    if ($phase -ceq "migration_completed" -or $retryRuntimeAdmission) {
+        if ($null -eq $targetRecovery) {
+            throw (New-TicketboxC07DatabaseClassifiedFailure `
+                -Message "C07 runtime admission 缺少 post-DDL target recovery。" `
+                -FailureCode "authority_chain_mismatch")
+        }
         $migrationState = Get-TicketboxC07ProductionDatabaseState `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword
@@ -4446,7 +4562,7 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
                 -FailureCode "role_authority_invariant_failed")
         }
         if (-not $migratorCredentialWindowRenewed) {
-            Renew-TicketboxC07RoleCredentialWindow `
+            Renew-TicketboxC07FrozenMigratorCredentialWindow `
                 -Authority $authority `
                 -SuperuserPassword $SuperuserPassword `
                 -RuntimePassword $RuntimePassword `
@@ -4461,78 +4577,117 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
             -Database $script:TicketboxC07DatabaseName `
             -Role "postgres" `
             -Password $SuperuserPassword `
-            -Sql (Get-TicketboxC07DatabasePrivilegeSql) `
-            -Label "C07 production target ACL application" | Out-Null
-        Assert-TicketboxC07RoleCatalog $authority $SuperuserPassword
-        Assert-TicketboxC07RoleCredentials `
+            -Sql (Get-TicketboxC07DatabasePrivilegeSql -PreserveRuntimeFence) `
+            -Label "C07 production target ACL application while frozen" | Out-Null
+        $frozen = Get-TicketboxC07WriterDatabaseFenceObservation `
+            -AuthorityPhase "managed_frozen"
+        Assert-TicketboxC07WriterDatabaseFence -Observation $frozen
+        Assert-TicketboxC07MigratorCredential `
             -Authority $authority `
-            -RuntimePassword $RuntimePassword `
             -MigratorPassword $MigratorPassword
         try {
-            Test-TicketboxC07DatabaseRoleMatrix `
-                -SuperuserPassword $SuperuserPassword `
-                -RuntimePassword $RuntimePassword `
-                -MigratorPassword $MigratorPassword `
-                -OperationId $operationText
-        }
-        catch {
-            $matrixFailure = $_.Exception
+            Invoke-TicketboxC07Sql `
+                -Authority $authority `
+                -Database $script:TicketboxC07DatabaseName `
+                -Role "postgres" `
+                -Password $SuperuserPassword `
+                -Label "C07 controlled runtime admission publication" `
+                -Sql @"
+BEGIN;
+ALTER ROLE "$script:TicketboxC07RuntimeRole"
+    LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+    NOREPLICATION NOBYPASSRLS CONNECTION LIMIT -1;
+GRANT CONNECT ON DATABASE "$script:TicketboxC07DatabaseName"
+    TO "$script:TicketboxC07RuntimeRole";
+COMMIT;
+"@ | Out-Null
+            Assert-TicketboxC07RuntimeCredential `
+                -Authority $authority `
+                -RuntimePassword $RuntimePassword
+            Assert-TicketboxC07RoleCatalog $authority $SuperuserPassword
             try {
-                Assert-TicketboxC07RuntimeAclContract `
-                    -Authority $authority `
-                    -SuperuserPassword $SuperuserPassword
+                Test-TicketboxC07DatabaseRoleMatrix `
+                    -SuperuserPassword $SuperuserPassword `
+                    -RuntimePassword $RuntimePassword `
+                    -MigratorPassword $MigratorPassword `
+                    -OperationId $operationText
             }
             catch {
-                if (
-                    [string]$_.Exception.Data["TicketboxC07FailureClass"] -ceq
-                        "invariant"
-                ) {
-                    throw
+                $matrixFailure = $_.Exception
+                try {
+                    Assert-TicketboxC07RuntimeAclContract `
+                        -Authority $authority `
+                        -SuperuserPassword $SuperuserPassword
                 }
+                catch {
+                    if (
+                        [string]$_.Exception.Data["TicketboxC07FailureClass"] -ceq
+                            "invariant"
+                    ) {
+                        throw
+                    }
+                    throw [AggregateException]::new(
+                        "C07 role matrix 与 structured ACL 诊断均失败。",
+                        [Exception[]]@($matrixFailure, $_.Exception)
+                    )
+                }
+                throw $matrixFailure
+            }
+            Assert-TicketboxC07RuntimeAclContract `
+                -Authority $authority `
+                -SuperuserPassword $SuperuserPassword
+            $roleAuthoritySha256 = Get-TicketboxC07RoleAuthoritySha256 `
+                -Authority $authority `
+                -SuperuserPassword $SuperuserPassword
+            $runtimeAclSha256 = Get-TicketboxC07RuntimeAclSha256 `
+                -Authority $authority `
+                -SuperuserPassword $SuperuserPassword
+            $catalog = Get-TicketboxC07DatabaseCatalogObservation `
+                -Authority $authority `
+                -SuperuserPassword $SuperuserPassword `
+                -Database $script:TicketboxC07DatabaseName
+            $aclMarker = New-TicketboxC07ProductionMarker `
+                -OperationId $operationText `
+                -Mode $Mode `
+                -Phase "runtime_acl_verified" `
+                -Catalog $catalog `
+                -ExpectedSourceRevision $sourceRevision `
+                -TargetRevision $targetRevision `
+                -RecoveryManifestSha256 $readyRecovery.ManifestSha256 `
+                -MigrationEvidenceSha256 $migrationEvidenceSha256 `
+                -RoleAuthoritySha256 $roleAuthoritySha256 `
+                -RuntimeAclSha256 $runtimeAclSha256
+            Set-TicketboxC07DatabaseMarker `
+                -Authority $authority `
+                -SuperuserPassword $SuperuserPassword `
+                -Database $script:TicketboxC07DatabaseName `
+                -Marker $aclMarker `
+                -Label "C07 production runtime ACL durable verification"
+            $phase = "runtime_acl_verified"
+            $production = [pscustomobject]@{
+                Phase = $phase
+                MigrationEvidenceSha256 = $migrationEvidenceSha256
+                RoleAuthoritySha256 = $roleAuthoritySha256
+                RuntimeAclSha256 = $runtimeAclSha256
+                LivePostconditionsSha256 = "0" * 64
+            }
+        }
+        catch {
+            $publicationFailure = $_.Exception
+            $refenceFailure = $null
+            try {
+                Enter-TicketboxC07CurrentWriterDatabaseFence `
+                    -Authority $LifecycleAuthority `
+                    -AuthorityPhase "managed_frozen" | Out-Null
+            }
+            catch { $refenceFailure = $_.Exception }
+            if ($null -ne $refenceFailure) {
                 throw [AggregateException]::new(
-                    "C07 role matrix 与 structured ACL 诊断均失败。",
-                    [Exception[]]@($matrixFailure, $_.Exception)
+                    "C07 runtime admission 与 fail-closed compensation 均失败。",
+                    [Exception[]]@($publicationFailure, $refenceFailure)
                 )
             }
-            throw $matrixFailure
-        }
-        Assert-TicketboxC07RuntimeAclContract `
-            -Authority $authority `
-            -SuperuserPassword $SuperuserPassword
-        $roleAuthoritySha256 = Get-TicketboxC07RoleAuthoritySha256 `
-            -Authority $authority `
-            -SuperuserPassword $SuperuserPassword
-        $runtimeAclSha256 = Get-TicketboxC07RuntimeAclSha256 `
-            -Authority $authority `
-            -SuperuserPassword $SuperuserPassword
-        $catalog = Get-TicketboxC07DatabaseCatalogObservation `
-            -Authority $authority `
-            -SuperuserPassword $SuperuserPassword `
-            -Database $script:TicketboxC07DatabaseName
-        $aclMarker = New-TicketboxC07ProductionMarker `
-            -OperationId $operationText `
-            -Mode $Mode `
-            -Phase "runtime_acl_verified" `
-            -Catalog $catalog `
-            -ExpectedSourceRevision $sourceRevision `
-            -TargetRevision $targetRevision `
-            -RecoveryManifestSha256 $readyRecovery.ManifestSha256 `
-            -MigrationEvidenceSha256 $migrationEvidenceSha256 `
-            -RoleAuthoritySha256 $roleAuthoritySha256 `
-            -RuntimeAclSha256 $runtimeAclSha256
-        Set-TicketboxC07DatabaseMarker `
-            -Authority $authority `
-            -SuperuserPassword $SuperuserPassword `
-            -Database $script:TicketboxC07DatabaseName `
-            -Marker $aclMarker `
-            -Label "C07 production runtime ACL durable verification"
-        $phase = "runtime_acl_verified"
-        $production = [pscustomobject]@{
-            Phase = $phase
-            MigrationEvidenceSha256 = $migrationEvidenceSha256
-            RoleAuthoritySha256 = $roleAuthoritySha256
-            RuntimeAclSha256 = $runtimeAclSha256
-            LivePostconditionsSha256 = "0" * 64
+            throw $publicationFailure
         }
     }
 
@@ -4566,6 +4721,9 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
                 -Message "C07 migrator 处于 partial retirement residue。" `
                 -FailureCode "role_authority_invariant_failed")
         }
+        $published = Get-TicketboxC07WriterDatabaseFenceObservation `
+            -AuthorityPhase "published_runtime"
+        Assert-TicketboxC07PublishedDatabaseAuthority -Observation $published
     }
 
     $finalState = Get-TicketboxC07ProductionDatabaseState `
@@ -4797,7 +4955,7 @@ function Initialize-TicketboxC07FreshDatabaseAuthority {
         -SuperuserPassword $SuperuserPassword `
         -OperationId $operation.ToString("D")
     if ($preflight.Phase -ceq "authority_ready") {
-        Renew-TicketboxC07RoleCredentialWindow `
+        Renew-TicketboxC07FrozenMigratorCredentialWindow `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
             -RuntimePassword $RuntimePassword `
@@ -4805,7 +4963,9 @@ function Initialize-TicketboxC07FreshDatabaseAuthority {
             -MigratorValidUntilUtc $MigratorValidUntilUtc `
             -OperationId $operation.ToString("D") `
             -Mode "fresh_install"
-        Assert-TicketboxC07RoleCatalog $authority $SuperuserPassword
+        $frozen = Get-TicketboxC07WriterDatabaseFenceObservation `
+            -AuthorityPhase "managed_frozen"
+        Assert-TicketboxC07WriterDatabaseFence -Observation $frozen
         return Get-TicketboxC07DatabaseCatalogObservation `
             -Authority $authority `
             -SuperuserPassword $SuperuserPassword `
@@ -4819,7 +4979,8 @@ function Initialize-TicketboxC07FreshDatabaseAuthority {
         -MigratorVerifier $migratorVerifier `
         -MigratorValidUntilUtc $MigratorValidUntilUtc `
         -OperationId $operation.ToString("D") `
-        -Mode "fresh_install"
+        -Mode "fresh_install" `
+        -RuntimeAdmissionState "frozen"
     Invoke-TicketboxC07Sql `
         -Authority $authority `
         -Database "postgres" `
@@ -4915,13 +5076,14 @@ COMMIT;
         -Database $script:TicketboxC07DatabaseName `
         -Role "postgres" `
         -Password $SuperuserPassword `
-        -Sql (Get-TicketboxC07DatabasePrivilegeSql) `
+        -Sql (Get-TicketboxC07DatabasePrivilegeSql -PreserveRuntimeFence) `
         -Label "C07 fresh database privilege transaction" | Out-Null
-    Assert-TicketboxC07RoleCatalog $authority $SuperuserPassword
-    Assert-TicketboxC07RoleCredentials `
+    Assert-TicketboxC07MigratorCredential `
         -Authority $authority `
-        -RuntimePassword $RuntimePassword `
         -MigratorPassword $MigratorPassword
+    $frozen = Get-TicketboxC07WriterDatabaseFenceObservation `
+        -AuthorityPhase "managed_frozen"
+    Assert-TicketboxC07WriterDatabaseFence -Observation $frozen
     Set-TicketboxC07DatabaseMarker `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
@@ -5012,7 +5174,7 @@ WHERE datname <> '$script:TicketboxC07DatabaseName'
             -Roles $roles `
             -LegacyRoleOid $legacyOid
         if ($phase -ceq "authority_ready") {
-            Renew-TicketboxC07RoleCredentialWindow `
+            Renew-TicketboxC07FrozenMigratorCredentialWindow `
                 -Authority $authority `
                 -SuperuserPassword $SuperuserPassword `
                 -RuntimePassword $RuntimePassword `
@@ -5020,7 +5182,9 @@ WHERE datname <> '$script:TicketboxC07DatabaseName'
                 -MigratorValidUntilUtc $MigratorValidUntilUtc `
                 -OperationId $operation.ToString("D") `
                 -Mode "legacy_adoption"
-            Assert-TicketboxC07RoleCatalog $authority $SuperuserPassword
+            $frozen = Get-TicketboxC07WriterDatabaseFenceObservation `
+                -AuthorityPhase "managed_frozen"
+            Assert-TicketboxC07WriterDatabaseFence -Observation $frozen
             Assert-TicketboxC07LegacyRoleRetired `
                 -Authority $authority `
                 -SuperuserPassword $SuperuserPassword `
@@ -5046,7 +5210,8 @@ WHERE datname <> '$script:TicketboxC07DatabaseName'
             -MigratorVerifier $migratorVerifier `
             -MigratorValidUntilUtc $MigratorValidUntilUtc `
             -OperationId $operation.ToString("D") `
-            -Mode "legacy_adoption") `
+            -Mode "legacy_adoption" `
+            -RuntimeAdmissionState "frozen") `
         -Label "C07 legacy target role transaction" | Out-Null
     $roles = Get-TicketboxC07RoleBootstrapIdentity `
         -Authority $authority `
@@ -5157,47 +5322,17 @@ COMMIT;
         -Database $script:TicketboxC07DatabaseName `
         -Role "postgres" `
         -Password $SuperuserPassword `
-        -Sql (Get-TicketboxC07DatabasePrivilegeSql) `
+        -Sql (Get-TicketboxC07DatabasePrivilegeSql -PreserveRuntimeFence) `
         -Label "C07 legacy privilege transaction" | Out-Null
-    Invoke-TicketboxC07Sql `
-        -Authority $authority `
-        -Database "postgres" `
-        -Role "postgres" `
-        -Password $SuperuserPassword `
-        -Label "C07 legacy session retirement verification" `
-        -Sql @"
-SELECT pg_terminate_backend(pid, 5000)
-FROM pg_stat_activity
-WHERE usesysid = $legacyOid
-  AND pid <> pg_backend_pid();
-"@ | Out-Null
-    Invoke-TicketboxC07Sql `
-        -Authority $authority `
-        -Database "postgres" `
-        -Role "postgres" `
-        -Password $SuperuserPassword `
-        -Label "C07 legacy session zero verification" `
-        -Sql @"
-DO `$ticketbox`$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_stat_activity
-        WHERE usesysid = $legacyOid
-          AND pid <> pg_backend_pid()
-    ) THEN
-        RAISE EXCEPTION 'legacy sessions remain active';
-    END IF;
-END
-`$ticketbox`$;
-"@ | Out-Null
-    Assert-TicketboxC07RoleCatalog $authority $SuperuserPassword
+    $frozen = Get-TicketboxC07WriterDatabaseFenceObservation `
+        -AuthorityPhase "managed_frozen"
+    Assert-TicketboxC07WriterDatabaseFence -Observation $frozen
     Assert-TicketboxC07LegacyRoleRetired `
         -Authority $authority `
         -SuperuserPassword $SuperuserPassword `
         -LegacyRoleOid $legacyOid
-    Assert-TicketboxC07RoleCredentials `
+    Assert-TicketboxC07MigratorCredential `
         -Authority $authority `
-        -RuntimePassword $RuntimePassword `
         -MigratorPassword $MigratorPassword
     Set-TicketboxC07DatabaseMarker `
         -Authority $authority `

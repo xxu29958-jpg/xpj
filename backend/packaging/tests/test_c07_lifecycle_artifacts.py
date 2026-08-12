@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,18 @@ PACKAGING = Path(__file__).resolve().parents[1]
 BACKEND = PACKAGING.parent
 SUBJECT_SHA256 = "A" * 64
 LOWER_SUBJECT_SHA256 = "a" * 64
+
+
+def _function(source: str, name: str) -> str:
+    match = re.search(
+        rf"(?m)^function {re.escape(name)}(?=\s*(?:\{{|\())",
+        source,
+    )
+    if match is None:
+        raise ValueError(f"missing function boundary for {name}")
+    start = match.start()
+    next_function = source.find("\nfunction ", start + 1)
+    return source[start:] if next_function < 0 else source[start:next_function]
 
 
 def _literal(path: Path) -> str:
@@ -63,11 +77,18 @@ def _write_manifest(path: Path, version: str = "7.8.9") -> None:
 
 
 def test_c07_writer_fence_commits_all_effective_writer_authorities() -> None:
-    source = (
-        PACKAGING / "windows_c07_heartbeat_authority.ps1"
-    ).read_text(encoding="utf-8-sig") + (
-        PACKAGING / "windows_c07_lifecycle.ps1"
-    ).read_text(encoding="utf-8-sig")
+    source = "\n".join(
+        path.read_text(encoding="utf-8-sig")
+        for path in (
+            PACKAGING / "postgresql_writer_fence" / "primitives.ps1",
+            PACKAGING / "postgresql_writer_fence" / "observation_query.ps1",
+            PACKAGING / "postgresql_writer_fence" / "precondition_guard.ps1",
+            PACKAGING / "postgresql_writer_fence" / "session_drain.ps1",
+            PACKAGING / "postgresql_writer_fence" / "reconciler.ps1",
+            PACKAGING / "c07_lifecycle" / "writer_fence" / "policy.ps1",
+            PACKAGING / "c07_lifecycle" / "writer_fence" / "adapter.ps1",
+        )
+    )
     database_source = (PACKAGING / "windows_c07_database.ps1").read_text(
         encoding="utf-8-sig"
     )
@@ -87,11 +108,16 @@ def test_c07_writer_fence_commits_all_effective_writer_authorities() -> None:
         "unexpected_database_worker_count",
         "inert_unregistered",
         "can_assume_write_owner",
+        "owns_security_definer_routines",
+        "can_execute_unowned_security_definer_routines",
     ):
         assert required in source
     assert '"--quiet",' in database_source
-    assert "pg_terminate_backend(\n        pid," in source
-    assert "$terminationConfirmationTimeoutMilliseconds" in source
+    assert "pg_terminate_backend(\n                fence_pid," in source
+    assert "$TerminationTimeoutMilliseconds" in source
+    assert "database_lock.locktype = 'object'" in source
+    assert "database_lock.classid = 'pg_database'::regclass::oid" in source
+    assert "Enter-TicketboxC07CurrentWriterDatabaseFence" in source
 
 
 def test_c07_whole_operation_deadline_is_monotonic_and_durable() -> None:
@@ -191,6 +217,10 @@ $script:TicketboxPersistentInstallationIdentityAclAccounts = @($currentAccount)
 $script:TicketboxPersistentInstallationIdentityOwnerAccount = $currentAccount
 $script:TicketboxC07HostFullControlAccounts = @($currentAccount)
 $script:TicketboxC07HostOwnerAccount = $currentAccount
+$script:TicketboxC07LegacyRuntimeRole = 'ticketbox'
+$script:TicketboxC07OwnerRole = 'ticketbox_owner'
+$script:TicketboxC07MigratorRole = 'ticketbox_migrator'
+$script:TicketboxC07RuntimeRole = 'ticketbox_runtime'
 $script:testLockRoot = '{_literal(lock_root)}'
 $script:testDatabaseHead = '20260722_0001'
 $script:testDatabaseFingerprint = '{'D' * 64}'
@@ -218,6 +248,8 @@ function New-TestC07DatabaseAuthorityRole {{
         is_database_owner = $false
         owns_public_schema = $false
         owns_user_relations = $false
+        owns_security_definer_routines = $false
+        can_execute_unowned_security_definer_routines = $false
         direct_connect = $false
         effective_connect = $true
         can_database_create = $true
@@ -225,6 +257,8 @@ function New-TestC07DatabaseAuthorityRole {{
         can_table_write = $true
         can_sequence_write = $true
         can_assume_write_owner = $true
+        predefined_role_usage = @()
+        predefined_role_set = @()
     }}
 }}
 function New-TestC07RuntimeRole {{
@@ -247,6 +281,8 @@ function New-TestC07RuntimeRole {{
         is_database_owner = $false
         owns_public_schema = $false
         owns_user_relations = $false
+        owns_security_definer_routines = $false
+        can_execute_unowned_security_definer_routines = $false
         direct_connect = $false
         effective_connect = $EffectiveConnect
         can_database_create = $false
@@ -254,23 +290,121 @@ function New-TestC07RuntimeRole {{
         can_table_write = $true
         can_sequence_write = $true
         can_assume_write_owner = $false
+        predefined_role_usage = @()
+        predefined_role_set = @()
     }}
+}}
+function New-TestC07ManagedMigratorRole {{
+    param([bool]$Retired = $false)
+    $role = [pscustomobject][ordered]@{{
+        name = 'ticketbox_migrator'
+        oid = [int64]902
+        disposition = $(if ($Retired) {{
+            'retired_migration_authority'
+        }} else {{ 'migration_authority' }})
+        can_login = -not $Retired
+        connection_limit = $(if ($Retired) {{ 0 }} else {{ -1 }})
+        is_superuser = $false
+        can_create_db = $false
+        can_create_role = $false
+        can_replicate = $false
+        can_bypass_rls = $false
+        is_database_owner = $false
+        owns_public_schema = $false
+        owns_user_relations = $false
+        owns_security_definer_routines = $false
+        can_execute_unowned_security_definer_routines = $false
+        direct_connect = -not $Retired
+        effective_connect = -not $Retired
+        can_database_create = $false
+        can_public_schema_create = $false
+        can_table_write = $false
+        can_sequence_write = $false
+        can_assume_write_owner = -not $Retired
+        predefined_role_usage = @()
+        predefined_role_set = @('pg_database_owner')
+    }}
+    if ($Retired) {{ $role.predefined_role_set = [object[]]@() }}
+    return $role
+}}
+function New-TestC07OwnerRole {{
+    return [pscustomobject][ordered]@{{
+        name = 'ticketbox_owner'
+        oid = [int64]903
+        disposition = 'nologin_owner'
+        can_login = $false
+        connection_limit = 0
+        is_superuser = $false
+        can_create_db = $false
+        can_create_role = $false
+        can_replicate = $false
+        can_bypass_rls = $false
+        is_database_owner = $true
+        owns_public_schema = $true
+        owns_user_relations = $true
+        owns_security_definer_routines = $true
+        can_execute_unowned_security_definer_routines = $false
+        direct_connect = $false
+        effective_connect = $true
+        can_database_create = $true
+        can_public_schema_create = $true
+        can_table_write = $true
+        can_sequence_write = $true
+        can_assume_write_owner = $false
+        predefined_role_usage = @('pg_database_owner')
+        predefined_role_set = @('pg_database_owner')
+    }}
+}}
+function New-TestC07ManagedRuntimeRole {{
+    param([bool]$Published = $false)
+    return [pscustomobject][ordered]@{{
+        name = 'ticketbox_runtime'
+        oid = [int64]904
+        disposition = $(if ($Published) {{ 'published_runtime' }} else {{ 'fenced_runtime' }})
+        can_login = $Published
+        connection_limit = $(if ($Published) {{ -1 }} else {{ 0 }})
+        is_superuser = $false
+        can_create_db = $false
+        can_create_role = $false
+        can_replicate = $false
+        can_bypass_rls = $false
+        is_database_owner = $false
+        owns_public_schema = $false
+        owns_user_relations = $false
+        owns_security_definer_routines = $false
+        can_execute_unowned_security_definer_routines = $false
+        direct_connect = $Published
+        effective_connect = $Published
+        can_database_create = $false
+        can_public_schema_create = $false
+        can_table_write = $true
+        can_sequence_write = $true
+        can_assume_write_owner = $false
+        predefined_role_usage = @()
+        predefined_role_set = @()
+    }}
+}}
+function New-TestC07PublishedRoleSet {{
+    return @(
+        New-TestC07DatabaseAuthorityRole
+        New-TestC07ManagedMigratorRole -Retired $true
+        New-TestC07OwnerRole
+        New-TestC07ManagedRuntimeRole -Published $true
+    )
 }}
 function Set-TestC07FenceRolesFenced {{
     $script:testFenceRoles = @(
         New-TestC07DatabaseAuthorityRole
-        New-TestC07RuntimeRole `
-            -CanLogin $false `
-            -ConnectionLimit 0 `
-            -EffectiveConnect $false
+        New-TestC07ManagedMigratorRole
+        New-TestC07OwnerRole
+        New-TestC07ManagedRuntimeRole
     )
 }}
 $script:testFenceRoles = @(
     New-TestC07DatabaseAuthorityRole
-    New-TestC07RuntimeRole `
-        -CanLogin $true `
-        -ConnectionLimit -1 `
-        -EffectiveConnect $true
+    New-TestC07ManagedMigratorRole
+    New-TestC07OwnerRole
+    New-TestC07ManagedRuntimeRole -Published $true
 )
 $script:testFenceAvailable = $true
 $script:testPassword = New-Object Security.SecureString
@@ -316,7 +450,10 @@ function Get-TicketboxC07LiveDatabaseAuthority {{
     }}
 }}
 function Get-TicketboxC07WriterDatabaseFenceObservation {{
-    param($ReleaseIdentity)
+    param([string]$AuthorityPhase = 'managed_frozen')
+    if ([string]::IsNullOrEmpty($AuthorityPhase)) {{
+        $AuthorityPhase = 'managed_frozen'
+    }}
     $sessions = @(
         for ($index = 0; $index -lt $script:testDatabaseSessions; $index++) {{
             [pscustomobject][ordered]@{{
@@ -327,7 +464,11 @@ function Get-TicketboxC07WriterDatabaseFenceObservation {{
             }}
         }}
     )
+    $roles = if ($AuthorityPhase -ceq 'published_runtime') {{
+        @(New-TestC07PublishedRoleSet)
+    }} else {{ @($script:testFenceRoles) }}
     return [pscustomobject]@{{
+        AuthorityPhase = $AuthorityPhase
         PublicConnect = [bool]$script:testPublicConnect
         OtherClientSessionCount = [int]$script:testDatabaseSessions
         ClientSessions = @($sessions)
@@ -338,7 +479,7 @@ function Get-TicketboxC07WriterDatabaseFenceObservation {{
         UnexpectedDatabaseWorkerCount = [int64]0
         AdvisoryFenceAvailable = [bool]$script:testFenceAvailable
         AdvisoryFenceReleased = [bool]$script:testFenceAvailable
-        Roles = @($script:testFenceRoles)
+        Roles = @($roles)
     }}
 }}
 function Enter-TicketboxC07WriterDatabaseFence {{
@@ -349,10 +490,10 @@ function Enter-TicketboxC07WriterDatabaseFence {{
     $script:testDatabaseSessions = 0
     $script:testPublicConnect = $false
     Set-TestC07FenceRolesFenced
-    $observation = Get-TicketboxC07WriterDatabaseFenceObservation $Authority.ReleaseIdentity
+    $observation = Get-TicketboxC07WriterDatabaseFenceObservation `
+        -AuthorityPhase ([string]$Intent.Payload.authority_phase)
     Assert-TicketboxC07WriterDatabaseFence `
-        -Observation $observation `
-        -ExpectedRoles @($Intent.Payload.roles)
+        -Observation $observation
     return $observation
 }}
 function Get-TicketboxServiceState {{ param($Name); return $script:testServiceState }}
@@ -856,6 +997,757 @@ def _free_loopback_port() -> int:
         return int(listener.getsockname()[1])
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows C07 artifact contract")
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_c07_historical_v3_intent_is_evidence_and_new_ready_pins_role_oid(
+    tmp_path: Path,
+    engine: str,
+) -> None:
+    root = tmp_path / f"historical-v3-{Path(engine).stem}"
+    prefix, _, _, _ = _common_harness(root)
+    harness = root / "historical-v3.ps1"
+    script = prefix + r"""
+function ConvertTo-TestLegacyV3Role([object]$Role) {
+    return [pscustomobject][ordered]@{
+        name = [string]$Role.name
+        oid = [int64]$Role.oid
+        disposition = [string]$Role.disposition
+        can_login = [bool]$Role.can_login
+        connection_limit = [int]$Role.connection_limit
+        is_superuser = [bool]$Role.is_superuser
+        can_create_db = [bool]$Role.can_create_db
+        can_create_role = [bool]$Role.can_create_role
+        can_replicate = [bool]$Role.can_replicate
+        can_bypass_rls = [bool]$Role.can_bypass_rls
+        is_database_owner = [bool]$Role.is_database_owner
+        owns_public_schema = [bool]$Role.owns_public_schema
+        owns_user_relations = [bool]$Role.owns_user_relations
+        direct_connect = [bool]$Role.direct_connect
+        effective_connect = [bool]$Role.effective_connect
+        can_database_create = [bool]$Role.can_database_create
+        can_public_schema_create = [bool]$Role.can_public_schema_create
+        can_table_write = [bool]$Role.can_table_write
+        can_sequence_write = [bool]$Role.can_sequence_write
+        can_assume_write_owner = [bool]$Role.can_assume_write_owner
+    }
+}
+
+$operationId = '11111111-1111-4111-8111-111111111111'
+$legacyRoles = @(
+    ConvertTo-TestLegacyV3Role (New-TestC07DatabaseAuthorityRole)
+    ConvertTo-TestLegacyV3Role (
+        New-TestC07RuntimeRole `
+            -CanLogin $true `
+            -ConnectionLimit -1 `
+            -EffectiveConnect $true
+    )
+)
+$legacyRoles[1].is_database_owner = $true
+$stagedOwner = ConvertTo-TestLegacyV3Role (New-TestC07OwnerRole)
+$stagedOwner.is_database_owner = $false
+$legacyRoles += $stagedOwner
+$legacyPayload = [pscustomobject][ordered]@{
+    schema = 'ticketbox-c07-writer-fence-intent-v3'
+    operation_id = $operationId
+    descriptor_sha256 = ('A' * 64)
+    database_binding_sha256 = ('B' * 64)
+    backend_service_start_policy = 'delayed_auto'
+    public_connect = $true
+    client_session_count_before_fence = [int64]0
+    client_sessions_before_fence = @()
+    max_prepared_transactions = [int64]0
+    prepared_transaction_count = [int64]0
+    logical_subscription_count = [int64]0
+    logical_apply_worker_count = [int64]0
+    unexpected_database_worker_count = [int64]0
+    roles = @($legacyRoles)
+    created_at_utc = '2026-08-01T00:00:00.0000000Z'
+}
+function Reset-TestHistoricalIntentEnvelope {
+    $script:readEnvelope = [pscustomobject]@{
+        Payload = $legacyPayload
+        PayloadSha256 = ('C' * 64)
+        Text = 'historical-v3-fixture'
+    }
+}
+Reset-TestHistoricalIntentEnvelope
+function Get-TicketboxC07WriterFenceIntentPath { return 'historical-v3-intent' }
+function Get-TicketboxC07ReadyVerificationPath { return 'ready-verification' }
+function Read-TicketboxC07HostEnvelope {
+    param([string]$Path, [string]$ExpectedKind)
+    return $script:readEnvelope
+}
+$authority = [pscustomobject]@{
+    Receipt = [pscustomobject]@{
+        operation_id = $operationId
+        database_binding_sha256 = ('B' * 64)
+        ready_verification_sha256 = ('D' * 64)
+    }
+    Descriptor = [pscustomobject]@{
+        PayloadSha256 = ('A' * 64)
+        Payload = [pscustomobject]@{
+            operation_kind = 'c07_money_minor_bigint_v1'
+            target_alembic_revision = '20260729_0001'
+            revision_manifest_sha256 = ('E' * 64)
+        }
+    }
+}
+$intent = Read-TicketboxC07WriterFenceIntent $authority
+if (
+    -not [bool]$intent.IsLegacyV3 -or
+    [string]$intent.IntentSchema -cne
+        'ticketbox-c07-writer-fence-intent-v3' -or
+    [string]$intent.OperationMode -cne 'historical_v3' -or
+    [string]$intent.AuthorityPhase -cne 'legacy_owner_frozen' -or
+    [string]$intent.PayloadSha256 -cne ('C' * 64) -or
+    [string]$intent.Text -cne 'historical-v3-fixture' -or
+    -not [object]::ReferenceEquals($intent.Payload, $legacyPayload) -or
+    $null -ne $intent.Payload.PSObject.Properties['authority_phase']
+) {
+    throw 'historical v3 intent was rewritten instead of normalized as evidence'
+}
+$legacyPayload.roles = @(
+    ConvertTo-TestLegacyV3Role (New-TestC07DatabaseAuthorityRole)
+    ConvertTo-TestLegacyV3Role (New-TestC07RuntimeRole `
+        -CanLogin $false -ConnectionLimit 0 -EffectiveConnect $false)
+    ConvertTo-TestLegacyV3Role (New-TestC07OwnerRole)
+)
+Reset-TestHistoricalIntentEnvelope
+$managedIntent = Read-TicketboxC07WriterFenceIntent $authority
+if ($managedIntent.AuthorityPhase -cne 'managed_frozen') {
+    throw 'historical managed v3 owner facts were not classified by the reader'
+}
+$bothOwnerRoles = @($legacyRoles | ForEach-Object {
+    $_ | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+})
+$bothOwnerRoles[2].is_database_owner = $true
+$neitherOwnerRoles = @($legacyRoles | ForEach-Object {
+    $_ | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+})
+$neitherOwnerRoles[1].is_database_owner = $false
+foreach ($badRoles in @($bothOwnerRoles, $neitherOwnerRoles)) {
+    $legacyPayload.roles = @($badRoles)
+    Reset-TestHistoricalIntentEnvelope
+    $ambiguousRejected = $false
+    try {
+        [void](Read-TicketboxC07WriterFenceIntent $authority)
+    }
+    catch { $ambiguousRejected = $true }
+    if (-not $ambiguousRejected) {
+        throw 'ambiguous historical v3 owner facts were accepted'
+    }
+}
+$legacyPayload.roles = @($legacyRoles)
+$script:historicalIntent = $intent
+function Read-TicketboxC07WriterFenceIntent { return $script:historicalIntent }
+$script:historicalPhaseCalls = @()
+$adapterPath = (Get-Command Initialize-TicketboxC07WriterFenceIntent).ScriptBlock.File
+. $adapterPath
+function Get-TicketboxC07WriterDatabaseFenceObservation {
+    param([string]$AuthorityPhase)
+    $script:historicalPhaseCalls += "observe:$AuthorityPhase"
+    return [pscustomobject]@{
+        AuthorityPhase = $AuthorityPhase
+        Roles = @($script:historicalIntent.Roles)
+    }
+}
+function Enter-TicketboxC07CurrentWriterDatabaseFence {
+    param($Authority, [string]$AuthorityPhase)
+    $script:historicalPhaseCalls += "reconcile:$AuthorityPhase"
+    return [pscustomobject]@{
+        AuthorityPhase = $AuthorityPhase
+        Roles = @($script:historicalIntent.Roles)
+    }
+}
+function Assert-TicketboxC07WriterDatabaseFence { param($Observation) }
+[void](Enter-TicketboxC07WriterDatabaseFence `
+    -Authority $authority `
+    -Intent $script:historicalIntent)
+if (
+    @($script:historicalPhaseCalls).Count -ne 2 -or
+    @($script:historicalPhaseCalls | Where-Object {
+        $_ -cnotlike '*:legacy_owner_frozen'
+    }).Count -ne 0
+) {
+    throw (
+        'historical v3 resume did not preserve the derived legacy phase: ' +
+        (@($script:historicalPhaseCalls) -join ',')
+    )
+}
+$script:historicalPhaseCalls = @()
+function Read-TicketboxC07WriterFenceIntent { return $script:historicalIntent }
+function Get-TicketboxC07DatabaseAuthorityCredential { return $script:testPassword }
+function Resolve-TicketboxC07DatabaseHostAuthority {
+    return [pscustomobject]@{ Schema = 'test-database-host-authority' }
+}
+$script:testCatalogMarker = ''
+$script:TicketboxC07ProductionMarkerSchema =
+    'ticketbox-c07-production-authority-v1'
+function Get-TicketboxC07DatabaseCatalogObservation {
+    return [pscustomobject]@{ Marker = $script:testCatalogMarker }
+}
+$script:testServiceStartPolicy = 'disabled'
+Assert-TicketboxC07WriterFenceWindow -Authority $authority
+if (
+    @($script:historicalPhaseCalls).Count -ne 1 -or
+    [string]$script:historicalPhaseCalls[0] -cne
+        'observe:legacy_owner_frozen'
+) {
+    throw (
+        'production writer-fence window lost the derived historical phase: ' +
+        (@($script:historicalPhaseCalls) -join ',')
+    )
+}
+$script:historicalPhaseCalls = @()
+$script:testCatalogMarker =
+    "$script:TicketboxC07ProductionMarkerSchema|historical-adoption"
+Assert-TicketboxC07WriterFenceWindow -Authority $authority
+if (
+    @($script:historicalPhaseCalls).Count -ne 1 -or
+    [string]$script:historicalPhaseCalls[0] -cne 'observe:managed_frozen'
+) {
+    throw (
+        'production writer-fence window did not recognize adopted marker: ' +
+        (@($script:historicalPhaseCalls) -join ',')
+    )
+}
+
+$readyRoles = @($legacyRoles | ForEach-Object {
+    $copy = $_ | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    if ([string]$copy.disposition -ceq 'fenced_runtime') {
+        $copy.can_login = $false
+        $copy.connection_limit = 0
+        $copy.direct_connect = $false
+        $copy.effective_connect = $false
+    }
+    $copy
+})
+function New-TestReadyPayload([string]$Schema, [object[]]$Roles) {
+    $payload = [ordered]@{
+        schema = $Schema
+        operation_id = $operationId
+        descriptor_sha256 = ('A' * 64)
+        database_binding_sha256 = ('B' * 64)
+        writer_fence_intent_sha256 = ('C' * 64)
+        operation_kind = 'c07_money_minor_bigint_v1'
+        alembic_target = '20260729_0001'
+        revision_manifest_sha256 = ('E' * 64)
+        backend_service_state = 'stopped'
+        backend_service_start_policy = 'disabled'
+        backend_service_pid = 0
+        backend_listener_pid_count = 0
+        runtime_process_count = 0
+        database_runtime_session_count = 0
+        database_client_sessions = @()
+        database_role_capability_count = $Roles.Count
+        database_role_capabilities = @($Roles)
+        database_max_prepared_transactions = 0
+        database_prepared_transaction_count = 0
+        database_logical_subscription_count = 0
+        database_logical_apply_worker_count = 0
+        database_unexpected_worker_count = 0
+        database_advisory_fence_available = $true
+        verified_at_utc = '2026-08-01T00:01:00.0000000Z'
+    }
+    if ($Schema -ceq 'ticketbox-c07-ready-verification-v4') {
+        $payload.writer_fence_intent_schema =
+            'ticketbox-c07-writer-fence-intent-v3'
+        $payload.writer_fence_authority_phase = 'published_runtime'
+    }
+    return [pscustomobject]$payload
+}
+
+$script:readEnvelope = [pscustomobject]@{
+    Payload = New-TestReadyPayload `
+        -Schema 'ticketbox-c07-ready-verification-v3' `
+        -Roles $readyRoles
+    PayloadSha256 = ('D' * 64)
+}
+    $legacyFrozenReady = Read-TicketboxC07ReadyVerification $authority
+    if (
+        [string]$legacyFrozenReady.ReadySchema -cne
+            'ticketbox-c07-ready-verification-v3' -or
+        [string]$legacyFrozenReady.ReadySemantics -cne 'historical_ambiguous'
+    ) {
+        throw 'historical frozen READY was relabeled instead of preserved'
+    }
+
+    $script:readEnvelope.Payload = New-TestReadyPayload `
+        -Schema 'ticketbox-c07-ready-verification-v3' `
+        -Roles $legacyRoles
+    $legacyPublishedReady = Read-TicketboxC07ReadyVerification $authority
+    if ([string]$legacyPublishedReady.ReadySemantics -cne 'historical_ambiguous') {
+        throw 'historical published-shaped READY was promoted without live proof'
+    }
+
+    $script:readEnvelope = [pscustomobject]@{
+        Payload = New-TestReadyPayload `
+            -Schema 'ticketbox-c07-ready-verification-v4' `
+            -Roles $readyRoles
+        PayloadSha256 = ('D' * 64)
+    }
+    $frozenV4Rejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $frozenV4Rejected = $true }
+    if (-not $frozenV4Rejected) {
+        throw 'new READY accepted frozen roles as published runtime'
+    }
+
+    $currentIntent = [pscustomobject]@{
+        IsLegacyV3 = $false
+        IntentSchema = 'ticketbox-c07-writer-fence-intent-v4'
+        OperationMode = 'fresh_install'
+        AuthorityPhase = 'managed_frozen'
+        PayloadSha256 = ('C' * 64)
+        Roles = @(New-TestC07PublishedRoleSet)
+    }
+    function Read-TicketboxC07WriterFenceIntent { return $currentIntent }
+    $publishedRoles = @(New-TestC07PublishedRoleSet)
+    $script:readEnvelope = [pscustomobject]@{
+        Payload = New-TestReadyPayload `
+            -Schema 'ticketbox-c07-ready-verification-v4' `
+            -Roles $publishedRoles
+        PayloadSha256 = ('D' * 64)
+    }
+    $script:readEnvelope.Payload.writer_fence_intent_schema =
+        'ticketbox-c07-writer-fence-intent-v4'
+    $publishedV4 = Read-TicketboxC07ReadyVerification $authority
+    if ([string]$publishedV4.ReadySemantics -cne 'published_runtime') {
+        throw 'new READY did not prove published runtime semantics'
+    }
+
+    $legacyIntentRoles = @(
+        $publishedRoles | Where-Object {
+            [string]$_.name -cin @('postgres', 'ticketbox')
+        } | ForEach-Object {
+            $_ | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        }
+    )
+    if (@($legacyIntentRoles).Count -eq 1) {
+        $legacy = New-TestC07RuntimeRole `
+            -CanLogin $false `
+            -ConnectionLimit 0 `
+            -EffectiveConnect $false
+        $legacy.disposition = 'retired_legacy'
+        $legacy.can_table_write = $false
+        $legacy.can_sequence_write = $false
+        $script:readEnvelope.Payload.database_role_capabilities += $legacy
+        $script:readEnvelope.Payload.database_role_capability_count += 1
+        $legacyIntentRoles += (
+            $legacy | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        )
+    }
+    $currentIntent = [pscustomobject]@{
+        IsLegacyV3 = $false
+        IntentSchema = 'ticketbox-c07-writer-fence-intent-v4'
+        OperationMode = 'legacy_adoption'
+        AuthorityPhase = 'legacy_owner_frozen'
+        PayloadSha256 = ('C' * 64)
+        Roles = @($legacyIntentRoles)
+    }
+    $legacyPublishedV4 = Read-TicketboxC07ReadyVerification $authority
+    if ([string]$legacyPublishedV4.ReadySemantics -cne 'published_runtime') {
+        throw 'legacy v4 intent did not admit its exact target-role transition'
+    }
+    $currentIntent.Roles[0].oid = [int64]777
+    $legacySourceOidDriftRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $legacySourceOidDriftRejected = $true }
+    if (-not $legacySourceOidDriftRejected) {
+        throw 'legacy READY accepted a recreated source authority role'
+    }
+    $currentIntent.Roles[0].oid = [int64]900
+    $unexpected = $script:readEnvelope.Payload.database_role_capabilities[0] |
+        ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $unexpected.name = 'unexpected_ready_role'
+    $unexpected.oid = [int64]998
+    $unexpected.disposition = 'inert_unregistered'
+    $unexpected.is_superuser = $false
+    $unexpected.can_create_db = $false
+    $unexpected.can_create_role = $false
+    $unexpected.can_replicate = $false
+    $unexpected.can_bypass_rls = $false
+    $unexpected.is_database_owner = $false
+    $unexpected.owns_public_schema = $false
+    $unexpected.owns_user_relations = $false
+    $unexpected.owns_security_definer_routines = $false
+    $unexpected.can_execute_unowned_security_definer_routines = $false
+    $unexpected.direct_connect = $false
+    $unexpected.effective_connect = $false
+    $unexpected.can_database_create = $false
+    $unexpected.can_public_schema_create = $false
+    $unexpected.can_table_write = $false
+    $unexpected.can_sequence_write = $false
+    $unexpected.can_assume_write_owner = $false
+    $unexpected.predefined_role_usage = [object[]]@()
+    $unexpected.predefined_role_set = [object[]]@()
+    $script:readEnvelope.Payload.database_role_capabilities += $unexpected
+    $script:readEnvelope.Payload.database_role_capability_count += 1
+    $unexpectedLegacyGrowthRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $unexpectedLegacyGrowthRejected = $true }
+    if (-not $unexpectedLegacyGrowthRejected) {
+        throw 'legacy READY accepted an unbounded role-set expansion'
+    }
+    $script:readEnvelope.Payload.database_role_capabilities = @(
+        $script:readEnvelope.Payload.database_role_capabilities | Where-Object {
+            [string]$_.name -cne 'unexpected_ready_role'
+        }
+    )
+    $script:readEnvelope.Payload.database_role_capability_count -= 1
+    $currentIntent = [pscustomobject]@{
+        IsLegacyV3 = $false
+        IntentSchema = 'ticketbox-c07-writer-fence-intent-v4'
+        OperationMode = 'fresh_install'
+        AuthorityPhase = 'managed_frozen'
+        PayloadSha256 = ('C' * 64)
+        Roles = @(
+            $script:readEnvelope.Payload.database_role_capabilities |
+                ForEach-Object {
+                    $_ | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+                }
+        )
+    }
+
+    function Assert-TestPublishedReadyMutationRejected {
+        param(
+            [int]$RoleIndex,
+            [string]$Field,
+            [object]$Value,
+            [string]$Label
+        )
+        $role = $script:readEnvelope.Payload.database_role_capabilities[$RoleIndex]
+        $original = $role.$Field
+        try {
+            $role.$Field = $Value
+            $rejected = $false
+            try { [void](Read-TicketboxC07ReadyVerification $authority) }
+            catch { $rejected = $true }
+            if (-not $rejected) {
+                throw "new READY adapter swallowed $Label"
+            }
+        }
+        finally { $role.$Field = $original }
+    }
+    Assert-TestPublishedReadyMutationRejected 3 'can_create_role' $true `
+        'runtime role-creation authority'
+    Assert-TestPublishedReadyMutationRejected 3 'is_database_owner' $true `
+        'runtime database ownership'
+    Assert-TestPublishedReadyMutationRejected 3 'owns_public_schema' $true `
+        'runtime schema ownership'
+    Assert-TestPublishedReadyMutationRejected 3 'direct_connect' $false `
+        'runtime direct CONNECT drift'
+    Assert-TestPublishedReadyMutationRejected 3 'effective_connect' $false `
+        'runtime effective CONNECT drift'
+    Assert-TestPublishedReadyMutationRejected 3 'can_table_write' $false `
+        'runtime write capability drift'
+    Assert-TestPublishedReadyMutationRejected 3 'can_assume_write_owner' $true `
+        'runtime owner-assumption authority'
+    Assert-TestPublishedReadyMutationRejected 3 `
+        'can_execute_unowned_security_definer_routines' $true `
+        'runtime SECURITY DEFINER execution authority'
+    Assert-TestPublishedReadyMutationRejected 1 'can_login' $true `
+        'retired migrator LOGIN authority'
+    Assert-TestPublishedReadyMutationRejected 2 'is_database_owner' $false `
+        'missing owner database authority'
+
+    $script:readEnvelope.Payload.database_role_capabilities[3].predefined_role_set =
+        @('pg_write_all_data', 'pg_write_all_data')
+    $duplicatePredefinedRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $duplicatePredefinedRejected = $true }
+    if (-not $duplicatePredefinedRejected) {
+        throw 'new READY accepted duplicate predefined-role evidence'
+    }
+    $script:readEnvelope.Payload.database_role_capabilities[3].predefined_role_set =
+        [object[]]@()
+    $script:readEnvelope.Payload.database_role_capabilities[3].predefined_role_usage =
+        $null
+    $nullPredefinedRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $nullPredefinedRejected = $true }
+    if (-not $nullPredefinedRejected) {
+        throw 'new READY accepted null predefined-role evidence'
+    }
+    $script:readEnvelope.Payload.database_role_capabilities[3].predefined_role_usage =
+        [object[]]@()
+    $script:readEnvelope.Payload.database_role_capabilities[3].connection_limit = 0
+    $connectionLimitDriftRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $connectionLimitDriftRejected = $true }
+    if (-not $connectionLimitDriftRejected) {
+        throw 'new READY accepted a runtime connection-limit drift'
+    }
+    $script:readEnvelope.Payload.database_role_capabilities[3].connection_limit = -1
+    $script:readEnvelope.Payload.database_role_capabilities[3].owns_security_definer_routines =
+        $true
+    $securityDefinerDriftRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $securityDefinerDriftRejected = $true }
+    if (-not $securityDefinerDriftRejected) {
+        throw 'new READY accepted runtime-owned SECURITY DEFINER authority'
+    }
+    $script:readEnvelope.Payload.database_role_capabilities[3].owns_security_definer_routines =
+        $false
+    $script:readEnvelope.Payload.database_role_capabilities[2].predefined_role_usage =
+        @('pg_database_owner', 'pg_database_owner')
+    $duplicateOwnerEvidenceRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $duplicateOwnerEvidenceRejected = $true }
+    if (-not $duplicateOwnerEvidenceRejected) {
+        throw 'new READY accepted duplicate owner predefined-role evidence'
+    }
+    $script:readEnvelope.Payload.database_role_capabilities[2].predefined_role_usage =
+        @('pg_database_owner')
+    $script:readEnvelope.Payload.database_role_capabilities[3].name = 'ticketbox_owner'
+    $duplicateIdentityRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $duplicateIdentityRejected = $true }
+    if (-not $duplicateIdentityRejected) {
+        throw 'new READY accepted duplicate role identity evidence'
+    }
+    $script:readEnvelope.Payload.database_role_capabilities[3].name =
+        'ticketbox_runtime'
+    $script:readEnvelope.Payload.database_role_capabilities[3].can_login = $false
+    $capabilityDriftRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $capabilityDriftRejected = $true }
+    if (-not $capabilityDriftRejected) {
+        throw 'new READY accepted a frozen runtime capability under published label'
+    }
+    $script:readEnvelope.Payload.database_role_capabilities[3].can_login = $true
+    $script:readEnvelope.Payload.database_role_capabilities[3].oid = [int64]999
+    $oidDriftRejected = $false
+    try { [void](Read-TicketboxC07ReadyVerification $authority) }
+    catch { $oidDriftRejected = $true }
+    if (-not $oidDriftRejected) {
+        throw 'new READY accepted a same-name role recreated with a different OID'
+    }
+"""
+    _write_ps1(harness, script)
+    _run_harness(engine, harness, timeout=90)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows C07 artifact contract")
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_c07_ready_producer_reuses_current_v4_and_never_overwrites_v3(
+    engine: str,
+) -> None:
+    lifecycle = (PACKAGING / "windows_c07_lifecycle.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+    subject = _function(lifecycle, "New-TicketboxC07ReadyVerification")
+    script = (
+        r"""
+$ErrorActionPreference = 'Stop'
+$script:TicketboxC07ReadyVerificationSchema =
+    'ticketbox-c07-ready-verification-v4'
+$script:existingSchema = 'ticketbox-c07-ready-verification-v3'
+$script:writeCalls = 0
+$script:envelopeCalls = 0
+$script:expectedEnvelopeText = 'exact-current-envelope'
+function Assert-TicketboxC07OperationLease {}
+function Get-TicketboxServiceState { return 'stopped' }
+function Get-TicketboxServiceStartPolicy { return 'disabled' }
+function Get-TicketboxServiceProcessId { return 0 }
+function Get-TicketboxListeningProcessIds { return @() }
+function Get-TicketboxExpectedRuntimeProcessIds { return @() }
+function Get-TicketboxC07WriterDatabaseFenceObservation {
+    return [pscustomobject]@{
+        OtherClientSessionCount = [int64]0
+        ClientSessions = @()
+        Roles = @()
+        MaxPreparedTransactions = [int64]0
+        PreparedTransactionCount = [int64]0
+        LogicalSubscriptionCount = [int64]0
+        LogicalApplyWorkerCount = [int64]0
+        UnexpectedDatabaseWorkerCount = [int64]0
+        AdvisoryFenceAvailable = $true
+        AdvisoryFenceReleased = $true
+    }
+}
+function Read-TicketboxC07WriterFenceIntent {
+    return [pscustomobject]@{
+        PayloadSha256 = ('C' * 64)
+        IntentSchema = 'ticketbox-c07-writer-fence-intent-v4'
+        IsLegacyV3 = $false
+        OperationMode = 'fresh_install'
+        AuthorityPhase = 'managed_frozen'
+        Roles = @()
+    }
+}
+function Assert-TicketboxC07PublishedDatabaseAuthority {}
+function Assert-TicketboxC07PublishedReadyRoleIdentityAuthority {}
+function Get-TicketboxC07ReadyVerificationPath { return 'ready-verification' }
+function Test-Path { return $true }
+function Read-TicketboxC07HostEnvelope {
+    return [pscustomobject]@{
+        Payload = [pscustomobject]@{
+            schema = $script:existingSchema
+            verified_at_utc = '2026-08-01T00:00:00.0000000Z'
+        }
+        Text = 'exact-current-envelope'
+        PayloadSha256 = ('D' * 64)
+    }
+}
+function ConvertTo-TicketboxC07CanonicalUtcTimestamp {
+    return '2026-08-01T00:00:00.0000000Z'
+}
+function New-TicketboxC07EnvelopeText {
+    $script:envelopeCalls += 1
+    return $script:expectedEnvelopeText
+}
+function Write-TicketboxC07HostEnvelope {
+    $script:writeCalls += 1
+    throw 'READY writer must not run for an existing artifact'
+}
+$authority = [pscustomobject]@{
+    Receipt = [pscustomobject]@{
+        operation_id = '11111111-1111-4111-8111-111111111111'
+        database_binding_sha256 = ('B' * 64)
+    }
+    Descriptor = [pscustomobject]@{
+        PayloadSha256 = ('A' * 64)
+        Payload = [pscustomobject]@{
+            operation_kind = 'c07_money_minor_bigint_v1'
+            target_alembic_revision = '20260729_0001'
+            revision_manifest_sha256 = ('E' * 64)
+        }
+    }
+    ReleaseIdentity = [pscustomobject]@{
+        BackendServiceName = 'TicketboxBackend'
+        BackendPort = 8765
+        BackendExe = 'backend.exe'
+        ShawlExe = 'shawl.exe'
+    }
+}
+$legacyRejected = $false
+try {
+    New-TicketboxC07ReadyVerification `
+        -Authority $authority `
+        -LifecycleLock ([pscustomobject]@{}) | Out-Null
+}
+catch { $legacyRejected = $_.Exception.Message.Contains('历史 schema') }
+if (-not $legacyRejected -or $script:writeCalls -ne 0 -or
+    $script:envelopeCalls -ne 0) {
+    throw 'existing v3 was not rejected before any rewrite/re-envelope attempt'
+}
+$script:existingSchema = 'ticketbox-c07-ready-verification-v4'
+$reused = New-TicketboxC07ReadyVerification `
+    -Authority $authority `
+    -LifecycleLock ([pscustomobject]@{})
+if ([string]$reused.Text -cne 'exact-current-envelope' -or
+    $script:writeCalls -ne 0 -or $script:envelopeCalls -ne 1) {
+    throw 'existing current READY was not exact read-compare-reused'
+}
+$script:expectedEnvelopeText = 'different-current-envelope'
+$payloadDriftRejected = $false
+try {
+    New-TicketboxC07ReadyVerification `
+        -Authority $authority `
+        -LifecycleLock ([pscustomobject]@{}) | Out-Null
+}
+catch { $payloadDriftRejected = $true }
+if (-not $payloadDriftRejected -or $script:writeCalls -ne 0 -or
+    $script:envelopeCalls -ne 2) {
+    throw 'existing current READY was reused by schema without full payload equality'
+}
+"""
+        + "\n"
+        + subject
+    )
+    # PowerShell resolves functions at invocation time, so place the subject
+    # before the calls while keeping the harness mocks authoritative.
+    split = script.index("$authority =")
+    script = script[:split] + subject + "\n" + script[split:].rsplit(subject, 1)[0]
+    result = subprocess.run(
+        [
+            engine,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=90,
+    )
+    assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows C07 credential contract")
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_c07_database_authority_credential_clear_is_reference_scoped(
+    engine: str,
+) -> None:
+    lifecycle = (PACKAGING / "windows_c07_lifecycle.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+    subject = "\n".join(
+        (
+            _function(lifecycle, "Set-TicketboxC07DatabaseAuthorityCredential"),
+            _function(lifecycle, "Clear-TicketboxC07DatabaseAuthorityCredential"),
+            _function(lifecycle, "Get-TicketboxC07DatabaseAuthorityCredential"),
+        )
+    )
+    script = (
+        subject
+        + r"""
+function New-TestSecureString([char]$Character) {
+    $secret = New-Object Security.SecureString
+    1..32 | ForEach-Object { $secret.AppendChar($Character) }
+    $secret.MakeReadOnly()
+    return $secret
+}
+$owned = New-TestSecureString 'A'
+$foreign = New-TestSecureString 'B'
+Set-TicketboxC07DatabaseAuthorityCredential $owned
+$foreignRejected = $false
+try {
+    Clear-TicketboxC07DatabaseAuthorityCredential `
+        -ExpectedCredential $foreign
+}
+catch { $foreignRejected = $true }
+if (-not $foreignRejected -or
+    -not [object]::ReferenceEquals(
+        (Get-TicketboxC07DatabaseAuthorityCredential), $owned
+    )) {
+    throw 'foreign scoped action cleared or replaced the live credential'
+}
+Clear-TicketboxC07DatabaseAuthorityCredential -ExpectedCredential $owned
+$cleared = $false
+try { Get-TicketboxC07DatabaseAuthorityCredential | Out-Null }
+catch { $cleared = $true }
+if (-not $cleared) { throw 'owned scoped credential survived explicit clear' }
+"""
+    )
+    result = subprocess.run(
+        [
+            engine,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=90,
+    )
+    assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
 def _run_powershell_process(
     command: list[str],
     *,
@@ -1028,6 +1920,22 @@ try {{
             $targetAuthority = Read-TicketboxC07Authority '{_literal(data_root)}'
             New-TestC07ProductionAuthority $targetAuthority | Out-Null
         }}
+        $prewrittenReady = $null
+        $prewrittenReadyHash = ''
+        $prewrittenReadyTimestamp = [int64]0
+        if ($stage -ceq 'ready') {{
+            $readyAuthority = Read-TicketboxC07Authority '{_literal(data_root)}'
+            $prewrittenReady = New-TicketboxC07ReadyVerification `
+                -Authority $readyAuthority `
+                -LifecycleLock $lifecycleLock
+            $readyPath = Get-TicketboxC07ReadyVerificationPath `
+                ([string]$readyAuthority.Receipt.operation_id)
+            $prewrittenReadyHash = Get-TicketboxC07TextSha256 (
+                [IO.File]::ReadAllText($readyPath, [Text.Encoding]::UTF8)
+            )
+            $prewrittenReadyTimestamp =
+                [int64](Get-Item -LiteralPath $readyPath).LastWriteTimeUtc.Ticks
+        }}
         $evidence = New-TestC07StageEvidence `
             -Stage $stage `
             -LifecycleLock $lifecycleLock `
@@ -1037,6 +1945,22 @@ try {{
             -LifecycleLock $lifecycleLock `
             -TargetStage $stage `
             -EvidencePath $evidence.Path
+        if ($stage -ceq 'ready') {{
+            $readyAfter = Read-TicketboxC07Authority '{_literal(data_root)}'
+            $readyPath = Get-TicketboxC07ReadyVerificationPath `
+                ([string]$readyAfter.Receipt.operation_id)
+            if (
+                (Get-TicketboxC07TextSha256 (
+                    [IO.File]::ReadAllText($readyPath, [Text.Encoding]::UTF8)
+                )) -cne $prewrittenReadyHash -or
+                [int64](Get-Item -LiteralPath $readyPath).LastWriteTimeUtc.Ticks -ne
+                    $prewrittenReadyTimestamp -or
+                [string]$readyAfter.Receipt.ready_verification_sha256 -cne
+                    [string]$prewrittenReady.PayloadSha256
+            ) {{
+                throw 'READY crash-window retry rewrote or rebound durable proof'
+            }}
+        }}
         $reused = Set-TicketboxC07LifecycleStage `
             -DataRoot '{_literal(data_root)}' `
             -LifecycleLock $lifecycleLock `
@@ -1047,9 +1971,15 @@ try {{
         }}
     }}
     $authority = Read-TicketboxC07Authority '{_literal(data_root)}'
+    $durableAuthority =
+        Read-TicketboxC07DurableHeartbeatAuthority '{_literal(data_root)}'
     $projection = Read-TicketboxC07RuntimeProjection '{_literal(data_root)}'
     if ($authority.Receipt.stage -cne 'ready' -or
         [int64]$authority.Receipt.stage_sequence -ne 9 -or
+        [string]$authority.ReadyVerification.ReadySemantics -cne
+            'published_runtime' -or
+        [string]$durableAuthority.ReadyVerification.ReadySemantics -cne
+            'published_runtime' -or
         -not [bool]$projection.Payload.ready -or
         -not [bool]$projection.Payload.terminal) {{
         throw 'ready authority/projection did not converge'
@@ -2227,7 +3157,7 @@ function Test-TicketboxC07TargetRecoveryGenerationRestore {{
 function Read-TicketboxC07ProductionTargetRecoveryGeneration {{
     throw 'installed coordinator stub owns production target recovery'
 }}
-function Renew-TicketboxC07RoleCredentialWindow {{}}
+function Renew-TicketboxC07FrozenMigratorCredentialWindow {{}}
 function Resolve-TicketboxC07DatabaseHostAuthority {{
     return [pscustomobject]@{{ Schema = 'host-authority' }}
 }}
@@ -2941,7 +3871,7 @@ try {{
             -FailureClass invariant `
             -FailureCode writer_fence_invariant_failed)
     }}
-    function Renew-TicketboxC07RoleCredentialWindow {{
+    function Renew-TicketboxC07FrozenMigratorCredentialWindow {{
         return [pscustomobject]@{{ result = 'renewed' }}
     }}
     $unusedAction = {{ throw 'unexpected product action' }}
@@ -4376,7 +5306,7 @@ $script:testServiceStartPolicy = 'disabled'
 $script:testPublicConnect = $false
 Set-TestC07FenceRolesFenced
 $script:moneyFactsCalls = 0
-function Renew-TicketboxC07RoleCredentialWindow {{}}
+function Renew-TicketboxC07FrozenMigratorCredentialWindow {{}}
 $moneyFactsAction = {{
     param(
         $HostAuthority,
@@ -4569,7 +5499,7 @@ $script:testServiceStartPolicy = 'disabled'
 $script:testPublicConnect = $false
 Set-TestC07FenceRolesFenced
 $script:forwardReplayCalls = 0
-function Renew-TicketboxC07RoleCredentialWindow {{}}
+function Renew-TicketboxC07FrozenMigratorCredentialWindow {{}}
 $forwardReplayAction = {{
     $script:forwardReplayCalls += 1
     throw 'durable restore evidence was not reused'
@@ -4800,6 +5730,38 @@ finally {{ Exit-TicketboxLifecycleLock $lock }}
     _run_harness(engine, resume)
 
 
+def _wait_for_pg_scalar(
+    run_sql: Callable[[str, str, str], subprocess.CompletedProcess[str]],
+    *,
+    sql: str,
+    expected: str,
+    failure: str,
+    timeout: float = 10,
+    interval: float = 0.1,
+) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        observed = run_sql("ticketbox", "postgres", sql)
+        assert observed.returncode == 0, observed.stdout + observed.stderr
+        if observed.stdout.strip() == expected:
+            return
+        time.sleep(interval)
+    raise AssertionError(failure)
+
+
+def _cleanup_pg_fence_processes(
+    sessions: list[subprocess.Popen[str] | None],
+    control_session: subprocess.Popen[str] | None,
+) -> None:
+    for session in sessions:
+        if session is not None:
+            session.kill()
+            session.communicate(timeout=10)
+    if control_session is not None:
+        control_session.terminate()
+        control_session.communicate(timeout=10)
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL 17 fence")
 def test_c07_real_pg17_fence_evicts_session_and_blocks_ordinary_write(
     tmp_path: Path,
@@ -4844,7 +5806,11 @@ def test_c07_real_pg17_fence_evicts_session_and_blocks_ordinary_write(
         timeout=60,
     )
     assert started.returncode == 0, started.stdout + started.stderr
+    legacy_session: subprocess.Popen[str] | None = None
+    unknown_session: subprocess.Popen[str] | None = None
     runtime_session: subprocess.Popen[str] | None = None
+    startup_session: subprocess.Popen[str] | None = None
+    control_session: subprocess.Popen[str] | None = None
     try:
         bin_command = (
             f". '{_literal(storage_contract)}'; "
@@ -4912,56 +5878,64 @@ def test_c07_real_pg17_fence_evicts_session_and_blocks_ordinary_write(
                 timeout=20,
             )
 
-        setup_role = run_sql(
+        # start_test_pg provisions a reusable backend-test topology.  This
+        # lane instead qualifies the dedicated bundled-cluster legacy shape,
+        # so remove only those known test databases/role from this disposable
+        # cluster before creating the product topology.
+        for test_database in ("xpj_test", "xpj_smoke", "xpj_restore"):
+            removed_test_database = run_sql(
+                "postgres",
+                "postgres",
+                f'DROP DATABASE IF EXISTS "{test_database}" WITH (FORCE);',
+            )
+            assert removed_test_database.returncode == 0, (
+                removed_test_database.stdout + removed_test_database.stderr
+            )
+        removed_test_role = run_sql(
+            "postgres",
+            "postgres",
+            'DROP ROLE IF EXISTS "xpj_test_app";',
+        )
+        assert removed_test_role.returncode == 0, (
+            removed_test_role.stdout + removed_test_role.stderr
+        )
+        legacy_password = credential.replace("'", "''")
+        legacy_role = run_sql(
             "postgres",
             "postgres",
             (
-                'CREATE ROLE "ticketbox" LOGIN NOSUPERUSER NOCREATEDB '
-                f"NOCREATEROLE PASSWORD '{credential}';"
+                "CREATE ROLE ticketbox LOGIN NOINHERIT PASSWORD "
+                f"'{legacy_password}';"
             ),
         )
-        assert setup_role.returncode == 0, setup_role.stdout + setup_role.stderr
-        setup_database = run_sql(
+        assert legacy_role.returncode == 0, legacy_role.stdout + legacy_role.stderr
+        legacy_database = run_sql(
             "postgres",
             "postgres",
-            'CREATE DATABASE "ticketbox" OWNER "postgres";',
+            'CREATE DATABASE ticketbox OWNER ticketbox TEMPLATE template0;',
         )
-        assert setup_database.returncode == 0, (
-            setup_database.stdout + setup_database.stderr
+        assert legacy_database.returncode == 0, (
+            legacy_database.stdout + legacy_database.stderr
         )
-        fence_test_infrastructure_role = run_sql(
-            "postgres",
-            "postgres",
-            'ALTER ROLE "xpj_test_app" NOLOGIN CONNECTION LIMIT 0;',
-        )
-        assert fence_test_infrastructure_role.returncode == 0, (
-            fence_test_infrastructure_role.stdout
-            + fence_test_infrastructure_role.stderr
-        )
-        setup_table = run_sql(
+        legacy_table = run_sql(
             "ticketbox",
             "postgres",
-            (
-                "CREATE TABLE public.writer_probe(value integer NOT NULL); "
-                'GRANT CONNECT ON DATABASE "ticketbox" TO "ticketbox"; '
-                'GRANT USAGE ON SCHEMA public TO "ticketbox"; '
-                'GRANT INSERT, SELECT ON TABLE public.writer_probe TO "ticketbox";'
-            ),
+            """
+ALTER SCHEMA public OWNER TO ticketbox;
+SET ROLE ticketbox;
+CREATE TABLE public.accounts(
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    value integer NOT NULL
+);
+INSERT INTO public.accounts(value) VALUES (7);
+""",
         )
-        assert setup_table.returncode == 0, setup_table.stdout + setup_table.stderr
-        before_write = run_sql(
-            "ticketbox",
-            "ticketbox",
-            "INSERT INTO public.writer_probe(value) VALUES (1);",
-            runtime_password=True,
-        )
-        assert before_write.returncode == 0, before_write.stdout + before_write.stderr
-
-        runtime_env = {
+        assert legacy_table.returncode == 0, legacy_table.stdout + legacy_table.stderr
+        legacy_env = {
             key: value for key, value in admin_env.items() if key != "PGPASSFILE"
         }
-        runtime_env["PGPASSWORD"] = credential
-        runtime_session = subprocess.Popen(
+        legacy_env["PGPASSWORD"] = credential
+        legacy_session = subprocess.Popen(
             [
                 str(psql),
                 "--no-psqlrc",
@@ -4984,25 +5958,1928 @@ def test_c07_real_pg17_fence_evicts_session_and_blocks_ordinary_write(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=legacy_env,
+        )
+        _wait_for_pg_scalar(
+            run_sql,
+            sql=(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE usename = 'ticketbox' AND pid <> pg_backend_pid();"
+            ),
+            expected="1",
+            failure="legacy-only PostgreSQL session was not observable",
+        )
+
+        legacy_harness = tmp_path / "production-legacy-fence-adoption.ps1"
+        _write_ps1(
+            legacy_harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+function New-TestSecureString([string]$Value) {{
+    $secure = New-Object Security.SecureString
+    foreach ($character in $Value.ToCharArray()) {{ $secure.AppendChar($character) }}
+    $secure.MakeReadOnly()
+    return $secure
+}}
+$password = New-TestSecureString $plain
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$before = Get-TicketboxC07WriterDatabaseFenceObservation
+if (
+    [string]$before.AuthorityPhase -cne 'legacy_owner_frozen' -or
+    @($before.Roles | Where-Object disposition -CEQ 'legacy_owner_writer').Count -ne 1 -or
+    [int64]$before.OtherClientSessionCount -ne 1
+) {{
+    throw 'real legacy-only topology was not classified before adoption'
+}}
+$authority = [pscustomobject]@{{
+    Receipt = [pscustomobject]@{{
+        operation_id = '11234567-89ab-cdef-0123-456789abcdef'
+        database_binding_sha256 = ('B' * 64)
+    }}
+    Descriptor = [pscustomobject]@{{
+        PayloadSha256 = ('A' * 64)
+        Payload = [pscustomobject]@{{
+            operation_kind = 'c07_money_minor_bigint_v1'
+            target_alembic_revision = '20260729_0001'
+            revision_manifest_sha256 = ('E' * 64)
+        }}
+    }}
+    ReleaseIdentity = [pscustomobject]@{{
+        BackendServiceName = 'TicketboxBackend'
+        BackendPort = 8765
+        BackendExe = 'backend.exe'
+        ShawlExe = 'shawl.exe'
+    }}
+}}
+$intent = [pscustomobject]@{{
+    IsLegacyV3 = $false
+    IntentSchema = 'ticketbox-c07-writer-fence-intent-v4'
+    PayloadSha256 = ('C' * 64)
+    OperationMode = 'legacy_adoption'
+    AuthorityPhase = [string]$before.AuthorityPhase
+    PublicConnect = [bool]$before.PublicConnect
+    Roles = @($before.Roles)
+}}
+$frozen = Enter-TicketboxC07WriterDatabaseFence `
+    -Authority $authority `
+    -Intent $intent
+if (
+    [string]$frozen.AuthorityPhase -cne 'legacy_owner_frozen' -or
+    [int64]$frozen.OtherClientSessionCount -ne 0
+) {{
+    throw 'real legacy-only writer was not fenced before adoption'
+}}
+[void](Invoke-TicketboxC07LegacyDatabaseAdoption `
+    -SuperuserPassword $password `
+    -RuntimePassword $password `
+    -MigratorPassword $password `
+    -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(10)) `
+    -OperationId ([string]$authority.Receipt.operation_id))
+$managed = Get-TicketboxC07WriterDatabaseFenceObservation `
+    -AuthorityPhase 'managed_frozen'
+Assert-TicketboxC07WriterDatabaseFence -Observation $managed
+if (
+    @($managed.Roles | Where-Object disposition -CEQ 'retired_legacy').Count -ne 1 -or
+    @($managed.Roles | Where-Object disposition -CEQ 'fenced_runtime').Count -ne 1
+) {{
+    throw 'real legacy adoption did not publish managed-frozen role authority'
+}}
+Assert-TicketboxC07PublishedReadyRoleIdentityAuthority `
+    -Authority $authority `
+    -Intent $intent `
+    -ReadyRoles @($managed.Roles)
+$driftedReadyRoles = @($managed.Roles | ForEach-Object {{
+    $_ | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+}})
+$driftedRuntime = @($driftedReadyRoles | Where-Object {{
+    [string]$_.name -ceq 'ticketbox_runtime'
+}})
+$driftedRuntime[0].oid = [int64]$driftedRuntime[0].oid + 1
+$targetOidDriftRejected = $false
+try {{
+    Assert-TicketboxC07PublishedReadyRoleIdentityAuthority `
+        -Authority $authority `
+        -Intent $intent `
+        -ReadyRoles $driftedReadyRoles
+}}
+catch {{ $targetOidDriftRejected = $true }}
+if (-not $targetOidDriftRejected) {{
+    throw 'legacy READY accepted a same-name target role with a different OID'
+}}
+$invalidExpansionIntents = @(
+    [pscustomobject]@{{
+        Label = 'fresh mode'
+        Intent = [pscustomobject]@{{
+            IsLegacyV3 = $false
+            OperationMode = 'fresh_install'
+            AuthorityPhase = 'legacy_owner_frozen'
+            Roles = @($intent.Roles)
+        }}
+    }},
+    [pscustomobject]@{{
+        Label = 'managed phase'
+        Intent = [pscustomobject]@{{
+            IsLegacyV3 = $false
+            OperationMode = 'legacy_adoption'
+            AuthorityPhase = 'managed_frozen'
+            Roles = @($intent.Roles)
+        }}
+    }},
+    [pscustomobject]@{{
+        Label = 'historical v3'
+        Intent = [pscustomobject]@{{
+            IsLegacyV3 = $true
+            OperationMode = 'legacy_adoption'
+            AuthorityPhase = 'legacy_owner_frozen'
+            Roles = @($intent.Roles)
+        }}
+    }}
+)
+foreach ($candidate in $invalidExpansionIntents) {{
+    if (Test-TicketboxC07PublishedReadyRoleIdentityTransition `
+        -Intent $candidate.Intent `
+        -ReadyRoles @($managed.Roles)) {{
+        throw (
+            "$($candidate.Label) READY inherited the legacy v4 " +
+            'role-expansion exception'
+        )
+    }}
+}}
+$bootstrap = Get-TicketboxC07RoleBootstrapIdentity `
+    -Authority (Resolve-TicketboxC07DatabaseHostAuthority) `
+    -SuperuserPassword $password `
+    -OperationId ([string]$authority.Receipt.operation_id) `
+    -Mode 'legacy_adoption'
+Invoke-TicketboxC07Sql `
+    -Authority (Resolve-TicketboxC07DatabaseHostAuthority) `
+    -Database 'ticketbox' `
+    -Role 'postgres' `
+    -Password $password `
+    -Label 'C07 test publish runtime admission' `
+    -Sql @'
+BEGIN;
+ALTER ROLE ticketbox_runtime
+    LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+    NOREPLICATION NOBYPASSRLS CONNECTION LIMIT -1;
+GRANT CONNECT ON DATABASE ticketbox TO ticketbox_runtime;
+COMMIT;
+'@ | Out-Null
+Disable-TicketboxC07MigratorLogin `
+    -SuperuserPassword $password `
+    -OperationId ([string]$authority.Receipt.operation_id) `
+    -Mode 'legacy_adoption'
+$published = Get-TicketboxC07WriterDatabaseFenceObservation `
+    -AuthorityPhase 'published_runtime'
+Assert-TicketboxC07PublishedDatabaseAuthority -Observation $published
+$script:testReadyPath = Join-Path `
+    (Split-Path -Parent $PSCommandPath) `
+    'real-legacy-ready-verification.json'
+function Get-TicketboxC07ReadyVerificationPath {{ return $script:testReadyPath }}
+function Write-TicketboxC07HostEnvelope {{
+    param(
+        [string]$Path,
+        [string]$ArtifactKind,
+        [object]$Payload
+    )
+    $text = New-TicketboxC07EnvelopeText `
+        -ArtifactKind $ArtifactKind `
+        -Payload $Payload
+    [IO.File]::WriteAllText($Path, $text, [Text.Encoding]::UTF8)
+    return ConvertFrom-TicketboxC07EnvelopeText `
+        -Text $text `
+        -ExpectedKind $ArtifactKind
+}}
+function Read-TicketboxC07HostEnvelope {{
+    param([string]$Path, [string]$ExpectedKind)
+    $text = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+    return ConvertFrom-TicketboxC07EnvelopeText `
+        -Text $text `
+        -ExpectedKind $ExpectedKind
+}}
+function Assert-TicketboxC07OperationLease {{}}
+function Get-TicketboxServiceState {{ return 'stopped' }}
+function Get-TicketboxServiceStartPolicy {{ return 'disabled' }}
+function Get-TicketboxServiceProcessId {{ return 0 }}
+function Get-TicketboxListeningProcessIds {{ return @() }}
+function Get-TicketboxExpectedRuntimeProcessIds {{ return @() }}
+function Read-TicketboxC07WriterFenceIntent {{ return $intent }}
+Invoke-TicketboxC07Sql `
+    -Authority (Resolve-TicketboxC07DatabaseHostAuthority) `
+    -Database 'postgres' `
+    -Role 'postgres' `
+    -Password $password `
+    -Label 'C07 test corrupt target role marker' `
+    -Sql "COMMENT ON ROLE ticketbox_runtime IS 'foreign-operation';" | Out-Null
+$producerMarkerRejected = $false
+try {{
+    [void](New-TicketboxC07ReadyVerification `
+        -Authority $authority `
+        -LifecycleLock ([pscustomobject]@{{}}))
+}}
+catch {{ $producerMarkerRejected = $true }}
+if (-not $producerMarkerRejected -or
+    (Test-Path -LiteralPath $script:testReadyPath -PathType Leaf)) {{
+    throw 'READY producer published before target role marker validation'
+}}
+$foreignMarkerRejected = $false
+try {{
+    Assert-TicketboxC07PublishedReadyRoleIdentityAuthority `
+        -Authority $authority `
+        -Intent $intent `
+        -ReadyRoles @($managed.Roles)
+}}
+catch {{ $foreignMarkerRejected = $true }}
+if (-not $foreignMarkerRejected) {{
+    throw 'legacy READY accepted a target role not bound to its operation marker'
+}}
+$runtimeMarker = (
+    "$script:TicketboxC07RoleMarkerSchema|" +
+    "$($authority.Receipt.operation_id)|legacy_adoption|roles_created|" +
+    "$($bootstrap.RuntimeRoleOid)"
+)
+$runtimeMarkerSql = ConvertTo-TicketboxC07SqlLiteral $runtimeMarker
+Invoke-TicketboxC07Sql `
+    -Authority (Resolve-TicketboxC07DatabaseHostAuthority) `
+    -Database 'postgres' `
+    -Role 'postgres' `
+    -Password $password `
+    -Label 'C07 test restore target role marker' `
+    -Sql "COMMENT ON ROLE ticketbox_runtime IS $runtimeMarkerSql;" | Out-Null
+$ready = New-TicketboxC07ReadyVerification `
+    -Authority $authority `
+    -LifecycleLock ([pscustomobject]@{{}})
+$authority.Receipt | Add-Member `
+    -NotePropertyName ready_verification_sha256 `
+    -NotePropertyValue ([string]$ready.PayloadSha256) `
+    -Force
+$readReady = Read-TicketboxC07ReadyVerification $authority
+if (
+    [string]$readReady.ReadySemantics -cne 'published_runtime' -or
+    [string]$readReady.PayloadSha256 -cne [string]$ready.PayloadSha256 -or
+    @($readReady.Payload.database_role_capabilities | Where-Object {{
+        [string]$_.name -ceq 'ticketbox_runtime' -and
+        [uint32]$_.oid -eq [uint32]$bootstrap.RuntimeRoleOid
+    }}).Count -ne 1
+) {{
+    throw 'real legacy READY producer/artifact/reader did not converge'
+}}
+""",
+        )
+        _run_harness(engine, legacy_harness, timeout=180)
+        _, legacy_stderr = legacy_session.communicate(timeout=10)
+        assert legacy_session.returncode != 0, legacy_stderr
+        legacy_session = None
+        legacy_count = run_sql(
+            "ticketbox",
+            "postgres",
+            "SELECT count(*) FROM public.accounts WHERE value = 7;",
+        )
+        assert legacy_count.returncode == 0, (
+            legacy_count.stdout + legacy_count.stderr
+        )
+        assert legacy_count.stdout.strip() == "1"
+        legacy_database_cleanup = run_sql(
+            "postgres",
+            "postgres",
+            "DROP DATABASE ticketbox WITH (FORCE);",
+        )
+        assert legacy_database_cleanup.returncode == 0, (
+            legacy_database_cleanup.stdout + legacy_database_cleanup.stderr
+        )
+        legacy_role_cleanup = run_sql(
+            "postgres",
+            "postgres",
+            """
+DROP ROLE IF EXISTS ticketbox_runtime;
+DROP ROLE IF EXISTS ticketbox_migrator;
+DROP ROLE IF EXISTS ticketbox_owner;
+DROP ROLE IF EXISTS ticketbox;
+""",
+        )
+        assert legacy_role_cleanup.returncode == 0, (
+            legacy_role_cleanup.stdout + legacy_role_cleanup.stderr
+        )
+
+        bootstrap_harness = tmp_path / "production-fresh-bootstrap.ps1"
+        _write_ps1(
+            bootstrap_harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    return [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function New-TestSecureString([string]$Value) {{
+    $secure = New-Object Security.SecureString
+    foreach ($character in $Value.ToCharArray()) {{ $secure.AppendChar($character) }}
+    $secure.MakeReadOnly()
+    return $secure
+}}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$superuserPassword = New-TestSecureString $plain
+$runtimePassword = New-TestSecureString $plain
+$migratorPassword = New-TestSecureString $plain
+$operationId = '01234567-89ab-cdef-0123-456789abcdef'
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+$runtimeVerifier = ConvertTo-TicketboxC07ScramVerifier $runtimePassword
+$migratorVerifier = ConvertTo-TicketboxC07ScramVerifier $migratorPassword
+[void](Invoke-TicketboxC07Sql `
+    -Authority $hostAuthority `
+    -Database 'postgres' `
+    -Role 'postgres' `
+    -Password $superuserPassword `
+    -Label 'real PG17 production role producer' `
+    -Sql (Get-TicketboxC07RoleBootstrapSql `
+        -RuntimeVerifier $runtimeVerifier `
+        -MigratorVerifier $migratorVerifier `
+        -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(10)) `
+        -OperationId $operationId `
+        -Mode 'fresh_install'))
+[void](Invoke-TicketboxC07Sql `
+    -Authority $hostAuthority `
+    -Database 'postgres' `
+    -Role 'postgres' `
+    -Password $superuserPassword `
+    -Label 'real PG17 production database producer' `
+    -Sql @'
+CREATE DATABASE "ticketbox"
+    OWNER "ticketbox_owner" TEMPLATE template0 ENCODING 'UTF8'
+    ALLOW_CONNECTIONS false;
+BEGIN;
+REVOKE ALL ON DATABASE "ticketbox" FROM PUBLIC;
+REVOKE ALL ON DATABASE "ticketbox" FROM "ticketbox_runtime";
+REVOKE ALL ON DATABASE "ticketbox" FROM "ticketbox_migrator";
+GRANT CONNECT ON DATABASE "ticketbox" TO "ticketbox_migrator";
+ALTER DATABASE "ticketbox" ALLOW_CONNECTIONS true;
+COMMIT;
+'@)
+[void](Invoke-TicketboxC07Sql `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres' `
+    -Password $superuserPassword `
+    -Label 'real PG17 source-bootstrap table' `
+    -Sql @'
+BEGIN;
+SET LOCAL ROLE "ticketbox_owner";
+CREATE TABLE public.accounts(
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    value integer NOT NULL
+);
+COMMIT;
+'@)
+[void](Invoke-TicketboxC07Sql `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres' `
+    -Password $superuserPassword `
+    -Label 'real PG17 production ACL publication' `
+    -Sql (Get-TicketboxC07DatabasePrivilegeSql))
+Assert-TicketboxC07RoleCatalog $hostAuthority $superuserPassword
+[void](Invoke-TicketboxC07Sql `
+    -Authority $hostAuthority `
+    -Database 'postgres' `
+    -Role 'postgres' `
+    -Password $superuserPassword `
+    -Label 'real PG17 opaque inert role' `
+    -Sql 'CREATE ROLE "Third-Party Auditor" NOLOGIN NOINHERIT;')
+""",
+        )
+        _run_harness(engine, bootstrap_harness, timeout=60)
+        before_write = run_sql(
+            "ticketbox",
+            "ticketbox_runtime",
+            "INSERT INTO public.accounts(value) VALUES (1);",
+            runtime_password=True,
+        )
+        assert before_write.returncode == 0, before_write.stdout + before_write.stderr
+
+        view_authority_created = run_sql(
+            "ticketbox",
+            "postgres",
+            f"""
+CREATE ROLE "Ticketbox View Owner" NOLOGIN NOINHERIT;
+CREATE ROLE "View Insert Writer" NOLOGIN NOINHERIT;
+CREATE ROLE "View Update Writer" NOLOGIN NOINHERIT;
+CREATE ROLE "View Delete Writer" NOLOGIN NOINHERIT;
+CREATE ROLE "View Column Writer" NOLOGIN NOINHERIT;
+CREATE ROLE "View Column Insert Writer" NOLOGIN NOINHERIT;
+CREATE ROLE "View Trigger Writer" NOLOGIN NOINHERIT;
+CREATE ROLE "View Trigger Update Writer" NOLOGIN NOINHERIT;
+CREATE ROLE "View Trigger Delete Writer" NOLOGIN NOINHERIT;
+CREATE ROLE "Table Column Insert Writer" NOLOGIN NOINHERIT;
+CREATE ROLE restricted_observer LOGIN NOINHERIT
+    PASSWORD '{legacy_password}';
+GRANT CONNECT ON DATABASE ticketbox TO restricted_observer;
+GRANT USAGE ON SCHEMA public
+    TO ticketbox_migrator, "Third-Party Auditor", "Ticketbox View Owner",
+       "View Insert Writer", "View Update Writer", "View Delete Writer",
+       "View Column Writer", "View Column Insert Writer",
+       "View Trigger Writer", "View Trigger Update Writer",
+       "View Trigger Delete Writer", "Table Column Insert Writer";
+BEGIN;
+SET LOCAL ROLE ticketbox_owner;
+CREATE VIEW public.ticketbox_writer_fence_insert_view AS
+    SELECT id, value FROM public.accounts;
+CREATE VIEW public.ticketbox_writer_fence_update_view AS
+    SELECT id, value FROM public.accounts;
+CREATE VIEW public.ticketbox_writer_fence_delete_view AS
+    SELECT id, value FROM public.accounts;
+CREATE VIEW public.ticketbox_writer_fence_column_view AS
+    SELECT id, value FROM public.accounts;
+CREATE VIEW public.ticketbox_writer_fence_column_insert_view AS
+    SELECT id, value FROM public.accounts;
+CREATE VIEW public.ticketbox_writer_fence_third_party_view AS
+    SELECT id, value FROM public.accounts;
+CREATE VIEW public.ticketbox_writer_fence_trigger_view AS
+    SELECT count(*)::bigint AS account_count FROM public.accounts;
+CREATE VIEW public.ticketbox_writer_fence_trigger_update_view AS
+    SELECT max(id)::bigint AS account_id, max(value)::integer AS account_value
+    FROM public.accounts WHERE id = 9806;
+CREATE VIEW public.ticketbox_writer_fence_trigger_delete_view AS
+    SELECT max(id)::bigint AS account_id
+    FROM public.accounts WHERE id = 9807;
+CREATE FUNCTION public.ticketbox_writer_fence_trigger_insert()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog
+AS $function$
+BEGIN
+    INSERT INTO public.accounts(id, value) VALUES (NEW.account_count, 105);
+    RETURN NEW;
+END
+$function$;
+REVOKE ALL ON FUNCTION public.ticketbox_writer_fence_trigger_insert()
+    FROM PUBLIC;
+CREATE TRIGGER ticketbox_writer_fence_trigger_insert
+INSTEAD OF INSERT ON public.ticketbox_writer_fence_trigger_view
+FOR EACH ROW EXECUTE FUNCTION public.ticketbox_writer_fence_trigger_insert();
+CREATE FUNCTION public.ticketbox_writer_fence_trigger_update()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog
+AS $function$
+BEGIN
+    UPDATE public.accounts SET value = NEW.account_value
+    WHERE id = OLD.account_id;
+    RETURN NEW;
+END
+$function$;
+REVOKE ALL ON FUNCTION public.ticketbox_writer_fence_trigger_update()
+    FROM PUBLIC;
+CREATE TRIGGER ticketbox_writer_fence_trigger_update
+INSTEAD OF UPDATE ON public.ticketbox_writer_fence_trigger_update_view
+FOR EACH ROW EXECUTE FUNCTION public.ticketbox_writer_fence_trigger_update();
+CREATE FUNCTION public.ticketbox_writer_fence_trigger_delete()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog
+AS $function$
+BEGIN
+    DELETE FROM public.accounts WHERE id = OLD.account_id;
+    RETURN OLD;
+END
+$function$;
+REVOKE ALL ON FUNCTION public.ticketbox_writer_fence_trigger_delete()
+    FROM PUBLIC;
+CREATE TRIGGER ticketbox_writer_fence_trigger_delete
+INSTEAD OF DELETE ON public.ticketbox_writer_fence_trigger_delete_view
+FOR EACH ROW EXECUTE FUNCTION public.ticketbox_writer_fence_trigger_delete();
+CREATE VIEW public.ticketbox_writer_fence_owner_view AS
+    SELECT count(*)::bigint AS account_count FROM public.accounts;
+COMMIT;
+ALTER VIEW public.ticketbox_writer_fence_owner_view
+    OWNER TO "Ticketbox View Owner";
+GRANT INSERT ON public.ticketbox_writer_fence_insert_view
+    TO "View Insert Writer";
+GRANT UPDATE ON public.ticketbox_writer_fence_update_view
+    TO "View Update Writer";
+GRANT SELECT(id) ON public.ticketbox_writer_fence_update_view
+    TO "View Update Writer";
+GRANT DELETE ON public.ticketbox_writer_fence_delete_view
+    TO "View Delete Writer";
+GRANT SELECT(id) ON public.ticketbox_writer_fence_delete_view
+    TO "View Delete Writer";
+GRANT UPDATE(value) ON public.ticketbox_writer_fence_column_view
+    TO "View Column Writer";
+GRANT SELECT(id) ON public.ticketbox_writer_fence_column_view
+    TO "View Column Writer";
+GRANT INSERT(id, value) ON public.ticketbox_writer_fence_column_insert_view
+    TO "View Column Insert Writer";
+GRANT INSERT ON public.ticketbox_writer_fence_trigger_view
+    TO "View Trigger Writer";
+GRANT UPDATE ON public.ticketbox_writer_fence_trigger_update_view
+    TO "View Trigger Update Writer";
+GRANT DELETE ON public.ticketbox_writer_fence_trigger_delete_view
+    TO "View Trigger Delete Writer";
+GRANT INSERT(id, value) ON public.accounts
+    TO "Table Column Insert Writer";
+GRANT UPDATE ON public.ticketbox_writer_fence_third_party_view
+    TO "Third-Party Auditor";
+GRANT INSERT ON public.ticketbox_writer_fence_insert_view
+    TO ticketbox_migrator;
+GRANT "Ticketbox View Owner" TO "Third-Party Auditor"
+    WITH INHERIT FALSE, SET TRUE;
+""",
+        )
+        assert view_authority_created.returncode == 0, (
+            view_authority_created.stdout + view_authority_created.stderr
+        )
+        seeded_view_rows = run_sql(
+            "ticketbox",
+            "postgres",
+            "INSERT INTO public.accounts(id, value) VALUES "
+            "(9802, 102), (9803, 103), (9804, 104), "
+            "(9806, 106), (9807, 107);",
+        )
+        assert seeded_view_rows.returncode == 0, (
+            seeded_view_rows.stdout + seeded_view_rows.stderr
+        )
+        view_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "View Insert Writer"; '
+            "INSERT INTO public.ticketbox_writer_fence_insert_view(id, value) "
+            "VALUES (9801, 101);",
+        )
+        assert view_write.returncode == 0, view_write.stdout + view_write.stderr
+        update_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "View Update Writer"; '
+            "UPDATE public.ticketbox_writer_fence_update_view "
+            "SET value = 202 WHERE id = 9802;",
+        )
+        assert update_write.returncode == 0, (
+            update_write.stdout + update_write.stderr
+        )
+        delete_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "View Delete Writer"; '
+            "DELETE FROM public.ticketbox_writer_fence_delete_view "
+            "WHERE id = 9803;",
+        )
+        assert delete_write.returncode == 0, (
+            delete_write.stdout + delete_write.stderr
+        )
+        column_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "View Column Writer"; '
+            "UPDATE public.ticketbox_writer_fence_column_view "
+            "SET value = 204 WHERE id = 9804;",
+        )
+        assert column_write.returncode == 0, (
+            column_write.stdout + column_write.stderr
+        )
+        column_insert_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "View Column Insert Writer"; '
+            "INSERT INTO public.ticketbox_writer_fence_column_insert_view(id, value) "
+            "VALUES (9808, 108);",
+        )
+        assert column_insert_write.returncode == 0, (
+            column_insert_write.stdout + column_insert_write.stderr
+        )
+        trigger_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "View Trigger Writer"; '
+            "INSERT INTO public.ticketbox_writer_fence_trigger_view(account_count) "
+            "VALUES (9805);",
+        )
+        assert trigger_write.returncode == 0, (
+            trigger_write.stdout + trigger_write.stderr
+        )
+        trigger_update_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "View Trigger Update Writer"; '
+            "UPDATE public.ticketbox_writer_fence_trigger_update_view "
+            "SET account_value = 206;",
+        )
+        assert trigger_update_write.returncode == 0, (
+            trigger_update_write.stdout + trigger_update_write.stderr
+        )
+        trigger_delete_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "View Trigger Delete Writer"; '
+            "DELETE FROM public.ticketbox_writer_fence_trigger_delete_view;",
+        )
+        assert trigger_delete_write.returncode == 0, (
+            trigger_delete_write.stdout + trigger_delete_write.stderr
+        )
+        table_column_insert_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "Table Column Insert Writer"; '
+            "INSERT INTO public.accounts(id, value) VALUES (9809, 109);",
+        )
+        assert table_column_insert_write.returncode == 0, (
+            table_column_insert_write.stdout + table_column_insert_write.stderr
+        )
+        view_write_count = run_sql(
+            "ticketbox",
+            "postgres",
+            "SELECT count(*) FILTER (WHERE (id, value) IN "
+            "((9801,101),(9802,202),(9804,204),(9805,105),"
+            "(9806,206),(9808,108),(9809,109)))::text || ':' || "
+            "count(*) FILTER (WHERE id = 9807)::text FROM public.accounts;",
+        )
+        assert view_write_count.returncode == 0, (
+            view_write_count.stdout + view_write_count.stderr
+        )
+        assert view_write_count.stdout.strip() == "7:0"
+        view_rejection_harness = tmp_path / "real-pg-view-writer-rejection.ps1"
+        _write_ps1(
+            view_rejection_harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$raw = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$migrator = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'ticketbox_migrator'
+}})
+$isolatedWriters = @(
+    'View Insert Writer',
+    'View Update Writer',
+    'View Delete Writer',
+    'View Column Writer',
+    'View Column Insert Writer',
+    'View Trigger Writer',
+    'View Trigger Update Writer',
+    'View Trigger Delete Writer',
+    'Table Column Insert Writer'
+)
+$viewOwner = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'Ticketbox View Owner'
+}})
+$thirdParty = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'Third-Party Auditor'
+}})
+if (
+    $migrator.Count -ne 1 -or -not [bool]$migrator[0].can_table_write -or
+    @($isolatedWriters | Where-Object {{
+        $writerName = $_
+        @($raw.Roles | Where-Object {{
+            [string]$_.name -ceq $writerName -and
+            [bool]$_.can_table_write
+        }}).Count -ne 1
+    }}).Count -ne 0 -or
+    $viewOwner.Count -ne 1 -or
+    -not [bool]$viewOwner[0].owns_managed_relations -or
+    $thirdParty.Count -ne 1 -or
+    -not [bool]$thirdParty[0].can_table_write -or
+    -not [bool]$thirdParty[0].can_assume_write_owner
+) {{
+    throw 'real PG17 updatable-view writer authority was not fully observed'
+}}
+$restrictedUrl =
+    'postgresql://restricted_observer@127.0.0.1:' +
+    $script:testPgPort + '/ticketbox?require_auth=scram-sha-256'
+$restrictedObservation = Get-TicketboxPostgresqlWriterFenceObservation `
+    -PsqlPath (Resolve-TicketboxC07DatabaseHostAuthority).PsqlPath `
+    -DatabaseUrl $restrictedUrl `
+    -Password $plain `
+    -ManagedSchemaName 'public' `
+    -AdvisoryLockLabel 'xiaopiaojia:restricted-view-observation' `
+    -ApplicationName 'ticketbox-c07-restricted-view-observation' `
+    -TimeoutMilliseconds 10000 `
+    -StatementTimeoutMilliseconds 5000 `
+    -LockTimeoutMilliseconds 1000
+$restrictedViewWriters = @(
+    'View Insert Writer',
+    'View Update Writer',
+    'View Delete Writer',
+    'View Column Writer',
+    'View Column Insert Writer',
+    'View Trigger Writer',
+    'View Trigger Update Writer',
+    'View Trigger Delete Writer',
+    'Third-Party Auditor'
+)
+if (@($restrictedViewWriters | Where-Object {{
+    $writerName = $_
+    @($restrictedObservation.Roles | Where-Object {{
+        [string]$_.name -ceq $writerName -and
+        [bool]$_.can_table_write
+    }}).Count -ne 1
+}}).Count -ne 0) {{
+    throw 'restricted authority visibility hid updatable-view writer authority'
+}}
+$classifiedRejected = $false
+try {{ [void](Get-TicketboxC07WriterDatabaseFenceObservation) }}
+catch {{ $classifiedRejected = $true }}
+if (-not $classifiedRejected) {{
+    throw 'C07 policy accepted updatable-view writer authority'
+}}
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+[void](Invoke-TicketboxC07Sql `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres' `
+    -Password $password `
+    -Label 'isolate real PG17 view DML precondition' `
+    -Sql @'
+REVOKE "Ticketbox View Owner" FROM "Third-Party Auditor";
+ALTER VIEW public.ticketbox_writer_fence_owner_view OWNER TO ticketbox_owner;
+DROP OWNED BY "Ticketbox View Owner";
+DROP ROLE "Ticketbox View Owner";
+REVOKE INSERT ON public.ticketbox_writer_fence_insert_view
+    FROM ticketbox_migrator, "View Insert Writer";
+REVOKE UPDATE ON public.ticketbox_writer_fence_update_view
+    FROM "View Update Writer";
+REVOKE SELECT(id) ON public.ticketbox_writer_fence_update_view
+    FROM "View Update Writer";
+REVOKE DELETE ON public.ticketbox_writer_fence_delete_view
+    FROM "View Delete Writer";
+REVOKE SELECT(id) ON public.ticketbox_writer_fence_delete_view
+    FROM "View Delete Writer";
+REVOKE UPDATE(value) ON public.ticketbox_writer_fence_column_view
+    FROM "View Column Writer";
+REVOKE SELECT(id) ON public.ticketbox_writer_fence_column_view
+    FROM "View Column Writer";
+REVOKE INSERT(id, value) ON public.ticketbox_writer_fence_column_insert_view
+    FROM "View Column Insert Writer";
+REVOKE INSERT ON public.ticketbox_writer_fence_trigger_view
+    FROM "View Trigger Writer";
+REVOKE UPDATE ON public.ticketbox_writer_fence_trigger_update_view
+    FROM "View Trigger Update Writer";
+REVOKE DELETE ON public.ticketbox_writer_fence_trigger_delete_view
+    FROM "View Trigger Delete Writer";
+REVOKE INSERT(id, value) ON public.accounts
+    FROM "Table Column Insert Writer";
+DROP OWNED BY "View Insert Writer";
+DROP OWNED BY "View Update Writer";
+DROP OWNED BY "View Delete Writer";
+DROP OWNED BY "View Column Writer";
+DROP OWNED BY "View Column Insert Writer";
+DROP OWNED BY "View Trigger Writer";
+DROP OWNED BY "View Trigger Update Writer";
+DROP OWNED BY "View Trigger Delete Writer";
+DROP OWNED BY "Table Column Insert Writer";
+DROP ROLE "View Insert Writer";
+DROP ROLE "View Update Writer";
+DROP ROLE "View Delete Writer";
+DROP ROLE "View Column Writer";
+DROP ROLE "View Column Insert Writer";
+DROP ROLE "View Trigger Writer";
+DROP ROLE "View Trigger Update Writer";
+DROP ROLE "View Trigger Delete Writer";
+DROP ROLE "Table Column Insert Writer";
+DROP OWNED BY restricted_observer;
+DROP ROLE restricted_observer;
+'@)
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+$databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres'
+function Test-TestRoleHasWriterAuthority([object]$Role) {{
+    return (
+        [bool]$Role.can_login -or [bool]$Role.is_superuser -or
+        [bool]$Role.can_create_db -or [bool]$Role.can_create_role -or
+        [bool]$Role.can_replicate -or [bool]$Role.can_bypass_rls -or
+        [bool]$Role.is_database_owner -or [bool]$Role.owns_managed_schema -or
+        [bool]$Role.owns_managed_relations -or
+        [bool]$Role.owns_security_definer_routines -or
+        [bool]$Role.can_execute_unowned_security_definer_routines -or
+        [bool]$Role.can_database_create -or
+        [bool]$Role.can_managed_schema_create -or
+        [bool]$Role.can_table_write -or [bool]$Role.can_sequence_write -or
+        [bool]$Role.can_assume_write_owner -or
+        @($Role.predefined_role_usage).Count -ne 0 -or
+        @($Role.predefined_role_set).Count -ne 0
+    )
+}}
+$authorizedNames = @(
+    'postgres', 'ticketbox', 'ticketbox_owner',
+    'ticketbox_migrator', 'ticketbox_runtime'
+)
+$dmlPreconditionObservation = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$dmlUnregisteredAuthority = @($dmlPreconditionObservation.Roles | Where-Object {{
+    [string]$_.name -cnotin $authorizedNames -and
+    (Test-TestRoleHasWriterAuthority $_)
+}})
+if (
+    $dmlUnregisteredAuthority.Count -ne 1 -or
+    [string]$dmlUnregisteredAuthority[0].name -cne 'Third-Party Auditor' -or
+    -not [bool]$dmlUnregisteredAuthority[0].can_table_write
+) {{
+    throw 'real PG17 DML precondition fixture has an independent blocker'
+}}
+$preconditionRejected = $false
+try {{
+    [void](Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {{
+        param([string]$PlainPassword)
+        Invoke-TicketboxPostgresqlWriterFenceReconcile `
+            -PsqlPath $hostAuthority.PsqlPath `
+            -DatabaseUrl $databaseUrl `
+            -Password $PlainPassword `
+            -AuthorityRole 'postgres' `
+            -ManagedSchemaName 'public' `
+            -AdvisoryLockLabel 'xiaopiaojia:schema' `
+            -ApplicationName 'ticketbox-c07-view-precondition' `
+            -ManagedWriterRoles @('ticketbox', 'ticketbox_runtime') `
+            -AuthorizedRoleNames @(
+                'postgres', 'ticketbox', 'ticketbox_owner',
+                'ticketbox_migrator', 'ticketbox_runtime'
+            ) `
+            -AllowedLoginRolesAfterFence @('postgres', 'ticketbox_migrator') `
+            -AllowedDatabaseOwnerRoles @('ticketbox_owner') `
+            -AllowedManagedWriterOwnerRoles @() `
+            -AllowedDatabaseOwnerTransitionRoles @('ticketbox_migrator') `
+            -TimeoutMilliseconds 10000 `
+            -LockTimeoutMilliseconds 1000 `
+            -TerminationTimeoutMilliseconds 3000
+    }})
+}}
+catch {{ $preconditionRejected = $true }}
+if (-not $preconditionRejected) {{
+    throw 'generic reconcile accepted an unregistered updatable-view writer'
+}}
+$after = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$runtime = @($after.Roles | Where-Object {{
+    [string]$_.name -ceq 'ticketbox_runtime'
+}})
+if (
+    $runtime.Count -ne 1 -or -not [bool]$runtime[0].can_login -or
+    [int]$runtime[0].connection_limit -ne -1 -or
+    -not [bool]$runtime[0].direct_connect -or
+    -not [bool]$runtime[0].effective_connect
+) {{
+    throw 'updatable-view precondition rejection occurred after mutation'
+}}
+[void](Invoke-TicketboxC07Sql `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres' `
+    -Password $password `
+    -Label 'isolate real PG17 view-owner precondition' `
+    -Sql @'
+REVOKE UPDATE ON public.ticketbox_writer_fence_third_party_view
+    FROM "Third-Party Auditor";
+REVOKE USAGE ON SCHEMA public FROM "Third-Party Auditor";
+CREATE ROLE "Ticketbox View Owner" NOLOGIN NOINHERIT;
+ALTER VIEW public.ticketbox_writer_fence_owner_view
+    OWNER TO "Ticketbox View Owner";
+'@)
+$ownerPreconditionObservation = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$ownerUnregisteredAuthority = @(
+    $ownerPreconditionObservation.Roles | Where-Object {{
+        [string]$_.name -cnotin $authorizedNames -and
+        (Test-TestRoleHasWriterAuthority $_)
+    }}
+)
+if (
+    $ownerUnregisteredAuthority.Count -ne 1 -or
+    [string]$ownerUnregisteredAuthority[0].name -cne
+        'Ticketbox View Owner' -or
+    -not [bool]$ownerUnregisteredAuthority[0].owns_managed_relations -or
+    [bool]$ownerUnregisteredAuthority[0].can_table_write
+) {{
+    throw 'real PG17 view-owner precondition fixture has an independent blocker'
+}}
+$ownerPreconditionRejected = $false
+try {{
+    [void](Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {{
+        param([string]$PlainPassword)
+        Invoke-TicketboxPostgresqlWriterFenceReconcile `
+            -PsqlPath $hostAuthority.PsqlPath `
+            -DatabaseUrl $databaseUrl `
+            -Password $PlainPassword `
+            -AuthorityRole 'postgres' `
+            -ManagedSchemaName 'public' `
+            -AdvisoryLockLabel 'xiaopiaojia:schema' `
+            -ApplicationName 'ticketbox-c07-view-owner-precondition' `
+            -ManagedWriterRoles @('ticketbox', 'ticketbox_runtime') `
+            -AuthorizedRoleNames @(
+                'postgres', 'ticketbox', 'ticketbox_owner',
+                'ticketbox_migrator', 'ticketbox_runtime'
+            ) `
+            -AllowedLoginRolesAfterFence @('postgres', 'ticketbox_migrator') `
+            -AllowedDatabaseOwnerRoles @('ticketbox_owner') `
+            -AllowedManagedWriterOwnerRoles @() `
+            -AllowedDatabaseOwnerTransitionRoles @('ticketbox_migrator') `
+            -TimeoutMilliseconds 10000 `
+            -LockTimeoutMilliseconds 1000 `
+            -TerminationTimeoutMilliseconds 3000
+    }})
+}}
+catch {{ $ownerPreconditionRejected = $true }}
+if (-not $ownerPreconditionRejected) {{
+    throw 'generic reconcile accepted an unregistered ordinary-view owner'
+}}
+""",
+        )
+        _run_harness(engine, view_rejection_harness, timeout=60)
+        view_authority_secured = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+DROP VIEW public.ticketbox_writer_fence_insert_view;
+DROP VIEW public.ticketbox_writer_fence_update_view;
+DROP VIEW public.ticketbox_writer_fence_delete_view;
+DROP VIEW public.ticketbox_writer_fence_column_view;
+DROP VIEW public.ticketbox_writer_fence_column_insert_view;
+DROP VIEW public.ticketbox_writer_fence_third_party_view;
+DROP VIEW public.ticketbox_writer_fence_trigger_view;
+DROP VIEW public.ticketbox_writer_fence_trigger_update_view;
+DROP VIEW public.ticketbox_writer_fence_trigger_delete_view;
+DROP VIEW public.ticketbox_writer_fence_owner_view;
+DROP FUNCTION public.ticketbox_writer_fence_trigger_insert();
+DROP FUNCTION public.ticketbox_writer_fence_trigger_update();
+DROP FUNCTION public.ticketbox_writer_fence_trigger_delete();
+DROP OWNED BY "Ticketbox View Owner";
+DROP ROLE "Ticketbox View Owner";
+REVOKE USAGE ON SCHEMA public
+    FROM ticketbox_migrator, "Third-Party Auditor";
+DELETE FROM public.accounts WHERE id BETWEEN 9801 AND 9809;
+CREATE VIEW public.ticketbox_writer_fence_read_only AS
+    SELECT count(*) AS account_count FROM public.accounts;
+GRANT USAGE ON SCHEMA public TO "Third-Party Auditor";
+GRANT INSERT, UPDATE, DELETE ON public.ticketbox_writer_fence_read_only
+    TO "Third-Party Auditor";
+""",
+        )
+        assert view_authority_secured.returncode == 0, (
+            view_authority_secured.stdout + view_authority_secured.stderr
+        )
+        read_only_harness = tmp_path / "real-pg-read-only-view-control.ps1"
+        _write_ps1(
+            read_only_harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$raw = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$thirdParty = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'Third-Party Auditor'
+}})
+if ($thirdParty.Count -ne 1 -or [bool]$thirdParty[0].can_table_write) {{
+    throw 'read-only aggregate view DML grants were misclassified as executable'
+}}
+""",
+        )
+        _run_harness(engine, read_only_harness, timeout=60)
+        read_only_cleanup = run_sql(
+            "ticketbox",
+            "postgres",
+            "DROP VIEW public.ticketbox_writer_fence_read_only; "
+            'REVOKE USAGE ON SCHEMA public FROM "Third-Party Auditor";',
+        )
+        assert read_only_cleanup.returncode == 0, (
+            read_only_cleanup.stdout + read_only_cleanup.stderr
+        )
+
+        external_view_created = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+BEGIN;
+CREATE ROLE "External View Writer" NOLOGIN NOINHERIT;
+SET LOCAL ROLE ticketbox_owner;
+CREATE SCHEMA ticketbox_writer_fence_view_helper
+    AUTHORIZATION ticketbox_owner;
+CREATE VIEW ticketbox_writer_fence_view_helper.external_accounts AS
+    SELECT id, value FROM public.accounts;
+GRANT USAGE ON SCHEMA ticketbox_writer_fence_view_helper
+    TO "External View Writer";
+GRANT INSERT ON ticketbox_writer_fence_view_helper.external_accounts
+    TO "External View Writer";
+COMMIT;
+""",
+        )
+        assert external_view_created.returncode == 0, (
+            external_view_created.stdout + external_view_created.stderr
+        )
+        external_view_write = run_sql(
+            "ticketbox",
+            "postgres",
+            'SET ROLE "External View Writer"; '
+            "INSERT INTO ticketbox_writer_fence_view_helper.external_accounts"
+            "(id, value) VALUES (9810, 110);",
+        )
+        assert external_view_write.returncode == 0, (
+            external_view_write.stdout + external_view_write.stderr
+        )
+        external_view_effect = run_sql(
+            "ticketbox",
+            "postgres",
+            "SELECT count(*) FROM public.accounts WHERE (id, value) = (9810, 110);",
+        )
+        assert external_view_effect.returncode == 0, (
+            external_view_effect.stdout + external_view_effect.stderr
+        )
+        assert external_view_effect.stdout.strip() == "1"
+        external_view_harness = tmp_path / "real-pg-external-view-writer.ps1"
+        _write_ps1(
+            external_view_harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$raw = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$externalWriter = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'External View Writer'
+}})
+if ($externalWriter.Count -ne 1 -or
+    -not [bool]$externalWriter[0].can_table_write -or
+    [bool]$externalWriter[0].owns_managed_relations) {{
+    throw 'external-schema updatable view writer authority was not observed'
+}}
+$classifiedRejected = $false
+try {{ [void](Get-TicketboxC07WriterDatabaseFenceObservation) }}
+catch {{ $classifiedRejected = $true }}
+if (-not $classifiedRejected) {{
+    throw 'C07 policy accepted an external-schema updatable-view writer'
+}}
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+$databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres'
+$preconditionRejected = $false
+try {{
+    [void](Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {{
+        param([string]$PlainPassword)
+        Invoke-TicketboxPostgresqlWriterFenceReconcile `
+            -PsqlPath $hostAuthority.PsqlPath `
+            -DatabaseUrl $databaseUrl `
+            -Password $PlainPassword `
+            -AuthorityRole 'postgres' `
+            -ManagedSchemaName 'public' `
+            -AdvisoryLockLabel 'xiaopiaojia:schema' `
+            -ApplicationName 'ticketbox-c07-external-view-precondition' `
+            -ManagedWriterRoles @('ticketbox', 'ticketbox_runtime') `
+            -AuthorizedRoleNames @(
+                'postgres', 'ticketbox', 'ticketbox_owner',
+                'ticketbox_migrator', 'ticketbox_runtime'
+            ) `
+            -AllowedLoginRolesAfterFence @('postgres', 'ticketbox_migrator') `
+            -AllowedDatabaseOwnerRoles @('ticketbox_owner') `
+            -AllowedManagedWriterOwnerRoles @() `
+            -AllowedDatabaseOwnerTransitionRoles @('ticketbox_migrator') `
+            -TimeoutMilliseconds 10000 `
+            -LockTimeoutMilliseconds 1000 `
+            -TerminationTimeoutMilliseconds 3000
+    }})
+}}
+catch {{ $preconditionRejected = $true }}
+if (-not $preconditionRejected) {{
+    throw 'generic reconcile accepted an external-schema updatable-view writer'
+}}
+$after = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$runtime = @($after.Roles | Where-Object {{
+    [string]$_.name -ceq 'ticketbox_runtime'
+}})
+if ($runtime.Count -ne 1 -or -not [bool]$runtime[0].can_login -or
+    [int]$runtime[0].connection_limit -ne -1 -or
+    -not [bool]$runtime[0].direct_connect -or
+    -not [bool]$runtime[0].effective_connect) {{
+    throw 'external-view precondition rejection occurred after mutation'
+}}
+""",
+        )
+        _run_harness(engine, external_view_harness, timeout=60)
+        external_view_usage_revoked = run_sql(
+            "ticketbox",
+            "postgres",
+            'REVOKE USAGE ON SCHEMA ticketbox_writer_fence_view_helper '
+            'FROM "External View Writer";',
+        )
+        assert external_view_usage_revoked.returncode == 0, (
+            external_view_usage_revoked.stdout + external_view_usage_revoked.stderr
+        )
+        external_view_usage_control = (
+            tmp_path / "real-pg-external-view-schema-usage-control.ps1"
+        )
+        _write_ps1(
+            external_view_usage_control,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$raw = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$externalWriter = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'External View Writer'
+}})
+if ($externalWriter.Count -ne 1 -or [bool]$externalWriter[0].can_table_write) {{
+    throw 'external view without schema USAGE was misclassified as executable'
+}}
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+$databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    -Authority $hostAuthority -Database 'ticketbox' -Role 'postgres'
+$authorizedRolesSql = ConvertTo-TicketboxPostgresqlWriterFenceTextArray `
+    @('postgres', 'ticketbox', 'ticketbox_owner',
+      'ticketbox_migrator', 'ticketbox_runtime') `
+    'authorized roles'
+$managedSchemaSql =
+    ConvertTo-TicketboxPostgresqlWriterFenceSqlLiteral 'public'
+$guard = New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql `
+    -AuthorizedRolesSql $authorizedRolesSql `
+    -ManagedSchemaSql $managedSchemaSql
+Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {{
+    param([string]$PlainPassword)
+    [void](Invoke-TicketboxPostgresqlWriterFenceSql `
+        -PsqlPath $hostAuthority.PsqlPath `
+        -DatabaseUrl $databaseUrl `
+        -Password $PlainPassword `
+        -Sql @"
+DO `$writer_fence`$
+BEGIN
+$guard
+END
+`$writer_fence`$;
+"@ `
+        -Label 'external view no-USAGE precondition control' `
+        -TimeoutMilliseconds 30000)
+}}
+""",
+        )
+        _run_harness(engine, external_view_usage_control, timeout=60)
+        external_view_cleanup = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+DROP SCHEMA ticketbox_writer_fence_view_helper CASCADE;
+DROP OWNED BY "External View Writer";
+DROP ROLE "External View Writer";
+DELETE FROM public.accounts WHERE id = 9810;
+""",
+        )
+        assert external_view_cleanup.returncode == 0, (
+            external_view_cleanup.stdout + external_view_cleanup.stderr
+        )
+
+        definer_created = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+BEGIN;
+SET LOCAL ROLE ticketbox_owner;
+CREATE SCHEMA ticketbox_writer_fence_helper AUTHORIZATION ticketbox_owner;
+CREATE FUNCTION ticketbox_writer_fence_helper.ticketbox_writer_fence_definer_probe()
+RETURNS integer LANGUAGE sql SECURITY DEFINER
+SET search_path = pg_catalog
+AS $function$
+    INSERT INTO public.accounts(value) VALUES (99);
+    SELECT 99;
+$function$;
+GRANT USAGE ON SCHEMA ticketbox_writer_fence_helper TO ticketbox_runtime;
+REVOKE ALL ON FUNCTION
+    ticketbox_writer_fence_helper.ticketbox_writer_fence_definer_probe()
+    FROM PUBLIC, ticketbox_runtime;
+COMMIT;
+""",
+        )
+        assert definer_created.returncode == 0, (
+            definer_created.stdout + definer_created.stderr
+        )
+        definer_execute_control = (
+            tmp_path / "real-pg-definer-execute-control.ps1"
+        )
+        _write_ps1(
+            definer_execute_control,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$raw = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$runtime = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'ticketbox_runtime'
+}})
+if ($runtime.Count -ne 1 -or
+    [bool]$runtime[0].can_execute_unowned_security_definer_routines) {{
+    throw 'SECURITY DEFINER classification ignored missing EXECUTE authority'
+}}
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+$databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres'
+$authoritySql = ConvertTo-TicketboxPostgresqlWriterFenceSqlLiteral 'postgres'
+$allowedOwnerRolesSql = ConvertTo-TicketboxPostgresqlWriterFenceTextArray `
+    @('ticketbox_owner') `
+    'allowed owner roles'
+$securityDefinerGuard = New-TicketboxPostgresqlWriterFenceSecurityDefinerGuardSql `
+    -AuthorityRoleSql $authoritySql `
+    -AllowedOwnerRolesSql $allowedOwnerRolesSql
+Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {{
+    param([string]$PlainPassword)
+    [void](Invoke-TicketboxPostgresqlWriterFenceSql `
+        -PsqlPath $hostAuthority.PsqlPath `
+        -DatabaseUrl $databaseUrl `
+        -Password $PlainPassword `
+        -Sql @"
+DO `$writer_fence`$
+BEGIN
+$securityDefinerGuard
+END
+`$writer_fence`$;
+"@ `
+        -Label 'external definer no-EXECUTE precondition control' `
+        -TimeoutMilliseconds 30000)
+}}
+""",
+        )
+        _run_harness(engine, definer_execute_control, timeout=60)
+        definer_execute_granted = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+GRANT EXECUTE ON FUNCTION
+    ticketbox_writer_fence_helper.ticketbox_writer_fence_definer_probe()
+    TO ticketbox_runtime;
+""",
+        )
+        assert definer_execute_granted.returncode == 0, (
+            definer_execute_granted.stdout + definer_execute_granted.stderr
+        )
+        definer_write = run_sql(
+            "ticketbox",
+            "ticketbox_runtime",
+            "SELECT ticketbox_writer_fence_helper.ticketbox_writer_fence_definer_probe();",
+            runtime_password=True,
+        )
+        assert definer_write.returncode == 0, (
+            definer_write.stdout + definer_write.stderr
+        )
+        assert definer_write.stdout.strip() == "99"
+        definer_rejection_harness = tmp_path / "real-pg-definer-rejection.ps1"
+        _write_ps1(
+            definer_rejection_harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+$databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres'
+$genericRejected = $false
+Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {{
+    param([string]$PlainPassword)
+    try {{
+        [void](Invoke-TicketboxPostgresqlWriterFenceReconcile `
+            -PsqlPath $hostAuthority.PsqlPath `
+            -DatabaseUrl $databaseUrl `
+            -Password $PlainPassword `
+            -AuthorityRole 'postgres' `
+            -ManagedSchemaName 'public' `
+            -AdvisoryLockLabel 'xiaopiaojia:schema' `
+            -ApplicationName 'ticketbox-definer-precondition' `
+            -ManagedWriterRoles @('ticketbox', 'ticketbox_runtime') `
+            -AuthorizedRoleNames @(
+                'postgres', 'ticketbox', 'ticketbox_owner',
+                'ticketbox_migrator', 'ticketbox_runtime'
+            ) `
+            -AllowedLoginRolesAfterFence @('postgres', 'ticketbox_migrator') `
+            -AllowedDatabaseOwnerRoles @('ticketbox_owner') `
+            -AllowedManagedWriterOwnerRoles @() `
+            -AllowedDatabaseOwnerTransitionRoles @('ticketbox_migrator') `
+            -TimeoutMilliseconds 30000 `
+            -LockTimeoutMilliseconds 1000 `
+            -TerminationTimeoutMilliseconds 3000)
+    }}
+    catch {{ $script:genericRejected = $true }}
+}}
+if (-not $script:genericRejected) {{
+    throw 'external-schema SECURITY DEFINER escaped generic precondition'
+}}
+$afterGuard = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$runtimeAfterGuard = @($afterGuard.Roles | Where-Object {{
+    [string]$_.name -ceq 'ticketbox_runtime'
+}})
+if ($runtimeAfterGuard.Count -ne 1 -or -not [bool]$runtimeAfterGuard[0].can_login) {{
+    throw 'SECURITY DEFINER precondition mutated runtime before rejection'
+}}
+$rejected = $false
+try {{ [void](Get-TicketboxC07WriterDatabaseFenceObservation) }}
+catch {{ $rejected = $true }}
+if (-not $rejected) {{
+    throw 'runtime SECURITY DEFINER effective EXECUTE escaped C07 observation policy'
+}}
+""",
+        )
+        _run_harness(engine, definer_rejection_harness, timeout=60)
+        definer_secured = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+DELETE FROM public.accounts WHERE value = 99;
+REVOKE USAGE ON SCHEMA ticketbox_writer_fence_helper FROM ticketbox_runtime;
+""",
+        )
+        assert definer_secured.returncode == 0, (
+            definer_secured.stdout + definer_secured.stderr
+        )
+        definer_usage_control = tmp_path / "real-pg-definer-schema-usage-control.ps1"
+        _write_ps1(
+            definer_usage_control,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$raw = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$runtime = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'ticketbox_runtime'
+}})
+if ($runtime.Count -ne 1 -or
+    [bool]$runtime[0].can_execute_unowned_security_definer_routines) {{
+    throw 'SECURITY DEFINER callable classification ignored schema USAGE'
+}}
+$hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+$databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    -Authority $hostAuthority `
+    -Database 'ticketbox' `
+    -Role 'postgres'
+$authoritySql = ConvertTo-TicketboxPostgresqlWriterFenceSqlLiteral 'postgres'
+$allowedOwnerRolesSql = ConvertTo-TicketboxPostgresqlWriterFenceTextArray `
+    @('ticketbox_owner') `
+    'allowed owner roles'
+$securityDefinerGuard = New-TicketboxPostgresqlWriterFenceSecurityDefinerGuardSql `
+    -AuthorityRoleSql $authoritySql `
+    -AllowedOwnerRolesSql $allowedOwnerRolesSql
+Invoke-TicketboxC07WithPlainSecret -Secret $password -Action {{
+    param([string]$PlainPassword)
+    [void](Invoke-TicketboxPostgresqlWriterFenceSql `
+        -PsqlPath $hostAuthority.PsqlPath `
+        -DatabaseUrl $databaseUrl `
+        -Password $PlainPassword `
+        -Sql @"
+DO `$writer_fence`$
+BEGIN
+$securityDefinerGuard
+END
+`$writer_fence`$;
+"@ `
+        -Label 'external definer no-USAGE precondition control' `
+        -TimeoutMilliseconds 30000)
+}}
+""",
+        )
+        _run_harness(engine, definer_usage_control, timeout=60)
+
+        definer_owner_created = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+BEGIN;
+CREATE ROLE "Ticketbox External Definer Owner" NOLOGIN NOINHERIT;
+CREATE ROLE "Ticketbox External Definer Assumer" NOLOGIN NOINHERIT;
+GRANT "Ticketbox External Definer Owner"
+    TO "Ticketbox External Definer Assumer"
+    WITH INHERIT FALSE, SET TRUE;
+CREATE SCHEMA ticketbox_writer_fence_owner_helper
+    AUTHORIZATION "Ticketbox External Definer Owner";
+SET LOCAL ROLE "Ticketbox External Definer Owner";
+CREATE FUNCTION ticketbox_writer_fence_owner_helper.owner_probe()
+RETURNS integer LANGUAGE sql SECURITY DEFINER
+SET search_path = pg_catalog
+AS 'SELECT 1';
+COMMIT;
+""",
+        )
+        assert definer_owner_created.returncode == 0, (
+            definer_owner_created.stdout + definer_owner_created.stderr
+        )
+        definer_owner_harness = tmp_path / "real-pg-definer-owner-closure.ps1"
+        _write_ps1(
+            definer_owner_harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$raw = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$owner = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'Ticketbox External Definer Owner'
+}})
+$assumer = @($raw.Roles | Where-Object {{
+    [string]$_.name -ceq 'Ticketbox External Definer Assumer'
+}})
+if (
+    $owner.Count -ne 1 -or
+    -not [bool]$owner[0].owns_security_definer_routines -or
+    [bool]$owner[0].owns_managed_schema -or
+    [bool]$owner[0].owns_managed_relations -or
+    $assumer.Count -ne 1 -or
+    -not [bool]$assumer[0].can_assume_write_owner
+) {{
+    throw 'external-schema SECURITY DEFINER owner SET closure was not observed'
+}}
+""",
+        )
+        _run_harness(engine, definer_owner_harness, timeout=60)
+
+        definer_cleanup = run_sql(
+            "ticketbox",
+            "postgres",
+            """
+DROP SCHEMA ticketbox_writer_fence_helper CASCADE;
+DROP SCHEMA ticketbox_writer_fence_owner_helper CASCADE;
+REVOKE "Ticketbox External Definer Owner"
+    FROM "Ticketbox External Definer Assumer";
+DROP OWNED BY "Ticketbox External Definer Assumer";
+DROP OWNED BY "Ticketbox External Definer Owner";
+DROP ROLE "Ticketbox External Definer Assumer";
+DROP ROLE "Ticketbox External Definer Owner";
+""",
+        )
+        assert definer_cleanup.returncode == 0, (
+            definer_cleanup.stdout + definer_cleanup.stderr
+        )
+
+        unknown_session = subprocess.Popen(
+            [
+                str(psql),
+                "--no-psqlrc",
+                "--no-password",
+                "--set",
+                "ON_ERROR_STOP=1",
+                "--host",
+                "localhost",
+                "--port",
+                str(port),
+                "--username",
+                "postgres",
+                "--dbname",
+                "ticketbox",
+                "--command",
+                (
+                    "SET application_name = "
+                    "'ticketbox-writer-fence-unknown-session'; "
+                    "SELECT pg_sleep(30);"
+                ),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=admin_env,
+        )
+        _wait_for_pg_scalar(
+            run_sql,
+            sql=(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE application_name = "
+                "'ticketbox-writer-fence-unknown-session' "
+                "AND usename = 'postgres' "
+                "AND pid <> pg_backend_pid();"
+            ),
+            expected="1",
+            failure="unknown PostgreSQL session was not observable",
+        )
+
+        unknown_rejection_harness = tmp_path / "real-pg-unknown-session.ps1"
+        _write_ps1(
+            unknown_rejection_harness,
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_database.ps1")}'
+. '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
+. '{_literal(storage_contract)}'
+. '{_literal(auth_contract)}'
+$script:testPgBin = '{_literal(pg_bin)}'
+$script:testPgData = '{_literal(data_dir)}'
+$script:testPgPort = {port}
+function Resolve-TicketboxC07DatabaseHostAuthority {{
+    [pscustomobject]@{{
+        Schema = 'ticketbox-c07-host-db-authority-v1'
+        PsqlPath = (Join-Path $script:testPgBin 'psql.exe')
+        PgData = $script:testPgData
+        Port = $script:testPgPort
+    }}
+}}
+function Assert-TicketboxC07LiveHostConnection {{ param($Authority, $Password) }}
+$plain = Read-XpjTestPostgresCredential -DataDir $script:testPgData
+$password = New-Object Security.SecureString
+foreach ($character in $plain.ToCharArray()) {{ $password.AppendChar($character) }}
+$password.MakeReadOnly()
+Set-TicketboxC07DatabaseAuthorityCredential $password
+$before = Get-TicketboxC07WriterDatabaseFenceObservation
+$authority = [pscustomobject]@{{
+    Receipt = [pscustomobject]@{{
+        operation_id = '21234567-89ab-cdef-0123-456789abcdef'
+    }}
+    ReleaseIdentity = [pscustomobject]@{{}}
+}}
+$intent = [pscustomobject]@{{
+    AuthorityPhase = [string]$before.AuthorityPhase
+    PublicConnect = [bool]$before.PublicConnect
+    Roles = @($before.Roles)
+}}
+$rejected = $false
+try {{
+    [void](Enter-TicketboxC07WriterDatabaseFence `
+        -Authority $authority `
+        -Intent $intent)
+}}
+catch {{
+    $rejected = $true
+}}
+if (-not $rejected) {{
+    throw 'non-managed target-database session escaped the pre-mutation guard'
+}}
+$rawAfter = Get-TicketboxC07RawWriterDatabaseFenceObservation
+$runtime = @($rawAfter.Roles | Where-Object {{
+    [string]$_.name -ceq 'ticketbox_runtime'
+}})
+if (
+    $runtime.Count -ne 1 -or
+    -not [bool]$runtime[0].can_login -or
+    [int]$runtime[0].connection_limit -ne -1 -or
+    -not [bool]$runtime[0].direct_connect -or
+    -not [bool]$runtime[0].effective_connect
+) {{
+    throw 'unknown-session rejection occurred after writer-fence mutation'
+}}
+""",
+        )
+        _run_harness(engine, unknown_rejection_harness, timeout=60)
+        assert unknown_session.poll() is None
+        unknown_backend_cleanup = run_sql(
+            "ticketbox",
+            "postgres",
+            (
+                "SELECT pg_terminate_backend(pid, 3000) "
+                "FROM pg_stat_activity "
+                "WHERE application_name = "
+                "'ticketbox-writer-fence-unknown-session' "
+                "AND usename = 'postgres' "
+                "AND pid <> pg_backend_pid();"
+            ),
+        )
+        assert unknown_backend_cleanup.returncode == 0, (
+            unknown_backend_cleanup.stdout + unknown_backend_cleanup.stderr
+        )
+        assert unknown_backend_cleanup.stdout.strip() == "t"
+        _, unknown_stderr = unknown_session.communicate(timeout=10)
+        assert unknown_session.returncode != 0, unknown_stderr
+        unknown_session = None
+
+        runtime_env = {
+            key: value for key, value in admin_env.items() if key != "PGPASSFILE"
+        }
+        runtime_env["PGPASSWORD"] = credential
+        runtime_session = subprocess.Popen(
+            [
+                str(psql),
+                "--no-psqlrc",
+                "--no-password",
+                "--set",
+                "ON_ERROR_STOP=1",
+                "--host",
+                "localhost",
+                "--port",
+                str(port),
+                "--username",
+                "ticketbox_runtime",
+                "--dbname",
+                "ticketbox",
+                "--command",
+                "SELECT pg_sleep(30);",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             env=runtime_env,
         )
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            sessions = run_sql(
-                "ticketbox",
-                "postgres",
-                (
-                    "SELECT count(*) FROM pg_stat_activity "
-                    "WHERE usename = 'ticketbox' AND pid <> pg_backend_pid();"
-                ),
-            )
-            assert sessions.returncode == 0, sessions.stdout + sessions.stderr
-            if sessions.stdout.strip() == "1":
-                break
-            time.sleep(0.1)
-        else:
-            raise AssertionError("runtime PostgreSQL session did not become observable")
+        _wait_for_pg_scalar(
+            run_sql,
+            sql=(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE usename = 'ticketbox_runtime' "
+                "AND pid <> pg_backend_pid();"
+            ),
+            expected="1",
+            failure="runtime PostgreSQL session did not become observable",
+        )
 
+        control_session = subprocess.Popen(
+            [
+                str(psql),
+                "--no-psqlrc",
+                "--no-password",
+                "--quiet",
+                "--tuples-only",
+                "--no-align",
+                "--set",
+                "ON_ERROR_STOP=1",
+                "--host",
+                "localhost",
+                "--port",
+                str(port),
+                "--username",
+                "postgres",
+                "--dbname",
+                "postgres",
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=admin_env,
+        )
+
+        def control_sql(sql: str, marker: str) -> list[str]:
+            assert control_session is not None
+            assert control_session.stdin is not None
+            assert control_session.stdout is not None
+            control_session.stdin.write(f"{sql};\nSELECT '{marker}';\n")
+            control_session.stdin.flush()
+            rows: list[str] = []
+            while True:
+                line = control_session.stdout.readline()
+                if line == "":
+                    assert control_session.stderr is not None
+                    raise AssertionError(
+                        "PG17 control session exited: "
+                        + control_session.stderr.read()
+                    )
+                value = line.strip()
+                if value == marker:
+                    return rows
+                if value:
+                    rows.append(value)
+
+        startup_env = dict(runtime_env)
+        startup_env["PGOPTIONS"] = "-c post_auth_delay=30"
+        startup_session = subprocess.Popen(
+            [
+                str(psql),
+                "--no-psqlrc",
+                "--no-password",
+                "--set",
+                "ON_ERROR_STOP=1",
+                "--host",
+                "localhost",
+                "--port",
+                str(port),
+                "--username",
+                "ticketbox_runtime",
+                "--dbname",
+                "ticketbox",
+                "--command",
+                "SELECT 1;",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=startup_env,
+        )
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            startup_lock_pids = control_sql(
+                """
+SELECT database_lock.pid::text
+FROM pg_locks AS database_lock
+WHERE database_lock.pid IS NOT NULL
+  AND database_lock.pid <> pg_backend_pid()
+  AND database_lock.locktype = 'object'
+  AND database_lock.mode = 'RowExclusiveLock'
+  AND database_lock.granted
+  AND database_lock.classid = 'pg_database'::regclass::oid
+  AND database_lock.objid = (
+      SELECT oid FROM pg_database WHERE datname = 'ticketbox'
+  )
+  AND database_lock.objsubid = 0
+  AND NOT EXISTS (
+      SELECT 1 FROM pg_stat_activity AS activity
+      WHERE activity.pid = database_lock.pid
+  )
+""",
+                "TBX_STARTUP_LOCK_PROBE",
+            )
+            if len(startup_lock_pids) == 1:
+                startup_backend_pid = int(startup_lock_pids[0])
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError(
+                "runtime startup database lock did not become observable"
+            )
         harness = tmp_path / "real-pg-fence.ps1"
         _write_ps1(
             harness,
@@ -5010,6 +7887,7 @@ def test_c07_real_pg17_fence_evicts_session_and_blocks_ordinary_write(
 $ErrorActionPreference = 'Stop'
 . '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
 . '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_bundled_database.ps1")}'
 . '{_literal(PACKAGING / "windows_c07_database.ps1")}'
 . '{_literal(PACKAGING / "windows_c07_lifecycle.ps1")}'
 . '{_literal(storage_contract)}'
@@ -5035,12 +7913,35 @@ $password.MakeReadOnly()
 Set-TicketboxC07DatabaseAuthorityCredential $password
 $release = [pscustomobject]@{{}}
 $authority = [pscustomobject]@{{ ReleaseIdentity = $release }}
-$before = Get-TicketboxC07WriterDatabaseFenceObservation $release
+$before = Get-TicketboxC07WriterDatabaseFenceObservation
 if ([int64]$before.OtherClientSessionCount -ne 1) {{
-    throw 'real runtime session was not observed before fence'
+    throw (
+        'real runtime session was not observed before fence: ' +
+        ($before.ClientSessions | ConvertTo-Json -Compress -Depth 4)
+    )
+}}
+$migrator = @($before.Roles | Where-Object {{ $_.name -ceq 'ticketbox_migrator' }})
+$thirdParty = @($before.Roles | Where-Object {{ $_.name -ceq 'Third-Party Auditor' }})
+if (
+    $migrator.Count -ne 1 -or
+    -not [bool]$migrator[0].can_assume_write_owner -or
+    $thirdParty.Count -ne 1 -or
+    $thirdParty[0].disposition -cne 'inert_unregistered'
+) {{
+    throw 'real PG17 SET-role or opaque observed-role semantics drifted'
+}}
+$authority = [pscustomobject]@{{
+    Receipt = [pscustomobject]@{{
+        operation_id = '01234567-89ab-cdef-0123-456789abcdef'
+    }}
+    ReleaseIdentity = $release
 }}
 $intent = [pscustomobject]@{{
+    AuthorityPhase = [string]$before.AuthorityPhase
+    PublicConnect = [bool]$before.PublicConnect
+    Roles = @($before.Roles)
     Payload = [pscustomobject]@{{
+        authority_phase = [string]$before.AuthorityPhase
         public_connect = [bool]$before.PublicConnect
         roles = @($before.Roles)
     }}
@@ -5048,11 +7949,15 @@ $intent = [pscustomobject]@{{
 $after = Enter-TicketboxC07WriterDatabaseFence `
     -Authority $authority `
     -Intent $intent
-Assert-TicketboxC07WriterDatabaseFence `
-    -Observation $after `
-    -ExpectedRoles @($before.Roles)
-if ([int64]$after.OtherClientSessionCount -ne 0) {{
-    throw 'real runtime session survived durable fence'
+    Assert-TicketboxC07WriterDatabaseFence -Observation $after
+    if ([int64]$after.OtherClientSessionCount -ne 0) {{
+        throw 'real runtime session survived durable fence'
+    }}
+$retry = Enter-TicketboxC07WriterDatabaseFence `
+    -Authority $authority `
+    -Intent $intent
+if ([int64]$retry.OtherClientSessionCount -ne 0) {{
+    throw 'real PG17 writer fence was not idempotent'
 }}
 """,
         )
@@ -5060,18 +7965,35 @@ if ([int64]$after.OtherClientSessionCount -ne 0) {{
         _, session_stderr = runtime_session.communicate(timeout=10)
         assert runtime_session.returncode != 0, session_stderr
         runtime_session = None
+        _, startup_stderr = startup_session.communicate(timeout=10)
+        assert startup_session.returncode != 0, startup_stderr
+        startup_session = None
+        drained_startup = run_sql(
+            "postgres",
+            "postgres",
+            (
+                "SELECT count(*) FROM pg_stat_activity "
+                f"WHERE pid = {startup_backend_pid} UNION ALL "
+                "SELECT count(*) FROM pg_locks "
+                f"WHERE pid = {startup_backend_pid};"
+            ),
+        )
+        assert drained_startup.returncode == 0, (
+            drained_startup.stdout + drained_startup.stderr
+        )
+        assert drained_startup.stdout.split() == ["0", "0"]
 
         rejected_write = run_sql(
             "ticketbox",
-            "ticketbox",
-            "INSERT INTO public.writer_probe(value) VALUES (2);",
+            "ticketbox_runtime",
+            "INSERT INTO public.accounts(value) VALUES (2);",
             runtime_password=True,
         )
         assert rejected_write.returncode != 0
         post_count = run_sql(
             "ticketbox",
             "postgres",
-            "SELECT count(*) FROM public.writer_probe;",
+            "SELECT count(*) FROM public.accounts;",
         )
         assert post_count.returncode == 0, post_count.stdout + post_count.stderr
         assert post_count.stdout.strip() == "1"
@@ -5083,9 +8005,10 @@ if ([int64]$after.OtherClientSessionCount -ne 0) {{
         assert pg17.returncode == 0, pg17.stdout + pg17.stderr
         assert pg17.stdout.strip() == "17"
     finally:
-        if runtime_session is not None:
-            runtime_session.kill()
-            runtime_session.communicate(timeout=10)
+        _cleanup_pg_fence_processes(
+            [legacy_session, unknown_session, runtime_session, startup_session],
+            control_session,
+        )
         stopped = _run_powershell_process(
             [
                 engine,
