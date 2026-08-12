@@ -21,7 +21,8 @@
 
   Dot-source the installation-safety, atomic-artifact, lifecycle-lock, C07
   lifecycle, service/database-safety, and C07 database libraries before
-  invoking this file.
+  invoking this file. Generic exported-snapshot process/deadline mechanics are
+  loaded below; this file retains only C07 SQL, inventory and generation rules.
 #>
 
 $atomicArtifactScript = Join-Path $PSScriptRoot "windows_atomic_artifacts.ps1"
@@ -29,6 +30,32 @@ if (-not (Test-Path -LiteralPath $atomicArtifactScript -PathType Leaf)) {
     throw "缺少 Windows atomic-artifact 适配脚本：$atomicArtifactScript"
 }
 . $atomicArtifactScript
+
+$exportedSnapshotScript = Join-Path `
+    $PSScriptRoot `
+    "windows_postgresql_exported_snapshot.ps1"
+foreach ($requiredSnapshotLoaderGuard in @(
+    "Assert-NoTicketboxAncestorReparsePoints",
+    "Get-TicketboxPathEntryKindNoFollow"
+)) {
+    if (
+        $null -eq (
+            Get-Command `
+                $requiredSnapshotLoaderGuard `
+                -CommandType Function `
+                -ErrorAction SilentlyContinue
+        )
+    ) {
+        throw "C07 exported-snapshot bootstrap 缺少安全函数：$requiredSnapshotLoaderGuard"
+    }
+}
+Assert-NoTicketboxAncestorReparsePoints $exportedSnapshotScript
+if (
+    (Get-TicketboxPathEntryKindNoFollow $exportedSnapshotScript) -cne "File"
+) {
+    throw "PostgreSQL exported-snapshot 适配脚本不是可信普通文件：$exportedSnapshotScript"
+}
+. $exportedSnapshotScript
 
 $script:TicketboxC07RecoveryGenerationSchema =
     "ticketbox-c07-recovery-generation-v3"
@@ -77,8 +104,8 @@ function Assert-TicketboxC07RecoveryDependencies {
         "Assert-TicketboxExactFileAcl",
         "Assert-TicketboxProtectedDirectoryAcl",
         "ConvertTo-TicketboxCanonicalPath",
-        "ConvertTo-TicketboxNativeCommandLineArgument",
         "Copy-TicketboxVerifiedArtifact",
+        "ConvertTo-TicketboxPostgresqlExportedSnapshotUtc",
         "Get-TicketboxC07DatabaseCatalogObservation",
         "Get-TicketboxC07RestoreDatabaseName",
         "Get-TicketboxC07RestoreNamespaceDatabases",
@@ -99,16 +126,21 @@ function Assert-TicketboxC07RecoveryDependencies {
         "Read-EnvMap",
         "Read-TicketboxProtectedUtf8Artifact",
         "Publish-TicketboxVerifiedArtifactDirectory",
+        "Read-TicketboxPostgresqlExportedSnapshotLine",
         "Remove-TicketboxC07RestoreDatabaseExact",
         "Remove-TicketboxProtectedUtf8Artifact",
         "Remove-TicketboxTreeExact",
         "Resolve-TicketboxC07DatabaseHostAuthority",
         "Set-TicketboxExactFileAcl",
+        "Start-TicketboxPostgresqlExportedSnapshotSession",
+        "Stop-TicketboxPostgresqlExportedSnapshotSession",
         "Sync-TicketboxDurableArtifactFile",
         "Test-TicketboxPathEquals",
         "Test-TicketboxPathWithin",
         "Write-TicketboxC07HostEnvelope",
-        "Write-TicketboxProtectedUtf8FileDurable"
+        "Write-TicketboxProtectedUtf8FileDurable",
+        "Assert-TicketboxPostgresqlExportedSnapshotDeadlineEvidence",
+        "Assert-TicketboxPostgresqlExportedSnapshotSessionAlive"
     )
     foreach ($name in $required) {
         if ($null -eq (Get-Command $name -ErrorAction SilentlyContinue)) {
@@ -149,29 +181,6 @@ function ConvertTo-TicketboxC07RecoveryMaintenanceDeadlineUtc {
         throw "C07 recovery maintenance deadline 不是 canonical UTC。"
     }
     return $parsed.UtcDateTime.ToString("o")
-}
-
-function ConvertTo-TicketboxC07RecoveryEvidenceTimestampUtc {
-    param(
-        [Parameter(Mandatory = $true)][string]$Value,
-        [Parameter(Mandatory = $true)][string]$Label
-    )
-    $parsed = [DateTimeOffset]::MinValue
-    if (
-        -not [DateTimeOffset]::TryParse(
-            $Value,
-            [Globalization.CultureInfo]::InvariantCulture,
-            (
-                [Globalization.DateTimeStyles]::AssumeUniversal -bor
-                [Globalization.DateTimeStyles]::AdjustToUniversal
-            ),
-            [ref]$parsed
-        ) -or
-        $parsed.Offset -ne [TimeSpan]::Zero
-    ) {
-        throw "$Label 不是有效 UTC timestamp。"
-    }
-    return $parsed
 }
 
 function Get-TicketboxC07RecoverySnapshotLifetime {
@@ -1669,7 +1678,7 @@ SELECT 'TBX_TIMEOUTS:' || replace(
         'enforcement_kind',
           'pre_begin_transaction_plus_per_statement_absolute_v1',
         'observed_server_termination', 'not_observed_while_holder_live',
-        'holder_wait', 'pg_sleep_until_active_statement'
+        'holder_wait', 'psql_file_stdin_open_idle_transaction'
       )::text,
       'UTF8'
     ),
@@ -1679,71 +1688,7 @@ SELECT 'TBX_TIMEOUTS:' || replace(
   ''
 );
 SELECT 'TBX_READY';
-SELECT pg_sleep_until(
-  current_setting(
-    'ticketbox.c07_snapshot_maintenance_deadline_utc'
-  )::timestamptz
-);
-ROLLBACK;
 "@
-}
-
-function Start-TicketboxC07RecoverySnapshotProcess {
-    param(
-        [Parameter(Mandatory = $true)][string]$PsqlPath,
-        [Parameter(Mandatory = $true)][string]$ProtectedDatabaseUrl,
-        [Parameter(Mandatory = $true)][string]$OperationId,
-        [Parameter(Mandatory = $true)][string]$MaintenanceDeadlineUtc,
-        [Parameter(Mandatory = $true)]
-        [ValidateRange(1000, 2147483647)]
-        [int]$MaximumRemainingCeilingMilliseconds
-    )
-    $arguments = @(
-        "--no-psqlrc",
-        "--no-password",
-        "--tuples-only",
-        "--no-align",
-        "--quiet",
-        "--set", "ON_ERROR_STOP=1",
-        "--dbname", $ProtectedDatabaseUrl,
-        "--command", (
-            Get-TicketboxC07RecoverySnapshotPreflightSql `
-                -OperationId $OperationId `
-                -MaintenanceDeadlineUtc $MaintenanceDeadlineUtc `
-                -MaximumRemainingCeilingMilliseconds (
-                    $MaximumRemainingCeilingMilliseconds
-                )
-        ),
-        "--command", (
-            Get-TicketboxC07RecoverySnapshotSql `
-                -OperationId $OperationId `
-                -MaintenanceDeadlineUtc $MaintenanceDeadlineUtc `
-                -MaximumRemainingCeilingMilliseconds (
-                    $MaximumRemainingCeilingMilliseconds
-                )
-        )
-    )
-    $info = New-Object Diagnostics.ProcessStartInfo
-    $info.FileName = $PsqlPath
-    $info.Arguments = [string]::Join(
-        " ",
-        @($arguments | ForEach-Object {
-            ConvertTo-TicketboxNativeCommandLineArgument ([string]$_)
-        })
-    )
-    $info.UseShellExecute = $false
-    $info.CreateNoWindow = $true
-    $info.RedirectStandardOutput = $true
-    $info.RedirectStandardError = $true
-    $info.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
-    $info.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
-    $process = New-Object Diagnostics.Process
-    $process.StartInfo = $info
-    if (-not $process.Start()) {
-        $process.Dispose()
-        throw "C07 recovery exported-snapshot session 无法启动。"
-    }
-    return $process
 }
 
 function Read-TicketboxC07RecoverySnapshotProcess {
@@ -1761,15 +1706,10 @@ function Read-TicketboxC07RecoverySnapshotProcess {
             $ExpectedMaintenanceDeadlineUtc
         )
     $absoluteDeadline =
-        ConvertTo-TicketboxC07RecoveryEvidenceTimestampUtc `
+        ConvertTo-TicketboxPostgresqlExportedSnapshotUtc `
             -Value $expectedDeadline `
             -Label "C07 recovery snapshot absolute deadline"
-    $startupDeadline =
-        [DateTimeOffset]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
-    $readDeadline = $startupDeadline
-    if ($absoluteDeadline -lt $readDeadline) {
-        $readDeadline = $absoluteDeadline
-    }
+    $readBudgetStopwatch = [Diagnostics.Stopwatch]::StartNew()
     $backendPid = 0
     $fenceCutPid = 0
     $snapshotId = ""
@@ -1779,24 +1719,11 @@ function Read-TicketboxC07RecoverySnapshotProcess {
     $tablespaces = New-Object System.Collections.Generic.List[object]
     $assets = New-Object System.Collections.Generic.List[object]
     while ($true) {
-        $remainingRaw = [int64][Math]::Floor(
-            ($readDeadline - [DateTimeOffset]::UtcNow).TotalMilliseconds
-        )
-        if ($remainingRaw -lt 1) {
-            throw "C07 recovery exported-snapshot evidence 超过绝对 deadline。"
-        }
-        $remaining = [int][Math]::Min(
-            [int64][int]::MaxValue,
-            $remainingRaw
-        )
-        $readTask = $Process.StandardOutput.ReadLineAsync()
-        if (-not $readTask.Wait($remaining)) {
-            throw "C07 recovery exported-snapshot evidence 超时。"
-        }
-        $line = $readTask.Result
-        if ($null -eq $line) {
-            throw "C07 recovery exported-snapshot session 提前退出。"
-        }
+        $line = Read-TicketboxPostgresqlExportedSnapshotLine `
+            -Process $Process `
+            -AbsoluteDeadlineUtc $absoluteDeadline `
+            -BudgetStopwatch $readBudgetStopwatch `
+            -MaximumElapsedMilliseconds $TimeoutMilliseconds
         if ($line -ceq "TBX_READY") { break }
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         if ($line -ceq "TBX_ARMED") {
@@ -1891,156 +1818,24 @@ function Read-TicketboxC07RecoverySnapshotProcess {
         $backendPid -lt 1 -or
         $fenceCutPid -ne $backendPid -or
         $null -eq $meta -or
-        $null -eq $timeoutContract -or
-        $Process.HasExited
+        $null -eq $timeoutContract
     ) {
         throw "C07 recovery exported snapshot 未保持 live transaction。"
     }
-    Assert-TicketboxC07RecoveryExactProperties `
-        $timeoutContract `
-        @(
-            "absolute_deadline_utc",
-            "maximum_remaining_ceiling_ms",
-            "remaining_ms_before_statement",
-            "statement_timeout_configured_ceiling_ms",
-            "statement_timeout_applied_ms",
-            "transaction_timeout_configured_ceiling_ms",
-            "transaction_timeout_armed_ms",
-            "transaction_timeout_current_setting_ms",
-            "transaction_timeout_derived_upper_bound_expiry_utc",
-            "transaction_timeout_reconfigured_in_transaction",
-            "snapshot_exporter_preflight_observed_at_utc",
-            "snapshot_exporter_transaction_started_utc",
-            "snapshot_exporter_deadline_utc",
-            "timeout_observed_at_utc",
-            "idle_in_transaction_session_timeout_configured_ms",
-            "idle_in_transaction_session_timeout_effective_ms",
-            "lock_timeout_configured_ceiling_ms",
-            "lock_timeout_applied_ms",
-            "enforcement_kind",
-            "observed_server_termination",
-            "holder_wait"
-        ) `
-        "C07 recovery snapshot timeout evidence"
-    $maximumRemainingCeiling =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.maximum_remaining_ceiling_ms `
-            "C07 snapshot maximum remaining ceiling"
-    $remainingBeforeStatement =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.remaining_ms_before_statement `
-            "C07 snapshot remaining before holder statement"
-    $configuredStatement =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.statement_timeout_configured_ceiling_ms `
-            "C07 snapshot configured statement_timeout"
-    $appliedStatement =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.statement_timeout_applied_ms `
-            "C07 snapshot applied statement_timeout"
-    $configuredTransaction =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.transaction_timeout_configured_ceiling_ms `
-            "C07 snapshot configured transaction_timeout"
-    $armedTransaction =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.transaction_timeout_armed_ms `
-            "C07 snapshot pre-BEGIN armed transaction_timeout"
-    $currentTransactionSetting =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.transaction_timeout_current_setting_ms `
-            "C07 snapshot current transaction_timeout setting"
-    $configuredIdle =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.idle_in_transaction_session_timeout_configured_ms `
-            "C07 snapshot configured idle-in-transaction timeout"
-    $effectiveIdle =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.idle_in_transaction_session_timeout_effective_ms `
-            "C07 snapshot effective idle-in-transaction timeout"
-    $configuredLock =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.lock_timeout_configured_ceiling_ms `
-            "C07 snapshot configured lock_timeout"
-    $appliedLock =
-        ConvertTo-TicketboxC07RecoveryUnsignedInt64 `
-            $timeoutContract.lock_timeout_applied_ms `
-            "C07 snapshot applied lock_timeout"
-    $expectedDeadlineValue = $absoluteDeadline
-    $preflightObservedAt =
-        ConvertTo-TicketboxC07RecoveryEvidenceTimestampUtc `
-            -Value (
-                [string]$timeoutContract.snapshot_exporter_preflight_observed_at_utc
-            ) `
-            -Label "C07 snapshot preflight timestamp"
-    $transactionStartedAt =
-        ConvertTo-TicketboxC07RecoveryEvidenceTimestampUtc `
-            -Value (
-                [string]$timeoutContract.snapshot_exporter_transaction_started_utc
-            ) `
-            -Label "C07 snapshot transaction start timestamp"
-    $derivedUpperBoundExpiryAt =
-        ConvertTo-TicketboxC07RecoveryEvidenceTimestampUtc `
-            -Value (
-                [string]$timeoutContract.transaction_timeout_derived_upper_bound_expiry_utc
-            ) `
-            -Label "C07 snapshot derived transaction expiry timestamp"
-    $timeoutObservedAt =
-        ConvertTo-TicketboxC07RecoveryEvidenceTimestampUtc `
-            -Value ([string]$timeoutContract.timeout_observed_at_utc) `
-            -Label "C07 snapshot timeout observation timestamp"
-    $derivedArmedMilliseconds = [int64][Math]::Round(
-        ($derivedUpperBoundExpiryAt - $transactionStartedAt).TotalMilliseconds
-    )
-    if (
-        [string]$timeoutContract.absolute_deadline_utc -cne
-            $expectedDeadline -or
-        [string]$timeoutContract.snapshot_exporter_deadline_utc -cne
-            $expectedDeadline -or
-        $timeoutContract.transaction_timeout_reconfigured_in_transaction -isnot
-            [bool] -or
-        [bool]$timeoutContract.transaction_timeout_reconfigured_in_transaction -or
-        $maximumRemainingCeiling -lt 1000 -or
-        $maximumRemainingCeiling -gt
-            [uint64]$MaximumRemainingCeilingMilliseconds -or
-        $remainingBeforeStatement -lt 1 -or
-        $remainingBeforeStatement -gt $maximumRemainingCeiling -or
-        $armedTransaction -lt 1 -or
-        $armedTransaction -gt $maximumRemainingCeiling -or
-        $currentTransactionSetting -ne $armedTransaction -or
-        [Math]::Abs($derivedArmedMilliseconds - [int64]$armedTransaction) -gt 2 -or
-        $preflightObservedAt -gt $transactionStartedAt -or
-        $transactionStartedAt -gt $timeoutObservedAt -or
-        $timeoutObservedAt -ge $derivedUpperBoundExpiryAt -or
-        $derivedUpperBoundExpiryAt -gt $expectedDeadlineValue -or
-        [DateTimeOffset]::UtcNow -ge $derivedUpperBoundExpiryAt -or
-        (
-            $configuredTransaction -gt 0 -and
-            $armedTransaction -gt $configuredTransaction
-        ) -or
-        $appliedStatement -lt 1 -or
-        $appliedStatement -gt $remainingBeforeStatement -or
-        (
-            $configuredStatement -gt 0 -and
-            $appliedStatement -gt $configuredStatement
-        ) -or
-        $effectiveIdle -ne $configuredIdle -or
-        $appliedLock -lt 1 -or
-        $appliedLock -gt 5000 -or
-        $appliedLock -gt $remainingBeforeStatement -or
-        (
-            $configuredLock -gt 0 -and
-            $appliedLock -gt $configuredLock
-        ) -or
-        [string]$timeoutContract.enforcement_kind -cne
-            "pre_begin_transaction_plus_per_statement_absolute_v1" -or
-        [string]$timeoutContract.observed_server_termination -cne
-            "not_observed_while_holder_live" -or
-        [string]$timeoutContract.holder_wait -cne
-            "pg_sleep_until_active_statement"
-    ) {
-        throw "C07 recovery snapshot timeout evidence 未保持 deadline/no-widen。"
+    try {
+        Assert-TicketboxPostgresqlExportedSnapshotSessionAlive `
+            -Process $Process
     }
+    catch {
+        throw "C07 recovery exported snapshot 未保持 live transaction。"
+    }
+    $deadlineEvidence =
+        Assert-TicketboxPostgresqlExportedSnapshotDeadlineEvidence `
+            -Evidence $timeoutContract `
+            -ExpectedAbsoluteDeadlineUtc $expectedDeadline `
+            -MaximumRemainingCeilingMilliseconds (
+                $MaximumRemainingCeilingMilliseconds
+            )
     return [pscustomobject]@{
         Process = $Process
         BackendPid = $backendPid
@@ -2050,10 +1845,10 @@ function Read-TicketboxC07RecoverySnapshotProcess {
         Tablespaces = $tablespaces.ToArray()
         Assets = $assets.ToArray()
         TimeoutContract = $timeoutContract
-        AbsoluteDeadlineUtc = $expectedDeadline
-        TransactionDeadlineUtc = $derivedUpperBoundExpiryAt.UtcDateTime.ToString("o")
+        AbsoluteDeadlineUtc = [string]$deadlineEvidence.AbsoluteDeadlineUtc
+        TransactionDeadlineUtc = [string]$deadlineEvidence.TransactionDeadlineUtc
         SnapshotExporterTransactionStartedUtc =
-            $transactionStartedAt.UtcDateTime.ToString("o")
+            [string]$deadlineEvidence.SnapshotExporterTransactionStartedUtc
     }
 }
 
@@ -2072,18 +1867,31 @@ function Open-TicketboxC07RecoverySnapshot {
                 -Password $PlainPassword `
                 -Action {
                     param([string]$ProtectedDatabaseUrl)
-                    $process = Start-TicketboxC07RecoverySnapshotProcess `
+                    $operationId =
+                        [string]$Context.Authority.Receipt.operation_id
+                    $sqlCommands = @(
+                        Get-TicketboxC07RecoverySnapshotPreflightSql `
+                            -OperationId $operationId `
+                            -MaintenanceDeadlineUtc (
+                                [string]$lifetime.MaintenanceDeadlineUtc
+                            ) `
+                            -MaximumRemainingCeilingMilliseconds (
+                                [int]$lifetime.MaximumRemainingCeilingMilliseconds
+                            )
+                        Get-TicketboxC07RecoverySnapshotSql `
+                            -OperationId $operationId `
+                            -MaintenanceDeadlineUtc (
+                                [string]$lifetime.MaintenanceDeadlineUtc
+                            ) `
+                            -MaximumRemainingCeilingMilliseconds (
+                                [int]$lifetime.MaximumRemainingCeilingMilliseconds
+                            )
+                    )
+                    $process =
+                        Start-TicketboxPostgresqlExportedSnapshotSession `
                         -PsqlPath $Context.DatabaseAuthority.PsqlPath `
                         -ProtectedDatabaseUrl $ProtectedDatabaseUrl `
-                        -OperationId (
-                            [string]$Context.Authority.Receipt.operation_id
-                        ) `
-                        -MaintenanceDeadlineUtc (
-                            [string]$lifetime.MaintenanceDeadlineUtc
-                        ) `
-                        -MaximumRemainingCeilingMilliseconds (
-                            [int]$lifetime.MaximumRemainingCeilingMilliseconds
-                        )
+                        -SqlCommands $sqlCommands
                     try {
                         return Read-TicketboxC07RecoverySnapshotProcess `
                             -Process $process `
@@ -2102,12 +1910,20 @@ function Open-TicketboxC07RecoverySnapshot {
                             )
                     }
                     catch {
-                        if (-not $process.HasExited) {
-                            $process.Kill()
-                            [void]$process.WaitForExit(10000)
+                        $startupFailure = $_
+                        try {
+                            Stop-TicketboxPostgresqlExportedSnapshotSession `
+                                -Process $process `
+                                -WaitTimeoutMilliseconds 10000
                         }
-                        $process.Dispose()
-                        throw
+                        catch {
+                            throw (
+                                "C07 snapshot startup 失败，且 holder cleanup 失败：" +
+                                "$($startupFailure.Exception.Message); " +
+                                $_.Exception.Message
+                            )
+                        }
+                        throw $startupFailure
                     }
                 }
         }
@@ -2115,16 +1931,22 @@ function Open-TicketboxC07RecoverySnapshot {
 
 function Assert-TicketboxC07RecoverySnapshotAlive {
     param([Parameter(Mandatory = $true)][object]$Snapshot)
-    if ($null -eq $Snapshot.Process -or $Snapshot.Process.HasExited) {
+    if ($null -eq $Snapshot.Process) {
+        throw "C07 recovery PostgreSQL exported snapshot 已失效。"
+    }
+    try {
+        Assert-TicketboxPostgresqlExportedSnapshotSessionAlive `
+            -Process $Snapshot.Process
+    }
+    catch {
         throw "C07 recovery PostgreSQL exported snapshot 已失效。"
     }
     $transactionDeadline =
-        ConvertTo-TicketboxC07RecoveryEvidenceTimestampUtc `
+        ConvertTo-TicketboxPostgresqlExportedSnapshotUtc `
             -Value ([string]$Snapshot.TransactionDeadlineUtc) `
             -Label "C07 recovery snapshot transaction deadline"
     if ([DateTimeOffset]::UtcNow -ge $transactionDeadline) {
-        $Snapshot.Process.Kill()
-        [void]$Snapshot.Process.WaitForExit(10000)
+        Close-TicketboxC07RecoverySnapshot $Snapshot
         throw "C07 recovery PostgreSQL exported snapshot 超过 transaction deadline。"
     }
 }
@@ -2134,16 +1956,41 @@ function Close-TicketboxC07RecoverySnapshot {
     if ($null -eq $Snapshot -or $null -eq $Snapshot.Process) { return }
     $process = $Snapshot.Process
     try {
-        if (-not $process.HasExited) {
-            $process.Kill()
-            if (-not $process.WaitForExit(10000)) {
-                throw "C07 recovery snapshot session 无法在有界时间内退出。"
-            }
-        }
+        Stop-TicketboxPostgresqlExportedSnapshotSession `
+            -Process $process `
+            -WaitTimeoutMilliseconds 10000
     }
     finally {
-        $process.Dispose()
+        $Snapshot.Process = $null
     }
+}
+
+function Close-TicketboxC07RecoverySnapshotAndRethrowFailure {
+    param(
+        [AllowNull()][object]$Snapshot,
+        [Parameter(Mandatory = $true)][Exception]$Failure,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+    try {
+        Close-TicketboxC07RecoverySnapshot $Snapshot
+    }
+    catch {
+        $cleanupFailure = $_.Exception
+        $combined = [InvalidOperationException]::new(
+            (
+                "$Context；snapshot cleanup 失败：" +
+                $cleanupFailure.Message
+            ),
+            $Failure
+        )
+        $combined.Data['snapshot_cleanup_exception'] =
+            $cleanupFailure.ToString()
+        throw $combined
+    }
+    [Runtime.ExceptionServices.ExceptionDispatchInfo]::Capture(
+        $Failure
+    ).Throw()
+    throw "unreachable"
 }
 
 function ConvertTo-TicketboxC07RecoveryUnsignedInt64 {
@@ -4184,7 +4031,7 @@ function Invoke-TicketboxC07RecoveryGeneration {
         if ($partialCreated -or (Test-Path -LiteralPath $context.Paths.PartialRoot)) {
             $cleanup = Clear-TicketboxC07RecoveryPartialGeneration $context
             if ($cleanup.State -cne "cleaned") {
-                throw [InvalidOperationException]::new(
+                $failure = [InvalidOperationException]::new(
                     (
                         "C07 recovery generation 失败且 cleanup_pending；" +
                         "原错误已保留在 exception chain。"
@@ -4193,10 +4040,10 @@ function Invoke-TicketboxC07RecoveryGeneration {
                 )
             }
         }
-        [Runtime.ExceptionServices.ExceptionDispatchInfo]::Capture(
-            $failure
-        ).Throw()
-        throw "unreachable"
+        Close-TicketboxC07RecoverySnapshotAndRethrowFailure `
+            -Snapshot $snapshot `
+            -Failure $failure `
+            -Context "C07 recovery generation 失败"
     }
     finally {
         if ($null -ne $snapshot) {
@@ -7415,16 +7262,16 @@ function Invoke-TicketboxC07TargetRecoveryGeneration {
         ) {
             $cleanup = Clear-TicketboxC07RecoveryPartialGeneration $context
             if ($cleanup.State -cne "cleaned") {
-                throw [InvalidOperationException]::new(
+                $failure = [InvalidOperationException]::new(
                     "C07 target generation 失败且 cleanup_pending。",
                     $failure
                 )
             }
         }
-        [Runtime.ExceptionServices.ExceptionDispatchInfo]::Capture(
-            $failure
-        ).Throw()
-        throw "unreachable"
+        Close-TicketboxC07RecoverySnapshotAndRethrowFailure `
+            -Snapshot $snapshot `
+            -Failure $failure `
+            -Context "C07 target generation 失败"
     }
     finally {
         if ($null -ne $snapshot) {
