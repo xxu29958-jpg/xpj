@@ -1408,12 +1408,18 @@ def test_migrator_window_is_renewed_before_every_resumed_migration() -> None:
     fresh = _function(source, "Initialize-TicketboxC07FreshDatabaseAuthority")
     legacy = _function(source, "Invoke-TicketboxC07LegacyDatabaseAdoption")
     assert role_sql.count("VALID UNTIL '$validUntil'") == 2
-    assert production.index("Renew-TicketboxC07RoleCredentialWindow") < production.index(
+    assert production.index(
+        "Renew-TicketboxC07FrozenMigratorCredentialWindow"
+    ) < production.index(
         "$migrationEvidence = & $MigrationAction"
     )
-    assert fresh.index("Renew-TicketboxC07RoleCredentialWindow") < fresh.index(
+    assert fresh.index(
+        "Renew-TicketboxC07FrozenMigratorCredentialWindow"
+    ) < fresh.index(
         "return Get-TicketboxC07DatabaseCatalogObservation"
     )
-    assert legacy.index("Renew-TicketboxC07RoleCredentialWindow") < legacy.index(
+    assert legacy.index(
+        "Renew-TicketboxC07FrozenMigratorCredentialWindow"
+    ) < legacy.index(
         "return Get-TicketboxC07DatabaseCatalogObservation"
     )

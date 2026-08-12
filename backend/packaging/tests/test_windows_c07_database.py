@@ -156,7 +156,7 @@ function Assert-TicketboxC07FreshPreflight {{
     $script:observedOperationIds.Add($OperationId)
     return [pscustomobject]@{{ Phase = 'authority_ready' }}
 }}
-function Renew-TicketboxC07RoleCredentialWindow {{
+function Renew-TicketboxC07FrozenMigratorCredentialWindow {{
     param(
         $Authority,
         $SuperuserPassword,
@@ -173,6 +173,11 @@ function Get-TicketboxC07DatabaseCatalogObservation {{
     param($Authority, $SuperuserPassword, $Database)
     return [pscustomobject]@{{ State = 'ready' }}
 }}
+function Get-TicketboxC07WriterDatabaseFenceObservation {{
+    param($AuthorityPhase)
+    return [pscustomobject]@{{ AuthorityPhase = 'managed_frozen' }}
+}}
+function Assert-TicketboxC07WriterDatabaseFence {{ param($Observation) }}
 
 $result = Initialize-TicketboxC07FreshDatabaseAuthority `
     -SuperuserPassword $null `
@@ -567,6 +572,8 @@ $script:activeRoleCatalogCalls = 0
 $script:retiredRoleCatalogCalls = 0
 $script:credentialWindowExpired = $false
 $script:allowRetiredRenewal = $false
+$script:runtimeAuthorityPhase = 'managed_frozen'
+$script:runtimeAclMarkerResponseLoss = $false
 $script:expectedTargetRecoveryOperation = $operation
 $script:catalog = [pscustomobject]@{{
     ClusterSystemIdentifier = '7123456789012345678'
@@ -726,6 +733,13 @@ function Set-TicketboxC07DatabaseMarker {{
     )
     $script:catalog.Marker = $Marker
     $script:markerWrites += 1
+    if (
+        $Label -ceq 'C07 production runtime ACL durable verification' -and
+        $script:runtimeAclMarkerResponseLoss
+    ) {{
+        $script:runtimeAclMarkerResponseLoss = $false
+        throw 'injected response loss after runtime ACL marker commit'
+    }}
 }}
 function Get-TicketboxC07MigratorRetirementState {{
     param([object]$Authority, [Security.SecureString]$SuperuserPassword)
@@ -744,6 +758,10 @@ function Invoke-TicketboxC07Sql {{
         [string]$Label,
         [int]$TimeoutMilliseconds = 600000
     )
+    if ($Label -ceq 'C07 controlled runtime admission publication') {{
+        $script:runtimeAuthorityPhase = 'published_runtime'
+        return ''
+    }}
     if ($Label -ceq 'C07 retired role catalog verification') {{
         if (-not $script:retired) {{
             throw 'retired role catalog was verified before migrator retirement'
@@ -779,7 +797,13 @@ function Assert-TicketboxC07RoleCredentials {{
         throw 'expired migrator credential reached authenticated probe'
     }}
 }}
-function Renew-TicketboxC07RoleCredentialWindow {{
+function Assert-TicketboxC07MigratorCredential {{
+    param([object]$Authority, [Security.SecureString]$MigratorPassword)
+    if ($script:credentialWindowExpired) {{
+        throw 'expired migrator credential reached authenticated probe'
+    }}
+}}
+function Renew-TicketboxC07FrozenMigratorCredentialWindow {{
     param(
         [object]$Authority,
         [Security.SecureString]$SuperuserPassword,
@@ -846,6 +870,26 @@ function Get-TicketboxC07ProductionLiveState {{
 }}
 function Assert-TicketboxC07RuntimeCredential {{
     param([object]$Authority, [Security.SecureString]$RuntimePassword)
+}}
+function Get-TicketboxC07WriterDatabaseFenceObservation {{
+    param([string]$AuthorityPhase)
+    return [pscustomobject]@{{
+        AuthorityPhase = $AuthorityPhase
+        OtherClientSessionCount = 0
+        ClientSessions = @()
+    }}
+}}
+function Resolve-TicketboxC07ManagedOrPublishedWriterFenceObservation {{
+    return [pscustomobject]@{{
+        AuthorityPhase = $script:runtimeAuthorityPhase
+    }}
+}}
+function Assert-TicketboxC07WriterDatabaseFence {{ param($Observation) }}
+function Assert-TicketboxC07PublishedDatabaseAuthority {{ param($Observation) }}
+function Enter-TicketboxC07CurrentWriterDatabaseFence {{
+    param($Authority, $AuthorityPhase)
+    $script:runtimeAuthorityPhase = 'managed_frozen'
+    return Get-TicketboxC07WriterDatabaseFenceObservation $AuthorityPhase
 }}
 $recoveryGeneration = [pscustomobject]@{{ Payload = [pscustomobject]@{{}} }}
 $migrationAction = {{
@@ -999,6 +1043,75 @@ if (
     $script:markerWrites -ne ($writesAfterFirst + 1)
 ) {{
     throw 'takeover re-entry reran DDL or failed to rebind READY evidence'
+}}
+
+# A server-side marker commit followed by response loss is ambiguous at the
+# transport boundary.  Compensation must leave the live role state frozen,
+# and the next call must classify that exact residue and replay admission.
+$script:revision = $target
+$script:retired = $false
+$script:credentialWindowExpired = $false
+$script:runtimeAuthorityPhase = 'managed_frozen'
+$script:runtimeAclMarkerResponseLoss = $true
+$script:catalog.Marker = New-TicketboxC07ProductionMarker `
+    -OperationId $operation `
+    -Mode 'fresh_install' `
+    -Phase 'migration_completed' `
+    -Catalog $script:catalog `
+    -ExpectedSourceRevision $source `
+    -TargetRevision $target `
+    -RecoveryManifestSha256 $script:recovery.ManifestSha256 `
+    -MigrationEvidenceSha256 $first.migration_evidence_sha256
+$lossFailure = $null
+try {{
+    Invoke-TicketboxC07ProductionAuthorityCoordinator `
+        -SuperuserPassword $superuserSecret `
+        -RuntimePassword $runtimeSecret `
+        -MigratorPassword $migratorSecret `
+        -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(30)) `
+        -OperationId $operation `
+        -Mode 'fresh_install' `
+        -ExpectedSourceRevision $source `
+        -TargetRevision $target `
+        -RecoveryGeneration $recoveryGeneration `
+        -TargetRecoveryGeneration $targetRecoveryGeneration `
+        -LifecycleAuthority (New-TestLifecycleBinding ('6' * 64) $true) `
+        -MigrationAction $migrationAction | Out-Null
+}}
+catch {{ $lossFailure = $_.Exception }}
+$lossMarker = @(([string]$script:catalog.Marker).Split([char]'|'))
+if (
+    $null -eq $lossFailure -or
+    $lossFailure.Message -notmatch 'response loss' -or
+    $lossMarker[3] -cne 'runtime_acl_verified' -or
+    $script:runtimeAuthorityPhase -cne 'managed_frozen' -or
+    $script:retired
+) {{
+    throw (
+        'ambiguous marker commit did not fail closed with durable residue: ' +
+        "failure=$($lossFailure.Message); phase=$($lossMarker[3]); " +
+        "authority=$script:runtimeAuthorityPhase; retired=$script:retired"
+    )
+}}
+$resumedAfterLoss = Invoke-TicketboxC07ProductionAuthorityCoordinator `
+    -SuperuserPassword $superuserSecret `
+    -RuntimePassword $runtimeSecret `
+    -MigratorPassword $migratorSecret `
+    -MigratorValidUntilUtc ([DateTime]::UtcNow.AddMinutes(30)) `
+    -OperationId $operation `
+    -Mode 'fresh_install' `
+    -ExpectedSourceRevision $source `
+    -TargetRevision $target `
+    -RecoveryGeneration $recoveryGeneration `
+    -TargetRecoveryGeneration $targetRecoveryGeneration `
+    -LifecycleAuthority (New-TestLifecycleBinding ('6' * 64) $true) `
+    -MigrationAction $migrationAction
+if (
+    $resumedAfterLoss.result -cne 'production_authority_ready' -or
+    $script:runtimeAuthorityPhase -cne 'published_runtime' -or
+    -not $script:retired
+) {{
+    throw 'ambiguous marker commit retry did not reconcile to published authority'
 }}
 
 $script:retired = $false

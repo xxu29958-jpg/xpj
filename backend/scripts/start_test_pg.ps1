@@ -338,7 +338,7 @@ if (-not $alreadyUp) {
         $provisioningInstanceId = [Guid]::Empty
     }
     Remove-XpjStalePostmasterIdentity -DataDir $DataDir -PostgresExe $postgresExe
-    $opts = "-p $Port -c listen_addresses=localhost -c fsync=off -c synchronous_commit=off -c full_page_writes=off"
+    $opts = "-p $Port -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off -c full_page_writes=off"
     $startEnvironment = Enter-XpjCleanPostgresEnvironment
     try {
         $startAttemptedByInvocation = $true
