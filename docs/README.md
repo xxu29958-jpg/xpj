@@ -12,19 +12,20 @@
 | 看某个具体技术选型为什么这么定 | [DECISIONS/](DECISIONS/)（人读索引见 [DECISIONS/README.md](DECISIONS/README.md)，机器状态/关系查询见 [adr-registry.json](current/adr-registry.json)）|
 | 拿设计稿原图与色板预览 | [design_reference/](design_reference/) |
 
-## 必读顺序（与 [AGENTS.md](../AGENTS.md) 一致）
+## 渐进阅读（与 [AGENTS.md](../AGENTS.md) 一致）
 
-1. [rules/ENGINEERING_RULES.md](rules/ENGINEERING_RULES.md) — 工程规范，单一权威
-2. [architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md) — 完整架构
-3. [architecture/PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md) — 项目结构
-4. [architecture/API.md](architecture/API.md) — 后端 API 契约
-5. [architecture/SECURITY.md](architecture/SECURITY.md) — 安全说明
-6. [rules/REFERENCES.md](rules/REFERENCES.md) — 官方资料与依赖来源
-7. 与当前任务相关的 [DECISIONS/](DECISIONS/)（[adr-registry.json](current/adr-registry.json) 只用于定位状态/关系）
-8. 修改 ADR/治理工具时再读 [rules/ADR_CONTRACT_STANDARD.md](rules/ADR_CONTRACT_STANDARD.md)
+先恢复用户当前 Goal、Owner 裁决和任务专属合同，再按责任选读项目文档；不要为机械合规而每次通读整本
+ARCHITECTURE / API。先用目录、版本 / 最近变更和搜索定位，随后完整读取当前责任实际依赖的章节：
 
-后端 / Android 任务的具体补充已合并入 [rules/ENGINEERING_RULES.md](rules/ENGINEERING_RULES.md) §14。
-OCR / 分类 / 重复检测 / 缩略图任务追加：[roadmap/V2_ROADMAP.md](roadmap/V2_ROADMAP.md)
+1. [rules/ENGINEERING_RULES.md](rules/ENGINEERING_RULES.md) — 定位后完整读取当前责任章节及其明确引用；后端 / Android 补充见 §14
+2. [architecture/](architecture/) — 当前任务涉及的架构、结构、API 或安全章节
+3. [rules/REFERENCES.md](rules/REFERENCES.md) — 当前机制对应的官方资料和依赖来源
+4. [DECISIONS/](DECISIONS/) — 用 [adr-registry.json](current/adr-registry.json) 和索引定位；选中后完整读取并复核真实代码
+5. [rules/ADR_CONTRACT_STANDARD.md](rules/ADR_CONTRACT_STANDARD.md) — 仅在修改 ADR / 治理工具时完整读取
+
+只有任务横跨整份文档、修改文档本身或上位合同明确要求时才整本读取。历史文档与旧实现都是审计对象，
+不能覆盖当前 Goal、Owner 裁决、官方语义和真实运行事实。OCR / 分类 / 重复检测 / 缩略图任务追加读取
+[roadmap/V2_ROADMAP.md](roadmap/V2_ROADMAP.md) 的相关章节。
 
 ## 版本真值源
 
