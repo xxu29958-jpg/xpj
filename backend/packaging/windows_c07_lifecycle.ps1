@@ -1581,6 +1581,10 @@ function New-TicketboxC07ReadyVerification {
         -AuthorityPhase "published_runtime"
     $intent = Read-TicketboxC07WriterFenceIntent $Authority
     Assert-TicketboxC07PublishedDatabaseAuthority -Observation $database
+    Assert-TicketboxC07PublishedReadyRoleIdentityAuthority `
+        -Authority $Authority `
+        -Intent $intent `
+        -ReadyRoles @($database.Roles)
     if (
         $serviceState.ToLowerInvariant() -cne "stopped" -or
         $servicePolicy.ToLowerInvariant() -cne "disabled" -or
@@ -1658,6 +1662,55 @@ function New-TicketboxC07ReadyVerification {
         -Path $path `
         -ArtifactKind "ready_verification" `
         -Payload $payload
+}
+
+function Assert-TicketboxC07PublishedReadyRoleIdentityAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object[]]$ReadyRoles
+    )
+
+    if (-not (Test-TicketboxC07PublishedReadyRoleIdentityTransition `
+        -Intent $Intent `
+        -ReadyRoles $ReadyRoles)) {
+        throw "C07 published READY role identities 未绑定 durable writer-fence intent。"
+    }
+    if (
+        [bool]$Intent.IsLegacyV3 -or
+        [string]$Intent.OperationMode -cne "legacy_adoption" -or
+        [string]$Intent.AuthorityPhase -cne "legacy_owner_frozen" -or
+        @($Intent.Roles | Where-Object {
+            [string]$_.name -cin @(
+                $script:TicketboxC07OwnerRole,
+                $script:TicketboxC07MigratorRole,
+                $script:TicketboxC07RuntimeRole
+            )
+        }).Count -ne 0
+    ) {
+        return
+    }
+    $hostAuthority = Resolve-TicketboxC07DatabaseHostAuthority
+    $credential = Get-TicketboxC07DatabaseAuthorityCredential
+    Assert-TicketboxC07LiveHostConnection $hostAuthority $credential
+    $bootstrap = Get-TicketboxC07RoleBootstrapIdentity `
+        -Authority $hostAuthority `
+        -SuperuserPassword $credential `
+        -OperationId ([string]$Authority.Receipt.operation_id) `
+        -Mode "legacy_adoption"
+    $expected = [ordered]@{
+        $script:TicketboxC07OwnerRole = [uint32]$bootstrap.OwnerRoleOid
+        $script:TicketboxC07MigratorRole = [uint32]$bootstrap.MigratorRoleOid
+        $script:TicketboxC07RuntimeRole = [uint32]$bootstrap.RuntimeRoleOid
+    }
+    foreach ($roleName in $expected.Keys) {
+        if (@($ReadyRoles | Where-Object {
+            [string]$_.name -ceq $roleName -and
+            [uint32]$_.oid -eq [uint32]$expected[$roleName]
+        }).Count -ne 1) {
+            throw "C07 published READY 新增 role identity 未绑定本 operation marker。"
+        }
+    }
 }
 
 function Assert-TicketboxC07LiveDatabaseBinding {

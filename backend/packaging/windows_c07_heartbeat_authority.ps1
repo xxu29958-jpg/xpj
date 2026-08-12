@@ -74,6 +74,8 @@ $script:TicketboxC07FreshBootstrapIntentSchema =
     "ticketbox-c07-fresh-bootstrap-intent-v1"
 $script:TicketboxC07HistoricalLegacyRuntimeRole = "ticketbox"
 $script:TicketboxC07HistoricalOwnerRole = "ticketbox_owner"
+$script:TicketboxC07HistoricalMigratorRole = "ticketbox_migrator"
+$script:TicketboxC07ManagedRuntimeRole = "ticketbox_runtime"
 $script:TicketboxC07TargetRevision = "20260729_0001"
 $script:TicketboxC07MaintenanceWindowSeconds = 20 * 60
 $script:TicketboxC07MaximumMaintenanceAttempts = 64
@@ -1082,6 +1084,62 @@ function Test-TicketboxC07WriterFenceRoleIdentitySetEquals {
         }
     }
     return $true
+}
+
+function Test-TicketboxC07PublishedReadyRoleIdentityTransition {
+    param(
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object[]]$ReadyRoles
+    )
+
+    $intentRoles = @($Intent.Roles)
+    if (Test-TicketboxC07WriterFenceRoleIdentitySetEquals $intentRoles $ReadyRoles) {
+        return $true
+    }
+    if (
+        [bool]$Intent.IsLegacyV3 -or
+        [string]$Intent.OperationMode -cne "legacy_adoption" -or
+        [string]$Intent.AuthorityPhase -cne "legacy_owner_frozen"
+    ) {
+        return $false
+    }
+    $targetRoleNames = @(
+        $script:TicketboxC07HistoricalOwnerRole,
+        $script:TicketboxC07HistoricalMigratorRole,
+        $script:TicketboxC07ManagedRuntimeRole
+    )
+    if (@($intentRoles | Where-Object {
+        [string]$_.name -cin $targetRoleNames
+    }).Count -ne 0) {
+        return $false
+    }
+    if ($ReadyRoles.Count -ne $intentRoles.Count + $targetRoleNames.Count) {
+        return $false
+    }
+    foreach ($intentRole in $intentRoles) {
+        if (@($ReadyRoles | Where-Object {
+            [string]$_.name -ceq [string]$intentRole.name -and
+            [int64]$_.oid -eq [int64]$intentRole.oid
+        }).Count -ne 1) {
+            return $false
+        }
+    }
+    $addedRoles = @($ReadyRoles | Where-Object {
+        $readyRole = $_
+        @($intentRoles | Where-Object {
+            [string]$_.name -ceq [string]$readyRole.name -and
+            [int64]$_.oid -eq [int64]$readyRole.oid
+        }).Count -eq 0
+    })
+    return (
+        $addedRoles.Count -eq $targetRoleNames.Count -and
+        @($targetRoleNames | Where-Object {
+            $targetName = $_
+            @($addedRoles | Where-Object {
+                [string]$_.name -ceq $targetName
+            }).Count -ne 1
+        }).Count -eq 0
+    )
 }
 
 function Test-TicketboxC07LegacyV3WriterFenceRoleSetEquals {
@@ -2206,9 +2264,9 @@ function Read-TicketboxC07ReadyVerification([object]$Authority) {
     }
     else {
         Assert-TicketboxC07PublishedReadyRoleSet -Roles $readyRoles
-        Test-TicketboxC07WriterFenceRoleIdentitySetEquals `
-            -Left @($intent.Roles) `
-            -Right $readyRoles
+        Test-TicketboxC07PublishedReadyRoleIdentityTransition `
+            -Intent $intent `
+            -ReadyRoles $readyRoles
     }
     if (
         $readySchema -cnotin @(

@@ -90,17 +90,19 @@ function New-TicketboxPostgresqlWriterFencePredefinedCapabilityGuardSql {
 function New-TicketboxPostgresqlWriterFenceSecurityDefinerGuardSql {
     param(
         [Parameter(Mandatory = $true)][string]$AuthorityRoleSql,
-        [Parameter(Mandatory = $true)][string]$ManagedSchemaSql,
         [Parameter(Mandatory = $true)][string]$AllowedOwnerRolesSql
     )
 
+    $userNamespace =
+        New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql `
+            -NamespaceAlias "namespace"
     return @"
     IF EXISTS (
         SELECT 1
         FROM pg_proc AS routine
         JOIN pg_namespace AS namespace ON namespace.oid = routine.pronamespace
         JOIN pg_roles AS owner_role ON owner_role.oid = routine.proowner
-        WHERE namespace.nspname = $ManagedSchemaSql
+        WHERE $userNamespace
           AND routine.prosecdef
           AND owner_role.rolname <> ALL($AllowedOwnerRolesSql)
     ) THEN
@@ -112,9 +114,10 @@ function New-TicketboxPostgresqlWriterFenceSecurityDefinerGuardSql {
         FROM pg_roles AS role
         JOIN pg_proc AS routine ON routine.proowner <> role.oid
         JOIN pg_namespace AS namespace ON namespace.oid = routine.pronamespace
-        WHERE namespace.nspname = $ManagedSchemaSql
+        WHERE $userNamespace
           AND routine.prosecdef
           AND role.rolname <> $AuthorityRoleSql
+          AND has_schema_privilege(role.oid, namespace.oid, 'USAGE')
           AND has_function_privilege(role.oid, routine.oid, 'EXECUTE')
     ) THEN
         RAISE EXCEPTION
@@ -132,6 +135,9 @@ function New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql {
     $relationWriteAuthority =
         New-TicketboxPostgresqlWriterFenceRelationWriteAuthoritySql `
             -RoleOidSql "role.oid"
+    $userNamespace =
+        New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql `
+            -NamespaceAlias "namespace"
     return @"
     IF EXISTS (
         SELECT 1
@@ -182,12 +188,15 @@ function New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql {
                   SELECT 1 FROM pg_proc AS routine
                   JOIN pg_namespace AS namespace
                     ON namespace.oid = routine.pronamespace
-                  WHERE namespace.nspname = $ManagedSchemaSql
+                  WHERE $userNamespace
                     AND routine.prosecdef
                     AND (
                         routine.proowner = role.oid
                         OR (
                             routine.proowner <> role.oid
+                            AND has_schema_privilege(
+                                role.oid, namespace.oid, 'USAGE'
+                            )
                             AND has_function_privilege(
                                 role.oid, routine.oid, 'EXECUTE'
                             )

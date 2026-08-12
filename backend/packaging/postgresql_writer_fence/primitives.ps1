@@ -58,6 +58,20 @@ function ConvertTo-TicketboxPostgresqlWriterFenceTextArray {
     return "ARRAY[" + ($literals -join ", ") + "]::text[]"
 }
 
+function New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql {
+    param([Parameter(Mandatory = $true)][string]$NamespaceAlias)
+
+    if ($NamespaceAlias -cnotmatch '^[a-z][a-z0-9_]*$') {
+        throw "PostgreSQL writer-fence namespace alias is not trusted."
+    }
+    return @"
+(
+    $NamespaceAlias.nspname <> 'information_schema'
+    AND $NamespaceAlias.nspname !~ '^pg_'
+)
+"@
+}
+
 function New-TicketboxPostgresqlWriterFenceRelationWriteAuthoritySql {
     param([Parameter(Mandatory = $true)][string]$RoleOidSql)
 

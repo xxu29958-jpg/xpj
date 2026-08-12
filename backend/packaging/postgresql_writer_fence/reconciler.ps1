@@ -53,7 +53,6 @@ function Invoke-TicketboxPostgresqlWriterFenceReconcile {
         -ManagedRolesSql $managedRoles
     $securityDefinerGuard = New-TicketboxPostgresqlWriterFenceSecurityDefinerGuardSql `
         -AuthorityRoleSql $authority `
-        -ManagedSchemaSql $schema `
         -AllowedOwnerRolesSql $allowedOwners
     $unregisteredWriterGuard = `
         New-TicketboxPostgresqlWriterFenceUnregisteredWriterGuardSql `

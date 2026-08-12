@@ -225,6 +225,9 @@ def test_writer_fence_has_small_c07_free_components_and_retires_old_mechanics() 
         "view_capability.is_updatable = 'YES'",
         "view_capability.is_trigger_updatable = 'YES'",
         "view_capability.is_trigger_deletable = 'YES'",
+        "$NamespaceAlias.nspname <> 'information_schema'",
+        "$NamespaceAlias.nspname !~ '^pg_'",
+        "has_schema_privilege(role.oid, namespace.oid, 'USAGE')",
     ):
         assert required in generic
     assert generic.count("relation.relkind IN ('r', 'p', 'f', 'S', 'v')") == 3
@@ -233,6 +236,9 @@ def test_writer_fence_has_small_c07_free_components_and_retires_old_mechanics() 
         "FROM information_schema.views AS view_capability"
     ) == 2
     assert generic.count("has_any_column_privilege(") == 6
+    assert generic.count("New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql") == 4
+    assert generic.count("$NamespaceAlias.nspname <> 'information_schema'") == 1
+    assert generic.count("$NamespaceAlias.nspname !~ '^pg_'") == 1
     assert "OR (\n            NOT EXISTS (" in generic
 
     authority_source = (PACKAGING / "windows_c07_heartbeat_authority.ps1").read_text(
@@ -527,6 +533,9 @@ function Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile {{
         "pg_has_role(role.oid, predefined.oid, 'SET')",
         "routine.prosecdef",
         "has_function_privilege(role.oid, routine.oid, 'EXECUTE')",
+        "has_schema_privilege(role.oid, namespace.oid, 'USAGE')",
+        "namespace.nspname <> 'information_schema'",
+        "namespace.nspname !~ '^pg_'",
         "SECURITY DEFINER routine owner is outside the allowed authority policy"
     )) {{
         if (-not $Sql.Contains($required)) {{ throw "missing SQL contract: $required" }}

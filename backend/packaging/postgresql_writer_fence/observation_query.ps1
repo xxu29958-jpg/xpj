@@ -18,6 +18,9 @@ function New-TicketboxPostgresqlWriterFenceObservationSql {
     $relationWriteAuthority =
         New-TicketboxPostgresqlWriterFenceRelationWriteAuthoritySql `
             -RoleOidSql "role.oid"
+    $userNamespace =
+        New-TicketboxPostgresqlWriterFenceUserNamespacePredicateSql `
+            -NamespaceAlias "namespace"
     return @"
 SET application_name = $application;
 SET statement_timeout = '$($StatementTimeoutMilliseconds)ms';
@@ -65,7 +68,7 @@ user_roles AS MATERIALIZED (
             FROM pg_proc AS routine
             JOIN pg_namespace AS namespace
               ON namespace.oid = routine.pronamespace
-            WHERE namespace.nspname = $schema
+            WHERE $userNamespace
               AND routine.prosecdef
               AND routine.proowner = role.oid
         ) AS owns_security_definer_routines,
@@ -74,9 +77,10 @@ user_roles AS MATERIALIZED (
             FROM pg_proc AS routine
             JOIN pg_namespace AS namespace
               ON namespace.oid = routine.pronamespace
-            WHERE namespace.nspname = $schema
+            WHERE $userNamespace
               AND routine.prosecdef
               AND routine.proowner <> role.oid
+              AND has_schema_privilege(role.oid, namespace.oid, 'USAGE')
               AND has_function_privilege(role.oid, routine.oid, 'EXECUTE')
         ) AS can_execute_unowned_security_definer_routines,
         EXISTS (
@@ -139,7 +143,7 @@ user_roles AS MATERIALIZED (
                 FROM pg_proc AS routine
                 JOIN pg_namespace AS namespace
                   ON namespace.oid = routine.pronamespace
-                WHERE namespace.nspname = $schema
+                WHERE $userNamespace
                   AND routine.prosecdef
             ) AS write_owner
             WHERE write_owner.owner_oid <> role.oid
