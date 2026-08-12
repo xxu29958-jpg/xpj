@@ -1238,7 +1238,11 @@ try {{
     $exitedDuringIdentityReadIsAlive = Test-TicketboxOwnerHandoffProcessIsAlive `
         -Record $stillOld `
         -ProcessReader {{ param($ProcessId) $liveOwner }} `
-        -HasExitedReader {{ $script:exitChecks++; return $script:exitChecks -ge 2 }}
+        -HasExitedReader {{
+            param($Process)
+            $script:exitChecks = $script:exitChecks + 1
+            return $script:exitChecks -ge 2
+        }}
     if ($exitedDuringIdentityReadIsAlive) {{ throw 'owner exit during identity read was missed' }}
 }}
 finally {{
