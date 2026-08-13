@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 
 import app.services.identity_service as identity_service
 from app.config import get_settings
-from app.database import Base, SessionLocal, engine, init_db
+from app.database import SessionLocal, engine, init_db
+from app.database_model_registry import Base
 from app.main import app
 from app.models import (
     Account,

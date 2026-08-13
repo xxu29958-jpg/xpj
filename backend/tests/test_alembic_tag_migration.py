@@ -22,7 +22,8 @@ from uuid import UUID
 import pytest
 from sqlalchemy import inspect, text
 
-from app.database import Base, engine, seed_identity_data
+from app.database import engine, seed_identity_data
+from app.database_model_registry import Base
 from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db

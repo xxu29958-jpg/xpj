@@ -255,7 +255,7 @@ def test_pr_delta_flags_extra_and_unreadable_base_independently(
 
 def test_mutate_token_ledger_is_consistent_with_live_tables() -> None:
     import app.main  # noqa: F401 — importing the app registers every model on Base.metadata
-    from app.database import Base
+    from app.database_model_registry import Base
 
     ledger = importlib.reload(importlib.import_module("_mutate_token_ledger"))
     real_tables = set(Base.metadata.tables.keys())

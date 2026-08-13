@@ -9,8 +9,9 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, text
 
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal, engine
 from app.database import _managed_schema_upgrade as managed_schema
+from app.database_model_registry import Base
 from app.services.identity_service import bootstrap_installation_owner
 from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
 

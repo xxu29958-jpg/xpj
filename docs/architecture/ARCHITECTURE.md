@@ -102,9 +102,11 @@ backend/
   app/
     main.py
     config.py
-    database.py
-    models.py
-    schemas.py
+    database_model_registry.py
+    tenant_contract.py
+    database/
+    models/
+    schemas/
     auth.py
     errors.py
     tenants.py
@@ -130,9 +132,11 @@ backend/
 
 - `main.py`：创建 FastAPI app、注册路由、注册统一异常处理。
 - `config.py`：读取 `.env` 或环境变量。
-- `database.py`：PostgreSQL engine、session、建表入口。
-- `models.py`：数据库 ORM 模型（含 Account、Ledger、Device、AuthToken、UploadLink、PairingCode）。
-- `schemas.py`：Pydantic 请求和响应模型。
+- `database_model_registry.py`：唯一 SQLAlchemy declarative registry / metadata owner；导入不得读取 runtime 配置、创建 engine 或连接数据库。
+- `tenant_contract.py`：模型与运行期共享的稳定 tenant identity 常量；不得读取机器配置或执行 I/O。
+- `database/`：PostgreSQL engine、session 与数据库生命周期；不拥有或重新导出 declarative metadata。
+- `models/`：按领域组织 ORM 模型，全部显式继承 `database_model_registry.Base`。
+- `schemas/`：按领域组织 Pydantic 请求和响应模型。
 - `auth.py`：`Authorization: Bearer` 校验、旧版 token 检测。
 - `tenants.py`：`AuthContext` 运行时身份上下文。
 - `errors.py`：统一错误结构。

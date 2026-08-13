@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -10,10 +9,8 @@ from typing import TypeAlias
 
 from app.config import get_settings
 from app.errors import AppError
+from app.tenant_contract import DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, TENANT_ID_PATTERN
 
-DEFAULT_TENANT_ID = "owner"
-DEFAULT_TENANT_NAME = "我的小票夹"
-TENANT_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 TenantConfigEntry: TypeAlias = Mapping[str, object]
 
 

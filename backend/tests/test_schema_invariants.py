@@ -11,7 +11,7 @@ from __future__ import annotations
 from sqlalchemy import DateTime
 
 import app.models  # noqa: F401  (populate Base.metadata)
-from app.database import Base
+from app.database_model_registry import Base
 
 
 def test_no_naive_datetime_columns_exist() -> None:

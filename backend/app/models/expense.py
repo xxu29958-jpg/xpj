@@ -22,7 +22,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database_model_registry import Base
 from app.fx_constants import (
     DEFAULT_HOME_CURRENCY_CODE,
     FX_SOURCE_BASE,
@@ -32,7 +32,7 @@ from app.fx_constants import (
 )
 from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
-from app.tenants import DEFAULT_TENANT_ID
+from app.tenant_contract import DEFAULT_TENANT_ID
 
 
 class Expense(Base):

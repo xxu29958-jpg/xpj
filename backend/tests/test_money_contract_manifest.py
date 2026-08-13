@@ -12,7 +12,7 @@ from sqlalchemy import BigInteger, CheckConstraint
 
 import app.models  # noqa: F401
 from app import money_contract_manifest, money_contract_types
-from app.database import Base
+from app.database_model_registry import Base
 from app.errors import AppError, _validation_error_code
 from app.money_contract import (
     MONEY_AGGREGATE_MAX,

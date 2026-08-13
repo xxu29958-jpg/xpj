@@ -1,4 +1,4 @@
-"""Engine, session, and Base for the PostgreSQL store.
+"""Engine and session ownership for the PostgreSQL store.
 
 Everything in this module is loaded by every other ``app.database`` submodule.
 Keep it small and side-effect-light: no validation, no migration, no seeding.
@@ -11,7 +11,7 @@ from collections.abc import Generator
 from fastapi import Request
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine, make_url
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import BACKEND_ROOT, get_settings
 from app.runtime_compatibility_contract import (
@@ -23,7 +23,6 @@ from app.runtime_compatibility_contract import (
 
 __all__ = [
     "BACKEND_ROOT",
-    "Base",
     "SessionLocal",
     "engine",
     "get_db",
@@ -95,10 +94,6 @@ engine = create_engine(
     future=True,
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 def get_db(

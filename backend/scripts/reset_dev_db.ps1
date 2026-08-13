@@ -6,8 +6,10 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $py = @'
 from urllib.parse import urlparse
+from app import models  # noqa: F401 -- populate Base.metadata before drop_all
 from app.config import get_settings
-from app.database import Base, engine, init_db
+from app.database import engine, init_db
+from app.database_model_registry import Base
 host = (urlparse(get_settings().database_url).hostname or "").lower()
 if host not in {"localhost", "127.0.0.1", "::1", ""}:
     raise SystemExit(f"refusing reset: DATABASE_URL host {host!r} is not loopback (dev-only script)")

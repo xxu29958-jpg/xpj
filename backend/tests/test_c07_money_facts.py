@@ -10,7 +10,7 @@ import pytest
 import app.models  # noqa: F401 - register declarative model tables
 from app import c07_money_facts
 from app.database import _c07_app_meta
-from app.database._core import Base
+from app.database_model_registry import Base
 
 
 class _Preparer:
