@@ -1,4 +1,4 @@
-"""Alembic environment — wires app.database into the migration context.
+"""Alembic environment — wires application metadata into the migration context.
 
 Adopted v1.1 (Batch 3). The single source of truth for the database URL
 is :func:`app.config.get_settings`, so this env.py never re-reads
@@ -30,7 +30,7 @@ if str(_BACKEND_ROOT) not in sys.path:
 # before Alembic compares against the database.
 from app import models  # noqa: E402, F401
 from app.config import get_settings  # noqa: E402
-from app.database._core import Base  # noqa: E402
+from app.database_model_registry import Base  # noqa: E402
 
 config = context.config
 _C07_JSON_PROTOCOL_ATTRIBUTE = "ticketbox_c07_json_protocol_v1"

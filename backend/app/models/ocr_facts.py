@@ -38,7 +38,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database_model_registry import Base
 from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 

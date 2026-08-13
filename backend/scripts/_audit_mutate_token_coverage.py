@@ -321,7 +321,7 @@ def main() -> int:
     # Validate the ledger itself now that importing the app has
     # registered every model (so touched_tables can be cross-checked
     # against the live ``__tablename__`` set).
-    from app.database import Base
+    from app.database_model_registry import Base
 
     ledger_problems = validate_ledger(set(Base.metadata.tables.keys()))
     overdue = review_overdue()

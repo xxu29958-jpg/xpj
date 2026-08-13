@@ -14,6 +14,7 @@ from app.database._c07_contract import (
     MIGRATION_LEASE_LABEL,
 )
 from app.database._lifecycle import DatabaseLifecycleKind
+from app.database_model_registry import Base
 
 pytestmark = pytest.mark.real_db
 
@@ -54,7 +55,7 @@ def _catalog_snapshot(db_pkg) -> tuple[tuple[tuple[str, str], ...], tuple[str, .
 
 
 def _patch_database_writes(monkeypatch, db_pkg, calls: list[str]) -> None:
-    monkeypatch.setattr(db_pkg.Base.metadata, "create_all", lambda *a, **k: calls.append("create_all"))
+    monkeypatch.setattr(Base.metadata, "create_all", lambda *a, **k: calls.append("create_all"))
     monkeypatch.setattr(db_pkg, "record_schema_migration", lambda *a, **k: calls.append("seed"))
     monkeypatch.setattr(db_pkg, "seed_identity_data", lambda: calls.append("seed"))
     monkeypatch.setattr(db_pkg, "seed_runtime_data", lambda: calls.append("seed"))
@@ -174,7 +175,7 @@ def test_empty_database_first_start_uses_alembic_only(monkeypatch):
         raise AssertionError("empty first start must not call backup/create_all")
 
     monkeypatch.setattr(backup_service, "create_pre_upgrade_backup", _unexpected)
-    monkeypatch.setattr(db_pkg.Base.metadata, "create_all", _unexpected)
+    monkeypatch.setattr(Base.metadata, "create_all", _unexpected)
     assert db_pkg.inspect_database_lifecycle().kind is DatabaseLifecycleKind.EMPTY
     db_pkg.init_db()
 

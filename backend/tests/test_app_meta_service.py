@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 
 from app.database import SessionLocal
+from app.database_model_registry import Base
 from app.errors import AppError
 from app.services import app_meta_service
 from app.services.app_meta_service import _version_tuple
@@ -79,7 +80,7 @@ def test_binary_rejected_when_db_locked_to_v1_one_higher(
     )
     monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: writes.append("upgrade"))
     monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: writes.append("stamp"))
-    monkeypatch.setattr(db_pkg.Base.metadata, "create_all", lambda *a, **k: writes.append("create_all"))
+    monkeypatch.setattr(Base.metadata, "create_all", lambda *a, **k: writes.append("create_all"))
     monkeypatch.setattr(db_pkg, "record_schema_migration", lambda *a, **k: writes.append("seed"))
     monkeypatch.setattr(db_pkg, "seed_identity_data", lambda: writes.append("seed"))
     monkeypatch.setattr(db_pkg, "seed_runtime_data", lambda: writes.append("seed"))

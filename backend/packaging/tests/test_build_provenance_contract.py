@@ -1078,6 +1078,9 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         assert f'"{standalone_dependency}"' in backend_spec
     assert "sys.path.insert(0, BACKEND)" in backend_spec
     assert 'collect_submodules("app", on_error="raise")' in backend_spec
+    assert '"app.database_model_registry"' in backend_spec
+    assert '"app.tenant_contract"' in backend_spec
+    assert 'Frozen backend archive omitted required metadata module: $requiredModule' in backend_build
     assert 'name="ticketbox-c07-migrator"' in backend_spec
     assert '$stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"' in backend_build
     smoke_call = backend_build.index("$c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke")

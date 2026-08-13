@@ -40,9 +40,11 @@ backend\
   app\
     main.py
     config.py
-    database.py
-    models.py
-    schemas.py
+    database_model_registry.py  # SQLAlchemy declarative registry/metadata；不得初始化 runtime DB
+    tenant_contract.py          # 无 I/O 的稳定 tenant identity 常量合同
+    database\                   # PostgreSQL engine/session 与数据库生命周期
+    models\                     # 按领域组织的 ORM 模型，统一注册到 database_model_registry.Base
+    schemas\                    # 按领域组织的 Pydantic 请求/响应模型
     auth.py
     errors.py
     routes\

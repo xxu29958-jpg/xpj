@@ -1,10 +1,10 @@
 """Database package facade.
 
-Public API is unchanged from the pre-split monolithic ``app.database`` module:
-external callers still import ``Base``, ``SessionLocal``, ``engine``,
-``get_db``, ``init_db`` (and a few legacy re-exports like ``BACKEND_ROOT``)
-from ``app.database``. Internals are split across private submodules by
-responsibility — see each ``_*.py`` for what lives where.
+Runtime database callers import ``SessionLocal``, ``engine``, ``get_db``,
+``init_db`` (and a few legacy re-exports like ``BACKEND_ROOT``) from this
+facade. Declarative model registration is deliberately owned by
+``app.database_model_registry`` so importing models does not initialize the
+runtime database.
 
 Nothing here does work at import time except materialising the engine via
 ``_core``. ``init_db`` is the only function that coordinates startup; the
@@ -28,7 +28,6 @@ from app.database._c07_contract import (
 )
 from app.database._core import (
     BACKEND_ROOT,
-    Base,
     SessionLocal,
     engine,
     get_db,
@@ -62,7 +61,6 @@ _logger = logging.getLogger(__name__)
 __all__ = [
     "BACKEND_ROOT",
     "BASELINE_MIGRATION_NAME",
-    "Base",
     "DatabaseMigrationPreflightError",
     "SessionLocal",
     "engine",

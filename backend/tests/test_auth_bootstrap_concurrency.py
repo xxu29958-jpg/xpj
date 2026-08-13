@@ -7,7 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
-from app.database import Base, SessionLocal, engine, init_db
+from app.database import SessionLocal, engine, init_db
+from app.database_model_registry import Base
 from app.errors import AppError
 from app.main import app
 from app.models import AuthToken, PairingCode
