@@ -199,13 +199,24 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller archive inspection failed (exit=$LASTEXITCODE)."
     }
+    $archiveModules = @(
+        $archiveListing |
+            ForEach-Object { $_.ToString() } |
+            Where-Object { $_.Trim().Length -gt 0 }
+    )
+    foreach ($requiredModule in @(
+        "app.database_model_registry",
+        "app.tenant_contract"
+    )) {
+        if (-not @($archiveModules | Where-Object {
+            $_ -match ("'" + [regex]::Escape($requiredModule) + "'$" )
+        })) {
+            throw "Frozen backend archive omitted required metadata module: $requiredModule"
+        }
+    }
     Assert-TicketboxPostgresOnlyFrozenPayload `
         -DistDir $StagingDir `
-        -ArchiveListing @(
-            $archiveListing |
-                ForEach-Object { $_.ToString() } |
-                Where-Object { $_.Trim().Length -gt 0 }
-        )
+        -ArchiveListing $archiveModules
     $c07SmokePayloadSnapshot = Get-TicketboxBackendPayloadSnapshot $StagingDir
     $C07SmokePayloadLocks = @(Enter-TicketboxFileSetReadLocks `
         -Root $StagingDir `

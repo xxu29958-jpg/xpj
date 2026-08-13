@@ -43,6 +43,14 @@ app_hiddenimports = [
 ]
 if "app.c07_money_facts" not in app_hiddenimports:
     raise RuntimeError("C07 frozen helper dependency discovery is incomplete")
+for required_metadata_module in (
+    "app.database_model_registry",
+    "app.tenant_contract",
+):
+    if required_metadata_module not in app_hiddenimports:
+        raise RuntimeError(
+            f"frozen metadata dependency discovery omitted {required_metadata_module}"
+        )
 
 hiddenimports = (
     collect_submodules("uvicorn")
