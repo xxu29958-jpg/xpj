@@ -1,4 +1,4 @@
-"""Frozen source-existing semantic manifest for the C07 money-fact digest."""
+"""Frozen source-existing semantic manifest for canonical money-fact digests."""
 
 from __future__ import annotations
 

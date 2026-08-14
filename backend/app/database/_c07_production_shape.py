@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy import inspect, text
 
-from app.c07_money_facts import canonical_money_facts_sha256
+from app.canonical_money_facts import canonical_money_facts_sha256
 from app.database._c07_production_connection import (
     _revision,
     _run_alembic_upgrade,

@@ -2,15 +2,35 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import text
 
 import app.models  # noqa: F401 - register declarative model tables
-from app import c07_money_facts
-from app.database import _c07_app_meta
+from app import (
+    app_meta_observation,
+    canonical_money_facts,
+    canonical_money_facts_contract,
+)
 from app.database_model_registry import Base
+from tests._infra.database_model_registry_probes import (
+    assert_runtime_database_free_imports,
+)
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+PUBLISHED_MONEY_FACT_VECTOR_SHA256 = (
+    "9700fd8212155284c5c63c1f46e53fbe12463aa30f66c0dfd2cc2717b894ade7"
+)
+PUBLISHED_MONEY_FACT_MANIFEST_SHA256 = (
+    "febe40244bc39b73cfcf6cfc87c3cbf97fcb2db34b1aab98ca765ff361ef1075"
+)
 
 
 class _Preparer:
@@ -30,8 +50,10 @@ class _MoneyConnection:
     ) -> None:
         self.rows = rows
         self.installation_currency = installation_currency
+        self.executions: list[tuple[str, dict[str, object]]] = []
 
     def execute(self, statement, *args, **kwargs):
+        self.executions.append((str(statement), kwargs))
         return iter(self.rows)
 
     def scalar(self, statement, *args, **kwargs):
@@ -59,15 +81,84 @@ class _Inspector:
         ]
 
 
-def test_app_meta_read_stays_behind_database_boundary() -> None:
+def test_app_meta_read_is_a_runtime_database_free_engine_observation() -> None:
     connection = _MoneyConnection([])
 
-    assert _c07_app_meta.read_app_meta_value(connection, "home_currency") == "CNY"
+    assert (
+        app_meta_observation.read_app_meta_value(connection, "home_currency")
+        == "CNY"
+    )
+    app_root = Path(__file__).resolve().parents[1] / "app"
+    assert not (app_root / "c07_money_facts.py").exists()
+    assert not (app_root / "c07_money_facts_contract.py").exists()
+    assert not (app_root / "database" / "_c07_app_meta.py").exists()
+    assert (
+        canonical_money_facts.MONEY_FACTS_SCHEMA
+        == canonical_money_facts_contract.MONEY_FACTS_SCHEMA
+    )
+    assert_runtime_database_free_imports(
+        BACKEND_ROOT,
+        "app.app_meta_observation",
+        "app.canonical_money_facts_contract",
+        "app.canonical_money_facts",
+    )
 
 
-def _install_ledger_manifest(monkeypatch) -> None:
+def test_app_meta_read_ignores_hostile_search_path() -> None:
+    from app.database import engine
+
+    key = f"money_fact_observer_{uuid4().hex}"
+    schema = f"money_fact_decoy_{uuid4().hex}"
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            quoted_schema = connection.dialect.identifier_preparer.quote_identifier(
+                schema
+            )
+            connection.execute(text(f"CREATE SCHEMA {quoted_schema}"))
+            connection.execute(
+                text(
+                    f"CREATE TABLE {quoted_schema}.app_meta "
+                    "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO public.app_meta (key, value, updated_at) "
+                    "VALUES (:key, :value, CURRENT_TIMESTAMP)"
+                ),
+                {"key": key, "value": "public-value"},
+            )
+            connection.execute(
+                text(
+                    f"INSERT INTO {quoted_schema}.app_meta (key, value) "
+                    "VALUES (:key, :value)"
+                ),
+                {"key": key, "value": "decoy-value"},
+            )
+            connection.execute(
+                text(f"SET LOCAL search_path TO {quoted_schema}, public")
+            )
+
+            assert (
+                app_meta_observation.read_app_meta_value(connection, key)
+                == "public-value"
+            )
+        finally:
+            transaction.rollback()
+
+
+def test_published_digest_vector_pins_bytes_and_primary_key_order(
+    monkeypatch,
+) -> None:
+    context_columns = (
+        "unicode_context",
+        "decimal_context",
+        "date_context",
+        "datetime_context",
+    )
     monkeypatch.setattr(
-        c07_money_facts,
+        canonical_money_facts,
         "MONEY_COLUMNS_V1",
         (
             SimpleNamespace(table="ledger_rows", column="amount_cents"),
@@ -75,12 +166,76 @@ def _install_ledger_manifest(monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr(
-        c07_money_facts,
+        canonical_money_facts,
         "MONEY_FACT_TABLES",
         ("ledger_rows",),
     )
     monkeypatch.setattr(
-        c07_money_facts,
+        canonical_money_facts,
+        "MONEY_FACT_CONTEXT_COLUMNS_V1",
+        (("ledger_rows", context_columns),),
+    )
+    monkeypatch.setattr(
+        canonical_money_facts,
+        "inspect",
+        lambda _connection: SimpleNamespace(
+            get_pk_constraint=lambda _table: {"constrained_columns": ["id"]},
+            get_columns=lambda _table: [
+                {"name": name}
+                for name in (
+                    "id",
+                    "amount_cents",
+                    "fee_cents",
+                    *context_columns,
+                )
+            ],
+        ),
+    )
+    connection = _MoneyConnection(
+        [
+            (
+                UUID("11111111-1111-4111-8111-111111111111"),
+                -123,
+                None,
+                "票据-α",
+                Decimal("7.500"),
+                date(2026, 8, 14),
+                datetime(2026, 8, 14, 4, 5, 6, tzinfo=UTC),
+            )
+        ],
+        installation_currency="JPY",
+    )
+
+    assert (
+        canonical_money_facts.canonical_money_facts_sha256(connection)
+        == PUBLISHED_MONEY_FACT_VECTOR_SHA256
+    )
+    assert connection.executions == [
+        (
+            'SELECT "id", "amount_cents", "fee_cents", "unicode_context", '
+            '"decimal_context", "date_context", "datetime_context" FROM '
+            '"ledger_rows" ORDER BY "id"',
+            {"execution_options": {"stream_results": True, "yield_per": 1000}},
+        )
+    ]
+
+
+def _install_ledger_manifest(monkeypatch) -> None:
+    monkeypatch.setattr(
+        canonical_money_facts,
+        "MONEY_COLUMNS_V1",
+        (
+            SimpleNamespace(table="ledger_rows", column="amount_cents"),
+            SimpleNamespace(table="ledger_rows", column="fee_cents"),
+        ),
+    )
+    monkeypatch.setattr(
+        canonical_money_facts,
+        "MONEY_FACT_TABLES",
+        ("ledger_rows",),
+    )
+    monkeypatch.setattr(
+        canonical_money_facts,
         "MONEY_FACT_CONTEXT_COLUMNS_V1",
         (
             (
@@ -90,7 +245,7 @@ def _install_ledger_manifest(monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr(
-        c07_money_facts,
+        canonical_money_facts,
         "inspect",
         lambda connection: _Inspector(),
     )
@@ -101,7 +256,7 @@ def _digest(
     *,
     installation_currency: object = "CNY",
 ) -> str:
-    return c07_money_facts.canonical_money_facts_sha256(
+    return canonical_money_facts.canonical_money_facts_sha256(
         _MoneyConnection(
             rows,
             installation_currency=installation_currency,
@@ -110,7 +265,28 @@ def _digest(
 
 
 def test_semantic_manifest_binds_currency_scope_and_projection_state() -> None:
-    contexts = dict(c07_money_facts.MONEY_FACT_CONTEXT_COLUMNS_V1)
+    manifest_payload = {
+        "schema": canonical_money_facts.MONEY_FACTS_SCHEMA,
+        "installation_currency_key": (
+            canonical_money_facts.INSTALLATION_HOME_CURRENCY_KEY
+        ),
+        "money_columns": [
+            (contract.table, contract.column)
+            for contract in canonical_money_facts.MONEY_COLUMNS_V1
+        ],
+        "context_columns": canonical_money_facts.MONEY_FACT_CONTEXT_COLUMNS_V1,
+    }
+    manifest_sha256 = hashlib.sha256(
+        json.dumps(
+            manifest_payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert manifest_sha256 == PUBLISHED_MONEY_FACT_MANIFEST_SHA256
+
+    contexts = dict(canonical_money_facts.MONEY_FACT_CONTEXT_COLUMNS_V1)
 
     assert {
         "home_currency_code",
@@ -153,7 +329,7 @@ def test_semantic_manifest_binds_currency_scope_and_projection_state() -> None:
 
 
 def test_semantic_manifest_matches_current_model_shape() -> None:
-    contexts = dict(c07_money_facts.MONEY_FACT_CONTEXT_COLUMNS_V1)
+    contexts = dict(canonical_money_facts.MONEY_FACT_CONTEXT_COLUMNS_V1)
     for table, columns in contexts.items():
         actual_columns = set(Base.metadata.tables[table].columns.keys())
         assert set(columns) <= actual_columns
@@ -257,7 +433,7 @@ def test_digest_rejects_unexpected_missing_context_column(
 ) -> None:
     _install_ledger_manifest(monkeypatch)
     monkeypatch.setattr(
-        c07_money_facts,
+        canonical_money_facts,
         "MONEY_FACT_CONTEXT_COLUMNS_V1",
         (
             (

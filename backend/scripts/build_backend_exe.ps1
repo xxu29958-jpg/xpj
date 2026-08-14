@@ -205,13 +205,16 @@ try {
             Where-Object { $_.Trim().Length -gt 0 }
     )
     foreach ($requiredModule in @(
+        "app.app_meta_observation",
+        "app.canonical_money_facts",
+        "app.canonical_money_facts_contract",
         "app.database_model_registry",
         "app.tenant_contract"
     )) {
         if (-not @($archiveModules | Where-Object {
             $_ -match ("'" + [regex]::Escape($requiredModule) + "'$" )
         })) {
-            throw "Frozen backend archive omitted required metadata module: $requiredModule"
+            throw "Frozen backend archive omitted required app module: $requiredModule"
         }
     }
     Assert-TicketboxPostgresOnlyFrozenPayload `

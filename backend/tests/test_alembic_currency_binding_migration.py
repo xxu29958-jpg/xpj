@@ -10,7 +10,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.c07_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
+from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.database import SessionLocal, engine
 from app.errors import AppError
 from app.models import (

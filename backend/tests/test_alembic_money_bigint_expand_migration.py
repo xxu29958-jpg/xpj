@@ -11,7 +11,7 @@ from alembic import command
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
-from app.c07_money_facts import canonical_money_facts_sha256
+from app.canonical_money_facts import canonical_money_facts_sha256
 from app.database import SessionLocal, engine
 from app.database._c07_production_contract import C07ProductionMigrationError
 from app.database._c07_production_shape import (
