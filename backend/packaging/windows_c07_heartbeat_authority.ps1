@@ -563,6 +563,10 @@ function Get-TicketboxC07ReleaseIdentity {
     finally {
         Close-TicketboxC07MigrationHelperLease $helperLease
     }
+    $programEvidence = $manifest.DatabaseGenerationProgram
+    $programPath = Resolve-TicketboxInstalledDatabaseGenerationProgramPath `
+        -InstallDir $canonicalInstallDir `
+        -Evidence $programEvidence
     $bindingText = [string]::Join("`n", @(
         "schema=$script:TicketboxC07ReleaseIdentitySchema",
         "installation_id=$([string]$identity.InstallationId)",
@@ -576,7 +580,10 @@ function Get-TicketboxC07ReleaseIdentity {
         "backend_port=$([int]$identity.BackendPort)",
         "migration_helper_relative_path=$([string]$helperEvidence.RelativePath)",
         "migration_helper_size=$helperSize",
-        "migration_helper_sha256=$helperSha256"
+        "migration_helper_sha256=$helperSha256",
+        "database_generation_program_relative_path=$([string]$programEvidence.RelativePath)",
+        "database_generation_program_size=$([int64]$programEvidence.Size)",
+        "database_generation_program_sha256=$([string]$programEvidence.Sha256)"
     )) + "`n"
     return [pscustomobject]@{
         InstallationIdentityState = [string]$identity.State
@@ -597,6 +604,12 @@ function Get-TicketboxC07ReleaseIdentity {
         MigrationHelperRelativePath = [string]$helperEvidence.RelativePath
         MigrationHelperSize = $helperSize
         MigrationHelperSha256 = $helperSha256
+        DatabaseGenerationProgramPath = $programPath
+        DatabaseGenerationProgramRelativePath =
+            [string]$programEvidence.RelativePath
+        DatabaseGenerationProgramSize = [int64]$programEvidence.Size
+        DatabaseGenerationProgramSha256 =
+            [string]$programEvidence.Sha256
         Fingerprint = Get-TicketboxC07TextSha256 $bindingText
     }
 }

@@ -454,6 +454,8 @@ function Get-InstallerBuildInputEvidence(
             payload_algorithm = $BackendManifest.payload.algorithm
             payload_fingerprint = $BackendManifest.payload.fingerprint
             executable = $BackendManifest.payload.executable
+            database_generation_program =
+                $BackendManifest.payload.database_generation_program
             c07_migration_helper =
                 $BackendManifest.payload.c07_migration_helper
             c07_migration_helper_smoke =

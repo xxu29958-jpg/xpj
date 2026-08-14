@@ -17,6 +17,11 @@ from types import ModuleType
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.database._database_generation_program import (
+    DatabaseGenerationProgram,
+    DatabaseGenerationProgramError,
+    load_database_generation_program,
+)
 from app.services.secure_file import (
     hold_protected_file_for_read,
     hold_system_authority_file_for_read,
@@ -120,7 +125,6 @@ _temporary_pgpass_environment = _connection._temporary_pgpass_environment
 _read_held_artifact = _connection._read_held_artifact
 _create_production_engine = _connection._create_production_engine
 _revision = _connection._revision
-_migration_module = _connection._migration_module
 _run_alembic_upgrade = _connection._run_alembic_upgrade
 
 validate_production_migration_artifact_bytes = (
@@ -186,6 +190,7 @@ def _hold_and_validate_artifacts(
 def _execute_migration(
     *,
     parsed_url,
+    program: DatabaseGenerationProgram,
     context: ProductionMigrationContext,
     generation: ValidatedProductionArtifacts,
     source_revision: str,
@@ -200,6 +205,7 @@ def _execute_migration(
         ):
             return _migrate_with_connection(
                 connection,
+                program=program,
                 context=context,
                 generation=generation,
                 source_revision=source_revision,
@@ -220,6 +226,8 @@ def run_production_migration_action(
     *,
     database_url: str,
     pgpassfile: Path,
+    generation_program_path: Path,
+    expected_generation_program_sha256: str,
     operation_id: str,
     source_revision: str,
     target_revision: str,
@@ -235,6 +243,24 @@ def run_production_migration_action(
     )
     parsed_url = _validated_migrator_url(database_url)
     passfile = _validated_pgpass_path(pgpassfile)
+    try:
+        program = load_database_generation_program(
+            path=generation_program_path,
+            expected_sha256=expected_generation_program_sha256,
+        )
+    except DatabaseGenerationProgramError as exc:
+        raise C07ProductionMigrationError(
+            "production generation program is invalid"
+        ) from exc
+    if (
+        program.c07.source_revision != source_revision
+        or program.c07.target_revision != target_revision
+        or program.c07.revision_manifest_sha256
+        != migration_context.revision_manifest_sha256.lower()
+    ):
+        raise C07ProductionMigrationError(
+            "production migration differs from the generation program"
+        )
     with ExitStack() as stack:
         generation = _hold_and_validate_artifacts(stack, migration_context)
         protected_pgpass = stack.enter_context(
@@ -243,6 +269,7 @@ def run_production_migration_action(
         stack.enter_context(_temporary_pgpass_environment(protected_pgpass))
         return _execute_migration(
             parsed_url=parsed_url,
+            program=program,
             context=migration_context,
             generation=generation,
             source_revision=source_revision,

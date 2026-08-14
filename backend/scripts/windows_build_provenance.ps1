@@ -939,6 +939,13 @@ function Assert-TicketboxInstalledBackendManifestChain(
     ) {
         throw "installed primary/secondary backend payload fingerprint 不一致。"
     }
+    $primaryProgram = $Primary.backend.database_generation_program
+    $secondaryProgram = $Secondary.payload.database_generation_program
+    foreach ($name in @("path", "size", "sha256")) {
+        if ([string]$primaryProgram.$name -cne [string]$secondaryProgram.$name) {
+            throw "installed primary/secondary database generation program 不一致。"
+        }
+    }
     $primaryHelper = $Primary.backend.c07_migration_helper
     $secondaryHelper = $Secondary.payload.c07_migration_helper
     foreach ($name in @("path", "size", "sha256")) {
@@ -965,7 +972,8 @@ function Assert-TicketboxInstalledBackendManifestChain(
         $Secondary.payload.c07_migration_helper_smoke `
         $secondaryHelper `
         $Secondary.payload `
-        (Split-Path -Parent $SecondaryStream.Name)
+        (Split-Path -Parent $SecondaryStream.Name) `
+        ([string]$secondaryProgram.sha256)
 }
 
 function Enter-TicketboxInstalledC07PayloadAuthorityLease {

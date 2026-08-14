@@ -193,7 +193,7 @@ ticketbox-backend/
 - 入口 `packaging/launch.py`;spec `packaging/ticketbox-backend.spec`。
 - 形态:**onedir + `console=False`**(ADR-0047 §8)。`EXE(exclude_binaries=True)` + `COLLECT(...)` → `dist/ticketbox-backend/`(EXE + `_internal/`)。窗口化进程无 `sys.stdout/stderr`,所以 `launch.py` 在起 uvicorn 前用 `logging.config.dictConfig` 把 uvicorn + app 日志接到 `DATA_ROOT/logs/backend.log`(`RotatingFileHandler`),并给 uvicorn 传 `log_config=None`——否则 uvicorn 默认配置会写 `ext://sys.stdout`,`None.write` 崩。
 - `app/config.py`、`app/database` 用 `Path(__file__).parents[N]` 解析路径,冻结后指向 `sys._MEIPASS`(onedir 下即 `_internal/` 目录)。所以 spec 把 `alembic.ini` 和 `migrations/` 打到 **bundle 根**(`backend_root`),`static/` `templates/` 留在 `app/` 下。
-- 首次启动:`init_db()` 必须先加载打包的 `alembic.ini` + `migrations/` 并解析唯一 head；空库通过 Alembic `upgrade` 建立 schema，既有库先做 lineage/compatibility 检查并在写入前生成可验证备份，再升级到该 head。Alembic 缺失、lineage 非法或迁移后 revision 不等于 head 都会 fail closed，不再 `create_all` 或“优雅跳过”。
+- 构建先从受控源码快照编译并哈希 `DATABASE_GENERATION_PROGRAM.json`；安装 helper、provenance、installed payload lease 与 frozen backend `init_db()` 都消费这一个 base→head 程序。安装版运行期不再重新发现 Alembic graph，也不由普通 backend 执行 DDL；源码开发/运维入口仍可从 `alembic.ini` + `migrations/` 解析 graph。程序、revision bytes、lineage 或最终 revision 不一致时一律 fail closed。
 - 动态导入(uvicorn 的 loop/protocol、`app.*` 路由、postgresql 方言 + psycopg 驱动)由 spec 的 `collect_submodules` + `hiddenimports` 兜底;新增依赖若运行时报 `ModuleNotFoundError`,在 spec 的 `hiddenimports` 补一行再重建。
 - PyInstaller 冻结 EXE 可能触发杀软误报(无签名)。正式分发建议代码签名。
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,6 @@ from alembic.config import Config
 from sqlalchemy import inspect, text
 
 from app.database import SessionLocal, engine
-from app.database import _managed_schema_upgrade as managed_schema
 from app.database_model_registry import Base
 from app.services.identity_service import bootstrap_installation_owner
 from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
@@ -134,8 +134,9 @@ def test_installation_owner_claim_round_trips_on_postgres() -> None:
         _run_alembic(command.upgrade, "head")
         assert _current_revision() == _TARGET_REVISION
         _assert_full_shape()
-        plan = managed_schema._load_plan(_TARGET_REVISION)
-        postcondition = managed_schema._target_postcondition(plan)
+        postcondition = import_module(
+            "migrations.versions.20260809_0001_add_installation_owner_claim"
+        ).assert_postcondition
         with engine.connect() as connection:
             postcondition(connection)
     finally:

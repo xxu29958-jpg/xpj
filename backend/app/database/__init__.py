@@ -78,10 +78,18 @@ __all__ = [
 
 def init_db() -> None:
     from app import models  # noqa: F401
+    from app.database._database_generation_program import (
+        load_installed_database_generation_program,
+    )
 
     _warn_if_default_database_url()
     lifecycle = inspect_database_lifecycle()
-    alembic = load_alembic_context()
+    installed_program = (
+        load_installed_database_generation_program()
+        if _is_installed_host_database()
+        else None
+    )
+    alembic = load_alembic_context(installed_program=installed_program)
     _assert_revision_contains_c07(alembic.head_revision, alembic, label="release head")
     plan = plan_database_lifecycle(lifecycle, alembic)
     if lifecycle.has_existing_schema:

@@ -195,9 +195,14 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
         source,
         "Invoke-TicketboxC07InstalledIsolatedReplayAction",
     )
-    upgrade_plan = _function(source, "Get-TicketboxC07InstalledUpgradePlan")
+    generation_program = _function(
+        source,
+        "Get-TicketboxInstalledDatabaseGenerationProgram",
+    )
     assert "ExpectedMoneyFactsSha256" not in isolated
-    assert "Get-TicketboxC07PackagedInstalledUpgradePlan" in upgrade_plan
+    assert "Get-TicketboxC07PackagedDatabaseGenerationProgram" in generation_program
+    assert "Get-TicketboxC07InstalledUpgradePlan" not in source
+    assert "Get-TicketboxInstalledManagedSchemaPlan" not in source
     assert "Invoke-TicketboxC07InstalledDescendantUpgrade" not in source
 
     managed = _function(source, "Invoke-TicketboxInstalledManagedSchemaUpgrade")
@@ -418,12 +423,13 @@ def test_installer_c07_failure_terminal_preserves_code_without_budget_or_secrets
             release_migration,
             "function Resolve-TicketboxC07DatabaseHostAuthority { "
             "[pscustomobject]@{} }",
-            "function Get-TicketboxC07InstalledUpgradePlan { "
-            "[pscustomobject]@{ operation_kind = "
-            "'c07_money_minor_bigint_v1'; source_revision = "
-            "'20260722_0001'; target_revision = '20260729_0001'; "
-            "upgrade_required = $true; revision_manifest_sha256 = "
-            "('a' * 64) } }",
+            "function Get-TicketboxInstalledDatabaseGenerationProgram { "
+            "[pscustomobject]@{ c07_source_revision = '20260722_0001'; "
+            "c07_target_revision = '20260729_0001'; "
+            "c07_revision_manifest_sha256 = ('a' * 64); "
+            "c07_revision_manifest = [pscustomobject]@{ operation_kind = "
+            "'c07_money_minor_bigint_v1' }; target_revision = "
+            "'20260809_0001'; generation_program_sha256 = ('b' * 64) } }",
             "function Assert-TicketboxC07LowerSha256 { param($Value, $Label) }",
             "function Set-TicketboxC07DatabaseAuthorityCredential { "
             "$script:credentialSetCalls += 1 }",
@@ -1129,14 +1135,16 @@ $releaseIdentity = [pscustomobject]@{
 function Resolve-TicketboxC07DatabaseHostAuthority {
     return [pscustomobject]@{ Schema = 'host' }
 }
-function Get-TicketboxC07InstalledUpgradePlan {
-    param($ReleaseIdentity, [string]$SourceRevision)
+function Get-TicketboxInstalledDatabaseGenerationProgram {
     return [pscustomobject]@{
-        operation_kind = 'c07_money_minor_bigint_v1'
-        source_revision = $SourceRevision
-        target_revision = '20260729_0001'
-        upgrade_required = $true
-        revision_manifest_sha256 = ('a' * 64)
+        c07_source_revision = '20260722_0001'
+        c07_target_revision = '20260729_0001'
+        c07_revision_manifest_sha256 = ('a' * 64)
+        c07_revision_manifest = [pscustomobject]@{
+            operation_kind = 'c07_money_minor_bigint_v1'
+        }
+        target_revision = '20260809_0001'
+        generation_program_sha256 = ('b' * 64)
     }
 }
 function Assert-TicketboxC07LowerSha256 {
@@ -1926,11 +1934,12 @@ function Resolve-TicketboxC07DatabaseHostAuthority {
     return [pscustomobject]@{ Schema = 'host' }
 }
 function Get-TicketboxRuntimeAlembicRevision { return '20260729_0001' }
-function Get-TicketboxInstalledManagedSchemaPlan {
+function Get-TicketboxInstalledDatabaseGenerationProgram {
     return [pscustomobject]@{
-        source_revision = '20260729_0001'
         target_revision = '20260809_0001'
-        upgrade_required = $true
+        generation_program_sha256 = ('b' * 64)
+        c07_target_revision = '20260809_0001'
+        c07_revision_manifest_sha256 = ('a' * 64)
     }
 }
 function New-StrongPassword {
@@ -2025,12 +2034,12 @@ function Get-TicketboxRuntimeAlembicRevision {
     $script:events += "outer_revision:$($script:currentRevision)"
     return $script:currentRevision
 }
-function Get-TicketboxInstalledManagedSchemaPlan {
+function Get-TicketboxInstalledDatabaseGenerationProgram {
     return [pscustomobject]@{
-        source_revision = '20260722_0001'
         target_revision = '20260729_0001'
-        revision_manifest_sha256 = ('a' * 64)
-        upgrade_required = $true
+        generation_program_sha256 = ('b' * 64)
+        c07_target_revision = '20260729_0001'
+        c07_revision_manifest_sha256 = ('a' * 64)
     }
 }
 function New-StrongPassword { return ('M' * 40) }
@@ -2144,14 +2153,15 @@ function Enable-TicketboxC07MigratorForManagedSchemaUpgrade {
 }
 function Invoke-TicketboxInstalledManagedSchemaUpgradeAction {
     $script:events += 'upgrade_action'
-    return [pscustomobject]@{
-        alembic_revision = $(if ($script:invalidEvidence) {
-            '20260722_0001'
-        } else { '20260729_0001' })
-        revision_manifest_sha256 = $(if ($script:invalidManifestEvidence) {
-            ('f' * 64)
-        } else { ('a' * 64) })
-    }
+        return [pscustomobject]@{
+            alembic_revision = $(if ($script:invalidEvidence) {
+                '20260722_0001'
+            } else { '20260729_0001' })
+            revision_manifest_sha256 = ('a' * 64)
+            generation_program_sha256 = $(if ($script:invalidProgramEvidence) {
+                ('f' * 64)
+            } else { ('b' * 64) })
+        }
 }
 function Set-TicketboxManagedSchemaRuntimeAcl {
     $script:events += 'runtime_acl'
@@ -2205,7 +2215,7 @@ function Invoke-TestCase {
     $script:events = @()
     $script:recoveryExists = $true
     $script:invalidEvidence = $FailureKind -ceq 'evidence'
-    $script:invalidManifestEvidence = $FailureKind -ceq 'manifest_evidence'
+    $script:invalidProgramEvidence = $FailureKind -ceq 'program_evidence'
     $script:failQualification = $FailureKind -ceq 'qualification'
     $script:liveDescriptorDrift = $LiveDescriptorDrift
     $script:liveTargetDrift = $FailureKind -ceq 'live_target'
@@ -2268,7 +2278,7 @@ function Invoke-TestCase {
     Invoke-TestCase '20260722_0001' fresh_install unknown
     Invoke-TestCase '20260729_0001' legacy_adoption unknown
     Invoke-TestCase '20260729_0001' fresh_install retired evidence
-    Invoke-TestCase '20260729_0001' fresh_install retired manifest_evidence
+    Invoke-TestCase '20260729_0001' fresh_install retired program_evidence
     Invoke-TestCase '20260729_0001' legacy_adoption retired qualification
     Invoke-TestCase '20260729_0001' fresh_install retired captured_manifest
     Invoke-TestCase '20260729_0001' fresh_install retired '' runtime_acl_verified
@@ -2324,11 +2334,11 @@ function Invoke-TestCase {
     assert evidence["recovery_exists"] is True
     assert "upgrade_action" in evidence["events"]
     assert "post_schema_observation" not in evidence["events"]
-    manifest_evidence = payload[7]
-    assert manifest_evidence["failed"] is True
-    assert manifest_evidence["recovery_exists"] is True
-    assert "upgrade_action" in manifest_evidence["events"]
-    assert "post_schema_observation" not in manifest_evidence["events"]
+    program_evidence = payload[7]
+    assert program_evidence["failed"] is True
+    assert program_evidence["recovery_exists"] is True
+    assert "upgrade_action" in program_evidence["events"]
+    assert "post_schema_observation" not in program_evidence["events"]
     qualification = payload[8]
     assert qualification["failed"] is True
     assert qualification["recovery_exists"] is True
@@ -2829,12 +2839,12 @@ function Resolve-TicketboxC07DatabaseHostAuthority {
     return [pscustomobject]@{ Schema = 'host' }
 }
 function Get-TicketboxRuntimeAlembicRevision { return '20260729_0001' }
-function Get-TicketboxInstalledManagedSchemaPlan {
+function Get-TicketboxInstalledDatabaseGenerationProgram {
     return [pscustomobject]@{
-        source_revision = '20260729_0001'
         target_revision = '20260729_0001'
-        revision_manifest_sha256 = ('A' * 64)
-        upgrade_required = $false
+        generation_program_sha256 = ('B' * 64)
+        c07_target_revision = '20260729_0001'
+        c07_revision_manifest_sha256 = ('A' * 64)
     }
 }
 function New-StrongPassword { return ('M' * 40) }

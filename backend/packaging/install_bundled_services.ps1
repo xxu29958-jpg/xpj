@@ -579,6 +579,17 @@ function Get-TicketboxC07InstalledMigrationHelperEvidence(
     }
 }
 
+function Get-TicketboxInstalledDatabaseGenerationProgramEvidence(
+    [object]$ReleaseIdentity
+) {
+    return [pscustomobject][ordered]@{
+        RelativePath =
+            [string]$ReleaseIdentity.DatabaseGenerationProgramRelativePath
+        Size = [int64]$ReleaseIdentity.DatabaseGenerationProgramSize
+        Sha256 = [string]$ReleaseIdentity.DatabaseGenerationProgramSha256
+    }
+}
+
 function New-TicketboxC07InstalledLifecycleFailure {
     param([Parameter(Mandatory = $true)][object]$Lifecycle)
 
@@ -835,7 +846,13 @@ function Invoke-TicketboxC07InstalledFreshSourceBootstrapAction {
         -MigrationHelperEvidence (
             Get-TicketboxC07InstalledMigrationHelperEvidence $ReleaseIdentity
         ) `
-        -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath
+        -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath `
+        -ProgramPath $ReleaseIdentity.DatabaseGenerationProgramPath `
+        -ProgramEvidence (
+            Get-TicketboxInstalledDatabaseGenerationProgramEvidence `
+                $ReleaseIdentity
+        ) `
+        -GenerationOperationId $ReleaseIdentity.InstallationOperationId
 }
 
 function Invoke-TicketboxC07InstalledIsolatedReplayAction {
@@ -871,6 +888,11 @@ function Invoke-TicketboxC07InstalledIsolatedReplayAction {
             Get-TicketboxC07InstalledMigrationHelperEvidence $ReleaseIdentity
         ) `
         -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath `
+        -ProgramPath $ReleaseIdentity.DatabaseGenerationProgramPath `
+        -ProgramEvidence (
+            Get-TicketboxInstalledDatabaseGenerationProgramEvidence `
+                $ReleaseIdentity
+        ) `
         -CreateAttemptId $CreateAttemptId
 }
 
@@ -941,37 +963,28 @@ function Invoke-TicketboxC07InstalledTargetSemanticAction {
             Get-TicketboxC07InstalledMigrationHelperEvidence $ReleaseIdentity
         ) `
         -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath `
+        -ProgramPath $ReleaseIdentity.DatabaseGenerationProgramPath `
+        -ProgramEvidence (
+            Get-TicketboxInstalledDatabaseGenerationProgramEvidence `
+                $ReleaseIdentity
+        ) `
         -CreateAttemptId $CreateAttemptId
 }
 
-function Get-TicketboxC07InstalledUpgradePlan {
-    param(
-        [Parameter(Mandatory = $true)][object]$ReleaseIdentity,
-        [Parameter(Mandatory = $true)][string]$SourceRevision
-    )
+function Get-TicketboxInstalledDatabaseGenerationProgram {
+    param([Parameter(Mandatory = $true)][object]$ReleaseIdentity)
 
-    return Get-TicketboxC07PackagedInstalledUpgradePlan `
-        -SourceRevision $SourceRevision `
+    return Get-TicketboxC07PackagedDatabaseGenerationProgram `
         -MigrationHelperPath $ReleaseIdentity.MigrationHelperPath `
         -MigrationHelperEvidence (
             Get-TicketboxC07InstalledMigrationHelperEvidence $ReleaseIdentity
         ) `
-        -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath
-}
-
-function Get-TicketboxInstalledManagedSchemaPlan {
-    param(
-        [Parameter(Mandatory = $true)][object]$ReleaseIdentity,
-        [Parameter(Mandatory = $true)][string]$SourceRevision
-    )
-
-    return Get-TicketboxPackagedManagedSchemaPlan `
-        -SourceRevision $SourceRevision `
-        -MigrationHelperPath $ReleaseIdentity.MigrationHelperPath `
-        -MigrationHelperEvidence (
-            Get-TicketboxC07InstalledMigrationHelperEvidence $ReleaseIdentity
-        ) `
-        -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath
+        -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath `
+        -ProgramPath $ReleaseIdentity.DatabaseGenerationProgramPath `
+        -ProgramEvidence (
+            Get-TicketboxInstalledDatabaseGenerationProgramEvidence `
+                $ReleaseIdentity
+        )
 }
 
 function Invoke-TicketboxInstalledManagedSchemaUpgradeAction {
@@ -990,7 +1003,12 @@ function Invoke-TicketboxInstalledManagedSchemaUpgradeAction {
         -MigrationHelperEvidence (
             Get-TicketboxC07InstalledMigrationHelperEvidence $ReleaseIdentity
         ) `
-        -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath
+        -ExpectedMigrationHelperPath $ReleaseIdentity.MigrationHelperPath `
+        -ProgramPath $ReleaseIdentity.DatabaseGenerationProgramPath `
+        -ProgramEvidence (
+            Get-TicketboxInstalledDatabaseGenerationProgramEvidence `
+                $ReleaseIdentity
+        )
 }
 
 $script:TicketboxC07InstallerSourceRevision = "20260722_0001"
@@ -1182,9 +1200,17 @@ function Invoke-TicketboxC07InstalledReleaseMigration {
     $capturedDataRoot = $DataRoot
     $capturedFailureStages = @($script:TicketboxC07FailureStages)
     $capturedSourceRevision = $script:TicketboxC07InstallerSourceRevision
-    $basePlan = Get-TicketboxC07InstalledUpgradePlan `
-        -ReleaseIdentity $capturedReleaseIdentity `
-        -SourceRevision $capturedSourceRevision
+    $program = Get-TicketboxInstalledDatabaseGenerationProgram `
+        -ReleaseIdentity $capturedReleaseIdentity
+    $basePlan = [pscustomobject][ordered]@{
+        operation_kind =
+            [string]$program.c07_revision_manifest.operation_kind
+        source_revision = [string]$program.c07_source_revision
+        target_revision = [string]$program.c07_target_revision
+        upgrade_required = $true
+        revision_manifest_sha256 =
+            [string]$program.c07_revision_manifest_sha256
+    }
     if (
         [string]$basePlan.operation_kind -cne
             "c07_money_minor_bigint_v1" -or
@@ -1616,13 +1642,25 @@ function Invoke-TicketboxInstalledManagedSchemaUpgrade {
     $sourceRevision = Get-TicketboxRuntimeAlembicRevision `
         -HostAuthority $HostAuthority `
         -RuntimePassword $RuntimePassword
-    $plan = Get-TicketboxInstalledManagedSchemaPlan `
-        -ReleaseIdentity $ReleaseIdentity `
-        -SourceRevision $sourceRevision
+    $program = Get-TicketboxInstalledDatabaseGenerationProgram `
+        -ReleaseIdentity $ReleaseIdentity
+    $plan = [pscustomobject][ordered]@{
+        source_revision = $sourceRevision
+        target_revision = [string]$program.target_revision
+        upgrade_required =
+            $sourceRevision -cne [string]$program.target_revision
+        generation_program_sha256 =
+            [string]$program.generation_program_sha256
+        generation_operation_id =
+            [string]$ReleaseIdentity.InstallationOperationId
+        c07_target_revision = [string]$program.c07_target_revision
+        c07_revision_manifest_sha256 =
+            [string]$program.c07_revision_manifest_sha256
+    }
     if (
-        [string]$plan.target_revision -cne
+        [string]$plan.c07_target_revision -cne
             [string]$C07Authority.Descriptor.Payload.target_alembic_revision -or
-        [string]$plan.revision_manifest_sha256 -cne
+        [string]$plan.c07_revision_manifest_sha256 -cne
             [string]$C07Authority.Descriptor.Payload.revision_manifest_sha256 -or
         [string]::IsNullOrEmpty(
             [string]$C07Authority.Descriptor.PayloadSha256
@@ -1693,9 +1731,9 @@ function Invoke-TicketboxInstalledManagedSchemaUpgrade {
                 [string]$liveAuthority.Descriptor.PayloadSha256 -cne
                     $capturedDescriptorPayloadSha256 -or
                 [string]$liveAuthority.Descriptor.Payload.target_alembic_revision -cne
-                    [string]$capturedPlan.target_revision -or
+                    [string]$capturedPlan.c07_target_revision -or
                 [string]$liveAuthority.Descriptor.Payload.revision_manifest_sha256 -cne
-                    [string]$capturedPlan.revision_manifest_sha256
+                    [string]$capturedPlan.c07_revision_manifest_sha256
             ) {
                 throw "release schema mutation 未绑定 exact live C07 READY authority。"
             }
@@ -1815,8 +1853,8 @@ function Invoke-TicketboxInstalledManagedSchemaUpgrade {
             if (
                 [string]$upgradeResult.alembic_revision -cne
                     [string]$capturedPlan.target_revision -or
-                [string]$upgradeResult.revision_manifest_sha256 -cne
-                    [string]$capturedPlan.revision_manifest_sha256
+                [string]$upgradeResult.generation_program_sha256 -cne
+                    [string]$capturedPlan.generation_program_sha256
             ) {
                 throw "release schema migration 未返回 exact-head evidence。"
             }
@@ -1832,7 +1870,9 @@ function Invoke-TicketboxInstalledManagedSchemaUpgrade {
                 schema = "ticketbox-managed-schema-publication-v1"
                 alembic_revision = [string]$upgradeResult.alembic_revision
                 revision_manifest_sha256 =
-                    [string]$upgradeResult.revision_manifest_sha256
+                    [string]$capturedPlan.c07_revision_manifest_sha256
+                generation_program_sha256 =
+                    [string]$upgradeResult.generation_program_sha256
                 published_runtime_qualification = $qualification
             }
         }

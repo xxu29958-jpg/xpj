@@ -21,9 +21,6 @@ from app.database._c07_maintenance_plan import (
 from app.database._c07_maintenance_plan import (
     C07MaintenanceUpgradeError as C07MaintenanceUpgradeError,
 )
-from app.database._c07_maintenance_plan import (
-    get_installed_maintenance_plan as get_installed_maintenance_plan,
-)
 from app.database._c07_maintenance_upgrade_action import (
     MAINTENANCE_RESULT_SCHEMA as MAINTENANCE_RESULT_SCHEMA,
 )
@@ -38,7 +35,6 @@ __all__ = [
     "C07_SOURCE_REVISION",
     "C07_TARGET_REVISION",
     "C07MaintenanceUpgradeError",
-    "get_installed_maintenance_plan",
     "run_maintenance_upgrade_action",
     "run_money_facts_digest_action",
     "run_target_semantic_digest_action",

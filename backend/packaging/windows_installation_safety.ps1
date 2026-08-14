@@ -4432,6 +4432,50 @@ function Resolve-TicketboxInstalledC07MigrationHelperPath {
     return $helperPath
 }
 
+function Resolve-TicketboxInstalledDatabaseGenerationProgramPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][object]$Evidence
+    )
+    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
+    $payloadRoot = ConvertTo-TicketboxCanonicalPath (
+        Join-Path $canonicalInstallDir "program\ticketbox-backend"
+    )
+    $propertyNames = @($Evidence.PSObject.Properties.Name)
+    if (
+        $propertyNames.Count -ne 3 -or
+        "RelativePath" -notin $propertyNames -or
+        "Size" -notin $propertyNames -or
+        "Sha256" -notin $propertyNames -or
+        [string]$Evidence.RelativePath -cne
+            "DATABASE_GENERATION_PROGRAM.json" -or
+        [int64]$Evidence.Size -lt 1 -or
+        [string]$Evidence.Sha256 -cnotmatch "^[0-9A-F]{64}$"
+    ) {
+        throw "database generation program release evidence 无效。"
+    }
+    $programPath = ConvertTo-TicketboxCanonicalPath (
+        Join-Path $payloadRoot ([string]$Evidence.RelativePath)
+    )
+    if (
+        -not (Test-TicketboxPathWithin $programPath $payloadRoot) -or
+        (Test-TicketboxPathEquals $programPath $payloadRoot) -or
+        (Get-TicketboxPathEntryKindNoFollow $programPath) -cne "File"
+    ) {
+        throw "database generation program 不是 frozen payload regular file。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $programPath
+    $item = Get-Item -LiteralPath $programPath -Force -ErrorAction Stop
+    if (
+        [int64]$item.Length -ne [int64]$Evidence.Size -or
+        (Get-TicketboxPortableFileSha256 $programPath) -cne
+            [string]$Evidence.Sha256
+    ) {
+        throw "database generation program 与 release evidence 不一致。"
+    }
+    return $programPath
+}
+
 function Get-TicketboxC07OpenStreamSha256(
     [Parameter(Mandatory = $true)][System.IO.FileStream]$Stream
 ) {
@@ -4769,12 +4813,33 @@ function Read-TicketboxInstalledBuildManifest {
         ConvertTo-TicketboxInstalledC07MigrationHelperEvidence (
             $manifest.backend.c07_migration_helper
         )
+    $programEvidence = $manifest.backend.database_generation_program
+    if ($null -eq $programEvidence) {
+        throw "已安装 BUILD_PROVENANCE.json 缺少 database generation program。"
+    }
+    $programNames = @($programEvidence.PSObject.Properties.Name)
+    if (
+        $programNames.Count -ne 3 -or
+        "path" -notin $programNames -or
+        "size" -notin $programNames -or
+        "sha256" -notin $programNames -or
+        [string]$programEvidence.path -cne "DATABASE_GENERATION_PROGRAM.json" -or
+        [int64]$programEvidence.size -lt 1 -or
+        [string]$programEvidence.sha256 -cnotmatch "^[0-9a-f]{64}$"
+    ) {
+        throw "已安装 BUILD_PROVENANCE.json 的 database generation program 无效。"
+    }
     return [pscustomobject]@{
         Path = $Path
         Manifest = $manifest
         BackendVersion = $backendVersion
         PgMajor = $pgMajor
         C07MigrationHelper = $c07MigrationHelper
+        DatabaseGenerationProgram = [pscustomobject][ordered]@{
+            RelativePath = [string]$programEvidence.path
+            Size = [int64]$programEvidence.size
+            Sha256 = ([string]$programEvidence.sha256).ToUpperInvariant()
+        }
     }
 }
 
@@ -4805,6 +4870,7 @@ function Get-TicketboxInstallationReleaseCandidate {
     }
     $buildManifest = Read-TicketboxInstalledBuildManifest $expectedManifestPath
     $helperEvidence = $buildManifest.C07MigrationHelper
+    $programEvidence = $buildManifest.DatabaseGenerationProgram
     $helperPath = Resolve-TicketboxInstalledC07MigrationHelperPath `
         -InstallDir $canonicalInstallDir `
         -Evidence $helperEvidence
@@ -4821,6 +4887,9 @@ function Get-TicketboxInstallationReleaseCandidate {
     finally {
         Close-TicketboxC07MigrationHelperLease $helperLease
     }
+    $programPath = Resolve-TicketboxInstalledDatabaseGenerationProgramPath `
+        -InstallDir $canonicalInstallDir `
+        -Evidence $programEvidence
     return [pscustomobject][ordered]@{
         BackendVersionFloor = [string]$buildManifest.BackendVersion
         BuildManifestSha256 =
@@ -4835,6 +4904,11 @@ function Get-TicketboxInstallationReleaseCandidate {
         MigrationHelperRelativePath = [string]$helperEvidence.RelativePath
         MigrationHelperSize = $verifiedHelperSize
         MigrationHelperSha256 = $verifiedHelperSha256
+        DatabaseGenerationProgramPath = $programPath
+        DatabaseGenerationProgramRelativePath =
+            [string]$programEvidence.RelativePath
+        DatabaseGenerationProgramSize = [int64]$programEvidence.Size
+        DatabaseGenerationProgramSha256 = [string]$programEvidence.Sha256
     }
 }
 

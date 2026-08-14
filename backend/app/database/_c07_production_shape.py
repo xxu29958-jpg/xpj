@@ -35,6 +35,7 @@ from app.database._c07_production_fence import (
 from app.database._c07_production_fence import (
     _assume_schema_owner as _assume_schema_owner,
 )
+from app.database._database_generation_program import DatabaseGenerationProgram
 from app.money_contract import (
     MONEY_COLUMNS_V1,
     MONEY_CONTRACT_PHASE_C07,
@@ -293,6 +294,7 @@ def _money_shape(
 def _migrate_or_resume(
     connection: Any,
     *,
+    program: DatabaseGenerationProgram,
     context: ProductionMigrationContext,
     generation: ValidatedProductionArtifacts,
     source_revision: str,
@@ -325,6 +327,7 @@ def _migrate_or_resume(
         )
     _run_alembic_upgrade(
         connection,
+        program=program,
         ceremony_id=context.operation_id,
         deadline=time.monotonic()
         + min(float(MAINTENANCE_WINDOW_SECONDS), remaining_seconds),
@@ -413,6 +416,7 @@ def _analyze_affected_tables(connection: Any) -> dict[str, object]:
 def _migrate_with_connection(
     connection: Any,
     *,
+    program: DatabaseGenerationProgram,
     context: ProductionMigrationContext,
     generation: ValidatedProductionArtifacts,
     source_revision: str,
@@ -428,6 +432,7 @@ def _migrate_with_connection(
     )
     result = _migrate_or_resume(
         connection,
+        program=program,
         context=context,
         generation=generation,
         source_revision=source_revision,

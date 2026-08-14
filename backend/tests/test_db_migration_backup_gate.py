@@ -214,6 +214,7 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
     from alembic import command
 
     import app.database as db_pkg
+    from app.database import _database_generation_program as program_reader
     from app.database._c07_production_ready import _read_live_alembic_revision
     from app.services import backup_service
     from tests._infra.c07_alembic import run_alembic_for_test
@@ -227,6 +228,16 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
         backup_service,
         "create_pre_upgrade_backup",
         lambda: calls.append("backup") or SimpleNamespace(file_name="pre-c02.dump"),
+    )
+    monkeypatch.setattr(
+        program_reader,
+        "load_installed_database_generation_program",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        db_pkg,
+        "load_alembic_context",
+        lambda *, installed_program=None: alembic,
     )
 
     monkeypatch.setenv("TICKETBOX_DATA_ROOT_MARKER_PATH", "C:/ProgramData/Ticketbox/data-root.json")

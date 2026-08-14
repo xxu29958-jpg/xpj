@@ -71,6 +71,7 @@ def _write_minimal_backend(root: Path) -> Path:
         "packaging/prepare_windows_build_toolchain.ps1",
         "packaging/launch.py",
         "packaging/ticketbox-backend.spec",
+        "scripts/build_database_generation_program.py",
         "scripts/build_backend_exe.ps1",
         "scripts/windows_build_provenance.ps1",
         "scripts/windows_backend_build_provenance.ps1",
@@ -139,6 +140,9 @@ def _write_minimal_backend(root: Path) -> Path:
     (dist / "_internal").mkdir(parents=True)
     (dist / "ticketbox-backend.exe").write_bytes(b"frozen-exe-v1")
     (dist / "ticketbox-c07-migrator.exe").write_bytes(b"c07-migrator-v1")
+    (dist / "DATABASE_GENERATION_PROGRAM.json").write_text(
+        '{"schema":"synthetic-generation-program"}', encoding="utf-8"
+    )
     (dist / "_internal" / "runtime.dat").write_bytes(b"runtime-v1")
     packaged_target = dist / "_internal" / "migrations" / "versions" / target_migration
     packaged_target.parent.mkdir(parents=True)
@@ -233,11 +237,13 @@ def _write_minimal_installer_recipe(root: Path) -> None:
 
 def _c07_smoke_evidence_command(dist: Path) -> str:
     target_migration = dist / "_internal" / "migrations" / "versions" / "20260729_0001_money_minor_bigint_expand.py"
+    program = dist / "DATABASE_GENERATION_PROGRAM.json"
     return (
         f"$smokePayload = Get-TicketboxBackendPayloadSnapshot '{_ps_literal(dist)}'; "
         f"$helper = Get-TicketboxFileEvidence '{_ps_literal(dist)}' "
         f"'{_ps_literal(dist / 'ticketbox-c07-migrator.exe')}'; "
         f"$moduleSha = Get-TicketboxFileSha256 '{_ps_literal(target_migration)}'; "
+        f"$programSha = Get-TicketboxFileSha256 '{_ps_literal(program)}'; "
         "$revision = [ordered]@{"
         "revision='20260729_0001';down_revision='20260722_0001';"
         "module_sha256=$moduleSha;transactionality='postgresql_single_transaction';"
@@ -251,18 +257,20 @@ def _c07_smoke_evidence_command(dist: Path) -> str:
         "revisions=@($revision)}; "
         "$manifestJson = $revisionManifest | ConvertTo-Json -Depth 32 -Compress; "
         "$result = [ordered]@{"
-        "schema='ticketbox-c07-maintenance-plan-v2';"
-        "operation_kind='c07_money_minor_bigint_v1';"
-        "source_revision='20260722_0001';target_revision='20260729_0001';"
-        "upgrade_required=$true;revision_manifest=$revisionManifest;"
-        "revision_manifest_sha256=(Get-TicketboxSha256HexFromText $manifestJson)}; "
+        "schema='ticketbox-database-generation-program-validation-v1';"
+        "source_revision='base';target_revision='20260729_0001';revision_count=1;"
+        "generation_program_sha256=$programSha;"
+        "c07_source_revision='20260722_0001';c07_target_revision='20260729_0001';"
+        "c07_revision_manifest=$revisionManifest;"
+        "c07_revision_manifest_sha256=(Get-TicketboxSha256HexFromText $manifestJson)}; "
         "$resultJson = $result | ConvertTo-Json -Depth 32 -Compress; "
         "$smoke = [ordered]@{"
-        "schema='ticketbox-c07-migration-helper-smoke-v1';helper=$helper;"
+        "schema='ticketbox-database-generation-helper-smoke-v1';helper=$helper;"
         "payload_algorithm=$smokePayload.algorithm;"
         "payload_fingerprint=$smokePayload.fingerprint;"
         "payload_file_count=@($smokePayload.files).Count;"
-        "argv=@('--c07-installed-upgrade-plan','--source-revision','20260722_0001');"
+        "argv=@('--validate-generation-program','--generation-program-path',"
+        "'DATABASE_GENERATION_PROGRAM.json','--expected-generation-program-sha256',$programSha);"
         "stdin='closed_empty_eof';"
         "environment='system-runtime-allowlist-without-pg-or-database-url-v1';"
         "exit_code=0;stderr='empty';"
@@ -293,7 +301,9 @@ def _manifest_command(root: Path, dist: Path, operation: str) -> str:
             f"{_c07_smoke_evidence_command(dist)}"
             f"{operation} -BackendRoot '{_ps_literal(root)}' "
             f"-DistDir '{_ps_literal(dist)}' -ToolchainProvenance $toolchain "
-            "-SourceSnapshot $source -C07MigrationHelperSmokeEvidence $smoke | Out-Null"
+            f"-SourceSnapshot $source -DatabaseGenerationProgramPath "
+            f"'{_ps_literal(dist / 'DATABASE_GENERATION_PROGRAM.json')}' "
+            "-C07MigrationHelperSmokeEvidence $smoke | Out-Null"
         )
     else:
         toolchain = ""
@@ -315,6 +325,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert len(manifest["source"]["fingerprint"]) == 64
     assert len(manifest["payload"]["fingerprint"]) == 64
     source_paths = {record["path"] for record in manifest["source"]["files"]}
+    assert "scripts/build_database_generation_program.py" in source_paths
     assert "scripts/build_backend_exe.ps1" in source_paths
     assert "scripts/windows_build_provenance.ps1" in source_paths
     assert "scripts/windows_backend_build_provenance.ps1" in source_paths
@@ -334,17 +345,22 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert smoke["environment"] == ("system-runtime-allowlist-without-pg-or-database-url-v1")
     assert smoke["exit_code"] == 0
     assert smoke["stderr"] == "empty"
-    assert smoke["result"]["source_revision"] == "20260722_0001"
+    assert smoke["result"]["source_revision"] == "base"
     assert smoke["result"]["target_revision"] == "20260729_0001"
+    assert smoke["result"]["generation_program_sha256"] == manifest["payload"][
+        "database_generation_program"
+    ]["sha256"]
 
     validate = _manifest_command(backend, dist, "Assert-TicketboxBackendBuildManifest")
     assert _run_powershell(validate).returncode == 0
 
-    manifest["payload"]["c07_migration_helper_smoke"]["result"]["source_revision"] = "20260722_0000"
+    manifest["payload"]["c07_migration_helper_smoke"]["result"]["source_revision"] = "other"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     tampered_helper_smoke = _run_powershell(validate)
     assert tampered_helper_smoke.returncode != 0
-    assert "smoke" in (tampered_helper_smoke.stdout + tampered_helper_smoke.stderr).lower()
+    assert "generation helper" in (
+        tampered_helper_smoke.stdout + tampered_helper_smoke.stderr
+    ).lower()
     rewrite = _run_powershell(_manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest"))
     assert rewrite.returncode == 0, rewrite.stderr
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -431,6 +447,7 @@ def test_installed_c07_external_assets_are_manifest_bound_and_held(
         for relative, content in {
             "ticketbox-backend.exe": b"backend-exe",
             "ticketbox-c07-migrator.exe": b"migration-helper",
+            "DATABASE_GENERATION_PROGRAM.json": b'{"schema":"synthetic-generation-program"}',
             "_internal/app/database/_c07_fresh_source_bootstrap.py": b"fresh",
             "_internal/app/database/_c07_maintenance_upgrade.py": b"maintenance",
             "_internal/app/database/_c07_production_migration.py": b"production",
@@ -487,6 +504,9 @@ function Write-TestManifest {{
     )
     $snapshot = Get-TicketboxFileSetSnapshot $payload $paths
     $helper = Get-TicketboxC07MigrationHelperEvidenceFromPayload $snapshot
+    $program = Get-TicketboxFileEvidence `
+        $payload `
+        (Join-Path $payload 'DATABASE_GENERATION_PROGRAM.json')
     {_c07_smoke_evidence_command(payload)}
     $secondary = [ordered]@{{
         schema_version = 4
@@ -497,6 +517,7 @@ function Write-TestManifest {{
             fingerprint = $snapshot.fingerprint
             files = @($snapshot.files)
             executable = Get-TicketboxFileEvidence $payload (Join-Path $payload 'ticketbox-backend.exe')
+            database_generation_program = $program
             c07_migration_helper = $helper
             c07_migration_helper_smoke = $smoke
         }}
@@ -512,6 +533,7 @@ function Write-TestManifest {{
             payload_algorithm = $snapshot.algorithm
             payload_fingerprint = $snapshot.fingerprint
             executable = $secondary.payload.executable
+            database_generation_program = $program
             c07_migration_helper = $helper
             c07_migration_helper_smoke = $smoke
             manifest = [ordered]@{{
@@ -1126,8 +1148,11 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "$processStarted = $process.Start()" in backend_provenance
     assert "if ($processStarted -and -not $process.HasExited)" in backend_provenance
     assert "$startInfo.EnvironmentVariables.Clear()" in backend_provenance
-    assert '"--c07-installed-upgrade-plan --source-revision "' in backend_provenance
-    assert "Assert-TicketboxC07MigrationHelperSmokeResult $result $DistDir" in (backend_provenance)
+    assert '"--validate-generation-program "' in backend_provenance
+    assert '"--generation-program-path "' in backend_provenance
+    assert '" --expected-generation-program-sha256 "' in backend_provenance
+    assert "Assert-TicketboxC07MigrationHelperSmokeResult `" in backend_provenance
+    assert "([string]$programEvidence.sha256)" in backend_provenance
     assert backend_provenance.count("Get-TicketboxBackendPayloadSnapshot $DistDir") >= 2
     assert "payload_fingerprint = [string]$PayloadSnapshot.fingerprint" in (backend_provenance)
     assert (

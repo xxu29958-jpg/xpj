@@ -29,6 +29,10 @@ $StagingDir = Join-Path $StagingRoot "ticketbox-backend"
 $WorkRoot = Join-Path $BuildRoot (".ticketbox-backend-work-{0}" -f $BuildNonce)
 $InputSnapshotRoot = Join-Path $BuildRoot (".ticketbox-backend-inputs-{0}" -f $BuildNonce)
 $LockSnapshotPath = Join-Path $InputSnapshotRoot "requirements-build.lock"
+$DatabaseGenerationProgramName = "DATABASE_GENERATION_PROGRAM.json"
+$DatabaseGenerationProgramWorkPath = Join-Path `
+    $WorkRoot `
+    $DatabaseGenerationProgramName
 $InputLocks = $null
 $ToolchainLocks = $null
 $C07SmokePayloadLocks = $null
@@ -172,6 +176,16 @@ try {
     }
     $installedDistributions = @(& $UvPath pip freeze --python $PyBuild)
     if ($LASTEXITCODE -ne 0) { throw "uv pip freeze failed (exit=$LASTEXITCODE)" }
+    New-Item -ItemType Directory -Force -Path $WorkRoot | Out-Null
+    & $PyBuild -I -B `
+        (Join-Path $InputSnapshotRoot "scripts\build_database_generation_program.py") `
+        --backend-root $InputSnapshotRoot `
+        --output $DatabaseGenerationProgramWorkPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Database generation program compilation failed (exit=$LASTEXITCODE)."
+    }
+    $databaseGenerationProgramSha256 =
+        Get-TicketboxFileSha256 $DatabaseGenerationProgramWorkPath
     Write-Host "Freezing into staging ..."
     $executionTreeBeforeFreeze = Get-TicketboxPythonExecutionTreeSnapshot $PyBuild
     & $PyBuild -I -B -m PyInstaller `
@@ -194,6 +208,18 @@ try {
     $stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"
     if (-not (Test-Path -LiteralPath $stagedC07Helper -PathType Leaf)) {
         throw "PyInstaller completed without the staged C07 migration helper."
+    }
+    $stagedDatabaseGenerationProgram = Join-Path `
+        $StagingDir `
+        $DatabaseGenerationProgramName
+    Copy-Item `
+        -LiteralPath $DatabaseGenerationProgramWorkPath `
+        -Destination $stagedDatabaseGenerationProgram
+    if (
+        (Get-TicketboxFileSha256 $stagedDatabaseGenerationProgram) -cne
+            $databaseGenerationProgramSha256
+    ) {
+        throw "Staged database generation program differs from the compiled program."
     }
     $archiveListing = @(& $PyBuild -I -B -m PyInstaller.utils.cliutils.archive_viewer -r $stagedExe 2>&1)
     if ($LASTEXITCODE -ne 0) {
@@ -227,6 +253,7 @@ try {
     $c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke `
         -DistDir $StagingDir `
         -HelperPath $stagedC07Helper `
+        -DatabaseGenerationProgramPath $stagedDatabaseGenerationProgram `
         -PayloadSnapshot $c07SmokePayloadSnapshot
     Assert-TicketboxFileSetSnapshot "Frozen backend source during build" $sourceBeforeFreeze (Get-TicketboxBackendSourceSnapshot $BackendRoot)
     $currentPythonVersion = Invoke-TicketboxVersionProbe $PyBuild @("-c", "import platform; print(platform.python_version())") '^(\d+\.\d+\.\d+)$' "Python"
@@ -245,6 +272,7 @@ try {
         -DistDir $StagingDir `
         -ToolchainProvenance $currentToolchainProvenance `
         -SourceSnapshot $sourceBeforeFreeze `
+        -DatabaseGenerationProgramPath $stagedDatabaseGenerationProgram `
         -C07MigrationHelperSmokeEvidence $c07MigrationHelperSmoke
     Assert-TicketboxBackendBuildManifest $BackendRoot $StagingDir | Out-Null
     Exit-TicketboxFileSetReadLocks $C07SmokePayloadLocks

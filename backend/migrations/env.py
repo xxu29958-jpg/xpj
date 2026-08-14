@@ -34,9 +34,6 @@ from app.database_model_registry import Base  # noqa: E402
 
 config = context.config
 _C07_JSON_PROTOCOL_ATTRIBUTE = "ticketbox_c07_json_protocol_v1"
-_MANAGED_MIGRATION_JSON_PROTOCOL_ATTRIBUTE = (
-    "ticketbox_managed_migration_json_protocol_v1"
-)
 
 
 def _configure_c07_json_protocol_logging() -> None:
@@ -58,13 +55,7 @@ def _configure_c07_json_protocol_logging() -> None:
 # standard no-op handler recommended for a logging namespace that must not fall
 # through to Python's stderr ``lastResort`` handler.  Exceptions still escape
 # normally and produce a non-zero helper exit.
-if any(
-    config.attributes.get(attribute) is True
-    for attribute in (
-        _C07_JSON_PROTOCOL_ATTRIBUTE,
-        _MANAGED_MIGRATION_JSON_PROTOCOL_ATTRIBUTE,
-    )
-):
+if config.attributes.get(_C07_JSON_PROTOCOL_ATTRIBUTE) is True:
     _configure_c07_json_protocol_logging()
 # Only let Alembic configure logging when it owns the process — i.e. the
 # standalone ``alembic`` CLI, where nothing has set up logging yet. When

@@ -23,6 +23,7 @@ MIGRATOR_URL = (
 DEADLINE = "2099-08-01T12:00:00.0000000Z"
 SHA_A = "a" * 64
 SHA_B = "b" * 64
+PROGRAM_PATH = "DATABASE_GENERATION_PROGRAM.json"
 _LIBPQ_ENVIRONMENT_VARIABLES = (
     "PGHOST",
     "PGSSLNEGOTIATION",
@@ -67,7 +68,7 @@ _LIBPQ_ENVIRONMENT_VARIABLES = (
     "PGLOCALEDIR",
 )
 
-_STANDALONE_PROBE = rf"""
+_STANDALONE_PROBE = r"""
 import importlib.util
 import sys
 from pathlib import Path
@@ -83,18 +84,10 @@ assert production.PRODUCTION_MIGRATION_CONTEXT_SCHEMA == "ticketbox-c07-producti
 fresh = launch._load_c07_fresh_source_bootstrap_module()
 assert callable(fresh.run_fresh_source_bootstrap_action)
 maintenance = launch._load_c07_maintenance_upgrade_module()
-plan = maintenance.get_installed_maintenance_plan(source_revision="{SOURCE_REVISION}")
-assert plan["operation_kind"] == "c07_money_minor_bigint_v1"
-assert plan["source_revision"] == "{SOURCE_REVISION}"
-assert plan["target_revision"] == "{TARGET_REVISION}"
-assert plan["upgrade_required"] is True
-assert len(plan["revision_manifest"]["revisions"]) == 1
+assert not hasattr(maintenance, "get_installed_maintenance_plan")
 managed = launch._load_managed_schema_upgrade_module()
-managed_plan = managed.get_managed_schema_plan(source_revision="{TARGET_REVISION}")
-assert managed_plan["source_revision"] == "{TARGET_REVISION}"
-assert managed_plan["target_revision"] == "{RELEASE_HEAD_REVISION}"
-assert managed_plan["upgrade_required"] is True
-assert managed_plan["revision_count"] == 2
+assert not hasattr(managed, "get_managed_schema_plan")
+assert callable(managed.validate_database_generation_program)
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
 """
 
@@ -120,6 +113,10 @@ def _maintenance_args(*, mode: str = "isolated_replay") -> list[str]:
         MIGRATOR_URL + RESTORE_DATABASE,
         "--pgpassfile",
         "C:/TicketboxInstallerSecrets/.ticketbox-pgpass-1-" + ("1" * 32),
+        "--generation-program-path",
+        PROGRAM_PATH,
+        "--expected-generation-program-sha256",
+        SHA_A,
         "--operation-id",
         OPERATION_ID,
         "--source-revision",
@@ -144,6 +141,10 @@ def _target_args() -> list[str]:
         MIGRATOR_URL + "ticketbox",
         "--pgpassfile",
         "C:/TicketboxInstallerSecrets/.ticketbox-pgpass-1-" + ("1" * 32),
+        "--generation-program-path",
+        PROGRAM_PATH,
+        "--expected-generation-program-sha256",
+        SHA_A,
         "--operation-id",
         OPERATION_ID,
         "--database",
@@ -172,6 +173,10 @@ def _production_args() -> list[str]:
         MIGRATOR_URL + "ticketbox",
         "--pgpassfile",
         "C:/TicketboxInstallerSecrets/.ticketbox-pgpass-1-" + ("1" * 32),
+        "--generation-program-path",
+        PROGRAM_PATH,
+        "--expected-generation-program-sha256",
+        SHA_A,
         "--operation-id",
         OPERATION_ID,
         "--source-revision",
@@ -188,6 +193,12 @@ def _fresh_source_args() -> list[str]:
         MIGRATOR_URL + "ticketbox_c07_fresh_source",
         "--pgpassfile",
         "C:/TicketboxInstallerSecrets/.ticketbox-pgpass-1-" + ("1" * 32),
+        "--generation-program-path",
+        PROGRAM_PATH,
+        "--expected-generation-program-sha256",
+        SHA_A,
+        "--generation-operation-id",
+        OPERATION_ID,
         "--source-revision",
         SOURCE_REVISION,
         "--target-revision",
@@ -202,12 +213,16 @@ def _managed_schema_args() -> list[str]:
         MIGRATOR_URL + "ticketbox?require_auth=scram-sha-256",
         "--pgpassfile",
         "C:/TicketboxInstallerSecrets/.ticketbox-pgpass-1-" + ("1" * 32),
+        "--generation-program-path",
+        PROGRAM_PATH,
+        "--expected-generation-program-sha256",
+        SHA_A,
         "--source-revision",
         TARGET_REVISION,
         "--target-revision",
         RELEASE_HEAD_REVISION,
-        "--expected-revision-manifest-sha256",
-        SHA_A,
+        "--generation-operation-id",
+        OPERATION_ID,
     ]
 
 
@@ -259,80 +274,6 @@ def test_c07_actions_load_without_ordinary_database_facade() -> None:
     assert completed.returncode == 0, completed.stderr
 
 
-def test_c07_plan_is_one_exact_release_edge() -> None:
-    from app.alembic_revision_contract import assert_linear_descendant_chain
-    from app.database import _c07_maintenance_plan as maintenance
-
-    assert maintenance.assert_linear_descendant_chain is assert_linear_descendant_chain
-    plan = maintenance.get_installed_maintenance_plan(
-        source_revision=SOURCE_REVISION,
-    )
-    revision = plan["revision_manifest"]["revisions"][0]
-
-    assert plan["source_revision"] == SOURCE_REVISION
-    assert plan["target_revision"] == TARGET_REVISION
-    assert revision["revision"] == TARGET_REVISION
-    assert revision["down_revision"] == SOURCE_REVISION
-    assert revision["transactionality"] == "postgresql_single_transaction"
-    assert revision["reversibility"] == "forward_only"
-    expected_removed_checks = {
-        ("bill_split_invitations", "ck_bill_split_invitations_amount_positive"),
-        ("budget_categories", "ck_budget_categories_amount_non_negative"),
-        ("budgets", "ck_budgets_total_non_negative"),
-        ("budgets", "ck_budgets_non_monthly_non_negative"),
-        ("csv_import_rows", "ck_csv_import_rows_amount_non_negative"),
-        ("debt_forgivenesses", "ck_debt_forgivenesses_amount_positive"),
-        ("debts", "ck_debts_principal_positive"),
-        ("expense_items", "ck_expense_items_amount_by_kind"),
-        ("expense_items", "ck_expense_items_unit_price_non_negative"),
-        ("expense_splits", "ck_expense_splits_amount_non_negative"),
-        ("expenses", "ck_expenses_amount_non_negative"),
-        ("expenses", "ck_expenses_original_amount_non_negative"),
-        ("goals", "ck_goals_target_positive"),
-        (
-            "member_repayment_proposals",
-            "ck_member_repayment_proposals_amount_positive",
-        ),
-        ("monthly_income_plans", "ck_monthly_income_plans_amount_non_negative"),
-        ("repayment_drafts", "ck_repayment_drafts_amount_positive"),
-        ("repayments", "ck_repayments_amount_positive"),
-    }
-    assert {
-        (check.table, check.name)
-        for check in maintenance.MONEY_REMOVED_LEGACY_CHECKS_V1
-    } == expected_removed_checks
-    expected_resources = {
-        *(
-            f"column:{contract.table}.{contract.column}:type=int8"
-            for contract in maintenance.MONEY_COLUMNS_V1
-        ),
-        *(
-            f"constraint:{check.table}.{check.name}:present_validated"
-            for contract in maintenance.MONEY_COLUMNS_V1
-            for check in contract.checks
-        ),
-        *(
-            f"constraint:{check.table}.{check.name}:absent"
-            for check in maintenance.MONEY_REMOVED_LEGACY_CHECKS_V1
-        ),
-        "meta:money_contract_phase=c07_money_minor_bigint_v1",
-        "meta:money_c07_ceremony_id:present",
-        "meta:money_c07_lifecycle_state:present",
-    }
-    assert set(revision["resources"]) == expected_resources
-    assert len(revision["resources"]) == len(expected_resources)
-    assert len(revision["resources"]) == 81
-    assert not any("_c07_i4_hold" in resource for resource in revision["resources"])
-
-    with pytest.raises(
-        maintenance.C07MaintenanceUpgradeError,
-        match="frozen source/target edge",
-    ):
-        maintenance.get_installed_maintenance_plan(
-            source_revision=TARGET_REVISION,
-        )
-
-
 def test_c07_maintenance_parser_rejects_descendant_mode() -> None:
     launch = _load_launch_module()
     with pytest.raises(SystemExit):
@@ -343,6 +284,7 @@ def test_c07_maintenance_parser_rejects_descendant_mode() -> None:
 
 def test_c07_maintenance_helper_binds_exact_attested_result(monkeypatch) -> None:
     launch = _load_launch_module()
+    monkeypatch.setattr(launch, "_resolve_generation_program", Path)
     captured: dict[str, object] = {}
     argv = _maintenance_args()
     _seal_c07_pg_environment(monkeypatch, argv)
@@ -386,6 +328,7 @@ def test_c07_maintenance_helper_binds_exact_attested_result(monkeypatch) -> None
 
 def test_c07_target_helper_emits_only_real_c07_attestations(monkeypatch) -> None:
     launch = _load_launch_module()
+    monkeypatch.setattr(launch, "_resolve_generation_program", Path)
     captured: dict[str, object] = {}
     argv = _target_args()
     _seal_c07_pg_environment(monkeypatch, argv)

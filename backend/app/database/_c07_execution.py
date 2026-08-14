@@ -56,6 +56,11 @@ from app.database._c07_storage import (
     _table_counts,
 )
 from app.database._c07_transaction_timeout import c07_prearmed_transaction
+from app.database._database_generation_program import (
+    ALEMBIC_PROGRAM_ATTRIBUTE,
+    DatabaseGenerationProgram,
+    DatabaseGenerationProgramError,
+)
 from app.money_contract import MONEY_COLUMNS_V1
 
 
@@ -90,7 +95,23 @@ def _revision_includes_c07(
 
     if revision is None:
         return False
-    script = ScriptDirectory.from_config(alembic_config or _alembic_config())
+    config = alembic_config or _alembic_config()
+    installed_program = config.attributes.get(ALEMBIC_PROGRAM_ATTRIBUTE)
+    if installed_program is not None:
+        if not isinstance(installed_program, DatabaseGenerationProgram):
+            raise C07CeremonyError("installed generation program type is invalid")
+        try:
+            target = installed_program.revision(revision)
+            target_index = installed_program.revisions.index(target)
+        except DatabaseGenerationProgramError as exc:
+            raise C07CeremonyError(
+                f"unable to resolve C07 ancestry for revision {revision!r}"
+            ) from exc
+        return any(
+            item.revision == C07_TARGET_REVISION
+            for item in installed_program.revisions[: target_index + 1]
+        )
+    script = ScriptDirectory.from_config(config)
     try:
         lineage = script.iterate_revisions(revision, "base")
         return any(item.revision == C07_TARGET_REVISION for item in lineage)

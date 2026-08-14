@@ -18,7 +18,12 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import URL, Connection, make_url
 from sqlalchemy.pool import NullPool
 
+from app.database import _managed_postgres_migration_runtime as managed_runtime
 from app.database import _managed_schema_upgrade as managed_schema
+from app.database._database_generation_program import (
+    DatabaseGenerationProgram,
+    load_database_generation_program,
+)
 from app.database._managed_postgres_contract import MIGRATION_LEASE_LABEL
 from app.database._managed_postgres_migration_runtime import (
     ManagedPostgresMigrationRuntimeError,
@@ -27,6 +32,7 @@ from app.database._managed_postgres_migration_runtime import (
 )
 from app.database._release_schema_readiness import read_release_head
 from app.services.secure_file import write_protected_file_exclusive
+from scripts.build_database_generation_program import write_program
 from tests._infra.c07_alembic import run_alembic_for_test
 from tests._infra.env import ADMIN_TEST_DATABASE_URL
 
@@ -113,6 +119,9 @@ class _ManagedTopology:
     migrator_url: URL
     pgpass: Path
     previous_pgpass: str | None
+    program: DatabaseGenerationProgram
+    program_path: Path
+    operation_id: str
     contract: ManagedPostgresRuntimeContractV1
     runtime: ManagedPostgresMigrationRuntimeV1
 
@@ -173,11 +182,7 @@ def _cleanup_topology(topology: _ManagedTopology) -> None:
     topology.admin.close()
 
 
-@contextmanager
-def _managed_topology(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[_ManagedTopology]:
+def _new_managed_topology(tmp_path: Path) -> _ManagedTopology:
     suffix = uuid4().hex[:12]
     owner = f"mm_owner_{suffix}"
     migrator = f"mm_migrator_{suffix}"
@@ -213,7 +218,12 @@ def _managed_topology(
     port = migrator_url.port
     assert port is not None
     pgpass = (tmp_path / f".managed-pgpass-{suffix}").resolve()
-    topology = _ManagedTopology(
+    program_path = (tmp_path / "DATABASE_GENERATION_PROGRAM.json").resolve()
+    program_sha256 = write_program(
+        backend_root=Path(__file__).resolve().parents[1],
+        output=program_path,
+    )
+    return _ManagedTopology(
         admin=admin,
         database=database,
         owner=owner,
@@ -223,12 +233,26 @@ def _managed_topology(
         migrator_url=migrator_url,
         pgpass=pgpass,
         previous_pgpass=os.environ.get("PGPASSFILE"),
+        program=load_database_generation_program(
+            path=program_path,
+            expected_sha256=program_sha256,
+        ),
+        program_path=program_path,
+        operation_id=str(uuid4()),
         contract=contract,
         runtime=ManagedPostgresMigrationRuntimeV1(contract),
     )
+
+
+@contextmanager
+def _managed_topology(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[_ManagedTopology]:
+    topology = _new_managed_topology(tmp_path)
     try:
         _create_roles_and_database(topology)
-        owner_engine = create_engine(owner_url, poolclass=NullPool, future=True)
+        owner_engine = create_engine(topology.owner_url, poolclass=NullPool, future=True)
         config = _alembic_config()
         try:
             run_alembic_for_test(
@@ -240,8 +264,11 @@ def _managed_topology(
         finally:
             owner_engine.dispose()
         write_protected_file_exclusive(
-            pgpass,
-            f"127.0.0.1:{port}:{database}:{migrator}:{_MIGRATOR_PASSWORD}\n",
+            topology.pgpass,
+            (
+                f"127.0.0.1:{topology.migrator_url.port}:"
+                f"{topology.database}:{topology.migrator}:{_MIGRATOR_PASSWORD}\n"
+            ),
         )
         monkeypatch.delenv("PGPASSWORD", raising=False)
         yield topology
@@ -264,10 +291,10 @@ def _assert_lease_contention(topology: _ManagedTopology) -> None:
                 topology.runtime.run(
                     database_url=topology.migrator_url.render_as_string(hide_password=False),
                     pgpassfile=topology.pgpass,
-                    alembic_config=_alembic_config(),
+                    program=topology.program,
                     source_revision=_C07_TARGET_REVISION,
-                    target_revision=_C02_TARGET_REVISION,
-                    verify_postcondition=lambda _connection: None,
+                    target_revision=_RELEASE_HEAD_REVISION,
+                    generation_operation_id=topology.operation_id,
                 )
     finally:
         blocker.dispose()
@@ -298,6 +325,21 @@ def _assert_rollback_retry_and_replay(
     topology: _ManagedTopology,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    original_execute = managed_runtime.execute_database_generation
+
+    def fail_after_execution(*args, **kwargs):
+        result = original_execute(*args, **kwargs)
+        _reject_postcondition(
+            args[0],
+            expected_timeout_ms=topology.contract.transaction_timeout_ms,
+        )
+        return result
+
+    monkeypatch.setattr(
+        managed_runtime,
+        "execute_database_generation",
+        fail_after_execution,
+    )
     with pytest.raises(
         ManagedPostgresMigrationRuntimeError,
         match="managed PostgreSQL migration failed",
@@ -305,14 +347,16 @@ def _assert_rollback_retry_and_replay(
         topology.runtime.run(
             database_url=topology.migrator_url.render_as_string(hide_password=False),
             pgpassfile=topology.pgpass,
-            alembic_config=_alembic_config(),
+            program=topology.program,
             source_revision=_C07_TARGET_REVISION,
-            target_revision=_C02_TARGET_REVISION,
-            verify_postcondition=lambda connection: _reject_postcondition(
-                connection,
-                expected_timeout_ms=topology.contract.transaction_timeout_ms,
-            ),
+            target_revision=_RELEASE_HEAD_REVISION,
+            generation_operation_id=topology.operation_id,
         )
+    monkeypatch.setattr(
+        managed_runtime,
+        "execute_database_generation",
+        original_execute,
+    )
     assert _revision(topology.owner_url) == _C07_TARGET_REVISION
     owner_probe = create_engine(topology.owner_url, poolclass=NullPool, future=True)
     try:
@@ -321,15 +365,13 @@ def _assert_rollback_retry_and_replay(
     finally:
         owner_probe.dispose()
 
-    plan = managed_schema._load_plan(_C07_TARGET_REVISION)
-    postcondition = managed_schema._target_postcondition(plan)
     arguments = {
         "database_url": topology.migrator_url.render_as_string(hide_password=False),
         "pgpassfile": topology.pgpass,
-        "alembic_config": plan.config,
-        "source_revision": plan.source_revision,
-        "target_revision": plan.target_revision,
-        "verify_postcondition": postcondition,
+        "program": topology.program,
+        "source_revision": _C07_TARGET_REVISION,
+        "target_revision": _RELEASE_HEAD_REVISION,
+        "generation_operation_id": topology.operation_id,
     }
     assert topology.runtime.run(**arguments) == "target_committed"
     assert _revision(topology.owner_url) == _RELEASE_HEAD_REVISION
@@ -338,17 +380,14 @@ def _assert_rollback_retry_and_replay(
     monkeypatch.setattr(managed_schema, "DATABASE_NAME", topology.database)
     monkeypatch.setattr(managed_schema, "MIGRATOR_ROLE", topology.migrator)
     monkeypatch.setattr(managed_schema, "SCHEMA_OWNER_ROLE", topology.owner)
-    noop_plan = managed_schema.get_managed_schema_plan(
-        source_revision=_RELEASE_HEAD_REVISION,
-    )
     noop_result = managed_schema.run_managed_schema_upgrade_action(
         database_url=topology.migrator_url.render_as_string(hide_password=False),
         pgpassfile=topology.pgpass,
+        generation_program_path=topology.program_path,
+        expected_generation_program_sha256=topology.program.payload_sha256,
         source_revision=_RELEASE_HEAD_REVISION,
         target_revision=_RELEASE_HEAD_REVISION,
-        expected_revision_manifest_sha256=str(
-            noop_plan["revision_manifest_sha256"]
-        ),
+        generation_operation_id=topology.operation_id,
     )
     assert noop_result["result"] == "target_observed_after_interruption"
     assert noop_result["alembic_revision"] == _RELEASE_HEAD_REVISION
