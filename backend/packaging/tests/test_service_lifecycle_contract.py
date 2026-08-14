@@ -745,7 +745,7 @@ if (
             encoding="utf-8",
             errors="replace",
             check=False,
-            timeout=15,
+            timeout=POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS,
         )
         assert profile_result.returncode == 0, (
             profile_result.stdout + profile_result.stderr

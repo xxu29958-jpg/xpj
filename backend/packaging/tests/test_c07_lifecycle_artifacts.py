@@ -51,6 +51,9 @@ def _write_manifest(path: Path, version: str = "7.8.9") -> None:
     helper.parent.mkdir(parents=True, exist_ok=True)
     helper_bytes = b"ticketbox-c07-test-migrator\n"
     helper.write_bytes(helper_bytes)
+    generation_program = helper.parent / "DATABASE_GENERATION_PROGRAM.json"
+    generation_program_bytes = b'{"schema":"ticketbox-test-generation-program-v1"}\n'
+    generation_program.write_bytes(generation_program_bytes)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
@@ -64,6 +67,13 @@ def _write_manifest(path: Path, version: str = "7.8.9") -> None:
                         "path": "ticketbox-c07-migrator.exe",
                         "size": len(helper_bytes),
                         "sha256": hashlib.sha256(helper_bytes).hexdigest(),
+                    },
+                    "database_generation_program": {
+                        "path": "DATABASE_GENERATION_PROGRAM.json",
+                        "size": len(generation_program_bytes),
+                        "sha256": hashlib.sha256(
+                            generation_program_bytes
+                        ).hexdigest(),
                     },
                 },
                 "postgresql": {"major": 17},

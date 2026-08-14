@@ -1322,6 +1322,11 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
         helper_dir.mkdir(parents=True)
         helper = helper_dir / "ticketbox-c07-migrator.exe"
         helper.write_bytes(helper_payload)
+        generation_program = helper_dir / "DATABASE_GENERATION_PROGRAM.json"
+        generation_program_payload = (
+            b'{"schema":"ticketbox-test-generation-program-v1"}\n'
+        )
+        generation_program.write_bytes(generation_program_payload)
         manifest = install_dir / "installer" / "BUILD_PROVENANCE.json"
         manifest.parent.mkdir()
         manifest.write_text(
@@ -1336,6 +1341,13 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
                             "path": helper.name,
                             "size": len(helper_payload),
                             "sha256": hashlib.sha256(helper_payload).hexdigest(),
+                        },
+                        "database_generation_program": {
+                            "path": generation_program.name,
+                            "size": len(generation_program_payload),
+                            "sha256": hashlib.sha256(
+                                generation_program_payload
+                            ).hexdigest(),
                         },
                     },
                     "postgresql": {"major": 17},
