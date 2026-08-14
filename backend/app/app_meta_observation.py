@@ -1,4 +1,4 @@
-"""Database-bound reads of C07 installation metadata."""
+"""Closed, read-only observation of one public ``app_meta`` value."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from sqlalchemy import text
 
 
 def read_app_meta_value(connection: Any, key: str) -> object:
-    """Return one metadata value without leaking SQL into domain modules."""
+    """Return one engine fact without importing the runtime database package."""
 
     return connection.scalar(
-        text("SELECT value FROM app_meta WHERE key = :key"),
+        text("SELECT value FROM public.app_meta WHERE key = :key"),
         {"key": key},
     )
 

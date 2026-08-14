@@ -1067,7 +1067,9 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     ):
         assert f'"{standalone_module}"' in backend_spec
     for standalone_dependency in (
-        "app.c07_money_facts",
+        "app.app_meta_observation",
+        "app.canonical_money_facts",
+        "app.canonical_money_facts_contract",
         "alembic.command",
         "alembic.config",
         "alembic.context",
@@ -1080,7 +1082,15 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert 'collect_submodules("app", on_error="raise")' in backend_spec
     assert '"app.database_model_registry"' in backend_spec
     assert '"app.tenant_contract"' in backend_spec
-    assert 'Frozen backend archive omitted required metadata module: $requiredModule' in backend_build
+    for required_archive_module in (
+        "app.app_meta_observation",
+        "app.canonical_money_facts",
+        "app.canonical_money_facts_contract",
+        "app.database_model_registry",
+        "app.tenant_contract",
+    ):
+        assert f'"{required_archive_module}"' in backend_build
+    assert 'Frozen backend archive omitted required app module: $requiredModule' in backend_build
     assert 'name="ticketbox-c07-migrator"' in backend_spec
     assert '$stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"' in backend_build
     smoke_call = backend_build.index("$c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke")

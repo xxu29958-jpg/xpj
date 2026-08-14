@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.c07_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
+from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError

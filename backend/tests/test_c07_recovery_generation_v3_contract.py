@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-import app.c07_money_facts_contract as c07_money_facts_contract
-import app.database._c07_app_meta as c07_app_meta
+import app.app_meta_observation as app_meta_observation
+import app.canonical_money_facts_contract as canonical_money_facts_contract
 import app.database._c07_ceremony_document as c07_ceremony_document
 import app.database._c07_commit_reconciliation as c07_commit_reconciliation
 import app.database._c07_host_evidence_helpers as c07_host_evidence_helpers
@@ -42,7 +42,7 @@ import app.services.stats_money as stats_money
 _DIRECTLY_REFERENCED_MODULES = (
     backup_job_lease,
     budget_money,
-    c07_app_meta,
+    app_meta_observation,
     c07_ceremony_document,
     c07_commit_reconciliation,
     c07_contract_types,
@@ -51,7 +51,7 @@ _DIRECTLY_REFERENCED_MODULES = (
     c07_maintenance_common,
     c07_maintenance_digest,
     c07_maintenance_upgrade_action,
-    c07_money_facts_contract,
+    canonical_money_facts_contract,
     c07_production_authority,
     c07_production_context,
     c07_production_fence,

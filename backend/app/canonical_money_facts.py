@@ -1,4 +1,4 @@
-"""Canonical streaming digest for the ADR-0073 C07 stored money facts."""
+"""Canonical streaming digest for release-stable stored money facts."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from uuid import UUID
 
 from sqlalchemy import inspect, text
 
-from app.c07_money_facts_contract import (
+from app.app_meta_observation import read_app_meta_value
+from app.canonical_money_facts_contract import (
     INSTALLATION_HOME_CURRENCY_KEY,
     MONEY_FACT_CONTEXT_COLUMNS_V1,
     MONEY_FACT_TABLES,
     MONEY_FACTS_SCHEMA,
 )
-from app.database._c07_app_meta import read_app_meta_value
 from app.money_contract import MONEY_COLUMNS_V1
 
 
@@ -32,15 +32,15 @@ def _canonical_identity(
     error: Callable[[str], Exception],
 ) -> str:
     if isinstance(value, bool) or value is None:
-        _fail(error, "C07 money fact identity is not canonical")
+        _fail(error, "canonical money fact identity is not canonical")
     if isinstance(value, int):
         return str(value)
     if isinstance(value, (str, UUID)):
         rendered = str(value)
         if not rendered:
-            _fail(error, "C07 money fact identity is empty")
+            _fail(error, "canonical money fact identity is empty")
         return rendered
-    _fail(error, "C07 money fact identity type is unsupported")
+    _fail(error, "canonical money fact identity type is unsupported")
     raise AssertionError("unreachable")
 
 
@@ -52,7 +52,7 @@ def _canonical_money(
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
-        _fail(error, "C07 money fact value is not an integer")
+        _fail(error, "canonical money fact value is not an integer")
     return str(value)
 
 
@@ -69,7 +69,7 @@ def _canonical_context(
         return {"type": "integer", "value": str(value)}
     if isinstance(value, Decimal):
         if not value.is_finite():
-            _fail(error, "C07 money fact context decimal is not finite")
+            _fail(error, "canonical money fact context decimal is not finite")
         return {"type": "decimal", "value": format(value, "f")}
     if isinstance(value, datetime):
         return {"type": "datetime", "value": value.isoformat()}
@@ -79,7 +79,7 @@ def _canonical_context(
         return {"type": "uuid", "value": str(value)}
     if isinstance(value, str):
         return {"type": "text", "value": value}
-    _fail(error, "C07 money fact context type is unsupported")
+    _fail(error, "canonical money fact context type is unsupported")
     raise AssertionError("unreachable")
 
 
@@ -114,7 +114,7 @@ def _primary_columns(
     ):
         _fail(
             error,
-            f"C07 money fact table lacks a stable primary key: {table}",
+            f"canonical money fact table lacks a stable primary key: {table}",
         )
     return tuple(primary_key)
 
@@ -142,7 +142,7 @@ def _update_table_digest(
     if not required_columns <= available_columns:
         _fail(
             error,
-            f"C07 money fact table is missing frozen source columns: {table}",
+            f"canonical money fact table is missing frozen source columns: {table}",
         )
     digest.update(
         _json_line(
@@ -198,7 +198,7 @@ def _installation_currency(
     if value is None:
         return None
     if not isinstance(value, str) or not value:
-        _fail(error, "C07 installation currency marker is invalid")
+        _fail(error, "installation currency marker is invalid")
     return value
 
 

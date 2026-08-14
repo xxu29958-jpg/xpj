@@ -25,6 +25,75 @@ def run_isolated_probe(
     )
 
 
+RUNTIME_DATABASE_FREE_IMPORT_PROBE = r'''
+import builtins
+import importlib
+import sys
+import dotenv
+import sqlalchemy
+import sqlalchemy.engine as sync_engine
+import sqlalchemy.engine.create as sync_engine_create
+import sqlalchemy.ext.asyncio as async_engine
+import sqlalchemy.ext.asyncio.engine as async_engine_create
+
+sys.path.insert(0, sys.argv[1])
+original_import = builtins.__import__
+engine_calls = []
+dotenv_calls = []
+
+def reject_engine(*args, **kwargs):
+    engine_calls.append(args[0] if args else None)
+    raise AssertionError("leaf import attempted to construct a runtime engine")
+
+def reject_dotenv(*args, **kwargs):
+    dotenv_calls.append(args[0] if args else None)
+    raise AssertionError("leaf import attempted to read runtime dotenv state")
+
+sqlalchemy.create_engine = reject_engine
+sync_engine.create_engine = reject_engine
+sync_engine_create.create_engine = reject_engine
+async_engine.create_async_engine = reject_engine
+async_engine_create.create_async_engine = reject_engine
+dotenv.load_dotenv = reject_dotenv
+
+def reject_runtime_database(name, globals=None, locals=None, fromlist=(), level=0):
+    if (
+        name == "app.config"
+        or name == "app.database"
+        or name.startswith("app.database.")
+        or (
+            name == "app"
+            and any(item == "config" or item == "database" for item in fromlist)
+        )
+    ):
+        raise AssertionError(f"runtime database dependency imported: {name}")
+    return original_import(name, globals, locals, fromlist, level)
+
+builtins.__import__ = reject_runtime_database
+for module_name in sys.argv[2:]:
+    importlib.import_module(module_name)
+assert engine_calls == []
+assert dotenv_calls == []
+assert "app.config" not in sys.modules
+assert not any(
+    name == "app.database" or name.startswith("app.database.")
+    for name in sys.modules
+)
+'''
+
+
+def assert_runtime_database_free_imports(
+    backend_root: Path,
+    *module_names: str,
+) -> None:
+    completed = run_isolated_probe(
+        backend_root,
+        RUNTIME_DATABASE_FREE_IMPORT_PROBE,
+        *module_names,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
 RUNTIME_METADATA_PROBE = r'''
 import builtins
 import os

@@ -41,15 +41,16 @@ app_hiddenimports = [
         "app.database._managed_schema_upgrade",
     }
 ]
-if "app.c07_money_facts" not in app_hiddenimports:
-    raise RuntimeError("C07 frozen helper dependency discovery is incomplete")
-for required_metadata_module in (
+for required_app_module in (
+    "app.app_meta_observation",
+    "app.canonical_money_facts",
+    "app.canonical_money_facts_contract",
     "app.database_model_registry",
     "app.tenant_contract",
 ):
-    if required_metadata_module not in app_hiddenimports:
+    if required_app_module not in app_hiddenimports:
         raise RuntimeError(
-            f"frozen metadata dependency discovery omitted {required_metadata_module}"
+            f"frozen app dependency discovery omitted {required_app_module}"
         )
 
 hiddenimports = (

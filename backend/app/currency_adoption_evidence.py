@@ -10,9 +10,9 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from app.c07_money_facts import canonical_money_facts_sha256
-from app.c07_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
-from app.database._c07_app_meta import read_app_meta_value
+from app.app_meta_observation import read_app_meta_value
+from app.canonical_money_facts import canonical_money_facts_sha256
+from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.errors import AppError
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRENCY_CODES
 
