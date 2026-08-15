@@ -361,23 +361,12 @@ def _assert_windows_lifecycle_matrix(
         5,
     ]
     expected_windows_suite_rows = [
-        ("C07 lifecycle artifacts", "test_c07_lifecycle_artifacts", 20),
-        ("C07 superuser recovery", "test_c07_superuser_recovery", 20),
         (
-            "Service lifecycle heartbeat environment",
-            "test_c07_heartbeat_helper_uses_minimal_real_ps51_environment",
-            25,
-        ),
-        (
-            "Service lifecycle heartbeat operation",
-            "test_production_c07_heartbeat_operation_is_bounded_and_fully_reaped",
-            40,
-        ),
-        (
-            "Service lifecycle heartbeat external owner",
-            "test_c07_heartbeat_helper_preserves_external_primary_owner_binding",
+            "Database generation writer fence",
+            "test_database_generation_writer_fence",
             20,
         ),
+        ("C07 superuser recovery", "test_c07_superuser_recovery", 20),
         ("Service lifecycle remainder", "test_service_lifecycle_contract and not heartbeat", 20),
     ]
     expected_windows_suites = [

@@ -20,6 +20,7 @@ source_revision = sys.argv[2]
 target_revision = sys.argv[3]
 from app.database._database_generation_executor import execute_database_generation
 from app.database._database_generation_program import load_database_generation_program
+from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 program = load_database_generation_program(
     path=Path(sys.argv[4]),
     expected_sha256=sys.argv[5],
@@ -28,7 +29,10 @@ program = load_database_generation_program(
 from app.database import engine
 
 operation_id = "d5148f80-1e6c-447d-b3bc-e3dc180d87b4"
-with engine.begin() as connection:
+with engine.connect() as connection, _prearmed_transaction(
+    connection,
+    timeout_ms=20 * 60 * 1000,
+):
     execute_database_generation(
         connection,
         program=program,

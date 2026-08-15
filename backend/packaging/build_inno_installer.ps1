@@ -113,18 +113,6 @@ $PostgresqlWriterFenceSessionDrainScript = Join-Path `
 $PostgresqlWriterFenceReconcilerScript = Join-Path `
     $PostgresqlWriterFenceComponentDir `
     "reconciler.ps1"
-$C07WriterFenceScript = Join-Path `
-    (Join-Path $ScriptDir "c07_lifecycle") `
-    "writer_fence.ps1"
-$C07WriterFenceComponentDir = Join-Path `
-    (Join-Path $ScriptDir "c07_lifecycle") `
-    "writer_fence"
-$C07WriterFencePolicyScript = Join-Path `
-    $C07WriterFenceComponentDir `
-    "policy.ps1"
-$C07WriterFenceAdapterScript = Join-Path `
-    $C07WriterFenceComponentDir `
-    "adapter.ps1"
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
 $C07DatabaseScript = Join-Path $ScriptDir "windows_c07_database.ps1"
 $WindowsSecurityPrimitivesScript = Join-Path `
@@ -1103,15 +1091,6 @@ Assert-File `
 Assert-File `
     $PostgresqlWriterFenceReconcilerScript `
     "Windows PostgreSQL writer-fence reconciler"
-Assert-File `
-    $C07WriterFenceScript `
-    "Windows C07 writer-fence policy adapter"
-Assert-File `
-    $C07WriterFencePolicyScript `
-    "Windows C07 writer-fence policy"
-Assert-File `
-    $C07WriterFenceAdapterScript `
-    "Windows C07 writer-fence lifecycle adapter"
 Assert-File $DatabaseScript "Windows bundled database 脚本"
 Assert-File $C07DatabaseScript "Windows C07 数据库权威脚本"
 Assert-File $WindowsSecurityPrimitivesScript "Windows security primitives 脚本"

@@ -179,7 +179,6 @@ function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {
         DataVolumeIdentity = [string]$authority.DataVolumeIdentity
     }
 }
-
 function Get-TicketboxDatabaseGenerationFrozenFence {
     param(
         [Parameter(Mandatory = $true)][object]$HostAuthority,
@@ -191,6 +190,8 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
         -Role "postgres"
     $capturedPsql = [string]$HostAuthority.PsqlPath
     $capturedUrl = $databaseUrl
+    $allowedRoleNames = @("postgres", $script:TicketboxC07OwnerRole,
+        $script:TicketboxC07MigratorRole, $script:TicketboxC07RuntimeRole)
     return Invoke-TicketboxC07WithPlainSecret `
         -Secret $SuperuserPassword `
         -Action ({
@@ -214,6 +215,23 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
             $runtime = @($observation.Roles | Where-Object {
                 [string]$_.name -ceq $script:TicketboxC07RuntimeRole
             })
+            $databaseAuthority = @($observation.Roles | Where-Object { [string]$_.name -ceq "postgres" })
+            $unsafeUnregistered = @($observation.Roles | Where-Object {
+                [string]$_.name -cnotin $allowedRoleNames -and
+                (
+                    [bool]$_.can_login -or [bool]$_.direct_connect -or
+                    [bool]$_.effective_connect -or [bool]$_.is_superuser -or
+                    [bool]$_.can_create_db -or [bool]$_.can_create_role -or
+                    [bool]$_.can_replicate -or [bool]$_.can_bypass_rls -or
+                    [bool]$_.is_database_owner -or [bool]$_.owns_managed_schema -or
+                    [bool]$_.owns_managed_relations -or [bool]$_.owns_security_definer_routines -or
+                    [bool]$_.can_execute_unowned_security_definer_routines -or [bool]$_.can_database_create -or
+                    [bool]$_.can_managed_schema_create -or [bool]$_.can_table_write -or
+                    [bool]$_.can_sequence_write -or
+                    [bool]$_.can_assume_write_owner -or
+                    @($_.predefined_role_usage).Count -ne 0 -or @($_.predefined_role_set).Count -ne 0
+                )
+            })
             if (
                 [bool]$observation.PublicConnect -or
                 [int64]$observation.OtherClientSessionCount -ne 0 -or
@@ -225,14 +243,17 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
                 [int64]$observation.UnexpectedDatabaseWorkerCount -ne 0 -or
                 -not [bool]$observation.AdvisoryFenceAvailable -or
                 -not [bool]$observation.AdvisoryFenceReleased -or
+                $unsafeUnregistered.Count -ne 0 -or
+                $databaseAuthority.Count -ne 1 -or
+                -not [bool]$databaseAuthority[0].can_login -or
+                -not [bool]$databaseAuthority[0].is_superuser -or
                 $owner.Count -ne 1 -or [bool]$owner[0].can_login -or
                 $migrator.Count -ne 1 -or -not [bool]$migrator[0].can_login -or
                 [int]$migrator[0].connection_limit -ne 1 -or
                 -not [bool]$migrator[0].can_assume_write_owner -or
                 $runtime.Count -ne 1 -or [bool]$runtime[0].can_login -or
                 [int]$runtime[0].connection_limit -ne 0 -or
-                [bool]$runtime[0].direct_connect -or
-                [bool]$runtime[0].effective_connect -or
+                [bool]$runtime[0].direct_connect -or [bool]$runtime[0].effective_connect -or
                 [bool]$runtime[0].can_table_write -or
                 [bool]$runtime[0].can_sequence_write -or
                 [bool]$runtime[0].can_assume_write_owner
