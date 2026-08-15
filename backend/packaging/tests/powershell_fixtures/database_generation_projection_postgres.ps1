@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$ProjectionPath,
     [Parameter(Mandatory = $true)][string]$PgBin,
     [Parameter(Mandatory = $true)][string]$WorkRoot,
