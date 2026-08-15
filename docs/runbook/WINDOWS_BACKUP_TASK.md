@@ -23,7 +23,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbo
 `DATA_ROOT` 跟随部署形态(`backend/app/services/backup_service.py:_BACKUP_DIR = DATA_ROOT / "backups"`):
 
 - 源码运行(`uvicorn app.main:app` from `backend/`):`DATA_ROOT = backend/`,实际路径 `backend/backups/`。
-- 冻结 EXE 部署:启动器把 `TICKETBOX_DATA_DIR` 指到 `ticketbox-data\`,实际路径 `ticketbox-data\backups\`。
+- 正式 Windows 服务:`TICKETBOX_DATA_DIR` 指向 machine-owned `TicketboxRuntimeBinding\data-root\app` junction；v2 marker 与 Volume GUID 将其绑定到物理 `<DataRoot>\app`，备份位于 `<DataRoot>\app\backups\`。
 - 任何运行形态下,实际路径都可以用 `Owner Console`「备份」页面看到。
 
 调整备份时间：
@@ -77,7 +77,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_ta
 - `pg_dump` / `pg_restore` 的发现链：环境变量（`PG_DUMP_PATH` / `PG_RESTORE_PATH`）→ `PATH` → 当前机器 `ProgramFiles` 根下的 PostgreSQL 最高版本自动探测（脚本与 Python 校验服务同一条链；三者都没有才报错）。
 - 任务从受保护配置读取 `DATABASE_URL`，但调用 `pg_dump` 时会把口令从 `--dbname` 参数中剥离，只放入该子进程的临时 `PGPASSWORD`；父进程环境会精确恢复，日志不记录原生输出或 DSN。
 
-PostgreSQL 恢复用 `pg_restore`（见下方「从备份恢复」与 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)）。
+`pg_restore --list` 和 scratch 恢复只验证归档可读性；它们不构成正式 Windows 恢复入口。
 
 ## 异地备份（offsite）
 
@@ -107,11 +107,11 @@ Get-ChildItem (Join-Path $env:XPJ_OFFSITE_BACKUP_DIR "db") | Sort-Object LastWri
 任一查不过：先看任务历史 / 手跑 `maintenance_ticketbox.ps1 -Backup` 拿真实报错，再对照
 「PostgreSQL 备份格式」一节的发现链与凭证两条排查。
 
-## 从备份恢复
+## Scratch 恢复演练
 
-PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。恢复前先停后端
-（`scripts\stop_backend.ps1`），再用 `pg_restore` 把归档恢复到目标库——完整步骤（建库、`--no-owner`、
-凭证、起库后校验）见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。`uploads/` 目录不随库恢复改动。
+PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。只在隔离的源码/测试数据库中
+按 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 恢复到 scratch 库并核对；不要停止、覆盖
+或重启正式安装。正式 Windows 恢复入口尚未出货，整体能力继续 `QUALIFIED_HOLD`。
 
 边界：
 
@@ -119,5 +119,5 @@ PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。恢复�
 - 不把真实 Token 写进备份文档、日志或 Git。
 - 备份默认只在本机生成 `pg_dump` 归档；只有显式启用后才同步到用户指定目录（见「异地备份」），应用不选择或发现第三方云目录。
 - 默认只保留最近 30 天的备份（`ticketbox-*.dump`）。
-- 恢复不删除 uploads 图片。
+- Scratch 演练不覆盖正式库，也不验证 uploads 与数据库恢复后的一致性。
 - 清理图片不影响 confirmed 账本数据。

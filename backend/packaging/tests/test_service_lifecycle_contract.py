@@ -2012,17 +2012,6 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert '：$Sql`n$out' not in database
     assert 'throw "psql 执行失败（db=$Database, exit=$($result.ExitCode)）。"' in database
 
-    legacy_installer = _read("install_ticketbox.ps1")
-    assert '"-tAc", $Sql' not in legacy_installer
-    assert '"--dbname", $ProtectedDatabaseUrl, "-tA"' in legacy_installer
-    assert "Invoke-TicketboxWithPgPassFile" in legacy_installer
-    assert "require_auth=scram-sha-256" in legacy_installer
-    assert "Invoke-TicketboxBoundedNativeProcess" in legacy_installer
-    assert '-StandardInputText ($Sql + "`n")' in legacy_installer
-    assert "$out = $Sql | & $Psql @psqlArgs 2>&1" not in legacy_installer
-    assert '：$Sql"' not in legacy_installer
-
-
 def test_pre_upgrade_backup_uses_old_tools_before_stopping_postgres() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
 

@@ -1,6 +1,8 @@
 # 版本回滚 Runbook
 
-适用于 Windows 后端 + Cloudflare Tunnel + Android 灰度的部署形态，覆盖代码、数据库、APK、网络入口四条线的回滚顺序与限制。
+本页只提供源码/测试后端、Cloudflare Tunnel 与 Android 灰度的回退参考。正式 Windows
+安装的二进制/schema/数据恢复入口尚未出货，不能把以下源码命令冒充产品回滚能力；该能力继续
+`QUALIFIED_HOLD`。
 
 ## 适用范围与不可逆边界
 
@@ -8,28 +10,28 @@
 
 | 版本变更 | 是否允许回滚 | 说明 |
 |---|---|---|
-| 后端补丁（同一 minor 内） | ✅ 始终可逆 | `git revert` + 备份恢复（`pg_restore`） |
+| 源码/测试后端补丁（同一 minor 内） | ⚠️ 逐项验证 | 代码可 `git revert`；数据库只允许 scratch 恢复演练 |
 | Android 补丁（同一 minor 内） | ✅ 始终可逆 | 卸载灰度 APK，装上一版即可，Pairing 配对仍有效 |
-| 后端 minor 降级（v0.9 → v0.8） | ⚠️ 数据库需先停写 | v0.9 新增 Reports/Goals/DashboardCard 表，回滚后这些表保留但 v0.8 不读，不影响业务；服务端预算（v0.8）→ v0.7 同理 |
+| 正式 Windows 后端降级/恢复 | ❌ 尚未出货 | 需要同一生命周期 owner 重新验证 program、generation、数据和运行态投影 |
 | Android minor 降级 | ⚠️ 必须重新 Pairing | session token 在 Android 端 Keystore 中；旧 APK 不识别新 token，需重新配对 |
 | **identity_schema 降级（任何方向越过 v0.3）** | ❌ 禁止 | `identity_schema=v0.3` 是 v0.3 以来的稳定契约；v0.3 之前的 `APP_TOKEN`/`UPLOAD_TOKEN` 模型已永久退役 |
 | Cloudflare Tunnel 配置变更 | ✅ 可逆 | 保留上一版 `config.yml` 即可切回 |
-| **数据库引擎（PostgreSQL，PG-only）** | ❌ 不可逆 | SQLite 已彻底退役，无引擎层回滚；数据恢复只能用 PG 备份 `.dump` + `pg_restore`(见下方专节 + [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)) |
+| **数据库引擎（PostgreSQL，PG-only）** | ❌ 不可逆 | SQLite 已彻底退役；`pg_restore` 目前只用于源码/测试 scratch 演练 |
 
-## 回滚顺序
+## 源码/测试回退顺序
 
-按以下顺序执行，避免数据不一致：
+下列命令不适用于正式 Windows 安装：
 
 1. **停服**：[scripts/stop_backend.ps1](../../scripts/stop_backend.ps1) 或 Windows 服务面板停止 ticketbox
 2. **备份当前库**：避免回滚后悔时找不到现场（见下方"数据库备份与恢复"）
 3. **代码切换**：`git checkout <旧 tag>`
-4. **数据库回滚**（如需要）
+4. **数据库 scratch 核对**（如需要，不覆盖正式库）
 5. **重启**：[scripts/start_backend.ps1](../../scripts/start_backend.ps1)
 6. **Android APK 回退**（如需要）：见 [RELEASE_PACKAGING.md](RELEASE_PACKAGING.md)
 7. **网络入口回退**（如需要）：见 [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)
 8. **验收**：见本文末"验收清单"
 
-## 后端代码回滚
+## 源码后端代码回退
 
 定位上一稳定 tag：
 
@@ -60,13 +62,17 @@ cd E:\projects\xiaopiaojia
 powershell -ExecutionPolicy Bypass -File backend\scripts\backup_database.ps1
 ```
 
-输出到 `<DATA_ROOT>\backups\ticketbox-YYYYMMDD-HHMMSS.dump`（`pg_dump -Fc` 自定义格式归档）。`DATA_ROOT` 跟随部署形态:源码运行是 `backend\backups\`,冻结 EXE 部署(`TICKETBOX_DATA_DIR=ticketbox-data\`)是 `ticketbox-data\backups\`。Windows 计划备份配置见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
+输出到 `<DATA_ROOT>\backups\ticketbox-YYYYMMDD-HHMMSS.dump`（`pg_dump -Fc` 自定义格式归档）。
+源码运行的 `DATA_ROOT` 是 `backend\`；正式 Windows 服务通过
+`TicketboxRuntimeBinding\data-root\app` junction 访问安装器选择的物理 `<DataRoot>\app`，
+并以 v2 marker + Volume GUID 绑定。Windows 计划备份配置见
+[WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
 
 ### 恢复到某个备份
 
-PostgreSQL 备份（`.dump` 自定义格式归档）用 `pg_restore` 恢复到目标库——停后端 → `pg_restore` → 重启，
-完整步骤见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。`uploads/` 目录不动——图片文件路径以数据库
-`expenses.image_path` 为权威，回滚库时图片自然对齐。
+源码/测试 scratch 数据库可按 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 使用
+`pg_restore`。正式 Windows 恢复入口尚未出货；不得用“停后端 → 手工恢复 → 重启”绕过
+生命周期并冒充 generation、uploads 与运行态投影已重新验证。
 
 ### 版本特定的数据库回滚注意
 
@@ -78,7 +84,7 @@ PostgreSQL 备份（`.dump` 自定义格式归档）用 `pg_restore` 恢复到�
 
 ADR-0041 把存储从 SQLite 换到本机 PostgreSQL，PG-only 瘦身后 SQLite 引擎/方言已**彻底退役**——没有 `DATABASE_URL=sqlite:///...` 回滚路径了。引擎层不可逆:
 
-- 数据回滚只能在 PostgreSQL 内进行:用 `pg_restore` 把某个 `.dump` 备份恢复到目标库(见上方"恢复到某个备份")。
+- `pg_restore` 目前只能把 `.dump` 恢复到隔离 scratch 库进行可读性核对；正式恢复仍为 HOLD。
 - 历史背景见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 与 ADR-0041(cut-over 2026-06-04 完成,SQLite 回滚源已失效)。
 
 ## Android APK 回退

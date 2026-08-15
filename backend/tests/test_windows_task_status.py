@@ -311,7 +311,6 @@ def test_windows_postgres_discovery_uses_os_program_files_contract() -> None:
     project_root = Path(__file__).resolve().parents[2]
     script_paths = (
         project_root / "backend" / "scripts" / "backup_database.ps1",
-        project_root / "backend" / "packaging" / "install_ticketbox.ps1",
     )
 
     for script_path in script_paths:

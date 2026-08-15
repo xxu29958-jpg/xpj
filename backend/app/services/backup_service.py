@@ -1,14 +1,16 @@
 """Database backup helpers for the Owner Console.
 
 Backups live under the writable data dir at ``DATA_ROOT/backups`` (``backend/
-backups/`` in a source run; ``ticketbox-data/backups/`` next to a frozen EXE).
-The same location is used by ``scripts/maintenance_ticketbox.ps1 -Backup`` so a
-backup created from the Owner Console is interchangeable with one created by
-the scheduled task.
+backups/`` in a source run; physical ``<DataRoot>/app/backups`` in the formal
+Windows service). The service reaches those bytes through the machine-owned
+``TicketboxRuntimeBinding/data-root/app`` junction. The same location is used by
+``scripts/maintenance_ticketbox.ps1 -Backup`` so a backup created from the
+Owner Console is interchangeable with one created by the scheduled task.
 
 The backend is PostgreSQL-only (ADR-0041): backups shell out to ``pg_dump -Fc``
 into a ``.dump`` custom-format archive. Restoring remains an explicit local
-command (``pg_restore`` per the Postgres runbook).
+command only for source/test scratch databases. No formal Windows restore entry
+is shipped yet; the installed lifecycle remains ``QUALIFIED_HOLD`` for restore.
 """
 
 from __future__ import annotations
@@ -96,11 +98,11 @@ def _backup_dir() -> Path:
 
 
 def backup_directory_label() -> str:
-    """备份目录的**相对**展示标签(如 ``backend\\backups`` / ``ticketbox-data\\backups``)。
+    """备份目录的**相对**展示标签(如 ``backend\\backups`` / ``app\\backups``)。
 
     只取数据根末段 + ``backups``,**不暴露主机绝对路径**(测试 no_uploads_path_leak
-    禁止页面出现 ``C:\\`` / ``E:\\``)。源码部署 = backend、冻结 EXE = ticketbox-data;
-    与维护/恢复脚本(已跟随 ``TICKETBOX_DATA_DIR``)写/读的位置一致。
+    禁止页面出现 ``C:\\`` / ``E:\\``)。源码运行通常显示 backend，正式 Windows
+    服务显示安装器所选数据根的末段；与跟随 ``TICKETBOX_DATA_DIR`` 的维护机制一致。
     """
     return f"{_BACKUP_DIR.parent.name}\\{_BACKUP_DIR.name}"
 

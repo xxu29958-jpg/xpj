@@ -1,14 +1,16 @@
 """Frozen-EXE entry point for the Ticketbox backend.
 
 PyInstaller bundles the read-only program (the ``app`` package, static assets,
-Jinja templates, ``alembic.ini`` and ``migrations/``). Everything the running
-backend *writes* — uploaded images, ``.env`` overrides, logs, and PostgreSQL
-backups — lives in a separate, writable ``ticketbox-data/`` folder next to the
-EXE. The database itself runs in a local PostgreSQL service (see
-docs/runbook/POSTGRES_MIGRATION.md), not in this folder. We point the app's
-config there via env vars BEFORE importing ``app.*``, because :mod:`app.config`
-resolves paths relative to its own location, which in a frozen build is the
-throwaway extraction dir (``sys._MEIPASS``).
+Jinja templates, ``alembic.ini`` and ``migrations/``). The formal Windows
+service receives the machine-owned
+``TicketboxRuntimeBinding/data-root/app`` junction through
+``TICKETBOX_DATA_DIR``. That junction is bound by the v2 DataRoot marker and
+Volume GUID to the installer-selected physical ``<DataRoot>/app`` bytes. Only
+source/development invocation without that host contract falls back to
+``ticketbox-data/`` beside the program root. The database itself runs in the
+installer-managed local PostgreSQL service. We set the data root BEFORE
+importing ``app.*`` because :mod:`app.config` otherwise resolves paths against
+PyInstaller's throwaway ``sys._MEIPASS`` extraction dir.
 
 Run (frozen):   through the installer-validated Windows service contract
 Run (dev):      python packaging/launch.py            (cwd = backend/)
@@ -832,13 +834,13 @@ def _run_c07_target_semantic(
 def _resolve_writable_data_dir() -> Path:
     """Writable data root for files the backend *creates* (uploads, .env, backups).
 
-    Honors an installer/service-preset ``TICKETBOX_DATA_DIR`` — the ADR-0047
-    service deployment points it at the machine ``CommonApplicationData/Ticketbox/app`` root because the
-    onedir EXE lives in a read-only/locked location. Only when it is unset/blank
-    do we fall back to a ``ticketbox-data/`` folder next to the EXE (dev / the
-    single-folder 档 A install). Resolving a preset HERE — instead of computing
-    the EXE-adjacent default and unconditionally overwriting the preset later —
-    is what lets the service run from a read-only ``Program Files`` install.
+    Honors an installer/service-preset ``TICKETBOX_DATA_DIR``. The formal
+    service points it at the machine-owned
+    ``CommonApplicationData/TicketboxRuntimeBinding/data-root/app`` junction;
+    the v2 marker and Volume GUID bind its target to physical
+    ``<DataRoot>/app``. Only source/development runs may fall back to a
+    ``ticketbox-data/`` folder beside the program root. Respecting the preset
+    lets the service run from a read-only ``Program Files`` install.
     """
     preset = os.environ.get("TICKETBOX_DATA_DIR", "").strip()
     if preset:

@@ -1460,6 +1460,78 @@ def test_installer_never_bundles_local_runtime_data() -> None:
     )
 
 
+def test_retired_portable_installer_cannot_return() -> None:
+    assert not (PACKAGING / "install_ticketbox.ps1").exists()
+    readme = _read("README.md")
+    assert "install_ticketbox.ps1" not in readme
+    assert "档 A" not in readme
+    assert "TicketboxRuntimeBinding\\data-root\\app" in readme
+    assert "v2 DataRoot marker" in readme
+    assert "Volume GUID" in readme
+    postgres_migration = (
+        ROOT / "docs" / "runbook" / "POSTGRES_MIGRATION.md"
+    ).read_text(encoding="utf-8")
+    assert "本节只用于源码/测试环境" in postgres_migration
+    assert "正式 Windows 恢复入口尚未出货" in postgres_migration
+    windows_backup_task = (
+        ROOT / "docs" / "runbook" / "WINDOWS_BACKUP_TASK.md"
+    ).read_text(encoding="utf-8")
+    rollback = (ROOT / "docs" / "runbook" / "ROLLBACK.md").read_text(
+        encoding="utf-8"
+    )
+    gray_acceptance = (
+        ROOT / "docs" / "runbook" / "GRAY_ACCEPTANCE_EXECUTION.md"
+    ).read_text(encoding="utf-8")
+    retired_restore_promises = (
+        "✅ 始终可逆 | `git revert` + 备份恢复（`pg_restore`）",
+        "恢复前先停后端",
+        "再用 `pg_restore` 把归档恢复到目标库",
+        "检查后端是否已停止",
+    )
+    operator_restore_contracts = (
+        windows_backup_task,
+        rollback,
+        gray_acceptance,
+        postgres_migration,
+    )
+    for contract in operator_restore_contracts:
+        assert "尚未出货" in contract
+        assert "QUALIFIED_HOLD" in contract
+        for promise in retired_restore_promises:
+            assert promise not in contract
+    active_contracts = (
+        _read("launch.py"),
+        (ROOT / "backend" / "README.md").read_text(encoding="utf-8"),
+        (ROOT / "backend" / "app" / "config.py").read_text(encoding="utf-8"),
+        (ROOT / "backend" / "app" / "services" / "backup_service.py").read_text(
+            encoding="utf-8"
+        ),
+        (ROOT / "backend" / "tests" / "test_packaging_data_root.py").read_text(
+            encoding="utf-8"
+        ),
+        (ROOT / "docs" / "architecture" / "SECURITY.md").read_text(encoding="utf-8"),
+        (ROOT / "docs" / "architecture" / "DATA_RETENTION.md").read_text(encoding="utf-8"),
+        gray_acceptance,
+        postgres_migration,
+        rollback,
+        windows_backup_task,
+    )
+    retired_topology_patterns = (
+        re.compile(r"(?is)(?:frozen|冻结\s*EXE)[^\n]{0,100}ticketbox-data"),
+        re.compile(r"(?is)ticketbox-data[^\n]{0,100}(?:frozen|冻结\s*EXE)"),
+        re.compile(r"(?i)TICKETBOX_DATA_DIR\s*=\s*ticketbox-data"),
+        re.compile(r"(?i)(?:next to|beside)\s+(?:the\s+)?EXE"),
+        re.compile(r"(?i)CommonApplicationData[/\\]Ticketbox[/\\]app"),
+        re.compile(
+            r"(?is)(?:绑定到|binds?[^\n]{0,40}\s+to)[^<\n]{0,60}"
+            r"<DataRoot>[/\\]app[/\\]backups"
+        ),
+    )
+    for contract in active_contracts:
+        for pattern in retired_topology_patterns:
+            assert not pattern.search(contract)
+
+
 def test_installer_version_only_comes_from_backend_source_of_truth() -> None:
     build = _read("build_inno_installer.ps1")
     installer = _read_installer()
