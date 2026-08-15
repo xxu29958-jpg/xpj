@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from app.services import secure_file_windows as _windows
+from app.services import secure_file_windows_acl as _windows_acl
 
 _MOVEFILE_WRITE_THROUGH = 0x00000008
 _SYSTEM_SID = _windows.SYSTEM_SID
@@ -75,7 +76,7 @@ def _current_process_sid(advapi32: object, kernel32: object) -> str:
 
 
 def _current_process_service_sid(advapi32: object, kernel32: object) -> str:
-    return _windows.current_process_service_sid(advapi32, kernel32)
+    return _windows_acl.current_process_service_sid(advapi32, kernel32)
 
 
 @contextlib.contextmanager

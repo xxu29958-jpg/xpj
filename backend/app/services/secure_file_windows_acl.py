@@ -8,6 +8,70 @@ from ctypes import wintypes
 from app.services import secure_file_windows as _windows
 
 
+def _select_dedicated_service_sid(groups: tuple[tuple[str, int], ...]) -> str:
+    candidates = {
+        sid
+        for sid, attributes in groups
+        if attributes & _windows._SE_GROUP_ENABLED
+        and not attributes & _windows._SE_GROUP_USE_FOR_DENY_ONLY
+        and len(sid.split("-")) == 9
+        and sid.split("-")[:4] == ["S", "1", "5", "80"]
+        and all(part.isdecimal() for part in sid.split("-")[4:])
+    }
+    if len(candidates) != 1:
+        raise PermissionError(
+            "runtime projection requires one enabled dedicated Windows service SID"
+        )
+    return next(iter(candidates))
+
+
+def current_process_service_sid(advapi32: object, kernel32: object) -> str:
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(
+        kernel32.GetCurrentProcess(), _windows._TOKEN_QUERY, ctypes.byref(token)
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        required = wintypes.DWORD()
+        advapi32.GetTokenInformation(
+            token, _windows._TOKEN_GROUPS, None, 0, ctypes.byref(required)
+        )
+        if ctypes.get_last_error() != _windows._ERROR_INSUFFICIENT_BUFFER:
+            raise ctypes.WinError(ctypes.get_last_error())
+        buffer = ctypes.create_string_buffer(required.value)
+        if not advapi32.GetTokenInformation(
+            token,
+            _windows._TOKEN_GROUPS,
+            buffer,
+            required,
+            ctypes.byref(required),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        token_groups = ctypes.cast(
+            buffer, ctypes.POINTER(_windows._TokenGroups)
+        ).contents
+        array_type = _windows._SidAndAttributes * int(token_groups.group_count)
+        groups = ctypes.cast(
+            ctypes.addressof(token_groups) + _windows._TokenGroups.groups.offset,
+            ctypes.POINTER(array_type),
+        ).contents
+        observed: list[tuple[str, int]] = []
+        for group in groups:
+            sid_string = wintypes.LPWSTR()
+            try:
+                if not advapi32.ConvertSidToStringSidW(
+                    group.sid, ctypes.byref(sid_string)
+                ):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                observed.append((str(sid_string.value), int(group.attributes)))
+            finally:
+                if sid_string:
+                    kernel32.LocalFree(sid_string)
+        return _select_dedicated_service_sid(tuple(observed))
+    finally:
+        kernel32.CloseHandle(token)
+
+
 def _get_security_info(
     advapi32: object,
     handle: wintypes.HANDLE,

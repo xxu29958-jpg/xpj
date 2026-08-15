@@ -39,6 +39,123 @@ def _close(connection: psycopg.Connection | None) -> None:
         with suppress(Exception):
             connection.close()
 
+
+def _create_no_owner_archive(
+    source: psycopg.Connection,
+    *,
+    table: str,
+    archive: Path,
+    source_url: str,
+    pg_dump: str,
+) -> None:
+    source.execute(
+        sql.SQL("CREATE TABLE {} (probe integer PRIMARY KEY)").format(
+            sql.Identifier(table)
+        )
+    )
+    source.execute(
+        sql.SQL("INSERT INTO {} (probe) VALUES (1)").format(sql.Identifier(table))
+    )
+    subprocess.run(
+        [
+            pg_dump,
+            "--format=custom",
+            "--no-owner",
+            "--no-privileges",
+            "--file",
+            str(archive),
+            "--table",
+            f"public.{table}",
+            source_url,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+
+
+def _create_restore_database(
+    admin: psycopg.Connection,
+    *,
+    database: str,
+    schema_owner: str,
+) -> None:
+    admin.execute(
+        sql.SQL("CREATE DATABASE {} TEMPLATE template0 ENCODING 'UTF8'").format(
+            sql.Identifier(database)
+        )
+    )
+    target = psycopg.connect(_conninfo(database=database), autocommit=True)
+    try:
+        target.execute(
+            sql.SQL("ALTER SCHEMA public OWNER TO {}").format(
+                sql.Identifier(schema_owner)
+            )
+        )
+    finally:
+        target.close()
+
+
+def _restore_as_role(
+    *,
+    pg_restore: str,
+    archive: Path,
+    database: str,
+    role: str,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        [
+            pg_restore,
+            "--exit-on-error",
+            "--single-transaction",
+            "--no-owner",
+            "--no-privileges",
+            f"--role={role}",
+            "--dbname",
+            _conninfo(database=database),
+            str(archive),
+        ],
+        check=False,
+        capture_output=True,
+        timeout=60,
+    )
+
+
+def _relation_owner(*, database: str, table: str) -> str:
+    target = psycopg.connect(_conninfo(database=database), autocommit=True)
+    try:
+        return target.execute(
+            "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = %s",
+            (table,),
+        ).fetchone()[0]
+    finally:
+        target.close()
+
+
+def _cleanup_role_restore_fixture(
+    admin: psycopg.Connection,
+    source: psycopg.Connection,
+    *,
+    table: str,
+    databases: tuple[str, str],
+    roles: tuple[str, str],
+) -> None:
+    with suppress(psycopg.Error):
+        source.execute(sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(table)))
+    source.close()
+    for database in databases:
+        with suppress(psycopg.Error):
+            admin.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                    sql.Identifier(database)
+                )
+            )
+    for role in roles:
+        with suppress(psycopg.Error):
+            admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
+    admin.close()
+
+
 def test_pg17_transaction_timeout_must_be_armed_before_begin_and_rolls_back() -> None:
     table = f"c07_timeout_probe_{uuid4().hex[:16]}"
     test_database = make_url(ADMIN_TEST_DATABASE_URL).database
@@ -125,108 +242,35 @@ def test_pg17_no_owner_restore_requires_the_exact_object_owner_role(
             admin.execute(
                 sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(role))
             )
-        source.execute(
-            sql.SQL("CREATE TABLE {} (probe integer PRIMARY KEY)").format(
-                sql.Identifier(table)
-            )
-        )
-        source.execute(
-            sql.SQL("INSERT INTO {} (probe) VALUES (1)").format(
-                sql.Identifier(table)
-            )
-        )
-        subprocess.run(
-            [
-                pg_dump,
-                "--format=custom",
-                "--no-owner",
-                "--no-privileges",
-                "--file",
-                str(archive),
-                "--table",
-                f"public.{table}",
-                source_url,
-            ],
-            check=True,
-            capture_output=True,
-            timeout=60,
+        _create_no_owner_archive(
+            source,
+            table=table,
+            archive=archive,
+            source_url=source_url,
+            pg_dump=pg_dump,
         )
         for database in (exact_database, wrong_database):
-            admin.execute(
-                sql.SQL("CREATE DATABASE {} TEMPLATE template0 ENCODING 'UTF8'").format(
-                    sql.Identifier(database)
-                )
-            )
-            target = psycopg.connect(_conninfo(database=database), autocommit=True)
-            try:
-                target.execute(
-                    sql.SQL("ALTER SCHEMA public OWNER TO {}").format(
-                        sql.Identifier(owner)
-                    )
-                )
-            finally:
-                target.close()
-        exact = subprocess.run(
-            [
-                pg_restore,
-                "--exit-on-error",
-                "--single-transaction",
-                "--no-owner",
-                "--no-privileges",
-                f"--role={owner}",
-                "--dbname",
-                _conninfo(database=exact_database),
-                str(archive),
-            ],
-            check=False,
-            capture_output=True,
-            timeout=60,
+            _create_restore_database(admin, database=database, schema_owner=owner)
+        exact = _restore_as_role(
+            pg_restore=pg_restore,
+            archive=archive,
+            database=exact_database,
+            role=owner,
         )
         assert exact.returncode == 0, exact.stderr.decode(errors="replace")
-        wrong = subprocess.run(
-            [
-                pg_restore,
-                "--exit-on-error",
-                "--single-transaction",
-                "--no-owner",
-                "--no-privileges",
-                f"--role={wrong_owner}",
-                "--dbname",
-                _conninfo(database=wrong_database),
-                str(archive),
-            ],
-            check=False,
-            capture_output=True,
-            timeout=60,
+        wrong = _restore_as_role(
+            pg_restore=pg_restore,
+            archive=archive,
+            database=wrong_database,
+            role=wrong_owner,
         )
         assert wrong.returncode != 0
-        exact_target = psycopg.connect(
-            _conninfo(database=exact_database), autocommit=True
-        )
-        try:
-            observed_owner = exact_target.execute(
-                "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = %s",
-                (table,),
-            ).fetchone()[0]
-            assert observed_owner == owner
-        finally:
-            exact_target.close()
+        assert _relation_owner(database=exact_database, table=table) == owner
     finally:
-        with suppress(psycopg.Error):
-            source.execute(
-                sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(table))
-            )
-        source.close()
-        for database in (exact_database, wrong_database):
-            with suppress(psycopg.Error):
-                admin.execute(
-                    sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
-                        sql.Identifier(database)
-                    )
-                )
-        for role in (wrong_owner, owner):
-            with suppress(psycopg.Error):
-                admin.execute(
-                    sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role))
-                )
-        admin.close()
+        _cleanup_role_restore_fixture(
+            admin,
+            source,
+            table=table,
+            databases=(exact_database, wrong_database),
+            roles=(wrong_owner, owner),
+        )

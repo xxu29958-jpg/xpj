@@ -335,6 +335,13 @@ $preinstallFacts = [pscustomobject][ordered]@{{
     BackendServiceName = 'backend'
     ExistingPathFacts = @()
     HasPersistedInstalledReleaseConfig = $false
+    LifecycleEvidence = [pscustomobject][ordered]@{{
+        current_sha256 = ''
+        install_completed = $false
+        operation_id = ''
+        receipt_present = $false
+        schema = 'ticketbox-database-generation-lifecycle-evidence-v1'
+    }}
     PgServiceName = 'postgres'
     StateRoot = '{state_root}'
 }}
