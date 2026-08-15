@@ -374,8 +374,47 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     assert audit_environment["XPJ_AUDIT_BASE_REF"] == ("${{ needs.scope.outputs.audit_base_sha }}")
     _assert_bounded_timeout(jobs["backend_contracts"])
     _assert_bounded_timeout(jobs["backend_frozen"])
-    assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [20, 20, 5]
-    expected_windows_suites = [{"label": "C07 lifecycle artifacts", "selector": "test_c07_lifecycle_artifacts"}, {"label": "C07 superuser recovery", "selector": "test_c07_superuser_recovery"}, {"label": "Service lifecycle heartbeat", "selector": "test_service_lifecycle_contract and heartbeat"}, {"label": "Service lifecycle remainder", "selector": "test_service_lifecycle_contract and not heartbeat"}]
+    assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [
+        "${{ matrix.suite.timeout_minutes }}",
+        20,
+        5,
+    ]
+    expected_windows_suites = [
+        {
+            "label": "C07 lifecycle artifacts",
+            "selector": "test_c07_lifecycle_artifacts",
+            "timeout_minutes": 20,
+        },
+        {
+            "label": "C07 superuser recovery",
+            "selector": "test_c07_superuser_recovery",
+            "timeout_minutes": 20,
+        },
+        {
+            "label": "Service lifecycle heartbeat environment",
+            "selector": "test_c07_heartbeat_helper_uses_minimal_real_ps51_environment",
+            "timeout_minutes": 25,
+        },
+        {
+            "label": "Service lifecycle heartbeat operation",
+            "selector": (
+                "test_production_c07_heartbeat_operation_is_bounded_and_fully_reaped"
+            ),
+            "timeout_minutes": 40,
+        },
+        {
+            "label": "Service lifecycle heartbeat external owner",
+            "selector": (
+                "test_c07_heartbeat_helper_preserves_external_primary_owner_binding"
+            ),
+            "timeout_minutes": 20,
+        },
+        {
+            "label": "Service lifecycle remainder",
+            "selector": "test_service_lifecycle_contract and not heartbeat",
+            "timeout_minutes": 20,
+        },
+    ]
     assert jobs["windows_packaging_lifecycle"]["strategy"] == {"fail-fast": False, "matrix": {"suite": expected_windows_suites}}
     assert jobs["windows_packaging"]["needs"] == ["scope", *windows_jobs[:2]]
     windows_environment = _steps(jobs["windows_packaging"])["Enforce Windows release lane results"]["env"]

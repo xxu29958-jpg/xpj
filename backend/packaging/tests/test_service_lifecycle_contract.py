@@ -23,12 +23,15 @@ PACKAGING = Path(__file__).resolve().parents[1]
 # probes below.
 POWERSHELL_51_COLD_START_TIMEOUT_MS = 150_000
 POWERSHELL_51_HARNESS_CLEANUP_MARGIN_SECONDS = 90
+POWERSHELL_51_HELPER_INVOCATIONS_PER_MULTI_HARNESS = 6
 POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS = (
     POWERSHELL_51_COLD_START_TIMEOUT_MS // 1000
     + POWERSHELL_51_HARNESS_CLEANUP_MARGIN_SECONDS
 )
 POWERSHELL_51_MULTI_SCENARIO_HARNESS_TIMEOUT_SECONDS = (
-    2 * POWERSHELL_51_COLD_START_TIMEOUT_MS // 1000
+    POWERSHELL_51_HELPER_INVOCATIONS_PER_MULTI_HARNESS
+    * POWERSHELL_51_COLD_START_TIMEOUT_MS
+    // 1000
     + POWERSHELL_51_HARNESS_CLEANUP_MARGIN_SECONDS
 )
 SC_MANAGER_CONNECT = 0x0001
@@ -1167,7 +1170,7 @@ try {{
         try {{
             Invoke-TicketboxBoundedHeartbeatOperation `
                 -Operation $tampered `
-                -TimeoutMilliseconds 15000 `
+                -TimeoutMilliseconds {POWERSHELL_51_COLD_START_TIMEOUT_MS} `
                 -SettlementMilliseconds 1000 `
                 -Label 'tampered heartbeat descriptor' | Out-Null
         }}
@@ -1321,7 +1324,7 @@ try {{
     try {{
         Invoke-TicketboxBoundedHeartbeatOperation `
             -Operation $productionHeartbeat `
-            -TimeoutMilliseconds 15000 `
+            -TimeoutMilliseconds {POWERSHELL_51_COLD_START_TIMEOUT_MS} `
             -SettlementMilliseconds 1000 `
             -Label 'missing durable heartbeat' | Out-Null
     }}
