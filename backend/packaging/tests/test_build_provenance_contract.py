@@ -1057,6 +1057,15 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         '& $iscc @defines "/O$compilerOutputDir" $stagedIssPath'
     )
     assert 'Assert-File $stagedInstaller "本轮 ISCC staging 安装包输出"' in build
+    assert "OutputManifestFile=ticketbox-installer-content.tsv" in installer
+    assert "function Assert-TicketboxInstallerCompilerContentManifest" in build
+    assert '"Index", "SourceFilename", "TimeStamp", "Version"' in build
+    assert "PreprocessingIndex" not in build
+    assert "ISCC must compile the database generation program exactly once" in build
+    assert "Get-TicketboxFileSha256 $expectedPath" in build
+    assert build.index('& $iscc @defines "/O$compilerOutputDir" $stagedIssPath') < build.index(
+        "Assert-TicketboxInstallerCompilerContentManifest `"
+    )
     assert build.index("& $iscc @defines") < build.index(
         "$currentBackendManifest = Assert-TicketboxBackendBuildManifest"
     )
@@ -1102,17 +1111,25 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         assert f'"{standalone_dependency}"' in backend_spec
     assert "sys.path.insert(0, BACKEND)" in backend_spec
     assert 'collect_submodules("app", on_error="raise")' in backend_spec
+    assert '"app.database._database_generation_program"' in backend_spec
+    assert '"app.database_generation_c07_contract"' in backend_spec
     assert '"app.database_model_registry"' in backend_spec
     assert '"app.tenant_contract"' in backend_spec
     for required_archive_module in (
         "app.app_meta_observation",
         "app.canonical_money_facts",
         "app.canonical_money_facts_contract",
+        "app.database._database_generation_program",
+        "app.database_generation_c07_contract",
         "app.database_model_registry",
         "app.tenant_contract",
     ):
         assert f'"{required_archive_module}"' in backend_build
     assert 'Frozen backend archive omitted required app module: $requiredModule' in backend_build
+    assert '"app\\database\\_c07_maintenance_plan.py"' in backend_build
+    assert "Retired database generation contract returned to the source snapshot" in backend_build
+    assert '"app.database._c07_maintenance_plan"' in backend_build
+    assert "Frozen backend archive contains retired app module: $retiredModule" in backend_build
     assert 'name="ticketbox-c07-migrator"' in backend_spec
     assert '$stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"' in backend_build
     smoke_call = backend_build.index("$c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke")

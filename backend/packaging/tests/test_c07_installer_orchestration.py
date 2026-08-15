@@ -234,13 +234,11 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
             managed,
         )
     ]
-    assert len(action_calls) == len(enable_calls) == len(acl_calls) == 2
-    assert len(retire_calls) == 4
+    assert len(action_calls) == len(enable_calls) == len(acl_calls) == 1
+    assert len(retire_calls) == 2
     assert retire_calls[0] < enable_calls[0] < action_calls[0] < acl_calls[0]
     assert acl_calls[0] < retire_calls[1]
-    assert retire_calls[1] < retire_calls[2] < enable_calls[1]
-    assert enable_calls[1] < action_calls[1] < acl_calls[1] < retire_calls[3]
-    assert retire_calls[3] < managed.index("Get-TicketboxC07PublishedRuntimeQualification")
+    assert retire_calls[1] < managed.index("Get-TicketboxC07PublishedRuntimeQualification")
     publication = _function(
         source,
         "Complete-TicketboxInstalledManagedSchemaPublication",
@@ -2409,7 +2407,12 @@ $script:productionHash = ('b' * 64)
 $script:projectionHash = ('c' * 64)
 $script:qualificationProductionHash = ('b' * 64)
 $script:qualificationProjectionHash = ('c' * 64)
-$script:managedRevision = '20260729_0001'
+$script:programTarget = '20260809_0001'
+$script:programSha256 = ('e' * 64)
+$script:managedRevision = $script:programTarget
+$script:managedTarget = $script:programTarget
+$script:managedProgramSha256 = $script:programSha256
+$script:managedC07Target = '20260729_0001'
 $script:managedManifest = ('a' * 64)
 $script:durableStage = 'ready'
 $script:durableOperationId = $script:operationId
@@ -2434,6 +2437,16 @@ $c07Authority = [pscustomobject]@{
     }
 }
 $lifecycleReceipt = [pscustomobject]@{ schema = 'receipt-v3' }
+function Get-TicketboxInstalledDatabaseGenerationProgram {
+    param($ReleaseIdentity)
+    if ($ReleaseIdentity.InstallationOperationId -cne $script:operationId) {
+        throw 'program release identity drift'
+    }
+    return [pscustomobject]@{
+        target_revision = $script:programTarget
+        generation_program_sha256 = $script:programSha256
+    }
+}
 function Invoke-TicketboxInstalledManagedSchemaUpgrade {
     param(
         $DataRoot,
@@ -2471,7 +2484,10 @@ function Invoke-TicketboxInstalledManagedSchemaUpgrade {
     return [pscustomobject]@{
         schema = 'ticketbox-managed-schema-publication-v1'
         alembic_revision = $script:managedRevision
-        revision_manifest_sha256 = $script:managedManifest
+        target_revision = $script:managedTarget
+        generation_program_sha256 = $script:managedProgramSha256
+        c07_target_revision = $script:managedC07Target
+        c07_revision_manifest_sha256 = $script:managedManifest
         published_runtime_qualification = $script:lastQualification
     }
 }
@@ -2522,7 +2538,8 @@ function Invoke-Publication {
             schema = [string]$result.schema
             mode = [string]$result.mode
             revision = [string]$result.alembic_revision
-            manifest = [string]$result.revision_manifest_sha256
+            program = [string]$result.generation_program_sha256
+            manifest = [string]$result.c07_revision_manifest_sha256
             production = [string]$result.production_authority_sha256
             projection = [string]$result.runtime_projection_sha256
             qualification_same = [object]::ReferenceEquals(
@@ -2555,7 +2572,13 @@ $projectionDrift = Invoke-Publication
 $script:qualificationProjectionHash = ('c' * 64)
 $script:managedRevision = '20260722_0001'
 $revisionDrift = Invoke-Publication
-$script:managedRevision = '20260729_0001'
+$script:managedRevision = $script:programTarget
+$script:managedTarget = '20260810_0001'
+$targetDrift = Invoke-Publication
+$script:managedTarget = $script:programTarget
+$script:managedProgramSha256 = ('d' * 64)
+$programDrift = Invoke-Publication
+$script:managedProgramSha256 = $script:programSha256
 $script:managedManifest = ('f' * 64)
 $manifestDrift = Invoke-Publication
 $script:managedManifest = ('a' * 64)
@@ -2571,6 +2594,8 @@ $operationDrift = Invoke-Publication
     $productionDrift,
     $projectionDrift,
     $revisionDrift,
+    $targetDrift,
+    $programDrift,
     $manifestDrift,
     $stageDrift,
     $operationDrift
@@ -2588,6 +2613,8 @@ $operationDrift = Invoke-Publication
         production_drift,
         projection_drift,
         revision_drift,
+        target_drift,
+        program_drift,
         manifest_drift,
         stage_drift,
         operation_drift,
@@ -2600,7 +2627,8 @@ $operationDrift = Invoke-Publication
             "rejected": False,
             "schema": "ticketbox-installed-schema-publication-v1",
             "mode": mode,
-            "revision": "20260729_0001",
+            "revision": "20260809_0001",
+            "program": "e" * 64,
             "manifest": "a" * 64,
             "production": "b" * 64,
             "projection": "c" * 64,
@@ -2613,6 +2641,8 @@ $operationDrift = Invoke-Publication
         production_drift,
         projection_drift,
         revision_drift,
+        target_drift,
+        program_drift,
         manifest_drift,
         stage_drift,
         operation_drift,

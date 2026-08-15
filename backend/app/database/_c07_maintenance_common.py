@@ -17,7 +17,7 @@ from sqlalchemy.engine import URL, Connection, Engine, make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
-from app.database._c07_maintenance_plan import C07MaintenanceUpgradeError
+from app.database_generation_c07_contract import C07MaintenanceUpgradeError
 
 DATABASE_NAME = "ticketbox"
 MIGRATOR_ROLE = "ticketbox_migrator"

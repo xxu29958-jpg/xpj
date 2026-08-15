@@ -376,7 +376,6 @@ def _assert_rollback_retry_and_replay(
     assert topology.runtime.run(**arguments) == "target_committed"
     assert _revision(topology.owner_url) == _RELEASE_HEAD_REVISION
     assert topology.runtime.run(**arguments) == "target_observed_after_interruption"
-
     monkeypatch.setattr(managed_schema, "DATABASE_NAME", topology.database)
     monkeypatch.setattr(managed_schema, "MIGRATOR_ROLE", topology.migrator)
     monkeypatch.setattr(managed_schema, "SCHEMA_OWNER_ROLE", topology.owner)

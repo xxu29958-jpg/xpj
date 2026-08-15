@@ -9,7 +9,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from app.database._c07_maintenance_plan import (
+from app.database_generation_c07_contract import (
     C07_TARGET_REVISION,
     C07RevisionContract,
     build_c07_revision_contract,

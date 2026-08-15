@@ -1019,6 +1019,10 @@ function New-Candidate([string]$Root, [string]$InstallDir) {{
         MigrationHelperRelativePath = 'ticketbox-c07-migrator.exe'
         MigrationHelperSize = [int64]123
         MigrationHelperSha256 = ('B' * 64)
+        DatabaseGenerationProgramRelativePath =
+            'DATABASE_GENERATION_PROGRAM.json'
+        DatabaseGenerationProgramSize = [int64]456
+        DatabaseGenerationProgramSha256 = ('C' * 64)
     }}
 }}
 

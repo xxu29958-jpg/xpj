@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from app.database import _c07_maintenance_plan as maintenance
+import app.database_generation_c07_contract as maintenance
 
 SOURCE_REVISION = "20260722_0001"
 TARGET_REVISION = "20260729_0001"

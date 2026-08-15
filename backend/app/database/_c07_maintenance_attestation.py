@@ -8,7 +8,7 @@ from sqlalchemy.engine import Connection
 from app.canonical_money_facts import canonical_money_facts_sha256
 from app.database._c07_contract import C07CeremonyError
 from app.database._c07_execution_shape import _money_shape
-from app.database._c07_maintenance_plan import (
+from app.database_generation_c07_contract import (
     C07_TARGET_REVISION,
     C07MaintenanceUpgradeError,
 )

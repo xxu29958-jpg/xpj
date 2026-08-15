@@ -80,7 +80,7 @@ def compile_program(backend_root: Path) -> dict[str, object]:
         )
 
     with _backend_import_root(root):
-        from app.database._c07_maintenance_plan import (
+        from app.database_generation_c07_contract import (
             C07_TARGET_REVISION,
             build_c07_revision_contract,
         )

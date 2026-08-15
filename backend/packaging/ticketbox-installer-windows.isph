@@ -1750,17 +1750,25 @@ begin
     FailureReason := '无法以 UTF-8 读取持久安装身份文件。';
     exit;
   end;
-  SetArrayLength(ExpectedNames, 10);
+  SetArrayLength(ExpectedNames, 18);
   ExpectedNames[0] := 'SCHEMA';
-  ExpectedNames[1] := 'BACKEND_VERSION_FLOOR';
-  ExpectedNames[2] := 'INSTALLATION_ID';
-  ExpectedNames[3] := 'BUILD_MANIFEST_SHA256';
-  ExpectedNames[4] := 'DATA_ROOT';
-  ExpectedNames[5] := 'INSTALL_DIR';
-  ExpectedNames[6] := 'PG_SERVICE_NAME';
-  ExpectedNames[7] := 'BACKEND_SERVICE_NAME';
-  ExpectedNames[8] := 'PG_PORT';
-  ExpectedNames[9] := 'BACKEND_PORT';
+  ExpectedNames[1] := 'STATE';
+  ExpectedNames[2] := 'OPERATION_ID';
+  ExpectedNames[3] := 'BACKEND_VERSION_FLOOR';
+  ExpectedNames[4] := 'INSTALLATION_ID';
+  ExpectedNames[5] := 'BUILD_MANIFEST_SHA256';
+  ExpectedNames[6] := 'MIGRATION_HELPER_RELATIVE_PATH';
+  ExpectedNames[7] := 'MIGRATION_HELPER_SIZE';
+  ExpectedNames[8] := 'MIGRATION_HELPER_SHA256';
+  ExpectedNames[9] := 'DATABASE_GENERATION_PROGRAM_RELATIVE_PATH';
+  ExpectedNames[10] := 'DATABASE_GENERATION_PROGRAM_SIZE';
+  ExpectedNames[11] := 'DATABASE_GENERATION_PROGRAM_SHA256';
+  ExpectedNames[12] := 'DATA_ROOT';
+  ExpectedNames[13] := 'INSTALL_DIR';
+  ExpectedNames[14] := 'PG_SERVICE_NAME';
+  ExpectedNames[15] := 'BACKEND_SERVICE_NAME';
+  ExpectedNames[16] := 'PG_PORT';
+  ExpectedNames[17] := 'BACKEND_PORT';
   SetArrayLength(Values, GetArrayLength(ExpectedNames));
   if GetArrayLength(Lines) <> GetArrayLength(ExpectedNames) then
   begin
@@ -1784,37 +1792,48 @@ begin
     end;
     Values[Index] := Value;
   end;
-  if Values[0] <> 'ticketbox-installation-identity-v1' then
+  if (Values[0] <> 'ticketbox-installation-identity-v3') or
+     ((Values[1] <> 'PENDING') and (Values[1] <> 'READY')) then
   begin
     FailureReason := '持久安装身份 schema 不受支持。';
     exit;
   end;
-  if not ParseSupportedNumericVersion(Values[1], Major, Minor, Patch, Revision) then
+  if not ParseSupportedNumericVersion(Values[3], Major, Minor, Patch, Revision) then
   begin
     FailureReason := '持久 backend version floor 格式无效。';
     exit;
   end;
-  if (not IsCanonicalInstallationId(Values[2])) or (not IsUpperHexSha256(Values[3])) then
+  if (not IsCanonicalInstallationId(Values[2])) or
+     (not IsCanonicalInstallationId(Values[4])) or
+     (not IsUpperHexSha256(Values[5])) or
+     (Values[6] <> 'ticketbox-c07-migrator.exe') or
+     (StrToIntDef(Values[7], -1) < 1) or
+     (not IsUpperHexSha256(Values[8])) or
+     (Values[9] <> 'DATABASE_GENERATION_PROGRAM.json') or
+     (StrToIntDef(Values[10], -1) < 1) or
+     (not IsUpperHexSha256(Values[11])) then
   begin
-    FailureReason := '持久 installation/build identity 格式无效。';
+    FailureReason := '持久 installation/build/program identity 格式无效。';
     exit;
   end;
-  if Uppercase(AddBackslash(ExpandFileName(Values[4]))) <>
+  if Uppercase(AddBackslash(ExpandFileName(Values[12]))) <>
      Uppercase(AddBackslash(ExpandFileName(DataRoot))) then
   begin
     FailureReason := '持久安装身份绑定的 DataRoot 与当前保留数据不一致。';
     exit;
   end;
-  if (Values[6] <> '{#PgServiceName}') or
-     (Values[7] <> '{#BackendServiceName}') or
-     (StrToIntDef(Values[8], -1) < 1) or (StrToIntDef(Values[8], -1) > 65535) or
-     (StrToIntDef(Values[9], -1) < 1) or (StrToIntDef(Values[9], -1) > 65535) or
-     (Values[8] = Values[9]) then
+  if (Values[14] <> '{#PgServiceName}') or
+     (Values[15] <> '{#BackendServiceName}') or
+     (StrToIntDef(Values[16], -1) < 1) or
+     (StrToIntDef(Values[16], -1) > 65535) or
+     (StrToIntDef(Values[17], -1) < 1) or
+     (StrToIntDef(Values[17], -1) > 65535) or
+     (Values[16] = Values[17]) then
   begin
     FailureReason := '持久安装身份的服务或端口身份无效。';
     exit;
   end;
-  VersionFloor := Values[1];
+  VersionFloor := Values[3];
   Result := True;
 end;
 

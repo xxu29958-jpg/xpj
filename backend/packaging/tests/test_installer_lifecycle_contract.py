@@ -1047,11 +1047,25 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     ]
     assert "LoadStringsFromFile" in persistent_reader
     assert "HasProtectedPersistentIdentityAcl" in persistent_reader
-    assert "BUILD_MANIFEST_SHA256" in persistent_reader
-    assert "INSTALLATION_ID" in persistent_reader
-    assert "DATA_ROOT" in persistent_reader
-    assert "{#PgServiceName}" in persistent_reader
-    assert "{#BackendServiceName}" in persistent_reader
+    identity_fields = (
+        "SCHEMA", "STATE", "OPERATION_ID", "BACKEND_VERSION_FLOOR",
+        "INSTALLATION_ID", "BUILD_MANIFEST_SHA256", "MIGRATION_HELPER_RELATIVE_PATH", "MIGRATION_HELPER_SIZE",
+        "MIGRATION_HELPER_SHA256", "DATABASE_GENERATION_PROGRAM_RELATIVE_PATH",
+        "DATABASE_GENERATION_PROGRAM_SIZE", "DATABASE_GENERATION_PROGRAM_SHA256", "DATA_ROOT", "INSTALL_DIR",
+        "PG_SERVICE_NAME", "BACKEND_SERVICE_NAME", "PG_PORT", "BACKEND_PORT",
+    )
+    for index, name in enumerate(identity_fields):
+        assert f"ExpectedNames[{index}] := '{name}';" in persistent_reader
+    assert "SetArrayLength(ExpectedNames, 18);" in persistent_reader
+    assert "ticketbox-installation-identity-v3" in persistent_reader
+    assert "{#PgServiceName}" in persistent_reader and "{#BackendServiceName}" in persistent_reader
+    production_identity_surfaces = "".join(
+        path.read_text(encoding="utf-8-sig") for path in PACKAGING.iterdir()
+        if path.suffix in {".ps1", ".iss", ".isph"}
+    )
+    for retired in ("ticketbox-installation-identity-v1", "ticketbox-installation-identity-v2",
+                    "ticketbox-c07-successor-intent-v2", "LegacyCompleted"):
+        assert retired not in production_identity_surfaces
 
     release_candidate = safety[
         safety.index("function Get-TicketboxInstallationReleaseCandidate") : safety.index(
@@ -1063,8 +1077,15 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     assert "Open-TicketboxC07VerifiedMigrationHelperLease" in release_candidate
     assert "-ExpectedSize $helperEvidence.Size" in release_candidate
     assert "-ExpectedSha256 $helperEvidence.Sha256" in release_candidate
-    assert "Get-TicketboxPortableFileSha256 $expectedManifestPath" in release_candidate
+    assert "[string]$buildManifest.Sha256" in release_candidate
     assert "BackendVersionFloor = [string]$buildManifest.BackendVersion" in release_candidate
+
+    manifest_reader = safety[safety.index("function Read-TicketboxInstalledBuildManifest") : safety.index(
+        "function Get-TicketboxInstallationReleaseCandidate"
+    )]
+    assert manifest_reader.count("::ReadExactFileBytes(") == 1
+    for forbidden in ("Get-Content", "ReadAllText", "Get-TicketboxPortableFileSha256"):
+        assert forbidden not in manifest_reader
 
     identity_matcher = safety[
         safety.index("function Assert-TicketboxInstallationIdentityBaseMatches") : safety.index(
@@ -1086,7 +1107,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     acl_write = identity_repair.index("Set-TicketboxExactFileAcl", base_binding)
     byte_recheck = identity_repair.index("Test-TicketboxWindowsByteArrayEquals", acl_write)
     assert inherited_shape < recoverable_read < base_binding < acl_write < byte_recheck
-    assert "($Pending -and (" in identity_repair
+    assert identity_repair.count('($Pending -and $identity.State -cne "PENDING")') == 2
     assert '$identity.State -cne "PENDING"' in identity_repair
     assert '$identity.State -cne "READY"' in identity_repair
 
@@ -1419,10 +1440,24 @@ def test_data_root_guard_hands_off_operation_lock_only_after_durable_ready() -> 
 
 
 def test_installer_never_bundles_local_runtime_data() -> None:
-    installer = _read_installer()
-
-    backend_source = next(line for line in installer.splitlines() if 'Source: "..\\dist\\ticketbox-backend\\*"' in line)
-    assert 'Excludes: "ticketbox-data\\*"' in backend_source
+    active_lines = tuple(
+        line.strip()
+        for line in _read("ticketbox-installer.iss").splitlines()
+        if line.strip() and not line.lstrip().startswith(";")
+    )
+    backend_sources = tuple(
+        line
+        for line in active_lines
+        if line.startswith('Source: "..\\dist\\ticketbox-backend\\')
+    )
+    assert backend_sources == (
+        'Source: "..\\dist\\ticketbox-backend\\DATABASE_GENERATION_PROGRAM.json"; '
+        'DestDir: "{app}\\program\\ticketbox-backend"; Flags: ignoreversion',
+        'Source: "..\\dist\\ticketbox-backend\\*"; '
+        'DestDir: "{app}\\program\\ticketbox-backend"; '
+        'Excludes: "ticketbox-data\\*,DATABASE_GENERATION_PROGRAM.json"; '
+        'Flags: ignoreversion recursesubdirs createallsubdirs',
+    )
 
 
 def test_installer_version_only_comes_from_backend_source_of_truth() -> None:
@@ -5254,7 +5289,6 @@ function Write-TicketboxInstallationIdentityState {{
     $script:writes += 1
     return [pscustomobject]@{{
         State = 'PENDING'
-        LegacyCompleted = $false
         OperationId = [string]$OperationId
         InstallationId = [string]$InstallationId
         Release = [string]$Candidate.Release
@@ -5268,7 +5302,6 @@ $candidate = [pscustomobject]@{{
 }}
 $identity = [pscustomobject]@{{
     State = 'PENDING'
-    LegacyCompleted = $false
     OperationId = '11111111-1111-1111-1111-111111111111'
     InstallationId = '22222222-2222-2222-2222-222222222222'
     Release = 'current'
@@ -5597,7 +5630,6 @@ function Write-TicketboxInstallationIdentityState {{
     $script:writes += 1
     return [pscustomobject]@{{
         State = 'PENDING'
-        LegacyCompleted = $false
         OperationId = [string]$OperationId
         InstallationId = [string]$InstallationId
         Release = [string]$Candidate.Release
@@ -5626,7 +5658,6 @@ $candidate = [pscustomobject]@{{
 }}
 $identity = [pscustomobject]@{{
     State = 'PENDING'
-    LegacyCompleted = $false
     OperationId = '11111111-1111-1111-1111-111111111111'
     InstallationId = '22222222-2222-2222-2222-222222222222'
     Release = 'predecessor'
@@ -5810,10 +5841,6 @@ foreach ($mutation in $receiptMutations) {{
 $identity.State = 'READY'
 Assert-RejectedWithoutWrite 'non-PENDING identity'
 $identity.State = 'PENDING'
-$identity.LegacyCompleted = $true
-Assert-RejectedWithoutWrite 'legacy-completed identity'
-$identity.LegacyCompleted = $false
-
 [IO.File]::Move('{_ps_literal(bootstrap)}', '{_ps_literal(bootstrap)}.held')
 Assert-RejectedWithoutWrite 'missing bootstrap recovery'
 [IO.File]::Move('{_ps_literal(bootstrap)}.held', '{_ps_literal(bootstrap)}')

@@ -17,17 +17,14 @@ from types import ModuleType
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.database._database_generation_program import (
-    DatabaseGenerationProgram,
-    DatabaseGenerationProgramError,
-    load_database_generation_program,
-)
 from app.services.secure_file import (
     hold_protected_file_for_read,
     hold_system_authority_file_for_read,
 )
 
 _HELPER_MODULE_NAMES = (
+    "app.database._database_generation_program",
+    "app.database._database_generation_executor",
     "app.database._c07_production_contract",
     "app.database._c07_production_authority",
     "app.database._c07_transaction_timeout",
@@ -74,6 +71,8 @@ def _load_helper_modules() -> tuple[ModuleType, ...]:
 
 
 (
+    _program,
+    _executor,
     _contract,
     _authority,
     _transaction_timeout,
@@ -82,6 +81,10 @@ def _load_helper_modules() -> tuple[ModuleType, ...]:
     _restore,
     _shape,
 ) = _load_helper_modules()
+
+DatabaseGenerationProgram = _program.DatabaseGenerationProgram
+DatabaseGenerationProgramError = _program.DatabaseGenerationProgramError
+load_database_generation_program = _program.load_database_generation_program
 
 PRODUCTION_MIGRATION_CONTEXT_SCHEMA = _contract.PRODUCTION_MIGRATION_CONTEXT_SCHEMA
 PRODUCTION_MIGRATION_EVIDENCE_SCHEMA = _contract.PRODUCTION_MIGRATION_EVIDENCE_SCHEMA

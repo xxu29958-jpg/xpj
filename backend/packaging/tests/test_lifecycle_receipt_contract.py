@@ -144,6 +144,28 @@ catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 1) {{
     throw 'malformed existing receipt operation was rebound'
 }}
+$receipt.c07_installation_operation_id = $oldOperation
+$successorIntent = [pscustomobject]@{{ Payload = [pscustomobject]@{{
+    schema = 'ticketbox-c07-successor-intent-v3'; predecessor_operation_id = $oldOperation
+    successor_operation_id = $newOperation; data_root = $receipt.data_root
+    install_dir = $receipt.install_dir; pg_port = $receipt.pg_port
+    backend_port = $receipt.backend_port
+}} }}
+$successorProperties = @('schema','predecessor_operation_id','successor_operation_id','data_root','install_dir','pg_port','backend_port')
+$badValues = @('ticketbox-c07-successor-intent-v2',$newOperation,$oldOperation,'C:\\OtherData','C:\\OtherInstall',5441,8002)
+for ($index = 0; $index -lt $successorProperties.Count; $index++) {{
+    $property = $successorProperties[$index]; $good = $successorIntent.Payload.($property); $successorIntent.Payload.($property) = $badValues[$index]
+    $rejected = $false
+    try {{ Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt -InstallerOwnerProcessId 1234 -OperationId $newOperation -SuccessorIntent $successorIntent }} catch {{ $rejected = $true }}
+    if (-not $rejected -or $script:writes -ne 1) {{ throw "foreign successor $property was accepted" }}
+    $successorIntent.Payload.($property) = $good
+}}
+Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' `
+    -Receipt $receipt -InstallerOwnerProcessId 1234 `
+    -OperationId $newOperation -SuccessorIntent $successorIntent
+if ($script:writes -ne 2 -or $script:lastOperation -cne $newOperation) {{
+    throw 'valid v3 successor did not rebind the lifecycle receipt exactly once'
+}}
 """,
             encoding="utf-8-sig",
         )
@@ -1357,11 +1379,15 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
             + "\n",
             encoding="utf-8",
         )
+        manifest_sha256 = hashlib.sha256(manifest.read_bytes()).hexdigest().upper()
         harness = root / "identity-roundtrip.ps1"
         harness.write_text(
             f"""
 $ErrorActionPreference = 'Stop'
 . '{_literal(PACKAGING / 'windows_installation_safety.ps1')}'
+$validatedManifest = Read-TicketboxInstalledBuildManifest `
+    -Path '{_literal(manifest)}' `
+    -ExpectedPgMajor 17
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $script:TicketboxPersistentInstallationIdentityAclAccounts = @($currentAccount)
 $script:TicketboxPersistentInstallationIdentityOwnerAccount = $currentAccount
@@ -1369,11 +1395,16 @@ Set-TicketboxExactDirectoryAcl `
     -Path '{_literal(data_root)}' `
     -Accounts @($currentAccount) `
     -OwnerAccount $currentAccount
-$validatedManifest = Read-TicketboxInstalledBuildManifest `
-    -Path '{_literal(manifest)}' `
-    -ExpectedPgMajor 17
-if ($validatedManifest.BackendVersion -cne '7.8.9' -or $validatedManifest.PgMajor -ne 17) {{
+if ($validatedManifest.BackendVersion -cne '7.8.9' -or
+    $validatedManifest.PgMajor -ne 17 -or
+    $validatedManifest.Sha256 -cne '{manifest_sha256}') {{
     throw 'installed build manifest validation mismatch'
+}}
+$missingError = ''
+try {{ Read-TicketboxInstalledBuildManifest '{_literal(manifest)}.missing' | Out-Null }}
+catch {{ $missingError = [string]$_.Exception.Message }}
+if ([string]::IsNullOrEmpty($missingError) -or $missingError.Contains('不是有效 JSON')) {{
+    throw 'manifest exact-IO failure lost its primary error identity'
 }}
 $majorMismatchRejected = $false
 try {{ Read-TicketboxInstalledBuildManifest -Path '{_literal(manifest)}' -ExpectedPgMajor 18 | Out-Null }}
@@ -1401,6 +1432,18 @@ if ($first.BackendVersionFloor -cne '7.8.9' -or
     $first.PgServiceName -cne 'ConfiguredPg' -or
     $first.BackendServiceName -cne 'ConfiguredBackend') {{
     throw 'persistent installation identity roundtrip mismatch'
+}}
+$programMutations = @{{
+    DatabaseGenerationProgramRelativePath = 'wrong.json'
+    DatabaseGenerationProgramSize = [int64]($second.DatabaseGenerationProgramSize + 1)
+    DatabaseGenerationProgramSha256 = ('0' * 64)
+}}
+foreach ($entry in $programMutations.GetEnumerator()) {{
+    $mutated = $second.PSObject.Copy()
+    $mutated.($entry.Key) = $entry.Value
+    if (Test-TicketboxInstallationIdentityReleaseMatches $first $mutated) {{
+        throw "identity matcher ignored $($entry.Key) drift"
+    }}
 }}
 $rollbackManifest = Get-Content -LiteralPath '{_literal(manifest)}' -Encoding UTF8 -Raw | ConvertFrom-Json
 $rollbackManifest.backend.version = '7.8.8'

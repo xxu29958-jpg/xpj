@@ -3926,7 +3926,7 @@ function Invoke-TicketboxC07ProductionAuthorityCoordinator {
         $intent = $SuccessorIntent.Payload
         if (
             [string]$intent.schema -cne
-                "ticketbox-c07-successor-intent-v2" -or
+                "ticketbox-c07-successor-intent-v3" -or
             [string]$intent.successor_operation_id -cne $operationText -or
             [string]$intent.successor_mode -cne "forward_repair" -or
             [string]$intent.predecessor_terminal_stage -cne

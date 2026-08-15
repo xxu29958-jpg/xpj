@@ -29,11 +29,13 @@ if str(_BACKEND_ROOT) not in sys.path:
 # Force app.models import so every table is attached to Base.metadata
 # before Alembic compares against the database.
 from app import models  # noqa: E402, F401
-from app.config import get_settings  # noqa: E402
 from app.database_model_registry import Base  # noqa: E402
 
 config = context.config
 _C07_JSON_PROTOCOL_ATTRIBUTE = "ticketbox_c07_json_protocol_v1"
+_MANAGED_MIGRATION_JSON_PROTOCOL_ATTRIBUTE = (
+    "ticketbox_managed_migration_json_protocol_v1"
+)
 
 
 def _configure_c07_json_protocol_logging() -> None:
@@ -55,7 +57,13 @@ def _configure_c07_json_protocol_logging() -> None:
 # standard no-op handler recommended for a logging namespace that must not fall
 # through to Python's stderr ``lastResort`` handler.  Exceptions still escape
 # normally and produce a non-zero helper exit.
-if config.attributes.get(_C07_JSON_PROTOCOL_ATTRIBUTE) is True:
+if any(
+    config.attributes.get(attribute) is True
+    for attribute in (
+        _C07_JSON_PROTOCOL_ATTRIBUTE,
+        _MANAGED_MIGRATION_JSON_PROTOCOL_ATTRIBUTE,
+    )
+):
     _configure_c07_json_protocol_logging()
 # Only let Alembic configure logging when it owns the process — i.e. the
 # standalone ``alembic`` CLI, where nothing has set up logging yet. When
@@ -74,6 +82,8 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
+    from app.config import get_settings
+
     # Honor a DATABASE_URL override (test lane, ad-hoc cli runs) before
     # falling back to the application settings.
     return os.environ.get("DATABASE_URL") or get_settings().database_url
@@ -84,6 +94,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=url,
         target_metadata=target_metadata,
+        version_table_schema="public",
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         render_as_batch=True,
@@ -98,6 +109,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=existing_connection,
             target_metadata=target_metadata,
+            version_table_schema="public",
             render_as_batch=True,
         )
         with context.begin_transaction():
@@ -113,6 +125,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            version_table_schema="public",
             render_as_batch=True,
         )
         with context.begin_transaction():

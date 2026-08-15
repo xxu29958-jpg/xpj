@@ -69,9 +69,13 @@ _LIBPQ_ENVIRONMENT_VARIABLES = (
 )
 
 _STANDALONE_PROBE = r"""
+import builtins
+import importlib
 import importlib.util
 import sys
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 
 launch_path = Path(sys.argv[1])
 spec = importlib.util.spec_from_file_location("ticketbox_c07_launch_probe", launch_path)
@@ -81,6 +85,64 @@ spec.loader.exec_module(launch)
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
 production = launch._load_c07_production_migration_module()
 assert production.PRODUCTION_MIGRATION_CONTEXT_SCHEMA == "ticketbox-c07-production-migration-context-v5"
+context = SimpleNamespace(
+    operation_id="11111111-1111-4111-8111-111111111111",
+    operation_kind="c07_money_minor_bigint_v1",
+    target_alembic_revision="20260729_0001",
+    revision_manifest_sha256="A" * 64,
+    maintenance_remaining_ceiling_ms=30_000,
+)
+program = SimpleNamespace(
+    c07=SimpleNamespace(
+        source_revision="20260722_0001",
+        target_revision="20260729_0001",
+        revision_manifest_sha256="a" * 64,
+    )
+)
+production._validated_migrator_url = lambda value: value
+production._validated_pgpass_path = lambda value: value
+production.load_database_generation_program = lambda **_kwargs: program
+production._hold_and_validate_artifacts = lambda *_args: object()
+production.hold_protected_file_for_read = lambda path: nullcontext(path)
+production._temporary_pgpass_environment = lambda _path: nullcontext()
+class FakeEngine:
+    def connect(self): return nullcontext(object())
+    def dispose(self): return None
+
+production._create_production_engine = lambda _parsed_url: FakeEngine()
+production._transaction_timeout.c07_prearmed_transaction = (
+    lambda _connection, *, timeout_ms: nullcontext()
+)
+production._migrate_with_connection = lambda _connection, **_kwargs: {
+    "result": "standalone-action-entered"
+}
+original_import_module = importlib.import_module
+original_import = builtins.__import__
+def reject_database_import(name, *args, **kwargs):
+    if name == "app.database" or name.startswith("app.database."):
+        raise AssertionError("ordinary app.database facade imported during standalone action")
+    return original_import(name, *args, **kwargs)
+def reject_database_import_module(name, package=None):
+    if name == "app.database" or name.startswith("app.database."):
+        raise AssertionError("ordinary app.database facade imported during standalone action")
+    return original_import_module(name, package)
+builtins.__import__ = reject_database_import
+importlib.import_module = reject_database_import_module
+try:
+    result = production.run_production_migration_action(
+        database_url="postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/ticketbox",
+        pgpassfile=Path("C:/TicketboxInstallerSecrets/.ticketbox-pgpass-1-" + "1" * 32),
+        generation_program_path=Path("DATABASE_GENERATION_PROGRAM.json"),
+        expected_generation_program_sha256="a" * 64,
+        operation_id=context.operation_id,
+        source_revision=program.c07.source_revision,
+        target_revision=program.c07.target_revision,
+        migration_context=context,
+    )
+finally:
+    importlib.import_module = original_import_module
+    builtins.__import__ = original_import
+assert result == {"result": "standalone-action-entered"}
 fresh = launch._load_c07_fresh_source_bootstrap_module()
 assert callable(fresh.run_fresh_source_bootstrap_action)
 maintenance = launch._load_c07_maintenance_upgrade_module()

@@ -24,10 +24,8 @@ $script:TicketboxBootstrapRecoveryGuardName = "bootstrap-exposure-recovery-pendi
 $script:TicketboxPersistentInstallationIdentityName = ".ticketbox-installation-identity"
 $script:TicketboxPendingInstallationIdentityName =
     ".ticketbox-installation-identity.pending"
-$script:TicketboxLegacyPersistentInstallationIdentitySchema =
-    "ticketbox-installation-identity-v1"
 $script:TicketboxPersistentInstallationIdentitySchema =
-    "ticketbox-installation-identity-v2"
+    "ticketbox-installation-identity-v3"
 $script:TicketboxPersistentInstallationIdentityAclAccounts = @("SYSTEM", "BUILTIN\Administrators")
 $script:TicketboxPersistentInstallationIdentityOwnerAccount = "SYSTEM"
 $script:TicketboxC07MigrationHelperRelativePath = "ticketbox-c07-migrator.exe"
@@ -2833,6 +2831,13 @@ public static class TicketboxExactTreeDeleteNativeMethods
 
     public static string ReadExactUtf8File(string path, int maximumBytes)
     {
+        byte[] bytes = ReadExactFileBytes(path, maximumBytes);
+        UTF8Encoding encoding = new UTF8Encoding(false, true);
+        return encoding.GetString(bytes);
+    }
+
+    public static byte[] ReadExactFileBytes(string path, int maximumBytes)
+    {
         if (maximumBytes < 1)
         {
             throw new ArgumentOutOfRangeException("maximumBytes");
@@ -2900,8 +2905,7 @@ public static class TicketboxExactTreeDeleteNativeMethods
                 }
                 offset += checked((int)bytesRead);
             }
-            UTF8Encoding encoding = new UTF8Encoding(false, true);
-            return encoding.GetString(bytes);
+            return bytes;
         }
     }
 
@@ -4437,10 +4441,6 @@ function Resolve-TicketboxInstalledDatabaseGenerationProgramPath {
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][object]$Evidence
     )
-    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
-    $payloadRoot = ConvertTo-TicketboxCanonicalPath (
-        Join-Path $canonicalInstallDir "program\ticketbox-backend"
-    )
     $propertyNames = @($Evidence.PSObject.Properties.Name)
     if (
         $propertyNames.Count -ne 3 -or
@@ -4454,12 +4454,10 @@ function Resolve-TicketboxInstalledDatabaseGenerationProgramPath {
     ) {
         throw "database generation program release evidence 无效。"
     }
-    $programPath = ConvertTo-TicketboxCanonicalPath (
-        Join-Path $payloadRoot ([string]$Evidence.RelativePath)
-    )
+    $programPath = Get-TicketboxInstalledDatabaseGenerationProgramPath `
+        -InstallDir $InstallDir `
+        -RelativePath ([string]$Evidence.RelativePath)
     if (
-        -not (Test-TicketboxPathWithin $programPath $payloadRoot) -or
-        (Test-TicketboxPathEquals $programPath $payloadRoot) -or
         (Get-TicketboxPathEntryKindNoFollow $programPath) -cne "File"
     ) {
         throw "database generation program 不是 frozen payload regular file。"
@@ -4472,6 +4470,36 @@ function Resolve-TicketboxInstalledDatabaseGenerationProgramPath {
             [string]$Evidence.Sha256
     ) {
         throw "database generation program 与 release evidence 不一致。"
+    }
+    return $programPath
+}
+
+function Get-TicketboxInstalledDatabaseGenerationProgramPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [Parameter(Mandatory = $true)][string]$RelativePath
+    )
+    if (
+        $RelativePath -cne "DATABASE_GENERATION_PROGRAM.json" -or
+        [System.IO.Path]::IsPathRooted($RelativePath) -or
+        $RelativePath.Contains("\") -or
+        $RelativePath.Contains("/") -or
+        $RelativePath.Contains(":")
+    ) {
+        throw "database generation program relative path 无效。"
+    }
+    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $InstallDir
+    $payloadRoot = ConvertTo-TicketboxCanonicalPath (
+        Join-Path $canonicalInstallDir "program\ticketbox-backend"
+    )
+    $programPath = ConvertTo-TicketboxCanonicalPath (
+        Join-Path $payloadRoot $RelativePath
+    )
+    if (
+        -not (Test-TicketboxPathWithin $programPath $payloadRoot) -or
+        (Test-TicketboxPathEquals $programPath $payloadRoot)
+    ) {
+        throw "database generation program 路径逃逸 frozen payload root。"
     }
     return $programPath
 }
@@ -4614,18 +4642,6 @@ function Read-TicketboxPersistentInstallationIdentity {
     ) {
         throw "持久安装身份不是有界的普通文件。"
     }
-    $legacyNames = @(
-        "SCHEMA",
-        "BACKEND_VERSION_FLOOR",
-        "INSTALLATION_ID",
-        "BUILD_MANIFEST_SHA256",
-        "DATA_ROOT",
-        "INSTALL_DIR",
-        "PG_SERVICE_NAME",
-        "BACKEND_SERVICE_NAME",
-        "PG_PORT",
-        "BACKEND_PORT"
-    )
     $currentNames = @(
         "SCHEMA",
         "STATE",
@@ -4636,6 +4652,9 @@ function Read-TicketboxPersistentInstallationIdentity {
         "MIGRATION_HELPER_RELATIVE_PATH",
         "MIGRATION_HELPER_SIZE",
         "MIGRATION_HELPER_SHA256",
+        "DATABASE_GENERATION_PROGRAM_RELATIVE_PATH",
+        "DATABASE_GENERATION_PROGRAM_SIZE",
+        "DATABASE_GENERATION_PROGRAM_SHA256",
         "DATA_ROOT",
         "INSTALL_DIR",
         "PG_SERVICE_NAME",
@@ -4658,16 +4677,9 @@ function Read-TicketboxPersistentInstallationIdentity {
     if (-not $values.ContainsKey("SCHEMA")) {
         throw "持久安装身份缺少 SCHEMA。"
     }
-    $legacyCompleted = (
-        [string]$values.SCHEMA -ceq
-            $script:TicketboxLegacyPersistentInstallationIdentitySchema
-    )
-    $expectedNames = if ($legacyCompleted) { $legacyNames } else { $currentNames }
-    if (
-        -not $legacyCompleted -and
-        [string]$values.SCHEMA -cne
-            $script:TicketboxPersistentInstallationIdentitySchema
-    ) {
+    $expectedNames = $currentNames
+    if ([string]$values.SCHEMA -cne
+        $script:TicketboxPersistentInstallationIdentitySchema) {
         throw "持久安装身份 schema 不受支持。"
     }
     if (
@@ -4689,46 +4701,42 @@ function Read-TicketboxPersistentInstallationIdentity {
     if ($values.BUILD_MANIFEST_SHA256 -cnotmatch '^[0-9A-F]{64}$') {
         throw "持久安装身份 build manifest SHA-256 无效。"
     }
-    $state = "READY"
-    $operationId = ""
-    $helperRelativePath = ""
-    $helperSize = [int64]0
-    $helperSha256 = ""
-    if (-not $legacyCompleted) {
-        $state = [string]$values.STATE
-        if ($state -cnotin @("PENDING", "READY")) {
-            throw "持久安装身份 state 无效。"
+    $state = [string]$values.STATE
+    if ($state -cnotin @("PENDING", "READY")) {
+        throw "持久安装身份 state 无效。"
+    }
+    $parsedOperationId = [guid]::Empty
+    if (-not [guid]::TryParseExact(
+        [string]$values.OPERATION_ID,
+        "D",
+        [ref]$parsedOperationId
+    )) {
+        throw "持久安装身份 operation id 无效。"
+    }
+    $operationId = $parsedOperationId.ToString("D")
+    $helperEvidence = ConvertTo-TicketboxInstalledC07MigrationHelperEvidence (
+        [pscustomobject][ordered]@{
+            path = [string]$values.MIGRATION_HELPER_RELATIVE_PATH
+            size = [string]$values.MIGRATION_HELPER_SIZE
+            sha256 = ([string]$values.MIGRATION_HELPER_SHA256).ToLowerInvariant()
         }
-        $parsedOperationId = [guid]::Empty
-        if (
-            -not [guid]::TryParseExact(
-                [string]$values.OPERATION_ID,
-                "D",
-                [ref]$parsedOperationId
-            )
-        ) {
-            throw "持久安装身份 operation id 无效。"
-        }
-        $operationId = $parsedOperationId.ToString("D")
-        $helperEvidence =
-            ConvertTo-TicketboxInstalledC07MigrationHelperEvidence (
-                [pscustomobject][ordered]@{
-                    path = [string]$values.MIGRATION_HELPER_RELATIVE_PATH
-                    size = [string]$values.MIGRATION_HELPER_SIZE
-                    sha256 = (
-                        [string]$values.MIGRATION_HELPER_SHA256
-                    ).ToLowerInvariant()
-                }
-            )
-        if (
-            [string]$values.MIGRATION_HELPER_SHA256 -cnotmatch
-                "^[0-9A-F]{64}$"
-        ) {
-            throw "持久安装身份 helper SHA-256 不是 canonical uppercase。"
-        }
-        $helperRelativePath = $helperEvidence.RelativePath
-        $helperSize = [int64]$helperEvidence.Size
-        $helperSha256 = [string]$helperEvidence.Sha256
+    )
+    if ([string]$values.MIGRATION_HELPER_SHA256 -cnotmatch "^[0-9A-F]{64}$") {
+        throw "持久安装身份 helper SHA-256 不是 canonical uppercase。"
+    }
+    $programRelativePath = [string]$values.DATABASE_GENERATION_PROGRAM_RELATIVE_PATH
+    $programSizeValue = [int64]0
+    if (
+        $programRelativePath -cne "DATABASE_GENERATION_PROGRAM.json" -or
+        -not [int64]::TryParse(
+            [string]$values.DATABASE_GENERATION_PROGRAM_SIZE,
+            [ref]$programSizeValue
+        ) -or
+        $programSizeValue -lt 1 -or
+        [string]$values.DATABASE_GENERATION_PROGRAM_SHA256 -cnotmatch
+            "^[0-9A-F]{64}$"
+    ) {
+        throw "持久安装身份 database generation program evidence 无效。"
     }
     $pgPort = 0
     $backendPort = 0
@@ -4747,7 +4755,6 @@ function Read-TicketboxPersistentInstallationIdentity {
         Schema = [string]$values.SCHEMA
         State = $state
         OperationId = $operationId
-        LegacyCompleted = $legacyCompleted
         BackendVersionFloor = [string]$values.BACKEND_VERSION_FLOOR
         InstallationId = $installationId.ToString("D")
         BuildManifestSha256 = [string]$values.BUILD_MANIFEST_SHA256
@@ -4757,9 +4764,13 @@ function Read-TicketboxPersistentInstallationIdentity {
         BackendServiceName = [string]$values.BACKEND_SERVICE_NAME
         PgPort = $pgPort
         BackendPort = $backendPort
-        MigrationHelperRelativePath = $helperRelativePath
-        MigrationHelperSize = $helperSize
-        MigrationHelperSha256 = $helperSha256
+        MigrationHelperRelativePath = $helperEvidence.RelativePath
+        MigrationHelperSize = [int64]$helperEvidence.Size
+        MigrationHelperSha256 = [string]$helperEvidence.Sha256
+        DatabaseGenerationProgramRelativePath = $programRelativePath
+        DatabaseGenerationProgramSize = $programSizeValue
+        DatabaseGenerationProgramSha256 =
+            [string]$values.DATABASE_GENERATION_PROGRAM_SHA256
     }
 }
 
@@ -4770,12 +4781,34 @@ function Read-TicketboxInstalledBuildManifest {
     )
 
     $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "缺少已安装 BUILD_PROVENANCE.json：$Path"
-    }
-    Assert-NoTicketboxAncestorReparsePoints $Path
+    Initialize-TicketboxExactTreeDeleteNativeMethods
+    $bytes = [TicketboxExactTreeDeleteNativeMethods]::ReadExactFileBytes(
+        $Path,
+        16777216
+    )
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $manifest = Get-Content -LiteralPath $Path -Encoding UTF8 -Raw | ConvertFrom-Json
+        $manifestSha256 = (
+            [BitConverter]::ToString($sha256.ComputeHash($bytes))
+        ).Replace("-", "")
+    }
+    finally {
+        $sha256.Dispose()
+    }
+    try {
+        $textOffset = if (
+            $bytes.Length -ge 3 -and
+            $bytes[0] -eq 0xEF -and
+            $bytes[1] -eq 0xBB -and
+            $bytes[2] -eq 0xBF
+        ) { 3 } else { 0 }
+        $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
+        $manifestText = $utf8.GetString(
+            $bytes,
+            $textOffset,
+            $bytes.Length - $textOffset
+        )
+        $manifest = $manifestText | ConvertFrom-Json
     }
     catch {
         throw "已安装 BUILD_PROVENANCE.json 不是有效 JSON。"
@@ -4831,6 +4864,7 @@ function Read-TicketboxInstalledBuildManifest {
     }
     return [pscustomobject]@{
         Path = $Path
+        Sha256 = $manifestSha256
         Manifest = $manifest
         BackendVersion = $backendVersion
         PgMajor = $pgMajor
@@ -4893,7 +4927,7 @@ function Get-TicketboxInstallationReleaseCandidate {
     return [pscustomobject][ordered]@{
         BackendVersionFloor = [string]$buildManifest.BackendVersion
         BuildManifestSha256 =
-            Get-TicketboxPortableFileSha256 $expectedManifestPath
+            [string]$buildManifest.Sha256
         DataRoot = $canonicalDataRoot
         InstallDir = $canonicalInstallDir
         PgServiceName = $PgServiceName
@@ -4964,10 +4998,7 @@ function Repair-TicketboxRecoverableInstallationIdentityAcl {
             -DataRoot $dataRoot `
             -Pending:$Pending
         if (
-            ($Pending -and (
-                $identity.State -cne "PENDING" -or
-                [bool]$identity.LegacyCompleted
-            )) -or
+            ($Pending -and $identity.State -cne "PENDING") -or
             (-not $Pending -and $identity.State -cne "READY")
         ) {
             throw "持久安装身份状态与 artifact 路径不一致。"
@@ -4994,10 +5025,7 @@ function Repair-TicketboxRecoverableInstallationIdentityAcl {
         -Pending:$Pending `
         -AllowRecoverableInheritedAcl
     if (
-        ($Pending -and (
-            $identity.State -cne "PENDING" -or
-            [bool]$identity.LegacyCompleted
-        )) -or
+        ($Pending -and $identity.State -cne "PENDING") -or
         (-not $Pending -and $identity.State -cne "READY")
     ) {
         throw "可恢复持久安装身份状态与 artifact 路径不一致。"
@@ -5043,16 +5071,19 @@ function Test-TicketboxInstallationIdentityReleaseMatches {
     ) {
         return $false
     }
-    if ([bool]$Identity.LegacyCompleted) {
-        return $true
-    }
     return (
         $Identity.MigrationHelperRelativePath -ceq
             $Candidate.MigrationHelperRelativePath -and
         [int64]$Identity.MigrationHelperSize -eq
             [int64]$Candidate.MigrationHelperSize -and
         $Identity.MigrationHelperSha256 -ceq
-            $Candidate.MigrationHelperSha256
+            $Candidate.MigrationHelperSha256 -and
+        [string]$Identity.DatabaseGenerationProgramRelativePath -ceq
+            [string]$Candidate.DatabaseGenerationProgramRelativePath -and
+        [int64]$Identity.DatabaseGenerationProgramSize -eq
+            [int64]$Candidate.DatabaseGenerationProgramSize -and
+        [string]$Identity.DatabaseGenerationProgramSha256 -ceq
+            [string]$Candidate.DatabaseGenerationProgramSha256
     )
 }
 
@@ -5076,6 +5107,9 @@ function Get-TicketboxPersistentInstallationIdentityText {
         "MIGRATION_HELPER_RELATIVE_PATH=$($Candidate.MigrationHelperRelativePath)",
         "MIGRATION_HELPER_SIZE=$([int64]$Candidate.MigrationHelperSize)",
         "MIGRATION_HELPER_SHA256=$($Candidate.MigrationHelperSha256)",
+        "DATABASE_GENERATION_PROGRAM_RELATIVE_PATH=$($Candidate.DatabaseGenerationProgramRelativePath)",
+        "DATABASE_GENERATION_PROGRAM_SIZE=$([int64]$Candidate.DatabaseGenerationProgramSize)",
+        "DATABASE_GENERATION_PROGRAM_SHA256=$($Candidate.DatabaseGenerationProgramSha256)",
         "DATA_ROOT=$($Candidate.DataRoot)",
         "INSTALL_DIR=$($Candidate.InstallDir)",
         "PG_SERVICE_NAME=$($Candidate.PgServiceName)",
@@ -5176,10 +5210,7 @@ function Initialize-TicketboxPendingInstallationIdentity {
         $pending = Read-TicketboxPersistentInstallationIdentity `
             -DataRoot $candidate.DataRoot `
             -Pending
-        if (
-            $pending.State -cne "PENDING" -or
-            [bool]$pending.LegacyCompleted
-        ) {
+        if ($pending.State -cne "PENDING") {
             throw "pending installation identity artifact 状态无效。"
         }
         Assert-TicketboxInstallationIdentityBaseMatches $pending $candidate
@@ -5276,10 +5307,7 @@ function Promote-TicketboxPendingInstallationIdentity {
         $pending = Read-TicketboxPersistentInstallationIdentity `
             -DataRoot $candidate.DataRoot `
             -Pending
-        if (
-            $pending.State -cne "PENDING" -or
-            [bool]$pending.LegacyCompleted
-        ) {
+        if ($pending.State -cne "PENDING") {
             throw "CommitCompletedInstall 缺少有效 PENDING identity。"
         }
         Assert-TicketboxInstallationIdentityBaseMatches $pending $candidate
@@ -5297,7 +5325,6 @@ function Promote-TicketboxPendingInstallationIdentity {
         }
         if (
             -not [string]::IsNullOrEmpty($ExpectedOperationId) -and
-            -not [bool]$ready.LegacyCompleted -and
             $ready.OperationId -cne
                 ([guid]$ExpectedOperationId).ToString("D")
         ) {

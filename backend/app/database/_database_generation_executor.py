@@ -1,19 +1,24 @@
-"""Execute one build-declared revision suffix on an existing transaction."""
+"""Run one build-declared generation inside a caller-owned transaction."""
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 from types import ModuleType
 from uuid import UUID
 
+from alembic import command
+from alembic.config import Config
 from alembic.migration import MigrationContext
-from alembic.operations import Operations
-from sqlalchemy import inspect, text
+from alembic.util.exc import CommandError
+from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from app.database._database_generation_program import (
+    ALEMBIC_PROGRAM_ATTRIBUTE,
     BASE_SOURCE,
     DatabaseGenerationProgram,
+    DatabaseGenerationProgramError,
     DatabaseGenerationRevision,
 )
 from app.database._release_schema_readiness import (
@@ -21,9 +26,11 @@ from app.database._release_schema_readiness import (
     assert_release_head,
 )
 
+_MANAGED_JSON_PROTOCOL_ATTRIBUTE = "ticketbox_managed_migration_json_protocol_v1"
+
 
 class DatabaseGenerationExecutionError(RuntimeError):
-    """The declared generation suffix could not be executed or verified."""
+    """The declared generation could not be executed or verified."""
 
 
 def _canonical_operation_id(value: str) -> str:
@@ -47,13 +54,10 @@ def _load_revision(revision: DatabaseGenerationRevision) -> ModuleType:
         raise DatabaseGenerationExecutionError(
             "generation revision is unavailable"
         ) from exc
-    import hashlib
-
     if hashlib.sha256(payload).hexdigest() != revision.module_sha256:
         raise DatabaseGenerationExecutionError("generation revision bytes changed")
     spec = importlib.util.spec_from_file_location(
-        f"_ticketbox_generation_{revision.revision}",
-        revision.module_path,
+        f"_ticketbox_generation_{revision.revision}", revision.module_path
     )
     if spec is None or spec.loader is None:
         raise DatabaseGenerationExecutionError("generation revision cannot be loaded")
@@ -73,32 +77,17 @@ def _load_revision(revision: DatabaseGenerationRevision) -> ModuleType:
 
 
 def _current_revision(connection: Connection) -> str | None:
-    if not inspect(connection).has_table("alembic_version", schema="public"):
-        return None
-    revisions = tuple(
+    heads = tuple(
         str(value)
-        for value in connection.scalars(
-            text("SELECT version_num FROM public.alembic_version ORDER BY version_num")
-        )
+        for value in MigrationContext.configure(
+            connection, opts={"version_table_schema": "public"}
+        ).get_current_heads()
     )
-    if len(revisions) > 1:
+    if len(heads) > 1:
         raise DatabaseGenerationExecutionError(
             "generation database has multiple Alembic revisions"
         )
-    return revisions[0] if revisions else None
-
-
-def _ensure_base_version_table(connection: Connection) -> None:
-    if _current_revision(connection) is not None:
-        raise DatabaseGenerationExecutionError("generation base is not empty")
-    if not inspect(connection).has_table("alembic_version", schema="public"):
-        connection.execute(
-            text(
-                "CREATE TABLE public.alembic_version ("
-                "version_num VARCHAR(32) NOT NULL, "
-                "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"
-            )
-        )
+    return heads[0] if heads else None
 
 
 def _apply_context(
@@ -123,12 +112,11 @@ def _apply_context(
         raise DatabaseGenerationExecutionError(
             "generation transaction timeout is unavailable"
         )
-    settings = (
+    for key, value in (
         (context["ceremony_mode_guc"], context["ceremony_mode"]),
         (context["ceremony_id_guc"], operation_id),
         (context["statement_timeout_guc"], timeout_text),
-    )
-    for key, value in settings:
+    ):
         observed = connection.scalar(
             text("SELECT set_config(:key, :value, true)"),
             {"key": key, "value": value},
@@ -137,32 +125,6 @@ def _apply_context(
             raise DatabaseGenerationExecutionError(
                 "generation revision context was not applied"
             )
-
-
-def _advance_revision(
-    connection: Connection,
-    *,
-    revision: DatabaseGenerationRevision,
-) -> None:
-    if revision.down_revision is None:
-        statement = (
-            "INSERT INTO public.alembic_version (version_num) "
-            "VALUES (:revision) RETURNING version_num"
-        )
-        parameters = {"revision": revision.revision}
-    else:
-        statement = (
-            "UPDATE public.alembic_version SET version_num = :revision "
-            "WHERE version_num = :down_revision RETURNING version_num"
-        )
-        parameters = {
-            "down_revision": revision.down_revision,
-            "revision": revision.revision,
-        }
-    if connection.scalar(text(statement), parameters) != revision.revision:
-        raise DatabaseGenerationExecutionError(
-            "generation revision CAS did not update exactly one row"
-        )
 
 
 def _assert_postcondition(
@@ -176,6 +138,28 @@ def _assert_postcondition(
     _load_revision(revision).assert_postcondition(connection)
 
 
+def _alembic_config(
+    connection: Connection,
+    program: DatabaseGenerationProgram,
+) -> Config:
+    root = program.revisions[0].module_path.parents[2]
+    if any(revision.module_path.parents[2] != root for revision in program.revisions):
+        raise DatabaseGenerationExecutionError("generation program spans multiple roots")
+    try:
+        ini_path = (root / "alembic.ini").resolve(strict=True)
+        script_path = (root / "migrations").resolve(strict=True)
+    except OSError as exc:
+        raise DatabaseGenerationExecutionError(
+            "generation Alembic environment is unavailable"
+        ) from exc
+    config = Config(str(ini_path))
+    config.set_main_option("script_location", str(script_path))
+    config.attributes["connection"] = connection
+    config.attributes[_MANAGED_JSON_PROTOCOL_ATTRIBUTE] = True
+    config.attributes[ALEMBIC_PROGRAM_ATTRIBUTE] = program
+    return config
+
+
 def execute_database_generation(
     connection: Connection,
     *,
@@ -183,41 +167,52 @@ def execute_database_generation(
     source_revision: str,
     target_revision: str,
     operation_id: str,
-) -> str:
-    """Execute the declared suffix; the caller owns transaction and authority."""
+) -> bool:
+    """Apply the build target through Alembic; return whether work was run."""
 
     canonical_operation = _canonical_operation_id(operation_id)
-    target_verifier = program.revision(target_revision)
-    if _current_revision(connection) == target_revision:
+    try:
+        target_verifier = program.revision(target_revision)
+        suffix = program.suffix(source_revision, target_revision)
+    except DatabaseGenerationProgramError as exc:
+        raise DatabaseGenerationExecutionError(
+            "generation suffix is outside the build program"
+        ) from exc
+    if not connection.in_transaction():
+        raise DatabaseGenerationExecutionError(
+            "generation execution requires an active caller transaction"
+        )
+    current = _current_revision(connection)
+    if current == target_revision:
         _assert_postcondition(connection, target_verifier)
-        return "target_observed_after_interruption"
-    if source_revision == BASE_SOURCE:
-        _ensure_base_version_table(connection)
-    elif _current_revision(connection) != source_revision:
+        return False
+    if current != (None if source_revision == BASE_SOURCE else source_revision):
         raise DatabaseGenerationExecutionError(
             "generation live revision is outside the declared suffix"
         )
-    suffix = program.suffix(source_revision, target_revision)
-    for revision in suffix:
-        module = _load_revision(revision)
+    context_revisions = tuple(
+        revision for revision in suffix if revision.context is not None
+    )
+    if len(context_revisions) > 1:
+        raise DatabaseGenerationExecutionError(
+            "one Alembic upgrade cannot schedule multiple revision contexts"
+        )
+    for revision in context_revisions:
         _apply_context(
             connection,
             revision=revision,
             operation_id=canonical_operation,
         )
-        with Operations.context(MigrationContext.configure(connection)):
-            module.upgrade()
-        _advance_revision(connection, revision=revision)
-        if revision.postcondition is not None:
-            module.assert_postcondition(connection)
+    config = _alembic_config(connection, program)
     try:
+        command.upgrade(config, target_revision)
         assert_release_head(connection, expected_revision=target_revision)
-    except ReleaseHeadVerificationError as exc:
+    except (CommandError, ReleaseHeadVerificationError) as exc:
         raise DatabaseGenerationExecutionError(
-            "generation suffix missed its target"
+            "Alembic did not reach the build-authorized target"
         ) from exc
     _assert_postcondition(connection, target_verifier)
-    return "target_committed"
+    return True
 
 
 __all__ = [

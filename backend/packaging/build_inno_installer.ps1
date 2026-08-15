@@ -562,6 +562,50 @@ function Assert-TicketboxExactJsonProperties(
     }
 }
 
+function Assert-TicketboxInstallerCompilerContentManifest {
+    param(
+        [Parameter(Mandatory = $true)][string]$ManifestPath,
+        [Parameter(Mandatory = $true)][string]$ExpectedProgramPath
+    )
+    Assert-File $ManifestPath "ISCC compiler content manifest"
+    Assert-File $ExpectedProgramPath "staged database generation program"
+    $records = @(Import-Csv -LiteralPath $ManifestPath -Delimiter "`t" -Encoding UTF8)
+    if ($records.Count -eq 0) {
+        throw "ISCC compiler content manifest is empty."
+    }
+    $expectedFields = @(
+        "Index", "SourceFilename", "TimeStamp", "Version",
+        "SHA256Sum", "OriginalSize", "FirstSlice", "LastSlice", "StartOffset",
+        "ChunkSuboffset", "ChunkCompressedSize", "Encrypted", "ISSigKeyID"
+    )
+    Assert-TicketboxExactJsonProperties `
+        -Value $records[0] `
+        -ExpectedNames $expectedFields `
+        -Label "ISCC compiler content manifest row"
+    $expectedPath = [System.IO.Path]::GetFullPath($ExpectedProgramPath)
+    $programRows = @(
+        $records | Where-Object {
+            [System.StringComparer]::OrdinalIgnoreCase.Equals(
+                [System.IO.Path]::GetFullPath([string]$_.SourceFilename),
+                $expectedPath
+            )
+        }
+    )
+    if ($programRows.Count -ne 1) {
+        throw "ISCC must compile the database generation program exactly once."
+    }
+    $program = Get-Item -LiteralPath $expectedPath -Force
+    $row = $programRows[0]
+    if (
+        ([string]$row.SHA256Sum).ToLowerInvariant() -cne
+            (Get-TicketboxFileSha256 $expectedPath) -or
+        [int64]$row.OriginalSize -ne [int64]$program.Length -or
+        ([string]$row.Encrypted).ToLowerInvariant() -cne "no"
+    ) {
+        throw "ISCC compiler content manifest does not bind the exact database generation program bytes."
+    }
+}
+
 function Assert-TicketboxInstallerPublishUnit {
     param(
         [Parameter(Mandatory = $true)][string]$PublishDirectory,
@@ -1270,6 +1314,7 @@ $stagedInstallerInputDir = Join-Path $stagedBackendRoot "dist\installer-input"
 $stagedInstallerManifest = Join-Path $stagedInstallerInputDir "BUILD_PROVENANCE.json"
 $compilerOutputDir = Join-Path $buildStagingRoot "compiler-output"
 $stagedInstaller = Join-Path $compilerOutputDir $installerFileName
+$stagedCompilerContentManifest = Join-Path $compilerOutputDir "ticketbox-installer-content.tsv"
 $publishStagingDir = Join-Path $publishRoot (".$publishUnitName.staging-$publishNonce")
 $inputLocks = $null
 $isccLocks = $null
@@ -1353,6 +1398,9 @@ try {
         throw "ISCC.exe 编译失败（exit=$LASTEXITCODE）。"
     }
     Assert-File $stagedInstaller "本轮 ISCC staging 安装包输出"
+    Assert-TicketboxInstallerCompilerContentManifest `
+        -ManifestPath $stagedCompilerContentManifest `
+        -ExpectedProgramPath (Join-Path $stagedBackendDist "DATABASE_GENERATION_PROGRAM.json")
     Assert-TicketboxFileSetSnapshot `
         "ISCC 实际读取的 staging 输入" `
         $stagedInputSnapshot `

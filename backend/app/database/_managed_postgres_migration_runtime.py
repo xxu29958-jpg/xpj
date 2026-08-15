@@ -239,14 +239,18 @@ class ManagedPostgresMigrationRuntimeV1:
                         timeout_ms=self._contract.transaction_timeout_ms,
                     ),
                 ):
-                    result = self._run_transaction(
+                    applied = self._run_transaction(
                         connection,
                         program=program,
                         source_revision=source_revision,
                         target_revision=target_revision,
                         generation_operation_id=generation_operation_id,
                     )
-            return result
+            return (
+                "target_committed"
+                if applied
+                else "target_observed_after_interruption"
+            )
         except ManagedPostgresMigrationRuntimeError:
             raise
         except (
@@ -270,7 +274,7 @@ class ManagedPostgresMigrationRuntimeV1:
         source_revision: str,
         target_revision: str,
         generation_operation_id: str,
-    ) -> str:
+    ) -> bool:
         self._assert_migrator_context(connection)
         self._assume_schema_owner(connection)
         return execute_database_generation(

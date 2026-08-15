@@ -32,15 +32,15 @@ from app.database._c07_maintenance_common import (
     _validated_migrator_url,
     _validated_pgpass_path,
 )
-from app.database._c07_maintenance_plan import (
-    C07_SOURCE_REVISION,
-    C07_TARGET_REVISION,
-    C07MaintenanceUpgradeError,
-)
 from app.database._c07_transaction_timeout import c07_prearmed_transaction
 from app.database._database_generation_program import (
     DatabaseGenerationProgramError,
     load_database_generation_program,
+)
+from app.database_generation_c07_contract import (
+    C07_SOURCE_REVISION,
+    C07_TARGET_REVISION,
+    C07MaintenanceUpgradeError,
 )
 from app.services.secure_file import hold_protected_file_for_read
 

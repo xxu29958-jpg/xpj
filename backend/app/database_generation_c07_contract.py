@@ -1,4 +1,4 @@
-"""Pure C07 revision contract used by build and runtime program validation."""
+"""Pure C07 revision contract shared by build and runtime validation."""
 
 from __future__ import annotations
 

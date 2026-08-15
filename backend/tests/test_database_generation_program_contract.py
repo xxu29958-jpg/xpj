@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,9 +19,62 @@ PROGRAM_READER = BACKEND / "app" / "database" / "_database_generation_program.py
 SOURCE_REVISION = "20260722_0001"
 C07_REVISION = "20260729_0001"
 TARGET_REVISION = "20260809_0001"
-EXPECTED_PROGRAM_SHA256 = (
-    "f4b65fe1b5e998e5b98cc993f12dec4d01a6ca9ecdbdf74bc5a67678b36aa9a1"
-)
+EXPECTED_PROGRAM_SHA256 = "f4b65fe1b5e998e5b98cc993f12dec4d01a6ca9ecdbdf74bc5a67678b36aa9a1"
+
+_BUILD_COMPILER_PURITY_PROBE = r"""
+import builtins
+import dotenv
+import dotenv.main
+import importlib.util
+import os
+import sqlalchemy
+import sqlalchemy.engine
+import sqlalchemy.engine.create
+import sys
+import tempfile
+from pathlib import Path
+
+compiler_path = Path(sys.argv[1])
+backend_root = Path(sys.argv[2])
+original_import = builtins.__import__
+original_engine = sqlalchemy.create_engine
+original_engine_api = sqlalchemy.engine.create_engine
+original_engine_impl = sqlalchemy.engine.create.create_engine
+original_dotenv = dotenv.load_dotenv
+original_dotenv_main = dotenv.main.load_dotenv
+def reject_database_import(name, *args, **kwargs):
+    if name == "app.database" or name.startswith("app.database."):
+        raise AssertionError("build compiler imported runtime database authority")
+    return original_import(name, *args, **kwargs)
+def reject_engine(*_args, **_kwargs):
+    raise AssertionError("build compiler created a runtime database engine")
+def reject_dotenv(*_args, **_kwargs):
+    raise AssertionError("build compiler loaded ambient dotenv state")
+builtins.__import__ = reject_database_import
+sqlalchemy.create_engine = reject_engine
+sqlalchemy.engine.create_engine = reject_engine
+sqlalchemy.engine.create.create_engine = reject_engine
+dotenv.load_dotenv = reject_dotenv
+dotenv.main.load_dotenv = reject_dotenv
+os.environ["DATABASE_URL"] = "postgresql+psycopg://ambient.invalid/ticketbox"
+os.environ["TICKETBOX_DATA_DIR"] = "Z:/ambient-ticketbox-data"
+try:
+    spec = importlib.util.spec_from_file_location("ticketbox_build_compiler_purity", compiler_path)
+    assert spec is not None and spec.loader is not None
+    compiler = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(compiler)
+    with tempfile.TemporaryDirectory() as temporary:
+        output = Path(temporary) / "DATABASE_GENERATION_PROGRAM.json"
+        print(compiler.write_program(backend_root=backend_root, output=output))
+finally:
+    dotenv.main.load_dotenv = original_dotenv_main
+    dotenv.load_dotenv = original_dotenv
+    sqlalchemy.engine.create.create_engine = original_engine_impl
+    sqlalchemy.engine.create_engine = original_engine_api
+    sqlalchemy.create_engine = original_engine
+    builtins.__import__ = original_import
+assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
+"""
 
 
 def _load(path: Path, name: str):
@@ -30,6 +85,15 @@ def _load(path: Path, name: str):
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _compile_program(tmp_path: Path, module_name: str) -> tuple[Path, str]:
+    output = tmp_path / "DATABASE_GENERATION_PROGRAM.json"
+    return output, _load(COMPILER, module_name).write_program(backend_root=BACKEND, output=output)
+
+
+def _source(relative: str) -> str:
+    return (BACKEND / relative).read_text(encoding="utf-8-sig")
 
 
 def test_build_compiler_emits_one_canonical_base_to_head_program(
@@ -43,19 +107,9 @@ def test_build_compiler_emits_one_canonical_base_to_head_program(
     second_sha = compiler.write_program(backend_root=BACKEND, output=output)
     program = json.loads(output.read_text(encoding="utf-8"))
 
-    assert (
-        first_sha
-        == second_sha
-        == hashlib.sha256(first_payload).hexdigest()
-        == EXPECTED_PROGRAM_SHA256
-    )
+    assert first_sha == second_sha == hashlib.sha256(first_payload).hexdigest() == EXPECTED_PROGRAM_SHA256
     assert output.read_bytes() == first_payload
-    assert set(program) == {
-        "revisions",
-        "schema",
-        "source_revision",
-        "target_revision",
-    }
+    assert set(program) == {"revisions", "schema", "source_revision", "target_revision"}
     assert program["schema"] == "ticketbox-database-generation-program-v1"
     assert program["source_revision"] == "base"
     assert program["target_revision"] == TARGET_REVISION
@@ -77,38 +131,54 @@ def test_build_compiler_emits_one_canonical_base_to_head_program(
     assert c07_entries[0]["context"]["kind"] == "c07_ceremony_v1"
 
 
-def test_runtime_reader_binds_program_and_revision_bytes(tmp_path: Path) -> None:
-    compiler = _load(COMPILER, "ticketbox_generation_program_compiler_runtime")
-    reader = _load(PROGRAM_READER, "ticketbox_generation_program_reader")
-    output = tmp_path / "DATABASE_GENERATION_PROGRAM.json"
-    expected_sha = compiler.write_program(backend_root=BACKEND, output=output)
-
-    program = reader.load_database_generation_program(
-        path=output,
-        expected_sha256=expected_sha,
+def test_build_compiler_is_isolated_from_runtime_database_authority() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            _BUILD_COMPILER_PURITY_PROBE,
+            str(COMPILER),
+            str(BACKEND),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.strip() == EXPECTED_PROGRAM_SHA256
+
+
+def test_runtime_reader_binds_program_and_revision_bytes(tmp_path: Path) -> None:
+    reader = _load(PROGRAM_READER, "ticketbox_generation_program_reader")
+    output, expected_sha = _compile_program(tmp_path, "ticketbox_generation_program_compiler_runtime")
+
+    program = reader.load_database_generation_program(path=output, expected_sha256=expected_sha)
     assert program.source_revision == "base"
     assert program.target_revision == TARGET_REVISION
     assert program.c07.source_revision == SOURCE_REVISION
     assert program.c07.target_revision == C07_REVISION
     assert program.suffix(SOURCE_REVISION, TARGET_REVISION)[0].revision == C07_REVISION
 
-    output.write_bytes(output.read_bytes() + b"\n")
     with pytest.raises(reader.DatabaseGenerationProgramError):
         reader.load_database_generation_program(
             path=output,
-            expected_sha256=expected_sha,
+            expected_sha256="0" * 64,
         )
+
+    output.write_bytes(output.read_bytes() + b"\n")
+    with pytest.raises(reader.DatabaseGenerationProgramError):
+        reader.load_database_generation_program(path=output, expected_sha256=expected_sha)
 
 
 def test_frozen_runtime_loads_program_from_exact_build_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    compiler = _load(COMPILER, "ticketbox_generation_program_compiler_frozen")
     reader = _load(PROGRAM_READER, "ticketbox_generation_program_reader_frozen")
-    program_path = tmp_path / "DATABASE_GENERATION_PROGRAM.json"
-    expected_sha = compiler.write_program(backend_root=BACKEND, output=program_path)
+    program_path, expected_sha = _compile_program(tmp_path, "ticketbox_generation_program_compiler_frozen")
     executable = tmp_path / "ticketbox-backend.exe"
     executable.write_bytes(b"frozen-backend")
     manifest = {
@@ -142,13 +212,11 @@ def test_frozen_runtime_loads_program_from_exact_build_manifest(
         reader.load_installed_database_generation_program()
 
 
-def test_installed_lifecycle_uses_program_without_runtime_graph_discovery(
+def test_installed_lifecycle_planning_uses_program_without_graph_discovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    compiler = _load(COMPILER, "ticketbox_generation_program_compiler_lifecycle")
-    output = tmp_path / "DATABASE_GENERATION_PROGRAM.json"
-    expected_sha = compiler.write_program(backend_root=BACKEND, output=output)
+    output, expected_sha = _compile_program(tmp_path, "ticketbox_generation_program_compiler_lifecycle")
     from app.database._database_generation_program import (
         load_database_generation_program,
     )
@@ -179,8 +247,10 @@ def test_installed_lifecycle_uses_program_without_runtime_graph_discovery(
     )
 
 
-def test_installed_init_db_passes_frozen_program_to_lifecycle(
+@pytest.mark.parametrize("action_name", ["FRESH_UPGRADE", "MANAGED_UPGRADE", "NOOP"])
+def test_installed_init_db_uses_one_frozen_release_fact(
     monkeypatch: pytest.MonkeyPatch,
+    action_name: str,
 ) -> None:
     import app.database as database
     from app.database import _database_generation_program as program_reader
@@ -188,82 +258,152 @@ def test_installed_init_db_passes_frozen_program_to_lifecycle(
 
     installed_program = object()
     observed: list[object] = []
+    authority_requirements: list[bool] = []
     monkeypatch.setattr(database, "_warn_if_default_database_url", lambda: None)
-    monkeypatch.setattr(database, "_is_installed_host_database", lambda: True)
-    monkeypatch.setattr(
-        program_reader,
-        "load_installed_database_generation_program",
-        lambda: installed_program,
-    )
-    monkeypatch.setattr(
-        database,
-        "inspect_database_lifecycle",
-        lambda: SimpleNamespace(has_existing_schema=False),
-    )
-    monkeypatch.setattr(
-        database,
-        "load_alembic_context",
-        lambda *, installed_program: (
-            observed.append(installed_program)
-            or SimpleNamespace(head_revision=TARGET_REVISION)
-        ),
-    )
-    monkeypatch.setattr(database, "_assert_revision_contains_c07", lambda *a, **k: None)
-    monkeypatch.setattr(
-        database,
-        "plan_database_lifecycle",
-        lambda *_args: SimpleNamespace(
-            action=DatabaseLifecycleAction.REFUSE,
-            refusal_reason="contract-stop;",
-        ),
-    )
+    monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(program_reader, "load_installed_database_generation_program", lambda: installed_program)
+    monkeypatch.setattr(database, "inspect_database_lifecycle", lambda: SimpleNamespace(has_existing_schema=False))
 
-    with pytest.raises(database.DatabaseMigrationPreflightError, match="contract-stop"):
-        database.init_db()
+    def load_context(*, installed_program: object) -> SimpleNamespace:
+        observed.append(installed_program)
+        return SimpleNamespace(head_revision=TARGET_REVISION)
+
+    def stop_on_authority(_alembic: object, *, production_authority_required: bool) -> None:
+        authority_requirements.append(production_authority_required)
+        raise RuntimeError("authority-observed")
+
+    monkeypatch.setattr(database, "load_alembic_context", load_context)
+    monkeypatch.setattr(database, "_assert_revision_contains_c07", lambda *a, **k: None)
+    monkeypatch.setattr(database, "_assert_existing_schema_compatible", lambda *_a, **_k: None)
+    monkeypatch.setattr(database, "_assert_c07_startup_lifecycle_ready", stop_on_authority)
+    monkeypatch.setattr(database, "_apply_schema_lifecycle", lambda *_a: pytest.fail("frozen DDL"))
+    monkeypatch.setattr(database, "_apply_managed_schema_lifecycle", lambda *_a, **_k: pytest.fail("frozen DDL"))
+    monkeypatch.setattr(database, "plan_database_lifecycle", lambda *_a: SimpleNamespace(action=getattr(DatabaseLifecycleAction, action_name)))
+
+    if action_name == "NOOP":
+        with pytest.raises(RuntimeError, match="authority-observed"):
+            database.init_db()
+        assert authority_requirements == [True]
+    else:
+        with pytest.raises(database.DatabaseMigrationPreflightError, match="安装版"):
+            database.init_db()
+        assert authority_requirements == []
 
     assert observed == [installed_program]
 
 
-def test_installed_migration_has_one_program_authority_and_no_runtime_graph() -> None:
-    runtime_planners = {
+def test_installed_migration_keeps_program_authority_and_alembic_execution() -> None:
+    heartbeat = _source("packaging/windows_c07_heartbeat_authority.ps1")
+    current_release = heartbeat[heartbeat.index("function Get-TicketboxC07ReleaseIdentity") : heartbeat.index("function New-TicketboxC07ReleaseIdentityProjection")]
+    assert "New-TicketboxC07ReleaseIdentityProjection" in current_release
+    assert "Get-TicketboxC07TextSha256" not in current_release
+    runtime_consumers = {
         "app.database._c07_fresh_source_bootstrap": "app/database/_c07_fresh_source_bootstrap.py",
-        "app.database._c07_maintenance_plan": "app/database/_c07_maintenance_plan.py",
+        "app.database_generation_c07_contract": "app/database_generation_c07_contract.py",
         "app.database._c07_maintenance_upgrade_action": "app/database/_c07_maintenance_upgrade_action.py",
-        "app.database._database_generation_executor": "app/database/_database_generation_executor.py",
         "app.database._managed_schema_upgrade": "app/database/_managed_schema_upgrade.py",
         "app.database._managed_postgres_migration_runtime": "app/database/_managed_postgres_migration_runtime.py",
     }
-    for module_name, relative in runtime_planners.items():
-        source = (BACKEND / relative).read_text(encoding="utf-8")
+    for module_name, relative in runtime_consumers.items():
+        source = _source(relative)
         assert "ScriptDirectory" not in source, module_name
         assert "command.upgrade" not in source, module_name
 
-    launch = (BACKEND / "packaging" / "launch.py").read_text(encoding="utf-8")
-    bridge = (BACKEND / "packaging" / "windows_c07_packaged_migration.ps1").read_text(
-        encoding="utf-8-sig"
+    executor = _source("app/database/_database_generation_executor.py")
+    assert "from alembic import command" in executor
+    assert 'config.attributes["connection"] = connection' in executor
+    assert "command.upgrade(config, target_revision)" in executor
+    for foreign_writer in (
+        "module.upgrade()",
+        "INSERT INTO public.alembic_version",
+        "UPDATE public.alembic_version",
+    ):
+        assert foreign_writer not in executor
+
+    env_source = _source("migrations/env.py")
+    imports, separator, database_url_body = env_source.partition("def _database_url()")
+    assert separator
+    assert "from app.config import get_settings" not in imports
+    assert "from app.config import get_settings" in database_url_body
+
+    production = _source("app/database/_c07_production_migration.py")
+    assert "from app.database." not in production[: production.index("def _temporary_database_package")]
+    production_tree = ast.parse(production)
+    assert not any(
+        (
+            isinstance(node, ast.ImportFrom)
+            and (node.module or "").startswith("app.database")
+        )
+        or (
+            isinstance(node, ast.Import)
+            and any(alias.name.startswith("app.database") for alias in node.names)
+        )
+        for node in ast.walk(production_tree)
     )
-    installer = (BACKEND / "packaging" / "install_bundled_services.ps1").read_text(
-        encoding="utf-8-sig"
+    fresh_source = _source("app/database/_c07_fresh_source_bootstrap.py")
+    assert not any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"commit", "rollback"}
+        for node in ast.walk(ast.parse(fresh_source))
     )
+    source_cli = _source("scripts/c07_money_bigint_ceremony.py")
+    for argument in (
+        "--generation-program-path",
+        "--expected-generation-program-sha256",
+    ):
+        assert argument in source_cli
+    for retired in ("--run", "--repair-receipt", "_load_isolated_module"):
+        assert retired not in source_cli
+
+    launch = _source("packaging/launch.py")
+    bridge = _source("packaging/windows_c07_packaged_migration.ps1")
+    installer = _source("packaging/install_bundled_services.ps1")
     combined = launch + bridge + installer
     assert "--validate-generation-program" in launch
     assert "Get-TicketboxInstalledDatabaseGenerationProgram" in installer
-    assert "--c07-installed-upgrade-plan" not in combined
-    assert "--managed-schema-plan" not in combined
-    assert "Get-TicketboxC07InstalledUpgradePlan" not in installer
-    assert "Get-TicketboxInstalledManagedSchemaPlan" not in installer
+    for retired in ("--c07-installed-upgrade-plan", "--managed-schema-plan"):
+        assert retired not in combined
+    for retired in ("Get-TicketboxC07InstalledUpgradePlan", "Get-TicketboxInstalledManagedSchemaPlan"):
+        assert retired not in installer
+
+
+def test_managed_action_rejects_an_intermediate_program_target_before_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.database import _managed_schema_upgrade as managed
+
+    output, expected_sha = _compile_program(
+        tmp_path,
+        "ticketbox_generation_program_compiler_intermediate_target",
+    )
+    monkeypatch.setattr(
+        managed,
+        "ManagedPostgresMigrationRuntimeV1",
+        lambda *_args, **_kwargs: pytest.fail("runtime created for intermediate target"),
+    )
+
+    with pytest.raises(
+        managed.ManagedSchemaUpgradeError,
+        match="target differs from the generation program",
+    ):
+        managed.run_managed_schema_upgrade_action(
+            database_url="postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/ticketbox",
+            pgpassfile=tmp_path / (".ticketbox-pgpass-1-" + "0" * 32),
+            generation_program_path=output,
+            expected_generation_program_sha256=expected_sha,
+            source_revision=SOURCE_REVISION,
+            target_revision=C07_REVISION,
+            generation_operation_id="11111111-1111-4111-8111-111111111111",
+        )
 
 
 def test_build_and_installed_identity_ship_the_exact_program() -> None:
-    build = (BACKEND / "scripts" / "build_backend_exe.ps1").read_text(
-        encoding="utf-8-sig"
-    )
-    provenance = (
-        BACKEND / "scripts" / "windows_backend_build_provenance.ps1"
-    ).read_text(encoding="utf-8-sig")
-    installation = (
-        BACKEND / "packaging" / "windows_installation_safety.ps1"
-    ).read_text(encoding="utf-8-sig")
+    build = _source("scripts/build_backend_exe.ps1")
+    provenance = _source("scripts/windows_backend_build_provenance.ps1")
+    installation = _source("packaging/windows_installation_safety.ps1")
     for source in (build, provenance, installation):
         assert "DATABASE_GENERATION_PROGRAM.json" in source
     assert "build_database_generation_program.py" in build

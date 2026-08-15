@@ -714,14 +714,14 @@ if ($fullFailure -notlike '*full*Assert-TicketboxC07LiveHostConnection*') {{
     -TicketboxC07DependencyProfile 'durable_heartbeat'
 Assert-TicketboxC07Dependencies
 Remove-Item `
-    -LiteralPath Function:\\Read-TicketboxInstalledBuildManifest `
+    -LiteralPath Function:\\Get-TicketboxInstallationReleaseCandidate `
     -Force
 $durableFailure = ''
 try {{ Assert-TicketboxC07Dependencies }}
 catch {{ $durableFailure = $_.Exception.Message }}
 if (
     $durableFailure -notlike
-        '*durable_heartbeat*Read-TicketboxInstalledBuildManifest*'
+        '*durable_heartbeat*Get-TicketboxInstallationReleaseCandidate*'
 ) {{
     throw "durable dependency profile did not fail closed: $durableFailure"
 }}

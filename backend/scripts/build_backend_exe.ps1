@@ -170,6 +170,12 @@ try {
     if (-not (Test-Path -LiteralPath $PyInstallerArchiveViewer -PathType Leaf)) {
         throw "Contracted PyInstaller archive viewer is missing: $PyInstallerArchiveViewer"
     }
+    $retiredGenerationContract = Join-Path `
+        $InputSnapshotRoot `
+        "app\database\_c07_maintenance_plan.py"
+    if (Test-Path -LiteralPath $retiredGenerationContract) {
+        throw "Retired database generation contract returned to the source snapshot."
+    }
     $pyInstallerVersion = Invoke-TicketboxVersionProbe $PyBuild @("-I", "-B", "-m", "PyInstaller", "--version") '^(\d+\.\d+\.\d+)$' "PyInstaller"
     if ($pyInstallerVersion -cne $toolchain.pyinstaller_version) {
         throw "PyInstaller mismatch: actual=$pyInstallerVersion expected=$($toolchain.pyinstaller_version)"
@@ -234,6 +240,8 @@ try {
         "app.app_meta_observation",
         "app.canonical_money_facts",
         "app.canonical_money_facts_contract",
+        "app.database._database_generation_program",
+        "app.database_generation_c07_contract",
         "app.database_model_registry",
         "app.tenant_contract"
     )) {
@@ -241,6 +249,13 @@ try {
             $_ -match ("'" + [regex]::Escape($requiredModule) + "'$" )
         })) {
             throw "Frozen backend archive omitted required app module: $requiredModule"
+        }
+    }
+    foreach ($retiredModule in @("app.database._c07_maintenance_plan")) {
+        if (@($archiveModules | Where-Object {
+            $_ -match ("'" + [regex]::Escape($retiredModule) + "'$" )
+        })) {
+            throw "Frozen backend archive contains retired app module: $retiredModule"
         }
     }
     Assert-TicketboxPostgresOnlyFrozenPayload `

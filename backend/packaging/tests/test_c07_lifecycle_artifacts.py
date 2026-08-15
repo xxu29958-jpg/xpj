@@ -51,9 +51,8 @@ def _write_manifest(path: Path, version: str = "7.8.9") -> None:
     helper.parent.mkdir(parents=True, exist_ok=True)
     helper_bytes = b"ticketbox-c07-test-migrator\n"
     helper.write_bytes(helper_bytes)
-    generation_program = helper.parent / "DATABASE_GENERATION_PROGRAM.json"
     generation_program_bytes = b'{"schema":"ticketbox-test-generation-program-v1"}\n'
-    generation_program.write_bytes(generation_program_bytes)
+    (helper.parent / "DATABASE_GENERATION_PROGRAM.json").write_bytes(generation_program_bytes)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
@@ -71,9 +70,7 @@ def _write_manifest(path: Path, version: str = "7.8.9") -> None:
                     "database_generation_program": {
                         "path": "DATABASE_GENERATION_PROGRAM.json",
                         "size": len(generation_program_bytes),
-                        "sha256": hashlib.sha256(
-                            generation_program_bytes
-                        ).hexdigest(),
+                        "sha256": hashlib.sha256(generation_program_bytes).hexdigest(),
                     },
                 },
                 "postgresql": {"major": 17},
@@ -2701,10 +2698,24 @@ try {{
     $currentIdentity = Read-TicketboxPersistentInstallationIdentity `
         -DataRoot '{_literal(data_root)}' `
         -Pending
+    if (-not (Test-TicketboxInstallationIdentityReleaseMatches $currentIdentity $candidate)) {{
+        throw 'current installation identity omitted generation program evidence'
+    }}
+    $historicalBeforeManifestReplacement = Get-TicketboxC07HistoricalReleaseIdentity $currentIdentity
+    $manifestBytes = [IO.File]::ReadAllBytes('{_literal(manifest)}'); $programPath = [string]$candidate.DatabaseGenerationProgramPath
+    $programBytes = [IO.File]::ReadAllBytes($programPath)
+    try {{
+        [IO.File]::WriteAllText('{_literal(manifest)}', '{{}}', (New-Object Text.UTF8Encoding($false)))
+        [IO.File]::WriteAllText($programPath, '{{}}')
+        $historicalAfterManifestReplacement = Get-TicketboxC07HistoricalReleaseIdentity $currentIdentity
+        if ($historicalAfterManifestReplacement.Fingerprint -cne $historicalBeforeManifestReplacement.Fingerprint) {{
+            throw 'historical evidence depended on mutable current release bytes'
+        }}
+    }}
+    finally {{ [IO.File]::WriteAllBytes('{_literal(manifest)}', $manifestBytes); [IO.File]::WriteAllBytes($programPath, $programBytes) }}
     $previousIdentity = [pscustomobject]@{{
-        State = 'PENDING'
+        Schema = 'ticketbox-installation-identity-v3'; State = 'PENDING'
         OperationId = '{operation_id}'
-        LegacyCompleted = $false
         InstallationId = [string]$currentIdentity.InstallationId
         BuildManifestSha256 = ('B' * 64)
         BackendVersionFloor = [string]$currentIdentity.BackendVersionFloor
@@ -2714,13 +2725,21 @@ try {{
         BackendServiceName = [string]$currentIdentity.BackendServiceName
         PgPort = [int]$currentIdentity.PgPort
         BackendPort = [int]$currentIdentity.BackendPort
-        MigrationHelperRelativePath =
-            [string]$currentIdentity.MigrationHelperRelativePath
+        MigrationHelperRelativePath = [string]$currentIdentity.MigrationHelperRelativePath
         MigrationHelperSize = [int64]$currentIdentity.MigrationHelperSize
         MigrationHelperSha256 = ('C' * 64)
+        DatabaseGenerationProgramRelativePath = [string]$currentIdentity.DatabaseGenerationProgramRelativePath
+        DatabaseGenerationProgramSize = [int64]$currentIdentity.DatabaseGenerationProgramSize
+        DatabaseGenerationProgramSha256 = ('D' * 64)
     }}
-    $previousRelease =
-        Get-TicketboxC07HistoricalReleaseIdentity $previousIdentity
+    $previousRelease = Get-TicketboxC07HistoricalReleaseIdentity $previousIdentity
+    $sizeIdentity = $previousIdentity.PSObject.Copy(); $sizeIdentity.DatabaseGenerationProgramSize++
+    $shaIdentity = $previousIdentity.PSObject.Copy(); $shaIdentity.DatabaseGenerationProgramSha256 = ('E' * 64)
+    foreach ($mutatedIdentity in @($sizeIdentity, $shaIdentity)) {{
+        if ((Get-TicketboxC07HistoricalReleaseIdentity $mutatedIdentity).Fingerprint -ceq $previousRelease.Fingerprint) {{
+            throw 'release fingerprint ignored isolated generation-program drift'
+        }}
+    }}
     $successorRelease = Get-TicketboxC07CandidateReleaseIdentity `
         -Candidate $candidate `
         -InstallationId ([string]$previousIdentity.InstallationId) `
@@ -3023,6 +3042,11 @@ try {{
         throw 'runtime projection artifact was accepted or changed the intent'
     }}
     [IO.File]::Delete($runtimeForeignStaging)
+    function Test-TicketboxInstallationIdentityReleaseMatches {{ return $false }}
+    $releaseMatchRejected = $false
+    try {{ Get-TicketboxC07ReleaseIdentity '{_literal(data_root)}' -ExpectedInstallationOperationId '{operation_id}' | Out-Null }}
+    catch {{ $releaseMatchRejected = $true }}
+    if (-not $releaseMatchRejected) {{ throw 'release identity ignored exact candidate matcher' }}
 }}
 finally {{ Exit-TicketboxLifecycleLock $lock }}
 """,
@@ -3634,6 +3658,8 @@ try {{
         -LifecycleLock $lock
     if ($null -eq $resolution -or
         [string]$resolution.Mode -cne 'pre_ddl' -or
+        [string]$resolution.Intent.Payload.schema -cne
+            'ticketbox-c07-successor-intent-v3' -or
         [string]$resolution.Identity.OperationId -ceq '{predecessor_operation_id}') {{
         throw 'refused terminal did not mint a distinct pre-DDL successor'
     }}
