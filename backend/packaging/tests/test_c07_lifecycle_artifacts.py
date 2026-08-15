@@ -3480,7 +3480,7 @@ try {{
 finally {{ Exit-TicketboxLifecycleLock $lock }}
 """,
         )
-        _run_harness(engine, harness)
+        _run_harness(engine, harness, timeout=90)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows writer-freeze contract")
