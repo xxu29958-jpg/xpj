@@ -41,7 +41,6 @@ from app.database._database_generation_program import (
 )
 from app.database._database_generation_runtime_admission import (
     assert_database_generation_startup_ready,
-    assert_legacy_c07_startup_ready,
 )
 from app.database._lifecycle import (
     AlembicContext,
@@ -114,10 +113,7 @@ def init_db() -> None:
             alembic,
             installed_program=installed_program,
         )
-    elif (
-        plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE
-        and installed_runtime
-    ):
+    elif plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE and installed_runtime:
         raise DatabaseMigrationPreflightError(
             "拒绝由安装版 runtime 执行 schema DDL:升级必须由安装器在后端停止、"
             "恢复点已验证且短命 migrator 获得 exact-head 计划后执行；"
@@ -134,7 +130,7 @@ def init_db() -> None:
     # fenced above; their long-lived runtime role intentionally has no DDL.
     try:
         if plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
-            _apply_managed_schema_lifecycle(alembic, production_authority_required=installed_runtime)
+            _apply_managed_schema_lifecycle(alembic)
         else:
             _apply_schema_lifecycle(plan, alembic)
     except C07ReceiptRepairRequiredError as exc:
@@ -167,14 +163,21 @@ def _assert_database_generation_startup_ready(
     installed_program: object | None,
 ) -> None:
     if installed_program is None:
-        assert_legacy_c07_startup_ready(
-            engine,
-            alembic.config,
-            production_authority_required=False,
-            expected_release_revision=alembic.head_revision,
-        )
+        _assert_source_c07_receipt_ready(alembic)
         return
     assert_database_generation_startup_ready(engine, installed_program)
+
+
+def _assert_source_c07_receipt_ready(alembic: AlembicContext) -> None:
+    from app.database._c07_receipt import assert_c07_lifecycle_ready
+
+    try:
+        assert_c07_lifecycle_ready(engine, alembic_config=alembic.config)
+    except C07ReceiptRepairRequiredError as exc:
+        raise DatabaseMigrationPreflightError(
+            f"拒绝开放 source database writer:C07 migration receipt 未完成({exc})。"
+        ) from exc
+
 
 def _assert_revision_contains_c07(
     revision: str | None,
@@ -243,9 +246,7 @@ def _apply_schema_lifecycle(plan: DatabaseLifecyclePlan, alembic: AlembicContext
         command.upgrade(alembic.config, "head")
 
 
-def _apply_managed_schema_lifecycle(
-    alembic: AlembicContext, *, production_authority_required: bool
-) -> None:
+def _apply_managed_schema_lifecycle(alembic: AlembicContext) -> None:
     """Serialize reclassification, backup, and DDL for an existing database."""
 
     from alembic import command
@@ -256,10 +257,7 @@ def _apply_managed_schema_lifecycle(
     engine.dispose()
     with engine.begin() as connection:
         lease_acquired = connection.scalar(
-            text(
-                "SELECT pg_try_advisory_xact_lock("
-                "hashtext(current_database()), hashtext(:label))"
-            ),
+            text("SELECT pg_try_advisory_xact_lock(hashtext(current_database()), hashtext(:label))"),
             {"label": MIGRATION_LEASE_LABEL},
         )
         if lease_acquired is not True:
@@ -275,12 +273,7 @@ def _apply_managed_schema_lifecycle(
         if lifecycle.has_existing_schema:
             _assert_existing_schema_compatible(lifecycle, connection=connection)
         if plan.action is DatabaseLifecycleAction.NOOP:
-            assert_legacy_c07_startup_ready(
-                engine,
-                alembic.config,
-                production_authority_required=production_authority_required,
-                expected_release_revision=alembic.head_revision,
-            )
+            _assert_source_c07_receipt_ready(alembic)
             return
         if plan.action is DatabaseLifecycleAction.REFUSE:
             raise DatabaseMigrationPreflightError(
@@ -288,8 +281,7 @@ def _apply_managed_schema_lifecycle(
             )
         if plan.action is not DatabaseLifecycleAction.MANAGED_UPGRADE:
             raise DatabaseMigrationPreflightError(
-                "拒绝在 managed migration lease 内改变非托管数据库状态；"
-                "数据库未执行 backup/DDL/DML。"
+                "拒绝在 managed migration lease 内改变非托管数据库状态；数据库未执行 backup/DDL/DML。"
             )
 
         _assert_managed_upgrade_writer_quiescence(connection)
@@ -299,12 +291,7 @@ def _apply_managed_schema_lifecycle(
             alembic,
             label="installed revision",
         )
-        assert_legacy_c07_startup_ready(
-            engine,
-            alembic.config,
-            production_authority_required=production_authority_required,
-            expected_release_revision=alembic.head_revision,
-        )
+        _assert_source_c07_receipt_ready(alembic)
         _assert_existing_schema_owner_ready(connection)
         _backup_before_upgrade(lifecycle.current_revision, alembic.head_revision)
         # Alembic must use this exact connection: PostgreSQL transaction-level
@@ -344,14 +331,10 @@ def _lock_managed_upgrade_tables(connection: Connection) -> None:
         )
     )
     if not table_names:
-        raise DatabaseMigrationPreflightError(
-            "拒绝升级缺少可锁定关系的既有数据库；本进程未执行 backup/DDL/DML。"
-        )
+        raise DatabaseMigrationPreflightError("拒绝升级缺少可锁定关系的既有数据库；本进程未执行 backup/DDL/DML。")
     preparer = connection.dialect.identifier_preparer
     schema = preparer.quote_schema("public")
-    relations = ", ".join(
-        f"{schema}.{preparer.quote_identifier(name)}" for name in table_names
-    )
+    relations = ", ".join(f"{schema}.{preparer.quote_identifier(name)}" for name in table_names)
     connection.execute(text("SET LOCAL lock_timeout = '15s'"))
     connection.execute(text(f"LOCK TABLE {relations} IN SHARE MODE"))
 

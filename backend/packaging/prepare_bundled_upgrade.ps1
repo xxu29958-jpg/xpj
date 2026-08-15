@@ -1508,7 +1508,7 @@ try {
                 $lifecycleEvidence.install_completed =
                     [bool]$observedLifecycleReceipt.install_completed
                 $lifecycleEvidence.operation_id =
-                    [string]$observedLifecycleReceipt.c07_installation_operation_id
+                    [string]$observedLifecycleReceipt.database_generation_operation_id
                 $lifecycleEvidence.current_sha256 =
                     [string]$observedLifecycleReceipt.database_generation_current_sha256
             }
@@ -2043,7 +2043,7 @@ try {
         -InstalledReleaseConfig $InstalledReleaseConfig `
         -TargetBackendVersionFloor $TargetBackendVersion `
         -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-        -C07InstallationOperationId $capturedGenerationOperationId `
+        -DatabaseGenerationOperationId $capturedGenerationOperationId `
         -PreviousPgState $pgState `
         -PreviousBackendState $backendState `
         -PreviousPgStartPolicy $pgStartPolicy `

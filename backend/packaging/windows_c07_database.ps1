@@ -22,18 +22,10 @@ $script:TicketboxC07DatabaseMarkerSchema = "ticketbox-c07-database-v2"
 $script:TicketboxC07RestoreMarkerSchema = "ticketbox-c07-restore-database-v3"
 $script:TicketboxC07LegacyRestoreMarkerSchema =
     "ticketbox-c07-restore-database-v2"
-$script:TicketboxC07ProductionMarkerSchema =
-    "ticketbox-c07-production-authority-v1"
-$script:TicketboxC07ProductionResultSchema =
-    "ticketbox-c07-production-authority-result-v2"
-$script:TicketboxC07TargetCommitResultSchema =
-    "ticketbox-c07-target-commit-result-v1"
 $script:TicketboxC07MigrationEvidenceSchema =
     "ticketbox-c07-migration-evidence-v1"
 $script:TicketboxC07ResourceMigrationEvidenceSchema =
     "ticketbox-c07-migration-evidence-v2"
-$script:TicketboxC07ProductionLifecycleBindingSchema =
-    "ticketbox-c07-production-lifecycle-binding-v2"
 $script:TicketboxC07RecoveryRestoreCreateIntentSchema =
     "ticketbox-c07-recovery-restore-create-intent-v1"
 $script:TicketboxC07RecoveryIntegrityScope = "acl_hash_only"
@@ -1937,7 +1929,7 @@ WITH acl_rows AS (
            acl.privilege_type, acl.is_grantable
     FROM pg_database AS database,
          LATERAL aclexplode(
-             COALESCE(database.datacl, acldefault('d', database.datdba))
+             COALESCE(database.datacl, acldefault('d'::"char", database.datdba))
          ) AS acl
     WHERE database.datname = current_database()
     UNION ALL
@@ -1946,7 +1938,7 @@ WITH acl_rows AS (
            acl.privilege_type, acl.is_grantable
     FROM pg_namespace AS namespace,
          LATERAL aclexplode(
-             COALESCE(namespace.nspacl, acldefault('n', namespace.nspowner))
+             COALESCE(namespace.nspacl, acldefault('n'::"char", namespace.nspowner))
          ) AS acl
     WHERE namespace.nspname = 'public'
     UNION ALL
@@ -1977,7 +1969,7 @@ WITH acl_rows AS (
     FROM pg_proc AS routine
     JOIN pg_namespace AS namespace ON namespace.oid = routine.pronamespace
     CROSS JOIN LATERAL aclexplode(
-        COALESCE(routine.proacl, acldefault('f', routine.proowner))
+        COALESCE(routine.proacl, acldefault('f'::"char", routine.proowner))
     ) AS acl
     WHERE namespace.nspname = 'public'
     UNION ALL
@@ -1988,16 +1980,28 @@ WITH acl_rows AS (
     FROM pg_proc AS routine
     JOIN pg_namespace AS namespace ON namespace.oid = routine.pronamespace
     CROSS JOIN LATERAL aclexplode(
-        COALESCE(routine.proacl, acldefault('f', routine.proowner))
+        COALESCE(routine.proacl, acldefault('f'::"char", routine.proowner))
     ) AS acl
     WHERE routine.oid = 'pg_catalog.pg_control_system()'::regprocedure
 )
 SELECT kind || E'\t' || object_name || E'\t' || grantee || E'\t' ||
        privilege_type || E'\t' || is_grantable::text
 FROM acl_rows
+WHERE NOT (
+    kind = 'database'
+    AND object_name = current_database()
+    AND grantee IN (
+        '$script:TicketboxC07RuntimeRole',
+        '$script:TicketboxC07MigratorRole'
+    )
+    AND privilege_type = 'CONNECT'
+    AND NOT is_grantable
+)
 ORDER BY kind, object_name, grantee, privilege_type, is_grantable;
 "@
-    return Get-TicketboxC07DatabaseTextSha256 ([string]$evidence).Trim()
+    $canonicalEvidence = (([string]$evidence).Trim() -replace "`r`n", "`n") `
+        -replace "`r", "`n"
+    return Get-TicketboxC07DatabaseTextSha256 $canonicalEvidence
 }
 
 

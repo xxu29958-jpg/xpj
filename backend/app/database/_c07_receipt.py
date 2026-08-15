@@ -16,7 +16,6 @@ from app.database._c07_contract import (
     C07_LIFECYCLE_READY,
     C07_LIFECYCLE_STATE_KEY,
     C07_RECEIPT_SHA256_KEY,
-    C07_TARGET_REVISION,
     RECEIPT_DIR,
     SHA256_PATTERN,
     C07CeremonyError,
@@ -25,17 +24,9 @@ from app.database._c07_contract import (
     canonical_uuid,
     sha256_bytes,
 )
-from app.database._c07_execution import (
-    _money_shape,
-    _revision,
-    _revision_includes_c07,
-)
+from app.database._c07_execution import _revision, _revision_includes_c07
 from app.database._c07_receipt_validation import (
     validate_receipt_against_live_database,
-)
-from app.database._release_schema_readiness import (
-    ReleaseHeadVerificationError,
-    assert_release_head,
 )
 from app.money_contract import (
     MONEY_CONTRACT_PHASE_C07,
@@ -74,9 +65,7 @@ def _receipt_paths(
     final = directory / f"ticketbox-c07-{ceremony_id}.json"
     temporary = directory / f".ticketbox-c07-{ceremony_id}.pending"
     if final.exists() or temporary.exists():
-        raise C07CeremonyError(
-            "C07 receipt path already exists; use repair, not overwrite"
-        )
+        raise C07CeremonyError("C07 receipt path already exists; use repair, not overwrite")
     return temporary, final
 
 
@@ -97,13 +86,9 @@ def _write_receipt_pending(
         with hold_protected_file_for_read(temporary) as protected:
             persisted = protected.read_bytes()
     except (OSError, PermissionError, ValueError) as exc:
-        raise C07CeremonyError(
-            "unable to durably stage the C07 receipt"
-        ) from exc
+        raise C07CeremonyError("unable to durably stage the C07 receipt") from exc
     if persisted != payload:
-        raise C07CeremonyError(
-            "staged C07 receipt failed read-after-write verification"
-        )
+        raise C07CeremonyError("staged C07 receipt failed read-after-write verification")
     return sha256, payload
 
 
@@ -118,13 +103,11 @@ def _publish_receipt(
             persisted = protected.read_bytes()
     except (OSError, PermissionError, ValueError) as exc:
         raise C07ReceiptRepairRequiredError(
-            "C07 schema committed but receipt publication failed; keep "
-            "writers frozen and run the publication repair"
+            "C07 schema committed but receipt publication failed; keep writers frozen and run the publication repair"
         ) from exc
     if persisted != expected:
         raise C07ReceiptRepairRequiredError(
-            "C07 schema committed but published receipt bytes differ; "
-            "keep writers frozen"
+            "C07 schema committed but published receipt bytes differ; keep writers frozen"
         )
 
 
@@ -144,19 +127,12 @@ def _finalize_ready_marker(
                 alembic_config=alembic_config,
             )
         except C07CeremonyError as exc:
-            raise C07ReceiptRepairRequiredError(
-                "C07 receipt finalization cannot verify revision ancestry"
-            ) from exc
+            raise C07ReceiptRepairRequiredError("C07 receipt finalization cannot verify revision ancestry") from exc
         if not includes_c07:
-            raise C07ReceiptRepairRequiredError(
-                "C07 receipt exists but database revision does not include C07"
-            )
+            raise C07ReceiptRepairRequiredError("C07 receipt exists but database revision does not include C07")
         stored = dict(
             connection.execute(
-                text(
-                    "SELECT key, value FROM app_meta "
-                    "WHERE key IN (:ceremony_key, :sha_key, :state_key)"
-                ),
+                text("SELECT key, value FROM app_meta WHERE key IN (:ceremony_key, :sha_key, :state_key)"),
                 {
                     "ceremony_key": C07_CEREMONY_ID_KEY,
                     "sha_key": C07_RECEIPT_SHA256_KEY,
@@ -169,9 +145,7 @@ def _finalize_ready_marker(
             or stored.get(C07_RECEIPT_SHA256_KEY) != receipt_sha256
             or stored.get(C07_LIFECYCLE_STATE_KEY) != C07_LIFECYCLE_PENDING
         ):
-            raise C07ReceiptRepairRequiredError(
-                "C07 database receipt markers do not match the staged receipt"
-            )
+            raise C07ReceiptRepairRequiredError("C07 database receipt markers do not match the staged receipt")
         validate_receipt_against_live_database(
             connection,
             payload=receipt_payload,
@@ -200,22 +174,14 @@ def _read_lifecycle_values(
             alembic_config=alembic_config,
         )
     except C07CeremonyError as exc:
-        raise C07ReceiptRepairRequiredError(
-            "C07 lifecycle ancestry is not verifiable"
-        ) from exc
+        raise C07ReceiptRepairRequiredError("C07 lifecycle ancestry is not verifiable") from exc
     if not includes_c07:
         return None
     if "app_meta" not in tables:
-        raise C07ReceiptRepairRequiredError(
-            "C07 target is missing its lifecycle metadata table"
-        )
+        raise C07ReceiptRepairRequiredError("C07 target is missing its lifecycle metadata table")
     return dict(
         connection.execute(
-            text(
-                "SELECT key, value FROM app_meta "
-                "WHERE key IN "
-                "(:phase_key, :ceremony_key, :sha_key, :state_key)"
-            ),
+            text("SELECT key, value FROM app_meta WHERE key IN (:phase_key, :ceremony_key, :sha_key, :state_key)"),
             {
                 "phase_key": MONEY_CONTRACT_PHASE_KEY,
                 "ceremony_key": C07_CEREMONY_ID_KEY,
@@ -230,33 +196,21 @@ def _ready_receipt_identity(
     values: dict[str, str],
 ) -> tuple[str, str] | None:
     if values.get(MONEY_CONTRACT_PHASE_KEY) != MONEY_CONTRACT_PHASE_C07:
-        raise C07ReceiptRepairRequiredError(
-            "C07 target is missing its money-contract phase marker"
-        )
+        raise C07ReceiptRepairRequiredError("C07 target is missing its money-contract phase marker")
     state = values.get(C07_LIFECYCLE_STATE_KEY)
     if state == C07_LIFECYCLE_FRESH:
         if values.get(C07_CEREMONY_ID_KEY) != C07_FRESH_CEREMONY_ID:
-            raise C07ReceiptRepairRequiredError(
-                "C07 fresh-install marker is inconsistent"
-            )
+            raise C07ReceiptRepairRequiredError("C07 fresh-install marker is inconsistent")
         return None
     if state != C07_LIFECYCLE_READY:
-        raise C07ReceiptRepairRequiredError(
-            "C07 target is not receipt-ready; keep HTTP writers closed "
-            "and run repair"
-        )
+        raise C07ReceiptRepairRequiredError("C07 target is not receipt-ready; keep HTTP writers closed and run repair")
     ceremony_id = canonical_uuid(
         values.get(C07_CEREMONY_ID_KEY),
         label="stored ceremony_id",
     )
     receipt_sha256 = values.get(C07_RECEIPT_SHA256_KEY)
-    if (
-        not isinstance(receipt_sha256, str)
-        or SHA256_PATTERN.fullmatch(receipt_sha256) is None
-    ):
-        raise C07ReceiptRepairRequiredError(
-            "C07 receipt digest marker is invalid"
-        )
+    if not isinstance(receipt_sha256, str) or SHA256_PATTERN.fullmatch(receipt_sha256) is None:
+        raise C07ReceiptRepairRequiredError("C07 receipt digest marker is invalid")
     return ceremony_id, receipt_sha256
 
 
@@ -273,13 +227,9 @@ def _verify_receipt_artifact(
         with hold_protected_file_for_read(path) as protected:
             payload = protected.read_bytes()
     except (OSError, PermissionError, ValueError) as exc:
-        raise C07ReceiptRepairRequiredError(
-            "C07 durable receipt is unavailable"
-        ) from exc
+        raise C07ReceiptRepairRequiredError("C07 durable receipt is unavailable") from exc
     if sha256_bytes(payload) != receipt_sha256:
-        raise C07ReceiptRepairRequiredError(
-            "C07 durable receipt digest mismatch"
-        )
+        raise C07ReceiptRepairRequiredError("C07 durable receipt digest mismatch")
     validate_receipt_against_live_database(
         connection,
         payload=payload,
@@ -292,53 +242,11 @@ def assert_c07_lifecycle_ready(
     source_engine: Engine,
     *,
     receipt_dir: Path | None = None,
-    production_projection_path: Path | None = None,
-    production_authority_required: bool = False,
     alembic_config: Config | None = None,
-    expected_release_revision: str | None = None,
 ) -> None:
     """Fail closed when C07 committed but its durable receipt is incomplete."""
 
-    from app.database._c07_production_ready import (
-        assert_c07_historical_invariants,
-    )
-
     with source_engine.connect() as connection:
-        current_revision = _revision(connection)
-        if assert_c07_historical_invariants(
-            connection,
-            projection_path=production_projection_path,
-        ):
-            try:
-                assert_release_head(
-                    connection,
-                    expected_revision=(
-                        C07_TARGET_REVISION
-                        if expected_release_revision is None
-                        else expected_release_revision
-                    ),
-                )
-                if not _revision_includes_c07(
-                    current_revision,
-                    alembic_config=alembic_config,
-                ):
-                    raise C07CeremonyError(
-                        "production authority does not include the C07 revision"
-                    )
-                _money_shape(
-                    connection,
-                    target_revision=C07_TARGET_REVISION,
-                )
-            except (C07CeremonyError, ReleaseHeadVerificationError) as exc:
-                raise C07ReceiptRepairRequiredError(
-                    "release head or C07 historical invariant is invalid"
-                ) from exc
-            return
-        if production_authority_required:
-            raise C07ReceiptRepairRequiredError(
-                "C07 installed-host database lacks its production "
-                "database marker and SYSTEM runtime projection"
-            )
         values = _read_lifecycle_values(
             connection,
             alembic_config=alembic_config,
@@ -369,19 +277,12 @@ def _pending_receipt_identity(
             alembic_config=alembic_config,
         )
     except C07CeremonyError as exc:
-        raise C07ReceiptRepairRequiredError(
-            "C07 receipt repair cannot verify revision ancestry"
-        ) from exc
+        raise C07ReceiptRepairRequiredError("C07 receipt repair cannot verify revision ancestry") from exc
     if not includes_c07:
-        raise C07ReceiptRepairRequiredError(
-            "C07 receipt repair requires a revision containing C07"
-        )
+        raise C07ReceiptRepairRequiredError("C07 receipt repair requires a revision containing C07")
     values = dict(
         connection.execute(
-            text(
-                "SELECT key, value FROM app_meta "
-                "WHERE key IN (:ceremony_key, :sha_key, :state_key)"
-            ),
+            text("SELECT key, value FROM app_meta WHERE key IN (:ceremony_key, :sha_key, :state_key)"),
             {
                 "ceremony_key": C07_CEREMONY_ID_KEY,
                 "sha_key": C07_RECEIPT_SHA256_KEY,
@@ -390,18 +291,13 @@ def _pending_receipt_identity(
         ).all()
     )
     if values.get(C07_LIFECYCLE_STATE_KEY) != C07_LIFECYCLE_PENDING:
-        raise C07CeremonyError(
-            "C07 receipt repair is only valid from pending state"
-        )
+        raise C07CeremonyError("C07 receipt repair is only valid from pending state")
     ceremony_id = canonical_uuid(
         values.get(C07_CEREMONY_ID_KEY),
         label="stored ceremony_id",
     )
     expected_sha = values.get(C07_RECEIPT_SHA256_KEY)
-    if (
-        not isinstance(expected_sha, str)
-        or SHA256_PATTERN.fullmatch(expected_sha) is None
-    ):
+    if not isinstance(expected_sha, str) or SHA256_PATTERN.fullmatch(expected_sha) is None:
         raise C07CeremonyError("C07 pending receipt digest is invalid")
     return ceremony_id, expected_sha
 
@@ -419,13 +315,9 @@ def _read_repair_candidate(
         with hold_protected_file_for_read(candidate) as protected:
             payload = protected.read_bytes()
     except (OSError, PermissionError, ValueError) as exc:
-        raise C07ReceiptRepairRequiredError(
-            "C07 pending receipt artifact is unavailable"
-        ) from exc
+        raise C07ReceiptRepairRequiredError("C07 pending receipt artifact is unavailable") from exc
     if sha256_bytes(payload) != expected_sha:
-        raise C07ReceiptRepairRequiredError(
-            "C07 pending receipt artifact digest mismatch"
-        )
+        raise C07ReceiptRepairRequiredError("C07 pending receipt artifact digest mismatch")
     return temporary, final, candidate, payload
 
 
@@ -440,13 +332,9 @@ def _remove_matching_pending(
         with hold_protected_file_for_read(temporary) as protected:
             temporary_payload = protected.read_bytes()
     except (OSError, PermissionError, ValueError) as exc:
-        raise C07ReceiptRepairRequiredError(
-            "C07 published receipt has an unverifiable pending artifact"
-        ) from exc
+        raise C07ReceiptRepairRequiredError("C07 published receipt has an unverifiable pending artifact") from exc
     if temporary_payload != payload:
-        raise C07ReceiptRepairRequiredError(
-            "C07 published receipt has a conflicting pending artifact"
-        )
+        raise C07ReceiptRepairRequiredError("C07 published receipt has a conflicting pending artifact")
     temporary.unlink()
 
 

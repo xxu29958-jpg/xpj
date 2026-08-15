@@ -170,11 +170,17 @@ try {
     if (-not (Test-Path -LiteralPath $PyInstallerArchiveViewer -PathType Leaf)) {
         throw "Contracted PyInstaller archive viewer is missing: $PyInstallerArchiveViewer"
     }
-    $retiredGenerationContract = Join-Path `
-        $InputSnapshotRoot `
-        "app\database\_c07_maintenance_plan.py"
-    if (Test-Path -LiteralPath $retiredGenerationContract) {
-        throw "Retired database generation contract returned to the source snapshot."
+    foreach ($retiredGenerationContractRelativePath in @(
+        "app\database\_c07_maintenance_plan.py",
+        "app\database\_c07_production_ready.py",
+        "app\database\_c07_runtime_projection.py"
+    )) {
+        $retiredGenerationContract = Join-Path `
+            $InputSnapshotRoot `
+            $retiredGenerationContractRelativePath
+        if (Test-Path -LiteralPath $retiredGenerationContract) {
+            throw "Retired database generation contract returned to the source snapshot."
+        }
     }
     $pyInstallerVersion = Invoke-TicketboxVersionProbe $PyBuild @("-I", "-B", "-m", "PyInstaller", "--version") '^(\d+\.\d+\.\d+)$' "PyInstaller"
     if ($pyInstallerVersion -cne $toolchain.pyinstaller_version) {

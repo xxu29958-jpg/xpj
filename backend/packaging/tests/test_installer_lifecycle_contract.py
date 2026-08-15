@@ -224,12 +224,10 @@ def test_inno_simplified_chinese_language_pins_cjk_ui_font() -> None:
 def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> None:
     installer = _read_installer()
     installer_lines = installer.splitlines()
-    files_section = installer[
-        installer.index("[Files]") : installer.index("[Registry]")
-    ]
-    assert not any(
-        line.lstrip().startswith("#") for line in files_section.splitlines()
-    ), "installer payload entries must not be conditionally preprocessed"
+    files_section = installer[installer.index("[Files]") : installer.index("[Registry]")]
+    assert not any(line.lstrip().startswith("#") for line in files_section.splitlines()), (
+        "installer payload entries must not be conditionally preprocessed"
+    )
     active_installer_lines = {
         line.strip() for line in installer_lines if line.strip() and not line.lstrip().startswith(";")
     }
@@ -322,9 +320,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         r"atomic_artifacts\directory.ps1",
     ):
         assert (
-            f'Source: "{source_path}"; '
-            'DestDir: "{app}\\installer\\atomic_artifacts"; '
-            'Flags: ignoreversion'
+            f'Source: "{source_path}"; DestDir: "{{app}}\\installer\\atomic_artifacts"; Flags: ignoreversion'
         ) in active_installer_lines
     assert (
         'Source: "..\\scripts\\windows_build_provenance.ps1"; DestName: "windows_build_provenance.ps1"; Flags: dontcopy noencryption'
@@ -1054,11 +1050,24 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     assert "LoadStringsFromFile" in persistent_reader
     assert "HasProtectedPersistentIdentityAcl" in persistent_reader
     identity_fields = (
-        "SCHEMA", "STATE", "OPERATION_ID", "BACKEND_VERSION_FLOOR",
-        "INSTALLATION_ID", "BUILD_MANIFEST_SHA256", "MIGRATION_HELPER_RELATIVE_PATH", "MIGRATION_HELPER_SIZE",
-        "MIGRATION_HELPER_SHA256", "DATABASE_GENERATION_PROGRAM_RELATIVE_PATH",
-        "DATABASE_GENERATION_PROGRAM_SIZE", "DATABASE_GENERATION_PROGRAM_SHA256", "DATA_ROOT", "INSTALL_DIR",
-        "PG_SERVICE_NAME", "BACKEND_SERVICE_NAME", "PG_PORT", "BACKEND_PORT",
+        "SCHEMA",
+        "STATE",
+        "OPERATION_ID",
+        "BACKEND_VERSION_FLOOR",
+        "INSTALLATION_ID",
+        "BUILD_MANIFEST_SHA256",
+        "MIGRATION_HELPER_RELATIVE_PATH",
+        "MIGRATION_HELPER_SIZE",
+        "MIGRATION_HELPER_SHA256",
+        "DATABASE_GENERATION_PROGRAM_RELATIVE_PATH",
+        "DATABASE_GENERATION_PROGRAM_SIZE",
+        "DATABASE_GENERATION_PROGRAM_SHA256",
+        "DATA_ROOT",
+        "INSTALL_DIR",
+        "PG_SERVICE_NAME",
+        "BACKEND_SERVICE_NAME",
+        "PG_PORT",
+        "BACKEND_PORT",
     )
     for index, name in enumerate(identity_fields):
         assert f"ExpectedNames[{index}] := '{name}';" in persistent_reader
@@ -1066,11 +1075,14 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     assert "ticketbox-installation-identity-v3" in persistent_reader
     assert "{#PgServiceName}" in persistent_reader and "{#BackendServiceName}" in persistent_reader
     production_identity_surfaces = "".join(
-        path.read_text(encoding="utf-8-sig") for path in PACKAGING.iterdir()
-        if path.suffix in {".ps1", ".iss", ".isph"}
+        path.read_text(encoding="utf-8-sig") for path in PACKAGING.iterdir() if path.suffix in {".ps1", ".iss", ".isph"}
     )
-    for retired in ("ticketbox-installation-identity-v1", "ticketbox-installation-identity-v2",
-                    "ticketbox-c07-successor-intent-v2", "LegacyCompleted"):
+    for retired in (
+        "ticketbox-installation-identity-v1",
+        "ticketbox-installation-identity-v2",
+        "ticketbox-c07-successor-intent-v2",
+        "LegacyCompleted",
+    ):
         assert retired not in production_identity_surfaces
 
     release_candidate = safety[
@@ -1086,9 +1098,11 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     assert "[string]$buildManifest.Sha256" in release_candidate
     assert "BackendVersionFloor = [string]$buildManifest.BackendVersion" in release_candidate
 
-    manifest_reader = safety[safety.index("function Read-TicketboxInstalledBuildManifest") : safety.index(
-        "function Get-TicketboxInstallationReleaseCandidate"
-    )]
+    manifest_reader = safety[
+        safety.index("function Read-TicketboxInstalledBuildManifest") : safety.index(
+            "function Get-TicketboxInstallationReleaseCandidate"
+        )
+    ]
     assert manifest_reader.count("::ReadExactFileBytes(") == 1
     assert '"bin/pg_dump.exe"' in manifest_reader
     assert '"bin/pg_restore.exe"' in manifest_reader
@@ -1172,7 +1186,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     strict_read = pending_install.index("Read-TicketboxPersistentInstallationIdentity", inherited_repair)
     recovery_resolution = pending_install.index("Resolve-TicketboxRecoverableFreshInstallPendingIdentity", strict_read)
     receipt_binding = pending_install.index(
-        "Set-TicketboxLifecycleReceiptC07InstallationOperation",
+        "Set-TicketboxLifecycleReceiptDatabaseGenerationOperation",
         recovery_resolution,
     )
     assert release_candidate < inherited_repair < strict_read < recovery_resolution < receipt_binding
@@ -1186,15 +1200,13 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
         "Assert-TicketboxInstallationIdentityBaseMatches $Identity $Candidate",
         '[string]$Identity.State -cne "PENDING"',
         "Test-TicketboxInstallationIdentityReleaseMatches $Identity $Candidate",
-        "[string]$LifecycleReceipt.c07_installation_operation_id",
-        '$receiptOperationId -cne [string]$Identity.OperationId',
+        "[string]$LifecycleReceipt.database_generation_operation_id",
+        "$receiptOperationId -cne [string]$Identity.OperationId",
         'RecoveryStage = "same_release"',
     ):
         assert proof in fresh_install_recovery
     assert "Write-TicketboxInstallationIdentityState" not in fresh_install_recovery
-    assert "Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition" not in (
-        install
-    )
+    assert "Resolve-TicketboxC07RecoverableFreshBootstrapReleaseTransition" not in (install)
     assert "AllowFreshInstallRecoveryRebind" not in pending_install
 
     transaction = receipt[
@@ -1202,9 +1214,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
             "function Set-TicketboxLifecycleReceiptInstallerOwner"
         )
     ]
-    ready_artifact_guard = transaction.index(
-        "Assert-TicketboxDatabaseGenerationCommitReadyArtifact"
-    )
+    ready_artifact_guard = transaction.index("Assert-TicketboxDatabaseGenerationCommitReadyArtifact")
     persist_identity = transaction.index("Promote-TicketboxPendingInstallationIdentity")
     commit_receipt = transaction.index("Set-TicketboxLifecycleReceiptInstallCompleted")
     retire_latch = transaction.index("Remove-TicketboxInstallerRecoveryMarker")
@@ -1407,11 +1417,7 @@ def test_installer_never_bundles_local_runtime_data() -> None:
         for line in _read("ticketbox-installer.iss").splitlines()
         if line.strip() and not line.lstrip().startswith(";")
     )
-    backend_sources = tuple(
-        line
-        for line in active_lines
-        if line.startswith('Source: "..\\dist\\ticketbox-backend\\')
-    )
+    backend_sources = tuple(line for line in active_lines if line.startswith('Source: "..\\dist\\ticketbox-backend\\'))
     assert backend_sources == (
         'Source: "..\\dist\\ticketbox-backend\\DATABASE_GENERATION_PROGRAM.json"; '
         'DestName: "DATABASE_GENERATION_PROGRAM.json"; Flags: dontcopy noencryption',
@@ -1420,7 +1426,7 @@ def test_installer_never_bundles_local_runtime_data() -> None:
         'Source: "..\\dist\\ticketbox-backend\\*"; '
         'DestDir: "{app}\\program\\ticketbox-backend"; '
         'Excludes: "ticketbox-data\\*,DATABASE_GENERATION_PROGRAM.json"; '
-        'Flags: ignoreversion recursesubdirs createallsubdirs',
+        "Flags: ignoreversion recursesubdirs createallsubdirs",
     )
 
 
@@ -1432,20 +1438,12 @@ def test_retired_portable_installer_cannot_return() -> None:
     assert "TicketboxRuntimeBinding\\data-root\\app" in readme
     assert "v2 DataRoot marker" in readme
     assert "Volume GUID" in readme
-    postgres_migration = (
-        ROOT / "docs" / "runbook" / "POSTGRES_MIGRATION.md"
-    ).read_text(encoding="utf-8")
+    postgres_migration = (ROOT / "docs" / "runbook" / "POSTGRES_MIGRATION.md").read_text(encoding="utf-8")
     assert "本节只用于源码/测试环境" in postgres_migration
     assert "正式 Windows 恢复入口尚未出货" in postgres_migration
-    windows_backup_task = (
-        ROOT / "docs" / "runbook" / "WINDOWS_BACKUP_TASK.md"
-    ).read_text(encoding="utf-8")
-    rollback = (ROOT / "docs" / "runbook" / "ROLLBACK.md").read_text(
-        encoding="utf-8"
-    )
-    gray_acceptance = (
-        ROOT / "docs" / "runbook" / "GRAY_ACCEPTANCE_EXECUTION.md"
-    ).read_text(encoding="utf-8")
+    windows_backup_task = (ROOT / "docs" / "runbook" / "WINDOWS_BACKUP_TASK.md").read_text(encoding="utf-8")
+    rollback = (ROOT / "docs" / "runbook" / "ROLLBACK.md").read_text(encoding="utf-8")
+    gray_acceptance = (ROOT / "docs" / "runbook" / "GRAY_ACCEPTANCE_EXECUTION.md").read_text(encoding="utf-8")
     retired_restore_promises = (
         "✅ 始终可逆 | `git revert` + 备份恢复（`pg_restore`）",
         "恢复前先停后端",
@@ -1467,12 +1465,8 @@ def test_retired_portable_installer_cannot_return() -> None:
         _read("launch.py"),
         (ROOT / "backend" / "README.md").read_text(encoding="utf-8"),
         (ROOT / "backend" / "app" / "config.py").read_text(encoding="utf-8"),
-        (ROOT / "backend" / "app" / "services" / "backup_service.py").read_text(
-            encoding="utf-8"
-        ),
-        (ROOT / "backend" / "tests" / "test_packaging_data_root.py").read_text(
-            encoding="utf-8"
-        ),
+        (ROOT / "backend" / "app" / "services" / "backup_service.py").read_text(encoding="utf-8"),
+        (ROOT / "backend" / "tests" / "test_packaging_data_root.py").read_text(encoding="utf-8"),
         (ROOT / "docs" / "architecture" / "SECURITY.md").read_text(encoding="utf-8"),
         (ROOT / "docs" / "architecture" / "DATA_RETENTION.md").read_text(encoding="utf-8"),
         gray_acceptance,
