@@ -351,6 +351,49 @@ def _assert_smoke_test_process_boundary() -> None:
     assert smoke_child.index("with dedicated_test_database_lease(") < smoke_child.index("uvicorn.run(")
 
 
+def _assert_windows_lifecycle_matrix(
+    jobs: dict[str, object],
+    windows_jobs: tuple[str, str, str],
+) -> None:
+    assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [
+        "${{ matrix.suite.timeout_minutes }}",
+        20,
+        5,
+    ]
+    expected_windows_suite_rows = [
+        ("C07 lifecycle artifacts", "test_c07_lifecycle_artifacts", 20),
+        ("C07 superuser recovery", "test_c07_superuser_recovery", 20),
+        (
+            "Service lifecycle heartbeat environment",
+            "test_c07_heartbeat_helper_uses_minimal_real_ps51_environment",
+            25,
+        ),
+        (
+            "Service lifecycle heartbeat operation",
+            "test_production_c07_heartbeat_operation_is_bounded_and_fully_reaped",
+            40,
+        ),
+        (
+            "Service lifecycle heartbeat external owner",
+            "test_c07_heartbeat_helper_preserves_external_primary_owner_binding",
+            20,
+        ),
+        ("Service lifecycle remainder", "test_service_lifecycle_contract and not heartbeat", 20),
+    ]
+    expected_windows_suites = [
+        {"label": label, "selector": selector, "timeout_minutes": timeout_minutes}
+        for label, selector, timeout_minutes in expected_windows_suite_rows
+    ]
+    assert jobs["windows_packaging_lifecycle"]["strategy"] == {
+        "fail-fast": False,
+        "matrix": {"suite": expected_windows_suites},
+    }
+    assert jobs["windows_packaging"]["needs"] == ["scope", *windows_jobs[:2]]
+    windows_environment = _steps(jobs["windows_packaging"])["Enforce Windows release lane results"]["env"]
+    assert windows_environment["LIFECYCLE_RESULT"] == "${{ needs.windows_packaging_lifecycle.result }}"
+    assert windows_environment["BUILD_RESULT"] == "${{ needs.windows_packaging_build.result }}"
+
+
 def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> None:
     jobs = _workflow_jobs(_ROOT / ".github" / "workflows" / "ci.yml")
     scope = jobs["scope"]
@@ -374,52 +417,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     assert audit_environment["XPJ_AUDIT_BASE_REF"] == ("${{ needs.scope.outputs.audit_base_sha }}")
     _assert_bounded_timeout(jobs["backend_contracts"])
     _assert_bounded_timeout(jobs["backend_frozen"])
-    assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [
-        "${{ matrix.suite.timeout_minutes }}",
-        20,
-        5,
-    ]
-    expected_windows_suites = [
-        {
-            "label": "C07 lifecycle artifacts",
-            "selector": "test_c07_lifecycle_artifacts",
-            "timeout_minutes": 20,
-        },
-        {
-            "label": "C07 superuser recovery",
-            "selector": "test_c07_superuser_recovery",
-            "timeout_minutes": 20,
-        },
-        {
-            "label": "Service lifecycle heartbeat environment",
-            "selector": "test_c07_heartbeat_helper_uses_minimal_real_ps51_environment",
-            "timeout_minutes": 25,
-        },
-        {
-            "label": "Service lifecycle heartbeat operation",
-            "selector": (
-                "test_production_c07_heartbeat_operation_is_bounded_and_fully_reaped"
-            ),
-            "timeout_minutes": 40,
-        },
-        {
-            "label": "Service lifecycle heartbeat external owner",
-            "selector": (
-                "test_c07_heartbeat_helper_preserves_external_primary_owner_binding"
-            ),
-            "timeout_minutes": 20,
-        },
-        {
-            "label": "Service lifecycle remainder",
-            "selector": "test_service_lifecycle_contract and not heartbeat",
-            "timeout_minutes": 20,
-        },
-    ]
-    assert jobs["windows_packaging_lifecycle"]["strategy"] == {"fail-fast": False, "matrix": {"suite": expected_windows_suites}}
-    assert jobs["windows_packaging"]["needs"] == ["scope", *windows_jobs[:2]]
-    windows_environment = _steps(jobs["windows_packaging"])["Enforce Windows release lane results"]["env"]
-    assert windows_environment["LIFECYCLE_RESULT"] == "${{ needs.windows_packaging_lifecycle.result }}"
-    assert windows_environment["BUILD_RESULT"] == "${{ needs.windows_packaging_build.result }}"
+    _assert_windows_lifecycle_matrix(jobs, windows_jobs)
 
     assert jobs["backend_postgres_ordinary"]["strategy"] == jobs["backend_postgres_real_db"]["strategy"]
     assert jobs["backend_postgres_real_db"]["strategy"] != jobs["backend_postgres_recovery"]["strategy"]
@@ -491,47 +489,3 @@ def test_gitea_keeps_the_shared_lane_runner_without_scope_modernization() -> Non
     path_scoped = audit._iter_workflow_run_commands([workflow_path.parent])
     gradle_missing = audit._missing_gradle_tasks_by_platform(protected, path_scoped_commands=path_scoped)
     assert not [item for item in gradle_missing if item.startswith("Gitea: ")]
-
-
-def test_ci_gap_lane_matchers_accept_only_the_repository_runner_contract() -> None:
-    mod = load_ci_gap_audit()
-    ordinary = next(
-        required for required in mod.REQUIRED_CI_INVOCATIONS if required.label == "pytest ordinary business lane"
-    )
-    real_db = next(
-        required for required in mod.REQUIRED_CI_INVOCATIONS if required.label == "pytest real-db serial lane"
-    )
-    assert ordinary.matches("python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4")
-    assert ordinary.matches("python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 1")
-    assert ordinary.matches(
-        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --shard-index 0 --shard-count 2"
-    )
-    assert ordinary.matches(
-        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 "
-        '--shard-index "${{ matrix.shard.index }}" '
-        '--shard-count "${{ matrix.shard.count }}"'
-    )
-    assert real_db.matches("python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1")
-    real_db_matrix = (
-        "python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1 "
-        '--shard-index "${{ matrix.shard.index }}" '
-        '--shard-count "${{ matrix.shard.count }}"'
-    )
-    assert real_db.matches(real_db_matrix)
-    for command in (
-        "python -m pytest tests -m real_db",
-        "python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 4",
-        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --ignore tests/x.py",
-        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 5",
-        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --shard-index 2 --shard-count 2",
-        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --shard-index 0",
-        (
-            "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 "
-            '--shard-index "${{ matrix.shard.count }}" '
-            '--shard-count "${{ matrix.shard.index }}"'
-        ),
-        "python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1 --shard-index 0 --shard-count 2",
-        "python -m scripts.run_postgres_pytest_lane --lane real-db --workers 2",
-    ):
-        assert not ordinary.matches(command)
-        assert not real_db.matches(command)

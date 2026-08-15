@@ -19,6 +19,7 @@ from scripts.run_postgres_pytest_lane import (
     validate_lane_collection,
     validate_shard_coordinates,
 )
+from tests._infra.ci_gap import load_ci_gap_audit
 from tests._infra.postgres_sharding_plugin import pytest_collection_modifyitems
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -263,3 +264,47 @@ def test_postgres_lane_runner_is_the_single_pytest_command_authority(
     assert module_entry.returncode == 0, module_entry.stderr
     _assert_local_verify_uses_postgres_authorities()
     _assert_root_conftest_registers_the_sharding_plugin()
+
+
+def test_ci_gap_lane_matchers_accept_only_the_repository_runner_contract() -> None:
+    mod = load_ci_gap_audit()
+    ordinary = next(
+        required for required in mod.REQUIRED_CI_INVOCATIONS if required.label == "pytest ordinary business lane"
+    )
+    real_db = next(
+        required for required in mod.REQUIRED_CI_INVOCATIONS if required.label == "pytest real-db serial lane"
+    )
+    assert ordinary.matches("python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4")
+    assert ordinary.matches("python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 1")
+    assert ordinary.matches(
+        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --shard-index 0 --shard-count 2"
+    )
+    assert ordinary.matches(
+        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 "
+        '--shard-index "${{ matrix.shard.index }}" '
+        '--shard-count "${{ matrix.shard.count }}"'
+    )
+    assert real_db.matches("python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1")
+    real_db_matrix = (
+        "python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1 "
+        '--shard-index "${{ matrix.shard.index }}" '
+        '--shard-count "${{ matrix.shard.count }}"'
+    )
+    assert real_db.matches(real_db_matrix)
+    for command in (
+        "python -m pytest tests -m real_db",
+        "python scripts/run_postgres_pytest_lane.py --lane ordinary --workers 4",
+        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --ignore tests/x.py",
+        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 5",
+        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --shard-index 2 --shard-count 2",
+        "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 --shard-index 0",
+        (
+            "python -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4 "
+            '--shard-index "${{ matrix.shard.count }}" '
+            '--shard-count "${{ matrix.shard.index }}"'
+        ),
+        "python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1 --shard-index 0 --shard-count 2",
+        "python -m scripts.run_postgres_pytest_lane --lane real-db --workers 2",
+    ):
+        assert not ordinary.matches(command)
+        assert not real_db.matches(command)
