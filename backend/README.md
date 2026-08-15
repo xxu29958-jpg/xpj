@@ -172,14 +172,17 @@ powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1
 <DATA_ROOT>\backups\
 ```
 
-源码运行是 `backend\backups\`,冻结 EXE 部署(`TICKETBOX_DATA_DIR=ticketbox-data\`)是 `ticketbox-data\backups\`。默认保留最近 30 个备份，可用 `-Keep` 修改：
+源码运行是 `backend\backups\`；正式 Windows 服务的 `TICKETBOX_DATA_DIR` 是
+`TicketboxRuntimeBinding\data-root\app` junction，v2 marker 与 Volume GUID 将它绑定到
+安装器选择的物理 `<DataRoot>\app`；备份位于其下的 `<DataRoot>\app\backups\`。
+默认保留最近 30 个备份，可用 `-Keep` 修改：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1 -Keep 60
 ```
 
-从备份恢复数据库（PostgreSQL）：停后端后用 `pg_restore` 把 `.dump` 归档恢复到目标库，详见
-[POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)。
+源码/测试 scratch 数据库可按 [POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)
+使用 `pg_restore`；正式 Windows 恢复入口尚未出货，不能用手工恢复冒充生命周期闭环。
 
 ## PowerShell 测试
 

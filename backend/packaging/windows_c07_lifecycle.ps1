@@ -155,9 +155,9 @@ function Get-TicketboxC07CandidateReleaseIdentity {
         [Parameter(Mandatory = $true)][string]$OperationId
     )
     $identity = [pscustomobject]@{
+        Schema = "ticketbox-installation-identity-v3"
         State = "PENDING"
         OperationId = ConvertTo-TicketboxC07CanonicalOperationId $OperationId
-        LegacyCompleted = $false
         InstallationId = ConvertTo-TicketboxC07CanonicalUuid `
             $InstallationId `
             "installation id"
@@ -173,10 +173,23 @@ function Get-TicketboxC07CandidateReleaseIdentity {
             [string]$Candidate.MigrationHelperRelativePath
         MigrationHelperSize = [int64]$Candidate.MigrationHelperSize
         MigrationHelperSha256 = [string]$Candidate.MigrationHelperSha256
+        DatabaseGenerationProgramRelativePath =
+            [string]$Candidate.DatabaseGenerationProgramRelativePath
+        DatabaseGenerationProgramSize =
+            [int64]$Candidate.DatabaseGenerationProgramSize
+        DatabaseGenerationProgramSha256 =
+            [string]$Candidate.DatabaseGenerationProgramSha256
     }
     return New-TicketboxC07ReleaseIdentityProjection `
         -Identity $identity `
-        -MigrationHelperPath ([string]$Candidate.MigrationHelperPath)
+        -MigrationHelperPath ([string]$Candidate.MigrationHelperPath) `
+        -DatabaseGenerationProgram ([pscustomobject][ordered]@{
+            Path = [string]$Candidate.DatabaseGenerationProgramPath
+            RelativePath =
+                [string]$Candidate.DatabaseGenerationProgramRelativePath
+            Size = [int64]$Candidate.DatabaseGenerationProgramSize
+            Sha256 = [string]$Candidate.DatabaseGenerationProgramSha256
+        })
 }
 
 function Initialize-TicketboxC07ArtifactRoots([object]$ReleaseIdentity) {
@@ -1259,6 +1272,14 @@ function New-TicketboxC07SuccessorIntent {
             [int64]$predecessor.MigrationHelperSize
         predecessor_migration_helper_sha256 =
             [string]$predecessor.MigrationHelperSha256
+        predecessor_installation_identity_schema =
+            [string]$predecessor.InstallationIdentitySchema
+        predecessor_database_generation_program_relative_path =
+            [string]$predecessor.DatabaseGenerationProgramRelativePath
+        predecessor_database_generation_program_size =
+            [int64]$predecessor.DatabaseGenerationProgramSize
+        predecessor_database_generation_program_sha256 =
+            [string]$predecessor.DatabaseGenerationProgramSha256
         predecessor_terminal_receipt_payload_sha256 =
             [string]$PredecessorAuthority.Envelope.PayloadSha256
         predecessor_terminal_authority_chain_sha256 =

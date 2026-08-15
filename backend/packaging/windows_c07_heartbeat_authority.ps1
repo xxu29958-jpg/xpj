@@ -57,13 +57,13 @@ $script:TicketboxC07LegacyReadyVerificationSchema =
 $script:TicketboxC07ReadyVerificationSchema = "ticketbox-c07-ready-verification-v4"
 $script:TicketboxC07ReceiptSchema = "ticketbox-c07-lifecycle-receipt-v3"
 $script:TicketboxC07ProjectionSchema = "ticketbox-c07-runtime-projection-v6"
-$script:TicketboxC07ReleaseIdentitySchema = "ticketbox-c07-release-identity-v3"
+$script:TicketboxC07ReleaseIdentitySchema = "ticketbox-c07-release-identity-v4"
 $script:TicketboxC07DatabaseAuthoritySchema = "ticketbox-c07-live-database-authority-v1"
 $script:TicketboxC07RecoveryEpochSchema = "ticketbox-c07-recovery-epoch-v1"
 $script:TicketboxC07CoordinatorBindingSchema = "ticketbox-c07-coordinator-binding-v2"
 $script:TicketboxC07StageEvidenceSchema = "ticketbox-c07-stage-evidence-v2"
 $script:TicketboxC07FailureEvidenceSchema = "ticketbox-c07-failure-evidence-v1"
-$script:TicketboxC07SuccessorIntentSchema = "ticketbox-c07-successor-intent-v2"
+$script:TicketboxC07SuccessorIntentSchema = "ticketbox-c07-successor-intent-v3"
 $script:TicketboxC07ProductionAuthoritySchema =
     "ticketbox-c07-production-lifecycle-authority-v4"
 $script:TicketboxC07ProductionMigrationContextSchema =
@@ -184,6 +184,7 @@ function Assert-TicketboxC07DurableHeartbeatDependencies {
         "Compare-TicketboxNumericVersion",
         "ConvertTo-TicketboxCanonicalPath",
         "Enter-TicketboxDirectoryMutationGuard",
+        "Get-TicketboxInstallationReleaseCandidate", "Get-TicketboxInstalledDatabaseGenerationProgramPath",
         "Get-TicketboxLifecycleLockPath",
         "Get-TicketboxLifecycleOperationLockPath",
         "Get-TicketboxPendingInstallationIdentityPath",
@@ -196,7 +197,8 @@ function Assert-TicketboxC07DurableHeartbeatDependencies {
         "Read-TicketboxInstalledBuildManifest",
         "Read-TicketboxPersistentInstallationIdentity",
         "Read-TicketboxProtectedUtf8Artifact",
-        "Resolve-TicketboxInstalledC07MigrationHelperPath",
+        "Resolve-TicketboxInstalledDatabaseGenerationProgramPath", "Resolve-TicketboxInstalledC07MigrationHelperPath",
+        "Test-TicketboxInstallationIdentityReleaseMatches",
         "Test-TicketboxPathEquals",
         "Test-TicketboxPathWithin",
         "Test-TicketboxProcessIdentityEquals",
@@ -510,7 +512,6 @@ function Get-TicketboxC07ReleaseIdentity {
             -Pending
         if (
             $pendingIdentity.State -cne "PENDING" -or
-            [bool]$pendingIdentity.LegacyCompleted -or
             $pendingIdentity.OperationId -cne $expectedOperationId
         ) {
             throw "C07 安装事务与 PENDING installation operation 不一致。"
@@ -533,105 +534,82 @@ function Get-TicketboxC07ReleaseIdentity {
     if (-not (Test-TicketboxPathWithin $manifestPath $identity.InstallDir)) {
         throw "C07 installed build manifest 越出 installation identity。"
     }
-    $manifest = Read-TicketboxInstalledBuildManifest -Path $manifestPath
-    $manifestSha256 = Get-TicketboxPortableFileSha256 $manifestPath
-    if ($manifestSha256 -cne [string]$identity.BuildManifestSha256) {
-        throw "C07 installed build manifest 与受保护 installation identity 摘要不一致。"
+    $candidate = Get-TicketboxInstallationReleaseCandidate `
+        -DataRoot $canonicalDataRoot `
+        -InstallDir ([string]$identity.InstallDir) `
+        -PgPort ([int]$identity.PgPort) `
+        -BackendPort ([int]$identity.BackendPort) `
+        -PgServiceName ([string]$identity.PgServiceName) `
+        -BackendServiceName ([string]$identity.BackendServiceName) `
+        -BuildManifestPath $manifestPath
+    if (-not (Test-TicketboxInstallationIdentityReleaseMatches $identity $candidate)) {
+        throw "C07 installation identity 与 installed release payload evidence 不一致。"
     }
-    if (
-        (Compare-TicketboxNumericVersion `
-            ([string]$manifest.BackendVersion) `
-            ([string]$identity.BackendVersionFloor)) -ne 0
-    ) {
-        throw "C07 release identity 要求 installed build 与 backend version floor 精确同代。"
-    }
-    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath $identity.InstallDir
-    $helperEvidence = $manifest.C07MigrationHelper
-    $helperPath = Resolve-TicketboxInstalledC07MigrationHelperPath `
-        -InstallDir $canonicalInstallDir `
-        -Evidence $helperEvidence
-    $helperLease = $null
-    try {
-        $helperLease = Open-TicketboxC07VerifiedMigrationHelperLease `
-            -Path $helperPath `
-            -ExpectedRelativePath ([string]$helperEvidence.RelativePath) `
-            -ExpectedSize ([int64]$helperEvidence.Size) `
-            -ExpectedSha256 ([string]$helperEvidence.Sha256)
-        $helperSize = [int64]$helperLease.Size
-        $helperSha256 = [string]$helperLease.Sha256
-    }
-    finally {
-        Close-TicketboxC07MigrationHelperLease $helperLease
-    }
-    $bindingText = [string]::Join("`n", @(
-        "schema=$script:TicketboxC07ReleaseIdentitySchema",
-        "installation_id=$([string]$identity.InstallationId)",
-        "build_manifest_sha256=$manifestSha256",
-        "backend_version_floor=$([string]$identity.BackendVersionFloor)",
-        "data_root=$($canonicalDataRoot.ToUpperInvariant())",
-        "install_dir=$($canonicalInstallDir.ToUpperInvariant())",
-        "pg_service_name=$([string]$identity.PgServiceName)",
-        "backend_service_name=$([string]$identity.BackendServiceName)",
-        "pg_port=$([int]$identity.PgPort)",
-        "backend_port=$([int]$identity.BackendPort)",
-        "migration_helper_relative_path=$([string]$helperEvidence.RelativePath)",
-        "migration_helper_size=$helperSize",
-        "migration_helper_sha256=$helperSha256"
-    )) + "`n"
-    return [pscustomobject]@{
-        InstallationIdentityState = [string]$identity.State
-        InstallationOperationId = [string]$identity.OperationId
-        LegacyCompletedInstallationIdentity = [bool]$identity.LegacyCompleted
-        InstallationId = [string]$identity.InstallationId
-        BuildManifestSha256 = $manifestSha256
-        BackendVersionFloor = [string]$identity.BackendVersionFloor
-        DataRoot = $canonicalDataRoot
-        InstallDir = $canonicalInstallDir
-        PgServiceName = [string]$identity.PgServiceName
-        BackendServiceName = [string]$identity.BackendServiceName
-        PgPort = [int]$identity.PgPort
-        BackendPort = [int]$identity.BackendPort
-        BackendExe = Join-Path $canonicalInstallDir "program\ticketbox-backend\ticketbox-backend.exe"
-        ShawlExe = Join-Path $canonicalInstallDir "shawl\shawl.exe"
-        MigrationHelperPath = $helperPath
-        MigrationHelperRelativePath = [string]$helperEvidence.RelativePath
-        MigrationHelperSize = $helperSize
-        MigrationHelperSha256 = $helperSha256
-        Fingerprint = Get-TicketboxC07TextSha256 $bindingText
-    }
+    return New-TicketboxC07ReleaseIdentityProjection `
+        -Identity $identity `
+        -MigrationHelperPath ([string]$candidate.MigrationHelperPath) `
+        -DatabaseGenerationProgram ([pscustomobject][ordered]@{
+            Path = [string]$candidate.DatabaseGenerationProgramPath
+            RelativePath = [string]$candidate.DatabaseGenerationProgramRelativePath
+            Size = [int64]$candidate.DatabaseGenerationProgramSize
+            Sha256 = [string]$candidate.DatabaseGenerationProgramSha256
+        })
 }
 
 function New-TicketboxC07ReleaseIdentityProjection {
     param(
         [Parameter(Mandatory = $true)][object]$Identity,
         [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
+        [Parameter(Mandatory = $true)][object]$DatabaseGenerationProgram,
         [switch]$Historical
     )
     if (
         [string]$Identity.State -cnotin @("PENDING", "READY") -or
-        [bool]$Identity.LegacyCompleted
-    ) {
-        throw "C07 release identity projection 只接受当前受保护 identity schema。"
-    }
-    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath (
-        [string]$Identity.DataRoot
-    )
-    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath (
-        [string]$Identity.InstallDir
-    )
-    if (
+        [string]$Identity.Schema -cne "ticketbox-installation-identity-v3" -or
         [string]$Identity.BuildManifestSha256 -cnotmatch "^[0-9A-F]{64}$" -or
         [string]$Identity.MigrationHelperSha256 -cnotmatch "^[0-9A-F]{64}$" -or
         [int64]$Identity.MigrationHelperSize -lt 1 -or
         [string]$Identity.MigrationHelperRelativePath -cne
             $script:TicketboxC07MigrationHelperRelativePath
     ) {
-        throw "C07 historical release identity 的 manifest/helper evidence 无效。"
+        throw "C07 release identity projection 的 installation evidence 无效。"
     }
-    ConvertTo-TicketboxNumericVersion (
-        [string]$Identity.BackendVersionFloor
-    ) | Out-Null
-    $bindingText = [string]::Join("`n", @(
+    $canonicalDataRoot = ConvertTo-TicketboxCanonicalPath ([string]$Identity.DataRoot)
+    $canonicalInstallDir = ConvertTo-TicketboxCanonicalPath ([string]$Identity.InstallDir)
+    ConvertTo-TicketboxNumericVersion ([string]$Identity.BackendVersionFloor) | Out-Null
+    $programNames = @($DatabaseGenerationProgram.PSObject.Properties.Name)
+    $programEvidence = [pscustomobject][ordered]@{
+        RelativePath = [string]$DatabaseGenerationProgram.RelativePath
+        Size = [int64]$DatabaseGenerationProgram.Size
+        Sha256 = [string]$DatabaseGenerationProgram.Sha256
+    }
+    if (
+        $programNames.Count -ne 4 -or
+        "Path" -notin $programNames -or "RelativePath" -notin $programNames -or
+        "Size" -notin $programNames -or "Sha256" -notin $programNames -or
+        [string]$programEvidence.RelativePath -cne
+            "DATABASE_GENERATION_PROGRAM.json" -or
+        [int64]$programEvidence.Size -lt 1 -or
+        [string]$programEvidence.Sha256 -cnotmatch "^[0-9A-F]{64}$"
+    ) {
+        throw "C07 release identity 的 database generation program evidence 无效。"
+    }
+    $programPath = if ([bool]$Historical) {
+        Get-TicketboxInstalledDatabaseGenerationProgramPath `
+            -InstallDir $canonicalInstallDir `
+            -RelativePath ([string]$programEvidence.RelativePath)
+    }
+    else {
+        Resolve-TicketboxInstalledDatabaseGenerationProgramPath `
+            -InstallDir $canonicalInstallDir `
+            -Evidence $programEvidence
+    }
+    if (-not (Test-TicketboxPathEquals `
+        $programPath `
+        ([string]$DatabaseGenerationProgram.Path))) {
+        throw "C07 release identity 的 database generation program 路径不一致。"
+    }
+    $bindingLines = @(
         "schema=$script:TicketboxC07ReleaseIdentitySchema",
         "installation_id=$([string]$Identity.InstallationId)",
         "build_manifest_sha256=$([string]$Identity.BuildManifestSha256)",
@@ -644,12 +622,16 @@ function New-TicketboxC07ReleaseIdentityProjection {
         "backend_port=$([int]$Identity.BackendPort)",
         "migration_helper_relative_path=$([string]$Identity.MigrationHelperRelativePath)",
         "migration_helper_size=$([int64]$Identity.MigrationHelperSize)",
-        "migration_helper_sha256=$([string]$Identity.MigrationHelperSha256)"
-    )) + "`n"
+        "migration_helper_sha256=$([string]$Identity.MigrationHelperSha256)",
+        "database_generation_program_relative_path=$([string]$programEvidence.RelativePath)",
+        "database_generation_program_size=$([int64]$programEvidence.Size)",
+        "database_generation_program_sha256=$([string]$programEvidence.Sha256)"
+    )
+    $bindingText = [string]::Join("`n", $bindingLines) + "`n"
     return [pscustomobject]@{
         InstallationIdentityState = [string]$Identity.State
+        InstallationIdentitySchema = [string]$Identity.Schema
         InstallationOperationId = [string]$Identity.OperationId
-        LegacyCompletedInstallationIdentity = $false
         InstallationId = [string]$Identity.InstallationId
         BuildManifestSha256 = [string]$Identity.BuildManifestSha256
         BackendVersionFloor = [string]$Identity.BackendVersionFloor
@@ -659,17 +641,16 @@ function New-TicketboxC07ReleaseIdentityProjection {
         BackendServiceName = [string]$Identity.BackendServiceName
         PgPort = [int]$Identity.PgPort
         BackendPort = [int]$Identity.BackendPort
-        BackendExe = Join-Path `
-            $canonicalInstallDir `
-            "program\ticketbox-backend\ticketbox-backend.exe"
+        BackendExe = Join-Path $canonicalInstallDir "program\ticketbox-backend\ticketbox-backend.exe"
         ShawlExe = Join-Path $canonicalInstallDir "shawl\shawl.exe"
-        MigrationHelperPath = [System.IO.Path]::GetFullPath(
-            $MigrationHelperPath
-        )
-        MigrationHelperRelativePath =
-            [string]$Identity.MigrationHelperRelativePath
+        MigrationHelperPath = [System.IO.Path]::GetFullPath($MigrationHelperPath)
+        MigrationHelperRelativePath = [string]$Identity.MigrationHelperRelativePath
         MigrationHelperSize = [int64]$Identity.MigrationHelperSize
         MigrationHelperSha256 = [string]$Identity.MigrationHelperSha256
+        DatabaseGenerationProgramPath = $programPath
+        DatabaseGenerationProgramRelativePath = [string]$programEvidence.RelativePath
+        DatabaseGenerationProgramSize = [int64]$programEvidence.Size
+        DatabaseGenerationProgramSha256 = [string]$programEvidence.Sha256
         Fingerprint = Get-TicketboxC07TextSha256 $bindingText
         Historical = [bool]$Historical
     }
@@ -678,8 +659,7 @@ function New-TicketboxC07ReleaseIdentityProjection {
 function Get-TicketboxC07HistoricalReleaseIdentity {
     param([Parameter(Mandatory = $true)][object]$InstallationIdentity)
     if (
-        [string]$InstallationIdentity.State -cne "PENDING" -or
-        [bool]$InstallationIdentity.LegacyCompleted
+        [string]$InstallationIdentity.State -cne "PENDING"
     ) {
         throw "C07 terminal predecessor 缺少当前 PENDING installation identity。"
     }
@@ -688,9 +668,20 @@ function Get-TicketboxC07HistoricalReleaseIdentity {
             [string]$InstallationIdentity.InstallDir
         ) "program\ticketbox-backend"
     ) ([string]$InstallationIdentity.MigrationHelperRelativePath)
+    $relativePath =
+        [string]$InstallationIdentity.DatabaseGenerationProgramRelativePath
+    $programEvidence = [pscustomobject][ordered]@{
+        Path = Get-TicketboxInstalledDatabaseGenerationProgramPath `
+            -InstallDir ([string]$InstallationIdentity.InstallDir) `
+            -RelativePath $relativePath
+        RelativePath = $relativePath
+        Size = [int64]$InstallationIdentity.DatabaseGenerationProgramSize
+        Sha256 = [string]$InstallationIdentity.DatabaseGenerationProgramSha256
+    }
     return New-TicketboxC07ReleaseIdentityProjection `
         -Identity $InstallationIdentity `
         -MigrationHelperPath $helperPath `
+        -DatabaseGenerationProgram $programEvidence `
         -Historical
 }
 
@@ -1283,9 +1274,9 @@ function Get-TicketboxC07SuccessorIntentPredecessorIdentity {
         $Intent
     }
     $identity = [pscustomobject]@{
+        Schema = [string]$payload.predecessor_installation_identity_schema
         State = "PENDING"
         OperationId = [string]$payload.predecessor_operation_id
-        LegacyCompleted = $false
         InstallationId = [string]$payload.installation_id
         BuildManifestSha256 =
             [string]$payload.predecessor_build_manifest_sha256
@@ -1303,6 +1294,12 @@ function Get-TicketboxC07SuccessorIntentPredecessorIdentity {
             [int64]$payload.predecessor_migration_helper_size
         MigrationHelperSha256 =
             [string]$payload.predecessor_migration_helper_sha256
+        DatabaseGenerationProgramRelativePath =
+            [string]$payload.predecessor_database_generation_program_relative_path
+        DatabaseGenerationProgramSize =
+            [int64]$payload.predecessor_database_generation_program_size
+        DatabaseGenerationProgramSha256 =
+            [string]$payload.predecessor_database_generation_program_sha256
     }
     return Get-TicketboxC07HistoricalReleaseIdentity $identity
 }
@@ -1317,9 +1314,7 @@ function Read-TicketboxC07SuccessorIntent {
         -Path (Get-TicketboxC07SuccessorIntentPath $canonicalOperationId) `
         -ExpectedKind "successor_intent"
     $payload = $envelope.Payload
-    Assert-TicketboxC07ExactProperties `
-        $payload `
-        @(
+    $expectedProperties = @(
             "schema",
             "successor_operation_id",
             "successor_mode",
@@ -1358,8 +1353,15 @@ function Read-TicketboxC07SuccessorIntent {
             "target_alembic_revision",
             "live_alembic_revision",
             "live_database_binding_sha256",
-            "authorized_at_utc"
-        ) `
+            "authorized_at_utc",
+            "predecessor_installation_identity_schema",
+            "predecessor_database_generation_program_relative_path",
+            "predecessor_database_generation_program_size",
+            "predecessor_database_generation_program_sha256"
+        )
+    Assert-TicketboxC07ExactProperties `
+        $payload `
+        $expectedProperties `
         "successor intent"
     if (
         [string]$payload.schema -cne $script:TicketboxC07SuccessorIntentSchema -or
@@ -2837,7 +2839,6 @@ function Read-TicketboxC07AuthorityCore {
             -Pending
         if (
             $pending.State -cne "PENDING" -or
-            [bool]$pending.LegacyCompleted -or
             $pending.OperationId -cne $operationId
         ) {
             throw "C07 authority 拒绝误用 foreign/mismatched PENDING identity。"

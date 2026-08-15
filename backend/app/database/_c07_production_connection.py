@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import ipaddress
 import os
 import re
@@ -13,18 +12,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import URL, Engine, make_url
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.pool import NullPool
 
 from app.database._c07_production_contract import (
-    C07_CEREMONY_ID_GUC,
-    C07_CEREMONY_MODE_GUC,
     C07_SOURCE_REVISION,
-    C07_STATEMENT_TIMEOUT_GUC,
     C07_TARGET_REVISION,
     DATABASE_AUTHORITY_SCHEMA,
     DATABASE_NAME,
@@ -33,6 +27,11 @@ from app.database._c07_production_contract import (
     MIGRATOR_ROLE,
     C07ProductionMigrationError,
 )
+from app.database._database_generation_executor import (
+    DatabaseGenerationExecutionError,
+    execute_database_generation,
+)
+from app.database._database_generation_program import DatabaseGenerationProgram
 
 _SERVER_TIMEOUT_NAMES = (
     "transaction_timeout",
@@ -181,54 +180,6 @@ def _revision(connection: Any) -> str | None:
     return None if not revisions else str(revisions[0])
 
 
-def _migration_module() -> Any:
-    path = (
-        Path(__file__).resolve().parents[2]
-        / "migrations"
-        / "versions"
-        / "20260729_0001_money_minor_bigint_expand.py"
-    )
-    spec = importlib.util.spec_from_file_location(
-        "_ticketbox_c07_production_revision",
-        path,
-    )
-    if spec is None or spec.loader is None:
-        raise C07ProductionMigrationError(
-            "C07 production revision could not be loaded"
-        )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    if (
-        getattr(module, "revision", None) != C07_TARGET_REVISION
-        or getattr(module, "down_revision", None) != C07_SOURCE_REVISION
-        or not callable(getattr(module, "upgrade", None))
-    ):
-        raise C07ProductionMigrationError(
-            "C07 production revision identity is not exact"
-        )
-    return module
-
-
-def _set_migration_context(
-    connection: Any,
-    *,
-    ceremony_id: str,
-    timeout_ms: int,
-) -> None:
-    for key, value in (
-        (C07_CEREMONY_MODE_GUC, "managed"),
-        (C07_CEREMONY_ID_GUC, ceremony_id),
-        (
-            C07_STATEMENT_TIMEOUT_GUC,
-            str(timeout_ms),
-        ),
-    ):
-        connection.execute(
-            text("SELECT set_config(:key, :value, true)"),
-            {"key": key, "value": value},
-        )
-
-
 def _apply_server_deadline(
     connection: Any,
     *,
@@ -296,6 +247,7 @@ def _apply_server_deadline(
 def _run_alembic_upgrade(
     connection: Any,
     *,
+    program: DatabaseGenerationProgram,
     ceremony_id: str,
     deadline: float,
 ) -> None:
@@ -311,26 +263,15 @@ def _run_alembic_upgrade(
         connection,
         timeout_ms=remaining_ms,
     )
-    _set_migration_context(
-        connection,
-        ceremony_id=ceremony_id,
-        timeout_ms=remaining_ms,
-    )
-    module = _migration_module()
-    migration_context = MigrationContext.configure(connection)
-    module.op = Operations(migration_context)
-    module.upgrade()
-    updated = connection.scalar(
-        text(
-            "UPDATE alembic_version SET version_num = :target "
-            "WHERE version_num = :source RETURNING version_num"
-        ),
-        {
-            "source": C07_SOURCE_REVISION,
-            "target": C07_TARGET_REVISION,
-        },
-    )
-    if updated != C07_TARGET_REVISION:
-        raise C07ProductionMigrationError(
-            "C07 production revision marker did not advance atomically"
+    try:
+        execute_database_generation(
+            connection,
+            program=program,
+            source_revision=C07_SOURCE_REVISION,
+            target_revision=C07_TARGET_REVISION,
+            operation_id=ceremony_id,
         )
+    except DatabaseGenerationExecutionError as exc:
+        raise C07ProductionMigrationError(
+            "C07 production generation execution failed"
+        ) from exc

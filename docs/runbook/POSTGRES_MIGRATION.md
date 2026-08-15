@@ -37,31 +37,31 @@
   pg_restore --list "<DATA_ROOT>\backups\ticketbox-YYYYMMDD-HHMMSS.dump"
   ```
 
-## 2. 从备份恢复
+## 2. 源码/测试 scratch 恢复演练
 
-PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`），用 `pg_restore` 恢复。**先停后端**；生产恢复重建 `ticketbox` 库，演练 / 核对时恢复到一个 scratch 库（不要碰生产）：
+PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。本节只用于源码/测试环境把归档
+恢复到独立 scratch 库，**不得**对正式安装的 `ticketbox` 库执行 `DROP/CREATE/pg_restore`。
+正式 Windows 恢复入口尚未出货，整体能力继续 `QUALIFIED_HOLD`。
 
 ```powershell
 cd E:\projects\xiaopiaojia
-powershell -ExecutionPolicy Bypass -File scripts\stop_backend.ps1
 ```
 
 ```sql
--- 用超级用户 psql 重建目标库（确保没有活动连接）：
-DROP DATABASE IF EXISTS ticketbox;
-CREATE DATABASE ticketbox OWNER ticketbox ENCODING 'UTF8';
+-- 仅在隔离的源码/测试 PostgreSQL 中创建 scratch 库：
+DROP DATABASE IF EXISTS ticketbox_restore_scratch;
+CREATE DATABASE ticketbox_restore_scratch OWNER ticketbox ENCODING 'UTF8';
 ```
 
 ```powershell
-# 把归档灌进新建的空库（--no-owner 让对象归到连接角色 ticketbox）：
-pg_restore --no-owner --dbname "postgresql://ticketbox:<强口令>@localhost:5432/ticketbox?require_auth=scram-sha-256" `
+# 把归档灌进隔离 scratch 库（--no-owner 让对象归到连接角色 ticketbox）：
+pg_restore --no-owner --dbname "postgresql://ticketbox:<强口令>@localhost:5432/ticketbox_restore_scratch?require_auth=scram-sha-256" `
   "<DATA_ROOT>\backups\ticketbox-YYYYMMDD-HHMMSS.dump"
-powershell -ExecutionPolicy Bypass -File scripts\start_backend.ps1
-powershell -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict
 ```
 
-- `uploads/` 目录不随库恢复改动——图片路径以数据库 `expenses.image_path` 为权威，恢复库后图片自然对齐。
-- 起库后用 `GET /api/auth/check` 确认 token 仍有效。版本特定的回滚注意见 [ROLLBACK.md](ROLLBACK.md)。
+- 对 scratch 库核对 revision、表清单、行数和关键业务不变量；完成后删除 scratch 库。
+- `uploads/` 不参与这次演练，不能据此证明正式恢复后的文件/数据库一致性。
+- 版本特定的回滚限制见 [ROLLBACK.md](ROLLBACK.md)。
 
 ## 3. 表属主（owner）排查 —— ALTER 迁移失败 / 启动失败
 

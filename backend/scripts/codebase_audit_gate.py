@@ -38,6 +38,7 @@ DebtCounts = dict[str, int]
 
 _strict_baseline_selection_error: str | None = None
 _strict_baseline_selected_ref: str | None = None
+_strict_baseline_selected_commit: str | None = None
 
 # ``CODEBASE_DEBT_LIMITS`` is active configuration, not an audit log. Keep the
 # current ceilings here and put detailed ratchet provenance in commits/PR notes.
@@ -153,7 +154,8 @@ STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 # Total test counts are reconciliation signals, not coverage proofs. Strict
 # equality declares every change. Backend consolidation may lower its declared
 # count only when review proves the removed cases had no independent risk model;
-# the existing installer suite remains a release-critical monotonic floor.
+# the installer suite remains a release-critical monotonic floor except for the
+# exact one-time removal of the physically retired portable installer harness.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset(
     {
         "installer_pytest_count",
@@ -172,6 +174,11 @@ _ADR_0049_EXEMPTED_GRANDFATHER = (
     128,
     129,
 )  # Windows installation-owner bootstrap: POST /api/bootstrap/installation-owner atomically claims one installation operation and issues only a short-lived pairing child. Replay safety rests on the bootstrap secret + stable operation receipt, not a row-version token. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (127, 128) for Desktop switch-prepare.
+_PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER = (
+    "051464999fc1f71d9072bb5c9cfc012b521181cd",
+    387,
+    379,
+)  # The portable installer owner and its dedicated security harness were physically retired together. The active Inno installer retains its release-critical suite, and the portable surface has a negative retirement oracle. The canonical base binding prevents a future 387-to-379 count cycle from replaying this exception.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -239,12 +246,13 @@ def _read_base_strict_baseline() -> tuple[bool, dict[str, int]]:
 
 
 def _strict_baseline_git_ref() -> str | None:
-    global _strict_baseline_selected_ref, _strict_baseline_selection_error
+    global _strict_baseline_selected_commit, _strict_baseline_selected_ref, _strict_baseline_selection_error
 
     backend_root = Path(__file__).resolve().parent.parent
     selected, error = select_ratchet_base(backend_root.parent, dict(os.environ))
     _strict_baseline_selection_error = error
     _strict_baseline_selected_ref = None if selected is None else selected.ref
+    _strict_baseline_selected_commit = None if selected is None else selected.commit
     return None if selected is None else selected.commit
 
 
@@ -275,6 +283,8 @@ def _compute_strict_equality_findings(
 
 def _compute_ratchet_findings(
     base_baseline: dict[str, int],
+    *,
+    base_commit: str | None = None,
 ) -> tuple[list[str], list[str], list[str]]:
     """Layer 2/3: returns (bootstrapped, movement_violations, removed_keys) by
     walking STRICT_EQUALITY_BASELINE keys against the base baseline dict."""
@@ -287,7 +297,12 @@ def _compute_ratchet_findings(
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
         adr_0049_exempt = key == "mutate_token_exempted" and (base_val, current_val) == _ADR_0049_EXEMPTED_GRANDFATHER
-        if key in BASELINE_RATCHET_UP and current_val < base_val:
+        portable_installer_retirement = (
+            key == "installer_pytest_count"
+            and (base_commit, base_val, current_val)
+            == _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER
+        )
+        if key in BASELINE_RATCHET_UP and current_val < base_val and not portable_installer_retirement:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
                 f"(dropped by {base_val - current_val}). Tests/coverage should "
@@ -437,7 +452,10 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
     movement_violations: list[str] = []
     removed_keys: list[str] = []
     if base_readable:
-        bootstrapped, movement_violations, removed_keys = _compute_ratchet_findings(base_baseline)
+        bootstrapped, movement_violations, removed_keys = _compute_ratchet_findings(
+            base_baseline,
+            base_commit=_strict_baseline_selected_commit,
+        )
 
     print("== Gate. ADR-0038 PR-Δ verification (strict-equality + ratchet) ==")
     _print_strict_equality_failures(counts, missing, mismatches, extras)

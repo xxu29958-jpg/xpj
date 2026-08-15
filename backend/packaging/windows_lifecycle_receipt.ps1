@@ -1610,7 +1610,7 @@ function Set-TicketboxLifecycleReceiptC07InstallationOperation {
                 $null -eq $SuccessorIntent -or
                 $null -eq $SuccessorIntent.Payload -or
                 [string]$SuccessorIntent.Payload.schema -cne
-                    "ticketbox-c07-successor-intent-v2" -or
+                    "ticketbox-c07-successor-intent-v3" -or
                 [string]$SuccessorIntent.Payload.predecessor_operation_id -cne
                     $existingOperationId -or
                 [string]$SuccessorIntent.Payload.successor_operation_id -cne

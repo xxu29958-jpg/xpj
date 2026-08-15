@@ -1,14 +1,16 @@
 """Frozen-EXE entry point for the Ticketbox backend.
 
 PyInstaller bundles the read-only program (the ``app`` package, static assets,
-Jinja templates, ``alembic.ini`` and ``migrations/``). Everything the running
-backend *writes* — uploaded images, ``.env`` overrides, logs, and PostgreSQL
-backups — lives in a separate, writable ``ticketbox-data/`` folder next to the
-EXE. The database itself runs in a local PostgreSQL service (see
-docs/runbook/POSTGRES_MIGRATION.md), not in this folder. We point the app's
-config there via env vars BEFORE importing ``app.*``, because :mod:`app.config`
-resolves paths relative to its own location, which in a frozen build is the
-throwaway extraction dir (``sys._MEIPASS``).
+Jinja templates, ``alembic.ini`` and ``migrations/``). The formal Windows
+service receives the machine-owned
+``TicketboxRuntimeBinding/data-root/app`` junction through
+``TICKETBOX_DATA_DIR``. That junction is bound by the v2 DataRoot marker and
+Volume GUID to the installer-selected physical ``<DataRoot>/app`` bytes. Only
+source/development invocation without that host contract falls back to
+``ticketbox-data/`` beside the program root. The database itself runs in the
+installer-managed local PostgreSQL service. We set the data root BEFORE
+importing ``app.*`` because :mod:`app.config` otherwise resolves paths against
+PyInstaller's throwaway ``sys._MEIPASS`` extraction dir.
 
 Run (frozen):   through the installer-validated Windows service contract
 Run (dev):      python packaging/launch.py            (cwd = backend/)
@@ -60,12 +62,12 @@ _OWNER_RECOVERY_CHANNELS = frozenset({"development", "managed_host", "operator"}
 _BOOTSTRAP_RECOVERY_GUARD_NAME = "bootstrap-exposure-recovery-pending"
 _C07_PRODUCTION_MIGRATION_SWITCH = "--c07-production-migrate"
 _C07_FRESH_SOURCE_BOOTSTRAP_SWITCH = "--c07-fresh-source-bootstrap"
-_C07_MAINTENANCE_PLAN_SWITCH = "--c07-installed-upgrade-plan"
 _C07_MAINTENANCE_UPGRADE_SWITCH = "--c07-maintenance-upgrade"
 _C07_MONEY_FACTS_SWITCH = "--c07-money-facts-digest"
 _C07_TARGET_SEMANTIC_SWITCH = "--c07-target-semantic-digest"
-_MANAGED_SCHEMA_PLAN_SWITCH = "--managed-schema-plan"
 _MANAGED_SCHEMA_UPGRADE_SWITCH = "--managed-schema-upgrade"
+_GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
+_GENERATION_PROGRAM_FILENAME = "DATABASE_GENERATION_PROGRAM.json"
 _C07_MIGRATION_HELPER_NAME = "ticketbox-c07-migrator.exe"
 _C07_PRODUCTION_MODULE_NAME = "_ticketbox_c07_production_migration"
 _C07_FRESH_SOURCE_MODULE_NAME = "_ticketbox_c07_fresh_source_bootstrap"
@@ -89,14 +91,16 @@ _C07_FRESH_SOURCE_RESULT_FIELDS = (
     "result",
     "alembic_revision",
 )
-_C07_MAINTENANCE_PLAN_FIELDS = (
+_GENERATION_PROGRAM_VALIDATION_FIELDS = (
     "schema",
-    "operation_kind",
     "source_revision",
     "target_revision",
-    "upgrade_required",
-    "revision_manifest",
-    "revision_manifest_sha256",
+    "revision_count",
+    "generation_program_sha256",
+    "c07_source_revision",
+    "c07_target_revision",
+    "c07_revision_manifest",
+    "c07_revision_manifest_sha256",
 )
 _C07_MAINTENANCE_RESULT_FIELDS = (
     "schema",
@@ -137,19 +141,11 @@ _C07_TARGET_SEMANTIC_RESULT_FIELDS = (
     "resource_shape_sha256",
     "money_facts_sha256",
 )
-_MANAGED_SCHEMA_PLAN_FIELDS = (
-    "schema",
-    "source_revision",
-    "target_revision",
-    "upgrade_required",
-    "revision_count",
-    "revision_manifest_sha256",
-)
 _MANAGED_SCHEMA_RESULT_FIELDS = (
     "schema",
     "source_revision",
     "target_revision",
-    "revision_manifest_sha256",
+    "generation_program_sha256",
     "result",
     "alembic_revision",
 )
@@ -175,6 +171,17 @@ def _is_c07_migration_helper() -> bool:
     )
 
 
+def _add_generation_program_arguments(parser: ArgumentParser) -> None:
+    parser.add_argument("--generation-program-path", type=Path, required=True)
+    parser.add_argument("--expected-generation-program-sha256", required=True)
+
+
+def _resolve_generation_program(path: Path) -> Path:
+    if path != Path(_GENERATION_PROGRAM_FILENAME):
+        raise RuntimeError("generation program must be the payload-root artifact")
+    return (_bundle_dir() / path).resolve(strict=True)
+
+
 def _parse_c07_production_migration_args(argv: list[str]) -> Namespace:
     parser = ArgumentParser(
         prog="ticketbox-c07-migrator",
@@ -188,6 +195,7 @@ def _parse_c07_production_migration_args(argv: list[str]) -> Namespace:
     )
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--pgpassfile", type=Path, required=True)
+    _add_generation_program_arguments(parser)
     parser.add_argument("--operation-id", required=True)
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--target-revision", required=True)
@@ -207,38 +215,25 @@ def _parse_c07_fresh_source_bootstrap_args(argv: list[str]) -> Namespace:
     )
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--pgpassfile", type=Path, required=True)
+    _add_generation_program_arguments(parser)
+    parser.add_argument("--generation-operation-id", required=True)
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--target-revision", required=True)
     return parser.parse_args(argv)
 
 
-def _parse_c07_maintenance_plan_args(argv: list[str]) -> Namespace:
+def _parse_generation_program_validation_args(argv: list[str]) -> Namespace:
     parser = ArgumentParser(
         prog="ticketbox-c07-migrator",
         add_help=False,
         allow_abbrev=False,
     )
     parser.add_argument(
-        _C07_MAINTENANCE_PLAN_SWITCH,
+        _GENERATION_PROGRAM_VALIDATE_SWITCH,
         action="store_true",
         required=True,
     )
-    parser.add_argument("--source-revision", required=True)
-    return parser.parse_args(argv)
-
-
-def _parse_managed_schema_plan_args(argv: list[str]) -> Namespace:
-    parser = ArgumentParser(
-        prog="ticketbox-c07-migrator",
-        add_help=False,
-        allow_abbrev=False,
-    )
-    parser.add_argument(
-        _MANAGED_SCHEMA_PLAN_SWITCH,
-        action="store_true",
-        required=True,
-    )
-    parser.add_argument("--source-revision", required=True)
+    _add_generation_program_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -255,9 +250,10 @@ def _parse_managed_schema_upgrade_args(argv: list[str]) -> Namespace:
     )
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--pgpassfile", type=Path, required=True)
+    _add_generation_program_arguments(parser)
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--target-revision", required=True)
-    parser.add_argument("--expected-revision-manifest-sha256", required=True)
+    parser.add_argument("--generation-operation-id", required=True)
     return parser.parse_args(argv)
 
 
@@ -279,6 +275,7 @@ def _parse_c07_maintenance_upgrade_args(argv: list[str]) -> Namespace:
     )
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--pgpassfile", type=Path, required=True)
+    _add_generation_program_arguments(parser)
     parser.add_argument("--operation-id", required=True)
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--target-revision", required=True)
@@ -335,6 +332,7 @@ def _parse_c07_target_semantic_args(argv: list[str]) -> Namespace:
     )
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--pgpassfile", type=Path, required=True)
+    _add_generation_program_arguments(parser)
     parser.add_argument("--operation-id", required=True)
     parser.add_argument("--database", required=True)
     parser.add_argument("--snapshot-id", default="")
@@ -467,6 +465,7 @@ def _load_c07_fresh_source_bootstrap_module() -> ModuleType:
     return _load_c07_standalone_module(
         module_name=_C07_FRESH_SOURCE_MODULE_NAME,
         filename="_c07_fresh_source_bootstrap.py",
+        database_package_seam=True,
     )
 
 
@@ -532,6 +531,12 @@ def _run_c07_production_migration(
     result = production.run_production_migration_action(
         database_url=args.database_url,
         pgpassfile=args.pgpassfile,
+        generation_program_path=_resolve_generation_program(
+            args.generation_program_path
+        ),
+        expected_generation_program_sha256=(
+            args.expected_generation_program_sha256
+        ),
         operation_id=args.operation_id,
         source_revision=args.source_revision,
         target_revision=args.target_revision,
@@ -569,6 +574,13 @@ def _run_c07_fresh_source_bootstrap(
     result = bootstrap.run_fresh_source_bootstrap_action(
         database_url=args.database_url,
         pgpassfile=args.pgpassfile,
+        generation_program_path=_resolve_generation_program(
+            args.generation_program_path
+        ),
+        expected_generation_program_sha256=(
+            args.expected_generation_program_sha256
+        ),
+        generation_operation_id=args.generation_operation_id,
         source_revision=args.source_revision,
         target_revision=args.target_revision,
     )
@@ -581,58 +593,34 @@ def _run_c07_fresh_source_bootstrap(
     return 0
 
 
-def _run_c07_maintenance_plan(
+def _run_generation_program_validation(
     argv: list[str],
     *,
     input_stream: BinaryIO | None = None,
     output_stream: TextIO | None = None,
 ) -> int:
-    """Inspect the frozen graph without opening PostgreSQL."""
+    """Validate the build-owned program without opening PostgreSQL."""
 
-    args = _parse_c07_maintenance_plan_args(argv)
+    args = _parse_generation_program_validation_args(argv)
     if input_stream is None:
         input_stream = sys.stdin.buffer
     if output_stream is None:
         output_stream = sys.stdout
     if input_stream is None or output_stream is None:
-        raise RuntimeError("C07 maintenance plan requires redirected stdin/stdout")
+        raise RuntimeError("generation program validation requires redirected stdin/stdout")
     if input_stream.read(1) != b"":
-        raise RuntimeError("C07 maintenance plan requires empty stdin")
-    maintenance = _load_c07_maintenance_upgrade_module()
-    result = maintenance.get_installed_maintenance_plan(
-        source_revision=args.source_revision,
-    )
-    if tuple(result) != _C07_MAINTENANCE_PLAN_FIELDS:
-        raise RuntimeError("C07 maintenance plan returned an unsupported shape")
-    output_stream.write(
-        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
-    )
-    output_stream.flush()
-    return 0
-
-
-def _run_managed_schema_plan(
-    argv: list[str],
-    *,
-    input_stream: BinaryIO | None = None,
-    output_stream: TextIO | None = None,
-) -> int:
-    args = _parse_managed_schema_plan_args(argv)
-    if input_stream is None:
-        input_stream = sys.stdin.buffer
-    if output_stream is None:
-        output_stream = sys.stdout
-    if input_stream is None or output_stream is None:
-        raise RuntimeError("managed schema plan requires redirected stdin/stdout")
-    if input_stream.read(1) != b"":
-        raise RuntimeError("managed schema plan requires empty stdin")
-
+        raise RuntimeError("generation program validation requires empty stdin")
     managed = _load_managed_schema_upgrade_module()
-    result = managed.get_managed_schema_plan(
-        source_revision=args.source_revision,
+    result = managed.validate_database_generation_program(
+        generation_program_path=_resolve_generation_program(
+            args.generation_program_path
+        ),
+        expected_generation_program_sha256=(
+            args.expected_generation_program_sha256
+        ),
     )
-    if tuple(result) != _MANAGED_SCHEMA_PLAN_FIELDS:
-        raise RuntimeError("managed schema plan returned an unsupported result shape")
+    if tuple(result) != _GENERATION_PROGRAM_VALIDATION_FIELDS:
+        raise RuntimeError("generation program validation returned an unsupported shape")
     output_stream.write(
         json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
     )
@@ -661,11 +649,15 @@ def _run_managed_schema_upgrade(
     result = managed.run_managed_schema_upgrade_action(
         database_url=args.database_url,
         pgpassfile=args.pgpassfile,
+        generation_program_path=_resolve_generation_program(
+            args.generation_program_path
+        ),
+        expected_generation_program_sha256=(
+            args.expected_generation_program_sha256
+        ),
         source_revision=args.source_revision,
         target_revision=args.target_revision,
-        expected_revision_manifest_sha256=(
-            args.expected_revision_manifest_sha256
-        ),
+        generation_operation_id=args.generation_operation_id,
     )
     if tuple(result) != _MANAGED_SCHEMA_RESULT_FIELDS:
         raise RuntimeError(
@@ -703,6 +695,12 @@ def _run_c07_maintenance_upgrade(
         mode=args.mode,
         database_url=args.database_url,
         pgpassfile=args.pgpassfile,
+        generation_program_path=_resolve_generation_program(
+            args.generation_program_path
+        ),
+        expected_generation_program_sha256=(
+            args.expected_generation_program_sha256
+        ),
         operation_id=args.operation_id,
         source_revision=args.source_revision,
         target_revision=args.target_revision,
@@ -800,6 +798,12 @@ def _run_c07_target_semantic(
     result = maintenance.run_target_semantic_digest_action(
         database_url=args.database_url,
         pgpassfile=args.pgpassfile,
+        generation_program_path=_resolve_generation_program(
+            args.generation_program_path
+        ),
+        expected_generation_program_sha256=(
+            args.expected_generation_program_sha256
+        ),
         operation_id=args.operation_id,
         database=args.database,
         snapshot_id=args.snapshot_id,
@@ -830,13 +834,13 @@ def _run_c07_target_semantic(
 def _resolve_writable_data_dir() -> Path:
     """Writable data root for files the backend *creates* (uploads, .env, backups).
 
-    Honors an installer/service-preset ``TICKETBOX_DATA_DIR`` — the ADR-0047
-    service deployment points it at the machine ``CommonApplicationData/Ticketbox/app`` root because the
-    onedir EXE lives in a read-only/locked location. Only when it is unset/blank
-    do we fall back to a ``ticketbox-data/`` folder next to the EXE (dev / the
-    single-folder 档 A install). Resolving a preset HERE — instead of computing
-    the EXE-adjacent default and unconditionally overwriting the preset later —
-    is what lets the service run from a read-only ``Program Files`` install.
+    Honors an installer/service-preset ``TICKETBOX_DATA_DIR``. The formal
+    service points it at the machine-owned
+    ``CommonApplicationData/TicketboxRuntimeBinding/data-root/app`` junction;
+    the v2 marker and Volume GUID bind its target to physical
+    ``<DataRoot>/app``. Only source/development runs may fall back to a
+    ``ticketbox-data/`` folder beside the program root. Respecting the preset
+    lets the service run from a read-only ``Program Files`` install.
     """
     preset = os.environ.get("TICKETBOX_DATA_DIR", "").strip()
     if preset:
@@ -1419,12 +1423,11 @@ def main() -> int | None:
         for switch in (
             _C07_PRODUCTION_MIGRATION_SWITCH,
             _C07_FRESH_SOURCE_BOOTSTRAP_SWITCH,
-            _C07_MAINTENANCE_PLAN_SWITCH,
             _C07_MAINTENANCE_UPGRADE_SWITCH,
             _C07_MONEY_FACTS_SWITCH,
             _C07_TARGET_SEMANTIC_SWITCH,
-            _MANAGED_SCHEMA_PLAN_SWITCH,
             _MANAGED_SCHEMA_UPGRADE_SWITCH,
+            _GENERATION_PROGRAM_VALIDATE_SWITCH,
         )
         if switch in arguments
     ]
@@ -1439,12 +1442,10 @@ def main() -> int | None:
             return _run_c07_production_migration(arguments)
         if maintenance_switches[0] == _C07_FRESH_SOURCE_BOOTSTRAP_SWITCH:
             return _run_c07_fresh_source_bootstrap(arguments)
-        if maintenance_switches[0] == _C07_MAINTENANCE_PLAN_SWITCH:
-            return _run_c07_maintenance_plan(arguments)
-        if maintenance_switches[0] == _MANAGED_SCHEMA_PLAN_SWITCH:
-            return _run_managed_schema_plan(arguments)
         if maintenance_switches[0] == _MANAGED_SCHEMA_UPGRADE_SWITCH:
             return _run_managed_schema_upgrade(arguments)
+        if maintenance_switches[0] == _GENERATION_PROGRAM_VALIDATE_SWITCH:
+            return _run_generation_program_validation(arguments)
         if maintenance_switches[0] == _C07_MAINTENANCE_UPGRADE_SWITCH:
             return _run_c07_maintenance_upgrade(arguments)
         if maintenance_switches[0] == _C07_MONEY_FACTS_SWITCH:

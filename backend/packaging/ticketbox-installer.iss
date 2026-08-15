@@ -119,6 +119,7 @@ DisableWelcomePage=no
 UsePreviousAppDir=no
 OutputDir=..\dist\installer
 OutputBaseFilename=Ticketbox-Setup-{#AppVersion}
+OutputManifestFile=ticketbox-installer-content.tsv
 SetupIconFile=ticketbox.ico
 Compression=lzma2
 SolidCompression=yes
@@ -174,7 +175,8 @@ Source: "windows_pg_recovery_tools.ps1"; Flags: dontcopy noencryption
 Source: "windows_release_config.ps1"; Flags: dontcopy noencryption
 Source: "windows-release-config.json"; Flags: dontcopy noencryption
 Source: "ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\ticketbox-backend\*"; DestDir: "{app}\program\ticketbox-backend"; Excludes: "ticketbox-data\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\ticketbox-backend\DATABASE_GENERATION_PROGRAM.json"; DestDir: "{app}\program\ticketbox-backend"; Flags: ignoreversion
+Source: "..\dist\ticketbox-backend\*"; DestDir: "{app}\program\ticketbox-backend"; Excludes: "ticketbox-data\*,DATABASE_GENERATION_PROGRAM.json"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "vendor\pg\*"; DestDir: "{app}\pg"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "vendor\shawl\shawl.exe"; DestDir: "{app}\shawl"; Flags: ignoreversion

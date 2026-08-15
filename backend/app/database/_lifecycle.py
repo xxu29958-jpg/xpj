@@ -10,6 +10,10 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 
 from app.database._core import engine
+from app.database._database_generation_program import (
+    ALEMBIC_PROGRAM_ATTRIBUTE,
+    DatabaseGenerationProgram,
+)
 
 
 class DatabaseMigrationPreflightError(RuntimeError):
@@ -113,17 +117,32 @@ def inspect_database_lifecycle(
         return _inspect_database_lifecycle(owned_connection)
 
 
-def load_alembic_context() -> AlembicContext:
+def load_alembic_context(
+    *,
+    installed_program: DatabaseGenerationProgram | None = None,
+) -> AlembicContext:
     """Resolve the single Alembic head before startup is allowed to mutate."""
 
     try:
         from alembic.config import Config
-        from alembic.script import ScriptDirectory
-        from alembic.util import CommandError
     except ImportError as exc:
         raise DatabaseMigrationPreflightError(
             "拒绝初始化数据库:Alembic 不可用,无法建立可追踪的 PostgreSQL schema。"
         ) from exc
+
+    if installed_program is not None:
+        config = Config()
+        config.attributes[ALEMBIC_PROGRAM_ATTRIBUTE] = installed_program
+        return AlembicContext(
+            config=config,
+            head_revision=installed_program.target_revision,
+            known_revisions=frozenset(
+                revision.revision for revision in installed_program.revisions
+            ),
+        )
+
+    from alembic.script import ScriptDirectory
+    from alembic.util import CommandError
 
     backend_root = Path(__file__).resolve().parents[2]
     ini_path = backend_root / "alembic.ini"

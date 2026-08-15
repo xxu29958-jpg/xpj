@@ -19,12 +19,13 @@ def _resolve_data_root(backend_root: Path) -> Path:
     ``.env`` (Owner Console) and PostgreSQL backups.
 
     Defaults to ``backend_root`` so a normal source/dev run (and the whole test
-    suite) is unchanged. The frozen-EXE launcher (``packaging/launch.py``) sets
-    ``TICKETBOX_DATA_DIR`` to a writable ``ticketbox-data/`` folder next to the
-    EXE, because ``BACKEND_ROOT`` in a frozen build is PyInstaller's throwaway
-    ``_MEIPASS`` extraction dir — anything written there is silently lost on
-    restart. Read-only program assets (templates / static / migrations /
-    alembic.ini) keep resolving against ``BACKEND_ROOT``.
+    suite) is unchanged. The formal Windows service contract sets
+    ``TICKETBOX_DATA_DIR`` to the machine-owned
+    ``TicketboxRuntimeBinding/data-root/app`` junction. Its v2 marker and Volume
+    GUID bind the junction to the installer-selected physical
+    ``<DataRoot>/app``. This must not fall back to ``BACKEND_ROOT`` in a frozen
+    build because that is PyInstaller's throwaway ``_MEIPASS`` extraction dir.
+    Read-only program assets keep resolving against ``BACKEND_ROOT``.
     """
     raw = os.environ.get("TICKETBOX_DATA_DIR", "").strip()
     if not raw:

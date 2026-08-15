@@ -32,13 +32,16 @@ from app.database._c07_maintenance_common import (
     _validated_migrator_url,
     _validated_pgpass_path,
 )
-from app.database._c07_maintenance_plan import (
+from app.database._c07_transaction_timeout import c07_prearmed_transaction
+from app.database._database_generation_program import (
+    DatabaseGenerationProgramError,
+    load_database_generation_program,
+)
+from app.database_generation_c07_contract import (
     C07_SOURCE_REVISION,
     C07_TARGET_REVISION,
     C07MaintenanceUpgradeError,
-    load_exact_maintenance_plan,
 )
-from app.database._c07_transaction_timeout import c07_prearmed_transaction
 from app.services.secure_file import hold_protected_file_for_read
 
 MONEY_FACTS_RESULT_SCHEMA = "ticketbox-c07-money-facts-result-v2"
@@ -281,6 +284,8 @@ def run_target_semantic_digest_action(
     *,
     database_url: str,
     pgpassfile: Path,
+    generation_program_path: Path,
+    expected_generation_program_sha256: str,
     operation_id: str,
     database: str,
     snapshot_id: str,
@@ -294,15 +299,22 @@ def run_target_semantic_digest_action(
     """Attest only the exact C07 money resources and stored facts."""
 
     try:
-        plan = load_exact_maintenance_plan(
-            source_revision=source_revision,
-            target_revision=target_revision,
+        program = load_database_generation_program(
+            path=generation_program_path,
+            expected_sha256=expected_generation_program_sha256,
         )
+        if (
+            source_revision != program.c07.source_revision
+            or target_revision != program.c07.target_revision
+        ):
+            raise C07MaintenanceUpgradeError(
+                "target attestation edge differs from the generation program"
+            )
         expected_manifest = _required_lower_sha256(
             expected_revision_manifest_sha256,
             label="maintenance revision manifest",
         )
-        if expected_manifest != plan.revision_manifest_sha256:
+        if expected_manifest != program.c07.revision_manifest_sha256:
             raise C07MaintenanceUpgradeError(
                 "target attestation manifest differs from the packaged edge"
             )
@@ -331,13 +343,13 @@ def run_target_semantic_digest_action(
             operation=operation,
             database=bound_database,
             snapshot=snapshot,
-            revision_manifest_sha256=plan.revision_manifest_sha256,
+            revision_manifest_sha256=program.c07.revision_manifest_sha256,
             authority=authority,
             ceiling=ceiling,
             shape=shape,
             facts=facts,
         )
-    except C07MaintenanceUpgradeError:
+    except (C07MaintenanceUpgradeError, DatabaseGenerationProgramError):
         raise
     except (C07CeremonyError, OSError, SQLAlchemyError, RuntimeError, ValueError):
         raise C07MaintenanceUpgradeError(

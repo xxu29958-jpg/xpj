@@ -504,9 +504,9 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 ---
 
-## 12. 备份与恢复
+## 12. 备份与 scratch 可读性演练
 
-**验收项**：Windows 计划任务能自动备份 PostgreSQL 数据库，`pg_restore` 恢复可用。
+**验收项**：Windows 计划任务能自动备份 PostgreSQL 数据库，归档可恢复到隔离 scratch 库。
 
 **执行人**：服务拥有者
 
@@ -521,7 +521,7 @@ Get-ScheduledTask -TaskName TicketboxBackup
 手动触发一次备份（可选）：
 
 ```powershell
-# 查看已有备份(路径跟随 DATA_ROOT:源码运行 backend\backups\,冻结 EXE ticketbox-data\backups\)
+# 查看已有备份（源码默认 backend\backups；正式服务经 runtime junction 访问物理 <DataRoot>\app\backups）
 $BackupDir = if ($env:TICKETBOX_DATA_DIR) { Join-Path $env:TICKETBOX_DATA_DIR "backups" } else { "E:\projects\xiaopiaojia\backend\backups" }
 Get-ChildItem (Join-Path $BackupDir "*.dump") -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3
 ```
@@ -532,13 +532,14 @@ Get-ChildItem (Join-Path $BackupDir "*.dump") -ErrorAction SilentlyContinue | So
 **预期结果**：
 
 - `TicketboxBackup` 计划任务状态为 Ready 或 Running。
-- `<DATA_ROOT>\backups\` 目录下有 `.dump` 备份文件(源码运行 `backend\backups\`,冻结 EXE `ticketbox-data\backups\`)。
+- `<DATA_ROOT>\backups\` 目录下有 `.dump` 备份文件（源码运行 `backend\backups\`；正式服务经 `TicketboxRuntimeBinding\data-root\app` 访问物理 `<DataRoot>\app\backups\`）。
 - `pg_restore` 能把 `.dump` 归档恢复到 scratch 库，数据计数与源库一致。
+- 本项不证明正式 Windows 恢复入口；该能力尚未出货并继续 `QUALIFIED_HOLD`。
 
 **失败处理**：
 
 - 若备份任务不存在，运行 `scripts\install_windows_tasks.ps1` 创建。
-- 若恢复失败，检查备份文件路径是否正确，检查后端是否已停止。
+- 若 scratch 演练失败，检查备份文件、隔离数据库和 PostgreSQL 工具链；不要停止或覆盖正式安装。
 
 **是否阻断灰度**：否。备份是运维保障，不直接影响用户功能，但首次灰度前建议确认备份机制正常。
 

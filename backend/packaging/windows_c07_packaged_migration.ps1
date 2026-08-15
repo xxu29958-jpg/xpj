@@ -20,18 +20,16 @@ $script:TicketboxC07PackagedMigrationContextSchema =
     "ticketbox-c07-production-migration-context-v5"
 $script:TicketboxC07PackagedFreshSourceResultSchema =
     "ticketbox-c07-fresh-source-bootstrap-result-v1"
-$script:TicketboxC07PackagedMaintenancePlanSchema =
-    "ticketbox-c07-maintenance-plan-v2"
+$script:TicketboxDatabaseGenerationProgramValidationSchema =
+    "ticketbox-database-generation-program-validation-v1"
 $script:TicketboxC07PackagedMaintenanceResultSchema =
     "ticketbox-c07-maintenance-upgrade-result-v3"
 $script:TicketboxC07PackagedMoneyFactsResultSchema =
     "ticketbox-c07-money-facts-result-v2"
 $script:TicketboxC07PackagedTargetSemanticResultSchema =
     "ticketbox-c07-target-semantic-result-v1"
-$script:TicketboxManagedSchemaPlanSchema =
-    "ticketbox-managed-schema-plan-v1"
 $script:TicketboxManagedSchemaResultSchema =
-    "ticketbox-managed-schema-upgrade-result-v1"
+    "ticketbox-managed-schema-upgrade-result-v2"
 $script:TicketboxC07PackagedMigrationTimeoutMs = 1500000
 
 function Get-TicketboxC07PackagedRemainingTimeoutMilliseconds {
@@ -72,6 +70,7 @@ function Assert-TicketboxC07PackagedMigrationDependencies {
         "Close-TicketboxC07MigrationHelperLease",
         "ConvertTo-TicketboxC07CompactJson",
         "Get-TicketboxC07TextSha256",
+        "Get-TicketboxPortableFileSha256",
         "Get-TicketboxPathEntryKindNoFollow",
         "Invoke-TicketboxC07WithPlainSecret",
         "Invoke-TicketboxBoundedNativeProcess",
@@ -225,38 +224,43 @@ function ConvertFrom-TicketboxC07PackagedFreshSourceResult {
     return $result
 }
 
-function ConvertFrom-TicketboxC07PackagedMaintenancePlan {
+function ConvertFrom-TicketboxDatabaseGenerationProgramValidation {
     param(
         [Parameter(Mandatory = $true)][string]$StandardOutput,
-        [Parameter(Mandatory = $true)][string]$SourceRevision
+        [Parameter(Mandatory = $true)][string]$ExpectedProgramSha256
     )
 
     $jsonLine = Get-TicketboxC07PackagedJsonLine `
         -StandardOutput $StandardOutput `
-        -Label "C07 packaged maintenance plan"
+        -Label "database generation program validation"
     try {
         $result = $jsonLine | ConvertFrom-Json
     }
     catch {
-        throw "C07 packaged maintenance plan stdout 不是有效 JSON。"
+        throw "database generation program validation stdout 不是有效 JSON。"
     }
     Assert-TicketboxC07ExactProperties `
         -Value $result `
         -ExpectedNames @(
             "schema",
-            "operation_kind",
             "source_revision",
             "target_revision",
-            "upgrade_required",
-            "revision_manifest",
-            "revision_manifest_sha256"
+            "revision_count",
+            "generation_program_sha256",
+            "c07_source_revision",
+            "c07_target_revision",
+            "c07_revision_manifest",
+            "c07_revision_manifest_sha256"
         ) `
-        -ArtifactName "packaged maintenance plan"
+        -ArtifactName "database generation program validation"
     Assert-TicketboxC07LowerSha256 `
-        ([string]$result.revision_manifest_sha256) `
-        "C07 packaged revision manifest"
+        ([string]$result.generation_program_sha256) `
+        "database generation program"
+    Assert-TicketboxC07LowerSha256 `
+        ([string]$result.c07_revision_manifest_sha256) `
+        "database generation C07 manifest"
     Assert-TicketboxC07ExactProperties `
-        -Value $result.revision_manifest `
+        -Value $result.c07_revision_manifest `
         -ExpectedNames @(
             "schema",
             "operation_kind",
@@ -264,8 +268,8 @@ function ConvertFrom-TicketboxC07PackagedMaintenancePlan {
             "target_revision",
             "revisions"
         ) `
-        -ArtifactName "packaged revision manifest"
-    $revisions = @($result.revision_manifest.revisions)
+        -ArtifactName "database generation C07 manifest"
+    $revisions = @($result.c07_revision_manifest.revisions)
     if ($revisions.Count -ne 1) {
         throw "C07 packaged revision manifest 必须只有 exact C07 revision。"
     }
@@ -287,35 +291,139 @@ function ConvertFrom-TicketboxC07PackagedMaintenancePlan {
             ([string]$revision.module_sha256) `
             "C07 packaged revision module"
     }
-    $manifestCanonical = ConvertTo-TicketboxC07CompactJson (
-        $result.revision_manifest
-    )
+    $manifestCanonical = ConvertTo-TicketboxC07CompactJson `
+        $result.c07_revision_manifest
     $manifestSha256 = (
         Get-TicketboxC07TextSha256 $manifestCanonical
     ).ToLowerInvariant()
     if (
         $jsonLine -cne (ConvertTo-TicketboxC07CompactJson $result) -or
         [string]$result.schema -cne
-            $script:TicketboxC07PackagedMaintenancePlanSchema -or
-        [string]$result.source_revision -cne $SourceRevision -or
-        [string]$result.source_revision -cne "20260722_0001" -or
-        [string]$result.operation_kind -cne
-            "c07_money_minor_bigint_v1" -or
-        [string]$result.target_revision -cne "20260729_0001" -or
-        [string]$result.revision_manifest.schema -cne
+            $script:TicketboxDatabaseGenerationProgramValidationSchema -or
+        [string]$result.source_revision -cne "base" -or
+        [string]::IsNullOrWhiteSpace([string]$result.target_revision) -or
+        [int64]$result.revision_count -lt 1 -or
+        [string]$result.generation_program_sha256 -cne
+            $ExpectedProgramSha256.ToLowerInvariant() -or
+        [string]$result.c07_source_revision -cne "20260722_0001" -or
+        [string]$result.c07_target_revision -cne "20260729_0001" -or
+        [string]$result.c07_revision_manifest.schema -cne
             "ticketbox-c07-revision-manifest-v1" -or
-        [string]$result.revision_manifest.operation_kind -cne
-            [string]$result.operation_kind -or
-        [string]$result.revision_manifest.source_revision -cne
-            [string]$result.source_revision -or
-        [string]$result.revision_manifest.target_revision -cne
-            [string]$result.target_revision -or
-        [string]$result.revision_manifest_sha256 -cne $manifestSha256 -or
-        $result.upgrade_required -isnot [bool] -or
-        -not [bool]$result.upgrade_required
+        [string]$result.c07_revision_manifest.operation_kind -cne
+            "c07_money_minor_bigint_v1" -or
+        [string]$result.c07_revision_manifest.source_revision -cne
+            [string]$result.c07_source_revision -or
+        [string]$result.c07_revision_manifest.target_revision -cne
+            [string]$result.c07_target_revision -or
+        [string]$result.c07_revision_manifest_sha256 -cne $manifestSha256
     ) {
-        throw "C07 packaged maintenance plan 未绑定 exact source/head。"
+        throw "database generation program 未绑定 exact release chain。"
     }
+    return $result
+}
+
+function ConvertTo-TicketboxDatabaseGenerationProgramEvidence {
+    param([Parameter(Mandatory = $true)][object]$Value)
+
+    Assert-TicketboxC07ExactProperties `
+        -Value $Value `
+        -ExpectedNames @("RelativePath", "Size", "Sha256") `
+        -ArtifactName "database generation program evidence"
+    Assert-TicketboxC07LowerSha256 `
+        ([string]$Value.Sha256).ToLowerInvariant() `
+        "database generation program"
+    if (
+        [string]$Value.RelativePath -cne "DATABASE_GENERATION_PROGRAM.json" -or
+        [int64]$Value.Size -lt 1
+    ) {
+        throw "database generation program evidence 无效。"
+    }
+    return [pscustomobject][ordered]@{
+        RelativePath = [string]$Value.RelativePath
+        Size = [int64]$Value.Size
+        Sha256 = ([string]$Value.Sha256).ToLowerInvariant()
+    }
+}
+
+function Assert-TicketboxDatabaseGenerationProgram {
+    param(
+        [Parameter(Mandatory = $true)][string]$ProgramPath,
+        [Parameter(Mandatory = $true)][object]$ProgramEvidence,
+        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath
+    )
+
+    $evidence = ConvertTo-TicketboxDatabaseGenerationProgramEvidence `
+        $ProgramEvidence
+    $expectedPath = Join-Path `
+        ([System.IO.Path]::GetDirectoryName(
+            [System.IO.Path]::GetFullPath($ExpectedMigrationHelperPath)
+        )) `
+        $evidence.RelativePath
+    if (
+        -not (Test-TicketboxPathEquals $ProgramPath $expectedPath) -or
+        (Get-TicketboxPathEntryKindNoFollow $ProgramPath) -cne "File"
+    ) {
+        throw "database generation program 不在 frozen payload root。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $ProgramPath
+    $item = Get-Item -LiteralPath $ProgramPath -Force
+    $sha256 = (Get-TicketboxPortableFileSha256 $ProgramPath).ToLowerInvariant()
+    if (
+        [int64]$item.Length -ne $evidence.Size -or
+        $sha256 -cne $evidence.Sha256
+    ) {
+        throw "database generation program bytes 与 release evidence 不一致。"
+    }
+    return [pscustomobject][ordered]@{
+        Path = [System.IO.Path]::GetFullPath($ProgramPath)
+        Evidence = $evidence
+    }
+}
+
+function Get-TicketboxC07PackagedDatabaseGenerationProgram {
+    param(
+        [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
+        [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
+        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath,
+        [Parameter(Mandatory = $true)][string]$ProgramPath,
+        [Parameter(Mandatory = $true)][object]$ProgramEvidence
+    )
+
+    Assert-TicketboxC07PackagedMigrationDependencies
+    $program = Assert-TicketboxDatabaseGenerationProgram `
+        -ProgramPath $ProgramPath `
+        -ProgramEvidence $ProgramEvidence `
+        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath
+    $process = Invoke-TicketboxC07BoundMigrationHelper `
+        -MigrationHelperPath $MigrationHelperPath `
+        -MigrationHelperEvidence $MigrationHelperEvidence `
+        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath `
+        -Arguments @(
+            "--validate-generation-program",
+            "--generation-program-path",
+            $program.Evidence.RelativePath,
+            "--expected-generation-program-sha256",
+            $program.Evidence.Sha256
+        ) `
+        -StandardInputText "" `
+        -TimeoutMilliseconds $script:TicketboxC07PackagedMigrationTimeoutMs `
+        -Label "database generation program validation"
+    if (
+        [int]$process.ExitCode -ne 0 -or
+        -not [string]::IsNullOrWhiteSpace([string]$process.StandardError)
+    ) {
+        throw (
+            "database generation program validation 被拒绝" +
+            "（exit=$([int]$process.ExitCode)）；原生输出已抑制。"
+        )
+    }
+    $result = ConvertFrom-TicketboxDatabaseGenerationProgramValidation `
+        -StandardOutput ([string]$process.StandardOutput) `
+        -ExpectedProgramSha256 $program.Evidence.Sha256
+    Assert-TicketboxDatabaseGenerationProgram `
+        -ProgramPath $program.Path `
+        -ProgramEvidence $program.Evidence `
+        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath | Out-Null
     return $result
 }
 
@@ -884,6 +992,8 @@ function Invoke-TicketboxC07PackagedTargetSemanticAction {
         [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
         [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
         [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath,
+        [Parameter(Mandatory = $true)][string]$ProgramPath,
+        [Parameter(Mandatory = $true)][object]$ProgramEvidence,
         [AllowEmptyString()][string]$CreateAttemptId = ""
     )
     Assert-TicketboxC07PackagedMigrationDependencies
@@ -931,6 +1041,10 @@ function Invoke-TicketboxC07PackagedTargetSemanticAction {
     $capturedSnapshotId = $SnapshotId
     $capturedSourceRevision = $SourceRevision
     $capturedTargetRevision = $TargetRevision
+    $capturedProgram = Assert-TicketboxDatabaseGenerationProgram `
+        -ProgramPath $ProgramPath `
+        -ProgramEvidence $ProgramEvidence `
+        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath
     $capturedRevisionManifestSha256 =
         $RevisionManifestSha256.ToLowerInvariant()
     $capturedMaintenanceDeadlineUtc = $MaintenanceDeadlineUtc
@@ -975,6 +1089,9 @@ function Invoke-TicketboxC07PackagedTargetSemanticAction {
             try {
                 $arguments = @(
                     "--c07-target-semantic-digest",
+                    "--generation-program-path", $capturedProgram.Evidence.RelativePath,
+                    "--expected-generation-program-sha256",
+                    $capturedProgram.Evidence.Sha256,
                     "--database-url", $passfile.DatabaseUrl,
                     "--pgpassfile", $passfile.Path,
                     "--operation-id", $capturedOperationId,
@@ -1041,42 +1158,6 @@ function Invoke-TicketboxC07PackagedTargetSemanticAction {
         }.GetNewClosure())
 }
 
-function Get-TicketboxC07PackagedInstalledUpgradePlan {
-    param(
-        [Parameter(Mandatory = $true)][string]$SourceRevision,
-        [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
-        [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
-        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath,
-        [AllowEmptyString()][string]$CreateAttemptId = ""
-    )
-
-    Assert-TicketboxC07PackagedMigrationDependencies
-    $process = Invoke-TicketboxC07BoundMigrationHelper `
-        -MigrationHelperPath $MigrationHelperPath `
-        -MigrationHelperEvidence $MigrationHelperEvidence `
-        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath `
-        -Arguments @(
-            "--c07-installed-upgrade-plan",
-            "--source-revision",
-            $SourceRevision
-        ) `
-        -StandardInputText "" `
-        -TimeoutMilliseconds $script:TicketboxC07PackagedMigrationTimeoutMs `
-        -Label "C07 packaged installed-upgrade plan"
-    if (
-        [int]$process.ExitCode -ne 0 -or
-        -not [string]::IsNullOrWhiteSpace([string]$process.StandardError)
-    ) {
-        throw (
-            "C07 packaged installed-upgrade plan 被拒绝" +
-            "（exit=$([int]$process.ExitCode)）；原生输出已抑制。"
-        )
-    }
-    return ConvertFrom-TicketboxC07PackagedMaintenancePlan `
-        -StandardOutput ([string]$process.StandardOutput) `
-        -SourceRevision $SourceRevision
-}
-
 function Invoke-TicketboxC07PackagedMaintenanceAction {
     param(
         [Parameter(Mandatory = $true)][object]$HostAuthority,
@@ -1097,6 +1178,8 @@ function Invoke-TicketboxC07PackagedMaintenanceAction {
         [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
         [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
         [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath,
+        [Parameter(Mandatory = $true)][string]$ProgramPath,
+        [Parameter(Mandatory = $true)][object]$ProgramEvidence,
         [AllowEmptyString()][string]$CreateAttemptId = ""
     )
 
@@ -1129,6 +1212,10 @@ function Invoke-TicketboxC07PackagedMaintenanceAction {
     $capturedExpectedHelper = [System.IO.Path]::GetFullPath(
         $ExpectedMigrationHelperPath
     )
+    $capturedProgram = Assert-TicketboxDatabaseGenerationProgram `
+        -ProgramPath $ProgramPath `
+        -ProgramEvidence $ProgramEvidence `
+        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath
     $capturedUrl = $databaseUrl
     $capturedMode = $Mode
     $capturedOperationId = $OperationId
@@ -1182,6 +1269,10 @@ function Invoke-TicketboxC07PackagedMaintenanceAction {
                     "--mode", $capturedMode,
                     "--database-url", $passfile.DatabaseUrl,
                     "--pgpassfile", $passfile.Path,
+                    "--generation-program-path",
+                    $capturedProgram.Evidence.RelativePath,
+                    "--expected-generation-program-sha256",
+                    $capturedProgram.Evidence.Sha256,
                     "--operation-id", $capturedOperationId,
                     "--source-revision", $capturedSourceRevision,
                     "--target-revision", $capturedTargetRevision,
@@ -1255,6 +1346,8 @@ function Invoke-TicketboxC07PackagedIsolatedReplayAction {
         [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
         [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
         [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath,
+        [Parameter(Mandatory = $true)][string]$ProgramPath,
+        [Parameter(Mandatory = $true)][object]$ProgramEvidence,
         [Parameter(Mandatory = $true)][string]$CreateAttemptId
     )
     return Invoke-TicketboxC07PackagedMaintenanceAction `
@@ -1272,6 +1365,8 @@ function Invoke-TicketboxC07PackagedIsolatedReplayAction {
         -MigrationHelperPath $MigrationHelperPath `
         -MigrationHelperEvidence $MigrationHelperEvidence `
         -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath `
+        -ProgramPath $ProgramPath `
+        -ProgramEvidence $ProgramEvidence `
         -CreateAttemptId $CreateAttemptId
 }
 
@@ -1284,7 +1379,10 @@ function Invoke-TicketboxC07PackagedFreshSourceBootstrapAction {
         [Parameter(Mandatory = $true)][string]$TargetRevision,
         [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
         [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
-        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath
+        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath,
+        [Parameter(Mandatory = $true)][string]$ProgramPath,
+        [Parameter(Mandatory = $true)][object]$ProgramEvidence,
+        [Parameter(Mandatory = $true)][string]$GenerationOperationId
     )
 
     Assert-TicketboxC07PackagedMigrationDependencies
@@ -1301,9 +1399,14 @@ function Invoke-TicketboxC07PackagedFreshSourceBootstrapAction {
     $capturedExpectedHelper = [System.IO.Path]::GetFullPath(
         $ExpectedMigrationHelperPath
     )
+    $capturedProgram = Assert-TicketboxDatabaseGenerationProgram `
+        -ProgramPath $ProgramPath `
+        -ProgramEvidence $ProgramEvidence `
+        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath
     $capturedUrl = $databaseUrl
     $capturedSourceRevision = $SourceRevision
     $capturedTargetRevision = $TargetRevision
+    $capturedOperationId = $GenerationOperationId
     $capturedTimeoutMs = $script:TicketboxC07PackagedMigrationTimeoutMs
     return Invoke-TicketboxC07WithPlainSecret `
         -Secret $MigratorPassword `
@@ -1324,6 +1427,12 @@ function Invoke-TicketboxC07PackagedFreshSourceBootstrapAction {
                         $passfile.DatabaseUrl,
                         "--pgpassfile",
                         $passfile.Path,
+                        "--generation-program-path",
+                        $capturedProgram.Evidence.RelativePath,
+                        "--expected-generation-program-sha256",
+                        $capturedProgram.Evidence.Sha256,
+                        "--generation-operation-id",
+                        $capturedOperationId,
                         "--source-revision",
                         $capturedSourceRevision,
                         "--target-revision",
@@ -1377,6 +1486,15 @@ function Invoke-TicketboxC07PackagedMigrationAction {
     $helperBinding = Assert-TicketboxC07PackagedMigrationHelper `
         -MigrationHelperPath $MigrationHelperPath `
         -MigrationHelperEvidence $MigrationHelperEvidence `
+        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath
+    $program = Assert-TicketboxDatabaseGenerationProgram `
+        -ProgramPath ([string]$ReleaseIdentity.DatabaseGenerationProgramPath) `
+        -ProgramEvidence ([pscustomobject][ordered]@{
+            RelativePath =
+                [string]$ReleaseIdentity.DatabaseGenerationProgramRelativePath
+            Size = [int64]$ReleaseIdentity.DatabaseGenerationProgramSize
+            Sha256 = [string]$ReleaseIdentity.DatabaseGenerationProgramSha256
+        }) `
         -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath
     Assert-TicketboxC07ExactProperties `
         -Value $MigrationContext `
@@ -1492,6 +1610,7 @@ function Invoke-TicketboxC07PackagedMigrationAction {
     $capturedExpectedHelper = [System.IO.Path]::GetFullPath(
         [string]$ReleaseIdentity.MigrationHelperPath
     )
+    $capturedProgram = $program
     $capturedUrl = $databaseUrl
     $capturedContextJson = $contextJson
     $capturedOperationId = [string]$MigrationContext.operation_id
@@ -1544,6 +1663,10 @@ function Invoke-TicketboxC07PackagedMigrationAction {
                         $passfile.DatabaseUrl,
                         "--pgpassfile",
                         $passfile.Path,
+                        "--generation-program-path",
+                        $capturedProgram.Evidence.RelativePath,
+                        "--expected-generation-program-sha256",
+                        $capturedProgram.Evidence.Sha256,
                         "--operation-id",
                         $capturedOperationId,
                         "--source-revision",
@@ -1583,79 +1706,6 @@ function Invoke-TicketboxC07PackagedMigrationAction {
         }.GetNewClosure())
 }
 
-function ConvertFrom-TicketboxManagedSchemaPlan {
-    param(
-        [Parameter(Mandatory = $true)][string]$StandardOutput,
-        [Parameter(Mandatory = $true)][string]$SourceRevision
-    )
-
-    $jsonLine = Get-TicketboxC07PackagedJsonLine `
-        -StandardOutput $StandardOutput `
-        -Label "managed schema plan helper"
-    try { $result = $jsonLine | ConvertFrom-Json }
-    catch { throw "managed schema plan helper stdout 不是有效 JSON。" }
-    Assert-TicketboxC07ExactProperties `
-        -Value $result `
-        -ExpectedNames @(
-            "schema",
-            "source_revision",
-            "target_revision",
-            "upgrade_required",
-            "revision_count",
-            "revision_manifest_sha256"
-        ) `
-        -ArtifactName "managed schema plan"
-    Assert-TicketboxC07LowerSha256 `
-        ([string]$result.revision_manifest_sha256) `
-        "managed schema revision manifest"
-    if (
-        $jsonLine -cne (ConvertTo-TicketboxC07CompactJson $result) -or
-        [string]$result.schema -cne $script:TicketboxManagedSchemaPlanSchema -or
-        [string]$result.source_revision -cne $SourceRevision -or
-        [string]::IsNullOrWhiteSpace([string]$result.target_revision) -or
-        [int]$result.revision_count -lt 0 -or
-        [bool]$result.upgrade_required -ne ([int]$result.revision_count -gt 0)
-    ) {
-        throw "managed schema plan 未绑定 frozen release graph。"
-    }
-    return $result
-}
-
-function Get-TicketboxPackagedManagedSchemaPlan {
-    param(
-        [Parameter(Mandatory = $true)][string]$SourceRevision,
-        [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
-        [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
-        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath
-    )
-
-    Assert-TicketboxC07PackagedMigrationDependencies
-    $process = Invoke-TicketboxC07BoundMigrationHelper `
-        -MigrationHelperPath $MigrationHelperPath `
-        -MigrationHelperEvidence $MigrationHelperEvidence `
-        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath `
-        -Arguments @(
-            "--managed-schema-plan",
-            "--source-revision",
-            $SourceRevision
-        ) `
-        -StandardInputText "" `
-        -TimeoutMilliseconds $script:TicketboxC07PackagedMigrationTimeoutMs `
-        -Label "managed schema frozen plan"
-    if (
-        [int]$process.ExitCode -ne 0 -or
-        -not [string]::IsNullOrWhiteSpace([string]$process.StandardError)
-    ) {
-        throw (
-            "managed schema frozen plan 被拒绝" +
-            "（exit=$([int]$process.ExitCode)）；原生输出已抑制。"
-        )
-    }
-    return ConvertFrom-TicketboxManagedSchemaPlan `
-        -StandardOutput ([string]$process.StandardOutput) `
-        -SourceRevision $SourceRevision
-}
-
 function ConvertFrom-TicketboxManagedSchemaResult {
     param(
         [Parameter(Mandatory = $true)][string]$StandardOutput,
@@ -1673,22 +1723,22 @@ function ConvertFrom-TicketboxManagedSchemaResult {
             "schema",
             "source_revision",
             "target_revision",
-            "revision_manifest_sha256",
+            "generation_program_sha256",
             "result",
             "alembic_revision"
         ) `
         -ArtifactName "managed schema migration result"
     Assert-TicketboxC07LowerSha256 `
-        ([string]$result.revision_manifest_sha256) `
-        "managed schema migration manifest"
+        ([string]$result.generation_program_sha256) `
+        "managed schema generation program"
     if (
         $jsonLine -cne (ConvertTo-TicketboxC07CompactJson $result) -or
         [string]$result.schema -cne $script:TicketboxManagedSchemaResultSchema -or
         [string]$result.source_revision -cne [string]$Plan.source_revision -or
         [string]$result.target_revision -cne [string]$Plan.target_revision -or
         [string]$result.alembic_revision -cne [string]$Plan.target_revision -or
-        [string]$result.revision_manifest_sha256 -cne
-            [string]$Plan.revision_manifest_sha256 -or
+        [string]$result.generation_program_sha256 -cne
+            [string]$Plan.generation_program_sha256 -or
         [string]$result.result -cnotin @(
             "target_committed",
             "target_observed_after_interruption"
@@ -1706,11 +1756,14 @@ function Invoke-TicketboxPackagedManagedSchemaUpgrade {
         [Parameter(Mandatory = $true)][object]$Plan,
         [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
         [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
-        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath
+        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath,
+        [Parameter(Mandatory = $true)][string]$ProgramPath,
+        [Parameter(Mandatory = $true)][object]$ProgramEvidence
     )
 
     if (
-        [bool]$Plan.upgrade_required -ne ([int]$Plan.revision_count -gt 0) -or
+        [string]$Plan.generation_operation_id -cnotmatch
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' -or
         (
             -not [bool]$Plan.upgrade_required -and
             [string]$Plan.source_revision -cne [string]$Plan.target_revision
@@ -1726,6 +1779,17 @@ function Invoke-TicketboxPackagedManagedSchemaUpgrade {
     $capturedHelper = $MigrationHelperPath
     $capturedEvidence = $MigrationHelperEvidence
     $capturedExpectedHelper = $ExpectedMigrationHelperPath
+    $program = Assert-TicketboxDatabaseGenerationProgram `
+        -ProgramPath $ProgramPath `
+        -ProgramEvidence $ProgramEvidence `
+        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath
+    if (
+        $program.Evidence.Sha256 -cne
+            [string]$Plan.generation_program_sha256
+    ) {
+        throw "managed schema plan 未绑定 exact generation program。"
+    }
+    $capturedProgram = $program
     $capturedUrl = $databaseUrl
     return Invoke-TicketboxC07WithPlainSecret `
         -Secret $MigratorPassword `
@@ -1746,12 +1810,16 @@ function Invoke-TicketboxPackagedManagedSchemaUpgrade {
                         $passfile.DatabaseUrl,
                         "--pgpassfile",
                         $passfile.Path,
+                        "--generation-program-path",
+                        $capturedProgram.Evidence.RelativePath,
+                        "--expected-generation-program-sha256",
+                        $capturedProgram.Evidence.Sha256,
                         "--source-revision",
                         [string]$capturedPlan.source_revision,
                         "--target-revision",
                         [string]$capturedPlan.target_revision,
-                        "--expected-revision-manifest-sha256",
-                        [string]$capturedPlan.revision_manifest_sha256
+                        "--generation-operation-id",
+                        [string]$capturedPlan.generation_operation_id
                     ) `
                     -PgPassFilePath $passfile.Path `
                     -StandardInputText "" `

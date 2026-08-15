@@ -12,18 +12,6 @@ from app.database._c07_maintenance_digest import (
 from app.database._c07_maintenance_digest import (
     run_target_semantic_digest_action as run_target_semantic_digest_action,
 )
-from app.database._c07_maintenance_plan import (
-    C07_SOURCE_REVISION as C07_SOURCE_REVISION,
-)
-from app.database._c07_maintenance_plan import (
-    C07_TARGET_REVISION as C07_TARGET_REVISION,
-)
-from app.database._c07_maintenance_plan import (
-    C07MaintenanceUpgradeError as C07MaintenanceUpgradeError,
-)
-from app.database._c07_maintenance_plan import (
-    get_installed_maintenance_plan as get_installed_maintenance_plan,
-)
 from app.database._c07_maintenance_upgrade_action import (
     MAINTENANCE_RESULT_SCHEMA as MAINTENANCE_RESULT_SCHEMA,
 )
@@ -33,12 +21,20 @@ from app.database._c07_maintenance_upgrade_action import (
 from app.database._c07_maintenance_upgrade_action import (
     run_maintenance_upgrade_action as run_maintenance_upgrade_action,
 )
+from app.database_generation_c07_contract import (
+    C07_SOURCE_REVISION as C07_SOURCE_REVISION,
+)
+from app.database_generation_c07_contract import (
+    C07_TARGET_REVISION as C07_TARGET_REVISION,
+)
+from app.database_generation_c07_contract import (
+    C07MaintenanceUpgradeError as C07MaintenanceUpgradeError,
+)
 
 __all__ = [
     "C07_SOURCE_REVISION",
     "C07_TARGET_REVISION",
     "C07MaintenanceUpgradeError",
-    "get_installed_maintenance_plan",
     "run_maintenance_upgrade_action",
     "run_money_facts_digest_action",
     "run_target_semantic_digest_action",

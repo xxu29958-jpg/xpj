@@ -1281,7 +1281,7 @@ $script:historicalTargetRecovery = [pscustomobject]@{{
 function New-TestForwardIntent([string]$MarkerSha256) {{
     return [pscustomobject]@{{
         Payload = [pscustomobject]@{{
-            schema = 'ticketbox-c07-successor-intent-v2'
+            schema = 'ticketbox-c07-successor-intent-v3'
             successor_operation_id = $operation
             successor_mode = 'forward_repair'
             predecessor_operation_id = $script:predecessorOperation

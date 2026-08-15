@@ -158,6 +158,32 @@ def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -
         assert str(current_count) in violations[0]
 
 
+def test_pr_delta_allows_only_exact_portable_installer_test_retirement(monkeypatch) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    retirement_base = "051464999fc1f71d9072bb5c9cfc012b521181cd"
+
+    def violations_for(key: str, base: int, current: int, *, base_commit: str = retirement_base) -> list[str]:
+        baseline = dict(mod.STRICT_EQUALITY_BASELINE)
+        baseline[key] = current
+        monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
+        return mod._compute_ratchet_findings(
+            {key: base},
+            base_commit=base_commit,
+        )[1]
+
+    assert violations_for("installer_pytest_count", 387, 379) == []
+
+    for base_count, current_count in ((386, 379), (387, 380), (387, 378), (388, 379), (379, 378)):
+        assert len(violations_for("installer_pytest_count", base_count, current_count)) == 1
+
+    assert len(violations_for("installer_pytest_count", 387, 379, base_commit="f" * 40)) == 1
+
+    violations = violations_for("mutate_token_carriers", 387, 379)
+    assert len(violations) == 1
+    assert "mutate_token_carriers" in violations[0]
+    assert "base=387, current=379" in violations[0]
+
+
 def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
     monkeypatch,
     capsys,

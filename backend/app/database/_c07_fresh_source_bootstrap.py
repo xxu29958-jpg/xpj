@@ -6,33 +6,31 @@ file must stay independent of ``app.database`` and the ordinary runtime engine.
 
 from __future__ import annotations
 
-import configparser
 import ipaddress
 import os
 import re
-import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 
-from alembic import command
-from alembic.config import Config
-from alembic.script import ScriptDirectory
-from alembic.script.revision import ResolutionError, RevisionError
-from alembic.util.exc import CommandError
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, Connection, Engine, make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
-from app.alembic_revision_contract import assert_linear_descendant_chain
+from app.database._database_generation_executor import (
+    DatabaseGenerationExecutionError,
+    execute_database_generation,
+)
+from app.database._database_generation_program import (
+    BASE_SOURCE,
+    DatabaseGenerationProgram,
+    DatabaseGenerationProgramError,
+    load_database_generation_program,
+)
 from app.services.secure_file import hold_protected_file_for_read
 
 FRESH_SOURCE_BOOTSTRAP_RESULT_SCHEMA = "ticketbox-c07-fresh-source-bootstrap-result-v1"
-FRESH_SOURCE_BOOTSTRAP_ATTRIBUTE = "ticketbox_c07_fresh_source_bootstrap_v1"
-C07_ALEMBIC_PROTOCOL_ATTRIBUTE = "ticketbox_c07_json_protocol_v1"
-C07_GRAPH_BASE_REVISION = "20260524_0001"
 C07_SOURCE_REVISION = "20260722_0001"
 C07_TARGET_REVISION = "20260729_0001"
 DATABASE_NAME = "ticketbox"
@@ -42,86 +40,10 @@ SCHEMA_OWNER_ROLE = "ticketbox_owner"
 _RESULT_FIELDS = ("schema", "source_revision", "target_revision", "result", "alembic_revision")
 _CANONICAL_EMPTY_VERSION_RELATIONS = (("alembic_version", "r"), ("alembic_version_pkc", "i"))
 _PGPASS_NAME = re.compile(r"\.ticketbox-pgpass-[1-9][0-9]*-[0-9a-f]{32}\Z")
-_ALEMBIC_GRAPH_ERROR = "C07 fresh-source Alembic graph differs from the frozen release"
 
 
 class C07FreshSourceBootstrapError(RuntimeError):
     """The fresh database cannot safely bootstrap to the C07 source."""
-
-
-@dataclass(frozen=True)
-class FreshSourceAlembicPlan:
-    """Graph-proven Alembic configuration for this one release transition."""
-
-    config: Config
-    source_revision: str
-    target_revision: str
-
-
-def _backend_root() -> Path:
-    root = Path(__file__).resolve().parents[2]
-    root_text = str(root)
-    if root_text not in sys.path:
-        # Add the root containing the baseline's frozen ``migrations`` package.
-        sys.path.insert(0, root_text)
-    return root
-
-
-def _load_frozen_alembic_plan() -> FreshSourceAlembicPlan:
-    backend_root = _backend_root()
-    ini_path = backend_root / "alembic.ini"
-    migrations_path = backend_root / "migrations"
-    if not ini_path.is_file() or not (migrations_path / "env.py").is_file():
-        raise C07FreshSourceBootstrapError(
-            "C07 fresh-source Alembic program is unavailable"
-        )
-
-    config = Config(str(ini_path))
-    config.attributes[C07_ALEMBIC_PROTOCOL_ATTRIBUTE] = True
-    config.set_main_option("script_location", str(migrations_path))
-    try:
-        scripts = ScriptDirectory.from_config(config)
-        bases = tuple(scripts.get_bases())
-        heads = tuple(scripts.get_heads())
-        source = scripts.get_revision(C07_SOURCE_REVISION)
-        target = scripts.get_revision(C07_TARGET_REVISION)
-        source_chain = tuple(scripts.iterate_revisions(C07_SOURCE_REVISION, "base"))
-    except (CommandError, ResolutionError, RevisionError, configparser.Error, OSError, KeyError, ValueError):
-        raise C07FreshSourceBootstrapError(
-            "C07 fresh-source Alembic graph could not be resolved"
-        ) from None
-
-    if (
-        bases != (C07_GRAPH_BASE_REVISION,)
-        or len(heads) != 1
-        or source is None
-        or target is None
-        or source.revision != C07_SOURCE_REVISION
-        or target.revision != C07_TARGET_REVISION
-        or target.down_revision != C07_SOURCE_REVISION
-        or set(source.nextrev) != {C07_TARGET_REVISION}
-        or not source_chain
-        or source_chain[0].revision != C07_SOURCE_REVISION
-        or source_chain[-1].revision != C07_GRAPH_BASE_REVISION
-        or source_chain[-1].down_revision is not None
-        or any(
-            revision.dependencies is not None
-            or (
-                revision.down_revision is not None
-                and not isinstance(revision.down_revision, str)
-            )
-            for revision in source_chain
-        )
-    ):
-        raise C07FreshSourceBootstrapError(_ALEMBIC_GRAPH_ERROR)
-    assert_linear_descendant_chain(
-        scripts,
-        target_revision=C07_TARGET_REVISION,
-        head_revision=heads[0],
-        error_factory=C07FreshSourceBootstrapError,
-        error_message=_ALEMBIC_GRAPH_ERROR,
-    )
-    return FreshSourceAlembicPlan(config, C07_SOURCE_REVISION, C07_TARGET_REVISION)
 
 
 def _validated_migrator_url(database_url: str) -> URL:
@@ -426,9 +348,10 @@ def _current_revision(connection: Connection) -> str | None:
 def _run_fresh_source_with_connection(
     connection: Connection,
     *,
-    plan: FreshSourceAlembicPlan,
+    program: DatabaseGenerationProgram,
+    operation_id: str,
 ) -> dict[str, object]:
-    """Run the graph on an already-authorized transaction-bound connection."""
+    """Run the declared source suffix on an authorized transaction."""
 
     _assert_fresh_database_at_base(connection)
     if _current_revision(connection) is not None:
@@ -436,20 +359,29 @@ def _run_fresh_source_with_connection(
             "fresh-source database is not at Alembic base"
         )
 
-    plan.config.attributes["connection"] = connection
-    plan.config.attributes[FRESH_SOURCE_BOOTSTRAP_ATTRIBUTE] = True
-    command.upgrade(plan.config, plan.source_revision)
-    if _current_revision(connection) != plan.source_revision:
+    try:
+        execute_database_generation(
+            connection,
+            program=program,
+            source_revision=BASE_SOURCE,
+            target_revision=C07_SOURCE_REVISION,
+            operation_id=operation_id,
+        )
+    except DatabaseGenerationExecutionError as exc:
+        raise C07FreshSourceBootstrapError(
+            "fresh-source generation execution failed"
+        ) from exc
+    if _current_revision(connection) != C07_SOURCE_REVISION:
         raise C07FreshSourceBootstrapError(
             "fresh-source bootstrap did not reach the exact predecessor"
         )
 
     result: dict[str, object] = {
         "schema": FRESH_SOURCE_BOOTSTRAP_RESULT_SCHEMA,
-        "source_revision": plan.source_revision,
-        "target_revision": plan.target_revision,
+        "source_revision": C07_SOURCE_REVISION,
+        "target_revision": C07_TARGET_REVISION,
         "result": "source_committed",
-        "alembic_revision": plan.source_revision,
+        "alembic_revision": C07_SOURCE_REVISION,
     }
     if tuple(result) != _RESULT_FIELDS:
         raise AssertionError("fresh-source result field order changed")
@@ -460,6 +392,9 @@ def run_fresh_source_bootstrap_action(
     *,
     database_url: str,
     pgpassfile: Path,
+    generation_program_path: Path,
+    expected_generation_program_sha256: str,
+    generation_operation_id: str,
     source_revision: str,
     target_revision: str,
 ) -> dict[str, object]:
@@ -474,7 +409,22 @@ def run_fresh_source_bootstrap_action(
         )
     parsed_url = _validated_migrator_url(database_url)
     passfile = _validated_pgpass_path(pgpassfile)
-    plan = _load_frozen_alembic_plan()
+    try:
+        program = load_database_generation_program(
+            path=generation_program_path,
+            expected_sha256=expected_generation_program_sha256,
+        )
+    except DatabaseGenerationProgramError as exc:
+        raise C07FreshSourceBootstrapError(
+            "fresh-source generation program is invalid"
+        ) from exc
+    if (
+        program.c07.source_revision != source_revision
+        or program.c07.target_revision != target_revision
+    ):
+        raise C07FreshSourceBootstrapError(
+            "fresh-source revisions differ from the generation program"
+        )
 
     engine: Engine | None = None
     try:
@@ -487,7 +437,8 @@ def run_fresh_source_bootstrap_action(
                 _assert_migrator_authority(connection)
                 return _run_fresh_source_with_connection(
                     connection,
-                    plan=plan,
+                    program=program,
+                    operation_id=generation_operation_id,
                 )
     except C07FreshSourceBootstrapError:
         raise

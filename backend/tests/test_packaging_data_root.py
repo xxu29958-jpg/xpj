@@ -1,12 +1,13 @@
-"""Frozen-EXE data-root contract (codex review #185 P2).
+"""Managed-host and source/development data-root contract.
 
 When the backend runs as a PyInstaller one-file EXE, ``BACKEND_ROOT`` is the
 throwaway ``_MEIPASS`` extraction dir. Files the backend *writes* — the Owner
 Console settings ``.env`` and PostgreSQL backups — must instead live under
-``DATA_ROOT``, which the launcher points at a persistent ``ticketbox-data/``
-folder via ``TICKETBOX_DATA_DIR``. These tests lock that wiring so a future
-refactor can't silently send those writes back into the throwaway _MEIPASS
-bundle (where they vanish on restart).
+``DATA_ROOT``. The formal Windows service receives the machine-owned
+``TicketboxRuntimeBinding/data-root/app`` junction through
+``TICKETBOX_DATA_DIR``; its v2 marker and Volume GUID bind the physical
+``<DataRoot>/app`` bytes. Only source/development runs may use the adjacent
+``ticketbox-data/`` fallback. These tests prevent writes into ``_MEIPASS``.
 """
 
 from __future__ import annotations
@@ -96,14 +97,13 @@ def test_launcher_honors_preset_data_dir(monkeypatch, tmp_path):
     it, or the ADR-0047 service can't run from a read-only Program Files install
     with its data in ProgramData."""
     launch = _load_launch_module()
-    preset = tmp_path / "ProgramData" / "Ticketbox" / "app"
+    preset = tmp_path / "ProgramData" / "TicketboxRuntimeBinding" / "data-root" / "app"
     monkeypatch.setenv("TICKETBOX_DATA_DIR", str(preset))
     assert launch._resolve_writable_data_dir() == preset.resolve()
 
 
 def test_launcher_defaults_next_to_bundle_when_unset(monkeypatch):
-    """Unset TICKETBOX_DATA_DIR → ticketbox-data next to the EXE/bundle (dev / 档 A).
-    Locks the no-behavior-change contract for the existing single-folder install."""
+    """Source/development runs default to ticketbox-data beside the program root."""
     launch = _load_launch_module()
     monkeypatch.delenv("TICKETBOX_DATA_DIR", raising=False)
     assert launch._resolve_writable_data_dir() == launch._bundle_dir() / "ticketbox-data"
@@ -171,10 +171,10 @@ def test_build_log_config_keeps_console_when_stdout_present(tmp_path):
 def test_writable_dirs_follow_data_root_override(tmp_path):
     """settings .env + backups must re-anchor when DATA_ROOT is redirected.
 
-    Simulates the frozen build, where DATA_ROOT (ticketbox-data/) diverges from
-    BACKEND_ROOT (_MEIPASS). Reloads the leaf service modules so their
-    module-level path constants recompute against the redirected DATA_ROOT, then
-    restores the real value so no other test is affected.
+    Simulates a managed host where DATA_ROOT diverges from the read-only program
+    root. Reloads the leaf service modules so their module-level path constants
+    recompute against the redirected DATA_ROOT, then restores the real value so
+    no other test is affected.
     """
     original = config.DATA_ROOT
     config.DATA_ROOT = tmp_path

@@ -45,6 +45,8 @@ for required_app_module in (
     "app.app_meta_observation",
     "app.canonical_money_facts",
     "app.canonical_money_facts_contract",
+    "app.database._database_generation_program",
+    "app.database_generation_c07_contract",
     "app.database_model_registry",
     "app.tenant_contract",
 ):

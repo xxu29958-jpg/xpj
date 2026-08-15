@@ -195,9 +195,14 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
         source,
         "Invoke-TicketboxC07InstalledIsolatedReplayAction",
     )
-    upgrade_plan = _function(source, "Get-TicketboxC07InstalledUpgradePlan")
+    generation_program = _function(
+        source,
+        "Get-TicketboxInstalledDatabaseGenerationProgram",
+    )
     assert "ExpectedMoneyFactsSha256" not in isolated
-    assert "Get-TicketboxC07PackagedInstalledUpgradePlan" in upgrade_plan
+    assert "Get-TicketboxC07PackagedDatabaseGenerationProgram" in generation_program
+    assert "Get-TicketboxC07InstalledUpgradePlan" not in source
+    assert "Get-TicketboxInstalledManagedSchemaPlan" not in source
     assert "Invoke-TicketboxC07InstalledDescendantUpgrade" not in source
 
     managed = _function(source, "Invoke-TicketboxInstalledManagedSchemaUpgrade")
@@ -229,13 +234,11 @@ def test_installer_c07_caller_has_release_order_and_resume_guards() -> None:
             managed,
         )
     ]
-    assert len(action_calls) == len(enable_calls) == len(acl_calls) == 2
-    assert len(retire_calls) == 4
+    assert len(action_calls) == len(enable_calls) == len(acl_calls) == 1
+    assert len(retire_calls) == 2
     assert retire_calls[0] < enable_calls[0] < action_calls[0] < acl_calls[0]
     assert acl_calls[0] < retire_calls[1]
-    assert retire_calls[1] < retire_calls[2] < enable_calls[1]
-    assert enable_calls[1] < action_calls[1] < acl_calls[1] < retire_calls[3]
-    assert retire_calls[3] < managed.index("Get-TicketboxC07PublishedRuntimeQualification")
+    assert retire_calls[1] < managed.index("Get-TicketboxC07PublishedRuntimeQualification")
     publication = _function(
         source,
         "Complete-TicketboxInstalledManagedSchemaPublication",
@@ -418,12 +421,13 @@ def test_installer_c07_failure_terminal_preserves_code_without_budget_or_secrets
             release_migration,
             "function Resolve-TicketboxC07DatabaseHostAuthority { "
             "[pscustomobject]@{} }",
-            "function Get-TicketboxC07InstalledUpgradePlan { "
-            "[pscustomobject]@{ operation_kind = "
-            "'c07_money_minor_bigint_v1'; source_revision = "
-            "'20260722_0001'; target_revision = '20260729_0001'; "
-            "upgrade_required = $true; revision_manifest_sha256 = "
-            "('a' * 64) } }",
+            "function Get-TicketboxInstalledDatabaseGenerationProgram { "
+            "[pscustomobject]@{ c07_source_revision = '20260722_0001'; "
+            "c07_target_revision = '20260729_0001'; "
+            "c07_revision_manifest_sha256 = ('a' * 64); "
+            "c07_revision_manifest = [pscustomobject]@{ operation_kind = "
+            "'c07_money_minor_bigint_v1' }; target_revision = "
+            "'20260809_0001'; generation_program_sha256 = ('b' * 64) } }",
             "function Assert-TicketboxC07LowerSha256 { param($Value, $Label) }",
             "function Set-TicketboxC07DatabaseAuthorityCredential { "
             "$script:credentialSetCalls += 1 }",
@@ -1129,14 +1133,16 @@ $releaseIdentity = [pscustomobject]@{
 function Resolve-TicketboxC07DatabaseHostAuthority {
     return [pscustomobject]@{ Schema = 'host' }
 }
-function Get-TicketboxC07InstalledUpgradePlan {
-    param($ReleaseIdentity, [string]$SourceRevision)
+function Get-TicketboxInstalledDatabaseGenerationProgram {
     return [pscustomobject]@{
-        operation_kind = 'c07_money_minor_bigint_v1'
-        source_revision = $SourceRevision
-        target_revision = '20260729_0001'
-        upgrade_required = $true
-        revision_manifest_sha256 = ('a' * 64)
+        c07_source_revision = '20260722_0001'
+        c07_target_revision = '20260729_0001'
+        c07_revision_manifest_sha256 = ('a' * 64)
+        c07_revision_manifest = [pscustomobject]@{
+            operation_kind = 'c07_money_minor_bigint_v1'
+        }
+        target_revision = '20260809_0001'
+        generation_program_sha256 = ('b' * 64)
     }
 }
 function Assert-TicketboxC07LowerSha256 {
@@ -1926,11 +1932,12 @@ function Resolve-TicketboxC07DatabaseHostAuthority {
     return [pscustomobject]@{ Schema = 'host' }
 }
 function Get-TicketboxRuntimeAlembicRevision { return '20260729_0001' }
-function Get-TicketboxInstalledManagedSchemaPlan {
+function Get-TicketboxInstalledDatabaseGenerationProgram {
     return [pscustomobject]@{
-        source_revision = '20260729_0001'
         target_revision = '20260809_0001'
-        upgrade_required = $true
+        generation_program_sha256 = ('b' * 64)
+        c07_target_revision = '20260809_0001'
+        c07_revision_manifest_sha256 = ('a' * 64)
     }
 }
 function New-StrongPassword {
@@ -2025,12 +2032,12 @@ function Get-TicketboxRuntimeAlembicRevision {
     $script:events += "outer_revision:$($script:currentRevision)"
     return $script:currentRevision
 }
-function Get-TicketboxInstalledManagedSchemaPlan {
+function Get-TicketboxInstalledDatabaseGenerationProgram {
     return [pscustomobject]@{
-        source_revision = '20260722_0001'
         target_revision = '20260729_0001'
-        revision_manifest_sha256 = ('a' * 64)
-        upgrade_required = $true
+        generation_program_sha256 = ('b' * 64)
+        c07_target_revision = '20260729_0001'
+        c07_revision_manifest_sha256 = ('a' * 64)
     }
 }
 function New-StrongPassword { return ('M' * 40) }
@@ -2144,14 +2151,15 @@ function Enable-TicketboxC07MigratorForManagedSchemaUpgrade {
 }
 function Invoke-TicketboxInstalledManagedSchemaUpgradeAction {
     $script:events += 'upgrade_action'
-    return [pscustomobject]@{
-        alembic_revision = $(if ($script:invalidEvidence) {
-            '20260722_0001'
-        } else { '20260729_0001' })
-        revision_manifest_sha256 = $(if ($script:invalidManifestEvidence) {
-            ('f' * 64)
-        } else { ('a' * 64) })
-    }
+        return [pscustomobject]@{
+            alembic_revision = $(if ($script:invalidEvidence) {
+                '20260722_0001'
+            } else { '20260729_0001' })
+            revision_manifest_sha256 = ('a' * 64)
+            generation_program_sha256 = $(if ($script:invalidProgramEvidence) {
+                ('f' * 64)
+            } else { ('b' * 64) })
+        }
 }
 function Set-TicketboxManagedSchemaRuntimeAcl {
     $script:events += 'runtime_acl'
@@ -2205,7 +2213,7 @@ function Invoke-TestCase {
     $script:events = @()
     $script:recoveryExists = $true
     $script:invalidEvidence = $FailureKind -ceq 'evidence'
-    $script:invalidManifestEvidence = $FailureKind -ceq 'manifest_evidence'
+    $script:invalidProgramEvidence = $FailureKind -ceq 'program_evidence'
     $script:failQualification = $FailureKind -ceq 'qualification'
     $script:liveDescriptorDrift = $LiveDescriptorDrift
     $script:liveTargetDrift = $FailureKind -ceq 'live_target'
@@ -2268,7 +2276,7 @@ function Invoke-TestCase {
     Invoke-TestCase '20260722_0001' fresh_install unknown
     Invoke-TestCase '20260729_0001' legacy_adoption unknown
     Invoke-TestCase '20260729_0001' fresh_install retired evidence
-    Invoke-TestCase '20260729_0001' fresh_install retired manifest_evidence
+    Invoke-TestCase '20260729_0001' fresh_install retired program_evidence
     Invoke-TestCase '20260729_0001' legacy_adoption retired qualification
     Invoke-TestCase '20260729_0001' fresh_install retired captured_manifest
     Invoke-TestCase '20260729_0001' fresh_install retired '' runtime_acl_verified
@@ -2324,11 +2332,11 @@ function Invoke-TestCase {
     assert evidence["recovery_exists"] is True
     assert "upgrade_action" in evidence["events"]
     assert "post_schema_observation" not in evidence["events"]
-    manifest_evidence = payload[7]
-    assert manifest_evidence["failed"] is True
-    assert manifest_evidence["recovery_exists"] is True
-    assert "upgrade_action" in manifest_evidence["events"]
-    assert "post_schema_observation" not in manifest_evidence["events"]
+    program_evidence = payload[7]
+    assert program_evidence["failed"] is True
+    assert program_evidence["recovery_exists"] is True
+    assert "upgrade_action" in program_evidence["events"]
+    assert "post_schema_observation" not in program_evidence["events"]
     qualification = payload[8]
     assert qualification["failed"] is True
     assert qualification["recovery_exists"] is True
@@ -2399,7 +2407,12 @@ $script:productionHash = ('b' * 64)
 $script:projectionHash = ('c' * 64)
 $script:qualificationProductionHash = ('b' * 64)
 $script:qualificationProjectionHash = ('c' * 64)
-$script:managedRevision = '20260729_0001'
+$script:programTarget = '20260809_0001'
+$script:programSha256 = ('e' * 64)
+$script:managedRevision = $script:programTarget
+$script:managedTarget = $script:programTarget
+$script:managedProgramSha256 = $script:programSha256
+$script:managedC07Target = '20260729_0001'
 $script:managedManifest = ('a' * 64)
 $script:durableStage = 'ready'
 $script:durableOperationId = $script:operationId
@@ -2424,6 +2437,16 @@ $c07Authority = [pscustomobject]@{
     }
 }
 $lifecycleReceipt = [pscustomobject]@{ schema = 'receipt-v3' }
+function Get-TicketboxInstalledDatabaseGenerationProgram {
+    param($ReleaseIdentity)
+    if ($ReleaseIdentity.InstallationOperationId -cne $script:operationId) {
+        throw 'program release identity drift'
+    }
+    return [pscustomobject]@{
+        target_revision = $script:programTarget
+        generation_program_sha256 = $script:programSha256
+    }
+}
 function Invoke-TicketboxInstalledManagedSchemaUpgrade {
     param(
         $DataRoot,
@@ -2461,7 +2484,10 @@ function Invoke-TicketboxInstalledManagedSchemaUpgrade {
     return [pscustomobject]@{
         schema = 'ticketbox-managed-schema-publication-v1'
         alembic_revision = $script:managedRevision
-        revision_manifest_sha256 = $script:managedManifest
+        target_revision = $script:managedTarget
+        generation_program_sha256 = $script:managedProgramSha256
+        c07_target_revision = $script:managedC07Target
+        c07_revision_manifest_sha256 = $script:managedManifest
         published_runtime_qualification = $script:lastQualification
     }
 }
@@ -2512,7 +2538,8 @@ function Invoke-Publication {
             schema = [string]$result.schema
             mode = [string]$result.mode
             revision = [string]$result.alembic_revision
-            manifest = [string]$result.revision_manifest_sha256
+            program = [string]$result.generation_program_sha256
+            manifest = [string]$result.c07_revision_manifest_sha256
             production = [string]$result.production_authority_sha256
             projection = [string]$result.runtime_projection_sha256
             qualification_same = [object]::ReferenceEquals(
@@ -2545,7 +2572,13 @@ $projectionDrift = Invoke-Publication
 $script:qualificationProjectionHash = ('c' * 64)
 $script:managedRevision = '20260722_0001'
 $revisionDrift = Invoke-Publication
-$script:managedRevision = '20260729_0001'
+$script:managedRevision = $script:programTarget
+$script:managedTarget = '20260810_0001'
+$targetDrift = Invoke-Publication
+$script:managedTarget = $script:programTarget
+$script:managedProgramSha256 = ('d' * 64)
+$programDrift = Invoke-Publication
+$script:managedProgramSha256 = $script:programSha256
 $script:managedManifest = ('f' * 64)
 $manifestDrift = Invoke-Publication
 $script:managedManifest = ('a' * 64)
@@ -2561,6 +2594,8 @@ $operationDrift = Invoke-Publication
     $productionDrift,
     $projectionDrift,
     $revisionDrift,
+    $targetDrift,
+    $programDrift,
     $manifestDrift,
     $stageDrift,
     $operationDrift
@@ -2578,6 +2613,8 @@ $operationDrift = Invoke-Publication
         production_drift,
         projection_drift,
         revision_drift,
+        target_drift,
+        program_drift,
         manifest_drift,
         stage_drift,
         operation_drift,
@@ -2590,7 +2627,8 @@ $operationDrift = Invoke-Publication
             "rejected": False,
             "schema": "ticketbox-installed-schema-publication-v1",
             "mode": mode,
-            "revision": "20260729_0001",
+            "revision": "20260809_0001",
+            "program": "e" * 64,
             "manifest": "a" * 64,
             "production": "b" * 64,
             "projection": "c" * 64,
@@ -2603,6 +2641,8 @@ $operationDrift = Invoke-Publication
         production_drift,
         projection_drift,
         revision_drift,
+        target_drift,
+        program_drift,
         manifest_drift,
         stage_drift,
         operation_drift,
@@ -2829,12 +2869,12 @@ function Resolve-TicketboxC07DatabaseHostAuthority {
     return [pscustomobject]@{ Schema = 'host' }
 }
 function Get-TicketboxRuntimeAlembicRevision { return '20260729_0001' }
-function Get-TicketboxInstalledManagedSchemaPlan {
+function Get-TicketboxInstalledDatabaseGenerationProgram {
     return [pscustomobject]@{
-        source_revision = '20260729_0001'
         target_revision = '20260729_0001'
-        revision_manifest_sha256 = ('A' * 64)
-        upgrade_required = $false
+        generation_program_sha256 = ('B' * 64)
+        c07_target_revision = '20260729_0001'
+        c07_revision_manifest_sha256 = ('A' * 64)
     }
 }
 function New-StrongPassword { return ('M' * 40) }

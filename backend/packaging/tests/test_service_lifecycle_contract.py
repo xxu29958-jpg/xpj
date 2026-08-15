@@ -16,13 +16,24 @@ pytestmark = pytest.mark.xdist_group(name="windows_powershell_lifecycle")
 PACKAGING = Path(__file__).resolve().parents[1]
 
 # A fresh two-core Windows CI VM has to cold-start Windows PowerShell 5.1 and
-# compile the helper's native Add-Type substrate. Hosted-runner tail latency has
-# exceeded the former 45-second success budget while the bounded process tree
-# remained live, so retain a finite 90-second inner deadline plus outer cleanup
-# margin. This does not relax the 1,000/3,200 ms fail-closed probes below.
-POWERSHELL_51_COLD_START_TIMEOUT_MS = 90_000
-POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS = 150
-POWERSHELL_51_MULTI_SCENARIO_HARNESS_TIMEOUT_SECONDS = 180
+# compile the helper's native Add-Type substrate. Exact-head CI has exceeded
+# both the former 45-second and 90-second success budgets while the bounded
+# process tree remained live, so retain a finite 150-second inner deadline plus
+# outer cleanup margin. This does not relax the 1,000/3,200 ms fail-closed
+# probes below.
+POWERSHELL_51_COLD_START_TIMEOUT_MS = 150_000
+POWERSHELL_51_HARNESS_CLEANUP_MARGIN_SECONDS = 90
+POWERSHELL_51_HELPER_INVOCATIONS_PER_MULTI_HARNESS = 6
+POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS = (
+    POWERSHELL_51_COLD_START_TIMEOUT_MS // 1000
+    + POWERSHELL_51_HARNESS_CLEANUP_MARGIN_SECONDS
+)
+POWERSHELL_51_MULTI_SCENARIO_HARNESS_TIMEOUT_SECONDS = (
+    POWERSHELL_51_HELPER_INVOCATIONS_PER_MULTI_HARNESS
+    * POWERSHELL_51_COLD_START_TIMEOUT_MS
+    // 1000
+    + POWERSHELL_51_HARNESS_CLEANUP_MARGIN_SECONDS
+)
 SC_MANAGER_CONNECT = 0x0001
 SERVICE_QUERY_STATUS = 0x0004
 DELETE_SERVICE_ACCESS = 0x00010000
@@ -714,14 +725,14 @@ if ($fullFailure -notlike '*full*Assert-TicketboxC07LiveHostConnection*') {{
     -TicketboxC07DependencyProfile 'durable_heartbeat'
 Assert-TicketboxC07Dependencies
 Remove-Item `
-    -LiteralPath Function:\\Read-TicketboxInstalledBuildManifest `
+    -LiteralPath Function:\\Get-TicketboxInstallationReleaseCandidate `
     -Force
 $durableFailure = ''
 try {{ Assert-TicketboxC07Dependencies }}
 catch {{ $durableFailure = $_.Exception.Message }}
 if (
     $durableFailure -notlike
-        '*durable_heartbeat*Read-TicketboxInstalledBuildManifest*'
+        '*durable_heartbeat*Get-TicketboxInstallationReleaseCandidate*'
 ) {{
     throw "durable dependency profile did not fail closed: $durableFailure"
 }}
@@ -745,7 +756,7 @@ if (
             encoding="utf-8",
             errors="replace",
             check=False,
-            timeout=15,
+            timeout=POWERSHELL_51_COLD_START_HARNESS_TIMEOUT_SECONDS,
         )
         assert profile_result.returncode == 0, (
             profile_result.stdout + profile_result.stderr
@@ -1122,37 +1133,56 @@ try {{
             [uint32]$productionHeartbeat.CoordinatorStartedFileTimeLow + 1
         )
     }}
-    $tamperedOperations = @(
-        (New-TestHeartbeatOperation `
-            -OperationId '123e4567-e89b-42d3-a456-426614174099'),
-        (New-TestHeartbeatOperation -DescriptorSha256 ('E' * 64)),
-        (New-TestHeartbeatOperation -StartedLow $differentStartedLow),
-        (New-TestHeartbeatOperation `
-            -PrimaryLockPath '{_ps_literal(alternate_primary_lock)}' `
-            -OperationLockPath '{_ps_literal(alternate_operation_lock)}'),
-        (New-TestHeartbeatOperation `
-            -OperationLease ([pscustomobject]@{{
-                Primary = $null
-                Operation = $null
-                ExternalOwnerIdentity = $null
-            }}))
+    $tamperCases = @(
+        [pscustomobject]@{{
+            Operation = New-TestHeartbeatOperation `
+                -OperationId '123e4567-e89b-42d3-a456-426614174099'
+            ExpectedFailureCode = 'heartbeat_helper_authority_rejected'
+        }},
+        [pscustomobject]@{{
+            Operation = New-TestHeartbeatOperation -DescriptorSha256 ('E' * 64)
+            ExpectedFailureCode = 'heartbeat_helper_authority_rejected'
+        }},
+        [pscustomobject]@{{
+            Operation = New-TestHeartbeatOperation -StartedLow $differentStartedLow
+            ExpectedFailureCode = 'heartbeat_helper_lease_invalid'
+        }},
+        [pscustomobject]@{{
+            Operation = New-TestHeartbeatOperation `
+                -PrimaryLockPath '{_ps_literal(alternate_primary_lock)}' `
+                -OperationLockPath '{_ps_literal(alternate_operation_lock)}'
+            ExpectedFailureCode = 'heartbeat_helper_authority_rejected'
+        }},
+        [pscustomobject]@{{
+            Operation = New-TestHeartbeatOperation `
+                -OperationLease ([pscustomobject]@{{
+                    Primary = $null
+                    Operation = $null
+                    ExternalOwnerIdentity = $null
+                }})
+            ExpectedFailureCode = 'heartbeat_helper_lease_invalid'
+        }}
     )
-    foreach ($tampered in $tamperedOperations) {{
+    foreach ($tamperCase in $tamperCases) {{
+        $tampered = $tamperCase.Operation
         $tamperRejected = $false
+        $observedTamperFailureCode = ''
         try {{
             Invoke-TicketboxBoundedHeartbeatOperation `
                 -Operation $tampered `
-                -TimeoutMilliseconds 15000 `
+                -TimeoutMilliseconds {POWERSHELL_51_COLD_START_TIMEOUT_MS} `
                 -SettlementMilliseconds 1000 `
                 -Label 'tampered heartbeat descriptor' | Out-Null
         }}
         catch {{
+            $observedTamperFailureCode =
+                [string]$_.Exception.Data['TicketboxC07FailureCode']
             $tamperRejected =
-                [string]$_.Exception.Data['TicketboxC07FailureCode'] -like
-                    'heartbeat_helper_*'
+                $observedTamperFailureCode -ceq
+                    [string]$tamperCase.ExpectedFailureCode
         }}
         if (-not $tamperRejected) {{
-            throw 'tampered heartbeat descriptor was accepted'
+            throw "tampered heartbeat descriptor was not rejected by its exact semantic gate: expected=$($tamperCase.ExpectedFailureCode) observed=$observedTamperFailureCode"
         }}
         if ($null -eq (Get-Process -Id $PID -ErrorAction SilentlyContinue)) {{
             throw 'tampered descriptor error terminated coordinator'
@@ -1294,14 +1324,14 @@ try {{
     try {{
         Invoke-TicketboxBoundedHeartbeatOperation `
             -Operation $productionHeartbeat `
-            -TimeoutMilliseconds 15000 `
+            -TimeoutMilliseconds {POWERSHELL_51_COLD_START_TIMEOUT_MS} `
             -SettlementMilliseconds 1000 `
             -Label 'missing durable heartbeat' | Out-Null
     }}
     catch {{
         $missingHeartbeatRejected =
-            [string]$_.Exception.Data['TicketboxC07FailureCode'] -like
-                'heartbeat_helper_*'
+            [string]$_.Exception.Data['TicketboxC07FailureCode'] -ceq
+                'heartbeat_helper_authority_rejected'
     }}
     if (
         -not $missingHeartbeatRejected -or
@@ -1981,17 +2011,6 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert "$out = $Sql | & $psql @args 2>&1" not in database
     assert '：$Sql`n$out' not in database
     assert 'throw "psql 执行失败（db=$Database, exit=$($result.ExitCode)）。"' in database
-
-    legacy_installer = _read("install_ticketbox.ps1")
-    assert '"-tAc", $Sql' not in legacy_installer
-    assert '"--dbname", $ProtectedDatabaseUrl, "-tA"' in legacy_installer
-    assert "Invoke-TicketboxWithPgPassFile" in legacy_installer
-    assert "require_auth=scram-sha-256" in legacy_installer
-    assert "Invoke-TicketboxBoundedNativeProcess" in legacy_installer
-    assert '-StandardInputText ($Sql + "`n")' in legacy_installer
-    assert "$out = $Sql | & $Psql @psqlArgs 2>&1" not in legacy_installer
-    assert '：$Sql"' not in legacy_installer
-
 
 def test_pre_upgrade_backup_uses_old_tools_before_stopping_postgres() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")

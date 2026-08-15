@@ -55,7 +55,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 # $PSScriptRoot 在 `powershell.exe -File` 调用下、param() 默认值里取不到（5.1 已知坑），
-# 故脚本目录在**主体**用 $MyInvocation 解析（install_ticketbox.ps1 同款）。
+# 故脚本目录在**主体**用 $MyInvocation 解析。
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendRoot = (Resolve-Path -LiteralPath (Join-Path $ScriptDir "..")).Path
 $BuildProvenanceScript = Join-Path $BackendRoot "scripts\windows_build_provenance.ps1"

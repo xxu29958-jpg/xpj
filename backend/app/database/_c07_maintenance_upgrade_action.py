@@ -6,8 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from alembic import command
-from sqlalchemy import text
 from sqlalchemy.engine import URL, Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -35,21 +33,25 @@ from app.database._c07_maintenance_common import (
     _validated_migrator_url,
     _validated_pgpass_path,
 )
-from app.database._c07_maintenance_plan import (
+from app.database._c07_transaction_timeout import c07_prearmed_transaction
+from app.database._database_generation_executor import (
+    DatabaseGenerationExecutionError,
+    execute_database_generation,
+)
+from app.database._database_generation_program import (
+    DatabaseGenerationProgram,
+    DatabaseGenerationProgramError,
+    load_database_generation_program,
+)
+from app.database_generation_c07_contract import (
     C07_SOURCE_REVISION,
     C07_TARGET_REVISION,
     ISOLATED_MODE,
     C07MaintenanceUpgradeError,
-    MaintenancePlan,
-    load_exact_maintenance_plan,
 )
-from app.database._c07_transaction_timeout import c07_prearmed_transaction
 from app.services.secure_file import hold_protected_file_for_read
 
 MAINTENANCE_RESULT_SCHEMA = "ticketbox-c07-maintenance-upgrade-result-v3"
-C07_CEREMONY_MODE_GUC = "ticketbox.c07_ceremony_mode"
-C07_CEREMONY_ID_GUC = "ticketbox.c07_ceremony_id"
-C07_STATEMENT_TIMEOUT_GUC = "ticketbox.c07_statement_timeout_ms"
 _RESULT_FIELDS = (
     "schema",
     "mode",
@@ -67,35 +69,11 @@ _RESULT_FIELDS = (
 )
 
 
-def _configure_c07_upgrade(
-    connection: Connection,
-    *,
-    operation_id: str,
-    statement_timeout_ms: int,
-) -> None:
-    connection.execute(
-        text("SELECT set_config(:key, :value, true)"),
-        {"key": C07_CEREMONY_MODE_GUC, "value": "managed"},
-    )
-    connection.execute(
-        text("SELECT set_config(:key, :value, true)"),
-        {"key": C07_CEREMONY_ID_GUC, "value": operation_id},
-    )
-    connection.execute(
-        text("SELECT set_config(:key, :value, true)"),
-        {
-            "key": C07_STATEMENT_TIMEOUT_GUC,
-            "value": str(statement_timeout_ms),
-        },
-    )
-
-
 def _run_exact_upgrade(
     connection: Connection,
     *,
-    plan: MaintenancePlan,
+    program: DatabaseGenerationProgram,
     operation_id: str,
-    remaining_ms: int,
 ) -> tuple[str, str, str]:
     current = _current_revision(connection)
     if current == C07_TARGET_REVISION:
@@ -111,13 +89,18 @@ def _run_exact_upgrade(
         )
     _assert_isolated_source_shape(connection)
     before = _money_facts(connection)
-    _configure_c07_upgrade(
-        connection,
-        operation_id=operation_id,
-        statement_timeout_ms=remaining_ms,
-    )
-    plan.config.attributes["connection"] = connection
-    command.upgrade(plan.config, C07_TARGET_REVISION)
+    try:
+        execute_database_generation(
+            connection,
+            program=program,
+            source_revision=C07_SOURCE_REVISION,
+            target_revision=C07_TARGET_REVISION,
+            operation_id=operation_id,
+        )
+    except DatabaseGenerationExecutionError as exc:
+        raise C07MaintenanceUpgradeError(
+            "isolated replay generation execution failed"
+        ) from exc
     if _current_revision(connection) != C07_TARGET_REVISION:
         raise C07MaintenanceUpgradeError(
             "isolated replay did not reach the exact C07 target"
@@ -133,7 +116,7 @@ def _run_exact_upgrade(
 class _UpgradeRequest:
     operation: str
     database: str
-    plan: MaintenancePlan
+    program: DatabaseGenerationProgram
     authority: str
     deadline: datetime
     ceiling: int
@@ -147,6 +130,8 @@ def _upgrade_request(
     mode: str,
     database_url: str,
     pgpassfile: Path,
+    generation_program_path: Path,
+    expected_generation_program_sha256: str,
     operation_id: str,
     source_revision: str,
     target_revision: str,
@@ -165,15 +150,27 @@ def _upgrade_request(
         operation_id=operation,
         isolated_only=True,
     )
-    plan = load_exact_maintenance_plan(
-        source_revision=source_revision,
-        target_revision=target_revision,
-    )
+    try:
+        program = load_database_generation_program(
+            path=generation_program_path,
+            expected_sha256=expected_generation_program_sha256,
+        )
+    except DatabaseGenerationProgramError as exc:
+        raise C07MaintenanceUpgradeError(
+            "maintenance generation program is invalid"
+        ) from exc
+    if (
+        source_revision != program.c07.source_revision
+        or target_revision != program.c07.target_revision
+    ):
+        raise C07MaintenanceUpgradeError(
+            "maintenance edge differs from the generation program"
+        )
     expected_manifest = _required_lower_sha256(
         expected_revision_manifest_sha256,
         label="maintenance revision manifest",
     )
-    if expected_manifest != plan.revision_manifest_sha256:
+    if expected_manifest != program.c07.revision_manifest_sha256:
         raise C07MaintenanceUpgradeError(
             "maintenance revision manifest differs from the packaged edge"
         )
@@ -182,7 +179,7 @@ def _upgrade_request(
     return _UpgradeRequest(
         operation=operation,
         database=database,
-        plan=plan,
+        program=program,
         authority=_required_lower_sha256(
             maintenance_authority_sha256,
             label="maintenance authority",
@@ -211,9 +208,8 @@ def _upgrade_on_connection(
             fence_held = True
             return _run_exact_upgrade(
                 connection,
-                plan=request.plan,
+                program=request.program,
                 operation_id=request.operation,
-                remaining_ms=request.remaining,
             )
     finally:
         if fence_held:
@@ -246,7 +242,7 @@ def _upgrade_result(
         "operation_id": request.operation,
         "source_revision": C07_SOURCE_REVISION,
         "target_revision": C07_TARGET_REVISION,
-        "revision_manifest_sha256": request.plan.revision_manifest_sha256,
+        "revision_manifest_sha256": request.program.c07.revision_manifest_sha256,
         "maintenance_authority_sha256": request.authority,
         "maintenance_remaining_ceiling_ms": request.ceiling,
         "resource_shape_sha256": target_shape,
@@ -265,6 +261,8 @@ def run_maintenance_upgrade_action(
     mode: str,
     database_url: str,
     pgpassfile: Path,
+    generation_program_path: Path,
+    expected_generation_program_sha256: str,
     operation_id: str,
     source_revision: str,
     target_revision: str,
@@ -280,6 +278,10 @@ def run_maintenance_upgrade_action(
             mode=mode,
             database_url=database_url,
             pgpassfile=pgpassfile,
+            generation_program_path=generation_program_path,
+            expected_generation_program_sha256=(
+                expected_generation_program_sha256
+            ),
             operation_id=operation_id,
             source_revision=source_revision,
             target_revision=target_revision,

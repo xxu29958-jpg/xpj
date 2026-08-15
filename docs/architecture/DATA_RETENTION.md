@@ -128,7 +128,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbo
 <DATA_ROOT>/backups/
 ```
 
-`DATA_ROOT` 跟随部署形态:源码运行 `backend/`,冻结 EXE 部署 `ticketbox-data/`。该目录用于本机运维，不应提交。
+源码运行的 `DATA_ROOT` 默认是 `backend/`；正式 Windows 服务经 machine-owned
+`TicketboxRuntimeBinding/data-root/app` junction 访问安装器选择的物理 `<DataRoot>/app`，
+并由 v2 marker + Volume GUID 绑定。该目录用于本机运维，不应提交。
 
 ## 数据清理底线
 

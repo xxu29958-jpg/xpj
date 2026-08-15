@@ -12,31 +12,29 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
-from alembic import command
-from alembic.config import Config
-from alembic.util.exc import CommandError
 from psycopg import Error as PsycopgError
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, Connection, Engine, make_url
 from sqlalchemy.exc import ArgumentError, SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
-from app.database._release_schema_readiness import (
-    ReleaseHeadVerificationError,
-    assert_release_head,
+from app.database._database_generation_executor import (
+    DatabaseGenerationExecutionError,
+    execute_database_generation,
+)
+from app.database._database_generation_program import (
+    DatabaseGenerationProgram,
 )
 from app.services.secure_file import hold_protected_file_for_read
 
 _ROLE_NAME = re.compile(r"[a-z][a-z0-9_]{0,62}\Z")
-_MISSING = object()
-
-
 class ManagedPostgresMigrationRuntimeError(RuntimeError):
     """The managed migration transaction could not be proven safe."""
 
@@ -209,11 +207,21 @@ class ManagedPostgresMigrationRuntimeV1:
         *,
         database_url: str,
         pgpassfile: Path,
-        alembic_config: Config,
+        program: DatabaseGenerationProgram,
         source_revision: str,
         target_revision: str,
-        verify_postcondition: Callable[[Connection], None],
+        generation_operation_id: str,
     ) -> str:
+        try:
+            parsed_operation = UUID(generation_operation_id)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ManagedPostgresMigrationRuntimeError(
+                "managed migration operation id is invalid"
+            ) from exc
+        if parsed_operation.int == 0 or str(parsed_operation) != generation_operation_id:
+            raise ManagedPostgresMigrationRuntimeError(
+                "managed migration operation id is not canonical"
+            )
         parsed_url = _validated_migrator_url(database_url, contract=self._contract)
         if not isinstance(pgpassfile, Path) or not pgpassfile.is_absolute():
             raise ManagedPostgresMigrationRuntimeError("managed migration pgpass path must be absolute")
@@ -231,17 +239,28 @@ class ManagedPostgresMigrationRuntimeV1:
                         timeout_ms=self._contract.transaction_timeout_ms,
                     ),
                 ):
-                    result = self._run_transaction(
+                    applied = self._run_transaction(
                         connection,
-                        alembic_config=alembic_config,
+                        program=program,
                         source_revision=source_revision,
                         target_revision=target_revision,
-                        verify_postcondition=verify_postcondition,
+                        generation_operation_id=generation_operation_id,
                     )
-            return result
+            return (
+                "target_committed"
+                if applied
+                else "target_observed_after_interruption"
+            )
         except ManagedPostgresMigrationRuntimeError:
             raise
-        except (CommandError, OSError, PsycopgError, RuntimeError, SQLAlchemyError) as exc:
+        except (
+            DatabaseGenerationExecutionError,
+            ImportError,
+            OSError,
+            PsycopgError,
+            RuntimeError,
+            SQLAlchemyError,
+        ) as exc:
             raise ManagedPostgresMigrationRuntimeError("managed PostgreSQL migration failed") from exc
         finally:
             if engine is not None:
@@ -251,30 +270,20 @@ class ManagedPostgresMigrationRuntimeV1:
         self,
         connection: Connection,
         *,
-        alembic_config: Config,
+        program: DatabaseGenerationProgram,
         source_revision: str,
         target_revision: str,
-        verify_postcondition: Callable[[Connection], None],
-    ) -> str:
+        generation_operation_id: str,
+    ) -> bool:
         self._assert_migrator_context(connection)
         self._assume_schema_owner(connection)
-
-        if self._is_target_revision(connection, target_revision=target_revision):
-            verify_postcondition(connection)
-            return "target_observed_after_interruption"
-
-        self._assert_source_revision(connection, source_revision=source_revision)
-        self._run_alembic_upgrade(
+        return execute_database_generation(
             connection,
-            alembic_config=alembic_config,
+            program=program,
+            source_revision=source_revision,
             target_revision=target_revision,
+            operation_id=generation_operation_id,
         )
-        try:
-            assert_release_head(connection, expected_revision=target_revision)
-            verify_postcondition(connection)
-        except ReleaseHeadVerificationError as exc:
-            raise ManagedPostgresMigrationRuntimeError("managed migration did not reach the release head") from exc
-        return "target_committed"
 
     def _assert_migrator_context(self, connection: Connection) -> None:
         principal = tuple(
@@ -314,49 +323,6 @@ class ManagedPostgresMigrationRuntimeV1:
             self._contract.schema_owner_role,
         ):
             raise ManagedPostgresMigrationRuntimeError("managed migrator cannot assume the schema owner")
-
-    @staticmethod
-    def _is_target_revision(
-        connection: Connection,
-        *,
-        target_revision: str,
-    ) -> bool:
-        try:
-            assert_release_head(connection, expected_revision=target_revision)
-        except ReleaseHeadVerificationError:
-            return False
-        return True
-
-    @staticmethod
-    def _assert_source_revision(
-        connection: Connection,
-        *,
-        source_revision: str,
-    ) -> None:
-        try:
-            assert_release_head(connection, expected_revision=source_revision)
-        except ReleaseHeadVerificationError as exc:
-            raise ManagedPostgresMigrationRuntimeError(
-                "managed migration live revision is outside the release path"
-            ) from exc
-
-    @staticmethod
-    def _run_alembic_upgrade(
-        connection: Connection,
-        *,
-        alembic_config: Config,
-        target_revision: str,
-    ) -> None:
-        previous_connection = alembic_config.attributes.get("connection", _MISSING)
-        try:
-            alembic_config.attributes["connection"] = connection
-            command.upgrade(alembic_config, target_revision)
-        finally:
-            if previous_connection is _MISSING:
-                alembic_config.attributes.pop("connection", None)
-            else:
-                alembic_config.attributes["connection"] = previous_connection
-
 
 __all__ = [
     "ManagedPostgresMigrationRuntimeError",
