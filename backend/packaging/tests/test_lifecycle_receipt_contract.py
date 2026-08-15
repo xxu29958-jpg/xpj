@@ -1468,6 +1468,12 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     owner_gate = main_execution.index(
         "if ($InstallerLockOwnerProcessId -le 0)", admin_gate
     )
+    intent_branch = main_execution.index(
+        "if ($PersistDatabaseGenerationIntentOnly)", owner_gate
+    )
+    preinstall_receipt_read = main_execution.index(
+        "Read-TicketboxLifecycleReceipt `", intent_branch
+    )
     early_marker_repair = main_execution.index(
         "Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded `", owner_gate
     )
@@ -1486,6 +1492,8 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     assert (
         admin_gate
         < owner_gate
+        < intent_branch
+        < preinstall_receipt_read
         < early_marker_repair
         < runtime_binding_read
         < mark_branch
@@ -1500,7 +1508,51 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         )
     ]
     assert receipt_reads
-    assert all(early_marker_repair < receipt_read for receipt_read in receipt_reads)
+    early_receipt_reads = [
+        receipt_read for receipt_read in receipt_reads if receipt_read < early_marker_repair
+    ]
+    assert early_receipt_reads == [preinstall_receipt_read]
+    assert all(
+        early_marker_repair < receipt_read
+        for receipt_read in receipt_reads
+        if receipt_read != preinstall_receipt_read
+    )
+    preinstall_projection = main_execution[intent_branch:early_marker_repair]
+    for field in (
+        "install_completed",
+        "c07_installation_operation_id",
+        "database_generation_current_sha256",
+    ):
+        expected_target = {
+            "install_completed": "install_completed",
+            "c07_installation_operation_id": "operation_id",
+            "database_generation_current_sha256": "current_sha256",
+        }[field]
+        assert re.search(
+            rf"\$lifecycleEvidence\.{expected_target}\s*=\s*"
+            rf"(?:\[(?:bool|string)\])?\$observedLifecycleReceipt\.{field}",
+            preinstall_projection,
+        )
+    captured_intent = main_execution.index(
+        "$capturedGenerationIntent = Read-TicketboxDatabaseGenerationActiveIntent `",
+        early_marker_repair,
+    )
+    captured_receipt_write = main_execution.index(
+        "Write-TicketboxLifecycleReceipt `", captured_intent
+    )
+    captured_receipt_read = main_execution.index(
+        "$capturedReceipt = Read-TicketboxLifecycleReceipt `", captured_receipt_write
+    )
+    assert captured_intent < captured_receipt_write < captured_receipt_read
+    assert re.search(
+        r"\$capturedGenerationOperationId\s*=\s*"
+        r"\[string\]\$capturedGenerationIntent\.Payload\.operation_id",
+        main_execution[captured_intent:captured_receipt_write],
+    )
+    assert (
+        "-C07InstallationOperationId $capturedGenerationOperationId `"
+        in main_execution[captured_receipt_write:captured_receipt_read]
+    )
     authority_call = prepare.rindex("Assert-TicketboxPreparedDataRootAuthorityGate `")
     preserved_mode = prepare.index('if ($mode -eq "preserved_data_reinstall")', authority_call)
     preserved_layout = prepare.index("Assert-TicketboxLegacyPreservedDataLayout", preserved_mode)

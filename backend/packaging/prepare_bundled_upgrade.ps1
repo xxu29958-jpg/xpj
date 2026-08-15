@@ -1484,6 +1484,41 @@ try {
         }
         Import-TicketboxBootstrapDatabaseGenerationAuthority
         $generationStateRoot = Get-TicketboxDatabaseGenerationStateRoot $InstallerState
+        $lifecycleEvidence = [pscustomobject][ordered]@{
+            schema = "ticketbox-database-generation-lifecycle-evidence-v1"
+            receipt_present = $false
+            install_completed = $false
+            operation_id = ""
+            current_sha256 = ""
+        }
+        $lifecycleReceiptKind = Get-TicketboxPathEntryKindNoFollow $LifecycleReceiptPath
+        if ($lifecycleReceiptKind -ceq "File") {
+            $observedLifecycleReceipt = Read-TicketboxLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -TargetReleaseConfig $TargetReleaseConfig `
+                -CurrentTargetBackendVersion $TargetBackendVersion `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+                -AllowPreviousInstallerOwnerProcessId
+            try {
+                $lifecycleEvidence.receipt_present = $true
+                $lifecycleEvidence.install_completed =
+                    [bool]$observedLifecycleReceipt.install_completed
+                $lifecycleEvidence.operation_id =
+                    [string]$observedLifecycleReceipt.c07_installation_operation_id
+                $lifecycleEvidence.current_sha256 =
+                    [string]$observedLifecycleReceipt.database_generation_current_sha256
+            }
+            finally {
+                Close-TicketboxLifecycleBackupGuard $observedLifecycleReceipt
+            }
+        }
+        elseif ($lifecycleReceiptKind -cne "Missing") {
+            throw "安装生命周期回执不是普通文件或缺失路径。"
+        }
         $preinstallFacts = [pscustomobject][ordered]@{
             BackendServiceName = $BackendServiceName
             ExistingPathFacts = @(
@@ -1499,6 +1534,7 @@ try {
                 [pscustomobject][ordered]@{ Path = $InstallerRuntimeRecoveryGuardPath; Label = "runtime recovery guard" }
             )
             HasPersistedInstalledReleaseConfig = $HasPersistedInstalledReleaseConfig
+            LifecycleEvidence = $lifecycleEvidence
             PgServiceName = $PgServiceName
             StateRoot = $generationStateRoot
         }
@@ -1990,6 +2026,13 @@ try {
     }
     $backupCompleted = $false
     $backupPath = ""
+    Import-TicketboxBootstrapDatabaseGenerationAuthority
+    $capturedGenerationStateRoot =
+        Get-TicketboxDatabaseGenerationStateRoot $InstallerState
+    $capturedGenerationIntent = Read-TicketboxDatabaseGenerationActiveIntent `
+        $capturedGenerationStateRoot
+    $capturedGenerationOperationId =
+        [string]$capturedGenerationIntent.Payload.operation_id
     Write-TicketboxLifecycleReceipt `
         -Path $LifecycleReceiptPath `
         -Mode $mode `
@@ -2000,6 +2043,7 @@ try {
         -InstalledReleaseConfig $InstalledReleaseConfig `
         -TargetBackendVersionFloor $TargetBackendVersion `
         -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+        -C07InstallationOperationId $capturedGenerationOperationId `
         -PreviousPgState $pgState `
         -PreviousBackendState $backendState `
         -PreviousPgStartPolicy $pgStartPolicy `

@@ -74,6 +74,10 @@ def _current_process_sid(advapi32: object, kernel32: object) -> str:
     return _windows.current_process_sid(advapi32, kernel32)
 
 
+def _current_process_service_sid(advapi32: object, kernel32: object) -> str:
+    return _windows.current_process_service_sid(advapi32, kernel32)
+
+
 @contextlib.contextmanager
 def _hold_windows_protected_file(
     path: Path,
@@ -148,7 +152,7 @@ def hold_system_runtime_projection_for_read(path: Path) -> Iterator[Path]:
     if os.name != "nt":
         raise OSError("SYSTEM-owned runtime projection is a Windows-only contract")
     advapi32, kernel32 = _windows_apis()
-    service_sid = _current_process_sid(advapi32, kernel32)
+    service_sid = _current_process_service_sid(advapi32, kernel32)
     if service_sid in {_SYSTEM_SID, _ADMINISTRATORS_SID}:
         raise PermissionError(
             "runtime projection must be read by the dedicated backend service identity"

@@ -56,33 +56,78 @@ function New-TicketboxDatabaseGenerationIntent {{ $script:writes += 1 }}
 function Start-Service {{ $script:writes += 1 }}
 function Remove-Item {{ $script:writes += 1 }}
 {eligibility}
+if (-not (Get-Command Assert-TicketboxDatabaseGenerationPreinstallEligibility).Parameters.ContainsKey('LifecycleEvidence')) {{
+    throw 'preinstall eligibility lacks closed lifecycle authority'
+}}
 $lock = [pscustomobject]@{{ Identity = 'held' }}
 $facts = @([pscustomobject][ordered]@{{ Path = 'pgdata\\PG_VERSION'; Label = 'PG_VERSION' }})
+$lifecycle = [pscustomobject][ordered]@{{
+    schema = 'ticketbox-database-generation-lifecycle-evidence-v1'
+    receipt_present = $false
+    install_completed = $false
+    operation_id = ''
+    current_sha256 = ''
+}}
 
-Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $false $facts
+Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $false $lifecycle $facts
 if ($script:writes -ne 0) {{ throw 'empty classification mutated state' }}
 
 $script:services['pg'] = $true
 $rejected = $false
-try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $false $facts }} catch {{ $rejected = $true }}
+try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $false $lifecycle $facts }} catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 0) {{ throw 'existing service crossed eligibility gate' }}
 $script:services.Clear()
 
 $script:pathKinds['pgdata\\PG_VERSION'] = 'File'
 $rejected = $false
-try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $false $facts }} catch {{ $rejected = $true }}
+try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $false $lifecycle $facts }} catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 0) {{ throw 'existing PGDATA crossed eligibility gate' }}
 $script:pathKinds.Clear()
 
 $operation = '11111111-1111-4111-8111-111111111111'
 $script:active = [pscustomobject]@{{ PayloadSha256 = ('a' * 64); Payload = [pscustomobject]@{{ operation_id = $operation }} }}
-$script:current = [pscustomobject]@{{ Payload = [pscustomobject]@{{ operation_id = $operation; intent_sha256 = ('a' * 64) }} }}
-Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $facts
+$script:current = [pscustomobject]@{{ PayloadSha256 = ('b' * 64); Payload = [pscustomobject]@{{ operation_id = $operation; intent_sha256 = ('a' * 64) }} }}
+$lifecycle.receipt_present = $true
+$lifecycle.operation_id = $operation
+Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts
 if ($script:writes -ne 0) {{ throw 'exact retry mutated state' }}
 
+$lifecycle.current_sha256 = ('b' * 64)
+$beforeRetry = ConvertTo-Json @($script:active, $script:current) -Compress -Depth 8
+Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts
+$afterRetry = ConvertTo-Json @($script:active, $script:current) -Compress -Depth 8
+if ($beforeRetry -cne $afterRetry -or $script:writes -ne 0) {{ throw 'exact bound retry mutated authority' }}
+
+$savedCurrent = $script:current
+$script:current = $null
+$rejected = $false
+try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts }} catch {{ $rejected = $true }}
+if (-not $rejected -or $script:writes -ne 0) {{ throw 'receipt-bound missing CURRENT crossed eligibility gate' }}
+$script:current = $savedCurrent
+
+$lifecycle.operation_id = '33333333-3333-4333-8333-333333333333'
+$rejected = $false
+try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts }} catch {{ $rejected = $true }}
+if (-not $rejected -or $script:writes -ne 0) {{ throw 'foreign lifecycle receipt crossed eligibility gate' }}
+$lifecycle.operation_id = $operation
+
+$lifecycle.current_sha256 = ('c' * 64)
+$rejected = $false
+try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts }} catch {{ $rejected = $true }}
+if (-not $rejected -or $script:writes -ne 0) {{ throw 'foreign lifecycle CURRENT crossed eligibility gate' }}
+$lifecycle.current_sha256 = ('b' * 64)
+
+$lifecycle.install_completed = $true
+$beforeCompleted = ConvertTo-Json @($script:active, $script:current) -Compress -Depth 8
+$rejected = $false
+try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts }} catch {{ $rejected = $true }}
+$afterCompleted = ConvertTo-Json @($script:active, $script:current) -Compress -Depth 8
+if (-not $rejected -or $beforeCompleted -cne $afterCompleted -or $script:writes -ne 0) {{ throw 'completed install crossed fresh-only eligibility gate' }}
+
+$lifecycle.install_completed = $false
 $script:current.Payload.operation_id = '22222222-2222-4222-8222-222222222222'
 $rejected = $false
-try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $facts }} catch {{ $rejected = $true }}
+try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts }} catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 0) {{ throw 'foreign CURRENT crossed eligibility gate' }}
 """
     path = tmp_path / "database-generation-preinstall-eligibility.ps1"

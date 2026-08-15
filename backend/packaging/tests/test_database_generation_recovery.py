@@ -97,6 +97,8 @@ $ErrorActionPreference = 'Stop'
 $script:writes = 0
 $script:TicketboxDatabaseGenerationRecoveryTimeoutMs = 1200000
 $script:restoreCalls = 0
+$script:publicOwnerRepairs = 0
+$script:publicOwner = 'pg_database_owner'
 $script:restoreRevision = ''
 $script:catalog = $null
 $script:artifacts = @{{}}
@@ -141,6 +143,9 @@ function New-TicketboxDatabaseGenerationRecoveryArtifact {{
 }}
 function Invoke-TicketboxC07Sql {{
     param($Authority, $Database, $Role, $Password, $Label, $Sql)
+    if ($Label -ceq 'database generation restore public schema owner observation') {{
+        return $script:publicOwner
+    }}
     $script:writes += 1
     if ($Label -ceq 'database generation restore database create') {{
         $script:catalog = [pscustomobject]@{{
@@ -154,6 +159,14 @@ function Invoke-TicketboxC07Sql {{
     }} elseif ($Label -ceq 'database generation restore database bind') {{
         $script:catalog.Marker = Get-TicketboxDatabaseGenerationRestoreMarker $script:attempt $script:catalog.DatabaseOid
         $script:catalog.AllowsConnections = $true
+    }} elseif ($Label -ceq 'database generation restore public schema ownership') {{
+        if (
+            [string]$Database -cne [string]$script:attempt.Payload.restore_database -or
+            [string]$Role -cne 'postgres' -or
+            [string]$Sql -cne 'ALTER SCHEMA public OWNER TO "ticketbox_owner";'
+        ) {{ throw 'restore public schema ownership repair is not exact' }}
+        $script:publicOwnerRepairs += 1
+        $script:publicOwner = 'ticketbox_owner'
     }} elseif ($Label -ceq 'database generation restore exact cleanup') {{
         $script:catalog.Exists = $false
     }} else {{
@@ -215,21 +228,48 @@ $script:catalog = [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 
 $recovered = Get-TicketboxDatabaseGenerationRestoreBinding 'state' $script:attempt @{{}} $secret $lock
 if ($script:writes -ne 1 -or [string]$recovered.Payload.restore_database_oid -cne '333') {{ throw 'CREATE response-loss recovery failed' }}
 
+# A persisted binding never authorizes a database whose live owner drifted.
+$script:writes = 0
+$script:catalog.OwnerRoleOid = [uint32]88
+$rejected = $false
+try {{ Get-TicketboxDatabaseGenerationRestoreBinding 'state' $script:attempt @{{}} $secret $lock | Out-Null }} catch {{ $rejected = $true }}
+if (-not $rejected -or $script:writes -ne 0) {{ throw 'persisted binding accepted a foreign database owner' }}
+$script:catalog.OwnerRoleOid = [uint32]77
+
 # The production restore body must execute the exact isolated pg_restore once,
 # then converge without a second process after the target revision is visible.
 $archive = [pscustomobject]@{{ Payload = [pscustomobject]@{{ pg_restore_sha256 = ('e' * 64) }} }}
+$script:publicOwner = 'rogue_owner'
+$script:writes = 0
+$rejected = $false
+try {{ Invoke-TicketboxDatabaseGenerationArchiveRestore 'state' $script:attempt $archive $hostContract $hostAuthority $secret $lock }} catch {{ $rejected = $true }}
+if (-not $rejected -or $script:writes -ne 0 -or $script:publicOwnerRepairs -ne 0 -or $script:restoreCalls -ne 0) {{ throw 'foreign public owner was mutated' }}
+$script:publicOwner = 'pg_database_owner'
+$script:restoreRevision = 'foreign_revision'
+$rejected = $false
+try {{ Invoke-TicketboxDatabaseGenerationArchiveRestore 'state' $script:attempt $archive $hostContract $hostAuthority $secret $lock }} catch {{ $rejected = $true }}
+if (-not $rejected -or $script:writes -ne 0 -or $script:publicOwnerRepairs -ne 0 -or $script:restoreCalls -ne 0) {{ throw 'foreign revision reached restore mutation' }}
+$script:restoreRevision = ''
 Invoke-TicketboxDatabaseGenerationArchiveRestore `
     'state' $script:attempt $archive $hostContract $hostAuthority $secret $lock
 if ($script:restoreCalls -ne 1 -or
+    $script:publicOwnerRepairs -ne 1 -or
     $script:restoreArguments -notcontains '--single-transaction' -or
     $script:restoreArguments -notcontains '--no-owner' -or
+    $script:restoreArguments -notcontains '--role=ticketbox_owner' -or
     $script:restoreArguments -notcontains 'archive.dump') {{
     throw "isolated pg_restore body was not executed: calls=$script:restoreCalls args=$($script:restoreArguments -join ',')"
 }}
 $script:restoreRevision = '20260809_0001'
+$script:publicOwner = 'pg_database_owner'
 Invoke-TicketboxDatabaseGenerationArchiveRestore `
     'state' $script:attempt $archive $hostContract $hostAuthority $secret $lock
 if ($script:restoreCalls -ne 1) {{ throw 'target-observed restore retry launched a second pg_restore' }}
+if ($script:publicOwnerRepairs -ne 2 -or $script:publicOwner -cne 'ticketbox_owner') {{ throw 'target-observed retry skipped public schema ownership repair' }}
+Invoke-TicketboxDatabaseGenerationArchiveRestore `
+    'state' $script:attempt $archive $hostContract $hostAuthority $secret $lock
+if ($script:restoreCalls -ne 1) {{ throw 'owner-normalized retry launched a second pg_restore' }}
+if ($script:publicOwnerRepairs -ne 2) {{ throw 'owner-normalized retry repeated public schema ownership repair' }}
 
 # A blank but open database, or any foreign marker, is never adopted or mutated.
 foreach ($foreign in @(

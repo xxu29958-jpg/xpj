@@ -144,6 +144,7 @@ function Start-TicketboxDatabaseGenerationIntent {
             "BackendServiceName",
             "ExistingPathFacts",
             "HasPersistedInstalledReleaseConfig",
+            "LifecycleEvidence",
             "PgServiceName",
             "StateRoot"
         ) `
@@ -155,6 +156,7 @@ function Start-TicketboxDatabaseGenerationIntent {
         -BackendServiceName ([string]$PreinstallFacts.BackendServiceName) `
         -HasPersistedInstalledReleaseConfig `
             ([bool]$PreinstallFacts.HasPersistedInstalledReleaseConfig) `
+        -LifecycleEvidence $PreinstallFacts.LifecycleEvidence `
         -ExistingPathFacts @($PreinstallFacts.ExistingPathFacts)
     return New-TicketboxDatabaseGenerationIntent `
         -InstallerState $InstallerState `

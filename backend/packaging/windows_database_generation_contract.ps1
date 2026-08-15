@@ -70,9 +70,44 @@ function Assert-TicketboxDatabaseGenerationPreinstallEligibility {
         [Parameter(Mandatory = $true)][string]$PgServiceName,
         [Parameter(Mandatory = $true)][string]$BackendServiceName,
         [Parameter(Mandatory = $true)][bool]$HasPersistedInstalledReleaseConfig,
+        [Parameter(Mandatory = $true)][object]$LifecycleEvidence,
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$ExistingPathFacts
     )
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        $LifecycleEvidence `
+        @("current_sha256", "install_completed", "operation_id", "receipt_present", "schema") `
+        "database generation lifecycle evidence"
+    if (
+        [string]$LifecycleEvidence.schema -cne
+            "ticketbox-database-generation-lifecycle-evidence-v1" -or
+        $LifecycleEvidence.receipt_present -isnot [bool] -or
+        $LifecycleEvidence.install_completed -isnot [bool] -or
+        (
+            -not [bool]$LifecycleEvidence.receipt_present -and
+            (
+                [bool]$LifecycleEvidence.install_completed -or
+                -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.operation_id) -or
+                -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.current_sha256)
+            )
+        ) -or
+        (
+            [bool]$LifecycleEvidence.receipt_present -and
+            (
+                ([guid][string]$LifecycleEvidence.operation_id).ToString("D") -cne
+                    [string]$LifecycleEvidence.operation_id -or
+                (
+                    -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.current_sha256) -and
+                    [string]$LifecycleEvidence.current_sha256 -cnotmatch '^[0-9a-f]{64}$'
+                )
+            )
+        )
+    ) {
+        throw "database generation lifecycle evidence 不是闭合合同。"
+    }
+    if ([bool]$LifecycleEvidence.install_completed) {
+        throw "尚未实现 repair/reinstall；completed install 不得进入 fresh-only generation。"
+    }
     $activeIntent = Read-TicketboxDatabaseGenerationActiveIntent `
         $StateRoot -AllowAbsent
     $current = Read-TicketboxDatabaseGenerationCurrent $StateRoot -AllowAbsent
@@ -104,16 +139,41 @@ function Assert-TicketboxDatabaseGenerationPreinstallEligibility {
             )
         }
     }
-    elseif (
-        $null -ne $current -and
-        (
-            [string]$current.Payload.operation_id -cne
-                [string]$activeIntent.Payload.operation_id -or
-            [string]$current.Payload.intent_sha256 -cne
-                [string]$activeIntent.PayloadSha256
-        )
-    ) {
-        throw "database generation CURRENT 不属于现有 active intent。"
+    else {
+        if (
+            [bool]$LifecycleEvidence.receipt_present -and
+            [string]$LifecycleEvidence.operation_id -cne
+                [string]$activeIntent.Payload.operation_id
+        ) {
+            throw "lifecycle receipt 不属于现有 active intent。"
+        }
+        if ($null -ne $current) {
+            if (
+                [string]$current.Payload.operation_id -cne
+                    [string]$activeIntent.Payload.operation_id -or
+                [string]$current.Payload.intent_sha256 -cne
+                    [string]$activeIntent.PayloadSha256
+            ) {
+                throw "database generation CURRENT 不属于现有 active intent。"
+            }
+            if (-not [bool]$LifecycleEvidence.receipt_present) {
+                throw "CURRENT 缺少未完成 lifecycle receipt，拒绝猜测恢复。"
+            }
+            if (
+                -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.current_sha256) -and
+                [string]$LifecycleEvidence.current_sha256 -cne
+                    [string]$current.PayloadSha256
+            ) {
+                throw "lifecycle receipt 绑定了其他 database generation CURRENT。"
+            }
+        }
+        elseif (
+            -not [string]::IsNullOrEmpty(
+                [string]$LifecycleEvidence.current_sha256
+            )
+        ) {
+            throw "lifecycle receipt 声明了缺失的 database generation CURRENT。"
+        }
     }
 }
 
