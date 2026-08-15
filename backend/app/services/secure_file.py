@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from app.services import secure_file_windows as _windows
+from app.services import secure_file_windows_acl as _windows_acl
 
 _MOVEFILE_WRITE_THROUGH = 0x00000008
 _SYSTEM_SID = _windows.SYSTEM_SID
@@ -72,6 +73,10 @@ def windows_process_start_filetime(process_id: int) -> tuple[int, int]:
 
 def _current_process_sid(advapi32: object, kernel32: object) -> str:
     return _windows.current_process_sid(advapi32, kernel32)
+
+
+def _current_process_service_sid(advapi32: object, kernel32: object) -> str:
+    return _windows_acl.current_process_service_sid(advapi32, kernel32)
 
 
 @contextlib.contextmanager
@@ -148,7 +153,7 @@ def hold_system_runtime_projection_for_read(path: Path) -> Iterator[Path]:
     if os.name != "nt":
         raise OSError("SYSTEM-owned runtime projection is a Windows-only contract")
     advapi32, kernel32 = _windows_apis()
-    service_sid = _current_process_sid(advapi32, kernel32)
+    service_sid = _current_process_service_sid(advapi32, kernel32)
     if service_sid in {_SYSTEM_SID, _ADMINISTRATORS_SID}:
         raise PermissionError(
             "runtime projection must be read by the dedicated backend service identity"

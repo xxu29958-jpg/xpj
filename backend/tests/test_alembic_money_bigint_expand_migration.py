@@ -48,7 +48,7 @@ from tests._infra.c07_money_migration import (
     seed_owner,
 )
 from tests._infra.c07_money_protocol_probe import (
-    run_c07_protocol_upgrade as _run_c07_protocol_upgrade,
+    run_database_generation_upgrade as _run_database_generation_upgrade,
 )
 from tests._infra.c07_money_runtime_checks import (
     assert_production_deadline_preserves_tighter_timeouts,
@@ -66,16 +66,14 @@ def test_upgrade_previous_to_head_has_complete_shape() -> None:
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     assert column_type("expenses", "amount_cents") in {"integer", "int4"}
-    _run_c07_protocol_upgrade("maintenance")
+    _run_database_generation_upgrade(PREVIOUS_REVISION, HEAD_REVISION)
     assert current_revision() == HEAD_REVISION
     assert_head_shape()
 
 
 def test_fresh_upgrade_has_complete_shape() -> None:
     reset_schema()
-    _run_c07_protocol_upgrade("fresh")
-    assert current_revision() == PREVIOUS_REVISION
-    _run_c07_protocol_upgrade("production")
+    _run_database_generation_upgrade("base", HEAD_REVISION)
     assert current_revision() == HEAD_REVISION
     assert_head_shape()
 
@@ -83,7 +81,7 @@ def test_fresh_upgrade_has_complete_shape() -> None:
 def test_production_statistics_refresh_is_verified_and_replay_stable() -> None:
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
-    _run_c07_protocol_upgrade("production")
+    _run_database_generation_upgrade(PREVIOUS_REVISION, HEAD_REVISION)
 
     with engine.begin() as connection:
         committed = _analyze_affected_tables(connection)

@@ -183,10 +183,6 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/postgresql_database_catalog/query.ps1",
     "packaging/postgresql_database_catalog/codec.ps1",
     "packaging/postgresql_database_catalog/observation.ps1",
-    "packaging/windows_postgresql_exported_snapshot.ps1",
-    "packaging/postgresql_exported_snapshot/primitives.ps1",
-    "packaging/postgresql_exported_snapshot/session.ps1",
-    "packaging/postgresql_exported_snapshot/deadline_evidence.ps1",
     "packaging/windows_postgresql_writer_fence.ps1",
     "packaging/postgresql_writer_fence/primitives.ps1",
     "packaging/postgresql_writer_fence/observation_query.ps1",
@@ -196,9 +192,6 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/postgresql_writer_fence/precondition_guard.ps1",
     "packaging/postgresql_writer_fence/session_drain.ps1",
     "packaging/postgresql_writer_fence/reconciler.ps1",
-    "packaging/c07_lifecycle/writer_fence.ps1",
-    "packaging/c07_lifecycle/writer_fence/policy.ps1",
-    "packaging/c07_lifecycle/writer_fence/adapter.ps1",
     "packaging/windows_bundled_database.ps1",
     "packaging/windows_c07_database.ps1",
     "packaging/windows_security_primitives.ps1",
@@ -210,17 +203,20 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/security_primitives/file_security.ps1",
     "packaging/windows_c07_superuser_recovery.ps1",
     "packaging/windows_deadline_budget.ps1",
-    "packaging/windows_c07_deadline_policy.ps1",
-    "packaging/windows_c07_heartbeat_authority.ps1",
-    "packaging/windows_c07_lifecycle.ps1",
-    "packaging/windows_c07_heartbeat_helper.ps1",
-    "packaging/windows_c07_failure_summary.ps1",
     "packaging/windows_atomic_artifacts.ps1",
     "packaging/atomic_artifacts/native.ps1",
     "packaging/atomic_artifacts/file.ps1",
     "packaging/atomic_artifacts/directory.ps1",
-    "packaging/windows_c07_recovery_generation.ps1",
-    "packaging/windows_c07_packaged_migration.ps1",
+    "packaging/windows_database_generation_program_adapter.ps1",
+    "packaging/windows_database_generation_program_execution.ps1",
+    "packaging/windows_database_generation.ps1",
+    "packaging/windows_database_generation_contract.ps1",
+    "packaging/windows_database_generation_artifacts.ps1",
+    "packaging/windows_database_generation_adapter.ps1",
+    "packaging/windows_database_generation_source.ps1",
+    "packaging/windows_database_generation_recovery_evidence.ps1",
+    "packaging/windows_database_generation_target_recovery.ps1",
+    "packaging/windows_database_generation_projection.ps1",
     "packaging/windows_backend_bootstrap.ps1",
     "packaging/windows_bootstrap_exposure_recovery.ps1",
     "packaging/install_bundled_services.ps1",
@@ -437,7 +433,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert validate.returncode != 0
 
 
-def test_installed_c07_external_assets_are_manifest_bound_and_held(
+def test_installed_generation_assets_are_manifest_bound_and_held(
     tmp_path: Path,
 ) -> None:
     safety = PACKAGING / "windows_installation_safety.ps1"
@@ -448,9 +444,7 @@ def test_installed_c07_external_assets_are_manifest_bound_and_held(
             "ticketbox-backend.exe": b"backend-exe",
             "ticketbox-c07-migrator.exe": b"migration-helper",
             "DATABASE_GENERATION_PROGRAM.json": b'{"schema":"synthetic-generation-program"}',
-            "_internal/app/database/_c07_fresh_source_bootstrap.py": b"fresh",
-            "_internal/app/database/_c07_maintenance_upgrade.py": b"maintenance",
-            "_internal/app/database/_c07_production_migration.py": b"production",
+            "_internal/app/database/_database_generation_target_verification.py": b"target-verification",
             "_internal/app/database/_managed_schema_upgrade.py": b"managed-schema",
             "_internal/alembic.ini": b"[alembic]",
             "_internal/runtime.dat": b"runtime",
@@ -542,7 +536,21 @@ function Write-TestManifest {{
                 sha256 = Get-TicketboxFileSha256 $secondaryPath
             }}
         }}
-        postgresql = [ordered]@{{ major = 17 }}
+        postgresql = [ordered]@{{
+            major = 17
+            critical_files = @(
+                [ordered]@{{
+                    path = 'bin/pg_dump.exe'
+                    size = [int64]7
+                    sha256 = ('d' * 64)
+                }},
+                [ordered]@{{
+                    path = 'bin/pg_restore.exe'
+                    size = [int64]10
+                    sha256 = ('e' * 64)
+                }}
+            )
+        }}
     }}
     Write-TicketboxJsonFile $primaryPath $primary
 }}
@@ -660,7 +668,7 @@ def test_backend_payload_snapshot_round_trips_canonical_manifest_order(
 . '{_ps_literal(PROVENANCE_HELPER)}'
 $root = '{_ps_literal(payload_root)}'
 $relativePaths = [string[]]@(
-    @($script:TicketboxInstalledC07ExternalAuthorityPaths) +
+    @($script:TicketboxInstalledDatabaseGenerationAuthorityPaths) +
     @(
         '_internal/tzdata/zoneinfo/America/Indianapolis',
         '_internal/tzdata/zoneinfo/America/Indiana/Indianapolis',
@@ -1089,14 +1097,19 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     for excluded_database_driver in ('"sqlite3"', '"_sqlite3"', '"pysqlite2"', '"MySQLdb"'):
         assert excluded_database_driver in backend_spec
     for standalone_module in (
-        "app.database._c07_fresh_source_bootstrap",
-        "app.database._c07_production_migration",
         "app.database._managed_schema_upgrade",
-        "_c07_fresh_source_bootstrap.py",
-        "_c07_production_migration.py",
+        "app.database._database_generation_target_verification",
+        "_database_generation_target_verification.py",
         "_managed_schema_upgrade.py",
     ):
         assert f'"{standalone_module}"' in backend_spec
+    for retired_module in (
+        "_c07_fresh_source_bootstrap.py",
+        "_c07_maintenance_upgrade.py",
+        "_c07_production_migration.py",
+    ):
+        assert not (ROOT / "app" / "database" / retired_module).exists()
+        assert f'"{retired_module}"' not in backend_spec
     for standalone_dependency in (
         "app.app_meta_observation",
         "app.canonical_money_facts",
@@ -1120,6 +1133,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         "app.canonical_money_facts",
         "app.canonical_money_facts_contract",
         "app.database._database_generation_program",
+        "app.database._database_generation_runtime_admission",
         "app.database_generation_c07_contract",
         "app.database_model_registry",
         "app.tenant_contract",
@@ -1128,7 +1142,37 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert 'Frozen backend archive omitted required app module: $requiredModule' in backend_build
     assert '"app\\database\\_c07_maintenance_plan.py"' in backend_build
     assert "Retired database generation contract returned to the source snapshot" in backend_build
-    assert '"app.database._c07_maintenance_plan"' in backend_build
+    retired_frozen_modules = (
+        "app.database._c07_ceremony",
+        "app.database._c07_ceremony_document",
+        "app.database._c07_commit_reconciliation",
+        "app.database._c07_execution",
+        "app.database._c07_fresh_source_bootstrap",
+        "app.database._c07_host_evidence_helpers",
+        "app.database._c07_host_freeze_evidence",
+        "app.database._c07_maintenance_digest",
+        "app.database._c07_maintenance_plan",
+        "app.database._c07_maintenance_upgrade",
+        "app.database._c07_maintenance_upgrade_action",
+        "app.database._c07_production_authority",
+        "app.database._c07_production_connection",
+        "app.database._c07_production_context",
+        "app.database._c07_production_contract",
+        "app.database._c07_production_contract_types",
+        "app.database._c07_production_fence",
+        "app.database._c07_production_migration",
+        "app.database._c07_production_ready",
+        "app.database._c07_production_recovery",
+        "app.database._c07_production_restore",
+        "app.database._c07_production_shape",
+        "app.database._c07_receipt",
+        "app.database._c07_receipt_validation",
+        "app.database._c07_runtime_projection",
+        "app.database._c07_transaction_timeout",
+    )
+    for retired_archive_module in retired_frozen_modules:
+        assert f'"{retired_archive_module}"' in backend_spec
+        assert f'"{retired_archive_module}"' in backend_build
     assert "Frozen backend archive contains retired app module: $retiredModule" in backend_build
     assert 'name="ticketbox-c07-migrator"' in backend_spec
     assert '$stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"' in backend_build

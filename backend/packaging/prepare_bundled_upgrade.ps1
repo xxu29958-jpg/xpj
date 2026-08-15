@@ -25,6 +25,15 @@ param(
     [switch]$FilesReplaced,
     [switch]$CommitCompletedInstall,
     [switch]$MarkProgramFilesInstalledBackupPending,
+    [switch]$PersistDatabaseGenerationIntentOnly,
+    [string]$DatabaseGenerationProgramPath = "",
+    [string]$DatabaseGenerationProgramSha256 = "",
+    [long]$DatabaseGenerationMigrationHelperSize = 0,
+    [string]$DatabaseGenerationMigrationHelperSha256 = "",
+    [long]$DatabaseGenerationPgDumpSize = 0,
+    [string]$DatabaseGenerationPgDumpSha256 = "",
+    [long]$DatabaseGenerationPgRestoreSize = 0,
+    [string]$DatabaseGenerationPgRestoreSha256 = "",
     [switch]$ValidateOnly
 )
 
@@ -261,6 +270,24 @@ $ServiceBootstrapExposureRecoveryGuardPath = $BootstrapExposureRecoveryGuardPath
 $ServiceDataVolumeIdentity = ""
 $AllowMissingRuntimeDataAuthority = $true
 $RuntimeDataBindingPresent = $false
+
+function Get-TicketboxInstalledDatabaseGenerationAuthorityPath {
+    $path = Join-Path $InstallDir "installer\windows_database_generation.ps1"
+    if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "File") {
+        throw "installed database generation authority 不是可信普通文件：$path"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $path
+    return $path
+}
+
+function Get-TicketboxBootstrapDatabaseGenerationAuthorityPath {
+    $path = Join-Path $ScriptDir "windows_database_generation.ps1"
+    if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "File") {
+        throw "bootstrap database generation authority 不是可信普通文件：$path"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $path
+    return $path
+}
 
 function Set-TicketboxPreparedRuntimeServiceContract {
     $bindingDirectory = Get-TicketboxRuntimeDataBindingDirectory
@@ -1441,6 +1468,122 @@ try {
     if ($InstallerLockOwnerProcessId -le 0) {
         throw "升级预检只能由持有生命周期锁的 Inno 安装器调用。"
     }
+    if ($PersistDatabaseGenerationIntentOnly) {
+        if (
+            $DatabaseGenerationProgramPath.Trim().Length -eq 0 -or
+            $DatabaseGenerationProgramSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+            $DatabaseGenerationMigrationHelperSize -lt 1 -or
+            $DatabaseGenerationMigrationHelperSha256 -cnotmatch
+                '^[0-9a-f]{64}$' -or
+            $DatabaseGenerationPgDumpSize -lt 1 -or
+            $DatabaseGenerationPgDumpSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+            $DatabaseGenerationPgRestoreSize -lt 1 -or
+            $DatabaseGenerationPgRestoreSha256 -cnotmatch '^[0-9a-f]{64}$'
+        ) {
+            throw "database generation preinstall evidence 不完整。"
+        }
+        . (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)
+        $generationStateRoot = Get-TicketboxDatabaseGenerationStateRoot $InstallerState
+        $lifecycleEvidence = [pscustomobject][ordered]@{
+            schema = "ticketbox-database-generation-lifecycle-evidence-v1"
+            receipt_present = $false
+            install_completed = $false
+            operation_id = ""
+            current_sha256 = ""
+        }
+        $lifecycleReceiptKind = Get-TicketboxPathEntryKindNoFollow $LifecycleReceiptPath
+        if ($lifecycleReceiptKind -ceq "File") {
+            $observedLifecycleReceipt = Read-TicketboxLifecycleReceipt `
+                -Path $LifecycleReceiptPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -TargetReleaseConfig $TargetReleaseConfig `
+                -CurrentTargetBackendVersion $TargetBackendVersion `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+                -AllowPreviousInstallerOwnerProcessId
+            try {
+                $lifecycleEvidence.receipt_present = $true
+                $lifecycleEvidence.install_completed =
+                    [bool]$observedLifecycleReceipt.install_completed
+                $lifecycleEvidence.operation_id =
+                    [string]$observedLifecycleReceipt.c07_installation_operation_id
+                $lifecycleEvidence.current_sha256 =
+                    [string]$observedLifecycleReceipt.database_generation_current_sha256
+            }
+            finally {
+                Close-TicketboxLifecycleBackupGuard $observedLifecycleReceipt
+            }
+        }
+        elseif ($lifecycleReceiptKind -cne "Missing") {
+            throw "安装生命周期回执不是普通文件或缺失路径。"
+        }
+        $preinstallFacts = [pscustomobject][ordered]@{
+            BackendServiceName = $BackendServiceName
+            ExistingPathFacts = @(
+                [pscustomobject][ordered]@{ Path = (Join-Path $PgData "PG_VERSION"); Label = "PG_VERSION" }
+                [pscustomobject][ordered]@{ Path = $EnvPath; Label = "runtime .env" }
+                [pscustomobject][ordered]@{ Path = $LifecycleReceiptPath; Label = "lifecycle receipt" }
+                [pscustomobject][ordered]@{ Path = $InstalledBuildManifestPath; Label = "installed build manifest" }
+                [pscustomobject][ordered]@{ Path = $BackendExe; Label = "installed backend executable" }
+                [pscustomobject][ordered]@{ Path = $PgBootstrapRecoveryPath; Label = "PostgreSQL bootstrap recovery" }
+                [pscustomobject][ordered]@{ Path = $InitdbServiceReceiptPath; Label = "initdb receipt" }
+                [pscustomobject][ordered]@{ Path = $RecoveryRequiredPath; Label = "installer recovery latch" }
+                [pscustomobject][ordered]@{ Path = $LegacyRecoveryRequiredPath; Label = "legacy recovery latch" }
+                [pscustomobject][ordered]@{ Path = $InstallerRuntimeRecoveryGuardPath; Label = "runtime recovery guard" }
+            )
+            HasPersistedInstalledReleaseConfig = $HasPersistedInstalledReleaseConfig
+            LifecycleEvidence = $lifecycleEvidence
+            PgServiceName = $PgServiceName
+            StateRoot = $generationStateRoot
+        }
+        $programContract = Read-TicketboxDatabaseGenerationProgramContract `
+            -Path $DatabaseGenerationProgramPath `
+            -ExpectedSha256 $DatabaseGenerationProgramSha256
+        $hostContract = New-TicketboxDatabaseGenerationHostContract `
+            -BackendServiceName ([string]$TargetReleaseConfig.backend_service_name) `
+            -DataRoot $DataRoot `
+            -InstallDir $InstallDir `
+            -PgCtlPath (Join-Path $InstallDir "pg\bin\pg_ctl.exe") `
+            -PgServiceName ([string]$TargetReleaseConfig.pg_service_name) `
+            -PgDumpPath (Join-Path $InstallDir "pg\bin\pg_dump.exe") `
+            -PgDumpSize $DatabaseGenerationPgDumpSize `
+            -PgDumpSha256 $DatabaseGenerationPgDumpSha256 `
+            -PgRestorePath (Join-Path $InstallDir "pg\bin\pg_restore.exe") `
+            -PgRestoreSize $DatabaseGenerationPgRestoreSize `
+            -PgRestoreSha256 $DatabaseGenerationPgRestoreSha256 `
+            -ReleaseConfig $TargetReleaseConfig
+        $projectionContract = New-TicketboxDatabaseGenerationProjectionContract `
+            -BackendServiceName ([string]$TargetReleaseConfig.backend_service_name) `
+            -EnvPath (Join-Path (Join-Path $DataRoot "app") ".env") `
+            -StopTimeoutMilliseconds ([int]$TargetReleaseConfig.stop_timeout_ms) `
+            -BackendPort $BackendPort `
+            -PgBin (Join-Path $InstallDir "pg\bin") `
+            -Timezone ([string]$TargetReleaseConfig.default_timezone) `
+            -PublicBaseUrl "" `
+            -PsqlPath (Join-Path $InstallDir "pg\bin\psql.exe") `
+            -PgData (Join-Path $DataRoot "pgdata") `
+            -DatabaseToolTimeoutMilliseconds (
+                [int]$TargetReleaseConfig.database_tool_timeout_ms
+            )
+        $intentContext = Start-TicketboxDatabaseGenerationIntent `
+            -InstallerState $InstallerState `
+            -LifecycleLock $operationLock `
+            -PreinstallFacts $preinstallFacts `
+            -TargetBackendVersion $TargetBackendVersion `
+            -MigrationHelperSize $DatabaseGenerationMigrationHelperSize `
+            -MigrationHelperSha256 $DatabaseGenerationMigrationHelperSha256 `
+            -ProgramContract $programContract `
+            -HostContract $hostContract `
+            -ProjectionContract $projectionContract
+        Write-Host (
+            "database generation intent persisted: operation={0} installation={1}" -f `
+                [string]$intentContext.Artifact.Payload.operation_id,
+                [string]$intentContext.Artifact.Payload.installation_id
+        ) -ForegroundColor Green
+        return
+    }
     # A trusted older installer could leave the v2 marker with the exact
     # inheritance-only ACL shape before it persisted a stale lifecycle receipt.
     # Normalize only that known residual before any receipt reader requires the
@@ -1597,6 +1740,7 @@ try {
     }
 
     if ($CommitCompletedInstall) {
+        . (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)
         Complete-TicketboxInstalledLifecycleTransaction `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
@@ -1608,7 +1752,8 @@ try {
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -BuildManifestPath $InstalledBuildManifestPath `
             -RecoveryRequiredPath $RecoveryRequiredPath `
-            -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath
+            -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
+            -LifecycleLock $operationLock
         return
     }
 
@@ -1648,6 +1793,7 @@ try {
                 -Path $LifecycleReceiptPath `
                 -Receipt $staleReceipt `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+            . (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)
             Complete-TicketboxInstalledLifecycleTransaction `
                 -Path $LifecycleReceiptPath `
                 -InstallDir $InstallDir `
@@ -1659,7 +1805,8 @@ try {
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
                 -BuildManifestPath $InstalledBuildManifestPath `
                 -RecoveryRequiredPath $RecoveryRequiredPath `
-                -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath
+                -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
+                -LifecycleLock $operationLock
             $staleReceipt = Read-TicketboxLifecycleReceipt `
                 -Path $LifecycleReceiptPath `
                 -InstallDir $InstallDir `
@@ -1879,6 +2026,13 @@ try {
     }
     $backupCompleted = $false
     $backupPath = ""
+    . (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)
+    $capturedGenerationStateRoot =
+        Get-TicketboxDatabaseGenerationStateRoot $InstallerState
+    $capturedGenerationIntent = Read-TicketboxDatabaseGenerationActiveIntent `
+        $capturedGenerationStateRoot
+    $capturedGenerationOperationId =
+        [string]$capturedGenerationIntent.Payload.operation_id
     Write-TicketboxLifecycleReceipt `
         -Path $LifecycleReceiptPath `
         -Mode $mode `
@@ -1889,6 +2043,7 @@ try {
         -InstalledReleaseConfig $InstalledReleaseConfig `
         -TargetBackendVersionFloor $TargetBackendVersion `
         -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+        -C07InstallationOperationId $capturedGenerationOperationId `
         -PreviousPgState $pgState `
         -PreviousBackendState $backendState `
         -PreviousPgStartPolicy $pgStartPolicy `

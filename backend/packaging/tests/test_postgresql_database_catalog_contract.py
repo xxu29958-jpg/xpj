@@ -17,8 +17,7 @@ COMPONENTS = (
     PACKAGING / "postgresql_database_catalog" / "observation.ps1",
 )
 C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
-C07_RECOVERY = PACKAGING / "windows_c07_recovery_generation.ps1"
-C07_HEARTBEAT = PACKAGING / "windows_c07_heartbeat_authority.ps1"
+GENERATION_RECOVERY = PACKAGING / "windows_database_generation_target_recovery.ps1"
 INNO = PACKAGING / "ticketbox-installer.iss"
 BUILD = PACKAGING / "build_inno_installer.ps1"
 PROVENANCE = PACKAGING.parent / "scripts" / "windows_build_provenance.ps1"
@@ -87,7 +86,7 @@ def test_catalog_adapter_is_small_generic_and_old_c07_entrypoints_are_retired() 
         assert all(symbol not in source for source in production_sources.values())
     assert "Get-TicketboxPostgresqlDatabaseCatalogObservation" in c07_database
     assert "function Get-TicketboxC07DatabaseCatalogObservation" in c07_database
-    for consumer in (C07_DATABASE, C07_RECOVERY, C07_HEARTBEAT):
+    for consumer in (C07_DATABASE, GENERATION_RECOVERY):
         assert "Get-TicketboxC07DatabaseCatalogObservation" in production_sources[consumer]
 
 

@@ -56,8 +56,6 @@ $script:TicketboxC07SuperuserRecoveryStages = @(
     "sspi_hba_published",
     "credential_rotated",
     "auth_files_restored",
-    "action_running",
-    "action_succeeded",
     "password_cleared",
     "completed"
 )
@@ -87,7 +85,6 @@ $script:TicketboxC07SuperuserRecoveryFields = @(
     "sspi_realm",
     "map_name",
     "created_at_utc",
-    "action_attempt",
     "scram_salt"
 )
 
@@ -680,13 +677,10 @@ function Read-TicketboxC07SuperuserRecoveryArtifact {
                 -Label $field
     }
     $port = 0
-    $attempt = 0
     if (
         -not [int]::TryParse([string]$values.port, [ref]$port) -or
         $port -lt 1 -or
-        $port -gt 65535 -or
-        -not [int]::TryParse([string]$values.action_attempt, [ref]$attempt) -or
-        $attempt -lt 0
+        $port -gt 65535
     ) {
         throw "C07 superuser recovery artifact 数字字段无效。"
     }
@@ -708,7 +702,6 @@ function Read-TicketboxC07SuperuserRecoveryArtifact {
         $result[$field] = [string]$values[$field]
     }
     $result.port = $port
-    $result.action_attempt = $attempt
     $result.secret = $passFields[4]
     return [pscustomobject]$result
 }
@@ -716,10 +709,11 @@ function Read-TicketboxC07SuperuserRecoveryArtifact {
 function New-TicketboxC07SuperuserRecoveryArtifact {
     param(
         [Parameter(Mandatory = $true)][object]$HostContext,
-        [Parameter(Mandatory = $true)][object]$Principal
+        [Parameter(Mandatory = $true)][object]$Principal,
+        [Parameter(Mandatory = $true)][string]$ExpectedOperationId
     )
 
-    $operationId = [Guid]::NewGuid().ToString("D").ToLowerInvariant()
+    $operationId = ([Guid]$ExpectedOperationId).ToString("D").ToLowerInvariant()
     $mapName = "ticketbox_c07_recover_" + $operationId.Replace("-", "")
     $prototype = [pscustomobject][ordered]@{
         schema = $script:TicketboxC07SuperuserRecoverySchema
@@ -750,7 +744,6 @@ function New-TicketboxC07SuperuserRecoveryArtifact {
         sspi_realm = [string]$Principal.Realm
         map_name = $mapName
         created_at_utc = [DateTime]::UtcNow.ToString("o")
-        action_attempt = 0
         scram_salt = New-TicketboxC07SuperuserRecoverySalt
         secret = New-TicketboxC07SuperuserRecoverySecret
     }
@@ -2147,48 +2140,111 @@ function Remove-TicketboxC07CompletedSuperuserRecoveryArtifact {
         -OwnerAccount $script:TicketboxC07SuperuserRecoveryOwner
 }
 
-function Invoke-TicketboxC07RecoveredSuperuserAction {
+function Assert-TicketboxC07SuperuserCapability {
+    param(
+        [Parameter(Mandatory = $true)][object]$Capability,
+        [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    $expected = @(
+        "Closed", "HostContext", "OperationId", "RecoveryArtifactPath",
+        "Schema", "Secret"
+    )
+    $names = @($Capability.PSObject.Properties.Name)
+    if (
+        $names.Count -ne $expected.Count -or
+        @($names | Where-Object { $_ -notin $expected }).Count -gt 0 -or
+        [string]$Capability.Schema -cne "ticketbox-postgresql-superuser-capability-v1" -or
+        [string]$Capability.OperationId -cne
+            ([Guid]$ExpectedOperationId).ToString("D") -or
+        [bool]$Capability.Closed -or
+        $Capability.Secret -isnot [Security.SecureString]
+    ) {
+        throw "PostgreSQL superuser capability identity 已关闭或漂移。"
+    }
+    $artifactPath = Assert-TicketboxC07SuperuserRecoveryArtifactPath (
+        [string]$Capability.RecoveryArtifactPath
+    )
+    $artifact = Read-TicketboxC07SuperuserRecoveryArtifact $artifactPath
+    $material = Assert-TicketboxC07SuperuserRecoveryArtifact (
+        $artifact
+    ) $Capability.HostContext
+    if ([string]$artifact.operation_id -cne [string]$Capability.OperationId) {
+        throw "PostgreSQL superuser capability 未绑定 exact operation。"
+    }
+    return [pscustomobject]@{
+        Artifact = $artifact
+        ArtifactPath = $artifactPath
+        Material = $material
+    }
+}
+
+function Throw-TicketboxC07SuperuserCapabilityFailure {
+    param(
+        [AllowNull()][object]$Primary,
+        [AllowNull()][object]$Cleanup
+    )
+    if ($null -ne $Primary -and $null -ne $Cleanup) {
+        $aggregate = [AggregateException]::new(
+            "PostgreSQL superuser capability operation and auth cleanup failed",
+            @($Primary.Exception, $Cleanup.Exception)
+        )
+        foreach ($key in @("TicketboxC07FailureCode", "TicketboxC07FailureCodes")) {
+            if ($Primary.Exception.Data.Contains($key)) {
+                $aggregate.Data[$key] = $Primary.Exception.Data[$key]
+            }
+        }
+        throw $aggregate
+    }
+    if ($null -ne $Primary) { throw $Primary }
+    if ($null -ne $Cleanup) { throw $Cleanup }
+}
+
+function Acquire-TicketboxC07SuperuserCapability {
     param(
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][string]$RecoveryArtifactPath,
-        [Parameter(Mandatory = $true)][scriptblock]$Action
+        [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
-
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
     $null = Assert-TicketboxC07SuperuserRecoveryDependencies
     $null = Assert-TicketboxC07SuperuserRecoveryAdministrator
-    $artifactPath = Assert-TicketboxC07SuperuserRecoveryArtifactPath `
+    $operationId = ([Guid]$ExpectedOperationId).ToString("D")
+    $artifactPath = Assert-TicketboxC07SuperuserRecoveryArtifactPath (
         $RecoveryArtifactPath
-    $HostContext = Resolve-TicketboxC07SuperuserRecoveryHost $HostAuthority
+    )
+    $hostContext = Resolve-TicketboxC07SuperuserRecoveryHost $HostAuthority
     $principal = Get-TicketboxC07SuperuserRecoveryPrincipal
-    $actionResult = $null
 
-    # A completed-but-not-yet-deleted crash window is retired, then the
-    # idempotent bounded Action is re-run under a fresh authority so the caller
-    # receives a real result rather than a guessed reconstruction.
-    for ($cycle = 0; $cycle -lt 3; $cycle++) {
+    for ($cycle = 0; $cycle -lt 2; $cycle++) {
         if (-not (Test-Path -LiteralPath $artifactPath)) {
-            if (Test-TicketboxC07SuperuserRecoveryResidue $HostContext) {
+            if (Test-TicketboxC07SuperuserRecoveryResidue $hostContext) {
                 throw (
-                    "C07 PostgreSQL auth files 含 recovery mapping 但 durable " +
-                    "artifact 缺失；拒绝把未知临时权限当作 original。"
+                    "PostgreSQL auth files 含 recovery mapping 但 durable " +
+                    "artifact 缺失。"
                 )
             }
-            $newArtifact = New-TicketboxC07SuperuserRecoveryArtifact `
-                -Host $HostContext `
-                -Principal $principal
+            $artifact = New-TicketboxC07SuperuserRecoveryArtifact `
+                -HostContext $hostContext `
+                -Principal $principal `
+                -ExpectedOperationId $operationId
             $artifact = Write-TicketboxC07SuperuserRecoveryArtifact `
                 -Path $artifactPath `
-                -Artifact $newArtifact
+                -Artifact $artifact
         }
         else {
             $artifact = Read-TicketboxC07SuperuserRecoveryArtifact $artifactPath
         }
-
+        if ([string]$artifact.operation_id -cne $operationId) {
+            throw "PostgreSQL superuser recovery artifact 属于另一 operation。"
+        }
         $material = Assert-TicketboxC07SuperuserRecoveryArtifact `
             -Artifact $artifact `
-            -Host $HostContext
+            -Host $hostContext
         $artifact = Restore-TicketboxC07SuperuserRecoveryAuthFiles `
-            -Host $HostContext `
+            -Host $hostContext `
             -ArtifactPath $artifactPath `
             -Artifact $artifact `
             -Material $material
@@ -2200,9 +2256,6 @@ function Invoke-TicketboxC07RecoveredSuperuserAction {
                 [string]$principal.SystemUsername -or
             [string]$artifact.sspi_realm -cne [string]$principal.Realm
         ) {
-            # Exact originals are already restored.  It is now safe for a
-            # different elevated administrator to replace only the principal
-            # binding and continue with the same protected one-shot secret.
             $artifact = Update-TicketboxC07SuperuserRecoveryPrincipal `
                 -ArtifactPath $artifactPath `
                 -Artifact $artifact `
@@ -2210,139 +2263,75 @@ function Invoke-TicketboxC07RecoveredSuperuserAction {
                 -Material $material
             $material = Assert-TicketboxC07SuperuserRecoveryArtifact `
                 -Artifact $artifact `
-                -Host $HostContext
+                -Host $hostContext
         }
 
         $secret = ConvertTo-TicketboxC07SuperuserRecoverySecureString $artifact
         try {
             $credentialActive =
                 Test-TicketboxC07SuperuserRecoveryScramCredential `
-                    -Host $HostContext `
+                    -Host $hostContext `
                     -ArtifactPath $artifactPath
-
-            if (
-                [string]$artifact.stage -cin @("password_cleared", "completed")
-            ) {
+            if ([string]$artifact.stage -cin @("password_cleared", "completed")) {
                 if ($credentialActive) {
-                    throw "C07 completed recovery artifact 仍可执行 SCRAM 登录。"
+                    throw "completed superuser capability 仍可执行 SCRAM 登录。"
                 }
                 $artifact = Publish-TicketboxC07SuperuserRecoverySspi `
-                    -Host $HostContext `
+                    -Host $hostContext `
                     -ArtifactPath $artifactPath `
                     -Artifact $artifact `
                     -Material $material
+                $primary = $null
+                $cleanup = $null
+                $passwordState = $null
                 try {
                     $passwordState =
                         Invoke-TicketboxC07SuperuserRecoveryReadPasswordStateViaSspi `
-                            -Host $HostContext `
+                            -Host $hostContext `
                             -Artifact $artifact `
                             -Secret $secret
                 }
+                catch { $primary = $_ }
                 finally {
-                    $artifact =
-                        Read-TicketboxC07SuperuserRecoveryArtifact $artifactPath
-                    $material =
-                        Assert-TicketboxC07SuperuserRecoveryArtifact `
+                    try {
+                        $artifact = Read-TicketboxC07SuperuserRecoveryArtifact (
+                            $artifactPath
+                        )
+                        $material = Assert-TicketboxC07SuperuserRecoveryArtifact `
                             -Artifact $artifact `
-                            -Host $HostContext
-                    $artifact = Restore-TicketboxC07SuperuserRecoveryAuthFiles `
-                        -Host $HostContext `
-                        -ArtifactPath $artifactPath `
-                        -Artifact $artifact `
-                        -Material $material
-                }
-                if (-not $passwordState.Login -or -not $passwordState.PasswordNull) {
-                    throw "C07 completed recovery 未证明 postgres LOGIN/password NULL。"
-                }
-                $artifact = Set-TicketboxC07SuperuserRecoveryStage `
-                    -Path $artifactPath `
-                    -Artifact $artifact `
-                    -Stage "completed"
-                $null = Remove-TicketboxC07CompletedSuperuserRecoveryArtifact `
-                    -Path $artifactPath `
-                    -Artifact $artifact `
-                    -Material $material
-                continue
-            }
-
-            if (
-                -not $credentialActive -and
-                [string]$artifact.stage -ceq "action_succeeded"
-            ) {
-                # Legitimate recovery windows are PASSWORD NULL whose stage
-                # publication was interrupted, or the exact one-shot verifier
-                # whose one-hour validity expired after Action committed.
-                $artifact = Publish-TicketboxC07SuperuserRecoverySspi `
-                    -Host $HostContext `
-                    -ArtifactPath $artifactPath `
-                    -Artifact $artifact `
-                    -Material $material
-                try {
-                    $passwordState =
-                        Invoke-TicketboxC07SuperuserRecoveryReadPasswordStateViaSspi `
-                            -Host $HostContext `
+                            -Host $hostContext
+                        $artifact = Restore-TicketboxC07SuperuserRecoveryAuthFiles `
+                            -Host $hostContext `
+                            -ArtifactPath $artifactPath `
                             -Artifact $artifact `
-                            -Secret $secret
-                    if (
-                        -not $passwordState.PasswordNull -and
-                        $passwordState.PasswordMatchesRecovery
-                    ) {
-                        # Exact verifier equality proves that no foreign
-                        # credential replaced it; retire it through the
-                        # already-bounded SSPI mapping.
-                        $null = Invoke-TicketboxC07SuperuserRecoveryClearCredential `
-                            -Host $HostContext `
-                            -Authentication "sspi"
-                        $passwordState =
-                            Invoke-TicketboxC07SuperuserRecoveryReadPasswordStateViaSspi `
-                                -Host $HostContext `
-                                -Artifact $artifact `
-                                -Secret $secret
+                            -Material $material
                     }
+                    catch { $cleanup = $_ }
                 }
-                finally {
-                    $artifact =
-                        Read-TicketboxC07SuperuserRecoveryArtifact $artifactPath
-                    $material =
-                        Assert-TicketboxC07SuperuserRecoveryArtifact `
-                            -Artifact $artifact `
-                            -Host $HostContext
-                    $artifact = Restore-TicketboxC07SuperuserRecoveryAuthFiles `
-                        -Host $HostContext `
-                        -ArtifactPath $artifactPath `
-                        -Artifact $artifact `
-                        -Material $material
-                }
+                Throw-TicketboxC07SuperuserCapabilityFailure $primary $cleanup
                 if (-not $passwordState.Login -or -not $passwordState.PasswordNull) {
-                    throw (
-                        "C07 action_succeeded 后 postgres credential 既非 " +
-                        "recovery verifier 也非 NULL。"
-                    )
+                    throw "completed superuser capability 未证明 PASSWORD NULL。"
                 }
                 $artifact = Set-TicketboxC07SuperuserRecoveryStage `
-                    -Path $artifactPath `
-                    -Artifact $artifact `
-                    -Stage "password_cleared"
-                $artifact = Set-TicketboxC07SuperuserRecoveryStage `
-                    -Path $artifactPath `
-                    -Artifact $artifact `
-                    -Stage "completed"
-                $null = Remove-TicketboxC07CompletedSuperuserRecoveryArtifact `
-                    -Path $artifactPath `
-                    -Artifact $artifact `
-                    -Material $material
+                    -Path $artifactPath -Artifact $artifact -Stage "completed"
+                Remove-TicketboxC07CompletedSuperuserRecoveryArtifact `
+                    -Path $artifactPath -Artifact $artifact -Material $material
+                $secret.Dispose()
+                $secret = $null
                 continue
             }
 
             if (-not $credentialActive) {
                 $artifact = Publish-TicketboxC07SuperuserRecoverySspi `
-                    -Host $HostContext `
+                    -Host $hostContext `
                     -ArtifactPath $artifactPath `
                     -Artifact $artifact `
                     -Material $material
+                $primary = $null
+                $cleanup = $null
                 try {
-                    $null = Invoke-TicketboxC07SuperuserRecoveryRotateCredential `
-                        -Host $HostContext `
+                    Invoke-TicketboxC07SuperuserRecoveryRotateCredential `
+                        -Host $hostContext `
                         -ArtifactPath $artifactPath `
                         -Artifact $artifact `
                         -Secret $secret
@@ -2351,90 +2340,145 @@ function Invoke-TicketboxC07RecoveredSuperuserAction {
                         -Artifact $artifact `
                         -Stage "credential_rotated"
                 }
+                catch { $primary = $_ }
                 finally {
-                    $artifact =
-                        Read-TicketboxC07SuperuserRecoveryArtifact $artifactPath
-                    $material =
-                        Assert-TicketboxC07SuperuserRecoveryArtifact `
+                    try {
+                        $artifact = Read-TicketboxC07SuperuserRecoveryArtifact (
+                            $artifactPath
+                        )
+                        $material = Assert-TicketboxC07SuperuserRecoveryArtifact `
                             -Artifact $artifact `
-                            -Host $HostContext
+                            -Host $hostContext
+                        $artifact = Restore-TicketboxC07SuperuserRecoveryAuthFiles `
+                            -Host $hostContext `
+                            -ArtifactPath $artifactPath `
+                            -Artifact $artifact `
+                            -Material $material
+                    }
+                    catch { $cleanup = $_ }
+                }
+                Throw-TicketboxC07SuperuserCapabilityFailure $primary $cleanup
+            }
+            if (-not (Test-TicketboxC07SuperuserRecoveryScramCredential `
+                -Host $hostContext -ArtifactPath $artifactPath)) {
+                throw "one-shot superuser capability 未在 exact auth restore 后生效。"
+            }
+            Invoke-TicketboxC07SuperuserRecoveryRenewCredential `
+                -Host $hostContext `
+                -ArtifactPath $artifactPath
+            return [pscustomobject][ordered]@{
+                Schema = "ticketbox-postgresql-superuser-capability-v1"
+                OperationId = $operationId
+                RecoveryArtifactPath = $artifactPath
+                HostContext = $hostContext
+                Secret = $secret
+                Closed = $false
+            }
+        }
+        catch {
+            if ($null -ne $secret) { $secret.Dispose() }
+            throw
+        }
+    }
+    throw "PostgreSQL superuser completed capability 未收敛。"
+}
+
+function Renew-TicketboxC07SuperuserCapability {
+    param(
+        [Parameter(Mandatory = $true)][object]$Capability,
+        [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    $validated = Assert-TicketboxC07SuperuserCapability `
+        $Capability $ExpectedOperationId $LifecycleLock
+    if (-not (Test-TicketboxC07SuperuserRecoveryScramCredential `
+        -Host $Capability.HostContext `
+        -ArtifactPath $validated.ArtifactPath)) {
+        throw "PostgreSQL superuser capability credential 已失效。"
+    }
+    Invoke-TicketboxC07SuperuserRecoveryRenewCredential `
+        -Host $Capability.HostContext `
+        -ArtifactPath $validated.ArtifactPath
+    return $Capability
+}
+
+function Revoke-TicketboxC07SuperuserCapability {
+    param(
+        [Parameter(Mandatory = $true)][object]$Capability,
+        [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    $validated = Assert-TicketboxC07SuperuserCapability `
+        $Capability $ExpectedOperationId $LifecycleLock
+    $hostContext = $Capability.HostContext
+    $artifact = $validated.Artifact
+    $artifactPath = $validated.ArtifactPath
+    $material = $validated.Material
+    try {
+        $artifact = Restore-TicketboxC07SuperuserRecoveryAuthFiles `
+            -Host $hostContext `
+            -ArtifactPath $artifactPath `
+            -Artifact $artifact `
+            -Material $material
+        if (Test-TicketboxC07SuperuserRecoveryScramCredential `
+            -Host $hostContext -ArtifactPath $artifactPath) {
+            Invoke-TicketboxC07SuperuserRecoveryClearCredential `
+                -Host $hostContext `
+                -ArtifactPath $artifactPath
+        }
+        else {
+            $artifact = Publish-TicketboxC07SuperuserRecoverySspi `
+                -Host $hostContext `
+                -ArtifactPath $artifactPath `
+                -Artifact $artifact `
+                -Material $material
+            $primary = $null
+            $cleanup = $null
+            try {
+                $state = Invoke-TicketboxC07SuperuserRecoveryReadPasswordStateViaSspi `
+                    -Host $hostContext `
+                    -Artifact $artifact `
+                    -Secret $Capability.Secret
+                if (-not $state.PasswordNull -and $state.PasswordMatchesRecovery) {
+                    Invoke-TicketboxC07SuperuserRecoveryClearCredential `
+                        -Host $hostContext `
+                        -Authentication "sspi"
+                    $state =
+                        Invoke-TicketboxC07SuperuserRecoveryReadPasswordStateViaSspi `
+                            -Host $hostContext `
+                            -Artifact $artifact `
+                            -Secret $Capability.Secret
+                }
+                if (-not $state.Login -or -not $state.PasswordNull) {
+                    throw "PostgreSQL superuser capability 无法安全退役。"
+                }
+            }
+            catch { $primary = $_ }
+            finally {
+                try {
+                    $artifact = Read-TicketboxC07SuperuserRecoveryArtifact $artifactPath
+                    $material = Assert-TicketboxC07SuperuserRecoveryArtifact `
+                        -Artifact $artifact `
+                        -Host $hostContext
                     $artifact = Restore-TicketboxC07SuperuserRecoveryAuthFiles `
-                        -Host $HostContext `
+                        -Host $hostContext `
                         -ArtifactPath $artifactPath `
                         -Artifact $artifact `
                         -Material $material
                 }
-                if (
-                    -not (
-                        Test-TicketboxC07SuperuserRecoveryScramCredential `
-                            -Host $HostContext `
-                            -ArtifactPath $artifactPath
-                    )
-                ) {
-                    throw "C07 one-shot SCRAM credential 未在 exact auth restore 后生效。"
-                }
+                catch { $cleanup = $_ }
             }
-
-            $null = Invoke-TicketboxC07SuperuserRecoveryRenewCredential `
-                -Host $HostContext `
-                -ArtifactPath $artifactPath
-            $artifact.action_attempt = [int]$artifact.action_attempt + 1
-            $artifact = Set-TicketboxC07SuperuserRecoveryStage `
-                -Path $artifactPath `
-                -Artifact $artifact `
-                -Stage "action_running"
-            try {
-                $results = @(& $Action $secret)
-                if ($results.Count -ne 1 -or $null -eq $results[0]) {
-                    throw "bounded Action 必须返回且仅返回一个非空结果。"
-                }
-                $actionResult = $results[0]
-            }
-            catch {
-                throw (
-                    "C07 bounded Action 失败；one-shot authority 已在 exact " +
-                    "original auth 下保留供重试，原始输出已抑制。"
-                )
-            }
-            $artifact = Set-TicketboxC07SuperuserRecoveryStage `
-                -Path $artifactPath `
-                -Artifact $artifact `
-                -Stage "action_succeeded"
-            $null = Invoke-TicketboxC07SuperuserRecoveryClearCredential `
-                -Host $HostContext `
-                -ArtifactPath $artifactPath
-            $artifact = Set-TicketboxC07SuperuserRecoveryStage `
-                -Path $artifactPath `
-                -Artifact $artifact `
-                -Stage "password_cleared"
-            if (
-                Test-TicketboxC07SuperuserRecoveryScramCredential `
-                    -Host $HostContext `
-                    -ArtifactPath $artifactPath
-            ) {
-                throw "C07 postgres PASSWORD NULL 后 SCRAM 仍可认证。"
-            }
-            $state = Get-TicketboxC07SuperuserRecoveryAuthState `
-                -Artifact $artifact `
-                -Material $material
-            if ($state.Hba -cne "original" -or $state.Ident -cne "original") {
-                throw "C07 Action 完成后仍残留 temporary SSPI mapping。"
-            }
-            $artifact = Set-TicketboxC07SuperuserRecoveryStage `
-                -Path $artifactPath `
-                -Artifact $artifact `
-                -Stage "completed"
-            $null = Remove-TicketboxC07CompletedSuperuserRecoveryArtifact `
-                -Path $artifactPath `
-                -Artifact $artifact `
-                -Material $material
-            return $actionResult
+            Throw-TicketboxC07SuperuserCapabilityFailure $primary $cleanup
         }
-        finally {
-            if ($null -ne $secret) {
-                $secret.Dispose()
-            }
-        }
+        $artifact = Set-TicketboxC07SuperuserRecoveryStage `
+            -Path $artifactPath -Artifact $artifact -Stage "password_cleared"
+        $artifact = Set-TicketboxC07SuperuserRecoveryStage `
+            -Path $artifactPath -Artifact $artifact -Stage "completed"
+        Remove-TicketboxC07CompletedSuperuserRecoveryArtifact `
+            -Path $artifactPath -Artifact $artifact -Material $material
+        $Capability.Closed = $true
     }
-    throw "C07 superuser recovery 超过 completed-artifact convergence 上限。"
+    finally {
+        if ($null -ne $Capability.Secret) { $Capability.Secret.Dispose() }
+    }
 }

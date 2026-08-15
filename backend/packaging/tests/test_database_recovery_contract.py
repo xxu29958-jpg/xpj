@@ -13,6 +13,7 @@ DATABASE_SAFETY_SCRIPT = PACKAGING / "windows_database_safety.ps1"
 INSTALLATION_SAFETY_SCRIPT = PACKAGING / "windows_installation_safety.ps1"
 SERVICE_LIFECYCLE_SCRIPT = PACKAGING / "windows_service_lifecycle.ps1"
 PREPARE_SCRIPT = PACKAGING / "prepare_bundled_upgrade.ps1"
+GENERATION_OWNER_SCRIPT = PACKAGING / "windows_database_generation.ps1"
 
 
 def _read_database_script() -> str:
@@ -637,31 +638,27 @@ def test_service_owned_initdb_uses_a_separate_single_secret_authority() -> None:
     assert "Invoke-TicketboxIcaclsChecked" not in transient_writer
     dispatch = install.index("[void](Initialize-PgClusterIfNeeded -InitdbInvoker")
     runtime_binding = install.index("Initialize-TicketboxRuntimeDataBinding", dispatch)
-    disposition = install.index("$c07Disposition =", runtime_binding)
-    dispatch_composition = install[dispatch:disposition]
-    assert dispatch < runtime_binding
+    generation_intent = install.index(
+        "Read-TicketboxDatabaseGenerationIntentContext"
+    )
+    generation_owner = install.index(
+        "Invoke-TicketboxInstalledDatabaseGeneration", runtime_binding
+    )
+    dispatch_composition = install[dispatch:generation_owner]
+    assert generation_intent < dispatch < runtime_binding < generation_owner
     assert "[void](Initialize-PgClusterIfNeeded -InitdbInvoker" in dispatch_composition
     assert "$superPassword" not in dispatch_composition
     assert "Set-TicketboxC07DatabaseAuthorityCredential" not in dispatch_composition
-    prepare_dispatch = install[
-        install.index("[void](Prepare-DatabaseIfNeeded", disposition) : install.index(
-            "$c07Migration =", disposition
-        )
-    ]
-    assert "-BootstrapState" not in prepare_dispatch
-    runtime_ready = install[
-        install.index('if ($c07Disposition -ceq "runtime_ready")', disposition) : install.index(
-            "else {", disposition
-        )
-    ]
-    assert "Set-TicketboxC07DatabaseAuthorityCredential" not in runtime_ready
-    assert "ConvertTo-TicketboxC07InstalledSecureString" in runtime_ready
-    migration = install[
-        install.index("function Invoke-TicketboxC07InstalledReleaseMigration") : install.index(
-            "function Write-TicketboxC07InstalledRuntimeEnvironment"
-        )
-    ]
-    assert "Invoke-TicketboxC07RecoveredSuperuserAction" in migration
+    assert "$c07Disposition" not in install
+    assert "Invoke-TicketboxC07InstalledReleaseMigration" not in install
+    generation = GENERATION_OWNER_SCRIPT.read_text(encoding="utf-8-sig")
+    for capability in (
+        "Acquire-TicketboxC07SuperuserCapability",
+        "Renew-TicketboxC07SuperuserCapability",
+        "Revoke-TicketboxC07SuperuserCapability",
+    ):
+        assert capability in generation
+    assert "Invoke-TicketboxC07RecoveredSuperuserAction" not in generation
     assert "Invoke-TicketboxInterruptedInitdbServiceRecovery" in prepare
     assert "中断 initdb 回执对应的同名 PostgreSQL 服务 executable 不匹配" in prepare
     assert "Invoke-TicketboxInitdbServiceUninstallRecovery" in uninstall

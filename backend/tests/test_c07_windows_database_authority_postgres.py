@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import shutil
 import subprocess
 import time
@@ -16,203 +14,9 @@ import pytest
 from psycopg import sql
 from sqlalchemy.engine import make_url
 
-from tests._infra.c07_windows_authority_database import (
-    activate_restore_database,
-    create_registered_restore_database,
-    install_source_schema,
-    verify_privilege_sql_rejects_foreign_acl,
-)
-from tests._infra.c07_windows_authority_privileges import (
-    open_authority_connections,
-    retire_migrator,
-    verify_future_objects_are_narrow,
-    verify_runtime_business_acl,
-    verify_runtime_financial_facts,
-)
-from tests._infra.c07_windows_authority_roles import (
-    AuthorityScenario,
-    verify_exact_role_replay,
-    verify_foreign_memberships_rejected,
-    verify_role_bootstrap,
-)
 from tests._infra.env import ADMIN_TEST_DATABASE_URL
 
 pytestmark = pytest.mark.real_db
-
-_DATABASE_SCRIPT = (
-    Path(__file__).resolve().parents[1] / "packaging" / "windows_c07_database.ps1"
-)
-_RUNTIME_PASSWORD = "RuntimeC07AuthorityPassword000001"
-_MIGRATOR_PASSWORD = "MigratorC07AuthorityPassword0001"
-_FOREIGN_RUNTIME_PASSWORD = "ForeignRuntimeCredentialPassword01"
-_FOREIGN_MIGRATOR_PASSWORD = "ForeignMigratorCredentialPassword1"
-
-
-def _restore_database_name(operation_id: str, create_attempt_id: str) -> str:
-    binding = (
-        "ticketbox-c07-restore-attempt-v1"
-        f"|{operation_id}|{create_attempt_id}"
-    )
-    digest = hashlib.sha256(binding.encode("utf-8")).hexdigest()
-    return f"ticketbox_c07_restore_{digest[:40]}"
-
-
-def _ps_literal(value: str | Path) -> str:
-    return str(value).replace("'", "''")
-
-
-def _run_pwsh(tmp_path: Path, name: str, source: str) -> str:
-    executable = shutil.which("pwsh")
-    assert executable is not None, "the C07 PostgreSQL lane requires PowerShell 7"
-    harness = tmp_path / f"{name}.ps1"
-    harness.write_text(source, encoding="utf-8-sig")
-    result = subprocess.run(
-        [
-            executable,
-            "-NoLogo",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            harness,
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=30,
-    )
-    assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
-    return result.stdout.strip()
-
-
-def _authority_sql_source(
-    *,
-    owner: str,
-    migrator: str,
-    runtime: str,
-    database: str,
-    operation_id: str,
-    conflicting_operation_id: str,
-) -> str:
-    return f"""
-$ErrorActionPreference = 'Stop'
-. '{_ps_literal(_DATABASE_SCRIPT)}'
-function Escape-SqlLiteral([string]$Value) {{ return $Value.Replace("'", "''") }}
-$script:TicketboxC07OwnerRole = '{_ps_literal(owner)}'
-$script:TicketboxC07MigratorRole = '{_ps_literal(migrator)}'
-$script:TicketboxC07RuntimeRole = '{_ps_literal(runtime)}'
-$script:TicketboxC07LegacyRuntimeRole = 'c07_legacy_absent'
-$script:TicketboxC07DatabaseName = '{_ps_literal(database)}'
-$runtimePassword = ConvertTo-SecureString `
-    '{_ps_literal(_RUNTIME_PASSWORD)}' -AsPlainText -Force
-$migratorPassword = ConvertTo-SecureString `
-    '{_ps_literal(_MIGRATOR_PASSWORD)}' -AsPlainText -Force
-$foreignRuntimePassword = ConvertTo-SecureString `
-    '{_ps_literal(_FOREIGN_RUNTIME_PASSWORD)}' -AsPlainText -Force
-$foreignMigratorPassword = ConvertTo-SecureString `
-    '{_ps_literal(_FOREIGN_MIGRATOR_PASSWORD)}' -AsPlainText -Force
-$runtimeVerifier = ConvertTo-TicketboxC07ScramVerifier $runtimePassword
-$migratorVerifier = ConvertTo-TicketboxC07ScramVerifier $migratorPassword
-$foreignRuntimeVerifier = ConvertTo-TicketboxC07ScramVerifier $foreignRuntimePassword
-$foreignMigratorVerifier = ConvertTo-TicketboxC07ScramVerifier $foreignMigratorPassword
-$validUntil = [DateTime]::UtcNow.AddMinutes(30)
-$renewedValidUntil = [DateTime]::UtcNow.AddMinutes(50)
-$payload = [ordered]@{{
-    role = Get-TicketboxC07RoleBootstrapSql `
-        -RuntimeVerifier $runtimeVerifier `
-        -MigratorVerifier $migratorVerifier `
-        -MigratorValidUntilUtc $validUntil `
-        -OperationId '{_ps_literal(operation_id)}' `
-        -Mode 'fresh_install'
-    renewed_role = Get-TicketboxC07RoleBootstrapSql `
-        -RuntimeVerifier $runtimeVerifier `
-        -MigratorVerifier $migratorVerifier `
-        -MigratorValidUntilUtc $renewedValidUntil `
-        -OperationId '{_ps_literal(operation_id)}' `
-        -Mode 'fresh_install'
-    conflicting_role = Get-TicketboxC07RoleBootstrapSql `
-        -RuntimeVerifier $runtimeVerifier `
-        -MigratorVerifier $migratorVerifier `
-        -MigratorValidUntilUtc $validUntil `
-        -OperationId '{_ps_literal(conflicting_operation_id)}' `
-        -Mode 'fresh_install'
-    credential_drift_role = Get-TicketboxC07RoleBootstrapSql `
-        -RuntimeVerifier $foreignRuntimeVerifier `
-        -MigratorVerifier $foreignMigratorVerifier `
-        -MigratorValidUntilUtc $validUntil `
-        -OperationId '{_ps_literal(operation_id)}' `
-        -Mode 'fresh_install'
-    privilege = Get-TicketboxC07DatabasePrivilegeSql
-    retirement = Get-TicketboxC07MigratorRetirementSql
-    retirement_verification = Get-TicketboxC07MigratorRetirementVerificationSql
-    restore_create = Get-TicketboxC07RestoreDatabaseCreateSql `
-        '{_ps_literal(database)}'
-}}
-$payload | ConvertTo-Json -Compress
-"""
-
-
-def _authority_sql(
-    tmp_path: Path,
-    *,
-    owner: str,
-    migrator: str,
-    runtime: str,
-    database: str,
-    operation_id: str,
-    conflicting_operation_id: str,
-) -> dict[str, str]:
-    output = _run_pwsh(
-        tmp_path,
-        "generate-c07-authority-sql",
-        _authority_sql_source(
-            owner=owner,
-            migrator=migrator,
-            runtime=runtime,
-            database=database,
-            operation_id=operation_id,
-            conflicting_operation_id=conflicting_operation_id,
-        ),
-    )
-    payload = json.loads(output)
-    assert set(payload) == {
-        "role",
-        "renewed_role",
-        "conflicting_role",
-        "credential_drift_role",
-        "privilege",
-        "retirement",
-        "retirement_verification",
-        "restore_create",
-    }
-    return payload
-
-
-def _restore_open_sql(
-    tmp_path: Path,
-    *,
-    owner: str,
-    migrator: str,
-    runtime: str,
-    database: str,
-    marker: str,
-) -> str:
-    return _run_pwsh(
-        tmp_path,
-        "generate-c07-restore-open-sql",
-        f"""
-$ErrorActionPreference = 'Stop'
-. '{_ps_literal(_DATABASE_SCRIPT)}'
-$script:TicketboxC07OwnerRole = '{_ps_literal(owner)}'
-$script:TicketboxC07MigratorRole = '{_ps_literal(migrator)}'
-$script:TicketboxC07RuntimeRole = '{_ps_literal(runtime)}'
-Get-TicketboxC07RestoreDatabaseOpenSql `
-    -Database '{_ps_literal(database)}' `
-    -ActiveMarker '{_ps_literal(marker)}'
-""",
-    )
 
 
 def _conninfo(
@@ -236,95 +40,120 @@ def _close(connection: psycopg.Connection | None) -> None:
             connection.close()
 
 
-
-
-def _cleanup_scenario(scenario: AuthorityScenario) -> None:
-    _close(scenario.runtime_connection)
-    _close(scenario.migrator_connection)
-    _close(scenario.database_admin)
-    with suppress(Exception):
-        scenario.admin.execute(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            "WHERE datname = %s OR usename = ANY(%s)",
-            (scenario.database, [scenario.migrator, scenario.runtime]),
-        )
-    with suppress(Exception):
-        scenario.admin.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
-                sql.Identifier(scenario.database)
-            )
-        )
-    with suppress(Exception):
-        scenario.admin.execute(
-            sql.SQL("REVOKE {} FROM {}").format(
-                sql.Identifier(scenario.owner),
-                sql.Identifier(scenario.migrator),
-            )
-        )
-    with suppress(Exception):
-        scenario.admin.execute(
-            sql.SQL("DROP ROLE IF EXISTS {}, {}, {}, {}, {}").format(
-                sql.Identifier(scenario.outsider),
-                sql.Identifier(scenario.outsider_member),
-                sql.Identifier(scenario.runtime),
-                sql.Identifier(scenario.migrator),
-                sql.Identifier(scenario.owner),
-            )
-        )
-    scenario.admin.close()
-
-
-def test_c07_database_authority_is_crash_safe_narrow_and_retires_migrator(
-    tmp_path: Path,
+def _create_no_owner_archive(
+    source: psycopg.Connection,
+    *,
+    table: str,
+    archive: Path,
+    source_url: str,
+    pg_dump: str,
 ) -> None:
-    operation_id = str(uuid4())
-    restore_attempt_id = str(uuid4())
-    conflicting_operation_id = str(uuid4())
-    suffix = operation_id.replace("-", "")[:12]
-    owner, migrator, runtime = (f"c07o_{suffix}", f"c07m_{suffix}", f"c07r_{suffix}")
-    database = _restore_database_name(operation_id, restore_attempt_id)
-    scenario = AuthorityScenario(
-        tmp_path=tmp_path,
-        operation_id=operation_id,
-        restore_attempt_id=restore_attempt_id,
-        owner=owner,
-        migrator=migrator,
-        runtime=runtime,
-        outsider=f"c07x_{suffix}",
-        outsider_member=f"c07y_{suffix}",
-        database=database,
-        generated=_authority_sql(
-            tmp_path,
-            owner=owner,
-            migrator=migrator,
-            runtime=runtime,
-            database=database,
-            operation_id=operation_id,
-            conflicting_operation_id=conflicting_operation_id,
-        ),
-        admin=psycopg.connect(_conninfo(database="postgres"), autocommit=True),
-        conninfo=_conninfo,
-        restore_open_sql=_restore_open_sql,
-        migrator_password=_MIGRATOR_PASSWORD,
-        runtime_password=_RUNTIME_PASSWORD,
-        foreign_migrator_password=_FOREIGN_MIGRATOR_PASSWORD,
-        foreign_runtime_password=_FOREIGN_RUNTIME_PASSWORD,
+    source.execute(
+        sql.SQL("CREATE TABLE {} (probe integer PRIMARY KEY)").format(
+            sql.Identifier(table)
+        )
     )
+    source.execute(
+        sql.SQL("INSERT INTO {} (probe) VALUES (1)").format(sql.Identifier(table))
+    )
+    subprocess.run(
+        [
+            pg_dump,
+            "--format=custom",
+            "--no-owner",
+            "--no-privileges",
+            "--file",
+            str(archive),
+            "--table",
+            f"public.{table}",
+            source_url,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+
+
+def _create_restore_database(
+    admin: psycopg.Connection,
+    *,
+    database: str,
+    schema_owner: str,
+) -> None:
+    admin.execute(
+        sql.SQL("CREATE DATABASE {} TEMPLATE template0 ENCODING 'UTF8'").format(
+            sql.Identifier(database)
+        )
+    )
+    target = psycopg.connect(_conninfo(database=database), autocommit=True)
     try:
-        verify_role_bootstrap(scenario)
-        verify_exact_role_replay(scenario)
-        verify_foreign_memberships_rejected(scenario)
-        create_registered_restore_database(scenario)
-        activate_restore_database(scenario)
-        install_source_schema(scenario)
-        verify_privilege_sql_rejects_foreign_acl(scenario)
-        open_authority_connections(scenario)
-        verify_runtime_business_acl(scenario)
-        verify_runtime_financial_facts(scenario)
-        verify_future_objects_are_narrow(scenario)
-        retire_migrator(scenario)
+        target.execute(
+            sql.SQL("ALTER SCHEMA public OWNER TO {}").format(
+                sql.Identifier(schema_owner)
+            )
+        )
     finally:
-        _cleanup_scenario(scenario)
+        target.close()
+
+
+def _restore_as_role(
+    *,
+    pg_restore: str,
+    archive: Path,
+    database: str,
+    role: str,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        [
+            pg_restore,
+            "--exit-on-error",
+            "--single-transaction",
+            "--no-owner",
+            "--no-privileges",
+            f"--role={role}",
+            "--dbname",
+            _conninfo(database=database),
+            str(archive),
+        ],
+        check=False,
+        capture_output=True,
+        timeout=60,
+    )
+
+
+def _relation_owner(*, database: str, table: str) -> str:
+    target = psycopg.connect(_conninfo(database=database), autocommit=True)
+    try:
+        return target.execute(
+            "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = %s",
+            (table,),
+        ).fetchone()[0]
+    finally:
+        target.close()
+
+
+def _cleanup_role_restore_fixture(
+    admin: psycopg.Connection,
+    source: psycopg.Connection,
+    *,
+    table: str,
+    databases: tuple[str, str],
+    roles: tuple[str, str],
+) -> None:
+    with suppress(psycopg.Error):
+        source.execute(sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(table)))
+    source.close()
+    for database in databases:
+        with suppress(psycopg.Error):
+            admin.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                    sql.Identifier(database)
+                )
+            )
+    for role in roles:
+        with suppress(psycopg.Error):
+            admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
+    admin.close()
 
 
 def test_pg17_transaction_timeout_must_be_armed_before_begin_and_rolls_back() -> None:
@@ -386,3 +215,62 @@ def test_pg17_transaction_timeout_must_be_armed_before_begin_and_rolls_back() ->
                 sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(table))
             )
         admin.close()
+
+
+def test_pg17_no_owner_restore_requires_the_exact_object_owner_role(
+    tmp_path: Path,
+) -> None:
+    pg_dump = shutil.which("pg_dump")
+    pg_restore = shutil.which("pg_restore")
+    assert pg_dump is not None
+    assert pg_restore is not None
+    suffix = uuid4().hex[:12]
+    table = f"generation_restore_{suffix}"
+    owner = f"generation_owner_{suffix}"
+    wrong_owner = f"generation_wrong_{suffix}"
+    exact_database = f"generation_exact_{suffix}"
+    wrong_database = f"generation_wrong_{suffix}"
+    source_database = make_url(ADMIN_TEST_DATABASE_URL).database
+    assert source_database is not None
+    source_url = _conninfo(database=source_database)
+    postgres_url = _conninfo(database="postgres")
+    admin = psycopg.connect(postgres_url, autocommit=True)
+    source = psycopg.connect(source_url, autocommit=True)
+    archive = tmp_path / "generation-role.dump"
+    try:
+        for role in (owner, wrong_owner):
+            admin.execute(
+                sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(role))
+            )
+        _create_no_owner_archive(
+            source,
+            table=table,
+            archive=archive,
+            source_url=source_url,
+            pg_dump=pg_dump,
+        )
+        for database in (exact_database, wrong_database):
+            _create_restore_database(admin, database=database, schema_owner=owner)
+        exact = _restore_as_role(
+            pg_restore=pg_restore,
+            archive=archive,
+            database=exact_database,
+            role=owner,
+        )
+        assert exact.returncode == 0, exact.stderr.decode(errors="replace")
+        wrong = _restore_as_role(
+            pg_restore=pg_restore,
+            archive=archive,
+            database=wrong_database,
+            role=wrong_owner,
+        )
+        assert wrong.returncode != 0
+        assert _relation_owner(database=exact_database, table=table) == owner
+    finally:
+        _cleanup_role_restore_fixture(
+            admin,
+            source,
+            table=table,
+            databases=(exact_database, wrong_database),
+            roles=(wrong_owner, owner),
+        )

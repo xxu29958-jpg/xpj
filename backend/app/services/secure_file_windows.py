@@ -11,6 +11,9 @@ from pathlib import Path
 
 _TOKEN_QUERY = 0x0008
 _TOKEN_USER = 1
+_TOKEN_GROUPS = 2
+_SE_GROUP_ENABLED = 0x00000004
+_SE_GROUP_USE_FOR_DENY_ONLY = 0x00000010
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _ERROR_INSUFFICIENT_BUFFER = 122
 _GENERIC_WRITE = 0x40000000
@@ -46,6 +49,13 @@ class _SidAndAttributes(ctypes.Structure):
 
 class _TokenUser(ctypes.Structure):
     _fields_ = [("user", _SidAndAttributes)]
+
+
+class _TokenGroups(ctypes.Structure):
+    _fields_ = [
+        ("group_count", wintypes.DWORD),
+        ("groups", _SidAndAttributes * 1),
+    ]
 
 
 class _SecurityAttributes(ctypes.Structure):

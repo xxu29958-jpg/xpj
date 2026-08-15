@@ -241,6 +241,7 @@ try {
         "app.canonical_money_facts",
         "app.canonical_money_facts_contract",
         "app.database._database_generation_program",
+        "app.database._database_generation_runtime_admission",
         "app.database_generation_c07_contract",
         "app.database_model_registry",
         "app.tenant_contract"
@@ -251,7 +252,34 @@ try {
             throw "Frozen backend archive omitted required app module: $requiredModule"
         }
     }
-    foreach ($retiredModule in @("app.database._c07_maintenance_plan")) {
+    foreach ($retiredModule in @(
+        "app.database._c07_ceremony",
+        "app.database._c07_ceremony_document",
+        "app.database._c07_commit_reconciliation",
+        "app.database._c07_execution",
+        "app.database._c07_fresh_source_bootstrap",
+        "app.database._c07_host_evidence_helpers",
+        "app.database._c07_host_freeze_evidence",
+        "app.database._c07_maintenance_digest",
+        "app.database._c07_maintenance_plan",
+        "app.database._c07_maintenance_upgrade",
+        "app.database._c07_maintenance_upgrade_action",
+        "app.database._c07_production_authority",
+        "app.database._c07_production_connection",
+        "app.database._c07_production_context",
+        "app.database._c07_production_contract",
+        "app.database._c07_production_contract_types",
+        "app.database._c07_production_fence",
+        "app.database._c07_production_migration",
+        "app.database._c07_production_ready",
+        "app.database._c07_production_recovery",
+        "app.database._c07_production_restore",
+        "app.database._c07_production_shape",
+        "app.database._c07_receipt",
+        "app.database._c07_receipt_validation",
+        "app.database._c07_runtime_projection",
+        "app.database._c07_transaction_timeout"
+    )) {
         if (@($archiveModules | Where-Object {
             $_ -match ("'" + [regex]::Escape($retiredModule) + "'$" )
         })) {

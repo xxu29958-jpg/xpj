@@ -4392,6 +4392,37 @@ function ConvertTo-TicketboxInstalledC07MigrationHelperEvidence(
     }
 }
 
+function Get-TicketboxInstalledPostgresToolEvidence {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$CriticalFiles,
+        [Parameter(Mandatory = $true)][string]$ExpectedRelativePath
+    )
+    $matches = @($CriticalFiles | Where-Object {
+        [string]$_.path -ceq $ExpectedRelativePath
+    })
+    if ($matches.Count -ne 1) {
+        throw "已安装 BUILD_PROVENANCE.json 未唯一绑定 $ExpectedRelativePath。"
+    }
+    $evidence = $matches[0]
+    $propertyNames = @($evidence.PSObject.Properties.Name)
+    $size = [int64]0
+    if (
+        $propertyNames.Count -ne 3 -or
+        "path" -notin $propertyNames -or
+        "size" -notin $propertyNames -or
+        "sha256" -notin $propertyNames -or
+        -not [int64]::TryParse([string]$evidence.size, [ref]$size) -or
+        $size -lt 1 -or
+        [string]$evidence.sha256 -cnotmatch "^[0-9a-f]{64}$"
+    ) {
+        throw "已安装 BUILD_PROVENANCE.json 的 $ExpectedRelativePath 证据无效。"
+    }
+    return [pscustomobject][ordered]@{
+        Size = $size
+        Sha256 = [string]$evidence.sha256
+    }
+}
+
 function Resolve-TicketboxInstalledC07MigrationHelperPath {
     param(
         [Parameter(Mandatory = $true)][string]$InstallDir,
@@ -4846,6 +4877,12 @@ function Read-TicketboxInstalledBuildManifest {
         ConvertTo-TicketboxInstalledC07MigrationHelperEvidence (
             $manifest.backend.c07_migration_helper
         )
+    $pgDump = Get-TicketboxInstalledPostgresToolEvidence `
+        -CriticalFiles @($manifest.postgresql.critical_files) `
+        -ExpectedRelativePath "bin/pg_dump.exe"
+    $pgRestore = Get-TicketboxInstalledPostgresToolEvidence `
+        -CriticalFiles @($manifest.postgresql.critical_files) `
+        -ExpectedRelativePath "bin/pg_restore.exe"
     $programEvidence = $manifest.backend.database_generation_program
     if ($null -eq $programEvidence) {
         throw "已安装 BUILD_PROVENANCE.json 缺少 database generation program。"
@@ -4868,6 +4905,8 @@ function Read-TicketboxInstalledBuildManifest {
         Manifest = $manifest
         BackendVersion = $backendVersion
         PgMajor = $pgMajor
+        PgDump = $pgDump
+        PgRestore = $pgRestore
         C07MigrationHelper = $c07MigrationHelper
         DatabaseGenerationProgram = [pscustomobject][ordered]@{
             RelativePath = [string]$programEvidence.path
@@ -5177,7 +5216,8 @@ function Initialize-TicketboxPendingInstallationIdentity {
         [Parameter(Mandatory = $true)][string]$PgServiceName,
         [Parameter(Mandatory = $true)][string]$BackendServiceName,
         [Parameter(Mandatory = $true)][string]$BuildManifestPath,
-        [string]$ExpectedOperationId = ""
+        [string]$ExpectedOperationId = "",
+        [string]$ExpectedInstallationId = ""
     )
     $candidate = Get-TicketboxInstallationReleaseCandidate `
         -DataRoot $DataRoot `
@@ -5236,6 +5276,11 @@ function Initialize-TicketboxPendingInstallationIdentity {
     if ($null -ne $pending) {
         if (
             $pending.OperationId -cne $operationId -or
+            (
+                -not [string]::IsNullOrEmpty($ExpectedInstallationId) -and
+                $pending.InstallationId -cne
+                    ([guid]$ExpectedInstallationId).ToString("D")
+            ) -or
             -not (
                 Test-TicketboxInstallationIdentityReleaseMatches `
                     $pending `
@@ -5252,11 +5297,20 @@ function Initialize-TicketboxPendingInstallationIdentity {
     ) {
         return $ready
     }
-    $installationId = if ($null -eq $ready) {
+    $installationId = if (-not [string]::IsNullOrEmpty($ExpectedInstallationId)) {
+        ([guid]$ExpectedInstallationId).ToString("D")
+    }
+    elseif ($null -eq $ready) {
         [guid]::NewGuid().ToString("D")
     }
     else {
         [string]$ready.InstallationId
+    }
+    if (
+        $null -ne $ready -and
+        $ready.InstallationId -cne $installationId
+    ) {
+        throw "READY installation identity 与 expected installation id 不一致。"
     }
     return Write-TicketboxInstallationIdentityState `
         -State "PENDING" `

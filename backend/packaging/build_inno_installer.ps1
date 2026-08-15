@@ -83,21 +83,6 @@ $PostgresqlDatabaseCatalogCodecScript = Join-Path `
 $PostgresqlDatabaseCatalogObservationScript = Join-Path `
     $PostgresqlDatabaseCatalogComponentDir `
     "observation.ps1"
-$PostgresqlExportedSnapshotScript = Join-Path `
-    $ScriptDir `
-    "windows_postgresql_exported_snapshot.ps1"
-$PostgresqlExportedSnapshotComponentDir = Join-Path `
-    $ScriptDir `
-    "postgresql_exported_snapshot"
-$PostgresqlExportedSnapshotPrimitivesScript = Join-Path `
-    $PostgresqlExportedSnapshotComponentDir `
-    "primitives.ps1"
-$PostgresqlExportedSnapshotSessionScript = Join-Path `
-    $PostgresqlExportedSnapshotComponentDir `
-    "session.ps1"
-$PostgresqlExportedSnapshotDeadlineEvidenceScript = Join-Path `
-    $PostgresqlExportedSnapshotComponentDir `
-    "deadline_evidence.ps1"
 $PostgresqlWriterFenceScript = Join-Path `
     $ScriptDir `
     "windows_postgresql_writer_fence.ps1"
@@ -128,18 +113,6 @@ $PostgresqlWriterFenceSessionDrainScript = Join-Path `
 $PostgresqlWriterFenceReconcilerScript = Join-Path `
     $PostgresqlWriterFenceComponentDir `
     "reconciler.ps1"
-$C07WriterFenceScript = Join-Path `
-    (Join-Path $ScriptDir "c07_lifecycle") `
-    "writer_fence.ps1"
-$C07WriterFenceComponentDir = Join-Path `
-    (Join-Path $ScriptDir "c07_lifecycle") `
-    "writer_fence"
-$C07WriterFencePolicyScript = Join-Path `
-    $C07WriterFenceComponentDir `
-    "policy.ps1"
-$C07WriterFenceAdapterScript = Join-Path `
-    $C07WriterFenceComponentDir `
-    "adapter.ps1"
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
 $C07DatabaseScript = Join-Path $ScriptDir "windows_c07_database.ps1"
 $WindowsSecurityPrimitivesScript = Join-Path `
@@ -168,11 +141,6 @@ $WindowsSecurityFileSecurityScript = Join-Path `
     "file_security.ps1"
 $C07SuperuserRecoveryScript = Join-Path $ScriptDir "windows_c07_superuser_recovery.ps1"
 $WindowsDeadlineBudgetScript = Join-Path $ScriptDir "windows_deadline_budget.ps1"
-$C07DeadlinePolicyScript = Join-Path $ScriptDir "windows_c07_deadline_policy.ps1"
-$C07HeartbeatAuthorityScript = Join-Path $ScriptDir "windows_c07_heartbeat_authority.ps1"
-$C07LifecycleScript = Join-Path $ScriptDir "windows_c07_lifecycle.ps1"
-$C07HeartbeatHelperScript = Join-Path $ScriptDir "windows_c07_heartbeat_helper.ps1"
-$C07FailureSummaryScript = Join-Path $ScriptDir "windows_c07_failure_summary.ps1"
 $AtomicArtifactsScript = Join-Path $ScriptDir "windows_atomic_artifacts.ps1"
 $AtomicArtifactsComponentDir = Join-Path $ScriptDir "atomic_artifacts"
 $AtomicArtifactsNativeScript = Join-Path $AtomicArtifactsComponentDir "native.ps1"
@@ -180,8 +148,32 @@ $AtomicArtifactsFileScript = Join-Path $AtomicArtifactsComponentDir "file.ps1"
 $AtomicArtifactsDirectoryScript = Join-Path `
     $AtomicArtifactsComponentDir `
     "directory.ps1"
-$C07RecoveryGenerationScript = Join-Path $ScriptDir "windows_c07_recovery_generation.ps1"
-$C07PackagedMigrationScript = Join-Path $ScriptDir "windows_c07_packaged_migration.ps1"
+$DatabaseGenerationProgramAdapterScript = Join-Path $ScriptDir "windows_database_generation_program_adapter.ps1"
+$DatabaseGenerationProgramExecutionScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_program_execution.ps1"
+$DatabaseGenerationScript = Join-Path $ScriptDir "windows_database_generation.ps1"
+$DatabaseGenerationContractScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_contract.ps1"
+$DatabaseGenerationArtifactsScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_artifacts.ps1"
+$DatabaseGenerationAdapterScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_adapter.ps1"
+$DatabaseGenerationSourceScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_source.ps1"
+$DatabaseGenerationRecoveryEvidenceScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_recovery_evidence.ps1"
+$DatabaseGenerationTargetRecoveryScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_target_recovery.ps1"
+$DatabaseGenerationProjectionScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_projection.ps1"
 $BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
 $BootstrapExposureRecoveryScript = Join-Path $ScriptDir "windows_bootstrap_exposure_recovery.ps1"
 $InstallScript = Join-Path $ScriptDir "install_bundled_services.ps1"
@@ -1073,18 +1065,6 @@ Assert-File `
     $PostgresqlDatabaseCatalogObservationScript `
     "Windows PostgreSQL database-catalog observation"
 Assert-File `
-    $PostgresqlExportedSnapshotScript `
-    "Windows PostgreSQL exported-snapshot adapter"
-Assert-File `
-    $PostgresqlExportedSnapshotPrimitivesScript `
-    "Windows PostgreSQL exported-snapshot primitives"
-Assert-File `
-    $PostgresqlExportedSnapshotSessionScript `
-    "Windows PostgreSQL exported-snapshot session"
-Assert-File `
-    $PostgresqlExportedSnapshotDeadlineEvidenceScript `
-    "Windows PostgreSQL exported-snapshot deadline evidence"
-Assert-File `
     $PostgresqlWriterFenceScript `
     "Windows PostgreSQL writer-fence adapter"
 Assert-File `
@@ -1111,15 +1091,6 @@ Assert-File `
 Assert-File `
     $PostgresqlWriterFenceReconcilerScript `
     "Windows PostgreSQL writer-fence reconciler"
-Assert-File `
-    $C07WriterFenceScript `
-    "Windows C07 writer-fence policy adapter"
-Assert-File `
-    $C07WriterFencePolicyScript `
-    "Windows C07 writer-fence policy"
-Assert-File `
-    $C07WriterFenceAdapterScript `
-    "Windows C07 writer-fence lifecycle adapter"
 Assert-File $DatabaseScript "Windows bundled database 脚本"
 Assert-File $C07DatabaseScript "Windows C07 数据库权威脚本"
 Assert-File $WindowsSecurityPrimitivesScript "Windows security primitives 脚本"
@@ -1137,17 +1108,28 @@ Assert-File `
 Assert-File $WindowsSecurityFileSecurityScript "Windows file-security primitives 脚本"
 Assert-File $C07SuperuserRecoveryScript "Windows C07 superuser recovery 脚本"
 Assert-File $WindowsDeadlineBudgetScript "Windows deadline-budget adapter"
-Assert-File $C07DeadlinePolicyScript "Windows C07 deadline policy adapter"
-Assert-File $C07HeartbeatAuthorityScript "Windows C07 shared heartbeat authority module"
-Assert-File $C07LifecycleScript "Windows C07 生命周期脚本"
-Assert-File $C07HeartbeatHelperScript "Windows C07 durable heartbeat helper"
-Assert-File $C07FailureSummaryScript "Windows C07 installer failure summary 脚本"
 Assert-File $AtomicArtifactsScript "Windows atomic-artifact 入口脚本"
 Assert-File $AtomicArtifactsNativeScript "Windows atomic-artifact native 脚本"
 Assert-File $AtomicArtifactsFileScript "Windows atomic-artifact file 脚本"
 Assert-File $AtomicArtifactsDirectoryScript "Windows atomic-artifact directory 脚本"
-Assert-File $C07RecoveryGenerationScript "Windows C07 恢复代际脚本"
-Assert-File $C07PackagedMigrationScript "Windows C07 frozen migration bridge"
+Assert-File $DatabaseGenerationProgramAdapterScript "Windows database generation program adapter"
+Assert-File `
+    $DatabaseGenerationProgramExecutionScript `
+    "Windows database generation program execution"
+Assert-File $DatabaseGenerationScript "Windows database generation owner"
+Assert-File $DatabaseGenerationContractScript "Windows database generation contract"
+Assert-File $DatabaseGenerationArtifactsScript "Windows database generation artifact store"
+Assert-File $DatabaseGenerationAdapterScript "Windows database generation adapter"
+Assert-File $DatabaseGenerationSourceScript "Windows database generation source mechanism"
+Assert-File `
+    $DatabaseGenerationRecoveryEvidenceScript `
+    "Windows database generation recovery evidence"
+Assert-File `
+    $DatabaseGenerationTargetRecoveryScript `
+    "Windows database generation fixed target recovery"
+Assert-File `
+    $DatabaseGenerationProjectionScript `
+    "Windows database generation runtime projection"
 Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"
 Assert-File $BootstrapExposureRecoveryScript "Windows bootstrap 暴露恢复脚本"
 Assert-File $InstallScript "install_bundled_services.ps1"
@@ -1235,6 +1217,15 @@ $isccProvenance | Add-Member `
         "iscc" `
         $isccProvenance.engine_version)
 Write-Ok "ISCC identity：engine=$($isccProvenance.engine_version) / sha256=$($isccProvenance.executable.sha256)"
+$pgDumpBuildEvidence = @($postgresProvenance.critical_files | Where-Object {
+    [string]$_.path -ceq "bin/pg_dump.exe"
+})
+$pgRestoreBuildEvidence = @($postgresProvenance.critical_files | Where-Object {
+    [string]$_.path -ceq "bin/pg_restore.exe"
+})
+if ($pgDumpBuildEvidence.Count -ne 1 -or $pgRestoreBuildEvidence.Count -ne 1) {
+    throw "PostgreSQL build provenance 未唯一绑定 pg_dump/pg_restore。"
+}
 $defines = @(
     "/DAppVersion=$resolvedVersion",
     "/DAppVersionInfo=$resolvedVersionInfo",
@@ -1269,7 +1260,17 @@ $defines = @(
     "/DReleaseConfigScriptSha256=$(Get-TicketboxFileSha256 $ReleaseConfigScript)",
     "/DReleaseConfigJsonSha256=$(Get-TicketboxFileSha256 $ReleaseConfigPath)",
     "/DBuildProvenanceScriptSha256=$(Get-TicketboxFileSha256 $BuildProvenanceScript)",
-    "/DBackendBuildProvenanceScriptSha256=$(Get-TicketboxFileSha256 $BackendBuildProvenanceScript)"
+    "/DBackendBuildProvenanceScriptSha256=$(Get-TicketboxFileSha256 $BackendBuildProvenanceScript)",
+    "/DDatabaseGenerationScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationScript)",
+    "/DDatabaseGenerationContractScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationContractScript)",
+    "/DDatabaseGenerationArtifactsScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationArtifactsScript)",
+    "/DDatabaseGenerationProgramSha256=$([string]$backendManifest.payload.database_generation_program.sha256)",
+    "/DDatabaseGenerationMigrationHelperSize=$([int64]$backendManifest.payload.c07_migration_helper.size)",
+    "/DDatabaseGenerationMigrationHelperSha256=$([string]$backendManifest.payload.c07_migration_helper.sha256)",
+    "/DDatabaseGenerationPgDumpSize=$([int64]$pgDumpBuildEvidence[0].size)",
+    "/DDatabaseGenerationPgDumpSha256=$([string]$pgDumpBuildEvidence[0].sha256)",
+    "/DDatabaseGenerationPgRestoreSize=$([int64]$pgRestoreBuildEvidence[0].size)",
+    "/DDatabaseGenerationPgRestoreSha256=$([string]$pgRestoreBuildEvidence[0].sha256)"
 )
 $verifiedBuildInputs = Get-InstallerBuildInputEvidence `
     $backendManifest `

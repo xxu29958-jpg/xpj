@@ -193,6 +193,44 @@ def _security_primitives_source() -> str:
     )
 
 
+@pytest.mark.parametrize("engine", powershell_contract_engines())
+def test_superuser_capability_preserves_primary_and_cleanup_failures(
+    engine: str,
+) -> None:
+    function = _function(
+        SCRIPT.read_text(encoding="utf-8-sig"),
+        "Throw-TicketboxC07SuperuserCapabilityFailure",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+{function}
+$primary = $null
+$cleanup = $null
+try {{
+    $failure = [InvalidOperationException]::new('primary')
+    $failure.Data['TicketboxC07FailureCode'] = 'primary_failed'
+    throw $failure
+}} catch {{ $primary = $_ }}
+try {{ throw [IO.IOException]::new('cleanup') }}
+catch {{ $cleanup = $_ }}
+try {{
+    Throw-TicketboxC07SuperuserCapabilityFailure $primary $cleanup
+    throw 'combined failure was suppressed'
+}} catch {{
+    $caught = $_.Exception
+}}
+if ($caught -isnot [AggregateException] -or
+    $caught.InnerExceptions.Count -ne 2 -or
+    $caught.InnerExceptions[0].Message -cne 'primary' -or
+    $caught.InnerExceptions[1].Message -cne 'cleanup' -or
+    [string]$caught.Data['TicketboxC07FailureCode'] -cne 'primary_failed') {{
+    throw 'primary/cleanup aggregate fidelity drifted'
+}}
+"""
+    result = _run_ps(engine, script)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 def test_windows_security_primitives_are_c07_free_and_wired() -> None:
     source = SCRIPT.read_text(encoding="utf-8-sig")
     primitives = _security_primitives_source()
@@ -696,9 +734,15 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
         source,
         "Remove-TicketboxC07CompletedSuperuserRecoveryArtifact",
     )
-    main = _function(
+    acquire = _function(
         source,
-        "Invoke-TicketboxC07RecoveredSuperuserAction",
+        "Acquire-TicketboxC07SuperuserCapability",
+    )
+    renew = _function(source, "Renew-TicketboxC07SuperuserCapability")
+    revoke = _function(source, "Revoke-TicketboxC07SuperuserCapability")
+    validate_capability = _function(
+        source,
+        "Assert-TicketboxC07SuperuserCapability",
     )
     host = _function(source, "Resolve-TicketboxC07SuperuserRecoveryHost")
     reload = _function(source, "Invoke-TicketboxC07SuperuserRecoveryReload")
@@ -769,9 +813,13 @@ def test_source_contract_is_narrow_sspi_and_secret_safe() -> None:
     assert restore.index("restore pg_hba.conf") < restore.index("restore pg_ident.conf")
     assert 'stage -cne "completed"' in remove
     assert "Remove-TicketboxProtectedUtf8Artifact" in remove
-    assert "$results = @(& $Action $secret)" in main
-    assert "$results.Count -ne 1" in main
-    assert "$null = Invoke-TicketboxC07SuperuserRecoveryClearCredential" in main
+    assert "Invoke-TicketboxC07RecoveredSuperuserAction" not in source
+    assert "[scriptblock]" not in acquire + renew + revoke
+    assert "Assert-TicketboxLifecycleOperationLease" in validate_capability
+    assert 'Schema = "ticketbox-postgresql-superuser-capability-v1"' in acquire
+    assert "Assert-TicketboxC07SuperuserCapability" in renew
+    assert "$Capability.Closed = $true" in revoke
+    assert "$Capability.Secret.Dispose()" in revoke
     assert "FilesystemPgData" in host
     assert "FilesystemPgData" in reload
     assert "Test-TicketboxC07SuperuserRecoveryDatabaseDataPath" in database_identity
@@ -1800,7 +1848,10 @@ $principal = [pscustomobject]@{{
     Realm = 'MACHINE'
     SystemUsername = 'Family Owner@MACHINE'
 }}
-$created = New-TicketboxC07SuperuserRecoveryArtifact -Host $HostContext -Principal $principal
+$created = New-TicketboxC07SuperuserRecoveryArtifact `
+    -Host $HostContext `
+    -Principal $principal `
+    -ExpectedOperationId '11111111-1111-4111-8111-111111111111'
 $persisted = Write-TicketboxC07SuperuserRecoveryArtifact `
     -Path {_ps_literal(artifact_path)} `
     -Artifact $created
@@ -1980,6 +2031,7 @@ $script:events = New-Object System.Collections.Generic.List[string]
 $script:cleared = $false
 $script:artifact = [pscustomobject]@{{
     stage = 'action_succeeded'
+    operation_id = '11111111-1111-4111-8111-111111111111'
     principal_name = 'MACHINE\\Family Owner'
     principal_sid = 'S-1-5-21-1-2-3-1001'
     sspi_system_username = 'Family Owner@MACHINE'
@@ -1994,6 +2046,7 @@ $script:databaseHost = [pscustomobject]@{{
 }}
 function Assert-TicketboxC07SuperuserRecoveryDependencies {{}}
 function Assert-TicketboxC07SuperuserRecoveryAdministrator {{}}
+function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
 function Assert-TicketboxC07SuperuserRecoveryArtifactPath {{
     param($Path)
     return $Path
@@ -2080,20 +2133,22 @@ function Set-TicketboxC07SuperuserRecoveryStage {{
 function Remove-TicketboxC07CompletedSuperuserRecoveryArtifact {{
     param($Path, $Artifact, $Material)
     $script:events.Add("remove:$($Artifact.stage)")
-    throw 'C07_TEST_STOP'
 }}
-$stopped = $false
-try {{
-    Invoke-TicketboxC07RecoveredSuperuserAction `
-        -HostAuthority ([pscustomobject]@{{}}) `
-        -RecoveryArtifactPath {_ps_literal(artifact_path)} `
-        -Action {{ 'must-not-run-in-completed-crash-window' }}
+$secret = New-Object Security.SecureString
+$secret.AppendChar('x')
+$capability = [pscustomobject][ordered]@{{
+    Schema = 'ticketbox-postgresql-superuser-capability-v1'
+    OperationId = '11111111-1111-4111-8111-111111111111'
+    RecoveryArtifactPath = {_ps_literal(artifact_path)}
+    HostContext = $script:databaseHost
+    Secret = $secret
+    Closed = $false
 }}
-catch {{
-    if ($_.Exception.Message -cne 'C07_TEST_STOP') {{ throw }}
-    $stopped = $true
-}}
-if (-not $stopped) {{ throw 'completed crash-window test did not stop' }}
+Revoke-TicketboxC07SuperuserCapability `
+    -Capability $capability `
+    -ExpectedOperationId $capability.OperationId `
+    -LifecycleLock @{{}}
+if (-not $capability.Closed) {{ throw 'revoked capability remained open' }}
 $expected = @(
     'restore',
     'scram:inactive',

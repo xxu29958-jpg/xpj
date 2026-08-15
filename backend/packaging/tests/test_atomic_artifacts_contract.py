@@ -12,7 +12,7 @@ ENTRYPOINT = PACKAGING / "windows_atomic_artifacts.ps1"
 NATIVE = PACKAGING / "atomic_artifacts" / "native.ps1"
 FILE = PACKAGING / "atomic_artifacts" / "file.ps1"
 DIRECTORY = PACKAGING / "atomic_artifacts" / "directory.ps1"
-C07_RECOVERY = PACKAGING / "windows_c07_recovery_generation.ps1"
+TARGET_RECOVERY = PACKAGING / "windows_database_generation_recovery_evidence.ps1"
 
 
 def _literal(path: Path) -> str:
@@ -57,7 +57,7 @@ def test_atomic_artifacts_are_focused_bom_safe_and_not_c07() -> None:
 def test_atomic_durability_identity_and_verify_before_publish_are_pinned() -> None:
     file_source = FILE.read_text(encoding="utf-8-sig")
     directory_source = DIRECTORY.read_text(encoding="utf-8-sig")
-    c07_source = C07_RECOVERY.read_text(encoding="utf-8-sig")
+    target_recovery = TARGET_RECOVERY.read_text(encoding="utf-8-sig")
 
     durable_sync = _function(file_source, "Sync-TicketboxDurableArtifactFile")
     assert durable_sync.index("::GetFinalPath(") < durable_sync.index(
@@ -107,54 +107,25 @@ def test_atomic_durability_identity_and_verify_before_publish_are_pinned() -> No
         directory_publish.index("$finalReady")
     )
 
-    source_generation = _function(
-        c07_source,
-        "Invoke-TicketboxC07RecoveryGeneration",
+    archive = _function(
+        target_recovery,
+        "Get-TicketboxDatabaseGenerationRecoveryArchive",
     )
-    source_readback = source_generation.index(
-        "$partial = Read-TicketboxC07RecoveryManifest"
+    assert archive.index("Sync-TicketboxFileDurable $paths.PartialPath") < archive.index(
+        "Copy-TicketboxVerifiedArtifact"
     )
-    source_verify = source_generation.index(
-        "Assert-TicketboxC07RecoveryGenerationFiles $partial"
+    copy_index = archive.index("Copy-TicketboxVerifiedArtifact")
+    assert copy_index < archive.index(
+        "Remove-TicketboxDatabaseGenerationRecoveryFile", copy_index
     )
-    source_digest = source_generation.index(
-        "$partial.PayloadSha256 -cne $manifest.PayloadSha256"
-    )
-    source_publish = source_generation.index(
-        "Publish-TicketboxVerifiedArtifactDirectory"
-    )
-    assert source_readback < source_verify < source_digest < source_publish
-
-    target_generation = _function(
-        c07_source,
-        "Invoke-TicketboxC07TargetRecoveryGeneration",
-    )
-    target_readback = target_generation.index(
-        "$partial = Read-TicketboxC07TargetRecoveryManifest"
-    )
-    target_verify = target_generation.index(
-        "Assert-TicketboxC07TargetRecoveryGenerationFiles $partial"
-    )
-    target_digest = target_generation.index(
-        "$partial.PayloadSha256 -cne $manifest.PayloadSha256"
-    )
-    target_publish = target_generation.index(
-        "Publish-TicketboxVerifiedArtifactDirectory"
-    )
-    assert target_readback < target_verify < target_digest < target_publish
 
 
-def test_c07_consumes_atomic_artifacts_without_retaining_the_old_path() -> None:
-    source = C07_RECOVERY.read_text(encoding="utf-8-sig")
+def test_generation_recovery_consumes_atomic_artifacts_without_a_parallel_writer() -> None:
+    source = TARGET_RECOVERY.read_text(encoding="utf-8-sig")
 
-    assert "Sync-TicketboxDurableArtifactFile $OutputPath" in source
     assert "Copy-TicketboxVerifiedArtifact" in source
-    assert "Publish-TicketboxVerifiedArtifactDirectory" in source
-    assert "Sync-TicketboxC07RecoveryFile" not in source
-    assert "Copy-TicketboxC07RecoveryOriginal" not in source
-    assert "Publish-TicketboxC07RecoveryReadyDirectory" not in source
-    assert "TicketboxC07RecoveryNativeMethods" not in source
-    assert "MOVEFILE_WRITE_THROUGH" not in source
+    assert "Move-TicketboxFileDurable $paths.PartialPath $paths.Path" not in source
+    assert "windows_c07_recovery_generation.ps1" not in source
 
 
 @pytest.mark.parametrize("engine", powershell_contract_engines())
