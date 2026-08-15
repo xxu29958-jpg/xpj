@@ -91,6 +91,36 @@
 #ifndef BackendBuildProvenanceScriptSha256
 #error BackendBuildProvenanceScriptSha256 must be injected by build_inno_installer.ps1
 #endif
+#ifndef DatabaseGenerationScriptSha256
+#error DatabaseGenerationScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseGenerationContractScriptSha256
+#error DatabaseGenerationContractScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseGenerationArtifactsScriptSha256
+#error DatabaseGenerationArtifactsScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseGenerationProgramSha256
+#error DatabaseGenerationProgramSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseGenerationMigrationHelperSize
+#error DatabaseGenerationMigrationHelperSize must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseGenerationMigrationHelperSha256
+#error DatabaseGenerationMigrationHelperSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseGenerationPgDumpSize
+#error DatabaseGenerationPgDumpSize must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseGenerationPgDumpSha256
+#error DatabaseGenerationPgDumpSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseGenerationPgRestoreSize
+#error DatabaseGenerationPgRestoreSize must be injected by build_inno_installer.ps1
+#endif
+#ifndef DatabaseGenerationPgRestoreSha256
+#error DatabaseGenerationPgRestoreSha256 must be injected by build_inno_installer.ps1
+#endif
 #ifndef WindowsPrerequisiteScriptSha256
 #error WindowsPrerequisiteScriptSha256 must be injected by build_inno_installer.ps1
 #endif
@@ -174,6 +204,10 @@ Source: "windows_database_safety.ps1"; Flags: dontcopy noencryption
 Source: "windows_pg_recovery_tools.ps1"; Flags: dontcopy noencryption
 Source: "windows_release_config.ps1"; Flags: dontcopy noencryption
 Source: "windows-release-config.json"; Flags: dontcopy noencryption
+Source: "windows_database_generation.ps1"; Flags: dontcopy noencryption
+Source: "windows_database_generation_contract.ps1"; Flags: dontcopy noencryption
+Source: "windows_database_generation_artifacts.ps1"; Flags: dontcopy noencryption
+Source: "..\dist\ticketbox-backend\DATABASE_GENERATION_PROGRAM.json"; DestName: "DATABASE_GENERATION_PROGRAM.json"; Flags: dontcopy noencryption
 Source: "ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\ticketbox-backend\DATABASE_GENERATION_PROGRAM.json"; DestDir: "{app}\program\ticketbox-backend"; Flags: ignoreversion
 Source: "..\dist\ticketbox-backend\*"; DestDir: "{app}\program\ticketbox-backend"; Excludes: "ticketbox-data\*,DATABASE_GENERATION_PROGRAM.json"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -196,10 +230,6 @@ Source: "postgresql_database_catalog\primitives.ps1"; DestDir: "{app}\installer\
 Source: "postgresql_database_catalog\query.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
 Source: "postgresql_database_catalog\codec.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
 Source: "postgresql_database_catalog\observation.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
-Source: "windows_postgresql_exported_snapshot.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "postgresql_exported_snapshot\primitives.ps1"; DestDir: "{app}\installer\postgresql_exported_snapshot"; Flags: ignoreversion
-Source: "postgresql_exported_snapshot\session.ps1"; DestDir: "{app}\installer\postgresql_exported_snapshot"; Flags: ignoreversion
-Source: "postgresql_exported_snapshot\deadline_evidence.ps1"; DestDir: "{app}\installer\postgresql_exported_snapshot"; Flags: ignoreversion
 Source: "windows_postgresql_writer_fence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "postgresql_writer_fence\primitives.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
 Source: "postgresql_writer_fence\observation_query.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
@@ -209,9 +239,6 @@ Source: "postgresql_writer_fence\reconcile_policy.ps1"; DestDir: "{app}\installe
 Source: "postgresql_writer_fence\precondition_guard.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
 Source: "postgresql_writer_fence\session_drain.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
 Source: "postgresql_writer_fence\reconciler.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
-Source: "c07_lifecycle\writer_fence.ps1"; DestDir: "{app}\installer\c07_lifecycle"; Flags: ignoreversion
-Source: "c07_lifecycle\writer_fence\policy.ps1"; DestDir: "{app}\installer\c07_lifecycle\writer_fence"; Flags: ignoreversion
-Source: "c07_lifecycle\writer_fence\adapter.ps1"; DestDir: "{app}\installer\c07_lifecycle\writer_fence"; Flags: ignoreversion
 Source: "windows_release_config.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_bundled_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_c07_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
@@ -224,17 +251,20 @@ Source: "security_primitives\descriptor_diagnostic.ps1"; DestDir: "{app}\install
 Source: "security_primitives\file_security.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
 Source: "windows_c07_superuser_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_deadline_budget.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_c07_deadline_policy.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_c07_heartbeat_authority.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_c07_lifecycle.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_c07_heartbeat_helper.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_c07_failure_summary.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_atomic_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "atomic_artifacts\native.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion
 Source: "atomic_artifacts\file.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion
 Source: "atomic_artifacts\directory.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion
-Source: "windows_c07_recovery_generation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_c07_packaged_migration.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_program_adapter.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_program_execution.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_adapter.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_source.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_recovery_evidence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_target_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_projection.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_backend_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_bootstrap_exposure_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows-release-config.json"; DestDir: "{app}\installer"; Flags: ignoreversion

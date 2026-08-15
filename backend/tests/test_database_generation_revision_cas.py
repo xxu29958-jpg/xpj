@@ -17,6 +17,7 @@ from app.database._managed_postgres_migration_runtime import (
     ManagedPostgresMigrationRuntimeError,
 )
 from tests.test_managed_postgres_migration_runtime import (
+    _C02_TARGET_REVISION,
     _C07_TARGET_REVISION,
     _RELEASE_HEAD_REVISION,
     _managed_topology,
@@ -62,6 +63,38 @@ def _assert_alembic_owns_the_exact_transition(
     assert observed[0][0] is not None
     assert observed[0][1:] == (_RELEASE_HEAD_REVISION, topology.program)
     assert _revision(topology.owner_url) == _RELEASE_HEAD_REVISION
+
+
+def _assert_intermediate_postcondition_is_mandatory(
+    topology: _ManagedTopology,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    expected_revision: str,
+) -> None:
+    original = generation_executor._assert_postcondition
+    observed: list[str] = []
+
+    def reject_intermediate(connection, revision):
+        observed.append(revision.revision)
+        if revision.revision == _C02_TARGET_REVISION:
+            raise generation_executor.DatabaseGenerationExecutionError(
+                "injected intermediate postcondition failure"
+            )
+        return original(connection, revision)
+
+    monkeypatch.setattr(
+        generation_executor,
+        "_assert_postcondition",
+        reject_intermediate,
+    )
+    with pytest.raises(
+        ManagedPostgresMigrationRuntimeError,
+        match="managed PostgreSQL migration failed",
+    ):
+        topology.runtime.run(**_migration_arguments(topology))
+    monkeypatch.setattr(generation_executor, "_assert_postcondition", original)
+    assert _C02_TARGET_REVISION in observed
+    assert _revision(topology.owner_url) == expected_revision
 
 
 def _assert_target_retry_revalidates_postcondition(
@@ -144,5 +177,15 @@ def test_generation_alembic_boundary_rejects_invalid_rows_and_owns_transition(
     with _managed_topology(tmp_path, monkeypatch) as topology:
         _assert_executor_requires_caller_transaction(topology)
         _assert_invalid_rows_fail_closed(topology)
+        _assert_intermediate_postcondition_is_mandatory(
+            topology,
+            monkeypatch,
+            expected_revision=_C07_TARGET_REVISION,
+        )
         _assert_alembic_owns_the_exact_transition(topology, monkeypatch)
+        _assert_intermediate_postcondition_is_mandatory(
+            topology,
+            monkeypatch,
+            expected_revision=_RELEASE_HEAD_REVISION,
+        )
         _assert_target_retry_revalidates_postcondition(topology)

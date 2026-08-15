@@ -34,6 +34,15 @@ from app.database._core import (
     settings,
     wait_for_db,
 )
+from app.database._database_generation_program import (
+    ALEMBIC_PROGRAM_ATTRIBUTE,
+    DatabaseGenerationProgramError,
+    database_generation_program_revision_includes_c07,
+)
+from app.database._database_generation_runtime_admission import (
+    assert_database_generation_startup_ready,
+    assert_legacy_c07_startup_ready,
+)
 from app.database._lifecycle import (
     AlembicContext,
     DatabaseLifecycleAction,
@@ -96,12 +105,15 @@ def init_db() -> None:
     if plan.action is DatabaseLifecycleAction.FRESH_UPGRADE:
         if installed_runtime:
             raise DatabaseMigrationPreflightError(
-                "拒绝由安装版普通后端初始化空数据库:空库必须交由 C07 宿主"
-                "恢复/扩容动作建立 exact-target marker 与 SYSTEM READY "
-                "projection；数据库未执行 backup/DDL/DML。"
+                "拒绝由安装版普通后端初始化空数据库:空库必须交由安装器的 "
+                "Generation Owner 建立 exact target、isolated restore proof、"
+                "database binding 与 CURRENT；数据库未执行 backup/DDL/DML。"
             )
     elif plan.action is DatabaseLifecycleAction.NOOP:
-        _assert_c07_startup_lifecycle_ready(alembic, production_authority_required=installed_runtime)
+        _assert_database_generation_startup_ready(
+            alembic,
+            installed_program=installed_program,
+        )
     elif (
         plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE
         and installed_runtime
@@ -130,7 +142,10 @@ def init_db() -> None:
             f"拒绝执行数据库迁移:C07 生命周期证明未能与 DDL 原子登记({exc})，事务已回滚。"
         ) from exc
     _assert_schema_at_head(alembic.head_revision)
-    _assert_c07_startup_lifecycle_ready(alembic, production_authority_required=installed_runtime)
+    _assert_database_generation_startup_ready(
+        alembic,
+        installed_program=installed_program,
+    )
     record_schema_migration(
         BASELINE_MIGRATION_NAME,
         backend_version=BACKEND_VERSION,
@@ -146,23 +161,20 @@ def init_db() -> None:
     reconcile_expense_tag_mirror_once()
 
 
-def _assert_c07_startup_lifecycle_ready(
-    alembic: AlembicContext, *, production_authority_required: bool
+def _assert_database_generation_startup_ready(
+    alembic: AlembicContext,
+    *,
+    installed_program: object | None,
 ) -> None:
-    from app.database._c07_ceremony import (
-        C07ReceiptRepairRequiredError,
-        assert_c07_lifecycle_ready,
-    )
-
-    try:
-        assert_c07_lifecycle_ready(
+    if installed_program is None:
+        assert_legacy_c07_startup_ready(
             engine,
-            alembic_config=alembic.config,
-            production_authority_required=production_authority_required,
+            alembic.config,
+            production_authority_required=False,
             expected_release_revision=alembic.head_revision,
         )
-    except C07ReceiptRepairRequiredError as exc:
-        raise DatabaseMigrationPreflightError(f"拒绝开放数据库 writer:C07 生命周期回执未完成({exc})。") from exc
+        return
+    assert_database_generation_startup_ready(engine, installed_program)
 
 def _assert_revision_contains_c07(
     revision: str | None,
@@ -170,14 +182,21 @@ def _assert_revision_contains_c07(
     *,
     label: str,
 ) -> None:
-    from app.database._c07_execution import _revision_includes_c07
-
     try:
-        includes_c07 = _revision_includes_c07(
-            revision,
-            alembic_config=alembic.config,
-        )
-    except C07CeremonyError as exc:
+        installed_program = alembic.config.attributes.get(ALEMBIC_PROGRAM_ATTRIBUTE)
+        if installed_program is None:
+            from app.database._c07_execution import _revision_includes_c07
+
+            includes_c07 = _revision_includes_c07(
+                revision,
+                alembic_config=alembic.config,
+            )
+        else:
+            includes_c07 = database_generation_program_revision_includes_c07(
+                installed_program,
+                revision,
+            )
+    except (C07CeremonyError, DatabaseGenerationProgramError) as exc:
         raise DatabaseMigrationPreflightError(
             f"拒绝开放数据库 writer:{label} 的 C07 ancestry 无法验证({exc})；数据库未执行 backup/DDL/DML。"
         ) from exc
@@ -256,8 +275,11 @@ def _apply_managed_schema_lifecycle(
         if lifecycle.has_existing_schema:
             _assert_existing_schema_compatible(lifecycle, connection=connection)
         if plan.action is DatabaseLifecycleAction.NOOP:
-            _assert_c07_startup_lifecycle_ready(
-                alembic, production_authority_required=production_authority_required
+            assert_legacy_c07_startup_ready(
+                engine,
+                alembic.config,
+                production_authority_required=production_authority_required,
+                expected_release_revision=alembic.head_revision,
             )
             return
         if plan.action is DatabaseLifecycleAction.REFUSE:
@@ -277,8 +299,11 @@ def _apply_managed_schema_lifecycle(
             alembic,
             label="installed revision",
         )
-        _assert_c07_startup_lifecycle_ready(
-            alembic, production_authority_required=production_authority_required
+        assert_legacy_c07_startup_ready(
+            engine,
+            alembic.config,
+            production_authority_required=production_authority_required,
+            expected_release_revision=alembic.head_revision,
         )
         _assert_existing_schema_owner_ready(connection)
         _backup_before_upgrade(lifecycle.current_revision, alembic.head_revision)

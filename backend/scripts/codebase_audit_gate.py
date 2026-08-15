@@ -179,6 +179,11 @@ _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER = (
     387,
     379,
 )  # The portable installer owner and its dedicated security harness were physically retired together. The active Inno installer retains its release-critical suite, and the portable surface has a negative retirement oracle. The canonical base binding prevents a future 387-to-379 count cycle from replaying this exception.
+_GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER = (
+    "9d74b04f318362d5e222d897787db074bb5ca8ab",
+    379,
+    282,
+)  # R025 physically retires the C07 lifecycle/recovery/current producers and their stage-specific scenario palaces. The remaining suite retains generic lock, CAS, restore, failure, shipment, and real Generation Owner contracts. Exact base and hop binding make this exception self-extinguishing.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -297,12 +302,15 @@ def _compute_ratchet_findings(
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
         adr_0049_exempt = key == "mutate_token_exempted" and (base_val, current_val) == _ADR_0049_EXEMPTED_GRANDFATHER
-        portable_installer_retirement = (
+        installer_test_retirement = (
             key == "installer_pytest_count"
             and (base_commit, base_val, current_val)
-            == _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER
+            in {
+                _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER,
+                _GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER,
+            }
         )
-        if key in BASELINE_RATCHET_UP and current_val < base_val and not portable_installer_retirement:
+        if key in BASELINE_RATCHET_UP and current_val < base_val and not installer_test_retirement:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
                 f"(dropped by {base_val - current_val}). Tests/coverage should "

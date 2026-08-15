@@ -66,6 +66,13 @@ if (-not (Test-Path -LiteralPath $LockScript -PathType Leaf)) {
     throw "缺少 Windows 生命周期锁脚本：$LockScript"
 }
 . $LockScript
+$DatabaseGenerationContractScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_contract.ps1"
+if (-not (Test-Path -LiteralPath $DatabaseGenerationContractScript -PathType Leaf)) {
+    throw "缺少 database generation contract：$DatabaseGenerationContractScript"
+}
+. $DatabaseGenerationContractScript
 $ReceiptScript = Join-Path $ScriptDir "windows_lifecycle_receipt.ps1"
 if (-not (Test-Path -LiteralPath $ReceiptScript -PathType Leaf)) {
     throw "缺少 Windows 生命周期回执脚本：$ReceiptScript"
@@ -581,6 +588,24 @@ function Remove-TicketboxInstallerRuntimeProjectionForUninstall {
         -BackendPort $BackendPort `
         -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe) `
         @ServiceWaitArguments
+    $generationCurrentPath = Get-TicketboxDatabaseGenerationRuntimeCurrentPath
+    $generationRuntimeRoot = Split-Path -Parent $generationCurrentPath
+    $backendReadAccount = "NT SERVICE\$BackendServiceName"
+    if ((Get-TicketboxPathEntryKindNoFollow $generationCurrentPath) -cne "Missing") {
+        Remove-TicketboxProtectedUtf8Artifact `
+            -Path $generationCurrentPath `
+            -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+            -ReadExecuteAccounts @($backendReadAccount) `
+            -OwnerAccount "SYSTEM"
+    }
+    if ((Get-TicketboxPathEntryKindNoFollow $generationRuntimeRoot) -cne "Missing") {
+        Assert-TicketboxProtectedDirectoryAcl `
+            -Path $generationRuntimeRoot `
+            -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+            -ReadExecuteAccounts @($backendReadAccount) `
+            -OwnerAccount "SYSTEM"
+        Remove-Item -LiteralPath $generationRuntimeRoot -Force -ErrorAction Stop
+    }
     Remove-TicketboxInstallerRuntimeRecoveryGuard `
         -Path $InstallerRuntimeRecoveryGuardPath `
         -InstallDir $InstallDir `

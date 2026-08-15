@@ -109,6 +109,31 @@ class DatabaseGenerationProgram:
             previous = revision.revision
         return suffix
 
+    def revision_includes(self, revision_id: str, required_revision: str) -> bool:
+        """Return whether ``required_revision`` is in the declared prefix."""
+
+        target_index = self.revisions.index(self.revision(revision_id))
+        return any(
+            revision.revision == required_revision
+            for revision in self.revisions[: target_index + 1]
+        )
+
+
+def database_generation_program_revision_includes_c07(
+    program: object,
+    revision_id: str | None,
+) -> bool:
+    """Resolve C07 ancestry only from the build-owned installed program."""
+
+    if not isinstance(program, DatabaseGenerationProgram):
+        raise DatabaseGenerationProgramError(
+            "installed generation program type is invalid"
+        )
+    return revision_id is not None and program.revision_includes(
+        revision_id,
+        C07_TARGET_REVISION,
+    )
+
 
 def _canonical_json(value: object) -> bytes:
     return json.dumps(
@@ -333,6 +358,7 @@ __all__ = [
     "DatabaseGenerationProgram",
     "DatabaseGenerationProgramError",
     "DatabaseGenerationRevision",
+    "database_generation_program_revision_includes_c07",
     "load_database_generation_program",
     "load_installed_database_generation_program",
 ]

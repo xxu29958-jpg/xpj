@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import importlib.util
 import json
@@ -227,7 +226,7 @@ def test_installed_lifecycle_planning_uses_program_without_graph_discovery(
     )
     from alembic import script as alembic_script
 
-    from app.database import _c07_execution, _lifecycle
+    from app.database import _lifecycle
 
     monkeypatch.setattr(
         alembic_script.ScriptDirectory,
@@ -241,9 +240,9 @@ def test_installed_lifecycle_planning_uses_program_without_graph_discovery(
     assert context.known_revisions == frozenset(
         revision.revision for revision in program.revisions
     )
-    assert _c07_execution._revision_includes_c07(
+    assert program.revision_includes(
         program.target_revision,
-        alembic_config=context.config,
+        "20260729_0001",
     )
 
 
@@ -258,7 +257,7 @@ def test_installed_init_db_uses_one_frozen_release_fact(
 
     installed_program = object()
     observed: list[object] = []
-    authority_requirements: list[bool] = []
+    generation_authorities: list[object] = []
     monkeypatch.setattr(database, "_warn_if_default_database_url", lambda: None)
     monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH", raising=False)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
@@ -269,14 +268,14 @@ def test_installed_init_db_uses_one_frozen_release_fact(
         observed.append(installed_program)
         return SimpleNamespace(head_revision=TARGET_REVISION)
 
-    def stop_on_authority(_alembic: object, *, production_authority_required: bool) -> None:
-        authority_requirements.append(production_authority_required)
+    def stop_on_authority(_alembic: object, *, installed_program: object | None) -> None:
+        generation_authorities.append(installed_program)
         raise RuntimeError("authority-observed")
 
     monkeypatch.setattr(database, "load_alembic_context", load_context)
     monkeypatch.setattr(database, "_assert_revision_contains_c07", lambda *a, **k: None)
     monkeypatch.setattr(database, "_assert_existing_schema_compatible", lambda *_a, **_k: None)
-    monkeypatch.setattr(database, "_assert_c07_startup_lifecycle_ready", stop_on_authority)
+    monkeypatch.setattr(database, "_assert_database_generation_startup_ready", stop_on_authority)
     monkeypatch.setattr(database, "_apply_schema_lifecycle", lambda *_a: pytest.fail("frozen DDL"))
     monkeypatch.setattr(database, "_apply_managed_schema_lifecycle", lambda *_a, **_k: pytest.fail("frozen DDL"))
     monkeypatch.setattr(database, "plan_database_lifecycle", lambda *_a: SimpleNamespace(action=getattr(DatabaseLifecycleAction, action_name)))
@@ -284,26 +283,21 @@ def test_installed_init_db_uses_one_frozen_release_fact(
     if action_name == "NOOP":
         with pytest.raises(RuntimeError, match="authority-observed"):
             database.init_db()
-        assert authority_requirements == [True]
+        assert generation_authorities == [installed_program]
     else:
         with pytest.raises(database.DatabaseMigrationPreflightError, match="安装版"):
             database.init_db()
-        assert authority_requirements == []
+        assert generation_authorities == []
 
     assert observed == [installed_program]
 
 
 def test_installed_migration_keeps_program_authority_and_alembic_execution() -> None:
-    heartbeat = _source("packaging/windows_c07_heartbeat_authority.ps1")
-    current_release = heartbeat[heartbeat.index("function Get-TicketboxC07ReleaseIdentity") : heartbeat.index("function New-TicketboxC07ReleaseIdentityProjection")]
-    assert "New-TicketboxC07ReleaseIdentityProjection" in current_release
-    assert "Get-TicketboxC07TextSha256" not in current_release
     runtime_consumers = {
-        "app.database._c07_fresh_source_bootstrap": "app/database/_c07_fresh_source_bootstrap.py",
         "app.database_generation_c07_contract": "app/database_generation_c07_contract.py",
-        "app.database._c07_maintenance_upgrade_action": "app/database/_c07_maintenance_upgrade_action.py",
         "app.database._managed_schema_upgrade": "app/database/_managed_schema_upgrade.py",
         "app.database._managed_postgres_migration_runtime": "app/database/_managed_postgres_migration_runtime.py",
+        "app.database._database_generation_target_verification": "app/database/_database_generation_target_verification.py",
     }
     for module_name, relative in runtime_consumers.items():
         source = _source(relative)
@@ -327,43 +321,26 @@ def test_installed_migration_keeps_program_authority_and_alembic_execution() -> 
     assert "from app.config import get_settings" not in imports
     assert "from app.config import get_settings" in database_url_body
 
-    production = _source("app/database/_c07_production_migration.py")
-    assert "from app.database." not in production[: production.index("def _temporary_database_package")]
-    production_tree = ast.parse(production)
-    assert not any(
-        (
-            isinstance(node, ast.ImportFrom)
-            and (node.module or "").startswith("app.database")
-        )
-        or (
-            isinstance(node, ast.Import)
-            and any(alias.name.startswith("app.database") for alias in node.names)
-        )
-        for node in ast.walk(production_tree)
-    )
-    fresh_source = _source("app/database/_c07_fresh_source_bootstrap.py")
-    assert not any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr in {"commit", "rollback"}
-        for node in ast.walk(ast.parse(fresh_source))
-    )
-    source_cli = _source("scripts/c07_money_bigint_ceremony.py")
-    for argument in (
-        "--generation-program-path",
-        "--expected-generation-program-sha256",
-    ):
-        assert argument in source_cli
-    for retired in ("--run", "--repair-receipt", "_load_isolated_module"):
-        assert retired not in source_cli
+    assert not (BACKEND / "scripts" / "c07_money_bigint_ceremony.py").exists()
 
     launch = _source("packaging/launch.py")
-    bridge = _source("packaging/windows_c07_packaged_migration.ps1")
+    bridge = _source("packaging/windows_database_generation_program_adapter.ps1")
+    adapter = _source("packaging/windows_database_generation_adapter.ps1")
     installer = _source("packaging/install_bundled_services.ps1")
-    combined = launch + bridge + installer
+    combined = launch + bridge + adapter + installer
     assert "--validate-generation-program" in launch
-    assert "Get-TicketboxInstalledDatabaseGenerationProgram" in installer
-    for retired in ("--c07-installed-upgrade-plan", "--managed-schema-plan"):
+    assert "Get-TicketboxInstalledDatabaseGenerationProgram" in bridge
+    assert "Get-TicketboxInstalledDatabaseGenerationProgram" not in adapter
+    assert installer.count("Invoke-TicketboxInstalledDatabaseGeneration `") == 1
+    for retired in (
+        "--c07-installed-upgrade-plan",
+        "--managed-schema-plan",
+        "--c07-production-migrate",
+        "--c07-fresh-source-bootstrap",
+        "--c07-maintenance-upgrade",
+        "--c07-money-facts-digest",
+        "--c07-target-semantic-digest",
+    ):
         assert retired not in combined
     for retired in ("Get-TicketboxC07InstalledUpgradePlan", "Get-TicketboxInstalledManagedSchemaPlan"):
         assert retired not in installer

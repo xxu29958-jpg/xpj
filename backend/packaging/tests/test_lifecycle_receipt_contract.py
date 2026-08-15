@@ -22,19 +22,18 @@ def _read(name: str) -> str:
 
 def _literal(path: Path) -> str:
     return str(path).replace("'", "''")
-
-
-def test_fresh_install_recovery_receipt_operation_rebind_is_narrow_and_cross_engine(
+def test_installation_receipt_operation_is_write_once_and_cross_engine(
     tmp_path: Path,
 ) -> None:
     receipt_script = PACKAGING / "windows_lifecycle_receipt.ps1"
     for index, engine in enumerate(powershell_contract_engines()):
-        harness = tmp_path / f"receipt-fresh-install-recovery-rebind-{index}.ps1"
+        harness = tmp_path / f"receipt-installation-operation-{index}.ps1"
         harness.write_text(
             f"""
 $ErrorActionPreference = 'Stop'
 . '{_literal(receipt_script)}'
 $script:writes = 0
+$script:closes = 0
 $script:lastOperation = ''
 function Write-TicketboxLifecycleReceipt {{
     $script:writes += 1
@@ -44,127 +43,52 @@ function Write-TicketboxLifecycleReceipt {{
         }}
     }}
 }}
-function Close-TicketboxLifecycleBackupGuard {{ param($Receipt) }}
-$oldOperation = '11111111-1111-1111-1111-111111111111'
-$newOperation = '22222222-2222-2222-2222-222222222222'
+function Close-TicketboxLifecycleBackupGuard {{ param($Receipt); $script:closes += 1 }}
+$operation = '11111111-1111-1111-1111-111111111111'
+$otherOperation = '22222222-2222-2222-2222-222222222222'
 $receipt = [pscustomobject]@{{
-    mode = 'fresh_install'
-    install_dir = 'C:\\Program Files\\Ticketbox'
-    data_root = 'C:\\ProgramData\\Ticketbox'
-    pg_port = 5440
-    backend_port = 8001
-    installed_release_config = [pscustomobject]@{{}}
-    target_backend_version_floor = '1.2.0'
-    previous_pg_state = 'absent'
-    previous_backend_state = 'absent'
-    previous_pg_start_policy = 'absent'
-    previous_backend_start_policy = 'absent'
-    backup_required = $false
-    backup_completed = $false
-    preparation_stage = 'files_may_have_been_replaced'
-    backup_path = ''
-    backup_sha256 = ''
-    backup_byte_length = 0
-    files_may_have_been_replaced = $true
-    install_completed = $false
+    mode = 'fresh_install'; install_dir = 'C:\\Program Files\\Ticketbox'
+    data_root = 'C:\\ProgramData\\Ticketbox'; pg_port = 5440; backend_port = 8001
+    installed_release_config = [pscustomobject]@{{}}; target_backend_version_floor = '1.2.0'
+    previous_pg_state = 'absent'; previous_backend_state = 'absent'
+    previous_pg_start_policy = 'absent'; previous_backend_start_policy = 'absent'
+    backup_required = $false; backup_completed = $false; preparation_stage = 'prepared'
+    backup_path = ''; backup_sha256 = ''; backup_byte_length = 0
+    files_may_have_been_replaced = $false; install_completed = $false
     temporary_pg_service_cleanup_pending = $false
-    c07_installation_operation_id = $oldOperation
-    c07_production_authority_sha256 = ''
-    c07_runtime_projection_sha256 = ''
+    c07_installation_operation_id = ''
+    c07_production_authority_sha256 = ''; c07_runtime_projection_sha256 = ''
+    database_generation_current_sha256 = ''
 }}
-Set-TicketboxLifecycleReceiptC07InstallationOperation `
-    -Path 'unused' `
-    -Receipt $receipt `
-    -InstallerOwnerProcessId 1234 `
-    -OperationId $newOperation `
-    -AllowFreshInstallRecoveryRebind
-if ($script:writes -ne 1 -or $script:lastOperation -cne $newOperation) {{
-    throw 'safe fresh-install recovery receipt operation was not rebound'
+Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt `
+    -InstallerOwnerProcessId 1234 -OperationId $operation
+if ($script:writes -ne 1 -or $script:lastOperation -cne $operation) {{
+    throw 'initial installation operation was not persisted exactly once'
 }}
-$mutations = @(
-    [pscustomobject]@{{ Property = 'mode'; Bad = 'preserved_data_reinstall'; Good = 'fresh_install' }},
-    [pscustomobject]@{{ Property = 'previous_pg_state'; Bad = 'stopped'; Good = 'absent' }},
-    [pscustomobject]@{{ Property = 'previous_backend_state'; Bad = 'stopped'; Good = 'absent' }},
-    [pscustomobject]@{{ Property = 'previous_pg_start_policy'; Bad = 'disabled'; Good = 'absent' }},
-    [pscustomobject]@{{ Property = 'previous_backend_start_policy'; Bad = 'disabled'; Good = 'absent' }},
-    [pscustomobject]@{{ Property = 'preparation_stage'; Bad = 'prepared'; Good = 'files_may_have_been_replaced' }},
-    [pscustomobject]@{{ Property = 'files_may_have_been_replaced'; Bad = $false; Good = $true }},
-    [pscustomobject]@{{ Property = 'backup_required'; Bad = $true; Good = $false }},
-    [pscustomobject]@{{ Property = 'backup_completed'; Bad = $true; Good = $false }},
-    [pscustomobject]@{{ Property = 'backup_path'; Bad = 'C:\\protected\\backup.dump'; Good = '' }},
-    [pscustomobject]@{{ Property = 'backup_sha256'; Bad = ('A' * 64); Good = '' }},
-    [pscustomobject]@{{ Property = 'backup_byte_length'; Bad = 1; Good = 0 }},
-    [pscustomobject]@{{ Property = 'install_completed'; Bad = $true; Good = $false }},
-    [pscustomobject]@{{ Property = 'temporary_pg_service_cleanup_pending'; Bad = $true; Good = $false }},
-    [pscustomobject]@{{ Property = 'c07_production_authority_sha256'; Bad = ('B' * 64); Good = '' }},
-    [pscustomobject]@{{ Property = 'c07_runtime_projection_sha256'; Bad = ('C' * 64); Good = '' }}
-)
-foreach ($mutation in $mutations) {{
-    $receipt.($mutation.Property) = $mutation.Bad
-    $rejected = $false
-    try {{
-        Set-TicketboxLifecycleReceiptC07InstallationOperation `
-            -Path 'unused' `
-            -Receipt $receipt `
-            -InstallerOwnerProcessId 1234 `
-            -OperationId '33333333-3333-3333-3333-333333333333' `
-            -AllowFreshInstallRecoveryRebind
-    }}
-    catch {{ $rejected = $true }}
-    if (-not $rejected -or $script:writes -ne 1) {{
-        throw "receipt mutation $($mutation.Property) was rebound"
-    }}
-    $receipt.($mutation.Property) = $mutation.Good
+$receipt.c07_installation_operation_id = $operation
+Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt `
+    -InstallerOwnerProcessId 1234 -OperationId $operation
+if ($script:writes -ne 1 -or $script:closes -ne 2) {{
+    throw 'same installation operation was not an idempotent readback'
 }}
 $rejected = $false
 try {{
-    Set-TicketboxLifecycleReceiptC07InstallationOperation `
-        -Path 'unused' `
-        -Receipt $receipt `
-        -InstallerOwnerProcessId 1234 `
-        -OperationId '33333333-3333-3333-3333-333333333333' `
-        -SuccessorIntent ([pscustomobject]@{{ Payload = [pscustomobject]@{{}} }}) `
-        -AllowFreshInstallRecoveryRebind
+    Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt `
+        -InstallerOwnerProcessId 1234 -OperationId $otherOperation
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 1) {{
-    throw 'fresh-install recovery accepted a successor intent'
+    throw 'installation operation was rebound'
 }}
 $receipt.c07_installation_operation_id = 'not-a-guid'
 $rejected = $false
 try {{
-    Set-TicketboxLifecycleReceiptC07InstallationOperation `
-        -Path 'unused' `
-        -Receipt $receipt `
-        -InstallerOwnerProcessId 1234 `
-        -OperationId '33333333-3333-3333-3333-333333333333' `
-        -AllowFreshInstallRecoveryRebind
+    Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt `
+        -InstallerOwnerProcessId 1234 -OperationId $operation
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 1) {{
-    throw 'malformed existing receipt operation was rebound'
-}}
-$receipt.c07_installation_operation_id = $oldOperation
-$successorIntent = [pscustomobject]@{{ Payload = [pscustomobject]@{{
-    schema = 'ticketbox-c07-successor-intent-v3'; predecessor_operation_id = $oldOperation
-    successor_operation_id = $newOperation; data_root = $receipt.data_root
-    install_dir = $receipt.install_dir; pg_port = $receipt.pg_port
-    backend_port = $receipt.backend_port
-}} }}
-$successorProperties = @('schema','predecessor_operation_id','successor_operation_id','data_root','install_dir','pg_port','backend_port')
-$badValues = @('ticketbox-c07-successor-intent-v2',$newOperation,$oldOperation,'C:\\OtherData','C:\\OtherInstall',5441,8002)
-for ($index = 0; $index -lt $successorProperties.Count; $index++) {{
-    $property = $successorProperties[$index]; $good = $successorIntent.Payload.($property); $successorIntent.Payload.($property) = $badValues[$index]
-    $rejected = $false
-    try {{ Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt -InstallerOwnerProcessId 1234 -OperationId $newOperation -SuccessorIntent $successorIntent }} catch {{ $rejected = $true }}
-    if (-not $rejected -or $script:writes -ne 1) {{ throw "foreign successor $property was accepted" }}
-    $successorIntent.Payload.($property) = $good
-}}
-Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' `
-    -Receipt $receipt -InstallerOwnerProcessId 1234 `
-    -OperationId $newOperation -SuccessorIntent $successorIntent
-if ($script:writes -ne 2 -or $script:lastOperation -cne $newOperation) {{
-    throw 'valid v3 successor did not rebind the lifecycle receipt exactly once'
+    throw 'malformed existing operation was accepted'
 }}
 """,
             encoding="utf-8-sig",
@@ -935,32 +859,67 @@ def test_install_commit_retires_recovery_latch_only_after_durable_authorities(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{_literal(PACKAGING / 'windows_lifecycle_receipt.ps1')}'
+. '{_literal(PACKAGING / 'windows_database_generation_recovery_evidence.ps1')}'
 $runtimeState = Get-TicketboxInstallerRuntimeStateDirectory '{_literal(tmp_path)}'
 if ($runtimeState -cne '{_literal(tmp_path / "TicketboxRuntimeState")}') {{
     throw "runtime-state provider returned $runtimeState"
 }}
 $script:stage = 'files_may_have_been_replaced'
 $script:events = New-Object System.Collections.Generic.List[string]
+$script:archivePresent = $true
+function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
 function Read-TicketboxLifecycleReceipt {{
     param($Path, $InstallDir, $DataRoot, $PgPort, $BackendPort, $TargetReleaseConfig, $CurrentTargetBackendVersion, $InstallerOwnerProcessId)
     [void]$script:events.Add('read')
     return [pscustomobject]@{{
         preparation_stage = $script:stage
         c07_installation_operation_id = '11111111-1111-1111-1111-111111111111'
-        c07_production_authority_sha256 = ('A' * 64)
-        c07_runtime_projection_sha256 = ('B' * 64)
+        c07_production_authority_sha256 = ''
+        c07_runtime_projection_sha256 = ''
+        database_generation_current_sha256 = ('a' * 64)
     }}
 }}
-function Assert-TicketboxC07CommitReadyArtifacts {{
-    param($ExpectedOperationId, $BackendServiceName, $ExpectedProductionAuthoritySha256, $ExpectedRuntimeProjectionSha256)
+function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {{
+    param($ExpectedOperationId, $ExpectedCurrentSha256)
     if ($ExpectedOperationId -cne '11111111-1111-1111-1111-111111111111' -or
-        $BackendServiceName -cne 'TicketboxBackend' -or
-        $ExpectedProductionAuthoritySha256 -cne ('A' * 64) -or
-        $ExpectedRuntimeProjectionSha256 -cne ('B' * 64)) {{
-        throw 'unexpected C07 READY commit evidence'
+        $ExpectedCurrentSha256 -cne ('a' * 64)) {{
+        throw 'unexpected database generation CURRENT evidence'
     }}
-    [void]$script:events.Add('ready')
+    [void]$script:events.Add('current')
     if ($script:failReady) {{ throw 'injected READY evidence drift' }}
+}}
+function Get-TicketboxInstallerStateDirectory {{ return '{_literal(tmp_path / "installer-state")}' }}
+function Get-TicketboxDatabaseGenerationStateRoot {{
+    param($InstallerState)
+    if ($InstallerState -cne '{_literal(tmp_path / "installer-state")}') {{ throw 'unexpected installer state' }}
+    return '{_literal(tmp_path / "generation-state")}'
+}}
+function Read-TicketboxDatabaseGenerationOperationArtifact {{
+    param($StateRoot, $OperationId, $Kind, [switch]$AllowAbsent)
+    if ($StateRoot -cne '{_literal(tmp_path / "generation-state")}' -or
+        $OperationId -cne '11111111-1111-1111-1111-111111111111' -or
+        $Kind -cne 'target-recovery-archive') {{
+        throw 'unexpected target recovery archive lookup'
+    }}
+    [void]$script:events.Add('archive-read')
+    return [pscustomobject]@{{ Payload = [pscustomobject]@{{
+        archive_file_name = 'operation-11111111-1111-1111-1111-111111111111-target-recovery.dump'
+        archive_sha256 = ('b' * 64)
+    }} }}
+}}
+function Assert-TicketboxDatabaseGenerationRecoveryArchive {{
+    param($StateRoot, $Archive)
+    [void]$script:events.Add('archive-assert')
+}}
+function Get-TicketboxPathEntryKindNoFollow {{
+    param($Path)
+    if ($script:archivePresent) {{ return 'File' }}
+    return 'Missing'
+}}
+function Remove-TicketboxDatabaseGenerationRecoveryFile {{
+    param($StateRoot, $Path, $LifecycleLock)
+    [void]$script:events.Add('archive-clean')
+    $script:archivePresent = $false
 }}
 function Promote-TicketboxPendingInstallationIdentity {{
     param($DataRoot, $InstallDir, $PgPort, $BackendPort, $PgServiceName, $BackendServiceName, $BuildManifestPath, $ExpectedOperationId)
@@ -1006,14 +965,15 @@ $arguments = @{{
     TargetReleaseConfig = $config; TargetBackendVersion = '1.3.0'; InstallerOwnerProcessId = $PID; BuildManifestPath = 'manifest.json'
     RecoveryRequiredPath = 'installer-recovery-required.json'
     RuntimeRecoveryGuardPath = 'installer-runtime-recovery-pending'
+    LifecycleLock = @{{}}
 }}
 Complete-TicketboxInstalledLifecycleTransaction @arguments
-if (($script:events -join ',') -cne 'read,ready,identity,receipt,read,assert,tools,autostart,latch,runtime') {{
+if (($script:events -join ',') -cne 'read,current,archive-read,archive-assert,identity,receipt,read,assert,archive-read,archive-assert,archive-clean,tools,autostart,latch,runtime') {{
     throw "first commit order was $($script:events -join ',')"
 }}
 $script:events.Clear()
 Complete-TicketboxInstalledLifecycleTransaction @arguments
-if (($script:events -join ',') -cne 'read,ready,identity,assert,tools,autostart,latch,runtime') {{
+if (($script:events -join ',') -cne 'read,current,identity,assert,archive-read,tools,autostart,latch,runtime') {{
     throw "retry commit was not idempotent: $($script:events -join ',')"
 }}
 $script:events.Clear()
@@ -1050,7 +1010,7 @@ if (-not $promotionRejected -or
 $script:events.Clear()
 $script:failPromotion = $false
 Complete-TicketboxInstalledLifecycleTransaction @arguments
-if (($script:events -join ',') -cne 'read,ready,identity,assert,tools,autostart,latch,runtime') {{
+if (($script:events -join ',') -cne 'read,current,identity,assert,archive-read,tools,autostart,latch,runtime') {{
     throw "promotion retry did not converge: $($script:events -join ',')"
 }}
 """,
@@ -1349,6 +1309,8 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
             b'{"schema":"ticketbox-test-generation-program-v1"}\n'
         )
         generation_program.write_bytes(generation_program_payload)
+        pg_dump_payload = b"pg-dump-fixture"
+        pg_restore_payload = b"pg-restore-fixture"
         manifest = install_dir / "installer" / "BUILD_PROVENANCE.json"
         manifest.parent.mkdir()
         manifest.write_text(
@@ -1372,7 +1334,21 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
                             ).hexdigest(),
                         },
                     },
-                    "postgresql": {"major": 17},
+                    "postgresql": {
+                        "major": 17,
+                        "critical_files": [
+                            {
+                                "path": "bin/pg_dump.exe",
+                                "size": len(pg_dump_payload),
+                                "sha256": hashlib.sha256(pg_dump_payload).hexdigest(),
+                            },
+                            {
+                                "path": "bin/pg_restore.exe",
+                                "size": len(pg_restore_payload),
+                                "sha256": hashlib.sha256(pg_restore_payload).hexdigest(),
+                            },
+                        ],
+                    },
                     "compiler_defines": ["/DTargetPgMajor=17"],
                 }
             )
@@ -1397,6 +1373,8 @@ Set-TicketboxExactDirectoryAcl `
     -OwnerAccount $currentAccount
 if ($validatedManifest.BackendVersion -cne '7.8.9' -or
     $validatedManifest.PgMajor -ne 17 -or
+    $validatedManifest.PgDump.Size -ne {len(pg_dump_payload)} -or
+    $validatedManifest.PgRestore.Size -ne {len(pg_restore_payload)} -or
     $validatedManifest.Sha256 -cne '{manifest_sha256}') {{
     throw 'installed build manifest validation mismatch'
 }}

@@ -373,6 +373,24 @@ function Assert-TicketboxLifecycleLockIsHeld([string]$Path) {
     throw "安装器声称持有生命周期锁，但锁文件当前可被独占打开：$Path"
 }
 
+function Assert-TicketboxLifecycleOperationLease {
+    param([Parameter(Mandatory = $true)][object]$LifecycleLock)
+    if (
+        $null -eq $LifecycleLock.Operation -or
+        $LifecycleLock.Operation -isnot [IO.FileStream] -or
+        $LifecycleLock.Operation.SafeFileHandle.IsClosed -or
+        -not [bool]$LifecycleLock.Operation.CanRead -or
+        -not [bool]$LifecycleLock.Operation.CanWrite
+    ) {
+        throw "lifecycle operation lease 不再可读写。"
+    }
+    $expectedPath = Get-TicketboxLifecycleOperationLockPath
+    if (-not (Test-TicketboxPathEquals $LifecycleLock.Operation.Name $expectedPath)) {
+        throw "lifecycle operation lease 绑定了错误路径。"
+    }
+    Assert-TicketboxLifecycleLockIsHeld $expectedPath
+}
+
 function Assert-TicketboxExternalLifecycleLock {
     param(
         [Parameter(Mandatory = $true)][int]$OwnerProcessId,

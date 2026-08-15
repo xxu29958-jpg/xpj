@@ -33,10 +33,6 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "packaging\postgresql_database_catalog\query.ps1",
     "packaging\postgresql_database_catalog\codec.ps1",
     "packaging\postgresql_database_catalog\observation.ps1",
-    "packaging\windows_postgresql_exported_snapshot.ps1",
-    "packaging\postgresql_exported_snapshot\primitives.ps1",
-    "packaging\postgresql_exported_snapshot\session.ps1",
-    "packaging\postgresql_exported_snapshot\deadline_evidence.ps1",
     "packaging\windows_postgresql_writer_fence.ps1",
     "packaging\postgresql_writer_fence\primitives.ps1",
     "packaging\postgresql_writer_fence\observation_query.ps1",
@@ -46,9 +42,6 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "packaging\postgresql_writer_fence\precondition_guard.ps1",
     "packaging\postgresql_writer_fence\session_drain.ps1",
     "packaging\postgresql_writer_fence\reconciler.ps1",
-    "packaging\c07_lifecycle\writer_fence.ps1",
-    "packaging\c07_lifecycle\writer_fence\policy.ps1",
-    "packaging\c07_lifecycle\writer_fence\adapter.ps1",
     "packaging\windows_bundled_database.ps1",
     "packaging\windows_c07_database.ps1",
     "packaging\windows_security_primitives.ps1",
@@ -60,17 +53,20 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "packaging\security_primitives\file_security.ps1",
     "packaging\windows_c07_superuser_recovery.ps1",
     "packaging\windows_deadline_budget.ps1",
-    "packaging\windows_c07_deadline_policy.ps1",
-    "packaging\windows_c07_heartbeat_authority.ps1",
-    "packaging\windows_c07_lifecycle.ps1",
-    "packaging\windows_c07_heartbeat_helper.ps1",
-    "packaging\windows_c07_failure_summary.ps1",
     "packaging\windows_atomic_artifacts.ps1",
     "packaging\atomic_artifacts\native.ps1",
     "packaging\atomic_artifacts\file.ps1",
     "packaging\atomic_artifacts\directory.ps1",
-    "packaging\windows_c07_recovery_generation.ps1",
-    "packaging\windows_c07_packaged_migration.ps1",
+    "packaging\windows_database_generation_program_adapter.ps1",
+    "packaging\windows_database_generation_program_execution.ps1",
+    "packaging\windows_database_generation.ps1",
+    "packaging\windows_database_generation_contract.ps1",
+    "packaging\windows_database_generation_artifacts.ps1",
+    "packaging\windows_database_generation_adapter.ps1",
+    "packaging\windows_database_generation_source.ps1",
+    "packaging\windows_database_generation_recovery_evidence.ps1",
+    "packaging\windows_database_generation_target_recovery.ps1",
+    "packaging\windows_database_generation_projection.ps1",
     "packaging\windows_backend_bootstrap.ps1",
     "packaging\windows_bootstrap_exposure_recovery.ps1",
     "packaging\install_bundled_services.ps1",
@@ -263,10 +259,8 @@ function Exit-TicketboxFileSetReadLocks([object]$Streams) {
 $script:TicketboxInstalledBackendManifestRelativePath =
     "dist/ticketbox-backend/BUILD_PROVENANCE.json"
 $script:TicketboxInstalledBackendPayloadManifestName = "BUILD_PROVENANCE.json"
-$script:TicketboxInstalledC07ExternalAuthorityPaths = @(
-    "_internal/app/database/_c07_fresh_source_bootstrap.py",
-    "_internal/app/database/_c07_maintenance_upgrade.py",
-    "_internal/app/database/_c07_production_migration.py",
+$script:TicketboxInstalledDatabaseGenerationAuthorityPaths = @(
+    "_internal/app/database/_database_generation_target_verification.py",
     "_internal/app/database/_managed_schema_upgrade.py",
     "_internal/alembic.ini",
     "_internal/migrations/env.py",
@@ -890,7 +884,7 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
             throw $failure
         }
     }
-    foreach ($requiredPath in $script:TicketboxInstalledC07ExternalAuthorityPaths) {
+    foreach ($requiredPath in $script:TicketboxInstalledDatabaseGenerationAuthorityPaths) {
         if (-not $seen.Contains($requiredPath)) {
             throw "已安装 C07 外置迁移 authority 缺少必需文件：$requiredPath"
         }

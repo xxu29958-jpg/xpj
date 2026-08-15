@@ -879,6 +879,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   VersionFailureReason: String;
+  IntentArguments: String;
   PrerequisiteArguments: String;
 begin
   AssertLifecycleLockActive();
@@ -906,6 +907,50 @@ begin
     Result := '受保护 lifecycle bootstrap bundle 在安装前复核失败。';
     exit;
   end;
+  IntentArguments :=
+    '-InstallDir ' + Quote(ExpandConstant('{app}')) +
+    ' -DataRoot ' + Quote(SelectedDataRoot()) +
+    ' -PgPort ' + SelectedPgPort() +
+    ' -BackendPort ' + SelectedBackendPort() +
+    ' -TargetPgMajor {#TargetPgMajor}' +
+    ' -TargetBackendVersion {#AppVersion}' +
+    ' -ReleaseConfigPath ' +
+      Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
+    ' -LifecycleReceiptPath ' +
+      Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
+    ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
+    ' -PersistDatabaseGenerationIntentOnly' +
+    ' -DatabaseGenerationProgramPath ' +
+      Quote(LifecycleBootstrapFilePath('DATABASE_GENERATION_PROGRAM.json')) +
+    ' -DatabaseGenerationProgramSha256 ' +
+      DatabaseGenerationProgramSha256 +
+    ' -DatabaseGenerationMigrationHelperSize ' +
+      DatabaseGenerationMigrationHelperSize +
+    ' -DatabaseGenerationMigrationHelperSha256 ' +
+      DatabaseGenerationMigrationHelperSha256 +
+    ' -DatabaseGenerationPgDumpSize ' + DatabaseGenerationPgDumpSize +
+    ' -DatabaseGenerationPgDumpSha256 ' + DatabaseGenerationPgDumpSha256 +
+    ' -DatabaseGenerationPgRestoreSize ' + DatabaseGenerationPgRestoreSize +
+    ' -DatabaseGenerationPgRestoreSha256 ' +
+      DatabaseGenerationPgRestoreSha256;
+  if not RunPowerShellChecked(
+    LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
+    IntentArguments,
+    'Ticketbox database generation intent') then
+  begin
+    if LastPowerShellFailureMessage <> '' then
+    begin
+      Result := LastPowerShellFailureMessage;
+    end
+    else
+    begin
+      Result :=
+        '数据库 generation intent 未能在第一笔安装副作用前持久化。' +
+        '支持代码：TBX-GENERATION-INTENT';
+    end;
+    exit;
+  end;
+  AssertLifecycleLockActive();
   SetInstallerStage(
     '正在检查 Windows 运行环境…',
     '已安装的共享运行库满足要求时会直接跳过。');

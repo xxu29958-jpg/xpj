@@ -28,17 +28,43 @@ BACKEND = os.path.dirname(HERE)
 # Spec-file Python executes before Analysis applies pathex. Make the copied
 # backend source importable before asking PyInstaller to enumerate app.*;
 # otherwise collect_submodules silently returns an empty list and imports used
-# only by the physical C07 modules are absent from the frozen helper.
+# only by the physical generation modules are absent from the frozen helper.
 sys.path.insert(0, BACKEND)
+retired_frozen_app_modules = {
+    "app.database._c07_ceremony",
+    "app.database._c07_ceremony_document",
+    "app.database._c07_commit_reconciliation",
+    "app.database._c07_execution",
+    "app.database._c07_fresh_source_bootstrap",
+    "app.database._c07_host_evidence_helpers",
+    "app.database._c07_host_freeze_evidence",
+    "app.database._c07_maintenance_digest",
+    "app.database._c07_maintenance_plan",
+    "app.database._c07_maintenance_upgrade",
+    "app.database._c07_maintenance_upgrade_action",
+    "app.database._c07_production_authority",
+    "app.database._c07_production_connection",
+    "app.database._c07_production_context",
+    "app.database._c07_production_contract",
+    "app.database._c07_production_contract_types",
+    "app.database._c07_production_fence",
+    "app.database._c07_production_migration",
+    "app.database._c07_production_ready",
+    "app.database._c07_production_recovery",
+    "app.database._c07_production_restore",
+    "app.database._c07_production_shape",
+    "app.database._c07_receipt",
+    "app.database._c07_receipt_validation",
+    "app.database._c07_runtime_projection",
+    "app.database._c07_transaction_timeout",
+}
 app_hiddenimports = [
     module
     for module in collect_submodules("app", on_error="raise")
     if module
-    not in {
-        "app.database._c07_fresh_source_bootstrap",
-        "app.database._c07_maintenance_upgrade",
-        "app.database._c07_production_migration",
+    not in retired_frozen_app_modules | {
         "app.database._managed_schema_upgrade",
+        "app.database._database_generation_target_verification",
     }
 ]
 for required_app_module in (
@@ -46,6 +72,7 @@ for required_app_module in (
     "app.canonical_money_facts",
     "app.canonical_money_facts_contract",
     "app.database._database_generation_program",
+    "app.database._database_generation_runtime_admission",
     "app.database_generation_c07_contract",
     "app.database_model_registry",
     "app.tenant_contract",
@@ -61,9 +88,9 @@ hiddenimports = (
     # PG-only (debt #4): bundle the PostgreSQL dialect + psycopg 3 binary driver.
     # SQLAlchemy's PyInstaller hook only auto-detects psycopg2, and SQLAlchemy
     # dialects load dynamically by URL scheme, so they must be named explicitly.
-    # The locked Windows CI build executes the dedicated frozen C07 helper's
-    # no-database release-plan mode before provenance can be published. Database
-    # actions remain covered separately by the PostgreSQL release lanes.
+    # The locked Windows CI build executes the dedicated generation helper's
+    # no-database program validation before provenance can be published.
+    # Database actions remain covered separately by PostgreSQL release lanes.
     + collect_submodules("psycopg")
     + [
         "psycopg_binary",
@@ -82,33 +109,14 @@ hiddenimports = (
 datas = [
     (os.path.join(BACKEND, "app", "static"), "app/static"),
     (os.path.join(BACKEND, "app", "templates"), "app/templates"),
-    # The C07 maintenance action is intentionally loaded by physical file path
-    # so Python never executes app.database.__init__ and never materialises the
-    # ordinary global engine/settings in the migration helper.
+    # Generation actions are loaded by physical file path so Python never
+    # executes app.database.__init__ or materialises its runtime engine/settings.
     (
         os.path.join(
             BACKEND,
             "app",
             "database",
-            "_c07_production_migration.py",
-        ),
-        "app/database",
-    ),
-    (
-        os.path.join(
-            BACKEND,
-            "app",
-            "database",
-            "_c07_fresh_source_bootstrap.py",
-        ),
-        "app/database",
-    ),
-    (
-        os.path.join(
-            BACKEND,
-            "app",
-            "database",
-            "_c07_maintenance_upgrade.py",
+            "_database_generation_target_verification.py",
         ),
         "app/database",
     ),
@@ -139,6 +147,7 @@ excludes = [
     "_sqlite3",
     "pysqlite2",
     "MySQLdb",
+    *sorted(retired_frozen_app_modules),
 ]
 
 a = Analysis(
@@ -181,9 +190,9 @@ exe = EXE(
 
 # The service executable is deliberately windowed, so it has no reliable
 # stdout/stderr pipe.  The installer invokes the same frozen entry point through
-# this console helper for the bounded fresh-source and production C07 actions
-# whose exact typed results feed the host lifecycle coordinator. Both binaries
-# share the same PYZ/Analysis and therefore the same attested migration code.
+# this console helper for build-program validation, the one managed schema
+# transaction and isolated-target verification. Both binaries share the same
+# PYZ/Analysis and therefore the same attested generation code.
 c07_migrator_exe = EXE(
     pyz,
     a.scripts,

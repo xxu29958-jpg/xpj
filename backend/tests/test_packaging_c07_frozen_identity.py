@@ -26,7 +26,7 @@ def test_frozen_backend_and_helper_identities_are_separate(monkeypatch) -> None:
     monkeypatch.setattr(
         launch.sys,
         "argv",
-        ["ticketbox-backend.exe", "--c07-maintenance-upgrade"],
+        ["ticketbox-backend.exe", "--managed-schema-upgrade"],
     )
     monkeypatch.setattr(
         launch.sys,
@@ -42,5 +42,5 @@ def test_frozen_backend_and_helper_identities_are_separate(monkeypatch) -> None:
         "executable",
         "C:/Program Files/Ticketbox/ticketbox-c07-migrator.exe",
     )
-    with pytest.raises(RuntimeError, match="requires its explicit maintenance mode"):
+    with pytest.raises(RuntimeError, match="requires an explicit mode"):
         launch.main()

@@ -54,6 +54,20 @@
   ReleaseConfigJsonSha256 = '{#ReleaseConfigJsonSha256}';
   BuildProvenanceScriptSha256 = '{#BuildProvenanceScriptSha256}';
   BackendBuildProvenanceScriptSha256 = '{#BackendBuildProvenanceScriptSha256}';
+  DatabaseGenerationScriptSha256 = '{#DatabaseGenerationScriptSha256}';
+  DatabaseGenerationContractScriptSha256 =
+    '{#DatabaseGenerationContractScriptSha256}';
+  DatabaseGenerationArtifactsScriptSha256 =
+    '{#DatabaseGenerationArtifactsScriptSha256}';
+  DatabaseGenerationProgramSha256 = '{#DatabaseGenerationProgramSha256}';
+  DatabaseGenerationMigrationHelperSize =
+    '{#DatabaseGenerationMigrationHelperSize}';
+  DatabaseGenerationMigrationHelperSha256 =
+    '{#DatabaseGenerationMigrationHelperSha256}';
+  DatabaseGenerationPgDumpSize = '{#DatabaseGenerationPgDumpSize}';
+  DatabaseGenerationPgDumpSha256 = '{#DatabaseGenerationPgDumpSha256}';
+  DatabaseGenerationPgRestoreSize = '{#DatabaseGenerationPgRestoreSize}';
+  DatabaseGenerationPgRestoreSha256 = '{#DatabaseGenerationPgRestoreSha256}';
   WindowsPrerequisiteScriptSha256 = '{#WindowsPrerequisiteScriptSha256}';
   VisualCppRuntimeVersion = '{#VisualCppRuntimeVersion}';
   VisualCppRuntimeSha256 = '{#VisualCppRuntimeSha256}';
@@ -572,6 +586,10 @@ begin
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows-release-config.json');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_build_provenance.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_backend_build_provenance.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_contract.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_artifacts.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'DATABASE_GENERATION_PROGRAM.json');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'ticketbox-run-installer-child-logged.ps1');
   if DirExists(LifecycleLockBootstrapDirectory) and
      (not RemoveDir(LifecycleLockBootstrapDirectory)) then
@@ -750,7 +768,17 @@ begin
     ValidateLifecycleLockBootstrapFile(
       'windows_build_provenance.ps1', BuildProvenanceScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
-      'windows_backend_build_provenance.ps1', BackendBuildProvenanceScriptSha256);
+      'windows_backend_build_provenance.ps1', BackendBuildProvenanceScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_database_generation.ps1', DatabaseGenerationScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_database_generation_contract.ps1',
+      DatabaseGenerationContractScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_database_generation_artifacts.ps1',
+      DatabaseGenerationArtifactsScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'DATABASE_GENERATION_PROGRAM.json', DatabaseGenerationProgramSha256);
 end;
 
 function LifecycleBootstrapFilePath(FileName: String): String;
@@ -883,7 +911,19 @@ begin
     BuildProvenanceScriptSha256) or
      not StageLifecycleLockBootstrapFile(
     'windows_backend_build_provenance.ps1',
-    BackendBuildProvenanceScriptSha256) then
+    BackendBuildProvenanceScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_generation.ps1',
+    DatabaseGenerationScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_generation_contract.ps1',
+    DatabaseGenerationContractScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_generation_artifacts.ps1',
+    DatabaseGenerationArtifactsScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'DATABASE_GENERATION_PROGRAM.json',
+    DatabaseGenerationProgramSha256) then
   begin
     CleanupLifecycleLockBootstrapDirectory();
     exit;
@@ -3303,7 +3343,7 @@ begin
     '    $allowedByScript = @{' + #13#10 +
     '        "install_windows_prerequisites.ps1" = @("VcRedistPath","RequiredVersion","RequiredSha256","DiagnosticLogPath","InstallerLockOwnerProcessId")' + #13#10 +
     '        "hold_data_root_mutation_guard.ps1" = @("InstallDir","DataRoot","InstallerLockOwnerProcessId","Hold","ConfirmStopped","DataRootGuardReadyPath","DataRootGuardReleasePath","ExpectedHolderProcessId","ExpectedHolderStartedFileTimeHigh","ExpectedHolderStartedFileTimeLow","ExpectedNonce")' + #13#10 +
-    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced")' + #13#10 +
+    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced","PersistDatabaseGenerationIntentOnly","DatabaseGenerationProgramPath","DatabaseGenerationProgramSha256","DatabaseGenerationMigrationHelperSize","DatabaseGenerationMigrationHelperSha256","DatabaseGenerationPgDumpSize","DatabaseGenerationPgDumpSha256","DatabaseGenerationPgRestoreSize","DatabaseGenerationPgRestoreSha256")' + #13#10 +
     '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","LifecycleReceiptPath","InstallerLockOwnerProcessId","LifecycleFinalizationAttemptId","PublicFailurePath","DiagnosticLogPath","CompleteOwnerHandoffOnly")' + #13#10 +
     '        "uninstall_bundled_services.ps1" = @("InstallDir","InstallerLockOwnerProcessId","DeleteData")' + #13#10 +
     '    }' + #13#10 +

@@ -172,7 +172,6 @@ def execute_database_generation(
 
     canonical_operation = _canonical_operation_id(operation_id)
     try:
-        target_verifier = program.revision(target_revision)
         suffix = program.suffix(source_revision, target_revision)
     except DatabaseGenerationProgramError as exc:
         raise DatabaseGenerationExecutionError(
@@ -184,7 +183,8 @@ def execute_database_generation(
         )
     current = _current_revision(connection)
     if current == target_revision:
-        _assert_postcondition(connection, target_verifier)
+        for revision in suffix:
+            _assert_postcondition(connection, revision)
         return False
     if current != (None if source_revision == BASE_SOURCE else source_revision):
         raise DatabaseGenerationExecutionError(
@@ -211,7 +211,8 @@ def execute_database_generation(
         raise DatabaseGenerationExecutionError(
             "Alembic did not reach the build-authorized target"
         ) from exc
-    _assert_postcondition(connection, target_verifier)
+    for revision in suffix:
+        _assert_postcondition(connection, revision)
     return True
 
 

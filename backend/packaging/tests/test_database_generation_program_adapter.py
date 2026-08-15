@@ -17,17 +17,20 @@ def _ps_literal(path: Path) -> str:
 
 
 def test_packaged_bridge_has_one_program_api_and_no_runtime_planner() -> None:
-    source = (PACKAGING / "windows_c07_packaged_migration.ps1").read_text(
-        encoding="utf-8-sig"
+    source = "\n".join(
+        path.read_text(encoding="utf-8-sig")
+        for path in (
+            PACKAGING / "windows_database_generation_program_adapter.ps1",
+            PACKAGING / "windows_database_generation_program_execution.ps1",
+        )
     )
     for required in (
         "ticketbox-database-generation-program-validation-v1",
-        "Get-TicketboxC07PackagedDatabaseGenerationProgram",
+        "Get-TicketboxDatabaseGenerationProgramFromHelper",
         "--validate-generation-program",
         "--generation-program-path",
         "--expected-generation-program-sha256",
         "ticketbox-managed-schema-upgrade-result-v2",
-        'ValidateSet("isolated_replay")',
         "-ChildEnvironment $childEnvironment",
     ):
         assert required in source
@@ -55,7 +58,9 @@ def test_program_validation_and_actions_bind_exact_bytes_and_secret_boundary(
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
-. '{_ps_literal(PACKAGING / "windows_c07_packaged_migration.ps1")}'
+. '{_ps_literal(PACKAGING / "windows_database_generation_contract.ps1")}'
+. '{_ps_literal(PACKAGING / "windows_database_generation_program_adapter.ps1")}'
+. '{_ps_literal(PACKAGING / "windows_database_generation_program_execution.ps1")}'
 $script:secret = 'never-emit-this-secret'
 $script:calls = @()
 $script:cleanup = 0
@@ -109,9 +114,6 @@ function Open-TicketboxC07VerifiedMigrationHelperLease {{
 function Invoke-TicketboxC07WithPlainSecret {{
     param([Security.SecureString]$Secret, [scriptblock]$Action)
     return & $Action $script:secret
-}}
-function Get-TicketboxC07RestoreDatabaseName {{
-    return 'ticketbox_c07_restore_11111111111141118111111111111111'
 }}
 function New-TicketboxC07LocalDatabaseUrl {{
     param($Authority, [string]$Database, [string]$Role)
@@ -175,23 +177,7 @@ function Invoke-TicketboxBoundedNativeProcess {{
             generation_program_sha256 = '{program_sha}'
             result = 'target_committed'; alembic_revision = $target
         }}
-    }} else {{
-        $payload = [ordered]@{{
-            schema = 'ticketbox-c07-maintenance-upgrade-result-v3'
-            mode = 'isolated_replay'
-            operation_id = '11111111-1111-4111-8111-111111111111'
-            source_revision = '20260722_0001'; target_revision = '20260729_0001'
-            revision_manifest_sha256 = $manifestSha
-            maintenance_authority_sha256 = ('4' * 64)
-            maintenance_remaining_ceiling_ms = [int](
-                Get-TestArgumentValue $Arguments '--maintenance-remaining-ceiling-ms'
-            )
-            resource_shape_sha256 = ('8' * 64)
-            result = 'isolated_forward_replay_verified'
-            alembic_revision = '20260729_0001'
-            target_shape_sha256 = ('8' * 64); money_facts_sha256 = ('7' * 64)
-        }}
-    }}
+    }} else {{ throw 'unexpected helper mode' }}
     return [pscustomobject]@{{
         ExitCode = 0
         StandardOutput = (ConvertTo-TicketboxC07CompactJson $payload) + "`n"
@@ -209,7 +195,7 @@ $programEvidence = [pscustomobject][ordered]@{{
     Size = [int64](Get-Item -LiteralPath '{_ps_literal(program)}').Length
     Sha256 = '{program_sha}'
 }}
-$validated = Get-TicketboxC07PackagedDatabaseGenerationProgram `
+$validated = Get-TicketboxDatabaseGenerationProgramFromHelper `
     -MigrationHelperPath '{_ps_literal(helper)}' `
     -MigrationHelperEvidence $helperEvidence `
     -ExpectedMigrationHelperPath '{_ps_literal(helper)}' `
@@ -231,26 +217,10 @@ $managed = Invoke-TicketboxPackagedManagedSchemaUpgrade `
     -ExpectedMigrationHelperPath '{_ps_literal(helper)}' `
     -ProgramPath '{_ps_literal(program)}' `
     -ProgramEvidence $programEvidence
-$deadline = [DateTime]::UtcNow.AddMinutes(10).ToString('o')
-$maintenance = Invoke-TicketboxC07PackagedIsolatedReplayAction `
-    -HostAuthority ([pscustomobject]@{{Schema='authority'}}) `
-    -MigratorPassword $secure `
-    -RestoreDatabase 'ticketbox_c07_restore_11111111111141118111111111111111' `
-    -OperationId '11111111-1111-4111-8111-111111111111' `
-    -SourceRevision '20260722_0001' -TargetRevision '20260729_0001' `
-    -RevisionManifestSha256 $manifestSha.ToUpperInvariant() `
-    -MaintenanceDeadlineUtc $deadline -MaintenanceRemainingCeilingMs 600000 `
-    -MaintenanceAuthoritySha256 ('4' * 64) `
-    -MigrationHelperPath '{_ps_literal(helper)}' `
-    -MigrationHelperEvidence $helperEvidence `
-    -ExpectedMigrationHelperPath '{_ps_literal(helper)}' `
-    -ProgramPath '{_ps_literal(program)}' -ProgramEvidence $programEvidence `
-    -CreateAttemptId '22222222-2222-4222-8222-222222222222'
 $allArguments = @($script:calls | ForEach-Object {{ $_ }})
 [ordered]@{{
     target = [string]$validated.target_revision
     managed = [string]$managed.result
-    maintenance = [string]$maintenance.result
     program_calls = @($script:calls | Where-Object {{
         $_ -contains '--generation-program-path' -and
         $_ -contains '--expected-generation-program-sha256'
@@ -286,8 +256,7 @@ $allArguments = @($script:calls | ForEach-Object {{ $_ }})
         assert evidence == {
             "target": "20260809_0001",
             "managed": "target_committed",
-            "maintenance": "isolated_forward_replay_verified",
-            "program_calls": 3,
+            "program_calls": 2,
             "secret_exposed": False,
-            "cleanup": 2,
+            "cleanup": 1,
         }

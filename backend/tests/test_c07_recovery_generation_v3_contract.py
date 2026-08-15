@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
-from pathlib import Path
 
 import pytest
 
@@ -16,12 +14,10 @@ import app.database._c07_host_evidence_helpers as c07_host_evidence_helpers
 import app.database._c07_maintenance_attestation as c07_maintenance_attestation
 import app.database._c07_maintenance_common as c07_maintenance_common
 import app.database._c07_maintenance_digest as c07_maintenance_digest
-import app.database._c07_maintenance_upgrade_action as c07_maintenance_upgrade_action
 import app.database._c07_production_authority as c07_production_authority
 import app.database._c07_production_context as c07_production_context
 import app.database._c07_production_contract_types as c07_contract_types
 import app.database._c07_production_fence as c07_production_fence
-import app.database._c07_production_migration as c07_production_migration
 import app.database._c07_production_ready as c07_production_ready
 import app.database._c07_production_recovery as c07_production_recovery
 import app.database._c07_production_restore as c07_production_restore
@@ -50,12 +46,10 @@ _DIRECTLY_REFERENCED_MODULES = (
     c07_maintenance_attestation,
     c07_maintenance_common,
     c07_maintenance_digest,
-    c07_maintenance_upgrade_action,
     canonical_money_facts_contract,
     c07_production_authority,
     c07_production_context,
     c07_production_fence,
-    c07_production_migration,
     c07_production_ready,
     c07_production_recovery,
     c07_production_restore,
@@ -82,7 +76,6 @@ _CURRENT_FREEZE_PROOF_SHA256 = "C" * 64
 _SOURCE_RELEASE_FINGERPRINT = "D" * 64
 _SOURCE_REVISION_MANIFEST_SHA256 = "E" * 64
 _SOURCE_FREEZE_PROOF_SHA256 = "F" * 64
-_LIFECYCLE_SCRIPT = Path(__file__).resolve().parents[1] / "packaging" / "windows_c07_lifecycle.ps1"
 
 
 def _generation_payload(binding_sha256: object) -> dict[str, object]:
@@ -382,22 +375,6 @@ def _historical_operation_context_payload() -> dict[str, object]:
     return payload
 
 
-def test_production_context_and_cli_accept_shared_canonical_operation_guid() -> None:
-    context = c07_production_context.parse_production_migration_context(
-        _historical_operation_context_payload()
-    )
-
-    c07_production_migration._validate_cli_binding(
-        operation_id=_HISTORICAL_OPERATION_ID,
-        source_revision=c07_contract_types.C07_SOURCE_REVISION,
-        target_revision=c07_contract_types.C07_TARGET_REVISION,
-        migration_context=context,
-    )
-
-    assert context.operation_id == _HISTORICAL_OPERATION_ID
-    assert context.source_recovery_operation_id == _HISTORICAL_OPERATION_ID
-
-
 def test_writer_freeze_binding_accepts_shared_canonical_operation_guid() -> None:
     context = c07_production_context.parse_production_migration_context(
         _historical_operation_context_payload()
@@ -646,15 +623,6 @@ def test_forward_repair_generation_rejects_current_authority_substitution(
             declared_sha256=context.recovery_manifest_sha256.lower(),
             heartbeat=99,
         )
-
-
-def test_python_v5_context_fields_match_coordinator_producer_order() -> None:
-    source = _LIFECYCLE_SCRIPT.read_text(encoding="utf-8-sig")
-    marker = "$migrationContext = [pscustomobject][ordered]@{"
-    block = source.split(marker, 1)[1].split("\n    }", 1)[0]
-    producer_fields = tuple(re.findall(r"^        ([a-z][a-z0-9_]*)\s*=", block, re.MULTILINE))
-
-    assert producer_fields == c07_contract_types._CONTEXT_FIELDS
 
 
 @pytest.mark.parametrize("successor_mode", ["", "pre_ddl", "forward_repair"])
