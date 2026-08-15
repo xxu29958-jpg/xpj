@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -240,15 +241,15 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
         lambda *, installed_program=None: alembic,
     )
 
-    monkeypatch.setenv("TICKETBOX_DATA_ROOT_MARKER_PATH", "C:/ProgramData/Ticketbox/data-root.json")
-    with pytest.raises(
-        db_pkg.DatabaseMigrationPreflightError,
-        match="安装器.*短命 migrator",
-    ):
-        db_pkg.init_db()
+    with monkeypatch.context() as installed_runtime:
+        installed_runtime.setattr(sys, "frozen", True, raising=False)
+        with pytest.raises(
+            db_pkg.DatabaseMigrationPreflightError,
+            match="安装器.*短命 migrator",
+        ):
+            db_pkg.init_db()
     assert calls == []
     assert _head_revision(db_pkg) == C07_TARGET_REVISION
-    monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH")
 
     # Development/operator Alembic still uses the same external-connection
     # environment. The dedicated installed-role runtime has its own topology
