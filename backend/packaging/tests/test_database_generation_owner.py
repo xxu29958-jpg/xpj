@@ -16,6 +16,7 @@ RECOVERY_EVIDENCE = PACKAGING / "windows_database_generation_recovery_evidence.p
 TARGET_RECOVERY = PACKAGING / "windows_database_generation_target_recovery.ps1"
 PROJECTION = PACKAGING / "windows_database_generation_projection.ps1"
 LIFECYCLE_LOCK = PACKAGING / "windows_lifecycle_lock.ps1"
+PREPARE = PACKAGING / "prepare_bundled_upgrade.ps1"
 RETIRED_C07_RECOVERY = PACKAGING / "windows_c07_recovery_generation.ps1"
 RETIRED_C07_AUTHORITY = PACKAGING / "windows_c07_heartbeat_authority.ps1"
 RETIRED_C07_LIFECYCLE = PACKAGING / "windows_c07_lifecycle.ps1"
@@ -264,6 +265,44 @@ if (
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_path: Path) -> None:
+    owner_source = OWNER.read_text(encoding="utf-8-sig")
+    artifacts_source = ARTIFACTS.read_text(encoding="utf-8-sig")
+    prepare_source = PREPARE.read_text(encoding="utf-8-sig")
+    assert "function Import-TicketboxDatabaseGenerationExecutionDependencies" not in owner_source
+    assert "function Import-TicketboxInstalledDatabaseGenerationAuthority" not in prepare_source
+    assert "function Import-TicketboxBootstrapDatabaseGenerationAuthority" not in prepare_source
+    assert prepare_source.count(
+        ". (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)"
+    ) == 2
+    assert prepare_source.count(
+        ". (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)"
+    ) == 2
+    assert owner_source.count(
+        "foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `"
+    ) == 1
+    owner_consumer = _function(
+        owner_source,
+        "Invoke-TicketboxInstalledDatabaseGeneration",
+    )
+    commit_ready_consumer = _function(
+        artifacts_source,
+        "Assert-TicketboxDatabaseGenerationCommitReadyArtifact",
+    )
+    for consumer in (owner_consumer, commit_ready_consumer):
+        assert consumer.count(
+            "foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `"
+        ) == 1
+        assert "-Root $PSScriptRoot" in consumer
+    installed_path = _function(
+        prepare_source,
+        "Get-TicketboxInstalledDatabaseGenerationAuthorityPath",
+    )
+    bootstrap_path = _function(
+        prepare_source,
+        "Get-TicketboxBootstrapDatabaseGenerationAuthorityPath",
+    )
+    assert 'Join-Path $InstallDir "installer\\windows_database_generation.ps1"' in installed_path
+    assert 'Join-Path $ScriptDir "windows_database_generation.ps1"' in bootstrap_path
     bootstrap = tmp_path / "bootstrap"
     bootstrap.mkdir()
     for source in (OWNER, CONTRACT, ARTIFACTS):
@@ -308,7 +347,7 @@ function Read-TicketboxProtectedUtf8Artifact {{
     return [pscustomobject]@{{ Text = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8) }}
 }}
 . '{owner_path}'
-if ($null -eq (Get-Command Import-TicketboxDatabaseGenerationExecutionDependencies -ErrorAction Stop)) {{
+if ($null -eq (Get-Command Get-TicketboxDatabaseGenerationExecutionDependencyPaths -ErrorAction Stop)) {{
     throw 'execution dependency gate was not loaded'
 }}
 if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_atomic_artifacts.ps1')) {{
@@ -383,6 +422,35 @@ if (
     ([Convert]::ToBase64String($before) -cne [Convert]::ToBase64String($after))
 ) {{
     throw 'intent write/read/retry did not preserve exact bytes'
+}}
+$dependencyNames = @(
+    'windows_atomic_artifacts.ps1',
+    'windows_postgresql_writer_fence.ps1',
+    'windows_database_generation_program_adapter.ps1',
+    'windows_database_generation_program_execution.ps1',
+    'windows_database_generation_recovery_evidence.ps1',
+    'windows_database_generation_target_recovery.ps1',
+    'windows_database_generation_projection.ps1'
+)
+for ($index = 0; $index -lt $dependencyNames.Count; $index += 1) {{
+    $text = if ($index -eq 0) {{
+        "function Test-TicketboxExecutionDependencyMarker {{ return 'loaded' }}"
+    }} else {{ '' }}
+    [IO.File]::WriteAllText(
+        (Join-Path '{bootstrap}' $dependencyNames[$index]),
+        $text,
+        [Text.UTF8Encoding]::new($false)
+    )
+}}
+foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `
+    -Root '{bootstrap}')) {{
+    . $dependency
+}}
+if ((Test-TicketboxExecutionDependencyMarker) -cne 'loaded') {{
+    throw 'execution dependency did not survive in the consuming scope'
+}}
+foreach ($name in $dependencyNames) {{
+    [IO.File]::Delete((Join-Path '{bootstrap}' $name))
 }}
 """
     _run_both(script, tmp_path)

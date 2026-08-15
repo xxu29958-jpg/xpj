@@ -314,7 +314,10 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
         [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
         [Parameter(Mandatory = $true)][string]$ExpectedCurrentSha256
     )
-    Import-TicketboxDatabaseGenerationExecutionDependencies
+    foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `
+        -Root $PSScriptRoot)) {
+        . $dependency
+    }
     $operationId = ([guid]$ExpectedOperationId).ToString("D")
     Assert-TicketboxDatabaseGenerationLowerSha256 $ExpectedCurrentSha256 "commit CURRENT"
     $stateRoot = Get-TicketboxDatabaseGenerationStateRoot (

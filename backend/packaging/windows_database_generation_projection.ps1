@@ -149,6 +149,85 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
     }
 }
 
+function Get-TicketboxDatabaseGenerationMigratorAuthorityState {
+    param(
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword
+    )
+    $state = ([string](Invoke-TicketboxC07Sql `
+        -Authority $HostAuthority `
+        -Database "postgres" `
+        -Role "postgres" `
+        -Password $SuperuserPassword `
+        -Label "database generation migrator authority observation" `
+        -Sql @"
+WITH observed AS (
+    SELECT
+        EXISTS (
+            SELECT 1 FROM pg_authid
+            WHERE rolname = '$script:TicketboxC07MigratorRole'
+              AND rolcanlogin AND NOT rolinherit AND NOT rolsuper
+              AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication
+              AND NOT rolbypassrls AND rolconnlimit = 1
+              AND rolvaliduntil IS NOT NULL AND rolvaliduntil > clock_timestamp()
+              AND rolvaliduntil <= clock_timestamp() + interval '1 hour'
+              AND rolpassword IS NOT NULL
+        ) AS active_role,
+        EXISTS (
+            SELECT 1 FROM pg_authid
+            WHERE rolname = '$script:TicketboxC07MigratorRole'
+              AND NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper
+              AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication
+              AND NOT rolbypassrls AND rolconnlimit = 1
+              AND rolpassword IS NULL
+        ) AS retired_role,
+        (
+            SELECT count(*) = 1
+            FROM pg_auth_members AS membership
+            JOIN pg_roles AS granted ON granted.oid = membership.roleid
+            JOIN pg_roles AS member ON member.oid = membership.member
+            WHERE granted.rolname = '$script:TicketboxC07OwnerRole'
+              AND member.rolname = '$script:TicketboxC07MigratorRole'
+              AND NOT membership.admin_option
+              AND NOT membership.inherit_option
+              AND membership.set_option
+        ) AS exact_owner_membership,
+        (
+            SELECT count(*)
+            FROM pg_auth_members AS membership
+            JOIN pg_roles AS granted ON granted.oid = membership.roleid
+            JOIN pg_roles AS member ON member.oid = membership.member
+            WHERE granted.rolname = '$script:TicketboxC07MigratorRole'
+               OR member.rolname = '$script:TicketboxC07MigratorRole'
+        ) AS membership_count,
+        has_database_privilege(
+            '$script:TicketboxC07MigratorRole',
+            '$script:TicketboxC07DatabaseName',
+            'CONNECT'
+        ) AS has_connect,
+        EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE usename = '$script:TicketboxC07MigratorRole'
+              AND pid <> pg_backend_pid()
+        ) AS has_sessions
+)
+SELECT CASE
+    WHEN active_role AND exact_owner_membership
+         AND membership_count = 1 AND has_connect THEN 'active'
+    WHEN retired_role AND membership_count = 0
+         AND NOT has_connect AND has_sessions THEN 'retired_pending_sessions'
+    WHEN retired_role AND membership_count = 0
+         AND NOT has_connect AND NOT has_sessions THEN 'retired'
+    ELSE 'invalid'
+END
+FROM observed;
+"@)).Trim()
+    if ($state -cnotin @("active", "retired_pending_sessions", "retired")) {
+        throw "database generation migrator authority 是 partial/unknown 状态。"
+    }
+    return $state
+}
+
 function Complete-TicketboxDatabaseGenerationRuntimeProjection {
     param(
         [Parameter(Mandatory = $true)][object]$Intent,
@@ -169,6 +248,26 @@ function Complete-TicketboxDatabaseGenerationRuntimeProjection {
     $null = Assert-TicketboxC07SuperuserCapability `
         $SuperuserCapability $operationId $LifecycleLock
     $superuserPassword = $SuperuserCapability.Secret
+    $migratorState = Get-TicketboxDatabaseGenerationMigratorAuthorityState `
+        -HostAuthority $HostAuthority `
+        -SuperuserPassword $superuserPassword
+    if ($migratorState -ceq "retired_pending_sessions") {
+        Invoke-TicketboxC07Sql `
+            -Authority $HostAuthority `
+            -Database "postgres" `
+            -Role "postgres" `
+            -Password $superuserPassword `
+            -Label "database generation migrator retirement" `
+            -Sql (Get-TicketboxC07MigratorRetirementSql) | Out-Null
+        Invoke-TicketboxC07Sql `
+            -Authority $HostAuthority `
+            -Database "postgres" `
+            -Role "postgres" `
+            -Password $superuserPassword `
+            -Label "database generation migrator retirement verification" `
+            -Sql (Get-TicketboxC07MigratorRetirementVerificationSql) | Out-Null
+        $migratorState = "retired"
+    }
     Invoke-TicketboxC07Sql `
         -Authority $HostAuthority `
         -Database $script:TicketboxC07DatabaseName `
@@ -185,7 +284,9 @@ GRANT CONNECT ON DATABASE "$script:TicketboxC07DatabaseName"
 COMMIT;
 "@ | Out-Null
     Assert-TicketboxC07RuntimeCredential $HostAuthority $Credentials.RuntimePassword
-    Assert-TicketboxC07RoleCatalog $HostAuthority $SuperuserPassword
+    if ($migratorState -ceq "active") {
+        Assert-TicketboxC07RoleCatalog $HostAuthority $SuperuserPassword
+    }
     Assert-TicketboxC07RuntimeAclContract `
         -Authority $HostAuthority `
         -SuperuserPassword $SuperuserPassword `
@@ -206,13 +307,15 @@ COMMIT;
         -ExpectedPort ([int]$HostAuthority.Port) `
         -Password $connection.Password `
         -TimeoutMilliseconds ([int]$ProjectionContract.database_tool_timeout_ms)
-    Invoke-TicketboxC07Sql `
-        -Authority $HostAuthority `
-        -Database "postgres" `
-        -Role "postgres" `
-        -Password $SuperuserPassword `
-        -Label "database generation migrator retirement" `
-        -Sql (Get-TicketboxC07MigratorRetirementSql) | Out-Null
+    if ($migratorState -ceq "active") {
+        Invoke-TicketboxC07Sql `
+            -Authority $HostAuthority `
+            -Database "postgres" `
+            -Role "postgres" `
+            -Password $SuperuserPassword `
+            -Label "database generation migrator retirement" `
+            -Sql (Get-TicketboxC07MigratorRetirementSql) | Out-Null
+    }
     Invoke-TicketboxC07Sql `
         -Authority $HostAuthority `
         -Database "postgres" `

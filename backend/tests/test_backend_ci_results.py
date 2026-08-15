@@ -82,6 +82,14 @@ def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -
     ]["run"]
     assert '-m "not xdist_group"' in windows_safety
     assert "-n 4 --dist loadfile --max-worker-restart 0" in windows_safety
+    windows_steps = _steps(jobs["windows_packaging_build"])
+    projection = windows_steps["Database generation projection real PostgreSQL contract"]
+    assert projection["env"]["XPJ_REQUIRE_REAL_PG17_PROJECTION"] == "1"
+    assert "test_database_generation_projection.py::" in projection["run"]
+    step_names = list(windows_steps)
+    assert step_names.index("Prepare pinned PostgreSQL and Shawl inputs") < step_names.index(
+        "Database generation projection real PostgreSQL contract"
+    ) < step_names.index("Compile authoritative Inno installer")
 
     steps = _steps(backend)
     assert steps["Verify qualification SHA"]["id"] == "qualification"

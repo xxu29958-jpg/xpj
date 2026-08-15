@@ -18,7 +18,11 @@ foreach ($dependency in @(
     . $dependency
 }
 
-function Import-TicketboxDatabaseGenerationExecutionDependencies {
+function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root
+    )
+    $paths = @()
     foreach ($name in @(
         "windows_atomic_artifacts.ps1",
         "windows_postgresql_writer_fence.ps1",
@@ -28,13 +32,14 @@ function Import-TicketboxDatabaseGenerationExecutionDependencies {
         "windows_database_generation_target_recovery.ps1",
         "windows_database_generation_projection.ps1"
     )) {
-        $dependency = Join-Path $PSScriptRoot $name
+        $dependency = Join-Path $Root $name
         if ((Get-TicketboxPathEntryKindNoFollow $dependency) -cne "File") {
             throw "database generation execution dependency 不是可信普通文件：$dependency"
         }
         Assert-NoTicketboxAncestorReparsePoints $dependency
-        . $dependency
+        $paths += $dependency
     }
+    return $paths
 }
 
 function New-TicketboxDatabaseGenerationIntent {
@@ -301,7 +306,10 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
     Assert-NoTicketboxAncestorReparsePoints $adapterPath
     . $adapterPath
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    Import-TicketboxDatabaseGenerationExecutionDependencies
+    foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `
+        -Root $PSScriptRoot)) {
+        . $dependency
+    }
     $stateRoot = [string]$IntentContext.StateRoot
     $intent = $IntentContext.Artifact
     $operationId = [string]$intent.Payload.operation_id

@@ -271,22 +271,22 @@ $ServiceDataVolumeIdentity = ""
 $AllowMissingRuntimeDataAuthority = $true
 $RuntimeDataBindingPresent = $false
 
-function Import-TicketboxInstalledDatabaseGenerationAuthority {
+function Get-TicketboxInstalledDatabaseGenerationAuthorityPath {
     $path = Join-Path $InstallDir "installer\windows_database_generation.ps1"
     if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "File") {
         throw "installed database generation authority 不是可信普通文件：$path"
     }
     Assert-NoTicketboxAncestorReparsePoints $path
-    . $path
+    return $path
 }
 
-function Import-TicketboxBootstrapDatabaseGenerationAuthority {
+function Get-TicketboxBootstrapDatabaseGenerationAuthorityPath {
     $path = Join-Path $ScriptDir "windows_database_generation.ps1"
     if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "File") {
         throw "bootstrap database generation authority 不是可信普通文件：$path"
     }
     Assert-NoTicketboxAncestorReparsePoints $path
-    . $path
+    return $path
 }
 
 function Set-TicketboxPreparedRuntimeServiceContract {
@@ -1482,7 +1482,7 @@ try {
         ) {
             throw "database generation preinstall evidence 不完整。"
         }
-        Import-TicketboxBootstrapDatabaseGenerationAuthority
+        . (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)
         $generationStateRoot = Get-TicketboxDatabaseGenerationStateRoot $InstallerState
         $lifecycleEvidence = [pscustomobject][ordered]@{
             schema = "ticketbox-database-generation-lifecycle-evidence-v1"
@@ -1740,7 +1740,7 @@ try {
     }
 
     if ($CommitCompletedInstall) {
-        Import-TicketboxInstalledDatabaseGenerationAuthority
+        . (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)
         Complete-TicketboxInstalledLifecycleTransaction `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
@@ -1793,7 +1793,7 @@ try {
                 -Path $LifecycleReceiptPath `
                 -Receipt $staleReceipt `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-            Import-TicketboxInstalledDatabaseGenerationAuthority
+            . (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)
             Complete-TicketboxInstalledLifecycleTransaction `
                 -Path $LifecycleReceiptPath `
                 -InstallDir $InstallDir `
@@ -2026,7 +2026,7 @@ try {
     }
     $backupCompleted = $false
     $backupPath = ""
-    Import-TicketboxBootstrapDatabaseGenerationAuthority
+    . (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)
     $capturedGenerationStateRoot =
         Get-TicketboxDatabaseGenerationStateRoot $InstallerState
     $capturedGenerationIntent = Read-TicketboxDatabaseGenerationActiveIntent `

@@ -373,6 +373,15 @@ jobs:
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Database generation projection real PostgreSQL contract
+        env:
+          PYTEST_ADDOPTS: ""
+          XPJ_REQUIRE_REAL_PG17_PROJECTION: "1"
+        run: >-
+          python -m pytest -q
+          packaging/tests/test_database_generation_projection.py::test_runtime_projection_read_and_retirement_retry_are_fail_closed
+          --strict-markers -p no:cacheprovider -o addopts=
+
       - name: Prepare pinned Inno Setup compiler
         shell: powershell
         run: |
