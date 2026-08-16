@@ -289,7 +289,7 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     assert "function Import-TicketboxDatabaseGenerationExecutionDependencies" not in owner_source
     assert "function Import-TicketboxInstalledDatabaseGenerationAuthority" not in prepare_source
     assert "function Import-TicketboxBootstrapDatabaseGenerationAuthority" not in prepare_source
-    assert prepare_source.count(". (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)") == 2
+    assert prepare_source.count(". (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)") == 1
     assert prepare_source.count(". (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)") == 2
     assert (
         owner_source.count("foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `") == 1

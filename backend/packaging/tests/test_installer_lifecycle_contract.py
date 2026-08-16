@@ -635,7 +635,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         args_start = flow.rfind("Args :=\n", 0, call.start())
         assert args_start >= 0
         assert " -TargetBackendVersion {#AppVersion}" in flow[args_start : call.start()]
-    stale_start = prepare.index("$staleReceipt = Read-TicketboxCompatibleLifecycleReceipt")
+    stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
     stale_branch = prepare[
         stale_start : prepare.index(
             "$hasPgService = Test-TicketboxServiceExists",
@@ -948,7 +948,23 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
     assert cleanup_obligation.index("Remove-TicketboxDeferredPreservedPgServiceIfExists") < cleanup_obligation.index(
         "-CleanupPending $false"
     )
-    stale_start = prepare.index("$staleReceipt = Read-TicketboxCompatibleLifecycleReceipt")
+    pre_mutation_receipt = prepare.index("$preMutationLifecycleReceipt =")
+    pre_mutation_current = prepare.index(
+        "Assert-TicketboxPrepareLifecycleReceiptMutationAuthority",
+        pre_mutation_receipt,
+    )
+    first_preparation_mutation = min(
+        prepare.index("Set-TicketboxPreparedRuntimeServiceContract", pre_mutation_receipt),
+        prepare.index("Invoke-TicketboxInterruptedInitdbServiceRecovery", pre_mutation_receipt),
+    )
+    marker_acl_repair = prepare.index(
+        "Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded",
+        prepare.index("if ($PersistDatabaseGenerationIntentOnly)"),
+    )
+    assert marker_acl_repair < pre_mutation_receipt
+    assert pre_mutation_receipt < pre_mutation_current < first_preparation_mutation
+
+    stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
     stale_dispatch = prepare[
         stale_start : prepare.index(
             "$hasPgService = Test-TicketboxServiceExists",
@@ -973,9 +989,7 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
     post_copy_branch = stale_dispatch[
         stale_dispatch.index("else {", stale_dispatch.index("program_files_installed_backup_pending")) :
     ]
-    assert completed_branch.index("Assert-TicketboxPreparedServiceContracts") < completed_branch.index(
-        "ConvertTo-TicketboxCurrentLifecycleReceipt"
-    )
+    assert "ConvertTo-TicketboxCurrentLifecycleReceipt" not in stale_dispatch
     assert (
         captured_branch.index("Remove-TicketboxRecoveryPgServiceIfExists")
         < captured_branch.index("Assert-TicketboxPreparedServiceContracts")
@@ -984,16 +998,13 @@ def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exis
     )
     assert "ConvertTo-TicketboxCurrentLifecycleReceipt" not in captured_branch
     for branch in (completed_branch, post_copy_branch):
-        assert (
-            branch.index("Remove-TicketboxRecoveryPgServiceIfExists")
-            < branch.index("Assert-TicketboxPreparedServiceContracts")
-            < branch.index("ConvertTo-TicketboxCurrentLifecycleReceipt")
+        assert branch.index("Remove-TicketboxRecoveryPgServiceIfExists") < branch.index(
+            "Assert-TicketboxPreparedServiceContracts"
         )
     assert (
         backup_pending_branch.index("Remove-TicketboxRecoveryPgServiceIfExists")
         < backup_pending_branch.index("Remove-TicketboxDeferredPreservedPgServiceIfExists")
         < backup_pending_branch.index("Assert-TicketboxPreparedServiceContracts")
-        < backup_pending_branch.index("ConvertTo-TicketboxCurrentLifecycleReceipt")
         < backup_pending_branch.index("Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending")
     )
 
@@ -1214,11 +1225,17 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
             "function Set-TicketboxLifecycleReceiptInstallerOwner"
         )
     ]
-    ready_artifact_guard = transaction.index("Assert-TicketboxDatabaseGenerationCommitReadyArtifact")
+    ready_artifact_guard = transaction.index("Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent")
     persist_identity = transaction.index("Promote-TicketboxPendingInstallationIdentity")
     commit_receipt = transaction.index("Set-TicketboxLifecycleReceiptInstallCompleted")
     retire_latch = transaction.index("Remove-TicketboxInstallerRecoveryMarker")
     assert ready_artifact_guard < persist_identity < commit_receipt < retire_latch
+    lifecycle_current_guard = receipt[
+        receipt.index("function Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent") : receipt.index(
+            "function Read-TicketboxUninstallLifecycleReceipt"
+        )
+    ]
+    assert "Assert-TicketboxDatabaseGenerationCommitReadyArtifact" in lifecycle_current_guard
     receipt_guard = install.index("if ($InstallerLockOwnerProcessId -le 0)")
     operation_lock = install.index("$operationLock = Enter-TicketboxLifecycleLock")
     assert receipt_guard < operation_lock
@@ -1887,9 +1904,27 @@ def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_m
     recovery_cleanup = uninstall.index("-ExpectedMajor $preservedPgMajor", data_deletion)
     assert state_preflight < first_service_cleanup < data_deletion < recovery_cleanup < identity_removal < state_cleanup
 
-    receipt_validation = uninstall.index("Get-TicketboxCompletedLifecycleReceiptForUninstall")
+    uninstall_entry = uninstall.index("$deleteDataRetryAuthority = Resolve-TicketboxDeleteDataRetryAuthority")
+    receipt_validation = uninstall.index(
+        "Get-TicketboxCompletedLifecycleReceiptForUninstall",
+        uninstall_entry,
+    )
+    initdb_recovery = uninstall.index(
+        "Invoke-TicketboxInitdbServiceUninstallRecovery",
+        uninstall_entry,
+    )
+    generation_authority_load = uninstall.index("windows_database_generation.ps1")
     receipt_removal = uninstall.index("Remove-TicketboxCompletedLifecycleReceipt", first_service_cleanup)
-    assert receipt_validation < first_service_cleanup < receipt_removal < recovery_cleanup < identity_removal
+    assert generation_authority_load < receipt_validation < initdb_recovery < first_service_cleanup
+    assert first_service_cleanup < receipt_removal < recovery_cleanup < identity_removal
+    completed_receipt_helper = uninstall[
+        uninstall.index("function Get-TicketboxCompletedLifecycleReceiptForUninstall") : uninstall.index(
+            "function Remove-TicketboxPreservedInstallationIdentity"
+        )
+    ]
+    current_revalidation = completed_receipt_helper.index("Assert-TicketboxUninstallLifecycleReceiptMutationAuthority")
+    assert completed_receipt_helper.index("Read-TicketboxUninstallLifecycleReceipt") < current_revalidation
+    assert current_revalidation < completed_receipt_helper.index("return $receipt")
     retry_delete = retry_cleanup.index("Remove-TicketboxDataRootForUninstall $DataRoot")
     retry_tools = retry_cleanup.index("-ExpectedMajor 0", retry_delete)
     retry_identity = retry_cleanup.index("Remove-TicketboxPreservedInstallationIdentity")
@@ -1976,6 +2011,11 @@ def test_delete_data_requires_completed_receipt_or_bound_retry_intent(tmp_path: 
             "function Read-TicketboxInstallerRecoveryMarker"
         )
     ]
+    uninstall_authority_helper = lifecycle_receipt[
+        lifecycle_receipt.index(
+            "function Assert-TicketboxUninstallLifecycleReceiptMutationAuthority"
+        ) : lifecycle_receipt.index("function Read-TicketboxUninstallLifecycleReceipt")
+    ]
     runtime_shape_helper = lifecycle_receipt[
         lifecycle_receipt.index("function Get-TicketboxInstallerRuntimeStateShape") : lifecycle_receipt.index(
             "function Assert-TicketboxInstallerRuntimeRecoveryGuardPath"
@@ -2015,6 +2055,11 @@ $script:DeleteDataIntentValidated = $false
 $script:TicketboxDeleteDataIntentSchema = 'ticketbox-delete-data-intent-v1'
 $script:TicketboxLifecycleReceiptAclAccounts = @('SYSTEM', 'BUILTIN\\Administrators')
 $script:TicketboxLifecycleReceiptOwnerAccount = 'SYSTEM'
+$script:TicketboxLifecycleReceiptSchema = 'ticketbox-windows-lifecycle-receipt-v9'
+$script:TicketboxLegacyLifecycleReceiptSchema = 'ticketbox-windows-lifecycle-receipt-v7'
+$script:ReceiptSchema = $script:TicketboxLifecycleReceiptSchema
+$script:CurrentAuthorityChecks = 0
+$script:FailCurrentAuthority = $false
 $runtimeStateDirectory = '{str(runtime_state_path).replace("'", "''")}'
 $regPath = '{registry_path.replace("'", "''")}'
 $PreservedIdentityNames = @('InstallDir', 'DataRoot')
@@ -2047,13 +2092,28 @@ function Read-TicketboxProtectedUtf8Artifact {{
 }}
 function Read-TicketboxUninstallLifecycleReceipt {{
     param($Path, $InstallDir, $DataRoot, $TargetReleaseConfig, $ExpectedPgPort, $ExpectedBackendPort, $ExpectedPgServiceName, $ExpectedBackendServiceName)
-    return [pscustomobject]@{{ install_completed = $true }}
+    return [pscustomobject]@{{
+        schema = $script:ReceiptSchema
+        install_completed = $true
+        database_generation_operation_id = '33333333-3333-4333-8333-333333333333'
+        database_generation_current_sha256 = ('d' * 64)
+    }}
 }}
 function Assert-TicketboxCompletedLifecycleReceipt {{ param($Receipt) }}
 function Assert-TicketboxAbortedFreshInstallLifecycleReceipt {{ param($Receipt) }}
+function Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent {{
+    param($Receipt)
+    if ($Receipt.database_generation_operation_id -cne '33333333-3333-4333-8333-333333333333' -or
+        $Receipt.database_generation_current_sha256 -cne ('d' * 64)) {{
+        throw 'uninstall forwarded the wrong Generation CURRENT identity'
+    }}
+    $script:CurrentAuthorityChecks += 1
+    if ($script:FailCurrentAuthority) {{ throw 'injected CURRENT authority drift' }}
+}}
 function Assert-TicketboxLifecycleReceiptPath {{ param($Path); return [System.IO.Path]::GetFullPath($Path) }}
 function Assert-TicketboxProtectedLifecycleReceipt {{ param($Path) }}
 {remove_completed_receipt_helper}
+{uninstall_authority_helper}
 {runtime_shape_helper}
 {read_intent_helper}
 {set_data_root_helper}
@@ -2081,9 +2141,26 @@ if (-not $directoryRejected) {{ throw 'directory-shaped receipt was treated as a
 Remove-Item -LiteralPath $LifecycleReceiptPath -Force
 [System.IO.File]::WriteAllText($LifecycleReceiptPath, 'completed')
 $completed = Get-TicketboxCompletedLifecycleReceiptForUninstall
-if (-not [bool]$completed.install_completed -or $script:DeleteDataIntentValidated) {{
+if (-not [bool]$completed.install_completed -or $script:DeleteDataIntentValidated -or
+    $script:CurrentAuthorityChecks -ne 1) {{
     throw 'regular completed receipt did not remain primary authority'
 }}
+$script:FailCurrentAuthority = $true
+$currentDriftRejected = $false
+try {{ Get-TicketboxCompletedLifecycleReceiptForUninstall | Out-Null }}
+catch {{ $currentDriftRejected = $true }}
+if (-not $currentDriftRejected -or $script:CurrentAuthorityChecks -ne 2) {{
+    throw 'uninstall skipped the durable CURRENT verifier'
+}}
+$script:ReceiptSchema = $script:TicketboxLegacyLifecycleReceiptSchema
+$legacyChecksBefore = $script:CurrentAuthorityChecks
+$legacyCompleted = Get-TicketboxCompletedLifecycleReceiptForUninstall
+if (-not [bool]$legacyCompleted.install_completed -or
+    $script:CurrentAuthorityChecks -ne $legacyChecksBefore) {{
+    throw 'read-only legacy uninstall invoked the Generation CURRENT verifier'
+}}
+$script:ReceiptSchema = $script:TicketboxLifecycleReceiptSchema
+$script:FailCurrentAuthority = $false
 Remove-Item -LiteralPath $LifecycleReceiptPath -Force
 Write-ValidDeleteDataIntent $DataRoot
 $resumed = Get-TicketboxCompletedLifecycleReceiptForUninstall
@@ -2205,6 +2282,33 @@ function Remove-TicketboxInstallerStateAfterDataDeletion {{
 function Invoke-ProductionDeleteDataRetryEntrypoint {{
 {retry_entrypoint}
 }}
+Remove-Item -LiteralPath $InstallerState -Recurse -Force
+[System.IO.File]::WriteAllText($LifecycleReceiptPath, 'completed')
+$InstallationIdentityAlreadyRemoved = $false
+$InstallationIdentityCleanupIncomplete = $false
+$RegisteredDataRoot = $resolvedDataRoot
+$DataRoot = $resolvedDataRoot
+$PgData = Join-Path $DataRoot 'pgdata'
+$AppData = Join-Path $DataRoot 'app'
+$script:FailCurrentAuthority = $true
+$script:RetryEntrypointCalls.Clear()
+$outerCurrentDriftRejected = $false
+try {{ Invoke-ProductionDeleteDataRetryEntrypoint }}
+catch {{ $outerCurrentDriftRejected = $true }}
+if (-not $outerCurrentDriftRejected -or
+    [string]::Join('|', $script:RetryEntrypointCalls) -cne 'runtime-contract') {{
+    throw "uninstall crossed CURRENT failure: $($script:RetryEntrypointCalls -join '|')"
+}}
+Remove-Item -LiteralPath $LifecycleReceiptPath -Force
+$InstallationIdentityAlreadyRemoved = $true
+$RegisteredDataRoot = ''
+$DataRoot = 'C:\\ProgramData\\Ticketbox-placeholder'
+$PgData = Join-Path $DataRoot 'pgdata'
+$AppData = Join-Path $DataRoot 'app'
+$script:FailCurrentAuthority = $false
+$script:DeleteDataIntentValidated = $false
+Write-ValidDeleteDataIntent $resolvedDataRoot
+$script:RetryEntrypointCalls.Clear()
 Invoke-ProductionDeleteDataRetryEntrypoint
 $expectedCalls = @(
     'runtime-contract',

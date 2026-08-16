@@ -1592,6 +1592,32 @@ try {
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
         -ExpectedBackendServiceName $BackendServiceName
+    $preMutationLifecycleReceipt = $null
+    $preMutationLifecycleReceiptKind =
+        Get-TicketboxPathEntryKindNoFollow $LifecycleReceiptPath
+    if ($preMutationLifecycleReceiptKind -ceq "File") {
+        $preMutationLifecycleReceipt = Read-TicketboxLifecycleReceipt `
+            -Path $LifecycleReceiptPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot `
+            -PgPort $PgPort `
+            -BackendPort $BackendPort `
+            -TargetReleaseConfig $TargetReleaseConfig `
+            -CurrentTargetBackendVersion $TargetBackendVersion `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+            -AllowPreviousInstallerOwnerProcessId
+        try {
+            . (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)
+            Assert-TicketboxPrepareLifecycleReceiptMutationAuthority `
+                $preMutationLifecycleReceipt
+        }
+        finally {
+            Close-TicketboxLifecycleBackupGuard $preMutationLifecycleReceipt
+        }
+    }
+    elseif ($preMutationLifecycleReceiptKind -cne "Missing") {
+        throw "安装生命周期回执不是普通文件或缺失路径。"
+    }
     Set-TicketboxPreparedRuntimeServiceContract
     Invoke-TicketboxInterruptedInitdbServiceRecovery
     Assert-TicketboxTargetPgMajor
@@ -1740,7 +1766,6 @@ try {
     }
 
     if ($CommitCompletedInstall) {
-        . (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)
         Complete-TicketboxInstalledLifecycleTransaction `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
@@ -1758,7 +1783,7 @@ try {
     }
 
     if (Test-Path -LiteralPath $LifecycleReceiptPath -PathType Leaf) {
-        $staleReceipt = Read-TicketboxCompatibleLifecycleReceipt `
+        $staleReceipt = Read-TicketboxLifecycleReceipt `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
             -DataRoot $DataRoot `
@@ -1778,22 +1803,10 @@ try {
                 -AllowTargetPolicyFallback `
                 -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
             Close-TicketboxLifecycleBackupGuard $staleReceipt
-            $staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
-                -Path $LifecycleReceiptPath `
-                -InstallDir $InstallDir `
-                -DataRoot $DataRoot `
-                -PgPort $PgPort `
-                -BackendPort $BackendPort `
-                -TargetReleaseConfig $TargetReleaseConfig `
-                -CurrentTargetBackendVersion $TargetBackendVersion `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-                -AllowPreviousInstallerOwnerProcessId
-            $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
             Set-TicketboxLifecycleReceiptInstallerOwner `
                 -Path $LifecycleReceiptPath `
                 -Receipt $staleReceipt `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-            . (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)
             Complete-TicketboxInstalledLifecycleTransaction `
                 -Path $LifecycleReceiptPath `
                 -InstallDir $InstallDir `
@@ -1850,17 +1863,6 @@ try {
                 -AllowTargetPolicyFallback `
                 -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
             Close-TicketboxLifecycleBackupGuard $staleReceipt
-            $staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
-                -Path $LifecycleReceiptPath `
-                -InstallDir $InstallDir `
-                -DataRoot $DataRoot `
-                -PgPort $PgPort `
-                -BackendPort $BackendPort `
-                -TargetReleaseConfig $TargetReleaseConfig `
-                -CurrentTargetBackendVersion $TargetBackendVersion `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-                -AllowPreviousInstallerOwnerProcessId
-            $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
             if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending) {
                 Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending `
                     -Path $LifecycleReceiptPath `
@@ -1888,32 +1890,25 @@ try {
             Assert-TicketboxPreparedServiceContracts `
                 -AllowTargetPolicyFallback `
                 -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
-            Close-TicketboxLifecycleBackupGuard $staleReceipt
-            $staleReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
-                -Path $LifecycleReceiptPath `
-                -InstallDir $InstallDir `
-                -DataRoot $DataRoot `
-                -PgPort $PgPort `
-                -BackendPort $BackendPort `
-                -TargetReleaseConfig $TargetReleaseConfig `
-                -CurrentTargetBackendVersion $TargetBackendVersion `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-                -AllowPreviousInstallerOwnerProcessId
-            $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
-            Invoke-TicketboxPreparedInstallRecovery `
-                -Receipt $staleReceipt `
-                -ProgramFilesWereReplaced $true
-            if ([string]$staleReceipt.preparation_stage -eq "prepared") {
-                Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced `
-                    -Path $LifecycleReceiptPath `
+            try {
+                Invoke-TicketboxPreparedInstallRecovery `
                     -Receipt $staleReceipt `
-                    -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+                    -ProgramFilesWereReplaced $true
+                if ([string]$staleReceipt.preparation_stage -eq "prepared") {
+                    Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced `
+                        -Path $LifecycleReceiptPath `
+                        -Receipt $staleReceipt `
+                        -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+                }
+                else {
+                    Set-TicketboxLifecycleReceiptInstallerOwner `
+                        -Path $LifecycleReceiptPath `
+                        -Receipt $staleReceipt `
+                        -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+                }
             }
-            else {
-                Set-TicketboxLifecycleReceiptInstallerOwner `
-                    -Path $LifecycleReceiptPath `
-                    -Receipt $staleReceipt `
-                    -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+            finally {
+                Close-TicketboxLifecycleBackupGuard $staleReceipt
             }
             Write-Host "检测到上次中断的安装；已保留原运行态与备份证据，并进入 files-may-have-been-replaced 修复模式。" -ForegroundColor Yellow
             return

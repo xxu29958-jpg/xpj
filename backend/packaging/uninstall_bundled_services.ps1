@@ -78,6 +78,14 @@ if (-not (Test-Path -LiteralPath $ReceiptScript -PathType Leaf)) {
     throw "缺少 Windows 生命周期回执脚本：$ReceiptScript"
 }
 . $ReceiptScript
+$DatabaseGenerationAuthorityScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation.ps1"
+if ((Get-TicketboxPathEntryKindNoFollow $DatabaseGenerationAuthorityScript) -cne "File") {
+    throw "缺少可信 database generation authority：$DatabaseGenerationAuthorityScript"
+}
+Assert-NoTicketboxAncestorReparsePoints $DatabaseGenerationAuthorityScript
+. $DatabaseGenerationAuthorityScript
 $BuildProvenanceScript = Join-Path $ScriptDir "windows_build_provenance.ps1"
 if (-not (Test-Path -LiteralPath $BuildProvenanceScript -PathType Leaf)) {
     throw "缺少 Windows build provenance 脚本：$BuildProvenanceScript"
@@ -670,6 +678,7 @@ function Get-TicketboxCompletedLifecycleReceiptForUninstall {
         -ExpectedBackendServiceName $RegisteredBackendServiceName
     if ([bool]$receipt.install_completed) {
         Assert-TicketboxCompletedLifecycleReceipt $receipt
+        Assert-TicketboxUninstallLifecycleReceiptMutationAuthority $receipt
         return $receipt
     }
     Assert-TicketboxAbortedFreshInstallLifecycleReceipt $receipt
@@ -1219,7 +1228,6 @@ try {
     Assert-Admin
     $deleteDataRetryAuthority = Resolve-TicketboxDeleteDataRetryAuthority
     Set-TicketboxUninstallRuntimeServiceContract
-    Invoke-TicketboxInitdbServiceUninstallRecovery
     $completedLifecycleReceipt = if ($deleteDataRetryAuthority -ceq "retired") {
         $null
     }
@@ -1237,6 +1245,7 @@ try {
         $UninstallInstalledReleaseConfig =
             $script:AbortedFreshInstallLifecycleReceipt.installed_release_config
     }
+    Invoke-TicketboxInitdbServiceUninstallRecovery
     if ($InstallationIdentityAlreadyRemoved -or $InstallationIdentityCleanupIncomplete) {
         if ((Service-Exists $BackendServiceName) -or (Service-Exists $PgServiceName)) {
             throw "安装身份已缺少 DataRoot，但 Ticketbox 服务仍存在；拒绝把损坏状态误判为已卸载。"

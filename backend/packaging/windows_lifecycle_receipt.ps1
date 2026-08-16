@@ -912,8 +912,7 @@ function Write-TicketboxLifecycleReceipt {
         [bool]$TemporaryPgServiceCleanupPending = $false,
         [string]$DatabaseGenerationOperationId = "",
         [string]$DatabaseGenerationCurrentSha256 = "",
-        [switch]$ReplaceProtectedReceipt,
-        [switch]$ReplaceVerifiedLegacyReceipt
+        [switch]$ReplaceProtectedReceipt
     )
 
     if ($InstallerOwnerProcessId -le 0) {
@@ -943,9 +942,6 @@ function Write-TicketboxLifecycleReceipt {
         )
     ) {
         throw "完成态生命周期回执必须绑定唯一 database generation operation/CURRENT。"
-    }
-    if ($ReplaceVerifiedLegacyReceipt -and -not $ReplaceProtectedReceipt) {
-        throw "legacy 生命周期回执只能通过受保护原子替换迁移。"
     }
     $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
         $TargetBackendVersionFloor `
@@ -1050,37 +1046,24 @@ function Write-TicketboxLifecycleReceipt {
         }
         $existingFloorProperty =
             $existingReceipt.PSObject.Properties["target_backend_version_floor"]
-        if ($ReplaceVerifiedLegacyReceipt) {
-            if (
-                $existingReceipt.schema -cne $script:TicketboxLegacyLifecycleReceiptSchema -or
-                $null -ne $existingFloorProperty
-            ) {
-                throw "只有已验证且尚无版本下限的 v7 生命周期回执可以迁移。"
-            }
+        if (
+            $existingReceipt.schema -cne $script:TicketboxLifecycleReceiptSchema -or
+            $null -eq $existingFloorProperty -or
+            $existingFloorProperty.Value -isnot [string]
+        ) {
+            throw "既有安装生命周期回执缺少受支持的目标版本下限；拒绝替换。"
         }
-        else {
-            if (
-                $existingReceipt.schema -cne $script:TicketboxLifecycleReceiptSchema -or
-                $null -eq $existingFloorProperty -or
-                $existingFloorProperty.Value -isnot [string]
-            ) {
-                throw "既有安装生命周期回执缺少受支持的目标版本下限；拒绝替换。"
-            }
-            $existingFloor = ConvertTo-TicketboxLifecycleVersion `
-                ([string]$existingFloorProperty.Value) `
-                "既有生命周期回执目标版本下限"
-            if (
-                [string]$existingFloorProperty.Value -cne $existingFloor.Canonical -or
-                (Compare-TicketboxLifecycleVersions `
-                    -Left $targetVersionFloor.Canonical `
-                    -Right $existingFloor.Canonical) -lt 0
-            ) {
-                throw "安装生命周期回执目标版本下限不能回退。"
-            }
+        $existingFloor = ConvertTo-TicketboxLifecycleVersion `
+            ([string]$existingFloorProperty.Value) `
+            "既有生命周期回执目标版本下限"
+        if (
+            [string]$existingFloorProperty.Value -cne $existingFloor.Canonical -or
+            (Compare-TicketboxLifecycleVersions `
+                -Left $targetVersionFloor.Canonical `
+                -Right $existingFloor.Canonical) -lt 0
+        ) {
+            throw "安装生命周期回执目标版本下限不能回退。"
         }
-    }
-    elseif ($ReplaceVerifiedLegacyReceipt) {
-        throw "legacy 生命周期回执迁移缺少既有受保护回执。"
     }
     $payload = [ordered]@{
         schema = $script:TicketboxLifecycleReceiptSchema
@@ -1409,123 +1392,6 @@ function Read-TicketboxLifecycleReceipt {
         throw "未完成的安装生命周期回执携带了备份证据。"
     }
     return $receipt
-}
-
-function Read-TicketboxCompatibleLifecycleReceipt {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$InstallDir,
-        [Parameter(Mandatory = $true)][string]$DataRoot,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
-        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
-        [Parameter(Mandatory = $true)][string]$CurrentTargetBackendVersion,
-        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
-        [switch]$AllowPreviousInstallerOwnerProcessId
-    )
-
-    $canonicalPath = Assert-TicketboxLifecycleReceiptPath $Path
-    Assert-TicketboxProtectedLifecycleReceipt $canonicalPath
-    try {
-        $envelope = Get-Content -LiteralPath $canonicalPath -Encoding UTF8 -Raw |
-            ConvertFrom-Json
-    }
-    catch {
-        throw "安装生命周期回执不是有效 JSON。"
-    }
-    $readArguments = @{
-        Path = $canonicalPath
-        InstallDir = $InstallDir
-        DataRoot = $DataRoot
-        PgPort = $PgPort
-        BackendPort = $BackendPort
-        TargetReleaseConfig = $TargetReleaseConfig
-        InstallerOwnerProcessId = $InstallerOwnerProcessId
-        AllowPreviousInstallerOwnerProcessId = $AllowPreviousInstallerOwnerProcessId
-    }
-    if ([string]$envelope.schema -ceq $script:TicketboxLegacyLifecycleReceiptSchema) {
-        $readArguments.AllowLegacyV7WithoutTargetVersionFloor = $true
-    }
-    elseif ([string]$envelope.schema -ceq $script:TicketboxLifecycleReceiptSchema) {
-        $readArguments.CurrentTargetBackendVersion = $CurrentTargetBackendVersion
-    }
-    else {
-        throw "安装生命周期回执 schema 不受支持。"
-    }
-    return Read-TicketboxLifecycleReceipt @readArguments
-}
-
-function ConvertTo-TicketboxCurrentLifecycleReceipt {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$InstallDir,
-        [Parameter(Mandatory = $true)][string]$DataRoot,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
-        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
-        [Parameter(Mandatory = $true)][string]$CurrentTargetBackendVersion,
-        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
-        [switch]$AllowPreviousInstallerOwnerProcessId
-    )
-
-    $compatibleReceipt = Read-TicketboxCompatibleLifecycleReceipt `
-        -Path $Path `
-        -InstallDir $InstallDir `
-        -DataRoot $DataRoot `
-        -PgPort $PgPort `
-        -BackendPort $BackendPort `
-        -TargetReleaseConfig $TargetReleaseConfig `
-        -CurrentTargetBackendVersion $CurrentTargetBackendVersion `
-        -InstallerOwnerProcessId $InstallerOwnerProcessId `
-        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
-    if ([string]$compatibleReceipt.schema -ceq $script:TicketboxLifecycleReceiptSchema) {
-        return $compatibleReceipt
-    }
-    $canonicalPath = Assert-TicketboxLifecycleReceiptPath $Path
-    try {
-        Write-TicketboxLifecycleReceipt `
-            -Path $canonicalPath `
-            -Mode ([string]$compatibleReceipt.mode) `
-            -InstallDir ([string]$compatibleReceipt.install_dir) `
-            -DataRoot ([string]$compatibleReceipt.data_root) `
-            -PgPort ([int]$compatibleReceipt.pg_port) `
-            -BackendPort ([int]$compatibleReceipt.backend_port) `
-            -InstalledReleaseConfig $compatibleReceipt.installed_release_config `
-            -TargetBackendVersionFloor $CurrentTargetBackendVersion `
-            -InstallerOwnerProcessId $InstallerOwnerProcessId `
-            -PreviousPgState ([string]$compatibleReceipt.previous_pg_state) `
-            -PreviousBackendState ([string]$compatibleReceipt.previous_backend_state) `
-            -PreviousPgStartPolicy ([string]$compatibleReceipt.previous_pg_start_policy) `
-            -PreviousBackendStartPolicy ([string]$compatibleReceipt.previous_backend_start_policy) `
-            -BackupRequired ([bool]$compatibleReceipt.backup_required) `
-            -BackupCompleted ([bool]$compatibleReceipt.backup_completed) `
-            -PreparationStage ([string]$compatibleReceipt.preparation_stage) `
-            -BackupPath ([string]$compatibleReceipt.backup_path) `
-            -BackupSha256 ([string]$compatibleReceipt.backup_sha256) `
-            -BackupByteLength ([long]$compatibleReceipt.backup_byte_length) `
-            -FilesMayHaveBeenReplaced ([bool]$compatibleReceipt.files_may_have_been_replaced) `
-            -InstallCompleted ([bool]$compatibleReceipt.install_completed) `
-            -TemporaryPgServiceCleanupPending `
-                ([bool]$compatibleReceipt.temporary_pg_service_cleanup_pending) `
-            -DatabaseGenerationOperationId `
-                ([string]$compatibleReceipt.database_generation_operation_id) `
-            -DatabaseGenerationCurrentSha256 `
-                ([string]$compatibleReceipt.database_generation_current_sha256) `
-            -ReplaceProtectedReceipt `
-            -ReplaceVerifiedLegacyReceipt
-    }
-    finally {
-        Close-TicketboxLifecycleBackupGuard $compatibleReceipt
-    }
-    return Read-TicketboxLifecycleReceipt `
-        -Path $canonicalPath `
-        -InstallDir $InstallDir `
-        -DataRoot $DataRoot `
-        -PgPort $PgPort `
-        -BackendPort $BackendPort `
-        -TargetReleaseConfig $TargetReleaseConfig `
-        -CurrentTargetBackendVersion $CurrentTargetBackendVersion `
-        -InstallerOwnerProcessId $InstallerOwnerProcessId
 }
 
 function Assert-TicketboxLifecycleReceiptStage([object]$Receipt, [string]$ExpectedStage) {
@@ -2259,31 +2125,7 @@ function Complete-TicketboxInstalledLifecycleTransaction {
     )) {
         throw "安装提交阶段不允许从当前回执继续：$($receipt.preparation_stage)。"
     }
-    if (
-        [string]::IsNullOrEmpty(
-            [string]$receipt.database_generation_operation_id
-        ) -or
-        [string]$receipt.database_generation_current_sha256 -cnotmatch
-            '^[0-9a-f]{64}$'
-    ) {
-        throw "安装提交缺少唯一 database generation CURRENT。"
-    }
-    if (
-        $null -eq (
-            Get-Command `
-                Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
-                -ErrorAction SilentlyContinue
-        )
-    ) {
-        throw "安装提交缺少 database generation CURRENT 复读器。"
-    }
-    Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
-        -ExpectedOperationId (
-            [string]$receipt.database_generation_operation_id
-        ) `
-        -ExpectedCurrentSha256 (
-            [string]$receipt.database_generation_current_sha256
-        ) | Out-Null
+    Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $receipt
     if ([string]$receipt.preparation_stage -eq "files_may_have_been_replaced") {
         $generationStateRoot = Get-TicketboxDatabaseGenerationStateRoot (
             Get-TicketboxInstallerStateDirectory
@@ -2459,6 +2301,72 @@ function Assert-TicketboxCompletedLifecycleReceipt([object]$Receipt) {
     ) {
         throw "当前完成态生命周期回执缺少 database generation authority。"
     }
+}
+
+function Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt
+    )
+
+    if (
+        $null -eq $Receipt -or
+        [string]$Receipt.schema -cne $script:TicketboxLifecycleReceiptSchema -or
+        -not (Test-TicketboxLifecycleCanonicalOperationId `
+            ([string]$Receipt.database_generation_operation_id)) -or
+        [string]$Receipt.database_generation_current_sha256 -cnotmatch
+            '^[0-9a-f]{64}$'
+    ) {
+        throw "生命周期回执缺少唯一 database generation CURRENT。"
+    }
+    if (
+        $null -eq (
+            Get-Command `
+                Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
+                -ErrorAction SilentlyContinue
+        )
+    ) {
+        throw "生命周期回执缺少 database generation CURRENT 复读器。"
+    }
+    Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
+        -ExpectedOperationId (
+            [string]$Receipt.database_generation_operation_id
+        ) `
+        -ExpectedCurrentSha256 (
+            [string]$Receipt.database_generation_current_sha256
+        ) | Out-Null
+}
+
+function Assert-TicketboxPrepareLifecycleReceiptMutationAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt
+    )
+
+    if ([string]$Receipt.schema -cne $script:TicketboxLifecycleReceiptSchema) {
+        throw "prepare 只接受当前 v9 生命周期回执。"
+    }
+    $operationId = [string]$Receipt.database_generation_operation_id
+    $currentSha256 = [string]$Receipt.database_generation_current_sha256
+    if ([string]::IsNullOrEmpty($currentSha256)) {
+        if (
+            [bool]$Receipt.install_completed -or
+            -not [string]::IsNullOrEmpty($operationId)
+        ) {
+            throw "prepare 生命周期回执缺少完整 database generation CURRENT。"
+        }
+        return
+    }
+    Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $Receipt
+}
+
+function Assert-TicketboxUninstallLifecycleReceiptMutationAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt
+    )
+
+    if ([string]$Receipt.schema -ceq $script:TicketboxLegacyLifecycleReceiptSchema) {
+        return
+    }
+    Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $Receipt
 }
 
 function Read-TicketboxUninstallLifecycleReceipt {
