@@ -1923,8 +1923,9 @@ def test_delete_data_proves_runtime_stopped_when_service_or_registered_port_is_m
         )
     ]
     current_revalidation = completed_receipt_helper.index("Assert-TicketboxUninstallLifecycleReceiptMutationAuthority")
+    completion_branch = completed_receipt_helper.index("if ([bool]$receipt.install_completed)")
     assert completed_receipt_helper.index("Read-TicketboxUninstallLifecycleReceipt") < current_revalidation
-    assert current_revalidation < completed_receipt_helper.index("return $receipt")
+    assert current_revalidation < completion_branch
     retry_delete = retry_cleanup.index("Remove-TicketboxDataRootForUninstall $DataRoot")
     retry_tools = retry_cleanup.index("-ExpectedMajor 0", retry_delete)
     retry_identity = retry_cleanup.index("Remove-TicketboxPreservedInstallationIdentity")
@@ -2011,9 +2012,14 @@ def test_delete_data_requires_completed_receipt_or_bound_retry_intent(tmp_path: 
             "function Read-TicketboxInstallerRecoveryMarker"
         )
     ]
+    canonical_operation_id_helper = lifecycle_receipt[
+        lifecycle_receipt.index("function Test-TicketboxLifecycleCanonicalOperationId") : lifecycle_receipt.index(
+            "function Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending"
+        )
+    ]
     uninstall_authority_helper = lifecycle_receipt[
         lifecycle_receipt.index(
-            "function Assert-TicketboxUninstallLifecycleReceiptMutationAuthority"
+            "function Assert-TicketboxLifecycleReceiptMutationDatabaseGenerationAuthority"
         ) : lifecycle_receipt.index("function Read-TicketboxUninstallLifecycleReceipt")
     ]
     runtime_shape_helper = lifecycle_receipt[
@@ -2058,7 +2064,12 @@ $script:TicketboxLifecycleReceiptOwnerAccount = 'SYSTEM'
 $script:TicketboxLifecycleReceiptSchema = 'ticketbox-windows-lifecycle-receipt-v9'
 $script:TicketboxLegacyLifecycleReceiptSchema = 'ticketbox-windows-lifecycle-receipt-v7'
 $script:ReceiptSchema = $script:TicketboxLifecycleReceiptSchema
+$script:ReceiptInstallCompleted = $true
+$script:ReceiptOperationId = '33333333-3333-4333-8333-333333333333'
+$script:ReceiptCurrentSha256 = ('d' * 64)
 $script:CurrentAuthorityChecks = 0
+$script:CurrentObservations = 0
+$script:ObservedCurrent = $null
 $script:FailCurrentAuthority = $false
 $runtimeStateDirectory = '{str(runtime_state_path).replace("'", "''")}'
 $regPath = '{registry_path.replace("'", "''")}'
@@ -2094,9 +2105,9 @@ function Read-TicketboxUninstallLifecycleReceipt {{
     param($Path, $InstallDir, $DataRoot, $TargetReleaseConfig, $ExpectedPgPort, $ExpectedBackendPort, $ExpectedPgServiceName, $ExpectedBackendServiceName)
     return [pscustomobject]@{{
         schema = $script:ReceiptSchema
-        install_completed = $true
-        database_generation_operation_id = '33333333-3333-4333-8333-333333333333'
-        database_generation_current_sha256 = ('d' * 64)
+        install_completed = $script:ReceiptInstallCompleted
+        database_generation_operation_id = $script:ReceiptOperationId
+        database_generation_current_sha256 = $script:ReceiptCurrentSha256
     }}
 }}
 function Assert-TicketboxCompletedLifecycleReceipt {{ param($Receipt) }}
@@ -2110,8 +2121,23 @@ function Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent {{
     $script:CurrentAuthorityChecks += 1
     if ($script:FailCurrentAuthority) {{ throw 'injected CURRENT authority drift' }}
 }}
+function Get-TicketboxInstallerStateDirectory {{ return $InstallerState }}
+function Get-TicketboxDatabaseGenerationStateRoot {{
+    param($StateRoot)
+    if ($StateRoot -cne $InstallerState) {{ throw 'unexpected installer state root' }}
+    return (Join-Path $InstallerState 'database-generation')
+}}
+function Read-TicketboxDatabaseGenerationCurrent {{
+    param($StateRoot, [switch]$AllowAbsent)
+    if ($StateRoot -cne (Join-Path $InstallerState 'database-generation') -or -not $AllowAbsent) {{
+        throw 'unexpected CURRENT observation'
+    }}
+    $script:CurrentObservations += 1
+    return $script:ObservedCurrent
+}}
 function Assert-TicketboxLifecycleReceiptPath {{ param($Path); return [System.IO.Path]::GetFullPath($Path) }}
 function Assert-TicketboxProtectedLifecycleReceipt {{ param($Path) }}
+{canonical_operation_id_helper}
 {remove_completed_receipt_helper}
 {uninstall_authority_helper}
 {runtime_shape_helper}
@@ -2152,6 +2178,49 @@ catch {{ $currentDriftRejected = $true }}
 if (-not $currentDriftRejected -or $script:CurrentAuthorityChecks -ne 2) {{
     throw 'uninstall skipped the durable CURRENT verifier'
 }}
+$script:ReceiptInstallCompleted = $false
+$abortedChecksBefore = $script:CurrentAuthorityChecks
+$abortedCurrentDriftRejected = $false
+try {{ Get-TicketboxCompletedLifecycleReceiptForUninstall | Out-Null }}
+catch {{ $abortedCurrentDriftRejected = $true }}
+if (-not $abortedCurrentDriftRejected -or
+    $script:CurrentAuthorityChecks -ne ($abortedChecksBefore + 1)) {{
+    throw 'aborted fresh uninstall skipped the durable CURRENT verifier'
+}}
+$script:FailCurrentAuthority = $false
+$script:ReceiptCurrentSha256 = ''
+$script:ObservedCurrent = [pscustomobject]@{{ PayloadSha256 = ('d' * 64) }}
+$responseLossChecksBefore = $script:CurrentAuthorityChecks
+$responseLossObservationsBefore = $script:CurrentObservations
+$script:FailCurrentAuthority = $true
+$responseLossRejected = $false
+try {{ Get-TicketboxCompletedLifecycleReceiptForUninstall | Out-Null }}
+catch {{ $responseLossRejected = $true }}
+if (-not $responseLossRejected -or
+    $script:CurrentAuthorityChecks -ne ($responseLossChecksBefore + 1) -or
+    $script:CurrentObservations -ne ($responseLossObservationsBefore + 1)) {{
+    throw 'real uninstall caller crossed response-loss CURRENT drift'
+}}
+$script:FailCurrentAuthority = $false
+$responseLossChecksBefore = $script:CurrentAuthorityChecks
+$responseLossObservationsBefore = $script:CurrentObservations
+$responseLossAborted = Get-TicketboxCompletedLifecycleReceiptForUninstall
+if ($null -ne $responseLossAborted -or
+    $script:CurrentAuthorityChecks -ne ($responseLossChecksBefore + 1) -or
+    $script:CurrentObservations -ne ($responseLossObservationsBefore + 1)) {{
+    throw 'real uninstall caller did not converge from response-loss CURRENT'
+}}
+$script:ObservedCurrent = $null
+$operationOnlyChecksBefore = $script:CurrentAuthorityChecks
+$operationOnlyObservationsBefore = $script:CurrentObservations
+$operationOnlyAborted = Get-TicketboxCompletedLifecycleReceiptForUninstall
+if ($null -ne $operationOnlyAborted -or
+    $script:CurrentAuthorityChecks -ne $operationOnlyChecksBefore -or
+    $script:CurrentObservations -ne ($operationOnlyObservationsBefore + 1)) {{
+    throw 'operation-only aborted fresh uninstall did not prove CURRENT absence'
+}}
+$script:ReceiptInstallCompleted = $true
+$script:ReceiptCurrentSha256 = ('d' * 64)
 $script:ReceiptSchema = $script:TicketboxLegacyLifecycleReceiptSchema
 $legacyChecksBefore = $script:CurrentAuthorityChecks
 $legacyCompleted = Get-TicketboxCompletedLifecycleReceiptForUninstall

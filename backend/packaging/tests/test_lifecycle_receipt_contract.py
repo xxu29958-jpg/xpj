@@ -862,8 +862,11 @@ if ($runtimeState -cne '{_literal(tmp_path / "TicketboxRuntimeState")}') {{
 $script:stage = 'files_may_have_been_replaced'
 $script:events = New-Object System.Collections.Generic.List[string]
 $script:archivePresent = $true
+$script:observedCurrent = $null
 $script:expectedCurrentOperation = '11111111-1111-1111-1111-111111111111'
 $script:expectedCurrentSha256 = ('a' * 64)
+$script:receiptOperation = $script:expectedCurrentOperation
+$script:receiptCurrentSha256 = $script:expectedCurrentSha256
 function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
 function Read-TicketboxLifecycleReceipt {{
     param($Path, $InstallDir, $DataRoot, $PgPort, $BackendPort, $TargetReleaseConfig, $CurrentTargetBackendVersion, $InstallerOwnerProcessId)
@@ -871,8 +874,8 @@ function Read-TicketboxLifecycleReceipt {{
     return [pscustomobject]@{{
         schema = $script:TicketboxLifecycleReceiptSchema
         preparation_stage = $script:stage
-        database_generation_operation_id = $script:expectedCurrentOperation
-        database_generation_current_sha256 = $script:expectedCurrentSha256
+        database_generation_operation_id = $script:receiptOperation
+        database_generation_current_sha256 = $script:receiptCurrentSha256
     }}
 }}
 function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {{
@@ -889,6 +892,14 @@ function Get-TicketboxDatabaseGenerationStateRoot {{
     param($InstallerState)
     if ($InstallerState -cne '{_literal(tmp_path / "installer-state")}') {{ throw 'unexpected installer state' }}
     return '{_literal(tmp_path / "generation-state")}'
+}}
+function Read-TicketboxDatabaseGenerationCurrent {{
+    param($StateRoot, [switch]$AllowAbsent)
+    if ($StateRoot -cne '{_literal(tmp_path / "generation-state")}' -or -not $AllowAbsent) {{
+        throw 'unexpected database generation CURRENT observation'
+    }}
+    [void]$script:events.Add('current-observe')
+    return $script:observedCurrent
 }}
 function Read-TicketboxDatabaseGenerationOperationArtifact {{
     param($StateRoot, $OperationId, $Kind, [switch]$AllowAbsent)
@@ -1001,9 +1012,70 @@ $pendingReceipt = [pscustomobject]@{{
     database_generation_current_sha256 = ''
 }}
 Assert-TicketboxPrepareLifecycleReceiptMutationAuthority $pendingReceipt
-if ($script:events.Count -ne 0) {{
-    throw 'pending v9 prepare authority performed a CURRENT read'
+if (($script:events -join ',') -cne 'current-observe') {{
+    throw 'pending v9 prepare authority skipped the absent CURRENT observation'
 }}
+$script:events.Clear()
+$operationOnlyReceipt = [pscustomobject]@{{
+    schema = $script:TicketboxLifecycleReceiptSchema
+    install_completed = $false
+    database_generation_operation_id = '33333333-3333-4333-8333-333333333333'
+    database_generation_current_sha256 = ''
+}}
+Assert-TicketboxPrepareLifecycleReceiptMutationAuthority $operationOnlyReceipt
+if (($script:events -join ',') -cne 'current-observe') {{
+    throw 'operation-only v9 prepare authority skipped the absent CURRENT observation'
+}}
+$script:events.Clear()
+$script:expectedCurrentOperation = '33333333-3333-4333-8333-333333333333'
+$script:expectedCurrentSha256 = ('e' * 64)
+$script:observedCurrent = [pscustomobject]@{{ PayloadSha256 = $script:expectedCurrentSha256 }}
+$script:failReady = $true
+$responseLossRejected = $false
+try {{ Assert-TicketboxPrepareLifecycleReceiptMutationAuthority $operationOnlyReceipt }}
+catch {{ $responseLossRejected = $true }}
+if (-not $responseLossRejected -or ($script:events -join ',') -cne 'current-observe,current') {{
+    throw 'operation-only response-loss state bypassed the durable CURRENT verifier'
+}}
+$script:events.Clear()
+$responseLossUninstallRejected = $false
+try {{ Assert-TicketboxUninstallLifecycleReceiptMutationAuthority $operationOnlyReceipt }}
+catch {{ $responseLossUninstallRejected = $true }}
+if (-not $responseLossUninstallRejected -or ($script:events -join ',') -cne 'current-observe,current') {{
+    throw 'operation-only uninstall response-loss state bypassed the durable CURRENT verifier'
+}}
+$script:events.Clear()
+$script:failReady = $false
+Assert-TicketboxPrepareLifecycleReceiptMutationAuthority $operationOnlyReceipt
+if (($script:events -join ',') -cne 'current-observe,current') {{
+    throw 'operation-only prepare response-loss recovery did not converge'
+}}
+$script:events.Clear()
+Assert-TicketboxUninstallLifecycleReceiptMutationAuthority $operationOnlyReceipt
+if (($script:events -join ',') -cne 'current-observe,current') {{
+    throw 'operation-only uninstall response-loss recovery did not converge'
+}}
+$script:events.Clear()
+$script:receiptOperation = '33333333-3333-4333-8333-333333333333'
+$script:receiptCurrentSha256 = ''
+$script:failReady = $true
+$dispatchResponseLossRejected = $false
+try {{ Invoke-TestPrepareMutationDispatch }}
+catch {{ $dispatchResponseLossRejected = $true }}
+if (-not $dispatchResponseLossRejected -or
+    ($script:events -join ',') -cne 'read,current-observe,current') {{
+    throw 'real prepare dispatch crossed response-loss CURRENT drift'
+}}
+$script:events.Clear()
+$script:failReady = $false
+Invoke-TestPrepareMutationDispatch
+if (($script:events -join ',') -cne 'read,current-observe,current,runtime,initdb,target') {{
+    throw 'real prepare dispatch did not converge from response-loss CURRENT'
+}}
+$script:events.Clear()
+$script:receiptOperation = '11111111-1111-1111-1111-111111111111'
+$script:receiptCurrentSha256 = ('a' * 64)
+$script:observedCurrent = $null
 $script:expectedCurrentOperation = '22222222-2222-4222-8222-222222222222'
 $script:expectedCurrentSha256 = ('c' * 64)
 $currentReceipt = [pscustomobject]@{{

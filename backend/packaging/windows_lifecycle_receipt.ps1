@@ -2336,6 +2336,54 @@ function Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent {
         ) | Out-Null
 }
 
+function Assert-TicketboxLifecycleReceiptMutationDatabaseGenerationAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    $operationId = [string]$Receipt.database_generation_operation_id
+    $currentSha256 = [string]$Receipt.database_generation_current_sha256
+    if (-not [string]::IsNullOrEmpty($currentSha256)) {
+        Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $Receipt
+        return
+    }
+    if (
+        [bool]$Receipt.install_completed -or
+        (
+            -not [string]::IsNullOrEmpty($operationId) -and
+            -not (Test-TicketboxLifecycleCanonicalOperationId $operationId)
+        )
+    ) {
+        throw "$Context 生命周期回执缺少完整 database generation CURRENT。"
+    }
+    foreach ($dependency in @(
+        "Get-TicketboxInstallerStateDirectory",
+        "Get-TicketboxDatabaseGenerationStateRoot",
+        "Read-TicketboxDatabaseGenerationCurrent"
+    )) {
+        if ($null -eq (Get-Command $dependency -ErrorAction SilentlyContinue)) {
+            throw "$Context 生命周期回执缺少 database generation CURRENT 观察器：$dependency。"
+        }
+    }
+    $stateRoot = Get-TicketboxDatabaseGenerationStateRoot (
+        Get-TicketboxInstallerStateDirectory
+    )
+    $observedCurrent = Read-TicketboxDatabaseGenerationCurrent `
+        $stateRoot `
+        -AllowAbsent
+    if ($null -eq $observedCurrent) { return }
+    if ([string]::IsNullOrEmpty($operationId)) {
+        throw "$Context 生命周期回执未绑定已发布的 database generation CURRENT。"
+    }
+    $observedReceipt = [pscustomobject]@{
+        schema = $script:TicketboxLifecycleReceiptSchema
+        database_generation_operation_id = $operationId
+        database_generation_current_sha256 = [string]$observedCurrent.PayloadSha256
+    }
+    Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $observedReceipt
+}
+
 function Assert-TicketboxPrepareLifecycleReceiptMutationAuthority {
     param(
         [Parameter(Mandatory = $true)][object]$Receipt
@@ -2344,18 +2392,9 @@ function Assert-TicketboxPrepareLifecycleReceiptMutationAuthority {
     if ([string]$Receipt.schema -cne $script:TicketboxLifecycleReceiptSchema) {
         throw "prepare 只接受当前 v9 生命周期回执。"
     }
-    $operationId = [string]$Receipt.database_generation_operation_id
-    $currentSha256 = [string]$Receipt.database_generation_current_sha256
-    if ([string]::IsNullOrEmpty($currentSha256)) {
-        if (
-            [bool]$Receipt.install_completed -or
-            -not [string]::IsNullOrEmpty($operationId)
-        ) {
-            throw "prepare 生命周期回执缺少完整 database generation CURRENT。"
-        }
-        return
-    }
-    Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $Receipt
+    Assert-TicketboxLifecycleReceiptMutationDatabaseGenerationAuthority `
+        -Receipt $Receipt `
+        -Context "prepare"
 }
 
 function Assert-TicketboxUninstallLifecycleReceiptMutationAuthority {
@@ -2366,7 +2405,12 @@ function Assert-TicketboxUninstallLifecycleReceiptMutationAuthority {
     if ([string]$Receipt.schema -ceq $script:TicketboxLegacyLifecycleReceiptSchema) {
         return
     }
-    Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $Receipt
+    if ([string]$Receipt.schema -cne $script:TicketboxLifecycleReceiptSchema) {
+        throw "uninstall 只接受当前 v9 或只读 legacy v7 生命周期回执。"
+    }
+    Assert-TicketboxLifecycleReceiptMutationDatabaseGenerationAuthority `
+        -Receipt $Receipt `
+        -Context "uninstall"
 }
 
 function Read-TicketboxUninstallLifecycleReceipt {

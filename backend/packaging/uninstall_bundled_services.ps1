@@ -676,9 +676,9 @@ function Get-TicketboxCompletedLifecycleReceiptForUninstall {
         -ExpectedBackendPort $BackendPort `
         -ExpectedPgServiceName $RegisteredPgServiceName `
         -ExpectedBackendServiceName $RegisteredBackendServiceName
+    Assert-TicketboxUninstallLifecycleReceiptMutationAuthority $receipt
     if ([bool]$receipt.install_completed) {
         Assert-TicketboxCompletedLifecycleReceipt $receipt
-        Assert-TicketboxUninstallLifecycleReceiptMutationAuthority $receipt
         return $receipt
     }
     Assert-TicketboxAbortedFreshInstallLifecycleReceipt $receipt
