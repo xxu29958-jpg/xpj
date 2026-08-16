@@ -4668,7 +4668,7 @@ def test_windows_safety_helpers_execute_in_available_powershells(tmp_path: Path)
             'Write-Host "=== 小票夹服务卸载 ==="'
         )
     ]
-    base = ROOT / "backend" / "build" / f"installer-safety-{uuid.uuid4().hex}"
+    base = ROOT.parent / f"xiaopiaojia-installer-safety-{uuid.uuid4().hex}"
     data_root = base / "ticketbox-data"
     install_dir = base / "ticketbox-program"
     data_root.mkdir(parents=True)
