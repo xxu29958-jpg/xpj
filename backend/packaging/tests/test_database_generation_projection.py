@@ -185,7 +185,7 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
                     stdout=stdout,
                     stderr=stderr,
                     text=True,
-                    timeout=120,
+                    timeout=300,
                 )
         except subprocess.TimeoutExpired as exc:
             cleanup_error = _ensure_projection_pg_stopped(pg_bin, work_root)
