@@ -237,9 +237,7 @@ def test_installed_lifecycle_planning_uses_program_without_graph_discovery(
     context = _lifecycle.load_alembic_context(installed_program=program)
 
     assert context.head_revision == program.target_revision
-    assert context.known_revisions == frozenset(
-        revision.revision for revision in program.revisions
-    )
+    assert context.known_revisions == frozenset(revision.revision for revision in program.revisions)
     assert program.revision_includes(
         program.target_revision,
         "20260729_0001",
@@ -268,17 +266,26 @@ def test_installed_init_db_uses_one_frozen_release_fact(
         observed.append(installed_program)
         return SimpleNamespace(head_revision=TARGET_REVISION)
 
-    def stop_on_authority(_alembic: object, *, installed_program: object | None) -> None:
-        generation_authorities.append(installed_program)
+    def stop_on_authority(_engine: object, program: object) -> None:
+        generation_authorities.append(program)
         raise RuntimeError("authority-observed")
 
     monkeypatch.setattr(database, "load_alembic_context", load_context)
     monkeypatch.setattr(database, "_assert_revision_contains_c07", lambda *a, **k: None)
     monkeypatch.setattr(database, "_assert_existing_schema_compatible", lambda *_a, **_k: None)
-    monkeypatch.setattr(database, "_assert_database_generation_startup_ready", stop_on_authority)
+    monkeypatch.setattr(database, "assert_database_generation_startup_ready", stop_on_authority)
+    monkeypatch.setattr(
+        database,
+        "_assert_source_c07_receipt_ready",
+        lambda *_a, **_k: pytest.fail("installed runtime used source C07 receipt"),
+    )
     monkeypatch.setattr(database, "_apply_schema_lifecycle", lambda *_a: pytest.fail("frozen DDL"))
     monkeypatch.setattr(database, "_apply_managed_schema_lifecycle", lambda *_a, **_k: pytest.fail("frozen DDL"))
-    monkeypatch.setattr(database, "plan_database_lifecycle", lambda *_a: SimpleNamespace(action=getattr(DatabaseLifecycleAction, action_name)))
+    monkeypatch.setattr(
+        database,
+        "plan_database_lifecycle",
+        lambda *_a: SimpleNamespace(action=getattr(DatabaseLifecycleAction, action_name)),
+    )
 
     if action_name == "NOOP":
         with pytest.raises(RuntimeError, match="authority-observed"):

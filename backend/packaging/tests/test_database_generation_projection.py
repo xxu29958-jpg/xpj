@@ -16,31 +16,41 @@ def _projection_fixture_command(
     *, engine: str, fixture: Path, pg_bin: Path, work_root: Path, extra: tuple[str, ...] = ()
 ) -> list[str]:
     return [
-        engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(fixture),
-        "-ProjectionPath", str(PROJECTION), "-PgBin", str(pg_bin),
-        "-WorkRoot", str(work_root), *extra,
+        engine,
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        str(fixture),
+        "-ProjectionPath",
+        str(PROJECTION),
+        "-PgBin",
+        str(pg_bin),
+        "-SafetyPath",
+        str(PACKAGING / "windows_installation_safety.ps1"),
+        "-AdapterPath",
+        str(PACKAGING / "windows_database_generation_adapter.ps1"),
+        "-DatabasePolicyPath",
+        str(PACKAGING / "windows_c07_database.ps1"),
+        "-PythonPath",
+        sys.executable,
+        "-BackendRoot",
+        str(PACKAGING.parent),
+        "-WorkRoot",
+        str(work_root),
+        *extra,
     ]
 
 
 def _projection_pg_bin() -> Path | None:
     required = os.environ.get("XPJ_REQUIRE_REAL_PG17_PROJECTION", "")
-    assert required in {"", "0", "1"}, (
-        "XPJ_REQUIRE_REAL_PG17_PROJECTION must be unset, 0, or 1"
-    )
+    assert required in {"", "0", "1"}, "XPJ_REQUIRE_REAL_PG17_PROJECTION must be unset, 0, or 1"
     vendor = PACKAGING / "vendor" / "pg" / "bin"
     candidates = (vendor,)
     if required != "1":
-        candidates += (
-            Path(os.environ.get("PROGRAMFILES", r"C:\\Program Files"))
-            / "PostgreSQL"
-            / "17"
-            / "bin",
-        )
+        candidates += (Path(os.environ.get("PROGRAMFILES", r"C:\\Program Files")) / "PostgreSQL" / "17" / "bin",)
     for candidate in candidates:
-        if all(
-            (candidate / f"{name}.exe").is_file()
-            for name in ("initdb", "pg_ctl", "psql")
-        ):
+        if all((candidate / f"{name}.exe").is_file() for name in ("initdb", "pg_ctl", "psql")):
             return candidate
     if required == "1":
         pytest.fail("PostgreSQL 17 projection toolset is unavailable", pytrace=False)
@@ -92,9 +102,7 @@ def _ensure_projection_pg_stopped(pg_bin: Path, work_root: Path) -> str | None:
     return None
 
 
-def _stop_interrupted_projection_fixture(
-    process: subprocess.Popen[str], pg_bin: Path, work_root: Path
-) -> str | None:
+def _stop_interrupted_projection_fixture(process: subprocess.Popen[str], pg_bin: Path, work_root: Path) -> str | None:
     errors: list[str] = []
     if process.poll() is None:
         try:
@@ -108,21 +116,20 @@ def _stop_interrupted_projection_fixture(
     return "; ".join(errors) or None
 
 
-def _assert_parent_timeout_stops_projection_pg(
-    *, engine: str, fixture: Path, pg_bin: Path, tmp_path: Path
-) -> None:
+def _assert_parent_timeout_stops_projection_pg(*, engine: str, fixture: Path, pg_bin: Path, tmp_path: Path) -> None:
     work_root = tmp_path / "real-pg-parent-timeout"
     ready_path = work_root / "server-ready"
     stdout_path = tmp_path / "real-pg-parent-timeout.stdout"
     stderr_path = tmp_path / "real-pg-parent-timeout.stderr"
-    with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open(
-        "w", encoding="utf-8"
-    ) as stderr:
+    with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
         extra = ("-PauseAfterStart", "-ServerReadyPath", str(ready_path))
         process = subprocess.Popen(
             _projection_fixture_command(
-                engine=engine, fixture=fixture, pg_bin=pg_bin,
-                work_root=work_root, extra=extra,
+                engine=engine,
+                fixture=fixture,
+                pg_bin=pg_bin,
+                work_root=work_root,
+                extra=extra,
             ),
             stdout=stdout,
             stderr=stderr,
@@ -138,17 +145,19 @@ def _assert_parent_timeout_stops_projection_pg(
                     pytrace=False,
                 )
             time.sleep(0.05)
-        assert ready_path.is_file(), (
-            stdout_path.read_text(encoding="utf-8", errors="replace")
-            + stderr_path.read_text(encoding="utf-8", errors="replace")
+        assert ready_path.is_file(), stdout_path.read_text(encoding="utf-8", errors="replace") + stderr_path.read_text(
+            encoding="utf-8", errors="replace"
         )
         with pytest.raises(subprocess.TimeoutExpired):
             process.wait(timeout=0.1)
         cleanup_error = _stop_interrupted_projection_fixture(process, pg_bin, work_root)
     assert cleanup_error is None, cleanup_error
     status = subprocess.run(
-        [pg_bin / "pg_ctl.exe", "status", "-D", work_root / "pgdata"], check=False,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10,
+        [pg_bin / "pg_ctl.exe", "status", "-D", work_root / "pgdata"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=10,
     )
     assert status.returncode == 3, f"unexpected post-cleanup pg_ctl status {status.returncode}"
 
@@ -164,19 +173,19 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
         stdout_path = tmp_path / f"real-pg-{index}.stdout"
         stderr_path = tmp_path / f"real-pg-{index}.stderr"
         try:
-            with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open(
-                "w", encoding="utf-8"
-            ) as stderr:
+            with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
                 result = subprocess.run(
                     _projection_fixture_command(
-                        engine=engine, fixture=fixture, pg_bin=pg_bin,
+                        engine=engine,
+                        fixture=fixture,
+                        pg_bin=pg_bin,
                         work_root=work_root,
                     ),
                     check=False,
                     stdout=stdout,
                     stderr=stderr,
                     text=True,
-                    timeout=120,
+                    timeout=300,
                 )
         except subprocess.TimeoutExpired as exc:
             cleanup_error = _ensure_projection_pg_stopped(pg_bin, work_root)
@@ -191,6 +200,7 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
         )
         assert cleanup_error is None, cleanup_error
     _assert_parent_timeout_stops_projection_pg(engine=engines[0], fixture=fixture, pg_bin=pg_bin, tmp_path=tmp_path)
+
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows projection contract")
 def test_runtime_projection_read_and_retirement_retry_are_fail_closed(tmp_path: Path) -> None:

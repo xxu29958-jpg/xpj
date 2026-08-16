@@ -290,7 +290,7 @@ marker 均拒绝事后收编，中断重试只恢复相同路径、同 Volume GU
 根句柄取得后和 v2 marker 复读后重复核对，marker 与当前卷一致后才退役 intent；中断后改选路径不自动改绑，盘符复用或任何
 不可判定状态继续绑定原路径并 fail closed。旧 v1 可在既有安装证据下原子迁移；markerless 非空布局在所有普通安装模式都拒绝，
 不能通过当前 ACL 或目录形状重铸权威，只能由未来独立隔离恢复/逻辑导入生成新的受保护 DataRoot。
-机器 lifecycle receipt v7 固化同一 `data_volume_identity`，每次 stale recovery/commit/uninstall 都在 mutation 前复核 receipt、v2 marker
+当前机器 lifecycle receipt v9 固化同一 `data_volume_identity` 并绑定唯一 Database Generation CURRENT；每次 stale recovery/commit/uninstall 都在 mutation 前复核 receipt、v2 marker
 与当前挂载卷。正式 PG/backend SCM 通过 OS `CommonApplicationData` 下 machine-owned、服务只读的稳定 junction 指向该 Volume GUID
 DataRoot；frozen launcher 在任何写入前要求两类 guard、marker、Volume GUID 四项完整，拒绝 reparse marker，并要求 marker 的 DataRoot 等于 junction 最终目标、InstallDir 等于 frozen executable 根、
 Volume GUID 与 SCM/final path 一致。原卷离线或盘符被复用时不会落入 replacement tree。binding 根创建、单服务迁移、junction 退役三个断点只允许精确空根和

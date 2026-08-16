@@ -72,10 +72,7 @@ def _assert_migration_lease_blocks(db_pkg, calls: list[str]) -> None:
     try:
         with contender_engine.begin() as blocker:
             blocker.execute(
-                text(
-                    "SELECT pg_advisory_xact_lock("
-                    "hashtext(current_database()), hashtext(:label))"
-                ),
+                text("SELECT pg_advisory_xact_lock(hashtext(current_database()), hashtext(:label))"),
                 {"label": MIGRATION_LEASE_LABEL},
             )
             with pytest.raises(
@@ -216,7 +213,6 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
 
     import app.database as db_pkg
     from app.database import _database_generation_program as program_reader
-    from app.database._c07_production_ready import _read_live_alembic_revision
     from app.services import backup_service
     from tests._infra.c07_alembic import run_alembic_for_test
 
@@ -271,13 +267,7 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
     assert calls == ["backup"]
     assert _head_revision(db_pkg) == alembic.head_revision
     with db_pkg.engine.connect() as connection:
-        assert (
-            _read_live_alembic_revision(
-                connection,
-                expected_revision=alembic.head_revision,
-            )
-            == alembic.head_revision
-        )
+        assert connection.scalar(text("SELECT version_num FROM public.alembic_version")) == alembic.head_revision
 
 
 def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):

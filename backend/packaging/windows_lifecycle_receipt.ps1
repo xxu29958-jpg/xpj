@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 
-$script:TicketboxLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v8"
+$script:TicketboxLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v9"
 $script:TicketboxLegacyLifecycleReceiptSchema = "ticketbox-windows-lifecycle-receipt-v7"
 $script:TicketboxLifecycleReceiptModes = @(
     "fresh_install",
@@ -24,6 +24,37 @@ $script:TicketboxLifecycleReceiptPreparationStages = @(
     "files_may_have_been_replaced",
     "install_completed"
 )
+$script:TicketboxLifecycleReceiptFields = @(
+    "schema",
+    "mode",
+    "install_dir",
+    "data_root",
+    "data_volume_identity",
+    "pg_port",
+    "backend_port",
+    "target_backend_version_floor",
+    "installer_owner_process_id",
+    "previous_pg_state",
+    "previous_backend_state",
+    "previous_pg_start_policy",
+    "previous_backend_start_policy",
+    "preparation_stage",
+    "backup_required",
+    "backup_completed",
+    "files_may_have_been_replaced",
+    "install_completed",
+    "temporary_pg_service_cleanup_pending",
+    "database_generation_operation_id",
+    "database_generation_current_sha256",
+    "temporary_pg_service_name",
+    "temporary_pg_service_account",
+    "temporary_pg_service_data_root",
+    "backup_path",
+    "backup_sha256",
+    "backup_byte_length",
+    "installed_release_config",
+    "prepared_at_utc"
+)
 $script:TicketboxLifecycleReceiptAclAccounts = @("SYSTEM", "BUILTIN\Administrators")
 $script:TicketboxLifecycleReceiptOwnerAccount = "SYSTEM"
 $script:TicketboxLifecycleReceiptFileName = "installer-lifecycle-receipt.json"
@@ -46,6 +77,16 @@ $script:TicketboxInitdbServiceReceiptPhases = @(
     "initdb_succeeded",
     "converted_to_pgctl"
 )
+
+function Test-TicketboxLifecycleCanonicalOperationId([string]$Value) {
+    if ([string]::IsNullOrEmpty($Value)) { return $false }
+    $parsed = [guid]::Empty
+    return (
+        [guid]::TryParseExact($Value, "D", [ref]$parsed) -and
+        $parsed -ne [guid]::Empty -and
+        $parsed.ToString("D") -ceq $Value
+    )
+}
 
 function Test-TicketboxLifecycleReceiptAuthorizesServiceSidPending {
     param(
@@ -869,58 +910,38 @@ function Write-TicketboxLifecycleReceipt {
         [bool]$FilesMayHaveBeenReplaced = $false,
         [bool]$InstallCompleted = $false,
         [bool]$TemporaryPgServiceCleanupPending = $false,
-        [string]$C07InstallationOperationId = "",
-        [string]$C07ProductionAuthoritySha256 = "",
-        [string]$C07RuntimeProjectionSha256 = "",
+        [string]$DatabaseGenerationOperationId = "",
         [string]$DatabaseGenerationCurrentSha256 = "",
-        [switch]$ReplaceProtectedReceipt,
-        [switch]$ReplaceVerifiedLegacyReceipt
+        [switch]$ReplaceProtectedReceipt
     )
 
     if ($InstallerOwnerProcessId -le 0) {
         throw "Inno 生命周期回执必须绑定有效的安装器进程。"
     }
     if (
-        -not [string]::IsNullOrEmpty($C07InstallationOperationId) -and
-        ([guid]$C07InstallationOperationId).ToString("D") -cne
-            $C07InstallationOperationId
+        -not [string]::IsNullOrEmpty($DatabaseGenerationOperationId) -and
+        -not (Test-TicketboxLifecycleCanonicalOperationId $DatabaseGenerationOperationId)
     ) {
-        throw "安装生命周期回执 C07 installation operation id 无效。"
-    }
-    $hasC07ProductionAuthority =
-        -not [string]::IsNullOrEmpty($C07ProductionAuthoritySha256)
-    $hasC07RuntimeProjection =
-        -not [string]::IsNullOrEmpty($C07RuntimeProjectionSha256)
-    if ($hasC07ProductionAuthority -ne $hasC07RuntimeProjection) {
-        throw "安装生命周期回执 C07 READY 证据必须成对出现。"
-    }
-    if ($hasC07ProductionAuthority) {
-        if (
-            [string]::IsNullOrEmpty($C07InstallationOperationId) -or
-            $C07ProductionAuthoritySha256 -cnotmatch '^[0-9A-F]{64}$' -or
-            $C07RuntimeProjectionSha256 -cnotmatch '^[0-9A-F]{64}$'
-        ) {
-            throw "安装生命周期回执 C07 READY 证据未绑定规范 operation/SHA-256。"
-        }
-        if ($PreparationStage -notin @(
-            "files_may_have_been_replaced",
-            "install_completed"
-        )) {
-            throw "安装生命周期回执只能在文件已替换后绑定 C07 READY 证据。"
-        }
+        throw "安装生命周期回执 database generation operation id 无效。"
     }
     if (
         -not [string]::IsNullOrEmpty($DatabaseGenerationCurrentSha256) -and
         (
-            [string]::IsNullOrEmpty($C07InstallationOperationId) -or
+            [string]::IsNullOrEmpty($DatabaseGenerationOperationId) -or
             $DatabaseGenerationCurrentSha256 -cnotmatch '^[0-9a-f]{64}$' -or
             $PreparationStage -notin @("files_may_have_been_replaced", "install_completed")
         )
     ) {
         throw "安装生命周期回执 database generation current 未绑定规范 operation/SHA-256。"
     }
-    if ($ReplaceVerifiedLegacyReceipt -and -not $ReplaceProtectedReceipt) {
-        throw "legacy 生命周期回执只能通过受保护原子替换迁移。"
+    if (
+        $PreparationStage -ceq "install_completed" -and
+        (
+            -not (Test-TicketboxLifecycleCanonicalOperationId $DatabaseGenerationOperationId) -or
+            $DatabaseGenerationCurrentSha256 -cnotmatch '^[0-9a-f]{64}$'
+        )
+    ) {
+        throw "完成态生命周期回执必须绑定唯一 database generation operation/CURRENT。"
     }
     $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
         $TargetBackendVersionFloor `
@@ -1025,37 +1046,24 @@ function Write-TicketboxLifecycleReceipt {
         }
         $existingFloorProperty =
             $existingReceipt.PSObject.Properties["target_backend_version_floor"]
-        if ($ReplaceVerifiedLegacyReceipt) {
-            if (
-                $existingReceipt.schema -cne $script:TicketboxLegacyLifecycleReceiptSchema -or
-                $null -ne $existingFloorProperty
-            ) {
-                throw "只有已验证且尚无版本下限的 v7 生命周期回执可以迁移。"
-            }
+        if (
+            $existingReceipt.schema -cne $script:TicketboxLifecycleReceiptSchema -or
+            $null -eq $existingFloorProperty -or
+            $existingFloorProperty.Value -isnot [string]
+        ) {
+            throw "既有安装生命周期回执缺少受支持的目标版本下限；拒绝替换。"
         }
-        else {
-            if (
-                $existingReceipt.schema -cne $script:TicketboxLifecycleReceiptSchema -or
-                $null -eq $existingFloorProperty -or
-                $existingFloorProperty.Value -isnot [string]
-            ) {
-                throw "既有安装生命周期回执缺少受支持的目标版本下限；拒绝替换。"
-            }
-            $existingFloor = ConvertTo-TicketboxLifecycleVersion `
-                ([string]$existingFloorProperty.Value) `
-                "既有生命周期回执目标版本下限"
-            if (
-                [string]$existingFloorProperty.Value -cne $existingFloor.Canonical -or
-                (Compare-TicketboxLifecycleVersions `
-                    -Left $targetVersionFloor.Canonical `
-                    -Right $existingFloor.Canonical) -lt 0
-            ) {
-                throw "安装生命周期回执目标版本下限不能回退。"
-            }
+        $existingFloor = ConvertTo-TicketboxLifecycleVersion `
+            ([string]$existingFloorProperty.Value) `
+            "既有生命周期回执目标版本下限"
+        if (
+            [string]$existingFloorProperty.Value -cne $existingFloor.Canonical -or
+            (Compare-TicketboxLifecycleVersions `
+                -Left $targetVersionFloor.Canonical `
+                -Right $existingFloor.Canonical) -lt 0
+        ) {
+            throw "安装生命周期回执目标版本下限不能回退。"
         }
-    }
-    elseif ($ReplaceVerifiedLegacyReceipt) {
-        throw "legacy 生命周期回执迁移缺少既有受保护回执。"
     }
     $payload = [ordered]@{
         schema = $script:TicketboxLifecycleReceiptSchema
@@ -1077,9 +1085,7 @@ function Write-TicketboxLifecycleReceipt {
         files_may_have_been_replaced = $FilesMayHaveBeenReplaced
         install_completed = $InstallCompleted
         temporary_pg_service_cleanup_pending = $TemporaryPgServiceCleanupPending
-        c07_installation_operation_id = $C07InstallationOperationId
-        c07_production_authority_sha256 = $C07ProductionAuthoritySha256
-        c07_runtime_projection_sha256 = $C07RuntimeProjectionSha256
+        database_generation_operation_id = $DatabaseGenerationOperationId
         database_generation_current_sha256 = $DatabaseGenerationCurrentSha256
         temporary_pg_service_name = [string]$InstalledReleaseConfig.pg_service_name
         temporary_pg_service_account = Get-TicketboxReleaseServiceLogonAccount `
@@ -1123,58 +1129,42 @@ function Read-TicketboxLifecycleReceipt {
     catch {
         throw "安装生命周期回执不是有效 JSON。"
     }
-    if ($null -eq $receipt.PSObject.Properties["c07_installation_operation_id"]) {
+    if ([string]$receipt.schema -ceq $script:TicketboxLifecycleReceiptSchema) {
+        $actualFields = @(
+            $receipt.PSObject.Properties.Name | Sort-Object -CaseSensitive
+        )
+        $expectedFields = @(
+            $script:TicketboxLifecycleReceiptFields | Sort-Object -CaseSensitive
+        )
+        if (
+            $actualFields.Count -ne $expectedFields.Count -or
+            @(Compare-Object $expectedFields $actualFields -CaseSensitive).Count -ne 0
+        ) {
+            throw "当前生命周期回执字段集合不闭合。"
+        }
+    }
+    if ($null -eq $receipt.PSObject.Properties["database_generation_operation_id"]) {
         $receipt | Add-Member `
-            -NotePropertyName c07_installation_operation_id `
+            -NotePropertyName database_generation_operation_id `
             -NotePropertyValue ""
     }
-    foreach ($propertyName in @(
-        "c07_production_authority_sha256",
-        "c07_runtime_projection_sha256",
-        "database_generation_current_sha256"
-    )) {
+    foreach ($propertyName in @("database_generation_current_sha256")) {
         if ($null -eq $receipt.PSObject.Properties[$propertyName]) {
             $receipt | Add-Member `
                 -NotePropertyName $propertyName `
                 -NotePropertyValue ""
         }
     }
-    $c07InstallationOperationId =
-        [string]$receipt.c07_installation_operation_id
-    if (-not [string]::IsNullOrEmpty($c07InstallationOperationId)) {
-        $parsedC07InstallationOperationId = [guid]::Empty
+    $databaseGenerationOperationId =
+        [string]$receipt.database_generation_operation_id
+    if (-not [string]::IsNullOrEmpty($databaseGenerationOperationId)) {
+        $parsedDatabaseGenerationOperationId = [guid]::Empty
         if (
-            -not [guid]::TryParseExact(
-                $c07InstallationOperationId,
-                "D",
-                [ref]$parsedC07InstallationOperationId
-            ) -or
-            $parsedC07InstallationOperationId.ToString("D") -cne
-                $c07InstallationOperationId
+            -not (Test-TicketboxLifecycleCanonicalOperationId `
+                $databaseGenerationOperationId)
         ) {
-            throw "安装生命周期回执 C07 installation operation id 无效。"
+            throw "安装生命周期回执 database generation operation id 无效。"
         }
-    }
-    $c07ProductionAuthoritySha256 =
-        [string]$receipt.c07_production_authority_sha256
-    $c07RuntimeProjectionSha256 =
-        [string]$receipt.c07_runtime_projection_sha256
-    $hasC07ProductionAuthority =
-        -not [string]::IsNullOrEmpty($c07ProductionAuthoritySha256)
-    $hasC07RuntimeProjection =
-        -not [string]::IsNullOrEmpty($c07RuntimeProjectionSha256)
-    if ($hasC07ProductionAuthority -ne $hasC07RuntimeProjection) {
-        throw "安装生命周期回执 C07 READY 证据不完整。"
-    }
-    if (
-        $hasC07ProductionAuthority -and
-        (
-            [string]::IsNullOrEmpty($c07InstallationOperationId) -or
-            $c07ProductionAuthoritySha256 -cnotmatch '^[0-9A-F]{64}$' -or
-            $c07RuntimeProjectionSha256 -cnotmatch '^[0-9A-F]{64}$'
-        )
-    ) {
-        throw "安装生命周期回执 C07 READY 证据未绑定规范 operation/SHA-256。"
     }
     $targetVersionProperty = $receipt.PSObject.Properties["target_backend_version_floor"]
     $isLegacyV7 =
@@ -1226,23 +1216,26 @@ function Read-TicketboxLifecycleReceipt {
         throw "安装生命周期回执 preparation_stage 不受支持。"
     }
     if (
-        $hasC07ProductionAuthority -and
-        [string]$receipt.preparation_stage -notin @(
-            "files_may_have_been_replaced",
-            "install_completed"
-        )
-    ) {
-        throw "安装生命周期回执在文件替换前携带了 C07 READY 证据。"
-    }
-    if (
         -not [string]::IsNullOrEmpty([string]$receipt.database_generation_current_sha256) -and
         (
             [string]$receipt.database_generation_current_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
-            [string]::IsNullOrEmpty($c07InstallationOperationId) -or
+            [string]::IsNullOrEmpty($databaseGenerationOperationId) -or
             [string]$receipt.preparation_stage -notin @("files_may_have_been_replaced", "install_completed")
         )
     ) {
         throw "安装生命周期回执 database generation evidence 无效。"
+    }
+    if (
+        -not $isLegacyV7 -and
+        [string]$receipt.preparation_stage -ceq "install_completed" -and
+        (
+            -not (Test-TicketboxLifecycleCanonicalOperationId `
+                $databaseGenerationOperationId) -or
+            [string]$receipt.database_generation_current_sha256 -cnotmatch
+                '^[0-9a-f]{64}$'
+        )
+    ) {
+        throw "完成态生命周期回执缺少 database generation authority。"
     }
     if (
         [string]$receipt.previous_pg_state -notin $script:TicketboxLifecycleReceiptStates -or
@@ -1401,127 +1394,6 @@ function Read-TicketboxLifecycleReceipt {
     return $receipt
 }
 
-function Read-TicketboxCompatibleLifecycleReceipt {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$InstallDir,
-        [Parameter(Mandatory = $true)][string]$DataRoot,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
-        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
-        [Parameter(Mandatory = $true)][string]$CurrentTargetBackendVersion,
-        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
-        [switch]$AllowPreviousInstallerOwnerProcessId
-    )
-
-    $canonicalPath = Assert-TicketboxLifecycleReceiptPath $Path
-    Assert-TicketboxProtectedLifecycleReceipt $canonicalPath
-    try {
-        $envelope = Get-Content -LiteralPath $canonicalPath -Encoding UTF8 -Raw |
-            ConvertFrom-Json
-    }
-    catch {
-        throw "安装生命周期回执不是有效 JSON。"
-    }
-    $readArguments = @{
-        Path = $canonicalPath
-        InstallDir = $InstallDir
-        DataRoot = $DataRoot
-        PgPort = $PgPort
-        BackendPort = $BackendPort
-        TargetReleaseConfig = $TargetReleaseConfig
-        InstallerOwnerProcessId = $InstallerOwnerProcessId
-        AllowPreviousInstallerOwnerProcessId = $AllowPreviousInstallerOwnerProcessId
-    }
-    if ([string]$envelope.schema -ceq $script:TicketboxLegacyLifecycleReceiptSchema) {
-        $readArguments.AllowLegacyV7WithoutTargetVersionFloor = $true
-    }
-    elseif ([string]$envelope.schema -ceq $script:TicketboxLifecycleReceiptSchema) {
-        $readArguments.CurrentTargetBackendVersion = $CurrentTargetBackendVersion
-    }
-    else {
-        throw "安装生命周期回执 schema 不受支持。"
-    }
-    return Read-TicketboxLifecycleReceipt @readArguments
-}
-
-function ConvertTo-TicketboxCurrentLifecycleReceipt {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$InstallDir,
-        [Parameter(Mandatory = $true)][string]$DataRoot,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$PgPort,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$BackendPort,
-        [Parameter(Mandatory = $true)][object]$TargetReleaseConfig,
-        [Parameter(Mandatory = $true)][string]$CurrentTargetBackendVersion,
-        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId,
-        [switch]$AllowPreviousInstallerOwnerProcessId
-    )
-
-    $compatibleReceipt = Read-TicketboxCompatibleLifecycleReceipt `
-        -Path $Path `
-        -InstallDir $InstallDir `
-        -DataRoot $DataRoot `
-        -PgPort $PgPort `
-        -BackendPort $BackendPort `
-        -TargetReleaseConfig $TargetReleaseConfig `
-        -CurrentTargetBackendVersion $CurrentTargetBackendVersion `
-        -InstallerOwnerProcessId $InstallerOwnerProcessId `
-        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
-    if ([string]$compatibleReceipt.schema -ceq $script:TicketboxLifecycleReceiptSchema) {
-        return $compatibleReceipt
-    }
-    $canonicalPath = Assert-TicketboxLifecycleReceiptPath $Path
-    try {
-        Write-TicketboxLifecycleReceipt `
-            -Path $canonicalPath `
-            -Mode ([string]$compatibleReceipt.mode) `
-            -InstallDir ([string]$compatibleReceipt.install_dir) `
-            -DataRoot ([string]$compatibleReceipt.data_root) `
-            -PgPort ([int]$compatibleReceipt.pg_port) `
-            -BackendPort ([int]$compatibleReceipt.backend_port) `
-            -InstalledReleaseConfig $compatibleReceipt.installed_release_config `
-            -TargetBackendVersionFloor $CurrentTargetBackendVersion `
-            -InstallerOwnerProcessId $InstallerOwnerProcessId `
-            -PreviousPgState ([string]$compatibleReceipt.previous_pg_state) `
-            -PreviousBackendState ([string]$compatibleReceipt.previous_backend_state) `
-            -PreviousPgStartPolicy ([string]$compatibleReceipt.previous_pg_start_policy) `
-            -PreviousBackendStartPolicy ([string]$compatibleReceipt.previous_backend_start_policy) `
-            -BackupRequired ([bool]$compatibleReceipt.backup_required) `
-            -BackupCompleted ([bool]$compatibleReceipt.backup_completed) `
-            -PreparationStage ([string]$compatibleReceipt.preparation_stage) `
-            -BackupPath ([string]$compatibleReceipt.backup_path) `
-            -BackupSha256 ([string]$compatibleReceipt.backup_sha256) `
-            -BackupByteLength ([long]$compatibleReceipt.backup_byte_length) `
-            -FilesMayHaveBeenReplaced ([bool]$compatibleReceipt.files_may_have_been_replaced) `
-            -InstallCompleted ([bool]$compatibleReceipt.install_completed) `
-            -TemporaryPgServiceCleanupPending `
-                ([bool]$compatibleReceipt.temporary_pg_service_cleanup_pending) `
-            -C07InstallationOperationId `
-                ([string]$compatibleReceipt.c07_installation_operation_id) `
-            -C07ProductionAuthoritySha256 `
-                ([string]$compatibleReceipt.c07_production_authority_sha256) `
-            -C07RuntimeProjectionSha256 `
-                ([string]$compatibleReceipt.c07_runtime_projection_sha256) `
-            -DatabaseGenerationCurrentSha256 `
-                ([string]$compatibleReceipt.database_generation_current_sha256) `
-            -ReplaceProtectedReceipt `
-            -ReplaceVerifiedLegacyReceipt
-    }
-    finally {
-        Close-TicketboxLifecycleBackupGuard $compatibleReceipt
-    }
-    return Read-TicketboxLifecycleReceipt `
-        -Path $canonicalPath `
-        -InstallDir $InstallDir `
-        -DataRoot $DataRoot `
-        -PgPort $PgPort `
-        -BackendPort $BackendPort `
-        -TargetReleaseConfig $TargetReleaseConfig `
-        -CurrentTargetBackendVersion $CurrentTargetBackendVersion `
-        -InstallerOwnerProcessId $InstallerOwnerProcessId
-}
-
 function Assert-TicketboxLifecycleReceiptStage([object]$Receipt, [string]$ExpectedStage) {
     if ([string]$Receipt.preparation_stage -ne $ExpectedStage) {
         throw "安装生命周期回执不能从 $($Receipt.preparation_stage) 跃迁；预期阶段为 $ExpectedStage。"
@@ -1569,15 +1441,13 @@ function Set-TicketboxLifecycleReceiptTargetVersionFloor {
         -FilesMayHaveBeenReplaced ([bool]$Receipt.files_may_have_been_replaced) `
         -InstallCompleted ([bool]$Receipt.install_completed) `
         -TemporaryPgServiceCleanupPending ([bool]$Receipt.temporary_pg_service_cleanup_pending) `
-        -C07InstallationOperationId ([string]$Receipt.c07_installation_operation_id) `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
     Close-TicketboxLifecycleBackupGuard $Receipt
 }
 
-function Set-TicketboxLifecycleReceiptC07InstallationOperation {
+function Set-TicketboxLifecycleReceiptDatabaseGenerationOperation {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][object]$Receipt,
@@ -1586,7 +1456,7 @@ function Set-TicketboxLifecycleReceiptC07InstallationOperation {
     )
     $canonicalOperationId = ([guid]$OperationId).ToString("D")
     $existingOperationId =
-        [string]$Receipt.c07_installation_operation_id
+        [string]$Receipt.database_generation_operation_id
     if (-not [string]::IsNullOrEmpty($existingOperationId)) {
         $parsedExistingOperationId = [guid]::Empty
         if (
@@ -1599,10 +1469,10 @@ function Set-TicketboxLifecycleReceiptC07InstallationOperation {
             $parsedExistingOperationId.ToString("D") -cne
                 $existingOperationId
         ) {
-            throw "安装事务已有的 C07 installation operation 不是规范 UUID。"
+            throw "安装事务已有的 database generation operation 不是规范 UUID。"
         }
         if ($existingOperationId -cne $canonicalOperationId) {
-            throw "安装事务已绑定其他 C07 installation operation。"
+            throw "安装事务已绑定其他 database generation operation。"
         }
         Close-TicketboxLifecycleBackupGuard $Receipt
         return
@@ -1638,9 +1508,7 @@ function Set-TicketboxLifecycleReceiptC07InstallationOperation {
         -TemporaryPgServiceCleanupPending (
             [bool]$Receipt.temporary_pg_service_cleanup_pending
         ) `
-        -C07InstallationOperationId $canonicalOperationId `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId $canonicalOperationId `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
     Close-TicketboxLifecycleBackupGuard $Receipt
@@ -1656,13 +1524,11 @@ function Set-TicketboxLifecycleReceiptDatabaseGenerationEvidence {
     )
     $canonicalOperationId = ([guid]$OperationId).ToString("D")
     if (
-        [string]$Receipt.c07_installation_operation_id -cne $canonicalOperationId -or
+        [string]$Receipt.database_generation_operation_id -cne $canonicalOperationId -or
         $CurrentSha256 -cnotmatch '^[0-9a-f]{64}$' -or
         [string]$Receipt.preparation_stage -cnotin @(
             "files_may_have_been_replaced", "install_completed"
-        ) -or
-        -not [string]::IsNullOrEmpty([string]$Receipt.c07_production_authority_sha256) -or
-        -not [string]::IsNullOrEmpty([string]$Receipt.c07_runtime_projection_sha256)
+        )
     ) {
         throw "安装事务只能绑定唯一 database generation CURRENT；拒绝双 READY authority。"
     }
@@ -1697,7 +1563,7 @@ function Set-TicketboxLifecycleReceiptDatabaseGenerationEvidence {
         -FilesMayHaveBeenReplaced ([bool]$Receipt.files_may_have_been_replaced) `
         -InstallCompleted ([bool]$Receipt.install_completed) `
         -TemporaryPgServiceCleanupPending ([bool]$Receipt.temporary_pg_service_cleanup_pending) `
-        -C07InstallationOperationId $canonicalOperationId `
+        -DatabaseGenerationOperationId $canonicalOperationId `
         -DatabaseGenerationCurrentSha256 $CurrentSha256 `
         -ReplaceProtectedReceipt
     Close-TicketboxLifecycleBackupGuard $Receipt
@@ -1733,9 +1599,7 @@ function Set-TicketboxLifecycleReceiptDeferredBackup {
         -PreparationStage "backup_deferred_until_program_files_installed" `
         -FilesMayHaveBeenReplaced $false `
         -InstallCompleted $false `
-        -C07InstallationOperationId ([string]$Receipt.c07_installation_operation_id) `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
 }
@@ -1769,9 +1633,7 @@ function Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending {
         -PreparationStage "program_files_installed_backup_pending" `
         -FilesMayHaveBeenReplaced $true `
         -InstallCompleted $false `
-        -C07InstallationOperationId ([string]$Receipt.c07_installation_operation_id) `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
 }
@@ -1805,9 +1667,7 @@ function Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending {
         -FilesMayHaveBeenReplaced $true `
         -InstallCompleted $false `
         -TemporaryPgServiceCleanupPending $CleanupPending `
-        -C07InstallationOperationId ([string]$Receipt.c07_installation_operation_id) `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
 }
@@ -1850,9 +1710,7 @@ function Set-TicketboxLifecycleReceiptDeferredBackupCompleted {
         -BackupByteLength $backupEvidence.ByteLength `
         -FilesMayHaveBeenReplaced $true `
         -InstallCompleted $false `
-        -C07InstallationOperationId ([string]$Receipt.c07_installation_operation_id) `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
 }
@@ -1887,9 +1745,7 @@ function Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced {
         -BackupByteLength ([long]$Receipt.backup_byte_length) `
         -FilesMayHaveBeenReplaced $true `
         -InstallCompleted ([bool]$Receipt.install_completed) `
-        -C07InstallationOperationId ([string]$Receipt.c07_installation_operation_id) `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
     Close-TicketboxLifecycleBackupGuard $Receipt
@@ -1925,9 +1781,7 @@ function Set-TicketboxLifecycleReceiptInstallCompleted {
         -BackupByteLength ([long]$Receipt.backup_byte_length) `
         -FilesMayHaveBeenReplaced ([bool]$Receipt.files_may_have_been_replaced) `
         -InstallCompleted $true `
-        -C07InstallationOperationId ([string]$Receipt.c07_installation_operation_id) `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
     Close-TicketboxLifecycleBackupGuard $Receipt
@@ -2271,44 +2125,14 @@ function Complete-TicketboxInstalledLifecycleTransaction {
     )) {
         throw "安装提交阶段不允许从当前回执继续：$($receipt.preparation_stage)。"
     }
-    if (
-        [string]::IsNullOrEmpty(
-            [string]$receipt.c07_installation_operation_id
-        ) -or
-        [string]$receipt.database_generation_current_sha256 -cnotmatch
-            '^[0-9a-f]{64}$' -or
-        -not [string]::IsNullOrEmpty(
-            [string]$receipt.c07_production_authority_sha256
-        ) -or
-        -not [string]::IsNullOrEmpty(
-            [string]$receipt.c07_runtime_projection_sha256
-        )
-    ) {
-        throw "安装提交缺少唯一 database generation CURRENT，或仍存在双 READY authority。"
-    }
-    if (
-        $null -eq (
-            Get-Command `
-                Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
-                -ErrorAction SilentlyContinue
-        )
-    ) {
-        throw "安装提交缺少 database generation CURRENT 复读器。"
-    }
-    Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
-        -ExpectedOperationId (
-            [string]$receipt.c07_installation_operation_id
-        ) `
-        -ExpectedCurrentSha256 (
-            [string]$receipt.database_generation_current_sha256
-        ) | Out-Null
+    Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $receipt
     if ([string]$receipt.preparation_stage -eq "files_may_have_been_replaced") {
         $generationStateRoot = Get-TicketboxDatabaseGenerationStateRoot (
             Get-TicketboxInstallerStateDirectory
         )
         $recoveryArchive = Read-TicketboxDatabaseGenerationOperationArtifact `
             $generationStateRoot `
-            ([string]$receipt.c07_installation_operation_id) `
+            ([string]$receipt.database_generation_operation_id) `
             "target-recovery-archive"
         [void](Assert-TicketboxDatabaseGenerationRecoveryArchive `
             $generationStateRoot $recoveryArchive)
@@ -2322,7 +2146,7 @@ function Complete-TicketboxInstalledLifecycleTransaction {
         -BackendServiceName ([string]$TargetReleaseConfig.backend_service_name) `
         -BuildManifestPath $BuildManifestPath `
         -ExpectedOperationId (
-            [string]$receipt.c07_installation_operation_id
+            [string]$receipt.database_generation_operation_id
         ) | Out-Null
     if ([string]$receipt.preparation_stage -eq "files_may_have_been_replaced") {
         Set-TicketboxLifecycleReceiptInstallCompleted `
@@ -2344,7 +2168,7 @@ function Complete-TicketboxInstalledLifecycleTransaction {
         -StateRoot (Get-TicketboxDatabaseGenerationStateRoot (
             Get-TicketboxInstallerStateDirectory
         )) `
-        -OperationId ([string]$receipt.c07_installation_operation_id) `
+        -OperationId ([string]$receipt.database_generation_operation_id) `
         -LifecycleLock $LifecycleLock
     Remove-TicketboxPgRecoveryToolset `
         -ExpectedMajor 0 `
@@ -2403,9 +2227,7 @@ function Set-TicketboxLifecycleReceiptInstallerOwner {
         -FilesMayHaveBeenReplaced ([bool]$Receipt.files_may_have_been_replaced) `
         -InstallCompleted ([bool]$Receipt.install_completed) `
         -TemporaryPgServiceCleanupPending ([bool]$Receipt.temporary_pg_service_cleanup_pending) `
-        -C07InstallationOperationId ([string]$Receipt.c07_installation_operation_id) `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
     Close-TicketboxLifecycleBackupGuard $Receipt
@@ -2450,9 +2272,7 @@ function Set-TicketboxLifecycleReceiptPrepared {
         -BackupByteLength $(if ($null -ne $backupEvidence) { $backupEvidence.ByteLength } else { 0 }) `
         -FilesMayHaveBeenReplaced $false `
         -InstallCompleted $false `
-        -C07InstallationOperationId ([string]$Receipt.c07_installation_operation_id) `
-        -C07ProductionAuthoritySha256 ([string]$Receipt.c07_production_authority_sha256) `
-        -C07RuntimeProjectionSha256 ([string]$Receipt.c07_runtime_projection_sha256) `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
         -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
         -ReplaceProtectedReceipt
 }
@@ -2470,6 +2290,127 @@ function Assert-TicketboxCompletedLifecycleReceipt([object]$Receipt) {
     ) {
         throw "只能清理已完成且无临时服务清理义务的安装生命周期回执。"
     }
+    if (
+        [string]$Receipt.schema -ceq $script:TicketboxLifecycleReceiptSchema -and
+        (
+            -not (Test-TicketboxLifecycleCanonicalOperationId `
+                ([string]$Receipt.database_generation_operation_id)) -or
+            [string]$Receipt.database_generation_current_sha256 -cnotmatch
+                '^[0-9a-f]{64}$'
+        )
+    ) {
+        throw "当前完成态生命周期回执缺少 database generation authority。"
+    }
+}
+
+function Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt
+    )
+
+    if (
+        $null -eq $Receipt -or
+        [string]$Receipt.schema -cne $script:TicketboxLifecycleReceiptSchema -or
+        -not (Test-TicketboxLifecycleCanonicalOperationId `
+            ([string]$Receipt.database_generation_operation_id)) -or
+        [string]$Receipt.database_generation_current_sha256 -cnotmatch
+            '^[0-9a-f]{64}$'
+    ) {
+        throw "生命周期回执缺少唯一 database generation CURRENT。"
+    }
+    if (
+        $null -eq (
+            Get-Command `
+                Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
+                -ErrorAction SilentlyContinue
+        )
+    ) {
+        throw "生命周期回执缺少 database generation CURRENT 复读器。"
+    }
+    Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
+        -ExpectedOperationId (
+            [string]$Receipt.database_generation_operation_id
+        ) `
+        -ExpectedCurrentSha256 (
+            [string]$Receipt.database_generation_current_sha256
+        ) | Out-Null
+}
+
+function Assert-TicketboxLifecycleReceiptMutationDatabaseGenerationAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    $operationId = [string]$Receipt.database_generation_operation_id
+    $currentSha256 = [string]$Receipt.database_generation_current_sha256
+    if (-not [string]::IsNullOrEmpty($currentSha256)) {
+        Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $Receipt
+        return
+    }
+    if (
+        [bool]$Receipt.install_completed -or
+        (
+            -not [string]::IsNullOrEmpty($operationId) -and
+            -not (Test-TicketboxLifecycleCanonicalOperationId $operationId)
+        )
+    ) {
+        throw "$Context 生命周期回执缺少完整 database generation CURRENT。"
+    }
+    foreach ($dependency in @(
+        "Get-TicketboxInstallerStateDirectory",
+        "Get-TicketboxDatabaseGenerationStateRoot",
+        "Read-TicketboxDatabaseGenerationCurrent"
+    )) {
+        if ($null -eq (Get-Command $dependency -ErrorAction SilentlyContinue)) {
+            throw "$Context 生命周期回执缺少 database generation CURRENT 观察器：$dependency。"
+        }
+    }
+    $stateRoot = Get-TicketboxDatabaseGenerationStateRoot (
+        Get-TicketboxInstallerStateDirectory
+    )
+    $observedCurrent = Read-TicketboxDatabaseGenerationCurrent `
+        $stateRoot `
+        -AllowAbsent
+    if ($null -eq $observedCurrent) { return }
+    if ([string]::IsNullOrEmpty($operationId)) {
+        throw "$Context 生命周期回执未绑定已发布的 database generation CURRENT。"
+    }
+    $observedReceipt = [pscustomobject]@{
+        schema = $script:TicketboxLifecycleReceiptSchema
+        database_generation_operation_id = $operationId
+        database_generation_current_sha256 = [string]$observedCurrent.PayloadSha256
+    }
+    Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $observedReceipt
+}
+
+function Assert-TicketboxPrepareLifecycleReceiptMutationAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt
+    )
+
+    if ([string]$Receipt.schema -cne $script:TicketboxLifecycleReceiptSchema) {
+        throw "prepare 只接受当前 v9 生命周期回执。"
+    }
+    Assert-TicketboxLifecycleReceiptMutationDatabaseGenerationAuthority `
+        -Receipt $Receipt `
+        -Context "prepare"
+}
+
+function Assert-TicketboxUninstallLifecycleReceiptMutationAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Receipt
+    )
+
+    if ([string]$Receipt.schema -ceq $script:TicketboxLegacyLifecycleReceiptSchema) {
+        return
+    }
+    if ([string]$Receipt.schema -cne $script:TicketboxLifecycleReceiptSchema) {
+        throw "uninstall 只接受当前 v9 或只读 legacy v7 生命周期回执。"
+    }
+    Assert-TicketboxLifecycleReceiptMutationDatabaseGenerationAuthority `
+        -Receipt $Receipt `
+        -Context "uninstall"
 }
 
 function Read-TicketboxUninstallLifecycleReceipt {

@@ -18,11 +18,9 @@ import app.database._c07_production_authority as c07_production_authority
 import app.database._c07_production_context as c07_production_context
 import app.database._c07_production_contract_types as c07_contract_types
 import app.database._c07_production_fence as c07_production_fence
-import app.database._c07_production_ready as c07_production_ready
 import app.database._c07_production_recovery as c07_production_recovery
 import app.database._c07_production_restore as c07_production_restore
 import app.database._c07_receipt_validation as c07_receipt_validation
-import app.database._c07_runtime_projection as c07_runtime_projection
 import app.money_carrier as money_carrier
 import app.money_contract_manifest as money_contract_manifest
 import app.money_contract_types as money_contract_types
@@ -50,11 +48,9 @@ _DIRECTLY_REFERENCED_MODULES = (
     c07_production_authority,
     c07_production_context,
     c07_production_fence,
-    c07_production_ready,
     c07_production_recovery,
     c07_production_restore,
     c07_receipt_validation,
-    c07_runtime_projection,
     import_money,
     money_carrier,
     money_contract_manifest,
@@ -376,9 +372,7 @@ def _historical_operation_context_payload() -> dict[str, object]:
 
 
 def test_writer_freeze_binding_accepts_shared_canonical_operation_guid() -> None:
-    context = c07_production_context.parse_production_migration_context(
-        _historical_operation_context_payload()
-    )
+    context = c07_production_context.parse_production_migration_context(_historical_operation_context_payload())
     payload = {
         "schema": c07_contract_types.FREEZE_PROOF_SCHEMA,
         "operation_id": _HISTORICAL_OPERATION_ID,
@@ -408,12 +402,7 @@ def test_writer_freeze_binding_accepts_shared_canonical_operation_guid() -> None
 
 
 def test_maintenance_accepts_shared_guid_but_uuid_fields_remain_strict() -> None:
-    assert (
-        c07_maintenance_common._canonical_operation_id(
-            _HISTORICAL_OPERATION_ID
-        )
-        == _HISTORICAL_OPERATION_ID
-    )
+    assert c07_maintenance_common._canonical_operation_id(_HISTORICAL_OPERATION_ID) == _HISTORICAL_OPERATION_ID
     with pytest.raises(c07_contract_types.C07ProductionMigrationError):
         c07_contract_types._require_uuid(
             _HISTORICAL_OPERATION_ID,
@@ -445,17 +434,10 @@ def test_v5_context_parses_absolute_windows_artifact_paths(
     host_root: str,
 ) -> None:
     payload = _context_payload("a" * 64)
-    recovery_root = (
-        f"{host_root}\\recovery-generations\\"
-        f"operation-{_CURRENT_OPERATION_ID}.ready"
-    )
-    payload["writer_freeze_proof_path"] = (
-        f"{host_root}\\operation-{_CURRENT_OPERATION_ID}-freeze-proof-binding-1.json"
-    )
+    recovery_root = f"{host_root}\\recovery-generations\\operation-{_CURRENT_OPERATION_ID}.ready"
+    payload["writer_freeze_proof_path"] = f"{host_root}\\operation-{_CURRENT_OPERATION_ID}-freeze-proof-binding-1.json"
     payload["recovery_manifest_path"] = f"{recovery_root}\\manifest.json"
-    payload["isolated_restore_evidence_path"] = (
-        f"{recovery_root}\\isolated-restore-evidence.json"
-    )
+    payload["isolated_restore_evidence_path"] = f"{recovery_root}\\isolated-restore-evidence.json"
 
     context = c07_production_context.parse_production_migration_context(payload)
 

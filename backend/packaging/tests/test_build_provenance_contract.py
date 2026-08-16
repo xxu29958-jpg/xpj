@@ -343,9 +343,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert smoke["stderr"] == "empty"
     assert smoke["result"]["source_revision"] == "base"
     assert smoke["result"]["target_revision"] == "20260729_0001"
-    assert smoke["result"]["generation_program_sha256"] == manifest["payload"][
-        "database_generation_program"
-    ]["sha256"]
+    assert smoke["result"]["generation_program_sha256"] == manifest["payload"]["database_generation_program"]["sha256"]
 
     validate = _manifest_command(backend, dist, "Assert-TicketboxBackendBuildManifest")
     assert _run_powershell(validate).returncode == 0
@@ -354,9 +352,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     tampered_helper_smoke = _run_powershell(validate)
     assert tampered_helper_smoke.returncode != 0
-    assert "generation helper" in (
-        tampered_helper_smoke.stdout + tampered_helper_smoke.stderr
-    ).lower()
+    assert "generation helper" in (tampered_helper_smoke.stdout + tampered_helper_smoke.stderr).lower()
     rewrite = _run_powershell(_manifest_command(backend, dist, "Write-TicketboxBackendBuildManifest"))
     assert rewrite.returncode == 0, rewrite.stderr
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1107,9 +1103,16 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         "_c07_fresh_source_bootstrap.py",
         "_c07_maintenance_upgrade.py",
         "_c07_production_migration.py",
+        "_c07_production_ready.py",
+        "_c07_runtime_projection.py",
     ):
         assert not (ROOT / "app" / "database" / retired_module).exists()
-        assert f'"{retired_module}"' not in backend_spec
+    for retired_unlisted_module in (
+        "_c07_fresh_source_bootstrap.py",
+        "_c07_maintenance_upgrade.py",
+        "_c07_production_migration.py",
+    ):
+        assert f'"{retired_unlisted_module}"' not in backend_spec
     for standalone_dependency in (
         "app.app_meta_observation",
         "app.canonical_money_facts",
@@ -1139,8 +1142,13 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         "app.tenant_contract",
     ):
         assert f'"{required_archive_module}"' in backend_build
-    assert 'Frozen backend archive omitted required app module: $requiredModule' in backend_build
-    assert '"app\\database\\_c07_maintenance_plan.py"' in backend_build
+    assert "Frozen backend archive omitted required app module: $requiredModule" in backend_build
+    for retired_source_path in (
+        "app\\database\\_c07_maintenance_plan.py",
+        "app\\database\\_c07_production_ready.py",
+        "app\\database\\_c07_runtime_projection.py",
+    ):
+        assert f'"{retired_source_path}"' in backend_build
     assert "Retired database generation contract returned to the source snapshot" in backend_build
     retired_frozen_modules = (
         "app.database._c07_ceremony",

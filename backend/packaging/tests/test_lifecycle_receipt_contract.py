@@ -22,6 +22,8 @@ def _read(name: str) -> str:
 
 def _literal(path: Path) -> str:
     return str(path).replace("'", "''")
+
+
 def test_installation_receipt_operation_is_write_once_and_cross_engine(
     tmp_path: Path,
 ) -> None:
@@ -38,7 +40,7 @@ $script:lastOperation = ''
 function Write-TicketboxLifecycleReceipt {{
     $script:writes += 1
     for ($index = 0; $index -lt $args.Count - 1; $index++) {{
-        if ([string]$args[$index] -ceq '-C07InstallationOperationId') {{
+        if ([string]$args[$index] -ceq '-DatabaseGenerationOperationId') {{
             $script:lastOperation = [string]$args[$index + 1]
         }}
     }}
@@ -56,34 +58,33 @@ $receipt = [pscustomobject]@{{
     backup_path = ''; backup_sha256 = ''; backup_byte_length = 0
     files_may_have_been_replaced = $false; install_completed = $false
     temporary_pg_service_cleanup_pending = $false
-    c07_installation_operation_id = ''
-    c07_production_authority_sha256 = ''; c07_runtime_projection_sha256 = ''
+    database_generation_operation_id = ''
     database_generation_current_sha256 = ''
 }}
-Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt `
+Set-TicketboxLifecycleReceiptDatabaseGenerationOperation -Path 'unused' -Receipt $receipt `
     -InstallerOwnerProcessId 1234 -OperationId $operation
 if ($script:writes -ne 1 -or $script:lastOperation -cne $operation) {{
     throw 'initial installation operation was not persisted exactly once'
 }}
-$receipt.c07_installation_operation_id = $operation
-Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt `
+$receipt.database_generation_operation_id = $operation
+Set-TicketboxLifecycleReceiptDatabaseGenerationOperation -Path 'unused' -Receipt $receipt `
     -InstallerOwnerProcessId 1234 -OperationId $operation
 if ($script:writes -ne 1 -or $script:closes -ne 2) {{
     throw 'same installation operation was not an idempotent readback'
 }}
 $rejected = $false
 try {{
-    Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt `
+    Set-TicketboxLifecycleReceiptDatabaseGenerationOperation -Path 'unused' -Receipt $receipt `
         -InstallerOwnerProcessId 1234 -OperationId $otherOperation
 }}
 catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 1) {{
     throw 'installation operation was rebound'
 }}
-$receipt.c07_installation_operation_id = 'not-a-guid'
+$receipt.database_generation_operation_id = 'not-a-guid'
 $rejected = $false
 try {{
-    Set-TicketboxLifecycleReceiptC07InstallationOperation -Path 'unused' -Receipt $receipt `
+    Set-TicketboxLifecycleReceiptDatabaseGenerationOperation -Path 'unused' -Receipt $receipt `
         -InstallerOwnerProcessId 1234 -OperationId $operation
 }}
 catch {{ $rejected = $true }}
@@ -116,16 +117,24 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
     assert "直接运行安装脚本不能提交或伪造 Inno 生命周期回执" in install
     assert "$PreUpgradeBackupAlreadyCompleted = [bool]$lifecycleReceipt.backup_completed" in install
     assert "InstallerOwnerProcessId" in receipt
-    assert '"ticketbox-windows-lifecycle-receipt-v8"' in receipt
+    assert '"ticketbox-windows-lifecycle-receipt-v9"' in receipt
     assert '"ticketbox-windows-lifecycle-receipt-v7"' in receipt
     assert "target_backend_version_floor" in receipt
-    assert "Read-TicketboxCompatibleLifecycleReceipt" in receipt
-    assert "ConvertTo-TicketboxCurrentLifecycleReceipt" in receipt
-    assert "ReplaceVerifiedLegacyReceipt" in receipt
+    assert "Read-TicketboxCompatibleLifecycleReceipt" not in receipt
+    assert "ConvertTo-TicketboxCurrentLifecycleReceipt" not in receipt
+    assert "ReplaceVerifiedLegacyReceipt" not in receipt
     assert "AllowLegacyV7WithoutTargetVersionFloor" in receipt
     assert "Set-TicketboxLifecycleReceiptTargetVersionFloor" in receipt
-    assert "Set-TicketboxLifecycleReceiptC07InstallationOperation" in receipt
-    assert "c07_installation_operation_id" in receipt
+    assert "Set-TicketboxLifecycleReceiptDatabaseGenerationOperation" in receipt
+    assert "database_generation_operation_id" in receipt
+    for retired_field in (
+        "c07_installation_operation_id",
+        "c07_production_authority_sha256",
+        "c07_runtime_projection_sha256",
+    ):
+        assert retired_field not in receipt
+    assert "TicketboxLifecycleReceiptFields" in receipt
+    assert "Compare-Object $expectedFields $actualFields -CaseSensitive" in receipt
     assert "Promote-TicketboxPendingInstallationIdentity" in receipt
     assert "ExpectedOperationId" in receipt
     assert "Assert-TicketboxProtectedLifecycleReceipt" in receipt
@@ -144,7 +153,6 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
     assert "Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced" in receipt
     assert "Set-TicketboxLifecycleReceiptInstallCompleted" in receipt
 
-
     assert "Set-TicketboxLifecycleReceiptInstallerOwner" in receipt
     assert "Set-TicketboxLifecycleReceiptDeferredBackup" in receipt
     assert "Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending" in receipt
@@ -161,8 +169,9 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
     assert "backup_byte_length" in receipt
     assert "Assert-TicketboxLifecycleBackupEvidence" in receipt
     marker_reader = receipt[
-        receipt.index("function Read-TicketboxInstallerRecoveryMarker") :
-        receipt.index("function Remove-TicketboxInstallerRecoveryMarker")
+        receipt.index("function Read-TicketboxInstallerRecoveryMarker") : receipt.index(
+            "function Remove-TicketboxInstallerRecoveryMarker"
+        )
     ]
     marker_writer = receipt[
         receipt.index("function Write-TicketboxInstallerRecoveryMarker") : receipt.index(
@@ -205,22 +214,14 @@ def test_initdb_one_shot_receipt_state_machine_and_recovery_contract(
     for consumer in (install, prepare, uninstall):
         assert "Get-TicketboxInitdbReceiptServiceIdentityShapes" in consumer
     operation_lock = prepare.index("$operationLock =")
-    recovery_call = prepare.index(
-        "Invoke-TicketboxInterruptedInitdbServiceRecovery", operation_lock
-    )
+    recovery_call = prepare.index("Invoke-TicketboxInterruptedInitdbServiceRecovery", operation_lock)
     target_major_gate = prepare.index("Assert-TicketboxTargetPgMajor", operation_lock)
-    installed_config = prepare.index(
-        "\n    Initialize-TicketboxInstalledReleaseConfiguration\n", operation_lock
-    )
+    installed_config = prepare.index("\n    Initialize-TicketboxInstalledReleaseConfiguration\n", operation_lock)
     assert installed_config < recovery_call < target_major_gate
-    uninstall_entry = uninstall.index('$deleteDataRetryAuthority =')
-    uninstall_recovery = uninstall.index(
-        "Invoke-TicketboxInitdbServiceUninstallRecovery", uninstall_entry
-    )
-    completed_receipt = uninstall.index(
-        "Get-TicketboxCompletedLifecycleReceiptForUninstall", uninstall_recovery
-    )
-    assert uninstall_recovery < completed_receipt
+    uninstall_entry = uninstall.index("$deleteDataRetryAuthority =")
+    completed_receipt = uninstall.index("Get-TicketboxCompletedLifecycleReceiptForUninstall", uninstall_entry)
+    uninstall_recovery = uninstall.index("Invoke-TicketboxInitdbServiceUninstallRecovery", completed_receipt)
+    assert completed_receipt < uninstall_recovery
 
     receipt_script = PACKAGING / "windows_lifecycle_receipt.ps1"
     for index, engine in enumerate(powershell_contract_engines()):
@@ -405,9 +406,9 @@ function Read-TicketboxProtectedUtf8Artifact {{
     param($Path,$FullControlAccounts,$OwnerAccount,$MaximumBytes)
     return [pscustomobject]@{{ Text = $script:artifactText }}
 }}
-$path = '{_literal(tmp_path / 'initdb-receipt.json')}'
-$installDir = '{_literal(tmp_path / 'program')}'
-$dataRoot = '{_literal(tmp_path / 'data')}'
+$path = '{_literal(tmp_path / "initdb-receipt.json")}'
+$installDir = '{_literal(tmp_path / "program")}'
+$dataRoot = '{_literal(tmp_path / "data")}'
 $common = @{{
     Path = $path
     InstallDir = $installDir
@@ -662,21 +663,13 @@ def test_aborted_fresh_install_uninstall_authority_is_narrow_and_post_cleanup(
     receipt_script = PACKAGING / "windows_lifecycle_receipt.ps1"
     uninstall = _read("uninstall_bundled_services.ps1")
     recovery = uninstall.index("Invoke-TicketboxInitdbServiceUninstallRecovery")
-    main_receipt = uninstall.index(
-        "Get-TicketboxCompletedLifecycleReceiptForUninstall", recovery
-    )
+    main_receipt = uninstall.index("Get-TicketboxCompletedLifecycleReceiptForUninstall", recovery)
     validate = uninstall.index("$safeRoot = Assert-UninstallInputs", main_receipt)
-    service_cleanup = uninstall.index(
-        "Remove-ServiceIfExists $BackendServiceName", validate
-    )
-    receipt_retire = uninstall.index(
-        "Remove-TicketboxAbortedFreshInstallLifecycleReceipt", service_cleanup
-    )
+    service_cleanup = uninstall.index("Remove-ServiceIfExists $BackendServiceName", validate)
+    receipt_retire = uninstall.index("Remove-TicketboxAbortedFreshInstallLifecycleReceipt", service_cleanup)
     assert recovery < main_receipt < validate < service_cleanup < receipt_retire
     assert "Write-TicketboxAbortedFreshInstallDeleteDataIntent" in uninstall
-    assert 'authority_kind = "aborted_fresh_install"' in _read(
-        "windows_lifecycle_receipt.ps1"
-    )
+    assert 'authority_kind = "aborted_fresh_install"' in _read("windows_lifecycle_receipt.ps1")
 
     for index, engine in enumerate(powershell_contract_engines()):
         harness = tmp_path / f"aborted-fresh-authority-{index}.ps1"
@@ -764,9 +757,7 @@ def test_runtime_recovery_projection_blocks_traffic_until_commit() -> None:
     retire_recovery_tools = transaction.index("Remove-TicketboxPgRecoveryToolset")
     promote_services = transaction.index("Enable-TicketboxInstalledServicesAutoStart")
     retire_machine_latch = transaction.index("Remove-TicketboxInstallerRecoveryMarker")
-    retire_runtime_projection = transaction.index(
-        "Remove-TicketboxInstallerRuntimeRecoveryGuard"
-    )
+    retire_runtime_projection = transaction.index("Remove-TicketboxInstallerRuntimeRecoveryGuard")
     assert retire_recovery_tools < promote_services < retire_machine_latch < retire_runtime_projection
 
     mutation = install[install.index("$mutationStarted = $true") :]
@@ -793,9 +784,7 @@ def test_runtime_recovery_projection_blocks_traffic_until_commit() -> None:
     ]
     disable_backend = uninstall_projection.index("Disable-TicketboxOwnedServiceIfExists")
     remove_projection = uninstall_projection.index("Remove-TicketboxInstallerRuntimeRecoveryGuard")
-    remove_runtime_state = uninstall_projection.index(
-        "Remove-TicketboxInstallerRuntimeStateDirectoryIfEmpty"
-    )
+    remove_runtime_state = uninstall_projection.index("Remove-TicketboxInstallerRuntimeStateDirectoryIfEmpty")
     remove_service = uninstall.index('Write-Step "停止并删除后端服务"')
     invoke_projection_cleanup = uninstall.index(
         "Remove-TicketboxInstallerRuntimeProjectionForUninstall",
@@ -810,18 +799,16 @@ def test_completed_stale_receipt_cannot_reuse_previous_backup_mutation() -> None
     install = _read("install_bundled_services.ps1")
     flow = _read("ticketbox-installer-flow.isph")
 
-    stale_start = prepare.index("$staleReceipt = Read-TicketboxCompatibleLifecycleReceipt")
+    stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
     completed_check = prepare.index("if ([bool]$staleReceipt.install_completed)", stale_start)
     resume_commit = prepare.index("Complete-TicketboxInstalledLifecycleTransaction", completed_check)
     invalidate = prepare.index("Remove-TicketboxCompletedLifecycleReceipt", resume_commit)
-    initialize_current = prepare.index(
-        "\n    Initialize-TicketboxInstalledReleaseConfiguration\n"
-    )
+    initialize_current = prepare.index("\n    Initialize-TicketboxInstalledReleaseConfiguration\n")
     reset_backup = prepare.index("$backupCompleted = $false", invalidate)
     write_new_receipt = prepare.index("Write-TicketboxLifecycleReceipt", reset_backup)
     completed_branch = prepare[
         completed_check : prepare.index(
-            'elseif ([string]$staleReceipt.preparation_stage -in @(',
+            "elseif ([string]$staleReceipt.preparation_stage -in @(",
             completed_check,
         )
     ]
@@ -829,9 +816,7 @@ def test_completed_stale_receipt_cannot_reuse_previous_backup_mutation() -> None
     assert initialize_current < completed_check < resume_commit < invalidate < reset_backup < write_new_receipt
     assert "Set-TicketboxLifecycleReceiptInstallerOwner" in completed_branch
     assert "Complete-TicketboxInstalledLifecycleTransaction" in completed_branch
-    assert completed_branch.index("Assert-TicketboxPreparedServiceContracts") < completed_branch.index(
-        "ConvertTo-TicketboxCurrentLifecycleReceipt"
-    )
+    assert "ConvertTo-TicketboxCurrentLifecycleReceipt" not in completed_branch
     assert "backup_completed" not in completed_branch
     assert "return" not in completed_branch
     assert "Set-TicketboxLifecycleReceiptInstallCompleted" not in install
@@ -854,12 +839,22 @@ def test_completed_stale_receipt_cannot_reuse_previous_backup_mutation() -> None
 def test_install_commit_retires_recovery_latch_only_after_durable_authorities(
     tmp_path: Path,
 ) -> None:
+    prepare = _read("prepare_bundled_upgrade.ps1")
+    prepare_start = prepare.index("    $preMutationLifecycleReceipt = $null")
+    prepare_dispatch = prepare[
+        prepare_start : prepare.index(
+            "    if ($MarkProgramFilesInstalledBackupPending)",
+            prepare_start,
+        )
+    ]
+    authority_loader = tmp_path / "windows_database_generation.ps1"
+    authority_loader.write_text("", encoding="utf-8-sig")
     harness = tmp_path / "install-commit-order.ps1"
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
-. '{_literal(PACKAGING / 'windows_lifecycle_receipt.ps1')}'
-. '{_literal(PACKAGING / 'windows_database_generation_recovery_evidence.ps1')}'
+. '{_literal(PACKAGING / "windows_lifecycle_receipt.ps1")}'
+. '{_literal(PACKAGING / "windows_database_generation_recovery_evidence.ps1")}'
 $runtimeState = Get-TicketboxInstallerRuntimeStateDirectory '{_literal(tmp_path)}'
 if ($runtimeState -cne '{_literal(tmp_path / "TicketboxRuntimeState")}') {{
     throw "runtime-state provider returned $runtimeState"
@@ -867,22 +862,26 @@ if ($runtimeState -cne '{_literal(tmp_path / "TicketboxRuntimeState")}') {{
 $script:stage = 'files_may_have_been_replaced'
 $script:events = New-Object System.Collections.Generic.List[string]
 $script:archivePresent = $true
+$script:observedCurrent = $null
+$script:expectedCurrentOperation = '11111111-1111-1111-1111-111111111111'
+$script:expectedCurrentSha256 = ('a' * 64)
+$script:receiptOperation = $script:expectedCurrentOperation
+$script:receiptCurrentSha256 = $script:expectedCurrentSha256
 function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
 function Read-TicketboxLifecycleReceipt {{
     param($Path, $InstallDir, $DataRoot, $PgPort, $BackendPort, $TargetReleaseConfig, $CurrentTargetBackendVersion, $InstallerOwnerProcessId)
     [void]$script:events.Add('read')
     return [pscustomobject]@{{
+        schema = $script:TicketboxLifecycleReceiptSchema
         preparation_stage = $script:stage
-        c07_installation_operation_id = '11111111-1111-1111-1111-111111111111'
-        c07_production_authority_sha256 = ''
-        c07_runtime_projection_sha256 = ''
-        database_generation_current_sha256 = ('a' * 64)
+        database_generation_operation_id = $script:receiptOperation
+        database_generation_current_sha256 = $script:receiptCurrentSha256
     }}
 }}
 function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {{
     param($ExpectedOperationId, $ExpectedCurrentSha256)
-    if ($ExpectedOperationId -cne '11111111-1111-1111-1111-111111111111' -or
-        $ExpectedCurrentSha256 -cne ('a' * 64)) {{
+    if ($ExpectedOperationId -cne $script:expectedCurrentOperation -or
+        $ExpectedCurrentSha256 -cne $script:expectedCurrentSha256) {{
         throw 'unexpected database generation CURRENT evidence'
     }}
     [void]$script:events.Add('current')
@@ -893,6 +892,14 @@ function Get-TicketboxDatabaseGenerationStateRoot {{
     param($InstallerState)
     if ($InstallerState -cne '{_literal(tmp_path / "installer-state")}') {{ throw 'unexpected installer state' }}
     return '{_literal(tmp_path / "generation-state")}'
+}}
+function Read-TicketboxDatabaseGenerationCurrent {{
+    param($StateRoot, [switch]$AllowAbsent)
+    if ($StateRoot -cne '{_literal(tmp_path / "generation-state")}' -or -not $AllowAbsent) {{
+        throw 'unexpected database generation CURRENT observation'
+    }}
+    [void]$script:events.Add('current-observe')
+    return $script:observedCurrent
 }}
 function Read-TicketboxDatabaseGenerationOperationArtifact {{
     param($StateRoot, $OperationId, $Kind, [switch]$AllowAbsent)
@@ -960,6 +967,23 @@ function Remove-TicketboxInstallerRuntimeRecoveryGuard {{
     [void]$script:events.Add('runtime')
 }}
 $config = [pscustomobject]@{{ pg_service_name = 'TicketboxPg'; backend_service_name = 'TicketboxBackend' }}
+$LifecycleReceiptPath = 'receipt.json'
+$InstallDir = 'program'
+$DataRoot = 'data'
+$PgPort = 5432
+$BackendPort = 8000
+$TargetReleaseConfig = $config
+$TargetBackendVersion = '1.3.0'
+$InstallerLockOwnerProcessId = $PID
+function Get-TicketboxInstalledDatabaseGenerationAuthorityPath {{
+    return '{_literal(authority_loader)}'
+}}
+function Set-TicketboxPreparedRuntimeServiceContract {{ [void]$script:events.Add('runtime') }}
+function Invoke-TicketboxInterruptedInitdbServiceRecovery {{ [void]$script:events.Add('initdb') }}
+function Assert-TicketboxTargetPgMajor {{ [void]$script:events.Add('target') }}
+function Invoke-TestPrepareMutationDispatch {{
+{prepare_dispatch}
+}}
 $arguments = @{{
     Path = 'receipt.json'; InstallDir = 'program'; DataRoot = 'data'; PgPort = 5432; BackendPort = 8000
     TargetReleaseConfig = $config; TargetBackendVersion = '1.3.0'; InstallerOwnerProcessId = $PID; BuildManifestPath = 'manifest.json'
@@ -967,6 +991,124 @@ $arguments = @{{
     RuntimeRecoveryGuardPath = 'installer-runtime-recovery-pending'
     LifecycleLock = @{{}}
 }}
+$script:failReady = $true
+$prepareDispatchRejected = $false
+try {{ Invoke-TestPrepareMutationDispatch }}
+catch {{ $prepareDispatchRejected = $true }}
+if (-not $prepareDispatchRejected -or ($script:events -join ',') -cne 'read,current') {{
+    throw "prepare dispatch crossed CURRENT failure: $($script:events -join ',')"
+}}
+$script:events.Clear()
+$script:failReady = $false
+Invoke-TestPrepareMutationDispatch
+if (($script:events -join ',') -cne 'read,current,runtime,initdb,target') {{
+    throw "prepare dispatch order was $($script:events -join ',')"
+}}
+$script:events.Clear()
+$pendingReceipt = [pscustomobject]@{{
+    schema = $script:TicketboxLifecycleReceiptSchema
+    install_completed = $false
+    database_generation_operation_id = ''
+    database_generation_current_sha256 = ''
+}}
+Assert-TicketboxPrepareLifecycleReceiptMutationAuthority $pendingReceipt
+if (($script:events -join ',') -cne 'current-observe') {{
+    throw 'pending v9 prepare authority skipped the absent CURRENT observation'
+}}
+$script:events.Clear()
+$operationOnlyReceipt = [pscustomobject]@{{
+    schema = $script:TicketboxLifecycleReceiptSchema
+    install_completed = $false
+    database_generation_operation_id = '33333333-3333-4333-8333-333333333333'
+    database_generation_current_sha256 = ''
+}}
+Assert-TicketboxPrepareLifecycleReceiptMutationAuthority $operationOnlyReceipt
+if (($script:events -join ',') -cne 'current-observe') {{
+    throw 'operation-only v9 prepare authority skipped the absent CURRENT observation'
+}}
+$script:events.Clear()
+$script:expectedCurrentOperation = '33333333-3333-4333-8333-333333333333'
+$script:expectedCurrentSha256 = ('e' * 64)
+$script:observedCurrent = [pscustomobject]@{{ PayloadSha256 = $script:expectedCurrentSha256 }}
+$script:failReady = $true
+$responseLossRejected = $false
+try {{ Assert-TicketboxPrepareLifecycleReceiptMutationAuthority $operationOnlyReceipt }}
+catch {{ $responseLossRejected = $true }}
+if (-not $responseLossRejected -or ($script:events -join ',') -cne 'current-observe,current') {{
+    throw 'operation-only response-loss state bypassed the durable CURRENT verifier'
+}}
+$script:events.Clear()
+$responseLossUninstallRejected = $false
+try {{ Assert-TicketboxUninstallLifecycleReceiptMutationAuthority $operationOnlyReceipt }}
+catch {{ $responseLossUninstallRejected = $true }}
+if (-not $responseLossUninstallRejected -or ($script:events -join ',') -cne 'current-observe,current') {{
+    throw 'operation-only uninstall response-loss state bypassed the durable CURRENT verifier'
+}}
+$script:events.Clear()
+$script:failReady = $false
+Assert-TicketboxPrepareLifecycleReceiptMutationAuthority $operationOnlyReceipt
+if (($script:events -join ',') -cne 'current-observe,current') {{
+    throw 'operation-only prepare response-loss recovery did not converge'
+}}
+$script:events.Clear()
+Assert-TicketboxUninstallLifecycleReceiptMutationAuthority $operationOnlyReceipt
+if (($script:events -join ',') -cne 'current-observe,current') {{
+    throw 'operation-only uninstall response-loss recovery did not converge'
+}}
+$script:events.Clear()
+$script:receiptOperation = '33333333-3333-4333-8333-333333333333'
+$script:receiptCurrentSha256 = ''
+$script:failReady = $true
+$dispatchResponseLossRejected = $false
+try {{ Invoke-TestPrepareMutationDispatch }}
+catch {{ $dispatchResponseLossRejected = $true }}
+if (-not $dispatchResponseLossRejected -or
+    ($script:events -join ',') -cne 'read,current-observe,current') {{
+    throw 'real prepare dispatch crossed response-loss CURRENT drift'
+}}
+$script:events.Clear()
+$script:failReady = $false
+Invoke-TestPrepareMutationDispatch
+if (($script:events -join ',') -cne 'read,current-observe,current,runtime,initdb,target') {{
+    throw 'real prepare dispatch did not converge from response-loss CURRENT'
+}}
+$script:events.Clear()
+$script:receiptOperation = '11111111-1111-1111-1111-111111111111'
+$script:receiptCurrentSha256 = ('a' * 64)
+$script:observedCurrent = $null
+$script:expectedCurrentOperation = '22222222-2222-4222-8222-222222222222'
+$script:expectedCurrentSha256 = ('c' * 64)
+$currentReceipt = [pscustomobject]@{{
+    schema = $script:TicketboxLifecycleReceiptSchema
+    install_completed = $true
+    database_generation_operation_id = $script:expectedCurrentOperation
+    database_generation_current_sha256 = $script:expectedCurrentSha256
+}}
+$script:failReady = $true
+$prepareCurrentRejected = $false
+try {{ Assert-TicketboxPrepareLifecycleReceiptMutationAuthority $currentReceipt }}
+catch {{ $prepareCurrentRejected = $true }}
+if (-not $prepareCurrentRejected -or ($script:events -join ',') -cne 'current') {{
+    throw 'prepare mutation authority skipped the durable CURRENT verifier'
+}}
+$script:events.Clear()
+$uninstallCurrentRejected = $false
+try {{ Assert-TicketboxUninstallLifecycleReceiptMutationAuthority $currentReceipt }}
+catch {{ $uninstallCurrentRejected = $true }}
+if (-not $uninstallCurrentRejected -or ($script:events -join ',') -cne 'current') {{
+    throw 'uninstall mutation authority skipped the durable CURRENT verifier'
+}}
+$script:events.Clear()
+$legacyUninstallReceipt = [pscustomobject]@{{
+    schema = $script:TicketboxLegacyLifecycleReceiptSchema
+}}
+Assert-TicketboxUninstallLifecycleReceiptMutationAuthority $legacyUninstallReceipt
+if ($script:events.Count -ne 0) {{
+    throw 'read-only v7 uninstall attempted a Generation CURRENT read'
+}}
+$script:expectedCurrentOperation = '11111111-1111-1111-1111-111111111111'
+$script:expectedCurrentSha256 = ('a' * 64)
+$script:failReady = $false
 Complete-TicketboxInstalledLifecycleTransaction @arguments
 if (($script:events -join ',') -cne 'read,current,archive-read,archive-assert,identity,receipt,read,assert,archive-read,archive-assert,archive-clean,tools,autostart,latch,runtime') {{
     throw "first commit order was $($script:events -join ',')"
@@ -1029,6 +1171,139 @@ if (($script:events -join ',') -cne 'read,current,identity,assert,archive-read,t
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows backup guard contract")
+def test_post_copy_recovery_keeps_verified_backup_guard_until_publication(
+    tmp_path: Path,
+) -> None:
+    prepare = _read("prepare_bundled_upgrade.ps1")
+    stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
+    stale_end = prepare.index("    $hasPgService = Test-TicketboxServiceExists", stale_start)
+    stale_dispatch = prepare[stale_start:stale_end]
+    branch_start = stale_dispatch.index(
+        "        else {", stale_dispatch.index("program_files_installed_backup_pending")
+    )
+    branch_body_start = branch_start + len("        else {\n")
+    branch_body_end = stale_dispatch.rindex("        }")
+    post_copy_body = stale_dispatch[branch_body_start:branch_body_end]
+
+    backup_path = tmp_path / "verified-backup.dump"
+    backup_path.write_text("verified-backup", encoding="utf-8")
+    harness = tmp_path / "post-copy-backup-guard.ps1"
+    harness.write_text(
+        f"""
+$ErrorActionPreference = 'Stop'
+$script:events = [System.Collections.Generic.List[string]]::new()
+$script:failPublication = $false
+$backupPath = '{_literal(backup_path)}'
+$guard = [System.IO.File]::Open(
+    $backupPath,
+    [System.IO.FileMode]::Open,
+    [System.IO.FileAccess]::Read,
+    [System.IO.FileShare]::Read
+)
+$staleReceipt = [pscustomobject]@{{
+    installed_release_config = [pscustomobject]@{{}}
+    temporary_pg_service_cleanup_pending = $false
+    preparation_stage = 'prepared'
+    backup_guard_stream = $guard
+}}
+$LifecycleReceiptPath = 'unused-receipt.json'
+$InstallerLockOwnerProcessId = $PID
+$RuntimeDataBindingPresent = $false
+function Set-TicketboxInstalledReleaseConfiguration {{ param($Config, $Persisted) }}
+function Repair-TicketboxInterruptedPayloadLeaseAcl {{}}
+function Remove-TicketboxRecoveryPgServiceIfExists {{}}
+function Assert-TicketboxPreparedServiceContracts {{
+    param([switch]$AllowTargetPolicyFallback, [switch]$AllowLegacyRuntimeDataContract)
+}}
+function Close-TicketboxLifecycleBackupGuard {{
+    param($Receipt)
+    if ($null -ne $Receipt.backup_guard_stream) {{
+        $Receipt.backup_guard_stream.Dispose()
+        $Receipt.backup_guard_stream = $null
+    }}
+}}
+function Invoke-TicketboxPreparedInstallRecovery {{
+    param($Receipt, $ProgramFilesWereReplaced)
+    $replacementBlocked = $false
+    try {{ [System.IO.File]::WriteAllText($backupPath, 'tampered') }}
+    catch {{ $replacementBlocked = $true }}
+    if (-not $replacementBlocked) {{
+        throw 'verified backup guard was released before recovery'
+    }}
+    [void]$script:events.Add('recovery')
+}}
+function Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced {{
+    param($Path, $Receipt, $InstallerOwnerProcessId)
+    if ($null -eq $Receipt.backup_guard_stream) {{
+        throw 'verified backup guard was released before authority publication'
+    }}
+    if ($script:failPublication) {{
+        throw 'simulated authority publication failure'
+    }}
+    [void]$script:events.Add('publish')
+    Close-TicketboxLifecycleBackupGuard $Receipt
+}}
+function Set-TicketboxLifecycleReceiptInstallerOwner {{
+    param($Path, $Receipt, $InstallerOwnerProcessId)
+    throw 'prepared receipt selected the wrong publication path'
+}}
+function Invoke-TestPostCopyRecovery {{
+{post_copy_body}
+}}
+Invoke-TestPostCopyRecovery
+if ([string]::Join('|', $script:events) -cne 'recovery|publish') {{
+    throw "post-copy recovery order changed: $($script:events -join '|')"
+}}
+if ([System.IO.File]::ReadAllText($backupPath) -cne 'verified-backup') {{
+    throw 'verified backup bytes changed during stale recovery'
+}}
+$script:events.Clear()
+$script:failPublication = $true
+$staleReceipt.backup_guard_stream = [System.IO.File]::Open(
+    $backupPath,
+    [System.IO.FileMode]::Open,
+    [System.IO.FileAccess]::Read,
+    [System.IO.FileShare]::Read
+)
+$publicationFailed = $false
+try {{ Invoke-TestPostCopyRecovery }}
+catch {{
+    if ($_.Exception.Message -cnotmatch 'simulated authority publication failure') {{ throw }}
+    $publicationFailed = $true
+}}
+if (-not $publicationFailed) {{
+    throw 'authority publication failure was not preserved'
+}}
+$exclusiveWriteSucceeded = $false
+try {{
+    [System.IO.File]::WriteAllText($backupPath, 'verified-backup')
+    $exclusiveWriteSucceeded = $true
+}}
+catch {{}}
+if (-not $exclusiveWriteSucceeded) {{
+    Close-TicketboxLifecycleBackupGuard $staleReceipt
+    throw 'verified backup guard was not released after authority publication failure'
+}}
+if ([string]::Join('|', $script:events) -cne 'recovery') {{
+    throw "failed publication path changed: $($script:events -join '|')"
+}}
+""",
+        encoding="utf-8-sig",
+    )
+    for engine in powershell_contract_engines():
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows recovery compensation contract")
 def test_failure_compensation_converges_dual_latch_without_replacing_authority(
     tmp_path: Path,
@@ -1039,7 +1314,7 @@ def test_failure_compensation_converges_dual_latch_without_replacing_authority(
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
-. '{_literal(PACKAGING / 'windows_lifecycle_receipt.ps1')}'
+. '{_literal(PACKAGING / "windows_lifecycle_receipt.ps1")}'
 $script:events = New-Object System.Collections.Generic.List[string]
 function Initialize-TicketboxInstallerStateDirectory {{
     param($Path)
@@ -1123,24 +1398,25 @@ def test_delete_data_intent_is_bound_to_a_completed_receipt_before_retirement(
     runtime_base = PACKAGING.parent / "build" / f"runtime-state-cleanup-{uuid.uuid4().hex}"
     uninstall = (PACKAGING / "uninstall_bundled_services.ps1").read_text(encoding="utf-8-sig")
     uninstall_projection = uninstall[
-        uninstall.index("function Remove-TicketboxInstallerRuntimeProjectionForUninstall") :
-        uninstall.index("function Assert-UninstallInputs")
+        uninstall.index("function Remove-TicketboxInstallerRuntimeProjectionForUninstall") : uninstall.index(
+            "function Assert-UninstallInputs"
+        )
     ]
     harness = tmp_path / "delete-data-intent.ps1"
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
-. '{_literal(PACKAGING / 'windows_installation_safety.ps1')}'
-. '{_literal(PACKAGING / 'windows_lifecycle_receipt.ps1')}'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_lifecycle_receipt.ps1")}'
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $script:TicketboxLifecycleReceiptAclAccounts = @($currentAccount)
 $script:TicketboxLifecycleReceiptOwnerAccount = $currentAccount
-$machineRoot = '{_literal(tmp_path / 'machine')}'
+$machineRoot = '{_literal(tmp_path / "machine")}'
 $installerState = Join-Path $machineRoot 'installer-state'
 $intentPath = Join-Path $installerState 'delete-data-in-progress.json'
-$receiptPath = '{_literal(tmp_path / 'installer-lifecycle-receipt.json')}'
-$installDir = '{_literal(tmp_path / 'program')}'
-$dataRoot = '{_literal(tmp_path / 'data')}'
+$receiptPath = '{_literal(tmp_path / "installer-lifecycle-receipt.json")}'
+$installDir = '{_literal(tmp_path / "program")}'
+$dataRoot = '{_literal(tmp_path / "data")}'
 New-Item -ItemType Directory -Path $machineRoot, $installDir, $dataRoot -Force | Out-Null
 Set-TicketboxExactDirectoryAcl `
     -Path $machineRoot `
@@ -1199,15 +1475,15 @@ try {{
     Read-TicketboxDeleteDataIntent `
         -Path $intentPath `
         -InstallDir $installDir `
-        -DataRoot '{_literal(tmp_path / 'other-data')}' | Out-Null
+        -DataRoot '{_literal(tmp_path / "other-data")}' | Out-Null
 }}
 catch {{ $crossBindingRejected = $true }}
 if (-not $crossBindingRejected) {{ throw 'delete-data intent accepted another data root' }}
-$runtimeStateDirectory = '{_literal(tmp_path / 'runtime-state')}'
+$runtimeStateDirectory = '{_literal(tmp_path / "runtime-state")}'
 function Get-TicketboxInstallerRuntimeStateDirectory {{ return $runtimeStateDirectory }}
 {uninstall_projection}
-$runtimeDataRoot = '{_literal(runtime_base / 'runtime-data')}'
-$runtimeInstallDir = '{_literal(runtime_base / 'runtime-program')}'
+$runtimeDataRoot = '{_literal(runtime_base / "runtime-data")}'
+$runtimeInstallDir = '{_literal(runtime_base / "runtime-program")}'
 New-Item -ItemType Directory -Path $runtimeDataRoot, $runtimeInstallDir -Force | Out-Null
 Initialize-TicketboxDataRootMarker `
     -DataRoot $runtimeDataRoot `
@@ -1256,7 +1532,7 @@ if (-not $directoryShapedGuardRejected) {{
     throw 'directory-shaped runtime guard was treated as absent during uninstall'
 }}
 Remove-Item -LiteralPath $runtimeStateDirectory -Recurse -Force
-$danglingTarget = '{_literal(tmp_path / 'runtime-state-dangling-target')}'
+$danglingTarget = '{_literal(tmp_path / "runtime-state-dangling-target")}'
 New-Item -ItemType Directory -Path $danglingTarget | Out-Null
 New-Item -ItemType Junction -Path $runtimeStateDirectory -Target $danglingTarget | Out-Null
 [System.IO.Directory]::Delete($danglingTarget)
@@ -1305,9 +1581,7 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
         helper = helper_dir / "ticketbox-c07-migrator.exe"
         helper.write_bytes(helper_payload)
         generation_program = helper_dir / "DATABASE_GENERATION_PROGRAM.json"
-        generation_program_payload = (
-            b'{"schema":"ticketbox-test-generation-program-v1"}\n'
-        )
+        generation_program_payload = b'{"schema":"ticketbox-test-generation-program-v1"}\n'
         generation_program.write_bytes(generation_program_payload)
         pg_dump_payload = b"pg-dump-fixture"
         pg_restore_payload = b"pg-restore-fixture"
@@ -1329,9 +1603,7 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
                         "database_generation_program": {
                             "path": generation_program.name,
                             "size": len(generation_program_payload),
-                            "sha256": hashlib.sha256(
-                                generation_program_payload
-                            ).hexdigest(),
+                            "sha256": hashlib.sha256(generation_program_payload).hexdigest(),
                         },
                     },
                     "postgresql": {
@@ -1360,7 +1632,7 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
         harness.write_text(
             f"""
 $ErrorActionPreference = 'Stop'
-. '{_literal(PACKAGING / 'windows_installation_safety.ps1')}'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
 $validatedManifest = Read-TicketboxInstalledBuildManifest `
     -Path '{_literal(manifest)}' `
     -ExpectedPgMajor 17
@@ -1465,24 +1737,12 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     operation_lock = prepare.index("$operationLock = Enter-TicketboxLifecycleLock")
     main_execution = prepare[operation_lock:]
     admin_gate = main_execution.index("Assert-Admin")
-    owner_gate = main_execution.index(
-        "if ($InstallerLockOwnerProcessId -le 0)", admin_gate
-    )
-    intent_branch = main_execution.index(
-        "if ($PersistDatabaseGenerationIntentOnly)", owner_gate
-    )
-    preinstall_receipt_read = main_execution.index(
-        "Read-TicketboxLifecycleReceipt `", intent_branch
-    )
-    early_marker_repair = main_execution.index(
-        "Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded `", owner_gate
-    )
-    runtime_binding_read = main_execution.index(
-        "Set-TicketboxPreparedRuntimeServiceContract", early_marker_repair
-    )
-    mark_branch = main_execution.index(
-        "if ($MarkProgramFilesInstalledBackupPending)", runtime_binding_read
-    )
+    owner_gate = main_execution.index("if ($InstallerLockOwnerProcessId -le 0)", admin_gate)
+    intent_branch = main_execution.index("if ($PersistDatabaseGenerationIntentOnly)", owner_gate)
+    preinstall_receipt_read = main_execution.index("Read-TicketboxLifecycleReceipt `", intent_branch)
+    early_marker_repair = main_execution.index("Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded `", owner_gate)
+    runtime_binding_read = main_execution.index("Set-TicketboxPreparedRuntimeServiceContract", early_marker_repair)
+    mark_branch = main_execution.index("if ($MarkProgramFilesInstalledBackupPending)", runtime_binding_read)
     recover_branch_start = main_execution.index("if ($RecoverPreparedInstall)", mark_branch)
     commit_branch = main_execution.index("if ($CommitCompletedInstall)", recover_branch_start)
     stale_receipt_branch = main_execution.index(
@@ -1501,31 +1761,22 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         < commit_branch
         < stale_receipt_branch
     )
-    receipt_reads = [
-        match.start()
-        for match in re.finditer(
-            r"Read-Ticketbox[A-Za-z]*LifecycleReceipt", main_execution
-        )
-    ]
+    receipt_reads = [match.start() for match in re.finditer(r"Read-Ticketbox[A-Za-z]*LifecycleReceipt", main_execution)]
     assert receipt_reads
-    early_receipt_reads = [
-        receipt_read for receipt_read in receipt_reads if receipt_read < early_marker_repair
-    ]
+    early_receipt_reads = [receipt_read for receipt_read in receipt_reads if receipt_read < early_marker_repair]
     assert early_receipt_reads == [preinstall_receipt_read]
     assert all(
-        early_marker_repair < receipt_read
-        for receipt_read in receipt_reads
-        if receipt_read != preinstall_receipt_read
+        early_marker_repair < receipt_read for receipt_read in receipt_reads if receipt_read != preinstall_receipt_read
     )
     preinstall_projection = main_execution[intent_branch:early_marker_repair]
     for field in (
         "install_completed",
-        "c07_installation_operation_id",
+        "database_generation_operation_id",
         "database_generation_current_sha256",
     ):
         expected_target = {
             "install_completed": "install_completed",
-            "c07_installation_operation_id": "operation_id",
+            "database_generation_operation_id": "operation_id",
             "database_generation_current_sha256": "current_sha256",
         }[field]
         assert re.search(
@@ -1537,9 +1788,7 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         "$capturedGenerationIntent = Read-TicketboxDatabaseGenerationActiveIntent `",
         early_marker_repair,
     )
-    captured_receipt_write = main_execution.index(
-        "Write-TicketboxLifecycleReceipt `", captured_intent
-    )
+    captured_receipt_write = main_execution.index("Write-TicketboxLifecycleReceipt `", captured_intent)
     captured_receipt_read = main_execution.index(
         "$capturedReceipt = Read-TicketboxLifecycleReceipt `", captured_receipt_write
     )
@@ -1550,7 +1799,7 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         main_execution[captured_intent:captured_receipt_write],
     )
     assert (
-        "-C07InstallationOperationId $capturedGenerationOperationId `"
+        "-DatabaseGenerationOperationId $capturedGenerationOperationId `"
         in main_execution[captured_receipt_write:captured_receipt_read]
     )
     authority_call = prepare.rindex("Assert-TicketboxPreparedDataRootAuthorityGate `")
@@ -1585,9 +1834,7 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
             "function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded"
         )
     ]
-    root_authority = authority_gate.index(
-        "Repair-TicketboxRecoverableDataRootMarkerAcl"
-    )
+    root_authority = authority_gate.index("Repair-TicketboxRecoverableDataRootMarkerAcl")
     marker_authority = authority_gate.index("Assert-TicketboxProtectedDataRootMarker")
     assert root_authority < marker_authority
     assert "-AllowLegacyV1" in authority_gate
@@ -1630,16 +1877,19 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         assert "-AllowRepairableAccount" not in recovery
 
     early_repair = prepare[
-        prepare.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded") :
-        prepare.index("Set-TicketboxInstalledReleaseConfiguration -Config $InstalledReleaseConfig")
+        prepare.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded") : prepare.index(
+            "Set-TicketboxInstalledReleaseConfiguration -Config $InstalledReleaseConfig"
+        )
     ]
     prepared_runtime = prepare[
-        prepare.index("function Set-TicketboxPreparedRuntimeServiceContract") :
-        prepare.index("function Set-TicketboxActivePgTools")
+        prepare.index("function Set-TicketboxPreparedRuntimeServiceContract") : prepare.index(
+            "function Set-TicketboxActivePgTools"
+        )
     ]
     prepared_recovery = prepare[
-        prepare.index("function Invoke-TicketboxPreparedInstallRecovery") :
-        prepare.index("if ($PgPort -eq $BackendPort)")
+        prepare.index("function Invoke-TicketboxPreparedInstallRecovery") : prepare.index(
+            "if ($PgPort -eq $BackendPort)"
+        )
     ]
     assert "backend_read_optional" in early_repair
     assert "[Parameter(Mandatory = $true)][string]$ExpectedBackendServiceName" in early_repair
@@ -1647,12 +1897,8 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     for marker_consumer in (prepared_runtime, prepared_recovery):
         assert "backend_read_optional" in marker_consumer
         assert "-ExpectedBackendServiceName $BackendServiceName" in marker_consumer
-    legacy_runtime_repair = prepared_runtime.index(
-        "Repair-TicketboxLegacyMalformedRuntimeDataBindingIfNeeded `"
-    )
-    strict_runtime_read = prepared_runtime.index(
-        "Read-TicketboxRuntimeDataBinding `", legacy_runtime_repair
-    )
+    legacy_runtime_repair = prepared_runtime.index("Repair-TicketboxLegacyMalformedRuntimeDataBindingIfNeeded `")
+    strict_runtime_read = prepared_runtime.index("Read-TicketboxRuntimeDataBinding `", legacy_runtime_repair)
     assert legacy_runtime_repair < strict_runtime_read
     missing_binding_branch = prepared_runtime[
         prepared_runtime.index(
@@ -1670,8 +1916,9 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         )
     ]
     marker_reader = safety[
-        safety.index("function Read-TicketboxProtectedDataRootMarker") :
-        safety.index("function Assert-TicketboxProtectedDataRootMarker")
+        safety.index("function Read-TicketboxProtectedDataRootMarker") : safety.index(
+            "function Assert-TicketboxProtectedDataRootMarker"
+        )
     ]
     assert '"privileged_only"' in marker_acl_contract
     assert '"backend_read_optional"' in marker_acl_contract
@@ -1679,8 +1926,7 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     assert "Get-TicketboxServiceSid $ExpectedBackendServiceName" in marker_acl_contract
     assert "-ReadExecuteAccounts @($backendServiceSid)" in marker_acl_contract
     optional_acl = marker_acl_contract[
-        marker_acl_contract.index('if ($AclPhase -ceq "backend_read_optional")') :
-        marker_acl_contract.index(
+        marker_acl_contract.index('if ($AclPhase -ceq "backend_read_optional")') : marker_acl_contract.index(
             "Assert-TicketboxExactFileAcl `",
             marker_acl_contract.index('if ($AclPhase -ceq "backend_read_optional")'),
         )
@@ -1698,9 +1944,7 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     ]
     secure_root_start = safety.index("function Initialize-TicketboxSecureDataRoot")
     secure_root_initializer = safety[
-        secure_root_start : safety.index(
-            "function Assert-TicketboxDataRootMarker {", secure_root_start
-        )
+        secure_root_start : safety.index("function Assert-TicketboxDataRootMarker {", secure_root_start)
     ]
     for initializer in (marker_initializer, secure_root_initializer):
         assert "backend_read_optional" in initializer
@@ -1712,30 +1956,32 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
 
     receipt = _read("windows_lifecycle_receipt.ps1")
     receipt_writer = receipt[
-        receipt.index("function Write-TicketboxLifecycleReceipt") :
-        receipt.index("function Read-TicketboxLifecycleReceipt")
+        receipt.index("function Write-TicketboxLifecycleReceipt") : receipt.index(
+            "function Read-TicketboxLifecycleReceipt"
+        )
     ]
     receipt_reader = receipt[
-        receipt.index("function Read-TicketboxLifecycleReceipt") :
-        receipt.index("function Read-TicketboxCompatibleLifecycleReceipt")
+        receipt.index("function Read-TicketboxLifecycleReceipt") : receipt.index(
+            "function Assert-TicketboxLifecycleReceiptStage"
+        )
     ]
     assert 'if ($PreparationStage -ceq "install_completed")' in receipt_writer
     assert "([string]$InstalledReleaseConfig.backend_service_name)" in receipt_writer
-    assert (
-        '[string]$receipt.preparation_stage -ceq "install_completed"' in receipt_reader
-    )
+    assert '[string]$receipt.preparation_stage -ceq "install_completed"' in receipt_reader
     assert "([string]$TargetReleaseConfig.backend_service_name)" in receipt_reader
     final_binding = receipt[
-        receipt.index("function Enable-TicketboxInstalledServicesAutoStart") :
-        receipt.index("function Get-TicketboxInstallerRuntimeStateShape")
+        receipt.index("function Enable-TicketboxInstalledServicesAutoStart") : receipt.index(
+            "function Get-TicketboxInstallerRuntimeStateShape"
+        )
     ]
     assert "-DataRootMarkerAclPhase backend_read_required" in final_binding
     assert "-ExpectedBackendServiceName $backendServiceName" in final_binding
 
     install = _read("install_bundled_services.ps1")
     runtime_contract = install[
-        install.index("function Set-TicketboxRuntimeServiceContractFromBinding") :
-        install.index("$LockScript = Join-Path $ScriptDir")
+        install.index("function Set-TicketboxRuntimeServiceContractFromBinding") : install.index(
+            "$LockScript = Join-Path $ScriptDir"
+        )
     ]
     assert '"backend_read_required"' in runtime_contract
     assert '"backend_read_optional"' in runtime_contract
@@ -1743,21 +1989,24 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     assert "-RequireBackendMarkerReadExecute" in install
     assert "-DataRootMarkerAclPhase backend_read_optional" in install
     install_marker_initialize = install[
-        install.index("Initialize-TicketboxDataRootMarker `", install.index("try {")) :
-        install.index("$mutationStarted = $true")
+        install.index("Initialize-TicketboxDataRootMarker `", install.index("try {")) : install.index(
+            "$mutationStarted = $true"
+        )
     ]
     assert "-AclPhase backend_read_optional" in install_marker_initialize
     assert "-ExpectedBackendServiceName $BackendServiceName" in install_marker_initialize
     secure_root_call = install[
-        install.index("Initialize-TicketboxSecureDataRoot `", install.index("$mutationStarted")) :
-        install.index("New-Item -ItemType Directory -Force", install.index("$mutationStarted"))
+        install.index("Initialize-TicketboxSecureDataRoot `", install.index("$mutationStarted")) : install.index(
+            "New-Item -ItemType Directory -Force", install.index("$mutationStarted")
+        )
     ]
     assert "-DataRootMarkerAclPhase backend_read_optional" in secure_root_call
     assert "-ExpectedBackendServiceName $BackendServiceName" in secure_root_call
 
     prepare_marker_initialize = prepare[
-        prepare.index("Initialize-TicketboxDataRootMarker `", prepare.index("$mode =")) :
-        prepare.index("Remove-TicketboxRecoveryPgServiceIfExists", prepare.index("$mode ="))
+        prepare.index("Initialize-TicketboxDataRootMarker `", prepare.index("$mode =")) : prepare.index(
+            "Remove-TicketboxRecoveryPgServiceIfExists", prepare.index("$mode =")
+        )
     ]
     assert "-AclPhase backend_read_optional" in prepare_marker_initialize
     assert "-ExpectedBackendServiceName $BackendServiceName" in prepare_marker_initialize
@@ -1774,12 +2023,14 @@ def test_stale_fresh_receipt_repairs_inherited_marker_before_receipt_read_and_re
     config = json.loads(_read("windows-release-config.json"))
     prepare = _read("prepare_bundled_upgrade.ps1")
     early_marker_repair = prepare[
-        prepare.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded") :
-        prepare.index("Set-TicketboxInstalledReleaseConfiguration -Config $InstalledReleaseConfig")
+        prepare.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded") : prepare.index(
+            "Set-TicketboxInstalledReleaseConfiguration -Config $InstalledReleaseConfig"
+        )
     ]
     prepared_recovery = prepare[
-        prepare.index("function Invoke-TicketboxPreparedInstallRecovery") :
-        prepare.index("if ($PgPort -eq $BackendPort)")
+        prepare.index("function Invoke-TicketboxPreparedInstallRecovery") : prepare.index(
+            "if ($PgPort -eq $BackendPort)"
+        )
     ]
 
     for index, engine in enumerate(powershell_contract_engines()):
@@ -1798,11 +2049,11 @@ def test_stale_fresh_receipt_repairs_inherited_marker_before_receipt_read_and_re
         harness.write_text(
             f"""
 $ErrorActionPreference = 'Stop'
-. '{_literal(PACKAGING / 'windows_service_lifecycle.ps1')}'
-. '{_literal(PACKAGING / 'windows_installation_safety.ps1')}'
-. '{_literal(PACKAGING / 'windows_database_safety.ps1')}'
-. '{_literal(PACKAGING / 'windows_release_config.ps1')}'
-. '{_literal(PACKAGING / 'windows_lifecycle_receipt.ps1')}'
+. '{_literal(PACKAGING / "windows_service_lifecycle.ps1")}'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_release_config.ps1")}'
+. '{_literal(PACKAGING / "windows_lifecycle_receipt.ps1")}'
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $script:TicketboxLifecycleReceiptAclAccounts = @($currentAccount)
 $script:TicketboxLifecycleReceiptOwnerAccount = $currentAccount
@@ -1892,7 +2143,7 @@ Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded `
     -ExpectedBackendServiceName ([string]$config.backend_service_name) `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount
-$staleReceipt = Read-TicketboxCompatibleLifecycleReceipt `
+$staleReceipt = Read-TicketboxLifecycleReceipt `
     -Path '{_literal(receipt_path)}' `
     -InstallDir '{_literal(install_dir)}' `
     -DataRoot '{_literal(data_root)}' `
@@ -1973,8 +2224,9 @@ def test_completed_and_interrupted_receipts_bind_exact_backend_marker_rx_cross_e
     config["backend_service_name"] = "TrustedInstaller"
     prepare = _read("prepare_bundled_upgrade.ps1")
     early_marker_repair = prepare[
-        prepare.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded") :
-        prepare.index("Set-TicketboxInstalledReleaseConfiguration -Config $InstalledReleaseConfig")
+        prepare.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded") : prepare.index(
+            "Set-TicketboxInstalledReleaseConfiguration -Config $InstalledReleaseConfig"
+        )
     ]
 
     for index, engine in enumerate(powershell_contract_engines()):
@@ -1988,11 +2240,11 @@ def test_completed_and_interrupted_receipts_bind_exact_backend_marker_rx_cross_e
         harness.write_text(
             f"""
 $ErrorActionPreference = 'Stop'
-. '{_literal(PACKAGING / 'windows_service_lifecycle.ps1')}'
-. '{_literal(PACKAGING / 'windows_installation_safety.ps1')}'
-. '{_literal(PACKAGING / 'windows_database_safety.ps1')}'
-. '{_literal(PACKAGING / 'windows_release_config.ps1')}'
-. '{_literal(PACKAGING / 'windows_lifecycle_receipt.ps1')}'
+. '{_literal(PACKAGING / "windows_service_lifecycle.ps1")}'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_release_config.ps1")}'
+. '{_literal(PACKAGING / "windows_lifecycle_receipt.ps1")}'
 {early_marker_repair}
 $account = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $script:TicketboxLifecycleReceiptAclAccounts = @($account)
@@ -2104,11 +2356,10 @@ function Write-TestReceipt([object]$Authority, [string]$Stage, [bool]$Completed)
         FilesMayHaveBeenReplaced = ($Stage -ne 'captured')
         InstallCompleted = $Completed
     }}
-    if ($Completed) {{
-        $arguments.C07InstallationOperationId = [guid]::NewGuid().ToString('D')
-        $arguments.C07ProductionAuthoritySha256 = ('A' * 64)
-        $arguments.C07RuntimeProjectionSha256 = ('B' * 64)
-    }}
+        if ($Completed) {{
+            $arguments.DatabaseGenerationOperationId = [guid]::NewGuid().ToString('D')
+            $arguments.DatabaseGenerationCurrentSha256 = ('a' * 64)
+        }}
     Write-TicketboxLifecycleReceipt @arguments
 }}
 
@@ -2281,8 +2532,9 @@ def test_recovery_marker_refuses_to_create_installer_state_without_data_root_aut
         )
     ]
     early_marker_repair = prepare[
-        prepare.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded") :
-        prepare.index("Set-TicketboxInstalledReleaseConfiguration -Config $InstalledReleaseConfig")
+        prepare.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded") : prepare.index(
+            "Set-TicketboxInstalledReleaseConfiguration -Config $InstalledReleaseConfig"
+        )
     ]
     recovery_initializer = prepare[
         prepare.index("function Initialize-TicketboxRecoveryStateArtifact") : prepare.index(
@@ -2294,8 +2546,8 @@ def test_recovery_marker_refuses_to_create_installer_state_without_data_root_aut
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
-. '{_literal(PACKAGING / 'windows_installation_safety.ps1')}'
-. '{_literal(PACKAGING / 'windows_lifecycle_receipt.ps1')}'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_lifecycle_receipt.ps1")}'
 {authority_gate}
 {early_marker_repair}
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -2893,11 +3145,11 @@ def test_lifecycle_receipt_roundtrip_is_bound_to_install_inputs(tmp_path: Path) 
         harness.write_text(
             f"""
 $ErrorActionPreference = 'Stop'
-. '{_literal(PACKAGING / 'windows_service_lifecycle.ps1')}'
-. '{_literal(PACKAGING / 'windows_installation_safety.ps1')}'
-. '{_literal(PACKAGING / 'windows_database_safety.ps1')}'
-. '{_literal(PACKAGING / 'windows_release_config.ps1')}'
-. '{_literal(PACKAGING / 'windows_lifecycle_receipt.ps1')}'
+. '{_literal(PACKAGING / "windows_service_lifecycle.ps1")}'
+. '{_literal(PACKAGING / "windows_installation_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_database_safety.ps1")}'
+. '{_literal(PACKAGING / "windows_release_config.ps1")}'
+. '{_literal(PACKAGING / "windows_lifecycle_receipt.ps1")}'
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $script:TicketboxLifecycleReceiptAclAccounts = @($currentAccount)
 $script:TicketboxLifecycleReceiptOwnerAccount = $currentAccount
@@ -3061,81 +3313,14 @@ function Set-TestReceiptLegacyV7 {{
         -Raw | ConvertFrom-Json
     $legacyReceipt.schema = 'ticketbox-windows-lifecycle-receipt-v7'
     $legacyReceipt.PSObject.Properties.Remove('target_backend_version_floor')
+    $legacyReceipt.PSObject.Properties.Remove('database_generation_operation_id')
+    $legacyReceipt.PSObject.Properties.Remove('database_generation_current_sha256')
     Write-TicketboxProtectedUtf8FileDurable `
         -Path '{_literal(receipt_path)}' `
         -Text ($legacyReceipt | ConvertTo-Json -Depth 20 -Compress) `
         -FullControlAccounts @($currentAccount) `
         -OwnerAccount $currentAccount `
         -ReplaceExisting
-}}
-function Convert-TestLegacyReceipt(
-    [string]$ExpectedStage,
-    [int]$InstallerOwnerProcessId,
-    [switch]$AllowPreviousInstallerOwnerProcessId
-) {{
-    Set-TestReceiptLegacyV7
-    $legacyBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
-    $implicitLegacyReadRejected = $false
-    try {{
-        Read-TicketboxLifecycleReceipt `
-            -Path '{_literal(receipt_path)}' `
-            -InstallDir '{_literal(install_dir)}' `
-            -DataRoot '{_literal(data_root)}' `
-            -PgPort 5544 `
-            -BackendPort 8765 `
-            -TargetReleaseConfig $config `
-            -CurrentTargetBackendVersion 1.3.0 `
-            -InstallerOwnerProcessId $InstallerOwnerProcessId `
-            -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId | Out-Null
-    }}
-    catch {{ $implicitLegacyReadRejected = $true }}
-    if (
-        -not $implicitLegacyReadRejected -or
-        -not (Test-TicketboxWindowsByteArrayEquals `
-            $legacyBytes `
-            ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
-    ) {{
-        throw "legacy $ExpectedStage receipt was accepted without migration or mutated first"
-    }}
-    $compatibleReceipt = Read-TicketboxCompatibleLifecycleReceipt `
-        -Path '{_literal(receipt_path)}' `
-        -InstallDir '{_literal(install_dir)}' `
-        -DataRoot '{_literal(data_root)}' `
-        -PgPort 5544 `
-        -BackendPort 8765 `
-        -TargetReleaseConfig $config `
-        -CurrentTargetBackendVersion 1.3.0 `
-        -InstallerOwnerProcessId $InstallerOwnerProcessId `
-        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
-    if (
-        [string]$compatibleReceipt.schema -cne 'ticketbox-windows-lifecycle-receipt-v7' -or
-        [string]$compatibleReceipt.preparation_stage -cne $ExpectedStage -or
-        -not (Test-TicketboxWindowsByteArrayEquals `
-            $legacyBytes `
-            ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
-    ) {{
-        throw "legacy $ExpectedStage receipt was not classified without mutation"
-    }}
-    Close-TicketboxLifecycleBackupGuard $compatibleReceipt
-    $migratedReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
-        -Path '{_literal(receipt_path)}' `
-        -InstallDir '{_literal(install_dir)}' `
-        -DataRoot '{_literal(data_root)}' `
-        -PgPort 5544 `
-        -BackendPort 8765 `
-        -TargetReleaseConfig $config `
-        -CurrentTargetBackendVersion 1.3.0 `
-        -InstallerOwnerProcessId $InstallerOwnerProcessId `
-        -AllowPreviousInstallerOwnerProcessId:$AllowPreviousInstallerOwnerProcessId
-    if (
-        [string]$migratedReceipt.schema -cne 'ticketbox-windows-lifecycle-receipt-v8' -or
-        [string]$migratedReceipt.target_backend_version_floor -cne '1.3.0' -or
-        [string]$migratedReceipt.preparation_stage -cne $ExpectedStage -or
-        [int]$migratedReceipt.installer_owner_process_id -ne $InstallerOwnerProcessId
-    ) {{
-        throw "legacy $ExpectedStage receipt migration lost lifecycle authority"
-    }}
-    return $migratedReceipt
 }}
 $freshMode = Get-TicketboxPreparedInstallMode $false $false $false $false $false
 $preservedMode = Get-TicketboxPreparedInstallMode $false $false $true $true $false
@@ -3204,7 +3389,7 @@ $capturedReceiptJson = Get-Content `
     -Encoding UTF8 `
     -Raw | ConvertFrom-Json
 if (
-    $capturedReceiptJson.schema -cne 'ticketbox-windows-lifecycle-receipt-v8' -or
+    $capturedReceiptJson.schema -cne 'ticketbox-windows-lifecycle-receipt-v9' -or
     $capturedReceiptJson.target_backend_version_floor -cne '1.3.0' -or
     $capturedReceiptJson.data_volume_identity -cne $dataRootAuthority.DataVolumeIdentity
 ) {{
@@ -3214,23 +3399,56 @@ $capturedReceiptText = Get-Content `
     -LiteralPath '{_literal(receipt_path)}' `
     -Encoding UTF8 `
     -Raw
+foreach ($retiredField in @(
+    'c07_installation_operation_id',
+    'c07_production_authority_sha256',
+    'c07_runtime_projection_sha256',
+    'alternate_current_sha256'
+)) {{
+    $retiredMutation = $capturedReceiptText | ConvertFrom-Json
+    $retiredMutation | Add-Member `
+        -NotePropertyName $retiredField `
+        -NotePropertyValue ''
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path '{_literal(receipt_path)}' `
+        -Text ($retiredMutation | ConvertTo-Json -Depth 20 -Compress) `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount `
+        -ReplaceExisting
+    $retiredBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+    $retiredRejected = $false
+    try {{
+        Read-TicketboxLifecycleReceipt `
+            -Path '{_literal(receipt_path)}' `
+            -InstallDir '{_literal(install_dir)}' `
+            -DataRoot '{_literal(data_root)}' `
+            -PgPort 5544 `
+            -BackendPort 8765 `
+            -TargetReleaseConfig $config `
+            -CurrentTargetBackendVersion 1.3.0 `
+            -InstallerOwnerProcessId $PID | Out-Null
+    }}
+    catch {{ $retiredRejected = $true }}
+    if (
+        -not $retiredRejected -or
+        -not (Test-TicketboxWindowsByteArrayEquals `
+            $retiredBytes `
+            ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
+    ) {{
+        throw "retired receipt field was accepted or mutated: $retiredField"
+    }}
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path '{_literal(receipt_path)}' `
+        -Text $capturedReceiptText `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount `
+        -ReplaceExisting
+}}
 Set-TestReceiptLegacyV7
-$legacyCapturedText = Get-Content `
-    -LiteralPath '{_literal(receipt_path)}' `
-    -Encoding UTF8 `
-    -Raw
-$malformedLegacy = $legacyCapturedText | ConvertFrom-Json
-$malformedLegacy.files_may_have_been_replaced = $true
-Write-TicketboxProtectedUtf8FileDurable `
-    -Path '{_literal(receipt_path)}' `
-    -Text ($malformedLegacy | ConvertTo-Json -Depth 20 -Compress) `
-    -FullControlAccounts @($currentAccount) `
-    -OwnerAccount $currentAccount `
-    -ReplaceExisting
-$malformedLegacyBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
-$malformedLegacyRejected = $false
+$legacyCapturedBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+$legacyPrepareRejected = $false
 try {{
-    ConvertTo-TicketboxCurrentLifecycleReceipt `
+    Read-TicketboxLifecycleReceipt `
         -Path '{_literal(receipt_path)}' `
         -InstallDir '{_literal(install_dir)}' `
         -DataRoot '{_literal(data_root)}' `
@@ -3240,14 +3458,14 @@ try {{
         -CurrentTargetBackendVersion 1.3.0 `
         -InstallerOwnerProcessId $PID | Out-Null
 }}
-catch {{ $malformedLegacyRejected = $true }}
+catch {{ $legacyPrepareRejected = $true }}
 if (
-    -not $malformedLegacyRejected -or
+    -not $legacyPrepareRejected -or
     -not (Test-TicketboxWindowsByteArrayEquals `
-        $malformedLegacyBytes `
+        $legacyCapturedBytes `
         ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))
 ) {{
-    throw 'malformed legacy receipt was accepted or mutated before rejection'
+    throw 'prepare accepted or mutated a legacy lifecycle receipt'
 }}
 Write-TicketboxProtectedUtf8FileDurable `
     -Path '{_literal(receipt_path)}' `
@@ -3255,8 +3473,14 @@ Write-TicketboxProtectedUtf8FileDurable `
     -FullControlAccounts @($currentAccount) `
     -OwnerAccount $currentAccount `
     -ReplaceExisting
-$capturedReceipt = Convert-TestLegacyReceipt `
-    -ExpectedStage captured `
+$capturedReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId $PID
 $dataRootMarkerPath = Get-TicketboxDataRootMarkerPath '{_literal(data_root)}'
 $dataRootMarkerText = Get-Content -LiteralPath $dataRootMarkerPath -Encoding UTF8 -Raw
@@ -3351,15 +3575,12 @@ if ($receipt.mode -ne 'upgrade' -or
     throw 'receipt mode, policy, or backup changed'
 }}
 Close-TicketboxLifecycleBackupGuard $receipt
-$receipt = Convert-TestLegacyReceipt `
-    -ExpectedStage prepared `
-    -InstallerOwnerProcessId $PID
 if (-not $receipt.backup_completed -or
     $receipt.backup_sha256 -cnotmatch '^[0-9A-F]{{64}}$' -or
     [long]$receipt.backup_byte_length -ne 15 -or
     $receipt.previous_pg_start_policy -cne 'delayed_auto' -or
     $receipt.previous_backend_start_policy -cne 'manual') {{
-    throw 'legacy prepared migration discarded backup or service policy evidence'
+    throw 'prepared receipt discarded backup or service policy evidence'
 }}
 $overwriteRejected = $false
 try {{
@@ -3448,16 +3669,6 @@ if (-not $repairReceipt.files_may_have_been_replaced -or
     [long]$repairReceipt.backup_byte_length -ne [long]$receipt.backup_byte_length) {{
     throw 'repair rebind discarded previous state or backup evidence'
 }}
-Close-TicketboxLifecycleBackupGuard $repairReceipt
-$repairReceipt = Convert-TestLegacyReceipt `
-    -ExpectedStage files_may_have_been_replaced `
-    -InstallerOwnerProcessId ($PID + 1)
-if (-not $repairReceipt.files_may_have_been_replaced -or
-    -not $repairReceipt.backup_completed -or
-    $repairReceipt.backup_sha256 -cne $receipt.backup_sha256 -or
-    [long]$repairReceipt.backup_byte_length -ne [long]$receipt.backup_byte_length) {{
-    throw 'legacy post-copy migration discarded recovery or backup evidence'
-}}
 Set-TicketboxLifecycleReceiptInstallerOwner `
     -Path '{_literal(receipt_path)}' `
     -Receipt $repairReceipt `
@@ -3503,6 +3714,86 @@ Set-TicketboxExactFileAcl `
     -Accounts @($currentAccount) `
     -ReadExecuteAccounts @($backendSid) `
     -OwnerAccount $currentAccount
+$missingGenerationBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+$missingGenerationRejected = $false
+try {{
+    Set-TicketboxLifecycleReceiptInstallCompleted `
+        -Path '{_literal(receipt_path)}' `
+        -Receipt $repairReceipt `
+        -InstallerOwnerProcessId ($PID + 2)
+}}
+catch {{ $missingGenerationRejected = $true }}
+Close-TicketboxLifecycleBackupGuard $repairReceipt
+if (-not $missingGenerationRejected -or
+    -not (Test-TicketboxWindowsByteArrayEquals `
+        $missingGenerationBytes `
+        ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
+    throw 'completed receipt accepted missing generation authority or mutated first'
+}}
+$repairReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId ($PID + 2)
+$zeroOperationRejected = $false
+try {{
+    Set-TicketboxLifecycleReceiptDatabaseGenerationOperation `
+        -Path '{_literal(receipt_path)}' `
+        -Receipt $repairReceipt `
+        -InstallerOwnerProcessId ($PID + 2) `
+        -OperationId '00000000-0000-0000-0000-000000000000'
+}}
+catch {{ $zeroOperationRejected = $true }}
+Close-TicketboxLifecycleBackupGuard $repairReceipt
+if (-not $zeroOperationRejected -or
+    -not (Test-TicketboxWindowsByteArrayEquals `
+        $missingGenerationBytes `
+        ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
+    throw 'completed receipt accepted an all-zero generation operation or mutated first'
+}}
+$generationOperation = '11111111-1111-4111-8111-111111111111'
+$repairReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId ($PID + 2)
+Set-TicketboxLifecycleReceiptDatabaseGenerationOperation `
+    -Path '{_literal(receipt_path)}' `
+    -Receipt $repairReceipt `
+    -InstallerOwnerProcessId ($PID + 2) `
+    -OperationId $generationOperation
+$repairReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId ($PID + 2)
+Set-TicketboxLifecycleReceiptDatabaseGenerationEvidence `
+    -Path '{_literal(receipt_path)}' `
+    -Receipt $repairReceipt `
+    -InstallerOwnerProcessId ($PID + 2) `
+    -OperationId $generationOperation `
+    -CurrentSha256 ('a' * 64)
+$repairReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId ($PID + 2)
 Set-TicketboxLifecycleReceiptInstallCompleted `
     -Path '{_literal(receipt_path)}' `
     -Receipt $repairReceipt `
@@ -3518,9 +3809,15 @@ $completedReceipt = Read-TicketboxLifecycleReceipt `
     -InstallerOwnerProcessId ($PID + 2)
 if (-not $completedReceipt.install_completed -or
     $completedReceipt.preparation_stage -ne 'install_completed' -or
-    $completedReceipt.target_backend_version_floor -cne '1.3.0') {{
+    $completedReceipt.target_backend_version_floor -cne '1.3.0' -or
+    $completedReceipt.database_generation_operation_id -cne $generationOperation -or
+    $completedReceipt.database_generation_current_sha256 -cne ('a' * 64)) {{
     throw 'completed receipt was not persisted'
 }}
+$currentCompletedText = Get-Content `
+    -LiteralPath '{_literal(receipt_path)}' `
+    -Encoding UTF8 `
+    -Raw
 Set-TestReceiptLegacyV7
 $legacyCompletedBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
 $legacyCompletedReceipt = Read-TicketboxCompletedLifecycleReceipt `
@@ -3539,26 +3836,26 @@ if (-not $legacyCompletedReceipt.install_completed -or
         ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
     throw 'read-only legacy completed receipt adoption mutated or lost authority'
 }}
-$completedReceipt = ConvertTo-TicketboxCurrentLifecycleReceipt `
-    -Path '{_literal(receipt_path)}' `
-    -InstallDir '{_literal(install_dir)}' `
-    -DataRoot '{_literal(data_root)}' `
-    -PgPort 5544 `
-    -BackendPort 8765 `
-    -TargetReleaseConfig $config `
-    -CurrentTargetBackendVersion 1.3.0 `
-    -InstallerOwnerProcessId ($PID + 3) `
-    -AllowPreviousInstallerOwnerProcessId
-if (-not $completedReceipt.install_completed -or
-    $completedReceipt.preparation_stage -cne 'install_completed' -or
-    $completedReceipt.target_backend_version_floor -cne '1.3.0' -or
-    $completedReceipt.backup_sha256 -cne $legacyCompletedReceipt.backup_sha256 -or
-    [long]$completedReceipt.backup_byte_length -ne
-        [long]$legacyCompletedReceipt.backup_byte_length) {{
-    throw 'legacy completed receipt migration discarded completion or backup evidence'
+$legacyCompletedPrepareRejected = $false
+try {{
+    Assert-TicketboxPrepareLifecycleReceiptMutationAuthority `
+        $legacyCompletedReceipt
 }}
-$adoptedCompletedBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
-$adoptedDowngradeRejected = $false
+catch {{ $legacyCompletedPrepareRejected = $true }}
+if (-not $legacyCompletedPrepareRejected -or
+    -not (Test-TicketboxWindowsByteArrayEquals `
+        $legacyCompletedBytes `
+        ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
+    throw 'prepare accepted a legacy completed receipt without a Generation CURRENT'
+}}
+Write-TicketboxProtectedUtf8FileDurable `
+    -Path '{_literal(receipt_path)}' `
+    -Text $currentCompletedText `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount `
+    -ReplaceExisting
+$currentCompletedBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
+$currentDowngradeRejected = $false
 try {{
     Read-TicketboxLifecycleReceipt `
         -Path '{_literal(receipt_path)}' `
@@ -3568,14 +3865,14 @@ try {{
         -BackendPort 8765 `
         -TargetReleaseConfig $config `
         -CurrentTargetBackendVersion 1.2.9 `
-        -InstallerOwnerProcessId ($PID + 3) | Out-Null
+        -InstallerOwnerProcessId ($PID + 2) | Out-Null
 }}
-catch {{ $adoptedDowngradeRejected = $true }}
-if (-not $adoptedDowngradeRejected -or
+catch {{ $currentDowngradeRejected = $true }}
+if (-not $currentDowngradeRejected -or
     -not (Test-TicketboxWindowsByteArrayEquals `
-        $adoptedCompletedBytes `
+        $currentCompletedBytes `
         ([System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')))) {{
-    throw 'legacy adoption failed to establish a monotonic target version floor'
+    throw 'current completed receipt lost its monotonic target version floor'
 }}
 Set-TestBackupContent 'completed-corruption'
 $completedCorruptionRejected = $false
@@ -3670,14 +3967,11 @@ $deferredReceipt = Read-TicketboxLifecycleReceipt `
     -TargetReleaseConfig $config `
     -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId $PID
-$deferredReceipt = Convert-TestLegacyReceipt `
-    -ExpectedStage backup_deferred_until_program_files_installed `
-    -InstallerOwnerProcessId $PID
 if ($deferredReceipt.mode -cne 'preserved_data_reinstall' -or
     -not $deferredReceipt.backup_required -or
     $deferredReceipt.backup_completed -or
     $deferredReceipt.files_may_have_been_replaced) {{
-    throw 'legacy deferred-backup migration changed its recovery boundary'
+    throw 'deferred-backup receipt changed its recovery boundary'
 }}
 Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending `
     -Path '{_literal(receipt_path)}' `
@@ -3706,13 +4000,10 @@ $backupPendingReceipt = Read-TicketboxLifecycleReceipt `
     -TargetReleaseConfig $config `
     -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId $PID
-$backupPendingReceipt = Convert-TestLegacyReceipt `
-    -ExpectedStage program_files_installed_backup_pending `
-    -InstallerOwnerProcessId $PID
 if (-not $backupPendingReceipt.files_may_have_been_replaced -or
     -not $backupPendingReceipt.temporary_pg_service_cleanup_pending -or
     $backupPendingReceipt.backup_completed) {{
-    throw 'legacy backup-pending migration discarded copy or cleanup obligations'
+    throw 'backup-pending receipt discarded copy or cleanup obligations'
 }}
 Remove-Item -LiteralPath '{_literal(receipt_path)}' -Force
 Write-TicketboxLifecycleReceipt `

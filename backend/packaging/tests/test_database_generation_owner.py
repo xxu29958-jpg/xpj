@@ -15,6 +15,7 @@ SOURCE = PACKAGING / "windows_database_generation_source.ps1"
 RECOVERY_EVIDENCE = PACKAGING / "windows_database_generation_recovery_evidence.ps1"
 TARGET_RECOVERY = PACKAGING / "windows_database_generation_target_recovery.ps1"
 PROJECTION = PACKAGING / "windows_database_generation_projection.ps1"
+C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
 LIFECYCLE_LOCK = PACKAGING / "windows_lifecycle_lock.ps1"
 PREPARE = PACKAGING / "prepare_bundled_upgrade.ps1"
 RETIRED_C07_RECOVERY = PACKAGING / "windows_c07_recovery_generation.ps1"
@@ -80,6 +81,7 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     source = SOURCE.read_text(encoding="utf-8-sig")
     recovery_evidence = RECOVERY_EVIDENCE.read_text(encoding="utf-8-sig")
     target_recovery = TARGET_RECOVERY.read_text(encoding="utf-8-sig")
+    c07_database = C07_DATABASE.read_text(encoding="utf-8-sig")
     installer = INSTALLER.read_text(encoding="utf-8-sig")
     flow = FLOW.read_text(encoding="utf-8-sig")
     production = "\n".join(path.read_text(encoding="utf-8-sig") for path in PACKAGING.glob("*.ps1"))
@@ -95,9 +97,7 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     assert prepare_to_install.index("-PersistDatabaseGenerationIntentOnly") < (
         prepare_to_install.index("install_windows_prerequisites.ps1")
     )
-    prepare = (PACKAGING / "prepare_bundled_upgrade.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    prepare = (PACKAGING / "prepare_bundled_upgrade.ps1").read_text(encoding="utf-8-sig")
     persist_branch = re.search(
         r"(?m)^    if \(\$PersistDatabaseGenerationIntentOnly\) \{$",
         prepare,
@@ -105,9 +105,7 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     assert persist_branch is not None
     persist_end = prepare.index("    # A trusted older installer", persist_branch.end())
     persist_body = prepare[persist_branch.end() : persist_end]
-    eligibility = persist_body.index(
-        "Start-TicketboxDatabaseGenerationIntent `"
-    )
+    eligibility = persist_body.index("Start-TicketboxDatabaseGenerationIntent `")
     assert "New-TicketboxDatabaseGenerationIntent" not in persist_body
     for hostile_existing_fact in (
         "$HasPersistedInstalledReleaseConfig",
@@ -133,8 +131,12 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
         "Set-TicketboxLifecycleReceiptC07ReadyEvidence",
         "Invoke-TicketboxC07TargetRecoveryGeneration",
         "Test-TicketboxC07TargetRecoveryGenerationRestore",
+        "TicketboxC07ProductionMarkerSchema",
+        "TicketboxC07ProductionResultSchema",
+        "TicketboxC07TargetCommitResultSchema",
+        "TicketboxC07ProductionLifecycleBindingSchema",
     ):
-        assert retired not in production
+        assert retired not in production + c07_database
     for retired_path in (
         RETIRED_C07_RECOVERY,
         RETIRED_C07_AUTHORITY,
@@ -200,6 +202,7 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
 
 def test_target_execution_authority_is_retry_stable_and_binding_is_insert_only(tmp_path: Path) -> None:
     adapter = ADAPTER.read_text(encoding="utf-8-sig")
+    projection = PROJECTION.read_text(encoding="utf-8-sig")
     authority = _function(
         adapter,
         "New-TicketboxDatabaseGenerationExecutionAuthority",
@@ -209,12 +212,27 @@ def test_target_execution_authority_is_retry_stable_and_binding_is_insert_only(t
         "Throw-TicketboxDatabaseGenerationOperationFailure",
     )
     binding = _function(
-        adapter,
+        projection,
         "Set-TicketboxDatabaseGenerationDatabaseBinding",
+    )
+    live_identity = _function(
+        projection,
+        "Get-TicketboxDatabaseGenerationLiveIdentity",
     )
     assert "ON CONFLICT (key) DO NOTHING" in binding
     assert "DO UPDATE" not in binding
     assert binding.count("Assert-TicketboxLifecycleOperationLease $LifecycleLock") >= 2
+    assert "pg_catalog.pg_control_system()" in live_identity
+    assert "pg_catalog.pg_database" in live_identity
+    for field in (
+        "cluster_system_identifier",
+        "database_oid",
+        "database_name",
+        "runtime_role",
+        "logical_server_id",
+        "logical_data_generation",
+    ):
+        assert field in binding
     script = f"""
 $ErrorActionPreference = 'Stop'
 function Assert-TicketboxDatabaseGenerationExactProperties {{ param($Value, $ExpectedNames, $Label) }}
@@ -271,15 +289,11 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     assert "function Import-TicketboxDatabaseGenerationExecutionDependencies" not in owner_source
     assert "function Import-TicketboxInstalledDatabaseGenerationAuthority" not in prepare_source
     assert "function Import-TicketboxBootstrapDatabaseGenerationAuthority" not in prepare_source
-    assert prepare_source.count(
-        ". (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)"
-    ) == 2
-    assert prepare_source.count(
-        ". (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)"
-    ) == 2
-    assert owner_source.count(
-        "foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `"
-    ) == 1
+    assert prepare_source.count(". (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)") == 1
+    assert prepare_source.count(". (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)") == 2
+    assert (
+        owner_source.count("foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `") == 1
+    )
     owner_consumer = _function(
         owner_source,
         "Invoke-TicketboxInstalledDatabaseGeneration",
@@ -289,9 +303,9 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
         "Assert-TicketboxDatabaseGenerationCommitReadyArtifact",
     )
     for consumer in (owner_consumer, commit_ready_consumer):
-        assert consumer.count(
-            "foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `"
-        ) == 1
+        assert (
+            consumer.count("foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `") == 1
+        )
         assert "-Root $PSScriptRoot" in consumer
     installed_path = _function(
         prepare_source,

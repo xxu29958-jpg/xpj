@@ -1811,7 +1811,7 @@ function Resolve-TicketboxRecoverableFreshInstallPendingIdentity {
         throw "PENDING installation identity 不属于当前安装包；构建验证阶段拒绝跨 release 续接。"
     }
     $receiptOperationId =
-        [string]$LifecycleReceipt.c07_installation_operation_id
+        [string]$LifecycleReceipt.database_generation_operation_id
     if (
         -not [string]::IsNullOrEmpty($receiptOperationId) -and
         $receiptOperationId -cne [string]$Identity.OperationId
@@ -2307,7 +2307,7 @@ try {
         throw $ownerBindingFailure
     }
     if ($c07InstallationIdentity.State -ceq "PENDING") {
-        Set-TicketboxLifecycleReceiptC07InstallationOperation `
+        Set-TicketboxLifecycleReceiptDatabaseGenerationOperation `
             -Path $LifecycleReceiptPath `
             -Receipt $lifecycleReceipt `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
@@ -2322,10 +2322,10 @@ try {
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId
         if (
-            [string]$lifecycleReceipt.c07_installation_operation_id -cne
+            [string]$lifecycleReceipt.database_generation_operation_id -cne
                 [string]$c07InstallationIdentity.OperationId
         ) {
-            throw "安装事务未原子绑定 C07 PENDING installation operation。"
+            throw "安装事务未原子绑定 database generation operation。"
         }
     }
     $databaseGenerationReleaseContract =
