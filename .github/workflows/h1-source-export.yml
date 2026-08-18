@@ -1,6 +1,9 @@
 name: H1 source export
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - codex/h1-postgres-maintenance-cutover
