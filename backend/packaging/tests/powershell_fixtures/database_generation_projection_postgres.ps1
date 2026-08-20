@@ -28,6 +28,7 @@ $pgCtl = Join-Path $PgBin "pg_ctl.exe"
 $psql = Join-Path $PgBin "psql.exe"
 $script:bootstrapPassword = "projection-admin-password-1234567890"
 $script:runtimePassword = "projection-runtime-password-1234567890"
+$script:singleUserDiagnosticAttempt = 0
 New-Item -ItemType Directory -Path $WorkRoot -Force | Out-Null
 
 function Invoke-TestPsql {
@@ -281,12 +282,50 @@ function Invoke-TestSingleUserRetirement {
     $postgres = [IO.Path]::GetFullPath((Join-Path $PgBin "postgres.exe"))
     $shawl = [IO.Path]::GetFullPath($ShawlPath)
     $powershell = Get-TicketboxWindowsPowerShellExecutable
+    $script:singleUserDiagnosticAttempt += 1
+    $diagnosticName = "single-user-diagnostic-$($script:singleUserDiagnosticAttempt)"
+    $diagnosticPath = Join-Path $WorkRoot ($diagnosticName + ".txt")
+    $wrapperPath = Join-Path $installedHelperRoot ($diagnosticName + ".ps1")
+    $wrapper = @'
+param(
+    [Parameter(Mandatory = $true)][string]$PostgresPath,
+    [Parameter(Mandatory = $true)][string]$PhysicalPgData,
+    [Parameter(Mandatory = $true)][string]$OperationId,
+    [Parameter(Mandatory = $true)][string]$IntentSha256,
+    [Parameter(Mandatory = $true)][string]$CandidateSha256,
+    [Parameter(Mandatory = $true)][string]$CommittedRevision,
+    [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds
+)
+$ErrorActionPreference = 'Stop'
+try {
+    & '__HELPER__' @PSBoundParameters
+    exit 0
+}
+catch {
+    $rendered = ($_ | Format-List * -Force | Out-String)
+    [IO.File]::WriteAllText(
+        '__DIAGNOSTIC__', $rendered, [Text.UTF8Encoding]::new($false)
+    )
+    exit 1
+}
+'@
+    $wrapper = $wrapper.Replace("__HELPER__", $helper.Replace("'", "''"))
+    $wrapper = $wrapper.Replace(
+        "__DIAGNOSTIC__", $diagnosticPath.Replace("'", "''")
+    )
+    [IO.File]::WriteAllText(
+        $wrapperPath, $wrapper, [Text.UTF8Encoding]::new($true)
+    )
+    Set-TicketboxExactFileAcl `
+        -Path $wrapperPath `
+        -Accounts @($currentAccount, "NT AUTHORITY\LocalService") `
+        -OwnerAccount $currentAccount
     $imagePath = New-TicketboxPostgresqlSingleUserServiceImagePath `
         -ShawlPath $shawl `
         -ServiceName $serviceName `
-        -WorkingDirectory (Split-Path -Parent $helper) `
+        -WorkingDirectory (Split-Path -Parent $wrapperPath) `
         -PowerShellPath $powershell `
-        -HelperPath $helper `
+        -HelperPath $wrapperPath `
         -PostgresPath $postgres `
         -PhysicalPgData $dataDir `
         -OperationId ([string]$Intent.Payload.operation_id) `
@@ -321,6 +360,22 @@ function Invoke-TestSingleUserRetirement {
             -ExpectedRuntimeExecutables @($shawl, $postgres) `
             -TimeoutMilliseconds 45000 `
             -PollMilliseconds 100
+        if ([uint32]$snapshot.ExitCode -ne 0) {
+            $diagnosticText = try {
+                if ((Get-TicketboxPathEntryKindNoFollow $diagnosticPath) -cne "File") {
+                    "single invocation returned without an error envelope"
+                }
+                else { [IO.File]::ReadAllText($diagnosticPath) }
+            }
+            catch { "diagnostic collection failed: " + [string]$_ }
+            try {
+                $snapshot | Add-Member `
+                    -NotePropertyName DiagnosticText `
+                    -NotePropertyValue $diagnosticText `
+                    -Force
+            }
+            catch {}
+        }
     }
     finally {
         if ($created) {
@@ -673,7 +728,11 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
             -Intent $intent -Candidate $candidate
         if (
             [uint32]$foreignSnapshot.ExitCode -ne 1066 -or
-            [uint32]$foreignSnapshot.ServiceSpecificExitCode -eq 0
+            [uint32]$foreignSnapshot.ServiceSpecificExitCode -eq 0 -or
+            ([string]$foreignSnapshot.DiagnosticText).IndexOf(
+                "bootstrap retirement marker conflict",
+                [StringComparison]::Ordinal
+            ) -lt 0
         ) {
             throw (
                 "foreign retirement marker returned the wrong SCM exit shape: " +
@@ -708,7 +767,8 @@ WHERE role.rolname = 'postgres';
             throw (
                 "single-user retirement service failed: exit=" +
                 [uint32]$retirementSnapshot.ExitCode + "/" +
-                [uint32]$retirementSnapshot.ServiceSpecificExitCode
+                [uint32]$retirementSnapshot.ServiceSpecificExitCode + "`n" +
+                [string]$retirementSnapshot.DiagnosticText
             )
         }
         Start-TestPostgresAfterSingleUser
