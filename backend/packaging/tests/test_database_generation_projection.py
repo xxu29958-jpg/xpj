@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 import pytest
-from _powershell_contract import powershell_contract_engines
+from _powershell_contract import powershell_contract_engines, powershell_function
 
 pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")
 
@@ -248,6 +248,10 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows projection contract")
 def test_runtime_projection_read_and_retirement_retry_are_fail_closed(tmp_path: Path) -> None:
+    fixture = Path(__file__).with_name("powershell_fixtures") / "database_generation_projection_postgres.ps1"
+    invoke_test_psql = powershell_function(fixture.read_text(encoding="utf-8-sig"), "Invoke-TestPsql")
+    assert "?require_auth=scram-sha-256" in invoke_test_psql
+    assert "sslmode=" not in invoke_test_psql
     harness = tmp_path / "runtime-projection-read.ps1"
     harness.write_text(
         f"""

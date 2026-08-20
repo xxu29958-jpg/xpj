@@ -42,7 +42,7 @@ function Invoke-TestPsql {
     }
     $escapedRole = [Uri]::EscapeDataString($Role)
     $escapedDatabase = [Uri]::EscapeDataString($Database)
-    $connection = "postgresql://${escapedRole}@127.0.0.1:$port/${escapedDatabase}`?sslmode=disable&require_auth=scram-sha-256"
+    $connection = "postgresql://${escapedRole}@127.0.0.1:$port/${escapedDatabase}`?require_auth=scram-sha-256"
     $result = Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile `
         -PsqlPath $psql `
         -DatabaseUrl $connection `
