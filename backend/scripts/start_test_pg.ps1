@@ -252,7 +252,7 @@ if ($dataKind -notin @('Missing', 'Directory')) {
 }
 $ownership = $null
 if ($hostMarkerKind -eq 'File') {
-    $ownership = Update-XpjTestPostgresOwnershipSchema `
+    $ownership = Assert-XpjTestPostgresOwnership `
         -DataDir $DataDir `
         -AllowProvisioning:($dataKind -eq 'Missing')
     $ownershipDisposition = Get-XpjPostgresReleaseDisposition `

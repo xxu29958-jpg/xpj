@@ -202,26 +202,6 @@ function Assert-XpjPostgresBinaryWithinReleasePolicy {
     return $resolvedBin
 }
 
-function Find-XpjPostgresBinForCleanup {
-    [CmdletBinding()]
-    param([Parameter(Mandatory = $true)][string]$RequiredMajor)
-
-    if ($RequiredMajor -notmatch '^[1-9][0-9]*$') {
-        throw "PostgreSQL cleanup major is invalid: $RequiredMajor"
-    }
-    $programFiles = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
-    if ([string]::IsNullOrWhiteSpace($programFiles)) {
-        throw 'Windows Program Files root is unavailable'
-    }
-    $candidate = Join-Path $programFiles "PostgreSQL\$RequiredMajor\bin"
-    $resolved = Resolve-XpjPostgresBin -PostgresBin $candidate
-    $version = Get-XpjPostgresBinaryVersion -PostgresBin $resolved
-    if ($version.Major -ne [int]$RequiredMajor) {
-        throw "PostgreSQL cleanup runtime major does not match its cluster: $resolved"
-    }
-    return $resolved
-}
-
 function Find-XpjPostgresBin {
     [CmdletBinding()]
     param([string]$RequiredVersion = '')
@@ -1007,12 +987,11 @@ function Read-XpjTestPostgresOwnershipMarker {
     if (
         'schema_version' -notin $actualFields -or
         -not [int]::TryParse([string]$payload.schema_version, [ref]$schemaVersion) -or
-        $schemaVersion -notin @(1, 2)
+        $schemaVersion -ne 2
     ) {
         throw "Test PostgreSQL ownership marker schema is invalid: $Path"
     }
-    $expectedFields = @('schema_version', 'data_dir', 'cluster_marker', 'instance_id')
-    if ($schemaVersion -eq 2) { $expectedFields += 'postgres_bin' }
+    $expectedFields = @('schema_version', 'data_dir', 'cluster_marker', 'instance_id', 'postgres_bin')
     if (@(Compare-Object ($expectedFields | Sort-Object) ($actualFields | Sort-Object)).Count -ne 0) {
         throw "Test PostgreSQL ownership marker fields are invalid: $Path"
     }
@@ -1027,45 +1006,17 @@ function Read-XpjTestPostgresOwnershipMarker {
     if (-not [Guid]::TryParse([string]$payload.instance_id, [ref]$instanceId) -or $instanceId -eq [Guid]::Empty) {
         throw "Test PostgreSQL ownership marker has an invalid instance ID: $Path"
     }
-    if ($schemaVersion -eq 2) {
-        $postgresBin = Resolve-XpjStoredPostgresBinPath -PostgresBin ([string]$payload.postgres_bin)
-    }
-    else {
-        $versionPath = Join-Path $resolvedDataDir 'PG_VERSION'
-        $versionKind = Get-TicketboxPathEntryKindNoFollow -Path $versionPath
-        if ($versionKind -eq 'File') {
-            $requiredVersion = (Get-Content -Raw -Encoding UTF8 -LiteralPath $versionPath).Trim()
-            $postgresBin = Find-XpjPostgresBinForCleanup -RequiredMajor $requiredVersion
-        }
-        elseif ((Get-TicketboxPathEntryKindNoFollow -Path $resolvedDataDir) -eq 'Missing') {
-            $postgresBin = Find-XpjPostgresBin
-        }
-        else {
-            throw "Legacy test PostgreSQL ownership cannot resolve its binary version: $resolvedDataDir"
-        }
-    }
+    $postgresBin = Resolve-XpjStoredPostgresBinPath -PostgresBin ([string]$payload.postgres_bin)
     $canonicalText = ConvertTo-XpjTestPostgresOwnershipMarkerText `
         -DataDir $resolvedDataDir `
         -InstanceId $instanceId `
         -PostgresBin $postgresBin
-    $storedCanonicalText = if ($schemaVersion -eq 1) {
-        ([ordered]@{
-            schema_version = 1
-            data_dir = $resolvedDataDir
-            cluster_marker = [string](Get-XpjTestPostgresContract).cluster_marker
-            instance_id = $instanceId.ToString('D')
-        } | ConvertTo-Json -Compress) + "`n"
-    }
-    else {
-        $canonicalText
-    }
-    if ($rawText -cne $storedCanonicalText) {
+    if ($rawText -cne $canonicalText) {
         throw "Test PostgreSQL ownership marker is not canonical: $Path"
     }
     return [pscustomobject]@{
         InstanceId = $instanceId
         PostgresBin = $postgresBin
-        SchemaVersion = $schemaVersion
         Text = $canonicalText
     }
 }
@@ -1085,8 +1036,6 @@ function Assert-XpjTestPostgresOwnership {
         return [pscustomobject]@{
             InstanceId = $hostMarker.InstanceId
             PostgresBin = $hostMarker.PostgresBin
-            HostSchemaVersion = $hostMarker.SchemaVersion
-            DataSchemaVersion = 0
             Text = $hostMarker.Text
         }
     }
@@ -1097,46 +1046,8 @@ function Assert-XpjTestPostgresOwnership {
     return [pscustomobject]@{
         InstanceId = $hostMarker.InstanceId
         PostgresBin = $hostMarker.PostgresBin
-        HostSchemaVersion = $hostMarker.SchemaVersion
-        DataSchemaVersion = $data.SchemaVersion
         Text = $hostMarker.Text
     }
-}
-
-function Update-XpjTestPostgresOwnershipSchema {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)][string]$DataDir,
-        [switch]$AllowProvisioning
-    )
-
-    $resolvedDataDir = Resolve-XpjTestPostgresDataDir -DataDir $DataDir
-    $paths = Get-XpjTestPostgresOwnershipMarkerPaths -DataDir $resolvedDataDir
-    $ownership = Assert-XpjTestPostgresOwnership `
-        -DataDir $resolvedDataDir `
-        -AllowProvisioning:$AllowProvisioning
-    if ($ownership.HostSchemaVersion -eq 1) {
-        Write-XpjTestPostgresProtectedMarker `
-            -Path $paths.Host `
-            -Text $ownership.Text `
-            -ReplaceExisting
-    }
-    if ($ownership.DataSchemaVersion -eq 1) {
-        Write-XpjTestPostgresProtectedMarker `
-            -Path $paths.Data `
-            -Text $ownership.Text `
-            -ReplaceExisting
-    }
-    $upgraded = Assert-XpjTestPostgresOwnership `
-        -DataDir $resolvedDataDir `
-        -AllowProvisioning:$AllowProvisioning
-    if (
-        $upgraded.HostSchemaVersion -ne 2 -or
-        ($upgraded.DataSchemaVersion -notin @(0, 2))
-    ) {
-        throw "Test PostgreSQL ownership marker upgrade did not converge: $resolvedDataDir"
-    }
-    return $upgraded
 }
 
 function New-XpjTestPostgresOwnership {

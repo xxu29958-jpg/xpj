@@ -371,7 +371,7 @@ function Remove-XpjTestPostgresCluster {
     }
     if ($dataKind -eq 'Missing') {
         if ($hostKind -eq 'File') {
-            $ownership = Update-XpjTestPostgresOwnershipSchema `
+            $ownership = Assert-XpjTestPostgresOwnership `
                 -DataDir $resolvedDataDir `
                 -AllowProvisioning
             if (
@@ -428,7 +428,7 @@ function Remove-XpjTestPostgresCluster {
         ) {
             throw "Test PostgreSQL data ownership evidence is missing from a non-empty directory: $resolvedDataDir"
         }
-        $ownership = Update-XpjTestPostgresOwnershipSchema `
+        $ownership = Assert-XpjTestPostgresOwnership `
             -DataDir $resolvedDataDir `
             -AllowProvisioning:($isProvisioningCleanup -or $dataMarkerKind -eq 'Missing')
     }

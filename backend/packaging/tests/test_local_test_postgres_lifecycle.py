@@ -183,7 +183,7 @@ def _create_deletion_receipt(
             "-Command",
             (
                 f". '{escaped_contract}'; "
-                f"$ownership = Update-XpjTestPostgresOwnershipSchema "
+                f"$ownership = Assert-XpjTestPostgresOwnership "
                 f"-DataDir '{escaped_data_dir}'; "
                 f"$null = New-XpjTestPostgresDeletionMarker "
                 f"-DataDir '{escaped_data_dir}' -Ownership $ownership -Port {port}"
@@ -879,6 +879,7 @@ def test_local_test_postgres_lifecycle_is_cross_engine_reentrant_and_fail_closed
         ownership = json.loads(host_marker.read_text(encoding="utf-8-sig"))
         assert ownership["schema_version"] == 2
         assert Path(ownership["postgres_bin"]).resolve() == postgres_bin
+        current_ownership_text = host_marker.read_bytes()
 
         legacy_ownership = {
             key: value for key, value in ownership.items() if key != "postgres_bin"
@@ -888,33 +889,25 @@ def test_local_test_postgres_lifecycle_is_cross_engine_reentrant_and_fail_closed
         host_marker.write_bytes(legacy_text.encode("utf-8"))
         data_marker.write_bytes(legacy_text.encode("utf-8"))
 
-        upgraded = _run_lifecycle(
+        rejected_legacy = _run_lifecycle(
             powershell_7,
             _START,
             port=port,
             data_dir=owned_dir,
         )
-        assert upgraded.returncode == 0, upgraded.stdout + upgraded.stderr
-        assert json.loads(host_marker.read_text(encoding="utf-8-sig"))[
-            "schema_version"
-        ] == 2
-        assert json.loads(data_marker.read_text(encoding="utf-8-sig"))[
-            "schema_version"
-        ] == 2
-
-        data_marker.write_bytes(legacy_text.encode("utf-8"))
-        resumed_upgrade = _run_lifecycle(
-            powershell_51,
-            _START,
-            port=port,
-            data_dir=owned_dir,
+        assert rejected_legacy.returncode != 0
+        assert "ownership marker schema is invalid" in rejected_legacy.stderr
+        assert _run_pg_ctl(postgres_bin, owned_dir, "status").returncode == 0
+        assert host_marker.read_bytes() == legacy_text.encode("utf-8")
+        assert data_marker.read_bytes() == legacy_text.encode("utf-8")
+        host_marker.write_bytes(current_ownership_text)
+        data_marker.write_bytes(current_ownership_text)
+        restored_current = _run_lifecycle(
+            powershell_51, _START, port=port, data_dir=owned_dir
         )
-        assert resumed_upgrade.returncode == 0, (
-            resumed_upgrade.stdout + resumed_upgrade.stderr
+        assert restored_current.returncode == 0, (
+            restored_current.stdout + restored_current.stderr
         )
-        assert json.loads(data_marker.read_text(encoding="utf-8-sig"))[
-            "schema_version"
-        ] == 2
 
         recovered_attempt = _run_recovery_attempt(
             powershell_7,
