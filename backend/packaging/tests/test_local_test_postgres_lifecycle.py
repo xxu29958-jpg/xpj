@@ -197,18 +197,21 @@ def _run_recovery_attempt(
     *,
     port: int,
     data_dir: Path,
+    postgres_bin: Path,
 ) -> subprocess.CompletedProcess[str]:
     escaped_contract = str(_LIFECYCLE_CONTRACT).replace("'", "''")
     escaped_start = str(_START).replace("'", "''")
     escaped_stop = str(_STOP).replace("'", "''")
     escaped_data_dir = str(data_dir).replace("'", "''")
+    escaped_postgres_bin = str(postgres_bin).replace("'", "''")
     command = (
         f". '{escaped_contract}'; "
         f"$lease = Enter-XpjTestPostgresLifecycleLock -DataDir '{escaped_data_dir}' -Port {port}; "
         "try { "
         f"& '{escaped_stop}' -Port {port} -DataDir '{escaped_data_dir}'; "
         "if ($LASTEXITCODE -ne 0) { throw 'recovery stop failed' }; "
-        f"& '{escaped_start}' -Port {port} -DataDir '{escaped_data_dir}'; "
+        f"& '{escaped_start}' -Port {port} -DataDir '{escaped_data_dir}' "
+        f"-PostgresBin '{escaped_postgres_bin}'; "
         "if ($LASTEXITCODE -ne 0) { throw 'recovery start failed' } "
         "} finally { Exit-XpjTestPostgresLifecycleLock -Mutex $lease }"
     )
@@ -913,6 +916,7 @@ def test_local_test_postgres_lifecycle_is_cross_engine_reentrant_and_fail_closed
             powershell_7,
             port=port,
             data_dir=owned_dir,
+            postgres_bin=postgres_bin,
         )
         assert recovered_attempt.returncode == 0, (
             recovered_attempt.stdout + recovered_attempt.stderr
