@@ -338,6 +338,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 
 public sealed class TicketboxProcessTreeTerminationException : Exception
@@ -604,7 +605,6 @@ public sealed class TicketboxBoundedNativeProcess : IDisposable
     private FileStream standardErrorStream;
     private bool disposed;
 
-    public StreamWriter StandardInput { get; private set; }
     public StreamReader StandardOutput { get; private set; }
     public StreamReader StandardError { get; private set; }
     public uint ProcessId { get; private set; }
@@ -1076,7 +1076,7 @@ public sealed class TicketboxBoundedNativeProcess : IDisposable
             result.standardInputStream = new FileStream(
                 parentInput,
                 FileAccess.Write,
-                4096,
+                1,
                 false);
             parentInput = null;
             result.standardOutputStream = new FileStream(
@@ -1091,10 +1091,6 @@ public sealed class TicketboxBoundedNativeProcess : IDisposable
                 4096,
                 false);
             parentError = null;
-            result.StandardInput = new StreamWriter(
-                result.standardInputStream,
-                GetStrictConsoleInputEncoding(),
-                4096);
             result.StandardOutput = new StreamReader(
                 result.standardOutputStream,
                 Console.OutputEncoding,
@@ -1177,6 +1173,72 @@ public sealed class TicketboxBoundedNativeProcess : IDisposable
         if (disposed)
         {
             throw new ObjectDisposedException("TicketboxBoundedNativeProcess");
+        }
+    }
+
+    private static async Task WriteStandardInputTextAsync(
+        FileStream stream,
+        string value)
+    {
+        Encoding encoding = GetStrictConsoleInputEncoding();
+        byte[] bytes = new byte[encoding.GetMaxByteCount(4096)];
+        try
+        {
+            int characterIndex = 0;
+            while (characterIndex < value.Length)
+            {
+                int characterCount = Math.Min(
+                    4096,
+                    value.Length - characterIndex);
+                if (
+                    characterIndex + characterCount < value.Length &&
+                    Char.IsHighSurrogate(
+                        value[characterIndex + characterCount - 1]))
+                {
+                    characterCount--;
+                }
+                int byteCount = encoding.GetBytes(
+                    value,
+                    characterIndex,
+                    characterCount,
+                    bytes,
+                    0);
+                await stream.WriteAsync(bytes, 0, byteCount)
+                    .ConfigureAwait(false);
+                Array.Clear(bytes, 0, byteCount);
+                characterIndex += characterCount;
+            }
+        }
+        finally
+        {
+            Array.Clear(bytes, 0, bytes.Length);
+        }
+    }
+
+    public Task WriteStandardInputAsync(string value)
+    {
+        AssertOpen();
+        if (value == null)
+        {
+            throw new ArgumentNullException("value");
+        }
+        FileStream stream = standardInputStream;
+        if (stream == null)
+        {
+            throw new InvalidOperationException(
+                "Standard input is already closed.");
+        }
+        return WriteStandardInputTextAsync(stream, value);
+    }
+
+    public void CloseStandardInput()
+    {
+        AssertOpen();
+        FileStream stream = standardInputStream;
+        standardInputStream = null;
+        if (stream != null)
+        {
+            stream.Dispose();
         }
     }
 
@@ -1298,7 +1360,6 @@ public sealed class TicketboxBoundedNativeProcess : IDisposable
         CloseStream(standardInputStream);
         CloseStream(standardOutputStream);
         CloseStream(standardErrorStream);
-        CloseStream(StandardInput);
         CloseStream(StandardOutput);
         CloseStream(StandardError);
         if (process != null)
@@ -1333,10 +1394,57 @@ function Stop-TicketboxBoundedNativeProcessTree {
     param(
         [Parameter(Mandatory = $true)][object]$NativeProcess,
         [Parameter(Mandatory = $true)]
-        [ValidateRange(100, 30000)][int]$SettlementMilliseconds
+        [ValidateRange(100, 30000)][int]$SettlementMilliseconds,
+        [Parameter(Mandatory = $true)][AllowNull()]
+        [Threading.Tasks.Task]$InputWriteTask
     )
 
-    $NativeProcess.Abort($SettlementMilliseconds)
+    $inputFailureBeforeAbort = $null
+    if ($null -ne $InputWriteTask -and $InputWriteTask.IsCompleted) {
+        try { [void]$InputWriteTask.GetAwaiter().GetResult() }
+        catch { $inputFailureBeforeAbort = $_.Exception.GetBaseException() }
+    }
+    $settlement = [Diagnostics.Stopwatch]::StartNew()
+    $abortFailure = $null
+    try {
+        $NativeProcess.Abort($SettlementMilliseconds)
+    }
+    catch {
+        $abortFailure = $_.Exception
+    }
+    $inputSettlementFailure = $null
+    if ($null -ne $InputWriteTask -and -not $InputWriteTask.IsCompleted) {
+        $remaining = [Math]::Max(
+            0,
+            $SettlementMilliseconds - [int]$settlement.ElapsedMilliseconds
+        )
+        if ($remaining -gt 0) {
+            try { [void]$InputWriteTask.Wait($remaining) } catch {}
+        }
+        if (-not $InputWriteTask.IsCompleted) {
+            $inputSettlementFailure =
+                [TicketboxProcessTreeTerminationException]::new(
+                    "standard input write did not settle after pipe closure"
+                )
+        }
+    }
+    $settlement.Stop()
+    [Exception[]]$cleanupFailures = @(
+        foreach ($failure in @(
+            $abortFailure,
+            $inputFailureBeforeAbort,
+            $inputSettlementFailure
+        )) {
+            if ($null -ne $failure) { $failure }
+        }
+    )
+    if ($cleanupFailures.Count -gt 1) {
+        throw [TicketboxProcessTreeTerminationAggregateException]::new(
+            "native process cleanup retained multiple failures",
+            $cleanupFailures
+        )
+    }
+    if ($cleanupFailures.Count -eq 1) { throw $cleanupFailures[0] }
 }
 
 function Invoke-TicketboxBoundedNativeProcess {
@@ -1368,7 +1476,7 @@ function Invoke-TicketboxBoundedNativeProcess {
     $nativeProcess = $null
     $timer = $null
     $stdinWriteTask = $null
-    $stdinFlushTask = $null
+    $inputFailure = $null
     $stdinClosed = $false
     $nativeFinished = $false
     $nativeTerminationConfirmed = $false
@@ -1395,33 +1503,23 @@ function Invoke-TicketboxBoundedNativeProcess {
         $stdoutTask = $nativeProcess.StandardOutput.ReadToEndAsync()
         $stderrTask = $nativeProcess.StandardError.ReadToEndAsync()
         if ($PSBoundParameters.ContainsKey("StandardInputText")) {
-            $stdinWriteTask = $nativeProcess.StandardInput.WriteAsync(
+            $stdinWriteTask = $nativeProcess.WriteStandardInputAsync(
                 $StandardInputText
             )
         }
         else {
-            $nativeProcess.StandardInput.Close()
+            $nativeProcess.CloseStandardInput()
             $stdinClosed = $true
         }
-        $inputFailure = $null
         $timedOut = $false
         while ($true) {
             if (-not $stdinClosed) {
                 try {
                     if (
-                        $null -eq $stdinFlushTask -and
                         $stdinWriteTask.IsCompleted
                     ) {
                         [void]$stdinWriteTask.GetAwaiter().GetResult()
-                        $stdinFlushTask =
-                            $nativeProcess.StandardInput.FlushAsync()
-                    }
-                    if (
-                        $null -ne $stdinFlushTask -and
-                        $stdinFlushTask.IsCompleted
-                    ) {
-                        [void]$stdinFlushTask.GetAwaiter().GetResult()
-                        $nativeProcess.StandardInput.Close()
+                        $nativeProcess.CloseStandardInput()
                         $stdinClosed = $true
                     }
                 }
@@ -1493,10 +1591,15 @@ function Invoke-TicketboxBoundedNativeProcess {
             -not $nativeFinished -and
             -not $nativeTerminationConfirmed
         ) {
+            $inputTaskForCleanup = $stdinWriteTask
+            if ($null -ne $inputFailure) {
+                $inputTaskForCleanup = $null
+            }
             try {
                 Stop-TicketboxBoundedNativeProcessTree `
                     -NativeProcess $nativeProcess `
-                    -SettlementMilliseconds $TerminationSettlementMilliseconds
+                    -SettlementMilliseconds $TerminationSettlementMilliseconds `
+                    -InputWriteTask $inputTaskForCleanup
                 $nativeTerminationConfirmed = $true
             }
             catch {

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -190,6 +191,28 @@ def test_database_tools_are_bounded_under_powershell_51_and_7(tmp_path: Path) ->
     generation_program_execution = (
         PACKAGING / "windows_database_generation_program_execution.ps1"
     )
+    database_safety_source = database_safety.read_text(encoding="utf-8-sig")
+    assert "WriteStandardInputAsync" in database_safety_source
+    assert "$nativeProcess.WriteStandardInputAsync(" in database_safety_source
+    assert "$nativeProcess.CloseStandardInput()" in database_safety_source
+    assert "StandardInput.FlushAsync" not in database_safety_source
+    assert "new StreamWriter(" not in database_safety_source
+    assert "FileAccess.Write,\n                1,\n                false" in database_safety_source
+    assert "-InputWriteTask $inputTaskForCleanup" in database_safety_source
+    assert """$inputTaskForCleanup = $stdinWriteTask
+            if ($null -ne $inputFailure) {
+                $inputTaskForCleanup = $null
+            }
+            try {
+                Stop-TicketboxBoundedNativeProcessTree `
+                    -NativeProcess $nativeProcess `
+                    -SettlementMilliseconds $TerminationSettlementMilliseconds `
+                    -InputWriteTask $inputTaskForCleanup""" in database_safety_source
+    assert "$InputWriteTask.IsCompleted" in database_safety_source
+    assert "Array.Clear(bytes, 0, byteCount);" in database_safety_source
+    assert "Array.Clear(bytes, 0, bytes.Length);" in database_safety_source
+    assert "[Parameter(Mandatory = $true)][AllowNull()]\n        [Threading.Tasks.Task]$InputWriteTask" in database_safety_source
+    surrogate_boundary_sha = hashlib.sha256(("x" * 4095 + "😀").encode()).hexdigest()
     flood_bytes = 1024 * 1024
     flood_script = tmp_path / "bounded-native-output-flood.py"
     flood_script.write_text(
@@ -282,6 +305,18 @@ $success = Invoke-TicketboxBoundedNativeProcess `
     -StandardInputText 'bounded input' `
     -TimeoutMilliseconds 10000 `
     -Label 'bounded success probe'
+$emptyInput = Invoke-TicketboxBoundedNativeProcess `
+    -FilePath '{_ps_literal(sys.executable)}' `
+    -Arguments @('-c', 'import sys;sys.stdout.buffer.write(sys.stdin.buffer.read())') `
+    -StandardInputText '' `
+    -TimeoutMilliseconds 10000 `
+    -Label 'empty input probe'
+$unicodeBoundary = Invoke-TicketboxBoundedNativeProcess `
+    -FilePath '{_ps_literal(sys.executable)}' `
+    -Arguments @('-c', 'import hashlib,sys;print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())') `
+    -StandardInputText (('x' * 4095) + ([string][char]0xD83D) + ([string][char]0xDE00)) `
+    -TimeoutMilliseconds 10000 `
+    -Label 'surrogate boundary probe'
 $negativeExit = Invoke-TicketboxBoundedNativeProcess `
     -FilePath '{_ps_literal(engine)}' `
     -Arguments @('-NoLogo', '-NoProfile', '-NonInteractive', '-Command', 'exit -1') `
@@ -326,6 +361,8 @@ if ($stdinWatch.ElapsedMilliseconds -ge 10000) {{ throw 'blocked stdin exceeded 
 [ordered]@{{
     ExitCode = $success.ExitCode
     Output = $success.StandardOutput
+    EmptyInputLength = $emptyInput.StandardOutput.Length
+    UnicodeBoundarySha = $unicodeBoundary.StandardOutput.Trim()
     NegativeExitCode = $negativeExit.ExitCode
     FloodExitCode = $flood.ExitCode
     FloodOutputLength = $flood.StandardOutput.Length
@@ -358,6 +395,8 @@ if ($stdinWatch.ElapsedMilliseconds -ge 10000) {{ throw 'blocked stdin exceeded 
         assert completed.returncode == 0, completed.stdout + completed.stderr
         assert '"ExitCode":0' in completed.stdout
         assert '"Output":"bounded input"' in completed.stdout
+        assert '"EmptyInputLength":0' in completed.stdout
+        assert f'"UnicodeBoundarySha":"{surrogate_boundary_sha}"' in completed.stdout
         assert '"NegativeExitCode":-1' in completed.stdout
         assert '"FloodExitCode":0' in completed.stdout
         assert f'"FloodOutputLength":{flood_bytes}' in completed.stdout
@@ -531,6 +570,7 @@ Assert-TreeSettledAtReturn '{_ps_literal(timeout_pids)}' '{_ps_literal(timeout_m
 $stdinWatch = [Diagnostics.Stopwatch]::StartNew()
 $stdinKilled = $false
 $stdinFailureMessage = ''
+$stdinFailureWasDuplicated = $false
 try {{
     Invoke-TicketboxBoundedNativeProcess `
         -FilePath '{_ps_literal(sys.executable)}' `
@@ -541,12 +581,137 @@ try {{
 }}
 catch {{
     $stdinFailureMessage = $_.Exception.Message
+    $stdinFailureWasDuplicated =
+        $_.Exception -is [TicketboxProcessTreeTerminationAggregateException]
     $stdinKilled = $stdinFailureMessage -notlike '*超过允许*'
 }}
 $stdinWatch.Stop()
 if (-not $stdinKilled) {{ throw "stdin failure was converted into a timeout: $stdinFailureMessage" }}
+if ($stdinFailureWasDuplicated) {{ throw 'stdin action failure was duplicated as a cleanup failure' }}
 if ($stdinWatch.ElapsedMilliseconds -ge 3000) {{ throw 'stdin failure cleanup was not bounded' }}
 Assert-TreeSettledAtReturn '{_ps_literal(stdin_pids)}' '{_ps_literal(stdin_marker)}'
+
+$successfulAbort = [pscustomobject]@{{}}
+$successfulAbort | Add-Member ScriptMethod Abort {{ param([int]$Milliseconds) }}
+$delayedInput = [Threading.Tasks.Task]::Delay(200)
+$delayedWatch = [Diagnostics.Stopwatch]::StartNew()
+Stop-TicketboxBoundedNativeProcessTree `
+    -NativeProcess $successfulAbort `
+    -SettlementMilliseconds 1000 `
+    -InputWriteTask $delayedInput
+$delayedWatch.Stop()
+if (-not $delayedInput.IsCompleted -or $delayedWatch.ElapsedMilliseconds -lt 100) {{
+    throw 'stdin settlement returned before the write task reached a terminal state'
+}}
+
+$failedAbort = [pscustomobject]@{{}}
+$failedAbort | Add-Member ScriptMethod Abort {{
+    param([int]$Milliseconds)
+    throw [TicketboxProcessTreeTerminationException]::new('injected abort failure')
+}}
+$preFault = [Threading.Tasks.TaskCompletionSource[bool]]::new()
+$preFault.SetException([InvalidOperationException]::new('pre-abort stdin failure'))
+$retainedPreFault = $false
+try {{
+    Stop-TicketboxBoundedNativeProcessTree `
+        -NativeProcess $failedAbort `
+        -SettlementMilliseconds 1000 `
+        -InputWriteTask $preFault.Task
+}}
+catch {{
+    $inner = @($_.Exception.InnerExceptions)
+    $retainedPreFault =
+        $_.Exception -is [TicketboxProcessTreeTerminationAggregateException] -and
+        $inner.Count -eq 2 -and
+        $inner[0].Message -like '*injected abort failure*' -and
+        $inner[1].Message -like '*pre-abort stdin failure*'
+}}
+if (-not $retainedPreFault) {{ throw 'pre-abort stdin failure was not retained' }}
+
+$singlePreFault = [Threading.Tasks.TaskCompletionSource[bool]]::new()
+$singlePreFault.SetException([InvalidOperationException]::new('single stdin failure'))
+$retainedSinglePreFault = $false
+try {{
+    Stop-TicketboxBoundedNativeProcessTree `
+        -NativeProcess $successfulAbort `
+        -SettlementMilliseconds 1000 `
+        -InputWriteTask $singlePreFault.Task
+}}
+catch {{
+    $retainedSinglePreFault =
+        $_.Exception.Message -like '*single stdin failure*'
+}}
+if (-not $retainedSinglePreFault) {{ throw 'single pre-abort stdin failure was swallowed' }}
+
+$singleNeverSettles = [Threading.Tasks.TaskCompletionSource[bool]]::new()
+$retainedSingleSettlementFailure = $false
+try {{
+    Stop-TicketboxBoundedNativeProcessTree `
+        -NativeProcess $successfulAbort `
+        -SettlementMilliseconds 200 `
+        -InputWriteTask $singleNeverSettles.Task
+}}
+catch {{
+    $retainedSingleSettlementFailure =
+        $_.Exception -is [TicketboxProcessTreeTerminationException] -and
+        $_.Exception.Message -like '*standard input write did not settle*'
+}}
+if (-not $retainedSingleSettlementFailure) {{
+    throw 'single stdin settlement failure was swallowed'
+}}
+
+$script:duringAbortFault = [Threading.Tasks.TaskCompletionSource[bool]]::new()
+$faultingAbort = [pscustomobject]@{{}}
+$faultingAbort | Add-Member ScriptMethod Abort {{
+    param([int]$Milliseconds)
+    $script:duringAbortFault.SetException(
+        [InvalidOperationException]::new('during-abort stdin failure')
+    )
+}}
+try {{
+    Stop-TicketboxBoundedNativeProcessTree `
+        -NativeProcess $faultingAbort `
+        -SettlementMilliseconds 1000 `
+        -InputWriteTask $script:duringAbortFault.Task
+}}
+catch {{
+    throw "abort-induced stdin fault was misclassified as cleanup failure: $($_.Exception.Message)"
+}}
+if (-not $script:duringAbortFault.Task.IsCompleted) {{
+    throw 'abort-induced stdin fault did not reach a terminal state'
+}}
+
+$slowFailedAbort = [pscustomobject]@{{}}
+$slowFailedAbort | Add-Member ScriptMethod Abort {{
+    param([int]$Milliseconds)
+    Start-Sleep -Milliseconds 200
+    throw [TicketboxProcessTreeTerminationException]::new('slow abort failure')
+}}
+$neverSettles = [Threading.Tasks.TaskCompletionSource[bool]]::new()
+$budgetWatch = [Diagnostics.Stopwatch]::StartNew()
+$retainedSettlementFailure = $false
+try {{
+    Stop-TicketboxBoundedNativeProcessTree `
+        -NativeProcess $slowFailedAbort `
+        -SettlementMilliseconds 600 `
+        -InputWriteTask $neverSettles.Task
+}}
+catch {{
+    $inner = @($_.Exception.InnerExceptions)
+    $retainedSettlementFailure =
+        $_.Exception -is [TicketboxProcessTreeTerminationAggregateException] -and
+        $inner.Count -eq 2 -and
+        $inner[0].Message -like '*slow abort failure*' -and
+        $inner[1].Message -like '*standard input write did not settle*'
+}}
+$budgetWatch.Stop()
+if (
+    -not $retainedSettlementFailure -or
+    $budgetWatch.ElapsedMilliseconds -lt 450 -or
+    $budgetWatch.ElapsedMilliseconds -ge 750
+) {{
+    throw "stdin settlement did not preserve one total budget: $($budgetWatch.ElapsedMilliseconds)"
+}}
 
 # Deterministically inject an unconfirmed settlement after performing the real
 # kill. The wrapper must retain both the action failure and the typed settlement
@@ -554,7 +719,8 @@ Assert-TreeSettledAtReturn '{_ps_literal(stdin_pids)}' '{_ps_literal(stdin_marke
 function Stop-TicketboxBoundedNativeProcessTree {{
     param(
         [object]$NativeProcess,
-        [int]$SettlementMilliseconds
+        [int]$SettlementMilliseconds,
+        [Threading.Tasks.Task]$InputWriteTask
     )
     $NativeProcess.Abort($SettlementMilliseconds)
     throw [TicketboxProcessTreeTerminationException]::new(
