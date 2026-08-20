@@ -40,35 +40,44 @@ def _assert_exact_installer_hop(
     neighboring_hops: tuple[tuple[int, int], ...],
 ) -> None:
     base_count, current_count = accepted_hop
-    assert _violations_for(
-        mod,
-        monkeypatch,
-        "installer_pytest_count",
-        base_count,
-        current_count,
-        base_commit,
-    ) == []
-    for adjacent_base, adjacent_current in neighboring_hops:
-        assert len(
-            _violations_for(
-                mod,
-                monkeypatch,
-                "installer_pytest_count",
-                adjacent_base,
-                adjacent_current,
-                base_commit,
-            )
-        ) == 1
-    assert len(
+    assert (
         _violations_for(
             mod,
             monkeypatch,
             "installer_pytest_count",
             base_count,
             current_count,
-            "f" * 40,
+            base_commit,
         )
-    ) == 1
+        == []
+    )
+    for adjacent_base, adjacent_current in neighboring_hops:
+        assert (
+            len(
+                _violations_for(
+                    mod,
+                    monkeypatch,
+                    "installer_pytest_count",
+                    adjacent_base,
+                    adjacent_current,
+                    base_commit,
+                )
+            )
+            == 1
+        )
+    assert (
+        len(
+            _violations_for(
+                mod,
+                monkeypatch,
+                "installer_pytest_count",
+                base_count,
+                current_count,
+                "f" * 40,
+            )
+        )
+        == 1
+    )
 
 
 def test_pr_delta_allows_only_exact_installer_test_retirements(
@@ -88,8 +97,8 @@ def test_pr_delta_allows_only_exact_installer_test_retirements(
         ),
         (
             "ce9a5aa413f20e5455fe0572d9416187038135b0",
-            (283, 259),
-            ((282, 259), (283, 260), (283, 258), (284, 259), (259, 258)),
+            (283, 260),
+            ((282, 260), (283, 261), (283, 259), (284, 260), (260, 259)),
         ),
     )
     for base_commit, accepted_hop, neighboring_hops in hops:
@@ -100,7 +109,7 @@ def test_pr_delta_allows_only_exact_installer_test_retirements(
             accepted_hop=accepted_hop,
             neighboring_hops=neighboring_hops,
         )
-    for base_count, current_count in ((283, 259), (379, 282), (387, 379)):
+    for base_count, current_count in ((283, 260), (379, 282), (387, 379)):
         base_commit = next(commit for commit, hop, _ in hops if hop == (base_count, current_count))
         violations = _violations_for(
             mod,

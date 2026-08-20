@@ -1,0 +1,151 @@
+import shutil
+import subprocess
+import uuid
+from pathlib import Path
+
+import _database_generation_projection_cleanup as cleanup
+import pytest
+
+pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")
+
+
+def test_projection_machine_cleanup_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fixture_source = (
+        Path(__file__).with_name("powershell_fixtures") / "database_generation_projection_postgres.ps1"
+    ).read_text(encoding="utf-8-sig")
+    assert (
+        '"create", $OneShotServiceName,\n'
+        '            "binPath=", $crashImagePath,\n'
+        '            "start=", "demand",\n'
+        '            "obj=", "NT AUTHORITY\\LocalService"'
+    ) in fixture_source
+    assert (
+        "Set-TicketboxServiceIdentityContract `\n"
+        "            -Name $OneShotServiceName `\n"
+        '            -LogonAccount "NT AUTHORITY\\LocalService" `\n'
+        '            -SidType "unrestricted"'
+    ) in fixture_source
+
+    with monkeypatch.context() as patch:
+        patch.setenv("PROGRAMDATA", str(tmp_path))
+        work_root = tmp_path / f"TicketboxProjectionTest-{uuid.uuid4().hex}"
+        work_root.mkdir()
+        removed: list[Path] = []
+        remove_tree = shutil.rmtree
+
+        def remove_spy(path: Path) -> None:
+            removed.append(path)
+            remove_tree(path)
+
+        patch.setattr(shutil, "rmtree", remove_spy)
+        assert cleanup.remove_projection_machine_work_root(work_root, host_cleanup_error="unconfirmed") is None
+        assert work_root.is_dir() and removed == []
+        assert cleanup.remove_projection_machine_work_root(work_root, host_cleanup_error=None) is None
+        assert not work_root.exists() and removed == [work_root]
+
+        invalid_roots = (
+            tmp_path.parent / f"TicketboxProjectionTest-{uuid.uuid4().hex}",
+            tmp_path / uuid.uuid4().hex,
+            tmp_path / "TicketboxProjectionTest-not-a-uuid",
+        )
+        for unexpected in invalid_roots:
+            assert (
+                cleanup.remove_projection_machine_work_root(unexpected, host_cleanup_error=None)
+                == f"refused to remove unexpected projection work root: {unexpected}"
+            )
+        assert removed == [work_root]
+
+    stop_root = tmp_path / "projection-stop-failure"
+    (stop_root / "pgdata").mkdir(parents=True)
+    stop_calls = 0
+
+    def stop_run_stub(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal stop_calls
+        stop_calls += 1
+        if stop_calls == 1:
+            return subprocess.CompletedProcess([], 0)
+        raise OSError("native stop failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(subprocess, "run", stop_run_stub)
+        stop_error = cleanup.ensure_projection_pg_stopped(tmp_path / "pg-bin", stop_root)
+    assert stop_error == f"could not stop projection PostgreSQL at {stop_root / 'pgdata'}: native stop failed"
+
+    service_name = f"TicketboxProjection-{uuid.uuid4().hex}"
+    shawl_path = tmp_path / "shawl.exe"
+    pg_bin_path = tmp_path / "pg-bin"
+    captured: list[object] = []
+
+    def capture_command(args: list[object], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured[:] = args
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(subprocess, "run", capture_command)
+        assert (
+            cleanup.ensure_projection_one_shot_service_absent(
+                engine="powershell.exe",
+                service_name=service_name,
+                shawl=shawl_path,
+                pg_bin=pg_bin_path,
+            )
+            is None
+        )
+    script = str(captured[-1])
+    assert (
+        "-ExpectedRuntimeExecutables @('" + str(shawl_path) + "', '" + str(pg_bin_path / "postgres.exe") + "')"
+    ) in script
+
+    for raised_error, result in (
+        (OSError("service cleanup launch failed"), None),
+        (subprocess.TimeoutExpired(["powershell.exe"], 75), None),
+        (None, subprocess.CompletedProcess([], 9, "cleanup stdout", "cleanup stderr")),
+    ):
+
+        def service_run_stub(
+            *_args: object,
+            _raised_error: BaseException | None = raised_error,
+            _result: subprocess.CompletedProcess[str] | None = result,
+            **_kwargs: object,
+        ) -> subprocess.CompletedProcess[str]:
+            if _raised_error is not None:
+                raise _raised_error
+            assert _result is not None
+            return _result
+
+        with monkeypatch.context() as patch:
+            patch.setattr(subprocess, "run", service_run_stub)
+            service_error = cleanup.ensure_projection_one_shot_service_absent(
+                engine="powershell.exe",
+                service_name=service_name,
+                shawl=shawl_path,
+                pg_bin=pg_bin_path,
+            )
+        assert service_error is not None and service_name in service_error
+
+    with monkeypatch.context() as patch:
+        patch.setattr(cleanup, "ensure_projection_pg_stopped", lambda *_args, **_kwargs: "postgres cleanup failed")
+        patch.setattr(cleanup, "ensure_projection_one_shot_service_absent", lambda **_kwargs: "service cleanup failed")
+
+        def root_stub(_work_root: Path, *, host_cleanup_error: str | None) -> str:
+            assert host_cleanup_error == "postgres cleanup failed; service cleanup failed"
+            return "root cleanup failed"
+
+        patch.setattr(cleanup, "remove_projection_machine_work_root", root_stub)
+        errors = cleanup.cleanup_projection_runtime(
+            engine="powershell.exe",
+            pg_bin=pg_bin_path,
+            shawl=shawl_path,
+            service_name=service_name,
+            work_root=tmp_path / "work-root",
+        )
+    assert errors == ("postgres cleanup failed", "service cleanup failed", "root cleanup failed")
+    primary = RuntimeError("projection primary sentinel")
+    with pytest.raises(RuntimeError) as raised:
+        cleanup.raise_projection_primary_failure(primary, errors)
+    assert raised.value is primary
+    assert raised.value.__notes__ == [
+        "postgres cleanup failed",
+        "service cleanup failed",
+        "root cleanup failed",
+    ]

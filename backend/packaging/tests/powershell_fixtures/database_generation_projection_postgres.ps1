@@ -16,7 +16,9 @@
     [Parameter(Mandatory = $true)][string]$BackendRoot,
     [Parameter(Mandatory = $true)][string]$PgBin,
     [Parameter(Mandatory = $true)][string]$WorkRoot,
+    [Parameter(Mandatory = $true)][string]$OneShotServiceName,
     [switch]$PauseAfterStart,
+    [switch]$PauseAfterOneShotServiceStart,
     [string]$ServerReadyPath = ""
 )
 
@@ -29,6 +31,9 @@ $psql = Join-Path $PgBin "psql.exe"
 $script:bootstrapPassword = "projection-admin-password-1234567890"
 $script:runtimePassword = "projection-runtime-password-1234567890"
 $script:singleUserDiagnosticAttempt = 0
+if ($PauseAfterStart -and $PauseAfterOneShotServiceStart) {
+    throw "Only one projection pause boundary may be selected."
+}
 New-Item -ItemType Directory -Path $WorkRoot -Force | Out-Null
 
 function Invoke-TestPsql {
@@ -277,7 +282,10 @@ function Invoke-TestSingleUserRetirement {
         [Parameter(Mandatory = $true)][object]$Intent,
         [Parameter(Mandatory = $true)][object]$Candidate
     )
-    $serviceName = "TicketboxProjection-$PID"
+    if ($OneShotServiceName -cnotmatch '^TicketboxProjection-[0-9a-f]{32}$') {
+        throw "Invalid projection one-shot service name."
+    }
+    $serviceName = $OneShotServiceName
     $helper = [IO.Path]::GetFullPath($script:singleUserHelper)
     $postgres = [IO.Path]::GetFullPath((Join-Path $PgBin "postgres.exe"))
     $shawl = [IO.Path]::GetFullPath($ShawlPath)
@@ -456,6 +464,86 @@ try {
 listen_addresses = '127.0.0.1'
 port = $port
 "@
+    if ($PauseAfterOneShotServiceStart) {
+        if ([string]::IsNullOrWhiteSpace($ServerReadyPath)) {
+            throw "ServerReadyPath is required for the one-shot service pause boundary"
+        }
+        $crashWrapperPath = Join-Path $WorkRoot "projection-one-shot-crash.ps1"
+        [IO.File]::WriteAllText(
+            $crashWrapperPath,
+            @'
+param(
+    [Parameter(Mandatory = $true)][string]$PostgresPath,
+    [Parameter(Mandatory = $true)][string]$PhysicalPgData,
+    [Parameter(Mandatory = $true)][string]$ReadyPath
+)
+$ErrorActionPreference = "Stop"
+$startInfo = [Diagnostics.ProcessStartInfo]::new()
+$startInfo.FileName = [IO.Path]::GetFullPath($PostgresPath)
+$startInfo.Arguments = '--single -D "' + [IO.Path]::GetFullPath($PhysicalPgData).Replace('"', '\"') + '" postgres'
+$startInfo.UseShellExecute = $false
+$startInfo.CreateNoWindow = $true
+$startInfo.RedirectStandardInput = $true
+$process = [Diagnostics.Process]::new()
+$process.StartInfo = $startInfo
+try {
+    if (-not $process.Start()) { throw "failed to start projection single-user postgres" }
+    if ($process.WaitForExit(250)) { throw "projection single-user postgres exited before crash boundary" }
+    [IO.File]::WriteAllText($ReadyPath, [string]$process.Id, [Text.UTF8Encoding]::new($false))
+    Start-Sleep -Seconds 120
+}
+finally {
+    $process.StandardInput.Dispose()
+    if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
+    $process.Dispose()
+}
+'@,
+            [Text.UTF8Encoding]::new($false)
+        )
+        Set-TicketboxExactFileAcl `
+            -Path $crashWrapperPath `
+            -Accounts @($currentAccount, "NT AUTHORITY\LocalService") `
+            -OwnerAccount $currentAccount
+        $shawl = [IO.Path]::GetFullPath($ShawlPath)
+        $crashImagePath = Join-TicketboxWindowsCommandLine @(
+            $shawl,
+            "run", "--name", $OneShotServiceName, "--no-restart", "--no-log",
+            "--kill-process-tree", "--stop-timeout", "30000",
+            "--cwd", $WorkRoot, "--",
+            (Get-TicketboxWindowsPowerShellExecutable),
+            "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-File", $crashWrapperPath,
+            "-PostgresPath", (Join-Path $PgBin "postgres.exe"),
+            "-PhysicalPgData", $dataDir,
+            "-ReadyPath", $ServerReadyPath
+        )
+        if (Test-TicketboxServiceExists $OneShotServiceName) {
+            throw "projection crash-boundary service already exists: $OneShotServiceName"
+        }
+        Invoke-TicketboxScChecked @(
+            "create", $OneShotServiceName,
+            "binPath=", $crashImagePath,
+            "start=", "demand",
+            "obj=", "NT AUTHORITY\LocalService"
+        ) | Out-Null
+        Set-TicketboxServiceIdentityContract `
+            -Name $OneShotServiceName `
+            -LogonAccount "NT AUTHORITY\LocalService" `
+            -SidType "unrestricted"
+        if ((Get-TicketboxServiceImagePath $OneShotServiceName) -cne $crashImagePath) {
+            throw "projection crash-boundary service command drifted"
+        }
+        Invoke-TicketboxScChecked @("start", $OneShotServiceName) | Out-Null
+        $deadline = [DateTime]::UtcNow.AddSeconds(30)
+        while (-not (Test-Path -LiteralPath $ServerReadyPath -PathType Leaf)) {
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw "projection one-shot service did not reach the crash boundary"
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        Start-Sleep -Seconds 120
+        throw "projection one-shot service pause returned unexpectedly"
+    }
     $startStdout = Join-Path $WorkRoot "pg-ctl-start.stdout"
     $startStderr = Join-Path $WorkRoot "pg-ctl-start.stderr"
     $startAttempted = $true

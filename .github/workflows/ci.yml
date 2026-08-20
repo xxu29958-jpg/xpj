@@ -380,7 +380,8 @@ jobs:
           XPJ_REQUIRE_REAL_PG17_PROJECTION: "1"
         run: >-
           python -m pytest -q
-          packaging/tests/test_database_generation_projection.py::test_runtime_projection_read_and_retirement_retry_are_fail_closed
+          packaging/tests/test_database_generation_projection_cleanup.py
+          packaging/tests/test_database_generation_projection.py
           --strict-markers -p no:cacheprovider -o addopts=
 
       - name: Frozen backend locked release build

@@ -2,9 +2,28 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import pytest
+from _database_generation_projection_cleanup import (
+    cleanup_projection_runtime as _cleanup_projection_runtime,
+)
+from _database_generation_projection_cleanup import (
+    ensure_projection_one_shot_service_absent as _ensure_projection_one_shot_service_absent,
+)
+from _database_generation_projection_cleanup import (
+    ensure_projection_pg_stopped as _ensure_projection_pg_stopped,
+)
+from _database_generation_projection_cleanup import (
+    projection_service_exists as _projection_service_exists,
+)
+from _database_generation_projection_cleanup import (
+    projection_service_name as _projection_service_name,
+)
+from _database_generation_projection_cleanup import (
+    raise_projection_primary_failure as _raise_projection_primary_failure,
+)
 from _powershell_contract import powershell_contract_engines, powershell_function
 
 pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")
@@ -21,6 +40,7 @@ def _projection_fixture_command(
     pg_bin: Path,
     shawl: Path,
     work_root: Path,
+    service_name: str,
     extra: tuple[str, ...] = (),
 ) -> list[str]:
     return [
@@ -64,6 +84,8 @@ def _projection_fixture_command(
         str(PACKAGING.parent),
         "-WorkRoot",
         str(work_root),
+        "-OneShotServiceName",
+        service_name,
         *extra,
     ]
 
@@ -94,52 +116,15 @@ def _projection_shawl() -> Path | None:
     return None
 
 
-def _ensure_projection_pg_stopped(pg_bin: Path, work_root: Path) -> str | None:
-    data_dir = work_root / "pgdata"
-    if not data_dir.is_dir():
-        return None
-    pg_ctl = pg_bin / "pg_ctl.exe"
-    try:
-        status = subprocess.run(
-            [pg_ctl, "status", "-D", data_dir],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return f"could not inspect projection PostgreSQL at {data_dir}: {exc}"
-    if status.returncode != 0:
-        return None if status.returncode == 3 else f"unexpected pg_ctl status {status.returncode}"
-    try:
-        stopped = subprocess.run(
-            [pg_ctl, "stop", "-D", data_dir, "-m", "immediate", "-w", "-t", "30"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=45,
-        )
-    except subprocess.TimeoutExpired:
-        return f"timed out stopping projection PostgreSQL at {data_dir}"
-    try:
-        final_status = subprocess.run(
-            [pg_ctl, "status", "-D", data_dir],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return f"could not verify projection PostgreSQL cleanup at {data_dir}: {exc}"
-    if stopped.returncode != 0 or final_status.returncode != 3:
-        return (
-            f"projection PostgreSQL remained live at {data_dir}: "
-            f"stop={stopped.returncode}, status={final_status.returncode}"
-        )
-    return None
-
-
-def _stop_interrupted_projection_fixture(process: subprocess.Popen[str], pg_bin: Path, work_root: Path) -> str | None:
+def _stop_interrupted_projection_fixture(
+    process: subprocess.Popen[str],
+    *,
+    engine: str,
+    pg_bin: Path,
+    shawl: Path,
+    service_name: str,
+    work_root: Path,
+) -> str | None:
     errors: list[str] = []
     if process.poll() is None:
         try:
@@ -150,13 +135,19 @@ def _stop_interrupted_projection_fixture(process: subprocess.Popen[str], pg_bin:
     cleanup_error = _ensure_projection_pg_stopped(pg_bin, work_root)
     if cleanup_error:
         errors.append(cleanup_error)
+    service_cleanup_error = _ensure_projection_one_shot_service_absent(
+        engine=engine, service_name=service_name, shawl=shawl, pg_bin=pg_bin
+    )
+    if service_cleanup_error:
+        errors.append(service_cleanup_error)
     return "; ".join(errors) or None
 
 
 def _assert_parent_timeout_stops_projection_pg(
     *, engine: str, fixture: Path, pg_bin: Path, shawl: Path, tmp_path: Path
 ) -> None:
-    work_root = tmp_path / "real-pg-parent-timeout"
+    work_root = tmp_path / f"TicketboxProjectionTest-{uuid.uuid4().hex}"
+    service_name = _projection_service_name(work_root)
     ready_path = work_root / "server-ready"
     stdout_path = tmp_path / "real-pg-parent-timeout.stdout"
     stderr_path = tmp_path / "real-pg-parent-timeout.stderr"
@@ -169,6 +160,7 @@ def _assert_parent_timeout_stops_projection_pg(
                 pg_bin=pg_bin,
                 shawl=shawl,
                 work_root=work_root,
+                service_name=service_name,
                 extra=extra,
             ),
             stdout=stdout,
@@ -178,7 +170,14 @@ def _assert_parent_timeout_stops_projection_pg(
         deadline = time.monotonic() + 60
         while not ready_path.is_file() and process.poll() is None:
             if time.monotonic() >= deadline:
-                cleanup_error = _stop_interrupted_projection_fixture(process, pg_bin, work_root)
+                cleanup_error = _stop_interrupted_projection_fixture(
+                    process,
+                    engine=engine,
+                    pg_bin=pg_bin,
+                    shawl=shawl,
+                    service_name=service_name,
+                    work_root=work_root,
+                )
                 pytest.fail(
                     "projection fixture did not reach the server-ready boundary"
                     + (f": {cleanup_error}" if cleanup_error else ""),
@@ -190,7 +189,14 @@ def _assert_parent_timeout_stops_projection_pg(
         )
         with pytest.raises(subprocess.TimeoutExpired):
             process.wait(timeout=0.1)
-        cleanup_error = _stop_interrupted_projection_fixture(process, pg_bin, work_root)
+        cleanup_error = _stop_interrupted_projection_fixture(
+            process,
+            engine=engine,
+            pg_bin=pg_bin,
+            shawl=shawl,
+            service_name=service_name,
+            work_root=work_root,
+        )
     assert cleanup_error is None, cleanup_error
     status = subprocess.run(
         [pg_bin / "pg_ctl.exe", "status", "-D", work_root / "pgdata"],
@@ -202,6 +208,104 @@ def _assert_parent_timeout_stops_projection_pg(
     assert status.returncode == 3, f"unexpected post-cleanup pg_ctl status {status.returncode}"
 
 
+def _assert_parent_loss_after_one_shot_service_start(
+    *,
+    engine: str,
+    fixture: Path,
+    pg_bin: Path,
+    shawl: Path,
+    program_data: Path,
+    tmp_path: Path,
+) -> None:
+    work_root = program_data / f"TicketboxProjectionTest-{uuid.uuid4().hex}"
+    service_name = _projection_service_name(work_root)
+    ready_path = work_root / "one-shot-service-ready"
+    stdout_path = tmp_path / "one-shot-parent-loss.stdout"
+    stderr_path = tmp_path / "one-shot-parent-loss.stderr"
+    primary_failure: BaseException | None = None
+    process: subprocess.Popen[str] | None = None
+    try:
+        with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
+            fixture_command = _projection_fixture_command(
+                engine=engine,
+                fixture=fixture,
+                pg_bin=pg_bin,
+                shawl=shawl,
+                work_root=work_root,
+                service_name=service_name,
+                extra=(
+                    "-PauseAfterOneShotServiceStart",
+                    "-ServerReadyPath",
+                    str(ready_path),
+                ),
+            )
+            service_name_index = fixture_command.index("-OneShotServiceName")
+            assert fixture_command.count("-OneShotServiceName") == 1
+            assert fixture_command[service_name_index + 1] == service_name
+            process = subprocess.Popen(
+                fixture_command,
+                stdout=stdout,
+                stderr=stderr,
+                text=True,
+            )
+            deadline = time.monotonic() + 90
+            while not ready_path.is_file() and process.poll() is None:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("projection fixture did not reach the one-shot service crash boundary")
+                time.sleep(0.05)
+            if not ready_path.is_file():
+                raise RuntimeError(
+                    stdout_path.read_text(encoding="utf-8", errors="replace")
+                    + stderr_path.read_text(encoding="utf-8", errors="replace")
+                )
+            postgres_pid = int(ready_path.read_text(encoding="utf-8"))
+            inspect_command = (
+                f"$service=Get-CimInstance Win32_Service -Filter \"Name='{service_name}'\"; "
+                "if($null -eq $service -or [int]$service.ProcessId -le 0){exit 4}; "
+                f"(Get-Process -Id $service.ProcessId -ErrorAction Stop).Path; "
+                f"(Get-Process -Id {postgres_pid} -ErrorAction Stop).Path"
+            )
+            observed = subprocess.run(
+                [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", inspect_command],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            observed_paths = [Path(line.strip()) for line in observed.stdout.splitlines() if line.strip()]
+            assert observed.returncode == 0 and len(observed_paths) == 2, observed.stdout + observed.stderr
+            assert os.path.normcase(os.path.realpath(observed_paths[0])) == os.path.normcase(os.path.realpath(shawl))
+            assert os.path.normcase(os.path.realpath(observed_paths[1])) == os.path.normcase(
+                os.path.realpath(pg_bin / "postgres.exe")
+            )
+            process.kill()
+            process.wait(timeout=10)
+    except BaseException as exc:
+        primary_failure = exc
+    finally:
+        if process is not None and process.poll() is None:
+            try:
+                process.kill()
+                process.wait(timeout=10)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                if primary_failure is None:
+                    primary_failure = exc
+                else:
+                    primary_failure.add_note(f"could not stop projection fixture parent: {exc}")
+    cleanup_errors = _cleanup_projection_runtime(
+        engine=engine,
+        pg_bin=pg_bin,
+        shawl=shawl,
+        service_name=service_name,
+        work_root=work_root,
+    )
+    if primary_failure is not None:
+        _raise_projection_primary_failure(primary_failure, cleanup_errors)
+    assert cleanup_errors == (None, None, None), cleanup_errors
+    assert not work_root.exists(), f"projection crash-boundary work root remained: {work_root}"
+    assert not _projection_service_exists(engine=engine, service_name=service_name)
+
+
 def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
     pg_bin = _projection_pg_bin()
     shawl = _projection_shawl()
@@ -209,10 +313,16 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
         return
     fixture = Path(__file__).with_name("powershell_fixtures") / "database_generation_projection_postgres.ps1"
     engines = tuple(powershell_contract_engines())
+    program_data = Path(os.environ["PROGRAMDATA"])
+    assert program_data.is_dir(), f"CommonApplicationData is unavailable: {program_data}"
     for index, engine in enumerate(engines):
-        work_root = tmp_path / f"real-pg-{index}"
+        work_root = program_data / f"TicketboxProjectionTest-{uuid.uuid4().hex}"
+        service_name = _projection_service_name(work_root)
+        assert not work_root.exists(), f"projection work root already exists: {work_root}"
         stdout_path = tmp_path / f"real-pg-{index}.stdout"
         stderr_path = tmp_path / f"real-pg-{index}.stderr"
+        primary_failure: BaseException | None = None
+        result: subprocess.CompletedProcess[str] | None = None
         try:
             with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
                 result = subprocess.run(
@@ -222,6 +332,7 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
                         pg_bin=pg_bin,
                         shawl=shawl,
                         work_root=work_root,
+                        service_name=service_name,
                     ),
                     check=False,
                     stdout=stdout,
@@ -229,25 +340,47 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
                     text=True,
                     timeout=300,
                 )
-        except subprocess.TimeoutExpired as exc:
-            cleanup_error = _ensure_projection_pg_stopped(pg_bin, work_root)
-            if cleanup_error:
-                exc.add_note(cleanup_error)
-            raise
-        cleanup_error = _ensure_projection_pg_stopped(pg_bin, work_root)
+        except BaseException as exc:
+            primary_failure = exc
+        cleanup_error, service_cleanup_error, root_cleanup_error = _cleanup_projection_runtime(
+            engine=engine,
+            pg_bin=pg_bin,
+            shawl=shawl,
+            service_name=service_name,
+            work_root=work_root,
+        )
+        if primary_failure is not None:
+            _raise_projection_primary_failure(
+                primary_failure, (cleanup_error, service_cleanup_error, root_cleanup_error)
+            )
+        assert result is not None
         assert result.returncode == 0, (
             stdout_path.read_text(encoding="utf-8", errors="replace")
             + stderr_path.read_text(encoding="utf-8", errors="replace")
             + (f"\n{cleanup_error}" if cleanup_error else "")
+            + (f"\n{service_cleanup_error}" if service_cleanup_error else "")
+            + (f"\n{root_cleanup_error}" if root_cleanup_error else "")
         )
         assert cleanup_error is None, cleanup_error
+        assert service_cleanup_error is None, service_cleanup_error
+        assert root_cleanup_error is None, root_cleanup_error
     _assert_parent_timeout_stops_projection_pg(
         engine=engines[0], fixture=fixture, pg_bin=pg_bin, shawl=shawl, tmp_path=tmp_path
+    )
+    _assert_parent_loss_after_one_shot_service_start(
+        engine=engines[0],
+        fixture=fixture,
+        pg_bin=pg_bin,
+        shawl=shawl,
+        program_data=program_data,
+        tmp_path=tmp_path,
     )
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows projection contract")
-def test_runtime_projection_read_and_retirement_retry_are_fail_closed(tmp_path: Path) -> None:
+def test_runtime_projection_read_and_retirement_retry_are_fail_closed(
+    tmp_path: Path,
+) -> None:
     fixture = Path(__file__).with_name("powershell_fixtures") / "database_generation_projection_postgres.ps1"
     fixture_source = fixture.read_text(encoding="utf-8-sig")
     invoke_test_psql = powershell_function(fixture_source, "Invoke-TestPsql")

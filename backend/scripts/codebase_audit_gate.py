@@ -187,8 +187,8 @@ _GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER = (
 _SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER = (
     "ce9a5aa413f20e5455fe0572d9416187038135b0",
     283,
-    259,
-)  # The HBA/IDENT cluster-admin recovery owner and its 31 collected dedicated scenarios were physically retired; seven bounded Generation Owner and pinned-PG lifecycle oracles were added, for a net reduction of 24. Generation Owner now consumes the initdb bootstrap authority once, while generic credential, host, source, target, projection, and real-PG contracts remain. Exact base and hop binding make this exception self-extinguishing.
+    260,
+)  # The HBA/IDENT cluster-admin recovery owner and its 31 collected dedicated scenarios were physically retired; eight bounded Generation Owner and pinned-PG lifecycle oracles were added, for a net reduction of 23. Generation Owner now consumes the initdb bootstrap authority once, while generic credential, host, source, target, projection, cleanup, and real-PG contracts remain. Exact base and hop binding make this exception self-extinguishing.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -307,15 +307,11 @@ def _compute_ratchet_findings(
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
         adr_0049_exempt = key == "mutate_token_exempted" and (base_val, current_val) == _ADR_0049_EXEMPTED_GRANDFATHER
-        test_retirement = (
-            key == "installer_pytest_count"
-            and (base_commit, base_val, current_val)
-            in {
-                _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER,
-                _GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER,
-                _SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER,
-            }
-        )
+        test_retirement = key == "installer_pytest_count" and (base_commit, base_val, current_val) in {
+            _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER,
+            _GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER,
+            _SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER,
+        }
         if key in BASELINE_RATCHET_UP and current_val < base_val and not test_retirement:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
