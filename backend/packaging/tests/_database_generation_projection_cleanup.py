@@ -151,16 +151,33 @@ def raise_projection_primary_failure(primary_failure: BaseException, cleanup_err
 def cleanup_projection_runtime(
     *, engine: str, pg_bin: Path, shawl: Path, service_name: str, work_root: Path
 ) -> tuple[str | None, str | None, str | None]:
-    postgres_cleanup_error = ensure_projection_pg_stopped(pg_bin, work_root)
-    service_cleanup_error = ensure_projection_one_shot_service_absent(
-        engine=engine, service_name=service_name, shawl=shawl, pg_bin=pg_bin
-    )
-    if service_cleanup_error is None:
+    def clean_service() -> str | None:
+        error = ensure_projection_one_shot_service_absent(
+            engine=engine, service_name=service_name, shawl=shawl, pg_bin=pg_bin
+        )
+        if error is not None:
+            return error
         try:
             if projection_service_exists(engine=engine, service_name=service_name):
-                service_cleanup_error = f"projection one-shot service remained after cleanup: {service_name}"
+                return f"projection one-shot service remained after cleanup: {service_name}"
         except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
-            service_cleanup_error = f"could not verify projection one-shot service absence {service_name}: {exc}"
+            return f"could not verify projection one-shot service absence {service_name}: {exc}"
+        return None
+
+    try:
+        service_was_present = projection_service_exists(engine=engine, service_name=service_name)
+    except (OSError, subprocess.TimeoutExpired, RuntimeError):
+        service_was_present = True
+    if service_was_present:
+        service_cleanup_error = clean_service()
+        postgres_cleanup_error = ensure_projection_pg_stopped(pg_bin, work_root)
+        if service_cleanup_error is not None:
+            service_cleanup_error = clean_service()
+    else:
+        postgres_cleanup_error = ensure_projection_pg_stopped(pg_bin, work_root)
+        service_cleanup_error = clean_service()
+    if postgres_cleanup_error is not None and service_cleanup_error is None:
+        postgres_cleanup_error = ensure_projection_pg_stopped(pg_bin, work_root)
     host_cleanup_error = "; ".join(error for error in (postgres_cleanup_error, service_cleanup_error) if error) or None
     root_cleanup_error = remove_projection_machine_work_root(work_root, host_cleanup_error=host_cleanup_error)
     return postgres_cleanup_error, service_cleanup_error, root_cleanup_error

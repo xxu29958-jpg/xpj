@@ -9,6 +9,57 @@ import pytest
 pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")
 
 
+def _assert_cleanup_order(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    tmp_path: Path,
+    pg_bin: Path,
+    shawl: Path,
+    service_name: str,
+    observations: tuple[bool | BaseException, ...],
+    service_results: tuple[str | None, ...],
+    postgres_results: tuple[str | None, ...],
+    expected_order: list[str],
+) -> None:
+    order: list[str] = []
+    pending_observations = iter(observations)
+    pending_service_results = iter(service_results)
+    pending_postgres_results = iter(postgres_results)
+
+    def observe_service(**_kwargs: object) -> bool:
+        order.append("inspect")
+        observed = next(pending_observations)
+        if isinstance(observed, BaseException):
+            raise observed
+        return observed
+
+    def stop_postgres(*_args: object, **_kwargs: object) -> str | None:
+        order.append("postgres")
+        return next(pending_postgres_results)
+
+    def clean_service(**_kwargs: object) -> str | None:
+        order.append("service")
+        return next(pending_service_results)
+
+    def remove_root(*_args: object, **kwargs: object) -> None:
+        assert kwargs["host_cleanup_error"] is None
+        order.append("root")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(cleanup, "projection_service_exists", observe_service)
+        patch.setattr(cleanup, "ensure_projection_pg_stopped", stop_postgres)
+        patch.setattr(cleanup, "ensure_projection_one_shot_service_absent", clean_service)
+        patch.setattr(cleanup, "remove_projection_machine_work_root", remove_root)
+        assert cleanup.cleanup_projection_runtime(
+            engine="powershell.exe",
+            pg_bin=pg_bin,
+            shawl=shawl,
+            service_name=service_name,
+            work_root=tmp_path / "work-root",
+        ) == (None, None, None)
+    assert order == expected_order
+
+
 def test_projection_machine_cleanup_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     fixture_source = (
         Path(__file__).with_name("powershell_fixtures") / "database_generation_projection_postgres.ps1"
@@ -124,10 +175,26 @@ def test_projection_machine_cleanup_contract(monkeypatch: pytest.MonkeyPatch, tm
         assert service_error is not None and service_name in service_error
 
     with monkeypatch.context() as patch:
-        patch.setattr(cleanup, "ensure_projection_pg_stopped", lambda *_args, **_kwargs: "postgres cleanup failed")
-        patch.setattr(cleanup, "ensure_projection_one_shot_service_absent", lambda **_kwargs: "service cleanup failed")
+        cleanup_events: list[str] = []
+
+        def postgres_cleanup_stub(*_args: object, **_kwargs: object) -> str:
+            cleanup_events.append("postgres")
+            return "postgres cleanup failed"
+
+        def service_cleanup_stub(**_kwargs: object) -> str:
+            cleanup_events.append("service")
+            return "service cleanup failed"
+
+        def service_exists_stub(**_kwargs: object) -> bool:
+            cleanup_events.append("inspect")
+            return True
+
+        patch.setattr(cleanup, "ensure_projection_pg_stopped", postgres_cleanup_stub)
+        patch.setattr(cleanup, "ensure_projection_one_shot_service_absent", service_cleanup_stub)
+        patch.setattr(cleanup, "projection_service_exists", service_exists_stub)
 
         def root_stub(_work_root: Path, *, host_cleanup_error: str | None) -> str:
+            cleanup_events.append("root")
             assert host_cleanup_error == "postgres cleanup failed; service cleanup failed"
             return "root cleanup failed"
 
@@ -140,6 +207,52 @@ def test_projection_machine_cleanup_contract(monkeypatch: pytest.MonkeyPatch, tm
             work_root=tmp_path / "work-root",
         )
     assert errors == ("postgres cleanup failed", "service cleanup failed", "root cleanup failed")
+    assert cleanup_events == ["inspect", "service", "postgres", "service", "root"]
+
+    _assert_cleanup_order(
+        monkeypatch,
+        tmp_path=tmp_path,
+        pg_bin=pg_bin_path,
+        shawl=shawl_path,
+        service_name=service_name,
+        observations=(True, False),
+        service_results=(None,),
+        postgres_results=(None,),
+        expected_order=["inspect", "service", "inspect", "postgres", "root"],
+    )
+    _assert_cleanup_order(
+        monkeypatch,
+        tmp_path=tmp_path,
+        pg_bin=pg_bin_path,
+        shawl=shawl_path,
+        service_name=service_name,
+        observations=(False, False),
+        service_results=(None,),
+        postgres_results=(None,),
+        expected_order=["inspect", "postgres", "service", "inspect", "root"],
+    )
+    _assert_cleanup_order(
+        monkeypatch,
+        tmp_path=tmp_path,
+        pg_bin=pg_bin_path,
+        shawl=shawl_path,
+        service_name=service_name,
+        observations=(RuntimeError("transient SCM observation failure"), False),
+        service_results=("blocked before postmaster cleanup", None),
+        postgres_results=(None,),
+        expected_order=["inspect", "service", "postgres", "service", "inspect", "root"],
+    )
+    _assert_cleanup_order(
+        monkeypatch,
+        tmp_path=tmp_path,
+        pg_bin=pg_bin_path,
+        shawl=shawl_path,
+        service_name=service_name,
+        observations=(True, False),
+        service_results=("transient service cleanup failure", None),
+        postgres_results=("postmaster still live", None),
+        expected_order=["inspect", "service", "postgres", "service", "inspect", "postgres", "root"],
+    )
     primary = RuntimeError("projection primary sentinel")
     with pytest.raises(RuntimeError) as raised:
         cleanup.raise_projection_primary_failure(primary, errors)
