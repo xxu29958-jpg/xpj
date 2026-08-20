@@ -737,7 +737,8 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
             throw (
                 "foreign retirement marker returned the wrong SCM exit shape: " +
                 [uint32]$foreignSnapshot.ExitCode + "/" +
-                [uint32]$foreignSnapshot.ServiceSpecificExitCode
+                [uint32]$foreignSnapshot.ServiceSpecificExitCode + "`n" +
+                [string]$foreignSnapshot.DiagnosticText
             )
         }
         Start-TestPostgresAfterSingleUser
