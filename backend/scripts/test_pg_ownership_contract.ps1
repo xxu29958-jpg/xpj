@@ -286,9 +286,15 @@ function Resolve-XpjStoredPostgresBinPath {
     ).TrimEnd('\', '/')
     $postgresRoot = Join-Path $programFiles 'PostgreSQL'
     $resolved = [IO.Path]::GetFullPath($PostgresBin).TrimEnd('\', '/')
+    $pinnedVendorBin = [IO.Path]::GetFullPath(
+        (Join-Path (Split-Path -Parent $PSScriptRoot) 'packaging\vendor\pg\bin')
+    ).TrimEnd('\', '/')
+    if ([string]::Equals($resolved, $pinnedVendorBin, [StringComparison]::OrdinalIgnoreCase)) {
+        return $resolved
+    }
     $prefix = $postgresRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
     if (-not $resolved.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "PostgreSQL binary root escaped Program Files: $resolved"
+        throw "PostgreSQL binary root escaped the closed test-runtime roots: $resolved"
     }
     if ([IO.Path]::GetFileName($resolved) -cne 'bin') {
         throw "PostgreSQL binary root is not a bin directory: $resolved"
@@ -300,11 +306,34 @@ function Resolve-XpjStoredPostgresBinPath {
     return $resolved
 }
 
+function Assert-XpjRequestedPostgresBinMatchesOwnership {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][string]$RequestedPostgresBin = '',
+        [Parameter(Mandatory = $true)][string]$OwnershipPostgresBin
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RequestedPostgresBin)) {
+        return
+    }
+    $requested = Resolve-XpjStoredPostgresBinPath -PostgresBin $RequestedPostgresBin
+    $owned = Resolve-XpjStoredPostgresBinPath -PostgresBin $OwnershipPostgresBin
+    if (-not [string]::Equals($requested, $owned, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Requested PostgreSQL binary does not match the active cluster ownership marker'
+    }
+}
+
 function Get-XpjStoredPostgresMajor {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][string]$PostgresBin)
 
     $resolved = Resolve-XpjStoredPostgresBinPath -PostgresBin $PostgresBin
+    $pinnedVendorBin = [IO.Path]::GetFullPath(
+        (Join-Path (Split-Path -Parent $PSScriptRoot) 'packaging\vendor\pg\bin')
+    ).TrimEnd('\', '/')
+    if ([string]::Equals($resolved, $pinnedVendorBin, [StringComparison]::OrdinalIgnoreCase)) {
+        return (Get-XpjPostgresBinaryVersion -PostgresBin $resolved).Major
+    }
     return [int][IO.Path]::GetFileName([IO.Directory]::GetParent($resolved).FullName)
 }
 

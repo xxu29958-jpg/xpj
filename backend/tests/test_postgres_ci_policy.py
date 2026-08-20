@@ -66,14 +66,14 @@ def test_release_policy_covers_the_pinned_windows_postgres_artifact() -> None:
     assert POSTGRES_RELEASE_POLICY.service_image == (
         toolchain["installer_vendor_sources"]["postgresql"]["ci_service_image"]
     )
-    assert postgres_server_version(170010) == (17, 10, 0)
+    assert postgres_server_version(170011) == (17, 11, 0)
     assert POSTGRES_RELEASE_POLICY.verify_server_version(
-        "170010", expected_major=17
-    ) == (17, 10, 0)
+        "170011", expected_major=17
+    ) == (17, 11, 0)
     with pytest.raises(RuntimeError, match="outside the release policy"):
-        POSTGRES_RELEASE_POLICY.verify_server_version("170009", expected_major=17)
+        POSTGRES_RELEASE_POLICY.verify_server_version("170010", expected_major=17)
     with pytest.raises(RuntimeError, match="outside the release policy"):
-        POSTGRES_RELEASE_POLICY.verify_server_version("170010", expected_major=18)
+        POSTGRES_RELEASE_POLICY.verify_server_version("170011", expected_major=18)
     assert json.loads(POSTGRES_RELEASE_POLICY.matrix_json()) == {
         "include": [
             {

@@ -28,6 +28,10 @@
   Cluster data directory. Must be a non-reparse child of the dynamically
   resolved protected test runtime root. Default: xpj_pg_test<Port> under it.
 
+.PARAMETER PostgresBin
+  Optional explicit PostgreSQL bin directory for hermetic CI. The same active
+  release policy and executable/path validation apply as to local discovery.
+
 .PARAMETER AllowCiPort
   Selects the contract's Gitea profile. Reserved host ports always fail.
 #>
@@ -35,6 +39,7 @@
 param(
     [int]$Port = 0,
     [string]$DataDir = '',
+    [string]$PostgresBin = '',
     [switch]$AllowCiPort
 )
 
@@ -56,6 +61,20 @@ $smokeDatabase = [string]$contract.smoke_database
 $restoreDatabase = [string]$contract.restore_database
 $applicationRole = [string]$contract.application_role
 $clusterMarker = [string]$contract.cluster_marker
+
+function Resolve-XpjRequestedPostgresBin {
+    if ($null -eq $resolvedRequestedPostgresBin) {
+        return (Find-XpjPostgresBin)
+    }
+    return $resolvedRequestedPostgresBin
+}
+
+$resolvedRequestedPostgresBin = if ([string]::IsNullOrWhiteSpace($PostgresBin)) {
+    $null
+}
+else {
+    Assert-XpjPostgresBinaryWithinReleasePolicy -PostgresBin $PostgresBin
+}
 
 if ($Port -in $forbiddenHostPorts -or ($Port -eq $giteaPort -and -not $AllowCiPort)) {
     throw "Refusing port ${Port}: reserved host ports are forbidden and the Gitea port requires the CI lifecycle switch."
@@ -246,10 +265,13 @@ if ($hostMarkerKind -eq 'File') {
         $dataKind = 'Missing'
         $hostMarkerKind = 'Missing'
         $ownership = $null
-        $pgbin = Find-XpjPostgresBin
+        $pgbin = Resolve-XpjRequestedPostgresBin
         Write-Host 'Replaced an owned disposable cluster outside the active release policy.'
     }
     elseif ($ownershipDisposition.State -ceq 'active') {
+        Assert-XpjRequestedPostgresBinMatchesOwnership `
+            -RequestedPostgresBin ([string]$resolvedRequestedPostgresBin) `
+            -OwnershipPostgresBin ([string]$ownershipDisposition.PostgresBin)
         $pgbin = [string]$ownershipDisposition.PostgresBin
     }
     else {
@@ -260,14 +282,14 @@ elseif ($dataKind -eq 'Directory') {
     throw "Refusing to start an unmarked PostgreSQL data directory: $DataDir"
 }
 else {
-    $pgbin = Find-XpjPostgresBin
+    $pgbin = Resolve-XpjRequestedPostgresBin
 }
 $postgresExe = Join-Path $pgbin 'postgres.exe'
 if ($dataKind -eq 'Missing' -and $hostMarkerKind -eq 'File') {
     Remove-XpjTestPostgresCluster -DataDir $DataDir -Port $Port -PostgresExe $postgresExe
     $hostMarkerKind = 'Missing'
     $ownership = $null
-    $pgbin = Find-XpjPostgresBin
+    $pgbin = Resolve-XpjRequestedPostgresBin
     $postgresExe = Join-Path $pgbin 'postgres.exe'
 }
 if ($dataKind -eq 'Directory') {
@@ -277,7 +299,7 @@ if ($dataKind -eq 'Directory') {
         $dataKind = 'Missing'
         $hostMarkerKind = 'Missing'
         $ownership = $null
-        $pgbin = Find-XpjPostgresBin
+        $pgbin = Resolve-XpjRequestedPostgresBin
         $postgresExe = Join-Path $pgbin 'postgres.exe'
         Write-Host 'Replaced the owned disposable legacy authentication cluster with the current role contract.'
     }

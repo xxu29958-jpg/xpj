@@ -323,6 +323,22 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
+      - name: Cache pinned Windows build inputs
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            backend/build/windows-toolchain/archives
+            backend/packaging/vendor/archives
+            backend/packaging/vendor/pg
+            backend/packaging/vendor/shawl
+          key: windows-installer-vendor-${{ hashFiles('backend/packaging/windows-build-toolchain.json', 'backend/packaging/build_pg_bundle.ps1', 'backend/packaging/prepare_windows_installer_vendor.ps1') }}
+
+      - name: Prepare pinned PostgreSQL and Shawl inputs
+        shell: powershell
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Windows installer safety behavior
         env:
           PYTEST_ADDOPTS: ""
@@ -349,29 +365,14 @@ jobs:
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
 
-      - name: Cache pinned Windows build inputs
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            backend/build/windows-toolchain/archives
-            backend/packaging/vendor/archives
-            backend/packaging/vendor/pg
-            backend/packaging/vendor/shawl
-          key: windows-installer-vendor-${{ hashFiles('backend/packaging/windows-build-toolchain.json', 'backend/packaging/build_pg_bundle.ps1', 'backend/packaging/prepare_windows_installer_vendor.ps1') }}
-
-      - name: Frozen backend locked release build
-        shell: powershell
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
-
-      - name: Frozen Desktop Manager locked release build
-        shell: powershell
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ..\desktop\scripts\build_manager_exe.ps1 -Clean
-
-      - name: Prepare pinned PostgreSQL and Shawl inputs
-        shell: powershell
-        run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows local PostgreSQL lifecycle
+        env:
+          PYTEST_ADDOPTS: ""
+        run: >-
+          python -m pytest -q
+          packaging/tests/test_local_test_postgres_lifecycle.py
+          --strict-markers -p no:cacheprovider -o addopts=
+          -n 0 --max-worker-restart 0
 
       - name: Database generation projection real PostgreSQL contract
         env:
@@ -381,6 +382,14 @@ jobs:
           python -m pytest -q
           packaging/tests/test_database_generation_projection.py::test_runtime_projection_read_and_retirement_retry_are_fail_closed
           --strict-markers -p no:cacheprovider -o addopts=
+
+      - name: Frozen backend locked release build
+        shell: powershell
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
+
+      - name: Frozen Desktop Manager locked release build
+        shell: powershell
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ..\desktop\scripts\build_manager_exe.ps1 -Clean
 
       - name: Prepare pinned Inno Setup compiler
         shell: powershell

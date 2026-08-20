@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 from _powershell_contract import powershell_contract_engines
 
+pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")
+
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _START = _BACKEND_ROOT / "scripts" / "start_test_pg.ps1"
 _STOP = _BACKEND_ROOT / "scripts" / "stop_test_pg.ps1"
@@ -72,6 +74,7 @@ def _run_lifecycle(
     data_dir: Path,
     invoke_from_parent: bool = False,
     environment: dict[str, str] | None = None,
+    postgres_bin_override: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     common = [
         engine,
@@ -81,13 +84,27 @@ def _run_lifecycle(
         "-ExecutionPolicy",
         "Bypass",
     ]
+    postgres_bin_arguments: list[str] = []
+    if script == _START:
+        postgres_bin = postgres_bin_override or _postgres_bin(engine)
+        postgres_bin_arguments = ["-PostgresBin", str(postgres_bin)]
     if invoke_from_parent:
         escaped_script = str(script).replace("'", "''")
         escaped_data_dir = str(data_dir).replace("'", "''")
+        escaped_postgres_bin = ""
+        if postgres_bin_arguments:
+            escaped_postgres_bin = (
+                " -PostgresBin '"
+                + postgres_bin_arguments[1].replace("'", "''")
+                + "'"
+            )
         command = [
             *common,
             "-Command",
-            f"& '{escaped_script}' -Port {port} -DataDir '{escaped_data_dir}'",
+            (
+                f"& '{escaped_script}' -Port {port} -DataDir '{escaped_data_dir}'"
+                f"{escaped_postgres_bin}"
+            ),
         ]
     else:
         command = [
@@ -98,6 +115,7 @@ def _run_lifecycle(
             str(port),
             "-DataDir",
             str(data_dir),
+            *postgres_bin_arguments,
         ]
     return _run_powershell(command, environment=environment)
 
@@ -194,7 +212,7 @@ def _run_recovery_attempt(
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
-def test_postgres_process_identity_rejects_relative_data_paths(
+def test_postgres_process_and_binary_identity_are_exact(
     protected_test_postgres_root: Path,
 ) -> None:
     powershell_51, powershell_7 = powershell_contract_engines()
@@ -206,7 +224,16 @@ def test_postgres_process_identity_rejects_relative_data_paths(
         encoding="utf-8",
     )
     escaped_contract = str(_PROCESS_CONTRACT).replace("'", "''")
+    escaped_lifecycle_contract = str(_LIFECYCLE_CONTRACT).replace("'", "''")
     escaped_data_dir = str(data_dir).replace("'", "''")
+    vendor_bin = _BACKEND_ROOT / "packaging" / "vendor" / "pg" / "bin"
+    escaped_vendor_bin = str(vendor_bin).replace("'", "''")
+    start_source = _START.read_text(encoding="utf-8-sig")
+    exact_binary_binding = """        Assert-XpjRequestedPostgresBinMatchesOwnership `
+            -RequestedPostgresBin ([string]$resolvedRequestedPostgresBin) `
+            -OwnershipPostgresBin ([string]$ownershipDisposition.PostgresBin)
+"""
+    assert start_source.count(exact_binary_binding) == 1
     try:
         for engine in (powershell_51, powershell_7):
             common = [
@@ -236,6 +263,32 @@ def test_postgres_process_identity_rejects_relative_data_paths(
                     ]
                 )
                 assert rejected.returncode != 0
+
+            binary_identity = _run_powershell(
+                [
+                    *common,
+                    (
+                        f". '{escaped_lifecycle_contract}'; "
+                        f"$vendor = '{escaped_vendor_bin}'; "
+                        "$programFiles = [Environment]::GetFolderPath("
+                        "[Environment+SpecialFolder]::ProgramFiles); "
+                        "$other = Join-Path $programFiles 'PostgreSQL\\17\\bin'; "
+                        "Assert-XpjRequestedPostgresBinMatchesOwnership "
+                        "-RequestedPostgresBin $vendor.ToUpperInvariant() "
+                        "-OwnershipPostgresBin $vendor; "
+                        "Assert-XpjRequestedPostgresBinMatchesOwnership "
+                        "-RequestedPostgresBin '' -OwnershipPostgresBin $vendor; "
+                        "$rejected = $false; try { "
+                        "Assert-XpjRequestedPostgresBinMatchesOwnership "
+                        "-RequestedPostgresBin $vendor -OwnershipPostgresBin $other "
+                        "} catch { $rejected = $true }; "
+                        "if (-not $rejected) { throw 'unequal trusted roots were accepted' }"
+                    ),
+                ]
+            )
+            assert binary_identity.returncode == 0, (
+                binary_identity.stdout + binary_identity.stderr
+            )
 
             accepted = _run_powershell(
                 [
@@ -451,13 +504,33 @@ def test_stop_rejects_a_replacement_directory_after_deletion_started(
 
 def _postgres_bin(engine: str) -> Path:
     escaped_contract = str(_LIFECYCLE_CONTRACT).replace("'", "''")
+    vendor_bin = _BACKEND_ROOT / "packaging" / "vendor" / "pg" / "bin"
+    preferred = vendor_bin if vendor_bin.is_dir() else None
+    escaped_preferred = str(preferred or "").replace("'", "''")
+    escaped_vendor_bin = str(vendor_bin).replace("'", "''")
+    resolver = (
+        f"Assert-XpjPostgresBinaryWithinReleasePolicy -PostgresBin '{escaped_preferred}'"
+        if preferred is not None
+        else "Find-XpjPostgresBin"
+    )
     command = (
         f". '{escaped_contract}'; "
-        "$bin = [string](Find-XpjPostgresBin); "
+        f"$bin = [string]({resolver}); "
+        "$untrustedRootsRejected = $true; "
+        "$outside = [IO.Path]::Combine([IO.Path]::GetTempPath(), "
+        "'xpj-untrusted-postgres', 'bin'); "
+        f"$vendor = '{escaped_vendor_bin}'; "
+        "$probes = @($outside, (Join-Path $vendor 'child'), "
+        "(Join-Path (Split-Path -Parent (Split-Path -Parent $vendor)) "
+        "'pg-shadow\\bin')); "
+        "foreach ($probe in $probes) { "
+        "try { Resolve-XpjStoredPostgresBinPath -PostgresBin $probe | Out-Null; "
+        "$untrustedRootsRejected = $false } catch {} }; "
         "[ordered]@{ "
         "bin = $bin; "
         "version = (Get-XpjPostgresBinaryVersion -PostgresBin $bin).ToString(); "
         "supported = @((Get-XpjSupportedPostgresMajorVersions)); "
+        "untrusted_roots_rejected = $untrustedRootsRejected; "
         "program_files = [Environment]::GetFolderPath("
         "[Environment+SpecialFolder]::ProgramFiles) "
         "} | ConvertTo-Json -Compress"
@@ -474,14 +547,19 @@ def _postgres_bin(engine: str) -> Path:
     payload = json.loads(completed.stdout.strip())
     postgres_bin = Path(payload["bin"]).resolve()
     program_files = Path(payload["program_files"]).resolve()
-    assert postgres_bin.is_relative_to(program_files)
+    if preferred is None:
+        assert postgres_bin.is_relative_to(program_files)
+    else:
+        assert postgres_bin == preferred.resolve()
     assert (postgres_bin / "pg_ctl.exe").is_file()
     minimum = int(_RELEASE_CONFIG["postgres_version_policy"]["minimum"].split(".")[0])
     maximum = int(
         _RELEASE_CONFIG["postgres_version_policy"]["maximum_exclusive"].split(".")[0]
     )
     assert payload["supported"] == [str(major) for major in range(minimum, maximum)]
-    assert postgres_bin.parent.name in payload["supported"]
+    assert payload["untrusted_roots_rejected"] is True
+    if preferred is None:
+        assert postgres_bin.parent.name in payload["supported"]
     runtime_version = tuple(int(part) for part in payload["version"].split("."))
     minimum_version = tuple(
         int(part)
@@ -510,6 +588,7 @@ def _new_pending_provisioning(
     escaped_contract = str(_LIFECYCLE_CONTRACT).replace("'", "''")
     escaped_auth = str(_AUTH_CONTRACT).replace("'", "''")
     escaped_data_dir = str(data_dir).replace("'", "''")
+    escaped_postgres_bin = str(_postgres_bin(engine)).replace("'", "''")
     bootstrap = (
         "$null = New-XpjTestPostgresBootstrapPasswordFile "
         "-DataDir $pending.StagingDir -Credential 'temporary-secret'; "
@@ -526,7 +605,7 @@ def _new_pending_provisioning(
             (
                 f". '{escaped_contract}'; . '{escaped_auth}'; "
                 f"$pending = New-XpjTestPostgresProvisioning -DataDir '{escaped_data_dir}' "
-                f"-PostgresBin (Find-XpjPostgresBin) -Port {port}; "
+                f"-PostgresBin '{escaped_postgres_bin}' -Port {port}; "
                 f"{bootstrap}"
                 "$pending | ConvertTo-Json -Compress"
             ),
@@ -764,6 +843,18 @@ def test_local_test_postgres_lifecycle_is_cross_engine_reentrant_and_fail_closed
         )
         assert started.returncode == 0, started.stdout + started.stderr
         _assert_scram_contract(postgres_bin, owned_dir, port)
+        rejected_bin_override = _run_lifecycle(
+            powershell_7,
+            _START,
+            port=port,
+            data_dir=owned_dir,
+            postgres_bin_override=protected_test_postgres_root / "untrusted" / "bin",
+        )
+        assert rejected_bin_override.returncode != 0, (
+            rejected_bin_override.stdout + rejected_bin_override.stderr
+        )
+        assert "closed test-runtime roots" in rejected_bin_override.stderr
+        assert _run_pg_ctl(postgres_bin, owned_dir, "status").returncode == 0
         host_marker = Path(f"{owned_dir}{_POSTGRES_CONTRACT['ownership_marker_name']}")
         data_marker = owned_dir / _POSTGRES_CONTRACT["ownership_marker_name"]
         provisioning_marker = Path(f"{host_marker}.provisioning")
@@ -1162,6 +1253,7 @@ def test_local_test_postgres_stop_and_start_reject_replaced_provisioning_directo
     data_dir = _test_data_dir(protected_test_postgres_root, "recreated")
     escaped_contract = str(_LIFECYCLE_CONTRACT).replace("'", "''")
     escaped_data_dir = str(data_dir).replace("'", "''")
+    escaped_postgres_bin = str(_postgres_bin(powershell_7)).replace("'", "''")
     created = subprocess.run(
         [
             powershell_7,
@@ -1172,7 +1264,7 @@ def test_local_test_postgres_stop_and_start_reject_replaced_provisioning_directo
             (
                 f". '{escaped_contract}'; "
                 f"$owner = New-XpjTestPostgresOwnership -DataDir '{escaped_data_dir}' "
-                "-PostgresBin (Find-XpjPostgresBin); "
+                f"-PostgresBin '{escaped_postgres_bin}'; "
                 "$owner.InstanceId.ToString('D')"
             ),
         ],
