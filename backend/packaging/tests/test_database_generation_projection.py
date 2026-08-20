@@ -384,8 +384,18 @@ def test_runtime_projection_read_and_retirement_retry_are_fail_closed(
     fixture = Path(__file__).with_name("powershell_fixtures") / "database_generation_projection_postgres.ps1"
     fixture_source = fixture.read_text(encoding="utf-8-sig")
     invoke_test_psql = powershell_function(fixture_source, "Invoke-TestPsql")
+    invoke_single_user = powershell_function(fixture_source, "Invoke-TestSingleUserRetirement")
     assert "?require_auth=scram-sha-256" in invoke_test_psql
     assert "sslmode=" not in invoke_test_psql
+    assert "-WorkingDirectory $installedHelperRoot" in invoke_single_user
+    assert "-HelperPath $helper" in invoke_single_user
+    for diagnostic_wrapper_token in (
+        "singleUserDiagnosticAttempt",
+        "diagnosticPath",
+        "wrapperPath",
+        "DiagnosticText",
+    ):
+        assert diagnostic_wrapper_token not in invoke_single_user
     for dependency in (
         "windows_security_primitives.ps1",
         "byte_array.ps1",
