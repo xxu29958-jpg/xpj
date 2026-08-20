@@ -138,6 +138,8 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     assert "ALTER ROLE postgres PASSWORD NULL" in single_user
     assert "--single" in single_user
     assert "Invoke-TicketboxOwnedOneShotService" in retire
+    assert "-ExpectedRuntimeExecutables @($shawl, $postgres)" in retire
+    assert "$shawl, $powershell, $postgres" not in retire + retirement
     assert "Enter-TicketboxPostgresqlStoppedHostAuthority" in retire
     assert "Restore-TicketboxDatabaseGenerationFormalPostgresqlService" in retire
     assert "Restore-TicketboxPostgresqlFormalServiceCommand" in retirement

@@ -13,6 +13,10 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.database._database_generation_runtime_queries import (
+    LIVE_DATABASE_QUERY,
+    RUNTIME_ACL_EVIDENCE_QUERY,
+)
 from app.database._lifecycle import DatabaseMigrationPreflightError
 from app.services.secure_file import hold_system_runtime_projection_for_read
 
@@ -41,189 +45,6 @@ _BINDING_SHA_FIELD_ORDER = (
     "role_authority_sha256 runtime_acl_sha256 post_migration_writer_fence_sha256 "
     "target_recovery_evidence_sha256"
 )
-_LIVE_DATABASE_QUERY = text(
-    """
-    SELECT control.system_identifier::text, database.oid::bigint,
-           current_database()::text,
-           session_user::text,
-           (SELECT value FROM public.app_meta WHERE key = 'server_id'),
-           (SELECT value FROM public.app_meta WHERE key = 'data_generation'),
-            COALESCE((SELECT role.rolcanlogin AND role.rolinherit
-                       AND NOT role.rolsuper AND NOT role.rolcreatedb
-                       AND NOT role.rolcreaterole AND NOT role.rolreplication
-                       AND NOT role.rolbypassrls AND role.rolconnlimit = -1
-                FROM pg_catalog.pg_roles AS role WHERE role.rolname = session_user
-            ), false),
-            COALESCE((SELECT COALESCE(role.rolconfig, ARRAY[]::text[]) =
-                             ARRAY['search_path=pg_catalog, public']::text[]
-                FROM pg_catalog.pg_roles AS role WHERE role.rolname = session_user
-            ), false),
-            NOT EXISTS (
-                SELECT 1 FROM pg_catalog.pg_auth_members AS membership
-                JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
-               WHERE granted.rolname = session_user
-                  OR member.rolname = session_user
-           ),
-           COALESCE(pg_catalog.pg_get_userbyid(database.datdba) = 'ticketbox_owner', false),
-            COALESCE((SELECT pg_catalog.pg_get_userbyid(namespace.nspowner) = 'ticketbox_owner'
-                FROM pg_catalog.pg_namespace AS namespace WHERE namespace.nspname = 'public'
-            ), false),
-           pg_catalog.has_database_privilege(session_user, current_database(), 'CONNECT'),
-           NOT pg_catalog.has_database_privilege(session_user, current_database(), 'CREATE'),
-           NOT pg_catalog.has_database_privilege(session_user, current_database(), 'TEMPORARY'),
-           pg_catalog.has_schema_privilege(session_user, 'public', 'USAGE'),
-           NOT pg_catalog.has_schema_privilege(session_user, 'public', 'CREATE'),
-            NOT EXISTS (
-                SELECT 1 FROM pg_catalog.pg_class AS relation
-                JOIN pg_catalog.pg_namespace AS namespace
-                  ON namespace.oid = relation.relnamespace
-               WHERE namespace.nspname = 'public'
-                 AND pg_catalog.pg_get_userbyid(relation.relowner) = session_user
-               UNION ALL
-               SELECT 1 FROM pg_catalog.pg_proc AS routine
-               JOIN pg_catalog.pg_namespace AS namespace
-                 ON namespace.oid = routine.pronamespace
-               WHERE namespace.nspname = 'public'
-                 AND pg_catalog.pg_get_userbyid(routine.proowner) = session_user
-               UNION ALL
-               SELECT 1 FROM pg_catalog.pg_type AS type
-               JOIN pg_catalog.pg_namespace AS namespace
-                 ON namespace.oid = type.typnamespace
-               WHERE namespace.nspname = 'public'
-                  AND pg_catalog.pg_get_userbyid(type.typowner) = session_user
-            ),
-            COALESCE((SELECT NOT role.rolcanlogin AND NOT role.rolinherit
-                       AND NOT role.rolsuper AND NOT role.rolcreatedb
-                       AND NOT role.rolcreaterole AND NOT role.rolreplication
-                       AND NOT role.rolbypassrls AND role.rolconnlimit = -1
-                FROM pg_catalog.pg_roles AS role WHERE role.rolname = 'ticketbox_owner'
-            ), false)
-            AND NOT EXISTS (
-                SELECT 1 FROM pg_catalog.pg_auth_members AS membership
-                JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
-                WHERE granted.rolname = 'ticketbox_owner' OR member.rolname = 'ticketbox_owner'
-            ) AND NOT EXISTS (
-                SELECT 1 FROM pg_catalog.pg_stat_activity WHERE usename = 'ticketbox_owner' AND pid <> pg_backend_pid()
-            ),
-            COALESCE((SELECT NOT role.rolcanlogin AND NOT role.rolinherit
-                       AND NOT role.rolsuper AND NOT role.rolcreatedb
-                       AND NOT role.rolcreaterole AND NOT role.rolreplication
-                       AND NOT role.rolbypassrls AND role.rolconnlimit = 1
-                FROM pg_catalog.pg_roles AS role WHERE role.rolname = 'ticketbox_migrator'
-            ), false)
-            AND NOT EXISTS (
-                SELECT 1 FROM pg_catalog.pg_auth_members AS membership
-                JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
-                WHERE granted.rolname = 'ticketbox_migrator' OR member.rolname = 'ticketbox_migrator'
-            ) AND NOT pg_catalog.has_database_privilege(
-                'ticketbox_migrator', current_database(), 'CONNECT')
-            AND NOT EXISTS (
-                SELECT 1 FROM pg_catalog.pg_stat_activity WHERE usename = 'ticketbox_migrator' AND pid <> pg_backend_pid()
-           )
-    FROM pg_catalog.pg_database AS database
-    CROSS JOIN pg_catalog.pg_control_system() AS control
-    WHERE database.datname = current_database()
-    """
-)
-_RUNTIME_ACL_EVIDENCE_QUERY = text(
-    """
-    WITH acl_rows AS (
-        SELECT 'database'::text AS kind,
-               database.datname AS object_name,
-               COALESCE(pg_catalog.pg_get_userbyid(acl.grantee), 'PUBLIC') AS grantee,
-               acl.privilege_type,
-               acl.is_grantable
-        FROM pg_catalog.pg_database AS database,
-             LATERAL pg_catalog.aclexplode(
-                 COALESCE(
-                     database.datacl,
-                    pg_catalog.acldefault('d'::"char", database.datdba)
-                 )
-             ) AS acl
-        WHERE database.datname = current_database()
-        UNION ALL
-        SELECT 'schema', namespace.nspname,
-               COALESCE(pg_catalog.pg_get_userbyid(acl.grantee), 'PUBLIC'),
-               acl.privilege_type,
-               acl.is_grantable
-        FROM pg_catalog.pg_namespace AS namespace,
-             LATERAL pg_catalog.aclexplode(
-                 COALESCE(
-                     namespace.nspacl,
-                    pg_catalog.acldefault('n'::"char", namespace.nspowner)
-                 )
-             ) AS acl
-        WHERE namespace.nspname = 'public'
-        UNION ALL
-        SELECT CASE WHEN relation.relkind = 'S' THEN 'sequence' ELSE 'relation' END,
-               namespace.nspname || '.' || relation.relname,
-               COALESCE(pg_catalog.pg_get_userbyid(acl.grantee), 'PUBLIC'),
-               acl.privilege_type,
-               acl.is_grantable
-        FROM pg_catalog.pg_class AS relation
-        JOIN pg_catalog.pg_namespace AS namespace
-          ON namespace.oid = relation.relnamespace
-        CROSS JOIN LATERAL pg_catalog.aclexplode(
-            COALESCE(
-                relation.relacl,
-                pg_catalog.acldefault(
-                    CASE WHEN relation.relkind = 'S' THEN 'S'::"char"
-                         ELSE 'r'::"char"
-                    END,
-                    relation.relowner
-                )
-            )
-        ) AS acl
-        WHERE namespace.nspname = 'public'
-          AND relation.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
-        UNION ALL
-        SELECT 'routine', namespace.nspname || '.' ||
-               routine.oid::regprocedure::text,
-               COALESCE(pg_catalog.pg_get_userbyid(acl.grantee), 'PUBLIC'),
-               acl.privilege_type,
-               acl.is_grantable
-        FROM pg_catalog.pg_proc AS routine
-        JOIN pg_catalog.pg_namespace AS namespace
-          ON namespace.oid = routine.pronamespace
-        CROSS JOIN LATERAL pg_catalog.aclexplode(
-            COALESCE(
-                routine.proacl,
-                pg_catalog.acldefault('f'::"char", routine.proowner)
-            )
-        ) AS acl
-        WHERE namespace.nspname = 'public'
-        UNION ALL
-        SELECT 'routine', namespace.nspname || '.' ||
-               routine.oid::regprocedure::text,
-               COALESCE(pg_catalog.pg_get_userbyid(acl.grantee), 'PUBLIC'),
-               acl.privilege_type,
-               acl.is_grantable
-        FROM pg_catalog.pg_proc AS routine
-        JOIN pg_catalog.pg_namespace AS namespace
-          ON namespace.oid = routine.pronamespace
-        CROSS JOIN LATERAL pg_catalog.aclexplode(
-            COALESCE(
-                routine.proacl,
-                pg_catalog.acldefault('f'::"char", routine.proowner)
-            )
-        ) AS acl
-        WHERE routine.oid = 'pg_catalog.pg_control_system()'::regprocedure
-    )
-    SELECT kind || E'\t' || object_name || E'\t' || grantee || E'\t' ||
-           privilege_type || E'\t' || is_grantable::text
-    FROM acl_rows
-    WHERE NOT (
-        kind = 'database'
-        AND object_name = current_database()
-        AND grantee IN ('ticketbox_runtime', 'ticketbox_migrator')
-        AND privilege_type = 'CONNECT'
-        AND NOT is_grantable
-    )
-    ORDER BY kind, object_name, grantee, privilege_type, is_grantable
-    """
-)
-
-
 class DatabaseGenerationAdmissionError(RuntimeError):
     """Installed runtime CURRENT or its live database binding is not exact."""
 
@@ -319,11 +140,11 @@ def _read_current(path: Path) -> tuple[dict[str, object], str]:
     return payload, payload_sha
 
 
-def _validate_current(current: dict[str, object], program: object) -> tuple[str, str, str, str, str, str]:
+def _validate_current(current: dict[str, object], program: object) -> tuple[str, str, str, str, str, str, str]:
     operation_id = _canonical_uuid(current["operation_id"], "CURRENT operation_id")
     installation_id = _canonical_uuid(current["installation_id"], "CURRENT installation_id")
     intent_sha = _lower_sha(current["intent_sha256"], "CURRENT intent")
-    _lower_sha(current["candidate_sha256"], "CURRENT candidate")
+    candidate_sha = _lower_sha(current["candidate_sha256"], "CURRENT candidate")
     binding_sha = _lower_sha(current["database_binding_sha256"], "CURRENT database binding")
     program_sha = _lower_sha(current["generation_program_sha256"], "CURRENT generation program")
     _lower_sha(current["terminal_state_sha256"], "CURRENT terminal state")
@@ -344,6 +165,7 @@ def _validate_current(current: dict[str, object], program: object) -> tuple[str,
         binding_sha,
         program_sha,
         revision,
+        candidate_sha,
     )
 
 
@@ -359,8 +181,8 @@ def _observe_live_database(
             revisions = tuple(
                 str(value) for value in connection.scalars(text("SELECT version_num FROM public.alembic_version"))
             )
-            live_identity = connection.execute(_LIVE_DATABASE_QUERY).one()
-            runtime_acl_evidence = tuple(str(value) for value in connection.scalars(_RUNTIME_ACL_EVIDENCE_QUERY))
+            live_identity = connection.execute(LIVE_DATABASE_QUERY).one()
+            runtime_acl_evidence = tuple(str(value) for value in connection.scalars(RUNTIME_ACL_EVIDENCE_QUERY))
     except (OSError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as exc:
         raise DatabaseGenerationAdmissionError("live database binding is unavailable") from exc
     return (
@@ -400,6 +222,7 @@ def _assert_live_binding(
     intent_sha: str,
     program_sha: str,
     revision: str,
+    candidate_sha: str,
 ) -> None:
     try:
         (
@@ -409,6 +232,7 @@ def _assert_live_binding(
             live_session_user,
             live_server_id,
             live_data_generation,
+            live_bootstrap_retirement,
             *live_runtime_capabilities,
         ) = live_identity  # type: ignore[misc]
     except (TypeError, ValueError) as exc:
@@ -418,6 +242,15 @@ def _assert_live_binding(
     except (TypeError, ValueError) as exc:
         raise DatabaseGenerationAdmissionError("live database OID is invalid") from exc
     _assert_runtime_capability(tuple(live_runtime_capabilities))
+    expected_bootstrap_retirement = _canonical_json(
+        {
+            "schema": "ticketbox-database-generation-bootstrap-retirement-v1",
+            "operation_id": operation_id,
+            "intent_sha256": intent_sha,
+            "candidate_sha256": candidate_sha,
+            "committed_revision": revision,
+        }
+    )
     if (
         " ".join(binding) != _BINDING_FIELD_ORDER
         or binding_json != _canonical_json(binding)
@@ -448,6 +281,7 @@ def _assert_live_binding(
             "database binding data_generation",
         )
         != _canonical_uuid(live_data_generation, "live data_generation")
+        or live_bootstrap_retirement != expected_bootstrap_retirement
     ):
         raise DatabaseGenerationAdmissionError("live database binding does not match the sole CURRENT")
     if binding["database_name"] != "ticketbox" or binding["runtime_role"] != "ticketbox_runtime":
@@ -478,6 +312,7 @@ def assert_database_generation_runtime_admission(
         intent_sha=current_contract[2],
         program_sha=current_contract[4],
         revision=current_contract[5],
+        candidate_sha=current_contract[6],
     )
 
 

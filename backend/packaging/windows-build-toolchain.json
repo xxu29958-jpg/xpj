@@ -47,7 +47,14 @@
       "archive_name": "shawl-v1.9.0-win64.zip",
       "url": "https://github.com/mtkennerly/shawl/releases/download/v1.9.0/shawl-v1.9.0-win64.zip",
       "sha256": "f883c5d09c9beae2efaeabd8513e7d3f57cd1d0864cec3df4f4a7b6ee904351c",
-      "executable_sha256": "0985555b71e7f943b8f3fc639952a9890aa62e66617942a2d0996985fe8e7c6d"
+      "executable_sha256": "0985555b71e7f943b8f3fc639952a9890aa62e66617942a2d0996985fe8e7c6d",
+      "legal": {
+        "archive_name": "shawl-v1.9.0-legal.zip",
+        "url": "https://github.com/mtkennerly/shawl/releases/download/v1.9.0/shawl-v1.9.0-legal.zip",
+        "sha256": "a2a1743a64b79922062906eb32cdaf23db131769f8cabcc98e5d57bbf66eb0b0",
+        "notice_name": "shawl-v1.9.0-legal.txt",
+        "notice_sha256": "94b6773b54e5e7b52d68bd7417bfc3b1da1df69bcb12530f2cb89d125471021b"
+      }
     },
     "visual_cpp_runtime": {
       "version": "14.44.35211.0",

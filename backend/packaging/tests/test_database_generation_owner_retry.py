@@ -20,6 +20,7 @@ def test_owner_recovers_after_bootstrap_retirement_response_loss(tmp_path: Path)
     script = rf"""
 $ErrorActionPreference = 'Stop'
 $script:retired = $false
+$script:runtimeReady = $false
 $script:bootstrapExists = $true
 $script:credentialsExist = $true
 $script:bootstrapReads = 0
@@ -67,6 +68,7 @@ function Close-TicketboxDatabaseGenerationCredentials {{}}
 function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
     param($Intent, $Candidate, $HostAuthority, $RuntimePassword)
     if (-not [object]::ReferenceEquals($RuntimePassword, $script:runtimeSecret)) {{ throw 'wrong runtime secret' }}
+    if (-not $script:runtimeReady) {{ throw 'runtime login is still disabled' }}
     return $script:retired
 }}
 function Get-TicketboxDatabaseGenerationBootstrapRetirementJson {{ return '{{"retired":true}}' }}
@@ -90,6 +92,7 @@ function New-TicketboxDatabaseGenerationCredentials {{
 function Prepare-TicketboxDatabaseGenerationRuntimeProjection {{
     param($Intent, $Candidate, $RuntimeCredentials, $HostAuthority, $MaintenanceAuthority)
     if (-not [object]::ReferenceEquals($MaintenanceAuthority.Secret, $script:adminSecret)) {{ throw 'wrong admin secret' }}
+    $script:runtimeReady = $true
     return [pscustomobject]@{{ Schema = 'ticketbox-database-generation-projection-prepared-v1'; OperationId = $Intent.Payload.operation_id; CandidateSha256 = $Candidate.PayloadSha256 }}
 }}
 function Retire-TicketboxDatabaseGenerationBootstrapAuthority {{

@@ -3,7 +3,11 @@
     [Parameter(Mandatory = $true)][string]$ContractPath,
     [Parameter(Mandatory = $true)][string]$CredentialsPath,
     [Parameter(Mandatory = $true)][string]$RetirementPath,
+    [Parameter(Mandatory = $true)][string]$ServiceLifecyclePath,
+    [Parameter(Mandatory = $true)][string]$SingleUserServicePath,
+    [Parameter(Mandatory = $true)][string]$ShawlPath,
     [Parameter(Mandatory = $true)][string]$SafetyPath,
+    [Parameter(Mandatory = $true)][string]$DatabaseSafetyPath,
     [Parameter(Mandatory = $true)][string]$DatabaseBindingPath,
     [Parameter(Mandatory = $true)][string]$DatabasePolicyPath,
     [Parameter(Mandatory = $true)][string]$PythonPath,
@@ -119,8 +123,11 @@ function Invoke-TicketboxC07Sql {
 }
 
 . $SafetyPath
+. $DatabaseSafetyPath
 . $ContractPath
 . $CredentialsPath
+. $ServiceLifecyclePath
+. $SingleUserServicePath
 . $RetirementPath
 . $ProjectionPath
 . $DatabaseBindingPath
@@ -170,14 +177,15 @@ function Assert-RuntimeObservation {
         [Parameter(Mandatory = $true)][string]$ServerId,
         [Parameter(Mandatory = $true)][string]$DataGeneration,
         [Parameter(Mandatory = $true)][string]$ExpectedAclSha256,
+        [AllowEmptyString()][string]$ExpectedBootstrapRetirement = '',
         [switch]$ExpectCapabilityFailure
     )
     $observation = Invoke-TestPythonRuntimeObservation
     $identity = @($observation.identity)
-    if ($identity.Count -ne 19) {
+    if ($identity.Count -ne 20) {
         throw "runtime generation identity returned the wrong field count"
     }
-    $failedCapabilities = @($identity[6..18] | Where-Object { $_ -ne $true })
+    $failedCapabilities = @($identity[7..19] | Where-Object { $_ -ne $true })
     if ($ExpectCapabilityFailure) {
         if ($failedCapabilities.Count -eq 0) {
             throw "runtime capability query accepted hostile role state"
@@ -191,6 +199,7 @@ function Assert-RuntimeObservation {
         $identity[3] -cne "ticketbox_runtime" -or
         $identity[4] -cne $ServerId -or
         $identity[5] -cne $DataGeneration -or
+        $identity[6] -cne $ExpectedBootstrapRetirement -or
         $failedCapabilities.Count -ne 0 -or
         [string]$observation.runtime_acl_sha256 -cne $ExpectedAclSha256
     ) {
@@ -282,6 +291,69 @@ function Start-TestPostgresAfterSingleUser {
     }
 }
 
+function Invoke-TestSingleUserRetirement {
+    param(
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$Candidate
+    )
+    $serviceName = "TicketboxProjection-$PID"
+    $helper = [IO.Path]::GetFullPath((Join-Path `
+        $PSScriptRoot "..\..\windows_database_generation_single_user.ps1"))
+    $postgres = [IO.Path]::GetFullPath((Join-Path $PgBin "postgres.exe"))
+    $shawl = [IO.Path]::GetFullPath($ShawlPath)
+    $powershell = Get-TicketboxWindowsPowerShellExecutable
+    $imagePath = New-TicketboxPostgresqlSingleUserServiceImagePath `
+        -ShawlPath $shawl `
+        -ServiceName $serviceName `
+        -WorkingDirectory (Split-Path -Parent $helper) `
+        -PowerShellPath $powershell `
+        -HelperPath $helper `
+        -PostgresPath $postgres `
+        -PhysicalPgData $dataDir `
+        -OperationId ([string]$Intent.Payload.operation_id) `
+        -IntentSha256 ([string]$Intent.PayloadSha256) `
+        -CandidateSha256 ([string]$Candidate.PayloadSha256) `
+        -CommittedRevision ([string]$Candidate.Payload.target_revision) `
+        -StopTimeoutMilliseconds 30000 `
+        -OperationTimeoutMilliseconds 30000
+    if (Test-TicketboxServiceExists $serviceName) {
+        throw "projection one-shot service already exists: $serviceName"
+    }
+    $created = $false
+    try {
+        Invoke-TicketboxScChecked @(
+            "create", $serviceName,
+            "binPath=", $imagePath,
+            "start=", "demand",
+            "obj=", "NT AUTHORITY\LocalService"
+        ) | Out-Null
+        $created = $true
+        Set-TicketboxServiceIdentityContract `
+            -Name $serviceName `
+            -LogonAccount "NT AUTHORITY\LocalService" `
+            -SidType "unrestricted"
+        Assert-TicketboxPostgresqlSingleUserServiceCommand `
+            -Name $serviceName `
+            -ExpectedImagePath $imagePath
+        Invoke-TicketboxOwnedOneShotService `
+            -Name $serviceName `
+            -ExpectedExecutable $shawl `
+            -ExpectedRuntimeExecutables @($shawl, $postgres) `
+            -TimeoutMilliseconds 45000 `
+            -PollMilliseconds 100 | Out-Null
+    }
+    finally {
+        if ($created) {
+            Remove-TicketboxOwnedServiceIfExists `
+                -Name $serviceName `
+                -ExpectedExecutable $shawl `
+                -ExpectedRuntimeExecutables @($shawl, $postgres) `
+                -TimeoutMilliseconds 45000 `
+                -PollMilliseconds 100
+        }
+    }
+}
+
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
 $listener.Start()
 $port = ([Net.IPEndPoint]$listener.LocalEndpoint).Port
@@ -307,6 +379,12 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw ($initOutput -join [Environment]::NewLine)
     }
+    $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    Set-TicketboxExactDirectoryAcl `
+        -Path $WorkRoot `
+        -Accounts @($currentAccount, "NT AUTHORITY\LocalService") `
+        -OwnerAccount $currentAccount `
+        -Recurse
     Add-Content -LiteralPath (Join-Path $dataDir "postgresql.conf") -Encoding ASCII -Value @"
 listen_addresses = '127.0.0.1'
 port = $port
@@ -579,23 +657,7 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
             -PlainPassword $script:bootstrapPassword | Out-Null
         Stop-TestPostgresForSingleUser
         $serverStarted = $false
-        $singleUserHelper = [IO.Path]::GetFullPath((Join-Path `
-            $PSScriptRoot "..\..\windows_database_generation_single_user.ps1"))
-        $foreignRejected = $false
-        try {
-            & $singleUserHelper `
-                -PostgresPath (Join-Path $PgBin "postgres.exe") `
-                -PhysicalPgData $dataDir `
-                -OperationId ([string]$intent.Payload.operation_id) `
-                -IntentSha256 ([string]$intent.PayloadSha256) `
-                -CandidateSha256 ([string]$candidate.PayloadSha256) `
-                -CommittedRevision ([string]$candidate.Payload.target_revision) `
-                -TimeoutMilliseconds 30000
-        }
-        catch { $foreignRejected = $true }
-        if (-not $foreignRejected) {
-            throw "single-user retirement overwrote a foreign role marker"
-        }
+        Invoke-TestSingleUserRetirement -Intent $intent -Candidate $candidate
         Start-TestPostgresAfterSingleUser
         $serverStarted = $true
         $observedForeign = Invoke-TestPsql -Database "postgres" -Sql @"
@@ -614,20 +676,19 @@ WHERE role.rolname = 'postgres';
         Invoke-TestPsql -Database "postgres" -Sql "COMMENT ON ROLE postgres IS NULL" | Out-Null
         Stop-TestPostgresForSingleUser
         $serverStarted = $false
-        & $singleUserHelper `
-            -PostgresPath (Join-Path $PgBin "postgres.exe") `
-            -PhysicalPgData $dataDir `
-            -OperationId ([string]$intent.Payload.operation_id) `
-            -IntentSha256 ([string]$intent.PayloadSha256) `
-            -CandidateSha256 ([string]$candidate.PayloadSha256) `
-            -CommittedRevision ([string]$candidate.Payload.target_revision) `
-            -TimeoutMilliseconds 30000
+        Invoke-TestSingleUserRetirement -Intent $intent -Candidate $candidate
         Start-TestPostgresAfterSingleUser
         $serverStarted = $true
         if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
             $intent $candidate $authority $runtimeSecret)) {
             throw "runtime role did not observe bootstrap retirement"
         }
+        Assert-RuntimeObservation `
+            $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 `
+            -ExpectedBootstrapRetirement (
+                Get-TicketboxDatabaseGenerationBootstrapRetirementJson `
+                    $intent $candidate
+            )
     }
     finally {
         $adminSecret.Dispose()

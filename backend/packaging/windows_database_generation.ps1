@@ -119,6 +119,7 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
     $resumeCandidate = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "candidate" -AllowAbsent
     $bootstrapRetired = $false
+    $bootstrapRetirementProbeFailure = $null
     if ($null -ne $resumeCandidate) {
         $resumeRuntimeCredentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
             -StateRoot $stateRoot `
@@ -131,6 +132,7 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                     $intent $resumeCandidate $hostAuthority `
                     $resumeRuntimeCredentials.RuntimePassword
             }
+            catch { $bootstrapRetirementProbeFailure = $_ }
             finally {
                 Close-TicketboxDatabaseGenerationRuntimeCredentials `
                     $resumeRuntimeCredentials
@@ -141,6 +143,12 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
     $httpBootstrapSecret = ""
     $maintenanceAuthority = $null
     if (-not $bootstrapRetired) {
+        if (
+            (Get-TicketboxPathEntryKindNoFollow $BootstrapRecoveryPath) -ceq "Missing" -and
+            $null -ne $bootstrapRetirementProbeFailure
+        ) {
+            throw $bootstrapRetirementProbeFailure
+        }
         try {
             $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState `
                 -Path $BootstrapRecoveryPath
@@ -342,10 +350,18 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                             -HttpBootstrapSecret $httpBootstrapSecret `
                             -LifecycleLock $LifecycleLock
                     }
-                    $retired = Test-TicketboxDatabaseGenerationBootstrapRetirement `
-                        $intent $candidate $hostAuthority $runtimeCredentials.RuntimePassword
+                    $retired = $false
+                    $retirementProbeFailure = $null
+                    try {
+                        $retired = Test-TicketboxDatabaseGenerationBootstrapRetirement `
+                            $intent $candidate $hostAuthority $runtimeCredentials.RuntimePassword
+                    }
+                    catch { $retirementProbeFailure = $_ }
                     if (-not $retired) {
                         if ($null -eq $maintenanceAuthority) {
+                            if ($null -ne $retirementProbeFailure) {
+                                throw $retirementProbeFailure
+                            }
                             throw "bootstrap authority 未退役且 durable bootstrap credential 缺失。"
                         }
                         [void](Prepare-TicketboxDatabaseGenerationRuntimeProjection `
@@ -356,17 +372,20 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                             -MaintenanceAuthority $maintenanceAuthority `
                             -ProjectionContract $ProjectionContract `
                             -LifecycleLock $LifecycleLock)
-                        Close-TicketboxDatabaseGenerationMaintenanceAuthority `
-                            $maintenanceAuthority $intent $hostAuthority $LifecycleLock
-                        $maintenanceAuthority = $null
-                        $hostAuthority = Retire-TicketboxDatabaseGenerationBootstrapAuthority `
-                            -StateRoot $stateRoot `
-                            -Intent $intent `
-                            -Candidate $candidate `
-                            -HostContract $HostContract `
-                            -HostAuthority $hostAuthority `
-                            -RuntimePassword $runtimeCredentials.RuntimePassword `
-                            -LifecycleLock $LifecycleLock
+                        if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
+                            $intent $candidate $hostAuthority $runtimeCredentials.RuntimePassword)) {
+                            Close-TicketboxDatabaseGenerationMaintenanceAuthority `
+                                $maintenanceAuthority $intent $hostAuthority $LifecycleLock
+                            $maintenanceAuthority = $null
+                            $hostAuthority = Retire-TicketboxDatabaseGenerationBootstrapAuthority `
+                                -StateRoot $stateRoot `
+                                -Intent $intent `
+                                -Candidate $candidate `
+                                -HostContract $HostContract `
+                                -HostAuthority $hostAuthority `
+                                -RuntimePassword $runtimeCredentials.RuntimePassword `
+                                -LifecycleLock $LifecycleLock
+                        }
                     }
                     if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
                         $intent $candidate $hostAuthority $runtimeCredentials.RuntimePassword)) {

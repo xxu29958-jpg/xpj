@@ -15,7 +15,13 @@ PROJECTION_LITERAL = str(PROJECTION.resolve()).replace("'", "''")
 
 
 def _projection_fixture_command(
-    *, engine: str, fixture: Path, pg_bin: Path, work_root: Path, extra: tuple[str, ...] = ()
+    *,
+    engine: str,
+    fixture: Path,
+    pg_bin: Path,
+    shawl: Path,
+    work_root: Path,
+    extra: tuple[str, ...] = (),
 ) -> list[str]:
     return [
         engine,
@@ -32,10 +38,18 @@ def _projection_fixture_command(
         str(PACKAGING / "windows_postgresql_credentials.ps1"),
         "-RetirementPath",
         str(PACKAGING / "windows_database_generation_retirement.ps1"),
+        "-ServiceLifecyclePath",
+        str(PACKAGING / "windows_service_lifecycle.ps1"),
+        "-SingleUserServicePath",
+        str(PACKAGING / "windows_postgresql_single_user.ps1"),
+        "-ShawlPath",
+        str(shawl),
         "-PgBin",
         str(pg_bin),
         "-SafetyPath",
         str(PACKAGING / "windows_installation_safety.ps1"),
+        "-DatabaseSafetyPath",
+        str(PACKAGING / "windows_database_safety.ps1"),
         "-DatabaseBindingPath",
         str(PACKAGING / "windows_database_generation_database_binding.ps1"),
         "-DatabasePolicyPath",
@@ -62,6 +76,17 @@ def _projection_pg_bin() -> Path | None:
             return candidate
     if required == "1":
         pytest.fail("PostgreSQL 17 projection toolset is unavailable", pytrace=False)
+    return None
+
+
+def _projection_shawl() -> Path | None:
+    required = os.environ.get("XPJ_REQUIRE_REAL_PG17_PROJECTION", "")
+    assert required in {"", "0", "1"}, "XPJ_REQUIRE_REAL_PG17_PROJECTION must be unset, 0, or 1"
+    shawl = PACKAGING / "vendor" / "shawl" / "shawl.exe"
+    if shawl.is_file():
+        return shawl
+    if required == "1":
+        pytest.fail("Shawl projection service host is unavailable", pytrace=False)
     return None
 
 
@@ -124,7 +149,9 @@ def _stop_interrupted_projection_fixture(process: subprocess.Popen[str], pg_bin:
     return "; ".join(errors) or None
 
 
-def _assert_parent_timeout_stops_projection_pg(*, engine: str, fixture: Path, pg_bin: Path, tmp_path: Path) -> None:
+def _assert_parent_timeout_stops_projection_pg(
+    *, engine: str, fixture: Path, pg_bin: Path, shawl: Path, tmp_path: Path
+) -> None:
     work_root = tmp_path / "real-pg-parent-timeout"
     ready_path = work_root / "server-ready"
     stdout_path = tmp_path / "real-pg-parent-timeout.stdout"
@@ -136,6 +163,7 @@ def _assert_parent_timeout_stops_projection_pg(*, engine: str, fixture: Path, pg
                 engine=engine,
                 fixture=fixture,
                 pg_bin=pg_bin,
+                shawl=shawl,
                 work_root=work_root,
                 extra=extra,
             ),
@@ -172,7 +200,8 @@ def _assert_parent_timeout_stops_projection_pg(*, engine: str, fixture: Path, pg
 
 def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
     pg_bin = _projection_pg_bin()
-    if pg_bin is None:
+    shawl = _projection_shawl()
+    if pg_bin is None or shawl is None:
         return
     fixture = Path(__file__).with_name("powershell_fixtures") / "database_generation_projection_postgres.ps1"
     engines = tuple(powershell_contract_engines())
@@ -187,6 +216,7 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
                         engine=engine,
                         fixture=fixture,
                         pg_bin=pg_bin,
+                        shawl=shawl,
                         work_root=work_root,
                     ),
                     check=False,
@@ -207,7 +237,9 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
             + (f"\n{cleanup_error}" if cleanup_error else "")
         )
         assert cleanup_error is None, cleanup_error
-    _assert_parent_timeout_stops_projection_pg(engine=engines[0], fixture=fixture, pg_bin=pg_bin, tmp_path=tmp_path)
+    _assert_parent_timeout_stops_projection_pg(
+        engine=engines[0], fixture=fixture, pg_bin=pg_bin, shawl=shawl, tmp_path=tmp_path
+    )
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows projection contract")

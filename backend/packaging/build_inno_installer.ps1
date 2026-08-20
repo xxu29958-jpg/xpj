@@ -45,6 +45,7 @@ $ManagerBuildProvenanceScript = Join-Path $RepoRoot "desktop\scripts\windows_man
 $PgBundle = Join-Path $ScriptDir "vendor\pg"
 $PgManifest = Join-Path $PgBundle "BUNDLE_MANIFEST.txt"
 $ShawlExe = Join-Path $ScriptDir "vendor\shawl\shawl.exe"
+$ShawlLegalNotice = ""
 $VisualCppRuntimeExe = Join-Path $ScriptDir "vendor\vc-runtime\vc_redist.x64.exe"
 $InstallerInputDir = Join-Path $BackendRoot "dist\installer-input"
 $InstallerBuildManifest = Join-Path $InstallerInputDir "BUILD_PROVENANCE.json"
@@ -267,6 +268,14 @@ function Read-TicketboxInstallerVendorContracts([string]$Path) {
         [string]$shawl.url -notmatch '^https://' -or
         [string]$shawl.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
         [string]$shawl.executable_sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+        [string]$shawl.legal.archive_name -cne "shawl-v$($shawl.version)-legal.zip" -or
+        [string]$shawl.legal.url -cne (
+            "https://github.com/mtkennerly/shawl/releases/download/v{0}/{1}" -f `
+                $shawl.version, $shawl.legal.archive_name
+        ) -or
+        [string]$shawl.legal.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+        [string]$shawl.legal.notice_name -cne "shawl-v$($shawl.version)-legal.txt" -or
+        [string]$shawl.legal.notice_sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
         [string]$visualCppRuntime.version -notmatch '^\d+(?:\.\d+){3}$' -or
         [string]$visualCppRuntime.archive_name -cne 'vc_redist.x64.exe' -or
         [string]$visualCppRuntime.url -notmatch '^https://download\.visualstudio\.microsoft\.com/' -or
@@ -369,8 +378,12 @@ function Get-ValidatedPostgresProvenance([string]$BundlePath = $PgBundle) {
     }
 }
 
-function Get-ValidatedShawlProvenance([string]$ExecutablePath = $ShawlExe) {
+function Get-ValidatedShawlProvenance(
+    [string]$ExecutablePath = $ShawlExe,
+    [string]$LegalNoticePath = $ShawlLegalNotice
+) {
     Assert-File $ExecutablePath "shawl.exe"
+    Assert-File $LegalNoticePath "Shawl legal notice"
     $versionOutput = Invoke-TicketboxExecutableProbe $ExecutablePath @("--version") "Shawl --version"
     $versionMatch = [regex]::Match($versionOutput, '(?m)^shawl\s+([0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?)\s*$')
     if (-not $versionMatch.Success) {
@@ -396,11 +409,28 @@ function Get-ValidatedShawlProvenance([string]$ExecutablePath = $ShawlExe) {
     ) {
         throw "Shawl 可执行 hash 与固定 archive 的 payload pin 不一致。"
     }
+    $legalNoticeEvidence = Get-TicketboxFileEvidence `
+        (Split-Path -Parent $LegalNoticePath) `
+        $LegalNoticePath
+    if (
+        [IO.Path]::GetFileName($LegalNoticePath) -cne
+            [string]$installerVendorContracts.shawl.legal.notice_name -or
+        $legalNoticeEvidence.sha256 -cne
+            ([string]$installerVendorContracts.shawl.legal.notice_sha256).ToLowerInvariant()
+    ) {
+        throw "Shawl legal notice 与固定 legal archive 的 payload pin 不一致。"
+    }
     return [pscustomobject]@{
         version = $version
         version_policy = $versionPolicy
         version_output = $versionOutput
         executable = $executableEvidence
+        legal_archive = [ordered]@{
+            name = [string]$installerVendorContracts.shawl.legal.archive_name
+            url = [string]$installerVendorContracts.shawl.legal.url
+            sha256 = ([string]$installerVendorContracts.shawl.legal.sha256).ToLowerInvariant()
+        }
+        legal_notice = $legalNoticeEvidence
         probes = @("--version", "--help")
     }
 }
@@ -513,6 +543,8 @@ function Get-InstallerBuildInputEvidence(
             version_output = $ShawlProvenance.version_output
             probes = @($ShawlProvenance.probes)
             executable = $ShawlProvenance.executable
+            legal_archive = $ShawlProvenance.legal_archive
+            legal_notice = $ShawlProvenance.legal_notice
         }
         visual_cpp_runtime = [ordered]@{
             version = $VisualCppRuntimeProvenance.version
@@ -1057,6 +1089,9 @@ Assert-File $BuildToolchainPrepScript "Windows build toolchain 准备脚本"
 . $ReleaseConfigScript
 $releaseConfig = Read-TicketboxWindowsReleaseConfig $ReleaseConfigPath
 $installerVendorContracts = Read-TicketboxInstallerVendorContracts $ToolchainConfigPath
+$ShawlLegalNotice = Join-Path `
+    (Split-Path -Parent $ShawlExe) `
+    ([string]$installerVendorContracts.shawl.legal.notice_name)
 $buildToolchainContract = Read-TicketboxWindowsBuildToolchain $BackendRoot
 Get-TicketboxVendorVersionPolicy $releaseConfig "postgres" | Out-Null
 Get-TicketboxVendorVersionPolicy $releaseConfig "shawl" | Out-Null
@@ -1348,6 +1383,9 @@ $stagedBackendDist = Join-Path $stagedBackendRoot "dist\ticketbox-backend"
 $stagedManagerDist = Join-Path $stagedRepoRoot "desktop\dist\ticketbox-manager"
 $stagedPgBundle = Join-Path $stagedScriptDir "vendor\pg"
 $stagedShawlExe = Join-Path $stagedScriptDir "vendor\shawl\shawl.exe"
+$stagedShawlLegalNotice = Join-Path `
+    (Split-Path -Parent $stagedShawlExe) `
+    ([string]$installerVendorContracts.shawl.legal.notice_name)
 $stagedVisualCppRuntimeExe = Join-Path `
     $stagedScriptDir `
     "vendor\vc-runtime\vc_redist.x64.exe"
@@ -1381,6 +1419,7 @@ try {
     Copy-Item -Path (Join-Path $ManagerDist "*") -Destination $stagedManagerDist -Recurse -Force
     Copy-Item -Path (Join-Path $PgBundle "*") -Destination $stagedPgBundle -Recurse -Force
     Copy-Item -LiteralPath $ShawlExe -Destination $stagedShawlExe
+    Copy-Item -LiteralPath $ShawlLegalNotice -Destination $stagedShawlLegalNotice
     Copy-Item `
         -LiteralPath $VisualCppRuntimeExe `
         -Destination $stagedVisualCppRuntimeExe
@@ -1398,7 +1437,9 @@ try {
     Assert-TicketboxStructuredEvidence `
         "安装器 staging Shawl" `
         $shawlProvenance `
-        (Get-ValidatedShawlProvenance $stagedShawlExe)
+        (Get-ValidatedShawlProvenance `
+            -ExecutablePath $stagedShawlExe `
+            -LegalNoticePath $stagedShawlLegalNotice)
     Assert-TicketboxStructuredEvidence `
         "安装器 staging Microsoft Visual C++ runtime" `
         $visualCppRuntimeProvenance `

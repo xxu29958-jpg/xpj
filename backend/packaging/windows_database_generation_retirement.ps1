@@ -151,7 +151,6 @@ function Restore-TicketboxDatabaseGenerationFormalPostgresqlService {
             -BackendPort ([int]$Transition.port) `
             -ExpectedRuntimeExecutables @(
                 [string]$Transition.shawl_path,
-                [string]$Transition.powershell_path,
                 [string]$Transition.postgres_path
             )
     }
@@ -320,7 +319,7 @@ function Retire-TicketboxDatabaseGenerationBootstrapAuthority {
         [void](Invoke-TicketboxOwnedOneShotService `
             -Name ([string]$stopped.ServiceName) `
             -ExpectedExecutable $shawl `
-            -ExpectedRuntimeExecutables @($shawl, $powershell, $postgres) `
+            -ExpectedRuntimeExecutables @($shawl, $postgres) `
             -TimeoutMilliseconds ([int]$HostContract.release_config.database_tool_timeout_ms) `
             -PollMilliseconds ([int]$HostContract.release_config.service_poll_interval_ms))
         [void](Write-TicketboxDatabaseGenerationServiceTransition `

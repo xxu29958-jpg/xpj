@@ -219,6 +219,7 @@ Source: "..\dist\ticketbox-backend\*"; DestDir: "{app}\program\ticketbox-backend
 Source: "..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "vendor\pg\*"; DestDir: "{app}\pg"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "vendor\shawl\shawl.exe"; DestDir: "{app}\shawl"; Flags: ignoreversion
+Source: "vendor\shawl\shawl-v1.9.0-legal.txt"; DestDir: "{app}\shawl"; Flags: ignoreversion
 Source: "hold_data_root_mutation_guard.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "prepare_bundled_upgrade.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_service_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
