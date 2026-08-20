@@ -38,6 +38,8 @@ def _projection_fixture_command(
         str(PACKAGING / "windows_postgresql_credentials.ps1"),
         "-RetirementPath",
         str(PACKAGING / "windows_database_generation_retirement.ps1"),
+        "-ReleaseConfigPath",
+        str(PACKAGING / "windows_release_config.ps1"),
         "-ServiceLifecyclePath",
         str(PACKAGING / "windows_service_lifecycle.ps1"),
         "-SingleUserServicePath",

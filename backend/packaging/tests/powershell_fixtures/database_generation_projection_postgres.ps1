@@ -3,6 +3,7 @@
     [Parameter(Mandatory = $true)][string]$ContractPath,
     [Parameter(Mandatory = $true)][string]$CredentialsPath,
     [Parameter(Mandatory = $true)][string]$RetirementPath,
+    [Parameter(Mandatory = $true)][string]$ReleaseConfigPath,
     [Parameter(Mandatory = $true)][string]$ServiceLifecyclePath,
     [Parameter(Mandatory = $true)][string]$SingleUserServicePath,
     [Parameter(Mandatory = $true)][string]$ShawlPath,
@@ -126,6 +127,7 @@ function Invoke-TicketboxC07Sql {
 . $DatabaseSafetyPath
 . $ContractPath
 . $CredentialsPath
+. $ReleaseConfigPath
 . $ServiceLifecyclePath
 . $SingleUserServicePath
 . $RetirementPath
