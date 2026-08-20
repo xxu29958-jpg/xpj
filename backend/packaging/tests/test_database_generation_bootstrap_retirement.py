@@ -145,6 +145,9 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     assert "Restore-TicketboxPostgresqlFormalServiceCommand" in retirement
     assert "pg_stat_activity" not in retirement_read
     assert "shobj_description" in retirement_read
+    assert "json_build_array" in retirement_read
+    assert "role.oid IS NOT NULL" in retirement_read
+    assert "COALESCE" not in retirement_read
     assert "public.app_meta" not in retire + retirement_read + single_user
     assert "HBA" not in retire + postgresql_single_user
     assert "Retire-TicketboxDatabaseGenerationBootstrapAuthority" not in (
@@ -184,6 +187,74 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
         "Invoke-TicketboxWithPlainPostgresqlSecret",
     ):
         assert dependency in credential_gate
+
+
+def test_bootstrap_retirement_observation_is_closed_over_absent_and_drift(
+    tmp_path: Path,
+) -> None:
+    retirement = RETIREMENT.read_text(encoding="utf-8-sig")
+    c07_database = C07_DATABASE.read_text(encoding="utf-8-sig")
+    script = rf"""
+$ErrorActionPreference = 'Stop'
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
+    param($Value)
+    return $Value | ConvertTo-Json -Compress -Depth 20
+}}
+{powershell_function(retirement, "Get-TicketboxDatabaseGenerationBootstrapRetirementJson")}
+{powershell_function(c07_database, "ConvertFrom-TicketboxC07SingleRow")}
+$script:observed = ''
+function Invoke-TicketboxC07Sql {{ return $script:observed }}
+{powershell_function(retirement, "Test-TicketboxDatabaseGenerationBootstrapRetirement")}
+$intent = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = '11111111-1111-4111-8111-111111111111'
+        target_revision = '20260809_0001'
+    }}
+}}
+$candidate = [pscustomobject]@{{
+    PayloadSha256 = ('c' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = '11111111-1111-4111-8111-111111111111'
+        intent_sha256 = ('a' * 64)
+        target_revision = '20260809_0001'
+    }}
+}}
+$hostAuthority = [pscustomobject]@{{ Schema = 'ticketbox-postgresql-host-authority-v1' }}
+$runtimePassword = [Security.SecureString]::new()
+$expected = Get-TicketboxDatabaseGenerationBootstrapRetirementJson $intent $candidate
+
+$script:observed = ConvertTo-Json -Compress -InputObject @($true, $null)
+if (Test-TicketboxDatabaseGenerationBootstrapRetirement `
+        $intent $candidate $hostAuthority $runtimePassword) {{
+    throw 'absent retirement marker was accepted'
+}}
+
+$script:observed = ConvertTo-Json -Compress -InputObject @($true, $expected)
+if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
+        $intent $candidate $hostAuthority $runtimePassword)) {{
+    throw 'exact retirement marker was rejected'
+}}
+
+foreach ($hostile in @(
+    (ConvertTo-Json -Compress -InputObject @($false, $null)),
+    (ConvertTo-Json -Compress -InputObject @($true, 'foreign-marker')),
+    (ConvertTo-Json -Compress -InputObject @('true', $null))
+)) {{
+    $script:observed = $hostile
+    $rejected = $false
+    try {{
+        Test-TicketboxDatabaseGenerationBootstrapRetirement `
+            $intent $candidate $hostAuthority $runtimePassword | Out-Null
+    }} catch {{ $rejected = $true }}
+    if (-not $rejected) {{ throw "hostile retirement observation escaped: $hostile" }}
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="database-generation-bootstrap-retirement-observation.ps1",
+    )
 
 
 def test_maintenance_authority_is_exact_process_local_and_closes(
@@ -669,7 +740,27 @@ function Write-TicketboxDatabaseGenerationServiceTransition {{
 function Enter-TicketboxPostgresqlStoppedHostAuthority {{ return [pscustomobject]@{{ ServiceName = 'TicketboxPg' }} }}
 function Set-TicketboxPostgresqlSingleUserServiceCommand {{}}
 function Invoke-TicketboxOwnedOneShotService {{
+    if ($script:scenario -eq 'success') {{
+        $script:retired = $true
+        return [pscustomobject]@{{ ExitCode = 0; ServiceSpecificExitCode = 0 }}
+    }}
+    if ($script:scenario -eq 'success-ignores-specific') {{
+        $script:retired = $true
+        return [pscustomobject]@{{ ExitCode = 0; ServiceSpecificExitCode = 23 }}
+    }}
     if ($script:scenario -eq 'response-loss') {{ $script:retired = $true }}
+    if ($script:scenario -eq 'win32-service-exit') {{
+        return [pscustomobject]@{{ ExitCode = 23; ServiceSpecificExitCode = 0 }}
+    }}
+    if ($script:scenario -eq 'win32-service-exit-ignores-specific') {{
+        return [pscustomobject]@{{ ExitCode = 23; ServiceSpecificExitCode = 42 }}
+    }}
+    if ($script:scenario -eq 'specific-service-exit') {{
+        return [pscustomobject]@{{ ExitCode = 1066; ServiceSpecificExitCode = 23 }}
+    }}
+    if ($script:scenario -eq 'specific-service-exit-missing-code') {{
+        return [pscustomobject]@{{ ExitCode = 1066; ServiceSpecificExitCode = 0 }}
+    }}
     throw 'primary failure'
 }}
 function Restore-TicketboxDatabaseGenerationFormalPostgresqlService {{
@@ -682,6 +773,7 @@ function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {{
 }}
 function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
     $script:events.Add('readback')
+    if ($script:scenario -eq 'observation-failure') {{ throw 'readback failure' }}
     return $script:retired
 }}
 function Remove-TicketboxDatabaseGenerationServiceTransition {{ $script:events.Add('remove') }}
@@ -691,8 +783,15 @@ function Throw-TicketboxDatabaseGenerationOperationFailure {{
 }}
 {retire}
 foreach ($case in @(
+    [pscustomobject]@{{ Name = 'success'; Expected = 'fresh-host' }},
+    [pscustomobject]@{{ Name = 'success-ignores-specific'; Expected = 'fresh-host' }},
     [pscustomobject]@{{ Name = 'response-loss'; Expected = 'fresh-host' }},
     [pscustomobject]@{{ Name = 'precommit'; Expected = 'primary failure' }},
+    [pscustomobject]@{{ Name = 'win32-service-exit'; Expected = 'database generation single-user service 失败（exit=23）。' }},
+    [pscustomobject]@{{ Name = 'win32-service-exit-ignores-specific'; Expected = 'database generation single-user service 失败（exit=23）。' }},
+    [pscustomobject]@{{ Name = 'specific-service-exit'; Expected = 'database generation single-user service 失败（exit=23）。' }},
+    [pscustomobject]@{{ Name = 'specific-service-exit-missing-code'; Expected = 'database generation single-user service 失败（exit=1066）。' }},
+    [pscustomobject]@{{ Name = 'observation-failure'; Expected = 'aggregate:primary failure|readback failure' }},
     [pscustomobject]@{{ Name = 'double-failure'; Expected = 'aggregate:primary failure|restore failure' }}
 )) {{
     $script:scenario = $case.Name
@@ -708,13 +807,35 @@ foreach ($case in @(
     if ($actual -cne $case.Expected) {{
         throw "$($case.Name) returned '$actual'"
     }}
-    if ($case.Name -eq 'response-loss') {{
+    if ($case.Name -in @('success', 'success-ignores-specific')) {{
+        $expectedEvents = @(
+            'write:intent_written',
+            'write:host_stopped',
+            'write:start_authorized',
+            'write:restore_required',
+            'restore',
+            'write:pgctl_restored',
+            'resolve',
+            'readback',
+            'remove'
+        ) -join '|'
+        if (($script:events -join '|') -cne $expectedEvents) {{
+            throw "$($case.Name) did not complete exact authority order: $($script:events -join '|')"
+        }}
+    }} elseif ($case.Name -eq 'response-loss') {{
         if (($script:events -join '|') -cnotmatch 'write:pgctl_restored\|resolve\|readback\|remove$') {{
             throw "response-loss did not converge: $($script:events -join '|')"
         }}
-    }} elseif ($case.Name -eq 'precommit') {{
+    }} elseif ($case.Name -in @(
+        'precommit',
+        'win32-service-exit',
+        'win32-service-exit-ignores-specific',
+        'specific-service-exit',
+        'specific-service-exit-missing-code',
+        'observation-failure'
+    )) {{
         if (($script:events -join '|') -cnotmatch 'write:pgctl_restored\|resolve\|readback$') {{
-            throw "precommit failure did not preserve transition: $($script:events -join '|')"
+            throw "$($case.Name) did not preserve transition: $($script:events -join '|')"
         }}
     }} else {{
         $afterRestore = @($script:events | Where-Object {{ $_ -in @('write:pgctl_restored', 'resolve', 'readback', 'remove') }})

@@ -9,6 +9,7 @@
     [Parameter(Mandatory = $true)][string]$ShawlPath,
     [Parameter(Mandatory = $true)][string]$SafetyPath,
     [Parameter(Mandatory = $true)][string]$DatabaseSafetyPath,
+    [Parameter(Mandatory = $true)][string]$PgRecoveryToolsPath,
     [Parameter(Mandatory = $true)][string]$DatabaseBindingPath,
     [Parameter(Mandatory = $true)][string]$DatabasePolicyPath,
     [Parameter(Mandatory = $true)][string]$PythonPath,
@@ -40,21 +41,22 @@ function Invoke-TestPsql {
         $PlainPassword = $script:bootstrapPassword
     }
     $escapedRole = [Uri]::EscapeDataString($Role)
-    $escapedPassword = [Uri]::EscapeDataString($PlainPassword)
-    $connection = "postgresql://${escapedRole}:${escapedPassword}@127.0.0.1:$port/$Database`?sslmode=disable&require_auth=scram-sha-256"
-    $sqlPath = Join-Path $WorkRoot ([IO.Path]::GetRandomFileName() + ".sql")
-    [IO.File]::WriteAllText($sqlPath, $Sql, [Text.UTF8Encoding]::new($false))
-    try {
-        $output = & $psql --no-psqlrc --no-password --quiet --tuples-only --no-align `
-            --set ON_ERROR_STOP=1 --dbname $connection --file $sqlPath 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw ($output -join [Environment]::NewLine)
-        }
-        return ([string]($output -join [Environment]::NewLine)).Trim()
+    $escapedDatabase = [Uri]::EscapeDataString($Database)
+    $connection = "postgresql://${escapedRole}@127.0.0.1:$port/${escapedDatabase}`?sslmode=disable&require_auth=scram-sha-256"
+    $result = Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile `
+        -PsqlPath $psql `
+        -DatabaseUrl $connection `
+        -Password $PlainPassword `
+        -Sql $Sql `
+        -Label "projection fixture SQL" `
+        -TimeoutMilliseconds 30000
+    if ([int]$result.ExitCode -ne 0) {
+        throw (
+            "projection fixture SQL failed (exit=$($result.ExitCode)):`n" +
+            [string]$result.StandardError
+        )
     }
-    finally {
-        Remove-Item -LiteralPath $sqlPath -Force -ErrorAction SilentlyContinue
-    }
+    return ([string]$result.StandardOutput).Trim()
 }
 
 function Invoke-TestPythonRuntimeObservation {
@@ -104,53 +106,29 @@ finally:
     return ([string]($output -join [Environment]::NewLine)).Trim() | ConvertFrom-Json
 }
 
-. $DatabasePolicyPath
-
-function Invoke-TicketboxC07Sql {
-    param($Authority, $Database, $Role, $Password, $Label, $Sql)
-    $capturedDatabase = [string]$Database
-    $capturedRole = [string]$Role
-    $capturedSql = [string]$Sql
-    return Invoke-TicketboxWithPlainPostgresqlSecret `
-        -Secret $Password `
-        -Action ({
-            param([string]$PlainPassword)
-            Invoke-TestPsql `
-                -Database $capturedDatabase `
-                -Sql $capturedSql `
-                -Role $capturedRole `
-                -PlainPassword $PlainPassword
-        }.GetNewClosure())
-}
-
 . $SafetyPath
 . $DatabaseSafetyPath
+. $PgRecoveryToolsPath
 . $ContractPath
 . $CredentialsPath
 . $ReleaseConfigPath
 . $ServiceLifecyclePath
 . $SingleUserServicePath
+. $DatabasePolicyPath
 . $RetirementPath
 . $ProjectionPath
 . $DatabaseBindingPath
-function ConvertFrom-TicketboxC07SingleRow {
-    param($Output, $FieldCount, $Label)
-    $lines = @(
-        ([string]$Output -split "`r?`n") |
-            ForEach-Object { $_.Trim() } |
-            Where-Object { $_.Length -gt 0 }
-    )
-    if ($lines.Count -ne 1) { throw "$Label did not return exactly one row" }
-    $fields = @($lines[0].Split([char]9))
-    if ($fields.Count -ne $FieldCount) { throw "$Label returned the wrong field count" }
-    return $fields
-}
 $script:TicketboxC07DatabaseName = "ticketbox"
 $script:TicketboxC07OwnerRole = "ticketbox_owner"
 $script:TicketboxC07MigratorRole = "ticketbox_migrator"
 $secret = ConvertTo-TicketboxPostgresqlSecureString `
     $script:bootstrapPassword "projection fixture bootstrap password"
-$authority = [pscustomobject]@{ PsqlPath = $psql; Port = 0 }
+$authority = [pscustomobject]@{
+    Schema = "ticketbox-postgresql-host-authority-v1"
+    PsqlPath = $psql
+    PgData = $dataDir
+    Port = 0
+}
 
 function Assert-MigratorState {
     param([Parameter(Mandatory = $true)][string]$Expected)
@@ -299,8 +277,7 @@ function Invoke-TestSingleUserRetirement {
         [Parameter(Mandatory = $true)][object]$Candidate
     )
     $serviceName = "TicketboxProjection-$PID"
-    $helper = [IO.Path]::GetFullPath((Join-Path `
-        $PSScriptRoot "..\..\windows_database_generation_single_user.ps1"))
+    $helper = [IO.Path]::GetFullPath($script:singleUserHelper)
     $postgres = [IO.Path]::GetFullPath((Join-Path $PgBin "postgres.exe"))
     $shawl = [IO.Path]::GetFullPath($ShawlPath)
     $powershell = Get-TicketboxWindowsPowerShellExecutable
@@ -322,6 +299,7 @@ function Invoke-TestSingleUserRetirement {
         throw "projection one-shot service already exists: $serviceName"
     }
     $created = $false
+    $snapshot = $null
     try {
         Invoke-TicketboxScChecked @(
             "create", $serviceName,
@@ -337,12 +315,12 @@ function Invoke-TestSingleUserRetirement {
         Assert-TicketboxPostgresqlSingleUserServiceCommand `
             -Name $serviceName `
             -ExpectedImagePath $imagePath
-        Invoke-TicketboxOwnedOneShotService `
+        $snapshot = Invoke-TicketboxOwnedOneShotService `
             -Name $serviceName `
             -ExpectedExecutable $shawl `
             -ExpectedRuntimeExecutables @($shawl, $postgres) `
             -TimeoutMilliseconds 45000 `
-            -PollMilliseconds 100 | Out-Null
+            -PollMilliseconds 100
     }
     finally {
         if ($created) {
@@ -354,6 +332,7 @@ function Invoke-TestSingleUserRetirement {
                 -PollMilliseconds 100
         }
     }
+    return $snapshot
 }
 
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -381,6 +360,22 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw ($initOutput -join [Environment]::NewLine)
     }
+    $installedHelperRoot = Join-Path $WorkRoot "installed\installer"
+    New-Item -ItemType Directory -Path $installedHelperRoot -Force | Out-Null
+    $packagingRoot = Split-Path -Parent ([IO.Path]::GetFullPath($RetirementPath))
+    foreach ($name in @(
+        "windows_database_generation_single_user.ps1",
+        "windows_installation_safety.ps1",
+        "windows_database_safety.ps1",
+        "windows_pg_recovery_tools.ps1",
+        "windows_database_generation_contract.ps1"
+    )) {
+        Copy-Item `
+            -LiteralPath (Join-Path $packagingRoot $name) `
+            -Destination (Join-Path $installedHelperRoot $name)
+    }
+    $script:singleUserHelper = Join-Path `
+        $installedHelperRoot "windows_database_generation_single_user.ps1"
     $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     Set-TicketboxExactDirectoryAcl `
         -Path $WorkRoot `
@@ -659,7 +654,18 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
             -PlainPassword $script:bootstrapPassword | Out-Null
         Stop-TestPostgresForSingleUser
         $serverStarted = $false
-        Invoke-TestSingleUserRetirement -Intent $intent -Candidate $candidate
+        $foreignSnapshot = Invoke-TestSingleUserRetirement `
+            -Intent $intent -Candidate $candidate
+        if (
+            [uint32]$foreignSnapshot.ExitCode -ne 1066 -or
+            [uint32]$foreignSnapshot.ServiceSpecificExitCode -eq 0
+        ) {
+            throw (
+                "foreign retirement marker returned the wrong SCM exit shape: " +
+                [uint32]$foreignSnapshot.ExitCode + "/" +
+                [uint32]$foreignSnapshot.ServiceSpecificExitCode
+            )
+        }
         Start-TestPostgresAfterSingleUser
         $serverStarted = $true
         $observedForeign = Invoke-TestPsql -Database "postgres" -Sql @"
@@ -678,7 +684,18 @@ WHERE role.rolname = 'postgres';
         Invoke-TestPsql -Database "postgres" -Sql "COMMENT ON ROLE postgres IS NULL" | Out-Null
         Stop-TestPostgresForSingleUser
         $serverStarted = $false
-        Invoke-TestSingleUserRetirement -Intent $intent -Candidate $candidate
+        $retirementSnapshot = Invoke-TestSingleUserRetirement `
+            -Intent $intent -Candidate $candidate
+        if (
+            [uint32]$retirementSnapshot.ExitCode -ne 0 -or
+            [uint32]$retirementSnapshot.ServiceSpecificExitCode -ne 0
+        ) {
+            throw (
+                "single-user retirement service failed: exit=" +
+                [uint32]$retirementSnapshot.ExitCode + "/" +
+                [uint32]$retirementSnapshot.ServiceSpecificExitCode
+            )
+        }
         Start-TestPostgresAfterSingleUser
         $serverStarted = $true
         if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `

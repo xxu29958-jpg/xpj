@@ -39,16 +39,39 @@ function Test-TicketboxDatabaseGenerationBootstrapRetirement {
         -Password $RuntimePassword `
         -Label "database generation bootstrap retirement observation" `
         -Sql @"
-SELECT COALESCE(pg_catalog.shobj_description(role.oid, 'pg_authid'), '')
-FROM pg_catalog.pg_roles AS role
-WHERE role.rolname = 'postgres';
+SELECT pg_catalog.json_build_array(
+           role.oid IS NOT NULL,
+           CASE WHEN role.oid IS NULL THEN NULL
+                ELSE pg_catalog.shobj_description(role.oid, 'pg_authid')
+           END
+       )::text
+FROM (
+    SELECT (
+        SELECT catalog_role.oid
+        FROM pg_catalog.pg_roles AS catalog_role
+        WHERE catalog_role.rolname = 'postgres'
+    ) AS oid
+) AS role;
 "@
     $fields = @(ConvertFrom-TicketboxC07SingleRow `
         -Output $observed `
         -FieldCount 1 `
         -Label "database generation bootstrap retirement observation")
-    if ([string]::IsNullOrEmpty([string]$fields[0])) { return $false }
-    if ([string]$fields[0] -cne $expected) {
+    try { $state = [string]$fields[0] | ConvertFrom-Json -ErrorAction Stop }
+    catch { throw "database generation bootstrap retirement observation 不是闭合 JSON。" }
+    if (
+        $state -isnot [object[]] -or @($state).Count -ne 2 -or
+        $state[0] -isnot [bool]
+    ) {
+        throw "database generation bootstrap retirement observation schema 无效。"
+    }
+    if (-not [bool]$state[0]) {
+        throw "database generation bootstrap role 不存在。"
+    }
+    if ($null -eq $state[1] -or [string]::IsNullOrEmpty([string]$state[1])) {
+        return $false
+    }
+    if ($state[1] -isnot [string] -or [string]$state[1] -cne $expected) {
         throw "database generation bootstrap retirement marker 与 candidate 漂移。"
     }
     return $true
@@ -316,12 +339,24 @@ function Retire-TicketboxDatabaseGenerationBootstrapAuthority {
             $stopped $HostContract $imagePath
         [void](Write-TicketboxDatabaseGenerationServiceTransition `
             $StateRoot $transition "start_authorized" $LifecycleLock)
-        [void](Invoke-TicketboxOwnedOneShotService `
+        $snapshot = Invoke-TicketboxOwnedOneShotService `
             -Name ([string]$stopped.ServiceName) `
             -ExpectedExecutable $shawl `
             -ExpectedRuntimeExecutables @($shawl, $postgres) `
             -TimeoutMilliseconds ([int]$HostContract.release_config.database_tool_timeout_ms) `
-            -PollMilliseconds ([int]$HostContract.release_config.service_poll_interval_ms))
+            -PollMilliseconds ([int]$HostContract.release_config.service_poll_interval_ms)
+        $serviceExitCode = [uint32]$snapshot.ExitCode
+        $serviceSpecificExitCode = [uint32]$snapshot.ServiceSpecificExitCode
+        if ($serviceExitCode -ne 0) {
+            $nativeExit = if (
+                $serviceExitCode -eq 1066 -and
+                $serviceSpecificExitCode -ne 0
+            ) {
+                [uint64]$serviceSpecificExitCode
+            }
+            else { [uint64]$serviceExitCode }
+            throw "database generation single-user service 失败（exit=$nativeExit）。"
+        }
         [void](Write-TicketboxDatabaseGenerationServiceTransition `
             $StateRoot $transition "restore_required" $LifecycleLock)
     }
@@ -339,8 +374,17 @@ function Retire-TicketboxDatabaseGenerationBootstrapAuthority {
     [void](Write-TicketboxDatabaseGenerationServiceTransition `
         $StateRoot $transition "pgctl_restored" $LifecycleLock)
     $freshHost = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority $HostContract
-    $retired = Test-TicketboxDatabaseGenerationBootstrapRetirement `
-        $Intent $Candidate $freshHost $RuntimePassword
+    $retired = $false
+    try {
+        $retired = Test-TicketboxDatabaseGenerationBootstrapRetirement `
+            $Intent $Candidate $freshHost $RuntimePassword
+    }
+    catch {
+        if ($null -ne $primary) {
+            Throw-TicketboxDatabaseGenerationOperationFailure $primary $_
+        }
+        throw
+    }
     if (-not $retired) {
         if ($null -ne $primary) { throw $primary }
         throw "single-user bootstrap retirement 未通过 runtime 语义复读。"

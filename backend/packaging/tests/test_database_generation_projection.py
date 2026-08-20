@@ -52,6 +52,8 @@ def _projection_fixture_command(
         str(PACKAGING / "windows_installation_safety.ps1"),
         "-DatabaseSafetyPath",
         str(PACKAGING / "windows_database_safety.ps1"),
+        "-PgRecoveryToolsPath",
+        str(PACKAGING / "windows_pg_recovery_tools.ps1"),
         "-DatabaseBindingPath",
         str(PACKAGING / "windows_database_generation_database_binding.ps1"),
         "-DatabasePolicyPath",
