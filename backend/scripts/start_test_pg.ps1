@@ -429,12 +429,11 @@ foreach ($db in @($baseDatabase, $smokeDatabase, $restoreDatabase)) {
         -Label "PostgreSQL database lookup for $db" `
         -AllowEmpty
     if ($exists -cne '1') {
-        & "$pgbin\createdb.exe" `
-            --no-password `
-            "--maintenance-db=$adminConnection" `
-            "--owner=$applicationRole" `
-            $db
-        if ($LASTEXITCODE -ne 0) { throw "createdb $db failed" }
+        Invoke-XpjPsqlCommand `
+            -PsqlExe "$pgbin\psql.exe" `
+            -Connection $adminConnection `
+            -Query "CREATE DATABASE `"$db`" OWNER `"$applicationRole`"" `
+            -Label "PostgreSQL database creation for $db"
         Write-Host "Created database $db"
     }
     $databaseOwner = Invoke-XpjPsqlScalar `

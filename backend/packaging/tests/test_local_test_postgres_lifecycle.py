@@ -31,6 +31,21 @@ _RELEASE_CONFIG = json.loads(
 )
 
 
+def test_local_lifecycle_creates_databases_through_the_shipped_psql_contract() -> None:
+    start_source = _START.read_text(encoding="utf-8-sig")
+    assert '"$pgbin\\createdb.exe"' not in start_source
+    assert 'foreach ($name in @(\'createdb.exe\'' not in (
+        _BACKEND_ROOT / "scripts" / "test_pg_ownership_contract.ps1"
+    ).read_text(encoding="utf-8-sig")
+    psql_create = '''        Invoke-XpjPsqlCommand `
+            -PsqlExe "$pgbin\\psql.exe" `
+            -Connection $adminConnection `
+            -Query "CREATE DATABASE `"$db`" OWNER `"$applicationRole`"" `
+            -Label "PostgreSQL database creation for $db"
+'''
+    assert start_source.count(psql_create) == 1
+
+
 @pytest.fixture(scope="module")
 def protected_test_postgres_root() -> Path:
     if sys.platform != "win32":

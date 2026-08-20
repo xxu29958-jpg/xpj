@@ -269,7 +269,7 @@ function Resolve-XpjPostgresBin {
     param([Parameter(Mandatory = $true)][string]$PostgresBin)
 
     $resolved = Resolve-XpjStoredPostgresBinPath -PostgresBin $PostgresBin
-    foreach ($name in @('createdb.exe', 'initdb.exe', 'pg_ctl.exe', 'postgres.exe', 'psql.exe')) {
+    foreach ($name in @('initdb.exe', 'pg_ctl.exe', 'postgres.exe', 'psql.exe')) {
         if ((Get-TicketboxPathEntryKindNoFollow -Path (Join-Path $resolved $name)) -cne 'File') {
             throw "PostgreSQL binary contract is incomplete: $resolved ($name)"
         }

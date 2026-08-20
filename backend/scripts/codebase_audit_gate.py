@@ -187,8 +187,8 @@ _GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER = (
 _SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER = (
     "ce9a5aa413f20e5455fe0572d9416187038135b0",
     283,
-    257,
-)  # The HBA/IDENT cluster-admin recovery owner and its 31 collected dedicated scenarios were physically retired; five bounded Generation Owner retirement/retry oracles were added, for a net reduction of 26. Generation Owner now consumes the initdb bootstrap authority once, while generic credential, host, source, target, projection, and real-PG contracts remain. Exact base and hop binding make this exception self-extinguishing.
+    258,
+)  # The HBA/IDENT cluster-admin recovery owner and its 31 collected dedicated scenarios were physically retired; six bounded Generation Owner and pinned-PG lifecycle oracles were added, for a net reduction of 25. Generation Owner now consumes the initdb bootstrap authority once, while generic credential, host, source, target, projection, and real-PG contracts remain. Exact base and hop binding make this exception self-extinguishing.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
