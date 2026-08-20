@@ -366,6 +366,7 @@ try {
     foreach ($name in @(
         "windows_database_generation_single_user.ps1",
         "windows_installation_safety.ps1",
+        "windows_security_primitives.ps1",
         "windows_database_safety.ps1",
         "windows_pg_recovery_tools.ps1",
         "windows_database_generation_contract.ps1"
@@ -373,6 +374,20 @@ try {
         Copy-Item `
             -LiteralPath (Join-Path $packagingRoot $name) `
             -Destination (Join-Path $installedHelperRoot $name)
+    }
+    $installedSecurityRoot = Join-Path $installedHelperRoot "security_primitives"
+    New-Item -ItemType Directory -Path $installedSecurityRoot -Force | Out-Null
+    foreach ($name in @(
+        "byte_array.ps1",
+        "token_privilege_native.ps1",
+        "token_privilege.ps1",
+        "descriptor_comparison.ps1",
+        "descriptor_diagnostic.ps1",
+        "file_security.ps1"
+    )) {
+        Copy-Item `
+            -LiteralPath (Join-Path $packagingRoot "security_primitives\$name") `
+            -Destination (Join-Path $installedSecurityRoot $name)
     }
     $script:singleUserHelper = Join-Path `
         $installedHelperRoot "windows_database_generation_single_user.ps1"

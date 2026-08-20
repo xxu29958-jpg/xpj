@@ -249,9 +249,20 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows projection contract")
 def test_runtime_projection_read_and_retirement_retry_are_fail_closed(tmp_path: Path) -> None:
     fixture = Path(__file__).with_name("powershell_fixtures") / "database_generation_projection_postgres.ps1"
-    invoke_test_psql = powershell_function(fixture.read_text(encoding="utf-8-sig"), "Invoke-TestPsql")
+    fixture_source = fixture.read_text(encoding="utf-8-sig")
+    invoke_test_psql = powershell_function(fixture_source, "Invoke-TestPsql")
     assert "?require_auth=scram-sha-256" in invoke_test_psql
     assert "sslmode=" not in invoke_test_psql
+    for dependency in (
+        "windows_security_primitives.ps1",
+        "byte_array.ps1",
+        "token_privilege_native.ps1",
+        "token_privilege.ps1",
+        "descriptor_comparison.ps1",
+        "descriptor_diagnostic.ps1",
+        "file_security.ps1",
+    ):
+        assert f'"{dependency}"' in fixture_source
     harness = tmp_path / "runtime-projection-read.ps1"
     harness.write_text(
         f"""
