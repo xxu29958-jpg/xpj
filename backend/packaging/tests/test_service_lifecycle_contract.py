@@ -888,15 +888,16 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert "-ExpectedRuntimeExecutables @($BackendExe, $ShawlExe)" in restart
 
     database = _read("windows_bundled_database.ps1")
+    postgres_host = _read("windows_pg_recovery_tools.ps1")
     assert '"-tAc", $Sql' not in database
-    assert '"--dbname", $ProtectedDatabaseUrl, "-tA"' in database
-    assert "Invoke-TicketboxWithPgPassFile" in database
-    assert "require_auth=scram-sha-256" in database
-    assert "Invoke-TicketboxBoundedNativeProcess" in database
-    assert '-StandardInputText ($Sql + "`n")' in database
+    assert '"--dbname", $DatabaseUrl' in postgres_host
+    assert '"--tuples-only",' in postgres_host
+    assert '"--no-align",' in postgres_host
+    assert "Invoke-TicketboxWithPgPassFile" in postgres_host
+    assert "Invoke-TicketboxPostgresqlHostNative" in postgres_host
+    assert "StandardInputText = $Sql + \"`n\"" in postgres_host
     assert "$out = $Sql | & $psql @args 2>&1" not in database
     assert '：$Sql`n$out' not in database
-    assert 'throw "psql 执行失败（db=$Database, exit=$($result.ExitCode)）。"' in database
 
 def test_pre_upgrade_backup_uses_old_tools_before_stopping_postgres() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
@@ -1842,13 +1843,22 @@ catch {{ $poisonRejected = $true }}
 if (-not $poisonRejected) {{ throw 'poisoned initdb command was accepted' }}
 
 function Assert-TicketboxServiceOwnership {{ param($Name,$ExpectedExecutable) return $true }}
-function Wait-TicketboxBackendRuntimeStopped {{ param($Name,$ExpectedRuntimeExecutables,$TimeoutMilliseconds,$PollMilliseconds,$SleepAction) }}
+function Wait-TicketboxBackendRuntimeStopped {{ param($Name,$ExpectedRuntimeExecutables,$TimeoutMilliseconds,$PollMilliseconds) }}
 $script:startCount = 0
-$startAction = {{ param($Name) $script:startCount += 1 }}
-$sleepAction = {{ param($Milliseconds) Start-Sleep -Milliseconds 10 }}
 $script:successRead = 0
-$successReader = {{
+function Invoke-TicketboxScChecked {{
+    param([object[]]$Arguments)
+    if ([string]$Arguments[0] -cne 'start') {{ throw 'unexpected sc action' }}
+    $script:startCount += 1
+}}
+function Get-TicketboxServiceRuntimeSnapshot {{
     param($Name)
+    if ($script:scenario -ceq 'exit23') {{
+        return [pscustomobject]@{{ State='stopped'; ProcessId=0; ExitCode=0; ServiceSpecificExitCode=23 }}
+    }}
+    if ($script:scenario -ceq 'hang') {{
+        return [pscustomobject]@{{ State='running'; ProcessId=42; ExitCode=0; ServiceSpecificExitCode=0 }}
+    }}
     $script:successRead += 1
     if ($script:successRead -eq 1) {{
         return [pscustomobject]@{{ State='running'; ProcessId=41; ExitCode=0; ServiceSpecificExitCode=0 }}
@@ -1860,33 +1870,21 @@ $success = Invoke-TicketboxOwnedOneShotService `
     -ExpectedExecutable $shawl `
     -ExpectedRuntimeExecutables @($shawl,$initdb) `
     -TimeoutMilliseconds 2000 `
-    -PollMilliseconds 10 `
-    -SnapshotReader $successReader `
-    -StartAction $startAction `
-    -SleepAction $sleepAction
+    -PollMilliseconds 10
 if ($success.ExitCode -ne 0 -or $success.ServiceSpecificExitCode -ne 0) {{
     throw 'successful one-shot terminal was lost'
 }}
-$exit23Reader = {{
-    param($Name)
-    return [pscustomobject]@{{ State='stopped'; ProcessId=0; ExitCode=0; ServiceSpecificExitCode=23 }}
-}}
+$script:scenario = 'exit23'
 $exit23 = Invoke-TicketboxOwnedOneShotService `
     -Name 'TicketboxPg' `
     -ExpectedExecutable $shawl `
     -ExpectedRuntimeExecutables @($shawl,$initdb) `
     -TimeoutMilliseconds 2000 `
-    -PollMilliseconds 10 `
-    -SnapshotReader $exit23Reader `
-    -StartAction $startAction `
-    -SleepAction $sleepAction
+    -PollMilliseconds 10
 if ($exit23.ServiceSpecificExitCode -ne 23) {{
     throw 'non-zero one-shot terminal was hidden'
 }}
-$hangReader = {{
-    param($Name)
-    return [pscustomobject]@{{ State='running'; ProcessId=42; ExitCode=0; ServiceSpecificExitCode=0 }}
-}}
+$script:scenario = 'hang'
 $hangRejected = $false
 try {{
     Invoke-TicketboxOwnedOneShotService `
@@ -1894,10 +1892,7 @@ try {{
         -ExpectedExecutable $shawl `
         -ExpectedRuntimeExecutables @($shawl,$initdb) `
         -TimeoutMilliseconds 250 `
-        -PollMilliseconds 10 `
-        -SnapshotReader $hangReader `
-        -StartAction $startAction `
-        -SleepAction $sleepAction | Out-Null
+        -PollMilliseconds 10 | Out-Null
 }}
 catch {{ $hangRejected = $_.Exception.Message -like '*未在*内停止*' }}
 if (-not $hangRejected) {{ throw 'hung one-shot service escaped its deadline' }}
@@ -2012,7 +2007,8 @@ function Remove-TicketboxInitdbPasswordFileIfPresent {
     $script:passwordRemoves += 1
 }
 function Repair-PostgresBootstrapRecoveryFileAcl { return $false }
-function Read-PostgresBootstrapRecoveryState { return $null }
+function Get-PostgresBootstrapRecoveryPath { return $script:InitdbPasswordPath }
+function Read-PostgresBootstrapRecoveryState { param($Path) return $null }
 function Disable-TicketboxInitdbServiceIfPresent {
     param($Receipt)
     $script:disableCalls += 1
@@ -2455,7 +2451,8 @@ function Assert-TicketboxInitdbServiceConfiguration { param($Receipt,$StartMode)
 function Assert-TicketboxFreshPgClusterComplete {}
 function Get-TicketboxPathEntryKindNoFollow { param($Path) return 'Missing' }
 function Repair-PostgresBootstrapRecoveryFileAcl { return $false }
-function Read-PostgresBootstrapRecoveryState { return $null }
+function Get-PostgresBootstrapRecoveryPath { return $script:InitdbPasswordPath }
+function Read-PostgresBootstrapRecoveryState { param($Path) return $null }
 function Invoke-ScChecked { param([string[]]$ScArgs) return 0 }
 function Assert-TicketboxServiceOwnership { param($Name,$ExpectedExecutable) return $true }
 function Set-TicketboxServiceIdentityContract {

@@ -261,19 +261,6 @@ if (-not (Test-Path -LiteralPath $DatabaseScript -PathType Leaf)) {
     throw "缺少 Windows bundled database 脚本：$DatabaseScript"
 }
 . $DatabaseScript
-$C07DatabaseScript = Join-Path $ScriptDir "windows_c07_database.ps1"
-if (-not (Test-Path -LiteralPath $C07DatabaseScript -PathType Leaf)) {
-    throw "缺少 Windows C07 数据库权威脚本：$C07DatabaseScript"
-}
-. $C07DatabaseScript
-$C07SuperuserRecoveryScript = Join-Path `
-    $ScriptDir `
-    "windows_c07_superuser_recovery.ps1"
-if (-not (Test-Path -LiteralPath $C07SuperuserRecoveryScript -PathType Leaf)) {
-    throw "缺少 Windows C07 superuser recovery 脚本：$C07SuperuserRecoveryScript"
-}
-. $C07SuperuserRecoveryScript
-
 function Resolve-TicketboxInstallPublicFailurePath([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return "" }
     if ($InstallerLockOwnerProcessId -le 0) {
@@ -1190,7 +1177,7 @@ function Invoke-TicketboxServiceOwnedInitdb {
         Assert-TicketboxFreshPgClusterComplete
         Remove-TicketboxInitdbPasswordFileIfPresent $receipt
         [void](Repair-PostgresBootstrapRecoveryFileAcl)
-        [void](Read-PostgresBootstrapRecoveryState)
+        [void](Read-PostgresBootstrapRecoveryState -Path (Get-PostgresBootstrapRecoveryPath))
         $receipt = Set-TicketboxCurrentInitdbServiceReceiptPhase `
             -Receipt $receipt `
             -Phase "initdb_succeeded"
@@ -1209,7 +1196,7 @@ function Invoke-TicketboxServiceOwnedInitdb {
             }
             Remove-TicketboxInitdbPasswordFileIfPresent $receipt
             [void](Repair-PostgresBootstrapRecoveryFileAcl)
-            [void](Read-PostgresBootstrapRecoveryState)
+            [void](Read-PostgresBootstrapRecoveryState -Path (Get-PostgresBootstrapRecoveryPath))
             if (
                 -not $createdByThisInvocation -and
                 (Get-TicketboxPathEntryKindNoFollow $InitdbServiceReceiptPath) -ceq "File"
@@ -1272,7 +1259,7 @@ function Register-PgService {
                 throw "initdb 临时密码文件尚未退役，拒绝提交正式服务。"
             }
             [void](Repair-PostgresBootstrapRecoveryFileAcl)
-            [void](Read-PostgresBootstrapRecoveryState)
+            [void](Read-PostgresBootstrapRecoveryState -Path (Get-PostgresBootstrapRecoveryPath))
             Invoke-ScChecked @(
                 "config", $PgServiceName,
                 "start=", "disabled",
@@ -1634,7 +1621,7 @@ function Invoke-TicketboxInstallFailureCompensation {
                 Disable-TicketboxInitdbServiceIfPresent $initdbReceipt
                 Remove-TicketboxInitdbPasswordFileIfPresent $initdbReceipt
                 [void](Repair-PostgresBootstrapRecoveryFileAcl)
-                [void](Read-PostgresBootstrapRecoveryState)
+                [void](Read-PostgresBootstrapRecoveryState -Path (Get-PostgresBootstrapRecoveryPath))
             }
             else {
                 throw "拒绝补偿 executable 不匹配的同名 PostgreSQL 服务。"
@@ -2375,9 +2362,6 @@ try {
         -ExpectedExecutable (Get-ExpectedServiceExecutable $PgServiceName) `
         @ServiceWaitArguments | Out-Null
     Wait-PgReady
-    $c07RecoveryArtifactPath = Join-Path `
-        $InstallerState `
-        $script:TicketboxC07SuperuserRecoveryArtifactName
     $installLifecycleStage = "schema_migration"
     Write-Step "收敛 release schema 到 frozen head"
     $databaseGeneration = Invoke-TicketboxInstalledDatabaseGeneration `
@@ -2386,7 +2370,7 @@ try {
         -LifecycleLock $operationLock `
         -HostContract $databaseGenerationHostContract `
         -ProjectionContract $databaseGenerationProjectionContract `
-        -RecoveryArtifactPath $c07RecoveryArtifactPath
+        -BootstrapRecoveryPath (Get-PostgresBootstrapRecoveryPath)
     $databaseUrl = [string]$databaseGeneration.DatabaseUrl
     Write-Ok "release schema exact head: $($databaseGeneration.CommittedRevision)"
     Set-TicketboxLifecycleReceiptDatabaseGenerationEvidence `

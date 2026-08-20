@@ -2,151 +2,12 @@
 
 #Requires -Version 5.1
 
-function Get-TicketboxDatabaseGenerationLiveIdentity {
-    param(
-        [Parameter(Mandatory = $true)][object]$HostAuthority,
-        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword
-    )
-    $output = Invoke-TicketboxC07Sql `
-        -Authority $HostAuthority `
-        -Database $script:TicketboxC07DatabaseName `
-        -Role "postgres" `
-        -Password $SuperuserPassword `
-        -Label "database generation live identity" `
-        -Sql @"
-SELECT control.system_identifier::text || E'\t' ||
-       database.oid::text || E'\t' ||
-       current_database() || E'\t' ||
-       (SELECT value FROM public.app_meta WHERE key = 'server_id') || E'\t' ||
-       (SELECT value FROM public.app_meta WHERE key = 'data_generation')
-FROM pg_catalog.pg_database AS database
-CROSS JOIN pg_catalog.pg_control_system() AS control
-WHERE database.datname = current_database();
-"@
-    $fields = ConvertFrom-TicketboxC07SingleRow `
-        -Output $output `
-        -FieldCount 5 `
-        -Label "database generation live identity"
-    if ($fields[0] -cnotmatch '^[1-9][0-9]*$') {
-        throw "database generation live cluster identity 无效。"
-    }
-    $databaseOid = 0L
-    if (
-        -not [long]::TryParse([string]$fields[1], [ref]$databaseOid) -or
-        $databaseOid -lt 1 -or
-        $databaseOid -gt [uint32]::MaxValue
-    ) {
-        throw "database generation live database OID 无效。"
-    }
-    if ([string]$fields[2] -cne $script:TicketboxC07DatabaseName) {
-        throw "database generation live database name 漂移。"
-    }
-    foreach ($index in 3, 4) {
-        $parsed = [guid]::Empty
-        if (
-            -not [guid]::TryParseExact([string]$fields[$index], "D", [ref]$parsed) -or
-            $parsed -eq [guid]::Empty -or
-            $parsed.ToString("D") -cne [string]$fields[$index]
-        ) {
-            throw "database generation live logical identity 无效。"
-        }
-    }
-    return [pscustomobject][ordered]@{
-        ClusterSystemIdentifier = [string]$fields[0]
-        DatabaseOid = [uint32]$databaseOid
-        DatabaseName = [string]$fields[2]
-        LogicalServerId = [string]$fields[3]
-        LogicalDataGeneration = [string]$fields[4]
-    }
-}
-
-function Set-TicketboxDatabaseGenerationDatabaseBinding {
-    param(
-        [Parameter(Mandatory = $true)][object]$Intent,
-        [Parameter(Mandatory = $true)][object]$SourceBinding,
-        [Parameter(Mandatory = $true)][object]$HostAuthority,
-        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
-        [Parameter(Mandatory = $true)][string]$ExecutionAuthoritySha256,
-        [Parameter(Mandatory = $true)][string]$RoleAuthoritySha256,
-        [Parameter(Mandatory = $true)][string]$RuntimeAclSha256,
-        [Parameter(Mandatory = $true)][string]$WriterFenceSha256,
-        [Parameter(Mandatory = $true)][string]$TargetRecoveryEvidenceSha256,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
-    )
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    foreach ($entry in @(
-        @{ Value = $ExecutionAuthoritySha256; Label = "execution authority" },
-        @{ Value = $RoleAuthoritySha256; Label = "role authority" },
-        @{ Value = $RuntimeAclSha256; Label = "runtime ACL" },
-        @{ Value = $WriterFenceSha256; Label = "writer fence" },
-        @{ Value = $TargetRecoveryEvidenceSha256; Label = "target recovery" }
-    )) {
-        Assert-TicketboxDatabaseGenerationLowerSha256 `
-            ([string]$entry.Value) `
-            ("database generation binding " + [string]$entry.Label)
-    }
-    $identity = Get-TicketboxDatabaseGenerationLiveIdentity `
-        -HostAuthority $HostAuthority `
-        -SuperuserPassword $SuperuserPassword
-    if (
-        [string]$identity.ClusterSystemIdentifier -cne
-            [string]$SourceBinding.Payload.cluster_system_identifier -or
-        [uint32]$identity.DatabaseOid -ne [uint32]$SourceBinding.Payload.database_oid
-    ) {
-        throw "database generation live identity 与 SourceBinding 漂移。"
-    }
-    $payload = [ordered]@{
-        schema = "ticketbox-database-generation-database-binding-v1"
-        operation_id = [string]$Intent.Payload.operation_id
-        installation_id = [string]$Intent.Payload.installation_id
-        intent_sha256 = [string]$Intent.PayloadSha256
-        source_binding_sha256 = [string]$SourceBinding.PayloadSha256
-        target_revision = [string]$Intent.Payload.target_revision
-        generation_program_sha256 = [string]$Intent.Payload.generation_program_sha256
-        cluster_system_identifier = [string]$identity.ClusterSystemIdentifier
-        database_oid = [uint32]$identity.DatabaseOid
-        database_name = [string]$identity.DatabaseName
-        runtime_role = [string]$script:TicketboxC07RuntimeRole
-        logical_server_id = [string]$identity.LogicalServerId
-        logical_data_generation = [string]$identity.LogicalDataGeneration
-        execution_authority_sha256 = $ExecutionAuthoritySha256
-        role_authority_sha256 = $RoleAuthoritySha256
-        runtime_acl_sha256 = $RuntimeAclSha256
-        post_migration_writer_fence_sha256 = $WriterFenceSha256
-        target_recovery_evidence_sha256 = $TargetRecoveryEvidenceSha256
-    }
-    $bindingJson = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $payload
-    $bindingSha256 = Get-TicketboxDatabaseGenerationTextSha256 $bindingJson
-    $keyLiteral = ConvertTo-TicketboxC07SqlLiteral `
-        $script:TicketboxDatabaseGenerationBindingKey
-    $valueLiteral = ConvertTo-TicketboxC07SqlLiteral $bindingJson
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $observed = Invoke-TicketboxC07Sql `
-        -Authority $HostAuthority `
-        -Database $script:TicketboxC07DatabaseName `
-        -Role "postgres" `
-        -Password $SuperuserPassword `
-        -Label "database generation binding publication" `
-        -Sql @"
-BEGIN;
-INSERT INTO public.app_meta (key, value, updated_at)
-VALUES ($keyLiteral, $valueLiteral, CURRENT_TIMESTAMP)
-ON CONFLICT (key) DO NOTHING;
-SELECT value FROM public.app_meta WHERE key = $keyLiteral;
-COMMIT;
-"@
-    if ([string]$observed -cne $bindingJson) {
-        throw "database generation binding 未通过同事务复读。"
-    }
-    return $bindingSha256
-}
-
 function New-TicketboxDatabaseGenerationRuntimeDatabaseUrl {
     param(
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][Security.SecureString]$RuntimePassword
     )
-    return Invoke-TicketboxC07WithPlainSecret -Secret $RuntimePassword -Action {
+    return Invoke-TicketboxWithPlainPostgresqlSecret -Secret $RuntimePassword -Action {
         param([string]$PlainPassword)
         $role = [Uri]::EscapeDataString($script:TicketboxC07RuntimeRole)
         $password = [Uri]::EscapeDataString($PlainPassword)
@@ -161,7 +22,8 @@ function New-TicketboxDatabaseGenerationRuntimeDatabaseUrl {
 function Write-TicketboxDatabaseGenerationRuntimeEnvironment {
     param(
         [Parameter(Mandatory = $true)][string]$DatabaseUrl,
-        [Parameter(Mandatory = $true)][object]$ProjectionContract
+        [Parameter(Mandatory = $true)][object]$ProjectionContract,
+        [Parameter(Mandatory = $true)][string]$HttpBootstrapSecret
     )
     $shutdownSeconds = ConvertTo-TicketboxTimeoutSeconds ([int]$ProjectionContract.stop_timeout_ms)
     $lines = @(
@@ -177,96 +39,31 @@ function Write-TicketboxDatabaseGenerationRuntimeEnvironment {
     if (-not [string]::IsNullOrWhiteSpace([string]$ProjectionContract.public_base_url)) {
         $lines += "PUBLIC_BASE_URL=$([string]$ProjectionContract.public_base_url)"
     }
-    $recovery = Read-PostgresBootstrapRecoveryState
     $lines += @(
         "ENABLE_HTTP_BOOTSTRAP=true",
-        "HTTP_BOOTSTRAP_SECRET=$($recovery.HttpBootstrapSecret)"
+        "HTTP_BOOTSTRAP_SECRET=$HttpBootstrapSecret"
     )
     Write-EnvNoBom -Path ([string]$ProjectionContract.env_path) -Lines $lines
-}
-
-function Write-TicketboxDatabaseGenerationRuntimeCurrent {
-    param(
-        [Parameter(Mandatory = $true)][object]$Current,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock,
-        [Parameter(Mandatory = $true)][object]$ProjectionContract
-    )
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $serviceName = [string]$ProjectionContract.backend_service_name
-    if ($serviceName -cnotmatch "^[A-Za-z0-9_.-]{1,128}$") {
-        throw "database generation runtime service identity 无效。"
-    }
-    $runtimeAccount = "NT SERVICE\$serviceName"
-    $path = Get-TicketboxDatabaseGenerationRuntimeCurrentPath
-    $root = Split-Path -Parent $path
-    [void](Initialize-TicketboxProtectedDirectoryAtomically `
-        -Path $root `
-        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
-        -ReadExecuteAccounts @($runtimeAccount) `
-        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount)
-    $envelope = [ordered]@{
-        schema = "ticketbox-database-generation-envelope-v1"
-        kind = "current"
-        payload_sha256 = [string]$Current.PayloadSha256
-        payload = $Current.Payload
-    }
-    $text = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    Write-TicketboxProtectedUtf8FileDurable `
-        -Path $path `
-        -Text $text `
-        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
-        -ReadExecuteAccounts @($runtimeAccount) `
-        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount `
-        -ReplaceExisting
-    $observed = Read-TicketboxProtectedUtf8Artifact `
-        -Path $path `
-        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
-        -ReadExecuteAccounts @($runtimeAccount) `
-        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
-    if ([string]$observed.Text -cne $text) {
-        throw "database generation runtime CURRENT 未通过原字节复读。"
-    }
 }
 
 function Read-TicketboxDatabaseGenerationRuntimeProjection {
     param(
         [Parameter(Mandatory = $true)][object]$Intent,
-        [Parameter(Mandatory = $true)][object]$Current,
+        [Parameter(Mandatory = $true)][object]$Candidate,
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][object]$ProjectionContract,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     if (
-        [string]$Current.Payload.intent_sha256 -cne [string]$Intent.PayloadSha256 -or
-        [string]$Current.Payload.committed_revision -cne [string]$Intent.Payload.target_revision
+        [string]$Candidate.Payload.intent_sha256 -cne [string]$Intent.PayloadSha256 -or
+        [string]$Candidate.Payload.target_revision -cne [string]$Intent.Payload.target_revision
     ) {
-        throw "runtime projection 拒绝非 exact CURRENT。"
+        throw "runtime projection 拒绝非 exact candidate。"
     }
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $serviceName = [string]$ProjectionContract.backend_service_name
-    if ($serviceName -cnotmatch "^[A-Za-z0-9_.-]{1,128}$") {
-        throw "database generation runtime service identity 无效。"
-    }
-    $runtimeAccount = "NT SERVICE\$serviceName"
-    $envelope = [ordered]@{
-        schema = "ticketbox-database-generation-envelope-v1"
-        kind = "current"
-        payload_sha256 = [string]$Current.PayloadSha256
-        payload = $Current.Payload
-    }
-    $expectedCurrent = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope
-    $observedCurrent = Read-TicketboxProtectedUtf8Artifact `
-        -Path (Get-TicketboxDatabaseGenerationRuntimeCurrentPath) `
-        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
-        -ReadExecuteAccounts @($runtimeAccount) `
-        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
-    if ([string]$observedCurrent.Text -cne $expectedCurrent) {
-        throw "database generation runtime CURRENT 与 durable CURRENT 不一致。"
-    }
     $environment = Read-EnvMap ([string]$ProjectionContract.env_path)
     if (-not $environment.ContainsKey("DATABASE_URL")) {
-        throw "CURRENT 已发布但 credential 已清理且 runtime projection 缺失。"
+        throw "runtime projection 缺少 DATABASE_URL。"
     }
     $connection = Get-TicketboxLocalDatabaseConnection `
         -DatabaseUrl ([string]$environment["DATABASE_URL"]) `
@@ -280,12 +77,78 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
         -ExpectedPort ([int]$HostAuthority.Port) `
         -Password $connection.Password `
         -TimeoutMilliseconds ([int]$ProjectionContract.database_tool_timeout_ms)
+    $runtimePassword = ConvertTo-TicketboxPostgresqlSecureString `
+        ([string]$connection.Password) `
+        "database generation runtime projection password"
+    try {
+        if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
+            $Intent $Candidate $HostAuthority $runtimePassword)) {
+            throw "runtime projection 已存在但 bootstrap authority 尚未退役。"
+        }
+    }
+    finally { $runtimePassword.Dispose() }
+    $payload = [ordered]@{
+        schema = "ticketbox-database-generation-runtime-projection-v1"
+        operation_id = [string]$Intent.Payload.operation_id
+        intent_sha256 = [string]$Intent.PayloadSha256
+        candidate_sha256 = [string]$Candidate.PayloadSha256
+        committed_revision = [string]$Candidate.Payload.target_revision
+        host_contract_sha256 = [string]$Intent.Payload.host_contract_sha256
+        projection_contract_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $ProjectionContract
+        )
+        database_url_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+            [string]$connection.PersistedDatabaseUrl
+        )
+    }
     return [pscustomobject]@{
-        OperationId = [string]$Intent.Payload.operation_id
-        CurrentSha256 = [string]$Current.PayloadSha256
-        CommittedRevision = [string]$Current.Payload.committed_revision
+        Payload = [pscustomobject]$payload
+        PayloadSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $payload
+        )
         DatabaseUrl = [string]$connection.PersistedDatabaseUrl
     }
+}
+
+function Publish-TicketboxDatabaseGenerationRuntimeProjection {
+    param(
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [Parameter(Mandatory = $true)][object]$RuntimeCredentials,
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][object]$ProjectionContract,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
+        $Intent $Candidate $HostAuthority $RuntimeCredentials.RuntimePassword)) {
+        throw "runtime admission 拒绝尚未退役的 bootstrap authority。"
+    }
+    $databaseUrl = New-TicketboxDatabaseGenerationRuntimeDatabaseUrl `
+        $HostAuthority $RuntimeCredentials.RuntimePassword
+    $capturedDatabaseUrl = $databaseUrl
+    $capturedProjectionContract = $ProjectionContract
+    Invoke-TicketboxWithPlainPostgresqlSecret `
+        -Secret $RuntimeCredentials.HttpBootstrapSecret `
+        -Action ({
+            param([string]$PlainSecret)
+            Write-TicketboxDatabaseGenerationRuntimeEnvironment `
+                $capturedDatabaseUrl $capturedProjectionContract $PlainSecret
+        }) | Out-Null
+    $environment = Read-EnvMap ([string]$ProjectionContract.env_path)
+    $connection = Get-TicketboxLocalDatabaseConnection `
+        -DatabaseUrl ([string]$environment["DATABASE_URL"]) `
+        -PgPort ([int]$HostAuthority.Port) `
+        -ExpectedDatabase $script:TicketboxC07DatabaseName `
+        -ExpectedRole $script:TicketboxC07RuntimeRole
+    Assert-TicketboxConnectedPostgresDataRoot `
+        -PsqlPath ([string]$ProjectionContract.psql_path) `
+        -DatabaseUrl $connection.DatabaseUrl `
+        -ExpectedDataRoot ([string]$ProjectionContract.pg_data) `
+        -ExpectedPort ([int]$HostAuthority.Port) `
+        -Password $connection.Password `
+        -TimeoutMilliseconds ([int]$ProjectionContract.database_tool_timeout_ms)
+    return Read-TicketboxDatabaseGenerationRuntimeProjection `
+        $Intent $Candidate $HostAuthority $ProjectionContract $LifecycleLock
 }
 
 function Get-TicketboxDatabaseGenerationMigratorAuthorityState {
@@ -367,26 +230,26 @@ FROM observed;
     return $state
 }
 
-function Complete-TicketboxDatabaseGenerationRuntimeProjection {
+function Prepare-TicketboxDatabaseGenerationRuntimeProjection {
     param(
         [Parameter(Mandatory = $true)][object]$Intent,
-        [Parameter(Mandatory = $true)][object]$Current,
-        [Parameter(Mandatory = $true)][object]$Credentials,
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [Parameter(Mandatory = $true)][object]$RuntimeCredentials,
         [Parameter(Mandatory = $true)][object]$HostAuthority,
-        [Parameter(Mandatory = $true)][object]$SuperuserCapability,
+        [Parameter(Mandatory = $true)][object]$MaintenanceAuthority,
         [Parameter(Mandatory = $true)][object]$ProjectionContract,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     if (
-        [string]$Current.Payload.intent_sha256 -cne [string]$Intent.PayloadSha256 -or
-        [string]$Current.Payload.committed_revision -cne [string]$Intent.Payload.target_revision
+        [string]$Candidate.Payload.intent_sha256 -cne [string]$Intent.PayloadSha256 -or
+        [string]$Candidate.Payload.target_revision -cne [string]$Intent.Payload.target_revision
     ) {
-        throw "runtime projection 拒绝非 exact CURRENT。"
+        throw "runtime projection 拒绝非 exact candidate。"
     }
     $operationId = ([guid][string]$Intent.Payload.operation_id).ToString("D")
-    $null = Assert-TicketboxC07SuperuserCapability `
-        $SuperuserCapability $operationId $LifecycleLock
-    $superuserPassword = $SuperuserCapability.Secret
+    $null = Assert-TicketboxDatabaseGenerationMaintenanceAuthority `
+        $MaintenanceAuthority $Intent $HostAuthority $LifecycleLock
+    $superuserPassword = $MaintenanceAuthority.Secret
     $migratorState = Get-TicketboxDatabaseGenerationMigratorAuthorityState `
         -HostAuthority $HostAuthority `
         -SuperuserPassword $superuserPassword
@@ -411,7 +274,7 @@ function Complete-TicketboxDatabaseGenerationRuntimeProjection {
         -Authority $HostAuthority `
         -Database $script:TicketboxC07DatabaseName `
         -Role "postgres" `
-        -Password $SuperuserPassword `
+        -Password $superuserPassword `
         -Label "database generation runtime admission" `
         -Sql @"
 BEGIN;
@@ -422,36 +285,21 @@ GRANT CONNECT ON DATABASE "$script:TicketboxC07DatabaseName"
     TO "$script:TicketboxC07RuntimeRole";
 COMMIT;
 "@ | Out-Null
-    Assert-TicketboxC07RuntimeCredential $HostAuthority $Credentials.RuntimePassword
+    Assert-TicketboxC07RuntimeCredential `
+        $HostAuthority $RuntimeCredentials.RuntimePassword
     if ($migratorState -ceq "active") {
-        Assert-TicketboxC07RoleCatalog $HostAuthority $SuperuserPassword
+        Assert-TicketboxC07RoleCatalog $HostAuthority $superuserPassword
     }
     Assert-TicketboxC07RuntimeAclContract `
         -Authority $HostAuthority `
-        -SuperuserPassword $SuperuserPassword `
+        -SuperuserPassword $superuserPassword `
         -IncludeManagedSchemaCurrencyAuthority
-    $databaseUrl = New-TicketboxDatabaseGenerationRuntimeDatabaseUrl `
-        $HostAuthority $Credentials.RuntimePassword
-    Write-TicketboxDatabaseGenerationRuntimeEnvironment $databaseUrl $ProjectionContract
-    $environment = Read-EnvMap ([string]$ProjectionContract.env_path)
-    $connection = Get-TicketboxLocalDatabaseConnection `
-        -DatabaseUrl ([string]$environment["DATABASE_URL"]) `
-        -PgPort ([int]$HostAuthority.Port) `
-        -ExpectedDatabase $script:TicketboxC07DatabaseName `
-        -ExpectedRole $script:TicketboxC07RuntimeRole
-    Assert-TicketboxConnectedPostgresDataRoot `
-        -PsqlPath ([string]$ProjectionContract.psql_path) `
-        -DatabaseUrl $connection.DatabaseUrl `
-        -ExpectedDataRoot ([string]$ProjectionContract.pg_data) `
-        -ExpectedPort ([int]$HostAuthority.Port) `
-        -Password $connection.Password `
-        -TimeoutMilliseconds ([int]$ProjectionContract.database_tool_timeout_ms)
     if ($migratorState -ceq "active") {
         Invoke-TicketboxC07Sql `
             -Authority $HostAuthority `
             -Database "postgres" `
             -Role "postgres" `
-            -Password $SuperuserPassword `
+            -Password $superuserPassword `
             -Label "database generation migrator retirement" `
             -Sql (Get-TicketboxC07MigratorRetirementSql) | Out-Null
     }
@@ -459,18 +307,13 @@ COMMIT;
         -Authority $HostAuthority `
         -Database "postgres" `
         -Role "postgres" `
-        -Password $SuperuserPassword `
+        -Password $superuserPassword `
         -Label "database generation migrator retirement verification" `
         -Sql (Get-TicketboxC07MigratorRetirementVerificationSql) | Out-Null
-    Assert-TicketboxC07RetiredRoleCatalog $HostAuthority $SuperuserPassword
-    Write-TicketboxDatabaseGenerationRuntimeCurrent `
-        -Current $Current `
-        -LifecycleLock $LifecycleLock `
-        -ProjectionContract $ProjectionContract
+    Assert-TicketboxC07RetiredRoleCatalog $HostAuthority $superuserPassword
     return [pscustomobject]@{
-        OperationId = [string]$Intent.Payload.operation_id
-        CurrentSha256 = [string]$Current.PayloadSha256
-        CommittedRevision = [string]$Current.Payload.committed_revision
-        DatabaseUrl = [string]$connection.PersistedDatabaseUrl
+        Schema = "ticketbox-database-generation-projection-prepared-v1"
+        OperationId = $operationId
+        CandidateSha256 = [string]$Candidate.PayloadSha256
     }
 }

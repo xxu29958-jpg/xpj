@@ -34,13 +34,13 @@
   },
   "installer_vendor_sources": {
     "postgresql": {
-      "version": "17.10-1",
-      "archive_name": "postgresql-17.10-1-windows-x64-binaries.zip",
-      "url": "https://get.enterprisedb.com/postgresql/postgresql-17.10-1-windows-x64-binaries.zip",
-      "sha256": "f9aafca58e7026a1ef2caeee711acf761671e57904d430adc85f468374f5a821",
-      "ci_service_image": "postgres:17.10@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d",
+      "version": "17.11-1",
+      "archive_name": "postgresql-17.11-1-windows-x64-binaries.zip",
+      "url": "https://get.enterprisedb.com/postgresql/postgresql-17.11-1-windows-x64-binaries.zip",
+      "sha256": "6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3",
+      "ci_service_image": "postgres:17.11@sha256:e38411452a464af89e5adadb8d223bf53b898d47d6ef918b2d58c08707350449",
       "payload_file_count": 1535,
-      "payload_fingerprint": "bb0db8fa9ba930d8dbc79d43656a74d765c4081c9978f74d7b92015d0f7a4a8b"
+      "payload_fingerprint": "301416a98605233b704bde01b38dfdd8defa3e21cad40be1b40ad047bfc91bdf"
     },
     "shawl": {
       "version": "1.9.0",

@@ -64,6 +64,7 @@ def _authority_documents() -> tuple[str, dict[str, object], dict[str, object]]:
         "committed_revision": TARGET_REVISION,
         "generation_program_sha256": program_sha,
         "database_binding_sha256": hashlib.sha256(binding_json.encode()).hexdigest(),
+        "terminal_state_sha256": "6" * 64,
         "expected_predecessor_sha256": "",
     }
     current_json = admission._canonical_json(current)

@@ -201,7 +201,8 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/security_primitives/descriptor_comparison.ps1",
     "packaging/security_primitives/descriptor_diagnostic.ps1",
     "packaging/security_primitives/file_security.ps1",
-    "packaging/windows_c07_superuser_recovery.ps1",
+    "packaging/windows_postgresql_credentials.ps1",
+    "packaging/windows_postgresql_single_user.ps1",
     "packaging/windows_deadline_budget.ps1",
     "packaging/windows_atomic_artifacts.ps1",
     "packaging/atomic_artifacts/native.ps1",
@@ -212,10 +213,16 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_database_generation.ps1",
     "packaging/windows_database_generation_contract.ps1",
     "packaging/windows_database_generation_artifacts.ps1",
-    "packaging/windows_database_generation_adapter.ps1",
+    "packaging/windows_database_generation_commit_verifier.ps1",
+    "packaging/windows_database_generation_policy.ps1",
+    "packaging/windows_database_generation_credentials.ps1",
+    "packaging/windows_database_generation_role_fence.ps1",
+    "packaging/windows_database_generation_database_binding.ps1",
     "packaging/windows_database_generation_source.ps1",
     "packaging/windows_database_generation_recovery_evidence.ps1",
     "packaging/windows_database_generation_target_recovery.ps1",
+    "packaging/windows_database_generation_retirement.ps1",
+    "packaging/windows_database_generation_single_user.ps1",
     "packaging/windows_database_generation_projection.ps1",
     "packaging/windows_backend_bootstrap.ps1",
     "packaging/windows_bootstrap_exposure_recovery.ps1",
@@ -997,6 +1004,13 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "Read-TicketboxPgBundleManifest $bundleManifestPath" in build
     assert "PostgreSQL bundle manifest 与 Windows 工具链 archive/payload pin 不一致" in build
     assert "archive_payload_fingerprint" in build
+    assert postgres_source["version"] == "17.11-1"
+    assert postgres_source["sha256"] == (
+        "6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3"
+    )
+    assert postgres_source["payload_fingerprint"] == (
+        "301416a98605233b704bde01b38dfdd8defa3e21cad40be1b40ad047bfc91bdf"
+    )
     assert postgres_source["payload_file_count"] > 0
     assert len(postgres_source["payload_fingerprint"]) == 64
     assert len(shawl_source["executable_sha256"]) == 64
@@ -1145,7 +1159,16 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "Frozen backend archive omitted required app module: $requiredModule" in backend_build
     for retired_source_path in (
         "app\\database\\_c07_maintenance_plan.py",
+        "app\\database\\_c07_production_authority.py",
+        "app\\database\\_c07_production_connection.py",
+        "app\\database\\_c07_production_context.py",
+        "app\\database\\_c07_production_contract.py",
+        "app\\database\\_c07_production_contract_types.py",
+        "app\\database\\_c07_production_fence.py",
         "app\\database\\_c07_production_ready.py",
+        "app\\database\\_c07_production_recovery.py",
+        "app\\database\\_c07_production_restore.py",
+        "app\\database\\_c07_production_shape.py",
         "app\\database\\_c07_runtime_projection.py",
     ):
         assert f'"{retired_source_path}"' in backend_build
@@ -1358,7 +1381,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
             f"-VersionPolicyContractProbe '{vendor}|{version}'"
         )
 
-    assert probe("postgres", "17.10").returncode == 0
+    assert probe("postgres", "17.11").returncode == 0
     assert probe("shawl", "1.9.0").returncode == 0
     assert probe("iscc", "6.7.1").returncode == 0
     override_real_build = _run_powershell(
@@ -1376,10 +1399,10 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         f". '{_ps_literal(PROVENANCE_HELPER)}'; Get-TicketboxNormalizedCompilerDefines @('/DAlpha=1','/DAlpha=2')"
     )
     assert duplicate_define.returncode != 0
-    config["postgres_version_policy"]["minimum"] = "17.11"
+    config["postgres_version_policy"]["minimum"] = "17.12"
     config_path.write_text(json.dumps(config), encoding="utf-8")
-    assert probe("postgres", "17.10").returncode != 0
-    config["postgres_version_policy"]["minimum"] = "17.10"
+    assert probe("postgres", "17.11").returncode != 0
+    config["postgres_version_policy"]["minimum"] = "17.11"
     config["shawl_version_policy"]["minimum"] = "1.9.1"
     config_path.write_text(json.dumps(config), encoding="utf-8")
     assert probe("shawl", "1.9.0").returncode != 0

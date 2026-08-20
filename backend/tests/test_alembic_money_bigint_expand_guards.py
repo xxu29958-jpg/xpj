@@ -12,8 +12,6 @@ from sqlalchemy.exc import OperationalError
 from app.database import SessionLocal, engine
 from app.database._c07_contract import C07_TARGET_REVISION, C07CeremonyError
 from app.database._c07_execution_shape import _money_shape as execution_money_shape
-from app.database._c07_production_contract import C07ProductionMigrationError
-from app.database._c07_production_shape import _money_shape as production_money_shape
 from app.models import RecurringItem
 from app.money_contract import (
     MONEY_COLUMNS_V1,
@@ -251,14 +249,6 @@ def test_ready_shape_rejects_retained_legacy_check() -> None:
         )
         with pytest.raises(C07CeremonyError, match="retained legacy CHECK"):
             execution_money_shape(
-                connection,
-                target_revision=C07_TARGET_REVISION,
-            )
-        with pytest.raises(
-            C07ProductionMigrationError,
-            match="retained legacy CHECK",
-        ):
-            production_money_shape(
                 connection,
                 target_revision=C07_TARGET_REVISION,
             )

@@ -24,12 +24,18 @@ def _projection_fixture_command(
         str(fixture),
         "-ProjectionPath",
         str(PROJECTION),
+        "-ContractPath",
+        str(PACKAGING / "windows_database_generation_contract.ps1"),
+        "-CredentialsPath",
+        str(PACKAGING / "windows_postgresql_credentials.ps1"),
+        "-RetirementPath",
+        str(PACKAGING / "windows_database_generation_retirement.ps1"),
         "-PgBin",
         str(pg_bin),
         "-SafetyPath",
         str(PACKAGING / "windows_installation_safety.ps1"),
-        "-AdapterPath",
-        str(PACKAGING / "windows_database_generation_adapter.ps1"),
+        "-DatabaseBindingPath",
+        str(PACKAGING / "windows_database_generation_database_binding.ps1"),
         "-DatabasePolicyPath",
         str(PACKAGING / "windows_c07_database.ps1"),
         "-PythonPath",
@@ -211,14 +217,17 @@ $ErrorActionPreference = 'Stop'
 . '{PROJECTION_LITERAL}'
 $script:writes = 0
 $script:mode = 'exact'
-$script:secret = New-Object Security.SecureString
-$script:secret.AppendChar('x')
-$script:secret.MakeReadOnly()
-$script:current = [pscustomobject]@{{
+$script:adminSecret = New-Object Security.SecureString
+$script:adminSecret.AppendChar('a')
+$script:adminSecret.MakeReadOnly()
+$script:runtimeSecret = New-Object Security.SecureString
+$script:runtimeSecret.AppendChar('r')
+$script:runtimeSecret.MakeReadOnly()
+$script:candidate = [pscustomobject]@{{
     PayloadSha256 = ('c' * 64)
     Payload = [ordered]@{{
         intent_sha256 = ('a' * 64)
-        committed_revision = '20260809_0001'
+        target_revision = '20260809_0001'
     }}
 }}
 function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
@@ -226,22 +235,11 @@ function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
     param($Value)
     return $Value | ConvertTo-Json -Compress -Depth 64
 }}
-function Get-TicketboxDatabaseGenerationRuntimeCurrentPath {{ return 'runtime-current.json' }}
-function Read-TicketboxProtectedUtf8Artifact {{
-    param($Path, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount)
-    if ($script:mode -ceq 'missing') {{ throw 'runtime CURRENT missing' }}
-    $envelope = [ordered]@{{
-        schema = 'ticketbox-database-generation-envelope-v1'
-        kind = 'current'
-        payload_sha256 = [string]$script:current.PayloadSha256
-        payload = $script:current.Payload
-    }}
-    $text = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope
-    if ($script:mode -ceq 'foreign') {{ $text = '{{}}' }}
-    return [pscustomobject]@{{ Text = $text }}
-}}
+function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('e' * 64) }}
+function Get-TicketboxDatabaseGenerationHostAuthoritySha256 {{ return ('f' * 64) }}
 function Read-EnvMap {{
     $map = [Collections.Generic.Dictionary[string,string]]::new()
+    if ($script:mode -ceq 'missing') {{ return $map }}
     $map['DATABASE_URL'] = 'postgresql+psycopg://ticketbox_runtime@127.0.0.1:5432/ticketbox'
     return $map
 }}
@@ -249,11 +247,12 @@ function Get-TicketboxLocalDatabaseConnection {{
     return [pscustomobject]@{{
         DatabaseUrl = 'postgresql+psycopg://ticketbox_runtime@127.0.0.1:5432/ticketbox'
         PersistedDatabaseUrl = 'postgresql+psycopg://ticketbox_runtime@127.0.0.1:5432/ticketbox'
-        Password = $script:secret
+        Password = $script:runtimeSecret
     }}
 }}
 function Assert-TicketboxConnectedPostgresDataRoot {{}}
-function Write-TicketboxDatabaseGenerationRuntimeCurrent {{ $script:writes += 1 }}
+function ConvertTo-TicketboxPostgresqlSecureString {{ return $script:runtimeSecret }}
+function Test-TicketboxDatabaseGenerationBootstrapRetirement {{ return $script:mode -cne 'foreign' }}
 $script:TicketboxC07DatabaseName = 'ticketbox'
 $script:TicketboxC07RuntimeRole = 'ticketbox_runtime'
 $script:TicketboxDatabaseGenerationAclAccounts = @('SYSTEM', 'Administrators')
@@ -271,15 +270,15 @@ $contract = [pscustomobject]@{{
 }}
 $authority = [pscustomobject]@{{ Port = 5432 }}
 $result = Read-TicketboxDatabaseGenerationRuntimeProjection `
-    $intent $script:current $authority $contract @{{}}
-if ($result.CurrentSha256 -cne ('c' * 64) -or $script:writes -ne 0) {{
+    $intent $script:candidate $authority $contract @{{}}
+if ($result.PayloadSha256 -cne ('e' * 64) -or $script:writes -ne 0) {{
     throw 'exact runtime projection read mutated state'
 }}
 foreach ($mode in @('missing', 'foreign')) {{
     $script:mode = $mode
-    $rejected = $false
-    try {{ Read-TicketboxDatabaseGenerationRuntimeProjection `
-        $intent $script:current $authority $contract @{{}} | Out-Null }}
+        $rejected = $false
+        try {{ Read-TicketboxDatabaseGenerationRuntimeProjection `
+            $intent $script:candidate $authority $contract @{{}} | Out-Null }}
     catch {{ $rejected = $true }}
     if (-not $rejected -or $script:writes -ne 0) {{
         throw "$mode runtime CURRENT did not fail closed without a write"
@@ -305,103 +304,109 @@ foreach ($mode in @('missing', 'foreign')) {{
 $ErrorActionPreference = 'Stop'
 . '{PROJECTION_LITERAL}'
 $script:migratorState = 'active'
-$script:retirementCalls = 0
-$script:runtimeAdmissions = 0
-$script:runtimeCurrentWrites = 0
-$script:runtimeCurrentText = $null
-$script:failAfterRetirementCommit = $true
-$script:failFirstCurrentWrite = $true
+$script:failAfterMigratorCommit = $true
+$script:failFirstEnvWrite = $true
+$script:runtimeProjectionWrites = 0
 $script:events = @()
-$script:secret = New-Object Security.SecureString
-$script:secret.AppendChar('x')
-$script:secret.MakeReadOnly()
+$script:adminSecret = New-Object Security.SecureString
+$script:adminSecret.AppendChar('a')
+$script:adminSecret.MakeReadOnly()
+$script:runtimeSecret = New-Object Security.SecureString
+$script:runtimeSecret.AppendChar('r')
+$script:runtimeSecret.MakeReadOnly()
+$script:httpSecret = New-Object Security.SecureString
+$script:httpSecret.AppendChar('h')
+$script:httpSecret.MakeReadOnly()
+function Assert-AdminSecret($Password) {{
+    if (-not [object]::ReferenceEquals($Password, $script:adminSecret)) {{
+        throw 'projection did not use maintenance authority secret'
+    }}
+}}
 function Assert-TicketboxLifecycleOperationLease {{}}
-function Assert-TicketboxC07SuperuserCapability {{}}
+function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {{
+    param($Authority)
+    Assert-AdminSecret $Authority.Secret
+}}
 function Invoke-TicketboxC07Sql {{
     param($Authority, $Database, $Role, $Password, $Label, $Sql)
+    Assert-AdminSecret $Password
     $script:events += $Label
     if ($Label -ceq 'database generation migrator authority observation') {{
-        foreach ($requiredCase in @(
-            "THEN 'active'",
-            "THEN 'retired_pending_sessions'",
-            "THEN 'retired'",
-            "ELSE 'invalid'"
-        )) {{
-            if ([string]$Sql -cnotlike "*$requiredCase*") {{
-                throw "migrator observation is missing $requiredCase"
-            }}
-        }}
         return $script:migratorState
     }}
     if ($Label -ceq 'database generation migrator retirement') {{
-        $script:retirementCalls += 1
-        if ($script:migratorState -ceq 'active' -and $script:failAfterRetirementCommit) {{
+        if ($script:migratorState -ceq 'active' -and $script:failAfterMigratorCommit) {{
             $script:migratorState = 'retired_pending_sessions'
-            $script:failAfterRetirementCommit = $false
-            throw 'simulated response loss after retirement commit before session termination'
+            $script:failAfterMigratorCommit = $false
+            throw 'simulated response loss after migrator retirement commit'
         }}
         $script:migratorState = 'retired'
-    }}
-    if ($Label -ceq 'database generation runtime admission') {{
-        $script:runtimeAdmissions += 1
     }}
     if (
         $Label -ceq 'database generation migrator retirement verification' -and
         $script:migratorState -cne 'retired'
-    ) {{
-        throw 'migrator was not retired'
-    }}
+    ) {{ throw 'migrator was not retired' }}
     return ''
 }}
-function Assert-TicketboxC07RuntimeCredential {{}}
-function Assert-TicketboxC07RoleCatalog {{
-    if ($script:migratorState -cne 'active') {{ throw 'active catalog rejected retired migrator' }}
+function Assert-TicketboxC07RuntimeCredential {{
+    param($Authority, $Password)
+    if (-not [object]::ReferenceEquals($Password, $script:runtimeSecret)) {{
+        throw 'projection did not use runtime credential'
+    }}
 }}
-function Assert-TicketboxC07RuntimeAclContract {{}}
-function New-TicketboxDatabaseGenerationRuntimeDatabaseUrl {{ return 'postgresql://runtime' }}
-function Write-TicketboxDatabaseGenerationRuntimeEnvironment {{ $script:events += 'env write' }}
+function Assert-TicketboxC07RoleCatalog {{ param($Authority, $Password); Assert-AdminSecret $Password }}
+function Assert-TicketboxC07RuntimeAclContract {{ param($Authority, $SuperuserPassword); Assert-AdminSecret $SuperuserPassword }}
+function Assert-TicketboxC07RetiredRoleCatalog {{ param($Authority, $Password); Assert-AdminSecret $Password }}
+function Get-TicketboxC07MigratorRetirementSql {{ return 'retire' }}
+function Get-TicketboxC07MigratorRetirementVerificationSql {{ return 'verify' }}
+function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
+    param($Intent, $Candidate, $HostAuthority, $RuntimePassword)
+    if (-not [object]::ReferenceEquals($RuntimePassword, $script:runtimeSecret)) {{
+        throw 'retirement readback did not use runtime credential'
+    }}
+    $script:events += 'bootstrap retirement readback'
+    return $true
+}}
+function New-TicketboxDatabaseGenerationRuntimeDatabaseUrl {{
+    param($HostAuthority, $RuntimePassword)
+    if (-not [object]::ReferenceEquals($RuntimePassword, $script:runtimeSecret)) {{
+        throw 'database URL did not use runtime credential'
+    }}
+    return 'postgresql://runtime'
+}}
+function Invoke-TicketboxWithPlainPostgresqlSecret {{
+    param($Secret, $Action)
+    if (-not [object]::ReferenceEquals($Secret, $script:httpSecret)) {{
+        throw 'environment projection did not use HTTP credential'
+    }}
+    return & $Action 'http-secret'
+}}
+function Write-TicketboxDatabaseGenerationRuntimeEnvironment {{
+    param($DatabaseUrl, $ProjectionContract, $HttpBootstrapSecret)
+    if ($HttpBootstrapSecret -cne 'http-secret') {{ throw 'wrong HTTP secret' }}
+    $script:events += 'env write'
+    $script:runtimeProjectionWrites += 1
+    if ($script:failFirstEnvWrite) {{
+        $script:failFirstEnvWrite = $false
+        throw 'simulated response loss after environment projection write'
+    }}
+}}
 function Read-EnvMap {{ return @{{ DATABASE_URL = 'postgresql://runtime' }} }}
 function Get-TicketboxLocalDatabaseConnection {{
     return [pscustomobject]@{{
         DatabaseUrl = 'postgresql://runtime'
         PersistedDatabaseUrl = 'postgresql://runtime'
-        Password = $script:secret
+        Password = 'runtime-plain'
     }}
 }}
 function Assert-TicketboxConnectedPostgresDataRoot {{}}
-function Get-TicketboxC07MigratorRetirementSql {{ return 'retire' }}
-function Get-TicketboxC07MigratorRetirementVerificationSql {{ return 'verify' }}
-function Assert-TicketboxC07RetiredRoleCatalog {{
-    if ($script:migratorState -cne 'retired') {{ throw 'retired catalog was not observed' }}
-}}
-function Get-TicketboxDatabaseGenerationRuntimeCurrentPath {{ return 'runtime-current.json' }}
-function Initialize-TicketboxProtectedDirectoryAtomically {{
-    param($Path, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount)
-}}
+function ConvertTo-TicketboxPostgresqlSecureString {{ return $script:runtimeSecret }}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
     param($Value)
     return ($Value | ConvertTo-Json -Compress -Depth 20)
 }}
-function Write-TicketboxProtectedUtf8FileDurable {{
-    param(
-        $Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount,
-        [switch]$ReplaceExisting
-    )
-    $script:events += 'runtime CURRENT write'
-    if ($null -ne $script:runtimeCurrentText -and -not $ReplaceExisting) {{
-        throw 'runtime CURRENT replacement was not authorized'
-    }}
-    $script:runtimeCurrentText = [string]$Text
-    $script:runtimeCurrentWrites += 1
-    if ($script:failFirstCurrentWrite) {{
-        $script:failFirstCurrentWrite = $false
-        throw 'simulated response loss after runtime CURRENT write'
-    }}
-}}
-function Read-TicketboxProtectedUtf8Artifact {{
-    param($Path, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount)
-    return [pscustomobject]@{{ Text = $script:runtimeCurrentText }}
-}}
+function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('e' * 64) }}
+function Get-TicketboxDatabaseGenerationHostAuthoritySha256 {{ return ('f' * 64) }}
 $script:TicketboxDatabaseGenerationAclAccounts = @('SYSTEM')
 $script:TicketboxDatabaseGenerationOwnerAccount = 'SYSTEM'
 $script:TicketboxC07DatabaseName = 'ticketbox'
@@ -413,85 +418,64 @@ $intent = [pscustomobject]@{{
         target_revision = '20260809_0001'
     }}
 }}
-$current = [pscustomobject]@{{
+$candidate = [pscustomobject]@{{
     PayloadSha256 = ('c' * 64)
     Payload = [pscustomobject]@{{
         intent_sha256 = ('a' * 64)
-        committed_revision = '20260809_0001'
+        target_revision = '20260809_0001'
     }}
 }}
-$credentials = [pscustomobject]@{{ RuntimePassword = $script:secret }}
+$runtimeCredentials = [pscustomobject]@{{
+    RuntimePassword = $script:runtimeSecret
+    HttpBootstrapSecret = $script:httpSecret
+}}
 $hostAuthority = [pscustomobject]@{{ Port = 5432 }}
-$capability = [pscustomobject]@{{ Secret = $script:secret }}
+$maintenanceAuthority = [pscustomobject]@{{ Secret = $script:adminSecret }}
 $contract = [pscustomobject]@{{
     env_path = '.env'; psql_path = 'psql.exe'; pg_data = 'pgdata'
     database_tool_timeout_ms = 1000; backend_service_name = 'TicketboxBackend'
 }}
-$retirementInterrupted = $false
+$interrupted = $false
 try {{
-    Complete-TicketboxDatabaseGenerationRuntimeProjection `
-        $intent $current $credentials $hostAuthority $capability $contract @{{}} | Out-Null
+    Prepare-TicketboxDatabaseGenerationRuntimeProjection `
+        $intent $candidate $runtimeCredentials $hostAuthority $maintenanceAuthority `
+        $contract @{{}} | Out-Null
 }}
-catch {{ $retirementInterrupted = $true }}
+catch {{ $interrupted = $true }}
+if (-not $interrupted -or $script:migratorState -cne 'retired_pending_sessions') {{
+    throw 'migrator response-loss boundary was not preserved'
+}}
+$prepared = Prepare-TicketboxDatabaseGenerationRuntimeProjection `
+    $intent $candidate $runtimeCredentials $hostAuthority $maintenanceAuthority `
+    $contract @{{}}
 if (
-    -not $retirementInterrupted -or
-    $script:migratorState -cne 'retired_pending_sessions' -or
-    $script:runtimeCurrentWrites -ne 0
-) {{
-    throw 'retirement commit/session termination interruption was not preserved'
+    $prepared.Schema -cne 'ticketbox-database-generation-projection-prepared-v1' -or
+    $prepared.CandidateSha256 -cne ('c' * 64) -or
+    $script:migratorState -cne 'retired' -or $script:runtimeProjectionWrites -ne 0
+) {{ throw 'projection preparation did not converge before admission publication' }}
+$script:events += 'bootstrap authority retirement'
+if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
+    $intent $candidate $hostAuthority $runtimeCredentials.RuntimePassword)) {{
+    throw 'retirement readback failed'
 }}
-$currentWriteInterrupted = $false
-$script:events = @()
+$publishInterrupted = $false
 try {{
-    Complete-TicketboxDatabaseGenerationRuntimeProjection `
-        $intent $current $credentials $hostAuthority $capability $contract @{{}} | Out-Null
+    Publish-TicketboxDatabaseGenerationRuntimeProjection `
+        $intent $candidate $runtimeCredentials $hostAuthority $contract @{{}} | Out-Null
 }}
-catch {{ $currentWriteInterrupted = $true }}
-if (
-    -not $currentWriteInterrupted -or
-    $script:migratorState -cne 'retired' -or
-    $script:runtimeCurrentWrites -ne 1
-) {{
-    throw 'runtime CURRENT response-loss boundary was not reached'
+catch {{ $publishInterrupted = $true }}
+if (-not $publishInterrupted -or $script:runtimeProjectionWrites -ne 1) {{
+    throw 'runtime projection response-loss boundary was not reached'
 }}
-$expectedRetryEvents = @(
-    'database generation migrator authority observation',
-    'database generation migrator retirement',
-    'database generation migrator retirement verification',
-    'database generation runtime admission',
-    'env write',
-    'database generation migrator retirement verification',
-    'runtime CURRENT write'
-)
-if (($script:events -join '|') -cne ($expectedRetryEvents -join '|')) {{
-    throw "retirement retry event order mismatch: $($script:events -join '|')"
+$result = Publish-TicketboxDatabaseGenerationRuntimeProjection `
+    $intent $candidate $runtimeCredentials $hostAuthority $contract @{{}}
+if ($result.PayloadSha256 -cne ('e' * 64) -or $script:runtimeProjectionWrites -ne 2) {{
+    throw 'runtime projection retry did not converge'
 }}
-$result = Complete-TicketboxDatabaseGenerationRuntimeProjection `
-    $intent $current $credentials $hostAuthority $capability $contract @{{}}
-if (
-    $result.CurrentSha256 -cne ('c' * 64) -or
-    $script:migratorState -cne 'retired' -or
-    $script:retirementCalls -ne 2 -or
-    $script:runtimeCurrentWrites -ne 2
-) {{
-    throw 'retired projection retry did not converge through exact CURRENT replacement'
-}}
-$mutationsBeforeInvalid = $script:runtimeAdmissions
-foreach ($invalidState in @('invalid', 'foreign', '')) {{
-    $script:migratorState = $invalidState
-    $invalidRejected = $false
-    try {{
-        Complete-TicketboxDatabaseGenerationRuntimeProjection `
-            $intent $current $credentials $hostAuthority $capability $contract @{{}} | Out-Null
-    }}
-    catch {{ $invalidRejected = $true }}
-    if (
-        -not $invalidRejected -or
-        $script:runtimeAdmissions -ne $mutationsBeforeInvalid -or
-        $script:runtimeCurrentWrites -ne 2
-    ) {{
-        throw 'invalid migrator authority reached a projection mutation'
-    }}
+$retirementIndex = [Array]::IndexOf($script:events, 'bootstrap authority retirement')
+$firstProjectionIndex = [Array]::IndexOf($script:events, 'env write')
+if ($retirementIndex -lt 0 -or $firstProjectionIndex -le $retirementIndex) {{
+    throw 'runtime projection was published before bootstrap retirement'
 }}
 """,
         encoding="utf-8-sig",

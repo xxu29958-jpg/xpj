@@ -1,16 +1,23 @@
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
-from _powershell_contract import powershell_contract_engines
+from _powershell_contract import powershell_contract_engines, run_powershell_contract_script
+from _powershell_contract import powershell_function as _function
+
+pytestmark = pytest.mark.xdist_group(name="windows_powershell_lifecycle")
 
 PACKAGING = Path(__file__).resolve().parents[1]
 BACKEND = PACKAGING.parent
 OWNER = PACKAGING / "windows_database_generation.ps1"
 CONTRACT = PACKAGING / "windows_database_generation_contract.ps1"
 ARTIFACTS = PACKAGING / "windows_database_generation_artifacts.ps1"
-ADAPTER = PACKAGING / "windows_database_generation_adapter.ps1"
+CREDENTIALS = PACKAGING / "windows_database_generation_credentials.ps1"
+ROLE_FENCE = PACKAGING / "windows_database_generation_role_fence.ps1"
+DATABASE_BINDING = PACKAGING / "windows_database_generation_database_binding.ps1"
+COMMIT_VERIFIER = PACKAGING / "windows_database_generation_commit_verifier.ps1"
+POLICY = PACKAGING / "windows_database_generation_policy.ps1"
+RETIRED_ADAPTER = PACKAGING / "windows_database_generation_adapter.ps1"
 SOURCE = PACKAGING / "windows_database_generation_source.ps1"
 RECOVERY_EVIDENCE = PACKAGING / "windows_database_generation_recovery_evidence.ps1"
 TARGET_RECOVERY = PACKAGING / "windows_database_generation_target_recovery.ps1"
@@ -34,58 +41,31 @@ BUILD = PACKAGING / "build_inno_installer.ps1"
 PROVENANCE = BACKEND / "scripts" / "windows_build_provenance.ps1"
 
 
-def _function(source: str, name: str) -> str:
-    match = re.search(
-        rf"(?m)^function {re.escape(name)}(?:\([^{{\r\n]*\))?\s*\{{",
-        source,
-    )
-    assert match is not None, name
-    depth = 0
-    for index in range(match.end() - 1, len(source)):
-        if source[index] == "{":
-            depth += 1
-        elif source[index] == "}":
-            depth -= 1
-            if depth == 0:
-                return source[match.start() : index + 1]
-    raise AssertionError(f"unterminated PowerShell function: {name}")
-
-
 def _inno_function(source: str, name: str, next_name: str) -> str:
     start = source.index(f"function {name}(")
     end = source.index(f"function {next_name}(", start)
     return source[start:end]
 
 
-def _run_both(script: str, tmp_path: Path) -> None:
-    path = tmp_path / "database-generation-owner.ps1"
-    path.write_text(script, encoding="utf-8-sig")
-    for engine in powershell_contract_engines():
-        result = subprocess.run(
-            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", path],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=20,
-        )
-        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
-
-
 def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authorities() -> None:
     owner = OWNER.read_text(encoding="utf-8-sig")
     contract = CONTRACT.read_text(encoding="utf-8-sig")
     artifacts = ARTIFACTS.read_text(encoding="utf-8-sig")
-    adapter = ADAPTER.read_text(encoding="utf-8-sig")
+    credentials = CREDENTIALS.read_text(encoding="utf-8-sig")
+    role_fence = ROLE_FENCE.read_text(encoding="utf-8-sig")
+    database_binding = DATABASE_BINDING.read_text(encoding="utf-8-sig")
+    commit_verifier = COMMIT_VERIFIER.read_text(encoding="utf-8-sig")
+    policy = POLICY.read_text(encoding="utf-8-sig")
     source = SOURCE.read_text(encoding="utf-8-sig")
     recovery_evidence = RECOVERY_EVIDENCE.read_text(encoding="utf-8-sig")
     target_recovery = TARGET_RECOVERY.read_text(encoding="utf-8-sig")
     c07_database = C07_DATABASE.read_text(encoding="utf-8-sig")
     installer = INSTALLER.read_text(encoding="utf-8-sig")
     flow = FLOW.read_text(encoding="utf-8-sig")
-    production = "\n".join(path.read_text(encoding="utf-8-sig") for path in PACKAGING.glob("*.ps1"))
+    production = "\n".join(path.read_text(encoding="utf-8-sig") for path in PACKAGING.rglob("*.ps1"))
     assert installer.count("Invoke-TicketboxInstalledDatabaseGeneration `") == 1
+    assert '. $C07DatabaseScript' not in installer
+    assert '"windows_c07_database.ps1"' in owner
     assert "New-TicketboxDatabaseGenerationIntent `" not in installer
     assert installer.count("Read-TicketboxDatabaseGenerationIntentContext `") == 1
     prepare_to_install = _inno_function(
@@ -147,6 +127,7 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
         RETIRED_C07_WRITER_FENCE,
         RETIRED_C07_WRITER_FENCE_POLICY,
         RETIRED_C07_WRITER_FENCE_ADAPTER,
+        RETIRED_ADAPTER,
     ):
         assert not retired_path.exists()
         retired_relative = str(retired_path.relative_to(PACKAGING))
@@ -160,11 +141,13 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
             assert retired_relative.replace("\\", "/") not in shipment_surface
     assert "Invoke-TicketboxDatabaseGenerationTargetRecovery" in target_recovery
     assert "[scriptblock]" not in recovery_evidence + target_recovery
-    assert "Invoke-TicketboxDatabaseGenerationTargetRecovery" in adapter
-    assert "Get-TicketboxPostgresqlWriterFenceObservation" in adapter
-    assert "Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority" not in adapter
-    assert "target_recovery_evidence_sha256" in adapter
+    assert "Invoke-TicketboxDatabaseGenerationTargetRecovery" in owner
+    assert "Get-TicketboxPostgresqlWriterFenceObservation" in role_fence
+    assert "Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority" not in role_fence
+    assert "target_recovery_evidence_sha256" in owner + database_binding
     assert "target_recovery_evidence_sha256" in artifacts
+    assert "Get-TicketboxDatabaseGenerationExecutionDependencyPaths" not in commit_verifier
+    assert "Assert-TicketboxDatabaseGenerationCommitReadyArtifact" not in artifacts
     for build_bound_tool_field in (
         "pg_dump_path",
         "pg_dump_size",
@@ -177,19 +160,25 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     assert "Assert-TicketboxDatabaseGenerationToolIdentity" in recovery_evidence
     assert recovery_evidence.count("Assert-TicketboxDatabaseGenerationToolIdentity") >= 5
     assert target_recovery.count("Assert-TicketboxDatabaseGenerationToolIdentity") >= 2
-    assert "Resolve-TicketboxDatabaseGenerationNextAction" in owner
+    assert "Resolve-TicketboxDatabaseGenerationNextAction" in policy
     assert "Publish-TicketboxDatabaseGenerationCurrent" in owner
-    assert "host_contract_sha256" in owner
-    assert "projection_contract_sha256" in owner
+    assert "host_contract_sha256" in policy
+    assert "projection_contract_sha256" in policy
     assert 'source_kind = "empty"' in source
     for leaked_mode in ("fresh_install", "legacy_adoption", "runtime_ready", "forward_repair"):
-        assert leaked_mode not in owner + contract + artifacts + adapter + source
+        assert leaked_mode not in (
+            owner + policy + contract + artifacts + credentials + role_fence + database_binding + source
+        )
     for name in (
         "windows_database_generation.ps1",
         "windows_database_generation_program_execution.ps1",
         "windows_database_generation_contract.ps1",
         "windows_database_generation_artifacts.ps1",
-        "windows_database_generation_adapter.ps1",
+        "windows_database_generation_commit_verifier.ps1",
+        "windows_database_generation_policy.ps1",
+        "windows_database_generation_credentials.ps1",
+        "windows_database_generation_role_fence.ps1",
+        "windows_database_generation_database_binding.ps1",
         "windows_database_generation_source.ps1",
         "windows_database_generation_recovery_evidence.ps1",
         "windows_database_generation_target_recovery.ps1",
@@ -201,22 +190,21 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
 
 
 def test_target_execution_authority_is_retry_stable_and_binding_is_insert_only(tmp_path: Path) -> None:
-    adapter = ADAPTER.read_text(encoding="utf-8-sig")
-    projection = PROJECTION.read_text(encoding="utf-8-sig")
+    database_binding = DATABASE_BINDING.read_text(encoding="utf-8-sig")
     authority = _function(
-        adapter,
+        database_binding,
         "New-TicketboxDatabaseGenerationExecutionAuthority",
     )
     failure = _function(
-        OWNER.read_text(encoding="utf-8-sig"),
+        CONTRACT.read_text(encoding="utf-8-sig"),
         "Throw-TicketboxDatabaseGenerationOperationFailure",
     )
     binding = _function(
-        projection,
+        database_binding,
         "Set-TicketboxDatabaseGenerationDatabaseBinding",
     )
     live_identity = _function(
-        projection,
+        database_binding,
         "Get-TicketboxDatabaseGenerationLiveIdentity",
     )
     assert "ON CONFLICT (key) DO NOTHING" in binding
@@ -278,13 +266,14 @@ if (
     @($aggregate.Data['TicketboxC07FailureCodes']).Count -ne 1
 ) {{ throw 'aggregate failure lost primary identity' }}
 """
-    _run_both(script, tmp_path)
+    run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_path: Path) -> None:
     owner_source = OWNER.read_text(encoding="utf-8-sig")
     artifacts_source = ARTIFACTS.read_text(encoding="utf-8-sig")
+    commit_verifier_source = COMMIT_VERIFIER.read_text(encoding="utf-8-sig")
     prepare_source = PREPARE.read_text(encoding="utf-8-sig")
     assert "function Import-TicketboxDatabaseGenerationExecutionDependencies" not in owner_source
     assert "function Import-TicketboxInstalledDatabaseGenerationAuthority" not in prepare_source
@@ -299,14 +288,25 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
         "Invoke-TicketboxInstalledDatabaseGeneration",
     )
     commit_ready_consumer = _function(
-        artifacts_source,
+        commit_verifier_source,
         "Assert-TicketboxDatabaseGenerationCommitReadyArtifact",
     )
-    for consumer in (owner_consumer, commit_ready_consumer):
-        assert (
-            consumer.count("foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `") == 1
+    assert (
+        owner_consumer.count(
+            "foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `"
         )
-        assert "-Root $PSScriptRoot" in consumer
+        == 1
+    )
+    assert "-Root $PSScriptRoot" in owner_consumer
+    assert "Get-TicketboxDatabaseGenerationExecutionDependencyPaths" not in (
+        commit_ready_consumer
+    )
+    assert "windows_database_generation_recovery_evidence.ps1" in (
+        commit_verifier_source
+    )
+    assert "Assert-TicketboxDatabaseGenerationCommitReadyArtifact" not in (
+        artifacts_source
+    )
     installed_path = _function(
         prepare_source,
         "Get-TicketboxInstalledDatabaseGenerationAuthorityPath",
@@ -319,7 +319,7 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     assert 'Join-Path $ScriptDir "windows_database_generation.ps1"' in bootstrap_path
     bootstrap = tmp_path / "bootstrap"
     bootstrap.mkdir()
-    for source in (OWNER, CONTRACT, ARTIFACTS):
+    for source in (OWNER, CONTRACT, ARTIFACTS, COMMIT_VERIFIER, POLICY):
         (bootstrap / source.name).write_bytes(source.read_bytes())
     owner_path = bootstrap / OWNER.name
     state_root = bootstrap / "state"
@@ -342,6 +342,7 @@ function Get-TicketboxPathEntryKindNoFollow {{
 function Assert-NoTicketboxAncestorReparsePoints {{ param([string]$Path) }}
 function Test-TicketboxPathEquals {{ param($Left, $Right); return [IO.Path]::GetFullPath($Left) -ieq [IO.Path]::GetFullPath($Right) }}
 function Get-TicketboxLifecycleOperationLockPath {{ return '{operation_path}' }}
+function Get-TicketboxLifecycleLockPath {{ return (Join-Path '{bootstrap}' 'lifecycle.lock') }}
 {assert_held}
 {assert_lease}
 function Test-TicketboxServiceExists {{ param($Name); return $false }}
@@ -372,6 +373,9 @@ if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation
 }}
 if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_recovery_evidence.ps1')) {{
     throw 'bootstrap unexpectedly contains recovery evidence execution dependencies'
+}}
+if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_retirement.ps1')) {{
+    throw 'bootstrap unexpectedly contains bootstrap retirement execution dependencies'
 }}
 if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_projection.ps1')) {{
     throw 'bootstrap unexpectedly contains runtime projection execution dependencies'
@@ -437,15 +441,26 @@ if (
 ) {{
     throw 'intent write/read/retry did not preserve exact bytes'
 }}
-$dependencyNames = @(
-    'windows_atomic_artifacts.ps1',
-    'windows_postgresql_writer_fence.ps1',
-    'windows_database_generation_program_adapter.ps1',
-    'windows_database_generation_program_execution.ps1',
-    'windows_database_generation_recovery_evidence.ps1',
-    'windows_database_generation_target_recovery.ps1',
-    'windows_database_generation_projection.ps1'
-)
+        $dependencyNames = @(
+            'windows_atomic_artifacts.ps1',
+            'windows_postgresql_credentials.ps1',
+            'windows_postgresql_single_user.ps1',
+            'windows_postgresql_writer_fence.ps1',
+            'windows_service_contract.ps1',
+            'windows_service_identity.ps1',
+            'windows_service_lifecycle.ps1',
+            'windows_database_generation_credentials.ps1',
+            'windows_database_generation_role_fence.ps1',
+            'windows_database_generation_source.ps1',
+            'windows_database_generation_program_adapter.ps1',
+            'windows_database_generation_program_execution.ps1',
+            'windows_database_generation_recovery_evidence.ps1',
+            'windows_database_generation_target_recovery.ps1',
+            'windows_database_generation_database_binding.ps1',
+            'windows_database_generation_retirement.ps1',
+            'windows_database_generation_projection.ps1'
+            'windows_c07_database.ps1'
+        )
 for ($index = 0; $index -lt $dependencyNames.Count; $index += 1) {{
     $text = if ($index -eq 0) {{
         "function Test-TicketboxExecutionDependencyMarker {{ return 'loaded' }}"
@@ -467,7 +482,7 @@ foreach ($name in $dependencyNames) {{
     [IO.File]::Delete((Join-Path '{bootstrap}' $name))
 }}
 """
-    _run_both(script, tmp_path)
+    run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
@@ -507,13 +522,13 @@ $swapped = $false
 try {{ Assert-TicketboxDatabaseGenerationToolIdentity $tool $tool 8 $expected 'pg_dump.exe' | Out-Null }} catch {{ $swapped = $true }}
 if (-not $swapped) {{ throw 'same-size swapped tool bytes were accepted' }}
 """
-    _run_both(script, tmp_path)
+    run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_generation_reducer_is_pure_closed_and_mode_free(tmp_path: Path) -> None:
     reducer = _function(
-        OWNER.read_text(encoding="utf-8-sig"),
+        POLICY.read_text(encoding="utf-8-sig"),
         "Resolve-TicketboxDatabaseGenerationNextAction",
     )
     script = f"""
@@ -528,17 +543,21 @@ $actions = @(
     Resolve-TicketboxDatabaseGenerationNextAction $x $x $x $x $null
     Resolve-TicketboxDatabaseGenerationNextAction $null $x $x $x $x
 )
-$expected = 'ensure_credentials,bind_source,authorize_target,seal_candidate,publish_current,reconcile_projection'
+$expected = 'ensure_credentials,bind_source,authorize_target,seal_candidate,finalize_current,read_current'
 if (($actions -join ',') -cne $expected) {{ throw "unexpected reducer: $($actions -join ',')" }}
 $invalid = $false
 try {{ Resolve-TicketboxDatabaseGenerationNextAction $null $x $null $null $null | Out-Null }} catch {{ $invalid = $true }}
 if (-not $invalid) {{ throw 'reducer accepted source without credential/current' }}
 """
-    _run_both(script, tmp_path)
+    run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_generation_current_is_idempotent_expected_predecessor_cas(tmp_path: Path) -> None:
+    prospective = _function(
+        ARTIFACTS.read_text(encoding="utf-8-sig"),
+        "Get-TicketboxDatabaseGenerationProspectiveCurrent",
+    )
     publish = _function(
         ARTIFACTS.read_text(encoding="utf-8-sig"),
         "Publish-TicketboxDatabaseGenerationCurrent",
@@ -546,16 +565,27 @@ def test_generation_current_is_idempotent_expected_predecessor_cas(tmp_path: Pat
     script = f"""
 $ErrorActionPreference = 'Stop'
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); $Value | ConvertTo-Json -Depth 12 -Compress }}
+function Get-TicketboxDatabaseGenerationTextSha256 {{ param($Text); return ('a' * 64) }}
+function Assert-TicketboxDatabaseGenerationLowerSha256 {{ param($Value, $Label); if ($Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw "$Label invalid" }} }}
 function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
+$script:TicketboxDatabaseGenerationAclAccounts = @('SYSTEM', 'Administrators')
+$script:TicketboxDatabaseGenerationRuntimeAccount = 'NT SERVICE\\TicketboxBackend'
+$script:TicketboxDatabaseGenerationOwnerAccount = 'SYSTEM'
 $script:current = $null
 $script:writes = 0
-function Read-TicketboxDatabaseGenerationCurrent {{ param($StateRoot, [switch]$AllowAbsent); return $script:current }}
-function Write-TicketboxDatabaseGenerationEnvelope {{
-    param($Path, $Kind, $Payload, $LifecycleLock)
+function Get-TicketboxDatabaseGenerationRuntimeCurrentPath {{ return 'C:\\Ticketbox\\current-generation.json' }}
+function Read-TicketboxDatabaseGenerationCurrent {{ param([switch]$AllowAbsent); return $script:current }}
+function Initialize-TicketboxProtectedDirectoryAtomically {{}}
+function Write-TicketboxProtectedUtf8FileDurable {{
+    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount)
     $script:writes += 1
-    $script:current = [pscustomobject]@{{ Payload = [pscustomobject]$Payload; PayloadSha256 = ('a' * 64) }}
-    return $script:current
+    $envelope = $Text | ConvertFrom-Json
+    $script:current = [pscustomobject]@{{
+        Payload = $envelope.payload
+        PayloadSha256 = [string]$envelope.payload_sha256
+    }}
 }}
+{prospective}
 {publish}
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('b' * 64)
@@ -563,22 +593,39 @@ $intent = [pscustomobject]@{{
         operation_id = '11111111-1111-4111-8111-111111111111'
         installation_id = '22222222-2222-4222-8222-222222222222'
         generation_program_sha256 = ('c' * 64)
+        host_contract_sha256 = ('4' * 64)
+        projection_contract_sha256 = ('5' * 64)
         expected_predecessor_sha256 = ''
     }}
 }}
-$candidate = [pscustomobject]@{{ PayloadSha256 = ('d' * 64); Payload = [pscustomobject]@{{ target_revision = '20260809_0001'; database_binding_sha256 = ('9' * 64) }} }}
+$candidate = [pscustomobject]@{{ PayloadSha256 = ('d' * 64); Payload = [pscustomobject]@{{ intent_sha256 = ('b' * 64); target_revision = '20260809_0001'; database_binding_sha256 = ('9' * 64) }} }}
+$terminal = [pscustomobject]@{{
+    PayloadSha256 = ('7' * 64)
+    Payload = [pscustomobject]@{{
+        intent_sha256 = ('b' * 64)
+        candidate_sha256 = ('d' * 64)
+        runtime_credentials_sha256 = ('1' * 64)
+        bootstrap_retirement_sha256 = ('2' * 64)
+        runtime_projection_sha256 = ('3' * 64)
+        host_contract_sha256 = ('4' * 64)
+        projection_contract_sha256 = ('5' * 64)
+        transient_credentials_state = 'absent'
+        bootstrap_recovery_state = 'absent'
+        maintenance_service_transition_state = 'absent'
+    }}
+}}
 $lock = @{{}}
-$first = Publish-TicketboxDatabaseGenerationCurrent 'state' $intent $candidate $lock
-$second = Publish-TicketboxDatabaseGenerationCurrent 'state' $intent $candidate $lock
+$first = Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock
+$second = Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock
 if ($script:writes -ne 1 -or $first.PayloadSha256 -cne $second.PayloadSha256) {{ throw 'idempotent CURRENT failed' }}
 $script:current.Payload.candidate_sha256 = ('e' * 64)
 $conflict = $false
-try {{ Publish-TicketboxDatabaseGenerationCurrent 'state' $intent $candidate $lock | Out-Null }} catch {{ $conflict = $true }}
+try {{ Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock | Out-Null }} catch {{ $conflict = $true }}
 if (-not $conflict -or $script:writes -ne 1) {{ throw 'CURRENT conflict did not fail closed' }}
 $script:current = $null
 $intent.Payload.expected_predecessor_sha256 = ('f' * 64)
 $stale = $false
-try {{ Publish-TicketboxDatabaseGenerationCurrent 'state' $intent $candidate $lock | Out-Null }} catch {{ $stale = $true }}
+try {{ Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock | Out-Null }} catch {{ $stale = $true }}
 if (-not $stale -or $script:writes -ne 1) {{ throw 'stale predecessor mutated CURRENT' }}
 """
-    _run_both(script, tmp_path)
+    run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")

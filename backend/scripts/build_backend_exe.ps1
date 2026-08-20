@@ -172,7 +172,16 @@ try {
     }
     foreach ($retiredGenerationContractRelativePath in @(
         "app\database\_c07_maintenance_plan.py",
+        "app\database\_c07_production_authority.py",
+        "app\database\_c07_production_connection.py",
+        "app\database\_c07_production_context.py",
+        "app\database\_c07_production_contract.py",
+        "app\database\_c07_production_contract_types.py",
+        "app\database\_c07_production_fence.py",
         "app\database\_c07_production_ready.py",
+        "app\database\_c07_production_recovery.py",
+        "app\database\_c07_production_restore.py",
+        "app\database\_c07_production_shape.py",
         "app\database\_c07_runtime_projection.py"
     )) {
         $retiredGenerationContract = Join-Path `

@@ -239,8 +239,8 @@ jobs:
           - label: Database generation writer fence
             selector: test_database_generation_writer_fence
             timeout_minutes: 20
-          - label: C07 superuser recovery
-            selector: test_c07_superuser_recovery
+          - label: Database generation authority
+            selector: test_database_generation_owner or test_database_generation_bootstrap_retirement
             timeout_minutes: 20
           - label: Service lifecycle remainder
             selector: test_service_lifecycle_contract and not heartbeat

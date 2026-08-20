@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from functools import cache
@@ -88,3 +89,43 @@ def powershell_contract_engines() -> tuple[str, ...]:
             )
         )
     return _probe_contract_engines(tuple(resolved))
+
+
+def powershell_function(source: str, name: str) -> str:
+    """Return one balanced PowerShell function without inventing an AST gate."""
+    match = re.search(
+        rf"(?m)^function {re.escape(name)}(?:\([^{{\r\n]*\))?\s*\{{",
+        source,
+    )
+    assert match is not None, name
+    depth = 0
+    for index in range(match.end() - 1, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[match.start() : index + 1]
+    raise AssertionError(f"unterminated PowerShell function: {name}")
+
+
+def run_powershell_contract_script(
+    script: str,
+    tmp_path: Path,
+    *,
+    filename: str,
+    timeout: int = 20,
+) -> None:
+    path = tmp_path / filename
+    path.write_text(script, encoding="utf-8-sig")
+    for engine in powershell_contract_engines():
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", path],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"

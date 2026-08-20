@@ -2357,21 +2357,12 @@ function Assert-TicketboxLifecycleReceiptMutationDatabaseGenerationAuthority {
     ) {
         throw "$Context 生命周期回执缺少完整 database generation CURRENT。"
     }
-    foreach ($dependency in @(
-        "Get-TicketboxInstallerStateDirectory",
-        "Get-TicketboxDatabaseGenerationStateRoot",
-        "Read-TicketboxDatabaseGenerationCurrent"
-    )) {
+    foreach ($dependency in @("Read-TicketboxDatabaseGenerationCurrent")) {
         if ($null -eq (Get-Command $dependency -ErrorAction SilentlyContinue)) {
             throw "$Context 生命周期回执缺少 database generation CURRENT 观察器：$dependency。"
         }
     }
-    $stateRoot = Get-TicketboxDatabaseGenerationStateRoot (
-        Get-TicketboxInstallerStateDirectory
-    )
-    $observedCurrent = Read-TicketboxDatabaseGenerationCurrent `
-        $stateRoot `
-        -AllowAbsent
+    $observedCurrent = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
     if ($null -eq $observedCurrent) { return }
     if ([string]::IsNullOrEmpty($operationId)) {
         throw "$Context 生命周期回执未绑定已发布的 database generation CURRENT。"

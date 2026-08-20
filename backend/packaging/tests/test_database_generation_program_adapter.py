@@ -111,7 +111,7 @@ function Open-TicketboxC07VerifiedMigrationHelperLease {{
     param([string]$Path, [string]$ExpectedRelativePath, [int64]$ExpectedSize, [string]$ExpectedSha256)
     return [pscustomobject]@{{ Path = $Path }}
 }}
-function Invoke-TicketboxC07WithPlainSecret {{
+function Invoke-TicketboxWithPlainPostgresqlSecret {{
     param([Security.SecureString]$Secret, [scriptblock]$Action)
     return & $Action $script:secret
 }}

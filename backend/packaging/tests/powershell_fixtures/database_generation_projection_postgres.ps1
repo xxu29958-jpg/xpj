@@ -1,7 +1,10 @@
 ﻿param(
     [Parameter(Mandatory = $true)][string]$ProjectionPath,
+    [Parameter(Mandatory = $true)][string]$ContractPath,
+    [Parameter(Mandatory = $true)][string]$CredentialsPath,
+    [Parameter(Mandatory = $true)][string]$RetirementPath,
     [Parameter(Mandatory = $true)][string]$SafetyPath,
-    [Parameter(Mandatory = $true)][string]$AdapterPath,
+    [Parameter(Mandatory = $true)][string]$DatabaseBindingPath,
     [Parameter(Mandatory = $true)][string]$DatabasePolicyPath,
     [Parameter(Mandatory = $true)][string]$PythonPath,
     [Parameter(Mandatory = $true)][string]$BackendRoot,
@@ -17,18 +20,27 @@ $logPath = Join-Path $WorkRoot "postgres.log"
 $initdb = Join-Path $PgBin "initdb.exe"
 $pgCtl = Join-Path $PgBin "pg_ctl.exe"
 $psql = Join-Path $PgBin "psql.exe"
+$script:bootstrapPassword = "projection-admin-password-1234567890"
+$script:runtimePassword = "projection-runtime-password-1234567890"
 New-Item -ItemType Directory -Path $WorkRoot -Force | Out-Null
 
 function Invoke-TestPsql {
     param(
         [Parameter(Mandatory = $true)][string]$Database,
-        [Parameter(Mandatory = $true)][string]$Sql
+        [Parameter(Mandatory = $true)][string]$Sql,
+        [string]$Role = "postgres",
+        [string]$PlainPassword = ""
     )
-    $connection = "postgresql://postgres@127.0.0.1:$port/$Database`?sslmode=disable"
+    if ([string]::IsNullOrEmpty($PlainPassword)) {
+        $PlainPassword = $script:bootstrapPassword
+    }
+    $escapedRole = [Uri]::EscapeDataString($Role)
+    $escapedPassword = [Uri]::EscapeDataString($PlainPassword)
+    $connection = "postgresql://${escapedRole}:${escapedPassword}@127.0.0.1:$port/$Database`?sslmode=disable&require_auth=scram-sha-256"
     $sqlPath = Join-Path $WorkRoot ([IO.Path]::GetRandomFileName() + ".sql")
     [IO.File]::WriteAllText($sqlPath, $Sql, [Text.UTF8Encoding]::new($false))
     try {
-        $output = & $psql --no-psqlrc --no-password --tuples-only --no-align `
+        $output = & $psql --no-psqlrc --no-password --quiet --tuples-only --no-align `
             --set ON_ERROR_STOP=1 --dbname $connection --file $sqlPath 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw ($output -join [Environment]::NewLine)
@@ -42,7 +54,7 @@ function Invoke-TestPsql {
 
 function Invoke-TestPythonRuntimeObservation {
     param([switch]$ExpectFailure)
-    $connection = "postgresql+psycopg://ticketbox_runtime@127.0.0.1:$port/ticketbox`?sslmode=disable"
+    $connection = "postgresql+psycopg://ticketbox_runtime:$script:runtimePassword@127.0.0.1:$port/ticketbox`?sslmode=disable&require_auth=scram-sha-256"
     $pythonCode = @'
 import json
 import sys
@@ -91,12 +103,27 @@ finally:
 
 function Invoke-TicketboxC07Sql {
     param($Authority, $Database, $Role, $Password, $Label, $Sql)
-    return Invoke-TestPsql -Database $Database -Sql ([string]$Sql)
+    $capturedDatabase = [string]$Database
+    $capturedRole = [string]$Role
+    $capturedSql = [string]$Sql
+    return Invoke-TicketboxWithPlainPostgresqlSecret `
+        -Secret $Password `
+        -Action ({
+            param([string]$PlainPassword)
+            Invoke-TestPsql `
+                -Database $capturedDatabase `
+                -Sql $capturedSql `
+                -Role $capturedRole `
+                -PlainPassword $PlainPassword
+        }.GetNewClosure())
 }
 
 . $SafetyPath
+. $ContractPath
+. $CredentialsPath
+. $RetirementPath
 . $ProjectionPath
-. $AdapterPath
+. $DatabaseBindingPath
 function ConvertFrom-TicketboxC07SingleRow {
     param($Output, $FieldCount, $Label)
     $lines = @(
@@ -112,9 +139,8 @@ function ConvertFrom-TicketboxC07SingleRow {
 $script:TicketboxC07DatabaseName = "ticketbox"
 $script:TicketboxC07OwnerRole = "ticketbox_owner"
 $script:TicketboxC07MigratorRole = "ticketbox_migrator"
-$secret = New-Object Security.SecureString
-$secret.AppendChar("x")
-$secret.MakeReadOnly()
+$secret = ConvertTo-TicketboxPostgresqlSecureString `
+    $script:bootstrapPassword "projection fixture bootstrap password"
 $authority = [pscustomobject]@{ PsqlPath = $psql; Port = 0 }
 
 function Assert-MigratorState {
@@ -175,27 +201,40 @@ function Assert-RuntimeObservation {
 }
 
 function Start-TestRoleSleeper {
-    param([Parameter(Mandatory = $true)][string]$Role)
+    param(
+        [Parameter(Mandatory = $true)][string]$Role,
+        [string]$PlainPassword = $script:runtimePassword
+    )
+    $escapedRole = [Uri]::EscapeDataString($Role)
+    $escapedPassword = [Uri]::EscapeDataString($PlainPassword)
+    $applicationName = "ticketbox_test_role_sleeper_$Role"
+    $escapedApplicationName = [Uri]::EscapeDataString($applicationName)
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = $psql
     $start.Arguments = (
         "--no-psqlrc --no-password " +
-        "--dbname=postgresql://$Role@127.0.0.1:$port/ticketbox?sslmode=disable " +
+        "--dbname=postgresql://${escapedRole}:${escapedPassword}@127.0.0.1:$port/ticketbox?sslmode=disable&require_auth=scram-sha-256&application_name=$escapedApplicationName " +
         "--command=SELECT/**/pg_sleep(120)"
     )
     $start.CreateNoWindow = $true
     $start.UseShellExecute = $false
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
     $process = [Diagnostics.Process]::Start($start)
     foreach ($attempt in 1..50) {
         $count = Invoke-TestPsql -Database "postgres" -Sql (
-            "SELECT count(*) FROM pg_stat_activity WHERE usename = '$Role' AND datname = 'ticketbox'"
+            "SELECT count(*) FROM pg_stat_activity WHERE " +
+            "application_name = '$applicationName' AND usename = '$Role' AND datname = 'ticketbox'"
         )
         if ($count -ceq "1") { return $process }
         Start-Sleep -Milliseconds 100
     }
-    $process.Kill()
-    $process.WaitForExit()
-    throw "$Role session did not become observable"
+    if (-not $process.HasExited) {
+        $process.Kill()
+        $process.WaitForExit()
+    }
+    $failure = $process.StandardError.ReadToEnd().Trim()
+    throw "$Role session did not become observable: $failure"
 }
 
 function Stop-TestRoleSleeper {
@@ -203,12 +242,44 @@ function Stop-TestRoleSleeper {
         [Parameter(Mandatory = $true)][string]$Role,
         [Parameter(Mandatory = $true)][Diagnostics.Process]$Process
     )
+    $applicationName = "ticketbox_test_role_sleeper_$Role"
     $terminated = Invoke-TestPsql -Database "postgres" -Sql (
         "SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity " +
-        "WHERE usename = '$Role' AND pid <> pg_backend_pid()"
+        "WHERE application_name = '$applicationName' AND usename = '$Role' AND pid <> pg_backend_pid()"
     )
     if ($terminated -cne "t") { throw "$Role backend termination was not acknowledged: $terminated" }
     if (-not $Process.WaitForExit(10000)) { throw "$Role psql frontend did not exit" }
+}
+
+function Stop-TestPostgresForSingleUser {
+    $output = & $pgCtl stop -D $dataDir -m fast -w -t 30 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "could not stop PostgreSQL before single-user retirement: $output"
+    }
+}
+
+function Start-TestPostgresAfterSingleUser {
+    $stdout = Join-Path $WorkRoot "pg-ctl-restart.stdout"
+    $stderr = Join-Path $WorkRoot "pg-ctl-restart.stderr"
+    $process = Start-Process -FilePath $pgCtl -ArgumentList @(
+        "start", "-D", $dataDir, "-l", $logPath, "-w", "-t", "30"
+    ) -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    if (-not $process.WaitForExit(45000)) {
+        $process.Kill()
+        throw "pg_ctl restart timed out after single-user retirement"
+    }
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) {
+        & $pgCtl status -D $dataDir 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw (
+                "could not restart PostgreSQL after single-user retirement: " +
+                ((Get-Content -LiteralPath $stdout, $stderr -Raw) -join `
+                    [Environment]::NewLine)
+            )
+        }
+    }
 }
 
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -223,8 +294,16 @@ $startAttempted = $false
 $primaryFailure = $null
 $cleanupFailure = $null
 try {
-    $initOutput = & $initdb -D $dataDir -U postgres --auth-local=trust --auth-host=trust `
+    $bootstrapPasswordPath = Join-Path $WorkRoot "bootstrap-password.txt"
+    [IO.File]::WriteAllText(
+        $bootstrapPasswordPath,
+        $script:bootstrapPassword,
+        [Text.UTF8Encoding]::new($false)
+    )
+    $initOutput = & $initdb -D $dataDir -U postgres --auth-local=trust `
+        --auth-host=scram-sha-256 --pwfile=$bootstrapPasswordPath `
         --encoding=UTF8 --no-locale 2>&1
+    Remove-Item -LiteralPath $bootstrapPasswordPath -Force
     if ($LASTEXITCODE -ne 0) {
         throw ($initOutput -join [Environment]::NewLine)
     }
@@ -251,6 +330,7 @@ port = $port
         }
     }
     $serverStarted = $true
+    $env:PGPASSWORD = $script:bootstrapPassword
     if ($PauseAfterStart) {
         if ([string]::IsNullOrWhiteSpace($ServerReadyPath)) {
             throw "ServerReadyPath is required when PauseAfterStart is set"
@@ -264,9 +344,9 @@ port = $port
 CREATE ROLE ticketbox_owner NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
     NOREPLICATION NOBYPASSRLS;
 CREATE ROLE ticketbox_migrator LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-    NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1 PASSWORD 'projection-test'
+    NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1 PASSWORD '$script:runtimePassword'
     VALID UNTIL '$validUntil';
-CREATE ROLE ticketbox_runtime NOLOGIN;
+CREATE ROLE ticketbox_runtime NOLOGIN PASSWORD '$script:runtimePassword';
 CREATE ROLE ticketbox_foreign NOLOGIN;
 GRANT ticketbox_owner TO ticketbox_migrator WITH INHERIT FALSE, SET TRUE;
 ALTER ROLE ticketbox_runtime SET search_path = pg_catalog, public;
@@ -322,8 +402,8 @@ GRANT CONNECT ON DATABASE ticketbox TO ticketbox_runtime;
         @{ Mutation = "ALTER ROLE ticketbox_migrator BYPASSRLS"; Cleanup = "ALTER ROLE ticketbox_migrator NOBYPASSRLS" },
         @{ Mutation = "ALTER ROLE ticketbox_migrator INHERIT"; Cleanup = "ALTER ROLE ticketbox_migrator NOINHERIT" },
         @{ Mutation = "ALTER ROLE ticketbox_migrator CONNECTION LIMIT 2"; Cleanup = "ALTER ROLE ticketbox_migrator CONNECTION LIMIT 1" },
-        @{ Mutation = "ALTER ROLE ticketbox_migrator PASSWORD NULL"; Cleanup = "ALTER ROLE ticketbox_migrator PASSWORD 'projection-test'" },
-        @{ Mutation = "ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD 'projection-test'"; Cleanup = "ALTER ROLE ticketbox_migrator LOGIN PASSWORD 'projection-test'" },
+        @{ Mutation = "ALTER ROLE ticketbox_migrator PASSWORD NULL"; Cleanup = "ALTER ROLE ticketbox_migrator PASSWORD '$script:runtimePassword'" },
+        @{ Mutation = "ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD '$script:runtimePassword'"; Cleanup = "ALTER ROLE ticketbox_migrator LOGIN PASSWORD '$script:runtimePassword'" },
         @{ Mutation = "GRANT ticketbox_foreign TO ticketbox_migrator"; Cleanup = "REVOKE ticketbox_foreign FROM ticketbox_migrator" },
         @{ Mutation = "REVOKE CONNECT ON DATABASE ticketbox FROM ticketbox_migrator"; Cleanup = "GRANT CONNECT ON DATABASE ticketbox TO ticketbox_migrator" },
         @{ Mutation = "GRANT ticketbox_owner TO ticketbox_migrator WITH ADMIN TRUE, INHERIT FALSE, SET TRUE"; Cleanup = "GRANT ticketbox_owner TO ticketbox_migrator WITH ADMIN FALSE, INHERIT FALSE, SET TRUE" },
@@ -380,7 +460,7 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
     Invoke-TestPsql -Database "postgres" -Sql "ALTER ROLE ticketbox_runtime LOGIN" | Out-Null
 
     foreach ($scenario in @(
-        @{ Mutation = "ALTER ROLE ticketbox_owner LOGIN PASSWORD 'hostile-owner'"; Cleanup = "ALTER ROLE ticketbox_owner NOLOGIN PASSWORD NULL" },
+        @{ Mutation = "ALTER ROLE ticketbox_owner LOGIN PASSWORD '$script:runtimePassword'"; Cleanup = "ALTER ROLE ticketbox_owner NOLOGIN PASSWORD NULL" },
         @{ Mutation = "ALTER ROLE ticketbox_owner INHERIT"; Cleanup = "ALTER ROLE ticketbox_owner NOINHERIT" },
         @{ Mutation = "ALTER ROLE ticketbox_owner SUPERUSER"; Cleanup = "ALTER ROLE ticketbox_owner NOSUPERUSER" },
         @{ Mutation = "ALTER ROLE ticketbox_owner CREATEDB"; Cleanup = "ALTER ROLE ticketbox_owner NOCREATEDB" },
@@ -396,7 +476,9 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
         Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
     }
-    Invoke-TestPsql -Database "postgres" -Sql "ALTER ROLE ticketbox_owner LOGIN" | Out-Null
+    Invoke-TestPsql -Database "postgres" -Sql (
+        "ALTER ROLE ticketbox_owner LOGIN PASSWORD '$script:runtimePassword'"
+    ) | Out-Null
     $sleeper = Start-TestRoleSleeper -Role "ticketbox_owner"
     Invoke-TestPsql -Database "postgres" -Sql "ALTER ROLE ticketbox_owner NOLOGIN" | Out-Null
     Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
@@ -449,6 +531,122 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         Assert-MigratorState -Expected "retired"
         Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
     }
+
+    $intent = [pscustomobject]@{
+        PayloadSha256 = ('a' * 64)
+        Payload = [pscustomobject]@{
+            operation_id = '33333333-3333-4333-8333-333333333333'
+            target_revision = '20260809_0001'
+        }
+    }
+    $candidate = [pscustomobject]@{
+        PayloadSha256 = ('c' * 64)
+        Payload = [pscustomobject]@{
+            operation_id = '33333333-3333-4333-8333-333333333333'
+            intent_sha256 = ('a' * 64)
+            target_revision = '20260809_0001'
+        }
+    }
+    function Assert-TicketboxLifecycleOperationLease { param($LifecycleLock) }
+    $adminSecret = ConvertTo-TicketboxPostgresqlSecureString `
+        $script:bootstrapPassword "projection bootstrap password"
+    $runtimeSecret = ConvertTo-TicketboxPostgresqlSecureString `
+        $script:runtimePassword "projection runtime password"
+    try {
+        $foreignRetirement = '{"schema":"foreign-generation-retirement-v1"}'
+        $foreignRetirementLiteral = ConvertTo-TicketboxC07SqlLiteral $foreignRetirement
+        Invoke-TestPsql `
+            -Database "postgres" `
+            -Sql "COMMENT ON ROLE postgres IS $foreignRetirementLiteral" | Out-Null
+        $runtimeCouldForgeRetirement = $false
+        try {
+            Invoke-TestPsql `
+                -Database "postgres" `
+                -Sql "COMMENT ON ROLE postgres IS 'forged-runtime-retirement'" `
+                -Role "ticketbox_runtime" `
+                -PlainPassword $script:runtimePassword | Out-Null
+            $runtimeCouldForgeRetirement = $true
+        }
+        catch {}
+        if ($runtimeCouldForgeRetirement) {
+            throw "runtime role forged the bootstrap retirement authority"
+        }
+
+        Invoke-TestPsql `
+            -Database "postgres" `
+            -Sql "SELECT 1" `
+            -Role "postgres" `
+            -PlainPassword $script:bootstrapPassword | Out-Null
+        Stop-TestPostgresForSingleUser
+        $serverStarted = $false
+        $singleUserHelper = [IO.Path]::GetFullPath((Join-Path `
+            $PSScriptRoot "..\..\windows_database_generation_single_user.ps1"))
+        $foreignRejected = $false
+        try {
+            & $singleUserHelper `
+                -PostgresPath (Join-Path $PgBin "postgres.exe") `
+                -PhysicalPgData $dataDir `
+                -OperationId ([string]$intent.Payload.operation_id) `
+                -IntentSha256 ([string]$intent.PayloadSha256) `
+                -CandidateSha256 ([string]$candidate.PayloadSha256) `
+                -CommittedRevision ([string]$candidate.Payload.target_revision) `
+                -TimeoutMilliseconds 30000
+        }
+        catch { $foreignRejected = $true }
+        if (-not $foreignRejected) {
+            throw "single-user retirement overwrote a foreign role marker"
+        }
+        Start-TestPostgresAfterSingleUser
+        $serverStarted = $true
+        $observedForeign = Invoke-TestPsql -Database "postgres" -Sql @"
+SELECT COALESCE(pg_catalog.shobj_description(role.oid, 'pg_authid'), '')
+FROM pg_catalog.pg_roles AS role
+WHERE role.rolname = 'postgres';
+"@
+        if ($observedForeign -cne $foreignRetirement) {
+            throw "failed single-user retirement changed the foreign marker"
+        }
+        Invoke-TestPsql `
+            -Database "postgres" `
+            -Sql "SELECT 1" `
+            -Role "postgres" `
+            -PlainPassword $script:bootstrapPassword | Out-Null
+        Invoke-TestPsql -Database "postgres" -Sql "COMMENT ON ROLE postgres IS NULL" | Out-Null
+        Stop-TestPostgresForSingleUser
+        $serverStarted = $false
+        & $singleUserHelper `
+            -PostgresPath (Join-Path $PgBin "postgres.exe") `
+            -PhysicalPgData $dataDir `
+            -OperationId ([string]$intent.Payload.operation_id) `
+            -IntentSha256 ([string]$intent.PayloadSha256) `
+            -CandidateSha256 ([string]$candidate.PayloadSha256) `
+            -CommittedRevision ([string]$candidate.Payload.target_revision) `
+            -TimeoutMilliseconds 30000
+        Start-TestPostgresAfterSingleUser
+        $serverStarted = $true
+        if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
+            $intent $candidate $authority $runtimeSecret)) {
+            throw "runtime role did not observe bootstrap retirement"
+        }
+    }
+    finally {
+        $adminSecret.Dispose()
+        $runtimeSecret.Dispose()
+    }
+    $oldBootstrapPasswordRejected = $false
+    try {
+        Invoke-TestPsql `
+            -Database "postgres" `
+            -Sql "SELECT 1" `
+            -Role "postgres" `
+            -PlainPassword $script:bootstrapPassword | Out-Null
+    }
+    catch {
+        $oldBootstrapPasswordRejected = $true
+    }
+    if (-not $oldBootstrapPasswordRejected) {
+        throw "retired PostgreSQL bootstrap password still authenticated"
+    }
 }
 catch {
     $primaryFailure = $_
@@ -472,6 +670,7 @@ finally {
             )
         }
     }
+    $secret.Dispose()
 }
 if ($null -ne $primaryFailure) {
     if ($null -ne $cleanupFailure) {

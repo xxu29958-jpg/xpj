@@ -186,7 +186,7 @@ function Invoke-TicketboxPackagedManagedSchemaUpgrade {
     }
     $capturedProgram = $program
     $capturedUrl = $databaseUrl
-    return Invoke-TicketboxC07WithPlainSecret `
+    return Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $MigratorPassword `
         -Action ({
             param([string]$PlainPassword)

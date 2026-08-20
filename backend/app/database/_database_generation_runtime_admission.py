@@ -27,7 +27,7 @@ _ENVELOPE_FIELDS = ("schema", "kind", "payload_sha256", "payload")
 _CURRENT_FIELD_ORDER = (
     "schema operation_id installation_id intent_sha256 candidate_sha256 "
     "committed_revision generation_program_sha256 database_binding_sha256 "
-    "expected_predecessor_sha256"
+    "terminal_state_sha256 expected_predecessor_sha256"
 )
 _BINDING_FIELD_ORDER = (
     "schema operation_id installation_id intent_sha256 source_binding_sha256 "
@@ -43,8 +43,7 @@ _BINDING_SHA_FIELD_ORDER = (
 )
 _LIVE_DATABASE_QUERY = text(
     """
-    SELECT control.system_identifier::text,
-           database.oid::bigint,
+    SELECT control.system_identifier::text, database.oid::bigint,
            current_database()::text,
            session_user::text,
            (SELECT value FROM public.app_meta WHERE key = 'server_id'),
@@ -327,6 +326,7 @@ def _validate_current(current: dict[str, object], program: object) -> tuple[str,
     _lower_sha(current["candidate_sha256"], "CURRENT candidate")
     binding_sha = _lower_sha(current["database_binding_sha256"], "CURRENT database binding")
     program_sha = _lower_sha(current["generation_program_sha256"], "CURRENT generation program")
+    _lower_sha(current["terminal_state_sha256"], "CURRENT terminal state")
     revision = current["committed_revision"]
     if (
         not isinstance(revision, str)

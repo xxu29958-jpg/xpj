@@ -915,29 +915,17 @@ function Invoke-TicketboxOwnedOneShotService {
         [Parameter(Mandatory = $true)][string]$ExpectedExecutable,
         [Parameter(Mandatory = $true)][string[]]$ExpectedRuntimeExecutables,
         [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds,
-        [Parameter(Mandatory = $true)][int]$PollMilliseconds,
-        [scriptblock]$SnapshotReader = {
-            param($ServiceName)
-            Get-TicketboxServiceRuntimeSnapshot $ServiceName
-        },
-        [scriptblock]$StartAction = {
-            param($ServiceName)
-            Invoke-TicketboxScChecked @("start", $ServiceName) | Out-Null
-        },
-        [scriptblock]$SleepAction = {
-            param($Milliseconds)
-            Start-Sleep -Milliseconds $Milliseconds
-        }
+        [Parameter(Mandatory = $true)][int]$PollMilliseconds
     )
 
     if (-not (Assert-TicketboxServiceOwnership $Name $ExpectedExecutable)) {
         throw "Windows one-shot 服务 $Name 不存在。"
     }
-    & $StartAction $Name
+    Invoke-TicketboxScChecked @("start", $Name) | Out-Null
     $deadline = New-TicketboxWaitDeadline $TimeoutMilliseconds
     $snapshot = $null
     do {
-        $snapshot = & $SnapshotReader $Name
+        $snapshot = Get-TicketboxServiceRuntimeSnapshot $Name
         if ([string]$snapshot.State -ceq "stopped") {
             break
         }
@@ -947,8 +935,7 @@ function Invoke-TicketboxOwnedOneShotService {
     } while (Wait-TicketboxPollBeforeDeadline `
         -Deadline $deadline `
         -TimeoutMilliseconds $TimeoutMilliseconds `
-        -PollMilliseconds $PollMilliseconds `
-        -SleepAction $SleepAction)
+        -PollMilliseconds $PollMilliseconds)
     if ($null -eq $snapshot -or [string]$snapshot.State -cne "stopped") {
         throw "Windows one-shot 服务 $Name 未在 $TimeoutMilliseconds ms 内停止。"
     }
@@ -956,9 +943,8 @@ function Invoke-TicketboxOwnedOneShotService {
         -Name $Name `
         -ExpectedRuntimeExecutables $ExpectedRuntimeExecutables `
         -TimeoutMilliseconds $TimeoutMilliseconds `
-        -PollMilliseconds $PollMilliseconds `
-        -SleepAction $SleepAction
-    $snapshot = & $SnapshotReader $Name
+        -PollMilliseconds $PollMilliseconds
+    $snapshot = Get-TicketboxServiceRuntimeSnapshot $Name
     if (
         [string]$snapshot.State -cne "stopped" -or
         [uint32]$snapshot.ProcessId -ne 0

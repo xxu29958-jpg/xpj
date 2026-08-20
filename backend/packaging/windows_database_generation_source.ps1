@@ -4,6 +4,43 @@
 # bootstrap facts.  Its durable output is a SourceBinding; no later phase sees
 # fresh/legacy/runtime modes or any C07 READY marker.
 
+function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {
+    param([Parameter(Mandatory = $true)][object]$HostContract)
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        $HostContract `
+        @(
+            "backend_service_name", "data_root", "install_dir", "pg_ctl_path",
+            "pg_service_name", "pg_dump_path", "pg_dump_size",
+            "pg_dump_sha256", "pg_restore_path", "pg_restore_size",
+            "pg_restore_sha256", "release_config"
+        ) `
+        "database generation host contract"
+    $shapes = @(Get-TicketboxReleaseServiceIdentityShapes `
+        -Config $HostContract.release_config `
+        -ServiceName ([string]$HostContract.pg_service_name) `
+        -TargetConfig $HostContract.release_config)
+    $authority = Resolve-TicketboxPostgresServiceHostAuthority `
+        -ServiceName ([string]$HostContract.pg_service_name) `
+        -ExpectedPgCtlPath ([string]$HostContract.pg_ctl_path) `
+        -DataRoot ([string]$HostContract.data_root) `
+        -InstallDir ([string]$HostContract.install_dir) `
+        -BackendServiceName ([string]$HostContract.backend_service_name) `
+        -AllowedServiceIdentityShapes $shapes
+    return [pscustomobject]@{
+        Schema = "ticketbox-postgresql-host-authority-v1"
+        ServiceName = [string]$authority.ServiceName
+        ServiceProcessId = [int]$authority.ServiceProcessId
+        PostmasterProcessId = [int]$authority.PostmasterProcessId
+        PgCtlPath = [string]$authority.PgCtlPath
+        PsqlPath = [string]$authority.PsqlPath
+        PgData = [string]$authority.PgData
+        PhysicalPgData = [string]$authority.PhysicalPgData
+        Port = [int]$authority.Port
+        UsesRuntimeBinding = [bool]$authority.UsesRuntimeBinding
+        DataVolumeIdentity = [string]$authority.DataVolumeIdentity
+    }
+}
+
 function New-TicketboxDatabaseGenerationEmptyRoleSql {
     param(
         [Parameter(Mandatory = $true)][string]$OperationId,
@@ -200,13 +237,13 @@ function Invoke-TicketboxDatabaseGenerationEmptySource {
         [Parameter(Mandatory = $true)][object]$Intent,
         [Parameter(Mandatory = $true)][object]$Credentials,
         [Parameter(Mandatory = $true)][object]$HostAuthority,
-        [Parameter(Mandatory = $true)][object]$SuperuserCapability,
+        [Parameter(Mandatory = $true)][object]$MaintenanceAuthority,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     $operationId = ([guid][string]$Intent.Payload.operation_id).ToString("D")
-    $null = Assert-TicketboxC07SuperuserCapability `
-        $SuperuserCapability $operationId $LifecycleLock
-    $superuserPassword = $SuperuserCapability.Secret
+    $null = Assert-TicketboxDatabaseGenerationMaintenanceAuthority `
+        $MaintenanceAuthority $Intent $HostAuthority $LifecycleLock
+    $superuserPassword = $MaintenanceAuthority.Secret
     $temporaryDatabase = "ticketbox_generation_" + ([guid]$operationId).ToString("N")
     $targetCatalog = Get-TicketboxC07DatabaseCatalogObservation `
         $HostAuthority $superuserPassword $script:TicketboxC07DatabaseName

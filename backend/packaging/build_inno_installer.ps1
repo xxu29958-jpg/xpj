@@ -139,7 +139,12 @@ $WindowsSecurityDescriptorDiagnosticScript = Join-Path `
 $WindowsSecurityFileSecurityScript = Join-Path `
     $WindowsSecurityPrimitivesComponentDir `
     "file_security.ps1"
-$C07SuperuserRecoveryScript = Join-Path $ScriptDir "windows_c07_superuser_recovery.ps1"
+$PostgresqlCredentialsScript = Join-Path `
+    $ScriptDir `
+    "windows_postgresql_credentials.ps1"
+$PostgresqlSingleUserScript = Join-Path `
+    $ScriptDir `
+    "windows_postgresql_single_user.ps1"
 $WindowsDeadlineBudgetScript = Join-Path $ScriptDir "windows_deadline_budget.ps1"
 $AtomicArtifactsScript = Join-Path $ScriptDir "windows_atomic_artifacts.ps1"
 $AtomicArtifactsComponentDir = Join-Path $ScriptDir "atomic_artifacts"
@@ -159,9 +164,21 @@ $DatabaseGenerationContractScript = Join-Path `
 $DatabaseGenerationArtifactsScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_artifacts.ps1"
-$DatabaseGenerationAdapterScript = Join-Path `
+$DatabaseGenerationCommitVerifierScript = Join-Path `
     $ScriptDir `
-    "windows_database_generation_adapter.ps1"
+    "windows_database_generation_commit_verifier.ps1"
+$DatabaseGenerationPolicyScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_policy.ps1"
+$DatabaseGenerationCredentialsScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_credentials.ps1"
+$DatabaseGenerationRoleFenceScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_role_fence.ps1"
+$DatabaseGenerationDatabaseBindingScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_database_binding.ps1"
 $DatabaseGenerationSourceScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_source.ps1"
@@ -171,6 +188,12 @@ $DatabaseGenerationRecoveryEvidenceScript = Join-Path `
 $DatabaseGenerationTargetRecoveryScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_target_recovery.ps1"
+$DatabaseGenerationRetirementScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_retirement.ps1"
+$DatabaseGenerationSingleUserScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_single_user.ps1"
 $DatabaseGenerationProjectionScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_projection.ps1"
@@ -1106,7 +1129,8 @@ Assert-File `
     $WindowsSecurityDescriptorDiagnosticScript `
     "Windows security descriptor diagnostic primitives 脚本"
 Assert-File $WindowsSecurityFileSecurityScript "Windows file-security primitives 脚本"
-Assert-File $C07SuperuserRecoveryScript "Windows C07 superuser recovery 脚本"
+Assert-File $PostgresqlCredentialsScript "Windows PostgreSQL credential primitives"
+Assert-File $PostgresqlSingleUserScript "Windows PostgreSQL single-user service adapter"
 Assert-File $WindowsDeadlineBudgetScript "Windows deadline-budget adapter"
 Assert-File $AtomicArtifactsScript "Windows atomic-artifact 入口脚本"
 Assert-File $AtomicArtifactsNativeScript "Windows atomic-artifact native 脚本"
@@ -1119,7 +1143,15 @@ Assert-File `
 Assert-File $DatabaseGenerationScript "Windows database generation owner"
 Assert-File $DatabaseGenerationContractScript "Windows database generation contract"
 Assert-File $DatabaseGenerationArtifactsScript "Windows database generation artifact store"
-Assert-File $DatabaseGenerationAdapterScript "Windows database generation adapter"
+Assert-File `
+    $DatabaseGenerationCommitVerifierScript `
+    "Windows database generation commit verifier"
+Assert-File $DatabaseGenerationPolicyScript "Windows database generation policy"
+Assert-File $DatabaseGenerationCredentialsScript "Windows database generation credentials"
+Assert-File $DatabaseGenerationRoleFenceScript "Windows database generation role fence"
+Assert-File `
+    $DatabaseGenerationDatabaseBindingScript `
+    "Windows database generation database binding"
 Assert-File $DatabaseGenerationSourceScript "Windows database generation source mechanism"
 Assert-File `
     $DatabaseGenerationRecoveryEvidenceScript `
@@ -1127,6 +1159,12 @@ Assert-File `
 Assert-File `
     $DatabaseGenerationTargetRecoveryScript `
     "Windows database generation fixed target recovery"
+Assert-File `
+    $DatabaseGenerationRetirementScript `
+    "Windows database generation bootstrap retirement"
+Assert-File `
+    $DatabaseGenerationSingleUserScript `
+    "Windows database generation single-user helper"
 Assert-File `
     $DatabaseGenerationProjectionScript `
     "Windows database generation runtime projection"
@@ -1264,6 +1302,8 @@ $defines = @(
     "/DDatabaseGenerationScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationScript)",
     "/DDatabaseGenerationContractScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationContractScript)",
     "/DDatabaseGenerationArtifactsScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationArtifactsScript)",
+    "/DDatabaseGenerationCommitVerifierScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationCommitVerifierScript)",
+    "/DDatabaseGenerationPolicyScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationPolicyScript)",
     "/DDatabaseGenerationProgramSha256=$([string]$backendManifest.payload.database_generation_program.sha256)",
     "/DDatabaseGenerationMigrationHelperSize=$([int64]$backendManifest.payload.c07_migration_helper.size)",
     "/DDatabaseGenerationMigrationHelperSha256=$([string]$backendManifest.payload.c07_migration_helper.sha256)",

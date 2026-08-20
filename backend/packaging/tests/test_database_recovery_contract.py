@@ -437,8 +437,16 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     assert "function Repair-PostgresBootstrapRecoveryFileAcl" in database
     assert "function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization" in database
     assert '--pwfile=$pwfile' in database
-    assert 'ALTER ROLE `"$DbRole`" WITH LOGIN PASSWORD' in database
-    assert '既有应用数据库 owner 不是预期角色' in database
+    assert "RolePassword" not in database
+    assert "role_password=" not in database
+    password_factory = database[
+        database.index("function New-StrongPassword") : database.index(
+            "function Get-HttpBootstrapSecretByteCount"
+        )
+    ]
+    assert password_factory.index("return -join") < password_factory.index(
+        "[Array]::Clear($bytes, 0, $bytes.Length)"
+    ) < password_factory.index("$rng.Dispose()")
     assert '$script:HttpBootstrapSecretByteCount = 32' not in database
     assert '$script:HttpBootstrapSecretEncodedLength = 43' not in database
     assert "$byteCount = [int]$SecretByteCount" in database
@@ -450,6 +458,14 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     )
     assert "function New-HttpBootstrapSecret" in database
     assert "[Convert]::ToBase64String($bytes)" in database
+    http_secret_factory = database[
+        database.index("function New-HttpBootstrapSecret") : database.index(
+            "function Escape-SqlLiteral"
+        )
+    ]
+    assert http_secret_factory.index("[Convert]::ToBase64String($bytes)") < (
+        http_secret_factory.index("[Array]::Clear($bytes, 0, $bytes.Length)")
+    ) < http_secret_factory.index("$rng.Dispose()")
     assert "HttpBootstrapSecret = New-HttpBootstrapSecret" in database
     assert "HttpBootstrapSecret = New-StrongPassword" not in database
     assert (
@@ -493,29 +509,19 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
         "if (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)"
     )
     recovery_validation = database.index(
-        "[void](Read-PostgresBootstrapRecoveryState)", existing_cluster
+        "[void](Read-PostgresBootstrapRecoveryState -Path $pwfile)", existing_cluster
     )
     config_mutation = database.index(
         "Set-TicketboxPostgresInstallerConfiguration", existing_cluster
     )
     assert recovery_validation < config_mutation
 
-    prepare = database.index("function Prepare-DatabaseIfNeeded")
-    env_write = database.index("Write-EnvNoBom -Path $EnvPath", prepare)
-    app_connection_check = database.index("Assert-TicketboxConnectedPostgresDataRoot", env_write)
-    recovery_cleanup = database.index("Remove-TicketboxSensitiveFile $pwfile", app_connection_check)
-    assert env_write < app_connection_check < recovery_cleanup
-
-    assert '"-tAc", $Sql' not in database
-    assert '"--dbname", $ProtectedDatabaseUrl, "-tA"' in database
-    assert "Invoke-TicketboxBoundedNativeProcess" in database
-    assert '-StandardInputText ($Sql + "`n")' in database
-    assert "$out = $Sql | & $psql @args 2>&1" not in database
-    assert "Invoke-TicketboxWithPgPassFile" in database
-    assert '$env:PGPASSWORD = $Password' not in database
-    assert 'throw "psql 执行失败（db=$Database, exit=$($result.ExitCode)）。"' in database
-    assert '$Sql`n$out' not in database
-    assert '$State.SuperuserPassword 2>&1' not in database
+    for retired_writer in (
+        "function Prepare-DatabaseIfNeeded",
+        "function Set-EnvDatabaseUrl",
+        "function Invoke-Psql",
+    ):
+        assert retired_writer not in database
 
     passfile_directory = database_safety[
         database_safety.index(
@@ -652,12 +658,9 @@ def test_service_owned_initdb_uses_a_separate_single_secret_authority() -> None:
     assert "$c07Disposition" not in install
     assert "Invoke-TicketboxC07InstalledReleaseMigration" not in install
     generation = GENERATION_OWNER_SCRIPT.read_text(encoding="utf-8-sig")
-    for capability in (
-        "Acquire-TicketboxC07SuperuserCapability",
-        "Renew-TicketboxC07SuperuserCapability",
-        "Revoke-TicketboxC07SuperuserCapability",
-    ):
-        assert capability in generation
+    assert generation.count("New-TicketboxDatabaseGenerationMaintenanceAuthority `") == 1
+    assert generation.count("Close-TicketboxDatabaseGenerationMaintenanceAuthority `") == 2
+    assert "SuperuserCapability" not in generation
     assert "Invoke-TicketboxC07RecoveredSuperuserAction" not in generation
     assert "Invoke-TicketboxInterruptedInitdbServiceRecovery" in prepare
     assert "中断 initdb 回执对应的同名 PostgreSQL 服务 executable 不匹配" in prepare
@@ -1375,7 +1378,7 @@ if (Test-Path -LiteralPath (Join-Path $PgData 'partial-init.tmp')) {
 if (-not (Test-Path -LiteralPath $recoveryPath -PathType Leaf)) {
     throw 'fresh init did not persist recovery state'
 }
-$state = Read-PostgresBootstrapRecoveryState
+$state = Read-PostgresBootstrapRecoveryState -Path $recoveryPath
 if ($state.HttpBootstrapSecret.Length -ne 43 -or
     $state.HttpBootstrapSecret -cnotmatch '^[A-Za-z0-9_-]{43}$') {
     throw 'HTTP bootstrap secret is not unpadded base64url'
@@ -1391,7 +1394,7 @@ if ($secondHttpSecret -ceq $state.HttpBootstrapSecret) {
     throw 'HTTP bootstrap secret generator repeated output'
 }
 $firstTrace = Get-Content -LiteralPath '__TRACE_PATH__' -Raw -Encoding UTF8
-foreach ($secret in @($state.SuperuserPassword, $state.RolePassword, $state.HttpBootstrapSecret)) {
+foreach ($secret in @($state.SuperuserPassword, $state.HttpBootstrapSecret)) {
     if ($firstTrace.Contains($secret)) { throw 'secret appeared in initdb argv' }
 }
 if (-not $firstTrace.Contains("--pwfile=$recoveryPath")) {
@@ -1401,108 +1404,12 @@ if (-not $firstTrace.Contains("--pwfile=$recoveryPath")) {
 [void](Initialize-PgClusterIfNeeded)
 $secondTrace = Get-Content -LiteralPath '__TRACE_PATH__' -Raw -Encoding UTF8
 if ($secondTrace -cne $firstTrace) { throw 'recovery reran initdb' }
-$recoveredState = Read-PostgresBootstrapRecoveryState
+$recoveredState = Read-PostgresBootstrapRecoveryState -Path $recoveryPath
 if ($recoveredState.SuperuserPassword -cne $state.SuperuserPassword -or
-    $recoveredState.RolePassword -cne $state.RolePassword -or
     $recoveredState.HttpBootstrapSecret -cne $state.HttpBootstrapSecret) {
     throw 'crash recovery changed persisted secrets'
 }
 
-$script:roleExists = $false
-$script:databaseExists = $false
-$script:failAfterRole = $true
-$script:alterObserved = $false
-function Invoke-Psql([string]$Database, [string]$Sql, [string]$Password) {
-    if ($Password -cne $state.SuperuserPassword) { throw 'wrong superuser password' }
-    if ($Sql.StartsWith('SELECT 1 FROM pg_roles', [StringComparison]::Ordinal)) {
-        if ($script:roleExists) { return '1' }
-        return ''
-    }
-    if ($Sql.StartsWith('CREATE ROLE', [StringComparison]::Ordinal)) {
-        if (-not $Sql.Contains($state.RolePassword)) { throw 'role password changed' }
-        $script:roleExists = $true
-        return ''
-    }
-    if ($Sql.StartsWith('ALTER ROLE', [StringComparison]::Ordinal)) {
-        if (-not $Sql.Contains($state.RolePassword)) { throw 'role password changed' }
-        $script:alterObserved = $true
-        return ''
-    }
-    if ($Sql.StartsWith('SELECT pg_get_userbyid', [StringComparison]::Ordinal)) {
-        if ($script:failAfterRole) {
-            $script:failAfterRole = $false
-            throw 'simulated crash after role creation'
-        }
-        if ($script:databaseExists) { return $DbRole }
-        return ''
-    }
-    if ($Sql.StartsWith('CREATE DATABASE', [StringComparison]::Ordinal)) {
-        $script:databaseExists = $true
-        return ''
-    }
-    throw 'unexpected SQL shape'
-}
-function Assert-TicketboxConnectedPostgresDataRoot {
-    param(
-        [string]$PsqlPath,
-        [string]$DatabaseUrl,
-        [string]$ExpectedDataRoot,
-        [int]$ExpectedPort,
-        [string]$Password,
-        [int]$TimeoutMilliseconds
-    )
-    if ($Password -cne $state.RolePassword) { throw 'application role password mismatch' }
-    if ($ExpectedDataRoot -cne $PgData) { throw 'data root mismatch' }
-    if ($ExpectedPort -ne $PgPort) { throw 'port mismatch' }
-    if ($TimeoutMilliseconds -le 0) { throw 'database tool timeout missing' }
-}
-
-$crashed = $false
-try { Prepare-DatabaseIfNeeded $null | Out-Null }
-catch {
-    $crashed = $true
-    foreach ($secret in @($state.SuperuserPassword, $state.RolePassword, $state.HttpBootstrapSecret)) {
-        if ($_.Exception.Message.Contains($secret)) { throw 'secret leaked through crash error' }
-    }
-}
-if (-not $crashed -or -not $script:roleExists -or $script:databaseExists) {
-    throw 'role-only crash was not simulated'
-}
-if (-not (Test-Path -LiteralPath $recoveryPath) -or (Test-Path -LiteralPath $EnvPath)) {
-    throw 'role-only crash lost recovery state or wrote env too early'
-}
-
-$script:originalSensitiveRemove = ${function:Remove-TicketboxSensitiveFile}
-$script:blockRecoveryCleanup = $true
-function Remove-TicketboxSensitiveFile([string]$Path) {
-    if ($script:blockRecoveryCleanup -and $Path -ceq $recoveryPath) {
-        throw 'simulated recovery cleanup failure'
-    }
-    & $script:originalSensitiveRemove $Path
-}
-$cleanupFailed = $false
-try { Prepare-DatabaseIfNeeded $null | Out-Null }
-catch { $cleanupFailed = $true }
-if (-not $cleanupFailed -or
-    -not (Test-Path -LiteralPath $recoveryPath) -or
-    -not (Test-Path -LiteralPath $EnvPath)) {
-    throw 'recovery cleanup failure did not fail closed after env persistence'
-}
-if (-not $script:alterObserved -or -not $script:databaseExists) {
-    throw 'retry did not reuse the role password and finish the database'
-}
-
-$script:blockRecoveryCleanup = $false
-Set-Item -Path Function:Remove-TicketboxSensitiveFile -Value $script:originalSensitiveRemove
-[void](Prepare-DatabaseIfNeeded $null)
-if (Test-Path -LiteralPath $recoveryPath) {
-    throw 'verified success did not remove recovery state'
-}
-$envBytes = [System.IO.File]::ReadAllBytes($EnvPath)
-if ($envBytes.Length -ge 3 -and
-    $envBytes[0] -eq 0xEF -and $envBytes[1] -eq 0xBB -and $envBytes[2] -eq 0xBF) {
-    throw '.env contains a UTF-8 BOM'
-}
 """
         replacements = {
             "__INSTALLATION_SAFETY__": _ps_literal(INSTALLATION_SAFETY_SCRIPT),
@@ -1642,9 +1549,8 @@ if ((Get-AclShape $accepted.DataRoot) -cne $acceptedRootShape -or
     (Get-AclShape $accepted.AppData) -cne $acceptedAppShape) {
     throw 'bootstrap ACL repair changed its validated parent ACL chain'
 }
-$roundTrip = Read-PostgresBootstrapRecoveryState
+$roundTrip = Read-PostgresBootstrapRecoveryState -Path $accepted.Path
 if ($roundTrip.SuperuserPassword -cne $state.SuperuserPassword -or
-    $roundTrip.RolePassword -cne $state.RolePassword -or
     $roundTrip.HttpBootstrapSecret -cne $state.HttpBootstrapSecret) {
     throw 'bootstrap ACL repair changed recovery authority'
 }
@@ -1672,7 +1578,7 @@ if (-not (Test-TicketboxWindowsByteArrayEquals `
     ([IO.File]::ReadAllBytes($accepted.Path)))) {
     throw 'post-normalization bootstrap protection changed recovery bytes'
 }
-[void](Read-PostgresBootstrapRecoveryState)
+[void](Read-PostgresBootstrapRecoveryState -Path $accepted.Path)
 if (Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
     -ParentFullControlAccounts $parentAccounts) {
     throw 'post-normalization bootstrap protection was not idempotent'
@@ -1862,7 +1768,7 @@ if (-not $actualAfterAcl.AreAccessRulesProtected -or
         ([IO.File]::ReadAllBytes($actual.Path)))) {
     throw 'actual Set-TicketboxAcl did not re-protect bootstrap recovery bytes'
 }
-[void](Read-PostgresBootstrapRecoveryState)
+[void](Read-PostgresBootstrapRecoveryState -Path $actual.Path)
 
 $wired = New-InheritedRecoveryCase `
     -Root (Join-Path '__ROOT__' 'initialize-wiring') `
@@ -1892,7 +1798,7 @@ if (-not $wiredReached -or
     -not (Get-TicketboxPathAcl $wired.Path).AreAccessRulesProtected) {
     throw 'Initialize-PgClusterIfNeeded bypassed inherited bootstrap ACL repair'
 }
-[void](Read-PostgresBootstrapRecoveryState)
+[void](Read-PostgresBootstrapRecoveryState -Path $wired.Path)
 """
         replacements = {
             "__INSTALLATION_SAFETY__": _ps_literal(INSTALLATION_SAFETY_SCRIPT),
@@ -1947,7 +1853,7 @@ $recoveryPath = Get-PostgresBootstrapRecoveryPath
     [System.Text.Encoding]::ASCII
 )
 $malformedRejected = $false
-try { Read-PostgresBootstrapRecoveryState | Out-Null }
+try { Read-PostgresBootstrapRecoveryState -Path $recoveryPath | Out-Null }
 catch {
     $malformedRejected = $true
     if ($_.Exception.Message.Contains('malformed-secret-sentinel')) {
@@ -1961,7 +1867,7 @@ $validPayload = ConvertTo-PostgresBootstrapRecoveryPayload $state
 & icacls.exe $recoveryPath /grant '*S-1-1-0:R' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'failed to seed insecure recovery ACL' }
 $unsafeRejected = $false
-try { Read-PostgresBootstrapRecoveryState | Out-Null }
+try { Read-PostgresBootstrapRecoveryState -Path $recoveryPath | Out-Null }
 catch { $unsafeRejected = $true }
 if (-not $unsafeRejected) { throw 'recovery state with an extra ACL was accepted' }
 
@@ -1969,14 +1875,14 @@ Set-TicketboxExactFileAcl `
     -Path $recoveryPath `
     -Accounts @($currentAccount) `
     -OwnerAccount $currentAccount
-$roundTrip = Read-PostgresBootstrapRecoveryState
+$roundTrip = Read-PostgresBootstrapRecoveryState -Path $recoveryPath
 if ($roundTrip.SuperuserPassword -cne $state.SuperuserPassword) {
     throw 'secure recovery state stopped working after ACL repair'
 }
 Remove-TicketboxSensitiveFile $recoveryPath
 New-Item -ItemType Directory -Path $recoveryPath | Out-Null
 $nonFileRejected = $false
-try { Read-PostgresBootstrapRecoveryState | Out-Null }
+try { Read-PostgresBootstrapRecoveryState -Path $recoveryPath | Out-Null }
 catch { $nonFileRejected = $true }
 if (-not $nonFileRejected) { throw 'recovery directory was accepted as a file' }
 Remove-Item -LiteralPath $recoveryPath -Force
@@ -1991,119 +1897,3 @@ Remove-Item -LiteralPath $recoveryPath -Force
         _write_ps1(harness, script)
         result = _run_ps1(engine, harness)
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
-
-
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows native stderr contract")
-def test_invoke_psql_sanitizes_ps51_native_stderr(tmp_path: Path) -> None:
-    native_stub = _build_native_stub(tmp_path)
-    pg_bin = tmp_path / "psql-bin"
-    pg_bin.mkdir()
-    shutil.copy2(native_stub, pg_bin / "psql.exe")
-
-    for index, engine in enumerate(_powershell_engines()):
-        trace_path = tmp_path / f"psql-argv-{index}.txt"
-        harness = tmp_path / f"psql-native-stderr-{index}.ps1"
-        script = r"""
-$ErrorActionPreference = 'Stop'
-. '__INSTALLATION_SAFETY__'
-. '__DATABASE_SAFETY__'
-. '__DATABASE_SCRIPT__'
-$PgBin = '__PG_BIN__'
-$PgPort = 5544
-$DatabaseToolTimeoutMs = 10000
-$env:TICKETBOX_TEST_ARGV_TRACE = '__TRACE_PATH__'
-$env:TICKETBOX_TEST_NATIVE_MODE = 'stderr'
-$env:PGPASSWORD = 'parent-password-sentinel'
-$env:PGPASSFILE = 'parent-passfile-sentinel'
-$env:PGHOSTADDR = '203.0.113.7'
-$env:PGPORT = '6543'
-$env:PGSERVICE = 'parent-service-sentinel'
-$passDirectory = Get-TicketboxProtectedPgPassDirectory
-$stalePaths = @(
-    (Join-Path $passDirectory.Path ('.ticketbox-pgpass-stale-empty-' + $PID)),
-    (Join-Path $passDirectory.Path ('.ticketbox-protected-stale-truncated-' + $PID + '.tmp'))
-)
-$staleSecurity = New-TicketboxProtectedFileSecurity `
-    -FullControlAccounts $passDirectory.FullControlAccounts `
-    -OwnerAccount $passDirectory.OwnerAccount
-$emptyStream = New-TicketboxProtectedFileStream -Path $stalePaths[0] -Security $staleSecurity
-$emptyStream.Dispose()
-$truncatedStream = New-TicketboxProtectedFileStream -Path $stalePaths[1] -Security $staleSecurity
-try {
-    $truncatedStream.Write([byte[]]@(0xC3), 0, 1)
-    $truncatedStream.Flush($true)
-}
-finally { $truncatedStream.Dispose() }
-foreach ($stalePath in $stalePaths) {
-    [System.IO.File]::SetLastWriteTimeUtc($stalePath, [DateTime]::UtcNow.AddHours(-3))
-}
-Get-TicketboxProtectedPgPassDirectory | Out-Null
-foreach ($stalePath in $stalePaths) {
-    if (Test-Path -LiteralPath $stalePath) { throw 'stale crash residue was not removed' }
-}
-$legacyStage = Join-Path $passDirectory.Path ('.ticketbox-protected-test-' + $PID + '.tmp')
-Write-TicketboxProtectedUtf8FileDurable `
-    -Path $legacyStage `
-    -Text 'interrupted legacy staging' `
-    -FullControlAccounts $passDirectory.FullControlAccounts `
-    -OwnerAccount $passDirectory.OwnerAccount
-$caught = $false
-try {
-    Invoke-Psql 'postgres' 'SELECT sql-secret-sentinel' 'pg-password-sentinel' | Out-Null
-}
-catch {
-    $caught = $true
-    $message = $_.Exception.Message
-    foreach ($secret in @(
-        'native-stderr-secret-sentinel',
-        'sql-secret-sentinel',
-        'pg-password-sentinel'
-    )) {
-        if ($message.Contains($secret)) { throw 'Invoke-Psql leaked native details' }
-    }
-    if (-not $message.Contains('db=postgres') -or -not $message.Contains('exit=9')) {
-        throw 'Invoke-Psql did not throw its sanitized error'
-    }
-}
-if (-not $caught) { throw 'native psql failure was not caught' }
-if ($ErrorActionPreference -ne 'Stop') { throw 'ErrorActionPreference was not restored' }
-if ($env:PGPASSWORD -cne 'parent-password-sentinel') { throw 'PGPASSWORD was not restored' }
-if ($env:PGPASSFILE -cne 'parent-passfile-sentinel') { throw 'PGPASSFILE was not restored' }
-if ($env:PGHOSTADDR -cne '203.0.113.7') { throw 'PGHOSTADDR was not restored' }
-if ($env:PGPORT -cne '6543') { throw 'PGPORT was not restored' }
-if ($env:PGSERVICE -cne 'parent-service-sentinel') { throw 'PGSERVICE was not restored' }
-$trace = Get-Content -LiteralPath '__TRACE_PATH__' -Raw -Encoding UTF8
-foreach ($secret in @('sql-secret-sentinel', 'pg-password-sentinel', 'parent-password-sentinel')) {
-    if ($trace.Contains($secret)) { throw 'secret appeared in psql argv' }
-}
-
-$env:TICKETBOX_TEST_NATIVE_MODE = 'success'
-$output = Invoke-Psql 'postgres' 'SELECT 1' 'pg-password-sentinel'
-if ($output -cne '1') { throw 'successful psql stdout was not returned' }
-if ($ErrorActionPreference -ne 'Stop') { throw 'success changed ErrorActionPreference' }
-if ($env:PGPASSWORD -cne 'parent-password-sentinel') { throw 'success changed PGPASSWORD' }
-if ($env:PGPASSFILE -cne 'parent-passfile-sentinel') { throw 'success changed PGPASSFILE' }
-if ($env:PGHOSTADDR -cne '203.0.113.7') { throw 'success changed PGHOSTADDR' }
-if ($env:PGPORT -cne '6543') { throw 'success changed PGPORT' }
-if ($env:PGSERVICE -cne 'parent-service-sentinel') { throw 'success changed PGSERVICE' }
-Remove-TicketboxProtectedPgPassArtifact `
-    -Path $legacyStage `
-    -FullControlAccounts $passDirectory.FullControlAccounts `
-    -OwnerAccount $passDirectory.OwnerAccount
-"""
-        replacements = {
-            "__INSTALLATION_SAFETY__": _ps_literal(INSTALLATION_SAFETY_SCRIPT),
-            "__DATABASE_SAFETY__": _ps_literal(DATABASE_SAFETY_SCRIPT),
-            "__DATABASE_SCRIPT__": _ps_literal(DATABASE_SCRIPT),
-            "__PG_BIN__": _ps_literal(pg_bin),
-            "__TRACE_PATH__": _ps_literal(trace_path),
-        }
-        for placeholder, value in replacements.items():
-            script = script.replace(placeholder, value)
-        _write_ps1(harness, script)
-        result = _run_ps1(engine, harness)
-        combined = result.stdout + result.stderr
-        assert result.returncode == 0, f"{engine}:\n{combined}"
-        assert "native-stderr-secret-sentinel" not in combined
-        assert "sql-secret-sentinel" not in combined
-        assert "pg-password-sentinel" not in combined

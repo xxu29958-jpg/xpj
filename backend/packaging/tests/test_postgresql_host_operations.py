@@ -8,7 +8,6 @@ from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
 HOST_OPERATIONS = PACKAGING / "windows_pg_recovery_tools.ps1"
-C07_RECOVERY = PACKAGING / "windows_c07_superuser_recovery.ps1"
 
 
 def _ps_literal(value: str | Path) -> str:
@@ -35,14 +34,8 @@ def _run_ps(engine: str, script: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_host_psql_contract_is_generic_quiet_and_c07_only_orchestrates() -> None:
+def test_host_psql_contract_is_generic_quiet_and_owns_credential_rotation() -> None:
     host = HOST_OPERATIONS.read_text(encoding="utf-8-sig")
-    c07 = C07_RECOVERY.read_text(encoding="utf-8-sig")
-    rotate_start = c07.index(
-        "function Invoke-TicketboxC07SuperuserRecoveryRotateCredential"
-    )
-    rotate_end = c07.index("\nfunction ", rotate_start + 1)
-    rotate = c07[rotate_start:rotate_end]
 
     assert "function Invoke-TicketboxPostgresqlHostNative" in host
     assert "function Invoke-TicketboxPostgresqlHostPsql" in host
@@ -52,8 +45,6 @@ def test_host_psql_contract_is_generic_quiet_and_c07_only_orchestrates() -> None
     assert '"--quiet",' in host
     assert host.index('"--quiet",') < host.index('"--tuples-only",')
     assert "ALTER ROLE postgres WITH LOGIN PASSWORD" in host
-    assert "Invoke-TicketboxPostgresqlHostCredentialRotation" in rotate
-    assert "ALTER ROLE postgres WITH LOGIN PASSWORD" not in rotate
 
 
 @pytest.mark.parametrize("engine", powershell_contract_engines())

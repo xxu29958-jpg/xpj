@@ -96,11 +96,12 @@ function New-StrongPassword {
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     try {
         $rng.GetBytes($bytes)
+        return -join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] })
     }
     finally {
+        [Array]::Clear($bytes, 0, $bytes.Length)
         $rng.Dispose()
     }
-    return -join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] })
 }
 
 function Get-HttpBootstrapSecretByteCount {
@@ -122,12 +123,13 @@ function New-HttpBootstrapSecret {
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     try {
         $rng.GetBytes($bytes)
+        $base64 = [Convert]::ToBase64String($bytes)
+        return $base64.TrimEnd([char[]]@([char]'=')).Replace("+", "-").Replace("/", "_")
     }
     finally {
+        [Array]::Clear($bytes, 0, $bytes.Length)
         $rng.Dispose()
     }
-    $base64 = [Convert]::ToBase64String($bytes)
-    return $base64.TrimEnd([char[]]@([char]'=')).Replace("+", "-").Replace("/", "_")
 }
 
 function Escape-SqlLiteral([string]$Value) {
@@ -153,20 +155,6 @@ function Read-EnvMap([string]$Path) {
         $map[$key] = $value
     }
     return $map
-}
-
-function Set-EnvDatabaseUrl([string]$Path, [string]$DatabaseUrl) {
-    $lines = @(Get-Content -LiteralPath $Path -Encoding UTF8)
-    $matches = @(
-        for ($index = 0; $index -lt $lines.Count; $index++) {
-            if ([string]$lines[$index] -match '^\s*DATABASE_URL\s*=') { $index }
-        }
-    )
-    if ($matches.Count -ne 1) {
-        throw ".env 必须且只能包含一条 DATABASE_URL。"
-    }
-    $lines[$matches[0]] = "DATABASE_URL=$DatabaseUrl"
-    Write-EnvNoBom -Path $Path -Lines $lines
 }
 
 function Get-TicketboxBundledApplicationDatabaseConnection {
@@ -209,39 +197,6 @@ function New-BaseEnvLines([string]$DatabaseUrl) {
         $lines += "PUBLIC_BASE_URL=$PublicBaseUrl"
     }
     return $lines
-}
-
-function Invoke-Psql([string]$Database, [string]$Sql, [string]$Password) {
-    if ([string]::IsNullOrWhiteSpace($Password)) {
-        throw "批处理 psql 必须使用显式非空口令。"
-    }
-    $encodedDatabase = [System.Uri]::EscapeDataString($Database)
-    $databaseUrl = "postgresql://postgres@127.0.0.1:${PgPort}/${encodedDatabase}?require_auth=scram-sha-256"
-    $psql = Join-Path $PgBin "psql.exe"
-    $result = Invoke-TicketboxWithPgPassFile `
-        -DatabaseUrl $databaseUrl `
-        -Password $Password `
-        -Action {
-            param([string]$ProtectedDatabaseUrl)
-            $args = @(
-                "-X", "-w", "-v", "ON_ERROR_STOP=1",
-                "--dbname", $ProtectedDatabaseUrl, "-tA"
-            )
-            $commandResult = Invoke-TicketboxBoundedNativeProcess `
-                -FilePath $psql `
-                -Arguments $args `
-                -StandardInputText ($Sql + "`n") `
-                -TimeoutMilliseconds $DatabaseToolTimeoutMs `
-                -Label "psql database command"
-            return [pscustomobject]@{
-                Output = @($commandResult.StandardOutput -split "`r?`n")
-                ExitCode = $commandResult.ExitCode
-            }
-        }
-    if ($null -eq $result.ExitCode -or $result.ExitCode -ne 0) {
-        throw "psql 执行失败（db=$Database, exit=$($result.ExitCode)）。"
-    }
-    return ($result.Output | Out-String).Trim()
 }
 
 function Test-PgDataProcessReady([int]$ProbeTimeoutSeconds) {
@@ -354,19 +309,16 @@ function Assert-HttpBootstrapSecretValue([string]$Value) {
 function New-PostgresBootstrapRecoveryState {
     return [pscustomobject]@{
         SuperuserPassword = New-StrongPassword
-        RolePassword = New-StrongPassword
         HttpBootstrapSecret = New-HttpBootstrapSecret
     }
 }
 
 function ConvertTo-PostgresBootstrapRecoveryPayload([object]$State) {
     Assert-PostgresBootstrapPasswordValue $State.SuperuserPassword "superuser_password"
-    Assert-PostgresBootstrapPasswordValue $State.RolePassword "role_password"
     Assert-HttpBootstrapSecretValue $State.HttpBootstrapSecret
     return @(
         $State.SuperuserPassword
         "schema=$script:PostgresBootstrapRecoverySchema"
-        "role_password=$($State.RolePassword)"
         "http_bootstrap_secret=$($State.HttpBootstrapSecret)"
     ) -join "`n"
 }
@@ -385,22 +337,18 @@ function ConvertFrom-PostgresBootstrapRecoveryPayload([byte[]]$Bytes) {
         throw "PostgreSQL bootstrap 恢复文件换行格式无效。"
     }
     $lines = @($text.Split([char[]]@([char]10), [System.StringSplitOptions]::None))
-    if ($lines.Count -ne 4 -or $lines[1] -cne "schema=$script:PostgresBootstrapRecoverySchema") {
+    if ($lines.Count -ne 3 -or $lines[1] -cne "schema=$script:PostgresBootstrapRecoverySchema") {
         throw "PostgreSQL bootstrap 恢复文件结构无效。"
     }
-    $rolePrefix = "role_password="
     $bootstrapPrefix = "http_bootstrap_secret="
-    if (-not $lines[2].StartsWith($rolePrefix, [System.StringComparison]::Ordinal) -or
-        -not $lines[3].StartsWith($bootstrapPrefix, [System.StringComparison]::Ordinal)) {
+    if (-not $lines[2].StartsWith($bootstrapPrefix, [System.StringComparison]::Ordinal)) {
         throw "PostgreSQL bootstrap 恢复文件结构无效。"
     }
     $state = [pscustomobject]@{
         SuperuserPassword = $lines[0]
-        RolePassword = $lines[2].Substring($rolePrefix.Length)
-        HttpBootstrapSecret = $lines[3].Substring($bootstrapPrefix.Length)
+        HttpBootstrapSecret = $lines[2].Substring($bootstrapPrefix.Length)
     }
     Assert-PostgresBootstrapPasswordValue $state.SuperuserPassword "superuser_password"
-    Assert-PostgresBootstrapPasswordValue $state.RolePassword "role_password"
     Assert-HttpBootstrapSecretValue $state.HttpBootstrapSecret
     return $state
 }
@@ -453,7 +401,11 @@ function Assert-PostgresBootstrapRecoveryFileSecurity {
 }
 
 function Read-PostgresBootstrapRecoveryState {
+    param([Parameter(Mandatory = $true)][string]$Path)
     $pwfile = Get-PostgresBootstrapRecoveryPath
+    if (-not (Test-TicketboxPathEquals $Path $pwfile)) {
+        throw "PostgreSQL bootstrap 恢复文件路径不匹配当前 DataRoot。"
+    }
     Assert-PostgresBootstrapRecoveryFileSecurity -Path $pwfile
     try {
         $bytes = [System.IO.File]::ReadAllBytes($pwfile)
@@ -462,6 +414,25 @@ function Read-PostgresBootstrapRecoveryState {
         throw "无法读取 PostgreSQL bootstrap 恢复文件。"
     }
     return ConvertFrom-PostgresBootstrapRecoveryPayload $bytes
+}
+
+function Remove-PostgresBootstrapRecoveryState {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $pwfile = Get-PostgresBootstrapRecoveryPath
+    if (-not (Test-TicketboxPathEquals $Path $pwfile)) {
+        throw "PostgreSQL bootstrap 恢复文件路径不匹配当前 DataRoot。"
+    }
+    $kind = Get-TicketboxPathEntryKindNoFollow $pwfile
+    if ($kind -ceq "Missing") { return }
+    if ($kind -cne "File") {
+        throw "PostgreSQL bootstrap 恢复文件不是普通文件，拒绝退役。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $pwfile
+    Assert-PostgresBootstrapRecoveryFileSecurity -Path $pwfile
+    Remove-TicketboxSensitiveFile $pwfile
+    if ((Get-TicketboxPathEntryKindNoFollow $pwfile) -cne "Missing") {
+        throw "PostgreSQL bootstrap 恢复文件退役后仍存在。"
+    }
 }
 
 function Repair-PostgresBootstrapRecoveryFileAcl {
@@ -485,7 +456,7 @@ function Repair-PostgresBootstrapRecoveryFileAcl {
 
     $acl = Get-TicketboxPathAcl $pwfile
     if ($acl.AreAccessRulesProtected) {
-        [void](Read-PostgresBootstrapRecoveryState)
+        [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
         return $false
     }
 
@@ -528,7 +499,7 @@ function Repair-PostgresBootstrapRecoveryFileAcl {
     if (-not (Test-TicketboxWindowsByteArrayEquals $beforeBytes $afterBytes)) {
         throw "PostgreSQL bootstrap 恢复文件 ACL 恢复改变了受保护字节。"
     }
-    [void](Read-PostgresBootstrapRecoveryState)
+    [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
     return $true
 }
 
@@ -565,7 +536,7 @@ function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
 
     $acl = Get-TicketboxPathAcl $pwfile
     if ($acl.AreAccessRulesProtected) {
-        [void](Read-PostgresBootstrapRecoveryState)
+        [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
         return $false
     }
     Assert-TicketboxRecoverableInheritedFileAcl `
@@ -588,7 +559,7 @@ function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
     if (-not (Test-TicketboxWindowsByteArrayEquals $beforeBytes $afterBytes)) {
         throw "AppData ACL 收敛改变了 PostgreSQL bootstrap 恢复字节。"
     }
-    [void](Read-PostgresBootstrapRecoveryState)
+    [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
     return $true
 }
 
@@ -633,9 +604,8 @@ function Write-PostgresBootstrapRecoveryState([object]$State) {
         Move-TicketboxFileAtomically -Source $tempPath -Destination $pwfile
         $moved = $true
         Assert-PostgresBootstrapRecoveryFileSecurity -Path $pwfile
-        $persisted = Read-PostgresBootstrapRecoveryState
+        $persisted = Read-PostgresBootstrapRecoveryState -Path $pwfile
         if ($persisted.SuperuserPassword -cne $State.SuperuserPassword -or
-            $persisted.RolePassword -cne $State.RolePassword -or
             $persisted.HttpBootstrapSecret -cne $State.HttpBootstrapSecret) {
             throw "PostgreSQL bootstrap 恢复文件持久化校验失败。"
         }
@@ -665,11 +635,11 @@ function Get-OrCreatePostgresBootstrapRecoveryState {
     $pwfile = Get-PostgresBootstrapRecoveryPath
     if (Test-Path -LiteralPath $pwfile) {
         [void](Repair-PostgresBootstrapRecoveryFileAcl)
-        return Read-PostgresBootstrapRecoveryState
+        return Read-PostgresBootstrapRecoveryState -Path $pwfile
     }
     $state = New-PostgresBootstrapRecoveryState
     Write-PostgresBootstrapRecoveryState $state
-    return Read-PostgresBootstrapRecoveryState
+    return Read-PostgresBootstrapRecoveryState -Path $pwfile
 }
 
 function Assert-TicketboxPostgresAutoConfigurationSafe {
@@ -913,7 +883,7 @@ function Initialize-PgClusterIfNeeded {
     $hasDatabaseUrl = $existingEnv.ContainsKey("DATABASE_URL")
     if (Test-Path -LiteralPath $pgVersionPath -PathType Leaf) {
         if (Test-Path -LiteralPath $pwfile) {
-            [void](Read-PostgresBootstrapRecoveryState)
+            [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
         }
         elseif (-not $hasDatabaseUrl) {
             throw "既有 PostgreSQL 簇缺少 .env 和安全 bootstrap 恢复文件，拒绝继续。"
@@ -931,7 +901,7 @@ function Initialize-PgClusterIfNeeded {
         (Test-Path -LiteralPath $PgData -PathType Container) -and
         @(Get-ChildItem -LiteralPath $PgData -Force).Count -gt 0
     ) {
-        $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState
+        $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState -Path $pwfile
         $expectedBootstrapRecoveryText =
             ConvertTo-PostgresBootstrapRecoveryPayload $bootstrapRecoveryState
         if (Test-Path -LiteralPath (Join-Path $PgData "postmaster.pid")) {
@@ -954,7 +924,7 @@ function Initialize-PgClusterIfNeeded {
         # Revalidate ACL, structure, and secret bytes immediately before the
         # root handle is opened.  The native callback below intentionally uses
         # only BCL/native helpers so it also works in Windows PowerShell 5.1.
-        $revalidatedBootstrapRecoveryState = Read-PostgresBootstrapRecoveryState
+        $revalidatedBootstrapRecoveryState = Read-PostgresBootstrapRecoveryState -Path $pwfile
         if (
             (ConvertTo-PostgresBootstrapRecoveryPayload $revalidatedBootstrapRecoveryState) -cne
             $expectedBootstrapRecoveryText
@@ -1041,116 +1011,6 @@ function Initialize-PgClusterIfNeeded {
     Set-TicketboxPostgresInstallerConfiguration
     Write-Ok "PG 簇已初始化（loopback-only, scram-sha-256）。"
     return $null
-}
-
-function Prepare-DatabaseIfNeeded {
-    param(
-        [AllowNull()][object]$BootstrapState,
-        [switch]$PreserveBootstrapRecovery
-    )
-    $existingEnv = Read-EnvMap $EnvPath
-    $pwfile = Get-PostgresBootstrapRecoveryPath
-    $recoveryState = $null
-    if (Test-Path -LiteralPath $pwfile) {
-        $recoveryState = Read-PostgresBootstrapRecoveryState
-    }
-    if ($existingEnv.ContainsKey("DATABASE_URL")) {
-        $connection = Get-TicketboxLocalDatabaseConnection `
-            -DatabaseUrl $existingEnv["DATABASE_URL"] `
-            -PgPort $PgPort `
-            -ExpectedDatabase $DbName `
-            -ExpectedRole $DbRole
-        if ($existingEnv["DATABASE_URL"] -cne $connection.PersistedDatabaseUrl) {
-            Set-EnvDatabaseUrl `
-                -Path $EnvPath `
-                -DatabaseUrl $connection.PersistedDatabaseUrl
-            $existingEnv = Read-EnvMap $EnvPath
-        }
-        if ($null -ne $recoveryState -and -not $PreserveBootstrapRecovery) {
-            if ($connection.Password -cne $recoveryState.RolePassword -or
-                -not $existingEnv.ContainsKey("ENABLE_HTTP_BOOTSTRAP") -or
-                $existingEnv["ENABLE_HTTP_BOOTSTRAP"] -cne "true" -or
-                -not $existingEnv.ContainsKey("HTTP_BOOTSTRAP_SECRET") -or
-                $existingEnv["HTTP_BOOTSTRAP_SECRET"] -cne $recoveryState.HttpBootstrapSecret) {
-                throw ".env 与 PostgreSQL bootstrap 恢复状态不一致，拒绝删除恢复文件。"
-            }
-        }
-        Assert-TicketboxConnectedPostgresDataRoot `
-            -PsqlPath (Join-Path $PgBin "psql.exe") `
-            -DatabaseUrl $connection.DatabaseUrl `
-            -ExpectedDataRoot $PgData `
-            -ExpectedPort $PgPort `
-            -Password $connection.Password `
-            -TimeoutMilliseconds $DatabaseToolTimeoutMs
-        if ($null -ne $recoveryState -and -not $PreserveBootstrapRecovery) {
-            Remove-TicketboxSensitiveFile $pwfile
-        }
-        Write-Ok "发现既有 .env，沿用 DATABASE_URL。"
-        return $connection.PersistedDatabaseUrl
-    }
-    if ($null -eq $recoveryState) {
-        throw "既有 PostgreSQL 簇缺少 $EnvPath，且没有安全 bootstrap 恢复文件，拒绝继续。"
-    }
-
-    Write-Step "创建应用角色和数据库"
-    $rolePassword = $recoveryState.RolePassword
-    $rolePwdSql = Escape-SqlLiteral $rolePassword
-    $roleNameSql = Escape-SqlLiteral $DbRole
-    $databaseNameSql = Escape-SqlLiteral $DbName
-    $roleExists = (
-        Invoke-Psql "postgres" "SELECT 1 FROM pg_roles WHERE rolname='$roleNameSql'" `
-            $recoveryState.SuperuserPassword
-    ) -eq "1"
-    if (-not $roleExists) {
-        Invoke-Psql "postgres" "CREATE ROLE `"$DbRole`" LOGIN PASSWORD '$rolePwdSql'" `
-            $recoveryState.SuperuserPassword | Out-Null
-    }
-    else {
-        Invoke-Psql "postgres" "ALTER ROLE `"$DbRole`" WITH LOGIN PASSWORD '$rolePwdSql'" `
-            $recoveryState.SuperuserPassword | Out-Null
-    }
-    $databaseOwner = Invoke-Psql "postgres" `
-        "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='$databaseNameSql'" `
-        $recoveryState.SuperuserPassword
-    if ([string]::IsNullOrWhiteSpace($databaseOwner)) {
-        Invoke-Psql "postgres" "CREATE DATABASE `"$DbName`" OWNER `"$DbRole`" ENCODING 'UTF8'" `
-            $recoveryState.SuperuserPassword | Out-Null
-    }
-    elseif ($databaseOwner -cne $DbRole) {
-        throw "既有应用数据库 owner 不是预期角色，拒绝接管。"
-    }
-    $databaseUrl = "postgresql+psycopg://${DbRole}:${rolePassword}@127.0.0.1:${PgPort}/${DbName}?require_auth=scram-sha-256"
-    $lines = (New-BaseEnvLines $databaseUrl) + @(
-        "ENABLE_HTTP_BOOTSTRAP=true",
-        "HTTP_BOOTSTRAP_SECRET=$($recoveryState.HttpBootstrapSecret)"
-    )
-    Write-EnvNoBom -Path $EnvPath -Lines $lines
-    $persistedEnv = Read-EnvMap $EnvPath
-    if (-not $persistedEnv.ContainsKey("DATABASE_URL") -or
-        $persistedEnv["DATABASE_URL"] -cne $databaseUrl -or
-        -not $persistedEnv.ContainsKey("ENABLE_HTTP_BOOTSTRAP") -or
-        $persistedEnv["ENABLE_HTTP_BOOTSTRAP"] -cne "true" -or
-        -not $persistedEnv.ContainsKey("HTTP_BOOTSTRAP_SECRET") -or
-        $persistedEnv["HTTP_BOOTSTRAP_SECRET"] -cne $recoveryState.HttpBootstrapSecret) {
-        throw "首次安装 .env 持久化校验失败。"
-    }
-    $connection = Get-TicketboxLocalDatabaseConnection `
-        -DatabaseUrl $persistedEnv["DATABASE_URL"] `
-        -PgPort $PgPort `
-        -ExpectedDatabase $DbName `
-        -ExpectedRole $DbRole
-    Assert-TicketboxConnectedPostgresDataRoot `
-        -PsqlPath (Join-Path $PgBin "psql.exe") `
-        -DatabaseUrl $connection.DatabaseUrl `
-        -ExpectedDataRoot $PgData `
-        -ExpectedPort $PgPort `
-        -Password $connection.Password `
-        -TimeoutMilliseconds $DatabaseToolTimeoutMs
-    if (-not $PreserveBootstrapRecovery) {
-        Remove-TicketboxSensitiveFile $pwfile
-    }
-    Write-Ok "已写入首次安装 .env。"
-    return $databaseUrl
 }
 
 function Invoke-TicketboxPreservedDataReinstallBackup {
@@ -1266,7 +1126,8 @@ function Invoke-PreUpgradeBackupIfNeeded {
     $envMap = Read-EnvMap $EnvPath
     if (-not $envMap.ContainsKey("DATABASE_URL")) {
         if (Test-Path -LiteralPath (Join-Path $PgData "PG_VERSION")) {
-            [void](Read-PostgresBootstrapRecoveryState)
+            [void](Read-PostgresBootstrapRecoveryState `
+                -Path (Get-PostgresBootstrapRecoveryPath))
             Write-Ok "发现未完成的 PostgreSQL bootstrap，跳过尚不可用的升级备份并继续恢复。"
         }
         return
