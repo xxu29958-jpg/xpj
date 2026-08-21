@@ -4,6 +4,9 @@ $script:TicketboxDatabaseGenerationRootName = "database-generation"
 $script:TicketboxDatabaseGenerationActiveIntentName = "active-intent.json"
 $script:TicketboxDatabaseGenerationCurrentName = "current-generation.json"
 $script:TicketboxDatabaseGenerationRuntimeDirectoryName = "database-generation-runtime"
+$script:TicketboxDatabaseGenerationBackendServiceName = "TicketboxBackend"
+$script:TicketboxDatabaseGenerationRuntimeAccount =
+    "NT SERVICE\$script:TicketboxDatabaseGenerationBackendServiceName"
 $script:TicketboxDatabaseGenerationBindingKey = "database_generation_binding"
 $script:TicketboxDatabaseGenerationProgramRelativePath =
     "DATABASE_GENERATION_PROGRAM.json"
@@ -110,7 +113,7 @@ function Assert-TicketboxDatabaseGenerationPreinstallEligibility {
     }
     $activeIntent = Read-TicketboxDatabaseGenerationActiveIntent `
         $StateRoot -AllowAbsent
-    $current = Read-TicketboxDatabaseGenerationCurrent $StateRoot -AllowAbsent
+    $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
     if ($null -eq $activeIntent) {
         $existingFacts = @()
         if ($null -ne $current) {
@@ -318,8 +321,8 @@ function New-TicketboxDatabaseGenerationProjectionContract {
         [Parameter(Mandatory = $true)][string]$PgData,
         [Parameter(Mandatory = $true)][int]$DatabaseToolTimeoutMilliseconds
     )
-    if ($BackendServiceName -cnotmatch "^[A-Za-z0-9_.-]{1,128}$") {
-        throw "database generation backend service name 无效。"
+    if ($BackendServiceName -cne $script:TicketboxDatabaseGenerationBackendServiceName) {
+        throw "database generation backend service identity 不是唯一产品合同。"
     }
     return [pscustomobject][ordered]@{
         backend_service_name = $BackendServiceName
@@ -341,4 +344,116 @@ function Get-TicketboxDatabaseGenerationRuntimeCurrentPath {
         $machineRoot `
         $script:TicketboxDatabaseGenerationRuntimeDirectoryName
     return Join-Path $runtimeRoot $script:TicketboxDatabaseGenerationCurrentName
+}
+
+function Get-TicketboxDatabaseGenerationHostAuthoritySha256 {
+    param([Parameter(Mandatory = $true)][object]$HostAuthority)
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        $HostAuthority `
+        @(
+            "DataVolumeIdentity", "PgCtlPath", "PgData", "PhysicalPgData",
+            "Port", "PostmasterProcessId", "PsqlPath", "Schema",
+            "ServiceName", "ServiceProcessId", "UsesRuntimeBinding"
+        ) `
+        "PostgreSQL host authority"
+    if (
+        [string]$HostAuthority.Schema -cne
+            "ticketbox-postgresql-host-authority-v1" -or
+        [int]$HostAuthority.ServiceProcessId -lt 1 -or
+        [int]$HostAuthority.PostmasterProcessId -lt 1 -or
+        [int]$HostAuthority.Port -lt 1 -or
+        [int]$HostAuthority.Port -gt 65535
+    ) {
+        throw "PostgreSQL host authority shape 无效。"
+    }
+    return Get-TicketboxDatabaseGenerationTextSha256 (
+        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $HostAuthority
+    )
+}
+
+function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        $Authority `
+        @(
+            "Closed", "HostAuthoritySha256", "IntentSha256", "OperationId",
+            "Schema", "Secret"
+        ) `
+        "database generation maintenance authority"
+    if (
+        [string]$Authority.Schema -cne
+            "ticketbox-database-generation-maintenance-authority-v1" -or
+        [string]$Authority.OperationId -cne
+            ([guid][string]$Intent.Payload.operation_id).ToString("D") -or
+        [string]$Authority.IntentSha256 -cne [string]$Intent.PayloadSha256 -or
+        [string]$Authority.HostAuthoritySha256 -cne
+            (Get-TicketboxDatabaseGenerationHostAuthoritySha256 $HostAuthority) -or
+        [bool]$Authority.Closed
+    ) {
+        throw "database generation maintenance authority 已关闭或绑定漂移。"
+    }
+    Assert-TicketboxPostgresqlSecureString `
+        $Authority.Secret `
+        "database generation maintenance authority"
+    return $Authority
+}
+
+function Assert-TicketboxDatabaseGenerationReleaseBinding {
+    param(
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$ReleaseIdentity
+    )
+    $program = Get-TicketboxInstalledDatabaseGenerationProgram `
+        -ReleaseIdentity $ReleaseIdentity
+    if (
+        [string]$Intent.Payload.operation_id -cne
+            ([guid][string]$ReleaseIdentity.InstallationOperationId).ToString("D") -or
+        [string]$Intent.Payload.installation_id -cne
+            ([guid][string]$ReleaseIdentity.InstallationId).ToString("D") -or
+        [string]$Intent.Payload.target_backend_version -cne
+            [string]$ReleaseIdentity.BackendVersionFloor -or
+        [string]$Intent.Payload.migration_helper_relative_path -cne
+            [string]$ReleaseIdentity.MigrationHelperRelativePath -or
+        [int64]$Intent.Payload.migration_helper_size -ne
+            [int64]$ReleaseIdentity.MigrationHelperSize -or
+        [string]$Intent.Payload.migration_helper_sha256 -cne
+            ([string]$ReleaseIdentity.MigrationHelperSha256).ToLowerInvariant() -or
+        [string]$Intent.Payload.generation_program_relative_path -cne
+            [string]$ReleaseIdentity.DatabaseGenerationProgramRelativePath -or
+        [int64]$Intent.Payload.generation_program_size -ne
+            [int64]$ReleaseIdentity.DatabaseGenerationProgramSize -or
+        [string]$Intent.Payload.generation_program_sha256 -cne
+            ([string]$ReleaseIdentity.DatabaseGenerationProgramSha256).ToLowerInvariant() -or
+        [string]$Intent.Payload.target_revision -cne
+            [string]$program.target_revision
+    ) {
+        throw "database generation intent 与 installed release evidence 漂移。"
+    }
+}
+
+function Throw-TicketboxDatabaseGenerationOperationFailure {
+    param(
+        [AllowNull()][object]$Primary,
+        [AllowNull()][object]$Cleanup
+    )
+    if ($null -ne $Primary -and $null -ne $Cleanup) {
+        $aggregate = [AggregateException]::new(
+            "database generation primary operation and maintenance authority cleanup failed",
+            @($Primary.Exception, $Cleanup.Exception)
+        )
+        foreach ($key in @("TicketboxC07FailureCode", "TicketboxC07FailureCodes")) {
+            if ($Primary.Exception.Data.Contains($key)) {
+                $aggregate.Data[$key] = $Primary.Exception.Data[$key]
+            }
+        }
+        throw $aggregate
+    }
+    if ($null -ne $Primary) { throw $Primary }
+    if ($null -ne $Cleanup) { throw $Cleanup }
 }

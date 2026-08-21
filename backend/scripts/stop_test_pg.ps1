@@ -81,7 +81,7 @@ try {
         ).PostgresBin
     }
     elseif ($hostKind -eq 'File') {
-        [string](Update-XpjTestPostgresOwnershipSchema -DataDir $DataDir -AllowProvisioning).PostgresBin
+        [string](Assert-XpjTestPostgresOwnership -DataDir $DataDir -AllowProvisioning).PostgresBin
     }
     else {
         throw "Refusing to stop a PostgreSQL data directory without a host ownership marker or deletion receipt: $DataDir"

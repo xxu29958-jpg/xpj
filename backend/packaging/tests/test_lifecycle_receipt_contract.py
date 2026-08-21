@@ -894,8 +894,8 @@ function Get-TicketboxDatabaseGenerationStateRoot {{
     return '{_literal(tmp_path / "generation-state")}'
 }}
 function Read-TicketboxDatabaseGenerationCurrent {{
-    param($StateRoot, [switch]$AllowAbsent)
-    if ($StateRoot -cne '{_literal(tmp_path / "generation-state")}' -or -not $AllowAbsent) {{
+    param([switch]$AllowAbsent)
+    if (-not $AllowAbsent) {{
         throw 'unexpected database generation CURRENT observation'
     }}
     [void]$script:events.Add('current-observe')

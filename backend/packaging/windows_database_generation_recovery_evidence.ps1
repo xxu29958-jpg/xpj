@@ -346,7 +346,7 @@ function Get-TicketboxDatabaseGenerationRecoveryArchive {
     $capturedDump = $pgDump
     $capturedUrl = $databaseUrl
     $capturedOutput = $paths.PartialPath
-    $exitCode = Invoke-TicketboxC07WithPlainSecret `
+    $exitCode = Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $SuperuserPassword `
         -Action ({
             param([string]$PlainPassword)

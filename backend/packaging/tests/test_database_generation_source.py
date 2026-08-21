@@ -39,7 +39,7 @@ $script:pathKinds = @{{}}
 $script:writes = 0
 function Assert-TicketboxLifecycleOperationLease {{ param($Lock) }}
 function Read-TicketboxDatabaseGenerationActiveIntent {{ param($Root, [switch]$AllowAbsent); return $script:active }}
-function Read-TicketboxDatabaseGenerationCurrent {{ param($Root, [switch]$AllowAbsent); return $script:current }}
+function Read-TicketboxDatabaseGenerationCurrent {{ param([switch]$AllowAbsent); return $script:current }}
 function Test-TicketboxServiceExists {{ param($Name); return [bool]$script:services[$Name] }}
 function Get-TicketboxPathEntryKindNoFollow {{
     param($Path)
@@ -163,7 +163,7 @@ $script:writes = 0
 $script:nonempty = $false
 $script:attempt = $null
 $script:target = $null
-function Assert-TicketboxC07SuperuserCapability {{ param($Capability, $OperationId, $Lock); return $Capability }}
+function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {{ param($Authority, $Intent, $HostAuthority, $Lock); return $Authority }}
 function Read-TicketboxDatabaseGenerationOperationArtifact {{ param($Root, $Operation, $Kind, [switch]$AllowAbsent); return $script:attempt }}
 function New-TicketboxDatabaseGenerationChainedArtifact {{ $script:writes += 1; return $script:attempt }}
 function Get-TicketboxC07DatabaseCatalogObservation {{
@@ -199,7 +199,7 @@ $credentials = [pscustomobject]@{{
     RuntimeVerifier = 'SCRAM-SHA-256$4096:x'; MigratorVerifier = 'SCRAM-SHA-256$4096:y'
     MigratorPassword = $migratorSecret
 }}
-$capability = [pscustomobject]@{{ Secret = $superuserSecret }}
+$maintenanceAuthority = [pscustomobject]@{{ Secret = $superuserSecret }}
 $attemptFixture = [pscustomobject]@{{
     PayloadSha256 = ('d' * 64)
     Payload = [pscustomobject]@{{
@@ -215,7 +215,7 @@ $exactMarker = "ticketbox-database-generation-empty-source-v1|$operation|cluster
 $script:attempt = $null
 $script:target = [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]42; OwnerRoleOid = [uint32]77; Marker = ''; AllowsConnections = $true }}
 $rejected = $false
-try {{ Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credentials @{{}} $capability @{{}} | Out-Null }} catch {{ $rejected = $true }}
+try {{ Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credentials @{{}} $maintenanceAuthority @{{}} | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 0) {{ throw 'pre-existing target reached mutation' }}
 
 # Even an operation marker cannot authorize a non-empty target.
@@ -223,12 +223,12 @@ $script:attempt = $attemptFixture
 $script:target.Marker = $exactMarker
 $script:nonempty = $true
 $rejected = $false
-try {{ Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credentials @{{}} $capability @{{}} | Out-Null }} catch {{ $rejected = $true }}
+try {{ Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credentials @{{}} $maintenanceAuthority @{{}} | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 0) {{ throw 'non-empty exact marker reached mutation' }}
 
 # The exact persisted attempt + marker + empty schema is the only retry lane.
 $script:nonempty = $false
-$result = Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credentials @{{}} $capability @{{}}
+$result = Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credentials @{{}} $maintenanceAuthority @{{}}
 if (
     $script:writes -ne 3 -or
     [string]$result.create_attempt_sha256 -cne ('d' * 64) -or

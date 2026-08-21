@@ -13,12 +13,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.canonical_money_facts import canonical_money_facts_sha256
 from app.database import SessionLocal, engine
-from app.database._c07_production_contract import C07ProductionMigrationError
-from app.database._c07_production_shape import (
-    _ANALYZE_TABLE_SET_SHA256,
-    _analyze_affected_tables,
-    _assert_production_writer_fence,
-)
+from app.database._c07_execution import _analyze_affected_tables
 from app.database._c07_transaction_timeout import c07_prearmed_transaction
 from app.models import (
     BillSplitInvitation,
@@ -88,12 +83,11 @@ def test_production_statistics_refresh_is_verified_and_replay_stable() -> None:
     with engine.begin() as connection:
         observed = _analyze_affected_tables(connection)
 
-    expected = {
-        "statistics_table_count": 18,
-        "statistics_table_set_sha256": _ANALYZE_TABLE_SET_SHA256,
-    }
-    assert committed == expected
-    assert observed == expected
+    assert committed["result"] == observed["result"] == "verified"
+    assert committed["table_count"] == observed["table_count"] == 18
+    assert committed["table_set_sha256"] == observed["table_set_sha256"]
+    assert committed["elapsed_ms"] >= 0
+    assert observed["elapsed_ms"] >= 0
 
 
 def test_production_deadline_preserves_tighter_postgresql_timeouts() -> None:
@@ -160,17 +154,6 @@ def test_prearmed_transaction_timeout_rolls_back_and_discards_connection() -> No
             text("SELECT to_regclass(:table)"),
             {"table": "public.c07_prearmed_timeout_probe"},
         ) is None
-
-
-def test_production_writer_fence_rejects_the_ordinary_test_database() -> None:
-    with (
-        engine.connect() as connection,
-        pytest.raises(
-            C07ProductionMigrationError,
-            match="another client|PUBLIC CONNECT|unfenced login role",
-        ),
-    ):
-        _assert_production_writer_fence(connection)
 
 
 def test_exported_snapshot_survives_five_second_fence_timeout() -> None:

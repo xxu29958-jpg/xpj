@@ -332,12 +332,17 @@ def test_installed_migration_keeps_program_authority_and_alembic_execution() -> 
 
     launch = _source("packaging/launch.py")
     bridge = _source("packaging/windows_database_generation_program_adapter.ps1")
-    adapter = _source("packaging/windows_database_generation_adapter.ps1")
+    owner = _source("packaging/windows_database_generation.ps1")
+    credentials = _source("packaging/windows_database_generation_credentials.ps1")
+    role_fence = _source("packaging/windows_database_generation_role_fence.ps1")
+    database_binding = _source("packaging/windows_database_generation_database_binding.ps1")
     installer = _source("packaging/install_bundled_services.ps1")
-    combined = launch + bridge + adapter + installer
+    combined = launch + bridge + owner + credentials + role_fence + database_binding + installer
     assert "--validate-generation-program" in launch
     assert "Get-TicketboxInstalledDatabaseGenerationProgram" in bridge
-    assert "Get-TicketboxInstalledDatabaseGenerationProgram" not in adapter
+    assert "Get-TicketboxInstalledDatabaseGenerationProgram" not in (
+        owner + credentials + role_fence + database_binding
+    )
     assert installer.count("Invoke-TicketboxInstalledDatabaseGeneration `") == 1
     for retired in (
         "--c07-installed-upgrade-plan",

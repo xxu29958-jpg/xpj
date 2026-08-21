@@ -14,8 +14,13 @@ from types import SimpleNamespace
 import pytest
 
 import app.database._database_generation_runtime_admission as admission
+import app.database._database_generation_runtime_queries as runtime_queries
 
 TARGET_REVISION = "20260809_0001"
+OPERATION_ID = "11111111-1111-4111-8111-111111111111"
+INSTALLATION_ID = "22222222-2222-4222-8222-222222222222"
+INTENT_SHA256 = "b" * 64
+CANDIDATE_SHA256 = "3" * 64
 CLUSTER_SYSTEM_IDENTIFIER = "7643222813893222841"
 DATABASE_OID = 16384
 DATABASE_NAME = "ticketbox"
@@ -27,18 +32,24 @@ RUNTIME_ACL_EVIDENCE = (
     "relation\tpublic.app_meta\tticketbox_runtime\tSELECT\tfalse",
 )
 RUNTIME_ACL_SHA256 = hashlib.sha256("\n".join(RUNTIME_ACL_EVIDENCE).encode()).hexdigest()
+BOOTSTRAP_RETIREMENT = admission._canonical_json(
+    {
+        "schema": "ticketbox-database-generation-bootstrap-retirement-v1",
+        "operation_id": OPERATION_ID,
+        "intent_sha256": INTENT_SHA256,
+        "candidate_sha256": CANDIDATE_SHA256,
+        "committed_revision": TARGET_REVISION,
+    }
+)
 
 
 def _authority_documents() -> tuple[str, dict[str, object], dict[str, object]]:
-    operation_id = "11111111-1111-4111-8111-111111111111"
-    installation_id = "22222222-2222-4222-8222-222222222222"
     program_sha = "a" * 64
-    intent_sha = "b" * 64
     binding = {
         "schema": "ticketbox-database-generation-database-binding-v1",
-        "operation_id": operation_id,
-        "installation_id": installation_id,
-        "intent_sha256": intent_sha,
+        "operation_id": OPERATION_ID,
+        "installation_id": INSTALLATION_ID,
+        "intent_sha256": INTENT_SHA256,
         "source_binding_sha256": "c" * 64,
         "target_revision": TARGET_REVISION,
         "generation_program_sha256": program_sha,
@@ -57,13 +68,14 @@ def _authority_documents() -> tuple[str, dict[str, object], dict[str, object]]:
     binding_json = admission._canonical_json(binding)
     current = {
         "schema": "ticketbox-current-database-generation-v1",
-        "operation_id": operation_id,
-        "installation_id": installation_id,
-        "intent_sha256": intent_sha,
-        "candidate_sha256": "3" * 64,
+        "operation_id": OPERATION_ID,
+        "installation_id": INSTALLATION_ID,
+        "intent_sha256": INTENT_SHA256,
+        "candidate_sha256": CANDIDATE_SHA256,
         "committed_revision": TARGET_REVISION,
         "generation_program_sha256": program_sha,
         "database_binding_sha256": hashlib.sha256(binding_json.encode()).hexdigest(),
+        "terminal_state_sha256": "6" * 64,
         "expected_predecessor_sha256": "",
     }
     current_json = admission._canonical_json(current)
@@ -86,6 +98,7 @@ class _LiveDatabase:
     session_user: str = RUNTIME_ROLE
     logical_server_id: str = LOGICAL_SERVER_ID
     logical_data_generation: str = LOGICAL_DATA_GENERATION
+    bootstrap_retirement: str = BOOTSTRAP_RETIREMENT
     runtime_capabilities: tuple[bool, ...] = (True,) * 13
     runtime_acl_evidence: tuple[str, ...] = RUNTIME_ACL_EVIDENCE
 
@@ -109,12 +122,13 @@ class _Connection:
         sql = str(statement)
         if "public.alembic_version" in sql:
             return self.live.revisions
-        if "WITH acl_rows AS" in sql:
+        if sql == str(runtime_queries.RUNTIME_ACL_EVIDENCE_QUERY):
             return self.live.runtime_acl_evidence
         raise AssertionError(f"unexpected scalar query: {sql}")
 
     def execute(self, statement: object, **_kwargs: object) -> _OneRow:
         sql = str(statement)
+        assert sql == str(runtime_queries.LIVE_DATABASE_QUERY)
         for required_token in (
             "current_database()::text",
             "session_user::text",
@@ -132,6 +146,7 @@ class _Connection:
             "pg_class",
             "pg_proc",
             "pg_type",
+            "shobj_description",
         ):
             assert required_token in sql
         return _OneRow(
@@ -142,6 +157,7 @@ class _Connection:
                 self.live.session_user,
                 self.live.logical_server_id,
                 self.live.logical_data_generation,
+                self.live.bootstrap_retirement,
                 *self.live.runtime_capabilities,
             )
         )
@@ -248,6 +264,32 @@ def _assert_closed_runtime_target_mutations_rejected(reject: Callable[..., None]
             setattr(live, live_field, original)
 
 
+def _assert_runtime_authority_mutations_rejected(reject: Callable[..., None], live: _LiveDatabase) -> None:
+    original_retirement = live.bootstrap_retirement
+    live.bootstrap_retirement = ""
+    try:
+        reject()
+    finally:
+        live.bootstrap_retirement = original_retirement
+    for index in range(len(live.runtime_capabilities)):
+        capabilities = list(live.runtime_capabilities)
+        capabilities[index] = False
+        live.runtime_capabilities = tuple(capabilities)
+        try:
+            reject()
+        finally:
+            live.runtime_capabilities = (True,) * 13
+    original_acl = live.runtime_acl_evidence
+    live.runtime_acl_evidence = (
+        *original_acl,
+        "relation\tpublic.ledger_audit_logs\tticketbox_runtime\tTRUNCATE\tfalse",
+    )
+    try:
+        reject()
+    finally:
+        live.runtime_acl_evidence = original_acl
+
+
 def test_installed_runtime_admission_binds_current_program_and_live_database(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -284,6 +326,7 @@ def test_installed_runtime_admission_binds_current_program_and_live_database(
         current_path=current_path,
     )
     reject(current_updates={"candidate_sha256": "not-a-digest"})
+    reject(current_updates={"candidate_sha256": "4" * 64})
     reject(
         binding_updates={"operation_id": "33333333-3333-4333-8333-333333333333"},
         bind_live_digest=False,
@@ -300,23 +343,7 @@ def test_installed_runtime_admission_binds_current_program_and_live_database(
         reject(revisions=revisions)
     _assert_live_identity_mutations_rejected(reject, live)
     _assert_closed_runtime_target_mutations_rejected(reject, live)
-    for index in range(len(live.runtime_capabilities)):
-        capabilities = list(live.runtime_capabilities)
-        capabilities[index] = False
-        live.runtime_capabilities = tuple(capabilities)
-        try:
-            reject()
-        finally:
-            live.runtime_capabilities = (True,) * 13
-    original_acl = live.runtime_acl_evidence
-    live.runtime_acl_evidence = (
-        *original_acl,
-        "relation\tpublic.ledger_audit_logs\tticketbox_runtime\tTRUNCATE\tfalse",
-    )
-    try:
-        reject()
-    finally:
-        live.runtime_acl_evidence = original_acl
+    _assert_runtime_authority_mutations_rejected(reject, live)
     reject(current_updates={"expected_predecessor_sha256": "4" * 64})
     reject(current_updates={"generation_program_sha256": "4" * 64})
     reject(

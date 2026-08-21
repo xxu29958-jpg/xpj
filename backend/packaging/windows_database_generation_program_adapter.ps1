@@ -27,7 +27,7 @@ function Assert-TicketboxDatabaseGenerationProgramAdapterDependencies {
         "Get-TicketboxDatabaseGenerationTextSha256",
         "Get-TicketboxPortableFileSha256",
         "Get-TicketboxPathEntryKindNoFollow",
-        "Invoke-TicketboxC07WithPlainSecret",
+        "Invoke-TicketboxWithPlainPostgresqlSecret",
         "Invoke-TicketboxBoundedNativeProcess",
         "New-TicketboxC07LocalDatabaseUrl",
         "New-TicketboxProtectedPgPassFile",

@@ -53,6 +53,43 @@ def _lock_input_fingerprint(root: Path) -> str:
     return hashlib.sha256(material.encode()).hexdigest()
 
 
+def _assert_shawl_legal_evidence_chain(
+    build: str,
+    installer: str,
+    shawl_source: dict[str, object],
+) -> None:
+    legal = shawl_source["legal"]
+    assert isinstance(legal, dict)
+    assert build.count("legal_archive = [ordered]@{") == 1
+    assert build.count("legal_notice = $legalNoticeEvidence") == 1
+    assert build.count("legal_archive = $ShawlProvenance.legal_archive") == 1
+    assert build.count("legal_notice = $ShawlProvenance.legal_notice") == 1
+    assert build.count("shawl = $BuildInputs.shawl") == 1
+    for producer_mapping in (
+        "name = [string]$installerVendorContracts.shawl.legal.archive_name",
+        "url = [string]$installerVendorContracts.shawl.legal.url",
+        "sha256 = ([string]$installerVendorContracts.shawl.legal.sha256).ToLowerInvariant()",
+    ):
+        assert build.count(producer_mapping) == 1
+    for value in (
+        legal["archive_name"],
+        legal["url"],
+        legal["sha256"],
+        legal["notice_name"],
+        legal["notice_sha256"],
+    ):
+        assert isinstance(value, str) and value
+    expected_entry = (
+        f'Source: "vendor\\shawl\\{legal["notice_name"]}"; '
+        'DestDir: "{app}\\shawl"; Flags: ignoreversion'
+    )
+    assert [
+        line.strip()
+        for line in installer.splitlines()
+        if str(legal["notice_name"]) in line
+    ] == [expected_entry]
+
+
 def _write_minimal_backend(root: Path) -> Path:
     (root / "app").mkdir(parents=True)
     (root / "migrations" / "versions").mkdir(parents=True)
@@ -201,7 +238,8 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/security_primitives/descriptor_comparison.ps1",
     "packaging/security_primitives/descriptor_diagnostic.ps1",
     "packaging/security_primitives/file_security.ps1",
-    "packaging/windows_c07_superuser_recovery.ps1",
+    "packaging/windows_postgresql_credentials.ps1",
+    "packaging/windows_postgresql_single_user.ps1",
     "packaging/windows_deadline_budget.ps1",
     "packaging/windows_atomic_artifacts.ps1",
     "packaging/atomic_artifacts/native.ps1",
@@ -212,10 +250,16 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_database_generation.ps1",
     "packaging/windows_database_generation_contract.ps1",
     "packaging/windows_database_generation_artifacts.ps1",
-    "packaging/windows_database_generation_adapter.ps1",
+    "packaging/windows_database_generation_commit_verifier.ps1",
+    "packaging/windows_database_generation_policy.ps1",
+    "packaging/windows_database_generation_credentials.ps1",
+    "packaging/windows_database_generation_role_fence.ps1",
+    "packaging/windows_database_generation_database_binding.ps1",
     "packaging/windows_database_generation_source.ps1",
     "packaging/windows_database_generation_recovery_evidence.ps1",
     "packaging/windows_database_generation_target_recovery.ps1",
+    "packaging/windows_database_generation_retirement.ps1",
+    "packaging/windows_database_generation_single_user.ps1",
     "packaging/windows_database_generation_projection.ps1",
     "packaging/windows_backend_bootstrap.ps1",
     "packaging/windows_bootstrap_exposure_recovery.ps1",
@@ -997,9 +1041,57 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "Read-TicketboxPgBundleManifest $bundleManifestPath" in build
     assert "PostgreSQL bundle manifest 与 Windows 工具链 archive/payload pin 不一致" in build
     assert "archive_payload_fingerprint" in build
+    assert postgres_source["version"] == "17.11-1"
+    assert postgres_source["sha256"] == (
+        "6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3"
+    )
+    assert postgres_source["payload_fingerprint"] == (
+        "301416a98605233b704bde01b38dfdd8defa3e21cad40be1b40ad047bfc91bdf"
+    )
     assert postgres_source["payload_file_count"] > 0
     assert len(postgres_source["payload_fingerprint"]) == 64
     assert len(shawl_source["executable_sha256"]) == 64
+    assert shawl_source["legal"] == {
+        "archive_name": "shawl-v1.9.0-legal.zip",
+        "url": "https://github.com/mtkennerly/shawl/releases/download/v1.9.0/shawl-v1.9.0-legal.zip",
+        "sha256": "a2a1743a64b79922062906eb32cdaf23db131769f8cabcc98e5d57bbf66eb0b0",
+        "notice_name": "shawl-v1.9.0-legal.txt",
+        "notice_sha256": "94b6773b54e5e7b52d68bd7417bfc3b1da1df69bcb12530f2cb89d125471021b",
+    }
+    _assert_shawl_legal_evidence_chain(build, installer, shawl_source)
+    assert "$shawlLegalArchive = Get-TicketboxVerifiedVendorArchive" in vendor_preparer
+    assert '"Published Shawl legal notice"' in vendor_preparer
+    assert "$ShawlLegalNotice = Join-Path" in build
+    assert "Copy-Item -LiteralPath $ShawlLegalNotice -Destination $stagedShawlLegalNotice" in build
+    for token in (
+        "legal_archive = [ordered]@{",
+        "name = [string]$installerVendorContracts.shawl.legal.archive_name",
+        "url = [string]$installerVendorContracts.shawl.legal.url",
+        "sha256 = ([string]$installerVendorContracts.shawl.legal.sha256).ToLowerInvariant()",
+        "legal_notice = $legalNoticeEvidence",
+        "legal_archive = $ShawlProvenance.legal_archive",
+        "legal_notice = $ShawlProvenance.legal_notice",
+    ):
+        with pytest.raises(AssertionError):
+            _assert_shawl_legal_evidence_chain(
+                build.replace(token, "evidence_removed", 1),
+                installer,
+                shawl_source,
+            )
+    with pytest.raises(AssertionError):
+        legal_entry = (
+            'Source: "vendor\\shawl\\shawl-v1.9.0-legal.txt"; '
+            'DestDir: "{app}\\shawl"; Flags: ignoreversion'
+        )
+        _assert_shawl_legal_evidence_chain(
+            build,
+            installer.replace(
+                legal_entry,
+                legal_entry.replace("ignoreversion", "dontcopy"),
+                1,
+            ),
+            shawl_source,
+        )
     assert build_tool_sources["uv"]["version"] == toolchain["uv_version"]
     assert build_tool_sources["python"]["version"] == toolchain["python_version"]
     for source_name in ("uv", "python", "inno_setup"):
@@ -1145,7 +1237,16 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "Frozen backend archive omitted required app module: $requiredModule" in backend_build
     for retired_source_path in (
         "app\\database\\_c07_maintenance_plan.py",
+        "app\\database\\_c07_production_authority.py",
+        "app\\database\\_c07_production_connection.py",
+        "app\\database\\_c07_production_context.py",
+        "app\\database\\_c07_production_contract.py",
+        "app\\database\\_c07_production_contract_types.py",
+        "app\\database\\_c07_production_fence.py",
         "app\\database\\_c07_production_ready.py",
+        "app\\database\\_c07_production_recovery.py",
+        "app\\database\\_c07_production_restore.py",
+        "app\\database\\_c07_production_shape.py",
         "app\\database\\_c07_runtime_projection.py",
     ):
         assert f'"{retired_source_path}"' in backend_build
@@ -1358,7 +1459,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
             f"-VersionPolicyContractProbe '{vendor}|{version}'"
         )
 
-    assert probe("postgres", "17.10").returncode == 0
+    assert probe("postgres", "17.11").returncode == 0
     assert probe("shawl", "1.9.0").returncode == 0
     assert probe("iscc", "6.7.1").returncode == 0
     override_real_build = _run_powershell(
@@ -1376,10 +1477,10 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         f". '{_ps_literal(PROVENANCE_HELPER)}'; Get-TicketboxNormalizedCompilerDefines @('/DAlpha=1','/DAlpha=2')"
     )
     assert duplicate_define.returncode != 0
-    config["postgres_version_policy"]["minimum"] = "17.11"
+    config["postgres_version_policy"]["minimum"] = "17.12"
     config_path.write_text(json.dumps(config), encoding="utf-8")
-    assert probe("postgres", "17.10").returncode != 0
-    config["postgres_version_policy"]["minimum"] = "17.10"
+    assert probe("postgres", "17.11").returncode != 0
+    config["postgres_version_policy"]["minimum"] = "17.11"
     config["shawl_version_policy"]["minimum"] = "1.9.1"
     config_path.write_text(json.dumps(config), encoding="utf-8")
     assert probe("shawl", "1.9.0").returncode != 0

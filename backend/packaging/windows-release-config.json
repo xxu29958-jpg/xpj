@@ -1,7 +1,7 @@
 {
   "schema": "ticketbox-windows-release-v2",
   "postgres_version_policy": {
-    "minimum": "17.10",
+    "minimum": "17.11",
     "maximum_exclusive": "18.0"
   },
   "shawl_version_policy": {

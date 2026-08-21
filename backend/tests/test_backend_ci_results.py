@@ -11,9 +11,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 
 def _jobs() -> dict[str, object]:
-    workflow = yaml.safe_load(
-        (_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    )
+    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
     return workflow["jobs"]
 
 
@@ -47,6 +45,51 @@ def _valid_results(*, frozen_scope: str, windows_scope: str) -> dict[str, str]:
     }
 
 
+def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
+    windows_aggregator = jobs["windows_packaging"]
+    assert windows_aggregator["if"] == "${{ always() }}"
+    assert _steps(windows_aggregator)["Enforce Windows release lane results"]["run"] == (
+        "python -E -S backend/scripts/verify_scoped_ci_results.py "
+        '--label "Windows release packaging" --scope-key WINDOWS_SCOPE '
+        "--lane LIFECYCLE --lane BUILD"
+    )
+    windows_steps = _steps(jobs["windows_packaging_build"])
+    windows_safety = windows_steps["Windows installer safety behavior"]["run"]
+    assert '-m "not xdist_group"' in windows_safety
+    assert "-n 4 --dist loadfile --max-worker-restart 0" in windows_safety
+    local_postgres = windows_steps["Windows local PostgreSQL lifecycle"]
+    assert local_postgres["run"] == (
+        "python -m pytest -q "
+        "packaging/tests/test_local_test_postgres_lifecycle.py "
+        "--strict-markers -p no:cacheprovider -o addopts= "
+        "-n 0 --max-worker-restart 0"
+    )
+    projection = windows_steps["Database generation projection real PostgreSQL contract"]
+    assert projection["env"]["XPJ_REQUIRE_REAL_PG17_PROJECTION"] == "1"
+    assert projection["run"] == (
+        "python -m pytest -q "
+        "packaging/tests/test_database_generation_projection_cleanup.py "
+        "packaging/tests/test_database_generation_projection.py "
+        "--strict-markers -p no:cacheprovider -o addopts="
+    )
+    step_names = list(windows_steps)
+    prepared = step_names.index("Prepare pinned PostgreSQL and Shawl inputs")
+    assert prepared < step_names.index("Windows installer safety behavior")
+    assert prepared < step_names.index("Windows local PostgreSQL lifecycle")
+    assert (
+        prepared
+        < step_names.index("Database generation projection real PostgreSQL contract")
+        < step_names.index("Compile authoritative Inno installer")
+    )
+    for module_name in (
+        "test_local_test_postgres_lifecycle.py",
+        "test_database_generation_projection_cleanup.py",
+        "test_database_generation_projection.py",
+    ):
+        source = (_ROOT / "backend" / "packaging" / "tests" / module_name).read_text(encoding="utf-8-sig")
+        assert 'pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")' in source
+
+
 def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -> None:
     jobs = _jobs()
     backend = jobs["backend"]
@@ -62,34 +105,10 @@ def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -
     for dependency in ("backend_contracts", "backend_frozen", "windows_packaging"):
         job = jobs[dependency]
         assert job["outputs"]["qualification_sha"] == "${{ steps.qualification.outputs.sha }}"
-        assert job["outputs"]["qualification_source_sha"] == (
-            "${{ steps.qualification.outputs.source_sha }}"
-        )
+        assert job["outputs"]["qualification_source_sha"] == ("${{ steps.qualification.outputs.source_sha }}")
         assert _steps(job)["Verify qualification SHA"]["id"] == "qualification"
 
-    windows_aggregator = jobs["windows_packaging"]
-    assert windows_aggregator["if"] == "${{ always() }}"
-    assert _steps(windows_aggregator)["Enforce Windows release lane results"][
-        "run"
-    ] == (
-        "python -E -S backend/scripts/verify_scoped_ci_results.py "
-        '--label "Windows release packaging" --scope-key WINDOWS_SCOPE '
-        "--lane LIFECYCLE --lane BUILD"
-    )
-
-    windows_safety = _steps(jobs["windows_packaging_build"])[
-        "Windows installer safety behavior"
-    ]["run"]
-    assert '-m "not xdist_group"' in windows_safety
-    assert "-n 4 --dist loadfile --max-worker-restart 0" in windows_safety
-    windows_steps = _steps(jobs["windows_packaging_build"])
-    projection = windows_steps["Database generation projection real PostgreSQL contract"]
-    assert projection["env"]["XPJ_REQUIRE_REAL_PG17_PROJECTION"] == "1"
-    assert "test_database_generation_projection.py::" in projection["run"]
-    step_names = list(windows_steps)
-    assert step_names.index("Prepare pinned PostgreSQL and Shawl inputs") < step_names.index(
-        "Database generation projection real PostgreSQL contract"
-    ) < step_names.index("Compile authoritative Inno installer")
+    _assert_windows_build_lane(jobs)
 
     steps = _steps(backend)
     assert steps["Verify qualification SHA"]["id"] == "qualification"
@@ -134,9 +153,7 @@ def test_backend_result_verifier_rejects_every_single_field_mutation(
         "SCOPE_RESULT": "failure",
         "BACKEND_FROZEN_SCOPE": "unknown",
         "BACKEND_CONTRACTS_RESULT": "failure",
-        "BACKEND_FROZEN_RESULT": (
-            "skipped" if frozen_scope == "true" else "success"
-        ),
+        "BACKEND_FROZEN_RESULT": ("skipped" if frozen_scope == "true" else "success"),
         "WINDOWS_PACKAGING_RESULT": "skipped",
         "EXPECTED_SHA": "b" * 40,
         "EXPECTED_SOURCE_SHA": "b" * 40,

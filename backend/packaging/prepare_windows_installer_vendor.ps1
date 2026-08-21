@@ -32,6 +32,25 @@ try {
 catch {
     throw "Windows 构建工具链合同缺少安装器 vendor 来源。"
 }
+$shawlLegal = $shawlSource.legal
+if (
+    [string]$shawlLegal.archive_name -cne "shawl-v$($shawlSource.version)-legal.zip" -or
+    [string]$shawlLegal.url -cne (
+        "https://github.com/mtkennerly/shawl/releases/download/v{0}/{1}" -f `
+            $shawlSource.version, $shawlLegal.archive_name
+    ) -or
+    [string]$shawlLegal.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+    [string]$shawlLegal.notice_name -cne "shawl-v$($shawlSource.version)-legal.txt" -or
+    [string]$shawlLegal.notice_sha256 -notmatch '^[0-9a-fA-F]{64}$'
+) {
+    throw "Windows 构建工具链合同中的 Shawl legal 来源无效。"
+}
+$shawlLegalSource = [pscustomobject]@{
+    version = [string]$shawlSource.version
+    archive_name = [string]$shawlLegal.archive_name
+    url = [string]$shawlLegal.url
+    sha256 = [string]$shawlLegal.sha256
+}
 
 function Assert-TicketboxVendorSource([object]$Source, [string]$Label) {
     if (
@@ -323,9 +342,12 @@ function Get-TicketboxVerifiedVendorArchive([object]$Source, [string]$ArchiveDir
 }
 
 $shawlStaging = Join-Path $processStagingRoot "shawl-extracted"
+$shawlLegalStaging = Join-Path $processStagingRoot "shawl-legal-extracted"
 $shawlOutput = Join-Path $vendorRoot "shawl"
 $shawlArchiveLease = $null
+$shawlLegalArchiveLease = $null
 $shawlExecutableLock = $null
+$shawlLegalNoticeLock = $null
 $visualCppRuntimeOutput = Join-Path $vendorRoot "vc-runtime"
 $visualCppRuntimeLease = $null
 $BuildLock = $null
@@ -375,16 +397,47 @@ try {
     if (-not $versionMatch.Success -or $versionMatch.Groups[1].Value -cne [string]$shawlSource.version) {
         throw "Shawl 可执行版本与工具链合同不一致。"
     }
+    $shawlLegalArchive = Get-TicketboxVerifiedVendorArchive `
+        $shawlLegalSource `
+        $archiveRoot
+    $shawlLegalArchiveLease = New-TicketboxVerifiedArchiveLease `
+        $shawlLegalArchive ([string]$shawlLegal.sha256) "Shawl legal archive"
+    Expand-TicketboxVerifiedShawlZip $shawlLegalArchiveLease $shawlLegalStaging
+    $shawlLegalArchiveLease.Handle.Dispose()
+    $shawlLegalArchiveLease = $null
+    $legalCandidates = @(Get-ChildItem -LiteralPath $shawlLegalStaging -Recurse -File)
+    if (
+        $legalCandidates.Count -ne 1 -or
+        $legalCandidates[0].Name -cne [string]$shawlLegal.notice_name
+    ) {
+        throw "Shawl legal archive 必须且只能包含固定 legal notice。"
+    }
+    $shawlLegalNoticeLock = [System.IO.File]::Open(
+        $legalCandidates[0].FullName,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::Read
+    )
+    $legalNoticeHash = Get-TicketboxStreamSha256 $shawlLegalNoticeLock
+    if ($legalNoticeHash -cne ([string]$shawlLegal.notice_sha256).ToLowerInvariant()) {
+        throw "Shawl legal notice hash 与工具链合同不一致。"
+    }
     if (Test-Path -LiteralPath $shawlOutput) {
         Remove-TicketboxVendorPath $shawlOutput
     }
     New-Item -ItemType Directory -Path $shawlOutput | Out-Null
     $shawlOutputExe = Join-Path $shawlOutput "shawl.exe"
     Copy-Item -LiteralPath $candidates[0].FullName -Destination $shawlOutputExe
+    $shawlOutputLegalNotice = Join-Path $shawlOutput ([string]$shawlLegal.notice_name)
+    Copy-Item -LiteralPath $legalCandidates[0].FullName -Destination $shawlOutputLegalNotice
     Assert-TicketboxVendorExecutableHash `
         $shawlOutputExe `
         ([string]$shawlSource.executable_sha256) `
         "Published Shawl"
+    Assert-TicketboxVendorExecutableHash `
+        $shawlOutputLegalNotice `
+        ([string]$shawlLegal.notice_sha256) `
+        "Published Shawl legal notice"
 
     $visualCppRuntimeArchive = Get-TicketboxVerifiedVendorArchive `
         $visualCppRuntimeSource `
@@ -417,6 +470,8 @@ finally {
     try {
         foreach ($cleanup in @(
             [pscustomobject]@{ Label = "Visual C++ runtime lease"; Action = { if ($null -ne $visualCppRuntimeLease) { $visualCppRuntimeLease.Handle.Dispose() } } },
+            [pscustomobject]@{ Label = "Shawl legal notice lock"; Action = { if ($null -ne $shawlLegalNoticeLock) { $shawlLegalNoticeLock.Dispose() } } },
+            [pscustomobject]@{ Label = "Shawl legal archive lease"; Action = { if ($null -ne $shawlLegalArchiveLease) { $shawlLegalArchiveLease.Handle.Dispose() } } },
             [pscustomobject]@{ Label = "Shawl executable lock"; Action = { if ($null -ne $shawlExecutableLock) { $shawlExecutableLock.Dispose() } } },
             [pscustomobject]@{ Label = "Shawl archive lease"; Action = { if ($null -ne $shawlArchiveLease) { $shawlArchiveLease.Handle.Dispose() } } },
             [pscustomobject]@{ Label = "vendor staging"; Action = { if (Test-Path -LiteralPath $processStagingRoot) { Remove-TicketboxVendorPath $processStagingRoot } } }

@@ -56,6 +56,31 @@ if (-not (Get-Command `
     . $postgresqlDatabaseCatalog
 }
 
+$postgresqlCredentials = Join-Path `
+    (Split-Path -Parent $MyInvocation.MyCommand.Path) `
+    "windows_postgresql_credentials.ps1"
+$postgresqlCredentialFunctions = @(
+    "Assert-TicketboxPostgresqlSecureString",
+    "Invoke-TicketboxWithPlainPostgresqlSecret",
+    "ConvertTo-TicketboxPostgresqlScramVerifier"
+)
+$missingPostgresqlCredentialFunctions = @(
+    $postgresqlCredentialFunctions | Where-Object {
+        -not (Get-Command $_ -CommandType Function -ErrorAction SilentlyContinue)
+    }
+)
+if ($missingPostgresqlCredentialFunctions.Count -gt 0) {
+    if (-not (Test-Path -LiteralPath $postgresqlCredentials -PathType Leaf)) {
+        throw "缺少通用 PostgreSQL credential primitives：$postgresqlCredentials"
+    }
+    . $postgresqlCredentials
+    foreach ($functionName in $postgresqlCredentialFunctions) {
+        if (-not (Get-Command $functionName -CommandType Function -ErrorAction SilentlyContinue)) {
+            throw "通用 PostgreSQL credential primitive 未加载：$functionName"
+        }
+    }
+}
+
 # Runtime DML is intentionally fail-closed. New tables do not inherit runtime
 # privileges: a release that adds a real runtime consumer must review and add
 # the table here. Migration/receipt/authority/audit objects live in separate
@@ -225,173 +250,6 @@ function Assert-TicketboxC07DatabaseRequiredProperties {
     }
 }
 
-function Assert-TicketboxC07SecureString {
-    param(
-        [AllowNull()][Security.SecureString]$Value,
-        [Parameter(Mandatory = $true)][string]$Label
-    )
-
-    if ($null -eq $Value -or $Value.Length -lt 32) {
-        throw "$Label 缺失或不足 32 个字符；拒绝数据库 mutation。"
-    }
-}
-
-function Invoke-TicketboxC07WithPlainSecret {
-    param(
-        [Parameter(Mandatory = $true)][Security.SecureString]$Secret,
-        [Parameter(Mandatory = $true)][scriptblock]$Action
-    )
-
-    $pointer = [IntPtr]::Zero
-    $plain = $null
-    try {
-        $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secret)
-        $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
-        if (
-            [string]::IsNullOrWhiteSpace($plain) -or
-            $plain.Length -lt 32 -or
-            $plain.Length -gt 128 -or
-            $plain -cnotmatch '^[A-Za-z0-9_-]+$'
-        ) {
-            throw "PostgreSQL 凭据必须是 32 至 128 字符的受控 ASCII secret。"
-        }
-        return & $Action $plain
-    }
-    finally {
-        $plain = $null
-        if ($pointer -ne [IntPtr]::Zero) {
-            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
-        }
-    }
-}
-
-function ConvertTo-TicketboxC07ScramVerifier {
-    param(
-        [Parameter(Mandatory = $true)][Security.SecureString]$Password,
-        [byte[]]$Salt
-    )
-
-    if ($null -eq $Salt) {
-        $Salt = New-Object byte[] 16
-        $random = [Security.Cryptography.RandomNumberGenerator]::Create()
-        try { $random.GetBytes($Salt) }
-        finally { $random.Dispose() }
-    }
-    if ($Salt.Length -ne 16) {
-        throw "SCRAM salt 必须正好为 16 bytes。"
-    }
-
-    $saltCopy = New-Object byte[] $Salt.Length
-    [Array]::Copy($Salt, $saltCopy, $Salt.Length)
-    return Invoke-TicketboxC07WithPlainSecret -Secret $Password -Action {
-        param([string]$PlainPassword)
-
-        $derive = $null
-        $saltedPassword = $null
-        $clientKey = $null
-        $storedKey = $null
-        $serverKey = $null
-        $clientHmac = $null
-        $serverHmac = $null
-        $sha = $null
-        try {
-            $derive = [Security.Cryptography.Rfc2898DeriveBytes]::new(
-                $PlainPassword,
-                $saltCopy,
-                4096,
-                [Security.Cryptography.HashAlgorithmName]::SHA256
-            )
-            $saltedPassword = $derive.GetBytes(32)
-            $clientHmac = [Security.Cryptography.HMACSHA256]::new($saltedPassword)
-            $clientKey = $clientHmac.ComputeHash(
-                [Text.Encoding]::ASCII.GetBytes("Client Key")
-            )
-            $sha = [Security.Cryptography.SHA256]::Create()
-            $storedKey = $sha.ComputeHash($clientKey)
-            $serverHmac = [Security.Cryptography.HMACSHA256]::new($saltedPassword)
-            $serverKey = $serverHmac.ComputeHash(
-                [Text.Encoding]::ASCII.GetBytes("Server Key")
-            )
-            return "SCRAM-SHA-256`$4096:$([Convert]::ToBase64String($saltCopy))" +
-                "`$$([Convert]::ToBase64String($storedKey)):" +
-                "$([Convert]::ToBase64String($serverKey))"
-        }
-        finally {
-            if ($null -ne $derive) { $derive.Dispose() }
-            if ($null -ne $clientHmac) { $clientHmac.Dispose() }
-            if ($null -ne $serverHmac) { $serverHmac.Dispose() }
-            if ($null -ne $sha) { $sha.Dispose() }
-            foreach ($buffer in @($saltedPassword, $clientKey, $storedKey, $serverKey)) {
-                if ($null -ne $buffer) { [Array]::Clear($buffer, 0, $buffer.Length) }
-            }
-        }
-    }
-}
-
-function Resolve-TicketboxC07DatabaseHostAuthority {
-    if (
-        $null -eq (Get-Command `
-            -Name Resolve-TicketboxPostgresServiceHostAuthority `
-            -CommandType Function `
-            -ErrorAction SilentlyContinue)
-    ) {
-        throw "C07 缺少通用 PostgreSQL SCM 宿主权威解析器。"
-    }
-    if (
-        [string]::IsNullOrWhiteSpace([string]$DataRoot) -or
-        [string]::IsNullOrWhiteSpace([string]$InstallDir) -or
-        [string]::IsNullOrWhiteSpace([string]$BackendServiceName)
-    ) {
-        throw "C07 PostgreSQL 宿主权威缺少安装路径或服务合同。"
-    }
-    $targetConfigVariable = Get-Variable `
-        -Name ReleaseConfig `
-        -Scope Script `
-        -ErrorAction SilentlyContinue
-    if ($null -eq $targetConfigVariable -or $null -eq $targetConfigVariable.Value) {
-        throw "C07 PostgreSQL 宿主权威缺少通用 Windows release config。"
-    }
-    $targetConfig = $targetConfigVariable.Value
-    $installedConfigVariable = Get-Variable `
-        -Name PreviousReleaseConfig `
-        -Scope Script `
-        -ErrorAction SilentlyContinue
-    $installedConfig = if (
-        $null -ne $installedConfigVariable -and
-        $null -ne $installedConfigVariable.Value
-    ) {
-        $installedConfigVariable.Value
-    }
-    else {
-        $targetConfig
-    }
-    $serviceIdentityShapes = @(Get-TicketboxReleaseServiceIdentityShapes `
-        -InstalledConfig $installedConfig `
-        -TargetConfig $targetConfig `
-        -ServiceName $script:TicketboxC07PostgresServiceName)
-    $authority = Resolve-TicketboxPostgresServiceHostAuthority `
-        -ServiceName $script:TicketboxC07PostgresServiceName `
-        -ExpectedPgCtlPath (Join-Path $InstallDir "pg\bin\pg_ctl.exe") `
-        -DataRoot $DataRoot `
-        -InstallDir $InstallDir `
-        -BackendServiceName $BackendServiceName `
-        -AllowedServiceIdentityShapes $serviceIdentityShapes
-    return [pscustomobject]@{
-        Schema = "ticketbox-c07-host-db-authority-v1"
-        ServiceName = [string]$authority.ServiceName
-        ServiceProcessId = [int]$authority.ServiceProcessId
-        PostmasterProcessId = [int]$authority.PostmasterProcessId
-        PgCtlPath = [string]$authority.PgCtlPath
-        PsqlPath = [string]$authority.PsqlPath
-        PgData = [string]$authority.PgData
-        PhysicalPgData = [string]$authority.PhysicalPgData
-        Port = [int]$authority.Port
-        UsesRuntimeBinding = [bool]$authority.UsesRuntimeBinding
-        DataVolumeIdentity = [string]$authority.DataVolumeIdentity
-    }
-}
-
-
 function Assert-TicketboxC07SqlTarget {
     param(
         [Parameter(Mandatory = $true)][string]$Database,
@@ -424,7 +282,7 @@ function New-TicketboxC07LocalDatabaseUrl {
     )
 
     Assert-TicketboxC07SqlTarget -Database $Database -Role $Role
-    if ($Authority.Schema -cne "ticketbox-c07-host-db-authority-v1") {
+    if ($Authority.Schema -cne "ticketbox-postgresql-host-authority-v1") {
         throw "C07 host database authority schema 无效。"
     }
     $encodedRole = [Uri]::EscapeDataString($Role)
@@ -444,52 +302,24 @@ function Invoke-TicketboxC07SqlResult {
         [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds = 600000
     )
 
-    $effectiveTimeoutMilliseconds = $TimeoutMilliseconds
-    if (
-        $null -ne (
-            Get-Command `
-                -Name "Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds" `
-                -CommandType Function `
-                -ErrorAction SilentlyContinue
-        )
-    ) {
-        $effectiveTimeoutMilliseconds =
-            Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds `
-                -MaximumMilliseconds $TimeoutMilliseconds `
-                -Label $Label
-    }
     $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
         -Authority $Authority `
         -Database $Database `
         -Role $Role
-    return Invoke-TicketboxC07WithPlainSecret -Secret $Password -Action {
+    return Invoke-TicketboxWithPlainPostgresqlSecret -Secret $Password -Action {
         param([string]$PlainPassword)
 
-        return Invoke-TicketboxWithPgPassFile `
+        $commandResult = Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile `
+            -PsqlPath $Authority.PsqlPath `
             -DatabaseUrl $databaseUrl `
             -Password $PlainPassword `
-            -Action {
-                param([string]$ProtectedDatabaseUrl)
-
-                $commandResult = Invoke-TicketboxBoundedNativeProcess `
-                    -FilePath $Authority.PsqlPath `
-                    -Arguments @(
-                        "--no-psqlrc",
-                        "--no-password",
-                        "--quiet",
-                        "--tuples-only",
-                        "--no-align",
-                        "--set", "ON_ERROR_STOP=1",
-                        "--dbname", $ProtectedDatabaseUrl
-                    ) `
-                    -StandardInputText ($Sql + "`n") `
-                    -TimeoutMilliseconds $effectiveTimeoutMilliseconds `
-                    -Label $Label
-                return [pscustomobject]@{
-                    ExitCode = [int]$commandResult.ExitCode
-                    Output = [string]$commandResult.StandardOutput
-                }
-            }
+            -Sql $Sql `
+            -Label $Label `
+            -TimeoutMilliseconds $TimeoutMilliseconds
+        return [pscustomobject]@{
+            ExitCode = [int]$commandResult.ExitCode
+            Output = [string]$commandResult.StandardOutput
+        }
     }
 }
 
@@ -541,25 +371,11 @@ function Assert-TicketboxC07LiveHostConnection {
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword
     )
 
-    $timeoutMilliseconds = 600000
-    if (
-        $null -ne (
-            Get-Command `
-                -Name "Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds" `
-                -CommandType Function `
-                -ErrorAction SilentlyContinue
-        )
-    ) {
-        $timeoutMilliseconds =
-            Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds `
-                -MaximumMilliseconds 600000 `
-                -Label "C07 live PostgreSQL authority validation"
-    }
     $url = New-TicketboxC07LocalDatabaseUrl `
         -Authority $Authority `
         -Database "postgres" `
         -Role "postgres"
-    Invoke-TicketboxC07WithPlainSecret -Secret $SuperuserPassword -Action {
+    Invoke-TicketboxWithPlainPostgresqlSecret -Secret $SuperuserPassword -Action {
         param([string]$PlainPassword)
 
         Assert-TicketboxConnectedPostgresDataRoot `
@@ -568,7 +384,7 @@ function Assert-TicketboxC07LiveHostConnection {
             -ExpectedDataRoot $Authority.PgData `
             -ExpectedPort $Authority.Port `
             -Password $PlainPassword `
-            -TimeoutMilliseconds $timeoutMilliseconds
+            -TimeoutMilliseconds 600000
     } | Out-Null
 }
 
@@ -602,25 +418,11 @@ function Get-TicketboxC07DatabaseCatalogObservation {
     )
 
     Assert-TicketboxC07SqlTarget -Database $Database -Role "postgres"
-    $timeoutMilliseconds = 30000
-    if (
-        $null -ne (
-            Get-Command `
-                -Name "Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds" `
-                -CommandType Function `
-                -ErrorAction SilentlyContinue
-        )
-    ) {
-        $timeoutMilliseconds =
-            Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds `
-                -MaximumMilliseconds $timeoutMilliseconds `
-                -Label "C07 database catalog observation"
-    }
     $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
         -Authority $Authority `
         -Database "postgres" `
         -Role "postgres"
-    return Invoke-TicketboxC07WithPlainSecret `
+    return Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $SuperuserPassword `
         -Action {
             param([string]$PlainPassword)
@@ -631,7 +433,7 @@ function Get-TicketboxC07DatabaseCatalogObservation {
                     -DatabaseUrl $databaseUrl `
                     -Password $PlainPassword `
                     -TargetDatabase $Database `
-                    -TimeoutMilliseconds $timeoutMilliseconds
+                    -TimeoutMilliseconds 30000
             return [pscustomobject][ordered]@{
                 ClusterSystemIdentifier =
                     [string]$observation.ClusterSystemIdentifier
@@ -1797,7 +1599,7 @@ function Set-TicketboxManagedSchemaRuntimeAcl {
         [switch]$PreserveRuntimeFence
     )
 
-    Assert-TicketboxC07SecureString `
+    Assert-TicketboxPostgresqlSecureString `
         $SuperuserPassword `
         "managed schema runtime ACL superuser authority"
     Invoke-TicketboxC07Sql `

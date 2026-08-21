@@ -49,6 +49,15 @@ def test_catalog_adapter_is_small_generic_and_old_c07_entrypoints_are_retired() 
         if "tests" not in path.parts
     }
     c07_database = production_sources[C07_DATABASE]
+    sql_result = re.search(
+        r"(?ms)^function Invoke-TicketboxC07SqlResult \{.*?(?=^function )",
+        c07_database,
+    )
+    assert sql_result is not None
+    assert "Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile" in sql_result.group()
+    assert "Invoke-TicketboxWithPgPassFile" not in sql_result.group()
+    assert "Invoke-TicketboxBoundedNativeProcess" not in sql_result.group()
+    assert "Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds" not in c07_database
 
     for path in (ENTRYPOINT, *COMPONENTS):
         assert path.read_bytes().startswith(b"\xef\xbb\xbf")
@@ -295,12 +304,8 @@ $ErrorActionPreference = 'Stop'
 . '{_literal(C07_DATABASE)}'
 $script:timeoutCalls = 0
 function Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds {{
-    param($MaximumMilliseconds, $Label)
-    if ($MaximumMilliseconds -ne 30000 -or $Label -cne 'C07 database catalog observation') {{
-        throw 'C07 catalog timeout contract drifted'
-    }}
     $script:timeoutCalls++
-    return 4321
+    throw 'ambient timeout authority must not be called'
 }}
 function Get-TicketboxPostgresqlDatabaseCatalogObservation {{
     param($PsqlPath, $DatabaseUrl, $Password, $TargetDatabase, $TimeoutMilliseconds)
@@ -310,7 +315,7 @@ function Get-TicketboxPostgresqlDatabaseCatalogObservation {{
             'postgresql://postgres@127.0.0.1:5544/postgres?require_auth=scram-sha-256' -or
         $Password -cne ('A' * 40) -or
         $TargetDatabase -cne 'ticketbox' -or
-        $TimeoutMilliseconds -ne 4321
+        $TimeoutMilliseconds -ne 30000
     ) {{ throw 'C07 catalog adapter invocation drifted' }}
     return [pscustomobject][ordered]@{{
         ClusterSystemIdentifier = '7123456789012345678'
@@ -323,7 +328,7 @@ function Get-TicketboxPostgresqlDatabaseCatalogObservation {{
     }}
 }}
 $authority = [pscustomobject]@{{
-    Schema = 'ticketbox-c07-host-db-authority-v1'
+    Schema = 'ticketbox-postgresql-host-authority-v1'
     PsqlPath = 'C:\\pg\\psql.exe'
     Port = 5544
 }}
@@ -337,7 +342,7 @@ $result = Get-TicketboxC07DatabaseCatalogObservation `
     -SuperuserPassword $secret `
     -Database 'ticketbox'
 if (
-    $script:timeoutCalls -ne 1 -or
+    $script:timeoutCalls -ne 0 -or
     $result.ClusterSystemIdentifier -cne '7123456789012345678' -or
     $result.Database -cne 'ticketbox' -or
     [uint32]$result.DatabaseOid -ne 42 -or

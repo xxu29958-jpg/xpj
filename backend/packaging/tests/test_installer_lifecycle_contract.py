@@ -289,7 +289,8 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     installed_dependencies = pre_copy_dependencies + (
         "windows_bundled_database.ps1",
         "windows_c07_database.ps1",
-        "windows_c07_superuser_recovery.ps1",
+        "windows_postgresql_credentials.ps1",
+        "windows_postgresql_single_user.ps1",
         "windows_deadline_budget.ps1",
         "windows_atomic_artifacts.ps1",
         "windows_database_generation_program_adapter.ps1",
@@ -297,10 +298,16 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_database_generation.ps1",
         "windows_database_generation_contract.ps1",
         "windows_database_generation_artifacts.ps1",
-        "windows_database_generation_adapter.ps1",
+        "windows_database_generation_commit_verifier.ps1",
+        "windows_database_generation_policy.ps1",
+        "windows_database_generation_credentials.ps1",
+        "windows_database_generation_role_fence.ps1",
+        "windows_database_generation_database_binding.ps1",
         "windows_database_generation_source.ps1",
         "windows_database_generation_recovery_evidence.ps1",
         "windows_database_generation_target_recovery.ps1",
+        "windows_database_generation_retirement.ps1",
+        "windows_database_generation_single_user.ps1",
         "windows_database_generation_projection.ps1",
         "windows_backend_bootstrap.ps1",
         "windows_bootstrap_exposure_recovery.ps1",
@@ -347,12 +354,10 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     uninstall = _read("uninstall_bundled_services.ps1")
     bootstrap = _read("windows_backend_bootstrap.ps1")
     receipt = _read("windows_lifecycle_receipt.ps1")
-    for variable in (
-        "$C07DatabaseScript",
-        "$C07SuperuserRecoveryScript",
-        "$DatabaseGenerationProgramAdapterScript",
-    ):
+    for variable in ("$DatabaseGenerationProgramAdapterScript",):
         assert f". {variable}" in install
+    assert ". $C07DatabaseScript" not in install
+    assert '"windows_c07_database.ps1"' in _read("windows_database_generation.ps1")
     assert '$C07MigrationHelper = Join-Path $ProgramDir "ticketbox-c07-migrator.exe"' in install
     assert ". $DatabaseGenerationScript" in install
     assert "Invoke-TicketboxInstalledDatabaseGeneration" in install
@@ -1598,6 +1603,7 @@ def test_mutable_windows_runtime_policy_is_read_from_release_config() -> None:
     lifecycle = _read("windows_service_lifecycle.ps1")
     database = _read("windows_bundled_database.ps1")
     database_safety = _read("windows_database_safety.ps1")
+    postgres_host = _read("windows_pg_recovery_tools.ps1")
     lifecycle_lock = _read("windows_lifecycle_lock.ps1")
     installer = _read_installer()
 
@@ -1617,7 +1623,10 @@ def test_mutable_windows_runtime_policy_is_read_from_release_config() -> None:
     assert "ALLOW_PUBLIC_ADMIN_API=" not in database
     assert "CLOUDFLARE_ACCESS_REQUIRED=" not in database
     assert "XPJ_EXTRA_LOOPBACK_HOSTS=127.0.0.1:${BackendPort}" in database
-    assert '"-X", "-w"' in database
+    assert '"--no-psqlrc",' in postgres_host
+    assert '"--no-password",' in postgres_host
+    assert '"--set", "ON_ERROR_STOP=1"' in postgres_host
+    assert 'StandardInputText = $Sql + "`n"' in postgres_host
     assert "--no-psqlrc" in database_safety
     assert "--no-password" in database_safety
     assert "--lock-wait-timeout=30000" in database_safety
@@ -2128,8 +2137,8 @@ function Get-TicketboxDatabaseGenerationStateRoot {{
     return (Join-Path $InstallerState 'database-generation')
 }}
 function Read-TicketboxDatabaseGenerationCurrent {{
-    param($StateRoot, [switch]$AllowAbsent)
-    if ($StateRoot -cne (Join-Path $InstallerState 'database-generation') -or -not $AllowAbsent) {{
+    param([switch]$AllowAbsent)
+    if (-not $AllowAbsent) {{
         throw 'unexpected CURRENT observation'
     }}
     $script:CurrentObservations += 1
@@ -2843,6 +2852,8 @@ def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Pa
         "DatabaseGenerationScriptSha256": digest,
         "DatabaseGenerationContractScriptSha256": digest,
         "DatabaseGenerationArtifactsScriptSha256": digest,
+        "DatabaseGenerationCommitVerifierScriptSha256": digest,
+        "DatabaseGenerationPolicyScriptSha256": digest,
         "DatabaseGenerationProgramSha256": digest,
         "DatabaseGenerationMigrationHelperSize": "1",
         "DatabaseGenerationMigrationHelperSha256": digest,

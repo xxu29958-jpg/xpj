@@ -121,7 +121,7 @@ function Assert-TicketboxDatabaseGenerationToolIdentity {{
 function Get-TicketboxPortableFileSha256 {{ return ('e' * 64) }}
 function Get-TicketboxPathEntryKindNoFollow {{ param($Path); if ([IO.File]::Exists($Path)) {{ return 'File' }}; if ([IO.Directory]::Exists($Path)) {{ return 'Directory' }}; return 'Missing' }}
 function New-TicketboxC07LocalDatabaseUrl {{ param($Authority, $Database, $Role); return "postgresql://postgres@127.0.0.1:5432/$Database" }}
-function Invoke-TicketboxC07WithPlainSecret {{ param($Secret, $Action); return & $Action 'secret' }}
+function Invoke-TicketboxWithPlainPostgresqlSecret {{ param($Secret, $Action); return & $Action 'secret' }}
 function Invoke-TicketboxWithPgPassFile {{ param($DatabaseUrl, $Password, $Action); return & $Action $DatabaseUrl }}
 function Remove-TicketboxDatabaseGenerationRecoveryFile {{ param($StateRoot, $Path, $LifecycleLock); $script:events += "remove:$([IO.Path]::GetFileName($Path))"; if ([IO.File]::Exists($Path)) {{ [IO.File]::Delete($Path) }} }}
 function Invoke-TicketboxPgDumpCustom {{ param($PgDumpPath, $DatabaseUrl, $OutputPath, $Password, $TimeoutMilliseconds); $script:events += 'dump'; $script:dumpPath = $PgDumpPath; $script:dumpUrl = $DatabaseUrl; [IO.File]::WriteAllText($OutputPath, 'archive'); return $script:dumpExit }}

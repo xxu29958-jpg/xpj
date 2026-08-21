@@ -31,7 +31,7 @@ function Get-TicketboxDatabaseGenerationTargetVerification {
         [string]$Attempt.Payload.create_attempt_id
     } else { "" }
     $capturedTarget = [string]$Intent.Payload.target_revision
-    $result = Invoke-TicketboxC07WithPlainSecret `
+    $result = Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $Credentials.MigratorPassword `
         -Action ({
             param([string]$PlainPassword)
@@ -373,7 +373,7 @@ WHERE namespace.nspname OPERATOR(pg_catalog.=) 'public';
             -Action $capturedRestoreAction
     }.GetNewClosure()
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $exitCode = Invoke-TicketboxC07WithPlainSecret `
+    $exitCode = Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $SuperuserPassword `
         -Action $plainSecretAction
     if ([int]$exitCode -ne 0) {

@@ -63,9 +63,9 @@ CI 执行依赖审计脚本，但默认不因为“发现新稳定版本”失�
 ### PostgreSQL（捆绑数据库）
 
 - 形态：EDB「binaries without installer」zip，由 `build_pg_bundle.ps1` 裁出最小集（保留 `bin`/`lib`/`share` + `server_license.txt`，裁掉 pgAdmin/doc/include/StackBuilder + 非白名单客户端 EXE；~800MB 解包 → **~127MB**，bin 留 9 个 EXE：postgres/initdb/pg_ctl/psql/pg_dump/pg_restore/pg_isready/pg_controldata/pg_resetwal + 全部 DLL）。
-- 版本：**17.10-1**（major **钉死 17**，ADR §6；minor/patch 随新 zip 换，major 升级 17→N 另开 ADR 走 pg_upgrade）。
-- 来源：`https://get.enterprisedb.com/postgresql/postgresql-17.10-1-windows-x64-binaries.zip`
-- zip sha256：`f9aafca58e7026a1ef2caeee711acf761671e57904d430adc85f468374f5a821`（脚本启动即校验，不匹配拒绝使用）。
+- 版本：**17.11-1**（major **钉死 17**，ADR §6；minor/patch 随新 zip 换，major 升级 17→N 另开 ADR 走 pg_upgrade）。
+- 来源：`https://get.enterprisedb.com/postgresql/postgresql-17.11-1-windows-x64-binaries.zip`
+- zip sha256：`6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3`（脚本启动即校验，不匹配拒绝使用）。
 - 许可证：**PostgreSQL License**（permissive，BSD/MIT 式，准予 bundle）；裁剪后保留 `server_license.txt` 满足「copyright + 许可 + 免责三段须随副本」。EDB 的 binaries-without-installer zip **不附带** EDB 专有 EULA（clickwrap 只约束完整图形安装器 / StackBuilder / pgAdmin，本裁剪已去除这些）。
 
 ### Shawl（后端服务包装器，2-D 接线）

@@ -5,88 +5,119 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 
-def test_pr_delta_allows_only_exact_installer_test_retirements(monkeypatch) -> None:
-    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
-    retirement_base = "051464999fc1f71d9072bb5c9cfc012b521181cd"
+def _violations_for(
+    mod: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    key: str,
+    base: int,
+    current: int,
+    base_commit: str,
+) -> list[str]:
+    baseline = dict(mod.STRICT_EQUALITY_BASELINE)
+    baseline[key] = current
+    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
+    return mod._compute_ratchet_findings(
+        {key: base},
+        base_commit=base_commit,
+    )[1]
 
-    def violations_for(
-        key: str,
-        base: int,
-        current: int,
-        *,
-        base_commit: str = retirement_base,
-    ) -> list[str]:
-        baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-        baseline[key] = current
-        monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
-        return mod._compute_ratchet_findings(
-            {key: base},
-            base_commit=base_commit,
-        )[1]
 
-    assert violations_for("installer_pytest_count", 387, 379) == []
-    neighboring_installer_hops = (
-        (386, 379),
-        (387, 380),
-        (387, 378),
-        (388, 379),
-        (379, 378),
-    )
-    for base_count, current_count in neighboring_installer_hops:
-        assert len(violations_for("installer_pytest_count", base_count, current_count)) == 1
-    assert len(
-        violations_for(
+def _assert_exact_installer_hop(
+    mod: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    base_commit: str,
+    accepted_hop: tuple[int, int],
+    neighboring_hops: tuple[tuple[int, int], ...],
+) -> None:
+    base_count, current_count = accepted_hop
+    assert (
+        _violations_for(
+            mod,
+            monkeypatch,
             "installer_pytest_count",
-            387,
-            379,
-            base_commit="f" * 40,
+            base_count,
+            current_count,
+            base_commit,
         )
-    ) == 1
-
-    generation_base = "9d74b04f318362d5e222d897787db074bb5ca8ab"
-    assert violations_for(
-        "installer_pytest_count",
-        379,
-        282,
-        base_commit=generation_base,
-    ) == []
-    neighboring_generation_hops = (
-        (378, 282),
-        (379, 283),
-        (379, 281),
-        (380, 282),
-        (282, 281),
+        == []
     )
-    for base_count, current_count in neighboring_generation_hops:
-        assert len(
-            violations_for(
+    for adjacent_base, adjacent_current in neighboring_hops:
+        assert (
+            len(
+                _violations_for(
+                    mod,
+                    monkeypatch,
+                    "installer_pytest_count",
+                    adjacent_base,
+                    adjacent_current,
+                    base_commit,
+                )
+            )
+            == 1
+        )
+    assert (
+        len(
+            _violations_for(
+                mod,
+                monkeypatch,
                 "installer_pytest_count",
                 base_count,
                 current_count,
-                base_commit=generation_base,
+                "f" * 40,
             )
-        ) == 1
-    assert len(
-        violations_for(
-            "installer_pytest_count",
-            379,
-            282,
-            base_commit="f" * 40,
         )
-    ) == 1
+        == 1
+    )
 
-    for base_count, current_count in ((379, 282), (387, 379)):
-        violations = violations_for(
+
+def test_pr_delta_allows_only_exact_installer_test_retirements(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    hops = (
+        (
+            "051464999fc1f71d9072bb5c9cfc012b521181cd",
+            (387, 379),
+            ((386, 379), (387, 380), (387, 378), (388, 379), (379, 378)),
+        ),
+        (
+            "9d74b04f318362d5e222d897787db074bb5ca8ab",
+            (379, 282),
+            ((378, 282), (379, 283), (379, 281), (380, 282), (282, 281)),
+        ),
+        (
+            "ce9a5aa413f20e5455fe0572d9416187038135b0",
+            (283, 260),
+            ((282, 260), (283, 261), (283, 259), (284, 260), (260, 259)),
+        ),
+    )
+    for base_commit, accepted_hop, neighboring_hops in hops:
+        _assert_exact_installer_hop(
+            mod,
+            monkeypatch,
+            base_commit=base_commit,
+            accepted_hop=accepted_hop,
+            neighboring_hops=neighboring_hops,
+        )
+    for base_count, current_count in ((283, 260), (379, 282), (387, 379)):
+        base_commit = next(commit for commit, hop, _ in hops if hop == (base_count, current_count))
+        violations = _violations_for(
+            mod,
+            monkeypatch,
             "mutate_token_carriers",
             base_count,
             current_count,
-            base_commit=generation_base if base_count == 379 else retirement_base,
+            base_commit,
         )
         assert len(violations) == 1
         assert "mutate_token_carriers" in violations[0]

@@ -59,6 +59,10 @@
     '{#DatabaseGenerationContractScriptSha256}';
   DatabaseGenerationArtifactsScriptSha256 =
     '{#DatabaseGenerationArtifactsScriptSha256}';
+  DatabaseGenerationCommitVerifierScriptSha256 =
+    '{#DatabaseGenerationCommitVerifierScriptSha256}';
+  DatabaseGenerationPolicyScriptSha256 =
+    '{#DatabaseGenerationPolicyScriptSha256}';
   DatabaseGenerationProgramSha256 = '{#DatabaseGenerationProgramSha256}';
   DatabaseGenerationMigrationHelperSize =
     '{#DatabaseGenerationMigrationHelperSize}';
@@ -589,6 +593,8 @@ begin
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_contract.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_artifacts.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_commit_verifier.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_policy.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'DATABASE_GENERATION_PROGRAM.json');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'ticketbox-run-installer-child-logged.ps1');
   if DirExists(LifecycleLockBootstrapDirectory) and
@@ -778,6 +784,12 @@ begin
       'windows_database_generation_artifacts.ps1',
       DatabaseGenerationArtifactsScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
+      'windows_database_generation_commit_verifier.ps1',
+      DatabaseGenerationCommitVerifierScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_database_generation_policy.ps1',
+      DatabaseGenerationPolicyScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
       'DATABASE_GENERATION_PROGRAM.json', DatabaseGenerationProgramSha256);
 end;
 
@@ -921,6 +933,12 @@ begin
      not StageLifecycleLockBootstrapFile(
     'windows_database_generation_artifacts.ps1',
     DatabaseGenerationArtifactsScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_generation_commit_verifier.ps1',
+    DatabaseGenerationCommitVerifierScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_generation_policy.ps1',
+    DatabaseGenerationPolicyScriptSha256) or
      not StageLifecycleLockBootstrapFile(
     'DATABASE_GENERATION_PROGRAM.json',
     DatabaseGenerationProgramSha256) then

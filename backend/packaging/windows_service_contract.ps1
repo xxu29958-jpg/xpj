@@ -191,13 +191,19 @@ function ConvertTo-TicketboxFullPath([string]$Path) {
     return [System.IO.Path]::GetFullPath($expanded)
 }
 
-function Get-TicketboxServiceImagePath([string]$Name) {
+function Get-TicketboxServiceImagePathExact([string]$Name) {
     $escaped = $Name.Replace("'", "''")
     $record = Get-CimInstance -ClassName Win32_Service -Filter "Name='$escaped'" -ErrorAction Stop
     if ($null -eq $record -or [string]::IsNullOrWhiteSpace([string]$record.PathName)) {
         throw "无法读取 Windows 服务 $Name 的 ImagePath。"
     }
-    return [Environment]::ExpandEnvironmentVariables([string]$record.PathName).Trim()
+    return ([string]$record.PathName).Trim()
+}
+
+function Get-TicketboxServiceImagePath([string]$Name) {
+    return [Environment]::ExpandEnvironmentVariables(
+        (Get-TicketboxServiceImagePathExact $Name)
+    ).Trim()
 }
 
 function Initialize-TicketboxServiceDependencyNativeMethods {

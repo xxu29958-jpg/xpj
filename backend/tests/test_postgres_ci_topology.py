@@ -357,7 +357,7 @@ def _assert_windows_lifecycle_matrix(
 ) -> None:
     assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [
         "${{ matrix.suite.timeout_minutes }}",
-        20,
+        30,
         5,
     ]
     expected_windows_suite_rows = [
@@ -366,7 +366,11 @@ def _assert_windows_lifecycle_matrix(
             "test_database_generation_writer_fence",
             20,
         ),
-        ("C07 superuser recovery", "test_c07_superuser_recovery", 20),
+        (
+            "Database generation authority",
+            "test_database_generation_owner or test_database_generation_bootstrap_retirement",
+            20,
+        ),
         ("Service lifecycle remainder", "test_service_lifecycle_contract and not heartbeat", 20),
     ]
     expected_windows_suites = [

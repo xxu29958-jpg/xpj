@@ -10,7 +10,7 @@ from _powershell_contract import powershell_contract_engines
 pytestmark = pytest.mark.xdist_group(name="windows_powershell_lifecycle")
 
 PACKAGING = Path(__file__).resolve().parents[1]
-ADAPTER = PACKAGING / "windows_database_generation_adapter.ps1"
+ROLE_FENCE = PACKAGING / "windows_database_generation_role_fence.ps1"
 
 
 def _function(source: str, name: str) -> str:
@@ -41,7 +41,7 @@ def test_database_generation_writer_fence_commits_all_effective_writer_authoriti
             PACKAGING / "postgresql_writer_fence" / "precondition_guard.ps1",
             PACKAGING / "postgresql_writer_fence" / "session_drain.ps1",
             PACKAGING / "postgresql_writer_fence" / "reconciler.ps1",
-            PACKAGING / "windows_database_generation_adapter.ps1",
+            ROLE_FENCE,
         )
     )
 
@@ -70,7 +70,7 @@ def test_database_generation_writer_fence_commits_all_effective_writer_authoriti
     assert "database_lock.classid = 'pg_database'::regclass::oid" in source
 
     frozen_fence = _function(
-        ADAPTER.read_text(encoding="utf-8-sig"),
+        ROLE_FENCE.read_text(encoding="utf-8-sig"),
         "Get-TicketboxDatabaseGenerationFrozenFence",
     )
     script = (
@@ -85,7 +85,7 @@ function New-TicketboxC07LocalDatabaseUrl {
     return "postgresql://localhost/ticketbox"
 }
 
-function Invoke-TicketboxC07WithPlainSecret {
+function Invoke-TicketboxWithPlainPostgresqlSecret {
     param([Security.SecureString]$Secret, [scriptblock]$Action)
     $Action.Module.SessionState.PSVariable.Set("TicketboxC07OwnerRole", "ticketbox_owner")
     $Action.Module.SessionState.PSVariable.Set("TicketboxC07MigratorRole", "ticketbox_migrator")
