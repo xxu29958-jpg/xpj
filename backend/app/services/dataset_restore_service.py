@@ -67,10 +67,12 @@ def resolve_restored_dataset_plan(
 ) -> RestoredDatasetPlan:
     """Pure identity policy for an in-place restore of the same dataset."""
 
-    _canonical_uuid(active_dataset_id)
+    active_dataset_id = _canonical_uuid(active_dataset_id)
     if active_restore_epoch < 0 or not target_schema_revision:
         raise AppError("backup_incomplete", status_code=500)
     if manifest.authority.semantic_revision != DATASET_SEMANTIC_REVISION:
+        raise AppError("backup_incomplete", status_code=409)
+    if active_dataset_id != manifest.authority.dataset_id:
         raise AppError("backup_incomplete", status_code=409)
     dataset_id = manifest.authority.dataset_id
     previous_epoch = manifest.authority.restore_epoch

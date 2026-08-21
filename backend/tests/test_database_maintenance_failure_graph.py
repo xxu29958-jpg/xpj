@@ -531,3 +531,52 @@ def test_isolated_restore_action_preserves_finalization_and_rollback_failures(
     with pytest.raises(BaseExceptionGroup) as caught:
         action.run_isolated_dataset_restore_action(request)
     assert caught.value.exceptions == (primary, rollback_cleanup)
+
+
+def test_isolated_restore_action_rejects_foreign_dataset_before_mutation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from app.database import _dataset_restore_action as action
+    from app.errors import AppError
+
+    source = SimpleNamespace(
+        backup_id="22222222-2222-4222-8222-222222222222",
+        authority=SimpleNamespace(
+            dataset_id="33333333-3333-4333-8333-333333333333",
+            restore_epoch=4,
+            schema_revision=TARGET_REVISION,
+            semantic_revision="ticketbox-dataset-semantics-v1",
+        ),
+        originals=(),
+    )
+    monkeypatch.setattr(action, "read_manifest", lambda *_args, **_kwargs: source)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("foreign dataset reached a mutation adapter")
+
+    for name in (
+        "_validated_migrator_url",
+        "_create_engine",
+        "restore_postgres_archive",
+        "materialize_restored_originals",
+        "finalize_restored_dataset",
+    ):
+        monkeypatch.setattr(action, name, forbidden)
+    request = action.CompleteRestoreRequest(
+        backup_generation=tmp_path,
+        target_upload_root=tmp_path / "uploads",
+        database_url=MIGRATOR_URL,
+        passfile=tmp_path / "pgpass",
+        pg_restore_binary=tmp_path / "pg_restore.exe",
+        active_dataset_id="44444444-4444-4444-8444-444444444444",
+        active_restore_epoch=0,
+        target_schema_revision=TARGET_REVISION,
+        restore_role="ticketbox_owner",
+    )
+
+    with pytest.raises(AppError) as rejected:
+        action.run_isolated_dataset_restore_action(request)
+
+    assert rejected.value.error == "backup_incomplete"
+    assert rejected.value.status_code == 409

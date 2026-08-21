@@ -119,6 +119,22 @@ def test_restore_epoch_advances_without_shipping_an_unowned_clone_mode(tmp_path:
     assert "clone_dataset_id" not in resolve_restored_dataset_plan.__annotations__
 
 
+def test_restore_rejects_a_backup_from_a_foreign_dataset(tmp_path: Path) -> None:
+    authority = _authority()
+    _generation, manifest = _manifest(tmp_path, authority=authority)
+
+    with pytest.raises(AppError) as rejected:
+        resolve_restored_dataset_plan(
+            manifest,
+            active_dataset_id="7adafba4-2f79-4627-8620-62ee79a8e481",
+            active_restore_epoch=0,
+            target_schema_revision=authority.schema_revision,
+        )
+
+    assert rejected.value.error == "backup_incomplete"
+    assert rejected.value.status_code == 409
+
+
 def test_restore_materializes_originals_into_absent_candidate_root(tmp_path: Path) -> None:
     authority = _authority()
     generation, manifest = _manifest(tmp_path, authority=authority)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import runpy
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,88 @@ def test_backup_owner_passes_structured_barrier_and_inspects_before_request_reti
     validation = backup.rindex("Assert-TicketboxInstalledCompleteBackupResult")
     retirement = backup.rindex("Remove-TicketboxInstalledDatasetBackupRequest")
     assert inspection < validation < retirement
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_backup_owner_argv_is_accepted_by_the_real_frozen_cli_parser(
+    tmp_path: Path,
+) -> None:
+    helper = powershell_function(
+        BACKUP.read_text(encoding="utf-8-sig"),
+        "Invoke-TicketboxInstalledCompleteBackupHelper",
+    )
+    argv_path = tmp_path / "complete-backup-argv.json"
+    escaped_argv_path = str(argv_path).replace("'", "''")
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Assert-TicketboxInstalledPostgresToolArtifact {{
+    param($Subject, $Tool)
+    if ($Tool -ceq 'PgDump') {{ return 'C:\\pg\\pg_dump.exe' }}
+    return 'C:\\pg\\pg_restore.exe'
+}}
+function New-TicketboxPostgresqlLocalDatabaseUrl {{ param($Authority, $Database, $Role); return 'postgresql://local' }}
+function Invoke-TicketboxWithPlainPostgresqlSecret {{ param($Secret, $Action); return (& $Action 'password') }}
+function New-TicketboxProtectedPgPassFile {{ param($DatabaseUrl, $Password); return [pscustomobject]@{{ Path = 'C:\\state\\pgpass'; FullControlAccounts = @(); OwnerAccount = 'owner' }} }}
+function Open-TicketboxVerifiedDatabaseMaintenanceHelperLease {{ param($Path, $ExpectedRelativePath, $ExpectedSize, $ExpectedSha256); return [pscustomobject]@{{ Path = $Path }} }}
+function New-TicketboxDatabaseGenerationHelperChildEnvironment {{ param($PgPassFilePath); return @{{}} }}
+function Invoke-TicketboxBoundedNativeProcess {{
+    param($FilePath, $Arguments, $StandardInputText, $TimeoutMilliseconds, $Label, $ChildEnvironment)
+    $script:capturedArgv = @($Arguments)
+    return [pscustomobject]@{{
+        ExitCode = 0
+        StandardError = ''
+        StandardOutput = '{{"schema":"ticketbox-complete-dataset-backup-result-v1","backup_id":"22222222-2222-4222-8222-222222222222","generation":"ticketbox-backup-22222222-2222-4222-8222-222222222222","dataset_id":"33333333-3333-4333-8333-333333333333","restore_epoch":4,"size_bytes":4096}}'
+    }}
+}}
+function Get-TicketboxDatabaseGenerationJsonLine {{ param($StandardOutput, $Label); return $StandardOutput }}
+function Assert-TicketboxDatabaseGenerationExactProperties {{ param($Value, $ExpectedNames, $Label) }}
+function Assert-TicketboxDatabaseMaintenanceHelperLeaseUnchanged {{ param($Lease) }}
+function Close-TicketboxDatabaseMaintenanceHelperLease {{ param($Lease) }}
+function Remove-TicketboxProtectedPgPassArtifact {{ param($Path, $FullControlAccounts, $OwnerAccount) }}
+function Throw-TicketboxDatabaseGenerationOperationFailure {{ param($Primary, $Cleanup); if ($null -ne $Primary) {{ throw $Primary }} }}
+{helper}
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{ InstallDir = 'C:\\Ticketbox'; DataRoot = 'C:\\Data'; PgPort = 5432 }}
+    Manifest = [pscustomobject]@{{
+        Sha256 = ('a' * 64)
+        DatabaseMaintenanceHelper = [pscustomobject]@{{ RelativePath = 'helper.exe'; Size = 1; Sha256 = ('d' * 64) }}
+    }}
+    Release = [pscustomobject]@{{ database_tool_timeout_ms = 1000 }}
+}}
+$authority = [pscustomobject]@{{ Credentials = [pscustomobject]@{{ BackupPassword = 'secret' }} }}
+$request = [pscustomobject]@{{ Payload = [pscustomobject]@{{
+    operation_id = '11111111-1111-4111-8111-111111111111'
+    backup_id = '22222222-2222-4222-8222-222222222222'
+    backup_kind = 'manual'
+}} }}
+$barrier = [pscustomobject]@{{
+    PayloadSha256 = ('b' * 64)
+    Payload = [pscustomobject]@{{
+        current_sha256 = ('c' * 64)
+        dataset_id = '33333333-3333-4333-8333-333333333333'
+        restore_epoch = 4
+        schema_revision = '20260821_0001'
+    }}
+}}
+[void](Invoke-TicketboxInstalledCompleteBackupHelper $subject $authority $request $barrier)
+[IO.File]::WriteAllText(
+    '{escaped_argv_path}',
+    ($script:capturedArgv | ConvertTo-Json -Compress),
+    (New-Object Text.UTF8Encoding($false))
+)
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-backup-real-cli-argv.ps1",
+    )
+    argv = json.loads(argv_path.read_text(encoding="utf-8"))
+    parser = runpy.run_path(str(PACKAGING / "launch.py"))[
+        "_parse_complete_dataset_backup_args"
+    ]
+    parsed = parser(argv)
+    assert parsed.pg_dump_path == Path(r"C:\pg\pg_dump.exe")
+    assert parsed.pg_restore_path == Path(r"C:\pg\pg_restore.exe")
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
@@ -163,20 +246,30 @@ $evidence = [pscustomobject][ordered]@{{
 }}
 $inspection = [pscustomobject]@{{ Evidence = $evidence }}
 [void](Assert-TicketboxInstalledCompleteBackupResult $subject $request $barrier $result $inspection)
-foreach ($case in @('dataset', 'epoch', 'operation', 'release', 'fence')) {{
+foreach ($case in @(
+    'result_dataset', 'result_epoch',
+    'inspection_dataset', 'inspection_epoch',
+    'operation', 'request_release', 'inspection_release', 'fence'
+)) {{
     switch ($case) {{
-        'dataset' {{ $evidence.dataset_id = '44444444-4444-4444-8444-444444444444' }}
-        'epoch' {{ $evidence.restore_epoch = 5 }}
+        'result_dataset' {{ $result.dataset_id = '44444444-4444-4444-8444-444444444444' }}
+        'result_epoch' {{ $result.restore_epoch = 5 }}
+        'inspection_dataset' {{ $evidence.dataset_id = '44444444-4444-4444-8444-444444444444' }}
+        'inspection_epoch' {{ $evidence.restore_epoch = 5 }}
         'operation' {{ $evidence.operation_id = '55555555-5555-4555-8555-555555555555' }}
-        'release' {{ $evidence.release_id = ('e' * 64) }}
+        'request_release' {{ $request.Payload.release_manifest_sha256 = ('e' * 64) }}
+        'inspection_release' {{ $evidence.release_id = ('e' * 64) }}
         'fence' {{ $evidence.writer_fence_sha256 = ('f' * 64) }}
     }}
     $rejected = $false
     try {{ Assert-TicketboxInstalledCompleteBackupResult $subject $request $barrier $result $inspection | Out-Null }} catch {{ $rejected = $true }}
     if (-not $rejected) {{ throw "$case mutation crossed backup result authority" }}
+    $result.dataset_id = $dataset
+    $result.restore_epoch = 4
     $evidence.dataset_id = $dataset
     $evidence.restore_epoch = 4
     $evidence.operation_id = $operation
+    $request.Payload.release_manifest_sha256 = $release
     $evidence.release_id = $release
     $evidence.writer_fence_sha256 = $fence
 }}

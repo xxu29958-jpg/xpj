@@ -93,6 +93,16 @@ def test_target_authorization_consumes_normalized_source_without_mode_reclassifi
     assert "source_request_sha256" not in target
 
 
+def test_source_binding_downstream_does_not_reclassify_install_modes() -> None:
+    verifier = COMMIT_VERIFIER.read_text(encoding="utf-8-sig")
+
+    assert "Assert-TicketboxDatabaseGenerationSourceBinding" in verifier
+    assert "source_kind" not in verifier
+    assert "source_request_sha256" not in verifier
+    assert '"source-create-attempt"' not in verifier
+    assert '"restored-source"' not in verifier
+
+
 def _unexpected_c07_production_lines(sources: dict[Path, str]) -> list[str]:
     violations: list[str] = []
     for path, source in sources.items():

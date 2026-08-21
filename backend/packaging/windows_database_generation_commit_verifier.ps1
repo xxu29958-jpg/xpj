@@ -5,14 +5,17 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
         [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
         [Parameter(Mandatory = $true)][string]$ExpectedCurrentSha256
     )
-    $recoveryEvidencePath = Join-Path `
-        $PSScriptRoot `
+    foreach ($dependencyName in @(
+        "windows_database_generation_source.ps1",
         "windows_database_generation_recovery_evidence.ps1"
-    if ((Get-TicketboxPathEntryKindNoFollow $recoveryEvidencePath) -cne "File") {
-        throw "database generation commit verifier dependency 不是可信普通文件：$recoveryEvidencePath"
+    )) {
+        $dependencyPath = Join-Path $PSScriptRoot $dependencyName
+        if ((Get-TicketboxPathEntryKindNoFollow $dependencyPath) -cne "File") {
+            throw "database generation commit verifier dependency 不是可信普通文件：$dependencyPath"
+        }
+        Assert-NoTicketboxAncestorReparsePoints $dependencyPath
+        . $dependencyPath
     }
-    Assert-NoTicketboxAncestorReparsePoints $recoveryEvidencePath
-    . $recoveryEvidencePath
 
     $operationId = ([guid]$ExpectedOperationId).ToString("D")
     Assert-TicketboxDatabaseGenerationLowerSha256 $ExpectedCurrentSha256 "commit CURRENT"
@@ -22,25 +25,8 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
     $intent = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
     $source = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "source-binding"
-    $sourceEvidenceKind = switch ([string]$source.Payload.source_kind) {
-        "empty" { "source-create-attempt" }
-        "current_generation" { "restored-source" }
-        default { throw "database generation commit source kind 无效。" }
-    }
-    $sourceEvidence = Read-TicketboxDatabaseGenerationOperationArtifact `
-        $stateRoot $operationId $sourceEvidenceKind
-    $sourceEvidenceValid = if ($sourceEvidenceKind -ceq "source-create-attempt") {
-        [string]::IsNullOrEmpty([string]$intent.Payload.source_request_sha256)
-    }
-    else {
-        -not [string]::IsNullOrEmpty(
-            [string]$intent.Payload.source_request_sha256
-        ) -and
-        [string]$sourceEvidence.Payload.source_request_sha256 -ceq
-            [string]$intent.Payload.source_request_sha256 -and
-        [string]$sourceEvidence.Payload.predecessor_current_sha256 -ceq
-            [string]$intent.Payload.expected_predecessor_sha256
-    }
+    $source = Assert-TicketboxDatabaseGenerationSourceBinding `
+        -Binding $source -Intent $intent
     $target = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "target-authorization"
     $recoveryProof = Read-TicketboxDatabaseGenerationOperationArtifact `
@@ -96,11 +82,6 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
         [string]$terminalState.Payload.maintenance_service_transition_state -cne "absent" -or
         [string]$candidate.Payload.source_binding_sha256 -cne [string]$source.PayloadSha256 -or
         [string]$candidate.Payload.target_authorization_sha256 -cne [string]$target.PayloadSha256 -or
-        [string]$source.Payload.source_evidence_sha256 -cne
-            [string]$sourceEvidence.PayloadSha256 -or
-        [string]$sourceEvidence.Payload.intent_sha256 -cne
-            [string]$intent.PayloadSha256 -or
-        -not $sourceEvidenceValid -or
         [string]$source.Payload.intent_sha256 -cne [string]$intent.PayloadSha256 -or
         [string]$target.Payload.intent_sha256 -cne [string]$intent.PayloadSha256 -or
         [string]$target.Payload.source_binding_sha256 -cne [string]$source.PayloadSha256 -or
