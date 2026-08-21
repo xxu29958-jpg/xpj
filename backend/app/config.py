@@ -126,7 +126,6 @@ class Settings:
     upload_link_default_daily_byte_budget: int
     upload_link_default_per_remote_interval_seconds: int
     upload_link_ttl_days: int
-    upload_link_legacy_expiry_spread_days: int
     csv_import_max_bytes: int
     csv_import_max_lines: int
     csv_import_max_cell_bytes: int
@@ -416,10 +415,6 @@ def get_settings() -> Settings:
             os.getenv("UPLOAD_LINK_DEFAULT_PER_REMOTE_INTERVAL_SECONDS", "2")
         ),
         upload_link_ttl_days=max(1, int(os.getenv("UPLOAD_LINK_TTL_DAYS", "90"))),
-        upload_link_legacy_expiry_spread_days=max(
-            1,
-            int(os.getenv("UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS", "30")),
-        ),
         csv_import_max_bytes=int(os.getenv("CSV_IMPORT_MAX_BYTES", str(8 * 1024 * 1024))),
         csv_import_max_lines=int(os.getenv("CSV_IMPORT_MAX_LINES", "25000")),
         csv_import_max_cell_bytes=int(os.getenv("CSV_IMPORT_MAX_CELL_BYTES", "4096")),
