@@ -32,12 +32,12 @@ def cleanup_postgres_topology(
 ) -> None:
     """Attempt every cleanup step and fail if any catalog object remains."""
 
-    failures: list[Exception] = []
+    failures: list[BaseException] = []
 
     def attempt(action: Callable[[], object]) -> None:
         try:
             action()
-        except Exception as exc:  # noqa: BLE001 - collect all cleanup failures
+        except BaseException as exc:  # noqa: BLE001 - collect all cleanup failures
             failures.append(exc)
 
     attempt(
@@ -86,7 +86,7 @@ def cleanup_postgres_topology(
     attempt(assert_absent)
     attempt(admin.close)
     if failures:
-        raise ExceptionGroup("PostgreSQL topology cleanup failed", failures)
+        raise BaseExceptionGroup("PostgreSQL topology cleanup failed", failures)
 
 
 __all__ = ["assert_database_schema_owners", "cleanup_postgres_topology"]
