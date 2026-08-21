@@ -1,0 +1,33 @@
+name: H1 source export
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - codex/h1-postgres-maintenance-cutover
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Archive exact branch source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git -czf "$RUNNER_TEMP/xpj-source.tar.gz" .
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: h1-source-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/xpj-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
