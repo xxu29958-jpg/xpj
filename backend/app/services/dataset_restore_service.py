@@ -75,9 +75,7 @@ def resolve_restored_dataset_plan(
     if active_dataset_id != manifest.authority.dataset_id:
         raise AppError("backup_incomplete", status_code=409)
     dataset_id = manifest.authority.dataset_id
-    previous_epoch = manifest.authority.restore_epoch
-    if active_dataset_id == dataset_id:
-        previous_epoch = max(previous_epoch, active_restore_epoch)
+    previous_epoch = max(manifest.authority.restore_epoch, active_restore_epoch)
     restore_epoch = previous_epoch + 1
     return RestoredDatasetPlan(
         dataset_id=dataset_id,

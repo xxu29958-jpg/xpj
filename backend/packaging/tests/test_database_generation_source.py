@@ -114,6 +114,9 @@ function Assert-TicketboxDatabaseGenerationLowerSha256 {{
 }}
 function Read-TicketboxDatabaseGenerationOperationArtifact {{
     param($StateRoot, $OperationId, $ArtifactKind)
+    if ([string]$StateRoot -cne 'state' -or [string]$OperationId -cne $operation) {{
+        throw 'wrong evidence lookup authority'
+    }}
     if ($null -eq $script:evidence) {{ throw 'backing evidence missing' }}
     if ([string]$ArtifactKind -cne [string]$script:expectedEvidenceKind) {{ throw 'wrong evidence type' }}
     return $script:evidence
@@ -168,16 +171,17 @@ $script:evidence = [pscustomobject]@{{
     }}
 }}
 [void](Assert-TicketboxDatabaseGenerationSourceBindingChain 'state' $binding $intent)
+$restoredEvidence = $script:evidence
 $script:evidence = $null
 $missingRejected = $false
 try {{ Assert-TicketboxDatabaseGenerationSourceBindingChain 'state' $binding $intent | Out-Null }} catch {{ $missingRejected = $true }}
 if (-not $missingRejected) {{ throw 'missing backing evidence was accepted' }}
-$script:evidence = [pscustomobject]@{{
-    PayloadSha256 = ('9' * 64)
-    Payload = [pscustomobject]@{{}}
-}}
+$script:evidence = $restoredEvidence
+$script:evidence.Payload.result = 'foreign-result'
 $corruptRejected = $false
-try {{ Assert-TicketboxDatabaseGenerationSourceBindingChain 'state' $binding $intent | Out-Null }} catch {{ $corruptRejected = $true }}
+try {{ Assert-TicketboxDatabaseGenerationSourceBindingChain 'state' $binding $intent | Out-Null }} catch {{
+    $corruptRejected = ([string]$_ -like '*restored evidence drifted*')
+}}
 if (-not $corruptRejected) {{ throw 'corrupt backing evidence was accepted' }}
 $intent.Payload.source_request_sha256 = ''
 $binding.Payload.source_evidence_sha256 = ('8' * 64)

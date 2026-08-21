@@ -29,6 +29,9 @@ $script:retirementCalls = 0
 $script:projectionWrites = 0
 $script:terminalWrites = 0
 $script:currentWrites = 0
+$script:sourceBindingReads = 0
+$script:sourceChainCalls = 0
+$script:rejectSourceChain = $true
 $script:current = $null
 $script:terminal = $null
 $script:throwAfterTerminalWrite = $true
@@ -67,9 +70,23 @@ function Read-TicketboxDatabaseGenerationCurrent {{ param([switch]$AllowAbsent);
 function Read-TicketboxDatabaseGenerationOperationArtifact {{
     param($StateRoot, $OperationId, $Kind, [switch]$AllowAbsent)
     if ($Kind -eq 'candidate') {{ return $script:candidate }}
-    if ($Kind -eq 'source-binding') {{ return $script:sourceBinding }}
+    if ($Kind -eq 'source-binding') {{
+        $script:sourceBindingReads += 1
+        return $script:sourceBinding
+    }}
     if ($Kind -eq 'target-authorization') {{ return $script:targetAuthorization }}
     throw "unexpected artifact $Kind"
+}}
+function Assert-TicketboxDatabaseGenerationSourceBindingChain {{
+    param($StateRoot, $Binding, $Intent)
+    if (
+        [string]$StateRoot -cne 'state' -or
+        -not [object]::ReferenceEquals($Binding, $script:sourceBinding) -or
+        -not [object]::ReferenceEquals($Intent, $script:intent)
+    ) {{ throw 'source chain authority drifted' }}
+    $script:sourceChainCalls += 1
+    if ($script:rejectSourceChain) {{ throw 'rejected source binding evidence' }}
+    return $Binding
 }}
 function Read-TicketboxDatabaseGenerationRuntimeCredentials {{ return $script:runtimeCredentials }}
 function Close-TicketboxDatabaseGenerationRuntimeCredentials {{}}
@@ -171,6 +188,16 @@ $script:targetAuthorization = [pscustomobject]@{{ PayloadSha256 = ('d' * 64) }}
 $script:runtimeCredentials = [pscustomobject]@{{ RuntimePassword = $script:runtimeSecret; HttpBootstrapSecret = $script:httpSecret; Artifact = [pscustomobject]@{{ PayloadSha256 = ('4' * 64) }} }}
 $context = [pscustomobject]@{{ StateRoot = 'state'; Artifact = $script:intent }}
 $contract = [pscustomobject]@{{ value = 'contract' }}
+$sourceRejected = $false
+try {{ Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $contract $contract 'bootstrap.json' | Out-Null }}
+catch {{ $sourceRejected = ([string]$_ -like '*rejected source binding evidence*') }}
+if (
+    -not $sourceRejected -or $script:retired -or
+    $script:retirementCalls -ne 0 -or $script:projectionWrites -ne 0 -or
+    $script:terminalWrites -ne 0 -or $script:currentWrites -ne 0
+) {{ throw 'invalid source chain reached generation mutation' }}
+$script:rejectSourceChain = $false
+$script:bootstrapReads = 0
 $interrupted = $false
 try {{ Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $contract $contract 'bootstrap.json' | Out-Null }}
 catch {{ $interrupted = $true }}
@@ -190,6 +217,8 @@ if (
     $script:credentialCreates -ne 1 -or
     $script:projectionWrites -ne 1 -or $script:terminalWrites -ne 1 -or
     $script:currentWrites -ne 1 -or
+    $script:sourceChainCalls -lt 1 -or
+    $script:sourceChainCalls -ne $script:sourceBindingReads -or
     $result.CurrentSha256 -cne ('5' * 64) -or $again.CurrentSha256 -cne ('5' * 64) -or
     $result.CommittedRevision -cne '20260809_0001' -or $result.DatabaseUrl -cne 'postgresql://runtime'
 ) {{ throw 'owner retry did not converge through one terminal CURRENT publication' }}
