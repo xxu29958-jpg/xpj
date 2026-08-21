@@ -1,4 +1,4 @@
-"""Shared real-PostgreSQL probes for the C07 money migration tests."""
+"""Shared real-PostgreSQL probes for the money BIGINT migration tests."""
 
 from __future__ import annotations
 
@@ -12,12 +12,7 @@ from alembic.operations import Operations
 from sqlalchemy import inspect, select, text
 
 from app.database import SessionLocal, engine
-from app.database._c07_ceremony import (
-    C07_CEREMONY_MODE_MANAGED,
-    C07_TARGET_REVISION,
-    set_c07_migration_context,
-)
-from app.database._c07_transaction_timeout import c07_prearmed_transaction
+from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.models import (
     Account,
     BillSplitInvitation,
@@ -31,16 +26,15 @@ from app.models import (
 )
 from app.money_contract import MONEY_COLUMNS_V1
 from app.services.time_service import now_utc
-from tests._infra.c07_alembic import (
+from tests._infra.alembic_runtime import (
     reset_public_schema,
     run_alembic_for_test,
 )
 
 PREVIOUS_REVISION = "20260722_0001"
-HEAD_REVISION = C07_TARGET_REVISION
+HEAD_REVISION = "20260729_0001"
 LEGACY_INT32_MAX = 2_147_483_647
 LEGACY_INT32_MIN = -2_147_483_648
-TEST_CEREMONY_ID = "d5148f80-1e6c-447d-b3bc-e3dc180d87b4"
 LEGACY_CHECKS = {
     "ck_bill_split_invitations_amount_positive",
     "ck_budgets_total_non_negative",
@@ -78,13 +72,6 @@ def run_alembic(action, *args) -> None:
     run_alembic_for_test(engine, alembic_config(), action, *args)
 
 
-def run_alembic_without_c07_context(action, *args) -> None:
-    config = alembic_config()
-    with engine.begin() as connection:
-        config.attributes["connection"] = connection
-        action(config, *args)
-
-
 def load_migration():
     path = (
         Path(__file__).resolve().parents[2] / "migrations" / "versions" / "20260729_0001_money_minor_bigint_expand.py"
@@ -100,15 +87,11 @@ def load_migration():
 
 
 def invoke_migration(module) -> None:
-    with engine.connect() as connection, c07_prearmed_transaction(
+    with engine.connect() as connection, _prearmed_transaction(
         connection,
         timeout_ms=20 * 60 * 1000,
+        access_mode="read_write",
     ):
-        set_c07_migration_context(
-            connection,
-            mode=C07_CEREMONY_MODE_MANAGED,
-            ceremony_id=TEST_CEREMONY_ID,
-        )
         context = MigrationContext.configure(connection)
         with Operations.context(context):
             module.upgrade()

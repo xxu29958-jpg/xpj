@@ -13,24 +13,29 @@ import ipaddress
 import os
 import re
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from psycopg import Error as PsycopgError
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, Connection, Engine, make_url
-from sqlalchemy.exc import ArgumentError, SQLAlchemyError
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.pool import NullPool
 
-from app.database._database_generation_executor import (
-    DatabaseGenerationExecutionError,
-    execute_database_generation,
-)
+from app.database._database_generation_executor import execute_database_generation
 from app.database._database_generation_program import (
     DatabaseGenerationProgram,
+)
+from app.database._managed_postgres_role_authority import (
+    assume_managed_postgres_schema_owner,
+)
+from app.database._postgres_operation_failures import (
+    PostgresOperationFailureError,
+    close_postgres_owner_resources,
+    exit_postgres_owned_context,
+    raise_postgres_operation_failures,
 )
 from app.services.secure_file import hold_protected_file_for_read
 
@@ -80,6 +85,9 @@ def _set_idle_session_timeout(connection: Connection, timeout_ms: int) -> int:
         raise ManagedPostgresMigrationRuntimeError("managed migration timeout must be armed before BEGIN")
     driver_connection = connection.connection.driver_connection
     original_autocommit = bool(driver_connection.autocommit)
+    primary: BaseException | None = None
+    cleanup: list[BaseException] = []
+    previous_ms: int | None = None
     try:
         driver_connection.autocommit = True
         with driver_connection.cursor() as cursor:
@@ -91,9 +99,21 @@ def _set_idle_session_timeout(connection: Connection, timeout_ms: int) -> int:
             )
             if _timeout_setting(cursor) != effective_ms:
                 raise ManagedPostgresMigrationRuntimeError("managed migration pre-BEGIN timeout was not effective")
-            return previous_ms
+    except BaseException as exc:  # noqa: BLE001 - explicit operation owner boundary
+        primary = exc
     finally:
-        driver_connection.autocommit = original_autocommit
+        try:
+            driver_connection.autocommit = original_autocommit
+        except BaseException as exc:  # noqa: BLE001 - cleanup must not replace primary
+            cleanup.append(exc)
+    raise_postgres_operation_failures(
+        primary=primary,
+        cleanup=cleanup,
+        message="managed migration timeout setup and cleanup failed",
+    )
+    if previous_ms is None:
+        raise AssertionError("managed migration timeout setup completed without a prior value")
+    return previous_ms
 
 
 def _restore_idle_session_timeout(connection: Connection, previous_ms: int) -> None:
@@ -101,6 +121,8 @@ def _restore_idle_session_timeout(connection: Connection, previous_ms: int) -> N
         connection.rollback()
     driver_connection = connection.connection.driver_connection
     original_autocommit = bool(driver_connection.autocommit)
+    primary: BaseException | None = None
+    cleanup: list[BaseException] = []
     try:
         driver_connection.autocommit = True
         with driver_connection.cursor() as cursor:
@@ -110,8 +132,18 @@ def _restore_idle_session_timeout(connection: Connection, previous_ms: int) -> N
             )
             if _timeout_setting(cursor) != previous_ms:
                 raise ManagedPostgresMigrationRuntimeError("managed migration timeout was not restored")
+    except BaseException as exc:  # noqa: BLE001 - explicit operation owner boundary
+        primary = exc
     finally:
-        driver_connection.autocommit = original_autocommit
+        try:
+            driver_connection.autocommit = original_autocommit
+        except BaseException as exc:  # noqa: BLE001 - cleanup must not replace primary
+            cleanup.append(exc)
+    raise_postgres_operation_failures(
+        primary=primary,
+        cleanup=cleanup,
+        message="managed migration timeout restore and cleanup failed",
+    )
 
 
 @contextmanager
@@ -119,21 +151,57 @@ def _prearmed_transaction(
     connection: Connection,
     *,
     timeout_ms: int,
+    access_mode: Literal["read_only", "read_write"],
 ) -> Iterator[Connection]:
     previous_ms = _set_idle_session_timeout(connection, timeout_ms)
-    committed = False
+    primary: BaseException | None = None
+    cleanup: list[BaseException] = []
+    transaction: Any | None = None
+    transaction_entered = False
     try:
-        with connection.begin():
+        transaction = connection.begin()
+        transaction.__enter__()
+        transaction_entered = True
+        try:
+            if access_mode == "read_only":
+                connection.execute(text("SET TRANSACTION READ ONLY"))
+            elif access_mode == "read_write":
+                connection.execute(text("SET TRANSACTION READ WRITE"))
+            else:
+                raise ManagedPostgresMigrationRuntimeError(
+                    "managed migration transaction access mode is invalid"
+                )
             yield connection
-        committed = True
+        except BaseException as exc:  # noqa: BLE001 - capture body before rollback
+            primary = exc
+    except BaseException as exc:  # noqa: BLE001 - capture BEGIN/enter failures
+        primary = exc
     finally:
-        if not connection.invalidated and not connection.closed:
+        if transaction_entered:
+            primary = exit_postgres_owned_context(
+                context=transaction,
+                primary=primary,
+                cleanup=cleanup,
+            )
+        try:
+            should_restore = not connection.invalidated and not connection.closed
+        except BaseException as exc:  # noqa: BLE001 - state observation is cleanup
+            cleanup.append(exc)
+            should_restore = False
+        if should_restore:
             try:
                 _restore_idle_session_timeout(connection, previous_ms)
-            except (ManagedPostgresMigrationRuntimeError, PsycopgError, SQLAlchemyError):
-                connection.invalidate()
-                if committed:
-                    raise
+            except BaseException as exc:  # noqa: BLE001 - preserve every cleanup failure
+                cleanup.append(exc)
+                try:
+                    connection.invalidate()
+                except BaseException as invalidate_error:  # noqa: BLE001 - preserve all cleanup failures
+                    cleanup.append(invalidate_error)
+    raise_postgres_operation_failures(
+        primary=primary,
+        cleanup=cleanup,
+        message="managed migration transaction and cleanup failed",
+    )
 
 
 @contextmanager
@@ -226,45 +294,61 @@ class ManagedPostgresMigrationRuntimeV1:
         if not isinstance(pgpassfile, Path) or not pgpassfile.is_absolute():
             raise ManagedPostgresMigrationRuntimeError("managed migration pgpass path must be absolute")
         engine: Engine | None = None
+        primary: BaseException | None = None
+        cleanup: list[BaseException] = []
+        result: str | None = None
+        entered_contexts: list[AbstractContextManager[Any]] = []
         try:
-            with (
-                hold_protected_file_for_read(pgpassfile) as protected_pgpass,
-                _temporary_pgpass_environment(protected_pgpass),
+            protected_context = hold_protected_file_for_read(pgpassfile)
+            protected_pgpass = protected_context.__enter__()
+            entered_contexts.append(protected_context)
+            environment_context = _temporary_pgpass_environment(protected_pgpass)
+            environment_context.__enter__()
+            entered_contexts.append(environment_context)
+            engine = _create_engine(parsed_url)
+            connection_context = engine.connect()
+            connection = connection_context.__enter__()
+            entered_contexts.append(connection_context)
+            with _prearmed_transaction(
+                connection,
+                timeout_ms=self._contract.transaction_timeout_ms,
+                access_mode="read_write",
             ):
-                engine = _create_engine(parsed_url)
-                with (
-                    engine.connect() as connection,
-                    _prearmed_transaction(
-                        connection,
-                        timeout_ms=self._contract.transaction_timeout_ms,
-                    ),
-                ):
-                    applied = self._run_transaction(
-                        connection,
-                        program=program,
-                        source_revision=source_revision,
-                        target_revision=target_revision,
-                        generation_operation_id=generation_operation_id,
-                    )
-            return (
+                applied = self._run_transaction(
+                    connection,
+                    program=program,
+                    source_revision=source_revision,
+                    target_revision=target_revision,
+                )
+            result = (
                 "target_committed"
                 if applied
                 else "target_observed_after_interruption"
             )
-        except ManagedPostgresMigrationRuntimeError:
-            raise
-        except (
-            DatabaseGenerationExecutionError,
-            ImportError,
-            OSError,
-            PsycopgError,
-            RuntimeError,
-            SQLAlchemyError,
-        ) as exc:
-            raise ManagedPostgresMigrationRuntimeError("managed PostgreSQL migration failed") from exc
+        except BaseException as exc:  # noqa: BLE001 - explicit migration owner boundary
+            primary = exc
         finally:
-            if engine is not None:
-                engine.dispose()
+            primary = close_postgres_owner_resources(
+                contexts=entered_contexts,
+                engine=engine,
+                primary=primary,
+                cleanup=cleanup,
+            )
+        if isinstance(primary, Exception) and not isinstance(
+            primary,
+            ManagedPostgresMigrationRuntimeError,
+        ):
+            wrapped = ManagedPostgresMigrationRuntimeError("managed PostgreSQL migration failed")
+            wrapped.__cause__ = primary
+            primary = wrapped
+        raise_postgres_operation_failures(
+            primary=primary,
+            cleanup=cleanup,
+            message="managed PostgreSQL migration and cleanup failed",
+        )
+        if result is None:
+            raise AssertionError("managed PostgreSQL migration completed without a result")
+        return result
 
     def _run_transaction(
         self,
@@ -273,16 +357,17 @@ class ManagedPostgresMigrationRuntimeV1:
         program: DatabaseGenerationProgram,
         source_revision: str,
         target_revision: str,
-        generation_operation_id: str,
     ) -> bool:
         self._assert_migrator_context(connection)
-        self._assume_schema_owner(connection)
+        assume_managed_postgres_schema_owner(
+            connection,
+            contract=self._contract,
+        )
         return execute_database_generation(
             connection,
             program=program,
             source_revision=source_revision,
             target_revision=target_revision,
-            operation_id=generation_operation_id,
         )
 
     def _assert_migrator_context(self, connection: Connection) -> None:
@@ -314,18 +399,9 @@ class ManagedPostgresMigrationRuntimeV1:
         if int(other_clients or 0) != 0:
             raise ManagedPostgresMigrationRuntimeError("managed migration observed another client session")
 
-    def _assume_schema_owner(self, connection: Connection) -> None:
-        owner = connection.dialect.identifier_preparer.quote_identifier(self._contract.schema_owner_role)
-        connection.execute(text(f"SET LOCAL ROLE {owner}"))
-        effective = tuple(str(value) for value in connection.execute(text("SELECT session_user, current_user")).one())
-        if effective != (
-            self._contract.migrator_role,
-            self._contract.schema_owner_role,
-        ):
-            raise ManagedPostgresMigrationRuntimeError("managed migrator cannot assume the schema owner")
-
 __all__ = [
     "ManagedPostgresMigrationRuntimeError",
+    "PostgresOperationFailureError",
     "ManagedPostgresMigrationRuntimeV1",
     "ManagedPostgresRuntimeContractV1",
 ]

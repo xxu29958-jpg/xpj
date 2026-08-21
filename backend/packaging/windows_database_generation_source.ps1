@@ -2,7 +2,7 @@
 
 # Empty-source normalization is the only place that knows first-install
 # bootstrap facts.  Its durable output is a SourceBinding; no later phase sees
-# fresh/legacy/runtime modes or any C07 READY marker.
+# fresh/legacy/runtime modes or any retired READY marker.
 
 function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {
     param([Parameter(Mandatory = $true)][object]$HostContract)

@@ -15,7 +15,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 
 PROGRAM_FILENAME = "DATABASE_GENERATION_PROGRAM.json"
-PROGRAM_SCHEMA = "ticketbox-database-generation-program-v1"
+PROGRAM_SCHEMA = "ticketbox-database-generation-program-v2"
 BASE_SOURCE = "base"
 
 
@@ -79,57 +79,34 @@ def compile_program(backend_root: Path) -> dict[str, object]:
             reversed(tuple(scripts.iterate_revisions(target_revision, "base")))
         )
 
-    with _backend_import_root(root):
-        from app.database_generation_c07_contract import (
-            C07_TARGET_REVISION,
-            build_c07_revision_contract,
-        )
-
-        previous: str | None = None
-        revisions: list[dict[str, object]] = []
-        c07_count = 0
-        for revision in forward:
-            revision_id = str(revision.revision)
-            module_path = Path(str(revision.path)).resolve(strict=True)
-            if (
-                module_path.parent != versions_root
-                or revision.down_revision != previous
-                or revision.dependencies is not None
-            ):
-                raise GenerationProgramBuildError(
-                    "generation program is not one linear packaged chain"
-                )
-            module_sha256 = hashlib.sha256(module_path.read_bytes()).hexdigest()
-            context = None
-            executor = "managed_postgres_v1"
-            if revision_id == C07_TARGET_REVISION:
-                contract = build_c07_revision_contract(
-                    module_path=module_path,
-                    module_sha256=module_sha256,
-                    source_revision=str(revision.down_revision),
-                    target_revision=revision_id,
-                )
-                context = contract.context
-                executor = "c07_money_bigint_v1"
-                c07_count += 1
-            revisions.append(
-                {
-                    "context": context,
-                    "down_revision": previous,
-                    "executor": executor,
-                    "module_path": module_path.relative_to(root).as_posix(),
-                    "module_sha256": module_sha256,
-                    "postcondition": _postcondition(module_path),
-                    "revision": revision_id,
-                }
+    previous: str | None = None
+    revisions: list[dict[str, object]] = []
+    for revision in forward:
+        revision_id = str(revision.revision)
+        module_path = Path(str(revision.path)).resolve(strict=True)
+        if (
+            module_path.parent != versions_root
+            or revision.down_revision != previous
+            or revision.dependencies is not None
+        ):
+            raise GenerationProgramBuildError(
+                "generation program is not one linear packaged chain"
             )
-            previous = revision_id
+        revisions.append(
+            {
+                "down_revision": previous,
+                "module_path": module_path.relative_to(root).as_posix(),
+                "module_sha256": hashlib.sha256(module_path.read_bytes()).hexdigest(),
+                "postcondition": _postcondition(module_path),
+                "revision": revision_id,
+            }
+        )
+        previous = revision_id
 
     if (
         not revisions
         or revisions[0]["revision"] != bases[0]
         or previous != target_revision
-        or c07_count != 1
         or revisions[-1]["postcondition"] != "assert_postcondition"
     ):
         raise GenerationProgramBuildError(

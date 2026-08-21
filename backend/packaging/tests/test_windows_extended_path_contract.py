@@ -286,7 +286,7 @@ $validReadyPath = Join-Path $root 'ready.txt'
 $validReleasePath = Join-Path $root 'release.txt'
 $fileSecurity = New-Object System.Security.AccessControl.FileSecurity
 $helperEvidence = [pscustomobject]@{
-    RelativePath = 'ticketbox-c07-migrator.exe'
+    RelativePath = 'ticketbox-database-maintenance.exe'
     Size = [int64]1
     Sha256 = ('0' * 64)
 }
@@ -345,14 +345,14 @@ $statefulFileChecks = @(
         Action = { Assert-TicketboxLegacyProtectedFileAcl -Path $invalidFileAlias }
     },
     [pscustomobject]@{
-        Label = 'Open-TicketboxC07VerifiedMigrationHelperLease traversal'
+        Label = 'Open-TicketboxVerifiedDatabaseMaintenanceHelperLease traversal'
         Action = {
-            $lease = Open-TicketboxC07VerifiedMigrationHelperLease `
+            $lease = Open-TicketboxVerifiedDatabaseMaintenanceHelperLease `
                 -Path $invalidFileAlias `
-                -ExpectedRelativePath 'ticketbox-c07-migrator.exe' `
+                -ExpectedRelativePath 'ticketbox-database-maintenance.exe' `
                 -ExpectedSize 1 `
                 -ExpectedSha256 ('0' * 64)
-            Close-TicketboxC07MigrationHelperLease $lease
+            Close-TicketboxDatabaseMaintenanceHelperLease $lease
         }
     },
     [pscustomobject]@{
@@ -493,9 +493,9 @@ $authorityChecks = @(
         }
     },
     [pscustomobject]@{
-        Label = 'Resolve-TicketboxInstalledC07MigrationHelperPath traversal'
+        Label = 'Resolve-TicketboxInstalledDatabaseMaintenanceHelperPath traversal'
         Action = {
-            Resolve-TicketboxInstalledC07MigrationHelperPath `
+            Resolve-TicketboxInstalledDatabaseMaintenanceHelperPath `
                 -InstallDir $invalidDirectoryAlias `
                 -Evidence $helperEvidence
         }

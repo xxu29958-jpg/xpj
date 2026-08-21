@@ -106,11 +106,11 @@
 #ifndef DatabaseGenerationProgramSha256
 #error DatabaseGenerationProgramSha256 must be injected by build_inno_installer.ps1
 #endif
-#ifndef DatabaseGenerationMigrationHelperSize
-#error DatabaseGenerationMigrationHelperSize must be injected by build_inno_installer.ps1
+#ifndef DatabaseMaintenanceHelperSize
+#error DatabaseMaintenanceHelperSize must be injected by build_inno_installer.ps1
 #endif
-#ifndef DatabaseGenerationMigrationHelperSha256
-#error DatabaseGenerationMigrationHelperSha256 must be injected by build_inno_installer.ps1
+#ifndef DatabaseMaintenanceHelperSha256
+#error DatabaseMaintenanceHelperSha256 must be injected by build_inno_installer.ps1
 #endif
 #ifndef DatabaseGenerationPgDumpSize
 #error DatabaseGenerationPgDumpSize must be injected by build_inno_installer.ps1

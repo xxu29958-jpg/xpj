@@ -423,6 +423,9 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     database = _read_database_script()
     database_safety = DATABASE_SAFETY_SCRIPT.read_text(encoding="utf-8-sig")
     install = INSTALL_SCRIPT.read_text(encoding="utf-8-sig")
+    service_contract = (PACKAGING / "windows_service_contract.ps1").read_text(
+        encoding="utf-8-sig"
+    )
 
     assert '$script:PostgresBootstrapRecoveryFileName = ".postgres-bootstrap-password"' in database
     assert '$script:PostgresBootstrapAclAccounts = @("SYSTEM", "BUILTIN\\Administrators")' in database
@@ -436,7 +439,8 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     assert 'Get-OrCreatePostgresBootstrapRecoveryState' in database
     assert "function Repair-PostgresBootstrapRecoveryFileAcl" in database
     assert "function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization" in database
-    assert '--pwfile=$pwfile' in database
+    assert '--pwfile=$pwfile' not in database
+    assert '"--pwfile=$(ConvertTo-TicketboxFullPath $PasswordFile)"' in service_contract
     assert "RolePassword" not in database
     assert "role_password=" not in database
     password_factory = database[
@@ -480,12 +484,21 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
         "$bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState"
     )
     initdb_dispatch = database.index(
-        "$initResult = if ($null -ne $InitdbInvoker)", fresh_write
+        "$initResult = Invoke-TicketboxServiceOwnedInitdb", fresh_write
     )
-    direct_initdb_fallback = database.index(
-        'Join-Path $PgBin "initdb.exe"', initdb_dispatch
+    service_owned_initdb = install[
+        install.index("function Invoke-TicketboxServiceOwnedInitdb") : install.index(
+            "function Register-PgService"
+        )
+    ]
+    assert fresh_write < initdb_dispatch
+    assert 'Join-Path $PgBin "initdb.exe"' not in database
+    assert "New-TicketboxInitdbServiceImagePath" in service_owned_initdb
+    assert "Invoke-TicketboxOwnedOneShotService" in service_owned_initdb
+    assert (
+        "Assert-TicketboxInstallServiceCompensationAuthority"
+        in service_owned_initdb
     )
-    assert fresh_write < initdb_dispatch < direct_initdb_fallback
 
     set_acl = install[
         install.index("function Set-TicketboxAcl(") : install.index(
@@ -642,7 +655,7 @@ def test_service_owned_initdb_uses_a_separate_single_secret_authority() -> None:
     assert "HttpBootstrapSecret" not in transient_writer
     assert "Write-TicketboxInitdbPasswordFileAtomically" in transient_writer
     assert "Invoke-TicketboxIcaclsChecked" not in transient_writer
-    dispatch = install.index("[void](Initialize-PgClusterIfNeeded -InitdbInvoker")
+    dispatch = install.index("[void](Initialize-PgClusterIfNeeded `")
     runtime_binding = install.index("Initialize-TicketboxRuntimeDataBinding", dispatch)
     generation_intent = install.index(
         "Read-TicketboxDatabaseGenerationIntentContext"
@@ -652,7 +665,7 @@ def test_service_owned_initdb_uses_a_separate_single_secret_authority() -> None:
     )
     dispatch_composition = install[dispatch:generation_owner]
     assert generation_intent < dispatch < runtime_binding < generation_owner
-    assert "[void](Initialize-PgClusterIfNeeded -InitdbInvoker" in dispatch_composition
+    assert "-CompensationAuthority $serviceCompensationAuthority" in dispatch_composition
     assert "$superPassword" not in dispatch_composition
     assert "Set-TicketboxC07DatabaseAuthorityCredential" not in dispatch_composition
     assert "$c07Disposition" not in install
@@ -1289,14 +1302,15 @@ function Get-TicketboxPathEntryKindNoFollow {{ param($Path) if (Test-Path -Liter
 function Read-EnvMap {{ param($Path) return @{{ DATABASE_URL = 'postgresql://ticketbox:secret@127.0.0.1:5440/ticketbox' }} }}
 function Set-TicketboxPostgresInstallerConfiguration {{ $script:configured += 1 }}
 function Write-Ok {{ param($Message) }}
+function Assert-TicketboxInstallServiceCompensationAuthority {{ param($Authority) }}
 $script:configured = 0
 $script:initdbCalls = 0
-$poison = {{
-    param($BootstrapState)
+function Invoke-TicketboxServiceOwnedInitdb {{
+    param($BootstrapState, $CompensationAuthority)
     $script:initdbCalls += 1
-    throw 'existing cluster invoked fresh initdb callback'
+    throw 'existing cluster invoked fresh initdb owner'
 }}
-$result = Initialize-PgClusterIfNeeded -InitdbInvoker $poison
+$result = Initialize-PgClusterIfNeeded -CompensationAuthority @{{}}
 if ($null -ne $result -or $script:initdbCalls -ne 0 -or $script:configured -ne 1) {{
     throw 'existing cluster did not take the verified no-initdb path'
 }}
@@ -1351,10 +1365,28 @@ function Write-Ok { param([string]$Message) }
 function ConvertTo-TicketboxTimeoutSeconds([int]$Milliseconds) {
     return [int][Math]::Ceiling($Milliseconds / 1000.0)
 }
+function Assert-TicketboxInstallServiceCompensationAuthority { param($Authority) }
+function Invoke-TicketboxServiceOwnedInitdb {
+    param($BootstrapState, $CompensationAuthority)
+    return Invoke-TicketboxBoundedNativeProcess `
+        -FilePath (Join-Path $PgBin 'initdb.exe') `
+        -Arguments @(
+            '-D', $PgData,
+            '-U', 'postgres',
+            '--auth-local=scram-sha-256',
+            '--auth-host=scram-sha-256',
+            '--encoding=UTF8',
+            '--no-locale',
+            "--pwfile=$(Get-PostgresBootstrapRecoveryPath)"
+        ) `
+        -TimeoutMilliseconds $DatabaseToolTimeoutMs `
+        -Label 'test initdb mechanism'
+}
+$script:initdbAuthority = [pscustomobject]@{ Owner = 'test' }
 
 $env:TICKETBOX_TEST_NATIVE_MODE = 'partial-init-fail'
 $partialFailed = $false
-try { Initialize-PgClusterIfNeeded | Out-Null }
+try { Initialize-PgClusterIfNeeded -CompensationAuthority $script:initdbAuthority | Out-Null }
 catch {
     $partialFailed = $true
     if ($_.Exception.Data['TicketboxInstallPublicFailureCode'] -cne
@@ -1370,7 +1402,7 @@ if (-not (Test-Path -LiteralPath $recoveryPath -PathType Leaf) -or
     throw 'partial initdb evidence was not preserved for a safe retry'
 }
 $env:TICKETBOX_TEST_NATIVE_MODE = ''
-$firstResult = Initialize-PgClusterIfNeeded
+$firstResult = Initialize-PgClusterIfNeeded -CompensationAuthority $script:initdbAuthority
 if ($null -ne $firstResult) { throw 'fresh init returned a secret' }
 if (Test-Path -LiteralPath (Join-Path $PgData 'partial-init.tmp')) {
     throw 'recoverable partial initdb directory was not cleaned before retry'
@@ -1401,7 +1433,7 @@ if (-not $firstTrace.Contains("--pwfile=$recoveryPath")) {
     throw 'initdb did not receive the protected recovery path'
 }
 
-[void](Initialize-PgClusterIfNeeded)
+[void](Initialize-PgClusterIfNeeded -CompensationAuthority $script:initdbAuthority)
 $secondTrace = Get-Content -LiteralPath '__TRACE_PATH__' -Raw -Encoding UTF8
 if ($secondTrace -cne $firstTrace) { throw 'recovery reran initdb' }
 $recoveredState = Read-PostgresBootstrapRecoveryState -Path $recoveryPath
@@ -1783,11 +1815,12 @@ New-Item -ItemType Directory -Path $script:PgData | Out-Null
     '17',
     $encoding)
 function Read-EnvMap { return @{} }
+function Assert-TicketboxInstallServiceCompensationAuthority { param($Authority) }
 function Set-TicketboxPostgresInstallerConfiguration {
     throw 'initialize-wiring-reached-after-repair'
 }
 $wiredReached = $false
-try { Initialize-PgClusterIfNeeded | Out-Null }
+try { Initialize-PgClusterIfNeeded -CompensationAuthority @{} | Out-Null }
 catch {
     if ($_.Exception.Message -cne 'initialize-wiring-reached-after-repair') {
         throw

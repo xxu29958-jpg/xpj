@@ -7,7 +7,6 @@ Create Date: 2026-05-28
 
 from __future__ import annotations
 
-import os
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -19,20 +18,8 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 INDEX_NAME = "ix_upload_links_expires_at"
-
-
-def _upload_link_ttl_days() -> int:
-    try:
-        return max(1, int(os.getenv("UPLOAD_LINK_TTL_DAYS", "90")))
-    except ValueError:
-        return 90
-
-
-def _legacy_expiry_spread_days() -> int:
-    try:
-        return max(1, int(os.getenv("UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS", "30")))
-    except ValueError:
-        return 30
+UPLOAD_LINK_TTL_DAYS = 90
+UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS = 30
 
 
 def _has_table(bind, table_name: str) -> bool:
@@ -83,8 +70,8 @@ def upgrade() -> None:
     bind.execute(
         sa.text(expiry_sql),
         {
-            "ttl_days": _upload_link_ttl_days(),
-            "spread_days": _legacy_expiry_spread_days(),
+            "ttl_days": UPLOAD_LINK_TTL_DAYS,
+            "spread_days": UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS,
         },
     )
     if not _has_index(bind, "upload_links", INDEX_NAME):

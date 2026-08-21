@@ -358,7 +358,7 @@ public sealed class TicketboxProcessTreeTerminationException : Exception
         : base(StableFailureCode + ": " + detail, innerException)
     {
         FailureCode = StableFailureCode;
-        Data["TicketboxC07FailureCode"] = StableFailureCode;
+        Data["TicketboxFailureCode"] = StableFailureCode;
     }
 }
 
@@ -374,8 +374,8 @@ public sealed class TicketboxProcessTreeTerminationAggregateException
     {
         FailureCode =
             TicketboxProcessTreeTerminationException.StableFailureCode;
-        Data["TicketboxC07FailureCode"] = FailureCode;
-        Data["TicketboxC07FailureCodes"] = FailureCode;
+        Data["TicketboxFailureCode"] = FailureCode;
+        Data["TicketboxFailureCodes"] = FailureCode;
     }
 }
 
@@ -850,7 +850,7 @@ public sealed class TicketboxBoundedNativeProcess : IDisposable
             }
             // Windows may expose hidden per-drive current-directory entries such
             // as '=C:'. They are not ordinary environment variables and are not
-            // needed by the absolute-path C07 helper, so a copied environment
+            // needed by the absolute-path database helper, so a copied environment
             // drops them instead of rejecting the entire child launch.
             if (name[0] == '=')
             {
@@ -1570,7 +1570,7 @@ function Invoke-TicketboxBoundedNativeProcess {
                 "stdin_closed=$stdinClosed stdout_completed=$($stdoutTask.IsCompleted) " +
                 "stderr_completed=$($stderrTask.IsCompleted)"
             )
-            $timeoutFailure.Data["TicketboxC07FailureCode"] =
+            $timeoutFailure.Data["TicketboxFailureCode"] =
                 "native_process_deadline_exceeded"
             throw $timeoutFailure
         }

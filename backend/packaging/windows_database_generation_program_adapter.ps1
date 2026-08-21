@@ -10,7 +10,7 @@
 #>
 
 $script:TicketboxDatabaseGenerationProgramValidationSchema =
-    "ticketbox-database-generation-program-validation-v1"
+    "ticketbox-database-generation-program-validation-v2"
 $script:TicketboxManagedSchemaResultSchema =
     "ticketbox-managed-schema-upgrade-result-v2"
 $script:TicketboxDatabaseGenerationProgramTimeoutMs = 1500000
@@ -19,21 +19,17 @@ $script:TicketboxDatabaseGenerationProgramTimeoutMs = 1500000
 function Assert-TicketboxDatabaseGenerationProgramAdapterDependencies {
     foreach ($commandName in @(
         "Assert-NoTicketboxAncestorReparsePoints",
-        "Assert-TicketboxC07MigrationHelperLeaseUnchanged",
+        "Assert-TicketboxDatabaseMaintenanceHelperLeaseUnchanged",
         "Assert-TicketboxDatabaseGenerationExactProperties",
         "Assert-TicketboxDatabaseGenerationUpperSha256",
-        "Close-TicketboxC07MigrationHelperLease",
+        "Close-TicketboxDatabaseMaintenanceHelperLease",
         "ConvertTo-TicketboxDatabaseGenerationCanonicalJson",
-        "Get-TicketboxDatabaseGenerationTextSha256",
         "Get-TicketboxPortableFileSha256",
         "Get-TicketboxPathEntryKindNoFollow",
-        "Invoke-TicketboxWithPlainPostgresqlSecret",
         "Invoke-TicketboxBoundedNativeProcess",
-        "New-TicketboxPostgresqlLocalDatabaseUrl",
-        "New-TicketboxProtectedPgPassFile",
-        "Open-TicketboxC07VerifiedMigrationHelperLease",
-        "Remove-TicketboxProtectedPgPassArtifact",
-        "Test-TicketboxPathEquals"
+        "Open-TicketboxVerifiedDatabaseMaintenanceHelperLease",
+        "Test-TicketboxPathEquals",
+        "Throw-TicketboxDatabaseGenerationOperationFailure"
     )) {
         if ($null -eq (Get-Command $commandName -ErrorAction SilentlyContinue)) {
             throw "database generation program adapter 缺少依赖：$commandName"
@@ -103,56 +99,12 @@ function ConvertFrom-TicketboxDatabaseGenerationProgramValidation {
             "source_revision",
             "target_revision",
             "revision_count",
-            "generation_program_sha256",
-            "c07_source_revision",
-            "c07_target_revision",
-            "c07_revision_manifest",
-            "c07_revision_manifest_sha256"
+            "generation_program_sha256"
         ) `
         -Label "database generation program validation"
     Assert-TicketboxDatabaseGenerationLowerSha256 `
         ([string]$result.generation_program_sha256) `
         "database generation program"
-    Assert-TicketboxDatabaseGenerationLowerSha256 `
-        ([string]$result.c07_revision_manifest_sha256) `
-        "database generation C07 manifest"
-    Assert-TicketboxDatabaseGenerationExactProperties `
-        -Value $result.c07_revision_manifest `
-        -ExpectedNames @(
-            "schema",
-            "operation_kind",
-            "source_revision",
-            "target_revision",
-            "revisions"
-        ) `
-        -Label "database generation C07 manifest"
-    $revisions = @($result.c07_revision_manifest.revisions)
-    if ($revisions.Count -ne 1) {
-        throw "C07 packaged revision manifest 必须只有 exact C07 revision。"
-    }
-    foreach ($revision in $revisions) {
-        Assert-TicketboxDatabaseGenerationExactProperties `
-            -Value $revision `
-            -ExpectedNames @(
-                "revision",
-                "down_revision",
-                "module_sha256",
-                "transactionality",
-                "reversibility",
-                "downgrade_guard",
-                "resources",
-                "asset_recovery"
-            ) `
-            -Label "packaged revision manifest item"
-        Assert-TicketboxDatabaseGenerationLowerSha256 `
-            ([string]$revision.module_sha256) `
-            "C07 packaged revision module"
-    }
-    $manifestCanonical = ConvertTo-TicketboxDatabaseGenerationCanonicalJson `
-        $result.c07_revision_manifest
-    $manifestSha256 = (
-        Get-TicketboxDatabaseGenerationTextSha256 $manifestCanonical
-    ).ToLowerInvariant()
     if (
         $jsonLine -cne (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $result) -or
         [string]$result.schema -cne
@@ -161,18 +113,7 @@ function ConvertFrom-TicketboxDatabaseGenerationProgramValidation {
         [string]::IsNullOrWhiteSpace([string]$result.target_revision) -or
         [int64]$result.revision_count -lt 1 -or
         [string]$result.generation_program_sha256 -cne
-            $ExpectedProgramSha256.ToLowerInvariant() -or
-        [string]$result.c07_source_revision -cne "20260722_0001" -or
-        [string]$result.c07_target_revision -cne "20260729_0001" -or
-        [string]$result.c07_revision_manifest.schema -cne
-            "ticketbox-c07-revision-manifest-v1" -or
-        [string]$result.c07_revision_manifest.operation_kind -cne
-            "c07_money_minor_bigint_v1" -or
-        [string]$result.c07_revision_manifest.source_revision -cne
-            [string]$result.c07_source_revision -or
-        [string]$result.c07_revision_manifest.target_revision -cne
-            [string]$result.c07_target_revision -or
-        [string]$result.c07_revision_manifest_sha256 -cne $manifestSha256
+            $ExpectedProgramSha256.ToLowerInvariant()
     ) {
         throw "database generation program 未绑定 exact release chain。"
     }
@@ -206,14 +147,14 @@ function Assert-TicketboxDatabaseGenerationProgram {
     param(
         [Parameter(Mandatory = $true)][string]$ProgramPath,
         [Parameter(Mandatory = $true)][object]$ProgramEvidence,
-        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath
+        [Parameter(Mandatory = $true)][string]$ExpectedMaintenanceHelperPath
     )
 
     $evidence = ConvertTo-TicketboxDatabaseGenerationProgramEvidence `
         $ProgramEvidence
     $expectedPath = Join-Path `
         ([System.IO.Path]::GetDirectoryName(
-            [System.IO.Path]::GetFullPath($ExpectedMigrationHelperPath)
+            [System.IO.Path]::GetFullPath($ExpectedMaintenanceHelperPath)
         )) `
         $evidence.RelativePath
     if (
@@ -239,9 +180,9 @@ function Assert-TicketboxDatabaseGenerationProgram {
 
 function Get-TicketboxDatabaseGenerationProgramFromHelper {
     param(
-        [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
-        [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
-        [Parameter(Mandatory = $true)][string]$ExpectedMigrationHelperPath,
+        [Parameter(Mandatory = $true)][string]$MaintenanceHelperPath,
+        [Parameter(Mandatory = $true)][object]$MaintenanceHelperEvidence,
+        [Parameter(Mandatory = $true)][string]$ExpectedMaintenanceHelperPath,
         [Parameter(Mandatory = $true)][string]$ProgramPath,
         [Parameter(Mandatory = $true)][object]$ProgramEvidence
     )
@@ -250,21 +191,14 @@ function Get-TicketboxDatabaseGenerationProgramFromHelper {
     $program = Assert-TicketboxDatabaseGenerationProgram `
         -ProgramPath $ProgramPath `
         -ProgramEvidence $ProgramEvidence `
-        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath
+        -ExpectedMaintenanceHelperPath $ExpectedMaintenanceHelperPath
     $process = Invoke-TicketboxDatabaseGenerationBoundHelper `
-        -MigrationHelperPath $MigrationHelperPath `
-        -MigrationHelperEvidence $MigrationHelperEvidence `
-        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath `
-        -Arguments @(
-            "--validate-generation-program",
-            "--generation-program-path",
-            $program.Evidence.RelativePath,
-            "--expected-generation-program-sha256",
-            $program.Evidence.Sha256
-        ) `
-        -StandardInputText "" `
-        -TimeoutMilliseconds $script:TicketboxDatabaseGenerationProgramTimeoutMs `
-        -Label "database generation program validation"
+        -MaintenanceHelperPath $MaintenanceHelperPath `
+        -MaintenanceHelperEvidence $MaintenanceHelperEvidence `
+        -ExpectedMaintenanceHelperPath $ExpectedMaintenanceHelperPath `
+        -ValidateProgram `
+        -ProgramRelativePath $program.Evidence.RelativePath `
+        -ExpectedProgramSha256 $program.Evidence.Sha256
     if (
         [int]$process.ExitCode -ne 0 -or
         -not [string]::IsNullOrWhiteSpace([string]$process.StandardError)
@@ -280,42 +214,42 @@ function Get-TicketboxDatabaseGenerationProgramFromHelper {
     Assert-TicketboxDatabaseGenerationProgram `
         -ProgramPath $program.Path `
         -ProgramEvidence $program.Evidence `
-        -ExpectedMigrationHelperPath $ExpectedMigrationHelperPath | Out-Null
+        -ExpectedMaintenanceHelperPath $ExpectedMaintenanceHelperPath | Out-Null
     return $result
 }
 
 function ConvertTo-TicketboxDatabaseGenerationHelperEvidence {
-    param([Parameter(Mandatory = $true)][object]$MigrationHelperEvidence)
+    param([Parameter(Mandatory = $true)][object]$MaintenanceHelperEvidence)
 
     Assert-TicketboxDatabaseGenerationExactProperties `
-        -Value $MigrationHelperEvidence `
+        -Value $MaintenanceHelperEvidence `
         -ExpectedNames @("RelativePath", "Size", "Sha256") `
         -Label "packaged migration helper evidence"
     if (
-        [string]$MigrationHelperEvidence.RelativePath -cne
-            "ticketbox-c07-migrator.exe" -or
-        [int64]$MigrationHelperEvidence.Size -lt 1
+        [string]$MaintenanceHelperEvidence.RelativePath -cne
+            "ticketbox-database-maintenance.exe" -or
+        [int64]$MaintenanceHelperEvidence.Size -lt 1
     ) {
-        throw "C07 packaged migration helper release path/size evidence 无效。"
+        throw "database maintenance helper release path/size evidence 无效。"
     }
     Assert-TicketboxDatabaseGenerationUpperSha256 `
-        ([string]$MigrationHelperEvidence.Sha256) `
+        ([string]$MaintenanceHelperEvidence.Sha256) `
         "packaged migration helper release SHA-256"
     return [pscustomobject][ordered]@{
-        RelativePath = [string]$MigrationHelperEvidence.RelativePath
-        Size = [int64]$MigrationHelperEvidence.Size
-        Sha256 = [string]$MigrationHelperEvidence.Sha256
+        RelativePath = [string]$MaintenanceHelperEvidence.RelativePath
+        Size = [int64]$MaintenanceHelperEvidence.Size
+        Sha256 = [string]$MaintenanceHelperEvidence.Sha256
     }
 }
 
-function Get-TicketboxDatabaseGenerationMigrationHelperEvidence {
+function Get-TicketboxDatabaseMaintenanceHelperEvidence {
     param([Parameter(Mandatory = $true)][object]$ReleaseIdentity)
 
     return ConvertTo-TicketboxDatabaseGenerationHelperEvidence `
         ([pscustomobject][ordered]@{
-            RelativePath = [string]$ReleaseIdentity.MigrationHelperRelativePath
-            Size = [int64]$ReleaseIdentity.MigrationHelperSize
-            Sha256 = [string]$ReleaseIdentity.MigrationHelperSha256
+            RelativePath = [string]$ReleaseIdentity.MaintenanceHelperRelativePath
+            Size = [int64]$ReleaseIdentity.MaintenanceHelperSize
+            Sha256 = [string]$ReleaseIdentity.MaintenanceHelperSha256
         })
 }
 
@@ -334,37 +268,37 @@ function Get-TicketboxInstalledDatabaseGenerationProgram {
     param([Parameter(Mandatory = $true)][object]$ReleaseIdentity)
 
     return Get-TicketboxDatabaseGenerationProgramFromHelper `
-        -MigrationHelperPath ([string]$ReleaseIdentity.MigrationHelperPath) `
-        -MigrationHelperEvidence (
-            Get-TicketboxDatabaseGenerationMigrationHelperEvidence $ReleaseIdentity
+        -MaintenanceHelperPath ([string]$ReleaseIdentity.MaintenanceHelperPath) `
+        -MaintenanceHelperEvidence (
+            Get-TicketboxDatabaseMaintenanceHelperEvidence $ReleaseIdentity
         ) `
-        -ExpectedMigrationHelperPath ([string]$ReleaseIdentity.MigrationHelperPath) `
+        -ExpectedMaintenanceHelperPath ([string]$ReleaseIdentity.MaintenanceHelperPath) `
         -ProgramPath ([string]$ReleaseIdentity.DatabaseGenerationProgramPath) `
         -ProgramEvidence (Get-TicketboxDatabaseGenerationProgramEvidence $ReleaseIdentity)
 }
 
 function Assert-TicketboxDatabaseGenerationHelper {
     param(
-        [Parameter(Mandatory = $true)][string]$MigrationHelperPath,
-        [Parameter(Mandatory = $true)][object]$MigrationHelperEvidence,
+        [Parameter(Mandatory = $true)][string]$MaintenanceHelperPath,
+        [Parameter(Mandatory = $true)][object]$MaintenanceHelperEvidence,
         [Parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()][string]$ExpectedMigrationHelperPath
+        [ValidateNotNullOrEmpty()][string]$ExpectedMaintenanceHelperPath
     )
 
-    $helper = [System.IO.Path]::GetFullPath($MigrationHelperPath)
+    $helper = [System.IO.Path]::GetFullPath($MaintenanceHelperPath)
     $evidence = ConvertTo-TicketboxDatabaseGenerationHelperEvidence `
-        $MigrationHelperEvidence
+        $MaintenanceHelperEvidence
     if (
         -not (
             Test-TicketboxPathEquals `
                 $helper `
-                ([System.IO.Path]::GetFullPath($ExpectedMigrationHelperPath))
+                ([System.IO.Path]::GetFullPath($ExpectedMaintenanceHelperPath))
         )
     ) {
-        throw "C07 packaged migration helper path 与 release identity 不一致。"
+        throw "database maintenance helper path 与 release identity 不一致。"
     }
     if ((Get-TicketboxPathEntryKindNoFollow $helper) -cne "File") {
-        throw "C07 packaged migration helper 不是 regular frozen payload file。"
+        throw "database maintenance helper 不是 regular frozen payload file。"
     }
     Assert-NoTicketboxAncestorReparsePoints $helper
     return [pscustomobject][ordered]@{

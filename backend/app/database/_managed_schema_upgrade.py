@@ -19,10 +19,11 @@ from app.database._managed_postgres_migration_runtime import (
     ManagedPostgresMigrationRuntimeError,
     ManagedPostgresMigrationRuntimeV1,
     ManagedPostgresRuntimeContractV1,
+    PostgresOperationFailureError,
 )
 
 RESULT_SCHEMA = "ticketbox-managed-schema-upgrade-result-v2"
-VALIDATION_SCHEMA = "ticketbox-database-generation-program-validation-v1"
+VALIDATION_SCHEMA = "ticketbox-database-generation-program-validation-v2"
 _TRANSACTION_TIMEOUT_MS = 20 * 60 * 1000
 
 
@@ -50,10 +51,6 @@ def validate_database_generation_program(
         "target_revision": program.target_revision,
         "revision_count": len(program.revisions),
         "generation_program_sha256": program.payload_sha256,
-        "c07_source_revision": program.c07.source_revision,
-        "c07_target_revision": program.c07.target_revision,
-        "c07_revision_manifest": program.c07.revision_manifest,
-        "c07_revision_manifest_sha256": program.c07.revision_manifest_sha256,
     }
 
 
@@ -98,7 +95,7 @@ def run_managed_schema_upgrade_action(
             target_revision=target_revision,
             generation_operation_id=generation_operation_id,
         )
-    except ManagedPostgresMigrationRuntimeError as exc:
+    except (ManagedPostgresMigrationRuntimeError, PostgresOperationFailureError) as exc:
         raise ManagedSchemaUpgradeError(
             "managed schema PostgreSQL action failed"
         ) from exc

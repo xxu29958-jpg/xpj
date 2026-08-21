@@ -924,10 +924,10 @@ begin
       Quote(LifecycleBootstrapFilePath('DATABASE_GENERATION_PROGRAM.json')) +
     ' -DatabaseGenerationProgramSha256 ' +
       DatabaseGenerationProgramSha256 +
-    ' -DatabaseGenerationMigrationHelperSize ' +
-      DatabaseGenerationMigrationHelperSize +
-    ' -DatabaseGenerationMigrationHelperSha256 ' +
-      DatabaseGenerationMigrationHelperSha256 +
+    ' -DatabaseMaintenanceHelperSize ' +
+      DatabaseMaintenanceHelperSize +
+    ' -DatabaseMaintenanceHelperSha256 ' +
+      DatabaseMaintenanceHelperSha256 +
     ' -DatabaseGenerationPgDumpSize ' + DatabaseGenerationPgDumpSize +
     ' -DatabaseGenerationPgDumpSha256 ' + DatabaseGenerationPgDumpSha256 +
     ' -DatabaseGenerationPgRestoreSize ' + DatabaseGenerationPgRestoreSize +

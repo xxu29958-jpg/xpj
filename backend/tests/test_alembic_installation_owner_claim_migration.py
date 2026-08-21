@@ -13,7 +13,7 @@ from sqlalchemy import inspect, text
 from app.database import SessionLocal, engine
 from app.database_model_registry import Base
 from app.services.identity_service import bootstrap_installation_owner
-from tests._infra.c07_alembic import reset_public_schema, run_alembic_for_test
+from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
 

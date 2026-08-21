@@ -298,7 +298,7 @@ if (-not $script:attestationSql.Contains("'pg_catalog.pg_control_system()'")) {{
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell failure contract")
-def test_native_failure_is_not_invariant_but_acl_false_is_invariant(tmp_path: Path) -> None:
+def test_native_and_acl_failures_keep_distinct_typed_contracts(tmp_path: Path) -> None:
     script = f"""
 $ErrorActionPreference = 'Stop'
 . '{_ps_literal(COMMAND)}'
@@ -371,9 +371,8 @@ try {{
         -Database 'ticketbox' -Role 'postgres' -Password $password `
         -Sql 'SELECT 1' -Label 'injected exit three' | Out-Null
 }} catch {{ $nativeFailure = $_.Exception }}
-if ($null -eq $nativeFailure -or
-    -not [string]::IsNullOrEmpty([string]$nativeFailure.Data['TicketboxC07FailureClass'])) {{
-    throw 'native exit was incorrectly treated as a policy invariant'
+if ($null -eq $nativeFailure) {{
+    throw 'native database command failure was not preserved'
 }}
 function Invoke-TicketboxPostgresqlDatabaseCommand {{
     return "true`ttrue`tfalse`ttrue`ttrue`ttrue`ttrue`ttrue"
@@ -382,9 +381,8 @@ $aclFailure = $null
 try {{ Assert-TicketboxDatabaseRuntimeAcl $authority $password }}
 catch {{ $aclFailure = $_.Exception }}
 if ($null -eq $aclFailure -or
-    [string]$aclFailure.Data['TicketboxC07FailureClass'] -cne 'invariant' -or
-    [string]$aclFailure.Data['TicketboxC07FailureCode'] -cne 'runtime_acl_invariant_failed') {{
-    throw 'structured ACL false did not produce the stable invariant contract'
+    [string]$aclFailure.Data['TicketboxFailureCode'] -cne 'runtime_acl_invariant_failed') {{
+    throw 'structured ACL false did not produce the stable failure contract'
 }}
 """
     _run_harness(tmp_path, "ticketbox-database-failure-classification", script)
@@ -444,7 +442,7 @@ $attempt = '223e4567-e89b-42d3-a456-426614174000'
 $other = '323e4567-e89b-42d3-a456-426614174000'
 $first = Get-TicketboxDatabaseGenerationRestoreDatabaseName -AttemptId $attempt
 $second = Get-TicketboxDatabaseGenerationRestoreDatabaseName -AttemptId $other
-if ($first -cnotmatch '^ticketbox_c07_restore_[0-9a-f]{{32}}$' -or $first -ceq $second) {{
+if ($first -cnotmatch '^ticketbox_generation_restore_[0-9a-f]{{32}}$' -or $first -ceq $second) {{
     throw 'restore database name was not bound to the create attempt'
 }}
 """

@@ -14,13 +14,13 @@ function Get-TicketboxDatabaseGenerationTargetVerification {
     )
     $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $helper = Assert-TicketboxDatabaseGenerationHelper `
-        -MigrationHelperPath ([string]$ReleaseIdentity.MigrationHelperPath) `
-        -MigrationHelperEvidence (Get-TicketboxDatabaseGenerationMigrationHelperEvidence $ReleaseIdentity) `
-        -ExpectedMigrationHelperPath ([string]$ReleaseIdentity.MigrationHelperPath)
+        -MaintenanceHelperPath ([string]$ReleaseIdentity.MaintenanceHelperPath) `
+        -MaintenanceHelperEvidence (Get-TicketboxDatabaseMaintenanceHelperEvidence $ReleaseIdentity) `
+        -ExpectedMaintenanceHelperPath ([string]$ReleaseIdentity.MaintenanceHelperPath)
     $program = Assert-TicketboxDatabaseGenerationProgram `
         -ProgramPath ([string]$ReleaseIdentity.DatabaseGenerationProgramPath) `
         -ProgramEvidence (Get-TicketboxDatabaseGenerationProgramEvidence $ReleaseIdentity) `
-        -ExpectedMigrationHelperPath ([string]$ReleaseIdentity.MigrationHelperPath)
+        -ExpectedMaintenanceHelperPath ([string]$ReleaseIdentity.MaintenanceHelperPath)
     $databaseUrl = New-TicketboxPostgresqlLocalDatabaseUrl `
         -Authority $HostAuthority `
         -Database $Database `
@@ -40,45 +40,45 @@ function Get-TicketboxDatabaseGenerationTargetVerification {
             param([string]$PlainPassword)
             $passfile = New-TicketboxProtectedPgPassFile `
                 -DatabaseUrl $capturedUrl -Password $PlainPassword
+            $primary = $null
+            $cleanup = @()
+            $operationResult = $null
             try {
-                $arguments = @(
-                    "--database-generation-verify-target",
-                    "--database-url", $passfile.DatabaseUrl,
-                    "--pgpassfile", $passfile.Path,
-                    "--generation-program-path", $capturedProgram.Evidence.RelativePath,
-                    "--expected-generation-program-sha256", $capturedProgram.Evidence.Sha256,
-                    "--operation-id", $capturedOperation,
-                    "--database", $capturedDatabase,
-                    "--target-revision", $capturedTarget
-                )
-                if (-not [string]::IsNullOrEmpty($capturedAttempt)) {
-                    $arguments += @("--restore-attempt-id", $capturedAttempt)
-                }
                 $process = Invoke-TicketboxDatabaseGenerationBoundHelper `
-                    -MigrationHelperPath $capturedHelper.Path `
-                    -MigrationHelperEvidence $capturedHelper.Evidence `
-                    -ExpectedMigrationHelperPath $capturedHelper.Path `
-                    -Arguments $arguments `
+                    -MaintenanceHelperPath $capturedHelper.Path `
+                    -MaintenanceHelperEvidence $capturedHelper.Evidence `
+                    -ExpectedMaintenanceHelperPath $capturedHelper.Path `
+                    -VerifyTarget `
+                    -DatabaseUrl $passfile.DatabaseUrl `
                     -PgPassFilePath $passfile.Path `
-                    -StandardInputText "" `
-                    -TimeoutMilliseconds $script:TicketboxDatabaseGenerationRecoveryTimeoutMs `
-                    -Label "database generation target verification"
+                    -ProgramRelativePath $capturedProgram.Evidence.RelativePath `
+                    -ExpectedProgramSha256 $capturedProgram.Evidence.Sha256 `
+                    -OperationId $capturedOperation `
+                    -Database $capturedDatabase `
+                    -TargetRevision $capturedTarget `
+                    -RestoreAttemptId $capturedAttempt
                 if (
                     [int]$process.ExitCode -ne 0 -or
                     -not [string]::IsNullOrWhiteSpace([string]$process.StandardError)
                 ) {
                     throw "database generation target verification helper 被拒绝。"
                 }
-                return [string]$process.StandardOutput
+                $operationResult = [string]$process.StandardOutput
             }
+            catch { $primary = $_ }
             finally {
                 if ($null -ne $passfile) {
-                    Remove-TicketboxProtectedPgPassArtifact `
-                        -Path $passfile.Path `
-                        -FullControlAccounts $passfile.FullControlAccounts `
-                        -OwnerAccount $passfile.OwnerAccount
+                    try {
+                        Remove-TicketboxProtectedPgPassArtifact `
+                            -Path $passfile.Path `
+                            -FullControlAccounts $passfile.FullControlAccounts `
+                            -OwnerAccount $passfile.OwnerAccount
+                    }
+                    catch { $cleanup += $_ }
                 }
             }
+            Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+            return $operationResult
         }.GetNewClosure())
     try { $payload = $result.Trim() | ConvertFrom-Json }
     catch { throw "database generation target verification stdout 无效。" }
@@ -97,7 +97,7 @@ function Get-TicketboxDatabaseGenerationTargetVerification {
     }
     if (
         [string]$payload.schema -cne
-            "ticketbox-database-generation-target-verification-v1" -or
+            "ticketbox-database-generation-target-verification-v2" -or
         [string]$payload.operation_id -cne [string]$Intent.Payload.operation_id -or
         [string]$payload.database -cne $Database -or
         [string]$payload.target_revision -cne [string]$Intent.Payload.target_revision -or

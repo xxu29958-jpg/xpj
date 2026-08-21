@@ -11,7 +11,7 @@ import pytest
 def _load_launch_module():
     launch_path = Path(__file__).resolve().parents[1] / "packaging" / "launch.py"
     spec = importlib.util.spec_from_file_location(
-        "ticketbox_c07_frozen_identity_launch",
+        "ticketbox_database_maintenance_frozen_identity_launch",
         launch_path,
     )
     assert spec is not None and spec.loader is not None
@@ -36,11 +36,15 @@ def test_frozen_backend_and_helper_identities_are_separate(monkeypatch) -> None:
     with pytest.raises(RuntimeError, match="dedicated frozen helper"):
         launch.main()
 
-    monkeypatch.setattr(launch.sys, "argv", ["ticketbox-c07-migrator.exe"])
+    monkeypatch.setattr(
+        launch.sys,
+        "argv",
+        ["ticketbox-database-maintenance.exe"],
+    )
     monkeypatch.setattr(
         launch.sys,
         "executable",
-        "C:/Program Files/Ticketbox/ticketbox-c07-migrator.exe",
+        "C:/Program Files/Ticketbox/ticketbox-database-maintenance.exe",
     )
     with pytest.raises(RuntimeError, match="requires an explicit mode"):
         launch.main()

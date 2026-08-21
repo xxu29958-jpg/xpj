@@ -108,19 +108,29 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
             -StateRoot $stateRoot `
             -Intent $intent `
             -Candidate $publishedCandidate
+        $publishedPrimary = $null
+        $publishedCleanup = @()
+        $publishedResult = $null
         try {
             if ((Get-TicketboxPathEntryKindNoFollow $BootstrapRecoveryPath) -cne "Missing") {
                 throw "Generation CURRENT 已发布但 bootstrap recovery artifact 仍存在。"
             }
             $publishedProjection = Read-TicketboxDatabaseGenerationRuntimeProjection `
                 $intent $publishedCandidate $hostAuthority $ProjectionContract $LifecycleLock
-            return New-TicketboxInstalledDatabaseGenerationResult `
+            $publishedResult = New-TicketboxInstalledDatabaseGenerationResult `
                 $publishedCurrent $publishedProjection
         }
+        catch { $publishedPrimary = $_ }
         finally {
-            Close-TicketboxDatabaseGenerationRuntimeCredentials `
-                $publishedRuntimeCredentials
+            try {
+                Close-TicketboxDatabaseGenerationRuntimeCredentials `
+                    $publishedRuntimeCredentials
+            }
+            catch { $publishedCleanup += $_ }
         }
+        Throw-TicketboxDatabaseGenerationOperationFailure `
+            $publishedPrimary $publishedCleanup
+        return $publishedResult
     }
     $resumeCandidate = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "candidate" -AllowAbsent
@@ -133,6 +143,7 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
             -Candidate $resumeCandidate `
             -AllowAbsent
         if ($null -ne $resumeRuntimeCredentials) {
+            $resumeCleanup = @()
             try {
                 $bootstrapRetired = Test-TicketboxDatabaseGenerationBootstrapRetirement `
                     $intent $resumeCandidate $hostAuthority `
@@ -140,8 +151,15 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
             }
             catch { $bootstrapRetirementProbeFailure = $_ }
             finally {
-                Close-TicketboxDatabaseGenerationRuntimeCredentials `
-                    $resumeRuntimeCredentials
+                try {
+                    Close-TicketboxDatabaseGenerationRuntimeCredentials `
+                        $resumeRuntimeCredentials
+                }
+                catch { $resumeCleanup += $_ }
+            }
+            if ($resumeCleanup.Count -gt 0) {
+                Throw-TicketboxDatabaseGenerationOperationFailure `
+                    $bootstrapRetirementProbeFailure $resumeCleanup
             }
         }
     }
@@ -176,7 +194,7 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
         }
     }
     $primary = $null
-    $cleanup = $null
+    $cleanup = @()
     $completed = $null
     $credentials = $null
     $runtimeCredentials = $null
@@ -258,11 +276,11 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                         -HostAuthority $hostAuthority `
                         -MigratorPassword $credentials.MigratorPassword `
                         -Plan $plan `
-                        -MigrationHelperPath ([string]$ReleaseIdentity.MigrationHelperPath) `
-                        -MigrationHelperEvidence (
-                            Get-TicketboxDatabaseGenerationMigrationHelperEvidence $ReleaseIdentity
+                        -MaintenanceHelperPath ([string]$ReleaseIdentity.MaintenanceHelperPath) `
+                        -MaintenanceHelperEvidence (
+                            Get-TicketboxDatabaseMaintenanceHelperEvidence $ReleaseIdentity
                         ) `
-                        -ExpectedMigrationHelperPath ([string]$ReleaseIdentity.MigrationHelperPath) `
+                        -ExpectedMaintenanceHelperPath ([string]$ReleaseIdentity.MaintenanceHelperPath) `
                         -ProgramPath ([string]$ReleaseIdentity.DatabaseGenerationProgramPath) `
                         -ProgramEvidence (
                             Get-TicketboxDatabaseGenerationProgramEvidence $ReleaseIdentity
@@ -479,13 +497,18 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                     -LifecycleLock $LifecycleLock
             }
         }
-        catch { $cleanup = $_ }
+        catch { $cleanup += $_ }
         if ($null -ne $credentials) {
-            Close-TicketboxDatabaseGenerationCredentials $credentials
+            try { Close-TicketboxDatabaseGenerationCredentials $credentials }
+            catch { $cleanup += $_ }
             $credentials = $null
         }
         if ($null -ne $runtimeCredentials) {
-            Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials
+            try {
+                Close-TicketboxDatabaseGenerationRuntimeCredentials `
+                    $runtimeCredentials
+            }
+            catch { $cleanup += $_ }
             $runtimeCredentials = $null
         }
         $httpBootstrapSecret = ""

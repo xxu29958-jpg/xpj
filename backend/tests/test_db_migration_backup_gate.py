@@ -9,17 +9,15 @@ import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.pool import NullPool
 
-from app.database._c07_contract import (
-    C07_SOURCE_REVISION,
-    C07_TARGET_REVISION,
-    MIGRATION_LEASE_LABEL,
-)
 from app.database._lifecycle import DatabaseLifecycleKind
+from app.database._managed_postgres_contract import MIGRATION_LEASE_LABEL
 from app.database_model_registry import Base
 
 pytestmark = pytest.mark.real_db
 
 _OLDER_REVISION = "20260630_0002"
+_MANAGED_SOURCE_REVISION = "20260722_0001"
+_MONEY_BIGINT_REVISION = "20260729_0001"
 
 
 def _stamp_revision(db_pkg, revision: str) -> None:
@@ -81,7 +79,7 @@ def _assert_migration_lease_blocks(db_pkg, calls: list[str]) -> None:
             ):
                 db_pkg.init_db()
             assert calls == []
-            assert _head_revision(db_pkg) == C07_TARGET_REVISION
+            assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
     finally:
         contender_engine.dispose()
 
@@ -101,13 +99,13 @@ def _assert_old_runtime_blocks(db_pkg, calls: list[str]) -> None:
             ):
                 db_pkg.init_db()
             assert calls == []
-            assert _head_revision(db_pkg) == C07_TARGET_REVISION
+            assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
     finally:
         old_runtime_engine.dispose()
 
 
-def test_c07_source_revision_refuses_before_backup_or_writes(monkeypatch):
-    """Ordinary startup cannot consume the C07 managed source revision."""
+def test_managed_source_revision_refuses_before_backup_or_writes(monkeypatch):
+    """Ordinary startup cannot consume an installer-managed source revision."""
     import app.database as db_pkg
     from app.services import backup_service
 
@@ -121,11 +119,11 @@ def test_c07_source_revision_refuses_before_backup_or_writes(monkeypatch):
     monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
     _patch_database_writes(monkeypatch, db_pkg, calls)
 
-    _stamp_revision(db_pkg, C07_SOURCE_REVISION)
+    _stamp_revision(db_pkg, _MANAGED_SOURCE_REVISION)
     before = _catalog_snapshot(db_pkg)
     with pytest.raises(
         db_pkg.DatabaseMigrationPreflightError,
-        match="只能由 C07 发布迁移动作推进",
+        match="只能由.*发布迁移动作推进",
     ):
         db_pkg.init_db()
 
@@ -207,18 +205,18 @@ def test_managed_schema_at_head_skips_lifecycle_backup(monkeypatch):
     assert "seed" in calls
 
 
-def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
+def test_post_money_bigint_managed_revision_backs_up_then_upgrades(monkeypatch):
     """Managed startup is lease-fenced, then backs up and reaches head."""
     from alembic import command
 
     import app.database as db_pkg
     from app.database import _database_generation_program as program_reader
     from app.services import backup_service
-    from tests._infra.c07_alembic import run_alembic_for_test
+    from tests._infra.alembic_runtime import run_alembic_for_test
 
     alembic = db_pkg.load_alembic_context()
-    command.downgrade(alembic.config, C07_TARGET_REVISION)
-    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    command.downgrade(alembic.config, _MONEY_BIGINT_REVISION)
+    assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
 
     calls: list[str] = []
     monkeypatch.setattr(
@@ -245,7 +243,7 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
         ):
             db_pkg.init_db()
     assert calls == []
-    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
 
     # Development/operator Alembic still uses the same external-connection
     # environment. The dedicated installed-role runtime has its own topology
@@ -257,8 +255,8 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
         "head",
     )
     assert _head_revision(db_pkg) == alembic.head_revision
-    command.downgrade(alembic.config, C07_TARGET_REVISION)
-    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    command.downgrade(alembic.config, _MONEY_BIGINT_REVISION)
+    assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
 
     _assert_migration_lease_blocks(db_pkg, calls)
     _assert_old_runtime_blocks(db_pkg, calls)

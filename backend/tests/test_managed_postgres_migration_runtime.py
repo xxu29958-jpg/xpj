@@ -33,7 +33,7 @@ from app.database._managed_postgres_migration_runtime import (
 from app.database._release_schema_readiness import read_release_head
 from app.services.secure_file import write_protected_file_exclusive
 from scripts.build_database_generation_program import write_program
-from tests._infra.c07_alembic import run_alembic_for_test
+from tests._infra.alembic_runtime import run_alembic_for_test
 from tests._infra.env import ADMIN_TEST_DATABASE_URL
 
 pytestmark = pytest.mark.real_db

@@ -28,17 +28,16 @@ program = load_database_generation_program(
 
 from app.database import engine
 
-operation_id = "d5148f80-1e6c-447d-b3bc-e3dc180d87b4"
 with engine.connect() as connection, _prearmed_transaction(
     connection,
     timeout_ms=20 * 60 * 1000,
+    access_mode="read_write",
 ):
     execute_database_generation(
         connection,
         program=program,
         source_revision=source_revision,
         target_revision=target_revision,
-        operation_id=operation_id,
     )
 
 engine.dispose()

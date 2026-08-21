@@ -45,8 +45,8 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
             return @(
                 "schema", "operation_id", "installation_id",
                 "expected_predecessor_sha256", "target_backend_version",
-                "migration_helper_relative_path", "migration_helper_size",
-                "migration_helper_sha256", "generation_program_relative_path",
+                "database_maintenance_helper_relative_path", "database_maintenance_helper_size",
+                "database_maintenance_helper_sha256", "generation_program_relative_path",
                 "generation_program_size", "generation_program_sha256",
                 "host_contract_sha256", "projection_contract_sha256",
                 "target_revision"

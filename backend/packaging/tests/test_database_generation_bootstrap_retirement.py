@@ -387,6 +387,7 @@ function New-TicketboxDatabaseGenerationChainedArtifact {{
 function Read-TicketboxDatabaseGenerationOperationArtifact {{ return $script:artifact }}
 {powershell_function(credentials, "ConvertTo-TicketboxPostgresqlSecureString")}
 {powershell_function(credentials, "Invoke-TicketboxWithPlainPostgresqlSecret")}
+{powershell_function(CONTRACT.read_text(encoding="utf-8-sig"), "Throw-TicketboxDatabaseGenerationOperationFailure")}
 {powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentials")}
 {powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationRuntimeCredentials")}
 {powershell_function(generation_credentials, "New-TicketboxDatabaseGenerationRuntimeCredentials")}
@@ -448,20 +449,37 @@ def test_credential_readers_dispose_partial_secret_construction(
 $ErrorActionPreference = 'Stop'
 class TrackedSecret : System.IDisposable {{
     [bool]$Disposed = $false
-    [void] Dispose() {{ $this.Disposed = $true }}
+    [int]$DisposeAttempts = 0
+    [string]$Name
+    [bool]$FailDispose
+    TrackedSecret([string]$Name, [bool]$FailDispose) {{
+        $this.Name = $Name
+        $this.FailDispose = $FailDispose
+    }}
+    [void] Dispose() {{
+        $this.DisposeAttempts += 1
+        $this.Disposed = $true
+        if ($this.FailDispose) {{ throw "$($this.Name) cleanup failed" }}
+    }}
 }}
 $script:conversionCount = 0
-$script:firstSecret = $null
+$script:constructedSecrets = @()
+$script:failSecondConversion = $false
+$script:disposeFailure = $true
 function ConvertTo-TicketboxPostgresqlSecureString {{
     param($Value, $Label)
     $script:conversionCount += 1
-    if (($script:conversionCount % 2) -eq 0) {{ throw 'second secret conversion failed' }}
-    $script:firstSecret = [TrackedSecret]::new()
-    return $script:firstSecret
+    if ($script:failSecondConversion -and $script:conversionCount -eq 2) {{
+        throw 'second secret conversion failed'
+    }}
+    $secret = [TrackedSecret]::new([string]$Label, $script:disposeFailure)
+    $script:constructedSecrets += $secret
+    return $secret
 }}
-function ConvertTo-TicketboxPostgresqlScramVerifier {{ throw 'verifier must not be reached' }}
+function ConvertTo-TicketboxPostgresqlScramVerifier {{ throw 'verifier primary failed' }}
 function Assert-TicketboxDatabaseGenerationExactProperties {{}}
 function Read-TicketboxDatabaseGenerationOperationArtifact {{ return $script:artifact }}
+{powershell_function(CONTRACT.read_text(encoding="utf-8-sig"), "Throw-TicketboxDatabaseGenerationOperationFailure")}
 {powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationCredentials")}
 {powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationCredentials")}
 {powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentials")}
@@ -487,14 +505,24 @@ $script:artifact = [pscustomobject]@{{ Payload = [pscustomobject]@{{
     migrator_password = ('m' * 48)
     migrator_scram_salt = $salt
 }} }}
-$rejected = $false
+$caught = $null
 try {{ Read-TicketboxDatabaseGenerationCredentials 'state' $intent | Out-Null }}
-catch {{ $rejected = $true }}
-if (-not $rejected -or -not $script:firstSecret.Disposed) {{
-    throw 'database credential partial construction leaked its first secret'
+catch {{ $caught = $_.Exception }}
+$messages = @($caught.InnerExceptions | ForEach-Object {{ $_.Message }})
+if (
+    $caught -isnot [AggregateException] -or
+    $caught.InnerExceptions.Count -ne 3 -or
+    $messages[0] -cne 'verifier primary failed' -or
+    $messages[1] -cnotlike '*runtime password cleanup failed*' -or
+    $messages[2] -cnotlike '*migrator password cleanup failed*' -or
+    @($script:constructedSecrets).Count -ne 2 -or
+    @($script:constructedSecrets | Where-Object {{ $_.DisposeAttempts -ne 1 }}).Count -ne 0
+) {{
+    throw 'database credential partial construction did not preserve primary and all cleanup failures'
 }}
 $script:conversionCount = 0
-$script:firstSecret = $null
+$script:constructedSecrets = @()
+$script:failSecondConversion = $true
 $script:artifact = [pscustomobject]@{{ Payload = [pscustomobject]@{{
     schema = 'ticketbox-database-generation-runtime-credentials-v1'
     operation_id = '11111111-1111-4111-8111-111111111111'
@@ -503,14 +531,22 @@ $script:artifact = [pscustomobject]@{{ Payload = [pscustomobject]@{{
     runtime_password = ('r' * 48)
     http_bootstrap_secret = ('h' * 48)
 }} }}
-$rejected = $false
+$caught = $null
 try {{ Read-TicketboxDatabaseGenerationRuntimeCredentials 'state' $intent $candidate | Out-Null }}
-catch {{ $rejected = $true }}
-if (-not $rejected -or -not $script:firstSecret.Disposed) {{
-    throw 'runtime credential partial construction leaked its first secret'
+catch {{ $caught = $_.Exception }}
+$messages = @($caught.InnerExceptions | ForEach-Object {{ $_.Message }})
+if (
+    $caught -isnot [AggregateException] -or
+    $caught.InnerExceptions.Count -ne 2 -or
+    $messages[0] -cne 'second secret conversion failed' -or
+    $messages[1] -cnotlike '*runtime password cleanup failed*' -or
+    @($script:constructedSecrets).Count -ne 1 -or
+    $script:constructedSecrets[0].DisposeAttempts -ne 1
+) {{
+    throw 'runtime credential partial construction did not preserve primary and cleanup failure'
 }}
-$transientRuntime = [TrackedSecret]::new()
-$transientMigrator = [TrackedSecret]::new()
+$transientRuntime = [TrackedSecret]::new('transient runtime', $false)
+$transientMigrator = [TrackedSecret]::new('transient migrator', $false)
 $transient = [pscustomobject]@{{
     Artifact = [pscustomobject]@{{ PayloadSha256 = ('1' * 64) }}
     RuntimePassword = $transientRuntime
@@ -528,8 +564,8 @@ if (
 ) {{
     throw 'transient credential close left secret or artifact authority reachable'
 }}
-$publishedRuntime = [TrackedSecret]::new()
-$publishedHttp = [TrackedSecret]::new()
+$publishedRuntime = [TrackedSecret]::new('published runtime', $false)
+$publishedHttp = [TrackedSecret]::new('published HTTP', $false)
 $published = [pscustomobject]@{{
     Artifact = [pscustomobject]@{{ PayloadSha256 = ('2' * 64) }}
     RuntimePassword = $publishedRuntime
@@ -566,6 +602,7 @@ def test_service_transition_repair_is_exact_and_cleanup_safe(tmp_path: Path) -> 
 $ErrorActionPreference = 'Stop'
 $script:events = [Collections.Generic.List[string]]::new()
 $script:throwReadback = $false
+$script:throwClose = $false
 $script:currentImagePath = '"C:\Ticketbox\shawl.exe" run temporary'
 $script:expectedTemporary = $script:currentImagePath
 $script:intent = [pscustomobject]@{{
@@ -636,6 +673,16 @@ function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
 }}
 function Close-TicketboxDatabaseGenerationRuntimeCredentials {{
     $script:events.Add('close')
+    if ($script:throwClose) {{ throw 'close failed' }}
+}}
+function Throw-TicketboxDatabaseGenerationOperationFailure {{
+    param($Primary, $Cleanup)
+    $cleanupFailures = @($Cleanup | Where-Object {{ $null -ne $_ }})
+    if ($null -ne $Primary -and $cleanupFailures.Count -gt 0) {{
+        throw "aggregate:$($Primary.Exception.Message)|$($cleanupFailures[0].Exception.Message)"
+    }}
+    if ($null -ne $Primary) {{ throw $Primary }}
+    if ($cleanupFailures.Count -gt 0) {{ throw $cleanupFailures[0] }}
 }}
 function Remove-TicketboxDatabaseGenerationServiceTransition {{
     $script:events.Add('remove')
@@ -661,6 +708,17 @@ catch {{ $rejected = $true }}
 if (-not $rejected -or ($script:events -join '|') -cne 'restore|write|resolve|readback|close') {{
     throw "readback failure cleanup drifted: $($script:events -join '|')"
 }}
+$script:events.Clear()
+$script:throwClose = $true
+$actual = ''
+try {{ Repair-TicketboxDatabaseGenerationServiceTransition 'state' $script:intent $hostContract @{{}} }}
+catch {{ $actual = $_.Exception.Message }}
+if (
+    $actual -cne 'aggregate:readback failed|close failed' -or
+    ($script:events -join '|') -cne 'restore|write|resolve|readback|close'
+) {{ throw "repair primary/cleanup aggregation drifted: $actual" }}
+$script:throwReadback = $false
+$script:throwClose = $false
 
 $script:events.Clear()
 $script:currentImagePath = $script:transition.temporary_image_path

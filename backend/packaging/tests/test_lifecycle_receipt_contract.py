@@ -1575,10 +1575,10 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
         data_root = root / "data"
         install_dir = root / "program"
         data_root.mkdir(parents=True)
-        helper_payload = b"c07-migration-helper-fixture"
+        helper_payload = b"database-maintenance-helper-fixture"
         helper_dir = install_dir / "program" / "ticketbox-backend"
         helper_dir.mkdir(parents=True)
-        helper = helper_dir / "ticketbox-c07-migrator.exe"
+        helper = helper_dir / "ticketbox-database-maintenance.exe"
         helper.write_bytes(helper_payload)
         generation_program = helper_dir / "DATABASE_GENERATION_PROGRAM.json"
         generation_program_payload = b'{"schema":"ticketbox-test-generation-program-v1"}\n'
@@ -1595,7 +1595,7 @@ def test_persistent_installation_identity_roundtrips_and_rejects_floor_rollback(
                     "build_mode": "installer-build",
                     "backend": {
                         "version": "7.8.9",
-                        "c07_migration_helper": {
+                        "database_maintenance_helper": {
                             "path": helper.name,
                             "size": len(helper_payload),
                             "sha256": hashlib.sha256(helper_payload).hexdigest(),

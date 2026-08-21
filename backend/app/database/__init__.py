@@ -20,12 +20,6 @@ import sys
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from app.database._c07_contract import (
-    C07_SOURCE_REVISION,
-    MIGRATION_LEASE_LABEL,
-    C07CeremonyError,
-    C07ReceiptRepairRequiredError,
-)
 from app.database._core import (
     BACKEND_ROOT,
     SessionLocal,
@@ -33,11 +27,6 @@ from app.database._core import (
     get_db,
     settings,
     wait_for_db,
-)
-from app.database._database_generation_program import (
-    ALEMBIC_PROGRAM_ATTRIBUTE,
-    DatabaseGenerationProgramError,
-    database_generation_program_revision_includes_c07,
 )
 from app.database._database_generation_runtime_admission import (
     assert_database_generation_startup_ready,
@@ -52,6 +41,7 @@ from app.database._lifecycle import (
     load_alembic_context,
     plan_database_lifecycle,
 )
+from app.database._managed_postgres_contract import MIGRATION_LEASE_LABEL
 from app.database._seed import (
     BASELINE_MIGRATION_NAME,
     reconcile_expense_tag_mirror_once,
@@ -95,7 +85,6 @@ def init_db() -> None:
     installed_program = load_installed_database_generation_program() if bool(getattr(sys, "frozen", False)) else None
     installed_runtime = installed_program is not None
     alembic = load_alembic_context(installed_program=installed_program)
-    _assert_revision_contains_c07(alembic.head_revision, alembic, label="release head")
     plan = plan_database_lifecycle(lifecycle, alembic)
     if lifecycle.has_existing_schema:
         _assert_existing_schema_compatible(lifecycle)
@@ -128,15 +117,10 @@ def init_db() -> None:
     # Development/operator MANAGED_UPGRADE preflights, backup, and Alembic DDL
     # are repeated under a database-scoped lease below. Installed hosts are
     # fenced above; their long-lived runtime role intentionally has no DDL.
-    try:
-        if plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
-            _apply_managed_schema_lifecycle(alembic)
-        else:
-            _apply_schema_lifecycle(plan, alembic)
-    except C07ReceiptRepairRequiredError as exc:
-        raise DatabaseMigrationPreflightError(
-            f"拒绝执行数据库迁移:C07 生命周期证明未能与 DDL 原子登记({exc})，事务已回滚。"
-        ) from exc
+    if plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
+        _apply_managed_schema_lifecycle(alembic)
+    else:
+        _apply_schema_lifecycle(plan, alembic)
     _assert_schema_at_head(alembic.head_revision)
     _assert_database_generation_startup_ready(
         alembic,
@@ -163,54 +147,8 @@ def _assert_database_generation_startup_ready(
     installed_program: object | None,
 ) -> None:
     if installed_program is None:
-        _assert_source_c07_receipt_ready(alembic)
         return
     assert_database_generation_startup_ready(engine, installed_program)
-
-
-def _assert_source_c07_receipt_ready(alembic: AlembicContext) -> None:
-    from app.database._c07_receipt import assert_c07_lifecycle_ready
-
-    try:
-        assert_c07_lifecycle_ready(engine, alembic_config=alembic.config)
-    except C07ReceiptRepairRequiredError as exc:
-        raise DatabaseMigrationPreflightError(
-            f"拒绝开放 source database writer:C07 migration receipt 未完成({exc})。"
-        ) from exc
-
-
-def _assert_revision_contains_c07(
-    revision: str | None,
-    alembic: AlembicContext,
-    *,
-    label: str,
-) -> None:
-    try:
-        installed_program = alembic.config.attributes.get(ALEMBIC_PROGRAM_ATTRIBUTE)
-        if installed_program is None:
-            from app.database._c07_execution import _revision_includes_c07
-
-            includes_c07 = _revision_includes_c07(
-                revision,
-                alembic_config=alembic.config,
-            )
-        else:
-            includes_c07 = database_generation_program_revision_includes_c07(
-                installed_program,
-                revision,
-            )
-    except (C07CeremonyError, DatabaseGenerationProgramError) as exc:
-        raise DatabaseMigrationPreflightError(
-            f"拒绝开放数据库 writer:{label} 的 C07 ancestry 无法验证({exc})；数据库未执行 backup/DDL/DML。"
-        ) from exc
-    if includes_c07:
-        return
-    raise DatabaseMigrationPreflightError(
-        "拒绝由普通后端跨越 C07 迁移边界:"
-        f"{label}={revision!r}；source={C07_SOURCE_REVISION!r} "
-        "只能由 C07 发布迁移动作推进；更早、多头或未知 revision 同样 "
-        "inspect-only REFUSED；数据库未执行 backup/DDL/DML。"
-    )
 
 
 def _apply_schema_lifecycle(plan: DatabaseLifecyclePlan, alembic: AlembicContext) -> None:
@@ -219,28 +157,18 @@ def _apply_schema_lifecycle(plan: DatabaseLifecyclePlan, alembic: AlembicContext
     if plan.action is DatabaseLifecycleAction.NOOP:
         return
     if plan.action is not DatabaseLifecycleAction.FRESH_UPGRADE:
-        raise DatabaseMigrationPreflightError("拒绝执行非 fresh C07 普通启动迁移；数据库未执行 DDL/DML。")
-    from app.database._c07_ceremony import (
-        C07_CEREMONY_MODE_FRESH,
-        C07_FRESH_CEREMONY_ID,
-        set_c07_migration_context,
-    )
-    from app.database._c07_contract import MAINTENANCE_WINDOW_SECONDS
-    from app.database._c07_transaction_timeout import c07_prearmed_transaction
+        raise DatabaseMigrationPreflightError("拒绝执行非 fresh 普通启动迁移；数据库未执行 DDL/DML。")
+    from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 
     with (
         engine.connect() as connection,
-        c07_prearmed_transaction(
+        _prearmed_transaction(
             connection,
-            timeout_ms=MAINTENANCE_WINDOW_SECONDS * 1000,
+            timeout_ms=20 * 60 * 1000,
+            access_mode="read_write",
         ),
     ):
         alembic.config.attributes["connection"] = connection
-        set_c07_migration_context(
-            connection,
-            mode=C07_CEREMONY_MODE_FRESH,
-            ceremony_id=C07_FRESH_CEREMONY_ID,
-        )
         if "alembic_version" in plan.state.table_names:
             command.stamp(alembic.config, "base", purge=True)
         command.upgrade(alembic.config, "head")
@@ -273,7 +201,6 @@ def _apply_managed_schema_lifecycle(alembic: AlembicContext) -> None:
         if lifecycle.has_existing_schema:
             _assert_existing_schema_compatible(lifecycle, connection=connection)
         if plan.action is DatabaseLifecycleAction.NOOP:
-            _assert_source_c07_receipt_ready(alembic)
             return
         if plan.action is DatabaseLifecycleAction.REFUSE:
             raise DatabaseMigrationPreflightError(
@@ -286,12 +213,6 @@ def _apply_managed_schema_lifecycle(alembic: AlembicContext) -> None:
 
         _assert_managed_upgrade_writer_quiescence(connection)
         _lock_managed_upgrade_tables(connection)
-        _assert_revision_contains_c07(
-            lifecycle.current_revision,
-            alembic,
-            label="installed revision",
-        )
-        _assert_source_c07_receipt_ready(alembic)
         _assert_existing_schema_owner_ready(connection)
         _backup_before_upgrade(lifecycle.current_revision, alembic.head_revision)
         # Alembic must use this exact connection: PostgreSQL transaction-level

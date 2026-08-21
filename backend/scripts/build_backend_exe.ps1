@@ -35,7 +35,7 @@ $DatabaseGenerationProgramWorkPath = Join-Path `
     $DatabaseGenerationProgramName
 $InputLocks = $null
 $ToolchainLocks = $null
-$C07SmokePayloadLocks = $null
+$DatabaseMaintenanceSmokePayloadLocks = $null
 $ToolchainSnapshot = $null
 $ToolchainPaths = @()
 $BuildLock = $null
@@ -170,26 +170,17 @@ try {
     if (-not (Test-Path -LiteralPath $PyInstallerArchiveViewer -PathType Leaf)) {
         throw "Contracted PyInstaller archive viewer is missing: $PyInstallerArchiveViewer"
     }
-    foreach ($retiredGenerationContractRelativePath in @(
-        "app\database\_c07_maintenance_plan.py",
-        "app\database\_c07_production_authority.py",
-        "app\database\_c07_production_connection.py",
-        "app\database\_c07_production_context.py",
-        "app\database\_c07_production_contract.py",
-        "app\database\_c07_production_contract_types.py",
-        "app\database\_c07_production_fence.py",
-        "app\database\_c07_production_ready.py",
-        "app\database\_c07_production_recovery.py",
-        "app\database\_c07_production_restore.py",
-        "app\database\_c07_production_shape.py",
-        "app\database\_c07_runtime_projection.py"
-    )) {
-        $retiredGenerationContract = Join-Path `
-            $InputSnapshotRoot `
-            $retiredGenerationContractRelativePath
-        if (Test-Path -LiteralPath $retiredGenerationContract) {
-            throw "Retired database generation contract returned to the source snapshot."
-        }
+    $retiredC07Sources = @(
+        Get-ChildItem `
+            -LiteralPath (Join-Path $InputSnapshotRoot "app\database") `
+            -File `
+            -Filter "_c07_*.py"
+    )
+    $retiredC07Contract = Join-Path `
+        $InputSnapshotRoot `
+        "app\database_generation_c07_contract.py"
+    if ($retiredC07Sources.Count -ne 0 -or (Test-Path -LiteralPath $retiredC07Contract)) {
+        throw "Retired C07 database modules returned to the source snapshot."
     }
     $pyInstallerVersion = Invoke-TicketboxVersionProbe $PyBuild @("-I", "-B", "-m", "PyInstaller", "--version") '^(\d+\.\d+\.\d+)$' "PyInstaller"
     if ($pyInstallerVersion -cne $toolchain.pyinstaller_version) {
@@ -226,9 +217,9 @@ try {
     if (-not (Test-Path -LiteralPath $stagedExe -PathType Leaf)) {
         throw "PyInstaller completed without the staged backend executable."
     }
-    $stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"
-    if (-not (Test-Path -LiteralPath $stagedC07Helper -PathType Leaf)) {
-        throw "PyInstaller completed without the staged C07 migration helper."
+    $stagedDatabaseMaintenanceHelper = Join-Path $StagingDir "ticketbox-database-maintenance.exe"
+    if (-not (Test-Path -LiteralPath $stagedDatabaseMaintenanceHelper -PathType Leaf)) {
+        throw "PyInstaller completed without the staged database maintenance helper."
     }
     $stagedDatabaseGenerationProgram = Join-Path `
         $StagingDir `
@@ -257,8 +248,10 @@ try {
         "app.canonical_money_facts_contract",
         "app.database._database_generation_program",
         "app.database._database_generation_runtime_admission",
-        "app.database_generation_c07_contract",
+        "app.database._managed_postgres_role_authority",
         "app.database_model_registry",
+        "app.database._money_schema_attestation",
+        "app.database._postgres_operation_failures",
         "app.tenant_contract"
     )) {
         if (-not @($archiveModules | Where-Object {
@@ -267,52 +260,27 @@ try {
             throw "Frozen backend archive omitted required app module: $requiredModule"
         }
     }
-    foreach ($retiredModule in @(
-        "app.database._c07_ceremony",
-        "app.database._c07_ceremony_document",
-        "app.database._c07_commit_reconciliation",
-        "app.database._c07_execution",
-        "app.database._c07_fresh_source_bootstrap",
-        "app.database._c07_host_evidence_helpers",
-        "app.database._c07_host_freeze_evidence",
-        "app.database._c07_maintenance_digest",
-        "app.database._c07_maintenance_plan",
-        "app.database._c07_maintenance_upgrade",
-        "app.database._c07_maintenance_upgrade_action",
-        "app.database._c07_production_authority",
-        "app.database._c07_production_connection",
-        "app.database._c07_production_context",
-        "app.database._c07_production_contract",
-        "app.database._c07_production_contract_types",
-        "app.database._c07_production_fence",
-        "app.database._c07_production_migration",
-        "app.database._c07_production_ready",
-        "app.database._c07_production_recovery",
-        "app.database._c07_production_restore",
-        "app.database._c07_production_shape",
-        "app.database._c07_receipt",
-        "app.database._c07_receipt_validation",
-        "app.database._c07_runtime_projection",
-        "app.database._c07_transaction_timeout"
-    )) {
-        if (@($archiveModules | Where-Object {
-            $_ -match ("'" + [regex]::Escape($retiredModule) + "'$" )
-        })) {
-            throw "Frozen backend archive contains retired app module: $retiredModule"
+    $retiredArchiveModules = @(
+        $archiveModules | Where-Object {
+            $_ -match "'app\.database\._c07_[^']+'$" -or
+            $_ -match "'app\.database_generation_c07_contract'$"
         }
+    )
+    if ($retiredArchiveModules.Count -ne 0) {
+        throw "Frozen backend archive contains retired C07 database modules."
     }
     Assert-TicketboxPostgresOnlyFrozenPayload `
         -DistDir $StagingDir `
         -ArchiveListing $archiveModules
-    $c07SmokePayloadSnapshot = Get-TicketboxBackendPayloadSnapshot $StagingDir
-    $C07SmokePayloadLocks = @(Enter-TicketboxFileSetReadLocks `
+    $databaseMaintenanceSmokePayloadSnapshot = Get-TicketboxBackendPayloadSnapshot $StagingDir
+    $DatabaseMaintenanceSmokePayloadLocks = @(Enter-TicketboxFileSetReadLocks `
         -Root $StagingDir `
-        -Snapshot $c07SmokePayloadSnapshot)
-    $c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke `
+        -Snapshot $databaseMaintenanceSmokePayloadSnapshot)
+    $databaseMaintenanceHelperSmoke = Invoke-TicketboxDatabaseMaintenanceHelperSmoke `
         -DistDir $StagingDir `
-        -HelperPath $stagedC07Helper `
+        -HelperPath $stagedDatabaseMaintenanceHelper `
         -DatabaseGenerationProgramPath $stagedDatabaseGenerationProgram `
-        -PayloadSnapshot $c07SmokePayloadSnapshot
+        -PayloadSnapshot $databaseMaintenanceSmokePayloadSnapshot
     Assert-TicketboxFileSetSnapshot "Frozen backend source during build" $sourceBeforeFreeze (Get-TicketboxBackendSourceSnapshot $BackendRoot)
     $currentPythonVersion = Invoke-TicketboxVersionProbe $PyBuild @("-c", "import platform; print(platform.python_version())") '^(\d+\.\d+\.\d+)$' "Python"
     $currentUvVersion = Invoke-TicketboxVersionProbe $UvPath @("--version") '^uv\s+(\d+\.\d+\.\d+)\b' "uv"
@@ -331,10 +299,10 @@ try {
         -ToolchainProvenance $currentToolchainProvenance `
         -SourceSnapshot $sourceBeforeFreeze `
         -DatabaseGenerationProgramPath $stagedDatabaseGenerationProgram `
-        -C07MigrationHelperSmokeEvidence $c07MigrationHelperSmoke
+        -DatabaseMaintenanceHelperSmokeEvidence $databaseMaintenanceHelperSmoke
     Assert-TicketboxBackendBuildManifest $BackendRoot $StagingDir | Out-Null
-    Exit-TicketboxFileSetReadLocks $C07SmokePayloadLocks
-    $C07SmokePayloadLocks = $null
+    Exit-TicketboxFileSetReadLocks $DatabaseMaintenanceSmokePayloadLocks
+    $DatabaseMaintenanceSmokePayloadLocks = $null
     $validateBackendPublish = {
         param([string]$PublishedDirectory)
         Assert-TicketboxBackendBuildManifest $BackendRoot $PublishedDirectory | Out-Null
@@ -356,7 +324,7 @@ catch {
 finally {
     try {
         foreach ($cleanup in @(
-            [pscustomobject]@{ Label = "C07 smoke payload read locks"; Action = { Exit-TicketboxFileSetReadLocks $C07SmokePayloadLocks } },
+            [pscustomobject]@{ Label = "database maintenance smoke payload read locks"; Action = { Exit-TicketboxFileSetReadLocks $DatabaseMaintenanceSmokePayloadLocks } },
             [pscustomobject]@{ Label = "input read locks"; Action = { Exit-TicketboxFileSetReadLocks $InputLocks } },
             [pscustomobject]@{ Label = "toolchain read locks"; Action = { Exit-TicketboxFileSetReadLocks $ToolchainLocks } },
             [pscustomobject]@{ Label = "UV_PYTHON_DOWNLOADS"; Action = {

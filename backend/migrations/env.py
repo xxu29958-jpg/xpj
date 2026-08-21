@@ -32,13 +32,12 @@ from app import models  # noqa: E402, F401
 from app.database_model_registry import Base  # noqa: E402
 
 config = context.config
-_C07_JSON_PROTOCOL_ATTRIBUTE = "ticketbox_c07_json_protocol_v1"
 _MANAGED_MIGRATION_JSON_PROTOCOL_ATTRIBUTE = (
     "ticketbox_managed_migration_json_protocol_v1"
 )
 
 
-def _configure_c07_json_protocol_logging() -> None:
+def _configure_managed_migration_protocol_logging() -> None:
     """Keep Alembic diagnostics outside the helper's stdout/stderr protocol."""
 
     alembic_logger = logging.getLogger("alembic")
@@ -51,20 +50,14 @@ def _configure_c07_json_protocol_logging() -> None:
 
 
 # ``alembic.ini`` intentionally routes the standalone CLI's progress messages
-# to stderr.  The dedicated C07 helper instead owns a strict JSON stdout
+# to stderr.  The dedicated database maintenance helper owns a strict JSON stdout
 # protocol whose Windows host rejects any stderr bytes.  Its Config opts into a
 # versioned attribute, so this environment skips fileConfig and installs the
 # standard no-op handler recommended for a logging namespace that must not fall
 # through to Python's stderr ``lastResort`` handler.  Exceptions still escape
 # normally and produce a non-zero helper exit.
-if any(
-    config.attributes.get(attribute) is True
-    for attribute in (
-        _C07_JSON_PROTOCOL_ATTRIBUTE,
-        _MANAGED_MIGRATION_JSON_PROTOCOL_ATTRIBUTE,
-    )
-):
-    _configure_c07_json_protocol_logging()
+if config.attributes.get(_MANAGED_MIGRATION_JSON_PROTOCOL_ATTRIBUTE) is True:
+    _configure_managed_migration_protocol_logging()
 # Only let Alembic configure logging when it owns the process — i.e. the
 # standalone ``alembic`` CLI, where nothing has set up logging yet. When
 # migrations run programmatically (``command.upgrade`` from ``init_db`` at app

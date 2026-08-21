@@ -896,7 +896,7 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
     }
     foreach ($requiredPath in $script:TicketboxInstalledDatabaseGenerationAuthorityPaths) {
         if (-not $seen.Contains($requiredPath)) {
-            throw "已安装 C07 外置迁移 authority 缺少必需文件：$requiredPath"
+            throw "已安装 database generation authority 缺少必需文件：$requiredPath"
         }
     }
     $migrationRecords = @($records | Where-Object {
@@ -906,7 +906,7 @@ function ConvertTo-TicketboxInstalledPayloadRecords([object]$Payload) {
         )
     })
     if ($migrationRecords.Count -lt 3) {
-        throw "已安装 C07 外置 migrations authority 文件集不完整。"
+        throw "已安装 database generation authority 文件集不完整。"
     }
     return @($records)
 }
@@ -950,37 +950,37 @@ function Assert-TicketboxInstalledBackendManifestChain(
             throw "installed primary/secondary database generation program 不一致。"
         }
     }
-    $primaryHelper = $Primary.backend.c07_migration_helper
-    $secondaryHelper = $Secondary.payload.c07_migration_helper
+    $primaryHelper = $Primary.backend.database_maintenance_helper
+    $secondaryHelper = $Secondary.payload.database_maintenance_helper
     foreach ($name in @("path", "size", "sha256")) {
         if ([string]$primaryHelper.$name -cne [string]$secondaryHelper.$name) {
-            throw "installed primary/secondary C07 migration helper evidence 不一致。"
+            throw "installed primary/secondary database maintenance helper evidence 不一致。"
         }
     }
     $helperRecords = @($Secondary.payload.files | Where-Object {
         [string]$_.path -ceq [string]$secondaryHelper.path
     })
     if ($helperRecords.Count -ne 1) {
-        throw "installed secondary payload 未唯一绑定 C07 migration helper record。"
+        throw "installed secondary payload 未唯一绑定 database maintenance helper record。"
     }
     foreach ($name in @("path", "size", "sha256")) {
         if ([string]$helperRecords[0].$name -cne [string]$secondaryHelper.$name) {
-            throw "installed secondary C07 migration helper evidence 与 payload record 不一致。"
+            throw "installed secondary database maintenance helper evidence 与 payload record 不一致。"
         }
     }
     Assert-TicketboxStructuredEvidence `
-        "installed primary/secondary C07 migration helper smoke" `
-        $Primary.backend.c07_migration_helper_smoke `
-        $Secondary.payload.c07_migration_helper_smoke
-    Assert-TicketboxC07MigrationHelperSmokeEvidence `
-        $Secondary.payload.c07_migration_helper_smoke `
+        "installed primary/secondary database maintenance helper smoke" `
+        $Primary.backend.database_maintenance_helper_smoke `
+        $Secondary.payload.database_maintenance_helper_smoke
+    Assert-TicketboxDatabaseMaintenanceHelperSmokeEvidence `
+        $Secondary.payload.database_maintenance_helper_smoke `
         $secondaryHelper `
         $Secondary.payload `
         (Split-Path -Parent $SecondaryStream.Name) `
         ([string]$secondaryProgram.sha256)
 }
 
-function Enter-TicketboxInstalledC07PayloadAuthorityLease {
+function Enter-TicketboxInstalledDatabaseGenerationPayloadLease {
     param(
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][string]$InstallerManifestPath,
@@ -993,7 +993,7 @@ function Enter-TicketboxInstalledC07PayloadAuthorityLease {
         "Read-TicketboxInstalledBuildManifest"
     )) {
         if (-not (Get-Command $requiredFunction -CommandType Function -ErrorAction SilentlyContinue)) {
-            throw "installed C07 payload authority lease 缺少依赖：$requiredFunction"
+            throw "installed database generation payload lease 缺少依赖：$requiredFunction"
         }
     }
     $canonicalInstallDir = [System.IO.Path]::GetFullPath($InstallDir).TrimEnd("\", "/")
@@ -1006,7 +1006,7 @@ function Enter-TicketboxInstalledC07PayloadAuthorityLease {
         $expectedPrimaryPath,
         [System.StringComparison]::OrdinalIgnoreCase
     )) {
-        throw "installed C07 payload authority 只接受安装目录内 primary manifest。"
+        throw "installed database generation payload authority 只接受安装目录内 primary manifest。"
     }
     $payloadRoot = [System.IO.Path]::GetFullPath(
         (Join-Path $canonicalInstallDir "program\ticketbox-backend")
@@ -1145,7 +1145,7 @@ function Enter-TicketboxInstalledC07PayloadAuthorityLease {
     }
 }
 
-function Close-TicketboxInstalledC07PayloadAuthorityLease(
+function Close-TicketboxInstalledDatabaseGenerationPayloadLease(
     [AllowNull()][object]$Lease
 ) {
     if ($null -eq $Lease) { return }
@@ -1154,19 +1154,19 @@ function Close-TicketboxInstalledC07PayloadAuthorityLease(
         $streams = @($Lease.Streams)
         $evidence = @($Lease.StreamEvidence)
         if ($streams.Count -ne $evidence.Count) {
-            throw "installed C07 payload authority lease evidence 数量漂移。"
+            throw "installed database generation payload lease evidence 数量漂移。"
         }
         for ($index = 0; $index -lt $streams.Count; $index++) {
             $stream = $streams[$index]
             if ($stream.SafeFileHandle.IsClosed) {
-                throw "installed C07 payload authority lease 中途关闭。"
+                throw "installed database generation payload lease 中途关闭。"
             }
             $sha256 = Get-TicketboxOpenFileSha256Lower $stream
             if (
                 [int64]$stream.Length -ne [int64]$evidence[$index].Size -or
                 $sha256 -cne [string]$evidence[$index].Sha256
             ) {
-                throw "installed C07 payload authority lease 字节身份漂移：$($evidence[$index].Path)"
+                throw "installed database generation payload lease 字节身份漂移：$($evidence[$index].Path)"
             }
         }
     }
@@ -1190,12 +1190,12 @@ function Close-TicketboxInstalledC07PayloadAuthorityLease(
                 $restoreFailure = $_.Exception
                 $aggregateFailure = [AggregateException]::new(
                     (
-                        "installed C07 payload authority lease 关闭失败；" +
+                        "installed database generation payload lease 关闭失败；" +
                         "字节验证与 DACL 恢复错误均已保留。"
                     ),
                     [Exception[]]@($failure, $restoreFailure)
                 )
-                $aggregateFailure.Data["TicketboxC07FailureCode"] =
+                $aggregateFailure.Data["TicketboxFailureCode"] =
                     "installed_payload_lease_close_failed"
                 $failure = $aggregateFailure
             }

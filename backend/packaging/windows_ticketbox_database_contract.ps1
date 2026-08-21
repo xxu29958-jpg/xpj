@@ -16,10 +16,7 @@ function New-TicketboxDatabasePolicyFailure {
     else {
         [InvalidOperationException]::new($Message, $InnerException)
     }
-    # Failure aggregation still uses the repository-wide legacy envelope key.
-    # This policy owner does not classify process failures as invariants.
-    $failure.Data["TicketboxC07FailureClass"] = "invariant"
-    $failure.Data["TicketboxC07FailureCode"] = $FailureCode
+    $failure.Data["TicketboxFailureCode"] = $FailureCode
     return $failure
 }
 

@@ -195,7 +195,7 @@ $script:attempt = [pscustomobject]@{{
         source_binding_sha256 = ('d' * 64)
         source_cluster_system_identifier = 'cluster-1'
         source_database_oid = '100'
-        restore_database = 'ticketbox_c07_restore_22222222222242228222222222222222'
+        restore_database = 'ticketbox_generation_restore_22222222222242228222222222222222'
         target_revision = '20260809_0001'
     }}
 }}
@@ -328,7 +328,7 @@ $script:semanticDrift = $false
 $proof = Invoke-TicketboxDatabaseGenerationTargetRecovery $stateRoot $outerIntent $outerSource @{{}} @{{}} $lock $hostContract $hostAuthority $secret
 if (
     [string]$proof.Payload.result -cne 'isolated_restore_verified' -or
-    ($script:events -join ',') -cnotmatch 'archive,binding,restore,verify:ticketbox,verify:ticketbox_c07_restore_.*,artifact:target-recovery-verification,cleanup,artifact:target-recovery-proof'
+    ($script:events -join ',') -cnotmatch 'archive,binding,restore,verify:ticketbox,verify:ticketbox_generation_restore_.*,artifact:target-recovery-verification,cleanup,artifact:target-recovery-proof'
 ) {{ throw "outer recovery did not close: $($script:events -join ',')" }}
 $script:events = @()
 Invoke-TicketboxDatabaseGenerationTargetRecovery $stateRoot $outerIntent $outerSource @{{}} @{{}} $lock $hostContract $hostAuthority $secret | Out-Null
@@ -349,7 +349,7 @@ def test_frozen_target_verifier_accepts_only_live_or_exact_attempt_database() ->
     verifier = launch._load_database_generation_target_module()
     operation = "11111111-1111-4111-8111-111111111111"
     attempt = "22222222-2222-4222-8222-222222222222"
-    restore = "ticketbox_c07_restore_22222222222242228222222222222222"
+    restore = "ticketbox_generation_restore_22222222222242228222222222222222"
 
     assert (
         verifier._validated_database(
@@ -370,7 +370,7 @@ def test_frozen_target_verifier_accepts_only_live_or_exact_attempt_database() ->
     for database, restore_attempt_id in (
         ("ticketbox", attempt),
         (restore, ""),
-        ("ticketbox_c07_restore_33333333333343338333333333333333", attempt),
+        ("ticketbox_generation_restore_33333333333343338333333333333333", attempt),
     ):
         with pytest.raises(
             verifier.DatabaseGenerationTargetVerificationError,
@@ -390,10 +390,10 @@ def test_frozen_target_entrypoint_binds_exact_program_attempt_and_result(
     captured: dict[str, object] = {}
     operation = "11111111-1111-4111-8111-111111111111"
     attempt = "22222222-2222-4222-8222-222222222222"
-    restore = "ticketbox_c07_restore_22222222222242228222222222222222"
+    restore = "ticketbox_generation_restore_22222222222242228222222222222222"
     pgpass = Path("C:/TicketboxInstallerSecrets/.ticketbox-pgpass-1-" + "1" * 32)
     result = {
-        "schema": "ticketbox-database-generation-target-verification-v1",
+        "schema": "ticketbox-database-generation-target-verification-v2",
         "operation_id": operation,
         "database": restore,
         "target_revision": "20260809_0001",

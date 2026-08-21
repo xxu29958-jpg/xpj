@@ -16,9 +16,9 @@ BACKEND = Path(__file__).resolve().parents[1]
 COMPILER = BACKEND / "scripts" / "build_database_generation_program.py"
 PROGRAM_READER = BACKEND / "app" / "database" / "_database_generation_program.py"
 SOURCE_REVISION = "20260722_0001"
-C07_REVISION = "20260729_0001"
+MONEY_BIGINT_REVISION = "20260729_0001"
 TARGET_REVISION = "20260809_0001"
-EXPECTED_PROGRAM_SHA256 = "f4b65fe1b5e998e5b98cc993f12dec4d01a6ca9ecdbdf74bc5a67678b36aa9a1"
+EXPECTED_PROGRAM_SHA256 = "4f6889e86ea4e82e665afa3d9939754743b7f4b16f6ac10e191f158c9cb98de0"
 
 _BUILD_COMPILER_PURITY_PROBE = r"""
 import builtins
@@ -109,25 +109,46 @@ def test_build_compiler_emits_one_canonical_base_to_head_program(
     assert first_sha == second_sha == hashlib.sha256(first_payload).hexdigest() == EXPECTED_PROGRAM_SHA256
     assert output.read_bytes() == first_payload
     assert set(program) == {"revisions", "schema", "source_revision", "target_revision"}
-    assert program["schema"] == "ticketbox-database-generation-program-v1"
+    assert program["schema"] == "ticketbox-database-generation-program-v2"
     assert program["source_revision"] == "base"
     assert program["target_revision"] == TARGET_REVISION
     assert len(program["revisions"]) == 43
 
     previous = None
-    c07_entries = []
+    money_bigint_entries = []
     for revision in program["revisions"]:
         assert revision["down_revision"] == previous
         module = BACKEND.joinpath(*revision["module_path"].split("/"))
         assert module.parent == BACKEND / "migrations" / "versions"
         assert revision["module_sha256"] == hashlib.sha256(module.read_bytes()).hexdigest()
-        if revision["revision"] == C07_REVISION:
-            c07_entries.append(revision)
+        if revision["revision"] == MONEY_BIGINT_REVISION:
+            money_bigint_entries.append(revision)
         previous = revision["revision"]
     assert previous == TARGET_REVISION
-    assert len(c07_entries) == 1
-    assert c07_entries[0]["down_revision"] == SOURCE_REVISION
-    assert c07_entries[0]["context"]["kind"] == "c07_ceremony_v1"
+    assert len(money_bigint_entries) == 1
+    assert money_bigint_entries[0]["down_revision"] == SOURCE_REVISION
+
+
+def test_build_program_delegates_every_revision_to_alembic(
+    tmp_path: Path,
+) -> None:
+    """The frozen program selects bytes and order, never a second executor."""
+
+    output, _expected_sha = _compile_program(
+        tmp_path,
+        "ticketbox_generation_program_compiler_alembic_owner",
+    )
+    program = json.loads(output.read_text(encoding="utf-8"))
+
+    expected_keys = {
+        "down_revision",
+        "module_path",
+        "module_sha256",
+        "postcondition",
+        "revision",
+    }
+    assert program["revisions"]
+    assert all(set(revision) == expected_keys for revision in program["revisions"])
 
 
 def test_build_compiler_is_isolated_from_runtime_database_authority() -> None:
@@ -157,9 +178,7 @@ def test_runtime_reader_binds_program_and_revision_bytes(tmp_path: Path) -> None
     program = reader.load_database_generation_program(path=output, expected_sha256=expected_sha)
     assert program.source_revision == "base"
     assert program.target_revision == TARGET_REVISION
-    assert program.c07.source_revision == SOURCE_REVISION
-    assert program.c07.target_revision == C07_REVISION
-    assert program.suffix(SOURCE_REVISION, TARGET_REVISION)[0].revision == C07_REVISION
+    assert program.suffix(SOURCE_REVISION, TARGET_REVISION)[0].revision == MONEY_BIGINT_REVISION
 
     with pytest.raises(reader.DatabaseGenerationProgramError):
         reader.load_database_generation_program(
@@ -271,14 +290,8 @@ def test_installed_init_db_uses_one_frozen_release_fact(
         raise RuntimeError("authority-observed")
 
     monkeypatch.setattr(database, "load_alembic_context", load_context)
-    monkeypatch.setattr(database, "_assert_revision_contains_c07", lambda *a, **k: None)
     monkeypatch.setattr(database, "_assert_existing_schema_compatible", lambda *_a, **_k: None)
     monkeypatch.setattr(database, "assert_database_generation_startup_ready", stop_on_authority)
-    monkeypatch.setattr(
-        database,
-        "_assert_source_c07_receipt_ready",
-        lambda *_a, **_k: pytest.fail("installed runtime used source C07 receipt"),
-    )
     monkeypatch.setattr(database, "_apply_schema_lifecycle", lambda *_a: pytest.fail("frozen DDL"))
     monkeypatch.setattr(database, "_apply_managed_schema_lifecycle", lambda *_a, **_k: pytest.fail("frozen DDL"))
     monkeypatch.setattr(
@@ -301,7 +314,6 @@ def test_installed_init_db_uses_one_frozen_release_fact(
 
 def test_installed_migration_keeps_program_authority_and_alembic_execution() -> None:
     runtime_consumers = {
-        "app.database_generation_c07_contract": "app/database_generation_c07_contract.py",
         "app.database._managed_schema_upgrade": "app/database/_managed_schema_upgrade.py",
         "app.database._managed_postgres_migration_runtime": "app/database/_managed_postgres_migration_runtime.py",
         "app.database._database_generation_target_verification": "app/database/_database_generation_target_verification.py",
@@ -358,6 +370,26 @@ def test_installed_migration_keeps_program_authority_and_alembic_execution() -> 
         assert retired not in installer
 
 
+def test_program_validation_result_is_closed_and_c07_free(tmp_path: Path) -> None:
+    from app.database import _managed_schema_upgrade as managed
+
+    output, expected_sha = _compile_program(
+        tmp_path,
+        "ticketbox_generation_program_compiler_validation_result",
+    )
+
+    assert managed.validate_database_generation_program(
+        generation_program_path=output,
+        expected_generation_program_sha256=expected_sha,
+    ) == {
+        "schema": "ticketbox-database-generation-program-validation-v2",
+        "source_revision": "base",
+        "target_revision": TARGET_REVISION,
+        "revision_count": 43,
+        "generation_program_sha256": expected_sha,
+    }
+
+
 def test_managed_action_rejects_an_intermediate_program_target_before_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -384,7 +416,7 @@ def test_managed_action_rejects_an_intermediate_program_target_before_runtime(
             generation_program_path=output,
             expected_generation_program_sha256=expected_sha,
             source_revision=SOURCE_REVISION,
-            target_revision=C07_REVISION,
+            target_revision=MONEY_BIGINT_REVISION,
             generation_operation_id="11111111-1111-4111-8111-111111111111",
         )
 

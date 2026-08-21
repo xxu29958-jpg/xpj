@@ -28,8 +28,8 @@ param(
     [switch]$PersistDatabaseGenerationIntentOnly,
     [string]$DatabaseGenerationProgramPath = "",
     [string]$DatabaseGenerationProgramSha256 = "",
-    [long]$DatabaseGenerationMigrationHelperSize = 0,
-    [string]$DatabaseGenerationMigrationHelperSha256 = "",
+    [long]$DatabaseMaintenanceHelperSize = 0,
+    [string]$DatabaseMaintenanceHelperSha256 = "",
     [long]$DatabaseGenerationPgDumpSize = 0,
     [string]$DatabaseGenerationPgDumpSha256 = "",
     [long]$DatabaseGenerationPgRestoreSize = 0,
@@ -477,7 +477,7 @@ function New-TicketboxPrepareAggregateFailure {
     }
     if ($null -ne $OperationFailure) {
         foreach ($key in @(
-            "TicketboxC07FailureCode",
+            "TicketboxFailureCode",
             "TicketboxPrepareCompensationFailed"
         )) {
             if ($OperationFailure.Data.Contains($key)) {
@@ -488,15 +488,15 @@ function New-TicketboxPrepareAggregateFailure {
     $failureCodes = @(
         $causes |
             ForEach-Object {
-                if ($_.Data.Contains("TicketboxC07FailureCode")) {
-                    [string]$_.Data["TicketboxC07FailureCode"]
+                if ($_.Data.Contains("TicketboxFailureCode")) {
+                    [string]$_.Data["TicketboxFailureCode"]
                 }
             } |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
             Select-Object -Unique
     )
     if ($failureCodes.Count -gt 0) {
-        $aggregateFailure.Data["TicketboxC07FailureCodes"] =
+        $aggregateFailure.Data["TicketboxFailureCodes"] =
             $failureCodes -join ","
     }
     return $aggregateFailure
@@ -1472,8 +1472,8 @@ try {
         if (
             $DatabaseGenerationProgramPath.Trim().Length -eq 0 -or
             $DatabaseGenerationProgramSha256 -cnotmatch '^[0-9a-f]{64}$' -or
-            $DatabaseGenerationMigrationHelperSize -lt 1 -or
-            $DatabaseGenerationMigrationHelperSha256 -cnotmatch
+            $DatabaseMaintenanceHelperSize -lt 1 -or
+            $DatabaseMaintenanceHelperSha256 -cnotmatch
                 '^[0-9a-f]{64}$' -or
             $DatabaseGenerationPgDumpSize -lt 1 -or
             $DatabaseGenerationPgDumpSha256 -cnotmatch '^[0-9a-f]{64}$' -or
@@ -1572,8 +1572,8 @@ try {
             -LifecycleLock $operationLock `
             -PreinstallFacts $preinstallFacts `
             -TargetBackendVersion $TargetBackendVersion `
-            -MigrationHelperSize $DatabaseGenerationMigrationHelperSize `
-            -MigrationHelperSha256 $DatabaseGenerationMigrationHelperSha256 `
+            -MaintenanceHelperSize $DatabaseMaintenanceHelperSize `
+            -MaintenanceHelperSha256 $DatabaseMaintenanceHelperSha256 `
             -ProgramContract $programContract `
             -HostContract $hostContract `
             -ProjectionContract $projectionContract

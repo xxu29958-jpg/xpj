@@ -2,7 +2,7 @@
 
 #Requires -Version 5.1
 
-$script:TicketboxDatabaseGenerationRestorePrefix = "ticketbox_c07_restore_"
+$script:TicketboxDatabaseGenerationRestorePrefix = "ticketbox_generation_restore_"
 $script:TicketboxDatabaseGenerationRecoveryTimeoutMs = 1200000
 
 function Assert-TicketboxDatabaseGenerationToolIdentity {

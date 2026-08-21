@@ -25,10 +25,10 @@ $script:TicketboxPersistentInstallationIdentityName = ".ticketbox-installation-i
 $script:TicketboxPendingInstallationIdentityName =
     ".ticketbox-installation-identity.pending"
 $script:TicketboxPersistentInstallationIdentitySchema =
-    "ticketbox-installation-identity-v3"
+    "ticketbox-installation-identity-v4"
 $script:TicketboxPersistentInstallationIdentityAclAccounts = @("SYSTEM", "BUILTIN\Administrators")
 $script:TicketboxPersistentInstallationIdentityOwnerAccount = "SYSTEM"
-$script:TicketboxC07MigrationHelperRelativePath = "ticketbox-c07-migrator.exe"
+$script:TicketboxDatabaseMaintenanceHelperRelativePath = "ticketbox-database-maintenance.exe"
 
 function Initialize-TicketboxWin32FilePathMethods {
     if ("TicketboxWin32FilePath" -as [type]) {
@@ -4352,11 +4352,11 @@ function Get-TicketboxPortableFileSha256([string]$Path) {
     }
 }
 
-function ConvertTo-TicketboxInstalledC07MigrationHelperEvidence(
+function ConvertTo-TicketboxInstalledDatabaseMaintenanceHelperEvidence(
     [object]$Evidence
 ) {
     if ($null -eq $Evidence) {
-        throw "已安装 BUILD_PROVENANCE.json 缺少 C07 migration helper 证据。"
+        throw "已安装 BUILD_PROVENANCE.json 缺少 database maintenance helper 证据。"
     }
     $propertyNames = @($Evidence.PSObject.Properties.Name)
     if (
@@ -4365,17 +4365,17 @@ function ConvertTo-TicketboxInstalledC07MigrationHelperEvidence(
         "size" -notin $propertyNames -or
         "sha256" -notin $propertyNames
     ) {
-        throw "已安装 C07 migration helper 证据 shape 无效。"
+        throw "已安装 database maintenance helper 证据 shape 无效。"
     }
     $relativePath = [string]$Evidence.path
     if (
-        $relativePath -cne $script:TicketboxC07MigrationHelperRelativePath -or
+        $relativePath -cne $script:TicketboxDatabaseMaintenanceHelperRelativePath -or
         [System.IO.Path]::IsPathRooted($relativePath) -or
         $relativePath.Contains("\") -or
         $relativePath.Contains("/") -or
         $relativePath.Contains(":")
     ) {
-        throw "已安装 C07 migration helper 证据路径不是 canonical payload-relative path。"
+        throw "已安装 database maintenance helper 证据路径不是 canonical payload-relative path。"
     }
     $size = [int64]0
     if (
@@ -4383,7 +4383,7 @@ function ConvertTo-TicketboxInstalledC07MigrationHelperEvidence(
         $size -lt 1 -or
         [string]$Evidence.sha256 -cnotmatch "^[0-9a-f]{64}$"
     ) {
-        throw "已安装 C07 migration helper 证据 size/SHA-256 无效。"
+        throw "已安装 database maintenance helper 证据 size/SHA-256 无效。"
     }
     return [pscustomobject][ordered]@{
         RelativePath = $relativePath
@@ -4423,7 +4423,7 @@ function Get-TicketboxInstalledPostgresToolEvidence {
     }
 }
 
-function Resolve-TicketboxInstalledC07MigrationHelperPath {
+function Resolve-TicketboxInstalledDatabaseMaintenanceHelperPath {
     param(
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [Parameter(Mandatory = $true)][object]$Evidence
@@ -4436,7 +4436,7 @@ function Resolve-TicketboxInstalledC07MigrationHelperPath {
         -not (Test-TicketboxPathWithin $payloadRoot $canonicalInstallDir) -or
         (Test-TicketboxPathEquals $payloadRoot $canonicalInstallDir)
     ) {
-        throw "C07 frozen backend payload root 越出安装目录。"
+        throw "database maintenance frozen payload root 越出安装目录。"
     }
     $evidenceProperties = @($Evidence.PSObject.Properties.Name)
     if (
@@ -4445,7 +4445,7 @@ function Resolve-TicketboxInstalledC07MigrationHelperPath {
         "Size" -notin $evidenceProperties -or
         "Sha256" -notin $evidenceProperties -or
         [string]$Evidence.RelativePath -cne
-            $script:TicketboxC07MigrationHelperRelativePath -or
+            $script:TicketboxDatabaseMaintenanceHelperRelativePath -or
         [System.IO.Path]::IsPathRooted([string]$Evidence.RelativePath) -or
         ([string]$Evidence.RelativePath).Contains("\") -or
         ([string]$Evidence.RelativePath).Contains("/") -or
@@ -4453,7 +4453,7 @@ function Resolve-TicketboxInstalledC07MigrationHelperPath {
         [int64]$Evidence.Size -lt 1 -or
         [string]$Evidence.Sha256 -cnotmatch "^[0-9A-F]{64}$"
     ) {
-        throw "C07 migration helper canonical release evidence 无效。"
+        throw "database maintenance helper canonical release evidence 无效。"
     }
     $helperPath = ConvertTo-TicketboxCanonicalPath (
         Join-Path $payloadRoot ([string]$Evidence.RelativePath)
@@ -4462,7 +4462,7 @@ function Resolve-TicketboxInstalledC07MigrationHelperPath {
         -not (Test-TicketboxPathWithin $helperPath $payloadRoot) -or
         (Test-TicketboxPathEquals $helperPath $payloadRoot)
     ) {
-        throw "C07 migration helper 证据路径逃逸 frozen backend payload root。"
+        throw "database maintenance helper 证据路径逃逸 frozen backend payload root。"
     }
     return $helperPath
 }
@@ -4535,7 +4535,7 @@ function Get-TicketboxInstalledDatabaseGenerationProgramPath {
     return $programPath
 }
 
-function Get-TicketboxC07OpenStreamSha256(
+function Get-TicketboxMaintenanceHelperOpenStreamSha256(
     [Parameter(Mandatory = $true)][System.IO.FileStream]$Stream
 ) {
     $Stream.Position = 0
@@ -4551,7 +4551,7 @@ function Get-TicketboxC07OpenStreamSha256(
     }
 }
 
-function Open-TicketboxC07VerifiedMigrationHelperLease {
+function Open-TicketboxVerifiedDatabaseMaintenanceHelperLease {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$ExpectedRelativePath,
@@ -4560,15 +4560,15 @@ function Open-TicketboxC07VerifiedMigrationHelperLease {
     )
     if (
         $ExpectedRelativePath -cne
-            $script:TicketboxC07MigrationHelperRelativePath -or
+            $script:TicketboxDatabaseMaintenanceHelperRelativePath -or
         $ExpectedSize -lt 1 -or
         $ExpectedSha256 -cnotmatch "^[0-9A-F]{64}$"
     ) {
-        throw "C07 migration helper lease 的 release evidence 无效。"
+        throw "database maintenance helper lease 的 release evidence 无效。"
     }
     $helperPath = ConvertTo-TicketboxWin32CanonicalPath $Path
     if ((Get-TicketboxPathEntryKindNoFollow $helperPath) -cne "File") {
-        throw "C07 migration helper 不是 regular file。"
+        throw "database maintenance helper 不是 regular file。"
     }
     Assert-NoTicketboxAncestorReparsePoints $helperPath
     $stream = $null
@@ -4582,15 +4582,15 @@ function Open-TicketboxC07VerifiedMigrationHelperLease {
         if (
             (Get-TicketboxPathEntryKindNoFollow $helperPath) -cne "File"
         ) {
-            throw "C07 migration helper 在 lease 获取时发生身份变化。"
+            throw "database maintenance helper 在 lease 获取时发生身份变化。"
         }
         Assert-NoTicketboxAncestorReparsePoints $helperPath
-        $sha256 = Get-TicketboxC07OpenStreamSha256 $stream
+        $sha256 = Get-TicketboxMaintenanceHelperOpenStreamSha256 $stream
         if (
             [int64]$stream.Length -ne $ExpectedSize -or
             $sha256 -cne $ExpectedSha256
         ) {
-            throw "C07 migration helper 与 release size/SHA-256 不一致。"
+            throw "database maintenance helper 与 release size/SHA-256 不一致。"
         }
         return [pscustomobject][ordered]@{
             Path = $helperPath
@@ -4608,7 +4608,7 @@ function Open-TicketboxC07VerifiedMigrationHelperLease {
     }
 }
 
-function Assert-TicketboxC07MigrationHelperLeaseUnchanged(
+function Assert-TicketboxDatabaseMaintenanceHelperLeaseUnchanged(
     [Parameter(Mandatory = $true)][object]$Lease
 ) {
     if (
@@ -4616,19 +4616,19 @@ function Assert-TicketboxC07MigrationHelperLeaseUnchanged(
         $Lease.Stream.SafeFileHandle.IsClosed -or
         (Get-TicketboxPathEntryKindNoFollow ([string]$Lease.Path)) -cne "File"
     ) {
-        throw "C07 migration helper lease 已关闭或路径身份已变化。"
+        throw "database maintenance helper lease 已关闭或路径身份已变化。"
     }
     Assert-NoTicketboxAncestorReparsePoints ([string]$Lease.Path)
-    $sha256 = Get-TicketboxC07OpenStreamSha256 $Lease.Stream
+    $sha256 = Get-TicketboxMaintenanceHelperOpenStreamSha256 $Lease.Stream
     if (
         [int64]$Lease.Stream.Length -ne [int64]$Lease.Size -or
         $sha256 -cne [string]$Lease.Sha256
     ) {
-        throw "C07 migration helper 在执行窗口内发生字节身份变化。"
+        throw "database maintenance helper 在执行窗口内发生字节身份变化。"
     }
 }
 
-function Close-TicketboxC07MigrationHelperLease(
+function Close-TicketboxDatabaseMaintenanceHelperLease(
     [AllowNull()][object]$Lease
 ) {
     if (
@@ -4680,9 +4680,9 @@ function Read-TicketboxPersistentInstallationIdentity {
         "BACKEND_VERSION_FLOOR",
         "INSTALLATION_ID",
         "BUILD_MANIFEST_SHA256",
-        "MIGRATION_HELPER_RELATIVE_PATH",
-        "MIGRATION_HELPER_SIZE",
-        "MIGRATION_HELPER_SHA256",
+        "DATABASE_MAINTENANCE_HELPER_RELATIVE_PATH",
+        "DATABASE_MAINTENANCE_HELPER_SIZE",
+        "DATABASE_MAINTENANCE_HELPER_SHA256",
         "DATABASE_GENERATION_PROGRAM_RELATIVE_PATH",
         "DATABASE_GENERATION_PROGRAM_SIZE",
         "DATABASE_GENERATION_PROGRAM_SHA256",
@@ -4745,14 +4745,14 @@ function Read-TicketboxPersistentInstallationIdentity {
         throw "持久安装身份 operation id 无效。"
     }
     $operationId = $parsedOperationId.ToString("D")
-    $helperEvidence = ConvertTo-TicketboxInstalledC07MigrationHelperEvidence (
+    $helperEvidence = ConvertTo-TicketboxInstalledDatabaseMaintenanceHelperEvidence (
         [pscustomobject][ordered]@{
-            path = [string]$values.MIGRATION_HELPER_RELATIVE_PATH
-            size = [string]$values.MIGRATION_HELPER_SIZE
-            sha256 = ([string]$values.MIGRATION_HELPER_SHA256).ToLowerInvariant()
+            path = [string]$values.DATABASE_MAINTENANCE_HELPER_RELATIVE_PATH
+            size = [string]$values.DATABASE_MAINTENANCE_HELPER_SIZE
+            sha256 = ([string]$values.DATABASE_MAINTENANCE_HELPER_SHA256).ToLowerInvariant()
         }
     )
-    if ([string]$values.MIGRATION_HELPER_SHA256 -cnotmatch "^[0-9A-F]{64}$") {
+    if ([string]$values.DATABASE_MAINTENANCE_HELPER_SHA256 -cnotmatch "^[0-9A-F]{64}$") {
         throw "持久安装身份 helper SHA-256 不是 canonical uppercase。"
     }
     $programRelativePath = [string]$values.DATABASE_GENERATION_PROGRAM_RELATIVE_PATH
@@ -4795,9 +4795,9 @@ function Read-TicketboxPersistentInstallationIdentity {
         BackendServiceName = [string]$values.BACKEND_SERVICE_NAME
         PgPort = $pgPort
         BackendPort = $backendPort
-        MigrationHelperRelativePath = $helperEvidence.RelativePath
-        MigrationHelperSize = [int64]$helperEvidence.Size
-        MigrationHelperSha256 = [string]$helperEvidence.Sha256
+        MaintenanceHelperRelativePath = $helperEvidence.RelativePath
+        MaintenanceHelperSize = [int64]$helperEvidence.Size
+        MaintenanceHelperSha256 = [string]$helperEvidence.Sha256
         DatabaseGenerationProgramRelativePath = $programRelativePath
         DatabaseGenerationProgramSize = $programSizeValue
         DatabaseGenerationProgramSha256 =
@@ -4873,9 +4873,9 @@ function Read-TicketboxInstalledBuildManifest {
     if ($targetMajorDefines.Count -ne 1 -or [string]$targetMajorDefines[0] -cne $expectedDefine) {
         throw "已安装 BUILD_PROVENANCE.json 未绑定唯一且一致的 TargetPgMajor。"
     }
-    $c07MigrationHelper =
-        ConvertTo-TicketboxInstalledC07MigrationHelperEvidence (
-            $manifest.backend.c07_migration_helper
+    $databaseMaintenanceHelper =
+        ConvertTo-TicketboxInstalledDatabaseMaintenanceHelperEvidence (
+            $manifest.backend.database_maintenance_helper
         )
     $pgDump = Get-TicketboxInstalledPostgresToolEvidence `
         -CriticalFiles @($manifest.postgresql.critical_files) `
@@ -4907,7 +4907,7 @@ function Read-TicketboxInstalledBuildManifest {
         PgMajor = $pgMajor
         PgDump = $pgDump
         PgRestore = $pgRestore
-        C07MigrationHelper = $c07MigrationHelper
+        DatabaseMaintenanceHelper = $databaseMaintenanceHelper
         DatabaseGenerationProgram = [pscustomobject][ordered]@{
             RelativePath = [string]$programEvidence.path
             Size = [int64]$programEvidence.size
@@ -4942,14 +4942,14 @@ function Get-TicketboxInstallationReleaseCandidate {
         throw "持久安装身份只接受 installed installer BUILD_PROVENANCE.json。"
     }
     $buildManifest = Read-TicketboxInstalledBuildManifest $expectedManifestPath
-    $helperEvidence = $buildManifest.C07MigrationHelper
+    $helperEvidence = $buildManifest.DatabaseMaintenanceHelper
     $programEvidence = $buildManifest.DatabaseGenerationProgram
-    $helperPath = Resolve-TicketboxInstalledC07MigrationHelperPath `
+    $helperPath = Resolve-TicketboxInstalledDatabaseMaintenanceHelperPath `
         -InstallDir $canonicalInstallDir `
         -Evidence $helperEvidence
     $helperLease = $null
     try {
-        $helperLease = Open-TicketboxC07VerifiedMigrationHelperLease `
+        $helperLease = Open-TicketboxVerifiedDatabaseMaintenanceHelperLease `
             -Path $helperPath `
             -ExpectedRelativePath $helperEvidence.RelativePath `
             -ExpectedSize $helperEvidence.Size `
@@ -4958,7 +4958,7 @@ function Get-TicketboxInstallationReleaseCandidate {
         $verifiedHelperSha256 = [string]$helperLease.Sha256
     }
     finally {
-        Close-TicketboxC07MigrationHelperLease $helperLease
+        Close-TicketboxDatabaseMaintenanceHelperLease $helperLease
     }
     $programPath = Resolve-TicketboxInstalledDatabaseGenerationProgramPath `
         -InstallDir $canonicalInstallDir `
@@ -4973,10 +4973,10 @@ function Get-TicketboxInstallationReleaseCandidate {
         BackendServiceName = $BackendServiceName
         PgPort = $PgPort
         BackendPort = $BackendPort
-        MigrationHelperPath = $helperPath
-        MigrationHelperRelativePath = [string]$helperEvidence.RelativePath
-        MigrationHelperSize = $verifiedHelperSize
-        MigrationHelperSha256 = $verifiedHelperSha256
+        MaintenanceHelperPath = $helperPath
+        MaintenanceHelperRelativePath = [string]$helperEvidence.RelativePath
+        MaintenanceHelperSize = $verifiedHelperSize
+        MaintenanceHelperSha256 = $verifiedHelperSha256
         DatabaseGenerationProgramPath = $programPath
         DatabaseGenerationProgramRelativePath =
             [string]$programEvidence.RelativePath
@@ -5111,12 +5111,12 @@ function Test-TicketboxInstallationIdentityReleaseMatches {
         return $false
     }
     return (
-        $Identity.MigrationHelperRelativePath -ceq
-            $Candidate.MigrationHelperRelativePath -and
-        [int64]$Identity.MigrationHelperSize -eq
-            [int64]$Candidate.MigrationHelperSize -and
-        $Identity.MigrationHelperSha256 -ceq
-            $Candidate.MigrationHelperSha256 -and
+        $Identity.MaintenanceHelperRelativePath -ceq
+            $Candidate.MaintenanceHelperRelativePath -and
+        [int64]$Identity.MaintenanceHelperSize -eq
+            [int64]$Candidate.MaintenanceHelperSize -and
+        $Identity.MaintenanceHelperSha256 -ceq
+            $Candidate.MaintenanceHelperSha256 -and
         [string]$Identity.DatabaseGenerationProgramRelativePath -ceq
             [string]$Candidate.DatabaseGenerationProgramRelativePath -and
         [int64]$Identity.DatabaseGenerationProgramSize -eq
@@ -5143,9 +5143,9 @@ function Get-TicketboxPersistentInstallationIdentityText {
         "BACKEND_VERSION_FLOOR=$($Candidate.BackendVersionFloor)",
         "INSTALLATION_ID=$canonicalInstallationId",
         "BUILD_MANIFEST_SHA256=$($Candidate.BuildManifestSha256)",
-        "MIGRATION_HELPER_RELATIVE_PATH=$($Candidate.MigrationHelperRelativePath)",
-        "MIGRATION_HELPER_SIZE=$([int64]$Candidate.MigrationHelperSize)",
-        "MIGRATION_HELPER_SHA256=$($Candidate.MigrationHelperSha256)",
+        "DATABASE_MAINTENANCE_HELPER_RELATIVE_PATH=$($Candidate.MaintenanceHelperRelativePath)",
+        "DATABASE_MAINTENANCE_HELPER_SIZE=$([int64]$Candidate.MaintenanceHelperSize)",
+        "DATABASE_MAINTENANCE_HELPER_SHA256=$($Candidate.MaintenanceHelperSha256)",
         "DATABASE_GENERATION_PROGRAM_RELATIVE_PATH=$($Candidate.DatabaseGenerationProgramRelativePath)",
         "DATABASE_GENERATION_PROGRAM_SIZE=$([int64]$Candidate.DatabaseGenerationProgramSize)",
         "DATABASE_GENERATION_PROGRAM_SHA256=$($Candidate.DatabaseGenerationProgramSha256)",

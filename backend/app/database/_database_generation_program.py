@@ -9,14 +9,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from app.database_generation_c07_contract import (
-    C07_TARGET_REVISION,
-    C07RevisionContract,
-    build_c07_revision_contract,
-)
-
 PROGRAM_FILENAME = "DATABASE_GENERATION_PROGRAM.json"
-PROGRAM_SCHEMA = "ticketbox-database-generation-program-v1"
+PROGRAM_SCHEMA = "ticketbox-database-generation-program-v2"
 BUILD_MANIFEST_FILENAME = "BUILD_PROVENANCE.json"
 BUILD_MANIFEST_SCHEMA = 4
 ALEMBIC_PROGRAM_ATTRIBUTE = "ticketbox_database_generation_program"
@@ -24,15 +18,12 @@ BASE_SOURCE = "base"
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _PROGRAM_KEYS = {"revisions", "schema", "source_revision", "target_revision"}
 _REVISION_KEYS = {
-    "context",
     "down_revision",
-    "executor",
     "module_path",
     "module_sha256",
     "postcondition",
     "revision",
 }
-_EXECUTORS = {"c07_money_bigint_v1", "managed_postgres_v1"}
 
 
 class DatabaseGenerationProgramError(RuntimeError):
@@ -43,20 +34,9 @@ class DatabaseGenerationProgramError(RuntimeError):
 class DatabaseGenerationRevision:
     revision: str
     down_revision: str | None
-    executor: str
     module_path: Path
     module_sha256: str
     postcondition: str | None
-    context: tuple[tuple[str, str], ...] | None
-
-
-@dataclass(frozen=True)
-class DatabaseGenerationC07Edge:
-    source_revision: str
-    target_revision: str
-    revision_manifest: dict[str, object]
-    revision_manifest_sha256: str
-    revision: DatabaseGenerationRevision
 
 
 @dataclass(frozen=True)
@@ -66,7 +46,6 @@ class DatabaseGenerationProgram:
     source_revision: str
     target_revision: str
     revisions: tuple[DatabaseGenerationRevision, ...]
-    c07: DatabaseGenerationC07Edge
 
     def revision(self, revision_id: str) -> DatabaseGenerationRevision:
         match = next(
@@ -117,23 +96,6 @@ class DatabaseGenerationProgram:
             revision.revision == required_revision
             for revision in self.revisions[: target_index + 1]
         )
-
-
-def database_generation_program_revision_includes_c07(
-    program: object,
-    revision_id: str | None,
-) -> bool:
-    """Resolve C07 ancestry only from the build-owned installed program."""
-
-    if not isinstance(program, DatabaseGenerationProgram):
-        raise DatabaseGenerationProgramError(
-            "installed generation program type is invalid"
-        )
-    return revision_id is not None and program.revision_includes(
-        revision_id,
-        C07_TARGET_REVISION,
-    )
-
 
 def _canonical_json(value: object) -> bytes:
     return json.dumps(
@@ -202,18 +164,16 @@ def _revision(
     raw: object,
     *,
     previous: str | None,
-) -> tuple[DatabaseGenerationRevision, C07RevisionContract | None]:
+) -> DatabaseGenerationRevision:
     if not isinstance(raw, dict) or set(raw) != _REVISION_KEYS:
         raise DatabaseGenerationProgramError("generation revision shape is invalid")
     revision_id = raw.get("revision")
-    executor = raw.get("executor")
     postcondition = raw.get("postcondition")
     module_sha256 = raw.get("module_sha256")
     if (
         not isinstance(revision_id, str)
         or not revision_id
         or raw.get("down_revision") != previous
-        or executor not in _EXECUTORS
         or postcondition not in {None, "assert_postcondition"}
         or not isinstance(module_sha256, str)
         or _SHA256.fullmatch(module_sha256) is None
@@ -222,30 +182,12 @@ def _revision(
     path = _module_path(root, raw.get("module_path"))
     if hashlib.sha256(path.read_bytes()).hexdigest() != module_sha256:
         raise DatabaseGenerationProgramError("generation module bytes changed")
-    c07_contract = None
-    context = raw.get("context")
-    if executor == "c07_money_bigint_v1":
-        c07_contract = build_c07_revision_contract(
-            module_path=path,
-            module_sha256=module_sha256,
-            source_revision=str(previous),
-            target_revision=revision_id,
-        )
-        if context != c07_contract.context:
-            raise DatabaseGenerationProgramError("generation C07 context changed")
-    elif context is not None:
-        raise DatabaseGenerationProgramError("generic revision has product context")
-    return (
-        DatabaseGenerationRevision(
-            revision=revision_id,
-            down_revision=previous,
-            executor=str(executor),
-            module_path=path,
-            module_sha256=module_sha256,
-            postcondition=postcondition,
-            context=tuple(sorted(context.items())) if isinstance(context, dict) else None,
-        ),
-        c07_contract,
+    return DatabaseGenerationRevision(
+        revision=revision_id,
+        down_revision=previous,
+        module_path=path,
+        module_sha256=module_sha256,
+        postcondition=postcondition,
     )
 
 
@@ -260,40 +202,27 @@ def load_database_generation_program(
         raise DatabaseGenerationProgramError("generation program has no revisions")
     root = _backend_root().resolve(strict=True)
     revisions: list[DatabaseGenerationRevision] = []
-    c07_entries: list[tuple[DatabaseGenerationRevision, C07RevisionContract]] = []
     previous: str | None = None
     for raw in raw_revisions:
-        revision, c07_contract = _revision(root, raw, previous=previous)
+        revision = _revision(root, raw, previous=previous)
         if any(existing.revision == revision.revision for existing in revisions):
             raise DatabaseGenerationProgramError("generation revision is duplicated")
         revisions.append(revision)
-        if c07_contract is not None:
-            c07_entries.append((revision, c07_contract))
         previous = revision.revision
     target = str(payload["target_revision"])
     if (
         previous != target
-        or len(c07_entries) != 1
-        or c07_entries[0][0].revision != C07_TARGET_REVISION
         or revisions[-1].postcondition != "assert_postcondition"
     ):
         raise DatabaseGenerationProgramError(
             "generation program does not terminate in one qualified head"
         )
-    c07_revision, c07_contract = c07_entries[0]
     return DatabaseGenerationProgram(
         path=path,
         payload_sha256=expected_sha256,
         source_revision=BASE_SOURCE,
         target_revision=target,
         revisions=tuple(revisions),
-        c07=DatabaseGenerationC07Edge(
-            source_revision=str(c07_revision.down_revision),
-            target_revision=c07_revision.revision,
-            revision_manifest=c07_contract.revision_manifest,
-            revision_manifest_sha256=c07_contract.revision_manifest_sha256,
-            revision=c07_revision,
-        ),
     )
 
 
@@ -358,7 +287,6 @@ __all__ = [
     "DatabaseGenerationProgram",
     "DatabaseGenerationProgramError",
     "DatabaseGenerationRevision",
-    "database_generation_program_revision_includes_c07",
     "load_database_generation_program",
     "load_installed_database_generation_program",
 ]
