@@ -98,7 +98,7 @@ def _authority() -> DatasetAuthority:
     )
 
 
-def test_restore_epoch_advances_and_explicit_clone_gets_new_identity(tmp_path: Path) -> None:
+def test_restore_epoch_advances_without_shipping_an_unowned_clone_mode(tmp_path: Path) -> None:
     authority = _authority()
     _generation, manifest = _manifest(tmp_path, authority=authority)
 
@@ -113,15 +113,10 @@ def test_restore_epoch_advances_and_explicit_clone_gets_new_identity(tmp_path: P
     assert restored.restore_epoch == authority.restore_epoch + 5
     assert restored.restored_from_backup_id == manifest.backup_id
 
-    cloned = resolve_restored_dataset_plan(
-        manifest,
-        active_dataset_id=authority.dataset_id,
-        active_restore_epoch=authority.restore_epoch,
-        target_schema_revision=authority.schema_revision,
-        clone_dataset_id="cbcaf752-29be-4e5e-be4d-4588d84c5a78",
-    )
-    assert cloned.dataset_id == "cbcaf752-29be-4e5e-be4d-4588d84c5a78"
-    assert cloned.restore_epoch == 0
+    from app.services import dataset_restore_service
+
+    assert "clone_dataset_id" not in dataset_restore_service.CompleteRestoreRequest.__dataclass_fields__
+    assert "clone_dataset_id" not in resolve_restored_dataset_plan.__annotations__
 
 
 def test_restore_materializes_originals_into_absent_candidate_root(tmp_path: Path) -> None:
@@ -203,6 +198,50 @@ def test_restore_preserves_materialization_and_cleanup_failures(
 
 def test_restore_sanitation_allowlist_is_independent_and_closed() -> None:
     assert set(_SANITATION_TABLES) == _EXPECTED_SANITATION_TABLES
+
+
+def test_restore_finalization_executes_every_sanitation_delete_once(tmp_path: Path) -> None:
+    _generation, manifest = _manifest(tmp_path, authority=_authority())
+    plan = resolve_restored_dataset_plan(
+        manifest,
+        active_dataset_id=manifest.authority.dataset_id,
+        active_restore_epoch=manifest.authority.restore_epoch,
+        target_schema_revision=manifest.authority.schema_revision,
+    )
+    deleted: list[str] = []
+
+    class MappingResult:
+        def mappings(self):
+            return self
+
+        def one(self):
+            return {
+                "dataset_id": manifest.authority.dataset_id,
+                "restore_epoch": manifest.authority.restore_epoch,
+                "schema_revision": manifest.authority.schema_revision,
+                "client_generation": manifest.authority.client_generation,
+                "schema_min_compatible": manifest.authority.schema_min_compatible,
+                "semantic_revision": manifest.authority.semantic_revision,
+                "restored_from_backup_id": manifest.authority.restored_from_backup_id,
+            }
+
+    class RecordingConnection:
+        def scalar(self, statement):
+            assert str(statement) == "SELECT version_num FROM alembic_version"
+            return plan.schema_revision
+
+        def execute(self, statement, _parameters=None):
+            sql = str(statement)
+            if sql.startswith("SELECT dataset_id"):
+                return MappingResult()
+            if sql.startswith('DELETE FROM "'):
+                deleted.append(sql.removeprefix('DELETE FROM "').removesuffix('"'))
+            return None
+
+    finalize_restored_dataset(RecordingConnection(), source=manifest, plan=plan)  # type: ignore[arg-type]
+
+    assert set(deleted) == _EXPECTED_SANITATION_TABLES
+    assert len(deleted) == len(_EXPECTED_SANITATION_TABLES)
 
 
 @pytest.mark.real_db

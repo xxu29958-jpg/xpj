@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import sys
 import tempfile
@@ -84,6 +85,7 @@ def _run_drill(
 
     from app.database import _dataset_restore_action as restore_action
     from app.services.backup_service import CompleteBackupRequest, create_complete_backup_generation
+    from app.services.dataset_authority_service import read_dataset_authority
     from app.services.dataset_backup_contract import read_manifest, sha256_file
     from app.services.dataset_restore_service import _SANITATION_TABLES, CompleteRestoreRequest
     from app.services.postgres_backup_validation_service import find_pg_binary
@@ -108,6 +110,27 @@ def _run_drill(
             backup_root = Path(temporary).resolve() / "backups"
             operation_id = str(uuid4())
             backup_id = str(uuid4())
+            with Session(source_engine) as authority_session:
+                authority = read_dataset_authority(authority_session)
+            expected_current_sha256 = hashlib.sha256(
+                f"test-only-current:{cluster_identity}".encode()
+            ).hexdigest()
+            writer_fence_sha256 = hashlib.sha256(
+                json.dumps(
+                    {
+                        "schema": "ticketbox-dataset-backup-writer-barrier-v1",
+                        "current_sha256": expected_current_sha256,
+                        "dataset_id": authority.dataset_id,
+                        "restore_epoch": authority.restore_epoch,
+                        "schema_revision": authority.schema_revision,
+                        "backend_service_state": "stopped",
+                        "other_client_session_count": 0,
+                    },
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
             with Session(source_engine) as session:
                 entry = create_complete_backup_generation(
                     CompleteBackupRequest(
@@ -121,9 +144,11 @@ def _run_drill(
                         backup_id=backup_id,
                         release_id="ci-postgres-backup-drill",
                         backup_kind="manual",
-                        writer_fence_sha256=hashlib.sha256(
-                            f"test-only:dedicated-database-lease:{cluster_identity}".encode()
-                        ).hexdigest(),
+                        writer_fence_sha256=writer_fence_sha256,
+                        expected_current_sha256=expected_current_sha256,
+                        expected_dataset_id=authority.dataset_id,
+                        expected_restore_epoch=authority.restore_epoch,
+                        expected_schema_revision=authority.schema_revision,
                     ),
                     db=session,
                 )

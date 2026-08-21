@@ -55,7 +55,6 @@ def run_isolated_dataset_restore_action(request: CompleteRestoreRequest) -> dict
         active_dataset_id=request.active_dataset_id,
         active_restore_epoch=request.active_restore_epoch,
         target_schema_revision=request.target_schema_revision,
-        clone_dataset_id=request.clone_dataset_id,
     )
     contract = ManagedPostgresRuntimeContractV1(
         database_name=DATABASE_NAME,

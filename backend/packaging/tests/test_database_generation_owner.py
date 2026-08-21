@@ -80,6 +80,19 @@ def _owner_failure_handoff_is_exact(source: str) -> bool:
     return "Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup" in normalized
 
 
+def test_target_authorization_consumes_normalized_source_without_mode_reclassification() -> None:
+    owner = _function(
+        OWNER.read_text(encoding="utf-8-sig"),
+        "Invoke-TicketboxInstalledDatabaseGeneration",
+    )
+    target = owner.split('"authorize_target" {', maxsplit=1)[1].split(
+        '"seal_candidate" {', maxsplit=1
+    )[0]
+
+    assert "source_kind" not in target
+    assert "source_request_sha256" not in target
+
+
 def _unexpected_c07_production_lines(sources: dict[Path, str]) -> list[str]:
     violations: list[str] = []
     for path, source in sources.items():

@@ -56,7 +56,6 @@ class CompleteRestoreRequest:
     active_restore_epoch: int
     target_schema_revision: str
     restore_role: str
-    clone_dataset_id: str | None = None
 
 
 def resolve_restored_dataset_plan(
@@ -65,26 +64,19 @@ def resolve_restored_dataset_plan(
     active_dataset_id: str,
     active_restore_epoch: int,
     target_schema_revision: str,
-    clone_dataset_id: str | None = None,
 ) -> RestoredDatasetPlan:
-    """Pure identity policy for restore versus explicit clone."""
+    """Pure identity policy for an in-place restore of the same dataset."""
 
     _canonical_uuid(active_dataset_id)
     if active_restore_epoch < 0 or not target_schema_revision:
         raise AppError("backup_incomplete", status_code=500)
     if manifest.authority.semantic_revision != DATASET_SEMANTIC_REVISION:
         raise AppError("backup_incomplete", status_code=409)
-    if clone_dataset_id is not None:
-        dataset_id = _canonical_uuid(clone_dataset_id)
-        if dataset_id == manifest.authority.dataset_id:
-            raise AppError("backup_incomplete", status_code=409)
-        restore_epoch = 0
-    else:
-        dataset_id = manifest.authority.dataset_id
-        previous_epoch = manifest.authority.restore_epoch
-        if active_dataset_id == dataset_id:
-            previous_epoch = max(previous_epoch, active_restore_epoch)
-        restore_epoch = previous_epoch + 1
+    dataset_id = manifest.authority.dataset_id
+    previous_epoch = manifest.authority.restore_epoch
+    if active_dataset_id == dataset_id:
+        previous_epoch = max(previous_epoch, active_restore_epoch)
+    restore_epoch = previous_epoch + 1
     return RestoredDatasetPlan(
         dataset_id=dataset_id,
         client_generation=str(

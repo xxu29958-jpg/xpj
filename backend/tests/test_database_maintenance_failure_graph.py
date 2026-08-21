@@ -435,6 +435,10 @@ def test_complete_backup_action_preserves_body_and_session_exit_failures(
         release_id="release",
         backup_kind="manual",
         writer_fence_sha256="b" * 64,
+        expected_current_sha256="c" * 64,
+        expected_dataset_id="33333333-3333-4333-8333-333333333333",
+        expected_restore_epoch=0,
+        expected_schema_revision=TARGET_REVISION,
     )
 
     with pytest.raises(BaseExceptionGroup) as caught:

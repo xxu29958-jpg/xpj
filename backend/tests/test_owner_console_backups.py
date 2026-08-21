@@ -122,6 +122,34 @@ def test_ordinary_backup_status_does_not_hash_historical_payloads(
     assert inventory.integrity_status == "not_rechecked"
 
 
+def test_backup_inventory_rejects_directory_manifest_identity_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from app.services import backup_service
+    from app.services.time_service import now_utc
+
+    generation = tmp_path / "ticketbox-backup-8c78c277-9e2e-48cd-86a2-7a9087d650a2"
+    generation.mkdir()
+    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
+    monkeypatch.setattr(
+        backup_service,
+        "read_manifest",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            backup_id="a0c5f82d-c95e-452a-8f7a-dba0f0850758",
+            authority=SimpleNamespace(
+                dataset_id="40f0c00b-ef2b-4141-b17c-aebd2da988e2",
+                restore_epoch=2,
+            ),
+            total_size_bytes=4096,
+            created_at=now_utc(),
+            backup_kind="manual",
+        ),
+    )
+
+    assert backup_service.list_published_backup_records() == []
+
+
 def test_owner_page_never_leaks_absolute_data_path(local_client: TestClient) -> None:
     response = local_client.get("/owner/backups")
     assert response.status_code == 200

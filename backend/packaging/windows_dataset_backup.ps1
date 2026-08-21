@@ -94,9 +94,93 @@ WHERE authority.singleton_id = 1;
         backend_service_state = "stopped"
         other_client_session_count = 0
     }
-    return Get-TicketboxDatabaseGenerationTextSha256 (
-        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $payload
+    return [pscustomobject][ordered]@{
+        Payload = [pscustomobject]$payload
+        PayloadSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $payload
+        )
+    }
+}
+
+function Assert-TicketboxInstalledCompleteBackupResult {
+    param(
+        [Parameter(Mandatory = $true)][object]$Subject,
+        [Parameter(Mandatory = $true)][object]$Request,
+        [Parameter(Mandatory = $true)][object]$WriterBarrier,
+        [Parameter(Mandatory = $true)][object]$Result,
+        [Parameter(Mandatory = $true)][object]$Inspection
     )
+
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $WriterBarrier.Payload `
+        -ExpectedNames @(
+            "schema", "current_sha256", "dataset_id", "restore_epoch",
+            "schema_revision", "backend_service_state", "other_client_session_count"
+        ) `
+        -Label "complete dataset backup writer barrier"
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $Result `
+        -ExpectedNames @(
+            "schema", "backup_id", "generation", "dataset_id",
+            "restore_epoch", "size_bytes"
+        ) `
+        -Label "complete dataset backup result"
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $Inspection.Evidence `
+        -ExpectedNames @(
+            "schema", "operation_id", "backup_id", "backup_kind",
+            "generation", "dataset_id", "restore_epoch", "schema_revision",
+            "release_id", "writer_fence_sha256", "manifest_sha256",
+            "original_count"
+        ) `
+        -Label "complete dataset backup inspection"
+    Assert-TicketboxDatabaseGenerationLowerSha256 `
+        ([string]$WriterBarrier.PayloadSha256) "complete dataset backup writer barrier"
+    $backupId = ([guid][string]$Result.backup_id).ToString("D")
+    $datasetId = ([guid][string]$Result.dataset_id).ToString("D")
+    $barrierDatasetId = ([guid][string]$WriterBarrier.Payload.dataset_id).ToString("D")
+    $barrierSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $WriterBarrier.Payload
+    )
+    $evidence = $Inspection.Evidence
+    if (
+        [string]$WriterBarrier.Payload.schema -cne
+            "ticketbox-dataset-backup-writer-barrier-v1" -or
+        [string]$WriterBarrier.Payload.current_sha256 -cne
+            [string]$Request.Payload.current_sha256 -or
+        [string]$WriterBarrier.PayloadSha256 -cne $barrierSha256 -or
+        $barrierDatasetId -cne [string]$WriterBarrier.Payload.dataset_id -or
+        [int64]$WriterBarrier.Payload.restore_epoch -lt 0 -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$WriterBarrier.Payload.schema_revision
+        ) -or
+        [string]$WriterBarrier.Payload.backend_service_state -cne "stopped" -or
+        [int64]$WriterBarrier.Payload.other_client_session_count -ne 0 -or
+        [string]$Result.schema -cne "ticketbox-complete-dataset-backup-result-v1" -or
+        $backupId -cne [string]$Result.backup_id -or
+        $backupId -cne [string]$Request.Payload.backup_id -or
+        $datasetId -cne [string]$Result.dataset_id -or
+        [string]$Result.generation -cne "ticketbox-backup-$backupId" -or
+        [int64]$Result.size_bytes -lt 1 -or
+        [string]$evidence.operation_id -cne [string]$Request.Payload.operation_id -or
+        [string]$evidence.backup_id -cne $backupId -or
+        [string]$evidence.backup_kind -cne [string]$Request.Payload.backup_kind -or
+        [string]$evidence.generation -cne [string]$Result.generation -or
+        [string]$evidence.dataset_id -cne $datasetId -or
+        [string]$evidence.dataset_id -cne [string]$WriterBarrier.Payload.dataset_id -or
+        [int64]$evidence.restore_epoch -ne [int64]$Result.restore_epoch -or
+        [int64]$evidence.restore_epoch -ne [int64]$WriterBarrier.Payload.restore_epoch -or
+        [string]$evidence.schema_revision -cne
+            [string]$WriterBarrier.Payload.schema_revision -or
+        [string]$evidence.release_id -cne
+            [string]$Request.Payload.release_manifest_sha256 -or
+        [string]$evidence.release_id -cne [string]$Subject.Manifest.Sha256 -or
+        [string]$evidence.writer_fence_sha256 -cne
+            [string]$WriterBarrier.PayloadSha256
+    ) {
+        throw "complete dataset backup result is not bound to the durable request and writer barrier."
+    }
+    return $Result
 }
 
 function Invoke-TicketboxInstalledCompleteBackupHelper {
@@ -104,7 +188,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
         [Parameter(Mandatory = $true)][object]$Subject,
         [Parameter(Mandatory = $true)][object]$Authority,
         [Parameter(Mandatory = $true)][object]$Request,
-        [Parameter(Mandatory = $true)][string]$WriterBarrierSha256
+        [Parameter(Mandatory = $true)][object]$WriterBarrier
     )
 
     $identity = $Subject.Identity
@@ -135,7 +219,11 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
         BackupId = [string]$Request.Payload.backup_id
         ReleaseId = [string]$manifest.Sha256
         Kind = [string]$Request.Payload.backup_kind
-        Barrier = $WriterBarrierSha256
+        Barrier = [string]$WriterBarrier.PayloadSha256
+        CurrentSha256 = [string]$WriterBarrier.Payload.current_sha256
+        DatasetId = [string]$WriterBarrier.Payload.dataset_id
+        RestoreEpoch = [int64]$WriterBarrier.Payload.restore_epoch
+        SchemaRevision = [string]$WriterBarrier.Payload.schema_revision
         Timeout = [int]$Subject.Release.database_tool_timeout_ms
     }
     return Invoke-TicketboxWithPlainPostgresqlSecret `
@@ -169,7 +257,11 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
                         "--backup-id", $captured.BackupId,
                         "--release-id", $captured.ReleaseId,
                         "--backup-kind", $captured.Kind,
-                        "--writer-fence-sha256", $captured.Barrier
+                        "--writer-fence-sha256", $captured.Barrier,
+                        "--expected-current-sha256", $captured.CurrentSha256,
+                        "--expected-dataset-id", $captured.DatasetId,
+                        "--expected-restore-epoch", [string]$captured.RestoreEpoch,
+                        "--expected-schema-revision", $captured.SchemaRevision
                     ) `
                     -StandardInputText "" `
                     -TimeoutMilliseconds $captured.Timeout `
@@ -186,8 +278,6 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
                     -StandardOutput ([string]$process.StandardOutput) `
                     -Label "complete dataset backup helper"
                 $decoded = $jsonLine | ConvertFrom-Json
-                $canonicalBackupId = ([guid][string]$decoded.backup_id).ToString("D")
-                $canonicalDatasetId = ([guid][string]$decoded.dataset_id).ToString("D")
                 Assert-TicketboxDatabaseGenerationExactProperties `
                     -Value $decoded `
                     -ExpectedNames @(
@@ -195,17 +285,6 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
                         "restore_epoch", "size_bytes"
                     ) `
                     -Label "complete dataset backup result"
-                if (
-                    [string]$decoded.schema -cne "ticketbox-complete-dataset-backup-result-v1" -or
-                    $canonicalBackupId -cne [string]$captured.BackupId -or
-                    $canonicalBackupId -cne [string]$decoded.backup_id -or
-                    $canonicalDatasetId -cne [string]$decoded.dataset_id -or
-                    [string]$decoded.generation -cne "ticketbox-backup-$([string]$decoded.backup_id)" -or
-                    [int64]$decoded.restore_epoch -lt 0 -or
-                    [int64]$decoded.size_bytes -lt 1
-                ) {
-                    throw "complete dataset backup result is not closed or canonical."
-                }
                 $result = $decoded
             }
             catch { $primary = $_ }
@@ -277,6 +356,10 @@ try {
     $barrier = Get-TicketboxInstalledBackupBarrier $subject $authority
     $backupResult = Invoke-TicketboxInstalledCompleteBackupHelper `
         $subject $authority $request $barrier
+    $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
+        $subject ([string]$backupResult.generation)
+    $backupResult = Assert-TicketboxInstalledCompleteBackupResult `
+        $subject $request $barrier $backupResult $inspection
 }
 catch { $primary = $_ }
 finally {

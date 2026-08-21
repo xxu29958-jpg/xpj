@@ -15,6 +15,20 @@ CONTRACT = PACKAGING / "windows_installed_dataset_contract.ps1"
 CLUSTER = PACKAGING / "windows_postgresql_candidate_cluster.ps1"
 
 
+def test_restore_does_not_ship_unowned_clone_identity_producer() -> None:
+    launch = (PACKAGING / "launch.py").read_text(encoding="utf-8")
+    restore_service = (
+        PACKAGING.parent / "app" / "services" / "dataset_restore_service.py"
+    ).read_text(encoding="utf-8")
+    restore_action = (
+        PACKAGING.parent / "app" / "database" / "_dataset_restore_action.py"
+    ).read_text(encoding="utf-8")
+
+    assert "--clone-dataset-id" not in launch
+    assert "clone_dataset_id" not in restore_service
+    assert "clone_dataset_id" not in restore_action
+
+
 def test_restore_owner_is_explicit_durable_isolated_and_h1_published() -> None:
     restore = RESTORE.read_text(encoding="utf-8-sig")
     contract = CONTRACT.read_text(encoding="utf-8-sig")
@@ -86,6 +100,160 @@ def test_restore_candidate_uses_official_frozen_restore_and_exact_role_owner() -
     )
     assert "Assert-TicketboxPgServiceCommand" in removal
     assert "Assert-TicketboxReleaseServiceIdentity" in removal
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_restore_candidate_cluster_executes_failure_cleanup_then_exact_retry(
+    tmp_path: Path,
+) -> None:
+    initializer = powershell_function(
+        CLUSTER.read_text(encoding="utf-8-sig"),
+        "Initialize-TicketboxPostgresqlRestoreCandidateCluster",
+    )
+    root = str(tmp_path.resolve()).replace("'", "''")
+    script = rf"""
+$ErrorActionPreference = 'Stop'
+$root = Join-Path '{root}' "$($PSVersionTable.PSEdition)-$($PSVersionTable.PSVersion.Major)"
+$candidateRoot = Join-Path $root 'candidate'
+$candidatePg = Join-Path $candidateRoot 'pgdata'
+$candidateUploads = Join-Path $candidateRoot 'uploads'
+$script:events = @()
+$script:servicePresent = $false
+$script:failInitdb = $true
+$script:primaryObserved = $false
+function Assert-TicketboxLifecycleOperationLease {{ param($Lock); $script:events += 'lease' }}
+function Get-TicketboxInstalledDatasetRestorePaths {{
+    param($DataRoot, $OperationId)
+    return [pscustomobject]@{{
+        candidate_root = $candidateRoot
+        candidate_pgdata = $candidatePg
+        candidate_uploads = $candidateUploads
+    }}
+}}
+function Test-TicketboxPathEquals {{
+    param($Left, $Right)
+    return [IO.Path]::GetFullPath([string]$Left) -ceq [IO.Path]::GetFullPath([string]$Right)
+}}
+function Get-TicketboxPathEntryKindNoFollow {{
+    param($Path)
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {{ return 'File' }}
+    if (Test-Path -LiteralPath $Path -PathType Container) {{ return 'Directory' }}
+    return 'Missing'
+}}
+function New-TicketboxInitdbServiceImagePath {{ return 'init-image' }}
+function Test-TicketboxServiceExists {{ param($Name); return $script:servicePresent }}
+function Get-TicketboxServiceExecutablePath {{ param($Name); return (Join-Path $root 'install\shawl\shawl.exe') }}
+function Invoke-TicketboxScChecked {{ $script:events += 'service-create'; $script:servicePresent = $true }}
+function Set-TicketboxServiceIdentityContract {{ param($Name, $LogonAccount, $SidType); $script:events += 'identity' }}
+function Assert-TicketboxServiceStartMode {{ param($Name, $ExpectedStartMode); $script:events += 'start-mode' }}
+function Assert-TicketboxServiceHasNoFailureActions {{ param($Name); $script:events += 'no-failure-actions' }}
+function Assert-TicketboxInitdbServiceCommand {{ $script:events += 'initdb-command' }}
+function Get-TicketboxServiceSid {{ param($Name); return 'NT SERVICE\TicketboxRestore' }}
+function Set-TicketboxExactDirectoryAcl {{ $script:events += 'acl' }}
+function Write-TicketboxProtectedUtf8FileDurable {{
+    param($Path, $Text, $FullControlAccounts, $OwnerAccount)
+    [IO.Directory]::CreateDirectory((Split-Path -Parent $Path)) | Out-Null
+    [IO.File]::WriteAllText([string]$Path, [string]$Text)
+    $script:events += 'password-write'
+}}
+function Remove-TicketboxProtectedUtf8Artifact {{
+    param($Path, $FullControlAccounts, $OwnerAccount)
+    [IO.File]::Delete([string]$Path)
+    $script:events += 'password-remove'
+}}
+function Invoke-TicketboxOwnedOneShotService {{
+    param($Name, $ExpectedExecutable, $ExpectedRuntimeExecutables, $TimeoutMilliseconds, $PollMilliseconds)
+    $script:events += 'one-shot'
+    [IO.Directory]::CreateDirectory($candidatePg) | Out-Null
+    if ($script:failInitdb) {{
+        [IO.File]::WriteAllText((Join-Path $candidatePg 'partial'), 'partial')
+        return [pscustomobject]@{{ ExitCode = 1; ServiceSpecificExitCode = 0 }}
+    }}
+    [IO.Directory]::CreateDirectory((Join-Path $candidatePg 'global')) | Out-Null
+    foreach ($relative in @('PG_VERSION', 'global\pg_control', 'postgresql.conf', 'pg_hba.conf')) {{
+        [IO.File]::WriteAllText((Join-Path $candidatePg $relative), 'ready')
+    }}
+    return [pscustomobject]@{{ ExitCode = 0; ServiceSpecificExitCode = 0 }}
+}}
+function Remove-TicketboxOwnedServiceIfExists {{
+    param($Name, $ExpectedExecutable, $TimeoutMilliseconds, $PollMilliseconds)
+    $script:servicePresent = $false
+    $script:events += 'service-remove'
+}}
+function Remove-TicketboxDataRootExact {{
+    param($Path)
+    if (-not (Test-TicketboxPathEquals $Path $candidatePg)) {{ throw 'broad cleanup target' }}
+    if (Test-Path -LiteralPath $Path) {{ Remove-Item -LiteralPath $Path -Recurse -Force }}
+    $script:events += 'pgdata-remove'
+}}
+function Throw-TicketboxDatabaseGenerationOperationFailure {{
+    param($Failure, $CleanupFailures)
+    if ($null -ne $Failure) {{
+        $message = [string]$Failure.Message
+        if ([string]::IsNullOrEmpty($message)) {{ $message = [string]$Failure.Exception.Message }}
+        if ($message -notlike '*initdb failed*') {{ throw "wrong primary: $message" }}
+        $script:primaryObserved = $true
+        throw 'expected initdb failure'
+    }}
+    if (@($CleanupFailures).Count -ne 0) {{ throw 'cleanup failure' }}
+}}
+function Set-TicketboxPostgresqlLoopbackConfiguration {{
+    param($PgData, $Port); $script:events += 'loopback'
+}}
+{initializer}
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{ InstallDir = (Join-Path $root 'install'); DataRoot = $root; PgPort = 5432 }}
+    Release = [pscustomobject]@{{
+        pg_recovery_service_name = 'TicketboxRestore'
+        stop_timeout_ms = 1000
+        database_tool_timeout_ms = 1000
+        service_state_timeout_ms = 1000
+        service_poll_interval_ms = 10
+        service_logon_account = 'LocalSystem'
+        service_sid_type = 'unrestricted'
+    }}
+}}
+$paths = [pscustomobject]@{{
+    candidate_root = $candidateRoot
+    candidate_pgdata = $candidatePg
+    candidate_uploads = $candidateUploads
+}}
+$bootstrap = [pscustomobject]@{{ SuperuserPassword = 'protected-secret' }}
+$failed = $false
+$caughtText = ''
+try {{
+    Initialize-TicketboxPostgresqlRestoreCandidateCluster `
+        $subject '11111111-1111-4111-8111-111111111111' $paths $bootstrap 'lock'
+}} catch {{ $failed = $true; $caughtText = [string]$_ }}
+if (-not $failed -or -not $script:primaryObserved) {{
+    throw "initdb primary failure was not preserved: $caughtText; events=$($script:events -join ',')"
+}}
+if ($script:servicePresent -or (Test-Path -LiteralPath $candidatePg)) {{ throw 'failed cluster was not cleaned' }}
+$failureEvents = $script:events -join ','
+foreach ($required in @('lease', 'service-create', 'password-write', 'one-shot', 'password-remove', 'service-remove', 'pgdata-remove')) {{
+    if ($failureEvents -notlike "*$required*") {{ throw "failure path missed $required" }}
+}}
+$script:events = @()
+$script:failInitdb = $false
+Initialize-TicketboxPostgresqlRestoreCandidateCluster `
+    $subject '11111111-1111-4111-8111-111111111111' $paths $bootstrap 'lock'
+foreach ($relative in @('PG_VERSION', 'global\pg_control', 'postgresql.conf', 'pg_hba.conf')) {{
+    if (-not (Test-Path -LiteralPath (Join-Path $candidatePg $relative) -PathType Leaf)) {{ throw "missing $relative" }}
+}}
+if ($script:servicePresent -or (Test-Path -LiteralPath (Join-Path $candidateRoot '.initdb-password'))) {{
+    throw 'success left initdb authority behind'
+}}
+$successEvents = $script:events -join ','
+if ($successEvents -notlike '*one-shot*password-remove*service-remove*loopback*') {{
+    throw "success ordering drifted: $successEvents"
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-restore-candidate-cluster.ps1",
+        timeout=30,
+    )
 
 
 def test_restore_promotion_is_forward_reconcilable_and_keeps_old_bytes_until_current() -> None:

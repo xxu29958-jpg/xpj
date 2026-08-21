@@ -199,6 +199,10 @@ def _parse_complete_dataset_backup_args(argv: list[str]) -> Namespace:
         required=True,
     )
     parser.add_argument("--writer-fence-sha256", required=True)
+    parser.add_argument("--expected-current-sha256", required=True)
+    parser.add_argument("--expected-dataset-id", required=True)
+    parser.add_argument("--expected-restore-epoch", type=int, required=True)
+    parser.add_argument("--expected-schema-revision", required=True)
     return parser.parse_args(argv)
 
 
@@ -233,7 +237,6 @@ def _parse_isolated_dataset_restore_args(argv: list[str]) -> Namespace:
     parser.add_argument("--active-restore-epoch", type=int, required=True)
     parser.add_argument("--target-schema-revision", required=True)
     parser.add_argument("--restore-role", required=True)
-    parser.add_argument("--clone-dataset-id", default=None)
     return parser.parse_args(argv)
 
 
@@ -504,6 +507,10 @@ def _run_complete_dataset_backup(
             release_id=args.release_id,
             backup_kind=args.backup_kind,
             writer_fence_sha256=args.writer_fence_sha256,
+            expected_current_sha256=args.expected_current_sha256,
+            expected_dataset_id=args.expected_dataset_id,
+            expected_restore_epoch=args.expected_restore_epoch,
+            expected_schema_revision=args.expected_schema_revision,
         )
     )
     if tuple(result) != module.RESULT_FIELDS:
@@ -567,7 +574,6 @@ def _run_isolated_dataset_restore(
             active_restore_epoch=args.active_restore_epoch,
             target_schema_revision=args.target_schema_revision,
             restore_role=args.restore_role,
-            clone_dataset_id=args.clone_dataset_id,
         )
     )
     if tuple(result) != module.RESULT_FIELDS:

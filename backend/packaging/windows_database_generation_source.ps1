@@ -554,3 +554,53 @@ function Invoke-TicketboxDatabaseGenerationRestoredSource {
         writer_fence_sha256 = $fenceSha256
     }
 }
+
+function Assert-TicketboxDatabaseGenerationSourceBinding {
+    param(
+        [Parameter(Mandatory = $true)][object]$Binding,
+        [Parameter(Mandatory = $true)][object]$Intent
+    )
+
+    $payload = $Binding.Payload
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $payload `
+        -ExpectedNames @(
+            "schema", "operation_id", "intent_sha256",
+            "source_evidence_sha256", "source_kind", "source_revision",
+            "cluster_system_identifier", "database_oid", "writer_fence_sha256"
+        ) `
+        -Label "database generation SourceBinding"
+    foreach ($digest in @(
+        [string]$Binding.PayloadSha256,
+        [string]$payload.intent_sha256,
+        [string]$payload.source_evidence_sha256,
+        [string]$payload.writer_fence_sha256
+    )) {
+        Assert-TicketboxDatabaseGenerationLowerSha256 `
+            $digest "database generation SourceBinding"
+    }
+    $operationId = ([guid][string]$payload.operation_id).ToString("D")
+    $kind = [string]$payload.source_kind
+    $empty = (
+        $kind -ceq "empty" -and
+        [string]$payload.source_revision -ceq "base" -and
+        [string]::IsNullOrEmpty([string]$Intent.Payload.source_request_sha256)
+    )
+    $current = (
+        $kind -ceq "current_generation" -and
+        [string]$payload.source_revision -ceq [string]$Intent.Payload.target_revision -and
+        -not [string]::IsNullOrEmpty([string]$Intent.Payload.source_request_sha256)
+    )
+    if (
+        [string]$payload.schema -cne "ticketbox-database-generation-source-binding-v1" -or
+        $operationId -cne [string]$payload.operation_id -or
+        $operationId -cne [string]$Intent.Payload.operation_id -or
+        [string]$payload.intent_sha256 -cne [string]$Intent.PayloadSha256 -or
+        [string]::IsNullOrWhiteSpace([string]$payload.cluster_system_identifier) -or
+        [uint32]$payload.database_oid -lt 1 -or
+        -not ($empty -or $current)
+    ) {
+        throw "database generation SourceBinding is not closed or intent-bound."
+    }
+    return $Binding
+}

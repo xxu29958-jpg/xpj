@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from _powershell_contract import powershell_contract_engines
+from _powershell_contract import powershell_contract_engines, run_powershell_contract_script
 
 PACKAGING = Path(__file__).resolve().parents[1]
 SOURCE = PACKAGING / "windows_database_generation_source.ps1"
@@ -22,6 +22,69 @@ def _function(source: str, name: str) -> str:
             if depth == 0:
                 return source[match.start() : index + 1]
     raise AssertionError(f"unterminated PowerShell function: {name}")
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_source_binding_boundary_rejects_mode_request_mismatch(tmp_path: Path) -> None:
+    validator = _function(
+        SOURCE.read_text(encoding="utf-8-sig"),
+        "Assert-TicketboxDatabaseGenerationSourceBinding",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Assert-TicketboxDatabaseGenerationExactProperties {{
+    param($Value, $ExpectedNames, $Label)
+    $actual = @($Value.PSObject.Properties.Name | Sort-Object -CaseSensitive)
+    $expected = @($ExpectedNames | Sort-Object -CaseSensitive)
+    if (($actual -join "`n") -cne ($expected -join "`n")) {{ throw 'open contract' }}
+}}
+function Assert-TicketboxDatabaseGenerationLowerSha256 {{
+    param($Value, $Label)
+    if ([string]$Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw 'bad digest' }}
+}}
+{validator}
+$operation = '11111111-1111-4111-8111-111111111111'
+$intent = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = $operation
+        target_revision = '20260821_0001'
+        source_request_sha256 = ''
+    }}
+}}
+$binding = [pscustomobject]@{{
+    PayloadSha256 = ('b' * 64)
+    Payload = [pscustomobject][ordered]@{{
+        schema = 'ticketbox-database-generation-source-binding-v1'
+        operation_id = $operation
+        intent_sha256 = ('a' * 64)
+        source_evidence_sha256 = ('c' * 64)
+        source_kind = 'empty'
+        source_revision = 'base'
+        cluster_system_identifier = '7612345678901234567'
+        database_oid = 16384
+        writer_fence_sha256 = ('d' * 64)
+    }}
+}}
+[void](Assert-TicketboxDatabaseGenerationSourceBinding $binding $intent)
+$binding.Payload.source_kind = 'current_generation'
+$rejected = $false
+try {{ Assert-TicketboxDatabaseGenerationSourceBinding $binding $intent | Out-Null }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'mode/request mismatch crossed SourceBinding' }}
+$binding.Payload.source_kind = 'empty'
+$intent.Payload.source_request_sha256 = ('e' * 64)
+$rejected = $false
+try {{ Assert-TicketboxDatabaseGenerationSourceBinding $binding $intent | Out-Null }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'empty source accepted a restore request' }}
+$binding.Payload.source_kind = 'current_generation'
+$binding.Payload.source_revision = '20260821_0001'
+[void](Assert-TicketboxDatabaseGenerationSourceBinding $binding $intent)
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="database-generation-source-binding.ps1",
+    )
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")

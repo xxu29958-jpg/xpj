@@ -38,12 +38,15 @@ RESULT_FIELDS = (
 )
 INSPECTION_FIELDS = (
     "schema",
+    "operation_id",
     "backup_id",
+    "backup_kind",
     "generation",
     "dataset_id",
     "restore_epoch",
     "schema_revision",
     "release_id",
+    "writer_fence_sha256",
     "manifest_sha256",
     "original_count",
 )
@@ -53,12 +56,15 @@ def inspect_complete_dataset_backup_action(generation: Path) -> dict[str, object
     manifest = read_manifest(generation, verify_files=True)
     return {
         "schema": "ticketbox-complete-dataset-backup-inspection-v1",
+        "operation_id": manifest.operation_id,
         "backup_id": manifest.backup_id,
+        "backup_kind": manifest.backup_kind,
         "generation": generation.name,
         "dataset_id": manifest.authority.dataset_id,
         "restore_epoch": manifest.authority.restore_epoch,
         "schema_revision": manifest.authority.schema_revision,
         "release_id": manifest.release_id,
+        "writer_fence_sha256": manifest.writer_fence_sha256,
         "manifest_sha256": sha256_file(generation / MANIFEST_NAME),
         "original_count": len(manifest.originals),
     }

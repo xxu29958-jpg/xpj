@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,6 +28,27 @@ from app.services.dataset_originals_adapter import (
     OriginalReference,
     copy_complete_originals,
 )
+
+_EXPECTED_DATASET_ID = "5895e71e-1c87-4a59-b1c7-04f68817795e"
+_EXPECTED_RESTORE_EPOCH = 3
+_EXPECTED_SCHEMA_REVISION = "20260821_0001"
+_EXPECTED_CURRENT_SHA256 = "c" * 64
+_EXPECTED_WRITER_FENCE_SHA256 = hashlib.sha256(
+    json.dumps(
+        {
+            "schema": "ticketbox-dataset-backup-writer-barrier-v1",
+            "current_sha256": _EXPECTED_CURRENT_SHA256,
+            "dataset_id": _EXPECTED_DATASET_ID,
+            "restore_epoch": _EXPECTED_RESTORE_EPOCH,
+            "schema_revision": _EXPECTED_SCHEMA_REVISION,
+            "backend_service_state": "stopped",
+            "other_client_session_count": 0,
+        },
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+).hexdigest()
 
 
 def test_missing_referenced_original_cannot_become_a_complete_generation(tmp_path: Path) -> None:
@@ -154,10 +177,10 @@ def test_manifest_is_closed_canonical_and_binds_every_byte(tmp_path: Path) -> No
     database = generation / DATABASE_ARCHIVE_NAME
     database.write_bytes(b"postgres-custom-archive")
     authority = DatasetAuthority(
-        dataset_id="5895e71e-1c87-4a59-b1c7-04f68817795e",
+        dataset_id=_EXPECTED_DATASET_ID,
         client_generation="bf70f3b2-f2fe-41d9-a694-c0e33208d2b5",
-        restore_epoch=3,
-        schema_revision="20260821_0001",
+        restore_epoch=_EXPECTED_RESTORE_EPOCH,
+        schema_revision=_EXPECTED_SCHEMA_REVISION,
         schema_min_compatible="1.2.0",
         semantic_revision="ticketbox-dataset-semantics-v1",
         created_at=datetime(2026, 8, 21, 1, 2, 3, tzinfo=UTC),
@@ -169,7 +192,7 @@ def test_manifest_is_closed_canonical_and_binds_every_byte(tmp_path: Path) -> No
         backup_kind="manual",
         created_at=datetime(2026, 8, 21, 2, 3, 4, tzinfo=UTC),
         release_id="release-fixture",
-        writer_fence_sha256="a" * 64,
+        writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
         authority=authority,
         database=DatabaseArtifact(
             size_bytes=database.stat().st_size,
@@ -218,7 +241,7 @@ def test_published_generation_is_idempotent_for_its_durable_request(tmp_path: Pa
         backup_kind="manual",
         created_at=datetime(2026, 8, 21, 2, 3, 4, tzinfo=UTC),
         release_id="release-fixture",
-        writer_fence_sha256="a" * 64,
+        writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
         authority=authority,
         database=DatabaseArtifact(
             size_bytes=database.stat().st_size,
@@ -238,13 +261,33 @@ def test_published_generation_is_idempotent_for_its_durable_request(tmp_path: Pa
         backup_id=backup_id,
         release_id="release-fixture",
         backup_kind="manual",
-        writer_fence_sha256="a" * 64,
+        writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
+        expected_current_sha256=_EXPECTED_CURRENT_SHA256,
+        expected_dataset_id=authority.dataset_id,
+        expected_restore_epoch=authority.restore_epoch,
+        expected_schema_revision=authority.schema_revision,
     )
 
     entry = create_complete_backup_generation(request, db=object())  # type: ignore[arg-type]
 
     assert entry.file_name == generation.name
     assert entry.backup_id == backup_id
+
+    with pytest.raises(AppError) as drifted:
+        create_complete_backup_generation(
+            replace(request, expected_restore_epoch=authority.restore_epoch + 1),
+            db=object(),  # type: ignore[arg-type]
+        )
+    assert drifted.value.error == "backup_incomplete"
+    assert drifted.value.status_code == 409
+
+    with pytest.raises(AppError) as wrong_current:
+        create_complete_backup_generation(
+            replace(request, expected_current_sha256="d" * 64),
+            db=object(),  # type: ignore[arg-type]
+        )
+    assert wrong_current.value.error == "backup_incomplete"
+    assert wrong_current.value.status_code == 409
 
 
 def test_backup_preserves_primary_and_lease_cleanup_failures(
@@ -277,7 +320,11 @@ def test_backup_preserves_primary_and_lease_cleanup_failures(
         backup_id="38ed55ba-1dc0-43a4-87b3-b29982958399",
         release_id="release-fixture",
         backup_kind="manual",
-        writer_fence_sha256="a" * 64,
+        writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
+        expected_current_sha256=_EXPECTED_CURRENT_SHA256,
+        expected_dataset_id=_EXPECTED_DATASET_ID,
+        expected_restore_epoch=_EXPECTED_RESTORE_EPOCH,
+        expected_schema_revision=_EXPECTED_SCHEMA_REVISION,
     )
 
     with pytest.raises(BaseExceptionGroup) as caught:
@@ -321,9 +368,22 @@ def test_backup_preserves_primary_staging_and_baseexception_lease_cleanup(
         backup_id="38ed55ba-1dc0-43a4-87b3-b29982958399",
         release_id="release-fixture",
         backup_kind="manual",
-        writer_fence_sha256="a" * 64,
+        writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
+        expected_current_sha256=_EXPECTED_CURRENT_SHA256,
+        expected_dataset_id=_EXPECTED_DATASET_ID,
+        expected_restore_epoch=_EXPECTED_RESTORE_EPOCH,
+        expected_schema_revision=_EXPECTED_SCHEMA_REVISION,
     )
 
     with pytest.raises(BaseExceptionGroup) as caught:
         create_complete_backup_generation(request, db=object())  # type: ignore[arg-type]
     assert caught.value.exceptions == (primary, staging_cleanup, lease_cleanup)
+
+
+def test_complete_backup_request_requires_structured_dataset_authority_binding() -> None:
+    assert {
+        "expected_current_sha256",
+        "expected_dataset_id",
+        "expected_restore_epoch",
+        "expected_schema_revision",
+    } <= set(CompleteBackupRequest.__dataclass_fields__)

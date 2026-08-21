@@ -8,6 +8,8 @@ manifests and cannot create a backup from inside the backend service.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -68,6 +70,10 @@ class CompleteBackupRequest:
     release_id: str
     backup_kind: str
     writer_fence_sha256: str
+    expected_current_sha256: str
+    expected_dataset_id: str
+    expected_restore_epoch: int
+    expected_schema_revision: str
 
 
 @dataclass(frozen=True)
@@ -168,6 +174,8 @@ def list_published_backup_records() -> list[BackupEntry]:
             manifest = read_manifest(path, verify_files=False)
         except AppError:
             continue
+        if path.name != f"{_GENERATION_PREFIX}{manifest.backup_id}":
+            continue
         entries.append(_entry(path.name, manifest))
     entries.sort(key=lambda item: item.created_at, reverse=True)
     return entries
@@ -213,6 +221,12 @@ def _build_staged_generation(
     _assert_database_binding(db, request.database_url)
     _assert_writers_drained(db)
     authority = read_dataset_authority(db)
+    if (
+        authority.dataset_id != request.expected_dataset_id
+        or authority.restore_epoch != request.expected_restore_epoch
+        or authority.schema_revision != request.expected_schema_revision
+    ):
+        raise AppError("backup_incomplete", status_code=409)
     references = _original_references(db)
 
     database_path = staging / DATABASE_ARCHIVE_NAME
@@ -304,8 +318,32 @@ def _validate_request(request: CompleteBackupRequest) -> CompleteBackupRequest:
         or _canonical_uuid(request.backup_id) is None
         or not _plain_text(request.release_id, limit=128)
         or _SHA256.fullmatch(request.writer_fence_sha256) is None
+        or _SHA256.fullmatch(request.expected_current_sha256) is None
+        or _canonical_uuid(request.expected_dataset_id) is None
+        or not isinstance(request.expected_restore_epoch, int)
+        or isinstance(request.expected_restore_epoch, bool)
+        or request.expected_restore_epoch < 0
+        or not _plain_text(request.expected_schema_revision, limit=128)
     ):
         raise AppError("backup_incomplete", status_code=500)
+    expected_barrier = hashlib.sha256(
+        json.dumps(
+            {
+                "schema": "ticketbox-dataset-backup-writer-barrier-v1",
+                "current_sha256": request.expected_current_sha256,
+                "dataset_id": request.expected_dataset_id,
+                "restore_epoch": request.expected_restore_epoch,
+                "schema_revision": request.expected_schema_revision,
+                "backend_service_state": "stopped",
+                "other_client_session_count": 0,
+            },
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    if request.writer_fence_sha256 != expected_barrier:
+        raise AppError("backup_incomplete", status_code=409)
     backup_root = _prepare_backup_root(request.backup_root)
     for path in (
         request.upload_root,
@@ -327,6 +365,10 @@ def _validate_request(request: CompleteBackupRequest) -> CompleteBackupRequest:
         release_id=request.release_id,
         backup_kind=request.backup_kind,
         writer_fence_sha256=request.writer_fence_sha256,
+        expected_current_sha256=request.expected_current_sha256,
+        expected_dataset_id=request.expected_dataset_id,
+        expected_restore_epoch=request.expected_restore_epoch,
+        expected_schema_revision=request.expected_schema_revision,
     )
 
 
@@ -340,6 +382,9 @@ def _assert_published_request(
         or manifest.backup_kind != request.backup_kind
         or manifest.release_id != request.release_id
         or manifest.writer_fence_sha256 != request.writer_fence_sha256
+        or manifest.authority.dataset_id != request.expected_dataset_id
+        or manifest.authority.restore_epoch != request.expected_restore_epoch
+        or manifest.authority.schema_revision != request.expected_schema_revision
     ):
         raise AppError("backup_incomplete", status_code=409)
 

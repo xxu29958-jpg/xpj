@@ -224,6 +224,10 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                 -StateRoot $stateRoot -Intent $intent -AllowAbsent
             $source = Read-TicketboxDatabaseGenerationOperationArtifact `
                 $stateRoot $operationId "source-binding" -AllowAbsent
+            if ($null -ne $source) {
+                $source = Assert-TicketboxDatabaseGenerationSourceBinding `
+                    -Binding $source -Intent $intent
+            }
             $target = Read-TicketboxDatabaseGenerationOperationArtifact `
                 $stateRoot $operationId "target-authorization" -AllowAbsent
             $candidate = Read-TicketboxDatabaseGenerationOperationArtifact `
@@ -289,23 +293,7 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                     [void](Assert-TicketboxDatabaseGenerationMaintenanceAuthority `
                         $maintenanceAuthority $intent $hostAuthority $LifecycleLock)
                     $superuserPassword = $maintenanceAuthority.Secret
-                    $emptySource = (
-                        [string]$source.Payload.source_kind -ceq "empty" -and
-                        [string]$source.Payload.source_revision -ceq "base" -and
-                        [string]::IsNullOrEmpty(
-                            [string]$intent.Payload.source_request_sha256
-                        )
-                    )
-                    $currentGenerationSource = (
-                        [string]$source.Payload.source_kind -ceq "current_generation" -and
-                        [string]$source.Payload.source_revision -ceq
-                            [string]$intent.Payload.target_revision -and
-                        -not [string]::IsNullOrEmpty(
-                            [string]$intent.Payload.source_request_sha256
-                        )
-                    )
                     if (
-                        -not ($emptySource -or $currentGenerationSource) -or
                         [string]$source.Payload.intent_sha256 -cne
                             [string]$intent.PayloadSha256
                     ) {

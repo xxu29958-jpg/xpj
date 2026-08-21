@@ -208,16 +208,21 @@ function Invoke-TicketboxInstalledDatasetBackupInspection {
         Assert-TicketboxDatabaseGenerationExactProperties `
             $decoded `
             @(
-                "schema", "backup_id", "generation", "dataset_id",
+                "schema", "operation_id", "backup_id", "backup_kind",
+                "generation", "dataset_id",
                 "restore_epoch", "schema_revision", "release_id",
-                "manifest_sha256", "original_count"
+                "writer_fence_sha256", "manifest_sha256", "original_count"
             ) `
             "complete dataset backup inspection"
         if (
             [string]$decoded.schema -cne "ticketbox-complete-dataset-backup-inspection-v1" -or
+            ([guid][string]$decoded.operation_id).ToString("D") -cne
+                [string]$decoded.operation_id -or
             [string]$decoded.generation -cne $BackupGeneration -or
             "ticketbox-backup-$([string]$decoded.backup_id)" -cne $BackupGeneration -or
+            [string]$decoded.backup_kind -cne "manual" -or
             [string]$decoded.release_id -cne [string]$Subject.Manifest.Sha256 -or
+            [string]$decoded.writer_fence_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
             [string]$decoded.manifest_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
             [string]$decoded.schema_revision -cne ([string](
                 Read-TicketboxDatabaseGenerationProgramContract `

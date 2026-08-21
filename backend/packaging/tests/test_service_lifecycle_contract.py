@@ -1097,11 +1097,19 @@ def test_fresh_preflight_has_no_database_only_backup_authority() -> None:
     assert "windows_dataset_backup.ps1" in _read("ticketbox-installer.iss")
 
 
-def test_complete_dataset_backup_owner_rejects_noncanonical_helper_identity() -> None:
+def test_complete_dataset_backup_owner_rejects_noncanonical_result_identity() -> None:
     backup = _read("windows_dataset_backup.ps1")
+    validator_start = backup.index(
+        "function Assert-TicketboxInstalledCompleteBackupResult"
+    )
+    validator_end = backup.index(
+        "function Invoke-TicketboxInstalledCompleteBackupHelper",
+        validator_start,
+    )
+    validator = backup[validator_start:validator_end]
 
-    assert '$canonicalDatasetId = ([guid][string]$decoded.dataset_id).ToString("D")' in backup
-    assert '$canonicalDatasetId -cne [string]$decoded.dataset_id' in backup
+    assert '$datasetId = ([guid][string]$Result.dataset_id).ToString("D")' in validator
+    assert '$datasetId -cne [string]$Result.dataset_id' in validator
 
 
 def test_complete_dataset_backup_persists_request_before_stopping_writers() -> None:
