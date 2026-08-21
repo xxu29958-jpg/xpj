@@ -37,17 +37,22 @@ function Close-TicketboxDatabaseGenerationMaintenanceAuthority {
         return
     }
     $validationFailure = $null
+    $cleanupFailures = @()
     try {
         [void](Assert-TicketboxDatabaseGenerationMaintenanceAuthority `
             $Authority $Intent $HostAuthority $LifecycleLock)
     }
     catch { $validationFailure = $_ }
     finally {
-        if ($null -ne $Authority.Secret) { $Authority.Secret.Dispose() }
+        try {
+            if ($null -ne $Authority.Secret) { $Authority.Secret.Dispose() }
+        }
+        catch { $cleanupFailures += $_ }
         $Authority.Secret = $null
         $Authority.Closed = $true
     }
-    if ($null -ne $validationFailure) { throw $validationFailure }
+    Throw-TicketboxDatabaseGenerationOperationFailure `
+        $validationFailure $cleanupFailures
 }
 
 function Read-TicketboxDatabaseGenerationCredentials {
@@ -95,6 +100,9 @@ function Read-TicketboxDatabaseGenerationCredentials {
     }
     $runtimePassword = $null
     $migratorPassword = $null
+    $primary = $null
+    $cleanup = @()
+    $result = $null
     try {
         $runtimePassword = ConvertTo-TicketboxPostgresqlSecureString `
             ([string]$artifact.Payload.runtime_password) "runtime password"
@@ -111,24 +119,36 @@ function Read-TicketboxDatabaseGenerationCredentials {
         }
         $runtimePassword = $null
         $migratorPassword = $null
-        return $result
     }
+    catch { $primary = $_ }
     finally {
-        if ($null -ne $runtimePassword) { $runtimePassword.Dispose() }
-        if ($null -ne $migratorPassword) { $migratorPassword.Dispose() }
+        foreach ($secret in @($runtimePassword, $migratorPassword)) {
+            if ($null -eq $secret) { continue }
+            try { $secret.Dispose() }
+            catch { $cleanup += $_ }
+        }
+        $runtimePassword = $null
+        $migratorPassword = $null
     }
+    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    return $result
 }
 
 function Close-TicketboxDatabaseGenerationCredentials {
     param([Parameter(Mandatory = $true)][object]$Credentials)
+    $cleanupFailures = @()
     foreach ($name in @("RuntimePassword", "MigratorPassword")) {
         $secret = $Credentials.$name
-        if ($null -ne $secret) { $secret.Dispose() }
+        try {
+            if ($null -ne $secret) { $secret.Dispose() }
+        }
+        catch { $cleanupFailures += $_ }
         $Credentials.$name = $null
     }
     $Credentials.RuntimeVerifier = ""
     $Credentials.MigratorVerifier = ""
     $Credentials.Artifact = $null
+    Throw-TicketboxDatabaseGenerationOperationFailure $null $cleanupFailures
 }
 
 function New-TicketboxDatabaseGenerationCredentials {
@@ -226,6 +246,9 @@ function Read-TicketboxDatabaseGenerationRuntimeCredentials {
     }
     $runtimePassword = $null
     $httpBootstrapSecret = $null
+    $primary = $null
+    $cleanup = @()
+    $result = $null
     try {
         $runtimePassword = ConvertTo-TicketboxPostgresqlSecureString `
             ([string]$artifact.Payload.runtime_password) "runtime password"
@@ -238,22 +261,34 @@ function Read-TicketboxDatabaseGenerationRuntimeCredentials {
         }
         $runtimePassword = $null
         $httpBootstrapSecret = $null
-        return $result
     }
+    catch { $primary = $_ }
     finally {
-        if ($null -ne $runtimePassword) { $runtimePassword.Dispose() }
-        if ($null -ne $httpBootstrapSecret) { $httpBootstrapSecret.Dispose() }
+        foreach ($secret in @($runtimePassword, $httpBootstrapSecret)) {
+            if ($null -eq $secret) { continue }
+            try { $secret.Dispose() }
+            catch { $cleanup += $_ }
+        }
+        $runtimePassword = $null
+        $httpBootstrapSecret = $null
     }
+    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    return $result
 }
 
 function Close-TicketboxDatabaseGenerationRuntimeCredentials {
     param([Parameter(Mandatory = $true)][object]$Credentials)
+    $cleanupFailures = @()
     foreach ($name in @("RuntimePassword", "HttpBootstrapSecret")) {
         $secret = $Credentials.$name
-        if ($null -ne $secret) { $secret.Dispose() }
+        try {
+            if ($null -ne $secret) { $secret.Dispose() }
+        }
+        catch { $cleanupFailures += $_ }
         $Credentials.$name = $null
     }
     $Credentials.Artifact = $null
+    Throw-TicketboxDatabaseGenerationOperationFailure $null $cleanupFailures
 }
 
 function New-TicketboxDatabaseGenerationRuntimeCredentials {

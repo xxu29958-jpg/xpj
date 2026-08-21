@@ -25,7 +25,7 @@ from pathlib import Path
 
 from app.database import engine, init_db
 from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
-from tests._infra.c07_alembic import reset_public_schema
+from tests._infra.alembic_runtime import reset_public_schema
 from tests._infra.env import BACKEND_ROOT, TEST_RUN_ID
 
 _UPLOAD_RUNTIME_ROOT = Path(os.path.abspath(BACKEND_ROOT / "uploads"))

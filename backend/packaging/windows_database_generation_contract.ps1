@@ -10,8 +10,8 @@ $script:TicketboxDatabaseGenerationRuntimeAccount =
 $script:TicketboxDatabaseGenerationBindingKey = "database_generation_binding"
 $script:TicketboxDatabaseGenerationProgramRelativePath =
     "DATABASE_GENERATION_PROGRAM.json"
-$script:TicketboxDatabaseGenerationMigrationHelperRelativePath =
-    "ticketbox-c07-migrator.exe"
+$script:TicketboxDatabaseMaintenanceHelperRelativePath =
+    "ticketbox-database-maintenance.exe"
 $script:TicketboxDatabaseGenerationAclAccounts = @(
     "SYSTEM",
     "BUILTIN\Administrators"
@@ -217,7 +217,7 @@ function Read-TicketboxDatabaseGenerationProgramContract {
         "database generation program"
     if (
         [string]$program.schema -cne
-            "ticketbox-database-generation-program-v1" -or
+            "ticketbox-database-generation-program-v2" -or
         [string]$program.source_revision -cne "base" -or
         [string]$program.target_revision -cnotmatch
             '^[0-9]{8}_[0-9a-z_]+$' -or
@@ -292,11 +292,11 @@ function New-TicketboxDatabaseGenerationReleaseContract {
         InstallationOperationId = [string]$InstallationIdentity.OperationId
         InstallationId = [string]$InstallationIdentity.InstallationId
         BackendVersionFloor = [string]$InstallationIdentity.BackendVersionFloor
-        MigrationHelperPath = [string]$ReleaseCandidate.MigrationHelperPath
-        MigrationHelperRelativePath =
-            [string]$ReleaseCandidate.MigrationHelperRelativePath
-        MigrationHelperSize = [int64]$ReleaseCandidate.MigrationHelperSize
-        MigrationHelperSha256 = [string]$ReleaseCandidate.MigrationHelperSha256
+        MaintenanceHelperPath = [string]$ReleaseCandidate.MaintenanceHelperPath
+        MaintenanceHelperRelativePath =
+            [string]$ReleaseCandidate.MaintenanceHelperRelativePath
+        MaintenanceHelperSize = [int64]$ReleaseCandidate.MaintenanceHelperSize
+        MaintenanceHelperSha256 = [string]$ReleaseCandidate.MaintenanceHelperSha256
         DatabaseGenerationProgramPath =
             [string]$ReleaseCandidate.DatabaseGenerationProgramPath
         DatabaseGenerationProgramRelativePath =
@@ -418,12 +418,12 @@ function Assert-TicketboxDatabaseGenerationReleaseBinding {
             ([guid][string]$ReleaseIdentity.InstallationId).ToString("D") -or
         [string]$Intent.Payload.target_backend_version -cne
             [string]$ReleaseIdentity.BackendVersionFloor -or
-        [string]$Intent.Payload.migration_helper_relative_path -cne
-            [string]$ReleaseIdentity.MigrationHelperRelativePath -or
-        [int64]$Intent.Payload.migration_helper_size -ne
-            [int64]$ReleaseIdentity.MigrationHelperSize -or
-        [string]$Intent.Payload.migration_helper_sha256 -cne
-            ([string]$ReleaseIdentity.MigrationHelperSha256).ToLowerInvariant() -or
+        [string]$Intent.Payload.database_maintenance_helper_relative_path -cne
+            [string]$ReleaseIdentity.MaintenanceHelperRelativePath -or
+        [int64]$Intent.Payload.database_maintenance_helper_size -ne
+            [int64]$ReleaseIdentity.MaintenanceHelperSize -or
+        [string]$Intent.Payload.database_maintenance_helper_sha256 -cne
+            ([string]$ReleaseIdentity.MaintenanceHelperSha256).ToLowerInvariant() -or
         [string]$Intent.Payload.generation_program_relative_path -cne
             [string]$ReleaseIdentity.DatabaseGenerationProgramRelativePath -or
         [int64]$Intent.Payload.generation_program_size -ne
@@ -440,14 +440,27 @@ function Assert-TicketboxDatabaseGenerationReleaseBinding {
 function Throw-TicketboxDatabaseGenerationOperationFailure {
     param(
         [AllowNull()][object]$Primary,
-        [AllowNull()][object]$Cleanup
+        [AllowNull()][object[]]$Cleanup
     )
-    if ($null -ne $Primary -and $null -ne $Cleanup) {
+    $cleanupFailures = @($Cleanup | Where-Object { $null -ne $_ })
+    if ($null -ne $Primary -and $cleanupFailures.Count -gt 0) {
+        $exceptions = @($Primary.Exception)
+        foreach ($failure in $cleanupFailures) {
+            if ($failure -is [Management.Automation.ErrorRecord]) {
+                $exceptions += $failure.Exception
+            }
+            elseif ($failure -is [Exception]) {
+                $exceptions += $failure
+            }
+            else {
+                $exceptions += [InvalidOperationException]::new([string]$failure)
+            }
+        }
         $aggregate = [AggregateException]::new(
-            "database generation primary operation and maintenance authority cleanup failed",
-            @($Primary.Exception, $Cleanup.Exception)
+            "database generation primary operation and cleanup failed",
+            $exceptions
         )
-        foreach ($key in @("TicketboxC07FailureCode", "TicketboxC07FailureCodes")) {
+        foreach ($key in @("TicketboxFailureCode", "TicketboxFailureCodes")) {
             if ($Primary.Exception.Data.Contains($key)) {
                 $aggregate.Data[$key] = $Primary.Exception.Data[$key]
             }
@@ -455,5 +468,18 @@ function Throw-TicketboxDatabaseGenerationOperationFailure {
         throw $aggregate
     }
     if ($null -ne $Primary) { throw $Primary }
-    if ($null -ne $Cleanup) { throw $Cleanup }
+    if ($cleanupFailures.Count -eq 1) { throw $cleanupFailures[0] }
+    if ($cleanupFailures.Count -gt 1) {
+        $exceptions = foreach ($failure in $cleanupFailures) {
+            if ($failure -is [Management.Automation.ErrorRecord]) {
+                $failure.Exception
+            }
+            elseif ($failure -is [Exception]) { $failure }
+            else { [InvalidOperationException]::new([string]$failure) }
+        }
+        throw [AggregateException]::new(
+            "database generation cleanup failed",
+            @($exceptions)
+        )
+    }
 }

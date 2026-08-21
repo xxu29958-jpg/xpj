@@ -5,7 +5,7 @@ from alembic import command
 from sqlalchemy import inspect, text
 
 from app.database import engine, load_alembic_context
-from tests._infra.c07_alembic import reset_public_schema
+from tests._infra.alembic_runtime import reset_public_schema
 
 pytestmark = pytest.mark.real_db
 

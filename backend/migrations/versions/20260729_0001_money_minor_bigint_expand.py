@@ -8,8 +8,8 @@ maintenance window before invoking Alembic. Canonical amount values and receipt
 assets are not mutated. This revision is deliberately limited to the frozen
 30-column money manifest; currency authority and import/OCR provenance changes
 belong to later, independently reviewed revisions.
-The same release gates every writer on the exact C07 revision and durable READY
-authority, so the widened columns expose the contracted 9e12 command envelope.
+Alembic executes this revision inside a caller-owned, pre-armed transaction;
+the widened columns expose the contracted 9e12 command envelope.
 
 Revision ID: 20260729_0001
 Revises: 20260722_0001
@@ -18,7 +18,6 @@ Revises: 20260722_0001
 from __future__ import annotations
 
 from collections.abc import Sequence
-from uuid import UUID
 
 import sqlalchemy as sa
 from alembic import op
@@ -30,7 +29,7 @@ depends_on: str | Sequence[str] | None = None
 
 # Frozen rows:
 # table, column, nullable, final name/predicate, reserved check slots.
-# Every active C07 check is the permanent ADR-0073 bound; the two reserved slots
+# Every active money check is the permanent ADR-0073 bound; the two reserved slots
 # remain null to keep the migration's frozen tuple shape explicit.
 _MANIFEST_ROWS: tuple[
     tuple[str, str, bool, str, str, str | None, str | None], ...
@@ -416,63 +415,11 @@ _REPLACED_CHECKS: dict[str, tuple[tuple[str, str], ...]] = {
 }
 
 _TABLES = tuple(sorted({row[0] for row in _MANIFEST}))
-_PROBE_NAME = "__xpj_c07_check_probe"
-_CEREMONY_MODE_GUC = "ticketbox.c07_ceremony_mode"
-_CEREMONY_ID_GUC = "ticketbox.c07_ceremony_id"
-_STATEMENT_TIMEOUT_GUC = "ticketbox.c07_statement_timeout_ms"
-_FRESH_MODE = "fresh_install"
-_MANAGED_MODE = "managed"
-_FRESH_ID = "fresh-install"
-_CEREMONY_ID_KEY = "money_c07_ceremony_id"
-_LIFECYCLE_STATE_KEY = "money_c07_lifecycle_state"
-_FRESH_STATE = "fresh_install"
-_PENDING_STATE = "target_committed_receipt_pending"
+_PROBE_NAME = "__xpj_money_bigint_check_probe"
 
 
 def _quoted(bind: sa.engine.Connection, identifier: str) -> str:
     return bind.dialect.identifier_preparer.quote_identifier(identifier)
-
-
-def _fresh_database_has_no_business_rows(bind: sa.engine.Connection) -> bool:
-    tables = tuple(
-        bind.scalars(
-            sa.text(
-                "SELECT tablename FROM pg_tables "
-                "WHERE schemaname = 'public' "
-                "AND tablename NOT IN "
-                "('alembic_version', 'app_meta', 'schema_migrations') "
-                "ORDER BY tablename"
-            )
-        )
-    )
-    return all(
-        not bool(bind.scalar(sa.text(f"SELECT EXISTS (SELECT 1 FROM {_quoted(bind, table)} LIMIT 1)")))
-        for table in tables
-    )
-
-
-def _ceremony_context(bind: sa.engine.Connection) -> tuple[str, str]:
-    mode = bind.scalar(
-        sa.text("SELECT current_setting(:key, true)"),
-        {"key": _CEREMONY_MODE_GUC},
-    )
-    ceremony_id = bind.scalar(
-        sa.text("SELECT current_setting(:key, true)"),
-        {"key": _CEREMONY_ID_GUC},
-    )
-    if mode == _FRESH_MODE:
-        if ceremony_id != _FRESH_ID or not _fresh_database_has_no_business_rows(bind):
-            raise RuntimeError("C07 fresh-install ceremony proof is invalid")
-        return str(mode), str(ceremony_id)
-    if mode == _MANAGED_MODE:
-        try:
-            canonical = str(UUID(str(ceremony_id)))
-        except (ValueError, AttributeError) as exc:
-            raise RuntimeError("C07 managed ceremony id is invalid") from exc
-        if canonical != ceremony_id or UUID(canonical).int == 0:
-            raise RuntimeError("C07 managed ceremony id is not canonical")
-        return str(mode), canonical
-    raise RuntimeError("C07 requires the deployment ceremony; ordinary Alembic/startup is refused")
 
 
 def _constraint_state(bind: sa.engine.Connection, table: str, name: str) -> tuple[str, bool, bool] | None:
@@ -561,17 +508,7 @@ def _expected_expression(bind: sa.engine.Connection, table: str, predicate: str)
 
 
 def _acquire_barrier(bind: sa.engine.Connection) -> None:
-    raw_timeout = bind.scalar(
-        sa.text("SELECT current_setting(:key, true)"),
-        {"key": _STATEMENT_TIMEOUT_GUC},
-    )
     timeout_ms = 20 * 60 * 1000
-    if raw_timeout not in {None, ""}:
-        if not isinstance(raw_timeout, str) or not raw_timeout.isascii() or not raw_timeout.isdecimal():
-            raise RuntimeError("C07 statement timeout proof is invalid")
-        timeout_ms = int(raw_timeout)
-        if not 1 <= timeout_ms <= 20 * 60 * 1000:
-            raise RuntimeError("C07 statement timeout is outside its window")
     timeout_rows = bind.execute(
         sa.text(
             "SELECT name, setting, unit FROM pg_catalog.pg_settings "
@@ -814,36 +751,8 @@ def _assert_final_shape(
             raise RuntimeError(f"C07 post-check failed {table}.{name}")
 
 
-def _record_meta(bind: sa.engine.Connection, key: str, value: str) -> None:
-    bind.execute(
-        sa.text(
-            "INSERT INTO app_meta (key, value, updated_at) "
-            "VALUES (:key, :value, CURRENT_TIMESTAMP) "
-            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, "
-            "updated_at = EXCLUDED.updated_at"
-        ),
-        {"key": key, "value": value},
-    )
-
-
-def _record_phase(
-    bind: sa.engine.Connection,
-    *,
-    mode: str,
-    ceremony_id: str,
-) -> None:
-    _record_meta(bind, "money_contract_phase", "c07_money_minor_bigint_v1")
-    _record_meta(bind, _CEREMONY_ID_KEY, ceremony_id)
-    _record_meta(
-        bind,
-        _LIFECYCLE_STATE_KEY,
-        _FRESH_STATE if mode == _FRESH_MODE else _PENDING_STATE,
-    )
-
-
 def upgrade() -> None:
     bind = op.get_bind()
-    mode, ceremony_id = _ceremony_context(bind)
     _acquire_barrier(bind)
     types = _column_types(bind)
     states = set(types.values())
@@ -863,12 +772,7 @@ def upgrade() -> None:
     _assert_final_shape(bind, expected)
     if set(_column_types(bind).values()) != {"int8"}:
         raise RuntimeError("C07 post-check found a non-BIGINT money column")
-    _record_phase(
-        bind,
-        mode=mode,
-        ceremony_id=ceremony_id,
-    )
 
 
 def downgrade() -> None:
-    raise RuntimeError("C07 is forward-only: BIGINT must never be narrowed to INTEGER")
+    raise RuntimeError("Money BIGINT migration is forward-only and cannot narrow to INTEGER")

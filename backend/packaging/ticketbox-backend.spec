@@ -30,39 +30,23 @@ BACKEND = os.path.dirname(HERE)
 # otherwise collect_submodules silently returns an empty list and imports used
 # only by the physical generation modules are absent from the frozen helper.
 sys.path.insert(0, BACKEND)
-retired_frozen_app_modules = {
-    "app.database._c07_ceremony",
-    "app.database._c07_ceremony_document",
-    "app.database._c07_commit_reconciliation",
-    "app.database._c07_execution",
-    "app.database._c07_fresh_source_bootstrap",
-    "app.database._c07_host_evidence_helpers",
-    "app.database._c07_host_freeze_evidence",
-    "app.database._c07_maintenance_digest",
-    "app.database._c07_maintenance_plan",
-    "app.database._c07_maintenance_upgrade",
-    "app.database._c07_maintenance_upgrade_action",
-    "app.database._c07_production_authority",
-    "app.database._c07_production_connection",
-    "app.database._c07_production_context",
-    "app.database._c07_production_contract",
-    "app.database._c07_production_contract_types",
-    "app.database._c07_production_fence",
-    "app.database._c07_production_migration",
-    "app.database._c07_production_ready",
-    "app.database._c07_production_recovery",
-    "app.database._c07_production_restore",
-    "app.database._c07_production_shape",
-    "app.database._c07_receipt",
-    "app.database._c07_receipt_validation",
-    "app.database._c07_runtime_projection",
-    "app.database._c07_transaction_timeout",
-}
+discovered_app_modules = collect_submodules("app", on_error="raise")
+retired_c07_modules = sorted(
+    module
+    for module in discovered_app_modules
+    if module == "app.database_generation_c07_contract"
+    or module.startswith("app.database._c07_")
+)
+if retired_c07_modules:
+    raise RuntimeError(
+        "retired C07 database modules returned to the frozen source graph: "
+        + ", ".join(retired_c07_modules)
+    )
 app_hiddenimports = [
     module
-    for module in collect_submodules("app", on_error="raise")
+    for module in discovered_app_modules
     if module
-    not in retired_frozen_app_modules | {
+    not in {
         "app.database._managed_schema_upgrade",
         "app.database._database_generation_target_verification",
     }
@@ -73,8 +57,10 @@ for required_app_module in (
     "app.canonical_money_facts_contract",
     "app.database._database_generation_program",
     "app.database._database_generation_runtime_admission",
-    "app.database_generation_c07_contract",
+    "app.database._managed_postgres_role_authority",
     "app.database_model_registry",
+    "app.database._money_schema_attestation",
+    "app.database._postgres_operation_failures",
     "app.tenant_contract",
 ):
     if required_app_module not in app_hiddenimports:
@@ -147,7 +133,7 @@ excludes = [
     "_sqlite3",
     "pysqlite2",
     "MySQLdb",
-    *sorted(retired_frozen_app_modules),
+    *retired_c07_modules,
 ]
 
 a = Analysis(
@@ -193,12 +179,12 @@ exe = EXE(
 # this console helper for build-program validation, the one managed schema
 # transaction and isolated-target verification. Both binaries share the same
 # PYZ/Analysis and therefore the same attested generation code.
-c07_migrator_exe = EXE(
+database_maintenance_exe = EXE(
     pyz,
     a.scripts,
     [],
     exclude_binaries=True,
-    name="ticketbox-c07-migrator",
+    name="ticketbox-database-maintenance",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -215,7 +201,7 @@ c07_migrator_exe = EXE(
 # everything into a single self-extracting file.
 coll = COLLECT(
     exe,
-    c07_migrator_exe,
+    database_maintenance_exe,
     a.binaries,
     a.datas,
     strip=False,

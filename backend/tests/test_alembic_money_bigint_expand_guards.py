@@ -10,18 +10,20 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal, engine
-from app.database._c07_contract import C07_TARGET_REVISION, C07CeremonyError
-from app.database._c07_execution_shape import _money_shape as execution_money_shape
+from app.database._managed_postgres_migration_runtime import _prearmed_transaction
+from app.database._money_schema_attestation import (
+    MoneySchemaAttestationError,
+    read_money_schema_shape,
+)
 from app.models import RecurringItem
 from app.money_contract import (
     MONEY_COLUMNS_V1,
-    MONEY_CONTRACT_PHASE_C07,
-    MONEY_CONTRACT_PHASE_KEY,
     MONEY_REMOVED_LEGACY_CHECKS_V1,
 )
 from tests._infra.c07_money_migration import (
     HEAD_REVISION,
     PREVIOUS_REVISION,
+    alembic_config,
     column_type,
     constraint_state,
     current_revision,
@@ -34,6 +36,22 @@ from tests._infra.c07_money_migration import (
 )
 
 pytestmark = pytest.mark.real_db
+
+
+def test_money_widening_uses_caller_transaction_without_c07_context() -> None:
+    """Alembic owns the graph; the host owns only the bounded transaction."""
+
+    reset_schema()
+    config = alembic_config()
+    with engine.connect() as connection, _prearmed_transaction(
+        connection,
+        timeout_ms=20 * 60 * 1000,
+        access_mode="read_write",
+    ):
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+
+    assert current_revision() == "20260809_0001"
 
 
 def test_frozen_migration_legacy_checks_match_ready_absence_contract() -> None:
@@ -247,11 +265,11 @@ def test_ready_shape_rejects_retained_legacy_check() -> None:
                 "CHECK (amount_cents IS NULL OR amount_cents >= 0)"
             )
         )
-        with pytest.raises(C07CeremonyError, match="retained legacy CHECK"):
-            execution_money_shape(
-                connection,
-                target_revision=C07_TARGET_REVISION,
-            )
+        with pytest.raises(
+            MoneySchemaAttestationError,
+            match="retained legacy CHECK",
+        ):
+            read_money_schema_shape(connection)
 
 
 def test_widen_emits_no_empty_alter_for_rate_only_tables(
@@ -327,7 +345,7 @@ def test_mid_migration_failure_rolls_back_all_rewrites(monkeypatch) -> None:
     assert current_revision() == PREVIOUS_REVISION
 
 
-def test_phase_receipt_does_not_raise_schema_compatibility_floor() -> None:
+def test_money_widening_does_not_raise_schema_compatibility_floor() -> None:
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     with engine.connect() as connection:
@@ -335,12 +353,7 @@ def test_phase_receipt_does_not_raise_schema_compatibility_floor() -> None:
     run_alembic(command.upgrade, "head")
     with engine.connect() as connection:
         after = connection.scalar(text("SELECT value FROM app_meta WHERE key = 'schema_min_compatible'"))
-        phase = connection.scalar(
-            text("SELECT value FROM app_meta WHERE key = :key"),
-            {"key": MONEY_CONTRACT_PHASE_KEY},
-        )
     assert after == before
-    assert phase == MONEY_CONTRACT_PHASE_C07
 
 
 def test_downgrade_refuses_narrowing() -> None:

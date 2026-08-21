@@ -7,8 +7,6 @@ from enum import Enum
 
 MONEY_MINOR_MAX = 9_000_000_000_000
 MONEY_AGGREGATE_MAX = 9_007_199_254_740_991
-MONEY_CONTRACT_PHASE_KEY = "money_contract_phase"
-MONEY_CONTRACT_PHASE_C07 = "c07_money_minor_bigint_v1"
 
 
 class MoneySign(Enum):

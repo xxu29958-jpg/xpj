@@ -46,7 +46,7 @@ def test_public_failure_receipt_separates_identity_and_database_state() -> None:
     operation = install[install.index("$operationLock = Enter-TicketboxLifecycleLock") :]
     reader = windows[
         windows.index("function TryLoadInstallPublicFailure") : windows.index(
-            "function C07ServiceInstallationFailureMessage"
+            "function ServiceInstallationFailureMessage"
         )
     ]
 
@@ -60,7 +60,7 @@ def test_public_failure_receipt_separates_identity_and_database_state() -> None:
     assert '$databaseMutationState = "not_started"' in operation
     identity_assigned = operation.index('$receiptInstallationIdState = "assigned"')
     identity_value = operation.index(
-        "$receiptInstallationId = [string]$c07InstallationIdentity.InstallationId"
+        "$receiptInstallationId = [string]$installationIdentity.InstallationId"
     )
     database_possible = operation.index(
         '$databaseMutationState = "started_or_possible"'
@@ -79,7 +79,7 @@ def test_public_failure_receipt_separates_identity_and_database_state() -> None:
     assert "InstallationIdState = 'not_assigned'" in reader
     assert "InstallationId <> ''" in reader
     assert "InstallationIdState = 'assigned'" in reader
-    assert "IsC07FailureSummaryOperationId(InstallationId)" in reader
+    assert "IsInstallerPublicFailureOperationId(InstallationId)" in reader
     assert "installation ID：尚未分配" in reader
     host_reader = reader[
         reader.index("else if FailureCode = 'postgres_host_authority_validation_failed'") :

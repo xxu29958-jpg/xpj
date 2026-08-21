@@ -13,8 +13,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.canonical_money_facts import canonical_money_facts_sha256
 from app.database import SessionLocal, engine
-from app.database._c07_execution import _analyze_affected_tables
-from app.database._c07_transaction_timeout import c07_prearmed_transaction
+from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.models import (
     BillSplitInvitation,
     Budget,
@@ -34,7 +33,6 @@ from tests._infra.c07_money_migration import (
     current_revision,
     reset_schema,
     run_alembic,
-    run_alembic_without_c07_context,
     seed_boundary_facts,
     seed_cross_currency_invitation,
     seed_legacy_csv_import_error_row,
@@ -44,9 +42,6 @@ from tests._infra.c07_money_migration import (
 )
 from tests._infra.c07_money_protocol_probe import (
     run_database_generation_upgrade as _run_database_generation_upgrade,
-)
-from tests._infra.c07_money_runtime_checks import (
-    assert_production_deadline_preserves_tighter_timeouts,
 )
 from tests._infra.c07_money_seed_pending_upload import (
     seed_legacy_pending_upload_money,
@@ -73,27 +68,6 @@ def test_fresh_upgrade_has_complete_shape() -> None:
     assert_head_shape()
 
 
-def test_production_statistics_refresh_is_verified_and_replay_stable() -> None:
-    reset_schema()
-    run_alembic(command.upgrade, PREVIOUS_REVISION)
-    _run_database_generation_upgrade(PREVIOUS_REVISION, HEAD_REVISION)
-
-    with engine.begin() as connection:
-        committed = _analyze_affected_tables(connection)
-    with engine.begin() as connection:
-        observed = _analyze_affected_tables(connection)
-
-    assert committed["result"] == observed["result"] == "verified"
-    assert committed["table_count"] == observed["table_count"] == 18
-    assert committed["table_set_sha256"] == observed["table_set_sha256"]
-    assert committed["elapsed_ms"] >= 0
-    assert observed["elapsed_ms"] >= 0
-
-
-def test_production_deadline_preserves_tighter_postgresql_timeouts() -> None:
-    assert_production_deadline_preserves_tighter_timeouts()
-
-
 def _idle_transaction_timeout_ms(connection) -> int:
     driver_connection = connection.connection.driver_connection
     original_autocommit = bool(driver_connection.autocommit)
@@ -112,7 +86,11 @@ def _idle_transaction_timeout_ms(connection) -> int:
 def test_prearmed_transaction_restores_session_after_success() -> None:
     with engine.connect() as connection:
         previous_ms = _idle_transaction_timeout_ms(connection)
-        with c07_prearmed_transaction(connection, timeout_ms=500):
+        with _prearmed_transaction(
+            connection,
+            timeout_ms=500,
+            access_mode="read_write",
+        ):
             assert connection.scalar(
                 text(
                     "SELECT setting::bigint FROM pg_catalog.pg_settings "
@@ -130,7 +108,11 @@ def test_prearmed_transaction_timeout_rolls_back_and_discards_connection() -> No
 
         with (
             pytest.raises(DBAPIError),
-            c07_prearmed_transaction(connection, timeout_ms=500),
+            _prearmed_transaction(
+                connection,
+                timeout_ms=500,
+                access_mode="read_write",
+            ),
         ):
             assert connection.scalar(
                 text(
@@ -153,6 +135,29 @@ def test_prearmed_transaction_timeout_rolls_back_and_discards_connection() -> No
         assert replacement.scalar(
             text("SELECT to_regclass(:table)"),
             {"table": "public.c07_prearmed_timeout_probe"},
+        ) is None
+
+
+def test_prearmed_read_only_transaction_rejects_schema_mutation() -> None:
+    with (
+        engine.connect() as connection,
+        pytest.raises(DBAPIError),
+        _prearmed_transaction(
+            connection,
+            timeout_ms=5000,
+            access_mode="read_only",
+        ),
+    ):
+        connection.execute(
+            text(
+                "CREATE TABLE generation_read_only_violation "
+                "(probe integer PRIMARY KEY)"
+            )
+        )
+
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT to_regclass('public.generation_read_only_violation')")
         ) is None
 
 
@@ -196,15 +201,6 @@ def test_exported_snapshot_survives_five_second_fence_timeout() -> None:
         cleanup_elapsed = time.monotonic() - cleanup_started
 
     assert cleanup_elapsed < 2.0
-
-
-def test_empty_existing_source_schema_cannot_impersonate_fresh_install() -> None:
-    reset_schema()
-    run_alembic(command.upgrade, PREVIOUS_REVISION)
-    with pytest.raises(RuntimeError, match="requires the deployment ceremony"):
-        run_alembic_without_c07_context(command.upgrade, HEAD_REVISION)
-    assert current_revision() == PREVIOUS_REVISION
-    assert column_type("expenses", "amount_cents") in {"integer", "int4"}
 
 
 def test_upgrade_preserves_legacy_values_and_exposes_c07_release_bounds() -> None:

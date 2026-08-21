@@ -38,12 +38,62 @@ ISS = PACKAGING / "ticketbox-installer.iss"
 FLOW = PACKAGING / "ticketbox-installer-flow.isph"
 BUILD = PACKAGING / "build_inno_installer.ps1"
 PROVENANCE = BACKEND / "scripts" / "windows_build_provenance.ps1"
+BACKEND_BUILD = BACKEND / "scripts" / "build_backend_exe.ps1"
+BACKEND_PROVENANCE = BACKEND / "scripts" / "windows_backend_build_provenance.ps1"
+GENERATION_PROGRAM_BUILD = BACKEND / "scripts" / "build_database_generation_program.py"
+BACKEND_SPEC = PACKAGING / "ticketbox-backend.spec"
+RELEASE_CONFIG = PACKAGING / "windows-release-config.json"
+BUILD_TOOLCHAIN = PACKAGING / "windows-build-toolchain.json"
+_C07_RETIREMENT_GUARDS = {
+    BACKEND_SPEC: (
+        "retired_c07_modules = sorted(",
+        'if module == "app.database_generation_c07_contract"',
+        'or module.startswith("app.database._c07_")',
+        "if retired_c07_modules:",
+        '"retired C07 database modules returned to the frozen source graph: "',
+        '+ ", ".join(retired_c07_modules)',
+        "*retired_c07_modules,",
+    ),
+    BACKEND_BUILD: (
+        "$retiredC07Sources = @(",
+        '-Filter "_c07_*.py"',
+        "$retiredC07Contract = Join-Path `",
+        '"app\\database_generation_c07_contract.py"',
+        "if ($retiredC07Sources.Count -ne 0 -or (Test-Path -LiteralPath $retiredC07Contract)) {",
+        'throw "Retired C07 database modules returned to the source snapshot."',
+        '$_ -match "\'app\\.database\\._c07_[^\']+\'$" -or',
+        '$_ -match "\'app\\.database_generation_c07_contract\'$"',
+        'throw "Frozen backend archive contains retired C07 database modules."',
+    ),
+}
 
 
 def _inno_function(source: str, name: str, next_name: str) -> str:
     start = source.index(f"function {name}(")
     end = source.index(f"function {next_name}(", start)
     return source[start:end]
+
+
+def _owner_failure_handoff_is_exact(source: str) -> bool:
+    owner = _function(source, "Invoke-TicketboxInstalledDatabaseGeneration")
+    normalized = re.sub(r"\s+", " ", owner)
+    return "Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup" in normalized
+
+
+def _unexpected_c07_production_lines(sources: dict[Path, str]) -> list[str]:
+    violations: list[str] = []
+    for path, source in sources.items():
+        remaining = list(_C07_RETIREMENT_GUARDS.get(path, ()))
+        for line_number, line in enumerate(source.splitlines(), start=1):
+            if "c07" not in line.lower():
+                continue
+            stripped = line.strip()
+            if stripped in remaining:
+                remaining.remove(stripped)
+            else:
+                violations.append(f"{path}:{line_number}:{stripped}")
+        violations.extend(f"{path}:missing:{line}" for line in remaining)
+    return violations
 
 
 def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authorities() -> None:
@@ -61,6 +111,44 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     installer = INSTALLER.read_text(encoding="utf-8-sig")
     flow = FLOW.read_text(encoding="utf-8-sig")
     production = "\n".join(path.read_text(encoding="utf-8-sig") for path in PACKAGING.rglob("*.ps1"))
+    production_sources: dict[Path, str] = {}
+    for path in PACKAGING.rglob("*"):
+        if (
+            not path.is_file()
+            or "tests" in path.parts
+            or path.suffix.lower() not in {
+                ".isph",
+                ".iss",
+                ".json",
+                ".ps1",
+                ".py",
+                ".spec",
+            }
+        ):
+            continue
+        production_sources[path] = path.read_text(encoding="utf-8-sig")
+    for path in (
+        BACKEND_BUILD,
+        BACKEND_PROVENANCE,
+        GENERATION_PROGRAM_BUILD,
+        PROVENANCE,
+        RELEASE_CONFIG,
+        BUILD_TOOLCHAIN,
+    ):
+        production_sources[path] = path.read_text(encoding="utf-8-sig")
+    assert _unexpected_c07_production_lines(production_sources) == []
+    for mutation_path in (
+        BACKEND_SPEC,
+        BACKEND_BUILD,
+        BACKEND_PROVENANCE,
+        GENERATION_PROGRAM_BUILD,
+        PROVENANCE,
+        RELEASE_CONFIG,
+        BUILD_TOOLCHAIN,
+    ):
+        mutated = dict(production_sources)
+        mutated[mutation_path] += "\npositive_ticketbox_c07_lifecycle_producer\n"
+        assert _unexpected_c07_production_lines(mutated)
     assert installer.count("Invoke-TicketboxInstalledDatabaseGeneration `") == 1
     assert '. $C07DatabaseScript' not in installer
     for database_owner in (
@@ -170,6 +258,33 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     assert "host_contract_sha256" in policy
     assert "projection_contract_sha256" in policy
     assert 'source_kind = "empty"' in source
+    assert owner.count("catch { $cleanup += $_ }") >= 3
+    cleanup_start = owner.index("finally {", owner.index("catch { $primary = $_ }"))
+    maintenance_cleanup = owner.index(
+        "Close-TicketboxDatabaseGenerationMaintenanceAuthority `",
+        cleanup_start,
+    )
+    credentials_cleanup = owner.index(
+        "Close-TicketboxDatabaseGenerationCredentials $credentials",
+        maintenance_cleanup,
+    )
+    runtime_cleanup = owner.index(
+        "Close-TicketboxDatabaseGenerationRuntimeCredentials `",
+        credentials_cleanup,
+    )
+    assert cleanup_start < maintenance_cleanup < credentials_cleanup < runtime_cleanup
+    assert _owner_failure_handoff_is_exact(owner)
+    for escaped_handoff in (
+        owner.replace(
+            "Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup",
+            "Throw-TicketboxDatabaseGenerationOperationFailure $primary @()",
+        ),
+        owner.replace(
+            "Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup",
+            "Throw-TicketboxDatabaseGenerationOperationFailure $null $cleanup",
+        ),
+    ):
+        assert not _owner_failure_handoff_is_exact(escaped_handoff)
     for leaked_mode in ("fresh_install", "legacy_adoption", "runtime_ready", "forward_repair"):
         assert leaked_mode not in (
             owner + policy + contract + artifacts + credentials + role_fence + database_binding + source
@@ -204,6 +319,14 @@ def test_target_execution_authority_is_retry_stable_and_binding_is_insert_only(t
         CONTRACT.read_text(encoding="utf-8-sig"),
         "Throw-TicketboxDatabaseGenerationOperationFailure",
     )
+    close_credentials = _function(
+        CREDENTIALS.read_text(encoding="utf-8-sig"),
+        "Close-TicketboxDatabaseGenerationCredentials",
+    )
+    close_runtime_credentials = _function(
+        CREDENTIALS.read_text(encoding="utf-8-sig"),
+        "Close-TicketboxDatabaseGenerationRuntimeCredentials",
+    )
     binding = _function(
         database_binding,
         "Set-TicketboxDatabaseGenerationDatabaseBinding",
@@ -232,6 +355,8 @@ function Assert-TicketboxDatabaseGenerationExactProperties {{ param($Value, $Exp
 function Assert-TicketboxDatabaseGenerationLowerSha256 {{ param($Value, $Label) }}
 {authority}
 {failure}
+{close_credentials}
+{close_runtime_credentials}
 $intent = [pscustomobject]@{{ PayloadSha256 = ('a' * 64); Payload = [pscustomobject]@{{
     operation_id = '11111111-1111-4111-8111-111111111111'
     target_revision = '20260809_0001'
@@ -259,17 +384,57 @@ $rejected = $false
 try {{ New-TicketboxDatabaseGenerationExecutionAuthority $intent $source $unknown | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'unknown execution outcome was accepted' }}
 $primaryError = [InvalidOperationException]::new('primary')
-$primaryError.Data['TicketboxC07FailureCode'] = 'C07-PRIMARY'
-$primaryError.Data['TicketboxC07FailureCodes'] = @('C07-PRIMARY')
+$primaryError.Data['TicketboxFailureCode'] = 'C07-PRIMARY'
+$primaryError.Data['TicketboxFailureCodes'] = @('C07-PRIMARY')
 try {{ throw $primaryError }} catch {{ $primary = $_ }}
-try {{ throw [InvalidOperationException]::new('cleanup') }} catch {{ $cleanup = $_ }}
-try {{ Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup }} catch {{ $aggregate = $_.Exception }}
+try {{ throw [InvalidOperationException]::new('cleanup-one') }} catch {{ $cleanupOne = $_ }}
+try {{ throw [InvalidOperationException]::new('cleanup-two') }} catch {{ $cleanupTwo = $_ }}
+try {{ Throw-TicketboxDatabaseGenerationOperationFailure $primary @($cleanupOne, $cleanupTwo) }} catch {{ $aggregate = $_.Exception }}
 if (
     $aggregate -isnot [AggregateException] -or
-    $aggregate.InnerExceptions.Count -ne 2 -or
-    [string]$aggregate.Data['TicketboxC07FailureCode'] -cne 'C07-PRIMARY' -or
-    @($aggregate.Data['TicketboxC07FailureCodes']).Count -ne 1
+    $aggregate.InnerExceptions.Count -ne 3 -or
+    [string]$aggregate.Data['TicketboxFailureCode'] -cne 'C07-PRIMARY' -or
+    @($aggregate.Data['TicketboxFailureCodes']).Count -ne 1
 ) {{ throw 'aggregate failure lost primary identity' }}
+$script:disposed = @()
+function New-FailingSecret([string]$Name) {{
+    $secret = [pscustomobject]@{{ Name = $Name }}
+    $secret | Add-Member ScriptMethod Dispose {{
+        $script:disposed += $this.Name
+        throw "dispose failure: $($this.Name)"
+    }}
+    return $secret
+}}
+$credentials = [pscustomobject]@{{
+    RuntimePassword = New-FailingSecret 'runtime'
+    MigratorPassword = New-FailingSecret 'migrator'
+    RuntimeVerifier = 'runtime-verifier'
+    MigratorVerifier = 'migrator-verifier'
+    Artifact = @{{}}
+}}
+try {{ Close-TicketboxDatabaseGenerationCredentials $credentials }}
+catch {{ $credentialCleanup = $_.Exception }}
+if (
+    $credentialCleanup -isnot [AggregateException] -or
+    $credentialCleanup.InnerExceptions.Count -ne 2 -or
+    ($script:disposed -join ',') -cne 'runtime,migrator' -or
+    $null -ne $credentials.RuntimePassword -or
+    $null -ne $credentials.MigratorPassword
+) {{ throw 'credential cleanup did not preserve every failure and attempt' }}
+$runtimeCredentials = [pscustomobject]@{{
+    RuntimePassword = New-FailingSecret 'runtime-again'
+    HttpBootstrapSecret = New-FailingSecret 'http'
+    Artifact = @{{}}
+}}
+try {{ Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials }}
+catch {{ $runtimeCleanup = $_.Exception }}
+if (
+    $runtimeCleanup -isnot [AggregateException] -or
+    $runtimeCleanup.InnerExceptions.Count -ne 2 -or
+    ($script:disposed -join ',') -cne 'runtime,migrator,runtime-again,http' -or
+    $null -ne $runtimeCredentials.RuntimePassword -or
+    $null -ne $runtimeCredentials.HttpBootstrapSecret
+) {{ throw 'runtime credential cleanup did not preserve every failure and attempt' }}
 """
     run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")
 
@@ -417,7 +582,7 @@ $lock = [pscustomobject]@{{ Operation = $operationStream }}
 $start = @{{
     InstallerState = '{state_root}'; LifecycleLock = $lock
     PreinstallFacts = $preinstallFacts; TargetBackendVersion = '1.2.3'
-    MigrationHelperSize = 456; MigrationHelperSha256 = ('b' * 64)
+    MaintenanceHelperSize = 456; MaintenanceHelperSha256 = ('b' * 64)
     ProgramContract = $program; HostContract = $hostContract
     ProjectionContract = $projectionContract
 }}
@@ -438,13 +603,30 @@ $readback = Read-TicketboxDatabaseGenerationIntentContext `
     -HostContract $hostContract `
     -ProjectionContract $projectionContract
 $after = [IO.File]::ReadAllBytes($second.Artifact.Path)
+$driftRejected = 0
+$start.MaintenanceHelperSha256 = ('c' * 64)
+try {{ Start-TicketboxDatabaseGenerationIntent @start | Out-Null }} catch {{ $driftRejected += 1 }}
+$start.MaintenanceHelperSha256 = ('b' * 64)
+$program.Sha256 = ('d' * 64)
+try {{ Start-TicketboxDatabaseGenerationIntent @start | Out-Null }} catch {{ $driftRejected += 1 }}
+$program.Sha256 = ('a' * 64)
+$program.TargetRevision = '20260810_0001'
+try {{ Start-TicketboxDatabaseGenerationIntent @start | Out-Null }} catch {{ $driftRejected += 1 }}
+$program.TargetRevision = '20260809_0001'
+$hostContract.pg_major = 18
+try {{ Start-TicketboxDatabaseGenerationIntent @start | Out-Null }} catch {{ $driftRejected += 1 }}
+$hostContract.pg_major = 17
+$projectionContract.backend_port = 9876
+try {{ Start-TicketboxDatabaseGenerationIntent @start | Out-Null }} catch {{ $driftRejected += 1 }}
+$projectionContract.backend_port = 8765
 $operationStream.Dispose()
 if (
     $first.Artifact.PayloadSha256 -cne $second.Artifact.PayloadSha256 -or
     $first.Artifact.PayloadSha256 -cne $readback.Artifact.PayloadSha256 -or
-    ([Convert]::ToBase64String($before) -cne [Convert]::ToBase64String($after))
+    ([Convert]::ToBase64String($before) -cne [Convert]::ToBase64String($after)) -or
+    $driftRejected -ne 5
 ) {{
-    throw 'intent write/read/retry did not preserve exact bytes'
+    throw 'intent retry did not preserve exact immutable release binding'
 }}
         $dependencyNames = @(
             'windows_atomic_artifacts.ps1',

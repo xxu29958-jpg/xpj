@@ -19,6 +19,7 @@ trust — the role is created with a password (ignored under trust) for both.
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -164,16 +165,18 @@ def test_owner_preflight_allows_role_that_owns_the_tables():
         eng.dispose()
 
 
-def test_ordinary_startup_refuses_before_owner_preflight_or_upgrade(monkeypatch):
-    """Managed revisions are host-owned and refused before mutation wiring."""
+def test_installed_runtime_refuses_before_owner_preflight_or_upgrade(monkeypatch):
+    """The frozen runtime leaves a behind revision to its host owner."""
     import app.database as db_pkg
+    from app.database import _database_generation_program as program_reader
     from app.services import backup_service
 
+    alembic = db_pkg.load_alembic_context()
     calls: list[str] = []
     monkeypatch.setattr(
         db_pkg,
         "_assert_existing_schema_owner_ready",
-        lambda: calls.append("owner_preflight"),
+        lambda _connection: calls.append("owner_preflight"),
     )
     monkeypatch.setattr(
         backup_service,
@@ -188,13 +191,24 @@ def test_ordinary_startup_refuses_before_owner_preflight_or_upgrade(monkeypatch)
         "alembic.command.stamp",
         lambda *args, **kwargs: calls.append("stamp"),
     )
+    monkeypatch.setattr(
+        program_reader,
+        "load_installed_database_generation_program",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        db_pkg,
+        "load_alembic_context",
+        lambda *, installed_program=None: alembic,
+    )
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
 
     with db_pkg.engine.begin() as conn:
         conn.execute(text("UPDATE alembic_version SET version_num = '20260630_0002'"))
 
     with pytest.raises(
         db_pkg.DatabaseMigrationPreflightError,
-        match="inspect-only REFUSED",
+        match="安装器.*短命 migrator",
     ):
         db_pkg.init_db()
 

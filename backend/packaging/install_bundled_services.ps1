@@ -120,7 +120,7 @@ $BootstrapExposureRecoveryGuardPath = Join-Path $DataRoot "bootstrap-exposure-re
 $LegacyRecoveryRequiredPath = Join-Path $AppData "installer-recovery-required.json"
 $ProgramDir = Join-Path $InstallDir "program\ticketbox-backend"
 $BackendExe = Join-Path $ProgramDir "ticketbox-backend.exe"
-$C07MigrationHelper = Join-Path $ProgramDir "ticketbox-c07-migrator.exe"
+$DatabaseMaintenanceHelper = Join-Path $ProgramDir "ticketbox-database-maintenance.exe"
 $ShawlExe = Join-Path $InstallDir "shawl\shawl.exe"
 $InstalledBuildManifestPath = Join-Path $ScriptDir "BUILD_PROVENANCE.json"
 $LifecycleScript = Join-Path $ScriptDir "windows_service_lifecycle.ps1"
@@ -556,22 +556,22 @@ function New-TicketboxInstallCompensationAggregateFailure {
     $aggregateFailure.Data["TicketboxInstallCompensationFailed"] = $true
     $aggregateFailure.Data["TicketboxInstallPublicFailureCode"] =
         "unclassified_service_install_failure"
-    if ($InstallFailure.Data.Contains("TicketboxC07FailureCode")) {
-        $aggregateFailure.Data["TicketboxC07FailureCode"] =
-            $InstallFailure.Data["TicketboxC07FailureCode"]
+    if ($InstallFailure.Data.Contains("TicketboxFailureCode")) {
+        $aggregateFailure.Data["TicketboxFailureCode"] =
+            $InstallFailure.Data["TicketboxFailureCode"]
     }
     $failureCodes = @(
         $causes |
             ForEach-Object {
-                if ($_.Data.Contains("TicketboxC07FailureCode")) {
-                    [string]$_.Data["TicketboxC07FailureCode"]
+                if ($_.Data.Contains("TicketboxFailureCode")) {
+                    [string]$_.Data["TicketboxFailureCode"]
                 }
             } |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
             Select-Object -Unique
     )
     if ($failureCodes.Count -gt 0) {
-        $aggregateFailure.Data["TicketboxC07FailureCodes"] =
+        $aggregateFailure.Data["TicketboxFailureCodes"] =
             $failureCodes -join ","
     }
     return $aggregateFailure
@@ -606,8 +606,8 @@ function New-TicketboxInstallFinalizationAggregateFailure {
     $aggregateFailure.Data["TicketboxInstallFinalizationFailed"] = $true
     if ($null -ne $OperationFailure) {
         foreach ($key in @(
-            "TicketboxC07FailureCode",
-            "TicketboxC07FailureCodes",
+            "TicketboxFailureCode",
+            "TicketboxFailureCodes",
             "TicketboxInstallCompensationFailed",
             "TicketboxInstallPublicFailureCode"
         )) {
@@ -619,15 +619,15 @@ function New-TicketboxInstallFinalizationAggregateFailure {
     $failureCodes = @(
         $causes |
             ForEach-Object {
-                if ($_.Data.Contains("TicketboxC07FailureCode")) {
-                    [string]$_.Data["TicketboxC07FailureCode"]
+                if ($_.Data.Contains("TicketboxFailureCode")) {
+                    [string]$_.Data["TicketboxFailureCode"]
                 }
             } |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
             Select-Object -Unique
     )
     if ($failureCodes.Count -gt 0) {
-        $aggregateFailure.Data["TicketboxC07FailureCodes"] =
+        $aggregateFailure.Data["TicketboxFailureCodes"] =
             $failureCodes -join ","
     }
     return $aggregateFailure
@@ -1667,15 +1667,15 @@ function Invoke-TicketboxInstallFailureCompensation {
         $failureCodes = @(
             $failures |
                 ForEach-Object {
-                    if ($_.Data.Contains("TicketboxC07FailureCode")) {
-                        [string]$_.Data["TicketboxC07FailureCode"]
+                    if ($_.Data.Contains("TicketboxFailureCode")) {
+                        [string]$_.Data["TicketboxFailureCode"]
                     }
                 } |
                 Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
                 Select-Object -Unique
         )
         if ($failureCodes.Count -gt 0) {
-            $aggregateFailure.Data["TicketboxC07FailureCodes"] =
+            $aggregateFailure.Data["TicketboxFailureCodes"] =
                 $failureCodes -join ","
         }
         throw $aggregateFailure
@@ -1698,7 +1698,7 @@ Assert-File (Join-Path $PgBin "psql.exe") "psql.exe"
 Assert-File (Join-Path $PgBin "pg_dump.exe") "pg_dump.exe"
 Assert-File (Join-Path $PgBin "pg_restore.exe") "pg_restore.exe"
 Assert-File $BackendExe "ticketbox-backend.exe"
-Assert-File $C07MigrationHelper "ticketbox-c07-migrator.exe"
+Assert-File $DatabaseMaintenanceHelper "ticketbox-database-maintenance.exe"
 Assert-File $ShawlExe "shawl.exe"
 $installedBuildManifest = Read-TicketboxInstalledBuildManifest `
     -Path $InstalledBuildManifestPath `
@@ -1896,7 +1896,7 @@ $mutationStarted = $false
 $serviceCompensationAuthority =
     New-TicketboxInstallServiceCompensationAuthority
 $DeferredPreservedDataBackup = $false
-$installedC07PayloadLease = $null
+$installedGenerationPayloadLease = $null
 $resolvedPublicFailurePath = ""
 $resolvedDiagnosticLogPath = ""
 $receiptInstallationOperationId = $LifecycleFinalizationAttemptId
@@ -2011,13 +2011,13 @@ try {
     Initialize-TicketboxSecureInstallRoot `
         -InstallDir $InstallDir `
         -ServiceReadExecuteAccounts $serviceReadAccounts | Out-Null
-    $installedC07PayloadLease =
-        Enter-TicketboxInstalledC07PayloadAuthorityLease `
+    $installedGenerationPayloadLease =
+        Enter-TicketboxInstalledDatabaseGenerationPayloadLease `
             -InstallDir $InstallDir `
             -InstallerManifestPath $InstalledBuildManifestPath `
             -ExpectedPgMajor $TargetPgMajor
     $installedBuildManifest =
-        $installedC07PayloadLease.InstalledBuildManifest
+        $installedGenerationPayloadLease.InstalledBuildManifest
     $installLifecycleStage = "host_preparation"
     if ($InstallerLockOwnerProcessId -gt 0) {
         if (
@@ -2202,9 +2202,9 @@ try {
     $databaseGenerationIntent = $databaseGenerationIntentContext.Artifact
 
     $installLifecycleStage = "installation_identity"
-    $c07PendingIdentityPath =
+    $pendingInstallationIdentityPath =
         Get-TicketboxPendingInstallationIdentityPath $DataRoot
-    $c07InstallationReleaseCandidate =
+    $installationReleaseCandidate =
         Get-TicketboxInstallationReleaseCandidate `
             -DataRoot $DataRoot `
             -InstallDir $InstallDir `
@@ -2214,11 +2214,11 @@ try {
             -BackendServiceName $BackendServiceName `
             -BuildManifestPath $InstalledBuildManifestPath
     try {
-        $c07InstallationIdentity = if (
-            Test-Path -LiteralPath $c07PendingIdentityPath
+        $installationIdentity = if (
+            Test-Path -LiteralPath $pendingInstallationIdentityPath
         ) {
             Repair-TicketboxRecoverableInstallationIdentityAcl `
-                -Candidate $c07InstallationReleaseCandidate `
+                -Candidate $installationReleaseCandidate `
                 -Pending | Out-Null
             Read-TicketboxPersistentInstallationIdentity `
                 -DataRoot $DataRoot `
@@ -2240,16 +2240,16 @@ try {
                     [string]$databaseGenerationIntent.Payload.installation_id
                 )
         }
-        $c07PendingIdentityResolution =
+        $pendingInstallationIdentityResolution =
             Resolve-TicketboxRecoverableFreshInstallPendingIdentity `
-                -Candidate $c07InstallationReleaseCandidate `
-                -Identity $c07InstallationIdentity `
+                -Candidate $installationReleaseCandidate `
+                -Identity $installationIdentity `
                 -LifecycleReceipt $lifecycleReceipt
-        $c07InstallationIdentity = $c07PendingIdentityResolution.Identity
+        $installationIdentity = $pendingInstallationIdentityResolution.Identity
         if (
-            [string]$c07InstallationIdentity.OperationId -cne
+            [string]$installationIdentity.OperationId -cne
                 [string]$databaseGenerationIntent.Payload.operation_id -or
-            [string]$c07InstallationIdentity.InstallationId -cne
+            [string]$installationIdentity.InstallationId -cne
                 [string]$databaseGenerationIntent.Payload.installation_id
         ) {
             throw "PENDING installation identity 与 preinstall generation intent 漂移。"
@@ -2265,14 +2265,14 @@ try {
         throw $identityFailure
     }
     $receiptInstallationOperationId =
-        [string]$c07InstallationIdentity.OperationId
-    $receiptInstallationId = [string]$c07InstallationIdentity.InstallationId
+        [string]$installationIdentity.OperationId
+    $receiptInstallationId = [string]$installationIdentity.InstallationId
     $receiptInstallationIdState = "assigned"
     $installLifecycleStage = "owner_handoff_adoption"
     try {
         $handoffDisposition = Adopt-TicketboxOwnerBootstrapHandoff `
-            -ExpectedOperationId ([string]$c07InstallationIdentity.OperationId) `
-            -ExpectedInstallationId ([string]$c07InstallationIdentity.InstallationId)
+            -ExpectedOperationId ([string]$installationIdentity.OperationId) `
+            -ExpectedInstallationId ([string]$installationIdentity.InstallationId)
         if ($handoffDisposition -ceq "pending") {
             Write-Ok "已接管上次中断的 installation owner 短期配对交付。"
         }
@@ -2288,17 +2288,17 @@ try {
         $ownerBindingFailure.Data["TicketboxInstallPublicFailureCode"] =
             "installation_owner_binding_failed"
         $ownerBindingFailure.Data["TicketboxInstallationOperationId"] =
-            [string]$c07InstallationIdentity.OperationId
+            [string]$installationIdentity.OperationId
         $ownerBindingFailure.Data["TicketboxInstallationId"] =
-            [string]$c07InstallationIdentity.InstallationId
+            [string]$installationIdentity.InstallationId
         throw $ownerBindingFailure
     }
-    if ($c07InstallationIdentity.State -ceq "PENDING") {
+    if ($installationIdentity.State -ceq "PENDING") {
         Set-TicketboxLifecycleReceiptDatabaseGenerationOperation `
             -Path $LifecycleReceiptPath `
             -Receipt $lifecycleReceipt `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-            -OperationId $c07InstallationIdentity.OperationId
+            -OperationId $installationIdentity.OperationId
         $lifecycleReceipt = Read-TicketboxLifecycleReceipt `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
@@ -2310,23 +2310,19 @@ try {
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId
         if (
             [string]$lifecycleReceipt.database_generation_operation_id -cne
-                [string]$c07InstallationIdentity.OperationId
+                [string]$installationIdentity.OperationId
         ) {
             throw "安装事务未原子绑定 database generation operation。"
         }
     }
     $databaseGenerationReleaseContract =
         New-TicketboxDatabaseGenerationReleaseContract `
-            -InstallationIdentity $c07InstallationIdentity `
-            -ReleaseCandidate $c07InstallationReleaseCandidate
+            -InstallationIdentity $installationIdentity `
+            -ReleaseCandidate $installationReleaseCandidate
     $installLifecycleStage = "database_cluster"
     $databaseMutationState = "started_or_possible"
-    [void](Initialize-PgClusterIfNeeded -InitdbInvoker {
-        param($BootstrapState)
-        Invoke-TicketboxServiceOwnedInitdb `
-            -BootstrapState $BootstrapState `
-            -CompensationAuthority $serviceCompensationAuthority
-    })
+    [void](Initialize-PgClusterIfNeeded `
+        -CompensationAuthority $serviceCompensationAuthority)
     Initialize-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
@@ -2377,7 +2373,7 @@ try {
         -Path $LifecycleReceiptPath `
         -Receipt $lifecycleReceipt `
         -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-        -OperationId ([string]$c07InstallationIdentity.OperationId) `
+        -OperationId ([string]$installationIdentity.OperationId) `
         -CurrentSha256 ([string]$databaseGeneration.CurrentSha256)
     $resumedBootstrapSecret = Resolve-TicketboxBootstrapExposureRecoveryIntent `
         -DatabaseUrl $databaseUrl `
@@ -2400,8 +2396,8 @@ try {
         try {
             Complete-FirstOwnerBootstrapIfEnabled `
                 -DatabaseUrl $databaseUrl `
-                -InstallationOperationId ([string]$c07InstallationIdentity.OperationId) `
-                -InstallationId ([string]$c07InstallationIdentity.InstallationId)
+                -InstallationOperationId ([string]$installationIdentity.OperationId) `
+                -InstallationId ([string]$installationIdentity.InstallationId)
         }
         catch {
             $ownerBindingFailure = [InvalidOperationException]::new(
@@ -2411,9 +2407,9 @@ try {
             $ownerBindingFailure.Data["TicketboxInstallPublicFailureCode"] =
                 "installation_owner_binding_failed"
             $ownerBindingFailure.Data["TicketboxInstallationOperationId"] =
-                [string]$c07InstallationIdentity.OperationId
+                [string]$installationIdentity.OperationId
             $ownerBindingFailure.Data["TicketboxInstallationId"] =
-                [string]$c07InstallationIdentity.InstallationId
+                [string]$installationIdentity.InstallationId
             throw $ownerBindingFailure
         }
     }
@@ -2465,8 +2461,8 @@ catch {
 finally {
     [Exception[]]$finalizationFailures = @()
     try {
-        Close-TicketboxInstalledC07PayloadAuthorityLease `
-            $installedC07PayloadLease
+        Close-TicketboxInstalledDatabaseGenerationPayloadLease `
+            $installedGenerationPayloadLease
     }
     catch {
         $finalizationFailure = $_.Exception

@@ -102,11 +102,10 @@
   bill-split total-cap serialization, advisor failure reason codes, and
   thumbnail cleanup rollback.
 
-- Legacy UploadLink rows with missing `expires_at` are now backfilled to
-  `UPLOAD_LINK_TTL_DAYS + (id % UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS)`.
-  The default spread is 30 days, so old links do not all expire on the same
-  day after a cloud or multi-user upgrade. Operators can raise
-  `UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS` before migration for a wider rollout.
+- The unshipped UploadLink expiry revision deterministically backfills rows with
+  a frozen 90-day TTL plus an `id % 30` spread. `UPLOAD_LINK_TTL_DAYS` controls
+  newly issued links only; migration behavior no longer depends on ambient
+  process environment.
 
 - Public UploadLink daily byte limits are now reserved in the database before
   the request body is read. Concurrent workers share the same quota row, failed

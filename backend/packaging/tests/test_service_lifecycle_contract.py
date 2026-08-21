@@ -408,7 +408,7 @@ if ($stdinWatch.ElapsedMilliseconds -ge 10000) {{ throw 'blocked stdin exceeded 
         inherited = json.loads(evidence["InheritedEnvironmentJson"])
         assert isolated == {
             "pg": [["PGPASSFILE", str(tmp_path / "trusted-c07.pgpass")]],
-            "sentinel": "保留-小票夹",
+            "sentinel": None,
             "has_pseudo": False,
         }
         inherited_pg = {name.upper(): value for name, value in inherited["pg"]}
@@ -742,7 +742,7 @@ catch {{
     $injectedAggregate =
         $failure -is [TicketboxProcessTreeTerminationAggregateException] -and
         $failure.FailureCode -ceq 'tree_termination_unconfirmed' -and
-        $failure.Data['TicketboxC07FailureCode'] -ceq 'tree_termination_unconfirmed' -and
+        $failure.Data['TicketboxFailureCode'] -ceq 'tree_termination_unconfirmed' -and
         $inner.Count -eq 2 -and
         $inner[0].Message -like '*超过允许*' -and
         $inner[1] -is [TicketboxProcessTreeTerminationException] -and

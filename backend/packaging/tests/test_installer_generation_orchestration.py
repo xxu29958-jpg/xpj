@@ -1,3 +1,5 @@
+"""Installer Generation Owner cutover contracts."""
+
 from __future__ import annotations
 
 import json
@@ -79,6 +81,39 @@ def test_installer_generation_cutover_has_one_shipped_owner() -> None:
     assert '"packaging\\windows_database_generation.ps1"' in provenance
 
 
+def test_post_mutation_main_failure_cannot_bypass_compensation() -> None:
+    source = INSTALLER.read_text(encoding="utf-8-sig")
+    def assert_compensation_gate(candidate: str) -> None:
+        failure_path = candidate[
+            candidate.rindex("catch {\n    $failure = $_.Exception") : candidate.rindex(
+                "finally {\n    [Exception[]]$finalizationFailures"
+            )
+        ]
+        mutation_gate = failure_path.index("if ($mutationStarted) {")
+        compensation = failure_path.index(
+            "Invoke-TicketboxInstallFailureCompensation",
+            mutation_gate,
+        )
+        receipt = failure_path.index(
+            "Publish-TicketboxInstallPublicFailureReceipt",
+            compensation,
+        )
+        operation_failure = failure_path.index("$operationFailure = $failure", receipt)
+        assert mutation_gate < compensation < receipt < operation_failure
+
+    assert_compensation_gate(source)
+    for mutation in (
+        source.replace("if ($mutationStarted) {", "if ($false) {", 1),
+        source.replace(
+            "            Invoke-TicketboxInstallFailureCompensation `",
+            "            Write-Output `",
+            1,
+        ),
+    ):
+        with pytest.raises(ValueError):
+            assert_compensation_gate(mutation)
+
+
 @pytest.mark.parametrize("engine", powershell_contract_engines())
 def test_installer_compensation_failure_preserves_both_typed_causes(
     engine: str,
@@ -93,7 +128,7 @@ def test_installer_compensation_failure_preserves_both_typed_causes(
             "$ErrorActionPreference = 'Stop'",
             helper,
             "$install = [InvalidOperationException]::new('install failed')",
-            "$install.Data['TicketboxC07FailureCode'] = 'manifest_not_ready'",
+            "$install.Data['TicketboxFailureCode'] = 'manifest_not_ready'",
             "$compensation = "
             "[InvalidOperationException]::new('compensation failed')",
             "$failure = New-TicketboxInstallCompensationAggregateFailure "
@@ -103,7 +138,7 @@ def test_installer_compensation_failure_preserves_both_typed_causes(
             "  inner_count = $failure.InnerExceptions.Count",
             "  install_message = $failure.InnerExceptions[0].Message",
             "  compensation_message = $failure.InnerExceptions[1].Message",
-            "  failure_code = $failure.Data['TicketboxC07FailureCode']",
+            "  failure_code = $failure.Data['TicketboxFailureCode']",
             "  compensation_failed = "
             "$failure.Data['TicketboxInstallCompensationFailed']",
             "} | ConvertTo-Json -Compress",
@@ -199,20 +234,20 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "  if ($Name -ceq $script:BackendServiceName) {",
             "    $failure = [UnauthorizedAccessException]::new("
             "'backend disable failed')",
-            "    $failure.Data['TicketboxC07FailureCode'] = "
+            "    $failure.Data['TicketboxFailureCode'] = "
             "'backend_disable_denied'",
             "    throw $failure",
             "  }",
             "  $failure = [InvalidOperationException]::new("
             "'postgres disable failed')",
-            "  $failure.Data['TicketboxC07FailureCode'] = "
+            "  $failure.Data['TicketboxFailureCode'] = "
             "'postgres_disable_failed'",
             "  throw $failure",
             "}",
             "function Assert-TicketboxPgClusterStoppedAfterFailure {",
             "  $failure = [TimeoutException]::new("
             "'cluster stopped assertion failed')",
-            "  $failure.Data['TicketboxC07FailureCode'] = "
+            "  $failure.Data['TicketboxFailureCode'] = "
             "'cluster_stop_unconfirmed'",
             "  throw $failure",
             "}",
@@ -221,7 +256,7 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "$InstallDir, $DataRoot, $Reason)",
             "  $failure = [IO.IOException]::new("
             "'recovery marker failed')",
-            "  $failure.Data['TicketboxC07FailureCode'] = "
+            "  $failure.Data['TicketboxFailureCode'] = "
             "'recovery_marker_write_failed'",
             "  throw $failure",
             "}",
@@ -243,17 +278,17 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "if ($null -eq $compensation) { "
             "throw 'expected compensation failure' }",
             "$install = [FormatException]::new('install action failed')",
-            "$install.Data['TicketboxC07FailureCode'] = 'install_action_failed'",
+            "$install.Data['TicketboxFailureCode'] = 'install_action_failed'",
             "$operation = New-TicketboxInstallCompensationAggregateFailure "
             "-InstallFailure $install -CompensationFailure $compensation",
             "$close = [IO.InvalidDataException]::new("
             "'payload lease close failed')",
-            "$close.Data['TicketboxC07FailureCode'] = "
+            "$close.Data['TicketboxFailureCode'] = "
             "'payload_lease_close_failed'",
             "$close.Data['TicketboxInstallFinalizationStep'] = "
             "'payload_lease_close'",
             "$unlock = [ApplicationException]::new('lifecycle lock exit failed')",
-            "$unlock.Data['TicketboxC07FailureCode'] = "
+            "$unlock.Data['TicketboxFailureCode'] = "
             "'lifecycle_lock_exit_failed'",
             "$unlock.Data['TicketboxInstallFinalizationStep'] = "
             "'lifecycle_lock_exit'",
@@ -268,14 +303,14 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "[string]$_.Data['TicketboxInstallCompensationStep']",
             "    finalization_step = "
             "[string]$_.Data['TicketboxInstallFinalizationStep']",
-            "    failure_code = [string]$_.Data['TicketboxC07FailureCode']",
+            "    failure_code = [string]$_.Data['TicketboxFailureCode']",
             "  }",
             "})",
             "[ordered]@{",
             "  type = $failure.GetType().FullName",
             "  inner_count = $failure.InnerExceptions.Count",
             "  records = $records",
-            "  failure_codes = $failure.Data['TicketboxC07FailureCodes']",
+            "  failure_codes = $failure.Data['TicketboxFailureCodes']",
             "  compensation_failed = "
             "$failure.Data['TicketboxInstallCompensationFailed']",
             "  finalization_failed = "
@@ -386,7 +421,7 @@ def test_installer_finalization_failure_preserves_all_four_causes(
                 "New-TicketboxInstallFinalizationAggregateFailure",
             ),
             "$install = [InvalidOperationException]::new('install failed')",
-            "$install.Data['TicketboxC07FailureCode'] = 'manifest_not_ready'",
+            "$install.Data['TicketboxFailureCode'] = 'manifest_not_ready'",
             "$compensation = "
             "[InvalidOperationException]::new('compensation failed')",
             "$operation = New-TicketboxInstallCompensationAggregateFailure "
@@ -401,7 +436,7 @@ def test_installer_finalization_failure_preserves_all_four_causes(
             "  inner_count = $failure.InnerExceptions.Count",
             "  messages = @($failure.InnerExceptions | "
             "ForEach-Object { $_.Message })",
-            "  failure_code = $failure.Data['TicketboxC07FailureCode']",
+            "  failure_code = $failure.Data['TicketboxFailureCode']",
             "  compensation_failed = "
             "$failure.Data['TicketboxInstallCompensationFailed']",
             "  finalization_failed = "
@@ -430,7 +465,7 @@ def test_installer_finalization_failure_preserves_all_four_causes(
     finalization = source[source.index("$operationFailure = $null") :]
     assert "$operationFailure = $failure" in finalization
     lease_close = finalization.index(
-        "Close-TicketboxInstalledC07PayloadAuthorityLease"
+        "Close-TicketboxInstalledDatabaseGenerationPayloadLease"
     )
     lock_exit = finalization.index("Exit-TicketboxLifecycleLock", lease_close)
     aggregate = finalization.index(
@@ -455,7 +490,7 @@ def test_prepare_failure_preserves_action_compensations_and_lock_exit(
             "$ErrorActionPreference = 'Stop'",
             helper,
             "$action = [InvalidOperationException]::new('prepare action failed')",
-            "$action.Data['TicketboxC07FailureCode'] = 'shape_not_ready'",
+            "$action.Data['TicketboxFailureCode'] = 'shape_not_ready'",
             "$cleanup = [InvalidOperationException]::new('recovery cleanup failed')",
             "$acl = [InvalidOperationException]::new('ACL restore failed')",
             "$service = [InvalidOperationException]::new('service restore failed')",
@@ -473,8 +508,8 @@ def test_prepare_failure_preserves_action_compensations_and_lock_exit(
             "  inner_count = $failure.InnerExceptions.Count",
             "  messages = @($failure.InnerExceptions | "
             "ForEach-Object { $_.Message })",
-            "  failure_code = $failure.Data['TicketboxC07FailureCode']",
-            "  failure_codes = $failure.Data['TicketboxC07FailureCodes']",
+            "  failure_code = $failure.Data['TicketboxFailureCode']",
+            "  failure_codes = $failure.Data['TicketboxFailureCodes']",
             "  compensation_failed = "
             "$failure.Data['TicketboxPrepareCompensationFailed']",
             "  finalization_failed = "

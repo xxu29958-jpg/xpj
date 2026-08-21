@@ -82,13 +82,20 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
     $runtimePassword = ConvertTo-TicketboxPostgresqlSecureString `
         ([string]$connection.Password) `
         "database generation runtime projection password"
+    $primary = $null
+    $cleanup = @()
     try {
         if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
             $Intent $Candidate $HostAuthority $runtimePassword)) {
             throw "runtime projection 已存在但 bootstrap authority 尚未退役。"
         }
     }
-    finally { $runtimePassword.Dispose() }
+    catch { $primary = $_ }
+    finally {
+        try { $runtimePassword.Dispose() }
+        catch { $cleanup += $_ }
+    }
+    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
     $payload = [ordered]@{
         schema = "ticketbox-database-generation-runtime-projection-v1"
         operation_id = [string]$Intent.Payload.operation_id

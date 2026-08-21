@@ -29,12 +29,6 @@ from app.money_contract_types import (
     final_sign_bounds,
 )
 from app.money_contract_types import (
-    MONEY_CONTRACT_PHASE_C07 as MONEY_CONTRACT_PHASE_C07,
-)
-from app.money_contract_types import (
-    MONEY_CONTRACT_PHASE_KEY as MONEY_CONTRACT_PHASE_KEY,
-)
-from app.money_contract_types import (
     MoneyCheck as MoneyCheck,
 )
 from app.money_contract_types import (
@@ -43,13 +37,13 @@ from app.money_contract_types import (
 
 logger = logging.getLogger(__name__)
 
-_MAX_C07_INTEGER_TEXT_LENGTH = len(str(-MONEY_MINOR_MAX))
+_MAX_MONEY_MINOR_TEXT_LENGTH = len(str(-MONEY_MINOR_MAX))
 
 
 def is_canonical_money_minor_text(value: object) -> bool:
     """Return whether ``value`` is the exact base-10 integer wire form."""
 
-    if type(value) is not str or not value or len(value) > _MAX_C07_INTEGER_TEXT_LENGTH:
+    if type(value) is not str or not value or len(value) > _MAX_MONEY_MINOR_TEXT_LENGTH:
         return False
     if value == "0":
         return True

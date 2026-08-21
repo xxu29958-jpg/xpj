@@ -7,8 +7,8 @@ function New-TicketboxDatabaseGenerationIntent {
         [Parameter(Mandatory = $true)][string]$InstallerState,
         [Parameter(Mandatory = $true)][object]$LifecycleLock,
         [Parameter(Mandatory = $true)][string]$TargetBackendVersion,
-        [Parameter(Mandatory = $true)][int64]$MigrationHelperSize,
-        [Parameter(Mandatory = $true)][string]$MigrationHelperSha256,
+        [Parameter(Mandatory = $true)][int64]$MaintenanceHelperSize,
+        [Parameter(Mandatory = $true)][string]$MaintenanceHelperSha256,
         [Parameter(Mandatory = $true)][object]$ProgramContract,
         [Parameter(Mandatory = $true)][object]$HostContract,
         [Parameter(Mandatory = $true)][object]$ProjectionContract
@@ -16,14 +16,14 @@ function New-TicketboxDatabaseGenerationIntent {
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
     ConvertTo-TicketboxNumericVersion $TargetBackendVersion | Out-Null
     Assert-TicketboxDatabaseGenerationLowerSha256 `
-        $MigrationHelperSha256 `
+        $MaintenanceHelperSha256 `
         "database generation migration helper"
     Assert-TicketboxDatabaseGenerationExactProperties `
         $ProgramContract `
         @("RelativePath", "Sha256", "Size", "TargetRevision") `
         "database generation program contract"
     if (
-        $MigrationHelperSize -lt 1 -or
+        $MaintenanceHelperSize -lt 1 -or
         [string]$ProgramContract.RelativePath -cne
             $script:TicketboxDatabaseGenerationProgramRelativePath -or
         [int64]$ProgramContract.Size -lt 1
@@ -49,15 +49,15 @@ function New-TicketboxDatabaseGenerationIntent {
         ([guid][string]$existing.Payload.installation_id).ToString("D")
     }
     $expected = [ordered]@{
-        schema = "ticketbox-database-generation-intent-v1"
+        schema = "ticketbox-database-generation-intent-v2"
         operation_id = $operationId
         installation_id = $installationId
         expected_predecessor_sha256 = ""
         target_backend_version = $TargetBackendVersion
-        migration_helper_relative_path =
-            $script:TicketboxDatabaseGenerationMigrationHelperRelativePath
-        migration_helper_size = $MigrationHelperSize
-        migration_helper_sha256 = $MigrationHelperSha256
+        database_maintenance_helper_relative_path =
+            $script:TicketboxDatabaseMaintenanceHelperRelativePath
+        database_maintenance_helper_size = $MaintenanceHelperSize
+        database_maintenance_helper_sha256 = $MaintenanceHelperSha256
         generation_program_relative_path = [string]$ProgramContract.RelativePath
         generation_program_size = [int64]$ProgramContract.Size
         generation_program_sha256 = [string]$ProgramContract.Sha256
@@ -97,8 +97,8 @@ function Start-TicketboxDatabaseGenerationIntent {
         [Parameter(Mandatory = $true)][object]$LifecycleLock,
         [Parameter(Mandatory = $true)][object]$PreinstallFacts,
         [Parameter(Mandatory = $true)][string]$TargetBackendVersion,
-        [Parameter(Mandatory = $true)][int64]$MigrationHelperSize,
-        [Parameter(Mandatory = $true)][string]$MigrationHelperSha256,
+        [Parameter(Mandatory = $true)][int64]$MaintenanceHelperSize,
+        [Parameter(Mandatory = $true)][string]$MaintenanceHelperSha256,
         [Parameter(Mandatory = $true)][object]$ProgramContract,
         [Parameter(Mandatory = $true)][object]$HostContract,
         [Parameter(Mandatory = $true)][object]$ProjectionContract
@@ -127,8 +127,8 @@ function Start-TicketboxDatabaseGenerationIntent {
         -InstallerState $InstallerState `
         -LifecycleLock $LifecycleLock `
         -TargetBackendVersion $TargetBackendVersion `
-        -MigrationHelperSize $MigrationHelperSize `
-        -MigrationHelperSha256 $MigrationHelperSha256 `
+        -MaintenanceHelperSize $MaintenanceHelperSize `
+        -MaintenanceHelperSha256 $MaintenanceHelperSha256 `
         -ProgramContract $ProgramContract `
         -HostContract $HostContract `
         -ProjectionContract $ProjectionContract

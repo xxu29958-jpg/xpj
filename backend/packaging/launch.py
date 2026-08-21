@@ -64,7 +64,7 @@ _MANAGED_SCHEMA_UPGRADE_SWITCH = "--managed-schema-upgrade"
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
 _GENERATION_PROGRAM_FILENAME = "DATABASE_GENERATION_PROGRAM.json"
-_DATABASE_GENERATION_HELPER_NAME = "ticketbox-c07-migrator.exe"
+_DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
 _MANAGED_SCHEMA_MODULE_NAME = "_ticketbox_managed_schema_upgrade"
 _DATABASE_GENERATION_TARGET_MODULE_NAME = "_ticketbox_database_generation_target"
 _GENERATION_PROGRAM_VALIDATION_FIELDS = (
@@ -73,10 +73,6 @@ _GENERATION_PROGRAM_VALIDATION_FIELDS = (
     "target_revision",
     "revision_count",
     "generation_program_sha256",
-    "c07_source_revision",
-    "c07_target_revision",
-    "c07_revision_manifest",
-    "c07_revision_manifest_sha256",
 )
 _MANAGED_SCHEMA_RESULT_FIELDS = (
     "schema",
@@ -121,7 +117,7 @@ def _resolve_generation_program(path: Path) -> Path:
 
 def _parse_generation_program_validation_args(argv: list[str]) -> Namespace:
     parser = ArgumentParser(
-        prog="ticketbox-c07-migrator",
+        prog="ticketbox-database-maintenance",
         add_help=False,
         allow_abbrev=False,
     )
@@ -136,7 +132,7 @@ def _parse_generation_program_validation_args(argv: list[str]) -> Namespace:
 
 def _parse_managed_schema_upgrade_args(argv: list[str]) -> Namespace:
     parser = ArgumentParser(
-        prog="ticketbox-c07-migrator",
+        prog="ticketbox-database-maintenance",
         add_help=False,
         allow_abbrev=False,
     )
@@ -156,7 +152,7 @@ def _parse_managed_schema_upgrade_args(argv: list[str]) -> Namespace:
 
 def _parse_database_generation_target_args(argv: list[str]) -> Namespace:
     parser = ArgumentParser(
-        prog="ticketbox-c07-migrator",
+        prog="ticketbox-database-maintenance",
         add_help=False,
         allow_abbrev=False,
     )
@@ -175,11 +171,11 @@ def _parse_database_generation_target_args(argv: list[str]) -> Namespace:
     return parser.parse_args(argv)
 
 
-def _c07_standalone_source_path(filename: str) -> Path:
+def _maintenance_standalone_source_path(filename: str) -> Path:
     if getattr(sys, "frozen", False):
         bundle_root = getattr(sys, "_MEIPASS", None)
         if not isinstance(bundle_root, str) or not bundle_root:
-            raise RuntimeError("frozen C07 migration source root is unavailable")
+            raise RuntimeError("frozen database maintenance source root is unavailable")
         backend_root = Path(bundle_root)
     else:
         backend_root = Path(__file__).resolve().parents[1]
@@ -187,18 +183,18 @@ def _c07_standalone_source_path(filename: str) -> Path:
 
 
 @contextmanager
-def _temporary_c07_database_package(source_path: Path) -> Iterator[None]:
+def _temporary_database_package(source_path: Path) -> Iterator[None]:
     """Expose one physical helper package without importing the runtime facade."""
 
     database_module_name = "app.database"
     if database_module_name in sys.modules:
         raise RuntimeError(
-            "C07 standalone maintenance process already loaded app.database"
+            "standalone database maintenance process already loaded app.database"
         )
     app_package = importlib.import_module("app")
     if hasattr(app_package, "database"):
         raise RuntimeError(
-            "C07 standalone maintenance process has an unexpected database facade"
+            "standalone database maintenance process has an unexpected database facade"
         )
 
     package = ModuleType(database_module_name)
@@ -215,7 +211,7 @@ def _temporary_c07_database_package(source_path: Path) -> Iterator[None]:
         yield
         if sys.modules.get(database_module_name) is not package:
             raise RuntimeError(
-                "C07 standalone maintenance package identity changed"
+                "standalone database maintenance package identity changed"
             )
     finally:
         for name in tuple(sys.modules):
@@ -227,7 +223,7 @@ def _temporary_c07_database_package(source_path: Path) -> Iterator[None]:
             delattr(app_package, "database")
 
 
-def _load_c07_standalone_module(
+def _load_standalone_database_module(
     *,
     module_name: str,
     filename: str,
@@ -240,9 +236,9 @@ def _load_c07_standalone_module(
     is shipped as a PyInstaller data file and loaded under a standalone name.
     """
 
-    source_path = _c07_standalone_source_path(filename).resolve()
+    source_path = _maintenance_standalone_source_path(filename).resolve()
     if not source_path.is_file():
-        raise RuntimeError("C07 standalone maintenance source is unavailable")
+        raise RuntimeError("standalone database maintenance source is unavailable")
     backend_root = source_path.parents[2]
     backend_root_text = str(backend_root)
     if backend_root_text not in sys.path:
@@ -254,19 +250,19 @@ def _load_c07_standalone_module(
     existing = sys.modules.get(module_name)
     if isinstance(existing, ModuleType):
         if Path(str(existing.__file__)).resolve() != source_path.resolve():
-            raise RuntimeError("C07 standalone maintenance module identity changed")
+            raise RuntimeError("standalone database maintenance module identity changed")
         return existing
     spec = importlib.util.spec_from_file_location(
         module_name,
         source_path,
     )
     if spec is None or spec.loader is None:
-        raise RuntimeError("C07 standalone maintenance module is unavailable")
+        raise RuntimeError("standalone database maintenance module is unavailable")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     try:
         if database_package_seam:
-            with _temporary_c07_database_package(source_path):
+            with _temporary_database_package(source_path):
                 spec.loader.exec_module(module)
         else:
             spec.loader.exec_module(module)
@@ -277,7 +273,7 @@ def _load_c07_standalone_module(
 
 
 def _load_managed_schema_upgrade_module() -> ModuleType:
-    return _load_c07_standalone_module(
+    return _load_standalone_database_module(
         module_name=_MANAGED_SCHEMA_MODULE_NAME,
         filename="_managed_schema_upgrade.py",
         database_package_seam=True,
@@ -285,14 +281,14 @@ def _load_managed_schema_upgrade_module() -> ModuleType:
 
 
 def _load_database_generation_target_module() -> ModuleType:
-    return _load_c07_standalone_module(
+    return _load_standalone_database_module(
         module_name=_DATABASE_GENERATION_TARGET_MODULE_NAME,
         filename="_database_generation_target_verification.py",
         database_package_seam=True,
     )
 
 
-def _assert_c07_libpq_environment(pgpassfile: Path) -> None:
+def _assert_maintenance_libpq_environment(pgpassfile: Path) -> None:
     """Fail closed unless libpq sees only the attested one-shot passfile."""
 
     pg_entries = [
@@ -301,14 +297,16 @@ def _assert_c07_libpq_environment(pgpassfile: Path) -> None:
         if name.upper().startswith("PG")
     ]
     if len(pg_entries) != 1 or pg_entries[0][0].upper() != "PGPASSFILE":
-        raise RuntimeError("C07 helper libpq environment is not sealed")
+        raise RuntimeError("database maintenance helper libpq environment is not sealed")
     try:
         expected = os.path.normcase(os.path.abspath(os.fspath(pgpassfile)))
         actual = os.path.normcase(os.path.abspath(pg_entries[0][1]))
     except (OSError, TypeError, ValueError) as exc:
-        raise RuntimeError("C07 helper libpq environment is not sealed") from exc
+        raise RuntimeError(
+            "database maintenance helper libpq environment is not sealed"
+        ) from exc
     if actual != expected:
-        raise RuntimeError("C07 helper libpq environment is not sealed")
+        raise RuntimeError("database maintenance helper libpq environment is not sealed")
 
 
 def _run_generation_program_validation(
@@ -362,7 +360,7 @@ def _run_managed_schema_upgrade(
     if input_stream.read(1) != b"":
         raise RuntimeError("managed schema upgrade requires empty stdin")
 
-    _assert_c07_libpq_environment(args.pgpassfile)
+    _assert_maintenance_libpq_environment(args.pgpassfile)
     managed = _load_managed_schema_upgrade_module()
     result = managed.run_managed_schema_upgrade_action(
         database_url=args.database_url,
@@ -403,7 +401,7 @@ def _run_database_generation_target_verification(
         raise RuntimeError("database generation target verification requires redirected IO")
     if input_stream.read(1) != b"":
         raise RuntimeError("database generation target verification requires empty stdin")
-    _assert_c07_libpq_environment(args.pgpassfile)
+    _assert_maintenance_libpq_environment(args.pgpassfile)
     module = _load_database_generation_target_module()
     result = module.run_database_generation_target_verification_action(
         database_url=args.database_url,

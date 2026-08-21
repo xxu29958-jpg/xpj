@@ -9,17 +9,15 @@ import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.pool import NullPool
 
-from app.database._c07_contract import (
-    C07_SOURCE_REVISION,
-    C07_TARGET_REVISION,
-    MIGRATION_LEASE_LABEL,
-)
 from app.database._lifecycle import DatabaseLifecycleKind
+from app.database._managed_postgres_contract import MIGRATION_LEASE_LABEL
 from app.database_model_registry import Base
 
 pytestmark = pytest.mark.real_db
 
 _OLDER_REVISION = "20260630_0002"
+_MANAGED_SOURCE_REVISION = "20260722_0001"
+_MONEY_BIGINT_REVISION = "20260729_0001"
 
 
 def _stamp_revision(db_pkg, revision: str) -> None:
@@ -81,7 +79,7 @@ def _assert_migration_lease_blocks(db_pkg, calls: list[str]) -> None:
             ):
                 db_pkg.init_db()
             assert calls == []
-            assert _head_revision(db_pkg) == C07_TARGET_REVISION
+            assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
     finally:
         contender_engine.dispose()
 
@@ -101,16 +99,22 @@ def _assert_old_runtime_blocks(db_pkg, calls: list[str]) -> None:
             ):
                 db_pkg.init_db()
             assert calls == []
-            assert _head_revision(db_pkg) == C07_TARGET_REVISION
+            assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
     finally:
         old_runtime_engine.dispose()
 
 
-def test_c07_source_revision_refuses_before_backup_or_writes(monkeypatch):
-    """Ordinary startup cannot consume the C07 managed source revision."""
+@pytest.mark.parametrize("revision", [_OLDER_REVISION, _MANAGED_SOURCE_REVISION])
+def test_installed_runtime_refuses_known_behind_revision_before_writes(
+    monkeypatch,
+    revision: str,
+):
+    """The frozen runtime leaves every known behind revision to its host owner."""
     import app.database as db_pkg
+    from app.database import _database_generation_program as program_reader
     from app.services import backup_service
 
+    alembic = db_pkg.load_alembic_context()
     calls: list[str] = []
     monkeypatch.setattr(
         backup_service,
@@ -120,39 +124,23 @@ def test_c07_source_revision_refuses_before_backup_or_writes(monkeypatch):
     monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
     monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
     _patch_database_writes(monkeypatch, db_pkg, calls)
-
-    _stamp_revision(db_pkg, C07_SOURCE_REVISION)
-    before = _catalog_snapshot(db_pkg)
-    with pytest.raises(
-        db_pkg.DatabaseMigrationPreflightError,
-        match="只能由 C07 发布迁移动作推进",
-    ):
-        db_pkg.init_db()
-
-    assert calls == []
-    assert _catalog_snapshot(db_pkg) == before
-
-
-def test_older_revision_refuses_before_backup_or_writes(monkeypatch):
-    """Older managed revisions are inspect-only under ordinary startup."""
-    import app.database as db_pkg
-    from app.services import backup_service
-
-    calls: list[str] = []
     monkeypatch.setattr(
-        backup_service,
-        "create_pre_upgrade_backup",
-        lambda: calls.append("backup"),
+        program_reader,
+        "load_installed_database_generation_program",
+        lambda: object(),
     )
-    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
-    monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
-    _patch_database_writes(monkeypatch, db_pkg, calls)
+    monkeypatch.setattr(
+        db_pkg,
+        "load_alembic_context",
+        lambda *, installed_program=None: alembic,
+    )
 
-    _stamp_revision(db_pkg, _OLDER_REVISION)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    _stamp_revision(db_pkg, revision)
     before = _catalog_snapshot(db_pkg)
     with pytest.raises(
         db_pkg.DatabaseMigrationPreflightError,
-        match="inspect-only REFUSED",
+        match="安装器.*短命 migrator",
     ):
         db_pkg.init_db()
 
@@ -207,18 +195,18 @@ def test_managed_schema_at_head_skips_lifecycle_backup(monkeypatch):
     assert "seed" in calls
 
 
-def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
+def test_post_money_bigint_managed_revision_backs_up_then_upgrades(monkeypatch):
     """Managed startup is lease-fenced, then backs up and reaches head."""
     from alembic import command
 
     import app.database as db_pkg
     from app.database import _database_generation_program as program_reader
     from app.services import backup_service
-    from tests._infra.c07_alembic import run_alembic_for_test
+    from tests._infra.alembic_runtime import run_alembic_for_test
 
     alembic = db_pkg.load_alembic_context()
-    command.downgrade(alembic.config, C07_TARGET_REVISION)
-    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    command.downgrade(alembic.config, _MONEY_BIGINT_REVISION)
+    assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
 
     calls: list[str] = []
     monkeypatch.setattr(
@@ -245,7 +233,7 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
         ):
             db_pkg.init_db()
     assert calls == []
-    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
 
     # Development/operator Alembic still uses the same external-connection
     # environment. The dedicated installed-role runtime has its own topology
@@ -257,8 +245,8 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
         "head",
     )
     assert _head_revision(db_pkg) == alembic.head_revision
-    command.downgrade(alembic.config, C07_TARGET_REVISION)
-    assert _head_revision(db_pkg) == C07_TARGET_REVISION
+    command.downgrade(alembic.config, _MONEY_BIGINT_REVISION)
+    assert _head_revision(db_pkg) == _MONEY_BIGINT_REVISION
 
     _assert_migration_lease_blocks(db_pkg, calls)
     _assert_old_runtime_blocks(db_pkg, calls)
@@ -268,6 +256,37 @@ def test_post_c07_managed_revision_backs_up_then_upgrades(monkeypatch):
     assert _head_revision(db_pkg) == alembic.head_revision
     with db_pkg.engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM public.alembic_version")) == alembic.head_revision
+
+
+def test_pre_money_managed_revision_is_prearmed_before_upgrade(monkeypatch):
+    """A known source revision can execute the timeout-guarded money migration."""
+    from alembic import command
+
+    import app.database as db_pkg
+    from app.services import backup_service
+    from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
+
+    alembic = db_pkg.load_alembic_context()
+    reset_public_schema(db_pkg.engine)
+    run_alembic_for_test(
+        db_pkg.engine,
+        alembic.config,
+        command.upgrade,
+        _MANAGED_SOURCE_REVISION,
+    )
+    assert _head_revision(db_pkg) == _MANAGED_SOURCE_REVISION
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        backup_service,
+        "create_pre_upgrade_backup",
+        lambda: calls.append("backup") or SimpleNamespace(file_name="pre-money.dump"),
+    )
+
+    db_pkg.init_db()
+
+    assert calls == ["backup"]
+    assert _head_revision(db_pkg) == alembic.head_revision
 
 
 def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):

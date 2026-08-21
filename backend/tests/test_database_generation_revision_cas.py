@@ -6,9 +6,11 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
 import app.database._database_generation_executor as generation_executor
+from app.database import _database_generation_target_verification as target_verification
 from app.database._database_generation_executor import (
     DatabaseGenerationExecutionError,
 )
@@ -62,7 +64,7 @@ def _assert_alembic_owns_the_exact_transition(
     assert len(observed) == 1
     assert observed[0][0] is not None
     assert observed[0][1:] == (_RELEASE_HEAD_REVISION, topology.program)
-    assert _revision(topology.owner_url) == _RELEASE_HEAD_REVISION
+    assert _revision(topology.admin_database_url) == _RELEASE_HEAD_REVISION
 
 
 def _assert_intermediate_postcondition_is_mandatory(
@@ -94,13 +96,13 @@ def _assert_intermediate_postcondition_is_mandatory(
         topology.runtime.run(**_migration_arguments(topology))
     monkeypatch.setattr(generation_executor, "_assert_postcondition", original)
     assert _C02_TARGET_REVISION in observed
-    assert _revision(topology.owner_url) == expected_revision
+    assert _revision(topology.admin_database_url) == expected_revision
 
 
 def _assert_target_retry_revalidates_postcondition(
     topology: _ManagedTopology,
 ) -> None:
-    owner_engine = create_engine(topology.owner_url, poolclass=NullPool, future=True)
+    owner_engine = create_engine(topology.admin_database_url, poolclass=NullPool, future=True)
     try:
         with owner_engine.begin() as connection:
             connection.execute(
@@ -116,11 +118,11 @@ def _assert_target_retry_revalidates_postcondition(
             topology.runtime.run(**_migration_arguments(topology))
     finally:
         owner_engine.dispose()
-    assert _revision(topology.owner_url) == _RELEASE_HEAD_REVISION
+    assert _revision(topology.admin_database_url) == _RELEASE_HEAD_REVISION
 
 
 def _assert_executor_requires_caller_transaction(topology: _ManagedTopology) -> None:
-    engine = create_engine(topology.owner_url, poolclass=NullPool, future=True)
+    engine = create_engine(topology.admin_database_url, poolclass=NullPool, future=True)
     try:
         with engine.connect() as connection, pytest.raises(
             DatabaseGenerationExecutionError,
@@ -131,14 +133,13 @@ def _assert_executor_requires_caller_transaction(topology: _ManagedTopology) -> 
                 program=topology.program,
                 source_revision=_C07_TARGET_REVISION,
                 target_revision=_RELEASE_HEAD_REVISION,
-                operation_id=topology.operation_id,
             )
     finally:
         engine.dispose()
 
 
 def _assert_invalid_rows_fail_closed(topology: _ManagedTopology) -> None:
-    owner_engine = create_engine(topology.owner_url, poolclass=NullPool, future=True)
+    owner_engine = create_engine(topology.admin_database_url, poolclass=NullPool, future=True)
     try:
         with owner_engine.begin() as connection:
             connection.execute(text("DELETE FROM public.alembic_version"))
@@ -167,7 +168,7 @@ def _assert_invalid_rows_fail_closed(topology: _ManagedTopology) -> None:
             ).get_table_names(schema="public")
     finally:
         owner_engine.dispose()
-    assert _revision(topology.owner_url) == _C07_TARGET_REVISION
+    assert _revision(topology.admin_database_url) == _C07_TARGET_REVISION
 
 
 def test_generation_alembic_boundary_rejects_invalid_rows_and_owns_transition(
@@ -189,3 +190,40 @@ def test_generation_alembic_boundary_rejects_invalid_rows_and_owns_transition(
             expected_revision=_RELEASE_HEAD_REVISION,
         )
         _assert_target_retry_revalidates_postcondition(topology)
+
+
+def test_target_verification_consumer_is_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _managed_topology(tmp_path, monkeypatch) as topology:
+        assert topology.runtime.run(**_migration_arguments(topology)) == "target_committed"
+        original_money_facts = target_verification.canonical_money_facts_sha256
+        observations: list[str] = []
+
+        def observe_read_only(connection, *, error: type[Exception]) -> str:
+            observations.append(str(connection.scalar(text("SHOW transaction_read_only"))))
+            savepoint = connection.begin_nested()
+            try:
+                with pytest.raises(SQLAlchemyError, match="read-only transaction"):
+                    connection.execute(text("CREATE TABLE target_verifier_must_be_read_only (id integer)"))
+            finally:
+                savepoint.rollback()
+            return original_money_facts(connection, error=error)
+
+        monkeypatch.setattr(target_verification, "LIVE_DATABASE", topology.database)
+        monkeypatch.setattr(target_verification, "MIGRATOR_ROLE", topology.migrator)
+        monkeypatch.setattr(target_verification, "SCHEMA_OWNER_ROLE", topology.owner)
+        monkeypatch.setattr(target_verification, "canonical_money_facts_sha256", observe_read_only)
+        result = target_verification.run_database_generation_target_verification_action(
+            database_url=topology.migrator_url.render_as_string(hide_password=False),
+            pgpassfile=topology.pgpass,
+            generation_program_path=topology.program_path,
+            expected_generation_program_sha256=topology.program.payload_sha256,
+            operation_id=topology.operation_id,
+            database=topology.database,
+            restore_attempt_id="",
+            target_revision=_RELEASE_HEAD_REVISION,
+        )
+        assert result["alembic_revision"] == _RELEASE_HEAD_REVISION
+        assert observations == ["on"]

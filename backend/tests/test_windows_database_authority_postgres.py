@@ -1,4 +1,4 @@
-"""PostgreSQL 17 behavior proof for the Windows C07 database authority SQL."""
+"""PostgreSQL 17 behavior proof for Windows database authority semantics."""
 
 from __future__ import annotations
 
@@ -157,7 +157,7 @@ def _cleanup_role_restore_fixture(
 
 
 def test_pg17_transaction_timeout_must_be_armed_before_begin_and_rolls_back() -> None:
-    table = f"c07_timeout_probe_{uuid4().hex[:16]}"
+    table = f"generation_timeout_probe_{uuid4().hex[:16]}"
     test_database = make_url(ADMIN_TEST_DATABASE_URL).database
     assert test_database is not None
     admin_url = _conninfo(database=test_database)

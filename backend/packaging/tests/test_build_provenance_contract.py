@@ -176,7 +176,9 @@ def _write_minimal_backend(root: Path) -> Path:
     dist = root / "dist" / "ticketbox-backend"
     (dist / "_internal").mkdir(parents=True)
     (dist / "ticketbox-backend.exe").write_bytes(b"frozen-exe-v1")
-    (dist / "ticketbox-c07-migrator.exe").write_bytes(b"c07-migrator-v1")
+    (dist / "ticketbox-database-maintenance.exe").write_bytes(
+        b"database-maintenance-v1"
+    )
     (dist / "DATABASE_GENERATION_PROGRAM.json").write_text(
         '{"schema":"synthetic-generation-program"}', encoding="utf-8"
     )
@@ -278,37 +280,20 @@ def _write_minimal_installer_recipe(root: Path) -> None:
         path.write_text(f"recipe:{relative}\n", encoding="utf-8")
 
 
-def _c07_smoke_evidence_command(dist: Path) -> str:
-    target_migration = dist / "_internal" / "migrations" / "versions" / "20260729_0001_money_minor_bigint_expand.py"
+def _database_maintenance_smoke_evidence_command(dist: Path) -> str:
     program = dist / "DATABASE_GENERATION_PROGRAM.json"
     return (
         f"$smokePayload = Get-TicketboxBackendPayloadSnapshot '{_ps_literal(dist)}'; "
         f"$helper = Get-TicketboxFileEvidence '{_ps_literal(dist)}' "
-        f"'{_ps_literal(dist / 'ticketbox-c07-migrator.exe')}'; "
-        f"$moduleSha = Get-TicketboxFileSha256 '{_ps_literal(target_migration)}'; "
+        f"'{_ps_literal(dist / 'ticketbox-database-maintenance.exe')}'; "
         f"$programSha = Get-TicketboxFileSha256 '{_ps_literal(program)}'; "
-        "$revision = [ordered]@{"
-        "revision='20260729_0001';down_revision='20260722_0001';"
-        "module_sha256=$moduleSha;transactionality='postgresql_single_transaction';"
-        "reversibility='forward_only';downgrade_guard='raises_runtime_error_before_ddl';"
-        "resources=@('meta:test-contract');"
-        "asset_recovery='same_generation_database_and_assets'}; "
-        "$revisionManifest = [ordered]@{"
-        "schema='ticketbox-c07-revision-manifest-v1';"
-        "operation_kind='c07_money_minor_bigint_v1';"
-        "source_revision='20260722_0001';target_revision='20260729_0001';"
-        "revisions=@($revision)}; "
-        "$manifestJson = $revisionManifest | ConvertTo-Json -Depth 32 -Compress; "
         "$result = [ordered]@{"
-        "schema='ticketbox-database-generation-program-validation-v1';"
-        "source_revision='base';target_revision='20260729_0001';revision_count=1;"
-        "generation_program_sha256=$programSha;"
-        "c07_source_revision='20260722_0001';c07_target_revision='20260729_0001';"
-        "c07_revision_manifest=$revisionManifest;"
-        "c07_revision_manifest_sha256=(Get-TicketboxSha256HexFromText $manifestJson)}; "
+        "schema='ticketbox-database-generation-program-validation-v2';"
+        "source_revision='base';target_revision='20260809_0001';revision_count=43;"
+        "generation_program_sha256=$programSha}; "
         "$resultJson = $result | ConvertTo-Json -Depth 32 -Compress; "
         "$smoke = [ordered]@{"
-        "schema='ticketbox-database-generation-helper-smoke-v1';helper=$helper;"
+        "schema='ticketbox-database-maintenance-helper-smoke-v1';helper=$helper;"
         "payload_algorithm=$smokePayload.algorithm;"
         "payload_fingerprint=$smokePayload.fingerprint;"
         "payload_file_count=@($smokePayload.files).Count;"
@@ -341,12 +326,12 @@ def _manifest_command(root: Path, dist: Path, operation: str) -> str:
         )
         invocation = (
             f"$source = Get-TicketboxBackendSourceSnapshot '{_ps_literal(root)}'; "
-            f"{_c07_smoke_evidence_command(dist)}"
+            f"{_database_maintenance_smoke_evidence_command(dist)}"
             f"{operation} -BackendRoot '{_ps_literal(root)}' "
             f"-DistDir '{_ps_literal(dist)}' -ToolchainProvenance $toolchain "
             f"-SourceSnapshot $source -DatabaseGenerationProgramPath "
             f"'{_ps_literal(dist / 'DATABASE_GENERATION_PROGRAM.json')}' "
-            "-C07MigrationHelperSmokeEvidence $smoke | Out-Null"
+            "-DatabaseMaintenanceHelperSmokeEvidence $smoke | Out-Null"
         )
     else:
         toolchain = ""
@@ -379,8 +364,8 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert manifest["toolchain"]["uv"]["version"] == "0.11.7"
     assert manifest["toolchain"]["pyinstaller"]["version"] == "6.21.0"
     assert manifest["payload"]["executable"]["sha256"] == hashlib.sha256(b"frozen-exe-v1").hexdigest()
-    smoke = manifest["payload"]["c07_migration_helper_smoke"]
-    assert smoke["helper"] == manifest["payload"]["c07_migration_helper"]
+    smoke = manifest["payload"]["database_maintenance_helper_smoke"]
+    assert smoke["helper"] == manifest["payload"]["database_maintenance_helper"]
     assert smoke["payload_algorithm"] == manifest["payload"]["algorithm"]
     assert smoke["payload_fingerprint"] == manifest["payload"]["fingerprint"]
     assert smoke["payload_file_count"] == len(manifest["payload"]["files"])
@@ -389,13 +374,15 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert smoke["exit_code"] == 0
     assert smoke["stderr"] == "empty"
     assert smoke["result"]["source_revision"] == "base"
-    assert smoke["result"]["target_revision"] == "20260729_0001"
+    assert smoke["result"]["target_revision"] == "20260809_0001"
     assert smoke["result"]["generation_program_sha256"] == manifest["payload"]["database_generation_program"]["sha256"]
 
     validate = _manifest_command(backend, dist, "Assert-TicketboxBackendBuildManifest")
     assert _run_powershell(validate).returncode == 0
 
-    manifest["payload"]["c07_migration_helper_smoke"]["result"]["source_revision"] = "other"
+    manifest["payload"]["database_maintenance_helper_smoke"]["result"][
+        "source_revision"
+    ] = "other"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     tampered_helper_smoke = _run_powershell(validate)
     assert tampered_helper_smoke.returncode != 0
@@ -485,7 +472,7 @@ def test_installed_generation_assets_are_manifest_bound_and_held(
         payload = install_dir / "program" / "ticketbox-backend"
         for relative, content in {
             "ticketbox-backend.exe": b"backend-exe",
-            "ticketbox-c07-migrator.exe": b"migration-helper",
+            "ticketbox-database-maintenance.exe": b"maintenance-helper",
             "DATABASE_GENERATION_PROGRAM.json": b'{"schema":"synthetic-generation-program"}',
             "_internal/app/database/_database_generation_target_verification.py": b"target-verification",
             "_internal/app/database/_managed_schema_upgrade.py": b"managed-schema",
@@ -540,11 +527,11 @@ function Write-TestManifest {{
             ForEach-Object {{ $_.FullName }}
     )
     $snapshot = Get-TicketboxFileSetSnapshot $payload $paths
-    $helper = Get-TicketboxC07MigrationHelperEvidenceFromPayload $snapshot
+    $helper = Get-TicketboxDatabaseMaintenanceHelperEvidenceFromPayload $snapshot
     $program = Get-TicketboxFileEvidence `
         $payload `
         (Join-Path $payload 'DATABASE_GENERATION_PROGRAM.json')
-    {_c07_smoke_evidence_command(payload)}
+    {_database_maintenance_smoke_evidence_command(payload)}
     $secondary = [ordered]@{{
         schema_version = 4
         artifact_type = 'ticketbox-frozen-backend'
@@ -555,8 +542,8 @@ function Write-TestManifest {{
             files = @($snapshot.files)
             executable = Get-TicketboxFileEvidence $payload (Join-Path $payload 'ticketbox-backend.exe')
             database_generation_program = $program
-            c07_migration_helper = $helper
-            c07_migration_helper_smoke = $smoke
+            database_maintenance_helper = $helper
+            database_maintenance_helper_smoke = $smoke
         }}
     }}
     Write-TicketboxJsonFile $secondaryPath $secondary
@@ -571,8 +558,8 @@ function Write-TestManifest {{
             payload_fingerprint = $snapshot.fingerprint
             executable = $secondary.payload.executable
             database_generation_program = $program
-            c07_migration_helper = $helper
-            c07_migration_helper_smoke = $smoke
+            database_maintenance_helper = $helper
+            database_maintenance_helper_smoke = $smoke
             manifest = [ordered]@{{
                 path = 'dist/ticketbox-backend/BUILD_PROVENANCE.json'
                 size = [int64](Get-Item -LiteralPath $secondaryPath).Length
@@ -598,7 +585,7 @@ function Write-TestManifest {{
     Write-TicketboxJsonFile $primaryPath $primary
 }}
 Write-TestManifest
-$lease = Enter-TicketboxInstalledC07PayloadAuthorityLease `
+$lease = Enter-TicketboxInstalledDatabaseGenerationPayloadLease `
     -InstallDir $installDir `
     -InstallerManifestPath $primaryPath `
     -ExpectedPgMajor 17
@@ -651,7 +638,7 @@ try {{
     }}
 }}
 finally {{
-    Close-TicketboxInstalledC07PayloadAuthorityLease $lease
+    Close-TicketboxInstalledDatabaseGenerationPayloadLease $lease
 }}
 [System.IO.File]::WriteAllText($existing, '# restored after lease')
 [System.IO.File]::AppendAllText($existing, '# append after lease')
@@ -678,7 +665,7 @@ Write-TestManifest
 [System.IO.File]::WriteAllText($extra, '# not in secondary manifest')
 $unrecordedRejected = $false
 try {{
-    [void](Enter-TicketboxInstalledC07PayloadAuthorityLease `
+    [void](Enter-TicketboxInstalledDatabaseGenerationPayloadLease `
         -InstallDir $installDir `
         -InstallerManifestPath $primaryPath `
         -ExpectedPgMajor 17)
@@ -690,7 +677,7 @@ if (-not $unrecordedRejected) {{ throw 'unrecorded migration asset was accepted'
 Write-TestManifest
 $criticalRejected = $false
 try {{
-    [void](Enter-TicketboxInstalledC07PayloadAuthorityLease `
+    [void](Enter-TicketboxInstalledDatabaseGenerationPayloadLease `
         -InstallDir $installDir `
         -InstallerManifestPath $primaryPath `
         -ExpectedPgMajor 17)
@@ -816,7 +803,7 @@ if (-not $unicodeConsumerRejected) {{
         assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_installed_c07_payload_lease_close_preserves_dual_failures() -> None:
+def test_installed_generation_payload_lease_close_preserves_dual_failures() -> None:
     for engine in powershell_contract_engines():
         command = rf"""
 . '{_ps_literal(PROVENANCE_HELPER)}'
@@ -829,7 +816,7 @@ $lease = [pscustomobject]@{{
     Guard = [pscustomobject]@{{ Root = 'injected' }}
 }}
 $caught = $null
-try {{ Close-TicketboxInstalledC07PayloadAuthorityLease $lease }}
+try {{ Close-TicketboxInstalledDatabaseGenerationPayloadLease $lease }}
 catch {{ $caught = $_.Exception }}
 if (
     $null -eq $caught -or
@@ -838,7 +825,7 @@ if (
     $caught.InnerExceptions[0].Message -notlike '*evidence 数量漂移*' -or
     $caught.InnerExceptions[1].Message -cne
         'injected payload DACL restore crash' -or
-    [string]$caught.Data['TicketboxC07FailureCode'] -cne
+    [string]$caught.Data['TicketboxFailureCode'] -cne
         'installed_payload_lease_close_failed'
 ) {{
     $innerMessages = @(
@@ -849,7 +836,7 @@ if (
         "type=$($caught.GetType().FullName) " +
         "count=$(@($caught.InnerExceptions).Count) " +
         "messages=$($innerMessages -join ' | ') " +
-        "code=$($caught.Data['TicketboxC07FailureCode'])"
+        "code=$($caught.Data['TicketboxFailureCode'])"
     )
 }}
 """
@@ -1194,24 +1181,14 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         "_managed_schema_upgrade.py",
     ):
         assert f'"{standalone_module}"' in backend_spec
-    for retired_module in (
-        "_c07_fresh_source_bootstrap.py",
-        "_c07_maintenance_upgrade.py",
-        "_c07_production_migration.py",
-        "_c07_production_ready.py",
-        "_c07_runtime_projection.py",
-    ):
-        assert not (ROOT / "app" / "database" / retired_module).exists()
-    for retired_unlisted_module in (
-        "_c07_fresh_source_bootstrap.py",
-        "_c07_maintenance_upgrade.py",
-        "_c07_production_migration.py",
-    ):
-        assert f'"{retired_unlisted_module}"' not in backend_spec
+    assert not list((ROOT / "app" / "database").glob("_c07_*.py"))
+    assert not (ROOT / "app" / "database_generation_c07_contract.py").exists()
     for standalone_dependency in (
         "app.app_meta_observation",
         "app.canonical_money_facts",
         "app.canonical_money_facts_contract",
+        "app.database._managed_postgres_role_authority",
+        "app.database._postgres_operation_failures",
         "alembic.command",
         "alembic.config",
         "alembic.context",
@@ -1223,7 +1200,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "sys.path.insert(0, BACKEND)" in backend_spec
     assert 'collect_submodules("app", on_error="raise")' in backend_spec
     assert '"app.database._database_generation_program"' in backend_spec
-    assert '"app.database_generation_c07_contract"' in backend_spec
+    assert '"app.database._money_schema_attestation"' in backend_spec
     assert '"app.database_model_registry"' in backend_spec
     assert '"app.tenant_contract"' in backend_spec
     for required_archive_module in (
@@ -1232,79 +1209,54 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         "app.canonical_money_facts_contract",
         "app.database._database_generation_program",
         "app.database._database_generation_runtime_admission",
-        "app.database_generation_c07_contract",
+        "app.database._managed_postgres_role_authority",
         "app.database_model_registry",
+        "app.database._money_schema_attestation",
+        "app.database._postgres_operation_failures",
         "app.tenant_contract",
     ):
         assert f'"{required_archive_module}"' in backend_build
     assert "Frozen backend archive omitted required app module: $requiredModule" in backend_build
-    for retired_source_path in (
-        "app\\database\\_c07_maintenance_plan.py",
-        "app\\database\\_c07_production_authority.py",
-        "app\\database\\_c07_production_connection.py",
-        "app\\database\\_c07_production_context.py",
-        "app\\database\\_c07_production_contract.py",
-        "app\\database\\_c07_production_contract_types.py",
-        "app\\database\\_c07_production_fence.py",
-        "app\\database\\_c07_production_ready.py",
-        "app\\database\\_c07_production_recovery.py",
-        "app\\database\\_c07_production_restore.py",
-        "app\\database\\_c07_production_shape.py",
-        "app\\database\\_c07_runtime_projection.py",
-    ):
-        assert f'"{retired_source_path}"' in backend_build
-    assert "Retired database generation contract returned to the source snapshot" in backend_build
-    retired_frozen_modules = (
-        "app.database._c07_ceremony",
-        "app.database._c07_ceremony_document",
-        "app.database._c07_commit_reconciliation",
-        "app.database._c07_execution",
-        "app.database._c07_fresh_source_bootstrap",
-        "app.database._c07_host_evidence_helpers",
-        "app.database._c07_host_freeze_evidence",
-        "app.database._c07_maintenance_digest",
-        "app.database._c07_maintenance_plan",
-        "app.database._c07_maintenance_upgrade",
-        "app.database._c07_maintenance_upgrade_action",
-        "app.database._c07_production_authority",
-        "app.database._c07_production_connection",
-        "app.database._c07_production_context",
-        "app.database._c07_production_contract",
-        "app.database._c07_production_contract_types",
-        "app.database._c07_production_fence",
-        "app.database._c07_production_migration",
-        "app.database._c07_production_ready",
-        "app.database._c07_production_recovery",
-        "app.database._c07_production_restore",
-        "app.database._c07_production_shape",
-        "app.database._c07_receipt",
-        "app.database._c07_receipt_validation",
-        "app.database._c07_runtime_projection",
-        "app.database._c07_transaction_timeout",
+    assert '-Filter "_c07_*.py"' in backend_build
+    assert '"app\\database_generation_c07_contract.py"' in backend_build
+    assert "Retired C07 database modules returned to the source snapshot" in backend_build
+    assert 'module.startswith("app.database._c07_")' in backend_spec
+    assert 'module == "app.database_generation_c07_contract"' in backend_spec
+    assert "Frozen backend archive contains retired C07 database modules" in backend_build
+    assert 'name="ticketbox-database-maintenance"' in backend_spec
+    assert (
+        '$stagedDatabaseMaintenanceHelper = Join-Path $StagingDir '
+        '"ticketbox-database-maintenance.exe"'
+    ) in backend_build
+    smoke_call = backend_build.index(
+        "$databaseMaintenanceHelperSmoke = "
+        "Invoke-TicketboxDatabaseMaintenanceHelperSmoke"
     )
-    for retired_archive_module in retired_frozen_modules:
-        assert f'"{retired_archive_module}"' in backend_spec
-        assert f'"{retired_archive_module}"' in backend_build
-    assert "Frozen backend archive contains retired app module: $retiredModule" in backend_build
-    assert 'name="ticketbox-c07-migrator"' in backend_spec
-    assert '$stagedC07Helper = Join-Path $StagingDir "ticketbox-c07-migrator.exe"' in backend_build
-    smoke_call = backend_build.index("$c07MigrationHelperSmoke = Invoke-TicketboxC07MigrationHelperSmoke")
     payload_gate = backend_build.index("Assert-TicketboxPostgresOnlyFrozenPayload `")
     manifest_write = backend_build.index("Write-TicketboxBackendBuildManifest `")
     assert payload_gate < smoke_call < manifest_write
-    assert "-HelperPath $stagedC07Helper" in backend_build
-    assert "-PayloadSnapshot $c07SmokePayloadSnapshot" in backend_build
-    assert "-C07MigrationHelperSmokeEvidence $c07MigrationHelperSmoke" in backend_build
-    payload_snapshot = backend_build.index("$c07SmokePayloadSnapshot = Get-TicketboxBackendPayloadSnapshot")
-    payload_lock = backend_build.index("$C07SmokePayloadLocks = @(Enter-TicketboxFileSetReadLocks")
+    assert "-HelperPath $stagedDatabaseMaintenanceHelper" in backend_build
+    assert "-PayloadSnapshot $databaseMaintenanceSmokePayloadSnapshot" in backend_build
+    assert (
+        "-DatabaseMaintenanceHelperSmokeEvidence "
+        "$databaseMaintenanceHelperSmoke"
+    ) in backend_build
+    payload_snapshot = backend_build.index(
+        "$databaseMaintenanceSmokePayloadSnapshot = "
+        "Get-TicketboxBackendPayloadSnapshot"
+    )
+    payload_lock = backend_build.index(
+        "$DatabaseMaintenanceSmokePayloadLocks = "
+        "@(Enter-TicketboxFileSetReadLocks"
+    )
     payload_unlock = backend_build.index(
-        "Exit-TicketboxFileSetReadLocks $C07SmokePayloadLocks",
+        "Exit-TicketboxFileSetReadLocks $DatabaseMaintenanceSmokePayloadLocks",
         manifest_write,
     )
     publish = backend_build.index("Publish-TicketboxRecoverableDirectory `")
     assert payload_gate < payload_snapshot < payload_lock < smoke_call
     assert manifest_write < payload_unlock < publish
-    assert "function Invoke-TicketboxC07MigrationHelperSmoke" in backend_provenance
+    assert "function Invoke-TicketboxDatabaseMaintenanceHelperSmoke" in backend_provenance
     assert "$startInfo.FileName = $HelperPath" in backend_provenance
     assert "$startInfo.RedirectStandardInput = $true" in backend_provenance
     assert "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)" in backend_provenance
@@ -1324,7 +1276,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert '"--validate-generation-program "' in backend_provenance
     assert '"--generation-program-path "' in backend_provenance
     assert '" --expected-generation-program-sha256 "' in backend_provenance
-    assert "Assert-TicketboxC07MigrationHelperSmokeResult `" in backend_provenance
+    assert "Assert-TicketboxDatabaseMaintenanceHelperSmokeResult `" in backend_provenance
     assert "([string]$programEvidence.sha256)" in backend_provenance
     assert backend_provenance.count("Get-TicketboxBackendPayloadSnapshot $DistDir") >= 2
     assert "payload_fingerprint = [string]$PayloadSnapshot.fingerprint" in (backend_provenance)
@@ -1334,7 +1286,10 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         )
         == 2
     )
-    assert 'Assert-File (Join-Path $BackendDist "ticketbox-c07-migrator.exe")' in build
+    assert (
+        'Assert-File (Join-Path $BackendDist "ticketbox-database-maintenance.exe")'
+        in build
+    )
     assert "Read-TicketboxWindowsBuildToolchain $BackendRoot" in backend_build
     assert "prepare_windows_build_toolchain.ps1" in backend_build
     assert "-Component Backend" in backend_build

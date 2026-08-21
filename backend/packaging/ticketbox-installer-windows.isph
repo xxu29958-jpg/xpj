@@ -14,19 +14,11 @@
   ManagerMaintenanceRegistryPath = 'Software\Ticketbox';
   ManagerMaintenanceRegistryValue = 'MaintenanceOwner';
   ManagerMaintenanceRecordSchema = 'ticketbox-manager-maintenance-v1';
-  C07FailureSummarySchema = 'ticketbox-c07-installer-failure-summary-v2';
-  C07FailureSummaryFileName = 'c07-installer-failure-summary-v2.txt';
-  C07FailureSummaryMaximumBytes = 4096;
   InstallPublicFailureSchema = 'ticketbox-install-public-failure-v3';
   InstallPublicFailureFileName = 'installer-public-failure-v3.txt';
   InstallPublicFailureMaximumBytes = 4096;
   LifecycleCoordinationReadAttempts = 40;
   LifecycleCoordinationReadDelayMilliseconds = 50;
-  C07LifecycleExitVetoSchema =
-    'ticketbox-c07-installer-lifecycle-exit-veto-v2';
-  C07LifecycleExitVetoFileName =
-    'c07-installer-lifecycle-exit-veto-v2.txt';
-  C07LifecycleExitVetoMaximumBytes = 1024;
   LifecycleSafetyScriptSha256 = '{#LifecycleSafetyScriptSha256}';
   WindowsSecurityPrimitivesScriptSha256 = '{#WindowsSecurityPrimitivesScriptSha256}';
   WindowsSecurityByteArrayScriptSha256 = '{#WindowsSecurityByteArrayScriptSha256}';
@@ -64,10 +56,10 @@
   DatabaseGenerationPolicyScriptSha256 =
     '{#DatabaseGenerationPolicyScriptSha256}';
   DatabaseGenerationProgramSha256 = '{#DatabaseGenerationProgramSha256}';
-  DatabaseGenerationMigrationHelperSize =
-    '{#DatabaseGenerationMigrationHelperSize}';
-  DatabaseGenerationMigrationHelperSha256 =
-    '{#DatabaseGenerationMigrationHelperSha256}';
+  DatabaseMaintenanceHelperSize =
+    '{#DatabaseMaintenanceHelperSize}';
+  DatabaseMaintenanceHelperSha256 =
+    '{#DatabaseMaintenanceHelperSha256}';
   DatabaseGenerationPgDumpSize = '{#DatabaseGenerationPgDumpSize}';
   DatabaseGenerationPgDumpSha256 = '{#DatabaseGenerationPgDumpSha256}';
   DatabaseGenerationPgRestoreSize = '{#DatabaseGenerationPgRestoreSize}';
@@ -1017,7 +1009,7 @@ begin
   LifecycleFinalizationAttemptSequence :=
     LifecycleFinalizationAttemptSequence + 1;
   BindingText :=
-    'ticketbox-c07-lifecycle-finalization-attempt-v1|' +
+    'ticketbox-lifecycle-finalization-attempt-v1|' +
     LifecycleLockReleaseNonce + '|' +
     IntToStr(LifecycleLockOwnerProcessId) + '|' +
     LifecycleLockOwnerStartedFileTimeHigh + '|' +
@@ -1815,9 +1807,9 @@ begin
   ExpectedNames[3] := 'BACKEND_VERSION_FLOOR';
   ExpectedNames[4] := 'INSTALLATION_ID';
   ExpectedNames[5] := 'BUILD_MANIFEST_SHA256';
-  ExpectedNames[6] := 'MIGRATION_HELPER_RELATIVE_PATH';
-  ExpectedNames[7] := 'MIGRATION_HELPER_SIZE';
-  ExpectedNames[8] := 'MIGRATION_HELPER_SHA256';
+  ExpectedNames[6] := 'DATABASE_MAINTENANCE_HELPER_RELATIVE_PATH';
+  ExpectedNames[7] := 'DATABASE_MAINTENANCE_HELPER_SIZE';
+  ExpectedNames[8] := 'DATABASE_MAINTENANCE_HELPER_SHA256';
   ExpectedNames[9] := 'DATABASE_GENERATION_PROGRAM_RELATIVE_PATH';
   ExpectedNames[10] := 'DATABASE_GENERATION_PROGRAM_SIZE';
   ExpectedNames[11] := 'DATABASE_GENERATION_PROGRAM_SHA256';
@@ -1850,7 +1842,7 @@ begin
     end;
     Values[Index] := Value;
   end;
-  if (Values[0] <> 'ticketbox-installation-identity-v3') or
+  if (Values[0] <> 'ticketbox-installation-identity-v4') or
      ((Values[1] <> 'PENDING') and (Values[1] <> 'READY')) then
   begin
     FailureReason := '持久安装身份 schema 不受支持。';
@@ -1864,7 +1856,7 @@ begin
   if (not IsCanonicalInstallationId(Values[2])) or
      (not IsCanonicalInstallationId(Values[4])) or
      (not IsUpperHexSha256(Values[5])) or
-     (Values[6] <> 'ticketbox-c07-migrator.exe') or
+     (Values[6] <> 'ticketbox-database-maintenance.exe') or
      (StrToIntDef(Values[7], -1) < 1) or
      (not IsUpperHexSha256(Values[8])) or
      (Values[9] <> 'DATABASE_GENERATION_PROGRAM.json') or
@@ -2528,7 +2520,10 @@ begin
   end;
 end;
 
-function IsC07FailureSummaryLowerToken(Value: String; MaximumLength: Integer): Boolean;
+function IsInstallerPublicFailureLowerToken(
+  Value: String;
+  MaximumLength: Integer
+): Boolean;
 var
   Index: Integer;
 begin
@@ -2549,7 +2544,7 @@ begin
   end;
 end;
 
-function IsC07FailureSummaryOperationId(Value: String): Boolean;
+function IsInstallerPublicFailureOperationId(Value: String): Boolean;
 var
   Index: Integer;
 begin
@@ -2578,7 +2573,7 @@ begin
   Result := Result and (Value <> '00000000-0000-0000-0000-000000000000');
 end;
 
-function ReadC07FailureSummaryField(
+function ReadInstallerPublicFailureField(
   Line: String;
   FieldName: String;
   var Value: String
@@ -2594,438 +2589,11 @@ begin
     exit;
   end;
   Value := Copy(Line, Length(Prefix) + 1, Length(Line));
-  Result := (Value <> '') and (Pos('=', Value) = 0);
+  Result := Pos('=', Value) = 0;
   if not Result then
   begin
     Value := '';
   end;
-end;
-
-function IsC07FailureSummaryOrderedStage(Stage: String): Boolean;
-begin
-  Result :=
-    (Stage = 'captured') or
-    (Stage = 'writers_frozen') or
-    (Stage = 'recovery_generation_ready') or
-    (Stage = 'isolated_restore_verified') or
-    (Stage = 'ddl_started') or
-    (Stage = 'target_committed') or
-    (Stage = 'target_recovery_generation_ready') or
-    (Stage = 'target_isolated_restore_verified') or
-    (Stage = 'runtime_acl_verified') or
-    (Stage = 'ready');
-end;
-
-function C07FailureSummaryStageFieldsValid(
-  LastDurableStage: String;
-  RevisionState: String;
-  RecoveryPoint: String;
-  NoReturnCrossed: String;
-  DdlState: String;
-  DataState: String;
-  Blocked: Boolean
-): Boolean;
-var
-  ExpectedRevisionState: String;
-  ExpectedRecoveryPoint: String;
-  ExpectedNoReturnCrossed: String;
-  ExpectedDdlState: String;
-  ExpectedDataState: String;
-begin
-  ExpectedRevisionState := '';
-  ExpectedRecoveryPoint := '';
-  ExpectedNoReturnCrossed := '';
-  ExpectedDdlState := '';
-  ExpectedDataState := '';
-  if (LastDurableStage = 'captured') or
-     (LastDurableStage = 'writers_frozen') then
-  begin
-    ExpectedRevisionState := 'source';
-    ExpectedRecoveryPoint := 'none';
-    ExpectedNoReturnCrossed := 'false';
-    ExpectedDdlState := 'not_started';
-    ExpectedDataState := 'source_unchanged_writer_stopped';
-  end
-  else if LastDurableStage = 'recovery_generation_ready' then
-  begin
-    ExpectedRevisionState := 'source';
-    ExpectedRecoveryPoint := 'source_generation_unverified';
-    ExpectedNoReturnCrossed := 'false';
-    ExpectedDdlState := 'not_started';
-    ExpectedDataState := 'source_unchanged_writer_stopped';
-  end
-  else if LastDurableStage = 'isolated_restore_verified' then
-  begin
-    ExpectedRevisionState := 'source';
-    ExpectedRecoveryPoint := 'source_restore_verified';
-    ExpectedNoReturnCrossed := 'false';
-    ExpectedDdlState := 'not_started';
-    ExpectedDataState := 'source_unchanged_writer_stopped';
-  end
-  else if LastDurableStage = 'ddl_started' then
-  begin
-    ExpectedRevisionState := 'unknown_source_or_target';
-    ExpectedRecoveryPoint := 'source_restore_verified';
-    ExpectedNoReturnCrossed := 'true';
-    ExpectedDdlState := 'execution_started_commit_unknown';
-    ExpectedDataState := 'revision_unknown_writer_stopped';
-  end
-  else if LastDurableStage = 'target_committed' then
-  begin
-    ExpectedRevisionState := 'target';
-    ExpectedRecoveryPoint := 'source_restore_verified';
-    ExpectedNoReturnCrossed := 'true';
-    ExpectedDdlState := 'target_committed';
-    ExpectedDataState := 'target_committed_writer_stopped';
-  end
-  else if LastDurableStage = 'target_recovery_generation_ready' then
-  begin
-    ExpectedRevisionState := 'target';
-    ExpectedRecoveryPoint := 'target_generation_unverified';
-    ExpectedNoReturnCrossed := 'true';
-    ExpectedDdlState := 'target_committed';
-    ExpectedDataState := 'target_committed_writer_stopped';
-  end
-  else if (LastDurableStage = 'target_isolated_restore_verified') or
-          (LastDurableStage = 'runtime_acl_verified') or
-          (LastDurableStage = 'ready') then
-  begin
-    ExpectedRevisionState := 'target';
-    ExpectedRecoveryPoint := 'target_restore_verified';
-    ExpectedNoReturnCrossed := 'true';
-    ExpectedDdlState := 'target_committed';
-    ExpectedDataState := 'target_committed_writer_stopped';
-  end;
-  Result :=
-    (ExpectedRevisionState <> '') and
-    (RevisionState = ExpectedRevisionState) and
-    (RecoveryPoint = ExpectedRecoveryPoint) and
-    (NoReturnCrossed = ExpectedNoReturnCrossed) and
-    (DdlState = ExpectedDdlState);
-  if not Result then
-  begin
-    exit;
-  end;
-  if Blocked then
-  begin
-    Result := DataState = 'authority_or_writer_state_unverified';
-  end
-  else
-  begin
-    Result := DataState = ExpectedDataState;
-  end;
-end;
-
-function C07FailureSummaryReleaseAllowsRetry(
-  ExpectedOwnerPid: String;
-  ExpectedOwnerStartedHigh: String;
-  ExpectedOwnerStartedLow: String;
-  ExpectedOperationId: String;
-  ExpectedFinalizationAttemptId: String
-): Boolean;
-var
-  VetoPath: String;
-  VetoSize: Integer;
-  Lines: TArrayOfString;
-  Schema: String;
-  OwnerPid: String;
-  OwnerStartedHigh: String;
-  OwnerStartedLow: String;
-  OperationId: String;
-  FinalizationAttemptId: String;
-  State: String;
-begin
-  Result := False;
-  VetoPath := LifecycleInstallerStatePath(C07LifecycleExitVetoFileName);
-  if (not FileSize(VetoPath, VetoSize)) or
-     (VetoSize < 1) or
-     (VetoSize > C07LifecycleExitVetoMaximumBytes) or
-     (not LoadStringsFromFile(VetoPath, Lines)) or
-     (GetArrayLength(Lines) <> 7) then
-  begin
-    exit;
-  end;
-  if (not ReadC07FailureSummaryField(Lines[0], 'SCHEMA', Schema)) or
-     (not ReadC07FailureSummaryField(
-       Lines[1],
-       'INSTALLER_OWNER_PID',
-       OwnerPid)) or
-     (not ReadC07FailureSummaryField(
-       Lines[2],
-       'INSTALLER_OWNER_STARTED_FILETIME_HIGH',
-       OwnerStartedHigh)) or
-     (not ReadC07FailureSummaryField(
-       Lines[3],
-       'INSTALLER_OWNER_STARTED_FILETIME_LOW',
-       OwnerStartedLow)) or
-     (not ReadC07FailureSummaryField(
-       Lines[4],
-       'OPERATION_ID',
-       OperationId)) or
-     (not ReadC07FailureSummaryField(
-       Lines[5],
-       'FINALIZATION_ATTEMPT_ID',
-       FinalizationAttemptId)) or
-     (not ReadC07FailureSummaryField(Lines[6], 'STATE', State)) then
-  begin
-    exit;
-  end;
-  Result :=
-    (Schema = C07LifecycleExitVetoSchema) and
-    (OwnerPid = ExpectedOwnerPid) and
-    (OwnerStartedHigh = ExpectedOwnerStartedHigh) and
-    (OwnerStartedLow = ExpectedOwnerStartedLow) and
-    (OperationId = ExpectedOperationId) and
-    (FinalizationAttemptId = ExpectedFinalizationAttemptId) and
-    IsC07FailureSummaryOperationId(OperationId) and
-    IsC07FailureSummaryOperationId(FinalizationAttemptId) and
-    (State = 'lock_release_completed');
-end;
-
-function TryLoadC07FailureSummary(var MessageText: String): Boolean;
-var
-  SummaryPath: String;
-  SummarySize: Integer;
-  Lines: TArrayOfString;
-  Schema: String;
-  OwnerPid: String;
-  OwnerStartedHigh: String;
-  OwnerStartedLow: String;
-  OperationId: String;
-  FinalizationAttemptId: String;
-  SourceRevision: String;
-  TargetRevision: String;
-  LifecycleStage: String;
-  LastDurableStage: String;
-  FailureCode: String;
-  RevisionState: String;
-  RecoveryPoint: String;
-  RetryPolicy: String;
-  NoReturnCrossed: String;
-  DdlState: String;
-  DataState: String;
-  NextAction: String;
-  Blocked: Boolean;
-  RevisionText: String;
-  RecoveryText: String;
-  DdlText: String;
-  ActionText: String;
-begin
-  Result := False;
-  MessageText := '';
-  if LifecycleInstallerStateDirectory = '' then
-  begin
-    exit;
-  end;
-  SummaryPath := LifecycleInstallerStatePath(C07FailureSummaryFileName);
-  if (not FileSize(SummaryPath, SummarySize)) or
-     (SummarySize < 1) or
-     (SummarySize > C07FailureSummaryMaximumBytes) or
-     (not LoadStringsFromFile(SummaryPath, Lines)) or
-     (GetArrayLength(Lines) <> 18) then
-  begin
-    exit;
-  end;
-  if (not ReadC07FailureSummaryField(Lines[0], 'SCHEMA', Schema)) or
-     (not ReadC07FailureSummaryField(Lines[1], 'INSTALLER_OWNER_PID', OwnerPid)) or
-     (not ReadC07FailureSummaryField(
-       Lines[2],
-       'INSTALLER_OWNER_STARTED_FILETIME_HIGH',
-       OwnerStartedHigh)) or
-     (not ReadC07FailureSummaryField(
-       Lines[3],
-       'INSTALLER_OWNER_STARTED_FILETIME_LOW',
-       OwnerStartedLow)) or
-     (not ReadC07FailureSummaryField(Lines[4], 'OPERATION_ID', OperationId)) or
-     (not ReadC07FailureSummaryField(
-       Lines[5],
-       'FINALIZATION_ATTEMPT_ID',
-       FinalizationAttemptId)) or
-     (not ReadC07FailureSummaryField(Lines[6], 'SOURCE_REVISION', SourceRevision)) or
-     (not ReadC07FailureSummaryField(Lines[7], 'TARGET_REVISION', TargetRevision)) or
-     (not ReadC07FailureSummaryField(Lines[8], 'LIFECYCLE_STAGE', LifecycleStage)) or
-     (not ReadC07FailureSummaryField(
-       Lines[9],
-       'LAST_DURABLE_STAGE',
-       LastDurableStage)) or
-     (not ReadC07FailureSummaryField(Lines[10], 'FAILURE_CODE', FailureCode)) or
-     (not ReadC07FailureSummaryField(Lines[11], 'REVISION_STATE', RevisionState)) or
-     (not ReadC07FailureSummaryField(Lines[12], 'RECOVERY_POINT', RecoveryPoint)) or
-     (not ReadC07FailureSummaryField(Lines[13], 'RETRY_POLICY', RetryPolicy)) or
-     (not ReadC07FailureSummaryField(
-       Lines[14],
-       'NO_RETURN_CROSSED',
-       NoReturnCrossed)) or
-     (not ReadC07FailureSummaryField(Lines[15], 'DDL_STATE', DdlState)) or
-     (not ReadC07FailureSummaryField(Lines[16], 'DATA_STATE', DataState)) or
-     (not ReadC07FailureSummaryField(Lines[17], 'NEXT_ACTION', NextAction)) then
-  begin
-    exit;
-  end;
-  if (Schema <> C07FailureSummarySchema) or
-     (OwnerPid <> IntToStr(LifecycleLockOwnerProcessId)) or
-     (OwnerStartedHigh <> LifecycleLockOwnerStartedFileTimeHigh) or
-     (OwnerStartedLow <> LifecycleLockOwnerStartedFileTimeLow) or
-     (not IsC07FailureSummaryOperationId(OperationId)) or
-     (not IsC07FailureSummaryOperationId(FinalizationAttemptId)) or
-     (FinalizationAttemptId <> LifecycleFinalizationAttemptId) or
-     (SourceRevision <> '20260722_0001') or
-     (TargetRevision <> '20260729_0001') or
-     (not IsC07FailureSummaryLowerToken(FailureCode, 64)) or
-     (not IsC07FailureSummaryOrderedStage(LastDurableStage)) or
-     ((LifecycleStage <> 'refused_pre_ddl') and
-      (LifecycleStage <> 'repair_required') and
-      (not IsC07FailureSummaryOrderedStage(LifecycleStage))) then
-  begin
-    exit;
-  end;
-  if ((LifecycleStage = 'refused_pre_ddl') or
-      (LifecycleStage = 'repair_required')) then
-  begin
-    if LastDurableStage = 'ready' then
-    begin
-      exit;
-    end;
-  end
-  else if LifecycleStage <> LastDurableStage then
-  begin
-    exit;
-  end;
-  Blocked := RetryPolicy = 'blocked';
-  if not C07FailureSummaryStageFieldsValid(
-    LastDurableStage,
-    RevisionState,
-    RecoveryPoint,
-    NoReturnCrossed,
-    DdlState,
-    DataState,
-    Blocked) then
-  begin
-    exit;
-  end;
-  if Blocked then
-  begin
-    if NextAction <> 'keep_services_stopped_contact_support' then
-    begin
-      exit;
-    end;
-  end
-  else if LifecycleStage = 'refused_pre_ddl' then
-  begin
-    if (RetryPolicy <> 'successor_pre_ddl') or
-       (NextAction <> 'rerun_setup_successor') then
-    begin
-      exit;
-    end;
-  end
-  else if LifecycleStage = 'repair_required' then
-  begin
-    if (RetryPolicy <> 'successor_forward_repair') or
-       (NextAction <> 'install_compatible_repair_build') then
-    begin
-      exit;
-    end;
-  end
-  else if (RetryPolicy <> 'resume_same_operation') or
-          (NextAction <> 'rerun_setup_resume') then
-  begin
-    exit;
-  end;
-
-  { A retryable summary is never sufficient by itself.  Missing, malformed,
-    tampered, pending, stale-owner, stale-operation, or stale-finalization
-    veto state takes precedence and converts the owner message to fail-closed
-    guidance. }
-  if (not Blocked) and
-     (not C07FailureSummaryReleaseAllowsRetry(
-       OwnerPid,
-       OwnerStartedHigh,
-       OwnerStartedLow,
-       OperationId,
-       LifecycleFinalizationAttemptId)) then
-  begin
-    MessageText :=
-      '小票夹数据库维护后的生命周期锁释放状态无法确认。' + #13#10 +
-      '受保护的 release veto 仍为 pending、缺失或校验失败；安装器不会采用可能过期的重试摘要。' + #13#10 +
-      '请保持服务停止，不修改数据库或安装标记；保存日志并联系支持。';
-    Result := True;
-    exit;
-  end;
-
-  if RevisionState = 'source' then
-  begin
-    RevisionText := '数据库仍为升级前 revision ' + SourceRevision + '。';
-  end
-  else if RevisionState = 'target' then
-  begin
-    RevisionText := '数据库已提交目标 revision ' + TargetRevision + '。';
-  end
-  else
-  begin
-    RevisionText := '数据库 revision 可能仍为源版本，也可能已提交目标版本；安装器不会猜测。';
-  end;
-  if RecoveryPoint = 'none' then
-  begin
-    RecoveryText := '尚未生成恢复点，数据库写入尚未开始。';
-  end
-  else if RecoveryPoint = 'source_generation_unverified' then
-  begin
-    RecoveryText := '源版本恢复材料已生成，但隔离恢复验证尚未完成。';
-  end
-  else if RecoveryPoint = 'source_restore_verified' then
-  begin
-    RecoveryText := '升级前恢复点已通过隔离恢复验证。';
-  end
-  else if RecoveryPoint = 'target_generation_unverified' then
-  begin
-    RecoveryText := '目标版本恢复材料已生成，但隔离恢复验证尚未完成。';
-  end
-  else
-  begin
-    RecoveryText := '目标版本恢复点已通过隔离恢复验证。';
-  end;
-  if DdlState = 'not_started' then
-  begin
-    DdlText := '本轮未开始 DDL。';
-  end
-  else if DdlState = 'execution_started_commit_unknown' then
-  begin
-    DdlText := 'DDL 已开始，但仅凭回执无法证明事务是否提交；按已越过 no-return 边界处理。';
-  end
-  else
-  begin
-    DdlText := '目标 DDL 已提交，已越过 no-return 边界。';
-  end;
-  if NextAction = 'rerun_setup_resume' then
-  begin
-    ActionText :=
-      '唯一下一步：关闭本向导后，使用同一版本或更新版本安装包重新运行修复；安装器将续跑同一操作。';
-  end
-  else if NextAction = 'rerun_setup_successor' then
-  begin
-    ActionText :=
-      '唯一下一步：使用同一版本或更新版本安装包重新运行修复；它会建立后继操作，旧失败终态不会被改写。';
-  end
-  else if NextAction = 'install_compatible_repair_build' then
-  begin
-    ActionText :=
-      '唯一下一步：保持服务停止，使用同版或更新的兼容修复安装包前滚。不要安装旧版本，也不要只恢复旧 EXE。';
-  end
-  else
-  begin
-    ActionText :=
-      '唯一下一步：保持服务停止，不修改数据库或安装标记；保存日志并联系支持。';
-  end;
-  MessageText :=
-    '小票夹数据库维护未完成。' + #13#10 +
-    RevisionText + #13#10 +
-    DdlText + #13#10 +
-    RecoveryText + #13#10 +
-    '阶段：' + LifecycleStage + '（最后持久阶段：' + LastDurableStage + '）' + #13#10 +
-    '故障代码：' + FailureCode + #13#10 +
-    '操作 ID：' + OperationId + #13#10 +
-    ActionText;
-  Result := True;
 end;
 
 function TryLoadInstallPublicFailure(var MessageText: String): Boolean;
@@ -3068,55 +2636,55 @@ begin
   begin
     exit;
   end;
-  if (not ReadC07FailureSummaryField(Lines[0], 'SCHEMA', Schema)) or
-     (not ReadC07FailureSummaryField(
+  if (not ReadInstallerPublicFailureField(Lines[0], 'SCHEMA', Schema)) or
+     (not ReadInstallerPublicFailureField(
        Lines[1],
        'INSTALLER_OWNER_PID',
        OwnerPid)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(
        Lines[2],
        'INSTALLER_OWNER_STARTED_FILETIME_HIGH',
        OwnerStartedHigh)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(
        Lines[3],
        'INSTALLER_OWNER_STARTED_FILETIME_LOW',
        OwnerStartedLow)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(
        Lines[4],
        'FINALIZATION_ATTEMPT_ID',
        FinalizationAttemptId)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(
        Lines[5],
        'INSTALLATION_OPERATION_ID',
        InstallationOperationId)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(
        Lines[6],
        'INSTALLATION_ID_STATE',
        InstallationIdState)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(
        Lines[7],
        'INSTALLATION_ID',
        InstallationId)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(
        Lines[8],
        'LIFECYCLE_STAGE',
        LifecycleStage)) or
-     (not ReadC07FailureSummaryField(Lines[9], 'CONTEXT', Context)) or
-     (not ReadC07FailureSummaryField(Lines[10], 'FAILURE_CODE', FailureCode)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(Lines[9], 'CONTEXT', Context)) or
+     (not ReadInstallerPublicFailureField(Lines[10], 'FAILURE_CODE', FailureCode)) or
+     (not ReadInstallerPublicFailureField(
        Lines[11],
        'RETRY_CLASS',
        RetryClass)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(
        Lines[12],
        'DATABASE_MUTATION_STATE',
        DatabaseMutationState)) or
-     (not ReadC07FailureSummaryField(Lines[13], 'SUPPORT_CODE', SupportCode)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(Lines[13], 'SUPPORT_CODE', SupportCode)) or
+     (not ReadInstallerPublicFailureField(
        Lines[14],
        'PROTECTED_LOG_PATH',
        ProtectedLogPath)) or
-     (not ReadC07FailureSummaryField(
+     (not ReadInstallerPublicFailureField(
        Lines[15],
        'PUBLIC_RECEIPT_PATH',
        PublicReceiptPath)) then
@@ -3130,15 +2698,15 @@ begin
      (OwnerStartedHigh <> LifecycleLockOwnerStartedFileTimeHigh) or
      (OwnerStartedLow <> LifecycleLockOwnerStartedFileTimeLow) or
      (FinalizationAttemptId <> LifecycleFinalizationAttemptId) or
-     (not IsC07FailureSummaryOperationId(FinalizationAttemptId)) or
-     (not IsC07FailureSummaryOperationId(InstallationOperationId)) or
+     (not IsInstallerPublicFailureOperationId(FinalizationAttemptId)) or
+     (not IsInstallerPublicFailureOperationId(InstallationOperationId)) or
      (((InstallationIdState <> 'not_assigned') and
        (InstallationIdState <> 'assigned'))) or
      ((InstallationIdState = 'not_assigned') and
       (InstallationId <> '')) or
      ((InstallationIdState = 'assigned') and
-      (not IsC07FailureSummaryOperationId(InstallationId))) or
-     (not IsC07FailureSummaryLowerToken(LifecycleStage, 64)) or
+      (not IsInstallerPublicFailureOperationId(InstallationId))) or
+     (not IsInstallerPublicFailureLowerToken(LifecycleStage, 64)) or
      (Context <> 'service_installation') or
      ((RetryClass <> 'replace_package_then_retry_no_cleanup') and
       (RetryClass <> 'retry_same_operation_no_cleanup') and
@@ -3267,12 +2835,9 @@ begin
   Result := True;
 end;
 
-function C07ServiceInstallationFailureMessage(): String;
+function ServiceInstallationFailureMessage(): String;
 begin
-  if TryLoadC07FailureSummary(Result) then
-  begin
-  end
-  else if TryLoadInstallPublicFailure(Result) then
+  if TryLoadInstallPublicFailure(Result) then
   begin
   end
   else
@@ -3361,7 +2926,7 @@ begin
     '    $allowedByScript = @{' + #13#10 +
     '        "install_windows_prerequisites.ps1" = @("VcRedistPath","RequiredVersion","RequiredSha256","DiagnosticLogPath","InstallerLockOwnerProcessId")' + #13#10 +
     '        "hold_data_root_mutation_guard.ps1" = @("InstallDir","DataRoot","InstallerLockOwnerProcessId","Hold","ConfirmStopped","DataRootGuardReadyPath","DataRootGuardReleasePath","ExpectedHolderProcessId","ExpectedHolderStartedFileTimeHigh","ExpectedHolderStartedFileTimeLow","ExpectedNonce")' + #13#10 +
-    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced","PersistDatabaseGenerationIntentOnly","DatabaseGenerationProgramPath","DatabaseGenerationProgramSha256","DatabaseGenerationMigrationHelperSize","DatabaseGenerationMigrationHelperSha256","DatabaseGenerationPgDumpSize","DatabaseGenerationPgDumpSha256","DatabaseGenerationPgRestoreSize","DatabaseGenerationPgRestoreSha256")' + #13#10 +
+    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced","PersistDatabaseGenerationIntentOnly","DatabaseGenerationProgramPath","DatabaseGenerationProgramSha256","DatabaseMaintenanceHelperSize","DatabaseMaintenanceHelperSha256","DatabaseGenerationPgDumpSize","DatabaseGenerationPgDumpSha256","DatabaseGenerationPgRestoreSize","DatabaseGenerationPgRestoreSha256")' + #13#10 +
     '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","LifecycleReceiptPath","InstallerLockOwnerProcessId","LifecycleFinalizationAttemptId","PublicFailurePath","DiagnosticLogPath","CompleteOwnerHandoffOnly")' + #13#10 +
     '        "uninstall_bundled_services.ps1" = @("InstallDir","InstallerLockOwnerProcessId","DeleteData")' + #13#10 +
     '    }' + #13#10 +
@@ -3563,7 +3128,7 @@ begin
     end
     else if CompareText(Context, 'Ticketbox service installation') = 0 then
     begin
-      LastPowerShellFailureMessage := C07ServiceInstallationFailureMessage();
+      LastPowerShellFailureMessage := ServiceInstallationFailureMessage();
     end
     else if CompareText(
       Context,

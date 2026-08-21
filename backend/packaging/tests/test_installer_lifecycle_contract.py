@@ -366,13 +366,19 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert '"windows_ticketbox_database_acl.ps1"' in database_generation
     assert '"windows_ticketbox_database_roles.ps1"' in database_generation
     assert '"windows_c07_database.ps1"' not in database_generation
-    assert '$C07MigrationHelper = Join-Path $ProgramDir "ticketbox-c07-migrator.exe"' in install
+    assert (
+        '$DatabaseMaintenanceHelper = Join-Path $ProgramDir '
+        '"ticketbox-database-maintenance.exe"'
+    ) in install
     assert ". $DatabaseGenerationScript" in install
     assert "Invoke-TicketboxInstalledDatabaseGeneration" in install
     assert "Invoke-TicketboxC07InstalledMigrationAction" not in install
     assert "Invoke-TicketboxC07InstalledFreshSourceBootstrapAction" not in install
     assert 'Write-Step "收敛 release schema 到 frozen head"' in install
-    assert 'Assert-File $C07MigrationHelper "ticketbox-c07-migrator.exe"' in install
+    assert (
+        'Assert-File $DatabaseMaintenanceHelper '
+        '"ticketbox-database-maintenance.exe"'
+    ) in install
     for script in (prepare, install, uninstall):
         assert ". $ReleaseConfigScript" in script
         assert ". $LifecycleScript" in script
@@ -760,8 +766,8 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "PersistDatabaseGenerationIntentOnly",
         "DatabaseGenerationProgramPath",
         "DatabaseGenerationProgramSha256",
-        "DatabaseGenerationMigrationHelperSize",
-        "DatabaseGenerationMigrationHelperSha256",
+        "DatabaseMaintenanceHelperSize",
+        "DatabaseMaintenanceHelperSha256",
         "DatabaseGenerationPgDumpSize",
         "DatabaseGenerationPgDumpSha256",
         "DatabaseGenerationPgRestoreSize",
@@ -1080,9 +1086,9 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
         "BACKEND_VERSION_FLOOR",
         "INSTALLATION_ID",
         "BUILD_MANIFEST_SHA256",
-        "MIGRATION_HELPER_RELATIVE_PATH",
-        "MIGRATION_HELPER_SIZE",
-        "MIGRATION_HELPER_SHA256",
+        "DATABASE_MAINTENANCE_HELPER_RELATIVE_PATH",
+        "DATABASE_MAINTENANCE_HELPER_SIZE",
+        "DATABASE_MAINTENANCE_HELPER_SHA256",
         "DATABASE_GENERATION_PROGRAM_RELATIVE_PATH",
         "DATABASE_GENERATION_PROGRAM_SIZE",
         "DATABASE_GENERATION_PROGRAM_SHA256",
@@ -1096,7 +1102,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     for index, name in enumerate(identity_fields):
         assert f"ExpectedNames[{index}] := '{name}';" in persistent_reader
     assert "SetArrayLength(ExpectedNames, 18);" in persistent_reader
-    assert "ticketbox-installation-identity-v3" in persistent_reader
+    assert "ticketbox-installation-identity-v4" in persistent_reader
     assert "{#PgServiceName}" in persistent_reader and "{#BackendServiceName}" in persistent_reader
     production_identity_surfaces = "".join(
         path.read_text(encoding="utf-8-sig") for path in PACKAGING.iterdir() if path.suffix in {".ps1", ".iss", ".isph"}
@@ -1104,6 +1110,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     for retired in (
         "ticketbox-installation-identity-v1",
         "ticketbox-installation-identity-v2",
+        "ticketbox-installation-identity-v3",
         "ticketbox-c07-successor-intent-v2",
         "LegacyCompleted",
     ):
@@ -1116,7 +1123,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     ]
     assert 'Join-Path $canonicalInstallDir "installer\\BUILD_PROVENANCE.json"' in release_candidate
     assert "Read-TicketboxInstalledBuildManifest $expectedManifestPath" in release_candidate
-    assert "Open-TicketboxC07VerifiedMigrationHelperLease" in release_candidate
+    assert "Open-TicketboxVerifiedDatabaseMaintenanceHelperLease" in release_candidate
     assert "-ExpectedSize $helperEvidence.Size" in release_candidate
     assert "-ExpectedSha256 $helperEvidence.Sha256" in release_candidate
     assert "[string]$buildManifest.Sha256" in release_candidate
@@ -1200,9 +1207,9 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     assert "-ExpectedOperationId $pending.OperationId" in identity_writer
 
     pending_install = install[
-        install.index("$c07PendingIdentityPath =") : install.index(
+        install.index("$pendingInstallationIdentityPath =") : install.index(
             "$databaseGenerationReleaseContract =",
-            install.index("$c07PendingIdentityPath ="),
+            install.index("$pendingInstallationIdentityPath ="),
         )
     ]
     release_candidate = pending_install.index("Get-TicketboxInstallationReleaseCandidate")
@@ -2863,8 +2870,8 @@ def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Pa
         "DatabaseGenerationCommitVerifierScriptSha256": digest,
         "DatabaseGenerationPolicyScriptSha256": digest,
         "DatabaseGenerationProgramSha256": digest,
-        "DatabaseGenerationMigrationHelperSize": "1",
-        "DatabaseGenerationMigrationHelperSha256": digest,
+        "DatabaseMaintenanceHelperSize": "1",
+        "DatabaseMaintenanceHelperSha256": digest,
         "DatabaseGenerationPgDumpSize": "1",
         "DatabaseGenerationPgDumpSha256": digest,
         "DatabaseGenerationPgRestoreSize": "1",

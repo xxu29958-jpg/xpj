@@ -1016,9 +1016,9 @@ function New-Candidate([string]$Root, [string]$InstallDir) {{
         BackendServiceName = 'TicketboxBackend'
         PgPort = 5440
         BackendPort = 8001
-        MigrationHelperRelativePath = 'ticketbox-c07-migrator.exe'
-        MigrationHelperSize = [int64]123
-        MigrationHelperSha256 = ('B' * 64)
+        MaintenanceHelperRelativePath = 'ticketbox-database-maintenance.exe'
+        MaintenanceHelperSize = [int64]123
+        MaintenanceHelperSha256 = ('B' * 64)
         DatabaseGenerationProgramRelativePath =
             'DATABASE_GENERATION_PROGRAM.json'
         DatabaseGenerationProgramSize = [int64]456

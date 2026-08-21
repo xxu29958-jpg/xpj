@@ -156,7 +156,7 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {{ return $script
 function Throw-TicketboxDatabaseGenerationOperationFailure {{
     param($Primary, $Cleanup)
     if ($null -ne $Primary) {{ throw $Primary }}
-    if ($null -ne $Cleanup) {{ throw $Cleanup }}
+    if (@($Cleanup).Count -gt 0) {{ throw $Cleanup }}
 }}
     {result_factory}
     {reducer}

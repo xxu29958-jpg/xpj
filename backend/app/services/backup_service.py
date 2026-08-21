@@ -19,7 +19,6 @@ import contextlib
 import ipaddress
 import logging
 import os
-import re
 import subprocess
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -48,12 +47,6 @@ _PREFIX = "ticketbox-"
 _SUFFIX = ".dump"
 _PG_DUMP_TIMEOUT_SECONDS = 5 * 60
 _PG_DUMP_LOCK_WAIT_MILLISECONDS = 30_000
-# PostgreSQL 17's ExportSnapshot() returns the basename generated as
-# ``%08X-%08X-%d``.  Keep this closed to the server-produced shape instead of
-# accepting arbitrary path-like text as a pg_dump option value.
-_PG_EXPORTED_SNAPSHOT = re.compile(
-    r"[0-9A-F]{8}-[0-9A-F]{8}-[1-9][0-9]{0,9}\Z"
-)
 _PG_TOOL_QUERY_KEYS = frozenset(
     {"connect_timeout", "hostaddr", "options", "require_auth", "sslmode"}
 )
@@ -110,7 +103,7 @@ def backup_directory_label() -> str:
 def _classify(name: str) -> str:
     if name.startswith("ticketbox-before-restore-"):
         return "pre-restore"
-    if name.startswith(("ticketbox-pre-upgrade-", "ticketbox-c07-pre-upgrade-")):
+    if name.startswith("ticketbox-pre-upgrade-"):
         return "pre-upgrade"
     if name.startswith("ticketbox-pre-v0.3"):
         return "pre-v0.3"
@@ -213,27 +206,6 @@ def create_pre_upgrade_backup() -> BackupEntry:
     return _run_pg_dump(prefix="ticketbox-pre-upgrade", kind="pre-upgrade")
 
 
-def create_c07_pre_upgrade_backup(
-    *,
-    database_url: str,
-    exported_snapshot: str,
-) -> BackupEntry:
-    """Dump the frozen C07 source view from the coordinator's snapshot.
-
-    The exporting transaction remains open while pg_dump imports this snapshot,
-    so the archive and all preflight checks observe one database state.
-    """
-
-    if _PG_EXPORTED_SNAPSHOT.fullmatch(exported_snapshot) is None:
-        raise AppError("server_error", "数据库快照标识无效。", status_code=500)
-    return _run_pg_dump(
-        prefix="ticketbox-c07-pre-upgrade",
-        kind="pre-upgrade",
-        database_url=database_url,
-        exported_snapshot=exported_snapshot,
-    )
-
-
 # ── Concurrency guard (BUG-2) ────────────────────────────────────────────────
 # Python and the scheduled PowerShell task hold the same OS byte-range lease.
 # The persistent file is diagnostic only; process/handle death releases ownership.
@@ -267,7 +239,6 @@ def _run_pg_dump(
     prefix: str,
     kind: str,
     database_url: str | None = None,
-    exported_snapshot: str | None = None,
 ) -> BackupEntry:
     connection = _pg_tool_connection(database_url or get_settings().database_url)
     directory = _backup_dir()
@@ -287,8 +258,6 @@ def _run_pg_dump(
                     "--dbname",
                     connection.database_url,
                 ]
-                if exported_snapshot is not None:
-                    arguments.insert(3, f"--snapshot={exported_snapshot}")
                 result = subprocess.run(  # noqa: S603 (resolved binary, fixed args)
                     arguments,
                     capture_output=True,

@@ -864,7 +864,12 @@ function New-TicketboxInitdbFailure {
 }
 
 function Initialize-PgClusterIfNeeded {
-    param([scriptblock]$InitdbInvoker)
+    param(
+        [Parameter(Mandatory = $true)][object]$CompensationAuthority
+    )
+
+    Assert-TicketboxInstallServiceCompensationAuthority `
+        $CompensationAuthority
 
     $pgVersionPath = Join-Path $PgData "PG_VERSION"
     $pwfile = Get-PostgresBootstrapRecoveryPath
@@ -980,24 +985,9 @@ function Initialize-PgClusterIfNeeded {
         throw "PostgreSQL 初始化前无法证明 PGDATA 不存在。"
     }
     $bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState
-    $initResult = if ($null -ne $InitdbInvoker) {
-        & $InitdbInvoker $bootstrapState
-    }
-    else {
-        Invoke-TicketboxBoundedNativeProcess `
-            -FilePath (Join-Path $PgBin "initdb.exe") `
-            -Arguments @(
-                '-D', $PgData,
-                '-U', 'postgres',
-                '--auth-local=scram-sha-256',
-                '--auth-host=scram-sha-256',
-                '--encoding=UTF8',
-                '--no-locale',
-                "--pwfile=$pwfile"
-            ) `
-            -TimeoutMilliseconds $DatabaseToolTimeoutMs `
-            -Label 'initdb'
-    }
+    $initResult = Invoke-TicketboxServiceOwnedInitdb `
+        -BootstrapState $bootstrapState `
+        -CompensationAuthority $CompensationAuthority
     if ($initResult.ExitCode -ne 0) {
         throw (New-TicketboxInitdbFailure `
             -FailureKind "native_process_failed" `

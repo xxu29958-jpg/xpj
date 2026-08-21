@@ -257,13 +257,18 @@ function Repair-TicketboxDatabaseGenerationServiceTransition {
     $freshHost = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority $HostContract
     $runtimeCredentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
         $StateRoot $Intent $candidate
+    $primary = $null
+    $cleanup = @()
     try {
         [void](Test-TicketboxDatabaseGenerationBootstrapRetirement `
             $Intent $candidate $freshHost $runtimeCredentials.RuntimePassword)
     }
+    catch { $primary = $_ }
     finally {
-        Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials
+        try { Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials }
+        catch { $cleanup += $_ }
     }
+    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
     Remove-TicketboxDatabaseGenerationServiceTransition $StateRoot $LifecycleLock
 }
 

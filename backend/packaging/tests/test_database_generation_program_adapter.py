@@ -1,22 +1,26 @@
-"""PowerShell bridge contracts for the build-owned generation program."""
+"""PowerShell adapter contracts for the build-owned generation program."""
 
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
+MIGRATIONS = PACKAGING.parent / "migrations" / "versions"
 
 
 def _ps_literal(path: Path) -> str:
     return str(path.resolve()).replace("'", "''")
 
 
-def test_packaged_bridge_has_one_program_api_and_no_runtime_planner() -> None:
+def test_packaged_adapter_is_generic_closed_and_has_no_runtime_planner() -> None:
     source = "\n".join(
         path.read_text(encoding="utf-8-sig")
         for path in (
@@ -25,65 +29,102 @@ def test_packaged_bridge_has_one_program_api_and_no_runtime_planner() -> None:
         )
     )
     for required in (
-        "ticketbox-database-generation-program-validation-v1",
+        "ticketbox-database-generation-program-validation-v2",
+        "ticketbox-database-maintenance.exe",
         "Get-TicketboxDatabaseGenerationProgramFromHelper",
+        "Open-TicketboxVerifiedDatabaseMaintenanceHelperLease",
         "--validate-generation-program",
         "--generation-program-path",
         "--expected-generation-program-sha256",
         "ticketbox-managed-schema-upgrade-result-v2",
         "-ChildEnvironment $childEnvironment",
+        '[CmdletBinding(DefaultParameterSetName = "ValidateProgram")]',
+        '[switch]$ValidateProgram',
+        '[switch]$UpgradeManagedSchema',
+        '[switch]$VerifyTarget',
     ):
         assert required in source
+    assert "[string[]]$Arguments" not in source
     for retired in (
+        "ticketbox-c07-migrator",
+        "ticketbox-c07-revision-manifest",
         "--c07-installed-upgrade-plan",
         "--managed-schema-plan",
-        "Get-TicketboxC07PackagedInstalledUpgradePlan",
-        "Get-TicketboxPackagedManagedSchemaPlan",
-        "ConvertFrom-TicketboxC07PackagedMaintenancePlan",
-        "ConvertFrom-TicketboxManagedSchemaPlan",
+        "Get-TicketboxC07",
+        "c07_revision_manifest",
     ):
         assert retired not in source
 
 
-def test_program_validation_and_actions_bind_exact_bytes_and_secret_boundary(
+def test_frozen_generation_revisions_do_not_read_ambient_environment() -> None:
+    source = "\n".join(
+        path.read_text(encoding="utf-8-sig")
+        for path in sorted(MIGRATIONS.glob("*.py"))
+    )
+    for ambient_api in ("os.getenv", "os.environ", "environ[", "getenv("):
+        assert ambient_api not in source
+    upload_link = (
+        MIGRATIONS / "20260528_0001_upload_link_expiry.py"
+    ).read_text(encoding="utf-8-sig")
+    assert "UPLOAD_LINK_TTL_DAYS = 90" in upload_link
+    assert "LEGACY_EXPIRY_SPREAD_DAYS = 30" in upload_link
+
+
+def test_upload_link_migration_uses_frozen_policy_under_hostile_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UPLOAD_LINK_TTL_DAYS", "365")
+    monkeypatch.setenv("UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS", "1")
+    path = MIGRATIONS / "20260528_0001_upload_link_expiry.py"
+    spec = importlib.util.spec_from_file_location("upload_link_expiry_revision", path)
+    assert spec is not None and spec.loader is not None
+    revision_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(revision_module)
+
+    parameters: list[dict[str, int]] = []
+    bind = SimpleNamespace(
+        dialect=SimpleNamespace(name="postgresql"),
+        execute=lambda _statement, values: parameters.append(values),
+    )
+    monkeypatch.setattr(revision_module.op, "get_bind", lambda: bind)
+    monkeypatch.setattr(revision_module, "_has_table", lambda *_args: True)
+    monkeypatch.setattr(
+        revision_module,
+        "_columns",
+        lambda *_args: {"expires_at"},
+    )
+    monkeypatch.setattr(revision_module, "_has_index", lambda *_args: True)
+
+    revision_module.upgrade()
+
+    assert parameters == [{"ttl_days": 90, "spread_days": 30}]
+
+
+def test_program_validation_binds_exact_bytes_schema_and_helper_lease(
     tmp_path: Path,
 ) -> None:
-    helper = tmp_path / "ticketbox-c07-migrator.exe"
-    helper.write_bytes(b"synthetic helper")
+    helper = tmp_path / "ticketbox-database-maintenance.exe"
+    helper.write_bytes(b"synthetic database maintenance helper")
     program = tmp_path / "DATABASE_GENERATION_PROGRAM.json"
     program.write_text('{"schema":"synthetic"}\n', encoding="utf-8")
     helper_sha = hashlib.sha256(helper.read_bytes()).hexdigest().upper()
     program_sha = hashlib.sha256(program.read_bytes()).hexdigest()
-    harness = tmp_path / "generation-program-bridge.ps1"
+    harness = tmp_path / "generation-program-adapter.ps1"
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{_ps_literal(PACKAGING / "windows_database_generation_contract.ps1")}'
 . '{_ps_literal(PACKAGING / "windows_database_generation_program_adapter.ps1")}'
 . '{_ps_literal(PACKAGING / "windows_database_generation_program_execution.ps1")}'
-$script:secret = 'never-emit-this-secret'
-$script:calls = @()
-$script:cleanup = 0
+$script:closeCount = 0
+$script:processCount = 0
+$script:addUnknownField = $false
+$script:processFailure = $false
+$script:leaseFailure = $false
+$script:closeFailure = $false
+$env:DATABASE_URL = 'postgresql://ambient-authority-is-forbidden'
+$env:TICKETBOX_API_TOKEN = 'ambient-token-is-forbidden'
 
-function Assert-TicketboxC07ExactProperties {{
-    param($Value, [string[]]$ExpectedNames, [string]$ArtifactName)
-    $actual = @($Value.PSObject.Properties.Name)
-    if ($actual.Count -ne $ExpectedNames.Count -or
-        @($actual | Where-Object {{ $_ -cnotin $ExpectedNames }}).Count -ne 0) {{
-        throw "$ArtifactName shape mismatch"
-    }}
-}}
-function ConvertTo-TicketboxC07CompactJson {{
-    param($Value)
-    return $Value | ConvertTo-Json -Compress -Depth 64
-}}
-function Get-TicketboxC07TextSha256 {{
-    param([string]$Text)
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try {{ return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '') }}
-    finally {{ $sha.Dispose() }}
-}}
 function Get-TicketboxPortableFileSha256 {{
     param([string]$Path)
     $stream = [IO.File]::OpenRead($Path)
@@ -91,108 +132,65 @@ function Get-TicketboxPortableFileSha256 {{
     try {{ return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '') }}
     finally {{ $sha.Dispose(); $stream.Dispose() }}
 }}
-function Assert-TicketboxC07LowerSha256 {{
-    param([string]$Value, [string]$FieldName)
-    if ($Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw "bad lower $FieldName" }}
-}}
-function Assert-TicketboxC07Sha256 {{
-    param([string]$Value, [string]$FieldName)
-    if ($Value -cnotmatch '^[0-9A-F]{{64}}$') {{ throw "bad host $FieldName" }}
-}}
 function Assert-NoTicketboxAncestorReparsePoints {{ param([string]$Path) }}
-function Assert-TicketboxC07MigrationHelperLeaseUnchanged {{ param($Lease) }}
-function Close-TicketboxC07MigrationHelperLease {{ param($Lease) }}
 function Get-TicketboxPathEntryKindNoFollow {{ return 'File' }}
 function Test-TicketboxPathEquals {{
     param([string]$Left, [string]$Right)
     return [IO.Path]::GetFullPath($Left) -ieq [IO.Path]::GetFullPath($Right)
 }}
-function Open-TicketboxC07VerifiedMigrationHelperLease {{
-    param([string]$Path, [string]$ExpectedRelativePath, [int64]$ExpectedSize, [string]$ExpectedSha256)
+function Open-TicketboxVerifiedDatabaseMaintenanceHelperLease {{
+    param([string]$Path, [string]$ExpectedRelativePath, [int64]$ExpectedSize,
+        [string]$ExpectedSha256)
+    if ([IO.Path]::GetFileName($Path) -cne $ExpectedRelativePath -or
+        (Get-Item -LiteralPath $Path).Length -ne $ExpectedSize -or
+        (Get-TicketboxPortableFileSha256 $Path) -cne $ExpectedSha256) {{
+        throw 'helper evidence mismatch'
+    }}
     return [pscustomobject]@{{ Path = $Path }}
 }}
-function Invoke-TicketboxWithPlainPostgresqlSecret {{
-    param([Security.SecureString]$Secret, [scriptblock]$Action)
-    return & $Action $script:secret
+function Assert-TicketboxDatabaseMaintenanceHelperLeaseUnchanged {{
+    param($Lease)
+    if ($script:leaseFailure) {{ throw 'lease cleanup failure' }}
 }}
-function Get-TicketboxDatabaseAuthorizationContract {{
-    return [pscustomobject]@{{
-        DatabaseName = 'ticketbox'
-        MigratorRole = 'ticketbox_migrator'
-    }}
-}}
-function New-TicketboxPostgresqlLocalDatabaseUrl {{
-    param($Authority, [string]$Database, [string]$Role)
-    return "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/$Database"
-}}
-function New-TicketboxProtectedPgPassFile {{
-    param([string]$DatabaseUrl, [string]$Password)
-    if ($Password -cne $script:secret) {{ throw 'secret mismatch' }}
-    return [pscustomobject]@{{
-        DatabaseUrl = $DatabaseUrl
-        Path = 'C:\\TicketboxInstallerSecrets\\.ticketbox-pgpass-1-11111111111111111111111111111111'
-        FullControlAccounts = @('SYSTEM')
-        OwnerAccount = 'SYSTEM'
-    }}
-}}
-function Remove-TicketboxProtectedPgPassArtifact {{ $script:cleanup += 1 }}
-function Get-TestArgumentValue {{
-    param([string[]]$Arguments, [string]$Name)
-    $index = [array]::IndexOf($Arguments, $Name)
-    if ($index -lt 0) {{ throw "missing $Name" }}
-    return [string]$Arguments[$index + 1]
-}}
-
-$revision = [ordered]@{{
-    revision = '20260729_0001'; down_revision = '20260722_0001'
-    module_sha256 = ('1' * 64); transactionality = 'postgresql_single_transaction'
-    reversibility = 'forward_only'; downgrade_guard = 'raises_runtime_error_before_ddl'
-    resources = @('column:expenses.amount_minor:type=int8')
-    asset_recovery = 'same_generation_database_and_assets'
-}}
-$manifest = [ordered]@{{
-    schema = 'ticketbox-c07-revision-manifest-v1'
-    operation_kind = 'c07_money_minor_bigint_v1'
-    source_revision = '20260722_0001'; target_revision = '20260729_0001'
-    revisions = @($revision)
-}}
-$manifestSha = (Get-TicketboxC07TextSha256 (
-    ConvertTo-TicketboxC07CompactJson $manifest
-)).ToLowerInvariant()
-$programResult = [ordered]@{{
-    schema = 'ticketbox-database-generation-program-validation-v1'
-    source_revision = 'base'; target_revision = '20260809_0001'; revision_count = 12
-    generation_program_sha256 = '{program_sha}'
-    c07_source_revision = '20260722_0001'; c07_target_revision = '20260729_0001'
-    c07_revision_manifest = $manifest
-    c07_revision_manifest_sha256 = $manifestSha
+function Close-TicketboxDatabaseMaintenanceHelperLease {{
+    $script:closeCount += 1
+    if ($script:closeFailure) {{ throw 'close cleanup failure' }}
 }}
 function Invoke-TicketboxBoundedNativeProcess {{
     param([string]$FilePath, [string[]]$Arguments, [int]$TimeoutMilliseconds,
         [string]$Label, [string]$StandardInputText,
         [System.Collections.IDictionary]$ChildEnvironment)
-    $script:calls += ,@($Arguments)
-    if ($Arguments -contains '--validate-generation-program') {{
-        $payload = $programResult
-    }} elseif ($Arguments -contains '--managed-schema-upgrade') {{
-        $source = Get-TestArgumentValue $Arguments '--source-revision'
-        $target = Get-TestArgumentValue $Arguments '--target-revision'
-        $payload = [ordered]@{{
-            schema = 'ticketbox-managed-schema-upgrade-result-v2'
-            source_revision = $source; target_revision = $target
-            generation_program_sha256 = '{program_sha}'
-            result = 'target_committed'; alembic_revision = $target
-        }}
-    }} else {{ throw 'unexpected helper mode' }}
+    $script:processCount += 1
+    if ([IO.Path]::GetFullPath($FilePath) -ine [IO.Path]::GetFullPath('{_ps_literal(helper)}')) {{
+        throw 'process did not execute the leased helper path'
+    }}
+    if ($ChildEnvironment.Contains('DATABASE_URL') -or
+        $ChildEnvironment.Contains('TICKETBOX_API_TOKEN')) {{
+        throw 'ambient authority leaked into helper child environment'
+    }}
+    if ($Arguments -notcontains '--validate-generation-program' -or
+        $Arguments -notcontains '--generation-program-path' -or
+        $Arguments -notcontains '--expected-generation-program-sha256') {{
+        throw 'validation arguments are incomplete'
+    }}
+    if ($script:processFailure) {{ throw 'primary execution failure' }}
+    $payload = [ordered]@{{
+        schema = 'ticketbox-database-generation-program-validation-v2'
+        source_revision = 'base'
+        target_revision = '20260809_0001'
+        revision_count = 43
+        generation_program_sha256 = '{program_sha}'
+    }}
+    if ($script:addUnknownField) {{ $payload.unknown = 'forbidden' }}
     return [pscustomobject]@{{
         ExitCode = 0
-        StandardOutput = (ConvertTo-TicketboxC07CompactJson $payload) + "`n"
+        StandardOutput = (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $payload) + "`n"
         StandardError = ''
     }}
 }}
 
 $helperEvidence = [pscustomobject][ordered]@{{
-    RelativePath = 'ticketbox-c07-migrator.exe'
+    RelativePath = 'ticketbox-database-maintenance.exe'
     Size = [int64](Get-Item -LiteralPath '{_ps_literal(helper)}').Length
     Sha256 = '{helper_sha}'
 }}
@@ -202,37 +200,44 @@ $programEvidence = [pscustomobject][ordered]@{{
     Sha256 = '{program_sha}'
 }}
 $validated = Get-TicketboxDatabaseGenerationProgramFromHelper `
-    -MigrationHelperPath '{_ps_literal(helper)}' `
-    -MigrationHelperEvidence $helperEvidence `
-    -ExpectedMigrationHelperPath '{_ps_literal(helper)}' `
+    -MaintenanceHelperPath '{_ps_literal(helper)}' `
+    -MaintenanceHelperEvidence $helperEvidence `
+    -ExpectedMaintenanceHelperPath '{_ps_literal(helper)}' `
     -ProgramPath '{_ps_literal(program)}' `
     -ProgramEvidence $programEvidence
-$secure = New-Object Security.SecureString
-1..32 | ForEach-Object {{ $secure.AppendChar('x') }}
-$secure.MakeReadOnly()
-$plan = [pscustomobject][ordered]@{{
-    source_revision = '20260729_0001'; target_revision = '20260809_0001'
-    upgrade_required = $true; generation_program_sha256 = '{program_sha}'
-    generation_operation_id = '11111111-1111-4111-8111-111111111111'
+$script:addUnknownField = $true
+$closed = $false
+try {{
+    [void](Get-TicketboxDatabaseGenerationProgramFromHelper `
+        -MaintenanceHelperPath '{_ps_literal(helper)}' `
+        -MaintenanceHelperEvidence $helperEvidence `
+        -ExpectedMaintenanceHelperPath '{_ps_literal(helper)}' `
+        -ProgramPath '{_ps_literal(program)}' `
+        -ProgramEvidence $programEvidence)
 }}
-$managed = Invoke-TicketboxPackagedManagedSchemaUpgrade `
-    -HostAuthority ([pscustomobject]@{{Schema='authority'}}) `
-    -MigratorPassword $secure -Plan $plan `
-    -MigrationHelperPath '{_ps_literal(helper)}' `
-    -MigrationHelperEvidence $helperEvidence `
-    -ExpectedMigrationHelperPath '{_ps_literal(helper)}' `
-    -ProgramPath '{_ps_literal(program)}' `
-    -ProgramEvidence $programEvidence
-$allArguments = @($script:calls | ForEach-Object {{ $_ }})
+catch {{ $closed = $_.Exception.Message -match '闭合合同' }}
+$script:addUnknownField = $false
+$script:processFailure = $true
+$script:leaseFailure = $true
+$script:closeFailure = $true
+$aggregate = $null
+try {{
+    [void](Get-TicketboxDatabaseGenerationProgramFromHelper `
+        -MaintenanceHelperPath '{_ps_literal(helper)}' `
+        -MaintenanceHelperEvidence $helperEvidence `
+        -ExpectedMaintenanceHelperPath '{_ps_literal(helper)}' `
+        -ProgramPath '{_ps_literal(program)}' `
+        -ProgramEvidence $programEvidence)
+}}
+catch {{ $aggregate = $_.Exception }}
 [ordered]@{{
     target = [string]$validated.target_revision
-    managed = [string]$managed.result
-    program_calls = @($script:calls | Where-Object {{
-        $_ -contains '--generation-program-path' -and
-        $_ -contains '--expected-generation-program-sha256'
-    }}).Count
-    secret_exposed = ($allArguments -join "`n").Contains($script:secret)
-    cleanup = [int]$script:cleanup
+    revision_count = [int]$validated.revision_count
+    process_count = [int]$script:processCount
+    close_count = [int]$script:closeCount
+    unknown_rejected = $closed
+    aggregate_type = $aggregate.GetType().FullName
+    aggregate_messages = @($aggregate.InnerExceptions | ForEach-Object {{ $_.Message }})
 }} | ConvertTo-Json -Compress
 """,
         encoding="utf-8-sig",
@@ -258,11 +263,17 @@ $allArguments = @($script:calls | ForEach-Object {{ $_ }})
             timeout=30,
         )
         assert completed.returncode == 0, completed.stderr
-        evidence = json.loads(completed.stdout.strip().splitlines()[-1])
-        assert evidence == {
+        result = json.loads(completed.stdout.strip())
+        assert result == {
             "target": "20260809_0001",
-            "managed": "target_committed",
-            "program_calls": 2,
-            "secret_exposed": False,
-            "cleanup": 1,
+            "revision_count": 43,
+            "process_count": 3,
+            "close_count": 3,
+            "unknown_rejected": True,
+            "aggregate_type": "System.AggregateException",
+            "aggregate_messages": [
+                "primary execution failure",
+                "lease cleanup failure",
+                "close cleanup failure",
+            ],
         }

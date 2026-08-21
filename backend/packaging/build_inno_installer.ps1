@@ -512,10 +512,10 @@ function Get-InstallerBuildInputEvidence(
             executable = $BackendManifest.payload.executable
             database_generation_program =
                 $BackendManifest.payload.database_generation_program
-            c07_migration_helper =
-                $BackendManifest.payload.c07_migration_helper
-            c07_migration_helper_smoke =
-                $BackendManifest.payload.c07_migration_helper_smoke
+            database_maintenance_helper =
+                $BackendManifest.payload.database_maintenance_helper
+            database_maintenance_helper_smoke =
+                $BackendManifest.payload.database_maintenance_helper_smoke
             toolchain = $BackendManifest.toolchain
             manifest = Get-TicketboxFileEvidence $BackendRoot $BackendBuildManifest
         }
@@ -1254,7 +1254,7 @@ Write-Ok "Git provenance：$($gitProvenance.commit) dirty=$($gitProvenance.dirty
 Assert-Dir $BackendDist "冻结后端 onedir"
 Assert-TicketboxNoReparsePath -Path $BackendDist -AllowedRoot $BackendRoot -InspectTree | Out-Null
 Assert-File (Join-Path $BackendDist "ticketbox-backend.exe") "ticketbox-backend.exe"
-Assert-File (Join-Path $BackendDist "ticketbox-c07-migrator.exe") "ticketbox-c07-migrator.exe"
+Assert-File (Join-Path $BackendDist "ticketbox-database-maintenance.exe") "ticketbox-database-maintenance.exe"
 $backendManifest = Assert-TicketboxBackendBuildManifest $BackendRoot $BackendDist
 Write-Ok "冻结后端 manifest 已绑定当前源码、版本和 EXE/payload hash。"
 Assert-Dir $ManagerDist "冻结 Desktop Manager onedir"
@@ -1358,8 +1358,8 @@ $defines = @(
     "/DDatabaseGenerationCommitVerifierScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationCommitVerifierScript)",
     "/DDatabaseGenerationPolicyScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationPolicyScript)",
     "/DDatabaseGenerationProgramSha256=$([string]$backendManifest.payload.database_generation_program.sha256)",
-    "/DDatabaseGenerationMigrationHelperSize=$([int64]$backendManifest.payload.c07_migration_helper.size)",
-    "/DDatabaseGenerationMigrationHelperSha256=$([string]$backendManifest.payload.c07_migration_helper.sha256)",
+    "/DDatabaseMaintenanceHelperSize=$([int64]$backendManifest.payload.database_maintenance_helper.size)",
+    "/DDatabaseMaintenanceHelperSha256=$([string]$backendManifest.payload.database_maintenance_helper.sha256)",
     "/DDatabaseGenerationPgDumpSize=$([int64]$pgDumpBuildEvidence[0].size)",
     "/DDatabaseGenerationPgDumpSha256=$([string]$pgDumpBuildEvidence[0].sha256)",
     "/DDatabaseGenerationPgRestoreSize=$([int64]$pgRestoreBuildEvidence[0].size)",
