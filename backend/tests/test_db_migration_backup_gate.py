@@ -264,9 +264,16 @@ def test_pre_money_managed_revision_is_prearmed_before_upgrade(monkeypatch):
 
     import app.database as db_pkg
     from app.services import backup_service
+    from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
 
     alembic = db_pkg.load_alembic_context()
-    command.downgrade(alembic.config, _MANAGED_SOURCE_REVISION)
+    reset_public_schema(db_pkg.engine)
+    run_alembic_for_test(
+        db_pkg.engine,
+        alembic.config,
+        command.upgrade,
+        _MANAGED_SOURCE_REVISION,
+    )
     assert _head_revision(db_pkg) == _MANAGED_SOURCE_REVISION
 
     calls: list[str] = []
