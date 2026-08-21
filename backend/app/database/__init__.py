@@ -179,11 +179,20 @@ def _apply_managed_schema_lifecycle(alembic: AlembicContext) -> None:
 
     from alembic import command
 
+    from app.database._managed_postgres_migration_runtime import _prearmed_transaction
+
     # Preflight reads may have returned idle connections to this process's
     # pool. Close those before proving that no older runtime remains connected;
     # checked-out connections survive dispose and are therefore still rejected.
     engine.dispose()
-    with engine.begin() as connection:
+    with (
+        engine.connect() as connection,
+        _prearmed_transaction(
+            connection,
+            timeout_ms=20 * 60 * 1000,
+            access_mode="read_write",
+        ),
+    ):
         lease_acquired = connection.scalar(
             text("SELECT pg_try_advisory_xact_lock(hashtext(current_database()), hashtext(:label))"),
             {"label": MIGRATION_LEASE_LABEL},

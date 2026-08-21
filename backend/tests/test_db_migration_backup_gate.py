@@ -258,6 +258,30 @@ def test_post_money_bigint_managed_revision_backs_up_then_upgrades(monkeypatch):
         assert connection.scalar(text("SELECT version_num FROM public.alembic_version")) == alembic.head_revision
 
 
+def test_pre_money_managed_revision_is_prearmed_before_upgrade(monkeypatch):
+    """A known source revision can execute the timeout-guarded money migration."""
+    from alembic import command
+
+    import app.database as db_pkg
+    from app.services import backup_service
+
+    alembic = db_pkg.load_alembic_context()
+    command.downgrade(alembic.config, _MANAGED_SOURCE_REVISION)
+    assert _head_revision(db_pkg) == _MANAGED_SOURCE_REVISION
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        backup_service,
+        "create_pre_upgrade_backup",
+        lambda: calls.append("backup") or SimpleNamespace(file_name="pre-money.dump"),
+    )
+
+    db_pkg.init_db()
+
+    assert calls == ["backup"]
+    assert _head_revision(db_pkg) == alembic.head_revision
+
+
 def test_legacy_database_without_revision_refuses_without_backup(monkeypatch):
     """Unknown lineage is read-only refused before backup, DDL, or seed."""
     import app.database as db_pkg
