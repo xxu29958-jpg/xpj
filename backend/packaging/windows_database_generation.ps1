@@ -225,8 +225,8 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
             $source = Read-TicketboxDatabaseGenerationOperationArtifact `
                 $stateRoot $operationId "source-binding" -AllowAbsent
             if ($null -ne $source) {
-                $source = Assert-TicketboxDatabaseGenerationSourceBinding `
-                    -Binding $source -Intent $intent
+                $source = Assert-TicketboxDatabaseGenerationSourceBindingChain `
+                    -StateRoot $stateRoot -Binding $source -Intent $intent
             }
             $target = Read-TicketboxDatabaseGenerationOperationArtifact `
                 $stateRoot $operationId "target-authorization" -AllowAbsent

@@ -140,28 +140,109 @@ function Get-TicketboxPathEntryKindNoFollow {{
     if (Test-Path -LiteralPath $Path -PathType Container) {{ return 'Directory' }}
     return 'Missing'
 }}
-function New-TicketboxInitdbServiceImagePath {{ return 'init-image' }}
-function Test-TicketboxServiceExists {{ param($Name); return $script:servicePresent }}
-function Get-TicketboxServiceExecutablePath {{ param($Name); return (Join-Path $root 'install\shawl\shawl.exe') }}
-function Invoke-TicketboxScChecked {{ $script:events += 'service-create'; $script:servicePresent = $true }}
-function Set-TicketboxServiceIdentityContract {{ param($Name, $LogonAccount, $SidType); $script:events += 'identity' }}
-function Assert-TicketboxServiceStartMode {{ param($Name, $ExpectedStartMode); $script:events += 'start-mode' }}
-function Assert-TicketboxServiceHasNoFailureActions {{ param($Name); $script:events += 'no-failure-actions' }}
-function Assert-TicketboxInitdbServiceCommand {{ $script:events += 'initdb-command' }}
-function Get-TicketboxServiceSid {{ param($Name); return 'NT SERVICE\TicketboxRestore' }}
-function Set-TicketboxExactDirectoryAcl {{ $script:events += 'acl' }}
+function New-TicketboxInitdbServiceImagePath {{
+    param($ShawlPath, $ServiceName, $WorkingDirectory, $InitdbPath, $DataRoot, $PasswordFile, $StopTimeoutMs)
+    if (
+        -not (Test-TicketboxPathEquals $ShawlPath (Join-Path $root 'install\shawl\shawl.exe')) -or
+        [string]$ServiceName -cne 'TicketboxRestore' -or
+        -not (Test-TicketboxPathEquals $WorkingDirectory (Join-Path $root 'install\pg\bin')) -or
+        -not (Test-TicketboxPathEquals $InitdbPath (Join-Path $root 'install\pg\bin\initdb.exe')) -or
+        -not (Test-TicketboxPathEquals $DataRoot $candidatePg) -or
+        -not (Test-TicketboxPathEquals $PasswordFile (Join-Path $candidateRoot '.initdb-password')) -or
+        [int]$StopTimeoutMs -ne 1000
+    ) {{ throw 'initdb image inputs drifted' }}
+    return 'init-image'
+}}
+function Test-TicketboxServiceExists {{
+    param($Name)
+    if ([string]$Name -cne 'TicketboxRestore') {{ throw 'wrong service existence probe' }}
+    return $script:servicePresent
+}}
+function Get-TicketboxServiceExecutablePath {{
+    param($Name)
+    if ([string]$Name -cne 'TicketboxRestore') {{ throw 'wrong service executable probe' }}
+    return (Join-Path $root 'install\shawl\shawl.exe')
+}}
+function Invoke-TicketboxScChecked {{
+    $values = @($args[0])
+    if (($values -join '|') -cne 'create|TicketboxRestore|binPath=|init-image|start=|demand|obj=|LocalSystem') {{
+        throw "unexpected initdb SCM create: $($values -join '|')"
+    }}
+    $script:events += 'service-create'
+    $script:servicePresent = $true
+}}
+function Set-TicketboxServiceIdentityContract {{
+    param($Name, $LogonAccount, $SidType)
+    if (
+        [string]$Name -cne 'TicketboxRestore' -or
+        [string]$LogonAccount -cne 'LocalSystem' -or
+        [string]$SidType -cne 'unrestricted'
+    ) {{ throw 'initdb service identity drifted' }}
+    $script:events += 'identity'
+}}
+function Assert-TicketboxServiceStartMode {{
+    param($Name, $ExpectedStartMode)
+    if ([string]$Name -cne 'TicketboxRestore' -or [string]$ExpectedStartMode -cne 'Manual') {{
+        throw 'initdb service start mode drifted'
+    }}
+    $script:events += 'start-mode'
+}}
+function Assert-TicketboxServiceHasNoFailureActions {{
+    param($Name)
+    if ([string]$Name -cne 'TicketboxRestore') {{ throw 'wrong failure-actions probe' }}
+    $script:events += 'no-failure-actions'
+}}
+function Assert-TicketboxInitdbServiceCommand {{
+    param($Name, $ExpectedShawl, $ExpectedServiceName, $ExpectedWorkingDirectory, $ExpectedInitdb, $ExpectedDataRoot, $ExpectedPasswordFile, $ExpectedStopTimeoutMs, $ExpectedImagePath)
+    if (
+        [string]$Name -cne 'TicketboxRestore' -or
+        -not (Test-TicketboxPathEquals $ExpectedShawl (Join-Path $root 'install\shawl\shawl.exe')) -or
+        [string]$ExpectedServiceName -cne 'TicketboxRestore' -or
+        -not (Test-TicketboxPathEquals $ExpectedWorkingDirectory (Join-Path $root 'install\pg\bin')) -or
+        -not (Test-TicketboxPathEquals $ExpectedInitdb (Join-Path $root 'install\pg\bin\initdb.exe')) -or
+        -not (Test-TicketboxPathEquals $ExpectedDataRoot $candidatePg) -or
+        -not (Test-TicketboxPathEquals $ExpectedPasswordFile (Join-Path $candidateRoot '.initdb-password')) -or
+        [int]$ExpectedStopTimeoutMs -ne 1000 -or
+        [string]$ExpectedImagePath -cne 'init-image'
+    ) {{ throw 'initdb command authority drifted' }}
+    $script:events += 'initdb-command'
+}}
+function Get-TicketboxServiceSid {{
+    param($Name)
+    if ([string]$Name -cne 'TicketboxRestore') {{ throw 'wrong service SID probe' }}
+    return 'NT SERVICE\TicketboxRestore'
+}}
+function Set-TicketboxExactDirectoryAcl {{
+    param($Path, $Accounts, $OwnerAccount, [switch]$Recurse)
+    if (
+        -not (Test-TicketboxPathEquals $Path $candidateRoot) -or
+        (@($Accounts) -join '|') -cne 'SYSTEM|BUILTIN\Administrators|NT SERVICE\TicketboxRestore' -or
+        [string]$OwnerAccount -cne 'SYSTEM' -or
+        -not $Recurse
+    ) {{ throw 'candidate root ACL drifted' }}
+    $script:events += 'acl'
+}}
 function Write-TicketboxProtectedUtf8FileDurable {{
     param($Path, $Text, $FullControlAccounts, $OwnerAccount)
     if (-not (Test-TicketboxPathEquals $Path (Join-Path $candidateRoot '.initdb-password'))) {{
         throw "wrong password path: $Path"
     }}
-    if ([string]$Text -cne 'protected-secret') {{ throw 'wrong bootstrap password' }}
+    if (
+        [string]$Text -cne 'protected-secret' -or
+        (@($FullControlAccounts) -join '|') -cne 'SYSTEM|BUILTIN\Administrators|NT SERVICE\TicketboxRestore' -or
+        [string]$OwnerAccount -cne 'SYSTEM'
+    ) {{ throw 'wrong protected password contract' }}
     [IO.Directory]::CreateDirectory((Split-Path -Parent $Path)) | Out-Null
     [IO.File]::WriteAllText([string]$Path, [string]$Text)
     $script:events += 'password-write'
 }}
 function Remove-TicketboxProtectedUtf8Artifact {{
     param($Path, $FullControlAccounts, $OwnerAccount)
+    if (
+        -not (Test-TicketboxPathEquals $Path (Join-Path $candidateRoot '.initdb-password')) -or
+        (@($FullControlAccounts) -join '|') -cne 'SYSTEM|BUILTIN\Administrators|NT SERVICE\TicketboxRestore' -or
+        [string]$OwnerAccount -cne 'SYSTEM'
+    ) {{ throw 'password retirement authority drifted' }}
     [IO.File]::Delete([string]$Path)
     $script:events += 'password-remove'
 }}
@@ -175,7 +256,9 @@ function Invoke-TicketboxOwnedOneShotService {{
         -not (Test-TicketboxPathEquals $ExpectedExecutable $expectedShawl) -or
         $runtimeExecutables.Count -ne 2 -or
         -not (Test-TicketboxPathEquals $runtimeExecutables[0] $expectedShawl) -or
-        -not (Test-TicketboxPathEquals $runtimeExecutables[1] $expectedInitdb)
+        -not (Test-TicketboxPathEquals $runtimeExecutables[1] $expectedInitdb) -or
+        [int]$TimeoutMilliseconds -ne 1000 -or
+        [int]$PollMilliseconds -ne 10
     ) {{ throw 'one-shot authority drifted' }}
     $script:events += 'one-shot'
     [IO.Directory]::CreateDirectory($candidatePg) | Out-Null
@@ -191,6 +274,12 @@ function Invoke-TicketboxOwnedOneShotService {{
 }}
 function Remove-TicketboxOwnedServiceIfExists {{
     param($Name, $ExpectedExecutable, $TimeoutMilliseconds, $PollMilliseconds)
+    if (
+        [string]$Name -cne 'TicketboxRestore' -or
+        -not (Test-TicketboxPathEquals $ExpectedExecutable (Join-Path $root 'install\shawl\shawl.exe')) -or
+        [int]$TimeoutMilliseconds -ne 1000 -or
+        [int]$PollMilliseconds -ne 10
+    ) {{ throw 'initdb service retirement authority drifted' }}
     $script:servicePresent = $false
     $script:events += 'service-remove'
 }}
@@ -291,6 +380,8 @@ $install = Join-Path $root 'install'
 $pgCtl = Join-Path $install 'pg\bin\pg_ctl.exe'
 $pgIsReady = Join-Path $install 'pg\bin\pg_isready.exe'
 $script:events = @()
+$script:servicePresent = $false
+$script:createCount = 0
 function Assert-TicketboxLifecycleOperationLease {{
     param($Lock)
     if ([string]$Lock -cne 'lock') {{ throw 'wrong lifecycle lease' }}
@@ -305,13 +396,19 @@ function New-TicketboxPgServiceImagePath {{
     ) {{ throw 'service image authority drifted' }}
     return 'candidate-service-image'
 }}
-function Test-TicketboxServiceExists {{ param($Name); return $false }}
+function Test-TicketboxServiceExists {{
+    param($Name)
+    if ([string]$Name -cne 'TicketboxRestore') {{ throw 'wrong service existence probe' }}
+    return $script:servicePresent
+}}
 function Invoke-TicketboxScChecked {{
     $values = @($args[0])
     if (($values -join '|') -cne 'create|TicketboxRestore|binPath=|candidate-service-image|start=|demand|obj=|LocalSystem') {{
         throw "unexpected SCM create: $($values -join '|')"
     }}
     $script:events += 'scm-create'
+    $script:servicePresent = $true
+    $script:createCount += 1
 }}
 function Assert-TicketboxServiceOwnership {{
     param($Name, $ExpectedExecutable)
@@ -344,7 +441,11 @@ function Assert-TicketboxServiceDependencies {{
     }}
     $script:events += 'dependencies'
 }}
-function Get-TicketboxServiceSid {{ param($Name); return 'NT SERVICE\TicketboxRestore' }}
+function Get-TicketboxServiceSid {{
+    param($Name)
+    if ([string]$Name -cne 'TicketboxRestore') {{ throw 'wrong service SID probe' }}
+    return 'NT SERVICE\TicketboxRestore'
+}}
 function Set-TicketboxExactDirectoryAcl {{
     param($Path, $Accounts, $OwnerAccount, [switch]$Recurse)
     if (
@@ -393,6 +494,13 @@ Start-TicketboxPostgresqlRestoreCandidateService $subject $paths 'lock'
 $expected = 'lease|scm-create|ownership|command|identity|dependencies|acl|start|ready'
 if (($script:events -join '|') -cne $expected) {{
     throw "candidate service path incomplete: $($script:events -join '|')"
+}}
+if ($script:createCount -ne 1) {{ throw 'candidate service was not created exactly once' }}
+$script:events = @()
+Start-TicketboxPostgresqlRestoreCandidateService $subject $paths 'lock'
+$retryExpected = 'lease|ownership|command|identity|dependencies|acl|start|ready'
+if (($script:events -join '|') -cne $retryExpected -or $script:createCount -ne 1) {{
+    throw "existing candidate service was recreated: $($script:events -join '|')"
 }}
 """
     run_powershell_contract_script(
@@ -503,6 +611,10 @@ $labels = @($script:commands | ForEach-Object {{ $_.Label }}) -join '|'
 if ($labels -cne 'restore candidate role authority|restore candidate database creation|restore candidate database admission|restore candidate managed ACL') {{
     throw "absent catalog path drifted: $labels"
 }}
+$databases = @($script:commands | ForEach-Object {{ $_.Database }}) -join '|'
+if ($databases -cne 'postgres|postgres|postgres|ticketbox') {{
+    throw "absent catalog database routing drifted: $databases"
+}}
 $creation = @($script:commands | Where-Object {{ $_.Label -ceq 'restore candidate database creation' }})[0]
 if ($creation.Sql -cnotlike '*CREATE DATABASE*OWNER*ticketbox_owner*TEMPLATE template0*') {{ throw 'creation SQL drifted' }}
 $admission = @($script:commands | Where-Object {{ $_.Label -ceq 'restore candidate database admission' }})[0]
@@ -524,6 +636,10 @@ $existing = Initialize-TicketboxPostgresqlRestoreCandidateDatabase `
 $existingLabels = @($script:commands | ForEach-Object {{ $_.Label }}) -join '|'
 if ($existingLabels -cne 'restore candidate role authority|restore candidate database admission|restore candidate managed ACL') {{
     throw "existing catalog path drifted: $existingLabels"
+}}
+$existingDatabases = @($script:commands | ForEach-Object {{ $_.Database }}) -join '|'
+if ($existingDatabases -cne 'postgres|postgres|ticketbox') {{
+    throw "existing catalog database routing drifted: $existingDatabases"
 }}
 $existing.SuperuserPassword.Dispose()
 if ($script:disposeCount -ne 2) {{ throw 'existing-path secret lifetime drifted' }}

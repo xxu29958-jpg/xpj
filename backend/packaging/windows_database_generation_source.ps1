@@ -604,3 +604,114 @@ function Assert-TicketboxDatabaseGenerationSourceBinding {
     }
     return $Binding
 }
+
+function Assert-TicketboxDatabaseGenerationSourceBindingChain {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Binding,
+        [Parameter(Mandatory = $true)][object]$Intent
+    )
+
+    $bindingArtifact = Assert-TicketboxDatabaseGenerationSourceBinding `
+        -Binding $Binding `
+        -Intent $Intent
+    $payload = $bindingArtifact.Payload
+    $operationId = [string]$payload.operation_id
+    $artifactKind = if ([string]$payload.source_kind -ceq "empty") {
+        "source-create-attempt"
+    }
+    else {
+        "restored-source"
+    }
+    $evidence = Read-TicketboxDatabaseGenerationOperationArtifact `
+        $StateRoot $operationId $artifactKind
+    Assert-TicketboxDatabaseGenerationLowerSha256 `
+        ([string]$evidence.PayloadSha256) `
+        "database generation SourceBinding evidence"
+    if (
+        [string]$evidence.PayloadSha256 -cne
+            [string]$payload.source_evidence_sha256
+    ) {
+        throw "database generation SourceBinding references foreign evidence."
+    }
+
+    if ($artifactKind -ceq "source-create-attempt") {
+        Assert-TicketboxDatabaseGenerationExactProperties `
+            -Value $evidence.Payload `
+            -ExpectedNames @(
+                "schema", "operation_id", "intent_sha256",
+                "cluster_system_identifier", "database_name",
+                "temporary_database", "observed_target_absent"
+            ) `
+            -Label "database generation source create-attempt evidence"
+        $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
+        $expectedTemporaryDatabase = "ticketbox_generation_" + (
+            ([guid]$operationId).ToString("N")
+        )
+        if (
+            [string]$evidence.Payload.schema -cne
+                "ticketbox-database-generation-source-create-attempt-v1" -or
+            [string]$evidence.Payload.operation_id -cne $operationId -or
+            [string]$evidence.Payload.intent_sha256 -cne
+                [string]$Intent.PayloadSha256 -or
+            [string]$evidence.Payload.cluster_system_identifier -cne
+                [string]$payload.cluster_system_identifier -or
+            [string]$evidence.Payload.database_name -cne
+                [string]$databasePolicy.DatabaseName -or
+            [string]$evidence.Payload.temporary_database -cne
+                $expectedTemporaryDatabase -or
+            -not [bool]$evidence.Payload.observed_target_absent
+        ) {
+            throw "database generation SourceBinding empty evidence drifted."
+        }
+        return $bindingArtifact
+    }
+
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $evidence.Payload `
+        -ExpectedNames @(
+            "schema", "operation_id", "intent_sha256",
+            "source_request_sha256", "predecessor_current_sha256",
+            "backup_manifest_sha256", "backup_id", "dataset_id",
+            "restore_epoch", "source_revision",
+            "cluster_system_identifier", "database_oid",
+            "writer_fence_sha256", "result"
+        ) `
+        -Label "database generation restored source evidence"
+    foreach ($digest in @(
+        [string]$evidence.Payload.source_request_sha256,
+        [string]$evidence.Payload.predecessor_current_sha256,
+        [string]$evidence.Payload.backup_manifest_sha256,
+        [string]$evidence.Payload.writer_fence_sha256
+    )) {
+        Assert-TicketboxDatabaseGenerationLowerSha256 `
+            $digest "database generation restored source evidence"
+    }
+    $backupId = ([guid][string]$evidence.Payload.backup_id).ToString("D")
+    $datasetId = ([guid][string]$evidence.Payload.dataset_id).ToString("D")
+    if (
+        [string]$evidence.Payload.schema -cne
+            "ticketbox-database-generation-restored-source-v1" -or
+        [string]$evidence.Payload.operation_id -cne $operationId -or
+        [string]$evidence.Payload.intent_sha256 -cne
+            [string]$Intent.PayloadSha256 -or
+        [string]$evidence.Payload.source_request_sha256 -cne
+            [string]$Intent.Payload.source_request_sha256 -or
+        [string]$evidence.Payload.predecessor_current_sha256 -cne
+            [string]$Intent.Payload.expected_predecessor_sha256 -or
+        [string]$evidence.Payload.source_revision -cne
+            [string]$payload.source_revision -or
+        [string]$evidence.Payload.cluster_system_identifier -cne
+            [string]$payload.cluster_system_identifier -or
+        [uint32]$evidence.Payload.database_oid -ne [uint32]$payload.database_oid -or
+        [string]$evidence.Payload.writer_fence_sha256 -cne
+            [string]$payload.writer_fence_sha256 -or
+        $backupId -cne [string]$evidence.Payload.backup_id -or
+        $datasetId -cne [string]$evidence.Payload.dataset_id -or
+        [int64]$evidence.Payload.restore_epoch -lt 0 -or
+        [string]$evidence.Payload.result -cne "isolated_restore_candidate_ready"
+    ) {
+        throw "database generation SourceBinding restored evidence drifted."
+    }
+    return $bindingArtifact
+}

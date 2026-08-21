@@ -25,8 +25,8 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
     $intent = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
     $source = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "source-binding"
-    $source = Assert-TicketboxDatabaseGenerationSourceBinding `
-        -Binding $source -Intent $intent
+    $source = Assert-TicketboxDatabaseGenerationSourceBindingChain `
+        -StateRoot $stateRoot -Binding $source -Intent $intent
     $target = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "target-authorization"
     $recoveryProof = Read-TicketboxDatabaseGenerationOperationArtifact `

@@ -88,6 +88,128 @@ $binding.Payload.source_revision = '20260821_0001'
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_source_binding_chain_rejects_missing_or_corrupt_backing_evidence(
+    tmp_path: Path,
+) -> None:
+    source = SOURCE.read_text(encoding="utf-8-sig")
+    validator = _function(
+        source,
+        "Assert-TicketboxDatabaseGenerationSourceBinding",
+    )
+    chain = _function(
+        source,
+        "Assert-TicketboxDatabaseGenerationSourceBindingChain",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Assert-TicketboxDatabaseGenerationExactProperties {{
+    param($Value, $ExpectedNames, $Label)
+    $actual = @($Value.PSObject.Properties.Name | Sort-Object -CaseSensitive)
+    $expected = @($ExpectedNames | Sort-Object -CaseSensitive)
+    if (($actual -join "`n") -cne ($expected -join "`n")) {{ throw 'open contract' }}
+}}
+function Assert-TicketboxDatabaseGenerationLowerSha256 {{
+    param($Value, $Label)
+    if ([string]$Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw 'bad digest' }}
+}}
+function Read-TicketboxDatabaseGenerationOperationArtifact {{
+    param($StateRoot, $OperationId, $ArtifactKind)
+    if ($null -eq $script:evidence) {{ throw 'backing evidence missing' }}
+    if ([string]$ArtifactKind -cne [string]$script:expectedEvidenceKind) {{ throw 'wrong evidence type' }}
+    return $script:evidence
+}}
+function Get-TicketboxDatabaseAuthorizationContract {{
+    return [pscustomobject]@{{ DatabaseName = 'ticketbox' }}
+}}
+{validator}
+{chain}
+$operation = '11111111-1111-4111-8111-111111111111'
+$intent = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = $operation
+        target_revision = '20260821_0001'
+        source_request_sha256 = ('b' * 64)
+        expected_predecessor_sha256 = ('c' * 64)
+    }}
+}}
+$binding = [pscustomobject]@{{
+    PayloadSha256 = ('d' * 64)
+    Payload = [pscustomobject][ordered]@{{
+        schema = 'ticketbox-database-generation-source-binding-v1'
+        operation_id = $operation
+        intent_sha256 = ('a' * 64)
+        source_evidence_sha256 = ('e' * 64)
+        source_kind = 'current_generation'
+        source_revision = '20260821_0001'
+        cluster_system_identifier = '7612345678901234567'
+        database_oid = [uint32]16384
+        writer_fence_sha256 = ('f' * 64)
+    }}
+}}
+$script:expectedEvidenceKind = 'restored-source'
+$script:evidence = [pscustomobject]@{{
+    PayloadSha256 = ('e' * 64)
+    Payload = [pscustomobject][ordered]@{{
+        schema = 'ticketbox-database-generation-restored-source-v1'
+        operation_id = $operation
+        intent_sha256 = ('a' * 64)
+        source_request_sha256 = ('b' * 64)
+        predecessor_current_sha256 = ('c' * 64)
+        backup_manifest_sha256 = ('1' * 64)
+        backup_id = '22222222-2222-4222-8222-222222222222'
+        dataset_id = '33333333-3333-4333-8333-333333333333'
+        restore_epoch = [int64]4
+        source_revision = '20260821_0001'
+        cluster_system_identifier = '7612345678901234567'
+        database_oid = [uint32]16384
+        writer_fence_sha256 = ('f' * 64)
+        result = 'isolated_restore_candidate_ready'
+    }}
+}}
+[void](Assert-TicketboxDatabaseGenerationSourceBindingChain 'state' $binding $intent)
+$script:evidence = $null
+$missingRejected = $false
+try {{ Assert-TicketboxDatabaseGenerationSourceBindingChain 'state' $binding $intent | Out-Null }} catch {{ $missingRejected = $true }}
+if (-not $missingRejected) {{ throw 'missing backing evidence was accepted' }}
+$script:evidence = [pscustomobject]@{{
+    PayloadSha256 = ('9' * 64)
+    Payload = [pscustomobject]@{{}}
+}}
+$corruptRejected = $false
+try {{ Assert-TicketboxDatabaseGenerationSourceBindingChain 'state' $binding $intent | Out-Null }} catch {{ $corruptRejected = $true }}
+if (-not $corruptRejected) {{ throw 'corrupt backing evidence was accepted' }}
+$intent.Payload.source_request_sha256 = ''
+$binding.Payload.source_evidence_sha256 = ('8' * 64)
+$binding.Payload.source_kind = 'empty'
+$binding.Payload.source_revision = 'base'
+$script:expectedEvidenceKind = 'source-create-attempt'
+$script:evidence = [pscustomobject]@{{
+    PayloadSha256 = ('8' * 64)
+    Payload = [pscustomobject][ordered]@{{
+        schema = 'ticketbox-database-generation-source-create-attempt-v1'
+        operation_id = $operation
+        intent_sha256 = ('a' * 64)
+        cluster_system_identifier = '7612345678901234567'
+        database_name = 'ticketbox'
+        temporary_database = 'ticketbox_generation_11111111111141118111111111111111'
+        observed_target_absent = $true
+    }}
+}}
+[void](Assert-TicketboxDatabaseGenerationSourceBindingChain 'state' $binding $intent)
+$script:evidence.Payload.temporary_database = 'ticketbox_generation_foreign'
+$emptyCorruptRejected = $false
+try {{ Assert-TicketboxDatabaseGenerationSourceBindingChain 'state' $binding $intent | Out-Null }} catch {{ $emptyCorruptRejected = $true }}
+if (-not $emptyCorruptRejected) {{ throw 'corrupt empty-source evidence was accepted' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="database-generation-source-binding-chain.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_preinstall_eligibility_is_read_only_and_fails_closed(tmp_path: Path) -> None:
     eligibility = _function(
         CONTRACT.read_text(encoding="utf-8-sig"),
