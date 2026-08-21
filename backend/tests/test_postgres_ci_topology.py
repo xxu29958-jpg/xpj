@@ -357,7 +357,7 @@ def _assert_windows_lifecycle_matrix(
 ) -> None:
     assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [
         "${{ matrix.suite.timeout_minutes }}",
-        20,
+        30,
         5,
     ]
     expected_windows_suite_rows = [
