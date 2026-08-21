@@ -69,18 +69,25 @@ def test_managed_topology_preserves_body_and_cleanup_failures(monkeypatch) -> No
     body_error = ValueError("body failed")
     cleanup_error = KeyboardInterrupt("cleanup failed")
     topology = SimpleNamespace(
-        admin=object(),
+        admin=SimpleNamespace(execute=lambda *_args, **_kwargs: None),
         database="throwaway_database",
         runtime_role="throwaway_runtime",
         migrator="throwaway_migrator",
         owner="throwaway_owner",
+        owner_url=object(),
+        pgpass=object(),
+        migrator_url=SimpleNamespace(port=5432),
     )
     monkeypatch.setattr(runtime_test, "_new_managed_topology", lambda _path: topology)
+    monkeypatch.setattr(runtime_test, "_create_roles_and_database", lambda _topology: None)
     monkeypatch.setattr(
         runtime_test,
-        "_create_roles_and_database",
-        lambda _topology: (_ for _ in ()).throw(body_error),
+        "create_engine",
+        lambda *_args, **_kwargs: SimpleNamespace(dispose=lambda: None),
     )
+    monkeypatch.setattr(runtime_test, "_alembic_config", lambda: object())
+    monkeypatch.setattr(runtime_test, "run_alembic_for_test", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(runtime_test, "write_protected_file_exclusive", lambda *_args: None)
     monkeypatch.setattr(
         runtime_test,
         "cleanup_postgres_topology",
@@ -91,5 +98,5 @@ def test_managed_topology_preserves_body_and_cleanup_failures(monkeypatch) -> No
         pytest.raises(BaseExceptionGroup) as captured,
         runtime_test._managed_topology(SimpleNamespace(), monkeypatch),
     ):
-        raise AssertionError("unreachable")
+        raise body_error
     assert captured.value.exceptions == (body_error, cleanup_error)
