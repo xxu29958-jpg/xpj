@@ -24,8 +24,14 @@ function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {
     $paths = @()
     foreach ($name in @(
         "windows_atomic_artifacts.ps1",
+        "windows_pg_recovery_tools.ps1",
         "windows_postgresql_credentials.ps1",
+        "windows_postgresql_database_command.ps1",
+        "windows_postgresql_database_catalog.ps1",
         "windows_postgresql_writer_fence.ps1",
+        "windows_ticketbox_database_contract.ps1",
+        "windows_ticketbox_database_acl.ps1",
+        "windows_ticketbox_database_roles.ps1",
         "windows_service_contract.ps1",
         "windows_service_identity.ps1",
         "windows_service_lifecycle.ps1",
@@ -39,8 +45,7 @@ function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {
         "windows_database_generation_target_recovery.ps1",
         "windows_database_generation_database_binding.ps1",
         "windows_database_generation_retirement.ps1",
-        "windows_database_generation_projection.ps1",
-        "windows_c07_database.ps1"
+        "windows_database_generation_projection.ps1"
     )) {
         $dependency = Join-Path $Root $name
         if ((Get-TicketboxPathEntryKindNoFollow $dependency) -cne "File") {
@@ -66,6 +71,7 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
         -Root $PSScriptRoot)) {
         . $dependency
     }
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $stateRoot = [string]$IntentContext.StateRoot
     $intent = $IntentContext.Artifact
     $operationId = [string]$intent.Payload.operation_id
@@ -227,8 +233,10 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                     ) {
                         throw "target authority 只接受已规范化的 exact SourceBinding。"
                     }
-                    $liveSource = Get-TicketboxC07DatabaseCatalogObservation `
-                        $hostAuthority $superuserPassword $script:TicketboxC07DatabaseName
+                    $liveSource = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+                        -Authority $hostAuthority `
+                        -SuperuserPassword $superuserPassword `
+                        -TargetDatabase $($databasePolicy.DatabaseName)
                     if (
                         -not [bool]$liveSource.Exists -or
                         [string]$liveSource.ClusterSystemIdentifier -cne
@@ -259,16 +267,20 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                         -ProgramEvidence (
                             Get-TicketboxDatabaseGenerationProgramEvidence $ReleaseIdentity
                         )
-                    Set-TicketboxManagedSchemaRuntimeAcl `
+                    Set-TicketboxDatabaseRuntimeAcl `
                         -Authority $hostAuthority `
                         -SuperuserPassword $superuserPassword `
                         -PreserveRuntimeFence
                     $fence = Get-TicketboxDatabaseGenerationFrozenFence `
                         $hostAuthority $superuserPassword
-                    $roleSha256 = (Get-TicketboxC07RoleAuthoritySha256 `
-                        $hostAuthority $superuserPassword).ToLowerInvariant()
-                    $aclSha256 = (Get-TicketboxC07RuntimeAclSha256 `
-                        $hostAuthority $superuserPassword).ToLowerInvariant()
+                    $roleSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+                        Get-TicketboxDatabaseRoleAuthorityEvidence `
+                            $hostAuthority $superuserPassword
+                    )
+                    $aclSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+                        Get-TicketboxDatabaseRuntimeAclEvidence `
+                            $hostAuthority $superuserPassword
+                    )
                     $recovery = Invoke-TicketboxDatabaseGenerationTargetRecovery `
                         -StateRoot $stateRoot `
                         -Intent $intent `

@@ -76,8 +76,14 @@ def _projection_fixture_command(
         str(PACKAGING / "windows_pg_recovery_tools.ps1"),
         "-DatabaseBindingPath",
         str(PACKAGING / "windows_database_generation_database_binding.ps1"),
-        "-DatabasePolicyPath",
-        str(PACKAGING / "windows_c07_database.ps1"),
+        "-DatabaseCommandPath",
+        str(PACKAGING / "windows_postgresql_database_command.ps1"),
+        "-DatabaseContractPath",
+        str(PACKAGING / "windows_ticketbox_database_contract.ps1"),
+        "-DatabaseAclPath",
+        str(PACKAGING / "windows_ticketbox_database_acl.ps1"),
+        "-DatabaseRolesPath",
+        str(PACKAGING / "windows_ticketbox_database_roles.ps1"),
         "-PythonPath",
         sys.executable,
         "-BackendRoot",
@@ -449,8 +455,9 @@ function Get-TicketboxLocalDatabaseConnection {{
 function Assert-TicketboxConnectedPostgresDataRoot {{}}
 function ConvertTo-TicketboxPostgresqlSecureString {{ return $script:runtimeSecret }}
 function Test-TicketboxDatabaseGenerationBootstrapRetirement {{ return $script:mode -cne 'foreign' }}
-$script:TicketboxC07DatabaseName = 'ticketbox'
-$script:TicketboxC07RuntimeRole = 'ticketbox_runtime'
+function Get-TicketboxDatabaseAuthorizationContract {{
+    return [pscustomobject]@{{ DatabaseName = 'ticketbox'; RuntimeRole = 'ticketbox_runtime' }}
+}}
 $script:TicketboxDatabaseGenerationAclAccounts = @('SYSTEM', 'Administrators')
 $script:TicketboxDatabaseGenerationOwnerAccount = 'Administrators'
 $intent = [pscustomobject]@{{
@@ -523,7 +530,7 @@ function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {{
     param($Authority)
     Assert-AdminSecret $Authority.Secret
 }}
-function Invoke-TicketboxC07Sql {{
+function Invoke-TicketboxPostgresqlDatabaseCommand {{
     param($Authority, $Database, $Role, $Password, $Label, $Sql)
     Assert-AdminSecret $Password
     $script:events += $Label
@@ -544,17 +551,22 @@ function Invoke-TicketboxC07Sql {{
     ) {{ throw 'migrator was not retired' }}
     return ''
 }}
-function Assert-TicketboxC07RuntimeCredential {{
-    param($Authority, $Password)
+function Assert-TicketboxDatabaseCredential {{
+    param($Authority, $Password, $CredentialKind)
     if (-not [object]::ReferenceEquals($Password, $script:runtimeSecret)) {{
         throw 'projection did not use runtime credential'
     }}
 }}
-function Assert-TicketboxC07RoleCatalog {{ param($Authority, $Password); Assert-AdminSecret $Password }}
-function Assert-TicketboxC07RuntimeAclContract {{ param($Authority, $SuperuserPassword); Assert-AdminSecret $SuperuserPassword }}
-function Assert-TicketboxC07RetiredRoleCatalog {{ param($Authority, $Password); Assert-AdminSecret $Password }}
-function Get-TicketboxC07MigratorRetirementSql {{ return 'retire' }}
-function Get-TicketboxC07MigratorRetirementVerificationSql {{ return 'verify' }}
+function Assert-TicketboxDatabaseRolePolicy {{
+    param($Authority, $SuperuserPassword, $Phase)
+    Assert-AdminSecret $SuperuserPassword
+}}
+function Assert-TicketboxDatabaseRuntimeAcl {{
+    param($Authority, $SuperuserPassword)
+    Assert-AdminSecret $SuperuserPassword
+}}
+function Get-TicketboxDatabaseMigratorRetirementSql {{ return 'retire' }}
+function Get-TicketboxDatabaseMigratorRetirementVerificationSql {{ return 'verify' }}
 function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
     param($Intent, $Candidate, $HostAuthority, $RuntimePassword)
     if (-not [object]::ReferenceEquals($RuntimePassword, $script:runtimeSecret)) {{
@@ -605,8 +617,13 @@ function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('e' * 64) }}
 function Get-TicketboxDatabaseGenerationHostAuthoritySha256 {{ return ('f' * 64) }}
 $script:TicketboxDatabaseGenerationAclAccounts = @('SYSTEM')
 $script:TicketboxDatabaseGenerationOwnerAccount = 'SYSTEM'
-$script:TicketboxC07DatabaseName = 'ticketbox'
-$script:TicketboxC07RuntimeRole = 'ticketbox_runtime'
+function Get-TicketboxDatabaseAuthorizationContract {{
+    return [pscustomobject]@{{
+        DatabaseName = 'ticketbox'
+        MigratorRole = 'ticketbox_migrator'
+        RuntimeRole = 'ticketbox_runtime'
+    }}
+}}
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('a' * 64)
     Payload = [pscustomobject]@{{

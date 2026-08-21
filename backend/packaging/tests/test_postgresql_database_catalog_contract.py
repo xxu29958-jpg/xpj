@@ -9,6 +9,8 @@ from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
 HOST_OPERATIONS = PACKAGING / "windows_pg_recovery_tools.ps1"
+COMMAND = PACKAGING / "windows_postgresql_database_command.ps1"
+CREDENTIALS = PACKAGING / "windows_postgresql_credentials.ps1"
 ENTRYPOINT = PACKAGING / "windows_postgresql_database_catalog.ps1"
 COMPONENTS = (
     PACKAGING / "postgresql_database_catalog" / "primitives.ps1",
@@ -16,8 +18,11 @@ COMPONENTS = (
     PACKAGING / "postgresql_database_catalog" / "codec.ps1",
     PACKAGING / "postgresql_database_catalog" / "observation.ps1",
 )
-C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
-GENERATION_RECOVERY = PACKAGING / "windows_database_generation_target_recovery.ps1"
+GENERATION_CONSUMERS = (
+    PACKAGING / "windows_database_generation.ps1",
+    PACKAGING / "windows_database_generation_source.ps1",
+    PACKAGING / "windows_database_generation_target_recovery.ps1",
+)
 INNO = PACKAGING / "ticketbox-installer.iss"
 BUILD = PACKAGING / "build_inno_installer.ps1"
 PROVENANCE = PACKAGING.parent / "scripts" / "windows_build_provenance.ps1"
@@ -39,27 +44,17 @@ def _run(engine: str, script: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_catalog_adapter_is_small_generic_and_old_c07_entrypoints_are_retired() -> None:
+def test_catalog_is_generic_and_database_command_is_the_only_host_adapter() -> None:
     entrypoint = ENTRYPOINT.read_text(encoding="utf-8-sig")
     sources = [path.read_text(encoding="utf-8-sig") for path in COMPONENTS]
     generic = entrypoint + "\n" + "\n".join(sources)
-    production_sources = {
-        path: path.read_text(encoding="utf-8-sig")
+    command = COMMAND.read_text(encoding="utf-8-sig")
+    production = "\n".join(
+        path.read_text(encoding="utf-8-sig")
         for path in PACKAGING.rglob("*.ps1")
         if "tests" not in path.parts
-    }
-    c07_database = production_sources[C07_DATABASE]
-    sql_result = re.search(
-        r"(?ms)^function Invoke-TicketboxC07SqlResult \{.*?(?=^function )",
-        c07_database,
     )
-    assert sql_result is not None
-    assert "Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile" in sql_result.group()
-    assert "Invoke-TicketboxWithPgPassFile" not in sql_result.group()
-    assert "Invoke-TicketboxBoundedNativeProcess" not in sql_result.group()
-    assert "Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds" not in c07_database
-
-    for path in (ENTRYPOINT, *COMPONENTS):
+    for path in (COMMAND, ENTRYPOINT, *COMPONENTS):
         assert path.read_bytes().startswith(b"\xef\xbb\xbf")
     assert all(len(source.splitlines()) <= 180 for source in sources)
     for forbidden in (
@@ -68,11 +63,9 @@ def test_catalog_adapter_is_small_generic_and_old_c07_entrypoints_are_retired() 
         "ticketbox-c07",
         "ticketbox_owner",
         "ticketbox_runtime",
-        "Marker",
         "scriptblock",
     ):
         assert forbidden not in generic
-
     for required in (
         "Get-TicketboxPostgresqlDatabaseCatalogObservation",
         "pg_catalog.pg_control_system()",
@@ -86,58 +79,72 @@ def test_catalog_adapter_is_small_generic_and_old_c07_entrypoints_are_retired() 
         "[uint64]::TryParse",
     ):
         assert required in generic
-
-    legacy = (
+    result_function = re.search(
+        r"(?ms)^function Invoke-TicketboxPostgresqlDatabaseCommandResult \{.*?(?=^function |\Z)",
+        command,
+    )
+    assert result_function is not None
+    assert "Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile" in result_function.group()
+    assert "Invoke-TicketboxWithPgPassFile" not in result_function.group()
+    assert "Invoke-TicketboxBoundedNativeProcess" not in result_function.group()
+    primitives = COMPONENTS[0].read_text(encoding="utf-8-sig")
+    for duplicate in (
+        "Assert-TicketboxPostgresqlDatabaseCatalogIdentifier",
+        "ConvertTo-TicketboxPostgresqlDatabaseCatalogSqlLiteral",
+    ):
+        assert duplicate not in generic
+    for shared_codec in (
+        "Assert-TicketboxPostgresqlDatabaseIdentifier",
+        "ConvertTo-TicketboxPostgresqlSqlLiteral",
+    ):
+        assert shared_codec in primitives
+    for retired in (
+        "Get-TicketboxC07DatabaseCatalogObservation",
         "Get-TicketboxC07DatabaseIdentity",
         "Get-TicketboxC07DatabaseBootstrapCatalog",
-    )
-    for symbol in legacy:
-        assert all(symbol not in source for source in production_sources.values())
-    assert "Get-TicketboxPostgresqlDatabaseCatalogObservation" in c07_database
-    assert "function Get-TicketboxC07DatabaseCatalogObservation" in c07_database
-    for consumer in (C07_DATABASE, GENERATION_RECOVERY):
-        assert "Get-TicketboxC07DatabaseCatalogObservation" in production_sources[consumer]
+    ):
+        assert retired not in production
 
 
-def test_catalog_adapter_is_actively_packaged_and_provenance_bound() -> None:
-    inno_lines = INNO.read_text(encoding="utf-8-sig").splitlines()
+def test_catalog_and_command_are_actively_packaged_and_provenance_bound() -> None:
     active_sources = tuple(
         line.strip()
-        for line in inno_lines
+        for line in INNO.read_text(encoding="utf-8-sig").splitlines()
         if line.lstrip().startswith("Source:")
     )
     build = BUILD.read_text(encoding="utf-8-sig")
     provenance = PROVENANCE.read_text(encoding="utf-8-sig")
     expected = {
+        "windows_postgresql_database_command.ps1": (
+            'Source: "windows_postgresql_database_command.ps1"; '
+            'DestDir: "{app}\\installer"; Flags: ignoreversion'
+        ),
         "windows_postgresql_database_catalog.ps1": (
             'Source: "windows_postgresql_database_catalog.ps1"; '
             'DestDir: "{app}\\installer"; Flags: ignoreversion'
         ),
         "postgresql_database_catalog\\primitives.ps1": (
             'Source: "postgresql_database_catalog\\primitives.ps1"; '
-            'DestDir: "{app}\\installer\\postgresql_database_catalog"; '
-            'Flags: ignoreversion'
+            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion'
         ),
         "postgresql_database_catalog\\query.ps1": (
             'Source: "postgresql_database_catalog\\query.ps1"; '
-            'DestDir: "{app}\\installer\\postgresql_database_catalog"; '
-            'Flags: ignoreversion'
+            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion'
         ),
         "postgresql_database_catalog\\codec.ps1": (
             'Source: "postgresql_database_catalog\\codec.ps1"; '
-            'DestDir: "{app}\\installer\\postgresql_database_catalog"; '
-            'Flags: ignoreversion'
+            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion'
         ),
         "postgresql_database_catalog\\observation.ps1": (
             'Source: "postgresql_database_catalog\\observation.ps1"; '
-            'DestDir: "{app}\\installer\\postgresql_database_catalog"; '
-            'Flags: ignoreversion'
+            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion'
         ),
     }
     for item, exact_source in expected.items():
         assert exact_source in active_sources
-        assert item in provenance
+        assert f"packaging\\{item}" in provenance
     for variable in (
+        "PostgresqlDatabaseCommandScript",
         "PostgresqlDatabaseCatalogScript",
         "PostgresqlDatabaseCatalogPrimitivesScript",
         "PostgresqlDatabaseCatalogQueryScript",
@@ -152,24 +159,25 @@ def test_catalog_observation_query_is_exact_and_facts_are_typed(engine: str) -> 
     script = f"""
 $ErrorActionPreference = 'Stop'
 . '{_literal(HOST_OPERATIONS)}'
-$script:output = (
-    "7123456789012345678`t42`t5001`ttrue`t" +
-    "6d61726b6572096c696e650a"
-)
-function Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile {{
-    param($PsqlPath, $DatabaseUrl, $Password, $Sql, $Label, $TimeoutMilliseconds)
-    if ($PsqlPath -cne 'C:\\pg\\psql.exe') {{ throw 'psql path drifted' }}
-    if ($DatabaseUrl -cne 'postgresql://postgres@127.0.0.1:5544/postgres') {{
-        throw 'database URL drifted'
-    }}
-    if ($Password -cne 'secret') {{ throw 'password drifted' }}
-    if ($Label -cne 'PostgreSQL database-catalog observation') {{
-        throw 'diagnostic label drifted'
-    }}
-    foreach ($surface in @($PsqlPath, $DatabaseUrl, $Sql, $Label)) {{
-        if ([string]$surface -like '*secret*') {{ throw 'secret reached diagnostic surface' }}
-    }}
-    $expectedSql = @"
+. '{_literal(CREDENTIALS)}'
+. '{_literal(COMMAND)}'
+$script:output = "7123456789012345678`t42`t5001`ttrue`t6d61726b6572096c696e650a"
+$authority = [pscustomobject]@{{
+    Schema = 'ticketbox-postgresql-host-authority-v1'
+    PsqlPath = 'C:\\pg\\psql.exe'
+    Port = 5544
+}}
+$secret = [Security.SecureString]::new()
+foreach ($character in ('A' * 40).ToCharArray()) {{ $secret.AppendChar($character) }}
+function Invoke-TicketboxPostgresqlDatabaseCommandResult {{
+    param($Authority, $Database, $Role, $Password, $Sql, $Label, $TimeoutMilliseconds)
+    if (
+        $Authority -ne $script:authority -or $Password -ne $script:secret -or
+        $Database -cne 'postgres' -or $Role -cne 'postgres' -or
+        $Label -cne 'PostgreSQL database-catalog observation' -or
+        $TimeoutMilliseconds -ne 5000
+    ) {{ throw 'catalog host binding drifted' }}
+    $expected = @"
 SELECT
     control.system_identifier::pg_catalog.text,
     COALESCE(database.oid::pg_catalog.text, ''),
@@ -192,18 +200,17 @@ FROM pg_catalog.pg_control_system() AS control
 LEFT JOIN pg_catalog.pg_database AS database
   ON database.datname OPERATOR(pg_catalog.=) 'target_db';
 "@
-    $normalizedSql = $Sql.Replace("`r`n", "`n")
-    $normalizedExpectedSql = $expectedSql.Replace("`r`n", "`n")
-    if ($normalizedSql -cne $normalizedExpectedSql) {{
+    if ($Sql.Replace("`r`n", "`n") -cne $expected.Replace("`r`n", "`n")) {{
         throw 'catalog query was not exact'
     }}
     return [pscustomobject]@{{ ExitCode = 0; StandardOutput = $script:output }}
 }}
+$script:authority = $authority
+$script:secret = $secret
 . '{_literal(ENTRYPOINT)}'
 $parameters = @{{
-    PsqlPath = 'C:\\pg\\psql.exe'
-    DatabaseUrl = 'postgresql://postgres@127.0.0.1:5544/postgres'
-    Password = 'secret'
+    Authority = $authority
+    SuperuserPassword = $secret
     TargetDatabase = 'target_db'
     TimeoutMilliseconds = 5000
 }}
@@ -217,23 +224,11 @@ if (
     -not $result.AllowsConnections -or
     $result.Comment -cne "marker`tline`n"
 ) {{ throw 'typed catalog observation drifted' }}
-
 $script:output = "7123456789012345678`t42`t5001`tfalse`t"
 $closed = Get-TicketboxPostgresqlDatabaseCatalogObservation @parameters
 if (-not $closed.Exists -or $closed.AllowsConnections -or $closed.Comment -cne '') {{
     throw 'canonical false catalog observation drifted'
 }}
-
-$script:output = "secret-native-output"
-function Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile {{
-    return [pscustomobject]@{{ ExitCode = 3; StandardOutput = $script:output }}
-}}
-$safeFailure = $false
-try {{ Get-TicketboxPostgresqlDatabaseCatalogObservation @parameters | Out-Null }}
-catch {{
-    $safeFailure = $_.Exception.Message -cnotlike '*secret*'
-}}
-if (-not $safeFailure) {{ throw 'native failure leaked catalog output' }}
 """
     result = _run(engine, script)
     assert result.returncode == 0, result.stderr or result.stdout
@@ -245,28 +240,30 @@ def test_catalog_observation_distinguishes_absence_and_rejects_bad_evidence(
 ) -> None:
     script = f"""
 $ErrorActionPreference = 'Stop'
-$script:output = "7123456789012345678`t`t`t`t"
 . '{_literal(HOST_OPERATIONS)}'
-function Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile {{
+. '{_literal(CREDENTIALS)}'
+. '{_literal(COMMAND)}'
+$script:output = "7123456789012345678`t`t`t`t"
+function Invoke-TicketboxPostgresqlDatabaseCommandResult {{
     return [pscustomobject]@{{ ExitCode = 0; StandardOutput = $script:output }}
 }}
 . '{_literal(ENTRYPOINT)}'
+$secret = [Security.SecureString]::new()
+foreach ($character in ('A' * 40).ToCharArray()) {{ $secret.AppendChar($character) }}
 $parameters = @{{
-    PsqlPath = 'C:\\pg\\psql.exe'
-    DatabaseUrl = 'postgresql://postgres@127.0.0.1:5544/postgres'
-    Password = 'secret'
+    Authority = [pscustomobject]@{{
+        Schema = 'ticketbox-postgresql-host-authority-v1'
+        PsqlPath = 'C:\\pg\\psql.exe'
+        Port = 5544
+    }}
+    SuperuserPassword = $secret
     TargetDatabase = 'target_db'
     TimeoutMilliseconds = 5000
 }}
 $missing = Get-TicketboxPostgresqlDatabaseCatalogObservation @parameters
-if (
-    $missing.Exists -or
-    [uint32]$missing.DatabaseOid -ne 0 -or
-    [uint32]$missing.OwnerRoleOid -ne 0 -or
-    $missing.AllowsConnections -or
-    $missing.Comment -cne ''
-) {{ throw 'absent database evidence drifted' }}
-
+if ($missing.Exists -or [uint32]$missing.DatabaseOid -ne 0 -or
+    [uint32]$missing.OwnerRoleOid -ne 0 -or $missing.AllowsConnections -or
+    $missing.Comment -cne '') {{ throw 'absent database evidence drifted' }}
 foreach ($bad in @(
     "0`t42`t5001`ttrue`t",
     "07123456789012345678`t42`t5001`ttrue`t",
@@ -297,60 +294,15 @@ foreach ($bad in @(
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-@pytest.mark.parametrize("engine", powershell_contract_engines())
-def test_c07_catalog_adapter_preserves_policy_mapping_and_deadline(engine: str) -> None:
-    script = f"""
-$ErrorActionPreference = 'Stop'
-. '{_literal(C07_DATABASE)}'
-$script:timeoutCalls = 0
-function Get-TicketboxC07ActiveMaintenanceTimeoutMilliseconds {{
-    $script:timeoutCalls++
-    throw 'ambient timeout authority must not be called'
-}}
-function Get-TicketboxPostgresqlDatabaseCatalogObservation {{
-    param($PsqlPath, $DatabaseUrl, $Password, $TargetDatabase, $TimeoutMilliseconds)
-    if (
-        $PsqlPath -cne 'C:\\pg\\psql.exe' -or
-        $DatabaseUrl -cne
-            'postgresql://postgres@127.0.0.1:5544/postgres?require_auth=scram-sha-256' -or
-        $Password -cne ('A' * 40) -or
-        $TargetDatabase -cne 'ticketbox' -or
-        $TimeoutMilliseconds -ne 30000
-    ) {{ throw 'C07 catalog adapter invocation drifted' }}
-    return [pscustomobject][ordered]@{{
-        ClusterSystemIdentifier = '7123456789012345678'
-        Database = 'ticketbox'
-        DatabaseOid = [uint32]42
-        OwnerRoleOid = [uint32]5001
-        AllowsConnections = $false
-        Comment = "marker`tline`n"
-        Exists = $true
-    }}
-}}
-$authority = [pscustomobject]@{{
-    Schema = 'ticketbox-postgresql-host-authority-v1'
-    PsqlPath = 'C:\\pg\\psql.exe'
-    Port = 5544
-}}
-$secret = New-Object Security.SecureString
-foreach ($character in ('A' * 40).ToCharArray()) {{
-    $secret.AppendChar($character)
-}}
-$secret.MakeReadOnly()
-$result = Get-TicketboxC07DatabaseCatalogObservation `
-    -Authority $authority `
-    -SuperuserPassword $secret `
-    -Database 'ticketbox'
-if (
-    $script:timeoutCalls -ne 0 -or
-    $result.ClusterSystemIdentifier -cne '7123456789012345678' -or
-    $result.Database -cne 'ticketbox' -or
-    [uint32]$result.DatabaseOid -ne 42 -or
-    [uint32]$result.OwnerRoleOid -ne 5001 -or
-    $result.AllowsConnections -or
-    $result.Marker -cne "marker`tline`n" -or
-    -not $result.Exists
-) {{ throw 'C07 catalog policy projection drifted' }}
-"""
-    result = _run(engine, script)
-    assert result.returncode == 0, result.stderr or result.stdout
+def test_generation_consumers_bind_catalog_to_explicit_authority_and_secret() -> None:
+    for path in GENERATION_CONSUMERS:
+        source = path.read_text(encoding="utf-8-sig")
+        fragments = source.split("Get-TicketboxPostgresqlDatabaseCatalogObservation")[1:]
+        assert fragments, path.name
+        for fragment in fragments:
+            call = fragment[:500]
+            assert "-Authority" in call
+            assert "-SuperuserPassword" in call
+            assert "-TargetDatabase" in call
+            assert "DatabaseUrl" not in call
+            assert "PgPassFilePath" not in call

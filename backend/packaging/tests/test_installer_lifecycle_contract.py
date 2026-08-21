@@ -288,7 +288,10 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
 
     installed_dependencies = pre_copy_dependencies + (
         "windows_bundled_database.ps1",
-        "windows_c07_database.ps1",
+        "windows_postgresql_database_command.ps1",
+        "windows_ticketbox_database_contract.ps1",
+        "windows_ticketbox_database_acl.ps1",
+        "windows_ticketbox_database_roles.ps1",
         "windows_postgresql_credentials.ps1",
         "windows_postgresql_single_user.ps1",
         "windows_deadline_budget.ps1",
@@ -357,7 +360,12 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     for variable in ("$DatabaseGenerationProgramAdapterScript",):
         assert f". {variable}" in install
     assert ". $C07DatabaseScript" not in install
-    assert '"windows_c07_database.ps1"' in _read("windows_database_generation.ps1")
+    database_generation = _read("windows_database_generation.ps1")
+    assert '"windows_postgresql_database_command.ps1"' in database_generation
+    assert '"windows_ticketbox_database_contract.ps1"' in database_generation
+    assert '"windows_ticketbox_database_acl.ps1"' in database_generation
+    assert '"windows_ticketbox_database_roles.ps1"' in database_generation
+    assert '"windows_c07_database.ps1"' not in database_generation
     assert '$C07MigrationHelper = Join-Path $ProgramDir "ticketbox-c07-migrator.exe"' in install
     assert ". $DatabaseGenerationScript" in install
     assert "Invoke-TicketboxInstalledDatabaseGeneration" in install

@@ -136,6 +136,7 @@ class _Connection:
             "role.rolcreatedb",
             "role.rolconnlimit = -1",
             "role.rolconfig",
+            "pg_db_role_setting",
             "ticketbox_migrator",
             "ticketbox_owner",
             "pg_auth_members",
@@ -149,6 +150,7 @@ class _Connection:
             "shobj_description",
         ):
             assert required_token in sql
+        assert sql.count("role.rolconfig") == 2
         return _OneRow(
             (
                 self.live.cluster_system_identifier,

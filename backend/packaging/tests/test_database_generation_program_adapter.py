@@ -115,7 +115,13 @@ function Invoke-TicketboxWithPlainPostgresqlSecret {{
     param([Security.SecureString]$Secret, [scriptblock]$Action)
     return & $Action $script:secret
 }}
-function New-TicketboxC07LocalDatabaseUrl {{
+function Get-TicketboxDatabaseAuthorizationContract {{
+    return [pscustomobject]@{{
+        DatabaseName = 'ticketbox'
+        MigratorRole = 'ticketbox_migrator'
+    }}
+}}
+function New-TicketboxPostgresqlLocalDatabaseUrl {{
     param($Authority, [string]$Database, [string]$Role)
     return "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/$Database"
 }}

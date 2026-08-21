@@ -5,15 +5,16 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword
     )
-    $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
+    $databaseUrl = New-TicketboxPostgresqlLocalDatabaseUrl `
         -Authority $HostAuthority `
-        -Database "ticketbox" `
+        -Database $($databasePolicy.DatabaseName) `
         -Role "postgres"
     $capturedPsql = [string]$HostAuthority.PsqlPath
     $capturedUrl = $databaseUrl
     $allowedRoleNames = @(
-        "postgres", $script:TicketboxC07OwnerRole,
-        $script:TicketboxC07MigratorRole, $script:TicketboxC07RuntimeRole
+        "postgres", $($databasePolicy.OwnerRole),
+        $($databasePolicy.MigratorRole), $($databasePolicy.RuntimeRole)
     )
     return Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $SuperuserPassword `
@@ -30,13 +31,13 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
                 -StatementTimeoutMilliseconds 5000 `
                 -LockTimeoutMilliseconds 1000
             $owner = @($observation.Roles | Where-Object {
-                [string]$_.name -ceq $script:TicketboxC07OwnerRole
+                [string]$_.name -ceq $($databasePolicy.OwnerRole)
             })
             $migrator = @($observation.Roles | Where-Object {
-                [string]$_.name -ceq $script:TicketboxC07MigratorRole
+                [string]$_.name -ceq $($databasePolicy.MigratorRole)
             })
             $runtime = @($observation.Roles | Where-Object {
-                [string]$_.name -ceq $script:TicketboxC07RuntimeRole
+                [string]$_.name -ceq $($databasePolicy.RuntimeRole)
             })
             $databaseAuthority = @($observation.Roles | Where-Object {
                 [string]$_.name -ceq "postgres"
@@ -99,23 +100,25 @@ function Renew-TicketboxDatabaseGenerationMigratorWindow {
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
         [Parameter(Mandatory = $true)][object]$Credentials
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $validUntil = [DateTime]::UtcNow.AddHours(1).ToString(
         "yyyy-MM-ddTHH:mm:ss.fffZ",
         [Globalization.CultureInfo]::InvariantCulture
     )
-    Invoke-TicketboxC07Sql `
+    Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
         -Database "postgres" `
         -Role "postgres" `
         -Password $SuperuserPassword `
         -Label "database generation migrator window" `
         -Sql @"
-ALTER ROLE "$script:TicketboxC07MigratorRole"
+ALTER ROLE "$($databasePolicy.MigratorRole)"
     LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
     NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1
     VALID UNTIL '$validUntil';
 "@ | Out-Null
-    Assert-TicketboxC07MigratorCredential `
-        $HostAuthority `
-        $Credentials.MigratorPassword
+    Assert-TicketboxDatabaseCredential `
+        -Authority $HostAuthority `
+        -Password $Credentials.MigratorPassword `
+        -CredentialKind "migrator"
 }

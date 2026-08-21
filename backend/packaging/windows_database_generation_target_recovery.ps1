@@ -12,6 +12,7 @@ function Get-TicketboxDatabaseGenerationTargetVerification {
         [Parameter(Mandatory = $true)][string]$Database,
         [switch]$IsRestore
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $helper = Assert-TicketboxDatabaseGenerationHelper `
         -MigrationHelperPath ([string]$ReleaseIdentity.MigrationHelperPath) `
         -MigrationHelperEvidence (Get-TicketboxDatabaseGenerationMigrationHelperEvidence $ReleaseIdentity) `
@@ -20,8 +21,10 @@ function Get-TicketboxDatabaseGenerationTargetVerification {
         -ProgramPath ([string]$ReleaseIdentity.DatabaseGenerationProgramPath) `
         -ProgramEvidence (Get-TicketboxDatabaseGenerationProgramEvidence $ReleaseIdentity) `
         -ExpectedMigrationHelperPath ([string]$ReleaseIdentity.MigrationHelperPath)
-    $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
-        -Authority $HostAuthority -Database $Database -Role "ticketbox_migrator"
+    $databaseUrl = New-TicketboxPostgresqlLocalDatabaseUrl `
+        -Authority $HostAuthority `
+        -Database $Database `
+        -Role $($databasePolicy.MigratorRole)
     $capturedUrl = $databaseUrl
     $capturedDatabase = $Database
     $capturedHelper = $helper
@@ -113,7 +116,7 @@ function Get-TicketboxDatabaseGenerationRestoreRevision {
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
         [Parameter(Mandatory = $true)][string]$Database
     )
-    $table = (Invoke-TicketboxC07Sql `
+    $table = (Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
         -Database $Database `
         -Role "postgres" `
@@ -126,7 +129,7 @@ SELECT COALESCE(to_regclass('public.alembic_version')::text, '');
     if ($table -cne "alembic_version" -and $table -cne "public.alembic_version") {
         throw "database generation restore revision table identity 漂移。"
     }
-    return (Invoke-TicketboxC07Sql `
+    return (Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
         -Database $Database `
         -Role "postgres" `
@@ -146,9 +149,12 @@ function Remove-TicketboxDatabaseGenerationRestoreDatabase {
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $database = [string]$Attempt.Payload.restore_database
-    $catalog = Get-TicketboxC07DatabaseCatalogObservation `
-        $HostAuthority $SuperuserPassword $database
+    $catalog = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+        -Authority $HostAuthority `
+        -SuperuserPassword $SuperuserPassword `
+        -TargetDatabase $database
     if (-not $catalog.Exists) { return }
     if (
         [string]$catalog.ClusterSystemIdentifier -cne
@@ -156,21 +162,21 @@ function Remove-TicketboxDatabaseGenerationRestoreDatabase {
     ) {
         throw "database generation restore cleanup cluster 漂移。"
     }
-    $ownerOid = Get-TicketboxC07RoleOid `
+    $ownerOid = Get-TicketboxDatabaseRoleOid `
         -Authority $HostAuthority `
         -SuperuserPassword $SuperuserPassword `
-        -Role "ticketbox_owner"
+        -RoleName $($databasePolicy.OwnerRole)
     if ([uint32]$catalog.OwnerRoleOid -ne [uint32]$ownerOid) {
         throw "database generation restore cleanup owner 漂移。"
     }
     if (
         [uint32]$catalog.DatabaseOid -ne [uint32]$Binding.Payload.restore_database_oid -or
-        [string]$catalog.Marker -cne [string]$Binding.Payload.marker
+        [string]$catalog.Comment -cne [string]$Binding.Payload.marker
     ) {
         throw "database generation restore cleanup OID/marker 漂移。"
     }
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    Invoke-TicketboxC07Sql `
+    Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
         -Database "postgres" `
         -Role "postgres" `
@@ -179,11 +185,13 @@ function Remove-TicketboxDatabaseGenerationRestoreDatabase {
         -Sql @"
 ALTER DATABASE "$database" ALLOW_CONNECTIONS false;
 REVOKE ALL ON DATABASE "$database" FROM PUBLIC;
-REVOKE ALL ON DATABASE "$database" FROM "ticketbox_migrator";
+REVOKE ALL ON DATABASE "$database" FROM "$($databasePolicy.MigratorRole)";
 DROP DATABASE "$database" WITH (FORCE);
 "@ | Out-Null
-    if ((Get-TicketboxC07DatabaseCatalogObservation `
-        $HostAuthority $SuperuserPassword $database).Exists) {
+    if ((Get-TicketboxPostgresqlDatabaseCatalogObservation `
+        -Authority $HostAuthority `
+        -SuperuserPassword $SuperuserPassword `
+        -TargetDatabase $database).Exists) {
         throw "database generation restore cleanup 未收敛。"
     }
 }
@@ -196,16 +204,19 @@ function Get-TicketboxDatabaseGenerationRestoreBinding {
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $operationId = [string]$Attempt.Payload.operation_id
     $existing = Read-TicketboxDatabaseGenerationOperationArtifact `
         $StateRoot $operationId "target-recovery-binding" -AllowAbsent
     $database = [string]$Attempt.Payload.restore_database
-    $catalog = Get-TicketboxC07DatabaseCatalogObservation `
-        $HostAuthority $SuperuserPassword $database
-    $ownerOid = Get-TicketboxC07RoleOid `
+    $catalog = Get-TicketboxPostgresqlDatabaseCatalogObservation `
         -Authority $HostAuthority `
         -SuperuserPassword $SuperuserPassword `
-        -Role "ticketbox_owner"
+        -TargetDatabase $database
+    $ownerOid = Get-TicketboxDatabaseRoleOid `
+        -Authority $HostAuthority `
+        -SuperuserPassword $SuperuserPassword `
+        -RoleName $($databasePolicy.OwnerRole)
     if ($null -ne $existing) {
         [void](Assert-TicketboxDatabaseGenerationRecoveryChain `
             $null $null $Attempt $null $existing $null $null)
@@ -215,7 +226,7 @@ function Get-TicketboxDatabaseGenerationRestoreBinding {
                 [string]$Attempt.Payload.source_cluster_system_identifier -or
             [uint32]$catalog.DatabaseOid -ne [uint32]$existing.Payload.restore_database_oid -or
             [uint32]$catalog.OwnerRoleOid -ne [uint32]$ownerOid -or
-            [string]$catalog.Marker -cne [string]$existing.Payload.marker -or
+            [string]$catalog.Comment -cne [string]$existing.Payload.marker -or
             -not [bool]$catalog.AllowsConnections
         ) {
             throw "database generation restore binding 与 live database 漂移。"
@@ -224,7 +235,7 @@ function Get-TicketboxDatabaseGenerationRestoreBinding {
     }
     if (-not $catalog.Exists) {
         Assert-TicketboxLifecycleOperationLease $LifecycleLock
-        Invoke-TicketboxC07Sql `
+        Invoke-TicketboxPostgresqlDatabaseCommand `
             -Authority $HostAuthority `
             -Database "postgres" `
             -Role "postgres" `
@@ -232,11 +243,13 @@ function Get-TicketboxDatabaseGenerationRestoreBinding {
             -Label "database generation restore database create" `
             -Sql @"
 CREATE DATABASE "$database"
-    OWNER "ticketbox_owner" TEMPLATE template0 ENCODING 'UTF8'
+    OWNER "$($databasePolicy.OwnerRole)" TEMPLATE template0 ENCODING 'UTF8'
     ALLOW_CONNECTIONS false;
 "@ | Out-Null
-        $catalog = Get-TicketboxC07DatabaseCatalogObservation `
-            $HostAuthority $SuperuserPassword $database
+        $catalog = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+            -Authority $HostAuthority `
+            -SuperuserPassword $SuperuserPassword `
+            -TargetDatabase $database
     }
     $marker = Get-TicketboxDatabaseGenerationRestoreMarker `
         $Attempt ([uint32]$catalog.DatabaseOid)
@@ -246,17 +259,17 @@ CREATE DATABASE "$database"
             [string]$Attempt.Payload.source_cluster_system_identifier -or
         [uint32]$catalog.DatabaseOid -eq [uint32]$Attempt.Payload.source_database_oid -or
         [uint32]$catalog.OwnerRoleOid -ne [uint32]$ownerOid -or
-        [string]$catalog.Marker -cnotin @("", $marker) -or
+        [string]$catalog.Comment -cnotin @("", $marker) -or
         (
-            [string]::IsNullOrEmpty([string]$catalog.Marker) -and
+            [string]::IsNullOrEmpty([string]$catalog.Comment) -and
             [bool]$catalog.AllowsConnections
         )
     ) {
         throw "database generation restore database identity 无效。"
     }
-    $markerLiteral = ConvertTo-TicketboxC07SqlLiteral $marker
+    $markerLiteral = ConvertTo-TicketboxPostgresqlSqlLiteral $marker
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    Invoke-TicketboxC07Sql `
+    Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
         -Database "postgres" `
         -Role "postgres" `
@@ -264,17 +277,19 @@ CREATE DATABASE "$database"
         -Label "database generation restore database bind" `
         -Sql @"
 REVOKE ALL ON DATABASE "$database" FROM PUBLIC;
-GRANT CONNECT ON DATABASE "$database" TO "ticketbox_migrator";
+GRANT CONNECT ON DATABASE "$database" TO "$($databasePolicy.MigratorRole)";
 COMMENT ON DATABASE "$database" IS $markerLiteral;
 ALTER DATABASE "$database" ALLOW_CONNECTIONS true;
 "@ | Out-Null
-    $bound = Get-TicketboxC07DatabaseCatalogObservation `
-        $HostAuthority $SuperuserPassword $database
+    $bound = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+        -Authority $HostAuthority `
+        -SuperuserPassword $SuperuserPassword `
+        -TargetDatabase $database
     if (
         -not $bound.Exists -or
         [uint32]$bound.DatabaseOid -ne [uint32]$catalog.DatabaseOid -or
         [uint32]$bound.OwnerRoleOid -ne [uint32]$ownerOid -or
-        [string]$bound.Marker -cne $marker -or
+        [string]$bound.Comment -cne $marker -or
         -not [bool]$bound.AllowsConnections
     ) {
         throw "database generation restore database binding 未收敛。"
@@ -301,6 +316,7 @@ function Invoke-TicketboxDatabaseGenerationArchiveRestore {
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $database = [string]$Attempt.Payload.restore_database
     $revision = Get-TicketboxDatabaseGenerationRestoreRevision `
         $HostAuthority $SuperuserPassword $database
@@ -310,7 +326,7 @@ function Invoke-TicketboxDatabaseGenerationArchiveRestore {
     ) {
         throw "database generation restore database revision 不是 empty/target。"
     }
-    $publicOwner = (Invoke-TicketboxC07Sql `
+    $publicOwner = (Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
         -Database $database `
         -Role "postgres" `
@@ -321,18 +337,18 @@ SELECT pg_catalog.pg_get_userbyid(namespace.nspowner)
 FROM pg_catalog.pg_namespace AS namespace
 WHERE namespace.nspname OPERATOR(pg_catalog.=) 'public';
 "@).Trim()
-    if ($publicOwner -cnotin @("pg_database_owner", "ticketbox_owner")) {
+    if ($publicOwner -cnotin @("pg_database_owner", $databasePolicy.OwnerRole)) {
         throw "database generation restore public schema owner 漂移。"
     }
     if ($publicOwner -ceq "pg_database_owner") {
         Assert-TicketboxLifecycleOperationLease $LifecycleLock
-        Invoke-TicketboxC07Sql `
+        Invoke-TicketboxPostgresqlDatabaseCommand `
             -Authority $HostAuthority `
             -Database $database `
             -Role "postgres" `
             -Password $SuperuserPassword `
             -Label "database generation restore public schema ownership" `
-            -Sql 'ALTER SCHEMA public OWNER TO "ticketbox_owner";' | Out-Null
+            -Sql "ALTER SCHEMA public OWNER TO `"$($databasePolicy.OwnerRole)`";" | Out-Null
     }
     if ($revision -ceq [string]$Attempt.Payload.target_revision) { return }
     $archivePath = Assert-TicketboxDatabaseGenerationRecoveryArchive $StateRoot $Archive
@@ -346,7 +362,7 @@ WHERE namespace.nspname OPERATOR(pg_catalog.=) 'public';
         (Get-TicketboxPortableFileSha256 $pgRestore).ToLowerInvariant() -cne
         [string]$Archive.Payload.pg_restore_sha256
     ) { throw "recovery restore tool identity 与 archive 漂移。" }
-    $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    $databaseUrl = New-TicketboxPostgresqlLocalDatabaseUrl `
         -Authority $HostAuthority -Database $database -Role "postgres"
     $capturedRestore = $pgRestore
     $capturedUrl = $databaseUrl
@@ -357,7 +373,8 @@ WHERE namespace.nspname OPERATOR(pg_catalog.=) 'public';
             -FilePath $capturedRestore `
             -Arguments @(
                 "--no-password", "--exit-on-error", "--single-transaction",
-                "--no-owner", "--no-privileges", "--role=ticketbox_owner",
+                "--no-owner", "--no-privileges",
+                "--role=$($databasePolicy.OwnerRole)",
                 "--dbname", $ProtectedDatabaseUrl, $capturedArchive
             ) `
             -TimeoutMilliseconds $script:TicketboxDatabaseGenerationRecoveryTimeoutMs `
@@ -399,6 +416,7 @@ function Invoke-TicketboxDatabaseGenerationTargetRecovery {
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
     $operationId = [string]$Intent.Payload.operation_id
     $proof = Read-TicketboxDatabaseGenerationOperationArtifact `
@@ -415,8 +433,10 @@ function Invoke-TicketboxDatabaseGenerationTargetRecovery {
         [void](Assert-TicketboxDatabaseGenerationRecoveryChain `
             $Intent $SourceBinding $attempt $archive $binding $verification $proof)
         [void](Assert-TicketboxDatabaseGenerationRecoveryArchive $StateRoot $archive)
-        if ((Get-TicketboxC07DatabaseCatalogObservation `
-            $HostAuthority $SuperuserPassword $attempt.Payload.restore_database).Exists) {
+        if ((Get-TicketboxPostgresqlDatabaseCatalogObservation `
+            -Authority $HostAuthority `
+            -SuperuserPassword $SuperuserPassword `
+            -TargetDatabase $attempt.Payload.restore_database).Exists) {
             throw "database generation target proof 与 restore residue 冲突。"
         }
         return $proof
@@ -446,7 +466,8 @@ function Invoke-TicketboxDatabaseGenerationTargetRecovery {
             -SuperuserPassword $SuperuserPassword `
             -LifecycleLock $LifecycleLock
         $live = Get-TicketboxDatabaseGenerationTargetVerification `
-            $Intent $attempt $Credentials $ReleaseIdentity $HostAuthority "ticketbox"
+            $Intent $attempt $Credentials $ReleaseIdentity $HostAuthority `
+            $($databasePolicy.DatabaseName)
         $restored = Get-TicketboxDatabaseGenerationTargetVerification `
             $Intent $attempt $Credentials $ReleaseIdentity $HostAuthority `
             ([string]$attempt.Payload.restore_database) -IsRestore

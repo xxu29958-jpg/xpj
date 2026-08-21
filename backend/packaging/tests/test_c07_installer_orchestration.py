@@ -11,7 +11,6 @@ from _powershell_contract import powershell_contract_engines
 PACKAGING = Path(__file__).resolve().parents[1]
 INSTALLER = PACKAGING / "install_bundled_services.ps1"
 PREPARE = PACKAGING / "prepare_bundled_upgrade.ps1"
-C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
 BUNDLED_DATABASE = PACKAGING / "windows_bundled_database.ps1"
 def _function(source: str, name: str) -> str:
     match = re.search(

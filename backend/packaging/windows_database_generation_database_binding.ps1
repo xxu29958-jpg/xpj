@@ -45,9 +45,10 @@ function Get-TicketboxDatabaseGenerationLiveIdentity {
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword
     )
-    $output = Invoke-TicketboxC07Sql `
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
+    $output = Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
-        -Database $script:TicketboxC07DatabaseName `
+        -Database $($databasePolicy.DatabaseName) `
         -Role "postgres" `
         -Password $SuperuserPassword `
         -Label "database generation live identity" `
@@ -61,7 +62,7 @@ FROM pg_catalog.pg_database AS database
 CROSS JOIN pg_catalog.pg_control_system() AS control
 WHERE database.datname = current_database();
 "@
-    $fields = ConvertFrom-TicketboxC07SingleRow `
+    $fields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
         -Output $output `
         -FieldCount 5 `
         -Label "database generation live identity"
@@ -75,7 +76,7 @@ WHERE database.datname = current_database();
     ) {
         throw "database generation live database OID 无效。"
     }
-    if ([string]$fields[2] -cne $script:TicketboxC07DatabaseName) {
+    if ([string]$fields[2] -cne $($databasePolicy.DatabaseName)) {
         throw "database generation live database name 漂移。"
     }
     foreach ($index in 3, 4) {
@@ -110,6 +111,7 @@ function Set-TicketboxDatabaseGenerationDatabaseBinding {
         [Parameter(Mandatory = $true)][string]$TargetRecoveryEvidenceSha256,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
     foreach ($entry in @(
         @{ Value = $ExecutionAuthoritySha256; Label = "execution authority" },
@@ -143,7 +145,7 @@ function Set-TicketboxDatabaseGenerationDatabaseBinding {
         cluster_system_identifier = [string]$identity.ClusterSystemIdentifier
         database_oid = [uint32]$identity.DatabaseOid
         database_name = [string]$identity.DatabaseName
-        runtime_role = [string]$script:TicketboxC07RuntimeRole
+        runtime_role = [string]$($databasePolicy.RuntimeRole)
         logical_server_id = [string]$identity.LogicalServerId
         logical_data_generation = [string]$identity.LogicalDataGeneration
         execution_authority_sha256 = $ExecutionAuthoritySha256
@@ -154,13 +156,13 @@ function Set-TicketboxDatabaseGenerationDatabaseBinding {
     }
     $bindingJson = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $payload
     $bindingSha256 = Get-TicketboxDatabaseGenerationTextSha256 $bindingJson
-    $keyLiteral = ConvertTo-TicketboxC07SqlLiteral `
+    $keyLiteral = ConvertTo-TicketboxPostgresqlSqlLiteral `
         $script:TicketboxDatabaseGenerationBindingKey
-    $valueLiteral = ConvertTo-TicketboxC07SqlLiteral $bindingJson
+    $valueLiteral = ConvertTo-TicketboxPostgresqlSqlLiteral $bindingJson
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $observed = Invoke-TicketboxC07Sql `
+    $observed = Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
-        -Database $script:TicketboxC07DatabaseName `
+        -Database $($databasePolicy.DatabaseName) `
         -Role "postgres" `
         -Password $SuperuserPassword `
         -Label "database generation binding publication" `

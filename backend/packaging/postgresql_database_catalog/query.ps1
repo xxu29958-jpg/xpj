@@ -3,11 +3,11 @@
 function New-TicketboxPostgresqlDatabaseCatalogObservationQuery {
     param([Parameter(Mandatory = $true)][string]$TargetDatabase)
 
-    Assert-TicketboxPostgresqlDatabaseCatalogIdentifier `
+    Assert-TicketboxPostgresqlDatabaseIdentifier `
         -Value $TargetDatabase `
         -Label "Target database"
     $databaseLiteral =
-        ConvertTo-TicketboxPostgresqlDatabaseCatalogSqlLiteral $TargetDatabase
+        ConvertTo-TicketboxPostgresqlSqlLiteral $TargetDatabase
     return @"
 SELECT
     control.system_identifier::pg_catalog.text,

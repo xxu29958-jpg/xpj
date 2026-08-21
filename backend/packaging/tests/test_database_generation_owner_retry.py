@@ -53,6 +53,15 @@ function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('9' * 64) }}
 function Assert-TicketboxDatabaseGenerationReleaseBinding {{}}
 function Repair-TicketboxDatabaseGenerationServiceTransition {{}}
 function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {{ return [pscustomobject]@{{ Port = 5432 }} }}
+function Get-TicketboxDatabaseAuthorizationContract {{
+    return [pscustomobject]@{{
+        DatabaseName = 'ticketbox'
+        OwnerRole = 'ticketbox_owner'
+        MigratorRole = 'ticketbox_migrator'
+        RuntimeRole = 'ticketbox_runtime'
+        RetiredLegacyRole = 'ticketbox'
+    }}
+}}
 function Get-TicketboxDatabaseGenerationHostAuthoritySha256 {{ return ('8' * 64) }}
 function Read-TicketboxDatabaseGenerationCurrent {{ param([switch]$AllowAbsent); return $script:current }}
 function Read-TicketboxDatabaseGenerationOperationArtifact {{

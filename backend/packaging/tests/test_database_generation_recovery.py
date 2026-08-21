@@ -104,9 +104,19 @@ $script:catalog = $null
 $script:artifacts = @{{}}
 $script:events = @()
 function Read-TicketboxDatabaseGenerationOperationArtifact {{ param($StateRoot, $OperationId, $Kind, [switch]$AllowAbsent); return $script:artifacts[$Kind] }}
-function Get-TicketboxC07DatabaseCatalogObservation {{ return $script:catalog }}
-function Get-TicketboxC07RoleOid {{ return [uint32]77 }}
-function ConvertTo-TicketboxC07SqlLiteral {{ param($Value); return "'$Value'" }}
+function Get-TicketboxDatabaseAuthorizationContract {{
+    return [pscustomobject]@{{
+        DatabaseName = 'ticketbox'
+        OwnerRole = 'ticketbox_owner'
+        MigratorRole = 'ticketbox_migrator'
+    }}
+}}
+function Get-TicketboxPostgresqlDatabaseCatalogObservation {{ return $script:catalog }}
+function Get-TicketboxDatabaseRoleOid {{
+    param($Authority, $SuperuserPassword, $RoleName)
+    return [uint32]77
+}}
+function ConvertTo-TicketboxPostgresqlSqlLiteral {{ param($Value); return "'$Value'" }}
 function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
 function Get-TicketboxDatabaseGenerationRestoreRevision {{ return $script:restoreRevision }}
 function Assert-TicketboxDatabaseGenerationRecoveryChain {{ return $true }}
@@ -120,7 +130,7 @@ function Assert-TicketboxDatabaseGenerationToolIdentity {{
 }}
 function Get-TicketboxPortableFileSha256 {{ return ('e' * 64) }}
 function Get-TicketboxPathEntryKindNoFollow {{ param($Path); if ([IO.File]::Exists($Path)) {{ return 'File' }}; if ([IO.Directory]::Exists($Path)) {{ return 'Directory' }}; return 'Missing' }}
-function New-TicketboxC07LocalDatabaseUrl {{ param($Authority, $Database, $Role); return "postgresql://postgres@127.0.0.1:5432/$Database" }}
+function New-TicketboxPostgresqlLocalDatabaseUrl {{ param($Authority, $Database, $Role); return "postgresql://postgres@127.0.0.1:5432/$Database`?require_auth=scram-sha-256" }}
 function Invoke-TicketboxWithPlainPostgresqlSecret {{ param($Secret, $Action); return & $Action 'secret' }}
 function Invoke-TicketboxWithPgPassFile {{ param($DatabaseUrl, $Password, $Action); return & $Action $DatabaseUrl }}
 function Remove-TicketboxDatabaseGenerationRecoveryFile {{ param($StateRoot, $Path, $LifecycleLock); $script:events += "remove:$([IO.Path]::GetFileName($Path))"; if ([IO.File]::Exists($Path)) {{ [IO.File]::Delete($Path) }} }}
@@ -141,7 +151,7 @@ function New-TicketboxDatabaseGenerationRecoveryArtifact {{
     $script:events += "artifact:$Kind"
     return $artifact
 }}
-function Invoke-TicketboxC07Sql {{
+function Invoke-TicketboxPostgresqlDatabaseCommand {{
     param($Authority, $Database, $Role, $Password, $Label, $Sql)
     if ($Label -ceq 'database generation restore public schema owner observation') {{
         return $script:publicOwner
@@ -153,11 +163,11 @@ function Invoke-TicketboxC07Sql {{
             ClusterSystemIdentifier = 'cluster-1'
             DatabaseOid = [uint32]222
             OwnerRoleOid = [uint32]77
-            Marker = ''
+            Comment = ''
             AllowsConnections = $false
         }}
     }} elseif ($Label -ceq 'database generation restore database bind') {{
-        $script:catalog.Marker = Get-TicketboxDatabaseGenerationRestoreMarker $script:attempt $script:catalog.DatabaseOid
+        $script:catalog.Comment = Get-TicketboxDatabaseGenerationRestoreMarker $script:attempt $script:catalog.DatabaseOid
         $script:catalog.AllowsConnections = $true
     }} elseif ($Label -ceq 'database generation restore public schema ownership') {{
         if (
@@ -204,7 +214,7 @@ $script:events = @()
 $archive = Get-TicketboxDatabaseGenerationRecoveryArchive $stateRoot $script:attempt $hostContract $hostAuthority $secret $lock
 if (
     $script:dumpPath -cne 'C:\\pg\\bin\\pg_dump.exe' -or
-    $script:dumpUrl -cne 'postgresql://postgres@127.0.0.1:5432/ticketbox' -or
+    $script:dumpUrl -cne 'postgresql://postgres@127.0.0.1:5432/ticketbox?require_auth=scram-sha-256' -or
     ($script:events -join ',') -cnotmatch 'dump,sync,copy,remove:.*,restore-list,artifact:target-recovery-archive$' -or
     [string]$archive.Payload.archive_sha256 -cne ('e' * 64)
 ) {{ throw "recovery archive writer order or identity drifted: $($script:events -join ',')" }}
@@ -217,14 +227,14 @@ if (-not $rejected -or $script:artifacts.ContainsKey('target-recovery-archive'))
 $script:dumpExit = 0
 
 # Missing database: create closed from template0, exact-bind, then open.
-$script:catalog = [pscustomobject]@{{ Exists = $false; ClusterSystemIdentifier = ''; DatabaseOid = 0; OwnerRoleOid = 0; Marker = ''; AllowsConnections = $false }}
+$script:catalog = [pscustomobject]@{{ Exists = $false; ClusterSystemIdentifier = ''; DatabaseOid = 0; OwnerRoleOid = 0; Comment = ''; AllowsConnections = $false }}
 $created = Get-TicketboxDatabaseGenerationRestoreBinding 'state' $script:attempt @{{}} $secret $lock
 if ($script:writes -ne 2 -or -not $script:catalog.AllowsConnections) {{ throw 'fresh restore binding did not converge' }}
 
 # CREATE response loss: the random database exists blank and closed, so bind it without a second CREATE.
 $script:writes = 0
 $script:artifacts.Remove('target-recovery-binding')
-$script:catalog = [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]333; OwnerRoleOid = [uint32]77; Marker = ''; AllowsConnections = $false }}
+$script:catalog = [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]333; OwnerRoleOid = [uint32]77; Comment = ''; AllowsConnections = $false }}
 $recovered = Get-TicketboxDatabaseGenerationRestoreBinding 'state' $script:attempt @{{}} $secret $lock
 if ($script:writes -ne 1 -or [string]$recovered.Payload.restore_database_oid -cne '333') {{ throw 'CREATE response-loss recovery failed' }}
 
@@ -273,8 +283,8 @@ if ($script:publicOwnerRepairs -ne 2) {{ throw 'owner-normalized retry repeated 
 
 # A blank but open database, or any foreign marker, is never adopted or mutated.
 foreach ($foreign in @(
-    [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]444; OwnerRoleOid = [uint32]77; Marker = ''; AllowsConnections = $true }},
-    [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]445; OwnerRoleOid = [uint32]77; Marker = 'foreign'; AllowsConnections = $false }}
+    [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]444; OwnerRoleOid = [uint32]77; Comment = ''; AllowsConnections = $true }},
+    [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]445; OwnerRoleOid = [uint32]77; Comment = 'foreign'; AllowsConnections = $false }}
 )) {{
     $script:writes = 0
     $script:catalog = $foreign
@@ -284,7 +294,7 @@ foreach ($foreign in @(
 }}
 
 # Cleanup requires the persisted OID and marker; an adjacent binding mutation must fail before DROP.
-$script:catalog = [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]333; OwnerRoleOid = [uint32]77; Marker = [string]$recovered.Payload.marker; AllowsConnections = $true }}
+$script:catalog = [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]333; OwnerRoleOid = [uint32]77; Comment = [string]$recovered.Payload.marker; AllowsConnections = $true }}
 $tampered = [pscustomobject]@{{ Payload = [pscustomobject]@{{ restore_database_oid = '334'; marker = [string]$recovered.Payload.marker }} }}
 $script:writes = 0
 $rejected = $false
@@ -311,7 +321,7 @@ function Get-TicketboxDatabaseGenerationTargetVerification {{ param($Intent, $At
 function Assert-TicketboxDatabaseGenerationRecoveryChain {{ return $true }}
 function Assert-TicketboxDatabaseGenerationRecoveryArchive {{ return 'archive.dump' }}
 function Remove-TicketboxDatabaseGenerationRestoreDatabase {{ $script:events += 'cleanup' }}
-function Get-TicketboxC07DatabaseCatalogObservation {{ return [pscustomobject]@{{ Exists = $false }} }}
+function Get-TicketboxPostgresqlDatabaseCatalogObservation {{ return [pscustomobject]@{{ Exists = $false }} }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('a' * 64) }}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ return '{{}}' }}
 $script:semanticDrift = $false

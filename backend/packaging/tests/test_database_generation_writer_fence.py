@@ -76,20 +76,21 @@ def test_database_generation_writer_fence_commits_all_effective_writer_authoriti
     script = (
         r'''
 $ErrorActionPreference = "Stop"
-$script:TicketboxC07OwnerRole = "ticketbox_owner"
-$script:TicketboxC07MigratorRole = "ticketbox_migrator"
-$script:TicketboxC07RuntimeRole = "ticketbox_runtime"
-
-function New-TicketboxC07LocalDatabaseUrl {
+function Get-TicketboxDatabaseAuthorizationContract {
+    return [pscustomobject]@{
+        DatabaseName = "ticketbox"
+        OwnerRole = "ticketbox_owner"
+        MigratorRole = "ticketbox_migrator"
+        RuntimeRole = "ticketbox_runtime"
+    }
+}
+function New-TicketboxPostgresqlLocalDatabaseUrl {
     param([object]$Authority, [string]$Database, [string]$Role)
     return "postgresql://localhost/ticketbox"
 }
 
 function Invoke-TicketboxWithPlainPostgresqlSecret {
     param([Security.SecureString]$Secret, [scriptblock]$Action)
-    $Action.Module.SessionState.PSVariable.Set("TicketboxC07OwnerRole", "ticketbox_owner")
-    $Action.Module.SessionState.PSVariable.Set("TicketboxC07MigratorRole", "ticketbox_migrator")
-    $Action.Module.SessionState.PSVariable.Set("TicketboxC07RuntimeRole", "ticketbox_runtime")
     return & $Action "fixture-secret"
 }
 

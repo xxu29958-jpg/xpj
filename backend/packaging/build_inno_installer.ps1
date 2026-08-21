@@ -115,7 +115,18 @@ $PostgresqlWriterFenceReconcilerScript = Join-Path `
     $PostgresqlWriterFenceComponentDir `
     "reconciler.ps1"
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
-$C07DatabaseScript = Join-Path $ScriptDir "windows_c07_database.ps1"
+$PostgresqlDatabaseCommandScript = Join-Path `
+    $ScriptDir `
+    "windows_postgresql_database_command.ps1"
+$TicketboxDatabaseContractScript = Join-Path `
+    $ScriptDir `
+    "windows_ticketbox_database_contract.ps1"
+$TicketboxDatabaseAclScript = Join-Path `
+    $ScriptDir `
+    "windows_ticketbox_database_acl.ps1"
+$TicketboxDatabaseRolesScript = Join-Path `
+    $ScriptDir `
+    "windows_ticketbox_database_roles.ps1"
 $WindowsSecurityPrimitivesScript = Join-Path `
     $ScriptDir `
     "windows_security_primitives.ps1"
@@ -1150,7 +1161,14 @@ Assert-File `
     $PostgresqlWriterFenceReconcilerScript `
     "Windows PostgreSQL writer-fence reconciler"
 Assert-File $DatabaseScript "Windows bundled database 脚本"
-Assert-File $C07DatabaseScript "Windows C07 数据库权威脚本"
+Assert-File `
+    $PostgresqlDatabaseCommandScript `
+    "Windows PostgreSQL database command adapter"
+Assert-File `
+    $TicketboxDatabaseContractScript `
+    "Ticketbox database authorization contract"
+Assert-File $TicketboxDatabaseAclScript "Ticketbox database ACL policy"
+Assert-File $TicketboxDatabaseRolesScript "Ticketbox database role policy"
 Assert-File $WindowsSecurityPrimitivesScript "Windows security primitives 脚本"
 Assert-File $WindowsSecurityByteArrayScript "Windows security byte-array primitives 脚本"
 Assert-File `

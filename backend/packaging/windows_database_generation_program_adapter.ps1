@@ -29,7 +29,7 @@ function Assert-TicketboxDatabaseGenerationProgramAdapterDependencies {
         "Get-TicketboxPathEntryKindNoFollow",
         "Invoke-TicketboxWithPlainPostgresqlSecret",
         "Invoke-TicketboxBoundedNativeProcess",
-        "New-TicketboxC07LocalDatabaseUrl",
+        "New-TicketboxPostgresqlLocalDatabaseUrl",
         "New-TicketboxProtectedPgPassFile",
         "Open-TicketboxC07VerifiedMigrationHelperLease",
         "Remove-TicketboxProtectedPgPassArtifact",
