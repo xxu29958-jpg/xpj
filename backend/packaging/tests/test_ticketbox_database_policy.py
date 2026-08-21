@@ -26,7 +26,7 @@ PROJECTION_POSTGRES = (
 
 
 def _powershell_string_array(source: str, property_name: str) -> set[str]:
-    marker = "{} = @(".format(property_name)
+    marker = f"{property_name} = @("
     start = source.index(marker) + len(marker)
     depth = 1
     cursor = start

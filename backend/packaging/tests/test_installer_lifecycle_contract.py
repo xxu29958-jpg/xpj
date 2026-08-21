@@ -361,13 +361,10 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         assert f". {variable}" in install
     assert ". $C07DatabaseScript" not in install
     database_generation = _read("windows_database_generation.ps1")
-    for database_owner in (
-        "windows_postgresql_database_command.ps1",
-        "windows_ticketbox_database_contract.ps1",
-        "windows_ticketbox_database_acl.ps1",
-        "windows_ticketbox_database_roles.ps1",
-    ):
-        assert f'"{database_owner}"' in database_generation
+    assert '"windows_postgresql_database_command.ps1"' in database_generation
+    assert '"windows_ticketbox_database_contract.ps1"' in database_generation
+    assert '"windows_ticketbox_database_acl.ps1"' in database_generation
+    assert '"windows_ticketbox_database_roles.ps1"' in database_generation
     assert '"windows_c07_database.ps1"' not in database_generation
     assert '$C07MigrationHelper = Join-Path $ProgramDir "ticketbox-c07-migrator.exe"' in install
     assert ". $DatabaseGenerationScript" in install
