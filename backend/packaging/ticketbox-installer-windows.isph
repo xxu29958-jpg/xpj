@@ -2482,7 +2482,7 @@ end;
 
 function PowerShellContextChinese(Context: String): String;
 begin
-  if CompareText(Context, 'Ticketbox pre-upgrade backup and service preparation') = 0 then
+  if CompareText(Context, 'Ticketbox fresh installation preparation') = 0 then
   begin
     Result := '升级前备份与服务检查';
   end
@@ -2926,7 +2926,7 @@ begin
     '    $allowedByScript = @{' + #13#10 +
     '        "install_windows_prerequisites.ps1" = @("VcRedistPath","RequiredVersion","RequiredSha256","DiagnosticLogPath","InstallerLockOwnerProcessId")' + #13#10 +
     '        "hold_data_root_mutation_guard.ps1" = @("InstallDir","DataRoot","InstallerLockOwnerProcessId","Hold","ConfirmStopped","DataRootGuardReadyPath","DataRootGuardReleasePath","ExpectedHolderProcessId","ExpectedHolderStartedFileTimeHigh","ExpectedHolderStartedFileTimeLow","ExpectedNonce")' + #13#10 +
-    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalledBackupPending","RecoverPreparedInstall","FilesReplaced","PersistDatabaseGenerationIntentOnly","DatabaseGenerationProgramPath","DatabaseGenerationProgramSha256","DatabaseMaintenanceHelperSize","DatabaseMaintenanceHelperSha256","DatabaseGenerationPgDumpSize","DatabaseGenerationPgDumpSha256","DatabaseGenerationPgRestoreSize","DatabaseGenerationPgRestoreSha256")' + #13#10 +
+    '        "prepare_bundled_upgrade.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","ReleaseConfigPath","InstalledReleaseConfigPath","LifecycleReceiptPath","InstallerLockOwnerProcessId","CommitCompletedInstall","MarkProgramFilesInstalled","RecoverPreparedInstall","FilesReplaced","PersistDatabaseGenerationIntentOnly","DatabaseGenerationProgramPath","DatabaseGenerationProgramSha256","DatabaseMaintenanceHelperSize","DatabaseMaintenanceHelperSha256","DatabaseGenerationPgDumpSize","DatabaseGenerationPgDumpSha256","DatabaseGenerationPgRestoreSize","DatabaseGenerationPgRestoreSha256")' + #13#10 +
     '        "install_bundled_services.ps1" = @("InstallDir","DataRoot","PgPort","BackendPort","TargetPgMajor","TargetBackendVersion","LifecycleReceiptPath","InstallerLockOwnerProcessId","LifecycleFinalizationAttemptId","PublicFailurePath","DiagnosticLogPath","CompleteOwnerHandoffOnly")' + #13#10 +
     '        "uninstall_bundled_services.ps1" = @("InstallDir","InstallerLockOwnerProcessId","DeleteData")' + #13#10 +
     '    }' + #13#10 +
@@ -3132,7 +3132,7 @@ begin
     end
     else if CompareText(
       Context,
-      'Ticketbox pre-upgrade backup and service preparation') = 0 then
+      'Ticketbox fresh installation preparation') = 0 then
     begin
       LastPowerShellFailureMessage :=
         '安装准备未完成，新程序文件尚未复制。为保护已有数据，安装器已停止。' +

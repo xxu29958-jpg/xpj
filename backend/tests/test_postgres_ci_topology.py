@@ -269,7 +269,7 @@ def _assert_recovery_job(job: object) -> None:
     assert steps["PostgreSQL end-to-end smoke (ADR-0041)"]["run"] == ("./.ci-venv/bin/python scripts/smoke_test.py")
     assert (
         steps["PostgreSQL backup/restore recovery drill (ADR-0041 phase-2)"]["run"]
-        == "./.ci-venv/bin/python scripts/postgres_backup_drill.py"
+        == './.ci-venv/bin/python scripts/postgres_backup_drill.py --upload-root "$GITHUB_WORKSPACE/backend/uploads/smoke_test"'
     )
     scripts = "\n".join(str(step.get("run", "")) for step in job["steps"])
     assert _LANE_RUNNER not in scripts

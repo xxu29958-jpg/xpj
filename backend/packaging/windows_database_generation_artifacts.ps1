@@ -22,6 +22,7 @@ function Get-TicketboxDatabaseGenerationArtifactPath {
             "credentials",
             "runtime-credentials",
             "source-create-attempt",
+            "restored-source",
             "source-binding",
             "target-recovery-attempt",
             "target-recovery-archive",
@@ -44,7 +45,8 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
         "intent" {
             return @(
                 "schema", "operation_id", "installation_id",
-                "expected_predecessor_sha256", "target_backend_version",
+                "expected_predecessor_sha256", "source_request_sha256",
+                "target_backend_version",
                 "database_maintenance_helper_relative_path", "database_maintenance_helper_size",
                 "database_maintenance_helper_sha256", "generation_program_relative_path",
                 "generation_program_size", "generation_program_sha256",
@@ -55,13 +57,14 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
         "credentials" {
             return @(
                 "schema", "operation_id", "intent_sha256", "runtime_password",
-                "runtime_scram_salt", "migrator_password", "migrator_scram_salt"
+                "runtime_scram_salt", "migrator_password", "migrator_scram_salt",
+                "backup_password", "backup_scram_salt"
             )
         }
         "runtime-credentials" {
             return @(
                 "schema", "operation_id", "intent_sha256", "candidate_sha256",
-                "runtime_password", "http_bootstrap_secret"
+                "runtime_password", "backup_password", "http_bootstrap_secret"
             )
         }
         "source-create-attempt" {
@@ -71,10 +74,30 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
                 "temporary_database", "observed_target_absent"
             )
         }
+        "restored-source" {
+            return @(
+                "schema", "operation_id", "intent_sha256",
+                "source_request_sha256", "predecessor_current_sha256",
+                "backup_manifest_sha256", "backup_id", "dataset_id",
+                "restore_epoch", "source_revision",
+                "cluster_system_identifier", "database_oid",
+                "writer_fence_sha256", "result"
+            )
+        }
+        "dataset-restore-request" {
+            return @(
+                "schema", "request_id", "backup_generation",
+                "backup_manifest_sha256", "backup_id", "dataset_id",
+                "backup_restore_epoch", "target_revision",
+                "predecessor_current_sha256", "predecessor_intent_sha256",
+                "predecessor_intent_payload", "release_manifest_sha256",
+                "active_dataset_id", "active_restore_epoch", "restart_backend"
+            )
+        }
         "source-binding" {
             return @(
                 "schema", "operation_id", "intent_sha256",
-                "create_attempt_sha256", "source_kind", "source_revision",
+                "source_evidence_sha256", "source_kind", "source_revision",
                 "cluster_system_identifier", "database_oid", "writer_fence_sha256"
             )
         }
@@ -234,6 +257,7 @@ function Read-TicketboxDatabaseGenerationOperationArtifact {
             "credentials",
             "runtime-credentials",
             "source-create-attempt",
+            "restored-source",
             "source-binding",
             "target-recovery-attempt",
             "target-recovery-archive",
@@ -267,7 +291,8 @@ function New-TicketboxDatabaseGenerationChainedArtifact {
         [Parameter(Mandatory = $true)][string]$StateRoot,
         [Parameter(Mandatory = $true)][string]$OperationId,
         [Parameter(Mandatory = $true)][ValidateSet(
-            "runtime-credentials", "source-create-attempt", "source-binding",
+            "runtime-credentials", "source-create-attempt", "restored-source",
+            "source-binding",
             "target-authorization", "candidate", "terminal-state",
             "target-recovery-attempt", "target-recovery-archive",
             "target-recovery-binding", "target-recovery-verification",
@@ -365,12 +390,24 @@ function Publish-TicketboxDatabaseGenerationCurrent {
             (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $existing.Payload) -cne
             (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $proposed.Payload)
         ) {
-            throw "database generation current CAS predecessor/current 冲突。"
+            if (
+                [string]::IsNullOrEmpty(
+                    [string]$Intent.Payload.expected_predecessor_sha256
+                ) -or
+                [string]$existing.PayloadSha256 -cne
+                    [string]$Intent.Payload.expected_predecessor_sha256
+            ) {
+                throw "database generation current CAS predecessor/current 冲突。"
+            }
         }
-        return $existing
+        else {
+            return $existing
+        }
     }
-    if (-not [string]::IsNullOrEmpty([string]$Intent.Payload.expected_predecessor_sha256)) {
-        throw "empty-source current publish 的 expected predecessor 必须为空。"
+    elseif (-not [string]::IsNullOrEmpty(
+        [string]$Intent.Payload.expected_predecessor_sha256
+    )) {
+        throw "database generation current CAS predecessor 缺失。"
     }
     $path = [string]$proposed.Path
     $runtimeRoot = Split-Path -Parent $path

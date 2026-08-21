@@ -27,7 +27,7 @@ _REGISTRY_VALUE_NAMES = (
 )
 _SERVICE_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 _OWNER_RECOVERY_CHANNEL_PATTERN = re.compile(r"managed_host\Z")
-_RELEASE_CONFIG_SCHEMA = "ticketbox-windows-release-v1"
+_RELEASE_CONFIG_SCHEMA = "ticketbox-windows-release-v2"
 _MAX_RELEASE_CONFIG_BYTES = 64 * 1024
 _INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
 
@@ -85,6 +85,7 @@ class WindowsReleaseConfig:
     backend_ready_timeout_ms: int
     backend_ready_poll_interval_ms: int
     backend_health_request_timeout_ms: int
+    database_tool_timeout_ms: int
 
     @property
     def service_state_timeout_seconds(self) -> float:
@@ -126,7 +127,7 @@ class WindowsReleaseConfig:
         service = self.service_state_timeout_seconds
         postgres = max(service, self.postgres_ready_timeout_seconds)
         process_margin = self.process_boundary_margin_seconds
-        if action not in {"start", "stop", "restart"}:
+        if action not in {"start", "stop", "restart", "backup", "restore"}:
             raise InstallationConfigError(f"不支持的服务操作：{action}")
 
         phases = {
@@ -138,6 +139,26 @@ class WindowsReleaseConfig:
                     "backend_settle_before_stop": service,
                     "backend_stop": service,
                     "post_stop_runtime_validation": service + process_margin,
+                },
+            )
+        if action == "backup":
+            phases.update(
+                {
+                    "backend_settle_before_stop": service,
+                    "backend_stop": service,
+                    "complete_dataset_backup": self.database_tool_timeout_ms / 1000.0,
+                    "backend_restore": service,
+                },
+            )
+        if action == "restore":
+            phases.update(
+                {
+                    "backend_stop": service,
+                    "postgres_stop": postgres,
+                    "candidate_initdb_restore_and_generation": 4
+                    * (self.database_tool_timeout_ms / 1000.0),
+                    "postgres_restore": postgres,
+                    "backend_restore": service + self.backend_ready_timeout_seconds,
                 },
             )
         if action in {"start", "restart"}:
@@ -222,6 +243,7 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
     backend_timeout = _config_integer(config, "backend_ready_timeout_ms", 1000, 300000)
     backend_poll = _config_integer(config, "backend_ready_poll_interval_ms", 10, 10000)
     health_timeout = _config_integer(config, "backend_health_request_timeout_ms", 1000, 300000)
+    database_tool_timeout = _config_integer(config, "database_tool_timeout_ms", 1000, 3600000)
     if service_poll > service_timeout or backend_poll > backend_timeout or health_timeout > backend_timeout:
         raise InstallationConfigError("Windows release config 的轮询或请求超时不能大于对应就绪超时。")
     return WindowsReleaseConfig(
@@ -233,6 +255,7 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
         backend_ready_timeout_ms=backend_timeout,
         backend_ready_poll_interval_ms=backend_poll,
         backend_health_request_timeout_ms=health_timeout,
+        database_tool_timeout_ms=database_tool_timeout,
     )
 
 

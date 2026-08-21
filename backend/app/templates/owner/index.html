@@ -9,7 +9,7 @@
 
 {% if backup_health and backup_health.stale %}
 <div class="alert alert-danger">
-  ⚠️ {% if backup_health.latest %}最近一次有效备份是 {{ backup_health.age_hours }} 小时前{% else %}备份目录里没有有效备份{% endif %}，请检查 TicketboxBackup 计划任务。
+  ⚠️ {% if backup_health.latest %}最近一次完整备份是 {{ backup_health.age_hours }} 小时前{% else %}还没有完整数据集备份{% endif %}。请从桌面 Manager 发起备份。
   <a href="/owner/backups">查看备份</a>
 </div>
 {% endif %}

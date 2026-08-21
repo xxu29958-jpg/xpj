@@ -848,7 +848,7 @@ begin
   if not RunPowerShellChecked(
     LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
     Args,
-    'Ticketbox pre-upgrade backup and service preparation') then
+    'Ticketbox fresh installation preparation') then
   begin
     if LastPowerShellChildSucceeded then
     begin
@@ -1037,7 +1037,7 @@ begin
       ' -ReleaseConfigPath ' + Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
       ' -LifecycleReceiptPath ' + Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
       ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
-      ' -MarkProgramFilesInstalledBackupPending';
+      ' -MarkProgramFilesInstalled';
     if not RunPowerShellChecked(
       LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
       Args,

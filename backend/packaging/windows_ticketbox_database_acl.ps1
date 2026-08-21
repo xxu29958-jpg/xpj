@@ -46,17 +46,29 @@ BEGIN
     LOOP
         IF object_record.relkind = 'S' THEN
             EXECUTE format(
-                'REVOKE ALL PRIVILEGES ON SEQUENCE %s FROM PUBLIC, %I, %I',
+                'REVOKE ALL PRIVILEGES ON SEQUENCE %s FROM PUBLIC, %I, %I, %I',
                 object_record.oid::regclass,
                 '$($Policy.RuntimeRole)',
-                '$($Policy.MigratorRole)'
+                '$($Policy.MigratorRole)',
+                '$($Policy.BackupRole)'
+            );
+            EXECUTE format(
+                'GRANT SELECT ON SEQUENCE %s TO %I',
+                object_record.oid::regclass,
+                '$($Policy.BackupRole)'
             );
         ELSE
             EXECUTE format(
-                'REVOKE ALL PRIVILEGES ON TABLE %s FROM PUBLIC, %I, %I',
+                'REVOKE ALL PRIVILEGES ON TABLE %s FROM PUBLIC, %I, %I, %I',
                 object_record.oid::regclass,
                 '$($Policy.RuntimeRole)',
-                '$($Policy.MigratorRole)'
+                '$($Policy.MigratorRole)',
+                '$($Policy.BackupRole)'
+            );
+            EXECUTE format(
+                'GRANT SELECT ON TABLE %s TO %I',
+                object_record.oid::regclass,
+                '$($Policy.BackupRole)'
             );
         END IF;
     END LOOP;
@@ -124,27 +136,51 @@ DECLARE creator_role text;
 BEGIN
     FOREACH creator_role IN ARRAY ARRAY[
         'postgres', '$($Policy.OwnerRole)', '$($Policy.MigratorRole)',
-        '$($Policy.RuntimeRole)', '$($Policy.RetiredLegacyRole)'
+        '$($Policy.RuntimeRole)', '$($Policy.BackupRole)', '$($Policy.RetiredLegacyRole)'
     ] LOOP
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = creator_role) THEN
             EXECUTE format(
                 'ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE ALL ON TABLES FROM PUBLIC, %I',
                 creator_role, '$($Policy.RuntimeRole)');
             EXECUTE format(
+                'ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE ALL ON TABLES FROM %I',
+                creator_role, '$($Policy.BackupRole)');
+            EXECUTE format(
                 'ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE ALL ON SEQUENCES FROM PUBLIC, %I',
                 creator_role, '$($Policy.RuntimeRole)');
+            EXECUTE format(
+                'ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE ALL ON SEQUENCES FROM %I',
+                creator_role, '$($Policy.BackupRole)');
             EXECUTE format(
                 'ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE EXECUTE ON ROUTINES FROM PUBLIC, %I',
                 creator_role, '$($Policy.RuntimeRole)');
             EXECUTE format(
+                'ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE EXECUTE ON ROUTINES FROM %I',
+                creator_role, '$($Policy.BackupRole)');
+            EXECUTE format(
                 'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC, %I',
                 creator_role, '$($Policy.RuntimeRole)');
+            EXECUTE format(
+                'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON TABLES FROM %I',
+                creator_role, '$($Policy.BackupRole)');
             EXECUTE format(
                 'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC, %I',
                 creator_role, '$($Policy.RuntimeRole)');
             EXECUTE format(
+                'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON SEQUENCES FROM %I',
+                creator_role, '$($Policy.BackupRole)');
+            EXECUTE format(
                 'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE EXECUTE ON ROUTINES FROM PUBLIC, %I',
                 creator_role, '$($Policy.RuntimeRole)');
+            EXECUTE format(
+                'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE EXECUTE ON ROUTINES FROM %I',
+                creator_role, '$($Policy.BackupRole)');
+            EXECUTE format(
+                'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT ON TABLES TO %I',
+                creator_role, '$($Policy.BackupRole)');
+            EXECUTE format(
+                'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT ON SEQUENCES TO %I',
+                creator_role, '$($Policy.BackupRole)');
         END IF;
     END LOOP;
 END
@@ -161,21 +197,22 @@ DECLARE
     owner_oid oid := (SELECT oid FROM pg_roles WHERE rolname = '$($Policy.OwnerRole)');
     migrator_oid oid := (SELECT oid FROM pg_roles WHERE rolname = '$($Policy.MigratorRole)');
     runtime_oid oid := (SELECT oid FROM pg_roles WHERE rolname = '$($Policy.RuntimeRole)');
+    backup_oid oid := (SELECT oid FROM pg_roles WHERE rolname = '$($Policy.BackupRole)');
 BEGIN
     IF EXISTS (
         SELECT 1 FROM pg_database AS database,
              LATERAL aclexplode(COALESCE(database.datacl, acldefault('d', database.datdba))) AS acl
         WHERE database.datname = '$($Policy.DatabaseName)'
-          AND (acl.grantee NOT IN (owner_oid, migrator_oid, runtime_oid)
-               OR (acl.grantee IN (migrator_oid, runtime_oid)
+          AND (acl.grantee NOT IN (owner_oid, migrator_oid, runtime_oid, backup_oid)
+               OR (acl.grantee IN (migrator_oid, runtime_oid, backup_oid)
                    AND acl.privilege_type <> 'CONNECT'))
     ) THEN RAISE EXCEPTION 'Ticketbox database has a foreign or excessive ACL grantee'; END IF;
     IF EXISTS (
         SELECT 1 FROM pg_namespace AS namespace,
              LATERAL aclexplode(COALESCE(namespace.nspacl, acldefault('n', namespace.nspowner))) AS acl
         WHERE namespace.nspname = 'public'
-          AND (acl.grantee NOT IN (owner_oid, runtime_oid)
-               OR (acl.grantee = runtime_oid AND acl.privilege_type <> 'USAGE'))
+          AND (acl.grantee NOT IN (owner_oid, runtime_oid, backup_oid)
+               OR (acl.grantee IN (runtime_oid, backup_oid) AND acl.privilege_type <> 'USAGE'))
     ) THEN RAISE EXCEPTION 'Ticketbox public schema has a foreign or excessive ACL grantee'; END IF;
     IF EXISTS (
         SELECT 1 FROM pg_class AS relation
@@ -186,7 +223,8 @@ BEGIN
         )) AS acl
         WHERE namespace.nspname = 'public'
           AND relation.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
-          AND acl.grantee NOT IN (owner_oid, runtime_oid)
+          AND (acl.grantee NOT IN (owner_oid, runtime_oid, backup_oid)
+               OR (acl.grantee = backup_oid AND acl.privilege_type <> 'SELECT'))
     ) THEN RAISE EXCEPTION 'Ticketbox public relation has a foreign ACL grantee'; END IF;
     IF EXISTS (
         SELECT 1 FROM pg_proc AS routine
@@ -200,8 +238,12 @@ BEGIN
         CROSS JOIN LATERAL aclexplode(defaults.defaclacl) AS acl
         WHERE creator.rolname IN (
             'postgres', '$($Policy.OwnerRole)', '$($Policy.MigratorRole)',
-            '$($Policy.RuntimeRole)', '$($Policy.RetiredLegacyRole)')
+            '$($Policy.RuntimeRole)', '$($Policy.BackupRole)', '$($Policy.RetiredLegacyRole)')
           AND acl.grantee <> defaults.defaclrole
+          AND NOT (
+              acl.grantee = backup_oid AND acl.privilege_type = 'SELECT'
+              AND defaults.defaclobjtype IN ('r', 'S')
+          )
     ) THEN RAISE EXCEPTION 'Ticketbox creator default privileges retain a foreign grantee'; END IF;
 END
 `$ticketbox_guard`$;
@@ -220,12 +262,12 @@ function New-TicketboxDatabaseRuntimeAclSql {
     $sequenceConsumers = @(Get-TicketboxDatabaseSequenceConsumerTables `
         -IncludeManagedSchemaCurrencyAuthority:$IncludeManagedSchemaCurrencyAuthority)
     $connectSql = if ($PreserveRuntimeFence) {
-        "GRANT CONNECT ON DATABASE `"$($policy.DatabaseName)`" TO `"$($policy.MigratorRole)`";`n" +
+        "GRANT CONNECT ON DATABASE `"$($policy.DatabaseName)`" TO `"$($policy.MigratorRole)`", `"$($policy.BackupRole)`";`n" +
         "ALTER ROLE `"$($policy.RuntimeRole)`" NOLOGIN CONNECTION LIMIT 0;"
     }
     else {
         "GRANT CONNECT ON DATABASE `"$($policy.DatabaseName)`" " +
-            "TO `"$($policy.RuntimeRole)`", `"$($policy.MigratorRole)`";"
+            "TO `"$($policy.RuntimeRole)`", `"$($policy.MigratorRole)`", `"$($policy.BackupRole)`";"
     }
     $objectSql = New-TicketboxDatabaseAclObjectSql `
         -Policy $policy `
@@ -239,28 +281,34 @@ ALTER DATABASE "$($policy.DatabaseName)" OWNER TO "$($policy.OwnerRole)";
 REVOKE ALL ON DATABASE "$($policy.DatabaseName)" FROM PUBLIC;
 REVOKE ALL ON DATABASE "$($policy.DatabaseName)" FROM "$($policy.RuntimeRole)";
 REVOKE ALL ON DATABASE "$($policy.DatabaseName)" FROM "$($policy.MigratorRole)";
+REVOKE ALL ON DATABASE "$($policy.DatabaseName)" FROM "$($policy.BackupRole)";
 $connectSql
 ALTER SCHEMA public OWNER TO "$($policy.OwnerRole)";
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 REVOKE ALL ON SCHEMA public FROM "$($policy.RuntimeRole)";
 REVOKE ALL ON SCHEMA public FROM "$($policy.MigratorRole)";
-GRANT USAGE ON SCHEMA public TO "$($policy.RuntimeRole)";
+REVOKE ALL ON SCHEMA public FROM "$($policy.BackupRole)";
+GRANT USAGE ON SCHEMA public TO "$($policy.RuntimeRole)", "$($policy.BackupRole)";
 $objectSql
 REVOKE EXECUTE ON ALL ROUTINES IN SCHEMA public FROM PUBLIC;
 REVOKE EXECUTE ON ALL ROUTINES IN SCHEMA public FROM "$($policy.RuntimeRole)";
 REVOKE EXECUTE ON ALL ROUTINES IN SCHEMA public FROM "$($policy.MigratorRole)";
+REVOKE EXECUTE ON ALL ROUTINES IN SCHEMA public FROM "$($policy.BackupRole)";
 REVOKE EXECUTE ON FUNCTION pg_catalog.pg_control_system()
-    FROM PUBLIC, "$($policy.MigratorRole)", "$($policy.RuntimeRole)";
+    FROM PUBLIC, "$($policy.MigratorRole)", "$($policy.RuntimeRole)", "$($policy.BackupRole)";
 GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system()
     TO "$($policy.OwnerRole)", "$($policy.RuntimeRole)";
 $defaultSql
 $guardSql
 ALTER ROLE "$($policy.RuntimeRole)" RESET ALL;
 ALTER ROLE "$($policy.MigratorRole)" RESET ALL;
+ALTER ROLE "$($policy.BackupRole)" RESET ALL;
 ALTER ROLE "$($policy.RuntimeRole)" IN DATABASE "$($policy.DatabaseName)" RESET ALL;
 ALTER ROLE "$($policy.MigratorRole)" IN DATABASE "$($policy.DatabaseName)" RESET ALL;
+ALTER ROLE "$($policy.BackupRole)" IN DATABASE "$($policy.DatabaseName)" RESET ALL;
 ALTER ROLE "$($policy.RuntimeRole)" SET search_path = pg_catalog, public;
 ALTER ROLE "$($policy.MigratorRole)" SET search_path = pg_catalog, public;
+ALTER ROLE "$($policy.BackupRole)" SET search_path = pg_catalog, public;
 COMMIT;
 "@
 }
@@ -319,7 +367,7 @@ SELECT
         LEFT JOIN pg_roles AS grantee ON grantee.oid = acl.grantee
         WHERE namespace.nspname = 'public' AND catalog_relation.relkind IN ('r', 'p')
           AND COALESCE(grantee.rolname, 'PUBLIC') NOT IN (
-              '$($Policy.OwnerRole)', '$($Policy.RuntimeRole)', '$($Policy.MigratorRole)'))
+              '$($Policy.OwnerRole)', '$($Policy.RuntimeRole)', '$($Policy.MigratorRole)', '$($Policy.BackupRole)'))
     )::text || E'\t' ||
     ($runtimeConnectPredicate
      AND NOT has_database_privilege('$($Policy.RuntimeRole)', current_database(), 'CREATE')
@@ -341,6 +389,30 @@ SELECT
         AND NOT has_sequence_privilege('$($Policy.RuntimeRole)', oid, 'SELECT')
         AND NOT has_sequence_privilege('$($Policy.RuntimeRole)', oid, 'UPDATE')
     END) FROM sequence_contract), true)::text || E'\t' ||
+    (has_database_privilege('$($Policy.BackupRole)', current_database(), 'CONNECT')
+     AND NOT has_database_privilege('$($Policy.BackupRole)', current_database(), 'CREATE')
+     AND NOT has_database_privilege('$($Policy.BackupRole)', current_database(), 'TEMPORARY')
+     AND has_schema_privilege('$($Policy.BackupRole)', 'public', 'USAGE')
+     AND NOT has_schema_privilege('$($Policy.BackupRole)', 'public', 'CREATE')
+     AND NOT EXISTS (
+         SELECT 1 FROM pg_class AS relation
+         JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+         WHERE namespace.nspname = 'public'
+           AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
+           AND NOT has_table_privilege('$($Policy.BackupRole)', relation.oid, 'SELECT'))
+     AND NOT EXISTS (
+         SELECT 1 FROM pg_class AS sequence
+         JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+         WHERE namespace.nspname = 'public' AND sequence.relkind = 'S'
+           AND (NOT has_sequence_privilege('$($Policy.BackupRole)', sequence.oid, 'SELECT')
+                OR has_sequence_privilege('$($Policy.BackupRole)', sequence.oid, 'USAGE')
+                OR has_sequence_privilege('$($Policy.BackupRole)', sequence.oid, 'UPDATE')))
+     AND NOT EXISTS (
+         SELECT 1 FROM pg_proc AS routine
+         JOIN pg_namespace AS namespace ON namespace.oid = routine.pronamespace
+         WHERE namespace.nspname = 'public'
+           AND has_function_privilege('$($Policy.BackupRole)', routine.oid, 'EXECUTE'))
+    )::text || E'\t' ||
     has_function_privilege('$($Policy.RuntimeRole)', 'pg_catalog.pg_control_system()', 'EXECUTE')::text;
 "@
 }
@@ -373,7 +445,7 @@ function Assert-TicketboxDatabaseRuntimeAcl {
     try {
         $fields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
             -Output $output `
-            -FieldCount 8 `
+            -FieldCount 9 `
             -Label "Ticketbox structured runtime ACL attestation"
     }
     catch {

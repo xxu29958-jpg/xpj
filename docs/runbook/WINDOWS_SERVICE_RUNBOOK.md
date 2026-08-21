@@ -65,7 +65,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_task
 
 ```text
 TicketboxBackend
-TicketboxBackup
 TicketboxBoundaryCheck
 ```
 
@@ -155,7 +154,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start_backend_gui.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_windows_task_status.ps1
 ```
 
-输出 `TicketboxBackend` / `TicketboxCloudflareTunnel` / `TicketboxBackup` / `TicketboxBoundaryCheck` 的 `State`、`LastRunTime`、`LastTaskResult`。`0x413xx` / `2670xx` 这类 Task Scheduler 信息码（例如任务正在运行、尚未运行）不按失败处理；`TicketboxBoundaryCheck` 探测失败仍返回 `1`。
+输出 `TicketboxBackend` / `TicketboxCloudflareTunnel` / `TicketboxBoundaryCheck` 的 `State`、`LastRunTime`、`LastTaskResult`。`0x413xx` / `2670xx` 这类 Task Scheduler 信息码（例如任务正在运行、尚未运行）不按失败处理；`TicketboxBoundaryCheck` 探测失败仍返回 `1`。
 
 ## 查看当前状态
 
@@ -179,7 +178,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 - 后端进程是谁。
 - cloudflared 进程或服务是否存在。
 - `TicketboxBackend` / `TicketboxCloudflareTunnel` 计划任务状态。
-- `TicketboxBackup` 每日数据库备份任务状态。
+- 正式安装的完整数据集备份/恢复由桌面管理器短时提权执行，不属于源码计划任务。
 - 本机 `/api/health`。
 - 公网 `/api/health`。
 - 公网 `/api/auth/check`（推荐使用 `TICKETBOX_SESSION_TOKEN` 环境变量，避免 token 进入命令行历史；脚本不会打印 token）。

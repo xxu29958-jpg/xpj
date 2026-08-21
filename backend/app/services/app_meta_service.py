@@ -1,16 +1,4 @@
-"""ADR-0031 app_meta helper.
-
-Provides read/write access to the ``app_meta`` key-value table and the
-binary-vs-DB compatibility check called from lifespan startup.
-
-Default values when a key is missing at runtime:
-- ``schema_version`` defaults to ``"0.9"`` (legacy pre-cut-over baseline).
-- ``schema_min_compatible`` defaults to ``"0.9"`` (same).
-
-Alembic revisions own compatibility metadata for brand-new and upgraded
-databases. The "default to 0.9" path is reserved for old databases that were
-created before app_meta metadata existed.
-"""
+"""Non-authoritative app metadata plus the dataset compatibility gate."""
 
 from __future__ import annotations
 
@@ -21,14 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import AppMeta
-from app.models.app_meta import (
-    SCHEMA_MIN_COMPATIBLE_KEY,
-    SCHEMA_VERSION_KEY,
-)
+from app.services.dataset_authority_service import read_dataset_authority
 from app.services.time_service import now_utc
 from app.version import BACKEND_VERSION
 
 V09_DEFAULT_VERSION = "0.9"
+_RETIRED_DATASET_KEYS = frozenset({"server_id", "data_generation", "schema_version", "schema_min_compatible"})
 _VERSION_PATTERN = re.compile(
     r"^\s*[vV]?(?P<release>\d+(?:\.\d+)*)"
     r"(?:(?:[-.]?)(?P<label>preview|alpha|beta|pre|dev|rc|a|b)"
@@ -54,6 +40,8 @@ def get_value(db: Session, key: str) -> str | None:
 
 
 def set_value(db: Session, key: str, value: str) -> None:
+    if key in _RETIRED_DATASET_KEYS:
+        raise AppError("dataset_authority_read_only", status_code=500)
     row = db.scalar(select(AppMeta).where(AppMeta.key == key))
     if row is None:
         row = AppMeta(key=key, value=value, updated_at=now_utc())
@@ -64,18 +52,8 @@ def set_value(db: Session, key: str, value: str) -> None:
     db.commit()
 
 
-def schema_version(db: Session) -> str:
-    return get_value(db, SCHEMA_VERSION_KEY) or V09_DEFAULT_VERSION
-
-
 def schema_min_compatible(db: Session) -> str:
-    return get_value(db, SCHEMA_MIN_COMPATIBLE_KEY) or V09_DEFAULT_VERSION
-
-
-def seed_fresh_schema_metadata(db: Session) -> None:
-    """Retained compatibility entrypoint; Alembic exclusively owns these rows."""
-
-    del db
+    return read_dataset_authority(db).schema_min_compatible
 
 
 def _version_tuple(v: str) -> tuple[tuple[int, ...], int, int]:
@@ -123,9 +101,8 @@ def assert_binary_compatible_with_db(db: Session) -> None:
     """Lifespan startup gate.
 
     Refuse to start when this binary's version is older than the DB's
-    ``schema_min_compatible``. The reverse direction (binary newer than
-    ``schema_version``) is always fine; incremental migrations handle
-    add-column upgrades on every boot.
+    ``schema_min_compatible``. A newer binary is admitted only after the
+    offline Generation Owner has published a schema generation it can run.
 
     Versions are compared by structured release and prerelease components.
     """

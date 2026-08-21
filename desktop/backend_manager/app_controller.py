@@ -55,6 +55,8 @@ _CONTROL_NOTICES = MappingProxyType({
     "start": "启动操作已完成。",
     "stop": "停止操作已完成。",
     "restart": "重启操作已完成。",
+    "backup": "数据库与原始附件完整备份已完成。",
+    "restore": "已从所选完整备份恢复，并发布新的数据 generation。",
     "toggle_auto_restart": "自动重启设置已更新。",
 })
 _NOTICE_SECONDS = 8.0
@@ -302,6 +304,19 @@ class AppController:
 
     def restart(self) -> None:
         self._control("restart")
+
+    def backup(self) -> None:
+        self._control("backup")
+
+    def restore(self, backup_generation: str) -> None:
+        self._begin_action()
+        try:
+            runtime = self._provider.current().runtime
+            runtime.restore(backup_generation)
+        except (ConfigError, RuntimeControlError) as exc:
+            self._record_error(self._display_error(exc))
+        else:
+            self._record_notice(_CONTROL_NOTICES["restore"])
 
     def auto_restart(self) -> None:
         self._control("toggle_auto_restart")

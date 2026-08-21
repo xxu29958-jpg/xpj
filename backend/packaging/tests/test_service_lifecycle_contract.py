@@ -883,6 +883,8 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert "Set-TicketboxOwnedServiceDemandStartIfExists" in lifecycle
     assert "Set-TicketboxOwnedServiceDelayedAutoStartIfExists" in lifecycle
     install = _read("install_bundled_services.ps1")
+    assert '$BackupDir = Join-Path $DataRoot "backups"' in install
+    assert '$BackupDir = Join-Path $AppData "backups"' not in install
     prepare = _read("prepare_bundled_upgrade.ps1")
     uninstall = _read("uninstall_bundled_services.ps1")
     recovery_cleanup = prepare[
@@ -943,8 +945,9 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     )
     stop_backend = install.index("Stop-ServiceIfExists", install.index("$hadExistingPgService"))
     isolate_acl = install.index("Set-TicketboxAcl", stop_backend)
-    backup = install.index("Invoke-PreUpgradeBackupIfNeeded", isolate_acl)
-    assert stop_backend < isolate_acl < backup
+    generation_owner = install.index("Invoke-TicketboxInstalledDatabaseGeneration", isolate_acl)
+    assert stop_backend < isolate_acl < generation_owner
+    assert "Invoke-PreUpgradeBackupIfNeeded" not in install
     assert "-IncludeBackendService $hadExistingBackendService" in install
     prepare_commit = prepare[
         prepare.index("function Complete-TicketboxInterruptedInitdbServiceCommit") : prepare.index(
@@ -999,6 +1002,13 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
         "Initialize-TicketboxInstallerStateDirectory $InstallerState"
     )
     assert '$markerReadAccounts += "NT SERVICE\\$BackendServiceName"' in acl_function
+    assert '$backupReadAccounts += "NT SERVICE\\$BackendServiceName"' in acl_function
+    backup_acl = acl_function.index("-Path $BackupDir")
+    assert acl_function.index("-Accounts $systemAndAdmins", backup_acl) > backup_acl
+    assert (
+        acl_function.index("-InheritableReadExecuteAccounts $backupReadAccounts", backup_acl)
+        > backup_acl
+    )
     marker_acl = acl_function.index("-Path (Get-TicketboxDataRootMarkerPath $DataRoot)")
     assert acl_function.index("-ReadExecuteAccounts $markerReadAccounts", marker_acl) > marker_acl
     operation = install[install.index("$operationLock =") :]
@@ -1065,59 +1075,139 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert "$out = $Sql | & $psql @args 2>&1" not in database
     assert '：$Sql`n$out' not in database
 
-def test_pre_upgrade_backup_uses_old_tools_before_stopping_postgres() -> None:
+def test_fresh_preflight_has_no_database_only_backup_authority() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
-
-    upgrade_try = prepare.index("try {", prepare.index("$backupRequired"))
-    stop_backend = prepare.index("Disable-TicketboxOwnedServiceIfExists", upgrade_try)
-    dump_database = prepare.index("Invoke-TicketboxPgDumpCustom")
-    verify_dump = prepare.index("Invoke-TicketboxPgRestoreList")
-    stop_postgres = prepare.index("Disable-TicketboxOwnedServiceIfExists", dump_database)
-    assert stop_backend < dump_database < verify_dump < stop_postgres
-    backend_prepare = prepare[
-        prepare.index("if ($hasBackendService) {", upgrade_try) : prepare.index(
-            "if ($usingRecoveryPgService)", upgrade_try
-        )
-    ]
-    assert "Disable-TicketboxOwnedServiceIfExists" in backend_prepare
-    assert "Set-TicketboxPreparedServiceDemandStart" not in backend_prepare
-    assert '$PgBin = Join-Path $InstallDir "pg\\bin"' in prepare
-    assert "Restore-PreviousServiceState" in prepare
-    assert "旧程序保持不变" in prepare
-    assert "Assert-TicketboxConnectedPostgresDataRoot" in prepare
-    assert "Get-TicketboxLocalDatabaseConnection" in prepare
-    assert "Assert-ExpectedServiceConfiguration" in prepare
-    assert "Invoke-TicketboxBoundedNativeProcess" in prepare
-    assert "& $PgCtl status -D $PgData" not in prepare
-    assert 'Wait-TicketboxServiceSettledState -Name $PgServiceName' in prepare
-    assert "InstalledReleaseConfigPath" in prepare
-    assert "LifecycleReceiptPath" in prepare
-    assert "Write-TicketboxLifecycleReceipt" in prepare
-    assert "BackupCompleted $backupCompleted" in prepare
-    assert "Assert-TicketboxReleaseIdentityCompatible" in prepare
-    assert "ExpectedStopTimeoutMs = $InstalledStopTimeoutMs" in prepare
-    assert "ExpectedRestartDelayMs = $InstalledRestartDelayMs" in prepare
-    assert "Assert-TicketboxPgClusterStopped" in prepare
-    assert "Repair-TicketboxPreflightInstallAcl" in prepare
-    assert "Assert-TicketboxPortAvailableForMissingService" in prepare
-    assert "-BackendPort $BackendPort" in prepare
-    assert "Set-TicketboxPreparedServiceDemandStart" in prepare
-    assert "files-may-have-been-replaced" in prepare
-    disabled_pg = prepare.index('if ($hasPgService -and $pgStartPolicy -eq "disabled")')
-    demand_start = prepare.index("Set-TicketboxPreparedServiceDemandStart", disabled_pg)
-    start_pg = prepare.index("Start-TicketboxOwnedServiceIfExists", demand_start)
-    assert disabled_pg < demand_start < start_pg
-    assert "-ExpectedRuntimeExecutables @($BackendExe, $ShawlExe)" in prepare
-
     install = _read("install_bundled_services.ps1")
-    installer = _read("ticketbox-installer-flow.isph")
-    assert "PreviousReleaseConfigPath" not in install
-    assert "SkipPreUpgradeBackup" not in installer
-    assert "Read-TicketboxLifecycleReceipt" in install
-    assert "-ExpectedStopTimeoutMs $PreviousStopTimeoutMs" in install
-    assert "InstalledReleaseConfigSnapshotPath" not in installer
-    assert "PreviousReleaseConfigPath" not in installer
-    assert "LifecycleReceiptPath" in installer
+    database = _read("windows_bundled_database.ps1")
+    for retired in (
+        "Invoke-TicketboxPgDumpCustom",
+        "Invoke-TicketboxPgRestoreList",
+        "Invoke-TicketboxPreservedDataReinstallBackup",
+        "Invoke-PreUpgradeBackupIfNeeded",
+        "$backupRequired",
+        "$usingRecoveryPgService",
+    ):
+        assert retired not in prepare
+        assert retired not in install
+        assert retired not in database
+    source_classification = prepare.index("$mode = Get-TicketboxPreparedInstallMode")
+    fresh_gate = prepare.index('$mode -cne "fresh_install"', source_classification)
+    receipt_write = prepare.index("Write-TicketboxLifecycleReceipt", fresh_gate)
+    assert source_classification < fresh_gate < receipt_write
+    assert "windows_dataset_backup.ps1" in _read("ticketbox-installer.iss")
+
+
+def test_complete_dataset_backup_owner_rejects_noncanonical_helper_identity() -> None:
+    backup = _read("windows_dataset_backup.ps1")
+
+    assert '$canonicalDatasetId = ([guid][string]$decoded.dataset_id).ToString("D")' in backup
+    assert '$canonicalDatasetId -cne [string]$decoded.dataset_id' in backup
+
+
+def test_complete_dataset_backup_persists_request_before_stopping_writers() -> None:
+    backup = _read("windows_dataset_backup.ps1")
+    request_contract = _read("windows_installed_dataset_backup_contract.ps1")
+    launcher = _read("launch.py")
+
+    request = backup.index("Get-OrCreateTicketboxInstalledDatasetBackupRequest")
+    stop = backup.index("Stop-TicketboxOwnedServiceIfExists", request)
+    assert request < stop
+    assert "BackupId = [string]$Request.Payload.backup_id" in backup
+    assert '"--backup-id", $captured.BackupId' in backup
+    assert "Remove-TicketboxInstalledDatasetBackupRequest" in backup
+    assert '[ValidateSet("manual")]' in backup
+    assert 'ValidateSet("manual", "scheduled")' not in request_contract
+    assert 'choices=("manual",)' in launcher
+
+
+def test_complete_dataset_backup_request_is_write_once_and_retriable_cross_engine(
+    tmp_path: Path,
+) -> None:
+    contract = PACKAGING / "windows_installed_dataset_backup_contract.ps1"
+    harness = tmp_path / "dataset-backup-request-contract.ps1"
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    harness.write_text(
+        rf"""
+$ErrorActionPreference = 'Stop'
+function Assert-TicketboxDatabaseGenerationExactProperties {{
+    param([object]$Value, [string[]]$ExpectedNames, [string]$Label)
+    $actual = @($Value.PSObject.Properties.Name | Sort-Object)
+    $expected = @($ExpectedNames | Sort-Object)
+    if (($actual -join ',') -cne ($expected -join ',')) {{
+        throw "$Label properties drifted"
+    }}
+}}
+function Assert-TicketboxDatabaseGenerationLowerSha256 {{
+    param([string]$Value, [string]$Label)
+    if ($Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw "$Label is not sha256" }}
+}}
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
+    param([object]$Value)
+    return $Value | ConvertTo-Json -Depth 10 -Compress
+}}
+function Get-TicketboxDatabaseGenerationTextSha256 {{
+    param([string]$Text)
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {{ return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }}
+    finally {{ $sha.Dispose() }}
+}}
+function Get-TicketboxPathEntryKindNoFollow {{
+    param([string]$Path)
+    if ([IO.File]::Exists($Path)) {{ return 'File' }}
+    if ([IO.Directory]::Exists($Path)) {{ return 'Directory' }}
+    return 'Missing'
+}}
+function Write-TicketboxProtectedUtf8FileDurable {{
+    param([string]$Path, [string]$Text, [string[]]$FullControlAccounts, [string]$OwnerAccount)
+    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
+}}
+function Read-TicketboxProtectedUtf8Artifact {{
+    param([string]$Path, [string[]]$FullControlAccounts, [string]$OwnerAccount)
+    return [pscustomobject]@{{ Text = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8) }}
+}}
+function Assert-TicketboxLifecycleOperationLease {{ param([object]$LifecycleLock) }}
+. '{_ps_literal(contract)}'
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{ InstallationId = '11111111-1111-4111-8111-111111111111' }}
+    Manifest = [pscustomobject]@{{ Sha256 = ('b' * 64) }}
+}}
+$authority = [pscustomobject]@{{
+    StateRoot = '{_ps_literal(state_root)}'
+    Current = [pscustomobject]@{{ PayloadSha256 = ('a' * 64) }}
+}}
+$lease = [pscustomobject]@{{ Held = $true }}
+$first = Get-OrCreateTicketboxInstalledDatasetBackupRequest `
+    $subject $authority manual $true $lease
+$second = Get-OrCreateTicketboxInstalledDatasetBackupRequest `
+    $subject $authority manual $false $lease
+if (
+    $first.PayloadSha256 -cne $second.PayloadSha256 -or
+    $first.Payload.operation_id -cne $second.Payload.operation_id -or
+    $first.Payload.backup_id -cne $second.Payload.backup_id -or
+    $second.Payload.backup_kind -cne 'manual' -or
+    -not [bool]$second.Payload.restart_backend
+) {{ throw 'retry did not reuse the exact durable request' }}
+Remove-TicketboxInstalledDatasetBackupRequest $second $lease
+if ($null -ne (Read-TicketboxInstalledDatasetBackupRequest $authority.StateRoot -AllowAbsent)) {{
+    throw 'completed request was not retired'
+}}
+'DATASET_BACKUP_REQUEST_OK'
+""",
+        encoding="utf-8-sig",
+    )
+    for engine in powershell_contract_engines():
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
 def test_existing_backend_stop_reuses_preflight_identity_classification_cross_engine(

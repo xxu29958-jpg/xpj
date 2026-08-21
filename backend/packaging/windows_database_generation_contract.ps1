@@ -411,9 +411,15 @@ function Assert-TicketboxDatabaseGenerationReleaseBinding {
     )
     $program = Get-TicketboxInstalledDatabaseGenerationProgram `
         -ReleaseIdentity $ReleaseIdentity
+    $fresh = [string]::IsNullOrEmpty(
+        [string]$Intent.Payload.expected_predecessor_sha256
+    )
     if (
-        [string]$Intent.Payload.operation_id -cne
-            ([guid][string]$ReleaseIdentity.InstallationOperationId).ToString("D") -or
+        (
+            $fresh -and
+            [string]$Intent.Payload.operation_id -cne
+                ([guid][string]$ReleaseIdentity.InstallationOperationId).ToString("D")
+        ) -or
         [string]$Intent.Payload.installation_id -cne
             ([guid][string]$ReleaseIdentity.InstallationId).ToString("D") -or
         [string]$Intent.Payload.target_backend_version -cne

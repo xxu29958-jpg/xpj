@@ -209,6 +209,14 @@ $DatabaseGenerationSingleUserScript = Join-Path `
 $DatabaseGenerationProjectionScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_projection.ps1"
+$DatasetBackupScript = Join-Path $ScriptDir "windows_dataset_backup.ps1"
+$DatasetRestoreScript = Join-Path $ScriptDir "windows_dataset_restore.ps1"
+$InstalledDatasetContractScript = Join-Path `
+    $ScriptDir "windows_installed_dataset_contract.ps1"
+$InstalledDatasetBackupContractScript = Join-Path `
+    $ScriptDir "windows_installed_dataset_backup_contract.ps1"
+$PostgresqlCandidateClusterScript = Join-Path `
+    $ScriptDir "windows_postgresql_candidate_cluster.ps1"
 $BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
 $BootstrapExposureRecoveryScript = Join-Path $ScriptDir "windows_bootstrap_exposure_recovery.ps1"
 $InstallScript = Join-Path $ScriptDir "install_bundled_services.ps1"
@@ -1221,6 +1229,11 @@ Assert-File `
 Assert-File `
     $DatabaseGenerationProjectionScript `
     "Windows database generation runtime projection"
+Assert-File $DatasetBackupScript "Windows complete dataset backup owner"
+Assert-File $DatasetRestoreScript "Windows complete dataset restore owner"
+Assert-File $InstalledDatasetContractScript "Windows installed dataset contract"
+Assert-File $InstalledDatasetBackupContractScript "Windows installed dataset backup contract"
+Assert-File $PostgresqlCandidateClusterScript "Windows PostgreSQL candidate cluster"
 Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"
 Assert-File $BootstrapExposureRecoveryScript "Windows bootstrap 暴露恢复脚本"
 Assert-File $InstallScript "install_bundled_services.ps1"

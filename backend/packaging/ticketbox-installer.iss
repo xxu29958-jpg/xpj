@@ -281,6 +281,11 @@ Source: "windows_database_generation_target_recovery.ps1"; DestDir: "{app}\insta
 Source: "windows_database_generation_retirement.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_single_user.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_projection.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_dataset_backup.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_dataset_restore.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_installed_dataset_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_installed_dataset_backup_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_postgresql_candidate_cluster.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_backend_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_bootstrap_exposure_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows-release-config.json"; DestDir: "{app}\installer"; Flags: ignoreversion

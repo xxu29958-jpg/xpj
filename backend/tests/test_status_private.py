@@ -23,7 +23,10 @@ def test_private_status_reports_backup_health(
     映射形态;48h stale 判定本身在 backup_service 测试里钉。
     """
     entry = backup_service.BackupEntry(
-        file_name="ticketbox-20260613-160000.dump",
+        file_name="ticketbox-backup-82f41001-c8c3-4ec5-a0a6-ab46da0a7900",
+        backup_id="82f41001-c8c3-4ec5-a0a6-ab46da0a7900",
+        dataset_id="f71cfb0f-1982-48b8-ae92-e4e1f63bd62f",
+        restore_epoch=0,
         size_bytes=1024,
         created_at=datetime(2026, 6, 13, 16, 0, 0, tzinfo=UTC),
         kind="scheduled",
@@ -38,7 +41,7 @@ def test_private_status_reports_backup_health(
     assert body["backup_age_hours"] == 3
     assert body["backup_stale"] is False
     # 公网 tunnel 端点红线:暴露时间戳/小时数/stale,不暴露备份文件名/目录。
-    assert "ticketbox-20260613-160000.dump" not in body.values()
+    assert entry.file_name not in body.values()
 
 
 def test_private_status_reports_missing_backup_as_stale(

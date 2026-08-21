@@ -90,11 +90,8 @@ Authorization: Bearer <admin_token>
 
 ## Windows 维护脚本
 
-推荐先备份，再清理：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -Backup
-```
+正式安装执行任何清理前，先从桌面管理器创建并验证一个完整 dataset generation。源码维护脚本
+不拥有正式安装备份 authority。
 
 检查孤儿文件但不删除：
 
@@ -116,21 +113,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbo
 
 ## 备份建议
 
-灰度前至少保留：
+灰度前至少从桌面管理器创建一个完整备份，并在同一 exact-head 干净 Windows VM 验证恢复。
+不要把真实 Token、database archive、originals 或 manifest 提交到 Git。
 
-- 最近 7 天每日一份 PostgreSQL 备份（pg_dump）。
-- 每次大改前手动备份。
-- 不要把真实 Token 和备份数据库提交到 Git。
-
-备份目录(`backend/app/services/backup_service.py:_BACKUP_DIR = DATA_ROOT / "backups"`):
+完整 generation 目录：
 
 ```text
-<DATA_ROOT>/backups/
+<DataRoot>/backups/ticketbox-backup-<UUID>/
 ```
 
-源码运行的 `DATA_ROOT` 默认是 `backend/`；正式 Windows 服务经 machine-owned
-`TicketboxRuntimeBinding/data-root/app` junction 访问安装器选择的物理 `<DataRoot>/app`，
-并由 v2 marker + Volume GUID 绑定。该目录用于本机运维，不应提交。
+正式 Windows 服务经 machine-owned `TicketboxRuntimeBinding/data-root/app` junction 访问安装器
+选择的物理 `<DataRoot>/app`，并由 v2 marker + Volume GUID 绑定。每个 generation 同时包含
+manifest、PostgreSQL custom archive 和数据库引用的 originals；该目录用于本机运维，不应提交。
 
 ## 数据清理底线
 

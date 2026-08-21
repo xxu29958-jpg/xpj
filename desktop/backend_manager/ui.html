@@ -94,7 +94,7 @@
     .product-link:hover { color: var(--ink); text-decoration: underline; }
     .product-link + .overall-state { margin-left: 0; }
     .product-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .product-actions input[type="text"], .product-actions select {
+    .product-actions input[type="text"], .product-actions select, .restore-actions input[type="text"] {
       min-height: 34px;
       padding: 6px 9px;
       border: 1px solid var(--line);
@@ -105,6 +105,8 @@
       background: var(--card);
     }
     .product-actions input[type="text"] { width: 9em; letter-spacing: 0.12em; }
+    .restore-actions { display: grid; gap: 8px; margin-top: 10px; }
+    .restore-actions input[type="text"] { width: 100%; font-family: var(--mono); font-size: 11px; }
     /* The hidden attribute is authoritative over every display rule above —
        pair form / manage group / product link must never coexist. */
     [hidden] { display: none !important; }
@@ -323,7 +325,12 @@
         <div class="task-title">备份</div>
         <div class="task-state" id="protectState">升级前请确认最近备份可用。</div>
         <div class="task-actions">
+          <button class="button manager-action" id="backupAction" type="button" onclick="act('backup', this)">立即完整备份</button>
           <button class="button manager-action owner-action" type="button" onclick="act('open_backups', this)">查看备份</button>
+        </div>
+        <div class="restore-actions">
+          <input type="text" id="restoreGeneration" autocomplete="off" spellcheck="false" placeholder="ticketbox-backup-…" aria-label="要恢复的完整备份 generation">
+          <button class="button manager-action" id="restoreAction" type="button" onclick="restoreDataset(this)">恢复所选备份</button>
         </div>
       </article>
 
@@ -395,6 +402,9 @@
       $("androidAction").disabled = actionInFlight || !productAvailable || s.android_binding_state !== "configured_unverified";
       $("iphoneAction").disabled = actionInFlight || !productAvailable || s.iphone_upload_state !== "configured_unverified";
       $("diagnosticExportAction").disabled = actionInFlight;
+      $("backupAction").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed" || !serviceControls;
+      $("restoreAction").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed" || !serviceControls;
+      $("restoreGeneration").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed";
       document.querySelector("main").setAttribute("aria-busy", String(actionInFlight));
     }
 
@@ -716,6 +726,43 @@
           if (originalAriaLabel === null) button.removeAttribute("aria-label");
           else button.setAttribute("aria-label", originalAriaLabel);
         }
+        actionInFlight = false;
+        applyActionAvailability(latestStatus);
+        await refresh();
+      }
+    }
+
+    async function restoreDataset(button) {
+      const generation = $("restoreGeneration").value.trim();
+      if (!/^ticketbox-backup-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(generation)) {
+        setMessage("controlError", "请从完整备份页面复制一个明确的 generation 名称。");
+        return;
+      }
+      if (!window.confirm("恢复会停止服务，并用所选备份发布新的数据 generation。原数据会保留到发布成功。继续吗？")) return;
+      if (actionInFlight) return;
+      const original = button.innerHTML;
+      actionInFlight = true;
+      applyActionAvailability(latestStatus);
+      button.innerHTML = '<span class="icon spinner" aria-hidden="true">↻</span><span>恢复中</span>';
+      try {
+        const response = await fetch("/api/restore", {
+          method: "POST",
+          headers: {
+            "X-Control-Token": window.CONTROL_TOKEN,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({backup_generation: generation})
+        });
+        if (response.status === 409) throw new Error("busy");
+        if (!response.ok) throw new Error("action");
+        render(await response.json());
+      } catch (error) {
+        setMessage(
+          "controlError",
+          error.message === "busy" ? "另一项操作正在进行，请等待完成。" : "完整恢复未完成；原数据仍被保留，请重试同一 generation。"
+        );
+      } finally {
+        button.innerHTML = original;
         actionInFlight = false;
         applyActionAvailability(latestStatus);
         await refresh();

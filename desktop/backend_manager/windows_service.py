@@ -84,6 +84,7 @@ class ServiceGateway(Protocol):
 
 class ServiceActionRunner(Protocol):
     def run(self, action: str) -> None: ...
+    def restore(self, backup_generation: str) -> None: ...
 
 
 class WindowsServiceGateway:
@@ -279,6 +280,13 @@ class WindowsServiceRuntime:
         with self._lock:
             self._run_control(self._restart_services)
 
+    def backup(self) -> None:
+        raise RuntimeControlError("完整备份必须通过短时提权维护 owner 执行。")
+
+    def restore(self, backup_generation: str) -> None:
+        del backup_generation
+        raise RuntimeControlError("完整恢复必须通过短时提权维护 owner 执行。")
+
     def _restart_services(self) -> None:
         self._stop_backend()
         self._start_services()
@@ -423,6 +431,12 @@ class BrokeredWindowsServiceRuntime:
 
     def restart(self) -> None:
         self._action_runner.run("restart")
+
+    def backup(self) -> None:
+        self._action_runner.run("backup")
+
+    def restore(self, backup_generation: str) -> None:
+        self._action_runner.restore(backup_generation)
 
     def toggle_auto_restart(self) -> bool:
         return True

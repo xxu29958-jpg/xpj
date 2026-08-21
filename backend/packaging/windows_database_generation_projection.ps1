@@ -295,12 +295,21 @@ ALTER ROLE "$($databasePolicy.RuntimeRole)"
     NOREPLICATION NOBYPASSRLS CONNECTION LIMIT -1;
 GRANT CONNECT ON DATABASE "$($databasePolicy.DatabaseName)"
     TO "$($databasePolicy.RuntimeRole)";
+ALTER ROLE "$($databasePolicy.BackupRole)"
+    LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+    NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1;
+GRANT CONNECT ON DATABASE "$($databasePolicy.DatabaseName)"
+    TO "$($databasePolicy.BackupRole)";
 COMMIT;
 "@ | Out-Null
     Assert-TicketboxDatabaseCredential `
         -Authority $HostAuthority `
         -Password $RuntimeCredentials.RuntimePassword `
         -CredentialKind "runtime"
+    Assert-TicketboxDatabaseCredential `
+        -Authority $HostAuthority `
+        -Password $RuntimeCredentials.BackupPassword `
+        -CredentialKind "backup"
     if ($migratorState -ceq "active") {
         Assert-TicketboxDatabaseRolePolicy `
             -Authority $HostAuthority `

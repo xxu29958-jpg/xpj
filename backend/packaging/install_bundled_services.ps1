@@ -111,7 +111,7 @@ $LogDir = Join-Path $AppData "logs"
 $BootstrapExposureRecoveryResultPath = Join-Path `
     $LogDir `
     "bootstrap-exposure-recovery-result.json"
-$BackupDir = Join-Path $AppData "backups"
+$BackupDir = Join-Path $DataRoot "backups"
 $InstallerBackupDir = Join-Path $DataRoot "installer-backups"
 $EnvPath = Join-Path $AppData ".env"
 $LegacyOwnerBootstrapPath = Join-Path $AppData "owner-bootstrap.txt"
@@ -256,6 +256,12 @@ if (-not (Test-Path -LiteralPath $PgRecoveryToolsScript -PathType Leaf)) {
     throw "缺少 Windows PostgreSQL 恢复工具脚本：$PgRecoveryToolsScript"
 }
 . $PgRecoveryToolsScript
+$PostgresqlClusterScript = Join-Path $ScriptDir `
+    "windows_postgresql_candidate_cluster.ps1"
+if (-not (Test-Path -LiteralPath $PostgresqlClusterScript -PathType Leaf)) {
+    throw "缺少 Windows PostgreSQL cluster adapter：$PostgresqlClusterScript"
+}
+. $PostgresqlClusterScript
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
 if (-not (Test-Path -LiteralPath $DatabaseScript -PathType Leaf)) {
     throw "缺少 Windows bundled database 脚本：$DatabaseScript"
@@ -1431,6 +1437,7 @@ function Set-TicketboxAcl(
     $pgAccounts = @($systemAndAdmins)
     $appAccounts = @($systemAndAdmins)
     $markerReadAccounts = @()
+    $backupReadAccounts = @()
     if ($IncludePgService) {
         $rootReadAccounts += "NT SERVICE\$PgServiceName"
         $pgAccounts += "NT SERVICE\$PgServiceName"
@@ -1439,6 +1446,7 @@ function Set-TicketboxAcl(
         $rootReadAccounts += "NT SERVICE\$BackendServiceName"
         $appAccounts += "NT SERVICE\$BackendServiceName"
         $markerReadAccounts += "NT SERVICE\$BackendServiceName"
+        $backupReadAccounts += "NT SERVICE\$BackendServiceName"
     }
     Set-TicketboxExactDirectoryAcl `
         -Path $DataRoot `
@@ -1453,6 +1461,12 @@ function Set-TicketboxAcl(
     Set-TicketboxExactDirectoryAcl `
         -Path $AppData `
         -Accounts $appAccounts `
+        -OwnerAccount $OwnerAccount `
+        -Recurse
+    Set-TicketboxExactDirectoryAcl `
+        -Path $BackupDir `
+        -Accounts $systemAndAdmins `
+        -InheritableReadExecuteAccounts $backupReadAccounts `
         -OwnerAccount $OwnerAccount `
         -Recurse
     [void](Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
@@ -1714,56 +1728,6 @@ if ($ValidateOnly) {
     return
 }
 
-function Assert-TicketboxDeferredPreservedPgServiceConfiguration {
-    Assert-TicketboxServiceOwnership `
-        -Name $PgServiceName `
-        -ExpectedExecutable $PgCtl | Out-Null
-    Assert-TicketboxReleaseServiceIdentity `
-        -Name $PgServiceName `
-        -InstalledConfig $ReleaseConfig `
-        -TargetConfig $ReleaseConfig | Out-Null
-    Assert-TicketboxPgServiceCommand `
-        -Name $PgServiceName `
-        -ExpectedExecutable $PgCtl `
-        -ExpectedServiceName $PgServiceName `
-        -ExpectedDataRoot $PgData
-}
-
-function Register-TicketboxDeferredPreservedPgService {
-    if (Service-Exists $PgServiceName) {
-        throw "preserved-data 临时 PostgreSQL 服务在注册前已存在。"
-    }
-    $imagePath = New-TicketboxPgServiceImagePath `
-        -PgCtlPath $PgCtl `
-        -ServiceName $PgServiceName `
-        -DataRoot $PgData
-    Invoke-ScChecked @(
-        "create",
-        $PgServiceName,
-        "binPath=",
-        $imagePath,
-        "start=",
-        "demand",
-        "obj=",
-        $PgServiceLogonAccount
-    ) | Out-Null
-    Set-TicketboxServiceIdentityContract `
-        -Name $PgServiceName `
-        -LogonAccount $PgServiceLogonAccount `
-        -SidType $TargetServiceSidType
-    Assert-TicketboxDeferredPreservedPgServiceConfiguration
-}
-
-function Remove-TicketboxDeferredPreservedPgServiceIfExists {
-    if (-not (Service-Exists $PgServiceName)) { return }
-    Assert-TicketboxDeferredPreservedPgServiceConfiguration
-    Remove-TicketboxOwnedServiceIfExists `
-        -Name $PgServiceName `
-        -ExpectedExecutable $PgCtl `
-        -ExpectedRuntimeExecutables @($PgCtl, (Join-Path $PgBin "postgres.exe")) `
-        @ServiceWaitArguments
-}
-
 function Assert-DesktopManagerExpectedServiceNames {
     if (
         $ExpectedBackendServiceName.Trim().Length -eq 0 -or
@@ -1895,7 +1859,6 @@ $operationLock = Enter-TicketboxLifecycleLock `
 $mutationStarted = $false
 $serviceCompensationAuthority =
     New-TicketboxInstallServiceCompensationAuthority
-$DeferredPreservedDataBackup = $false
 $installedGenerationPayloadLease = $null
 $resolvedPublicFailurePath = ""
 $resolvedDiagnosticLogPath = ""
@@ -1937,15 +1900,21 @@ try {
         $ServiceIdentityLifecycleReceipt = $lifecycleReceipt
         $PreviousStopTimeoutMs = [int]$PreviousReleaseConfig.stop_timeout_ms
         $PreviousRestartDelayMs = [int]$PreviousReleaseConfig.restart_delay_ms
-        $PreUpgradeBackupAlreadyCompleted = [bool]$lifecycleReceipt.backup_completed
         $FilesMayHaveBeenReplaced = [bool]$lifecycleReceipt.files_may_have_been_replaced
+        if (
+            [string]$lifecycleReceipt.mode -cne "fresh_install" -or
+            [bool]$lifecycleReceipt.backup_required -or
+            [bool]$lifecycleReceipt.backup_completed -or
+            -not [string]::IsNullOrEmpty([string]$lifecycleReceipt.backup_path)
+        ) {
+            throw "当前 Generation Owner 只接受 fresh install；既有数据必须走隔离 restore。"
+        }
     }
     else {
         if ($LifecycleReceiptPath.Trim().Length -gt 0) {
             throw "直接运行安装脚本不能提交或伪造 Inno 生命周期回执。"
         }
         $lifecycleReceipt = $null
-        $PreUpgradeBackupAlreadyCompleted = $false
         $FilesMayHaveBeenReplaced = $false
     }
 
@@ -2020,15 +1989,7 @@ try {
         $installedGenerationPayloadLease.InstalledBuildManifest
     $installLifecycleStage = "host_preparation"
     if ($InstallerLockOwnerProcessId -gt 0) {
-        if (
-            [string]$lifecycleReceipt.preparation_stage -eq "program_files_installed_backup_pending" -and
-            [string]$lifecycleReceipt.mode -eq "preserved_data_reinstall" -and
-            [bool]$lifecycleReceipt.backup_required -and
-            -not [bool]$lifecycleReceipt.backup_completed
-        ) {
-            $DeferredPreservedDataBackup = $true
-        }
-        elseif ([string]$lifecycleReceipt.preparation_stage -eq "prepared") {
+        if ([string]$lifecycleReceipt.preparation_stage -eq "prepared") {
             Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced `
                 -Path $LifecycleReceiptPath `
                 -Receipt $lifecycleReceipt `
@@ -2043,70 +2004,6 @@ try {
 
     $hadExistingPgService = $preExistingPgService
     $hadExistingBackendService = $preExistingBackendService
-
-    if ($DeferredPreservedDataBackup) {
-        Assert-TicketboxLegacyPreservedDataLayout `
-            -DataRoot $DataRoot `
-            -InstallDir $InstallDir `
-            -EnvPath $EnvPath `
-            -PgData $PgData `
-            -ExpectedPgMajor $TargetPgMajor | Out-Null
-        Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending `
-            -Path $LifecycleReceiptPath `
-            -Receipt $lifecycleReceipt `
-            -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-            -CleanupPending $true
-        $lifecycleReceipt.temporary_pg_service_cleanup_pending = $true
-        $deferredBackupFailure = $null
-        $deferredBackupPath = ""
-        try {
-            Register-TicketboxDeferredPreservedPgService
-            Start-TicketboxOwnedServiceIfExists `
-                -Name $PgServiceName `
-                -ExpectedExecutable $PgCtl `
-                @ServiceWaitArguments | Out-Null
-            $deferredBackupPath = Invoke-TicketboxPreservedDataReinstallBackup `
-                -TargetDirectory (Get-TicketboxDeferredBackupRoot) `
-                -ExpectedPgMajor $TargetPgMajor
-        }
-        catch {
-            $deferredBackupFailure = $_.Exception
-        }
-        finally {
-            try {
-                Remove-TicketboxDeferredPreservedPgServiceIfExists
-                Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending `
-                    -Path $LifecycleReceiptPath `
-                    -Receipt $lifecycleReceipt `
-                    -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-                    -CleanupPending $false
-                $lifecycleReceipt.temporary_pg_service_cleanup_pending = $false
-            }
-            catch {
-                if ($null -eq $deferredBackupFailure) {
-                    $deferredBackupFailure = $_.Exception
-                }
-                else {
-                    $deferredBackupFailure = New-Object System.InvalidOperationException(
-                        "$($deferredBackupFailure.Message) 临时 PostgreSQL SCM 服务清理失败：$($_.Exception.Message)"
-                    )
-                }
-            }
-        }
-        if ($null -ne $deferredBackupFailure) { throw $deferredBackupFailure }
-        Set-TicketboxLifecycleReceiptDeferredBackupCompleted `
-            -Path $LifecycleReceiptPath `
-            -Receipt $lifecycleReceipt `
-            -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-            -BackupPath $deferredBackupPath
-        $lifecycleReceipt.preparation_stage = "files_may_have_been_replaced"
-        $lifecycleReceipt.backup_completed = $true
-        $lifecycleReceipt.backup_path = $deferredBackupPath
-        $lifecycleReceipt.files_may_have_been_replaced = $true
-        $PreUpgradeBackupAlreadyCompleted = $true
-        $FilesMayHaveBeenReplaced = $true
-        Write-Ok "legacy 保留数据已在服务/应用变更前完成可验证备份。"
-    }
 
     if ($hadExistingPgService) {
         Assert-NoTicketboxAncestorReparsePoints $DataRoot
@@ -2156,17 +2053,6 @@ try {
             -IncludePgService $true `
             -IncludeBackendService $hadExistingBackendService
     }
-    $serviceLayerBackupRequired =
-        -not $PreUpgradeBackupAlreadyCompleted -and
-        (Test-Path -LiteralPath (Join-Path $PgData "PG_VERSION") -PathType Leaf) -and
-        (Test-Path -LiteralPath $EnvPath -PathType Leaf)
-    if ($serviceLayerBackupRequired -and -not $hadExistingPgService) {
-        Register-PgService `
-            -CompensationAuthority $serviceCompensationAuthority
-        Set-TicketboxAcl -IncludePgService $true -IncludeBackendService $false
-    }
-    Invoke-PreUpgradeBackupIfNeeded
-
     $databaseGenerationHostContract =
         New-TicketboxDatabaseGenerationHostContract `
             -BackendServiceName $BackendServiceName `

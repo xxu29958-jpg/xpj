@@ -33,7 +33,6 @@ public static class TicketboxDatabaseFileNativeMethods
 }
 '@
 }
-
 function Move-TicketboxFileAtomically([string]$Source, [string]$Destination, [switch]$Replace) {
     Initialize-TicketboxDatabaseFileNativeMethods
     $flags = 0x8
@@ -45,7 +44,6 @@ function Move-TicketboxFileAtomically([string]$Source, [string]$Destination, [sw
         throw "原子文件替换失败（Win32=$errorCode）：$Destination"
     }
 }
-
 function Write-TicketboxFileAtomically([string]$Path, [byte[]]$Bytes) {
     $tempPath = "$Path.tmp"
     if (Test-Path -LiteralPath $tempPath) {
@@ -642,100 +640,6 @@ function Get-OrCreatePostgresBootstrapRecoveryState {
     return Read-PostgresBootstrapRecoveryState -Path $pwfile
 }
 
-function Assert-TicketboxPostgresAutoConfigurationSafe {
-    $autoConfigPath = Join-Path $PgData "postgresql.auto.conf"
-    if (-not (Test-Path -LiteralPath $autoConfigPath -PathType Leaf)) {
-        return
-    }
-    $autoConfig = [System.IO.File]::ReadAllText($autoConfigPath, [System.Text.Encoding]::ASCII)
-    if ($autoConfig -match '(?m)^\s*(?:listen_addresses|port)\s*=') {
-        throw "postgresql.auto.conf 覆盖了安装器的 loopback/端口边界；请先撤销对应 ALTER SYSTEM 设置。"
-    }
-}
-
-function Set-TicketboxPostgresInstallerConfiguration {
-    $configPath = Join-Path $PgData "postgresql.conf"
-    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
-        throw "PostgreSQL 簇缺少 postgresql.conf，拒绝继续。"
-    }
-    $beginMarker = "# BEGIN Ticketbox installer overrides"
-    $endMarker = "# END Ticketbox installer overrides"
-    $legacyMarker = "# Ticketbox installer overrides"
-    $newLine = [Environment]::NewLine
-    $block = @(
-        $beginMarker
-        "listen_addresses = '127.0.0.1'"
-        "port = $PgPort"
-        $endMarker
-    ) -join $newLine
-    Assert-TicketboxPostgresAutoConfigurationSafe
-    $content = [System.IO.File]::ReadAllText($configPath, [System.Text.Encoding]::ASCII)
-    $markerIndex = $content.IndexOf($beginMarker, [System.StringComparison]::Ordinal)
-    if ($markerIndex -ge 0) {
-        if (
-            $content.IndexOf(
-                $beginMarker,
-                $markerIndex + $beginMarker.Length,
-                [System.StringComparison]::Ordinal
-            ) -ge 0 -or
-            $content.IndexOf($legacyMarker, [System.StringComparison]::Ordinal) -ge 0
-        ) {
-            throw "PostgreSQL installer 配置块重复，拒绝歧义迁移。"
-        }
-        $endMarkerIndex = $content.IndexOf(
-            $endMarker,
-            $markerIndex + $beginMarker.Length,
-            [System.StringComparison]::Ordinal
-        )
-        if ($endMarkerIndex -lt 0) {
-            throw "PostgreSQL installer 配置块缺少结束标记，拒绝截断现有配置。"
-        }
-        $suffixIndex = $endMarkerIndex + $endMarker.Length
-        $contentWithoutManagedBlock =
-            $content.Substring(0, $markerIndex) +
-            $content.Substring($suffixIndex)
-    }
-    else {
-        $legacyIndex = $content.IndexOf($legacyMarker, [System.StringComparison]::Ordinal)
-        if ($legacyIndex -ge 0) {
-            $escapedLegacyMarker = [regex]::Escape($legacyMarker)
-            $listenLine = "[ `t]*listen_addresses[ `t]*=[^`r`n]*`r?`n"
-            $portLine = "[ `t]*port[ `t]*=[^`r`n]*(?:`r?`n)?"
-            $legacyPatterns = @(
-                "(?m)^$escapedLegacyMarker`r?`n$listenLine$portLine",
-                "(?m)^$escapedLegacyMarker`r?`n$portLine$listenLine"
-            )
-            $legacyMatch = $null
-            foreach ($pattern in $legacyPatterns) {
-                $candidate = [regex]::Match($content, $pattern)
-                if ($candidate.Success) {
-                    if ($null -ne $legacyMatch) {
-                        throw "PostgreSQL 旧 installer 配置块存在多种匹配，拒绝歧义迁移。"
-                    }
-                    $legacyMatch = $candidate
-                }
-            }
-            if ($null -eq $legacyMatch -or $legacyMatch.Index -ne $legacyIndex) {
-                throw "PostgreSQL 旧 installer 配置块不完整，拒绝截断现有配置。"
-            }
-            $contentWithoutManagedBlock =
-                $content.Substring(0, $legacyMatch.Index) +
-                $content.Substring($legacyMatch.Index + $legacyMatch.Length)
-        }
-        else {
-            $contentWithoutManagedBlock = $content
-        }
-    }
-    $updated = $contentWithoutManagedBlock.TrimEnd() + $newLine + $newLine + $block + $newLine
-    Write-TicketboxFileAtomically `
-        -Path $configPath `
-        -Bytes ([System.Text.Encoding]::ASCII.GetBytes($updated))
-    $persisted = [System.IO.File]::ReadAllText($configPath, [System.Text.Encoding]::ASCII)
-    if (-not $persisted.TrimEnd().EndsWith($block, [System.StringComparison]::Ordinal)) {
-        throw "PostgreSQL installer 配置持久化校验失败。"
-    }
-}
-
 function Remove-TicketboxEmptyPgDataBeforeInitdb {
     $pgDataKind = Get-TicketboxPathEntryKindNoFollow $PgData
     if ($pgDataKind -ceq "Missing") { return }
@@ -893,7 +797,7 @@ function Initialize-PgClusterIfNeeded {
         elseif (-not $hasDatabaseUrl) {
             throw "既有 PostgreSQL 簇缺少 .env 和安全 bootstrap 恢复文件，拒绝继续。"
         }
-        Set-TicketboxPostgresInstallerConfiguration
+        Set-TicketboxPostgresqlLoopbackConfiguration -PgData $PgData -Port $PgPort
         Write-Ok "发现既有 PG 簇，跳过 initdb：$PgData"
         return $null
     }
@@ -998,186 +902,7 @@ function Initialize-PgClusterIfNeeded {
             -FailureKind "pg_version_missing" `
             -ExitCode $initResult.ExitCode)
     }
-    Set-TicketboxPostgresInstallerConfiguration
+    Set-TicketboxPostgresqlLoopbackConfiguration -PgData $PgData -Port $PgPort
     Write-Ok "PG 簇已初始化（loopback-only, scram-sha-256）。"
     return $null
-}
-
-function Invoke-TicketboxPreservedDataReinstallBackup {
-    param(
-        [Parameter(Mandatory = $true)][string]$TargetDirectory,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 99)][int]$ExpectedPgMajor
-    )
-    foreach ($required in @($PgCtl, $PgReady, $Psql, $PgDump, $PgRestore)) {
-        Assert-File $required (Split-Path -Leaf $required)
-    }
-    Assert-NoTicketboxAncestorReparsePoints $DataRoot
-    Assert-NoTicketboxReparsePoints $DataRoot
-    $pgVersionPath = Join-Path $PgData "PG_VERSION"
-    if (-not (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)) {
-        throw "保留数据重装缺少 PG_VERSION。"
-    }
-    $clusterMajorText = [System.IO.File]::ReadAllText(
-        $pgVersionPath,
-        [System.Text.Encoding]::UTF8
-    ).Trim()
-    $clusterMajor = 0
-    if (
-        -not [int]::TryParse($clusterMajorText, [ref]$clusterMajor) -or
-        $clusterMajor -ne $ExpectedPgMajor
-    ) {
-        throw "保留数据重装的 PostgreSQL major 与目标运行时不兼容。"
-    }
-    $environment = Read-EnvMap $EnvPath
-    if (-not $environment.ContainsKey("DATABASE_URL")) {
-        throw "保留数据重装的 .env 缺少 DATABASE_URL。"
-    }
-    $connection = Get-TicketboxBundledApplicationDatabaseConnection `
-        -DatabaseUrl $environment["DATABASE_URL"]
-
-    if (-not (Test-TicketboxServiceExists $PgServiceName)) {
-        throw "保留数据重装备份必须由已验证的临时 PostgreSQL SCM 服务运行。"
-    }
-    Assert-TicketboxReleaseServiceIdentity `
-        -Name $PgServiceName `
-        -InstalledConfig $ReleaseConfig `
-        -TargetConfig $ReleaseConfig | Out-Null
-    Assert-TicketboxPgServiceCommand `
-        -Name $PgServiceName `
-        -ExpectedExecutable $PgCtl `
-        -ExpectedServiceName $PgServiceName `
-        -ExpectedDataRoot $PgData
-    $serviceState = Wait-TicketboxServiceSettledState `
-        -Name $PgServiceName `
-        @ServiceWaitArguments
-    if ($serviceState -ne "running") {
-        throw "保留数据重装的临时 PostgreSQL SCM 服务未处于 running 状态。"
-    }
-
-    New-Item -ItemType Directory -Force -Path $TargetDirectory | Out-Null
-    Set-TicketboxExactDirectoryAcl `
-        -Path $TargetDirectory `
-        -Accounts @("SYSTEM", "BUILTIN\Administrators")
-    Wait-PgReady
-    Assert-TicketboxConnectedPostgresDataRoot `
-        -PsqlPath $Psql `
-        -DatabaseUrl $connection.DatabaseUrl `
-        -ExpectedDataRoot $PgData `
-        -ExpectedPort $PgPort `
-        -Password $connection.Password `
-        -TimeoutMilliseconds $DatabaseToolTimeoutMs
-
-    $backupPath = ""
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmssfff"
-    $backupPath = Join-Path `
-        $TargetDirectory `
-        "ticketbox-pre-upgrade-installer-$stamp.dump"
-    $temporary = "$backupPath.tmp"
-    $dumpResult = Invoke-TicketboxPgDumpCustom `
-        -PgDumpPath $PgDump `
-        -DatabaseUrl $connection.DatabaseUrl `
-        -OutputPath $temporary `
-        -Password $connection.Password `
-        -TimeoutMilliseconds $DatabaseToolTimeoutMs
-    if ($dumpResult -ne 0) {
-        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
-        throw "保留数据重装的升级前 pg_dump 失败。"
-    }
-    Sync-TicketboxFileDurable $temporary
-    Set-TicketboxExactFileAcl `
-        -Path $temporary `
-        -Accounts @("SYSTEM", "BUILTIN\Administrators")
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        $restoreRc = Invoke-TicketboxPgRestoreList `
-            -PgRestorePath $PgRestore `
-            -ArchivePath $temporary `
-            -TimeoutMilliseconds $DatabaseToolTimeoutMs
-    }
-    finally {
-        $ErrorActionPreference = $previousPreference
-    }
-    if ($restoreRc -ne 0) {
-        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
-        throw "保留数据重装的升级前备份校验失败。"
-    }
-    Move-TicketboxFileDurable $temporary $backupPath
-    Set-TicketboxExactFileAcl `
-        -Path $backupPath `
-        -Accounts @("SYSTEM", "BUILTIN\Administrators")
-    if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
-        throw "保留数据重装未生成可验证升级前备份。"
-    }
-    return $backupPath
-}
-
-function Invoke-PreUpgradeBackupIfNeeded {
-    $envMap = Read-EnvMap $EnvPath
-    if (-not $envMap.ContainsKey("DATABASE_URL")) {
-        if (Test-Path -LiteralPath (Join-Path $PgData "PG_VERSION")) {
-            [void](Read-PostgresBootstrapRecoveryState `
-                -Path (Get-PostgresBootstrapRecoveryPath))
-            Write-Ok "发现未完成的 PostgreSQL bootstrap，跳过尚不可用的升级备份并继续恢复。"
-        }
-        return
-    }
-    if ($PreUpgradeBackupAlreadyCompleted) {
-        Write-Ok "升级预检回执已证明备份完成，不重复创建服务层备份。"
-        return
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $PgData "PG_VERSION"))) {
-        return
-    }
-    $connection = Get-TicketboxBundledApplicationDatabaseConnection `
-        -DatabaseUrl $envMap["DATABASE_URL"]
-
-    Write-Step "创建服务层升级前备份"
-    if (-not (Service-Exists $PgServiceName)) {
-        Register-PgService
-    }
-    Start-TicketboxOwnedServiceIfExists `
-        -Name $PgServiceName `
-        -ExpectedExecutable (Get-ExpectedServiceExecutable $PgServiceName) `
-        @ServiceWaitArguments | Out-Null
-    Wait-PgReady
-    Assert-TicketboxConnectedPostgresDataRoot `
-        -PsqlPath (Join-Path $PgBin "psql.exe") `
-        -DatabaseUrl $connection.DatabaseUrl `
-        -ExpectedDataRoot $PgData `
-        -ExpectedPort $PgPort `
-        -Password $connection.Password `
-        -TimeoutMilliseconds $DatabaseToolTimeoutMs
-
-    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $target = Join-Path $BackupDir "ticketbox-pre-upgrade-installer-$stamp.dump"
-    $temp = "$target.tmp"
-    $dumpResult = Invoke-TicketboxPgDumpCustom `
-        -PgDumpPath (Join-Path $PgBin "pg_dump.exe") `
-        -DatabaseUrl $connection.DatabaseUrl `
-        -OutputPath $temp `
-        -Password $connection.Password `
-        -TimeoutMilliseconds $DatabaseToolTimeoutMs
-    if ($dumpResult -ne 0) {
-        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
-        throw "升级前 pg_dump 失败，拒绝启动新后端。请检查 $LogDir 与 PostgreSQL 服务。"
-    }
-    $nativeErrorPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        $restoreRc = Invoke-TicketboxPgRestoreList `
-            -PgRestorePath (Join-Path $PgBin "pg_restore.exe") `
-            -ArchivePath $temp `
-            -TimeoutMilliseconds $DatabaseToolTimeoutMs
-    }
-    finally {
-        $ErrorActionPreference = $nativeErrorPreference
-    }
-    if ($restoreRc -ne 0) {
-        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
-        throw "升级前备份校验失败，拒绝启动新后端。"
-    }
-    Move-Item -LiteralPath $temp -Destination $target -Force
-    Write-Ok "升级前备份已写入：$target"
 }

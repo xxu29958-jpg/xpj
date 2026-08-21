@@ -297,9 +297,6 @@
         {% if cards.backup_available %}
         <div class="trend-num">{{ cards.backup_age_days }}</div>
         <div class="card-hint-sm">天前生成最近备份</div>
-        {% elif cards.backup_unverified %}
-        <div class="dt-pill info">检测到备份文件，尚未验证</div>
-        <div class="card-hint-sm">验证工具暂时不可用</div>
         {% else %}
         <div class="source-empty">还没有生成备份。</div>
         {% endif %}

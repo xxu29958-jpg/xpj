@@ -599,6 +599,9 @@ $script:adminSecret.MakeReadOnly()
 $script:runtimeSecret = New-Object Security.SecureString
 $script:runtimeSecret.AppendChar('r')
 $script:runtimeSecret.MakeReadOnly()
+$script:backupSecret = New-Object Security.SecureString
+$script:backupSecret.AppendChar('b')
+$script:backupSecret.MakeReadOnly()
 $script:httpSecret = New-Object Security.SecureString
 $script:httpSecret.AppendChar('h')
 $script:httpSecret.MakeReadOnly()
@@ -635,8 +638,9 @@ function Invoke-TicketboxPostgresqlDatabaseCommand {{
 }}
 function Assert-TicketboxDatabaseCredential {{
     param($Authority, $Password, $CredentialKind)
-    if (-not [object]::ReferenceEquals($Password, $script:runtimeSecret)) {{
-        throw 'projection did not use runtime credential'
+    $expected = if ($CredentialKind -ceq 'backup') {{ $script:backupSecret }} else {{ $script:runtimeSecret }}
+    if (-not [object]::ReferenceEquals($Password, $expected)) {{
+        throw "projection did not use $CredentialKind credential"
     }}
 }}
 function Assert-TicketboxDatabaseRolePolicy {{
@@ -702,8 +706,9 @@ $script:TicketboxDatabaseGenerationOwnerAccount = 'SYSTEM'
 function Get-TicketboxDatabaseAuthorizationContract {{
     return [pscustomobject]@{{
         DatabaseName = 'ticketbox'
-        MigratorRole = 'ticketbox_migrator'
-        RuntimeRole = 'ticketbox_runtime'
+            MigratorRole = 'ticketbox_migrator'
+            RuntimeRole = 'ticketbox_runtime'
+            BackupRole = 'ticketbox_backup'
     }}
 }}
 $intent = [pscustomobject]@{{
@@ -720,9 +725,10 @@ $candidate = [pscustomobject]@{{
         target_revision = '20260809_0001'
     }}
 }}
-$runtimeCredentials = [pscustomobject]@{{
-    RuntimePassword = $script:runtimeSecret
-    HttpBootstrapSecret = $script:httpSecret
+    $runtimeCredentials = [pscustomobject]@{{
+        RuntimePassword = $script:runtimeSecret
+        BackupPassword = $script:backupSecret
+        HttpBootstrapSecret = $script:httpSecret
 }}
 $hostAuthority = [pscustomobject]@{{ Port = 5432 }}
 $maintenanceAuthority = [pscustomobject]@{{ Secret = $script:adminSecret }}

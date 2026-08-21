@@ -768,7 +768,7 @@ jobs:
         # A backup without a restore drill is not qualification evidence. Dump
         # xpj_smoke through production backup code, restore into xpj_restore,
         # then compare the expected data before this ephemeral job exits.
-        run: ./.ci-venv/bin/python scripts/postgres_backup_drill.py
+        run: ./.ci-venv/bin/python scripts/postgres_backup_drill.py --upload-root "$GITHUB_WORKSPACE/backend/uploads/smoke_test"
 
       - *postgres_remove_passfile
 

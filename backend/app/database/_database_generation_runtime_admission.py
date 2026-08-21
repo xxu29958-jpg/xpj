@@ -36,7 +36,8 @@ _CURRENT_FIELD_ORDER = (
 _BINDING_FIELD_ORDER = (
     "schema operation_id installation_id intent_sha256 source_binding_sha256 "
     "target_revision generation_program_sha256 cluster_system_identifier database_oid "
-    "database_name runtime_role logical_server_id logical_data_generation "
+    "database_name runtime_role dataset_id restore_epoch schema_revision "
+    "schema_min_compatible semantic_revision "
     "execution_authority_sha256 role_authority_sha256 runtime_acl_sha256 "
     "post_migration_writer_fence_sha256 target_recovery_evidence_sha256"
 )
@@ -88,6 +89,12 @@ def _positive_decimal(value: object, label: str) -> str:
 def _database_oid(value: object, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 0xFFFFFFFF:
         raise DatabaseGenerationAdmissionError(f"{label} must be a positive database OID")
+    return value
+
+
+def _nonnegative_integer(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise DatabaseGenerationAdmissionError(f"{label} must be a non-negative integer")
     return value
 
 
@@ -153,7 +160,10 @@ def _validate_current(current: dict[str, object], program: object) -> tuple[str,
         not isinstance(revision, str)
         or _REVISION.fullmatch(revision) is None
         or current["schema"] != "ticketbox-current-database-generation-v1"
-        or current["expected_predecessor_sha256"] != ""
+        or (
+            current["expected_predecessor_sha256"] != ""
+            and _SHA256.fullmatch(str(current["expected_predecessor_sha256"])) is None
+        )
         or revision != getattr(program, "target_revision", None)
         or program_sha != getattr(program, "payload_sha256", None)
     ):
@@ -206,8 +216,10 @@ def _load_binding(binding_json: object, binding_sha: str) -> dict[str, object]:
 
 
 def _assert_runtime_capability(values: tuple[object, ...]) -> None:
-    if len(values) != 13 or any(value is not True for value in values):
-        raise DatabaseGenerationAdmissionError("live runtime capability is not DML-only")
+    if len(values) != 14 or any(value is not True for value in values):
+        raise DatabaseGenerationAdmissionError(
+            "live runtime or backup capability escaped its closed contract"
+        )
 
 
 def _assert_live_binding(
@@ -230,8 +242,11 @@ def _assert_live_binding(
             live_database_oid,
             live_database_name,
             live_session_user,
-            live_server_id,
-            live_data_generation,
+            live_dataset_id,
+            live_restore_epoch,
+            live_schema_revision,
+            live_schema_min_compatible,
+            live_semantic_revision,
             live_bootstrap_retirement,
             *live_runtime_capabilities,
         ) = live_identity  # type: ignore[misc]
@@ -274,13 +289,17 @@ def _assert_live_binding(
             "database binding runtime ACL",
         )
         != live_runtime_acl_sha256
-        or _canonical_uuid(binding["logical_server_id"], "database binding server_id")
-        != _canonical_uuid(live_server_id, "live server_id")
-        or _canonical_uuid(
-            binding["logical_data_generation"],
-            "database binding data_generation",
-        )
-        != _canonical_uuid(live_data_generation, "live data_generation")
+        or _canonical_uuid(binding["dataset_id"], "database binding dataset_id")
+        != _canonical_uuid(live_dataset_id, "live dataset_id")
+        or _nonnegative_integer(binding["restore_epoch"], "database binding restore_epoch")
+        != _nonnegative_integer(live_restore_epoch, "live restore_epoch")
+        or binding["schema_revision"] != live_schema_revision
+        or binding["schema_revision"] != revision
+        or not isinstance(binding["schema_min_compatible"], str)
+        or not binding["schema_min_compatible"]
+        or binding["schema_min_compatible"] != live_schema_min_compatible
+        or binding["semantic_revision"] != live_semantic_revision
+        or live_semantic_revision != "ticketbox-dataset-semantics-v1"
         or live_bootstrap_retirement != expected_bootstrap_retirement
     ):
         raise DatabaseGenerationAdmissionError("live database binding does not match the sole CURRENT")

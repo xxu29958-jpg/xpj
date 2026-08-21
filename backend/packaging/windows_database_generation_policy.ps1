@@ -6,6 +6,8 @@ function New-TicketboxDatabaseGenerationIntent {
     param(
         [Parameter(Mandatory = $true)][string]$InstallerState,
         [Parameter(Mandatory = $true)][object]$LifecycleLock,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ExpectedPredecessorSha256,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$SourceRequestSha256,
         [Parameter(Mandatory = $true)][string]$TargetBackendVersion,
         [Parameter(Mandatory = $true)][int64]$MaintenanceHelperSize,
         [Parameter(Mandatory = $true)][string]$MaintenanceHelperSha256,
@@ -36,23 +38,71 @@ function New-TicketboxDatabaseGenerationIntent {
     $stateRoot = Initialize-TicketboxDatabaseGenerationStateRoot $InstallerState $LifecycleLock
     $path = Join-Path $stateRoot $script:TicketboxDatabaseGenerationActiveIntentName
     $existing = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot -AllowAbsent
-    $operationId = if ($null -eq $existing) {
-        [guid]::NewGuid().ToString("D")
+    $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
+    $successor = -not [string]::IsNullOrEmpty($ExpectedPredecessorSha256)
+    $hasSourceRequest = -not [string]::IsNullOrEmpty($SourceRequestSha256)
+    if ($successor -ne $hasSourceRequest) {
+        throw "database generation predecessor 与 source request 必须同时存在。"
+    }
+    if ($hasSourceRequest) {
+        Assert-TicketboxDatabaseGenerationLowerSha256 `
+            $SourceRequestSha256 "database generation source request"
+    }
+    if ($successor) {
+        Assert-TicketboxDatabaseGenerationLowerSha256 `
+            $ExpectedPredecessorSha256 "database generation predecessor"
+        if (
+            $null -eq $current -or
+            [string]$current.PayloadSha256 -cne $ExpectedPredecessorSha256
+        ) {
+            throw "database generation successor predecessor CURRENT 漂移。"
+        }
+    }
+    elseif ($null -ne $current) {
+        throw "fresh database generation 拒绝既有 CURRENT。"
+    }
+
+    if (
+        $successor -and
+        $null -ne $existing -and
+        [string]$existing.Payload.expected_predecessor_sha256 -ceq
+            $ExpectedPredecessorSha256
+    ) {
+        $operationId = ([guid][string]$existing.Payload.operation_id).ToString("D")
+        $installationId = ([guid][string]$existing.Payload.installation_id).ToString("D")
+    }
+    elseif ($successor) {
+        if (
+            $null -eq $existing -or
+            [string]$existing.PayloadSha256 -cne [string]$current.Payload.intent_sha256 -or
+            [string]$existing.Payload.operation_id -cne
+                [string]$current.Payload.operation_id
+        ) {
+            throw "database generation successor active intent 不等于 predecessor authority。"
+        }
+        $operationId = [guid]::NewGuid().ToString("D")
+        $installationId = ([guid][string]$current.Payload.installation_id).ToString("D")
+    }
+    elseif ($null -ne $existing) {
+        if (-not [string]::IsNullOrEmpty(
+            [string]$existing.Payload.expected_predecessor_sha256
+        )) {
+            throw "fresh database generation active intent 已属于 successor。"
+        }
+        $operationId = ([guid][string]$existing.Payload.operation_id).ToString("D")
+        $installationId = ([guid][string]$existing.Payload.installation_id).ToString("D")
     }
     else {
-        ([guid][string]$existing.Payload.operation_id).ToString("D")
+        $operationId = [guid]::NewGuid().ToString("D")
+        $installationId = [guid]::NewGuid().ToString("D")
     }
-    $installationId = if ($null -eq $existing) {
-        [guid]::NewGuid().ToString("D")
-    }
-    else {
-        ([guid][string]$existing.Payload.installation_id).ToString("D")
-    }
+
     $expected = [ordered]@{
         schema = "ticketbox-database-generation-intent-v2"
         operation_id = $operationId
         installation_id = $installationId
-        expected_predecessor_sha256 = ""
+        expected_predecessor_sha256 = $ExpectedPredecessorSha256
+        source_request_sha256 = $SourceRequestSha256
         target_backend_version = $TargetBackendVersion
         database_maintenance_helper_relative_path =
             $script:TicketboxDatabaseMaintenanceHelperRelativePath
@@ -70,21 +120,20 @@ function New-TicketboxDatabaseGenerationIntent {
         target_revision = [string]$ProgramContract.TargetRevision
     }
     if ($null -ne $existing) {
-        Assert-TicketboxDatabaseGenerationExactProperties `
-            $existing.Payload `
-            @($expected.Keys) `
-            "database generation intent"
+        $same = (
+            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $existing.Payload
+        ) -ceq (
+            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $expected
+        )
+        if ($same) {
+            return [pscustomobject]@{ StateRoot = $stateRoot; Artifact = $existing }
+        }
         if (
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $existing.Payload) -cne
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $expected)
+            -not $successor -or
+            [string]$existing.PayloadSha256 -cne [string]$current.Payload.intent_sha256
         ) {
             throw "existing database generation intent 与当前 immutable request 漂移。"
         }
-        return [pscustomobject]@{ StateRoot = $stateRoot; Artifact = $existing }
-    }
-    $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
-    if ($null -ne $current) {
-        throw "尚未实现跨 generation successor；既有 current 必须进入显式升级裁决。"
     }
     $intent = Write-TicketboxDatabaseGenerationEnvelope `
         $path "intent" $expected $LifecycleLock
@@ -126,6 +175,8 @@ function Start-TicketboxDatabaseGenerationIntent {
     return New-TicketboxDatabaseGenerationIntent `
         -InstallerState $InstallerState `
         -LifecycleLock $LifecycleLock `
+        -ExpectedPredecessorSha256 "" `
+        -SourceRequestSha256 "" `
         -TargetBackendVersion $TargetBackendVersion `
         -MaintenanceHelperSize $MaintenanceHelperSize `
         -MaintenanceHelperSha256 $MaintenanceHelperSha256 `

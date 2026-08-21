@@ -142,13 +142,17 @@ backups 的 bytes 位于物理 DataRoot，不会写入 Program Files，也不直
 
 ### 备份与恢复
 
-备份归档（`pg_dump -Fc` 的 `.dump`）物理写在 `<DataRoot>\app\backups\`；正式服务通过
-runtime junction 观察同一 bytes。当前尚未出货受生命周期控制的正式恢复入口，因此不得对已安装库
-手工执行 `DROP/CREATE/pg_restore` 后直接重启；完整恢复能力继续 `QUALIFIED_HOLD`。
-[POSTGRES_MIGRATION.md](../../docs/runbook/POSTGRES_MIGRATION.md) §2 只描述源码/测试 scratch
-演练，不是正式安装恢复入口。
+正式安装的唯一备份入口是桌面管理器调用已安装的
+`installer\windows_dataset_backup.ps1`。它在 writer barrier 下发布完整
+`ticketbox-backup-<UUID>` generation（manifest、PostgreSQL custom archive、全部被引用 originals）。
+唯一恢复入口是管理器把用户明确选择的 generation 交给
+`installer\windows_dataset_restore.ps1`；它持久化请求、恢复隔离候选、同卷提升，并只让 H1
+Generation Owner 发布 CURRENT。源码 DB-only 脚本、`TicketboxBackup` 计划任务、按时间猜最新备份和
+手工覆盖正式库均不是出货路径。
 
-源码/家庭服务器部署的备份脚本（`backend/scripts/backup_database.ps1`、`scripts/maintenance_ticketbox.ps1`）已改为**跟随数据根**:设了 `TICKETBOX_DATA_DIR` 用它、否则用 `backend/`,所以它们与 app 写备份的位置始终一致。诊断类脚本（`diagnose_ticketbox.ps1` 等）仍按源码 `backend/` 布局,是家庭服务器自用工具,不用于冻结 EXE。
+[POSTGRES_MIGRATION.md](../../docs/runbook/POSTGRES_MIGRATION.md) 的直接 `pg_restore` 只用于
+源码/测试 scratch。没有同一 exact-head EXE 的干净 Windows VM 全生命周期证据前，仍为
+`QUALIFIED_HOLD`。
 
 ## 冻结要点（给维护者）
 
@@ -161,4 +165,6 @@ runtime junction 观察同一 bytes。当前尚未出货受生命周期控制的
 
 ## 与 GUI 管理器的关系
 
-`desktop/` 的后端管理器已支持两种运行态:源码模式继续监督 `python -m uvicorn`;检测到 `HKLM\Software\Ticketbox` 后切到正式安装模式,通过 Windows SCM 管理 `TicketboxPg` / `TicketboxBackend`,并从 ProgramData 读取配置和日志。把管理器冻结成 EXE 并纳入 Inno 仍是下一打包切片。
+`desktop/` 的后端管理器支持源码监督与正式安装模式；正式模式通过 Windows SCM 管理服务，并以
+短时提权 helper 调用已安装的完整备份/恢复 owner。冻结管理器、helper 与两条 owner 脚本均属于
+同一 Inno/provenance 出货集合。

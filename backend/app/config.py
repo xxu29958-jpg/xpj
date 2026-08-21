@@ -16,7 +16,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 def _resolve_data_root(backend_root: Path) -> Path:
     """Writable-data root for files the running backend *creates* — settings
-    ``.env`` (Owner Console) and PostgreSQL backups.
+    ``.env`` (Owner Console) and uploaded originals.
 
     Defaults to ``backend_root`` so a normal source/dev run (and the whole test
     suite) is unchanged. The formal Windows service contract sets

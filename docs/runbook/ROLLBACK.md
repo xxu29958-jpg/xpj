@@ -1,7 +1,8 @@
 # 版本回滚 Runbook
 
-本页只提供源码/测试后端、Cloudflare Tunnel 与 Android 灰度的回退参考。正式 Windows
-安装的二进制/schema/数据恢复入口尚未出货，不能把以下源码命令冒充产品回滚能力；该能力继续
+本页主要提供源码/测试后端、Cloudflare Tunnel 与 Android 灰度的回退参考。正式 Windows 已有
+“从明确完整 generation 恢复”为新 CURRENT 的 owner，但不等于任意二进制/schema 降级；以下源码
+命令不能冒充产品回滚能力。没有 exact-head 干净 Windows VM 全生命周期证据前继续
 `QUALIFIED_HOLD`。
 
 ## 适用范围与不可逆边界
@@ -12,11 +13,12 @@
 |---|---|---|
 | 源码/测试后端补丁（同一 minor 内） | ⚠️ 逐项验证 | 代码可 `git revert`；数据库只允许 scratch 恢复演练 |
 | Android 补丁（同一 minor 内） | ✅ 始终可逆 | 卸载灰度 APK，装上一版即可，Pairing 配对仍有效 |
-| 正式 Windows 后端降级/恢复 | ❌ 尚未出货 | 需要同一生命周期 owner 重新验证 program、generation、数据和运行态投影 |
+| 正式 Windows 完整 generation 恢复 | ⚠️ 仅管理器闭合入口 | 只接受明确、同 dataset 的完整 generation；仍需 exact-head VM 资格证据 |
+| 正式 Windows 二进制/schema 降级 | ❌ 不支持 | 不能用数据恢复绕过 release program 与运行态投影验证 |
 | Android minor 降级 | ⚠️ 必须重新 Pairing | session token 在 Android 端 Keystore 中；旧 APK 不识别新 token，需重新配对 |
 | **identity_schema 降级（任何方向越过 v0.3）** | ❌ 禁止 | `identity_schema=v0.3` 是 v0.3 以来的稳定契约；v0.3 之前的 `APP_TOKEN`/`UPLOAD_TOKEN` 模型已永久退役 |
 | Cloudflare Tunnel 配置变更 | ✅ 可逆 | 保留上一版 `config.yml` 即可切回 |
-| **数据库引擎（PostgreSQL，PG-only）** | ❌ 不可逆 | SQLite 已彻底退役；`pg_restore` 目前只用于源码/测试 scratch 演练 |
+| **数据库引擎（PostgreSQL，PG-only）** | ❌ 不可逆 | SQLite 已彻底退役；手工 `pg_restore` 只用于源码/测试 scratch 演练 |
 
 ## 源码/测试回退顺序
 
@@ -51,28 +53,17 @@ git checkout <tag>          # 例如 v0.8.0
 
 ## 数据库备份与恢复
 
-### 手动备份当前库（回滚前必做）
+### 回滚前备份
 
-两个脚本在不同目录，**统一从项目根运行**避免 cd 切换造成的相对路径歧义：
-
-```powershell
-# 备份脚本位于 backend\scripts\backup_database.ps1
-# (根目录 scripts\ 下没有 backup_database.ps1，不要写 scripts\backup_database.ps1)
-cd E:\projects\xiaopiaojia
-powershell -ExecutionPolicy Bypass -File backend\scripts\backup_database.ps1
-```
-
-输出到 `<DATA_ROOT>\backups\ticketbox-YYYYMMDD-HHMMSS.dump`（`pg_dump -Fc` 自定义格式归档）。
-源码运行的 `DATA_ROOT` 是 `backend\`；正式 Windows 服务通过
-`TicketboxRuntimeBinding\data-root\app` junction 访问安装器选择的物理 `<DataRoot>\app`，
-并以 v2 marker + Volume GUID 绑定。Windows 计划备份配置见
-[WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
+正式 Windows 安装必须从桌面管理器创建完整数据集备份。成功结果是
+`<DataRoot>\backups\ticketbox-backup-<UUID>\`，包含闭合 manifest、数据库 archive 和实际引用
+的 originals。旧 DB-only PowerShell、`TicketboxBackup` 计划任务以及手工复制 uploads 均已退役。
 
 ### 恢复到某个备份
 
 源码/测试 scratch 数据库可按 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 使用
-`pg_restore`。正式 Windows 恢复入口尚未出货；不得用“停后端 → 手工恢复 → 重启”绕过
-生命周期并冒充 generation、uploads 与运行态投影已重新验证。
+`pg_restore`。正式 Windows 安装只能由桌面管理器恢复用户明确选择的完整 generation；不得用
+“停后端 → 手工恢复 → 重启”绕过 Dataset Authority、Generation CURRENT 与运行态投影校验。
 
 ### 版本特定的数据库回滚注意
 

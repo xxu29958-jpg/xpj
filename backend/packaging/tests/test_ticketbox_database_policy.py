@@ -143,7 +143,13 @@ def test_database_policy_is_closed_normalized_and_secret_safe() -> None:
         assert forbidden not in command
     assert "scriptblock" not in (command + contract + acl + roles).lower()
     assert "ticketbox_owner" not in command
-    for identity in ("ticketbox", "ticketbox_owner", "ticketbox_migrator", "ticketbox_runtime"):
+    for identity in (
+        "ticketbox",
+        "ticketbox_owner",
+        "ticketbox_migrator",
+        "ticketbox_runtime",
+        "ticketbox_backup",
+    ):
         assert f'"{identity}"' in contract
     policy_properties = (
         "BusinessTables",
@@ -181,7 +187,7 @@ def test_database_policy_is_closed_normalized_and_secret_safe() -> None:
         assert f'"{table}"' in contract
     assert '"api_idempotency_contract_fences"' not in contract
     assert "REVOKE EXECUTE ON ALL ROUTINES IN SCHEMA public FROM PUBLIC" in acl
-    for role_property in ("RuntimeRole", "MigratorRole"):
+    for role_property in ("RuntimeRole", "MigratorRole", "BackupRole"):
         assert f'ALTER ROLE "$($policy.{role_property})" RESET ALL;' in acl
         assert (
             f'ALTER ROLE "$($policy.{role_property})" '
@@ -239,8 +245,8 @@ def test_database_policy_is_closed_normalized_and_secret_safe() -> None:
         assert "NOT rolinherit" in role_sql
         assert role_sql.count("rolconnlimit = -1") == 2
         assert "rolconfig @>" not in role_sql
-        assert role_sql.count("rolconfig = ARRAY") == 2
-        assert role_sql.count("pg_db_role_setting") == 2
+        assert role_sql.count("rolconfig = ARRAY") == 3
+        assert role_sql.count("pg_db_role_setting") == 3
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="PowerShell managed ACL contract")
@@ -282,7 +288,7 @@ function Invoke-TicketboxPostgresqlDatabaseCommand {{
     }}
     if ($Label -ceq 'Ticketbox structured runtime ACL attestation') {{
         $script:attestationSql = $Sql
-        return (@('true') * 8) -join "`t"
+            return (@('true') * 9) -join "`t"
     }}
     throw "unexpected SQL call: $Label"
 }}

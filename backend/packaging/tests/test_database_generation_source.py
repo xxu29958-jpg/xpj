@@ -176,6 +176,7 @@ function Get-TicketboxDatabaseAuthorizationContract {{
         OwnerRole = 'ticketbox_owner'
         MigratorRole = 'ticketbox_migrator'
         RuntimeRole = 'ticketbox_runtime'
+        BackupRole = 'ticketbox_backup'
         RetiredLegacyRole = 'ticketbox'
     }}
 }}
@@ -222,6 +223,7 @@ $superuserSecret = New-Object Security.SecureString
 $superuserSecret.AppendChar('s')
 $credentials = [pscustomobject]@{{
     RuntimeVerifier = 'SCRAM-SHA-256$4096:x'; MigratorVerifier = 'SCRAM-SHA-256$4096:y'
+    BackupVerifier = 'SCRAM-SHA-256$4096:z'
     MigratorPassword = $migratorSecret
 }}
 $maintenanceAuthority = [pscustomobject]@{{ Secret = $superuserSecret }}
@@ -229,10 +231,12 @@ $roleBootstrapSql = New-TicketboxDatabaseGenerationEmptyRoleSql `
     -OperationId $operation `
     -RuntimeVerifier $credentials.RuntimeVerifier `
     -MigratorVerifier $credentials.MigratorVerifier `
+    -BackupVerifier $credentials.BackupVerifier `
     -MigratorValidUntilUtc ([DateTime]'2030-01-02T03:04:05Z')
 if (
     $roleBootstrapSql -notlike "*PASSWORD 'SCRAM-SHA-256`$4096:x';*" -or
     $roleBootstrapSql -notlike "*PASSWORD 'SCRAM-SHA-256`$4096:y' VALID UNTIL '2030-01-02T03:04:05.000Z';*" -or
+    $roleBootstrapSql -notlike "*PASSWORD 'SCRAM-SHA-256`$4096:z';*" -or
     $roleBootstrapSql -like "*PASSWORD ''SCRAM-SHA-256*" -or
     $roleBootstrapSql -like "*IS DISTINCT FROM ''SCRAM-SHA-256*" -or
     $roleBootstrapSql -like "*''11111111-1111-4111-8111-111111111111''*"
@@ -270,12 +274,122 @@ $result = Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credent
 if (
     $script:writes -ne 4 -or
     -not $script:emptyAclAttested -or
-    [string]$result.create_attempt_sha256 -cne ('d' * 64) -or
+    [string]$result.source_evidence_sha256 -cne ('d' * 64) -or
     [string]$result.source_kind -cne 'empty' -or
     [string]$result.database_oid -cne '42'
 ) {{ throw 'exact operation-bound retry did not converge' }}
 """
     path = tmp_path / "database-generation-source.ps1"
+    path.write_text(script, encoding="utf-8-sig")
+    for engine in powershell_contract_engines():
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", path],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_restored_source_normalizes_exact_evidence_and_rejects_drift(tmp_path: Path) -> None:
+    source_text = SOURCE.read_text(encoding="utf-8-sig")
+    normalize = _function(
+        source_text,
+        "Invoke-TicketboxDatabaseGenerationRestoredSource",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Assert-TicketboxDatabaseGenerationExactProperties {{ param($Value, $ExpectedNames, $Label) }}
+function Assert-TicketboxDatabaseGenerationLowerSha256 {{
+    param($Value, $Label)
+    if ([string]$Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw "$Label invalid" }}
+}}
+function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {{
+    param($Authority, $Intent, $HostAuthority, $Lock)
+    return $Authority
+}}
+function Get-TicketboxDatabaseAuthorizationContract {{
+    return [pscustomobject]@{{ DatabaseName = 'ticketbox' }}
+}}
+$script:live = [pscustomobject]@{{
+    Exists = $true; ClusterSystemIdentifier = 'cluster-2'; DatabaseOid = [uint32]84
+}}
+function Get-TicketboxPostgresqlDatabaseCatalogObservation {{ return $script:live }}
+function Get-TicketboxDatabaseGenerationLiveIdentity {{
+    return [pscustomobject]@{{
+        ClusterSystemIdentifier = $script:live.ClusterSystemIdentifier
+        DatabaseOid = $script:live.DatabaseOid
+        DatasetId = '33333333-3333-4333-8333-333333333333'
+        RestoreEpoch = [int64]2
+        SchemaRevision = '20260821_0001'
+    }}
+}}
+function Get-TicketboxDatabaseGenerationFrozenFence {{ return [ordered]@{{ state = 'frozen' }} }}
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
+    param($Value)
+    return ($Value | ConvertTo-Json -Depth 8 -Compress)
+}}
+function Get-TicketboxDatabaseGenerationTextSha256 {{ param($Text); return ('e' * 64) }}
+{normalize}
+$intent = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = '11111111-1111-4111-8111-111111111111'
+        expected_predecessor_sha256 = ('b' * 64)
+        source_request_sha256 = ('c' * 64)
+        target_revision = '20260821_0001'
+    }}
+}}
+$evidence = [pscustomobject]@{{
+    PayloadSha256 = ('d' * 64)
+    Payload = [pscustomobject][ordered]@{{
+        schema = 'ticketbox-database-generation-restored-source-v1'
+        operation_id = $intent.Payload.operation_id
+        intent_sha256 = $intent.PayloadSha256
+        source_request_sha256 = $intent.Payload.source_request_sha256
+        predecessor_current_sha256 = $intent.Payload.expected_predecessor_sha256
+        backup_manifest_sha256 = ('f' * 64)
+        backup_id = '22222222-2222-4222-8222-222222222222'
+        dataset_id = '33333333-3333-4333-8333-333333333333'
+        restore_epoch = [int64]2
+        source_revision = $intent.Payload.target_revision
+        cluster_system_identifier = 'cluster-2'
+        database_oid = [uint32]84
+        writer_fence_sha256 = ('e' * 64)
+        result = 'isolated_restore_candidate_ready'
+    }}
+}}
+$maintenance = [pscustomobject]@{{ Secret = (New-Object Security.SecureString) }}
+$result = Invoke-TicketboxDatabaseGenerationRestoredSource `
+    $intent $evidence @{{}} $maintenance @{{}}
+if (
+    [string]$result.source_kind -cne 'current_generation' -or
+    [string]$result.source_evidence_sha256 -cne ('d' * 64) -or
+    [string]$result.source_revision -cne '20260821_0001' -or
+    [string]$result.cluster_system_identifier -cne 'cluster-2' -or
+    [uint32]$result.database_oid -ne 84
+) {{ throw 'restored source did not normalize exact evidence' }}
+$rejected = 0
+foreach ($mutation in @('predecessor', 'request', 'dataset', 'epoch', 'cluster', 'fence')) {{
+    $copy = $evidence | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    switch ($mutation) {{
+        'predecessor' {{ $copy.Payload.predecessor_current_sha256 = ('9' * 64) }}
+        'request' {{ $copy.Payload.source_request_sha256 = ('9' * 64) }}
+        'dataset' {{ $copy.Payload.dataset_id = '44444444-4444-4444-8444-444444444444' }}
+        'epoch' {{ $copy.Payload.restore_epoch = [int64]3 }}
+        'cluster' {{ $copy.Payload.cluster_system_identifier = 'other-cluster' }}
+        'fence' {{ $copy.Payload.writer_fence_sha256 = ('9' * 64) }}
+    }}
+    try {{ Invoke-TicketboxDatabaseGenerationRestoredSource $intent $copy @{{}} $maintenance @{{}} | Out-Null }}
+    catch {{ $rejected += 1 }}
+}}
+if ($rejected -ne 6) {{ throw 'restored source accepted drift' }}
+"""
+    path = tmp_path / "database-generation-restored-source.ps1"
     path.write_text(script, encoding="utf-8-sig")
     for engine in powershell_contract_engines():
         result = subprocess.run(

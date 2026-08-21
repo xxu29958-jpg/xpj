@@ -57,6 +57,7 @@ _ACTIONS = (
     "start",
     "stop",
     "restart",
+    "backup",
     "auto_restart",
     "open_console",
     "open_pairing",
@@ -73,6 +74,7 @@ _IDENTITY_RESPONSE_LIMIT = 512
 _CHALLENGE_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}\Z")
 _SHA256_PROOF_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_PRODUCT_BODY_BYTES = 1024
+_MAX_RESTORE_BODY_BYTES = 256
 _MAX_BOOTSTRAP_FORM_BYTES = 1024
 _BOOTSTRAP_TTL_SECONDS = 60.0
 _BOOTSTRAP_REPLAY_TTL_SECONDS = 300.0
@@ -167,10 +169,7 @@ def probe_existing_manager(manager_url: str, instance_secret: str, *, timeout: f
     except (TypeError, ValueError):
         return False
     try:
-        loopback_v4 = (
-            ipaddress.ip_address(hostname).version == 4
-            and ipaddress.ip_address(hostname).is_loopback
-        )
+        loopback_v4 = ipaddress.ip_address(hostname).version == 4 and ipaddress.ip_address(hostname).is_loopback
     except ValueError:
         loopback_v4 = False
     if (
@@ -296,6 +295,8 @@ class Controller(Protocol):
     def start(self) -> None: ...
     def stop(self) -> None: ...
     def restart(self) -> None: ...
+    def backup(self) -> None: ...
+    def restore(self, backup_generation: str) -> None: ...
     def auto_restart(self) -> None: ...
     def open_console(self) -> None: ...
     def open_pairing(self) -> None: ...
@@ -331,10 +332,7 @@ def is_authorized(
     if sec_fetch_site is not None and sec_fetch_site not in ("same-origin", "none"):
         return False
     expected_origin_tuple = _origin_tuple(expected_origin)
-    return origin is None or (
-        expected_origin_tuple is not None
-        and _origin_tuple(origin) == expected_origin_tuple
-    )
+    return origin is None or (expected_origin_tuple is not None and _origin_tuple(origin) == expected_origin_tuple)
 
 
 def _recovery_page(message: str) -> bytes:
@@ -440,8 +438,7 @@ class _Handler(BaseHTTPRequestHandler):
         )
         self.send_header(
             "Set-Cookie",
-            f"{_CONTROL_SESSION_COOKIE}={srv.web_session_secret}; "
-            "Path=/; HttpOnly; SameSite=Strict",
+            f"{_CONTROL_SESSION_COOKIE}={srv.web_session_secret}; Path=/; HttpOnly; SameSite=Strict",
         )
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -874,6 +871,28 @@ class _Handler(BaseHTTPRequestHandler):
             ).hexdigest()
             self._send_json({**_IDENTITY, "challenge": challenge, "proof": proof})
             return
+        if parsed_path.path == "/api/restore" and not parsed_path.query:
+            if not self._authorized():
+                self._send(403, b"forbidden", "text/plain; charset=utf-8")
+                return
+            payload = self._read_json_body(max_bytes=_MAX_RESTORE_BODY_BYTES)
+            if (
+                payload is None
+                or set(payload) != {"backup_generation"}
+                or not isinstance(payload.get("backup_generation"), str)
+            ):
+                self._send(400, b"invalid restore request", "text/plain; charset=utf-8")
+                return
+            if not srv.action_lock.acquire(blocking=False):
+                self._send_json({"error": "operation_in_progress"}, code=409)
+                return
+            try:
+                srv.controller.restore(payload["backup_generation"])
+                response_payload = srv.controller.status()
+            finally:
+                srv.action_lock.release()
+            self._send_json(response_payload)
+            return
         action = _ACTION_PATHS.get(self.path)
         if action is None:
             self._send(404, b"unknown action", "text/plain; charset=utf-8")
@@ -961,10 +980,10 @@ class ControlServer(ThreadingHTTPServer):
         token = secrets.token_urlsafe(32)
         action = f"{self.expected_origin}/api/bootstrap"
         document = (
-            "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+            '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
             "<title>正在打开小票夹</title></head><body>"
-            f"<form method=\"post\" action=\"{html.escape(action)}\">"
-            f"<input type=\"hidden\" name=\"bootstrap_token\" value=\"{html.escape(token)}\">"
+            f'<form method="post" action="{html.escape(action)}">'
+            f'<input type="hidden" name="bootstrap_token" value="{html.escape(token)}">'
             "</form><script>document.forms[0].submit()</script></body></html>"
         )
         try:
@@ -1009,9 +1028,7 @@ class ControlServer(ThreadingHTTPServer):
                 if pending_path != path:
                     continue
                 self._bootstrap_pending.pop(digest, None)
-                self._bootstrap_consumed[digest] = (
-                    now + _BOOTSTRAP_REPLAY_TTL_SECONDS
-                )
+                self._bootstrap_consumed[digest] = now + _BOOTSTRAP_REPLAY_TTL_SECONDS
                 cancelled_path = pending_path
                 break
         for expired_path in expired:
@@ -1036,9 +1053,7 @@ class ControlServer(ThreadingHTTPServer):
                     path = None
                 else:
                     _, path = grant
-                    self._bootstrap_consumed[digest] = (
-                        now + _BOOTSTRAP_REPLAY_TTL_SECONDS
-                    )
+                    self._bootstrap_consumed[digest] = now + _BOOTSTRAP_REPLAY_TTL_SECONDS
                     status = 200
         for expired_path in expired:
             self._remove_bootstrap_file(expired_path)

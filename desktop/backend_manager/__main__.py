@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
+from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
 
@@ -12,9 +13,12 @@ from backend_manager.build_identity import FrozenManagerIdentity, load_frozen_ma
 from backend_manager.config import (
     ConfigError,
     InstalledRuntimeConfig,
+    ManagerConfig,
     load_config,
     load_maintenance_manager_config,
 )
+from backend_manager.dataset_backup import run_installed_dataset_backup
+from backend_manager.dataset_restore import run_installed_dataset_restore
 from backend_manager.elevation import (
     HELPER_EXIT_ACCESS,
     HELPER_EXIT_CONFIG,
@@ -60,6 +64,37 @@ def _load_validated_frozen_identity() -> FrozenManagerIdentity | None:
     return identity
 
 
+def _execute_validated_installed_action(
+    action: ServiceAction,
+    config: ManagerConfig,
+    runtime_config: InstalledRuntimeConfig,
+    backup_generation: str | None,
+) -> str:
+    """Dispatch one validated installed action to its sole production owner."""
+
+    if action == "backup":
+        run_installed_dataset_backup(runtime_config.layout, runtime_config.release)
+        return "Ticketbox 完整数据集备份已完成。"
+    if action == "restore":
+        run_installed_dataset_restore(
+            runtime_config.layout,
+            runtime_config.release,
+            backup_generation or "",
+        )
+        return "Ticketbox 完整数据集恢复已完成。"
+    runtime = build_direct_service_runtime(
+        config,
+        runtime_config,
+        backend_stopped_validator=partial(
+            validate_installed_backend_stopped,
+            runtime_config.layout,
+            runtime_config.release,
+        ),
+    )
+    getattr(runtime, action)()
+    return "Ticketbox Windows 服务操作已完成。"
+
+
 def _run_elevated_service_action(
     action: ServiceAction,
     result_path: Path | None,
@@ -67,6 +102,7 @@ def _run_elevated_service_action(
     result_nonce: str | None,
     channel_owner_sid: str | None,
     channel_file_id: str | None,
+    backup_generation: str | None,
 ) -> int:
     if not is_process_elevated():
         return HELPER_EXIT_NOT_ELEVATED
@@ -77,6 +113,8 @@ def _run_elevated_service_action(
         or channel_owner_sid is None
         or channel_file_id is None
     ):
+        return HELPER_EXIT_CONFIG
+    if (action == "restore") != (backup_generation is not None):
         return HELPER_EXIT_CONFIG
     watchdog: threading.Event | None = None
     exit_code = 0
@@ -91,7 +129,12 @@ def _run_elevated_service_action(
             channel_file_id,
         )
         identity = _load_validated_frozen_identity()
-        with hold_installer_lifecycle_lock():
+        coordination = (
+            nullcontext()
+            if action in {"backup", "restore"}
+            else hold_installer_lifecycle_lock()
+        )
+        with coordination:
             config = load_config(mode_override="installed")
             runtime_config = config.runtime
             if not isinstance(runtime_config, InstalledRuntimeConfig):
@@ -105,16 +148,12 @@ def _run_elevated_service_action(
                 timeout_seconds=runtime_config.release.helper_watchdog_seconds(action),
             )
             validate_installed_service_contract(runtime_config.layout, runtime_config.release)
-            runtime = build_direct_service_runtime(
+            diagnostic = _execute_validated_installed_action(
+                action,
                 config,
                 runtime_config,
-                backend_stopped_validator=partial(
-                    validate_installed_backend_stopped,
-                    runtime_config.layout,
-                    runtime_config.release,
-                ),
+                backup_generation,
             )
-            getattr(runtime, action)()
     except LifecycleBusyError as exc:
         exit_code, diagnostic = HELPER_EXIT_LIFECYCLE_BUSY, str(exc)
     except (ConfigError, InstallationConfigError) as exc:
@@ -148,12 +187,16 @@ def _run_elevated_service_action(
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--elevated-service-action", choices=("start", "stop", "restart"))
+    parser.add_argument(
+        "--elevated-service-action",
+        choices=("start", "stop", "restart", "backup", "restore"),
+    )
     parser.add_argument("--helper-result-path", type=Path)
     parser.add_argument("--helper-result-root", type=Path)
     parser.add_argument("--helper-result-nonce")
     parser.add_argument("--helper-channel-owner-sid")
     parser.add_argument("--helper-channel-file-id")
+    parser.add_argument("--backup-generation")
     return parser.parse_args(argv)
 
 
@@ -167,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             args.helper_result_nonce,
             args.helper_channel_owner_sid,
             args.helper_channel_file_id,
+            args.backup_generation,
         )
     if is_process_elevated():
         show_elevated_manager_warning()

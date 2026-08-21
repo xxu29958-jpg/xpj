@@ -63,10 +63,15 @@ _BOOTSTRAP_RECOVERY_GUARD_NAME = "bootstrap-exposure-recovery-pending"
 _MANAGED_SCHEMA_UPGRADE_SWITCH = "--managed-schema-upgrade"
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
+_COMPLETE_DATASET_BACKUP_SWITCH = "--complete-dataset-backup"
+_INSPECT_DATASET_BACKUP_SWITCH = "--inspect-dataset-backup"
+_ISOLATED_DATASET_RESTORE_SWITCH = "--isolated-dataset-restore"
 _GENERATION_PROGRAM_FILENAME = "DATABASE_GENERATION_PROGRAM.json"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
 _MANAGED_SCHEMA_MODULE_NAME = "_ticketbox_managed_schema_upgrade"
 _DATABASE_GENERATION_TARGET_MODULE_NAME = "_ticketbox_database_generation_target"
+_COMPLETE_DATASET_BACKUP_MODULE_NAME = "_ticketbox_complete_dataset_backup"
+_ISOLATED_DATASET_RESTORE_MODULE_NAME = "_ticketbox_isolated_dataset_restore"
 _GENERATION_PROGRAM_VALIDATION_FIELDS = (
     "schema",
     "source_revision",
@@ -98,10 +103,7 @@ def _bundle_dir() -> Path:
 
 
 def _is_database_generation_helper() -> bool:
-    return (
-        getattr(sys, "frozen", False)
-        and Path(sys.executable).name.lower() == _DATABASE_GENERATION_HELPER_NAME
-    )
+    return getattr(sys, "frozen", False) and Path(sys.executable).name.lower() == _DATABASE_GENERATION_HELPER_NAME
 
 
 def _add_generation_program_arguments(parser: ArgumentParser) -> None:
@@ -171,6 +173,70 @@ def _parse_database_generation_target_args(argv: list[str]) -> Namespace:
     return parser.parse_args(argv)
 
 
+def _parse_complete_dataset_backup_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-database-maintenance",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _COMPLETE_DATASET_BACKUP_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--backup-root", type=Path, required=True)
+    parser.add_argument("--upload-root", type=Path, required=True)
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--pg-dump-path", type=Path, required=True)
+    parser.add_argument("--pg-restore-path", type=Path, required=True)
+    parser.add_argument("--operation-id", required=True)
+    parser.add_argument("--backup-id", required=True)
+    parser.add_argument("--release-id", required=True)
+    parser.add_argument(
+        "--backup-kind",
+        choices=("manual",),
+        required=True,
+    )
+    parser.add_argument("--writer-fence-sha256", required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_dataset_backup_inspection_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-database-maintenance",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(_INSPECT_DATASET_BACKUP_SWITCH, action="store_true", required=True)
+    parser.add_argument("--backup-generation", type=Path, required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_isolated_dataset_restore_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-database-maintenance",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _ISOLATED_DATASET_RESTORE_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--backup-generation", type=Path, required=True)
+    parser.add_argument("--target-upload-root", type=Path, required=True)
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--pg-restore-path", type=Path, required=True)
+    parser.add_argument("--active-dataset-id", required=True)
+    parser.add_argument("--active-restore-epoch", type=int, required=True)
+    parser.add_argument("--target-schema-revision", required=True)
+    parser.add_argument("--restore-role", required=True)
+    parser.add_argument("--clone-dataset-id", default=None)
+    return parser.parse_args(argv)
+
+
 def _maintenance_standalone_source_path(filename: str) -> Path:
     if getattr(sys, "frozen", False):
         bundle_root = getattr(sys, "_MEIPASS", None)
@@ -188,14 +254,10 @@ def _temporary_database_package(source_path: Path) -> Iterator[None]:
 
     database_module_name = "app.database"
     if database_module_name in sys.modules:
-        raise RuntimeError(
-            "standalone database maintenance process already loaded app.database"
-        )
+        raise RuntimeError("standalone database maintenance process already loaded app.database")
     app_package = importlib.import_module("app")
     if hasattr(app_package, "database"):
-        raise RuntimeError(
-            "standalone database maintenance process has an unexpected database facade"
-        )
+        raise RuntimeError("standalone database maintenance process has an unexpected database facade")
 
     package = ModuleType(database_module_name)
     package.__package__ = database_module_name
@@ -210,14 +272,10 @@ def _temporary_database_package(source_path: Path) -> Iterator[None]:
     try:
         yield
         if sys.modules.get(database_module_name) is not package:
-            raise RuntimeError(
-                "standalone database maintenance package identity changed"
-            )
+            raise RuntimeError("standalone database maintenance package identity changed")
     finally:
         for name in tuple(sys.modules):
-            if name == database_module_name or name.startswith(
-                f"{database_module_name}."
-            ):
+            if name == database_module_name or name.startswith(f"{database_module_name}."):
                 sys.modules.pop(name, None)
         if hasattr(app_package, "database"):
             delattr(app_package, "database")
@@ -288,23 +346,33 @@ def _load_database_generation_target_module() -> ModuleType:
     )
 
 
+def _load_complete_dataset_backup_module() -> ModuleType:
+    return _load_standalone_database_module(
+        module_name=_COMPLETE_DATASET_BACKUP_MODULE_NAME,
+        filename="_dataset_backup_action.py",
+        database_package_seam=True,
+    )
+
+
+def _load_isolated_dataset_restore_module() -> ModuleType:
+    return _load_standalone_database_module(
+        module_name=_ISOLATED_DATASET_RESTORE_MODULE_NAME,
+        filename="_dataset_restore_action.py",
+        database_package_seam=True,
+    )
+
+
 def _assert_maintenance_libpq_environment(pgpassfile: Path) -> None:
     """Fail closed unless libpq sees only the attested one-shot passfile."""
 
-    pg_entries = [
-        (name, value)
-        for name, value in os.environ.items()
-        if name.upper().startswith("PG")
-    ]
+    pg_entries = [(name, value) for name, value in os.environ.items() if name.upper().startswith("PG")]
     if len(pg_entries) != 1 or pg_entries[0][0].upper() != "PGPASSFILE":
         raise RuntimeError("database maintenance helper libpq environment is not sealed")
     try:
         expected = os.path.normcase(os.path.abspath(os.fspath(pgpassfile)))
         actual = os.path.normcase(os.path.abspath(pg_entries[0][1]))
     except (OSError, TypeError, ValueError) as exc:
-        raise RuntimeError(
-            "database maintenance helper libpq environment is not sealed"
-        ) from exc
+        raise RuntimeError("database maintenance helper libpq environment is not sealed") from exc
     if actual != expected:
         raise RuntimeError("database maintenance helper libpq environment is not sealed")
 
@@ -328,18 +396,12 @@ def _run_generation_program_validation(
         raise RuntimeError("generation program validation requires empty stdin")
     managed = _load_managed_schema_upgrade_module()
     result = managed.validate_database_generation_program(
-        generation_program_path=_resolve_generation_program(
-            args.generation_program_path
-        ),
-        expected_generation_program_sha256=(
-            args.expected_generation_program_sha256
-        ),
+        generation_program_path=_resolve_generation_program(args.generation_program_path),
+        expected_generation_program_sha256=(args.expected_generation_program_sha256),
     )
     if tuple(result) != _GENERATION_PROGRAM_VALIDATION_FIELDS:
         raise RuntimeError("generation program validation returned an unsupported shape")
-    output_stream.write(
-        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
-    )
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
 
@@ -365,23 +427,15 @@ def _run_managed_schema_upgrade(
     result = managed.run_managed_schema_upgrade_action(
         database_url=args.database_url,
         pgpassfile=args.pgpassfile,
-        generation_program_path=_resolve_generation_program(
-            args.generation_program_path
-        ),
-        expected_generation_program_sha256=(
-            args.expected_generation_program_sha256
-        ),
+        generation_program_path=_resolve_generation_program(args.generation_program_path),
+        expected_generation_program_sha256=(args.expected_generation_program_sha256),
         source_revision=args.source_revision,
         target_revision=args.target_revision,
         generation_operation_id=args.generation_operation_id,
     )
     if tuple(result) != _MANAGED_SCHEMA_RESULT_FIELDS:
-        raise RuntimeError(
-            "managed schema upgrade returned an unsupported result shape"
-        )
-    output_stream.write(
-        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
-    )
+        raise RuntimeError("managed schema upgrade returned an unsupported result shape")
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
 
@@ -406,20 +460,119 @@ def _run_database_generation_target_verification(
     result = module.run_database_generation_target_verification_action(
         database_url=args.database_url,
         pgpassfile=args.pgpassfile,
-        generation_program_path=_resolve_generation_program(
-            args.generation_program_path
-        ),
-        expected_generation_program_sha256=(
-            args.expected_generation_program_sha256
-        ),
+        generation_program_path=_resolve_generation_program(args.generation_program_path),
+        expected_generation_program_sha256=(args.expected_generation_program_sha256),
         operation_id=args.operation_id,
         database=args.database,
         restore_attempt_id=args.restore_attempt_id,
         target_revision=args.target_revision,
     )
-    output_stream.write(
-        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
+    output_stream.flush()
+    return 0
+
+
+def _run_complete_dataset_backup(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    args = _parse_complete_dataset_backup_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("complete dataset backup requires redirected IO")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("complete dataset backup requires empty stdin")
+    _assert_maintenance_libpq_environment(args.pgpassfile)
+    module = _load_complete_dataset_backup_module()
+    from app.services.backup_service import CompleteBackupRequest
+
+    result = module.run_complete_dataset_backup_action(
+        CompleteBackupRequest(
+            backup_root=args.backup_root,
+            upload_root=args.upload_root,
+            database_url=args.database_url,
+            passfile=args.pgpassfile,
+            pg_dump_binary=args.pg_dump_path,
+            pg_restore_binary=args.pg_restore_path,
+            operation_id=args.operation_id,
+            backup_id=args.backup_id,
+            release_id=args.release_id,
+            backup_kind=args.backup_kind,
+            writer_fence_sha256=args.writer_fence_sha256,
+        )
     )
+    if tuple(result) != module.RESULT_FIELDS:
+        raise RuntimeError("complete dataset backup returned an unsupported shape")
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
+    output_stream.flush()
+    return 0
+
+
+def _run_dataset_backup_inspection(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    args = _parse_dataset_backup_inspection_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("dataset backup inspection requires redirected IO")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("dataset backup inspection requires empty stdin")
+    module = _load_complete_dataset_backup_module()
+    result = module.inspect_complete_dataset_backup_action(args.backup_generation)
+    if tuple(result) != module.INSPECTION_FIELDS:
+        raise RuntimeError("dataset backup inspection returned an unsupported shape")
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
+    output_stream.flush()
+    return 0
+
+
+def _run_isolated_dataset_restore(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    args = _parse_isolated_dataset_restore_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("isolated dataset restore requires redirected IO")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("isolated dataset restore requires empty stdin")
+    _assert_maintenance_libpq_environment(args.pgpassfile)
+    module = _load_isolated_dataset_restore_module()
+    from app.services.dataset_restore_service import CompleteRestoreRequest
+
+    result = module.run_isolated_dataset_restore_action(
+        CompleteRestoreRequest(
+            backup_generation=args.backup_generation,
+            target_upload_root=args.target_upload_root,
+            database_url=args.database_url,
+            passfile=args.pgpassfile,
+            pg_restore_binary=args.pg_restore_path,
+            active_dataset_id=args.active_dataset_id,
+            active_restore_epoch=args.active_restore_epoch,
+            target_schema_revision=args.target_schema_revision,
+            restore_role=args.restore_role,
+            clone_dataset_id=args.clone_dataset_id,
+        )
+    )
+    if tuple(result) != module.RESULT_FIELDS:
+        raise RuntimeError("isolated dataset restore returned an unsupported shape")
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
 
@@ -582,34 +735,22 @@ def _expected_frozen_install_dir() -> Path:
 def _assert_frozen_host_authority(host_authority: dict[str, str | None]) -> None:
     if not getattr(sys, "frozen", False):
         return
-    missing = [
-        key
-        for key in _FROZEN_HOST_AUTHORITY_KEYS
-        if not (host_authority.get(key) or "").strip()
-    ]
+    missing = [key for key in _FROZEN_HOST_AUTHORITY_KEYS if not (host_authority.get(key) or "").strip()]
     if missing:
-        raise RuntimeError(
-            "frozen backend host authority is incomplete: " + ", ".join(missing)
-        )
+        raise RuntimeError("frozen backend host authority is incomplete: " + ", ".join(missing))
     owner_recovery_channel = host_authority["TICKETBOX_OWNER_RECOVERY_CHANNEL"]
     if owner_recovery_channel not in _OWNER_RECOVERY_CHANNELS:
         raise RuntimeError("frozen backend owner recovery capability is invalid")
 
 
 def _assert_bootstrap_guard_runtime_binding(marker_path: Path) -> None:
-    bootstrap_guard_value = os.environ.get(
-        "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH", ""
-    ).strip()
+    bootstrap_guard_value = os.environ.get("TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH", "").strip()
     if not bootstrap_guard_value:
         return
     bootstrap_guard_path = Path(os.path.abspath(bootstrap_guard_value))
     expected_bootstrap_guard = marker_path.parent / _BOOTSTRAP_RECOVERY_GUARD_NAME
-    if os.path.normcase(str(bootstrap_guard_path)) != os.path.normcase(
-        str(expected_bootstrap_guard)
-    ):
-        raise RuntimeError(
-            "bootstrap recovery guard is not bound to the runtime DataRoot projection"
-        )
+    if os.path.normcase(str(bootstrap_guard_path)) != os.path.normcase(str(expected_bootstrap_guard)):
+        raise RuntimeError("bootstrap recovery guard is not bound to the runtime DataRoot projection")
 
 
 def _assert_runtime_data_root_authority(data_dir: Path) -> Path | None:
@@ -646,9 +787,11 @@ def _assert_runtime_data_root_authority(data_dir: Path) -> Path | None:
         "data_volume_identity",
     }:
         raise RuntimeError("runtime DataRoot marker has an unsupported shape")
-    if marker.get("schema") != "ticketbox-data-root-v2" or not isinstance(
-        marker.get("data_root"), str
-    ) or not isinstance(marker.get("install_dir"), str):
+    if (
+        marker.get("schema") != "ticketbox-data-root-v2"
+        or not isinstance(marker.get("data_root"), str)
+        or not isinstance(marker.get("install_dir"), str)
+    ):
         raise RuntimeError("runtime DataRoot marker has an unsupported binding")
     expected_volume = volume_value.upper()
     if str(marker.get("data_volume_identity", "")).upper() != expected_volume:
@@ -666,13 +809,9 @@ def _assert_runtime_data_root_authority(data_dir: Path) -> Path | None:
     if final_volume_match is None or final_volume_match.group(0).upper() != expected_volume:
         raise RuntimeError("runtime DataRoot junction resolved to another volume")
     expected_runtime_root = _volume_bound_marker_path(marker_data_root, expected_volume)
-    if ntpath.normcase(final_runtime_root.rstrip("\\")) != ntpath.normcase(
-        expected_runtime_root.rstrip("\\")
-    ):
+    if ntpath.normcase(final_runtime_root.rstrip("\\")) != ntpath.normcase(expected_runtime_root.rstrip("\\")):
         raise RuntimeError("runtime DataRoot junction does not match the marker data_root")
-    if os.path.normcase(str(marker_install_dir)) != os.path.normcase(
-        str(_expected_frozen_install_dir())
-    ):
+    if os.path.normcase(str(marker_install_dir)) != os.path.normcase(str(_expected_frozen_install_dir())):
         raise RuntimeError("runtime DataRoot marker does not match the frozen install directory")
     return marker_path.parent
 
@@ -690,10 +829,7 @@ def configure_environment() -> Path:
     # These values are supplied by the host/service contract.  The writable
     # app .env may configure business/runtime settings, but it must never move
     # the process to another data root or suppress an installer-owned guard.
-    host_authority = {
-        key: os.environ.get(key)
-        for key in _FROZEN_HOST_AUTHORITY_KEYS
-    }
+    host_authority = {key: os.environ.get(key) for key in _FROZEN_HOST_AUTHORITY_KEYS}
     _assert_frozen_host_authority(host_authority)
     _assert_runtime_data_root_authority(data_dir)
     (data_dir / "uploads").mkdir(parents=True, exist_ok=True)
@@ -836,9 +972,7 @@ def _assert_bootstrap_recovery_not_pending(
         allowed_reparse_ancestor=validated_runtime_junction,
     )
     if pending:
-        raise RuntimeError(
-            "bootstrap credential recovery is pending; run installer repair before starting HTTP"
-        )
+        raise RuntimeError("bootstrap credential recovery is pending; run installer repair before starting HTTP")
 
 
 def _installer_runtime_recovery_guard_path() -> Path | None:
@@ -877,8 +1011,7 @@ def _host_guard_is_present_or_malformed(
                 is_allowed_runtime_junction = (
                     normalized_allowed_reparse is not None
                     and cursor != guard_path
-                    and os.path.normcase(str(Path(os.path.abspath(cursor))))
-                    == normalized_allowed_reparse
+                    and os.path.normcase(str(Path(os.path.abspath(cursor)))) == normalized_allowed_reparse
                     and stat.S_ISDIR(entry.st_mode)
                 )
                 if not is_allowed_runtime_junction:
@@ -1017,6 +1150,9 @@ def main() -> int | None:
             _MANAGED_SCHEMA_UPGRADE_SWITCH,
             _DATABASE_GENERATION_TARGET_VERIFY_SWITCH,
             _GENERATION_PROGRAM_VALIDATE_SWITCH,
+            _COMPLETE_DATASET_BACKUP_SWITCH,
+            _INSPECT_DATASET_BACKUP_SWITCH,
+            _ISOLATED_DATASET_RESTORE_SWITCH,
         )
         if switch in arguments
     ]
@@ -1024,18 +1160,20 @@ def main() -> int | None:
         raise RuntimeError("database generation helper accepts exactly one mode")
     if generation_switches:
         if getattr(sys, "frozen", False) and not _is_database_generation_helper():
-            raise RuntimeError(
-                "database generation requires the dedicated frozen helper"
-            )
+            raise RuntimeError("database generation requires the dedicated frozen helper")
         if generation_switches[0] == _MANAGED_SCHEMA_UPGRADE_SWITCH:
             return _run_managed_schema_upgrade(arguments)
         if generation_switches[0] == _DATABASE_GENERATION_TARGET_VERIFY_SWITCH:
             return _run_database_generation_target_verification(arguments)
+        if generation_switches[0] == _COMPLETE_DATASET_BACKUP_SWITCH:
+            return _run_complete_dataset_backup(arguments)
+        if generation_switches[0] == _INSPECT_DATASET_BACKUP_SWITCH:
+            return _run_dataset_backup_inspection(arguments)
+        if generation_switches[0] == _ISOLATED_DATASET_RESTORE_SWITCH:
+            return _run_isolated_dataset_restore(arguments)
         return _run_generation_program_validation(arguments)
     if _is_database_generation_helper():
-        raise RuntimeError(
-            "the dedicated database generation helper requires an explicit mode"
-        )
+        raise RuntimeError("the dedicated database generation helper requires an explicit mode")
 
     import logging.config
 

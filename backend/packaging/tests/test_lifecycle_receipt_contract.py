@@ -106,7 +106,7 @@ if (-not $rejected -or $script:writes -ne 1) {{
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
-def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
+def test_receipt_cannot_authorize_database_only_backup_or_existing_dataset_install() -> None:
     install = _read("install_bundled_services.ps1")
     prepare = _read("prepare_bundled_upgrade.ps1")
     flow = _read("ticketbox-installer-flow.isph")
@@ -115,7 +115,11 @@ def test_receipt_replaces_caller_controlled_backup_bypass() -> None:
     assert "[switch]$SkipPreUpgradeBackup" not in install
     assert "SkipPreUpgradeBackup" not in flow
     assert "直接运行安装脚本不能提交或伪造 Inno 生命周期回执" in install
-    assert "$PreUpgradeBackupAlreadyCompleted = [bool]$lifecycleReceipt.backup_completed" in install
+    assert "Invoke-PreUpgradeBackupIfNeeded" not in install
+    assert "Invoke-TicketboxPgDumpCustom" not in prepare
+    assert '$mode -cne "fresh_install"' in prepare
+    assert '[string]$lifecycleReceipt.mode -cne "fresh_install"' in install
+    assert "既有数据必须走隔离 restore" in install
     assert "InstallerOwnerProcessId" in receipt
     assert '"ticketbox-windows-lifecycle-receipt-v9"' in receipt
     assert '"ticketbox-windows-lifecycle-receipt-v7"' in receipt
@@ -794,7 +798,7 @@ def test_runtime_recovery_projection_blocks_traffic_until_commit() -> None:
     assert invoke_projection_cleanup < remove_service
 
 
-def test_completed_stale_receipt_cannot_reuse_previous_backup_mutation() -> None:
+def test_completed_stale_receipt_is_retired_before_fresh_preflight() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
     install = _read("install_bundled_services.ps1")
     flow = _read("ticketbox-installer-flow.isph")
@@ -804,16 +808,15 @@ def test_completed_stale_receipt_cannot_reuse_previous_backup_mutation() -> None
     resume_commit = prepare.index("Complete-TicketboxInstalledLifecycleTransaction", completed_check)
     invalidate = prepare.index("Remove-TicketboxCompletedLifecycleReceipt", resume_commit)
     initialize_current = prepare.index("\n    Initialize-TicketboxInstalledReleaseConfiguration\n")
-    reset_backup = prepare.index("$backupCompleted = $false", invalidate)
-    write_new_receipt = prepare.index("Write-TicketboxLifecycleReceipt", reset_backup)
+    write_new_receipt = prepare.index("Write-TicketboxLifecycleReceipt", invalidate)
     completed_branch = prepare[
         completed_check : prepare.index(
-            "elseif ([string]$staleReceipt.preparation_stage -in @(",
+            'elseif ([string]$staleReceipt.preparation_stage -eq "captured")',
             completed_check,
         )
     ]
 
-    assert initialize_current < completed_check < resume_commit < invalidate < reset_backup < write_new_receipt
+    assert initialize_current < completed_check < resume_commit < invalidate < write_new_receipt
     assert "Set-TicketboxLifecycleReceiptInstallerOwner" in completed_branch
     assert "Complete-TicketboxInstalledLifecycleTransaction" in completed_branch
     assert "ConvertTo-TicketboxCurrentLifecycleReceipt" not in completed_branch
@@ -843,7 +846,7 @@ def test_install_commit_retires_recovery_latch_only_after_durable_authorities(
     prepare_start = prepare.index("    $preMutationLifecycleReceipt = $null")
     prepare_dispatch = prepare[
         prepare_start : prepare.index(
-            "    if ($MarkProgramFilesInstalledBackupPending)",
+            "    if ($MarkProgramFilesInstalled)",
             prepare_start,
         )
     ]
@@ -1171,137 +1174,22 @@ if (($script:events -join ',') -cne 'read,current,identity,assert,archive-read,t
         assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows backup guard contract")
-def test_post_copy_recovery_keeps_verified_backup_guard_until_publication(
-    tmp_path: Path,
-) -> None:
+def test_post_copy_recovery_has_no_database_only_backup_guard() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
-    stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
-    stale_end = prepare.index("    $hasPgService = Test-TicketboxServiceExists", stale_start)
-    stale_dispatch = prepare[stale_start:stale_end]
-    branch_start = stale_dispatch.index(
-        "        else {", stale_dispatch.index("program_files_installed_backup_pending")
-    )
-    branch_body_start = branch_start + len("        else {\n")
-    branch_body_end = stale_dispatch.rindex("        }")
-    post_copy_body = stale_dispatch[branch_body_start:branch_body_end]
+    receipt = _read("windows_lifecycle_receipt.ps1")
 
-    backup_path = tmp_path / "verified-backup.dump"
-    backup_path.write_text("verified-backup", encoding="utf-8")
-    harness = tmp_path / "post-copy-backup-guard.ps1"
-    harness.write_text(
-        f"""
-$ErrorActionPreference = 'Stop'
-$script:events = [System.Collections.Generic.List[string]]::new()
-$script:failPublication = $false
-$backupPath = '{_literal(backup_path)}'
-$guard = [System.IO.File]::Open(
-    $backupPath,
-    [System.IO.FileMode]::Open,
-    [System.IO.FileAccess]::Read,
-    [System.IO.FileShare]::Read
-)
-$staleReceipt = [pscustomobject]@{{
-    installed_release_config = [pscustomobject]@{{}}
-    temporary_pg_service_cleanup_pending = $false
-    preparation_stage = 'prepared'
-    backup_guard_stream = $guard
-}}
-$LifecycleReceiptPath = 'unused-receipt.json'
-$InstallerLockOwnerProcessId = $PID
-$RuntimeDataBindingPresent = $false
-function Set-TicketboxInstalledReleaseConfiguration {{ param($Config, $Persisted) }}
-function Repair-TicketboxInterruptedPayloadLeaseAcl {{}}
-function Remove-TicketboxRecoveryPgServiceIfExists {{}}
-function Assert-TicketboxPreparedServiceContracts {{
-    param([switch]$AllowTargetPolicyFallback, [switch]$AllowLegacyRuntimeDataContract)
-}}
-function Close-TicketboxLifecycleBackupGuard {{
-    param($Receipt)
-    if ($null -ne $Receipt.backup_guard_stream) {{
-        $Receipt.backup_guard_stream.Dispose()
-        $Receipt.backup_guard_stream = $null
-    }}
-}}
-function Invoke-TicketboxPreparedInstallRecovery {{
-    param($Receipt, $ProgramFilesWereReplaced)
-    $replacementBlocked = $false
-    try {{ [System.IO.File]::WriteAllText($backupPath, 'tampered') }}
-    catch {{ $replacementBlocked = $true }}
-    if (-not $replacementBlocked) {{
-        throw 'verified backup guard was released before recovery'
-    }}
-    [void]$script:events.Add('recovery')
-}}
-function Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced {{
-    param($Path, $Receipt, $InstallerOwnerProcessId)
-    if ($null -eq $Receipt.backup_guard_stream) {{
-        throw 'verified backup guard was released before authority publication'
-    }}
-    if ($script:failPublication) {{
-        throw 'simulated authority publication failure'
-    }}
-    [void]$script:events.Add('publish')
-    Close-TicketboxLifecycleBackupGuard $Receipt
-}}
-function Set-TicketboxLifecycleReceiptInstallerOwner {{
-    param($Path, $Receipt, $InstallerOwnerProcessId)
-    throw 'prepared receipt selected the wrong publication path'
-}}
-function Invoke-TestPostCopyRecovery {{
-{post_copy_body}
-}}
-Invoke-TestPostCopyRecovery
-if ([string]::Join('|', $script:events) -cne 'recovery|publish') {{
-    throw "post-copy recovery order changed: $($script:events -join '|')"
-}}
-if ([System.IO.File]::ReadAllText($backupPath) -cne 'verified-backup') {{
-    throw 'verified backup bytes changed during stale recovery'
-}}
-$script:events.Clear()
-$script:failPublication = $true
-$staleReceipt.backup_guard_stream = [System.IO.File]::Open(
-    $backupPath,
-    [System.IO.FileMode]::Open,
-    [System.IO.FileAccess]::Read,
-    [System.IO.FileShare]::Read
-)
-$publicationFailed = $false
-try {{ Invoke-TestPostCopyRecovery }}
-catch {{
-    if ($_.Exception.Message -cnotmatch 'simulated authority publication failure') {{ throw }}
-    $publicationFailed = $true
-}}
-if (-not $publicationFailed) {{
-    throw 'authority publication failure was not preserved'
-}}
-$exclusiveWriteSucceeded = $false
-try {{
-    [System.IO.File]::WriteAllText($backupPath, 'verified-backup')
-    $exclusiveWriteSucceeded = $true
-}}
-catch {{}}
-if (-not $exclusiveWriteSucceeded) {{
-    Close-TicketboxLifecycleBackupGuard $staleReceipt
-    throw 'verified backup guard was not released after authority publication failure'
-}}
-if ([string]::Join('|', $script:events) -cne 'recovery') {{
-    throw "failed publication path changed: $($script:events -join '|')"
-}}
-""",
-        encoding="utf-8-sig",
-    )
-    for engine in powershell_contract_engines():
-        result = subprocess.run(
-            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-        )
-        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+    for retired in (
+        "program_files_installed_backup_pending",
+        "backup_deferred_until_program_files_installed",
+        "Set-TicketboxLifecycleReceiptDeferredBackup",
+        "Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending",
+        "Set-TicketboxLifecycleReceiptDeferredBackupCompleted",
+    ):
+        assert retired not in prepare
+    assert "Invoke-TicketboxPgDumpCustom" not in prepare
+    assert "Get-TicketboxLifecycleBackupEvidence" in receipt
+
+
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows recovery compensation contract")
@@ -1742,7 +1630,7 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     preinstall_receipt_read = main_execution.index("Read-TicketboxLifecycleReceipt `", intent_branch)
     early_marker_repair = main_execution.index("Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded `", owner_gate)
     runtime_binding_read = main_execution.index("Set-TicketboxPreparedRuntimeServiceContract", early_marker_repair)
-    mark_branch = main_execution.index("if ($MarkProgramFilesInstalledBackupPending)", runtime_binding_read)
+    mark_branch = main_execution.index("if ($MarkProgramFilesInstalled)", runtime_binding_read)
     recover_branch_start = main_execution.index("if ($RecoverPreparedInstall)", mark_branch)
     commit_branch = main_execution.index("if ($CommitCompletedInstall)", recover_branch_start)
     stale_receipt_branch = main_execution.index(
@@ -1802,32 +1690,20 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         "-DatabaseGenerationOperationId $capturedGenerationOperationId `"
         in main_execution[captured_receipt_write:captured_receipt_read]
     )
-    authority_call = prepare.rindex("Assert-TicketboxPreparedDataRootAuthorityGate `")
-    preserved_mode = prepare.index('if ($mode -eq "preserved_data_reinstall")', authority_call)
-    preserved_layout = prepare.index("Assert-TicketboxLegacyPreservedDataLayout", preserved_mode)
-    existing_mode = prepare.index('elseif ($mode -ne "fresh_install")', authority_call)
-    machine_binding = prepare.index("Assert-TicketboxRegisteredDataRootBinding", existing_mode)
-    legacy_marker = prepare.index("Initialize-TicketboxDataRootMarker", machine_binding)
-    pg_service_contract = prepare.index(
-        "Assert-ExpectedServiceConfiguration -Name $PgServiceName",
-        authority_call,
-    )
-    backend_service_contract = prepare.index(
-        "Assert-ExpectedServiceConfiguration -Name $BackendServiceName",
-        authority_call,
-    )
+    source_classification = prepare.rindex("$mode = Get-TicketboxPreparedInstallMode")
+    fresh_mode_gate = prepare.index('$mode -cne "fresh_install"', source_classification)
+    authority_call = prepare.index("Assert-TicketboxPreparedDataRootAuthorityGate `", fresh_mode_gate)
     recovery_service_cleanup = prepare.index(
         "Remove-TicketboxRecoveryPgServiceIfExists",
         authority_call,
     )
     acl_mutation = prepare.index("Repair-TicketboxPreflightInstallAcl", authority_call)
     receipt_mutation = prepare.index("Write-TicketboxLifecycleReceipt `", authority_call)
-    assert authority_call < preserved_mode < preserved_layout < legacy_marker
-    assert authority_call < existing_mode < machine_binding < legacy_marker
-    assert pg_service_contract < legacy_marker
-    assert backend_service_contract < legacy_marker
+    assert source_classification < fresh_mode_gate < authority_call
     assert authority_call < recovery_service_cleanup < acl_mutation
     assert authority_call < receipt_mutation
+    assert "Assert-TicketboxLegacyPreservedDataLayout" not in prepare[authority_call:]
+    assert "Assert-TicketboxRegisteredDataRootBinding" not in prepare[authority_call:]
     assert "fresh install 只接受 holder 已发布权威 marker" in prepare
     authority_gate = prepare[
         prepare.index("function Assert-TicketboxPreparedDataRootAuthorityGate") : prepare.index(
@@ -2003,13 +1879,13 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     assert "-DataRootMarkerAclPhase backend_read_optional" in secure_root_call
     assert "-ExpectedBackendServiceName $BackendServiceName" in secure_root_call
 
-    prepare_marker_initialize = prepare[
-        prepare.index("Initialize-TicketboxDataRootMarker `", prepare.index("$mode =")) : prepare.index(
-            "Remove-TicketboxRecoveryPgServiceIfExists", prepare.index("$mode =")
+    prepare_source_gate = prepare[
+        prepare.index("$mode = Get-TicketboxPreparedInstallMode") : prepare.index(
+            "Remove-TicketboxRecoveryPgServiceIfExists", prepare.index("$mode = Get-TicketboxPreparedInstallMode")
         )
     ]
-    assert "-AclPhase backend_read_optional" in prepare_marker_initialize
-    assert "-ExpectedBackendServiceName $BackendServiceName" in prepare_marker_initialize
+    assert "Assert-TicketboxPreparedDataRootAuthorityGate" in prepare_source_gate
+    assert "Initialize-TicketboxDataRootMarker" not in prepare_source_gate
 
     uninstall = _read("uninstall_bundled_services.ps1")
     assert uninstall.count("-DataRootMarkerAclPhase backend_read_optional") == 2

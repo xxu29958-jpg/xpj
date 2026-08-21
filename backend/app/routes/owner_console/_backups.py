@@ -28,6 +28,8 @@ def _backup_view(entries: list[backup_service.BackupEntry]) -> list[dict]:
             "size_text": _format_size(entry.size_bytes),
             "created_at": entry.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             "kind": entry.kind,
+            "dataset_id": entry.dataset_id,
+            "restore_epoch": entry.restore_epoch,
         }
         for entry in entries
     ]
@@ -43,32 +45,6 @@ def owner_backups_get(
     ctx = _base(request, db)
     ctx["backups"] = _backup_view(entries)
     ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
-    ctx["created_now"] = None
-    ctx["error"] = None
-    ctx["backup_dir"] = backup_service.backup_directory_label()
-    ctx["backup_health"] = backup_service.backup_health()
-    return templates.TemplateResponse(request=request, name="backups.html", context=ctx)
-
-
-@router.post("/backups", response_class=HTMLResponse)
-def owner_backups_create(
-    request: Request,
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> HTMLResponse:
-    error: str | None = None
-    created: dict | None = None
-    try:
-        entry = backup_service.create_manual_backup()
-        created = _backup_view([entry])[0]
-    except Exception as exc:  # noqa: BLE001 — AppError or unexpected I/O surfaces to UI
-        error = getattr(exc, "message", None) or "备份失败，请稍后再试。"
-    entries = backup_service.list_backups()
-    ctx = _base(request, db)
-    ctx["backups"] = _backup_view(entries)
-    ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
-    ctx["created_now"] = created
-    ctx["error"] = error
     ctx["backup_dir"] = backup_service.backup_directory_label()
     ctx["backup_health"] = backup_service.backup_health()
     return templates.TemplateResponse(request=request, name="backups.html", context=ctx)

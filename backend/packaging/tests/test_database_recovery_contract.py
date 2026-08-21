@@ -8,6 +8,7 @@ from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
 DATABASE_SCRIPT = PACKAGING / "windows_bundled_database.ps1"
+CLUSTER_SCRIPT = PACKAGING / "windows_postgresql_candidate_cluster.ps1"
 INSTALL_SCRIPT = PACKAGING / "install_bundled_services.ps1"
 DATABASE_SAFETY_SCRIPT = PACKAGING / "windows_database_safety.ps1"
 INSTALLATION_SAFETY_SCRIPT = PACKAGING / "windows_installation_safety.ps1"
@@ -421,6 +422,7 @@ Assert-RejectedBinding 'drift' '发生漂移'
 
 def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     database = _read_database_script()
+    cluster = CLUSTER_SCRIPT.read_text(encoding="utf-8-sig")
     database_safety = DATABASE_SAFETY_SCRIPT.read_text(encoding="utf-8-sig")
     install = INSTALL_SCRIPT.read_text(encoding="utf-8-sig")
     service_contract = (PACKAGING / "windows_service_contract.ps1").read_text(
@@ -525,8 +527,9 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
         "[void](Read-PostgresBootstrapRecoveryState -Path $pwfile)", existing_cluster
     )
     config_mutation = database.index(
-        "Set-TicketboxPostgresInstallerConfiguration", existing_cluster
+        "Set-TicketboxPostgresqlLoopbackConfiguration", existing_cluster
     )
+    assert "function Set-TicketboxPostgresqlLoopbackConfiguration" in cluster
     assert recovery_validation < config_mutation
 
     for retired_writer in (
@@ -1218,10 +1221,11 @@ def test_postgres_managed_block_replacement_preserves_following_configuration(tm
                 harness,
                 f"""
 $ErrorActionPreference = 'Stop'
-. '{_ps_literal(DATABASE_SCRIPT)}'
+    . '{_ps_literal(DATABASE_SCRIPT)}'
+    . '{_ps_literal(CLUSTER_SCRIPT)}'
 $PgData = '{_ps_literal(pg_data)}'
 $PgPort = 6543
-Set-TicketboxPostgresInstallerConfiguration
+Set-TicketboxPostgresqlLoopbackConfiguration -PgData $PgData -Port $PgPort
 $content = [System.IO.File]::ReadAllText('{_ps_literal(config_path)}', [System.Text.Encoding]::ASCII)
 $begin = $content.IndexOf('# BEGIN Ticketbox installer overrides')
 $end = $content.IndexOf('# END Ticketbox installer overrides')
@@ -1236,7 +1240,7 @@ $autoConfig = Join-Path $PgData 'postgresql.auto.conf'
     [System.Text.Encoding]::ASCII
 )
 $autoOverrideRejected = $false
-try {{ Set-TicketboxPostgresInstallerConfiguration }} catch {{ $autoOverrideRejected = $true }}
+try {{ Set-TicketboxPostgresqlLoopbackConfiguration -PgData $PgData -Port $PgPort }} catch {{ $autoOverrideRejected = $true }}
 if (-not $autoOverrideRejected) {{ throw 'postgresql.auto.conf loopback override was accepted' }}
 """,
             )
@@ -1292,7 +1296,7 @@ def test_existing_cluster_never_invokes_fresh_initdb_callback(tmp_path: Path) ->
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
-. '{_ps_literal(DATABASE_SCRIPT)}'
+    . '{_ps_literal(DATABASE_SCRIPT)}'
 $DataRoot = '{_ps_literal(tmp_path)}'
 $PgData = '{_ps_literal(pg_data)}'
 $AppData = '{_ps_literal(app_data)}'
@@ -1300,7 +1304,7 @@ $EnvPath = Join-Path $AppData '.env'
 $PgBin = Join-Path $DataRoot 'pg-bin'
 function Get-TicketboxPathEntryKindNoFollow {{ param($Path) if (Test-Path -LiteralPath $Path -PathType Leaf) {{ return 'File' }}; if (Test-Path -LiteralPath $Path -PathType Container) {{ return 'Directory' }}; return 'Missing' }}
 function Read-EnvMap {{ param($Path) return @{{ DATABASE_URL = 'postgresql://ticketbox:secret@127.0.0.1:5440/ticketbox' }} }}
-function Set-TicketboxPostgresInstallerConfiguration {{ $script:configured += 1 }}
+    function Set-TicketboxPostgresqlLoopbackConfiguration {{ param($PgData, $Port); $script:configured += 1 }}
 function Write-Ok {{ param($Message) }}
 function Assert-TicketboxInstallServiceCompensationAuthority {{ param($Authority) }}
 $script:configured = 0
@@ -1340,6 +1344,7 @@ $ErrorActionPreference = 'Stop'
 . '__INSTALLATION_SAFETY__'
 . '__DATABASE_SAFETY__'
 . '__DATABASE_SCRIPT__'
+. '__CLUSTER_SCRIPT__'
 
 $DataRoot = '__DATA_ROOT__'
 $PgData = Join-Path $DataRoot 'pgdata'
@@ -1447,6 +1452,7 @@ if ($recoveredState.SuperuserPassword -cne $state.SuperuserPassword -or
             "__INSTALLATION_SAFETY__": _ps_literal(INSTALLATION_SAFETY_SCRIPT),
             "__DATABASE_SAFETY__": _ps_literal(DATABASE_SAFETY_SCRIPT),
             "__DATABASE_SCRIPT__": _ps_literal(DATABASE_SCRIPT),
+            "__CLUSTER_SCRIPT__": _ps_literal(CLUSTER_SCRIPT),
             "__DATA_ROOT__": _ps_literal(root),
             "__PG_BIN__": _ps_literal(pg_bin),
             "__TRACE_PATH__": _ps_literal(trace_path),
@@ -1470,6 +1476,7 @@ def test_inherited_bootstrap_acl_repair_is_bounded_and_fail_closed(
 $ErrorActionPreference = 'Stop'
 . '__INSTALLATION_SAFETY__'
 . '__DATABASE_SCRIPT__'
+. '__CLUSTER_SCRIPT__'
 
 $SecretByteCount = 32
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -1754,7 +1761,7 @@ $script:AppData = $actual.AppData
 $script:PgData = Join-Path $actual.DataRoot 'pgdata'
 $script:DefaultUploadRoot = Join-Path $actual.AppData 'uploads'
 $script:LogDir = Join-Path $actual.AppData 'logs'
-$script:BackupDir = Join-Path $actual.AppData 'backups'
+$script:BackupDir = Join-Path $actual.DataRoot 'backups'
 $script:InstallerState = Join-Path $actual.DataRoot 'installer-state-test'
 $script:BootstrapExposureRecoveryGuardPath = Join-Path $actual.DataRoot 'missing-bootstrap-guard'
 $script:InstallerRuntimeRecoveryGuardPath = Join-Path $actual.DataRoot 'missing-runtime-guard'
@@ -1816,7 +1823,8 @@ New-Item -ItemType Directory -Path $script:PgData | Out-Null
     $encoding)
 function Read-EnvMap { return @{} }
 function Assert-TicketboxInstallServiceCompensationAuthority { param($Authority) }
-function Set-TicketboxPostgresInstallerConfiguration {
+function Set-TicketboxPostgresqlLoopbackConfiguration {
+    param($PgData, $Port)
     throw 'initialize-wiring-reached-after-repair'
 }
 $wiredReached = $false
@@ -1836,6 +1844,7 @@ if (-not $wiredReached -or
         replacements = {
             "__INSTALLATION_SAFETY__": _ps_literal(INSTALLATION_SAFETY_SCRIPT),
             "__DATABASE_SCRIPT__": _ps_literal(DATABASE_SCRIPT),
+            "__CLUSTER_SCRIPT__": _ps_literal(CLUSTER_SCRIPT),
             "__INSTALL_SCRIPT__": _ps_literal(INSTALL_SCRIPT),
             "__ROOT__": _ps_literal(root),
         }
@@ -1856,6 +1865,7 @@ def test_malformed_and_insecure_recovery_files_fail_closed(tmp_path: Path) -> No
 $ErrorActionPreference = 'Stop'
 . '__INSTALLATION_SAFETY__'
 . '__DATABASE_SCRIPT__'
+. '__CLUSTER_SCRIPT__'
 $DataRoot = '__DATA_ROOT__'
 $AppData = Join-Path $DataRoot 'app'
 New-Item -ItemType Directory -Path $AppData -Force | Out-Null
@@ -1923,6 +1933,7 @@ Remove-Item -LiteralPath $recoveryPath -Force
         replacements = {
             "__INSTALLATION_SAFETY__": _ps_literal(INSTALLATION_SAFETY_SCRIPT),
             "__DATABASE_SCRIPT__": _ps_literal(DATABASE_SCRIPT),
+            "__CLUSTER_SCRIPT__": _ps_literal(CLUSTER_SCRIPT),
             "__DATA_ROOT__": _ps_literal(root),
         }
         for placeholder, value in replacements.items():

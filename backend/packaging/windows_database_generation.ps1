@@ -98,7 +98,10 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
         -LifecycleLock $LifecycleLock
     $hostAuthority = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority $HostContract
     $publishedCurrent = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
-    if ($null -ne $publishedCurrent) {
+    if (
+        $null -ne $publishedCurrent -and
+        [string]$publishedCurrent.Payload.operation_id -ceq $operationId
+    ) {
         Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
             -ExpectedOperationId $operationId `
             -ExpectedCurrentSha256 ([string]$publishedCurrent.PayloadSha256) | Out-Null
@@ -131,6 +134,18 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
         Throw-TicketboxDatabaseGenerationOperationFailure `
             $publishedPrimary $publishedCleanup
         return $publishedResult
+    }
+    if (
+        $null -ne $publishedCurrent -and
+        (
+            [string]::IsNullOrEmpty(
+                [string]$intent.Payload.expected_predecessor_sha256
+            ) -or
+            [string]$publishedCurrent.PayloadSha256 -cne
+                [string]$intent.Payload.expected_predecessor_sha256
+        )
+    ) {
+        throw "database generation predecessor CURRENT 与 durable intent 漂移。"
     }
     $resumeCandidate = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "candidate" -AllowAbsent
@@ -214,8 +229,23 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
             $candidate = Read-TicketboxDatabaseGenerationOperationArtifact `
                 $stateRoot $operationId "candidate" -AllowAbsent
             $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
+            $currentForOperation = $null
+            if ($null -ne $current) {
+                if ([string]$current.Payload.operation_id -ceq $operationId) {
+                    $currentForOperation = $current
+                }
+                elseif (
+                    [string]::IsNullOrEmpty(
+                        [string]$intent.Payload.expected_predecessor_sha256
+                    ) -or
+                    [string]$current.PayloadSha256 -cne
+                        [string]$intent.Payload.expected_predecessor_sha256
+                ) {
+                    throw "database generation predecessor CURRENT changed during execution。"
+                }
+            }
             $next = Resolve-TicketboxDatabaseGenerationNextAction `
-                $credentials $source $target $candidate $current
+                $credentials $source $target $candidate $currentForOperation
             switch ($next) {
                 "ensure_credentials" {
                     $createdCredentials = New-TicketboxDatabaseGenerationCredentials `
@@ -227,13 +257,28 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                 "bind_source" {
                     $hostAuthority = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
                         $HostContract
-                    $evidence = Invoke-TicketboxDatabaseGenerationEmptySource `
-                        -StateRoot $stateRoot `
-                        -Intent $intent `
-                        -Credentials $credentials `
-                        -HostAuthority $hostAuthority `
-                        -MaintenanceAuthority $maintenanceAuthority `
-                        -LifecycleLock $LifecycleLock
+                    if ([string]::IsNullOrEmpty(
+                        [string]$intent.Payload.source_request_sha256
+                    )) {
+                        $evidence = Invoke-TicketboxDatabaseGenerationEmptySource `
+                            -StateRoot $stateRoot `
+                            -Intent $intent `
+                            -Credentials $credentials `
+                            -HostAuthority $hostAuthority `
+                            -MaintenanceAuthority $maintenanceAuthority `
+                            -LifecycleLock $LifecycleLock
+                    }
+                    else {
+                        $restoredSource = `
+                            Read-TicketboxDatabaseGenerationOperationArtifact `
+                                $stateRoot $operationId "restored-source"
+                        $evidence = Invoke-TicketboxDatabaseGenerationRestoredSource `
+                            -Intent $intent `
+                            -SourceEvidence $restoredSource `
+                            -HostAuthority $hostAuthority `
+                            -MaintenanceAuthority $maintenanceAuthority `
+                            -LifecycleLock $LifecycleLock
+                    }
                     [void](New-TicketboxDatabaseGenerationChainedArtifact `
                         $stateRoot $operationId "source-binding" $evidence `
                         $LifecycleLock)
@@ -244,10 +289,25 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                     [void](Assert-TicketboxDatabaseGenerationMaintenanceAuthority `
                         $maintenanceAuthority $intent $hostAuthority $LifecycleLock)
                     $superuserPassword = $maintenanceAuthority.Secret
+                    $emptySource = (
+                        [string]$source.Payload.source_kind -ceq "empty" -and
+                        [string]$source.Payload.source_revision -ceq "base" -and
+                        [string]::IsNullOrEmpty(
+                            [string]$intent.Payload.source_request_sha256
+                        )
+                    )
+                    $currentGenerationSource = (
+                        [string]$source.Payload.source_kind -ceq "current_generation" -and
+                        [string]$source.Payload.source_revision -ceq
+                            [string]$intent.Payload.target_revision -and
+                        -not [string]::IsNullOrEmpty(
+                            [string]$intent.Payload.source_request_sha256
+                        )
+                    )
                     if (
-                        [string]$source.Payload.source_kind -cne "empty" -or
-                        [string]$source.Payload.source_revision -cne "base" -or
-                        [string]$source.Payload.intent_sha256 -cne [string]$intent.PayloadSha256
+                        -not ($emptySource -or $currentGenerationSource) -or
+                        [string]$source.Payload.intent_sha256 -cne
+                            [string]$intent.PayloadSha256
                     ) {
                         throw "target authority 只接受已规范化的 exact SourceBinding。"
                     }
@@ -270,7 +330,10 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                         source_revision = [string]$source.Payload.source_revision
                         target_revision = [string]$intent.Payload.target_revision
                         generation_program_sha256 = [string]$intent.Payload.generation_program_sha256
-                        upgrade_required = $true
+                        upgrade_required = (
+                            [string]$source.Payload.source_revision -cne
+                                [string]$intent.Payload.target_revision
+                        )
                     }
                     $result = Invoke-TicketboxPackagedManagedSchemaUpgrade `
                         -HostAuthority $hostAuthority `

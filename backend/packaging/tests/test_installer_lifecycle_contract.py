@@ -312,6 +312,11 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_database_generation_retirement.ps1",
         "windows_database_generation_single_user.ps1",
         "windows_database_generation_projection.ps1",
+        "windows_dataset_backup.ps1",
+        "windows_dataset_restore.ps1",
+        "windows_installed_dataset_contract.ps1",
+        "windows_installed_dataset_backup_contract.ps1",
+        "windows_postgresql_candidate_cluster.ps1",
         "windows_backend_bootstrap.ps1",
         "windows_bootstrap_exposure_recovery.ps1",
         "install_bundled_services.ps1",
@@ -661,7 +666,9 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
             stale_start,
         )
     ]
-    assert stale_branch.count("return") == 2
+    assert stale_branch.count("return") == 1
+    assert "program_files_installed_backup_pending" not in stale_branch
+    assert "backup_deferred_until_program_files_installed" not in stale_branch
     assert "AllowCancelDuringInstall=no" in installer
     assert "CloseApplications=yes" in installer
     assert "RestartManagerSupport" not in installer
@@ -849,20 +856,19 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert uninstall.index("Save-TicketboxUninstallPgRecoveryIfRequired") < uninstall.index(
         'Write-Step "停止并删除 PostgreSQL 服务"'
     )
-    assert 'if ($mode -eq "repair_install")' in prepare
-    assert 'elseif ($mode -ne "preserved_data_reinstall")' in prepare
-    topology = prepare[prepare.index("$usingRecoveryPgService") :]
-    verify_installed_tools = topology.index("Save-TicketboxPgRecoveryToolset")
-    persist_capture = topology.index("Write-TicketboxLifecycleReceipt")
-    register_recovery = topology.index("Register-TicketboxRecoveryPgService")
-    dump_database = topology.index("Invoke-TicketboxPgDumpCustom")
-    persist_backup = topology.index("Set-TicketboxLifecycleReceiptPrepared")
-    assert verify_installed_tools < persist_capture < register_recovery < dump_database < persist_backup
-    assert "-SourcePgHome $InstalledPgHome" in topology
-    assert "-BuildManifestPath $InstalledBuildManifestPath" in topology
-    assert "Assert-TicketboxPgRecoveryToolset -ExpectedMajor $TargetPgMajor" in prepare
-    assert prepare.index("Register-TicketboxRecoveryPgService") < prepare.index("Invoke-TicketboxPgDumpCustom")
-    assert prepare.index("Invoke-TicketboxPgDumpCustom") < prepare.rindex("Remove-TicketboxRecoveryPgServiceIfExists")
+    source_classification = prepare.index("$mode = Get-TicketboxPreparedInstallMode")
+    fresh_gate = prepare.index('$mode -cne "fresh_install"', source_classification)
+    first_mutation = prepare.index("Repair-TicketboxPreflightInstallAcl", fresh_gate)
+    assert source_classification < fresh_gate < first_mutation
+    retired_prepare_authorities = (
+        "$usingRecoveryPgService",
+        "Save-TicketboxPgRecoveryToolset",
+        "Register-TicketboxRecoveryPgService",
+        "Invoke-TicketboxPgDumpCustom",
+        "preserved_data_reinstall",
+        "repair_install",
+    )
+    assert not any(retired in prepare for retired in retired_prepare_authorities)
 
     registry_lines = [line for line in installer.splitlines() if 'Root: HKLM; Subkey: "Software\\Ticketbox"' in line]
     preserved_names = {"DataRoot", "BackendPort", "PgPort", "BackendServiceName", "PgServiceName"}
@@ -871,161 +877,40 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         assert "uninsdeletevalue" not in line
 
 
-def test_preserved_data_reinstall_defers_verified_backup_until_target_tools_exist() -> None:
+def test_legacy_database_only_installer_backup_producers_are_retired() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
     install = _read("install_bundled_services.ps1")
     database = _read("windows_bundled_database.ps1")
-
-    preserved_branch = prepare[
-        prepare.index('if ($mode -eq "preserved_data_reinstall")') : prepare.index('elseif ($mode -ne "fresh_install")')
-    ]
-    assert "Assert-TicketboxLegacyPreservedDataLayout" in preserved_branch
-    assert "Get-TicketboxPreparedApplicationDatabaseConnection" in preserved_branch
-    assert "Assert-TicketboxRegisteredDataRootBinding" not in preserved_branch
-    captured = prepare.index('-PreparationStage "captured"')
-    deferred_return = prepare.index("if ($deferredPreservedBackup)", captured)
-    persist_deferred = prepare.index("Set-TicketboxLifecycleReceiptDeferredBackup", deferred_return)
-    acl_mutation = prepare.index("Repair-TicketboxPreflightInstallAcl", deferred_return)
-    assert captured < deferred_return < persist_deferred < acl_mutation
-
     flow = _read("ticketbox-installer-flow.isph")
-    install_boundary = flow.index("if CurStep = ssInstall")
-    persist_copy_boundary = flow.index("-MarkProgramFilesInstalledBackupPending", install_boundary)
-    memory_copy_boundary = flow.index("LifecycleFilesMayBeReplaced := True", persist_copy_boundary)
-    assert install_boundary < persist_copy_boundary < memory_copy_boundary
+    installer = _read_installer()
 
-    copy_boundary = prepare[
-        prepare.index("if ($MarkProgramFilesInstalledBackupPending)") : prepare.index("if ($RecoverPreparedInstall)")
-    ]
-    stage_persistence = min(
-        copy_boundary.index("Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending"),
-        copy_boundary.index("Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced"),
-    )
-    ratchet = copy_boundary.index("Set-TicketboxLifecycleReceiptTargetVersionFloor")
-    durable_verify = copy_boundary.index(
-        "Compare-TicketboxLifecycleVersions",
-        ratchet,
-    )
-    boundary_return = copy_boundary.rindex("return")
-    assert stage_persistence < ratchet < durable_verify < boundary_return
-    assert "-CurrentTargetBackendVersion $TargetBackendVersion" in copy_boundary
-    assert "-TargetBackendVersionFloor $TargetBackendVersion" in copy_boundary
+    for retired in (
+        "Invoke-TicketboxPreservedDataReinstallBackup",
+        "Invoke-PreUpgradeBackupIfNeeded",
+        "Invoke-TicketboxPgDumpCustom",
+        "Register-TicketboxDeferredPreservedPgService",
+        "Register-TicketboxRecoveryPgService",
+        "MarkProgramFilesInstalledBackupPending",
+        "program_files_installed_backup_pending",
+        "backup_deferred_until_program_files_installed",
+        "Ticketbox pre-upgrade backup and service preparation",
+    ):
+        assert retired not in prepare
+        assert retired not in install
+        assert retired not in database
+        assert retired not in flow
+        assert retired not in installer
 
-    service_phase = install.index("if ($DeferredPreservedDataBackup)")
-    cleanup_wal = install.index(
-        "Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending",
-        service_phase,
-    )
-    register_service = install.index("Register-TicketboxDeferredPreservedPgService", cleanup_wal)
-    backup = install.index("Invoke-TicketboxPreservedDataReinstallBackup", service_phase)
-    remove_service = install.index("Remove-TicketboxDeferredPreservedPgServiceIfExists", backup)
-    cleanup_complete = install.index("-CleanupPending $false", remove_service)
-    receipt_files = install.index("Set-TicketboxLifecycleReceiptDeferredBackupCompleted", cleanup_complete)
-    data_root_authority = install.index("Initialize-TicketboxDataRootMarker", receipt_files)
-    mutation = install.index("$mutationStarted = $true", data_root_authority)
-    backend_stop = install.index("Stop-ServiceIfExists", mutation)
-    recursive_acl = install.index("Initialize-TicketboxSecureDataRoot", backend_stop)
-    initdb = install.index("Initialize-PgClusterIfNeeded", recursive_acl)
-    assert cleanup_wal < register_service < backup < remove_service
-    assert remove_service < cleanup_complete < receipt_files < data_root_authority
-    assert data_root_authority < mutation < backend_stop < recursive_acl < initdb
-    deferred_service_contract = install[install.index("function Register-TicketboxDeferredPreservedPgService") : backup]
-    assert '"obj=",' in deferred_service_contract
-    assert "$PgServiceLogonAccount" in deferred_service_contract
-    assert "Set-TicketboxServiceIdentityContract" in deferred_service_contract
-    assert "Get-TicketboxDeferredBackupRoot" in install[register_service : backup + 600]
-    assert "-ExpectedPgMajor $TargetPgMajor" in install[service_phase:backup]
-    assert "-ExpectedPgMajor $ExpectedPgMajor" not in install[service_phase:backup]
-    assert "ReleaseConfig.pg_major" not in install
-    assert "ReleaseConfig.pg_major" not in database
+    assert "-MarkProgramFilesInstalled" in flow
+    assert "Ticketbox fresh installation preparation" in flow
+    assert "windows_dataset_backup.ps1" in installer
+    assert "windows_dataset_restore.ps1" in installer
+    source_classification = prepare.index("$mode = Get-TicketboxPreparedInstallMode")
+    fresh_gate = prepare.index('$mode -cne "fresh_install"', source_classification)
+    first_mutation = prepare.index("Repair-TicketboxPreflightInstallAcl", fresh_gate)
+    assert source_classification < fresh_gate < first_mutation
 
-    direct_backup = database[
-        database.index("function Invoke-TicketboxPreservedDataReinstallBackup") : database.index(
-            "function Invoke-PreUpgradeBackupIfNeeded"
-        )
-    ]
-    assert "& $PgCtl" not in direct_backup
-    assert "Start-Process" not in direct_backup
-    assert "Wait-TicketboxServiceSettledState" in direct_backup
-    assert "Assert-TicketboxReleaseServiceIdentity" in direct_backup
-    assert "-InstalledConfig $ReleaseConfig" in direct_backup
-    assert "Assert-TicketboxPgServiceCommand" in direct_backup
-    assert "Assert-TicketboxConnectedPostgresDataRoot" in direct_backup
-    assert "Invoke-TicketboxPgDumpCustom" in direct_backup
-    assert "Invoke-TicketboxPgRestoreList" in direct_backup
-    assert "Register-PgService" not in direct_backup
-    assert "Initialize-PgClusterIfNeeded" not in direct_backup
 
-    prepared_recovery = prepare[
-        prepare.index("if ($RecoverPreparedInstall)") : prepare.index("if ($CommitCompletedInstall)")
-    ]
-    cleanup_obligation = prepared_recovery[
-        prepared_recovery.index("if ([bool]$receipt.temporary_pg_service_cleanup_pending") : prepared_recovery.index(
-            "Remove-TicketboxRecoveryPgServiceIfExists"
-        )
-    ]
-    assert cleanup_obligation.index("Remove-TicketboxDeferredPreservedPgServiceIfExists") < cleanup_obligation.index(
-        "-CleanupPending $false"
-    )
-    pre_mutation_receipt = prepare.index("$preMutationLifecycleReceipt =")
-    pre_mutation_current = prepare.index(
-        "Assert-TicketboxPrepareLifecycleReceiptMutationAuthority",
-        pre_mutation_receipt,
-    )
-    first_preparation_mutation = min(
-        prepare.index("Set-TicketboxPreparedRuntimeServiceContract", pre_mutation_receipt),
-        prepare.index("Invoke-TicketboxInterruptedInitdbServiceRecovery", pre_mutation_receipt),
-    )
-    marker_acl_repair = prepare.index(
-        "Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded",
-        prepare.index("if ($PersistDatabaseGenerationIntentOnly)"),
-    )
-    assert marker_acl_repair < pre_mutation_receipt
-    assert pre_mutation_receipt < pre_mutation_current < first_preparation_mutation
-
-    stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
-    stale_dispatch = prepare[
-        stale_start : prepare.index(
-            "$hasPgService = Test-TicketboxServiceExists",
-            stale_start,
-        )
-    ]
-    completed_branch = stale_dispatch[
-        stale_dispatch.index("if ([bool]$staleReceipt.install_completed)") : stale_dispatch.index(
-            "elseif ([string]$staleReceipt.preparation_stage -in @("
-        )
-    ]
-    captured_branch = stale_dispatch[
-        stale_dispatch.index("elseif ([string]$staleReceipt.preparation_stage -in @(") : stale_dispatch.index(
-            'elseif ([string]$staleReceipt.preparation_stage -eq "program_files_installed_backup_pending")'
-        )
-    ]
-    backup_pending_branch = stale_dispatch[
-        stale_dispatch.index(
-            'elseif ([string]$staleReceipt.preparation_stage -eq "program_files_installed_backup_pending")'
-        ) : stale_dispatch.index("else {", stale_dispatch.index("program_files_installed_backup_pending"))
-    ]
-    post_copy_branch = stale_dispatch[
-        stale_dispatch.index("else {", stale_dispatch.index("program_files_installed_backup_pending")) :
-    ]
-    assert "ConvertTo-TicketboxCurrentLifecycleReceipt" not in stale_dispatch
-    assert (
-        captured_branch.index("Remove-TicketboxRecoveryPgServiceIfExists")
-        < captured_branch.index("Assert-TicketboxPreparedServiceContracts")
-        < captured_branch.index("Invoke-TicketboxPreparedInstallRecovery")
-        < captured_branch.index("Remove-TicketboxLifecycleReceipt")
-    )
-    assert "ConvertTo-TicketboxCurrentLifecycleReceipt" not in captured_branch
-    for branch in (completed_branch, post_copy_branch):
-        assert branch.index("Remove-TicketboxRecoveryPgServiceIfExists") < branch.index(
-            "Assert-TicketboxPreparedServiceContracts"
-        )
-    assert (
-        backup_pending_branch.index("Remove-TicketboxRecoveryPgServiceIfExists")
-        < backup_pending_branch.index("Remove-TicketboxDeferredPreservedPgServiceIfExists")
-        < backup_pending_branch.index("Assert-TicketboxPreparedServiceContracts")
-        < backup_pending_branch.index("Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending")
-    )
 
 
 def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
@@ -1477,7 +1362,7 @@ def test_retired_portable_installer_cannot_return() -> None:
     assert "Volume GUID" in readme
     postgres_migration = (ROOT / "docs" / "runbook" / "POSTGRES_MIGRATION.md").read_text(encoding="utf-8")
     assert "本节只用于源码/测试环境" in postgres_migration
-    assert "正式 Windows 恢复入口尚未出货" in postgres_migration
+    assert "只能恢复管理器明确选择的完整 generation" in postgres_migration
     windows_backup_task = (ROOT / "docs" / "runbook" / "WINDOWS_BACKUP_TASK.md").read_text(encoding="utf-8")
     rollback = (ROOT / "docs" / "runbook" / "ROLLBACK.md").read_text(encoding="utf-8")
     gray_acceptance = (ROOT / "docs" / "runbook" / "GRAY_ACCEPTANCE_EXECUTION.md").read_text(encoding="utf-8")
@@ -1494,8 +1379,8 @@ def test_retired_portable_installer_cannot_return() -> None:
         postgres_migration,
     )
     for contract in operator_restore_contracts:
-        assert "尚未出货" in contract
         assert "QUALIFIED_HOLD" in contract
+        assert "完整" in contract
         for promise in retired_restore_promises:
             assert promise not in contract
     active_contracts = (
@@ -2647,7 +2532,7 @@ def test_installer_uses_protected_lifecycle_lock_as_sole_serial_authority() -> N
         flow.index("function PrepareAuthoritativePayloadReplacement") : flow.index("function PrepareToInstall")
     ]
     guard_start = prepare.index("StartDataRootMutationGuard")
-    pre_copy = prepare.index("'Ticketbox pre-upgrade backup and service preparation'")
+    pre_copy = prepare.index("'Ticketbox fresh installation preparation'")
     assert guard_start < pre_copy
     assert "AssertDataRootMutationGuardActive()" in prepare[guard_start:pre_copy]
 
@@ -2692,7 +2577,7 @@ def test_manager_maintenance_gate_spans_setup_and_uninstall_payload_mutation() -
     prepare = flow[flow.index("function PrepareToInstall") : flow.index("procedure CurStepChanged")]
     assert "StartManagerMaintenanceGate()" in prepare
     assert "StartDataRootMutationGuard" not in prepare
-    assert "'Ticketbox pre-upgrade backup and service preparation'" not in prepare
+    assert "'Ticketbox fresh installation preparation'" not in prepare
 
     install = flow[flow.index("procedure CurStepChanged") : flow.index("procedure DeinitializeSetup")]
     assert install.count("AssertManagerMaintenanceGateActive()") >= 2
@@ -2703,7 +2588,7 @@ def test_manager_maintenance_gate_spans_setup_and_uninstall_payload_mutation() -
         flow.index("function PrepareAuthoritativePayloadReplacement") : flow.index("function PrepareToInstall")
     ]
     assert after_close_applications.index("StartDataRootMutationGuard") < (
-        after_close_applications.index("'Ticketbox pre-upgrade backup and service preparation'")
+        after_close_applications.index("'Ticketbox fresh installation preparation'")
     )
     finish = flow[flow.index("function NextButtonClick") : flow.index("function PrepareToInstall")]
     assert "ReleaseManagerMaintenanceGate()" in finish

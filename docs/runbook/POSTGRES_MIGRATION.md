@@ -26,22 +26,19 @@
 
 ## 1. 备份
 
-- 计划任务 `TicketboxBackup`（`scripts\maintenance_ticketbox.ps1 -Backup`）走 `pg_dump -Fc` → `<DATA_ROOT>\backups\ticketbox-*.dump`。保留天数清理按 `.dump` 后缀。配置见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
-- 凭证：`pg_dump` 用 `DATABASE_URL` 内联口令，或设 `PGPASSWORD` / `%APPDATA%\postgresql\pgpass.conf`。
-- **手动备份 + 列档校验**（建议每次大改前各做一次）：
-
-  ```powershell
-  cd E:\projects\xiaopiaojia
-  powershell -ExecutionPolicy Bypass -File backend\scripts\backup_database.ps1   # 产出 ticketbox-*.dump
-  # 列档校验(无需起库)：pg_restore --list 应列出表
-  pg_restore --list "<DATA_ROOT>\backups\ticketbox-YYYYMMDD-HHMMSS.dump"
-  ```
+- 正式 Windows 安装只通过桌面管理器创建完整 dataset generation；详见
+  [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。旧 DB-only 脚本和计划任务已经退役。
+- CI/source 的真实 PostgreSQL 演练运行 `python scripts/postgres_backup_drill.py --upload-root <absolute-root>`：
+  它调用同一 complete-generation backend owner，再通过 bounded adapter 恢复到专用 scratch 库。
+- PostgreSQL 工具只接收无内联口令的显式 URL 与受保护 passfile；不能从 ambient `PGPASSWORD`、
+  cwd 或默认服务配置猜测凭据和目标。
 
 ## 2. 源码/测试 scratch 恢复演练
 
 PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。本节只用于源码/测试环境把归档
 恢复到独立 scratch 库，**不得**对正式安装的 `ticketbox` 库执行 `DROP/CREATE/pg_restore`。
-正式 Windows 恢复入口尚未出货，整体能力继续 `QUALIFIED_HOLD`。
+正式 Windows 安装不得执行本节命令；它只能恢复管理器明确选择的完整 generation。整体资格仍需
+同一 exact-head EXE 在干净 Windows VM 上闭合，因此继续 `QUALIFIED_HOLD`。
 
 ```powershell
 cd E:\projects\xiaopiaojia

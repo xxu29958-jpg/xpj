@@ -20,10 +20,27 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
         Get-TicketboxInstallerStateDirectory
     )
     $intent = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
-    $sourceCreateAttempt = Read-TicketboxDatabaseGenerationOperationArtifact `
-        $stateRoot $operationId "source-create-attempt"
     $source = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "source-binding"
+    $sourceEvidenceKind = switch ([string]$source.Payload.source_kind) {
+        "empty" { "source-create-attempt" }
+        "current_generation" { "restored-source" }
+        default { throw "database generation commit source kind 无效。" }
+    }
+    $sourceEvidence = Read-TicketboxDatabaseGenerationOperationArtifact `
+        $stateRoot $operationId $sourceEvidenceKind
+    $sourceEvidenceValid = if ($sourceEvidenceKind -ceq "source-create-attempt") {
+        [string]::IsNullOrEmpty([string]$intent.Payload.source_request_sha256)
+    }
+    else {
+        -not [string]::IsNullOrEmpty(
+            [string]$intent.Payload.source_request_sha256
+        ) -and
+        [string]$sourceEvidence.Payload.source_request_sha256 -ceq
+            [string]$intent.Payload.source_request_sha256 -and
+        [string]$sourceEvidence.Payload.predecessor_current_sha256 -ceq
+            [string]$intent.Payload.expected_predecessor_sha256
+    }
     $target = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "target-authorization"
     $recoveryProof = Read-TicketboxDatabaseGenerationOperationArtifact `
@@ -79,10 +96,11 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
         [string]$terminalState.Payload.maintenance_service_transition_state -cne "absent" -or
         [string]$candidate.Payload.source_binding_sha256 -cne [string]$source.PayloadSha256 -or
         [string]$candidate.Payload.target_authorization_sha256 -cne [string]$target.PayloadSha256 -or
-        [string]$source.Payload.create_attempt_sha256 -cne
-            [string]$sourceCreateAttempt.PayloadSha256 -or
-        [string]$sourceCreateAttempt.Payload.intent_sha256 -cne
+        [string]$source.Payload.source_evidence_sha256 -cne
+            [string]$sourceEvidence.PayloadSha256 -or
+        [string]$sourceEvidence.Payload.intent_sha256 -cne
             [string]$intent.PayloadSha256 -or
+        -not $sourceEvidenceValid -or
         [string]$source.Payload.intent_sha256 -cne [string]$intent.PayloadSha256 -or
         [string]$target.Payload.intent_sha256 -cne [string]$intent.PayloadSha256 -or
         [string]$target.Payload.source_binding_sha256 -cne [string]$source.PayloadSha256 -or

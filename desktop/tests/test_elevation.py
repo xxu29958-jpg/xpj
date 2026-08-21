@@ -47,6 +47,7 @@ def _release() -> WindowsReleaseConfig:
         backend_ready_timeout_ms=31_000,
         backend_ready_poll_interval_ms=375,
         backend_health_request_timeout_ms=1_750,
+        database_tool_timeout_ms=600_000,
     )
 
 
@@ -320,6 +321,83 @@ def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path:
     assert events == ["validate", "build"]
     assert watchdog_timeouts == [release.helper_watchdog_seconds("stop")]
     assert results == [(HELPER_EXIT_MISSING_SERVICE, "missing")]
+
+
+def test_elevated_backup_delegates_to_installed_owner_without_python_lock(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    layout = InstalledLayout(
+        tmp_path / "program",
+        tmp_path / "data",
+        8000,
+        5432,
+        "TicketboxBackend",
+        "TicketboxPg",
+        "9.8.7",
+    )
+    release = _release()
+    config = ManagerConfig(
+        runtime=InstalledRuntimeConfig(layout, release),
+        backend_host="127.0.0.1",
+        backend_port=8000,
+        manager_host="127.0.0.1",
+        manager_port=8799,
+        public_base_url=None,
+        expected_backend_version=layout.backend_version,
+        expected_installation_id=layout.installation_id,
+        health_request_timeout_seconds=1.0,
+    )
+    events: list[str] = []
+    results: list[tuple[int, str]] = []
+    monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: True)
+    monkeypatch.setattr("backend_manager.__main__.validate_helper_result_channel", lambda *_args: None)
+    monkeypatch.setattr("backend_manager.__main__.load_config", lambda **_kwargs: config)
+    monkeypatch.setattr(
+        "backend_manager.__main__.validate_installed_service_contract",
+        lambda _layout, _release: events.append("validate"),
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.run_installed_dataset_backup",
+        lambda actual_layout, actual_release: events.append(
+            "backup" if (actual_layout, actual_release) == (layout, release) else "wrong",
+        ),
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.hold_installer_lifecycle_lock",
+        lambda: (_ for _ in ()).throw(AssertionError("PowerShell owner must hold the lifecycle lock")),
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.start_helper_watchdog",
+        lambda *, timeout_seconds: (events.append(f"watchdog:{timeout_seconds}"), threading.Event())[-1],
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.write_helper_result",
+        lambda _path, _root, _nonce, _action, _owner_sid, _file_id, code, detail: results.append((code, detail)),
+    )
+
+    assert main(
+        [
+            "--elevated-service-action",
+            "backup",
+            "--helper-result-path",
+            str(tmp_path / "result.json"),
+            "--helper-result-root",
+            str(tmp_path),
+            "--helper-result-nonce",
+            "n" * 43,
+            "--helper-channel-owner-sid",
+            "S-1-5-21-1000",
+            "--helper-channel-file-id",
+            "1:2",
+        ],
+    ) == 0
+    assert events == [
+        "watchdog:" + str(release.helper_watchdog_seconds("backup")),
+        "validate",
+        "backup",
+    ]
+    assert results == [(0, "Ticketbox 完整数据集备份已完成。")]
 
 
 def _no_op_lock():

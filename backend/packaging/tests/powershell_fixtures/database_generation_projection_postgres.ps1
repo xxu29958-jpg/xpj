@@ -33,6 +33,7 @@ $pgCtl = Join-Path $PgBin "pg_ctl.exe"
 $psql = Join-Path $PgBin "psql.exe"
 $script:bootstrapPassword = "projection-admin-password-1234567890"
 $script:runtimePassword = "projection-runtime-password-1234567890"
+$script:backupPassword = "projection-backup-password-1234567890"
 if ($PauseAfterStart -and $PauseAfterOneShotServiceStart) {
     throw "Only one projection pause boundary may be selected."
 }
@@ -188,18 +189,16 @@ function Assert-TestRolePolicy {
 function Assert-RuntimeObservation {
     param(
         [Parameter(Mandatory = $true)][object]$ExpectedIdentity,
-        [Parameter(Mandatory = $true)][string]$ServerId,
-        [Parameter(Mandatory = $true)][string]$DataGeneration,
         [Parameter(Mandatory = $true)][string]$ExpectedAclSha256,
         [AllowEmptyString()][string]$ExpectedBootstrapRetirement = '',
         [switch]$ExpectCapabilityFailure
     )
     $observation = Invoke-TestPythonRuntimeObservation
     $identity = @($observation.identity)
-    if ($identity.Count -ne 20) {
+    if ($identity.Count -ne 24) {
         throw "runtime generation identity returned the wrong field count"
     }
-    $failedCapabilities = @($identity[7..19] | Where-Object { $_ -ne $true })
+    $failedCapabilities = @($identity[10..23] | Where-Object { $_ -ne $true })
     if ($ExpectCapabilityFailure) {
         if ($failedCapabilities.Count -eq 0) {
             throw "runtime capability query accepted hostile role state"
@@ -211,9 +210,12 @@ function Assert-RuntimeObservation {
         [uint32]$identity[1] -ne [uint32]$ExpectedIdentity.DatabaseOid -or
         $identity[2] -cne [string]$ExpectedIdentity.DatabaseName -or
         $identity[3] -cne "ticketbox_runtime" -or
-        $identity[4] -cne $ServerId -or
-        $identity[5] -cne $DataGeneration -or
-        $identity[6] -cne $ExpectedBootstrapRetirement -or
+        $identity[4] -cne [string]$ExpectedIdentity.DatasetId -or
+        [int64]$identity[5] -ne [int64]$ExpectedIdentity.RestoreEpoch -or
+        $identity[6] -cne [string]$ExpectedIdentity.SchemaRevision -or
+        $identity[7] -cne [string]$ExpectedIdentity.SchemaMinCompatible -or
+        $identity[8] -cne [string]$ExpectedIdentity.SemanticRevision -or
+        $identity[9] -cne $ExpectedBootstrapRetirement -or
         $failedCapabilities.Count -ne 0 -or
         [string]$observation.runtime_acl_sha256 -cne $ExpectedAclSha256
     ) {
@@ -554,9 +556,12 @@ CREATE ROLE ticketbox_migrator LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATERO
     NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1 PASSWORD '$script:runtimePassword'
     VALID UNTIL '$validUntil';
 CREATE ROLE ticketbox_runtime NOLOGIN PASSWORD '$script:runtimePassword';
+CREATE ROLE ticketbox_backup NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+    NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 0 PASSWORD '$script:backupPassword';
 CREATE ROLE ticketbox_foreign NOLOGIN;
 GRANT ticketbox_owner TO ticketbox_migrator WITH INHERIT FALSE, SET TRUE;
 ALTER ROLE ticketbox_runtime SET search_path = pg_catalog, public;
+ALTER ROLE ticketbox_backup SET search_path = pg_catalog, public;
 "@ | Out-Null
     Invoke-TestPsql -Database "postgres" `
         -Sql "CREATE DATABASE ticketbox OWNER ticketbox_owner" | Out-Null
@@ -668,8 +673,7 @@ REVOKE SELECT ON TABLES FROM ticketbox_foreign;
     if (-not $fullAclRejectedBeforeMigration) {
         throw "full table ACL attestation accepted an empty pre-migration schema"
     }
-    $serverId = "11111111-1111-4111-8111-111111111111"
-    $dataGeneration = "22222222-2222-4222-8222-222222222222"
+    $datasetId = "11111111-1111-4111-8111-111111111111"
     Invoke-TestPsql -Database "ticketbox" -Sql @"
 CREATE TABLE public.app_meta (
     key text PRIMARY KEY,
@@ -677,21 +681,37 @@ CREATE TABLE public.app_meta (
     updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE public.alembic_version (version_num varchar(32) PRIMARY KEY);
+CREATE TABLE public.dataset_authority (
+    singleton_id smallint PRIMARY KEY CHECK (singleton_id = 1),
+    dataset_id varchar(36) NOT NULL,
+    restore_epoch bigint NOT NULL CHECK (restore_epoch >= 0),
+    schema_revision varchar(32) NOT NULL,
+    schema_min_compatible varchar(64) NOT NULL,
+    semantic_revision varchar(64) NOT NULL,
+    created_at timestamptz NOT NULL,
+    restored_from_backup_id varchar(36)
+);
 CREATE SEQUENCE public.runtime_acl_probe_seq;
 CREATE FUNCTION public.runtime_acl_probe() RETURNS integer LANGUAGE sql AS 'SELECT 1';
 ALTER SCHEMA public OWNER TO ticketbox_owner;
 ALTER TABLE public.app_meta OWNER TO ticketbox_owner;
 ALTER TABLE public.alembic_version OWNER TO ticketbox_owner;
+ALTER TABLE public.dataset_authority OWNER TO ticketbox_owner;
 ALTER SEQUENCE public.runtime_acl_probe_seq OWNER TO ticketbox_owner;
 ALTER FUNCTION public.runtime_acl_probe() OWNER TO ticketbox_owner;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 REVOKE ALL ON SEQUENCE public.runtime_acl_probe_seq FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.runtime_acl_probe() FROM PUBLIC;
 INSERT INTO public.app_meta (key, value) VALUES
-    ('server_id', '$serverId'),
-    ('data_generation', '$dataGeneration'),
     ('database_generation_binding', '{}');
-INSERT INTO public.alembic_version (version_num) VALUES ('20260809_0001');
+INSERT INTO public.dataset_authority (
+    singleton_id, dataset_id, restore_epoch, schema_revision,
+    schema_min_compatible, semantic_revision, created_at, restored_from_backup_id
+) VALUES (
+    1, '$datasetId', 0, '20260821_0001',
+    '1.2.0', 'ticketbox-dataset-semantics-v1', CURRENT_TIMESTAMP, NULL
+);
+INSERT INTO public.alembic_version (version_num) VALUES ('20260821_0001');
 REVOKE EXECUTE ON FUNCTION pg_catalog.pg_control_system() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO ticketbox_runtime;
 GRANT USAGE ON SCHEMA public TO ticketbox_runtime;
@@ -727,7 +747,9 @@ GRANT SELECT ON public.app_meta, public.alembic_version TO ticketbox_runtime;
         -PreserveRuntimeFence
     Invoke-TestPsql -Database "postgres" -Sql @"
 ALTER ROLE ticketbox_runtime LOGIN CONNECTION LIMIT -1;
+ALTER ROLE ticketbox_backup LOGIN CONNECTION LIMIT 1;
 GRANT CONNECT ON DATABASE ticketbox TO ticketbox_runtime;
+GRANT CONNECT ON DATABASE ticketbox TO ticketbox_backup;
 "@ | Out-Null
     Assert-TicketboxDatabaseRolePolicy $authority $secret "active"
     Assert-TicketboxDatabaseRuntimeAcl `
@@ -799,12 +821,12 @@ REVOKE ticketbox_owner FROM ticketbox_migrator;
 ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
 "@ | Out-Null
     Assert-MigratorState -Expected "retired_pending_sessions"
-    Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
+    Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256 -ExpectCapabilityFailure
     Stop-TestRoleSleeper -Role "ticketbox_migrator" -Process $sleeper
     $sleeper = $null
     Assert-MigratorState -Expected "retired"
 
-    Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
+    Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256
     Invoke-TestPsql -Database "ticketbox" -Sql (
         "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_control_system() FROM ticketbox_runtime"
     ) | Out-Null
@@ -837,10 +859,10 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
     )) {
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
         Assert-TestRolePolicy -Phase "retired" -ExpectFailure
-        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
+        Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256 -ExpectCapabilityFailure
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
         Assert-TestRolePolicy -Phase "retired"
-        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
+        Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256
     }
     Invoke-TestPsql -Database "postgres" -Sql "ALTER ROLE ticketbox_runtime NOLOGIN" | Out-Null
     Invoke-TestPythonRuntimeObservation -ExpectFailure
@@ -860,20 +882,20 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
     )) {
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
         Assert-TestRolePolicy -Phase "retired" -ExpectFailure
-        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
+        Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256 -ExpectCapabilityFailure
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
         Assert-TestRolePolicy -Phase "retired"
-        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
+        Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256
     }
     Invoke-TestPsql -Database "postgres" -Sql (
         "ALTER ROLE ticketbox_owner LOGIN PASSWORD '$script:runtimePassword'"
     ) | Out-Null
     $sleeper = Start-TestRoleSleeper -Role "ticketbox_owner"
     Invoke-TestPsql -Database "postgres" -Sql "ALTER ROLE ticketbox_owner NOLOGIN" | Out-Null
-    Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
+    Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256 -ExpectCapabilityFailure
     Stop-TestRoleSleeper -Role "ticketbox_owner" -Process $sleeper
     $sleeper = $null
-    Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
+    Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256
 
     foreach ($scenario in @(
         @{ Mutation = "GRANT TRUNCATE ON public.app_meta TO ticketbox_runtime"; Cleanup = "REVOKE TRUNCATE ON public.app_meta FROM ticketbox_runtime" },
@@ -902,7 +924,7 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         Invoke-TestPsql -Database "ticketbox" -Sql $scenario.Cleanup | Out-Null
         Assert-TicketboxDatabaseRuntimeAcl $authority $secret `
             -IncludeManagedSchemaCurrencyAuthority
-        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
+        Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256
     }
 
     foreach ($scenario in @(
@@ -925,11 +947,11 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
         Assert-MigratorState -Expected "reject" -RejectRolePhase "retired"
         if ($scenario.RuntimeObservable -cne $false) {
-            Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
+            Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256 -ExpectCapabilityFailure
         }
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
         Assert-MigratorState -Expected "retired"
-        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
+        Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256
     }
     foreach ($scenario in @(
         @{
@@ -943,17 +965,17 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
     )) {
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
         Assert-TestRolePolicy -Phase "retired" -ExpectFailure
-        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
+        Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256 -ExpectCapabilityFailure
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
         Assert-MigratorState -Expected "retired"
-        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
+        Assert-RuntimeObservation $liveIdentity $expectedRuntimeAclSha256
     }
 
     $intent = [pscustomobject]@{
         PayloadSha256 = ('a' * 64)
         Payload = [pscustomobject]@{
             operation_id = '33333333-3333-4333-8333-333333333333'
-            target_revision = '20260809_0001'
+            target_revision = '20260821_0001'
         }
     }
     $candidate = [pscustomobject]@{
@@ -961,7 +983,7 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         Payload = [pscustomobject]@{
             operation_id = '33333333-3333-4333-8333-333333333333'
             intent_sha256 = ('a' * 64)
-            target_revision = '20260809_0001'
+            target_revision = '20260821_0001'
         }
     }
     function Assert-TicketboxLifecycleOperationLease { param($LifecycleLock) }
@@ -1045,7 +1067,7 @@ WHERE role.rolname = 'postgres';
             throw "runtime role did not observe bootstrap retirement"
         }
         Assert-RuntimeObservation `
-            $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 `
+            $liveIdentity $expectedRuntimeAclSha256 `
             -ExpectedBootstrapRetirement (
                 Get-TicketboxDatabaseGenerationBootstrapRetirementJson `
                     $intent $candidate

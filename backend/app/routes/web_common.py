@@ -51,7 +51,7 @@ from app.routes._web_session_common import (
     _with_ledger,
     parse_form_row_version_token,
 )
-from app.services import backup_status_service, web_stats_service
+from app.services import backup_service, web_stats_service
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import minor_amount_major_number, minor_amount_value, minor_unit_digits
@@ -268,12 +268,12 @@ def _dashboard_budget_goals_block(
 
 def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
     week_ago = now - timedelta(days=7)
-    backup_status = backup_status_service.latest_backup_lightweight()
+    backup = backup_service.latest_backup()
     backup_age_days = None
-    if backup_status.state == "valid" and backup_status.entry is not None:
+    if backup is not None:
         backup_age_days = max(
             0,
-            (now.astimezone() - backup_status.entry.created_at).days,
+            (now.astimezone() - backup.created_at).days,
         )
     return {
         "recent_count": web_stats_service.recent_expense_count(
@@ -287,8 +287,7 @@ def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
             week_ago,
         ),
         "active_device_count": web_stats_service.active_device_count(db, ledger_id),
-        "backup_available": backup_status.state == "valid",
-        "backup_unverified": backup_status.state == "unverified",
+        "backup_available": backup is not None,
         "backup_age_days": backup_age_days,
     }
 

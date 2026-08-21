@@ -257,7 +257,15 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     assert "Publish-TicketboxDatabaseGenerationCurrent" in owner
     assert "host_contract_sha256" in policy
     assert "projection_contract_sha256" in policy
+    assert "source_request_sha256" in policy + artifacts
     assert 'source_kind = "empty"' in source
+    assert 'source_kind = "current_generation"' in source
+    assert '"restored-source"' in artifacts + owner
+    assert "Invoke-TicketboxDatabaseGenerationRestoredSource" in owner
+    assert "source_evidence_sha256" in artifacts + source
+    assert "create_attempt_sha256" not in artifacts + source
+    assert "backup_password" in artifacts
+    assert "backup_scram_salt" in artifacts
     assert owner.count("catch { $cleanup += $_ }") >= 3
     cleanup_start = owner.index("finally {", owner.index("catch { $primary = $_ }"))
     maintenance_cleanup = owner.index(
@@ -345,10 +353,15 @@ def test_target_execution_authority_is_retry_stable_and_binding_is_insert_only(t
         "database_oid",
         "database_name",
         "runtime_role",
-        "logical_server_id",
-        "logical_data_generation",
+        "dataset_id",
+        "restore_epoch",
+        "schema_revision",
+        "schema_min_compatible",
+        "semantic_revision",
     ):
         assert field in binding
+    assert "logical_server_id" not in binding
+    assert "logical_data_generation" not in binding
     script = f"""
 $ErrorActionPreference = 'Stop'
 function Assert-TicketboxDatabaseGenerationExactProperties {{ param($Value, $ExpectedNames, $Label) }}
@@ -408,21 +421,25 @@ function New-FailingSecret([string]$Name) {{
 $credentials = [pscustomobject]@{{
     RuntimePassword = New-FailingSecret 'runtime'
     MigratorPassword = New-FailingSecret 'migrator'
+    BackupPassword = New-FailingSecret 'backup'
     RuntimeVerifier = 'runtime-verifier'
     MigratorVerifier = 'migrator-verifier'
+    BackupVerifier = 'backup-verifier'
     Artifact = @{{}}
 }}
 try {{ Close-TicketboxDatabaseGenerationCredentials $credentials }}
 catch {{ $credentialCleanup = $_.Exception }}
 if (
     $credentialCleanup -isnot [AggregateException] -or
-    $credentialCleanup.InnerExceptions.Count -ne 2 -or
-    ($script:disposed -join ',') -cne 'runtime,migrator' -or
+    $credentialCleanup.InnerExceptions.Count -ne 3 -or
+    ($script:disposed -join ',') -cne 'runtime,migrator,backup' -or
     $null -ne $credentials.RuntimePassword -or
-    $null -ne $credentials.MigratorPassword
+    $null -ne $credentials.MigratorPassword -or
+    $null -ne $credentials.BackupPassword
 ) {{ throw 'credential cleanup did not preserve every failure and attempt' }}
 $runtimeCredentials = [pscustomobject]@{{
     RuntimePassword = New-FailingSecret 'runtime-again'
+    BackupPassword = New-FailingSecret 'backup-again'
     HttpBootstrapSecret = New-FailingSecret 'http'
     Artifact = @{{}}
 }}
@@ -430,9 +447,10 @@ try {{ Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials }
 catch {{ $runtimeCleanup = $_.Exception }}
 if (
     $runtimeCleanup -isnot [AggregateException] -or
-    $runtimeCleanup.InnerExceptions.Count -ne 2 -or
-    ($script:disposed -join ',') -cne 'runtime,migrator,runtime-again,http' -or
+    $runtimeCleanup.InnerExceptions.Count -ne 3 -or
+    ($script:disposed -join ',') -cne 'runtime,migrator,backup,runtime-again,backup-again,http' -or
     $null -ne $runtimeCredentials.RuntimePassword -or
+    $null -ne $runtimeCredentials.BackupPassword -or
     $null -ne $runtimeCredentials.HttpBootstrapSecret
 ) {{ throw 'runtime credential cleanup did not preserve every failure and attempt' }}
 """
@@ -678,6 +696,143 @@ foreach ($name in $dependencyNames) {{
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_successor_intent_replaces_only_exact_predecessor_authority(tmp_path: Path) -> None:
+    successor = _function(
+        POLICY.read_text(encoding="utf-8-sig"),
+        "New-TicketboxDatabaseGenerationIntent",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Assert-TicketboxLifecycleOperationLease {{}}
+function ConvertTo-TicketboxNumericVersion {{ param($Version); return $Version }}
+function Assert-TicketboxDatabaseGenerationLowerSha256 {{
+    param($Value, $Label)
+    if ([string]$Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw "$Label invalid" }}
+}}
+function Assert-TicketboxDatabaseGenerationExactProperties {{}}
+function Initialize-TicketboxDatabaseGenerationStateRoot {{ return 'state' }}
+function Get-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); return ($Value | ConvertTo-Json -Depth 8 -Compress) }}
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); return ($Value | ConvertTo-Json -Depth 8 -Compress) }}
+function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('9' * 64) }}
+$script:TicketboxDatabaseGenerationProgramRelativePath = 'DATABASE_GENERATION_PROGRAM.json'
+$script:TicketboxDatabaseMaintenanceHelperRelativePath = 'ticketbox-database-maintenance.exe'
+$script:writes = 0
+$script:existing = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = '11111111-1111-4111-8111-111111111111'
+        installation_id = '22222222-2222-4222-8222-222222222222'
+        expected_predecessor_sha256 = ''
+    }}
+}}
+$script:current = [pscustomobject]@{{
+    PayloadSha256 = ('b' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = $script:existing.Payload.operation_id
+        installation_id = $script:existing.Payload.installation_id
+        intent_sha256 = $script:existing.PayloadSha256
+    }}
+}}
+function Read-TicketboxDatabaseGenerationActiveIntent {{ return $script:existing }}
+function Read-TicketboxDatabaseGenerationCurrent {{ return $script:current }}
+function Write-TicketboxDatabaseGenerationEnvelope {{
+    param($Path, $Kind, $Payload, $Lock)
+    $script:writes += 1
+    $script:existing = [pscustomobject]@{{
+        PayloadSha256 = ('c' * 64)
+        Payload = [pscustomobject]$Payload
+    }}
+    return $script:existing
+}}
+{successor}
+$request = @{{
+    InstallerState = 'state'; LifecycleLock = @{{}}
+    ExpectedPredecessorSha256 = ('b' * 64)
+    SourceRequestSha256 = ('d' * 64)
+    TargetBackendVersion = '1.2.3'
+    MaintenanceHelperSize = 1; MaintenanceHelperSha256 = ('e' * 64)
+    ProgramContract = [pscustomobject]@{{
+        RelativePath = 'DATABASE_GENERATION_PROGRAM.json'; Sha256 = ('f' * 64)
+        Size = 1; TargetRevision = '20260821_0001'
+    }}
+    HostContract = [pscustomobject]@{{ schema = 'host-v1' }}
+    ProjectionContract = [pscustomobject]@{{ schema = 'projection-v1' }}
+}}
+$first = New-TicketboxDatabaseGenerationIntent @request
+$second = New-TicketboxDatabaseGenerationIntent @request
+if (
+    $script:writes -ne 1 -or
+    [string]$first.Artifact.Payload.operation_id -ceq
+        [string]$script:current.Payload.operation_id -or
+    [string]$first.Artifact.Payload.installation_id -cne
+        [string]$script:current.Payload.installation_id -or
+    [string]$first.Artifact.Payload.source_request_sha256 -cne ('d' * 64) -or
+    [string]$second.Artifact.PayloadSha256 -cne [string]$first.Artifact.PayloadSha256
+) {{ throw 'successor intent did not replace exact predecessor once' }}
+$script:current.PayloadSha256 = ('8' * 64)
+$rejected = $false
+try {{ New-TicketboxDatabaseGenerationIntent @request | Out-Null }} catch {{ $rejected = $true }}
+if (-not $rejected -or $script:writes -ne 1) {{ throw 'stale predecessor mutated active intent' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="database-generation-successor-intent.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_successor_release_binding_keeps_installation_identity_without_reusing_install_operation(
+    tmp_path: Path,
+) -> None:
+    assertion = _function(
+        CONTRACT.read_text(encoding="utf-8-sig"),
+        "Assert-TicketboxDatabaseGenerationReleaseBinding",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Get-TicketboxInstalledDatabaseGenerationProgram {{
+    return [pscustomobject]@{{ target_revision = '20260821_0001' }}
+}}
+{assertion}
+$release = [pscustomobject]@{{
+    InstallationOperationId = '11111111-1111-4111-8111-111111111111'
+    InstallationId = '22222222-2222-4222-8222-222222222222'
+    BackendVersionFloor = '1.2.3'
+    MaintenanceHelperRelativePath = 'ticketbox-database-maintenance.exe'
+    MaintenanceHelperSize = 5
+    MaintenanceHelperSha256 = ('a' * 64)
+    DatabaseGenerationProgramRelativePath = 'DATABASE_GENERATION_PROGRAM.json'
+    DatabaseGenerationProgramSize = 7
+    DatabaseGenerationProgramSha256 = ('b' * 64)
+}}
+$intent = [pscustomobject]@{{ Payload = [pscustomobject]@{{
+    operation_id = '33333333-3333-4333-8333-333333333333'
+    installation_id = $release.InstallationId
+    expected_predecessor_sha256 = ('c' * 64)
+    target_backend_version = '1.2.3'
+    database_maintenance_helper_relative_path = $release.MaintenanceHelperRelativePath
+    database_maintenance_helper_size = 5
+    database_maintenance_helper_sha256 = ('a' * 64)
+    generation_program_relative_path = $release.DatabaseGenerationProgramRelativePath
+    generation_program_size = 7
+    generation_program_sha256 = ('b' * 64)
+    target_revision = '20260821_0001'
+}} }}
+Assert-TicketboxDatabaseGenerationReleaseBinding $intent $release
+$intent.Payload.expected_predecessor_sha256 = ''
+$rejected = $false
+try {{ Assert-TicketboxDatabaseGenerationReleaseBinding $intent $release }} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'fresh intent reused a non-installation operation' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="database-generation-successor-release-binding.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_generation_recovery_tools_are_bound_to_build_identity(tmp_path: Path) -> None:
     assertion = _function(
         RECOVERY_EVIDENCE.read_text(encoding="utf-8-sig"),
@@ -814,10 +969,22 @@ $script:current.Payload.candidate_sha256 = ('e' * 64)
 $conflict = $false
 try {{ Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock | Out-Null }} catch {{ $conflict = $true }}
 if (-not $conflict -or $script:writes -ne 1) {{ throw 'CURRENT conflict did not fail closed' }}
-$script:current = $null
+$script:current = [pscustomobject]@{{
+    Payload = [pscustomobject]@{{ operation_id = '33333333-3333-4333-8333-333333333333' }}
+    PayloadSha256 = ('f' * 64)
+}}
+$intent.Payload.operation_id = '44444444-4444-4444-8444-444444444444'
 $intent.Payload.expected_predecessor_sha256 = ('f' * 64)
-$stale = $false
-try {{ Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock | Out-Null }} catch {{ $stale = $true }}
-if (-not $stale -or $script:writes -ne 1) {{ throw 'stale predecessor mutated CURRENT' }}
+$successor = Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock
+$successorAgain = Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock
+if (
+    $script:writes -ne 2 -or
+    $successor.Payload.operation_id -cne $intent.Payload.operation_id -or
+    $successorAgain.PayloadSha256 -cne $successor.PayloadSha256
+) {{ throw 'successor CURRENT predecessor CAS did not converge' }}
+$script:current = $null
+$missing = $false
+try {{ Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock | Out-Null }} catch {{ $missing = $true }}
+if (-not $missing -or $script:writes -ne 2) {{ throw 'missing predecessor mutated CURRENT' }}
 """
     run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")

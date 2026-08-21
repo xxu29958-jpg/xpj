@@ -7,8 +7,11 @@ LIVE_DATABASE_QUERY = text(
     SELECT control.system_identifier::text, database.oid::bigint,
            current_database()::text,
            session_user::text,
-           (SELECT value FROM public.app_meta WHERE key = 'server_id'),
-           (SELECT value FROM public.app_meta WHERE key = 'data_generation'),
+           (SELECT dataset_id FROM public.dataset_authority WHERE singleton_id = 1),
+           (SELECT restore_epoch FROM public.dataset_authority WHERE singleton_id = 1),
+           (SELECT schema_revision FROM public.dataset_authority WHERE singleton_id = 1),
+           (SELECT schema_min_compatible FROM public.dataset_authority WHERE singleton_id = 1),
+           (SELECT semantic_revision FROM public.dataset_authority WHERE singleton_id = 1),
            COALESCE((
                SELECT pg_catalog.shobj_description(role.oid, 'pg_authid')
                FROM pg_catalog.pg_roles AS role
@@ -94,6 +97,61 @@ LIVE_DATABASE_QUERY = text(
                'ticketbox_migrator', current_database(), 'CONNECT')
            AND NOT EXISTS (
                SELECT 1 FROM pg_catalog.pg_stat_activity WHERE usename = 'ticketbox_migrator' AND pid <> pg_backend_pid()
+           ),
+           COALESCE((SELECT role.rolcanlogin AND NOT role.rolinherit
+                       AND NOT role.rolsuper AND NOT role.rolcreatedb
+                       AND NOT role.rolcreaterole AND NOT role.rolreplication
+                       AND NOT role.rolbypassrls AND role.rolconnlimit = 1
+                       AND role.rolpassword IS NOT NULL
+                       AND COALESCE(role.rolconfig, ARRAY[]::text[]) =
+                           ARRAY['search_path=pg_catalog, public']::text[]
+                FROM pg_catalog.pg_roles AS role WHERE role.rolname = 'ticketbox_backup'
+           ), false)
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_catalog.pg_db_role_setting AS setting
+               JOIN pg_catalog.pg_roles AS role ON role.oid = setting.setrole
+               WHERE role.rolname = 'ticketbox_backup'
+                 AND setting.setdatabase = database.oid
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_catalog.pg_auth_members AS membership
+               JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid
+               JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
+               WHERE granted.rolname = 'ticketbox_backup'
+                  OR member.rolname = 'ticketbox_backup'
+           )
+           AND pg_catalog.has_database_privilege(
+               'ticketbox_backup', current_database(), 'CONNECT')
+           AND NOT pg_catalog.has_database_privilege(
+               'ticketbox_backup', current_database(), 'CREATE')
+           AND NOT pg_catalog.has_database_privilege(
+               'ticketbox_backup', current_database(), 'TEMPORARY')
+           AND pg_catalog.has_schema_privilege('ticketbox_backup', 'public', 'USAGE')
+           AND NOT pg_catalog.has_schema_privilege('ticketbox_backup', 'public', 'CREATE')
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_catalog.pg_class AS relation
+               JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+               WHERE namespace.nspname = 'public'
+                 AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
+                 AND NOT pg_catalog.has_table_privilege('ticketbox_backup', relation.oid, 'SELECT')
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_catalog.pg_class AS sequence
+               JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+               WHERE namespace.nspname = 'public' AND sequence.relkind = 'S'
+                 AND (NOT pg_catalog.has_sequence_privilege('ticketbox_backup', sequence.oid, 'SELECT')
+                      OR pg_catalog.has_sequence_privilege('ticketbox_backup', sequence.oid, 'USAGE')
+                      OR pg_catalog.has_sequence_privilege('ticketbox_backup', sequence.oid, 'UPDATE'))
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_catalog.pg_proc AS routine
+               JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = routine.pronamespace
+               WHERE namespace.nspname = 'public'
+                 AND pg_catalog.has_function_privilege('ticketbox_backup', routine.oid, 'EXECUTE')
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_catalog.pg_stat_activity
+               WHERE usename = 'ticketbox_backup' AND pid <> pg_backend_pid()
            )
     FROM pg_catalog.pg_database AS database
     CROSS JOIN pg_catalog.pg_control_system() AS control

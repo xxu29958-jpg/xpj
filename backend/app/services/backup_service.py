@@ -1,431 +1,376 @@
-"""Database backup helpers for the Owner Console.
+"""Single owner for complete Ticketbox dataset backup generations.
 
-Backups live under the writable data dir at ``DATA_ROOT/backups`` (``backend/
-backups/`` in a source run; physical ``<DataRoot>/app/backups`` in the formal
-Windows service). The service reaches those bytes through the machine-owned
-``TicketboxRuntimeBinding/data-root/app`` junction. The same location is used by
-``scripts/maintenance_ticketbox.ps1 -Backup`` so a backup created from the
-Owner Console is interchangeable with one created by the scheduled task.
-
-The backend is PostgreSQL-only (ADR-0041): backups shell out to ``pg_dump -Fc``
-into a ``.dump`` custom-format archive. Restoring remains an explicit local
-command only for source/test scratch databases. No formal Windows restore entry
-is shipped yet; the installed lifecycle remains ``QUALIFIED_HOLD`` for restore.
+Creation is an offline maintenance action. The caller must stop runtime
+writers, establish the PostgreSQL writer fence, and pass all tools and
+credentials explicitly. HTTP routes are read-only consumers of published
+manifests and cannot create a backup from inside the backend service.
 """
 
 from __future__ import annotations
 
 import contextlib
-import ipaddress
-import logging
 import os
-import subprocess
-from collections.abc import Iterator
+import re
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID
 
-from sqlalchemy.engine import URL, make_url
+from sqlalchemy import select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
+from sqlalchemy.orm import Session
 
-from app.config import DATA_ROOT, get_settings
+from app.config import DATA_ROOT
 from app.errors import AppError
-from app.services.backup_job_lease import BackupJobLease, acquire_backup_job_lease
-from app.services.postgres_backup_validation_service import find_pg_binary, is_postgres_backup_valid
-from app.services.secure_file import (
-    hold_protected_file_for_read,
-    write_protected_file_exclusive,
+from app.models import Expense
+from app.services.backup_job_lease import acquire_backup_job_lease
+from app.services.dataset_authority_service import read_dataset_authority
+from app.services.dataset_backup_contract import (
+    BACKUP_KINDS,
+    DATABASE_ARCHIVE_NAME,
+    MANIFEST_NAME,
+    ORIGINALS_DIRECTORY_NAME,
+    DatabaseArtifact,
+    DatasetBackupManifest,
+    encode_manifest,
+    read_manifest,
+    sha256_file,
 )
+from app.services.dataset_originals_adapter import (
+    OriginalReference,
+    copy_complete_originals,
+)
+from app.services.postgres_backup_adapter import write_postgres_archive
 from app.services.time_service import now_utc
 
-# Backups live under the writable data dir (DATA_ROOT/backups). In a frozen EXE
-# the program root is PyInstaller's throwaway _MEIPASS dir, so deriving the
-# backup folder from __file__ would write snapshots that vanish on restart.
-_BACKUP_DIR = DATA_ROOT / "backups"
-_PREFIX = "ticketbox-"
-_SUFFIX = ".dump"
-_PG_DUMP_TIMEOUT_SECONDS = 5 * 60
-_PG_DUMP_LOCK_WAIT_MILLISECONDS = 30_000
-_PG_TOOL_QUERY_KEYS = frozenset(
-    {"connect_timeout", "hostaddr", "options", "require_auth", "sslmode"}
+_BACKUP_DIR = (
+    DATA_ROOT.parent / "backups"
+    if os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip()
+    else DATA_ROOT / "backups"
 )
-_PG_TOOL_SSL_MODES = frozenset(
-    {"allow", "disable", "prefer", "require", "verify-ca", "verify-full"}
-)
-_DATABASE_URL_ENVIRONMENT = frozenset(
-    {
-        "DATABASE_URL",
-        "DRILL_RESTORE_URL",
-        "DRILL_SOURCE_URL",
-        "SMOKE_DATABASE_URL",
-        "XPJ_TEST_ADMIN_URL",
-        "XPJ_TEST_DATABASE_URL",
-    }
-)
+_GENERATION_PREFIX = "ticketbox-backup-"
+_STAGING_PREFIX = ".ticketbox-backup-"
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
-_logger = logging.getLogger(__name__)
+
+@dataclass(frozen=True)
+class CompleteBackupRequest:
+    backup_root: Path
+    upload_root: Path
+    database_url: str
+    passfile: Path
+    pg_dump_binary: Path
+    pg_restore_binary: Path
+    operation_id: str
+    backup_id: str
+    release_id: str
+    backup_kind: str
+    writer_fence_sha256: str
 
 
 @dataclass(frozen=True)
 class BackupEntry:
     file_name: str
+    backup_id: str
+    dataset_id: str
+    restore_epoch: int
     size_bytes: int
     created_at: datetime
-    kind: str  # "scheduled" / "manual" / "pre-restore" / "pre-v0.3" / "pre-upgrade"
+    kind: str
 
 
 @dataclass(frozen=True)
-class _PgToolConnection:
-    database_url: str
-    username: str
-    host: str
-    port: int
-    database: str
-    password: str | None
+class BackupHealth:
+    latest: BackupEntry | None
+    age_hours: int | None
+    stale: bool
 
 
-def _backup_dir() -> Path:
-    _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    return _BACKUP_DIR
+def create_complete_backup_generation(
+    request: CompleteBackupRequest,
+    *,
+    db: Session,
+) -> BackupEntry:
+    """Publish one all-or-nothing database plus original-attachment generation."""
 
-
-def backup_directory_label() -> str:
-    """备份目录的**相对**展示标签(如 ``backend\\backups`` / ``app\\backups``)。
-
-    只取数据根末段 + ``backups``,**不暴露主机绝对路径**(测试 no_uploads_path_leak
-    禁止页面出现 ``C:\\`` / ``E:\\``)。源码运行通常显示 backend，正式 Windows
-    服务显示安装器所选数据根的末段；与跟随 ``TICKETBOX_DATA_DIR`` 的维护机制一致。
-    """
-    return f"{_BACKUP_DIR.parent.name}\\{_BACKUP_DIR.name}"
-
-
-def _classify(name: str) -> str:
-    if name.startswith("ticketbox-before-restore-"):
-        return "pre-restore"
-    if name.startswith("ticketbox-pre-upgrade-"):
-        return "pre-upgrade"
-    if name.startswith("ticketbox-pre-v0.3"):
-        return "pre-v0.3"
-    if name.startswith("ticketbox-manual-"):
-        return "manual"
-    return "scheduled"
+    validated = _validate_request(request)
+    backup_id = validated.backup_id
+    generation_name = f"{_GENERATION_PREFIX}{backup_id}"
+    staging = validated.backup_root / f"{_STAGING_PREFIX}{backup_id}.staging"
+    target = validated.backup_root / generation_name
+    lock_path = validated.backup_root / ".backup.lock"
+    lease = acquire_backup_job_lease(lock_path)
+    try:
+        if staging.exists():
+            _remove_staging(staging, validated.backup_root)
+        if staging.exists():
+            raise AppError("backup_incomplete", status_code=500)
+        if target.exists():
+            manifest = read_manifest(target, verify_files=True)
+            _assert_published_request(manifest, validated)
+            return _entry(generation_name, manifest)
+        staging.mkdir()
+        try:
+            manifest = _build_staged_generation(
+                validated,
+                db=db,
+                backup_id=backup_id,
+                staging=staging,
+            )
+            (staging / MANIFEST_NAME).write_bytes(encode_manifest(manifest))
+            read_manifest(staging, verify_files=True)
+            os.rename(staging, target)
+        except Exception:
+            _remove_staging(staging, validated.backup_root)
+            raise
+    finally:
+        lease.release()
+    return _entry(generation_name, manifest)
 
 
 def list_backups() -> list[BackupEntry]:
-    """Return existing pg_dump backups, newest first."""
-    directory = _backup_dir()
     entries: list[BackupEntry] = []
-    for path in directory.glob(f"{_PREFIX}*{_SUFFIX}"):
-        if not path.is_file():
-            continue
-        if not is_postgres_backup_valid(path):
+    for path in _existing_backup_root().glob(f"{_GENERATION_PREFIX}*"):
+        if not path.is_dir():
             continue
         try:
-            stat = path.stat()
-        except OSError:
+            manifest = read_manifest(path, verify_files=True)
+        except AppError:
             continue
-        created_at = datetime.fromtimestamp(stat.st_mtime).astimezone()
-        entries.append(
-            BackupEntry(
-                file_name=path.name,
-                size_bytes=int(stat.st_size),
-                created_at=created_at,
-                kind=_classify(path.name),
-            )
-        )
+        entries.append(_entry(path.name, manifest))
     entries.sort(key=lambda item: item.created_at, reverse=True)
     return entries
 
 
 def latest_backup() -> BackupEntry | None:
-    items = list_backups()
-    return items[0] if items else None
-
-
-@dataclass(frozen=True)
-class BackupHealth:
-    """Dashboard view of the newest valid backup's freshness."""
-
-    latest: BackupEntry | None
-    age_hours: int | None  # None when no valid backup exists at all
-    stale: bool
+    entries = list_backups()
+    return entries[0] if entries else None
 
 
 def backup_health(*, stale_after_hours: int = 48) -> BackupHealth:
-    """Health of the backup chain for the Owner Console dashboard.
-
-    ``stale`` means no valid backup newer than ``stale_after_hours`` (the
-    nightly TicketboxBackup task has likely been failing — a 6-day silent
-    chain break in 2026-06 motivated surfacing this). The threshold lives
-    here, not in the route/template (§1: business judgement is service-side).
-    """
     entry = latest_backup()
     if entry is None:
         return BackupHealth(latest=None, age_hours=None, stale=True)
-    age_hours = int((now_utc().astimezone() - entry.created_at).total_seconds() // 3600)
-    return BackupHealth(latest=entry, age_hours=age_hours, stale=age_hours >= stale_after_hours)
+    age_hours = int((now_utc() - entry.created_at).total_seconds() // 3600)
+    return BackupHealth(
+        latest=entry,
+        age_hours=age_hours,
+        stale=age_hours >= stale_after_hours,
+    )
 
 
 def is_backup_valid(file_name: str) -> bool:
-    """Return True only for an existing, well-formed pg_dump backup file."""
-    if Path(file_name).name != file_name:
+    if Path(file_name).name != file_name or not file_name.startswith(_GENERATION_PREFIX):
         return False
-    if not file_name.startswith(_PREFIX) or not file_name.endswith(_SUFFIX):
-        return False
-    path = _backup_dir() / file_name
-    return is_postgres_backup_valid(path)
-
-
-def create_manual_backup() -> BackupEntry:
-    """Snapshot the live database into ``backups/`` via ``pg_dump -Fc``.
-
-    Takes the backup concurrency lock (BUG-2): if a scheduled task or another
-    manual backup is already running, raises ``backup_in_progress`` (409) and the
-    operator simply retries. Raises :class:`AppError` on a missing ``pg_dump``
-    binary or a failed dump.
-    """
-    with _backup_lock():
-        return _run_pg_dump(prefix="ticketbox-manual", kind="manual")
-
-
-def create_pre_upgrade_backup() -> BackupEntry:
-    """Snapshot the live database BEFORE an Alembic migration runs (model-invariant
-    hardening P1). Same ``pg_dump -Fc`` as a manual backup but tagged ``pre-upgrade``
-    so the pre-migration restore point is identifiable. Raises :class:`AppError` on a
-    missing ``pg_dump`` binary or a failed dump (the startup gate turns that into a
-    fail-closed abort — see ``app.database._backup_before_upgrade``).
-
-    Deliberately does NOT take the backup concurrency lock: this is a pure dump
-    (no rotation, so it cannot cause the BUG-2 rotation race) that runs
-    single-threaded during startup and must be fail-closed. Taking the lock would
-    let a leftover sentinel from a crashed run stall a legitimate migration — a
-    startup-brick class we refuse to introduce. A concurrent scheduled dump is
-    harmless: both produce independent archives and only the scheduled job rotates.
-    """
-    return _run_pg_dump(prefix="ticketbox-pre-upgrade", kind="pre-upgrade")
-
-
-# ── Concurrency guard (BUG-2) ────────────────────────────────────────────────
-# Python and the scheduled PowerShell task hold the same OS byte-range lease.
-# The persistent file is diagnostic only; process/handle death releases ownership.
-_LOCK_NAME = ".backup.lock"
-
-
-def _lock_path() -> Path:
-    # Lives in backups/ but starts with '.', so it never matches the
-    # ``ticketbox-*.dump`` glob used by list_backups / rotation / offsite sync.
-    return _backup_dir() / _LOCK_NAME
-
-
-@contextlib.contextmanager
-def _backup_lock() -> Iterator[None]:
-    """Serialize backup jobs through a non-blocking kernel lease."""
-    lease = acquire_backup_job_lock()
     try:
-        yield
-    finally:
-        lease.release()
+        read_manifest(_existing_backup_root() / file_name, verify_files=True)
+    except AppError:
+        return False
+    return True
 
 
-def acquire_backup_job_lock() -> BackupJobLease:
-    """Acquire the shared Python/PowerShell backup lock without blocking."""
-
-    return acquire_backup_job_lease(_lock_path())
+def backup_directory_label() -> str:
+    return f"{_BACKUP_DIR.parent.name}\\{_BACKUP_DIR.name}"
 
 
-def _run_pg_dump(
+def _build_staged_generation(
+    request: CompleteBackupRequest,
     *,
-    prefix: str,
-    kind: str,
-    database_url: str | None = None,
-) -> BackupEntry:
-    connection = _pg_tool_connection(database_url or get_settings().database_url)
-    directory = _backup_dir()
-    stamp = now_utc().astimezone().strftime("%Y%m%d-%H%M%S")
-    target = directory / f"{prefix}-{stamp}-{uuid4().hex[:8]}{_SUFFIX}"
-    temp_target = directory / f".{target.name}.tmp-{uuid4().hex}"
-    try:
-        try:
-            with _pg_tool_environment(connection) as environment:
-                arguments = [
-                    _pg_dump_binary(),
-                    "--no-password",
-                    f"--lock-wait-timeout={_PG_DUMP_LOCK_WAIT_MILLISECONDS}",
-                    "--format=custom",
-                    "--file",
-                    str(temp_target),
-                    "--dbname",
-                    connection.database_url,
-                ]
-                result = subprocess.run(  # noqa: S603 (resolved binary, fixed args)
-                    arguments,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    env=environment,
-                    stdin=subprocess.DEVNULL,
-                    timeout=_PG_DUMP_TIMEOUT_SECONDS,
-                )
-        except (OSError, subprocess.TimeoutExpired):
-            _logger.warning("pg_dump could not complete; diagnostic output omitted")
-            raise AppError(
-                "server_error", "数据库备份未在安全时限内完成。", status_code=500
-            ) from None
-        if result.returncode != 0:
-            # Native diagnostics may repeat connection material. Keep them out of
-            # logs entirely; the return code is enough for the operator-facing gate.
-            _logger.warning("pg_dump failed (rc=%s); diagnostic output omitted", result.returncode)
-            raise AppError("server_error", "数据库备份失败，请查看后端日志。", status_code=500)
-        if not is_postgres_backup_valid(temp_target):
-            raise AppError(
-                "server_error", "数据库备份校验失败，未写入最终备份文件。", status_code=500
-            )
-        temp_target.replace(target)
-    finally:
-        with contextlib.suppress(FileNotFoundError):
-            temp_target.unlink()
+    db: Session,
+    backup_id: str,
+    staging: Path,
+) -> DatasetBackupManifest:
+    _begin_read_only_snapshot(db)
+    _assert_database_binding(db, request.database_url)
+    _assert_writers_drained(db)
+    authority = read_dataset_authority(db)
+    references = _original_references(db)
 
-    stat = target.stat()
-    created_at = datetime.fromtimestamp(stat.st_mtime).astimezone()
-    return BackupEntry(
-        file_name=target.name,
-        size_bytes=int(stat.st_size),
-        created_at=created_at,
-        kind=kind,
+    database_path = staging / DATABASE_ARCHIVE_NAME
+    write_postgres_archive(
+        database_url=request.database_url,
+        passfile=request.passfile,
+        pg_dump_binary=request.pg_dump_binary,
+        pg_restore_binary=request.pg_restore_binary,
+        target=database_path,
+    )
+    originals = copy_complete_originals(
+        upload_root=request.upload_root,
+        destination=staging / ORIGINALS_DIRECTORY_NAME,
+        references=references,
+    )
+    _assert_writers_drained(db)
+    database_stat = database_path.stat()
+    return DatasetBackupManifest(
+        backup_id=backup_id,
+        operation_id=request.operation_id,
+        backup_kind=request.backup_kind,
+        created_at=now_utc(),
+        release_id=request.release_id,
+        writer_fence_sha256=request.writer_fence_sha256,
+        authority=authority,
+        database=DatabaseArtifact(
+            size_bytes=int(database_stat.st_size),
+            sha256=sha256_file(database_path),
+        ),
+        originals=originals,
     )
 
 
-def _pg_tool_connection(database_url: str) -> _PgToolConnection:
-    """Split a SQLAlchemy URL into passwordless libpq URL + child-only password."""
+def _begin_read_only_snapshot(db: Session) -> None:
     try:
-        parsed = make_url(database_url)
-        backend_name = parsed.get_backend_name()
-    except (ArgumentError, TypeError, ValueError):
-        raise AppError("server_error", "数据库备份配置无效。", status_code=500) from None
-    if backend_name != "postgresql":
-        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
+        db.execute(text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE"))
+    except Exception as exc:
+        raise AppError("backup_incomplete", status_code=500) from exc
 
-    password = parsed.password
-    query: dict[str, str] = {}
-    for raw_key, raw_value in parsed.query.items():
-        key = raw_key.casefold()
-        if (
-            key in query
-            or key not in _PG_TOOL_QUERY_KEYS
-            or not isinstance(raw_value, str)
-            or any(character in raw_value for character in "\x00\r\n")
-        ):
-            raise AppError("server_error", "数据库备份配置无效。", status_code=500)
-        query[key] = raw_value
-    if query.get("require_auth") != "scram-sha-256":
-        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
-    if not parsed.username or not parsed.host or not parsed.database:
-        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
-    query.setdefault("connect_timeout", "5")
-    query.setdefault("sslmode", "prefer")
-    try:
-        if not 1 <= int(query["connect_timeout"]) <= 30:
-            raise ValueError
-        if "hostaddr" in query:
-            host_address = ipaddress.ip_address(query["hostaddr"])
-            host = parsed.host.casefold()
-            if host == "localhost":
-                if host_address not in {
-                    ipaddress.ip_address("127.0.0.1"),
-                    ipaddress.ip_address("::1"),
-                }:
-                    raise ValueError
-            elif host_address != ipaddress.ip_address(host):
-                raise ValueError
-    except ValueError:
-        raise AppError("server_error", "数据库备份配置无效。", status_code=500) from None
-    if query.get("sslmode", "prefer") not in _PG_TOOL_SSL_MODES:
-        raise AppError("server_error", "数据库备份配置无效。", status_code=500)
 
-    try:
-        passwordless = URL.create(
-            drivername="postgresql",
-            username=parsed.username,
-            host=parsed.host,
-            port=parsed.port or 5432,
-            database=parsed.database,
-            query=query,
+def _assert_writers_drained(db: Session) -> None:
+    others = db.scalar(
+        text(
+            "SELECT count(*) FROM pg_stat_activity "
+            "WHERE datname = current_database() "
+            "AND backend_type = 'client backend' "
+            "AND pid <> pg_backend_pid()"
         )
-        rendered_url = passwordless.render_as_string(hide_password=False)
-    except (TypeError, ValueError):
-        raise AppError("server_error", "数据库备份配置无效。", status_code=500) from None
-    return _PgToolConnection(
-        database_url=rendered_url,
-        username=parsed.username,
-        host=parsed.host,
-        port=parsed.port or 5432,
-        database=parsed.database,
-        password=password,
+    )
+    if others != 0:
+        raise AppError("backup_incomplete", status_code=409)
+
+
+def _assert_database_binding(db: Session, database_url: str) -> None:
+    try:
+        expected = make_url(database_url).database
+    except (ArgumentError, TypeError, ValueError) as exc:
+        raise AppError("backup_incomplete", status_code=500) from exc
+    if not expected or db.scalar(text("SELECT current_database()")) != expected:
+        raise AppError("backup_incomplete", status_code=500)
+
+
+def _original_references(db: Session) -> tuple[OriginalReference, ...]:
+    rows = db.execute(
+        select(Expense.tenant_id, Expense.image_path, Expense.image_hash)
+        .where(Expense.image_path.is_not(None))
+        .where(Expense.image_deleted_at.is_(None))
+        .order_by(Expense.tenant_id, Expense.image_path)
+    ).all()
+    return tuple(
+        OriginalReference(
+            tenant_id=str(row.tenant_id),
+            storage_reference=str(row.image_path),
+            expected_sha256=None if row.image_hash is None else str(row.image_hash),
+        )
+        for row in rows
     )
 
 
-def _escape_pgpass(value: str) -> str:
-    return value.replace("\\", "\\\\").replace(":", "\\:")
+def _validate_request(request: CompleteBackupRequest) -> CompleteBackupRequest:
+    if (
+        request.backup_kind not in BACKUP_KINDS
+        or _canonical_uuid(request.operation_id) is None
+        or _canonical_uuid(request.backup_id) is None
+        or not _plain_text(request.release_id, limit=128)
+        or _SHA256.fullmatch(request.writer_fence_sha256) is None
+    ):
+        raise AppError("backup_incomplete", status_code=500)
+    backup_root = _prepare_backup_root(request.backup_root)
+    for path in (
+        request.upload_root,
+        request.passfile,
+        request.pg_dump_binary,
+        request.pg_restore_binary,
+    ):
+        if not path.is_absolute():
+            raise AppError("backup_incomplete", status_code=500)
+    return CompleteBackupRequest(
+        backup_root=backup_root,
+        upload_root=request.upload_root,
+        database_url=request.database_url,
+        passfile=request.passfile,
+        pg_dump_binary=request.pg_dump_binary,
+        pg_restore_binary=request.pg_restore_binary,
+        operation_id=request.operation_id,
+        backup_id=request.backup_id,
+        release_id=request.release_id,
+        backup_kind=request.backup_kind,
+        writer_fence_sha256=request.writer_fence_sha256,
+    )
 
 
-@contextlib.contextmanager
-def _validated_inherited_passfile() -> Iterator[Path]:
-    raw = os.environ.get("PGPASSFILE")
-    if not raw:
-        raise AppError("server_error", "数据库备份凭据不可用。", status_code=500)
+def _assert_published_request(
+    manifest: DatasetBackupManifest,
+    request: CompleteBackupRequest,
+) -> None:
+    if (
+        manifest.backup_id != request.backup_id
+        or manifest.operation_id != request.operation_id
+        or manifest.backup_kind != request.backup_kind
+        or manifest.release_id != request.release_id
+        or manifest.writer_fence_sha256 != request.writer_fence_sha256
+    ):
+        raise AppError("backup_incomplete", status_code=409)
+
+
+def _prepare_backup_root(path: Path) -> Path:
+    if not path.is_absolute():
+        raise AppError("backup_incomplete", status_code=500)
     try:
-        protected_file = hold_protected_file_for_read(Path(raw))
-        resolved = protected_file.__enter__()
+        parent = path.parent.resolve(strict=True)
+        if path.exists():
+            resolved = path.resolve(strict=True)
+            if not resolved.is_dir() or resolved.is_symlink():
+                raise OSError
+        else:
+            path.mkdir()
+            resolved = path.resolve(strict=True)
+        resolved.relative_to(parent)
+    except (OSError, ValueError) as exc:
+        raise AppError("backup_incomplete", status_code=500) from exc
+    return resolved
+
+
+def _existing_backup_root() -> Path:
+    try:
+        if _BACKUP_DIR.is_dir() and not _BACKUP_DIR.is_symlink():
+            return _BACKUP_DIR.resolve(strict=True)
+    except OSError:
+        pass
+    return _BACKUP_DIR
+
+
+def _remove_staging(staging: Path, backup_root: Path) -> None:
+    try:
+        resolved_root = backup_root.resolve(strict=True)
+        lexical = Path(os.path.abspath(staging))
+        lexical.relative_to(resolved_root)
     except (OSError, ValueError):
-        raise AppError("server_error", "数据库备份凭据不可用。", status_code=500) from None
-    try:
-        yield resolved
-    finally:
-        protected_file.__exit__(None, None, None)
-
-
-@contextlib.contextmanager
-def _pg_tool_environment(connection: _PgToolConnection) -> Iterator[dict[str, str]]:
-    environment = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.upper().startswith("PG")
-        and key.upper() not in _DATABASE_URL_ENVIRONMENT
-    }
-    if connection.password is None:
-        with _validated_inherited_passfile() as passfile:
-            environment["PGPASSFILE"] = str(passfile)
-            yield environment
         return
+    if lexical.parent != resolved_root or not lexical.name.startswith(_STAGING_PREFIX):
+        return
+    with contextlib.suppress(OSError):
+        shutil.rmtree(lexical)
 
-    passfile = _backup_dir() / f".pgpass-{os.getpid()}-{uuid4().hex}"
-    line = ":".join(
-        _escape_pgpass(value)
-        for value in (
-            connection.host,
-            str(connection.port),
-            connection.database,
-            connection.username,
-            connection.password,
-        )
+
+def _entry(file_name: str, manifest: DatasetBackupManifest) -> BackupEntry:
+    return BackupEntry(
+        file_name=file_name,
+        backup_id=manifest.backup_id,
+        dataset_id=manifest.authority.dataset_id,
+        restore_epoch=manifest.authority.restore_epoch,
+        size_bytes=manifest.total_size_bytes,
+        created_at=manifest.created_at,
+        kind=manifest.backup_kind,
     )
-    published = False
+
+
+def _canonical_uuid(value: str) -> str | None:
     try:
-        write_protected_file_exclusive(passfile, f"{line}\n")
-        published = True
-        with hold_protected_file_for_read(passfile) as protected_passfile:
-            environment["PGPASSFILE"] = str(protected_passfile)
-            yield environment
-    finally:
-        if published or passfile.exists():
-            passfile.unlink(missing_ok=True)
+        canonical = str(UUID(value))
+    except (ValueError, AttributeError):
+        return None
+    return canonical if canonical == value else None
 
 
-def _pg_dump_binary() -> str:
-    binary = find_pg_binary("pg_dump", "PG_DUMP_PATH")
-    if not binary:
-        raise AppError(
-            "server_error", "未找到 pg_dump，无法备份 PostgreSQL 数据库。", status_code=500
-        )
-    return binary
+def _plain_text(value: str, *, limit: int) -> bool:
+    return bool(value) and len(value) <= limit and not any(char in value for char in "\x00\r\n")

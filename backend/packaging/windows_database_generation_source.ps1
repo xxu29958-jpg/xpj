@@ -46,18 +46,21 @@ function New-TicketboxDatabaseGenerationEmptyRoleSql {
         [Parameter(Mandatory = $true)][string]$OperationId,
         [Parameter(Mandatory = $true)][string]$RuntimeVerifier,
         [Parameter(Mandatory = $true)][string]$MigratorVerifier,
+        [Parameter(Mandatory = $true)][string]$BackupVerifier,
         [Parameter(Mandatory = $true)][DateTime]$MigratorValidUntilUtc
     )
     $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $operation = ([guid]$OperationId).ToString("D")
     if (
         $RuntimeVerifier -cnotmatch '^SCRAM-SHA-256\$4096:' -or
-        $MigratorVerifier -cnotmatch '^SCRAM-SHA-256\$4096:'
+        $MigratorVerifier -cnotmatch '^SCRAM-SHA-256\$4096:' -or
+        $BackupVerifier -cnotmatch '^SCRAM-SHA-256\$4096:'
     ) {
         throw "empty source 只接受 SCRAM-SHA-256 verifier。"
     }
     $runtimeVerifierSql = ConvertTo-TicketboxPostgresqlSqlLiteral $RuntimeVerifier
     $migratorVerifierSql = ConvertTo-TicketboxPostgresqlSqlLiteral $MigratorVerifier
+    $backupVerifierSql = ConvertTo-TicketboxPostgresqlSqlLiteral $BackupVerifier
     $validUntil = $MigratorValidUntilUtc.ToUniversalTime().ToString(
         "yyyy-MM-ddTHH:mm:ss.fffZ",
         [Globalization.CultureInfo]::InvariantCulture
@@ -82,9 +85,10 @@ BEGIN
     WHERE rolname IN (
         '$($databasePolicy.OwnerRole)',
         '$($databasePolicy.MigratorRole)',
-        '$($databasePolicy.RuntimeRole)'
+        '$($databasePolicy.RuntimeRole)',
+        '$($databasePolicy.BackupRole)'
     );
-    IF existing_count NOT IN (0, 3) THEN
+    IF existing_count NOT IN (0, 4) THEN
         RAISE EXCEPTION 'partial database-generation role residue';
     END IF;
     IF existing_count = 0 THEN
@@ -99,10 +103,15 @@ BEGIN
             LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
             NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1
             PASSWORD $migratorVerifierSql VALID UNTIL $validUntilSql;
+        CREATE ROLE "$($databasePolicy.BackupRole)"
+            NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+            NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 0
+            PASSWORD $backupVerifierSql;
         FOREACH role_name IN ARRAY ARRAY[
             '$($databasePolicy.OwnerRole)',
             '$($databasePolicy.MigratorRole)',
-            '$($databasePolicy.RuntimeRole)'
+            '$($databasePolicy.RuntimeRole)',
+            '$($databasePolicy.BackupRole)'
         ] LOOP
             SELECT oid INTO STRICT role_oid FROM pg_roles WHERE rolname = role_name;
             expected_comment := format(
@@ -115,7 +124,8 @@ BEGIN
         FOREACH role_name IN ARRAY ARRAY[
             '$($databasePolicy.OwnerRole)',
             '$($databasePolicy.MigratorRole)',
-            '$($databasePolicy.RuntimeRole)'
+            '$($databasePolicy.RuntimeRole)',
+            '$($databasePolicy.BackupRole)'
         ] LOOP
             SELECT oid, shobj_description(oid, 'pg_authid')
             INTO STRICT role_oid, actual_comment
@@ -133,7 +143,10 @@ BEGIN
               IS DISTINCT FROM $runtimeVerifierSql
            OR (SELECT rolpassword FROM pg_authid
             WHERE rolname = '$($databasePolicy.MigratorRole)')
-              IS DISTINCT FROM $migratorVerifierSql THEN
+              IS DISTINCT FROM $migratorVerifierSql
+           OR (SELECT rolpassword FROM pg_authid
+            WHERE rolname = '$($databasePolicy.BackupRole)')
+              IS DISTINCT FROM $backupVerifierSql THEN
             RAISE EXCEPTION 'database-generation role credential mismatch';
         END IF;
     END IF;
@@ -147,6 +160,9 @@ BEGIN
         LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
         NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1
         VALID UNTIL $validUntilSql;
+    ALTER ROLE "$($databasePolicy.BackupRole)"
+        NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+        NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 0;
     IF EXISTS (
         SELECT 1
         FROM pg_auth_members AS membership
@@ -155,12 +171,14 @@ BEGIN
         WHERE (granted.rolname IN (
                    '$($databasePolicy.OwnerRole)',
                    '$($databasePolicy.MigratorRole)',
-                   '$($databasePolicy.RuntimeRole)'
+                   '$($databasePolicy.RuntimeRole)',
+                   '$($databasePolicy.BackupRole)'
                )
                OR member.rolname IN (
                    '$($databasePolicy.OwnerRole)',
                    '$($databasePolicy.MigratorRole)',
-                   '$($databasePolicy.RuntimeRole)'
+                   '$($databasePolicy.RuntimeRole)',
+                   '$($databasePolicy.BackupRole)'
                ))
           AND NOT (
               granted.rolname = '$($databasePolicy.OwnerRole)'
@@ -175,6 +193,7 @@ BEGIN
     GRANT "$($databasePolicy.OwnerRole)" TO "$($databasePolicy.MigratorRole)"
         WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
     REVOKE "$($databasePolicy.OwnerRole)" FROM "$($databasePolicy.RuntimeRole)";
+    REVOKE "$($databasePolicy.OwnerRole)" FROM "$($databasePolicy.BackupRole)";
 END
 `$ticketbox_generation_roles`$;
 COMMIT;
@@ -292,6 +311,7 @@ function Invoke-TicketboxDatabaseGenerationEmptySource {
             -OperationId $operationId `
             -RuntimeVerifier ([string]$Credentials.RuntimeVerifier) `
             -MigratorVerifier ([string]$Credentials.MigratorVerifier) `
+            -BackupVerifier ([string]$Credentials.BackupVerifier) `
             -MigratorValidUntilUtc $validUntil) | Out-Null
     $catalog = $targetCatalog
     if (-not $catalog.Exists) {
@@ -426,7 +446,7 @@ COMMIT;
         schema = "ticketbox-database-generation-source-binding-v1"
         operation_id = $operationId
         intent_sha256 = [string]$Intent.PayloadSha256
-        create_attempt_sha256 = [string]$attempt.PayloadSha256
+        source_evidence_sha256 = [string]$attempt.PayloadSha256
         source_kind = "empty"
         source_revision = "base"
         cluster_system_identifier = [string]$final.ClusterSystemIdentifier
@@ -434,5 +454,103 @@ COMMIT;
         writer_fence_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
             ConvertTo-TicketboxDatabaseGenerationCanonicalJson $fence
         )
+    }
+}
+
+function Invoke-TicketboxDatabaseGenerationRestoredSource {
+    param(
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$SourceEvidence,
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][object]$MaintenanceAuthority,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    [void](Assert-TicketboxDatabaseGenerationMaintenanceAuthority `
+        $MaintenanceAuthority $Intent $HostAuthority $LifecycleLock)
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        $SourceEvidence.Payload `
+        @(
+            "schema", "operation_id", "intent_sha256",
+            "source_request_sha256", "predecessor_current_sha256",
+            "backup_manifest_sha256", "backup_id", "dataset_id",
+            "restore_epoch", "source_revision",
+            "cluster_system_identifier", "database_oid",
+            "writer_fence_sha256", "result"
+        ) `
+        "database generation restored source evidence"
+    foreach ($digest in @(
+        [string]$SourceEvidence.PayloadSha256,
+        [string]$SourceEvidence.Payload.source_request_sha256,
+        [string]$SourceEvidence.Payload.predecessor_current_sha256,
+        [string]$SourceEvidence.Payload.backup_manifest_sha256,
+        [string]$SourceEvidence.Payload.writer_fence_sha256
+    )) {
+        Assert-TicketboxDatabaseGenerationLowerSha256 `
+            $digest "database generation restored source"
+    }
+    $backupId = ([guid][string]$SourceEvidence.Payload.backup_id).ToString("D")
+    $datasetId = ([guid][string]$SourceEvidence.Payload.dataset_id).ToString("D")
+    if (
+        [string]$SourceEvidence.Payload.schema -cne
+            "ticketbox-database-generation-restored-source-v1" -or
+        [string]$SourceEvidence.Payload.operation_id -cne
+            [string]$Intent.Payload.operation_id -or
+        [string]$SourceEvidence.Payload.intent_sha256 -cne
+            [string]$Intent.PayloadSha256 -or
+        [string]$SourceEvidence.Payload.source_request_sha256 -cne
+            [string]$Intent.Payload.source_request_sha256 -or
+        [string]$SourceEvidence.Payload.predecessor_current_sha256 -cne
+            [string]$Intent.Payload.expected_predecessor_sha256 -or
+        [string]$SourceEvidence.Payload.source_revision -cne
+            [string]$Intent.Payload.target_revision -or
+        $backupId -cne [string]$SourceEvidence.Payload.backup_id -or
+        $datasetId -cne [string]$SourceEvidence.Payload.dataset_id -or
+        [int64]$SourceEvidence.Payload.restore_epoch -lt 0 -or
+        [string]$SourceEvidence.Payload.result -cne
+            "isolated_restore_candidate_ready"
+    ) {
+        throw "restored source evidence 与 exact generation intent 漂移。"
+    }
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
+    $live = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+        -Authority $HostAuthority `
+        -SuperuserPassword $MaintenanceAuthority.Secret `
+        -TargetDatabase ([string]$databasePolicy.DatabaseName)
+    $liveIdentity = Get-TicketboxDatabaseGenerationLiveIdentity `
+        -HostAuthority $HostAuthority `
+        -SuperuserPassword $MaintenanceAuthority.Secret
+    if (
+        -not [bool]$live.Exists -or
+        [string]$live.ClusterSystemIdentifier -cne
+            [string]$SourceEvidence.Payload.cluster_system_identifier -or
+        [uint32]$live.DatabaseOid -ne [uint32]$SourceEvidence.Payload.database_oid -or
+        [string]$liveIdentity.ClusterSystemIdentifier -cne
+            [string]$SourceEvidence.Payload.cluster_system_identifier -or
+        [uint32]$liveIdentity.DatabaseOid -ne [uint32]$SourceEvidence.Payload.database_oid -or
+        [string]$liveIdentity.DatasetId -cne [string]$SourceEvidence.Payload.dataset_id -or
+        [int64]$liveIdentity.RestoreEpoch -ne [int64]$SourceEvidence.Payload.restore_epoch -or
+        [string]$liveIdentity.SchemaRevision -cne
+            [string]$SourceEvidence.Payload.source_revision
+    ) {
+        throw "restored source live dataset authority 漂移。"
+    }
+    $fence = Get-TicketboxDatabaseGenerationFrozenFence `
+        $HostAuthority $MaintenanceAuthority.Secret
+    $fenceSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $fence
+    )
+    if ($fenceSha256 -cne [string]$SourceEvidence.Payload.writer_fence_sha256) {
+        throw "restored source writer fence 漂移。"
+    }
+    return [ordered]@{
+        schema = "ticketbox-database-generation-source-binding-v1"
+        operation_id = [string]$Intent.Payload.operation_id
+        intent_sha256 = [string]$Intent.PayloadSha256
+        source_evidence_sha256 = [string]$SourceEvidence.PayloadSha256
+        source_kind = "current_generation"
+        source_revision = [string]$SourceEvidence.Payload.source_revision
+        cluster_system_identifier = [string]$live.ClusterSystemIdentifier
+        database_oid = [uint32]$live.DatabaseOid
+        writer_fence_sha256 = $fenceSha256
     }
 }

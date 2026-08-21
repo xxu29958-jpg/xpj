@@ -1,9 +1,9 @@
 """Managed-host and source/development data-root contract.
 
 When the backend runs as a PyInstaller one-file EXE, ``BACKEND_ROOT`` is the
-throwaway ``_MEIPASS`` extraction dir. Files the backend *writes* — the Owner
-Console settings ``.env`` and PostgreSQL backups — must instead live under
-``DATA_ROOT``. The formal Windows service receives the machine-owned
+throwaway ``_MEIPASS`` extraction dir. Runtime settings and uploads live under
+``DATA_ROOT``; complete installed backups live in its protected sibling. The
+formal Windows service receives the machine-owned
 ``TicketboxRuntimeBinding/data-root/app`` junction through
 ``TICKETBOX_DATA_DIR``; its v2 marker and Volume GUID bind the physical
 ``<DataRoot>/app`` bytes. Only source/development runs may use the adjacent
@@ -189,6 +189,27 @@ def test_writable_dirs_follow_data_root_override(tmp_path):
         config.DATA_ROOT = original
         importlib.reload(importlib.import_module("app.services.backup_service"))
         importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
+
+
+def test_installed_backup_root_is_outside_backend_writable_app(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    original = config.DATA_ROOT
+    config.DATA_ROOT = tmp_path / "app"
+    monkeypatch.setenv(
+        "TICKETBOX_DATA_ROOT_MARKER_PATH",
+        str(tmp_path / ".ticketbox-data-root.json"),
+    )
+    try:
+        backup_service = importlib.reload(
+            importlib.import_module("app.services.backup_service")
+        )
+        assert tmp_path / "backups" == backup_service._BACKUP_DIR
+    finally:
+        monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH")
+        config.DATA_ROOT = original
+        importlib.reload(importlib.import_module("app.services.backup_service"))
 
 
 def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_path):
