@@ -66,6 +66,8 @@ def test_cleanup_attempts_every_step_and_preserves_all_failures() -> None:
 def test_managed_topology_preserves_body_and_cleanup_failures(monkeypatch) -> None:
     from tests import test_managed_postgres_migration_runtime as runtime_test
 
+    body_error = ValueError("body failed")
+    cleanup_error = KeyboardInterrupt("cleanup failed")
     topology = SimpleNamespace(
         admin=object(),
         database="throwaway_database",
@@ -77,12 +79,12 @@ def test_managed_topology_preserves_body_and_cleanup_failures(monkeypatch) -> No
     monkeypatch.setattr(
         runtime_test,
         "_create_roles_and_database",
-        lambda _topology: (_ for _ in ()).throw(ValueError("body failed")),
+        lambda _topology: (_ for _ in ()).throw(body_error),
     )
     monkeypatch.setattr(
         runtime_test,
         "cleanup_postgres_topology",
-        lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt("cleanup failed")),
+        lambda **_kwargs: (_ for _ in ()).throw(cleanup_error),
     )
 
     with (
@@ -90,7 +92,4 @@ def test_managed_topology_preserves_body_and_cleanup_failures(monkeypatch) -> No
         runtime_test._managed_topology(SimpleNamespace(), monkeypatch),
     ):
         raise AssertionError("unreachable")
-    assert tuple(type(exc) for exc in captured.value.exceptions) == (
-        ValueError,
-        KeyboardInterrupt,
-    )
+    assert captured.value.exceptions == (body_error, cleanup_error)
