@@ -141,7 +141,8 @@ $authority = [pscustomobject]@{
 function Assert-MigratorState {
     param(
         [Parameter(Mandatory = $true)][string]$Expected,
-        [ValidateSet("active", "retired")][string]$RejectRolePhase = "active"
+        [ValidateSet("active", "retired")][string]$RejectRolePhase = "active",
+        [string]$Context = ""
     )
     if ($Expected -ceq "reject") {
         $rejected = $false
@@ -154,7 +155,7 @@ function Assert-MigratorState {
         if (-not $rejected) {
             throw "partial migrator authority was accepted"
         }
-        Assert-TestRolePolicy -Phase $RejectRolePhase -ExpectFailure
+        Assert-TestRolePolicy -Phase $RejectRolePhase -Context $Context -ExpectFailure
         return
     }
     $actual = Get-TicketboxDatabaseGenerationMigratorAuthorityState $authority $secret
@@ -162,12 +163,13 @@ function Assert-MigratorState {
         throw "expected $Expected, observed $actual"
     }
     $phase = if ($Expected -like "retired*") { "retired" } else { "active" }
-    Assert-TestRolePolicy -Phase $phase
+    Assert-TestRolePolicy -Phase $phase -Context $Context
 }
 
 function Assert-TestRolePolicy {
     param(
         [Parameter(Mandatory = $true)][ValidateSet("active", "retired")][string]$Phase,
+        [string]$Context = "",
         [switch]$ExpectFailure
     )
     $rejected = $false
@@ -180,7 +182,7 @@ function Assert-TestRolePolicy {
     if ([bool]$ExpectFailure -eq $rejected) {
         return
     }
-    throw "Ticketbox $Phase role policy produced the wrong outcome."
+    throw "Ticketbox $Phase role policy produced the wrong outcome ($Context)."
 }
 
 function Assert-RuntimeObservation {
@@ -770,9 +772,9 @@ SELECT has_table_privilege(current_user, 'public.installation_owner_claims', 'SE
         @{ Mutation = "ALTER ROLE ticketbox_migrator VALID UNTIL '2100-01-01T00:00:00Z'"; Cleanup = "ALTER ROLE ticketbox_migrator VALID UNTIL '$validUntil'" }
     )) {
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
-        Assert-MigratorState -Expected "reject"
+        Assert-MigratorState -Expected "reject" -Context ([string]$scenario.Mutation)
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
-        Assert-MigratorState -Expected "active"
+        Assert-MigratorState -Expected "active" -Context ([string]$scenario.Cleanup)
     }
     foreach ($scenario in @(
         @{
@@ -785,7 +787,7 @@ SELECT has_table_privilege(current_user, 'public.installation_owner_claims', 'SE
         }
     )) {
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
-        Assert-TestRolePolicy -Phase "active" -ExpectFailure
+        Assert-TestRolePolicy -Phase "active" -Context ([string]$scenario.Mutation) -ExpectFailure
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
         Assert-MigratorState -Expected "active"
     }

@@ -64,7 +64,8 @@ SELECT
       AND rolconnlimit = 1 AND rolvaliduntil IS NOT NULL
       AND rolvaliduntil > clock_timestamp()
       AND rolvaliduntil <= clock_timestamp() + interval '1 hour'
-      FROM pg_roles WHERE rolname = '$($Policy.MigratorRole)'), false)::text || E'\t' ||
+      AND rolpassword IS NOT NULL
+      FROM pg_authid WHERE rolname = '$($Policy.MigratorRole)'), false)::text || E'\t' ||
     COALESCE((SELECT $runtimeLogin AND rolinherit AND NOT rolsuper AND NOT rolcreatedb
       AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls
       FROM pg_roles WHERE rolname = '$($Policy.RuntimeRole)'), false)::text || E'\t' ||
@@ -100,7 +101,8 @@ SELECT
       FROM pg_database WHERE datname = '$($Policy.DatabaseName)'), false)::text || E'\t' ||
     COALESCE((SELECT pg_get_userbyid(nspowner) = '$($Policy.OwnerRole)'
       FROM pg_namespace WHERE nspname = 'public'), false)::text || E'\t' ||
-    ($runtimeConnect)::text || E'\t' ||
+    (($runtimeConnect)
+      AND has_database_privilege('$($Policy.MigratorRole)', '$($Policy.DatabaseName)', 'CONNECT'))::text || E'\t' ||
     (NOT has_database_privilege('$($Policy.RuntimeRole)', '$($Policy.DatabaseName)', 'CREATE'))::text || E'\t' ||
     (NOT has_database_privilege('$($Policy.RuntimeRole)', '$($Policy.DatabaseName)', 'TEMPORARY'))::text || E'\t' ||
     has_schema_privilege('$($Policy.RuntimeRole)', 'public', 'USAGE')::text || E'\t' ||
