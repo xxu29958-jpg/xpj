@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
@@ -65,6 +68,36 @@ def test_frozen_generation_revisions_do_not_read_ambient_environment() -> None:
     ).read_text(encoding="utf-8-sig")
     assert "UPLOAD_LINK_TTL_DAYS = 90" in upload_link
     assert "LEGACY_EXPIRY_SPREAD_DAYS = 30" in upload_link
+
+
+def test_upload_link_migration_uses_frozen_policy_under_hostile_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UPLOAD_LINK_TTL_DAYS", "365")
+    monkeypatch.setenv("UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS", "1")
+    path = MIGRATIONS / "20260528_0001_upload_link_expiry.py"
+    spec = importlib.util.spec_from_file_location("upload_link_expiry_revision", path)
+    assert spec is not None and spec.loader is not None
+    revision_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(revision_module)
+
+    parameters: list[dict[str, int]] = []
+    bind = SimpleNamespace(
+        dialect=SimpleNamespace(name="postgresql"),
+        execute=lambda _statement, values: parameters.append(values),
+    )
+    monkeypatch.setattr(revision_module.op, "get_bind", lambda: bind)
+    monkeypatch.setattr(revision_module, "_has_table", lambda *_args: True)
+    monkeypatch.setattr(
+        revision_module,
+        "_columns",
+        lambda *_args: {"expires_at"},
+    )
+    monkeypatch.setattr(revision_module, "_has_index", lambda *_args: True)
+
+    revision_module.upgrade()
+
+    assert parameters == [{"ttl_days": 90, "spread_days": 30}]
 
 
 def test_program_validation_binds_exact_bytes_schema_and_helper_lease(
