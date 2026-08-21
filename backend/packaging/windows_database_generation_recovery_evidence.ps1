@@ -305,6 +305,7 @@ function Get-TicketboxDatabaseGenerationRecoveryArchive {
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $operationId = [string]$Attempt.Payload.operation_id
     $pgBin = Split-Path -Parent ([string]$HostAuthority.PsqlPath)
     $pgDump = Assert-TicketboxDatabaseGenerationToolIdentity `
@@ -340,8 +341,10 @@ function Get-TicketboxDatabaseGenerationRecoveryArchive {
     # this operation's evidence; replace it with a new writer-fenced dump.
     Remove-TicketboxDatabaseGenerationRecoveryFile `
         $StateRoot $paths.Path $LifecycleLock
-    $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
-        -Authority $HostAuthority -Database "ticketbox" -Role "postgres"
+    $databaseUrl = New-TicketboxPostgresqlLocalDatabaseUrl `
+        -Authority $HostAuthority `
+        -Database $($databasePolicy.DatabaseName) `
+        -Role "postgres"
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
     $capturedDump = $pgDump
     $capturedUrl = $databaseUrl

@@ -11,7 +11,10 @@
     [Parameter(Mandatory = $true)][string]$DatabaseSafetyPath,
     [Parameter(Mandatory = $true)][string]$PgRecoveryToolsPath,
     [Parameter(Mandatory = $true)][string]$DatabaseBindingPath,
-    [Parameter(Mandatory = $true)][string]$DatabasePolicyPath,
+    [Parameter(Mandatory = $true)][string]$DatabaseCommandPath,
+    [Parameter(Mandatory = $true)][string]$DatabaseContractPath,
+    [Parameter(Mandatory = $true)][string]$DatabaseAclPath,
+    [Parameter(Mandatory = $true)][string]$DatabaseRolesPath,
     [Parameter(Mandatory = $true)][string]$PythonPath,
     [Parameter(Mandatory = $true)][string]$BackendRoot,
     [Parameter(Mandatory = $true)][string]$PgBin,
@@ -116,16 +119,16 @@ finally:
 . $PgRecoveryToolsPath
 . $ContractPath
 . $CredentialsPath
+. $DatabaseCommandPath
+. $DatabaseContractPath
+. $DatabaseAclPath
+. $DatabaseRolesPath
 . $ReleaseConfigPath
 . $ServiceLifecyclePath
 . $SingleUserServicePath
-. $DatabasePolicyPath
 . $RetirementPath
 . $ProjectionPath
 . $DatabaseBindingPath
-$script:TicketboxC07DatabaseName = "ticketbox"
-$script:TicketboxC07OwnerRole = "ticketbox_owner"
-$script:TicketboxC07MigratorRole = "ticketbox_migrator"
 $secret = ConvertTo-TicketboxPostgresqlSecureString `
     $script:bootstrapPassword "projection fixture bootstrap password"
 $authority = [pscustomobject]@{
@@ -136,7 +139,10 @@ $authority = [pscustomobject]@{
 }
 
 function Assert-MigratorState {
-    param([Parameter(Mandatory = $true)][string]$Expected)
+    param(
+        [Parameter(Mandatory = $true)][string]$Expected,
+        [ValidateSet("active", "retired")][string]$RejectRolePhase = "active"
+    )
     if ($Expected -ceq "reject") {
         $rejected = $false
         try {
@@ -148,12 +154,33 @@ function Assert-MigratorState {
         if (-not $rejected) {
             throw "partial migrator authority was accepted"
         }
+        Assert-TestRolePolicy -Phase $RejectRolePhase -ExpectFailure
         return
     }
     $actual = Get-TicketboxDatabaseGenerationMigratorAuthorityState $authority $secret
     if ($actual -cne $Expected) {
         throw "expected $Expected, observed $actual"
     }
+    $phase = if ($Expected -like "retired*") { "retired" } else { "active" }
+    Assert-TestRolePolicy -Phase $phase
+}
+
+function Assert-TestRolePolicy {
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet("active", "retired")][string]$Phase,
+        [switch]$ExpectFailure
+    )
+    $rejected = $false
+    try {
+        Assert-TicketboxDatabaseRolePolicy $authority $secret $Phase
+    }
+    catch {
+        $rejected = $true
+    }
+    if ([bool]$ExpectFailure -eq $rejected) {
+        return
+    }
+    throw "Ticketbox $Phase role policy produced the wrong outcome."
 }
 
 function Assert-RuntimeObservation {
@@ -535,6 +562,110 @@ ALTER ROLE ticketbox_runtime SET search_path = pg_catalog, public;
 REVOKE CONNECT, CREATE, TEMPORARY ON DATABASE ticketbox FROM PUBLIC;
 GRANT CONNECT ON DATABASE ticketbox TO ticketbox_migrator;
 "@ | Out-Null
+    $policy = Get-TicketboxDatabaseAuthorizationContract
+    Invoke-TicketboxPostgresqlDatabaseCommand `
+        -Authority $authority `
+        -Database $policy.DatabaseName `
+        -Role "postgres" `
+        -Password $secret `
+        -Label "fixture empty-source ACL application" `
+        -Sql (New-TicketboxDatabaseRuntimeAclSql -PreserveRuntimeFence) | Out-Null
+    Assert-TicketboxDatabaseRolePolicy $authority $secret "fenced"
+    Invoke-TicketboxPostgresqlDatabaseCommand `
+        -Authority $authority `
+        -Database $policy.DatabaseName `
+        -Role "postgres" `
+        -Password $secret `
+        -Label "fixture empty-source ACL attestation" `
+        -Sql (New-TicketboxDatabaseForeignAclGuardSql $policy) | Out-Null
+    foreach ($scenario in @(
+        @{
+            Label = "database"
+            Mutation = "GRANT CONNECT ON DATABASE ticketbox TO ticketbox_foreign"
+            Cleanup = "REVOKE CONNECT ON DATABASE ticketbox FROM ticketbox_foreign"
+        },
+        @{
+            Label = "schema"
+            Mutation = "GRANT USAGE ON SCHEMA public TO ticketbox_foreign"
+            Cleanup = "REVOKE USAGE ON SCHEMA public FROM ticketbox_foreign"
+        },
+        @{
+            Label = "routine"
+            Setup = @"
+CREATE FUNCTION public.foreign_acl_probe() RETURNS integer LANGUAGE sql AS 'SELECT 1';
+ALTER FUNCTION public.foreign_acl_probe() OWNER TO ticketbox_owner;
+REVOKE ALL ON FUNCTION public.foreign_acl_probe() FROM PUBLIC;
+"@
+            Mutation = @"
+GRANT EXECUTE ON FUNCTION public.foreign_acl_probe() TO ticketbox_foreign;
+"@
+            Cleanup = @"
+REVOKE EXECUTE ON FUNCTION public.foreign_acl_probe() FROM ticketbox_foreign;
+DROP FUNCTION public.foreign_acl_probe();
+"@
+        },
+        @{
+            Label = "default ACL"
+            Mutation = @"
+ALTER DEFAULT PRIVILEGES FOR ROLE ticketbox_owner IN SCHEMA public
+GRANT SELECT ON TABLES TO ticketbox_foreign;
+"@
+            Cleanup = @"
+ALTER DEFAULT PRIVILEGES FOR ROLE ticketbox_owner IN SCHEMA public
+REVOKE SELECT ON TABLES FROM ticketbox_foreign;
+"@
+        }
+    )) {
+        if (-not [string]::IsNullOrEmpty([string]$scenario.Setup)) {
+            Invoke-TestPsql -Database "ticketbox" -Sql ([string]$scenario.Setup) | Out-Null
+            Invoke-TicketboxPostgresqlDatabaseCommand `
+                -Authority $authority `
+                -Database $policy.DatabaseName `
+                -Role "postgres" `
+                -Password $secret `
+                -Label "fixture prepared empty-source ACL attestation" `
+                -Sql (New-TicketboxDatabaseForeignAclGuardSql $policy) | Out-Null
+        }
+        Invoke-TestPsql -Database "ticketbox" -Sql $scenario.Mutation | Out-Null
+        $foreignEmptyAclRejected = $false
+        try {
+            Invoke-TicketboxPostgresqlDatabaseCommand `
+                -Authority $authority `
+                -Database $policy.DatabaseName `
+                -Role "postgres" `
+                -Password $secret `
+                -Label "fixture hostile empty-source ACL attestation" `
+                -Sql (New-TicketboxDatabaseForeignAclGuardSql $policy) | Out-Null
+        }
+        catch {
+            $foreignEmptyAclRejected = $true
+        }
+        if (-not $foreignEmptyAclRejected) {
+            throw "empty-source ACL guard accepted a foreign $($scenario.Label) grantee"
+        }
+        Invoke-TestPsql -Database "ticketbox" -Sql $scenario.Cleanup | Out-Null
+        Invoke-TicketboxPostgresqlDatabaseCommand `
+            -Authority $authority `
+            -Database $policy.DatabaseName `
+            -Role "postgres" `
+            -Password $secret `
+            -Label "fixture restored empty-source ACL attestation" `
+            -Sql (New-TicketboxDatabaseForeignAclGuardSql $policy) | Out-Null
+    }
+    $fullAclRejectedBeforeMigration = $false
+    try {
+        Assert-TicketboxDatabaseRuntimeAcl `
+            -Authority $authority `
+            -SuperuserPassword $secret `
+            -IncludeManagedSchemaCurrencyAuthority `
+            -PreserveRuntimeFence
+    }
+    catch {
+        $fullAclRejectedBeforeMigration = $true
+    }
+    if (-not $fullAclRejectedBeforeMigration) {
+        throw "full table ACL attestation accepted an empty pre-migration schema"
+    }
     $serverId = "11111111-1111-4111-8111-111111111111"
     $dataGeneration = "22222222-2222-4222-8222-222222222222"
     Invoke-TestPsql -Database "ticketbox" -Sql @"
@@ -564,12 +695,60 @@ GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO ticketbox_runtime;
 GRANT USAGE ON SCHEMA public TO ticketbox_runtime;
 GRANT SELECT ON public.app_meta, public.alembic_version TO ticketbox_runtime;
 "@ | Out-Null
+    $runtimeSpecifications = @(Get-TicketboxDatabaseRuntimePrivilegeSpecifications `
+        -IncludeManagedSchemaCurrencyAuthority)
+    $tableCreationSql = @(
+        foreach ($tableName in @($runtimeSpecifications.Table | Sort-Object -Unique)) {
+            if ($tableName -cin @("app_meta", "alembic_version")) {
+                continue
+            }
+            $idColumn = if ($tableName -ceq "accounts") {
+                "id bigserial PRIMARY KEY"
+            }
+            else {
+                "id bigint PRIMARY KEY"
+            }
+            "CREATE TABLE public.`"$tableName`" ($idColumn);" +
+                " ALTER TABLE public.`"$tableName`" OWNER TO `"$($policy.OwnerRole)`";"
+        }
+    ) -join "`n"
+    Invoke-TestPsql -Database "ticketbox" -Sql $tableCreationSql | Out-Null
+    Set-TicketboxDatabaseRuntimeAcl `
+        -Authority $authority `
+        -SuperuserPassword $secret `
+        -PreserveRuntimeFence
+    Assert-TicketboxDatabaseRolePolicy $authority $secret "fenced"
+    Assert-TicketboxDatabaseRuntimeAcl `
+        -Authority $authority `
+        -SuperuserPassword $secret `
+        -IncludeManagedSchemaCurrencyAuthority `
+        -PreserveRuntimeFence
     Invoke-TestPsql -Database "postgres" -Sql @"
-ALTER ROLE ticketbox_runtime LOGIN;
+ALTER ROLE ticketbox_runtime LOGIN CONNECTION LIMIT -1;
 GRANT CONNECT ON DATABASE ticketbox TO ticketbox_runtime;
 "@ | Out-Null
+    Assert-TicketboxDatabaseRolePolicy $authority $secret "active"
+    Assert-TicketboxDatabaseRuntimeAcl `
+        -Authority $authority `
+        -SuperuserPassword $secret `
+        -IncludeManagedSchemaCurrencyAuthority
+    $ownerClaimPrivileges = Invoke-TestPsql `
+        -Database "ticketbox" `
+        -Role $policy.RuntimeRole `
+        -PlainPassword $script:runtimePassword `
+        -Sql @"
+SELECT has_table_privilege(current_user, 'public.installation_owner_claims', 'SELECT')::text
+    || E'\t' || has_table_privilege(current_user, 'public.installation_owner_claims', 'INSERT')::text
+    || E'\t' || has_table_privilege(current_user, 'public.installation_owner_claims', 'UPDATE')::text
+    || E'\t' || has_table_privilege(current_user, 'public.installation_owner_claims', 'DELETE')::text;
+"@
+    if ($ownerClaimPrivileges -cne "true`ttrue`ttrue`tfalse") {
+        throw "installation owner claim runtime privileges are invalid: $ownerClaimPrivileges"
+    }
     $liveIdentity = Get-TicketboxDatabaseGenerationLiveIdentity $authority $secret
-    $expectedRuntimeAclSha256 = Get-TicketboxC07RuntimeAclSha256 $authority $secret
+    $expectedRuntimeAclSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+        Get-TicketboxDatabaseRuntimeAclEvidence $authority $secret
+    )
     Assert-MigratorState -Expected "active"
 
     foreach ($scenario in @(
@@ -595,6 +774,21 @@ GRANT CONNECT ON DATABASE ticketbox TO ticketbox_runtime;
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
         Assert-MigratorState -Expected "active"
     }
+    foreach ($scenario in @(
+        @{
+            Mutation = "ALTER ROLE ticketbox_migrator SET statement_timeout = '1s'"
+            Cleanup = "ALTER ROLE ticketbox_migrator RESET statement_timeout"
+        },
+        @{
+            Mutation = "ALTER ROLE ticketbox_migrator IN DATABASE ticketbox SET search_path = public"
+            Cleanup = "ALTER ROLE ticketbox_migrator IN DATABASE ticketbox RESET ALL"
+        }
+    )) {
+        Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
+        Assert-TestRolePolicy -Phase "active" -ExpectFailure
+        Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
+        Assert-MigratorState -Expected "active"
+    }
 
     $sleeper = Start-TestRoleSleeper -Role "ticketbox_migrator"
     Invoke-TestPsql -Database "postgres" -Sql @"
@@ -612,10 +806,19 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
     Invoke-TestPsql -Database "ticketbox" -Sql (
         "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_control_system() FROM ticketbox_runtime"
     ) | Out-Null
+    $aclRejected = $false
+    try {
+        Assert-TicketboxDatabaseRuntimeAcl $authority $secret `
+            -IncludeManagedSchemaCurrencyAuthority
+    }
+    catch { $aclRejected = $true }
+    if (-not $aclRejected) { throw "runtime ACL accepted revoked startup probe" }
     Invoke-TestPythonRuntimeObservation -ExpectFailure
     Invoke-TestPsql -Database "ticketbox" -Sql (
         "GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO ticketbox_runtime"
     ) | Out-Null
+    Assert-TicketboxDatabaseRuntimeAcl $authority $secret `
+        -IncludeManagedSchemaCurrencyAuthority
 
     foreach ($scenario in @(
         @{ Mutation = "ALTER ROLE ticketbox_runtime SUPERUSER"; Cleanup = "ALTER ROLE ticketbox_runtime NOSUPERUSER" },
@@ -626,11 +829,15 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         @{ Mutation = "ALTER ROLE ticketbox_runtime NOINHERIT"; Cleanup = "ALTER ROLE ticketbox_runtime INHERIT" },
         @{ Mutation = "ALTER ROLE ticketbox_runtime CONNECTION LIMIT 2"; Cleanup = "ALTER ROLE ticketbox_runtime CONNECTION LIMIT -1" },
         @{ Mutation = "ALTER ROLE ticketbox_runtime SET search_path = public"; Cleanup = "ALTER ROLE ticketbox_runtime SET search_path = pg_catalog, public" },
+        @{ Mutation = "ALTER ROLE ticketbox_runtime SET statement_timeout = '1s'"; Cleanup = "ALTER ROLE ticketbox_runtime RESET statement_timeout" },
+        @{ Mutation = "ALTER ROLE ticketbox_runtime IN DATABASE ticketbox SET search_path = public"; Cleanup = "ALTER ROLE ticketbox_runtime IN DATABASE ticketbox RESET ALL" },
         @{ Mutation = "GRANT ticketbox_foreign TO ticketbox_runtime"; Cleanup = "REVOKE ticketbox_foreign FROM ticketbox_runtime" }
     )) {
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
+        Assert-TestRolePolicy -Phase "retired" -ExpectFailure
         Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
+        Assert-TestRolePolicy -Phase "retired"
         Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
     }
     Invoke-TestPsql -Database "postgres" -Sql "ALTER ROLE ticketbox_runtime NOLOGIN" | Out-Null
@@ -650,8 +857,10 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         @{ Mutation = "GRANT ticketbox_foreign TO ticketbox_owner"; Cleanup = "REVOKE ticketbox_foreign FROM ticketbox_owner" }
     )) {
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
+        Assert-TestRolePolicy -Phase "retired" -ExpectFailure
         Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
+        Assert-TestRolePolicy -Phase "retired"
         Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
     }
     Invoke-TestPsql -Database "postgres" -Sql (
@@ -666,7 +875,7 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
 
     foreach ($scenario in @(
         @{ Mutation = "GRANT TRUNCATE ON public.app_meta TO ticketbox_runtime"; Cleanup = "REVOKE TRUNCATE ON public.app_meta FROM ticketbox_runtime" },
-        @{ Mutation = "GRANT UPDATE ON public.app_meta TO ticketbox_runtime"; Cleanup = "REVOKE UPDATE ON public.app_meta FROM ticketbox_runtime" },
+        @{ Mutation = "REVOKE UPDATE ON public.installation_owner_claims FROM ticketbox_runtime"; Cleanup = "GRANT UPDATE ON public.installation_owner_claims TO ticketbox_runtime" },
         @{ Mutation = "GRANT DELETE ON public.app_meta TO ticketbox_runtime"; Cleanup = "REVOKE DELETE ON public.app_meta FROM ticketbox_runtime" },
         @{ Mutation = "GRANT UPDATE ON SEQUENCE public.runtime_acl_probe_seq TO ticketbox_runtime"; Cleanup = "REVOKE UPDATE ON SEQUENCE public.runtime_acl_probe_seq FROM ticketbox_runtime" },
         @{ Mutation = "GRANT EXECUTE ON FUNCTION public.runtime_acl_probe() TO ticketbox_runtime"; Cleanup = "REVOKE EXECUTE ON FUNCTION public.runtime_acl_probe() FROM ticketbox_runtime" },
@@ -675,11 +884,22 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         @{ Mutation = "GRANT CREATE ON SCHEMA public TO ticketbox_runtime"; Cleanup = "REVOKE CREATE ON SCHEMA public FROM ticketbox_runtime" }
     )) {
         Invoke-TestPsql -Database "ticketbox" -Sql $scenario.Mutation | Out-Null
+        $aclRejected = $false
+        try {
+            Assert-TicketboxDatabaseRuntimeAcl $authority $secret `
+                -IncludeManagedSchemaCurrencyAuthority
+        }
+        catch { $aclRejected = $true }
+        if (-not $aclRejected) {
+            throw "structured ACL accepted privilege drift: $($scenario.Mutation)"
+        }
         $runtimeAclMutation = Invoke-TestPythonRuntimeObservation
         if ([string]$runtimeAclMutation.runtime_acl_sha256 -ceq $expectedRuntimeAclSha256) {
             throw "runtime ACL digest accepted privilege drift: $($scenario.Mutation)"
         }
         Invoke-TestPsql -Database "ticketbox" -Sql $scenario.Cleanup | Out-Null
+        Assert-TicketboxDatabaseRuntimeAcl $authority $secret `
+            -IncludeManagedSchemaCurrencyAuthority
         Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
     }
 
@@ -701,10 +921,27 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         }
     )) {
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
-        Assert-MigratorState -Expected "reject"
+        Assert-MigratorState -Expected "reject" -RejectRolePhase "retired"
         if ($scenario.RuntimeObservable -cne $false) {
             Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
         }
+        Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
+        Assert-MigratorState -Expected "retired"
+        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
+    }
+    foreach ($scenario in @(
+        @{
+            Mutation = "ALTER ROLE ticketbox_migrator SET statement_timeout = '1s'"
+            Cleanup = "ALTER ROLE ticketbox_migrator RESET statement_timeout"
+        },
+        @{
+            Mutation = "ALTER ROLE ticketbox_migrator IN DATABASE ticketbox SET search_path = public"
+            Cleanup = "ALTER ROLE ticketbox_migrator IN DATABASE ticketbox RESET ALL"
+        }
+    )) {
+        Invoke-TestPsql -Database "postgres" -Sql $scenario.Mutation | Out-Null
+        Assert-TestRolePolicy -Phase "retired" -ExpectFailure
+        Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256 -ExpectCapabilityFailure
         Invoke-TestPsql -Database "postgres" -Sql $scenario.Cleanup | Out-Null
         Assert-MigratorState -Expected "retired"
         Assert-RuntimeObservation $liveIdentity $serverId $dataGeneration $expectedRuntimeAclSha256
@@ -732,7 +969,7 @@ ALTER ROLE ticketbox_migrator NOLOGIN PASSWORD NULL;
         $script:runtimePassword "projection runtime password"
     try {
         $foreignRetirement = '{"schema":"foreign-generation-retirement-v1"}'
-        $foreignRetirementLiteral = ConvertTo-TicketboxC07SqlLiteral $foreignRetirement
+        $foreignRetirementLiteral = ConvertTo-TicketboxPostgresqlSqlLiteral $foreignRetirement
         Invoke-TestPsql `
             -Database "postgres" `
             -Sql "COMMENT ON ROLE postgres IS $foreignRetirementLiteral" | Out-Null

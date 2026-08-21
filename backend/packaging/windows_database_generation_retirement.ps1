@@ -31,11 +31,12 @@ function Test-TicketboxDatabaseGenerationBootstrapRetirement {
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][Security.SecureString]$RuntimePassword
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $expected = Get-TicketboxDatabaseGenerationBootstrapRetirementJson $Intent $Candidate
-    $observed = Invoke-TicketboxC07Sql `
+    $observed = Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
-        -Database $script:TicketboxC07DatabaseName `
-        -Role $script:TicketboxC07RuntimeRole `
+        -Database $($databasePolicy.DatabaseName) `
+        -Role $($databasePolicy.RuntimeRole) `
         -Password $RuntimePassword `
         -Label "database generation bootstrap retirement observation" `
         -Sql @"
@@ -53,7 +54,7 @@ FROM (
     ) AS oid
 ) AS role;
 "@
-    $fields = @(ConvertFrom-TicketboxC07SingleRow `
+    $fields = @(ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
         -Output $observed `
         -FieldCount 1 `
         -Label "database generation bootstrap retirement observation")

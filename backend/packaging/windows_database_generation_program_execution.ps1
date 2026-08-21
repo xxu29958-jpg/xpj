@@ -158,6 +158,7 @@ function Invoke-TicketboxPackagedManagedSchemaUpgrade {
         [Parameter(Mandatory = $true)][string]$ProgramPath,
         [Parameter(Mandatory = $true)][object]$ProgramEvidence
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
 
     if (
         [string]$Plan.generation_operation_id -cnotmatch
@@ -169,10 +170,10 @@ function Invoke-TicketboxPackagedManagedSchemaUpgrade {
     ) {
         throw "managed schema migration plan 的 source/target/revision shape 无效。"
     }
-    $databaseUrl = New-TicketboxC07LocalDatabaseUrl `
+    $databaseUrl = New-TicketboxPostgresqlLocalDatabaseUrl `
         -Authority $HostAuthority `
-        -Database "ticketbox" `
-        -Role "ticketbox_migrator"
+        -Database $($databasePolicy.DatabaseName) `
+        -Role $($databasePolicy.MigratorRole)
     $capturedPlan = $Plan
     $capturedHelper = $MigrationHelperPath
     $capturedEvidence = $MigrationHelperEvidence

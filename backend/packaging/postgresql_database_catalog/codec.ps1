@@ -34,7 +34,7 @@ function ConvertFrom-TicketboxPostgresqlDatabaseCatalogObservation {
         [Parameter(Mandatory = $true)][string]$TargetDatabase
     )
 
-    Assert-TicketboxPostgresqlDatabaseCatalogIdentifier `
+    Assert-TicketboxPostgresqlDatabaseIdentifier `
         -Value $TargetDatabase `
         -Label "Target database"
     $fields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `

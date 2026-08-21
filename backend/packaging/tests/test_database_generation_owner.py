@@ -22,7 +22,6 @@ SOURCE = PACKAGING / "windows_database_generation_source.ps1"
 RECOVERY_EVIDENCE = PACKAGING / "windows_database_generation_recovery_evidence.ps1"
 TARGET_RECOVERY = PACKAGING / "windows_database_generation_target_recovery.ps1"
 PROJECTION = PACKAGING / "windows_database_generation_projection.ps1"
-C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
 LIFECYCLE_LOCK = PACKAGING / "windows_lifecycle_lock.ps1"
 PREPARE = PACKAGING / "prepare_bundled_upgrade.ps1"
 RETIRED_C07_RECOVERY = PACKAGING / "windows_c07_recovery_generation.ps1"
@@ -59,13 +58,19 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     source = SOURCE.read_text(encoding="utf-8-sig")
     recovery_evidence = RECOVERY_EVIDENCE.read_text(encoding="utf-8-sig")
     target_recovery = TARGET_RECOVERY.read_text(encoding="utf-8-sig")
-    c07_database = C07_DATABASE.read_text(encoding="utf-8-sig")
     installer = INSTALLER.read_text(encoding="utf-8-sig")
     flow = FLOW.read_text(encoding="utf-8-sig")
     production = "\n".join(path.read_text(encoding="utf-8-sig") for path in PACKAGING.rglob("*.ps1"))
     assert installer.count("Invoke-TicketboxInstalledDatabaseGeneration `") == 1
     assert '. $C07DatabaseScript' not in installer
-    assert '"windows_c07_database.ps1"' in owner
+    for database_owner in (
+        "windows_postgresql_database_command.ps1",
+        "windows_ticketbox_database_contract.ps1",
+        "windows_ticketbox_database_acl.ps1",
+        "windows_ticketbox_database_roles.ps1",
+    ):
+        assert owner.count(f'"{database_owner}"') == 1
+    assert '"windows_c07_database.ps1"' not in owner
     assert "New-TicketboxDatabaseGenerationIntent `" not in installer
     assert installer.count("Read-TicketboxDatabaseGenerationIntentContext `") == 1
     prepare_to_install = _inno_function(
@@ -116,7 +121,7 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
         "TicketboxC07TargetCommitResultSchema",
         "TicketboxC07ProductionLifecycleBindingSchema",
     ):
-        assert retired not in production + c07_database
+        assert retired not in production
     for retired_path in (
         RETIRED_C07_RECOVERY,
         RETIRED_C07_AUTHORITY,
@@ -443,9 +448,15 @@ if (
 }}
         $dependencyNames = @(
             'windows_atomic_artifacts.ps1',
+            'windows_pg_recovery_tools.ps1',
             'windows_postgresql_credentials.ps1',
+            'windows_postgresql_database_command.ps1',
+            'windows_postgresql_database_catalog.ps1',
             'windows_postgresql_single_user.ps1',
             'windows_postgresql_writer_fence.ps1',
+            'windows_ticketbox_database_contract.ps1',
+            'windows_ticketbox_database_acl.ps1',
+            'windows_ticketbox_database_roles.ps1',
             'windows_service_contract.ps1',
             'windows_service_identity.ps1',
             'windows_service_lifecycle.ps1',
@@ -459,7 +470,6 @@ if (
             'windows_database_generation_database_binding.ps1',
             'windows_database_generation_retirement.ps1',
             'windows_database_generation_projection.ps1'
-            'windows_c07_database.ps1'
         )
 for ($index = 0; $index -lt $dependencyNames.Count; $index += 1) {{
     $text = if ($index -eq 0) {{

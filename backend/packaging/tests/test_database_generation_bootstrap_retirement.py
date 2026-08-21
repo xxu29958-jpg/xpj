@@ -22,7 +22,8 @@ SINGLE_USER = PACKAGING / "windows_database_generation_single_user.ps1"
 POSTGRESQL_SINGLE_USER = PACKAGING / "windows_postgresql_single_user.ps1"
 ARTIFACTS = PACKAGING / "windows_database_generation_artifacts.ps1"
 BUNDLED_DATABASE = PACKAGING / "windows_bundled_database.ps1"
-C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
+DATABASE_COMMAND = PACKAGING / "windows_postgresql_database_command.ps1"
+DATABASE_CONTRACT = PACKAGING / "windows_ticketbox_database_contract.ps1"
 INSTALLER = PACKAGING / "install_bundled_services.ps1"
 ISS = PACKAGING / "ticketbox-installer.iss"
 BUILD = PACKAGING / "build_inno_installer.ps1"
@@ -40,7 +41,7 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     postgresql_single_user = POSTGRESQL_SINGLE_USER.read_text(encoding="utf-8-sig")
     artifacts = ARTIFACTS.read_text(encoding="utf-8-sig")
     bundled_database = BUNDLED_DATABASE.read_text(encoding="utf-8-sig")
-    c07_database = C07_DATABASE.read_text(encoding="utf-8-sig")
+    database_command = DATABASE_COMMAND.read_text(encoding="utf-8-sig")
     installer = INSTALLER.read_text(encoding="utf-8-sig")
     production = "\n".join(
         path.read_text(encoding="utf-8-sig") for path in PACKAGING.rglob("*.ps1")
@@ -180,20 +181,18 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     ):
         assert clear in credentials
 
-    credential_gate = c07_database[c07_database.index("$postgresqlCredentials =") :]
-    credential_gate = credential_gate.split("# Runtime DML", 1)[0]
     for dependency in (
         "Assert-TicketboxPostgresqlSecureString",
         "Invoke-TicketboxWithPlainPostgresqlSecret",
     ):
-        assert dependency in credential_gate
+        assert dependency in database_command
 
 
 def test_bootstrap_retirement_observation_is_closed_over_absent_and_drift(
     tmp_path: Path,
 ) -> None:
     retirement = RETIREMENT.read_text(encoding="utf-8-sig")
-    c07_database = C07_DATABASE.read_text(encoding="utf-8-sig")
+    database_contract = DATABASE_CONTRACT.read_text(encoding="utf-8-sig")
     script = rf"""
 $ErrorActionPreference = 'Stop'
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
@@ -201,9 +200,15 @@ function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
     return $Value | ConvertTo-Json -Compress -Depth 20
 }}
 {powershell_function(retirement, "Get-TicketboxDatabaseGenerationBootstrapRetirementJson")}
-{powershell_function(c07_database, "ConvertFrom-TicketboxC07SingleRow")}
+{powershell_function(database_contract, "Get-TicketboxDatabaseAuthorizationContract")}
+function ConvertFrom-TicketboxPostgresqlHostEvidenceRow {{
+    param([string]$Output, [int]$FieldCount, [string]$Label)
+    $fields = @($Output -split "`t")
+    if ($fields.Count -ne $FieldCount) {{ throw "$Label field count" }}
+    return $fields
+}}
 $script:observed = ''
-function Invoke-TicketboxC07Sql {{ return $script:observed }}
+function Invoke-TicketboxPostgresqlDatabaseCommand {{ return $script:observed }}
 {powershell_function(retirement, "Test-TicketboxDatabaseGenerationBootstrapRetirement")}
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('a' * 64)

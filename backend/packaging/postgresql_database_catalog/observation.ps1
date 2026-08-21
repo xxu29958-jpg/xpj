@@ -2,27 +2,20 @@
 
 function Get-TicketboxPostgresqlDatabaseCatalogObservation {
     param(
-        [Parameter(Mandatory = $true)][string]$PsqlPath,
-        [Parameter(Mandatory = $true)][string]$DatabaseUrl,
-        [Parameter(Mandatory = $true)][string]$Password,
+        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
         [Parameter(Mandatory = $true)][string]$TargetDatabase,
         [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds = 30000
     )
 
     Assert-TicketboxPostgresqlDatabaseCatalogDependencies
-    if (
-        [string]::IsNullOrWhiteSpace($PsqlPath) -or
-        [string]::IsNullOrWhiteSpace($DatabaseUrl) -or
-        [string]::IsNullOrEmpty($Password)
-    ) {
-        throw "PostgreSQL database-catalog observation input is incomplete."
-    }
     $sql = New-TicketboxPostgresqlDatabaseCatalogObservationQuery `
         -TargetDatabase $TargetDatabase
-    $result = Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile `
-        -PsqlPath $PsqlPath `
-        -DatabaseUrl $DatabaseUrl `
-        -Password $Password `
+    $result = Invoke-TicketboxPostgresqlDatabaseCommandResult `
+        -Authority $Authority `
+        -Database "postgres" `
+        -Role "postgres" `
+        -Password $SuperuserPassword `
         -Sql $sql `
         -Label "PostgreSQL database-catalog observation" `
         -TimeoutMilliseconds $TimeoutMilliseconds

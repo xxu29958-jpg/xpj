@@ -48,6 +48,7 @@ function New-TicketboxDatabaseGenerationEmptyRoleSql {
         [Parameter(Mandatory = $true)][string]$MigratorVerifier,
         [Parameter(Mandatory = $true)][DateTime]$MigratorValidUntilUtc
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $operation = ([guid]$OperationId).ToString("D")
     if (
         $RuntimeVerifier -cnotmatch '^SCRAM-SHA-256\$4096:' -or
@@ -55,13 +56,14 @@ function New-TicketboxDatabaseGenerationEmptyRoleSql {
     ) {
         throw "empty source 只接受 SCRAM-SHA-256 verifier。"
     }
-    $runtimeVerifierSql = Escape-SqlLiteral $RuntimeVerifier
-    $migratorVerifierSql = Escape-SqlLiteral $MigratorVerifier
+    $runtimeVerifierSql = ConvertTo-TicketboxPostgresqlSqlLiteral $RuntimeVerifier
+    $migratorVerifierSql = ConvertTo-TicketboxPostgresqlSqlLiteral $MigratorVerifier
     $validUntil = $MigratorValidUntilUtc.ToUniversalTime().ToString(
         "yyyy-MM-ddTHH:mm:ss.fffZ",
         [Globalization.CultureInfo]::InvariantCulture
     )
-    $operationSql = Escape-SqlLiteral $operation
+    $validUntilSql = ConvertTo-TicketboxPostgresqlSqlLiteral $validUntil
+    $operationSql = ConvertTo-TicketboxPostgresqlSqlLiteral $operation
     return @"
 SET log_statement = 'none';
 SET log_min_duration_statement = -1;
@@ -78,91 +80,91 @@ BEGIN
     SELECT count(*) INTO existing_count
     FROM pg_roles
     WHERE rolname IN (
-        '$script:TicketboxC07OwnerRole',
-        '$script:TicketboxC07MigratorRole',
-        '$script:TicketboxC07RuntimeRole'
+        '$($databasePolicy.OwnerRole)',
+        '$($databasePolicy.MigratorRole)',
+        '$($databasePolicy.RuntimeRole)'
     );
     IF existing_count NOT IN (0, 3) THEN
         RAISE EXCEPTION 'partial database-generation role residue';
     END IF;
     IF existing_count = 0 THEN
-        CREATE ROLE "$script:TicketboxC07OwnerRole"
+        CREATE ROLE "$($databasePolicy.OwnerRole)"
             NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
             NOREPLICATION NOBYPASSRLS;
-        CREATE ROLE "$script:TicketboxC07RuntimeRole"
+        CREATE ROLE "$($databasePolicy.RuntimeRole)"
             NOLOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
             NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 0
-            PASSWORD '$runtimeVerifierSql';
-        CREATE ROLE "$script:TicketboxC07MigratorRole"
+            PASSWORD $runtimeVerifierSql;
+        CREATE ROLE "$($databasePolicy.MigratorRole)"
             LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
             NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1
-            PASSWORD '$migratorVerifierSql' VALID UNTIL '$validUntil';
+            PASSWORD $migratorVerifierSql VALID UNTIL $validUntilSql;
         FOREACH role_name IN ARRAY ARRAY[
-            '$script:TicketboxC07OwnerRole',
-            '$script:TicketboxC07MigratorRole',
-            '$script:TicketboxC07RuntimeRole'
+            '$($databasePolicy.OwnerRole)',
+            '$($databasePolicy.MigratorRole)',
+            '$($databasePolicy.RuntimeRole)'
         ] LOOP
             SELECT oid INTO STRICT role_oid FROM pg_roles WHERE rolname = role_name;
             expected_comment := format(
                 'ticketbox-database-generation-role-v1|%s|%s|%s',
-                '$operationSql', role_name, role_oid
+                $operationSql, role_name, role_oid
             );
             EXECUTE format('COMMENT ON ROLE %I IS %L', role_name, expected_comment);
         END LOOP;
     ELSE
         FOREACH role_name IN ARRAY ARRAY[
-            '$script:TicketboxC07OwnerRole',
-            '$script:TicketboxC07MigratorRole',
-            '$script:TicketboxC07RuntimeRole'
+            '$($databasePolicy.OwnerRole)',
+            '$($databasePolicy.MigratorRole)',
+            '$($databasePolicy.RuntimeRole)'
         ] LOOP
             SELECT oid, shobj_description(oid, 'pg_authid')
             INTO STRICT role_oid, actual_comment
             FROM pg_roles WHERE rolname = role_name;
             expected_comment := format(
                 'ticketbox-database-generation-role-v1|%s|%s|%s',
-                '$operationSql', role_name, role_oid
+                $operationSql, role_name, role_oid
             );
             IF actual_comment IS DISTINCT FROM expected_comment THEN
                 RAISE EXCEPTION 'database-generation role identity mismatch for %', role_name;
             END IF;
         END LOOP;
         IF (SELECT rolpassword FROM pg_authid
-            WHERE rolname = '$script:TicketboxC07RuntimeRole')
-              IS DISTINCT FROM '$runtimeVerifierSql'
+            WHERE rolname = '$($databasePolicy.RuntimeRole)')
+              IS DISTINCT FROM $runtimeVerifierSql
            OR (SELECT rolpassword FROM pg_authid
-            WHERE rolname = '$script:TicketboxC07MigratorRole')
-              IS DISTINCT FROM '$migratorVerifierSql' THEN
+            WHERE rolname = '$($databasePolicy.MigratorRole)')
+              IS DISTINCT FROM $migratorVerifierSql THEN
             RAISE EXCEPTION 'database-generation role credential mismatch';
         END IF;
     END IF;
-    ALTER ROLE "$script:TicketboxC07OwnerRole"
+    ALTER ROLE "$($databasePolicy.OwnerRole)"
         NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
         NOREPLICATION NOBYPASSRLS;
-    ALTER ROLE "$script:TicketboxC07RuntimeRole"
+    ALTER ROLE "$($databasePolicy.RuntimeRole)"
         NOLOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
         NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 0;
-    ALTER ROLE "$script:TicketboxC07MigratorRole"
+    ALTER ROLE "$($databasePolicy.MigratorRole)"
         LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
         NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1
-        VALID UNTIL '$validUntil';
+        VALID UNTIL $validUntilSql;
     IF EXISTS (
         SELECT 1
         FROM pg_auth_members AS membership
         JOIN pg_roles AS granted ON granted.oid = membership.roleid
         JOIN pg_roles AS member ON member.oid = membership.member
         WHERE (granted.rolname IN (
-                   '$script:TicketboxC07OwnerRole',
-                   '$script:TicketboxC07MigratorRole',
-                   '$script:TicketboxC07RuntimeRole'
+                   '$($databasePolicy.OwnerRole)',
+                   '$($databasePolicy.MigratorRole)',
+                   '$($databasePolicy.RuntimeRole)'
                )
                OR member.rolname IN (
-                   '$script:TicketboxC07OwnerRole',
-                   '$script:TicketboxC07MigratorRole',
-                   '$script:TicketboxC07RuntimeRole'
+                   '$($databasePolicy.OwnerRole)',
+                   '$($databasePolicy.MigratorRole)',
+                   '$($databasePolicy.RuntimeRole)'
                ))
           AND NOT (
-              granted.rolname = '$script:TicketboxC07OwnerRole'
-              AND member.rolname = '$script:TicketboxC07MigratorRole'
+              granted.rolname = '$($databasePolicy.OwnerRole)'
+              AND member.rolname = '$($databasePolicy.MigratorRole)'
               AND NOT membership.admin_option
               AND NOT membership.inherit_option
               AND membership.set_option
@@ -170,35 +172,13 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'foreign database-generation role membership residue';
     END IF;
-    GRANT "$script:TicketboxC07OwnerRole" TO "$script:TicketboxC07MigratorRole"
+    GRANT "$($databasePolicy.OwnerRole)" TO "$($databasePolicy.MigratorRole)"
         WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
-    REVOKE "$script:TicketboxC07OwnerRole" FROM "$script:TicketboxC07RuntimeRole";
+    REVOKE "$($databasePolicy.OwnerRole)" FROM "$($databasePolicy.RuntimeRole)";
 END
 `$ticketbox_generation_roles`$;
 COMMIT;
 "@
-}
-
-function Get-TicketboxDatabaseGenerationRoleOid {
-    param(
-        [Parameter(Mandatory = $true)][object]$HostAuthority,
-        [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
-        [Parameter(Mandatory = $true)][string]$Role
-    )
-    $roleLiteral = Escape-SqlLiteral $Role
-    $raw = [string](Invoke-TicketboxC07Sql `
-        -Authority $HostAuthority `
-        -Database "postgres" `
-        -Role "postgres" `
-        -Password $superuserPassword `
-        -Label "database generation role identity observation" `
-        -Sql "SELECT COALESCE((SELECT oid::text FROM pg_roles WHERE rolname = '$roleLiteral'), '');")
-    $value = $raw.Trim()
-    $oid = [uint32]0
-    if (-not [uint32]::TryParse($value, [ref]$oid) -or $oid -lt 1) {
-        throw "database generation expected owner role is absent."
-    }
-    return $oid
 }
 
 function Assert-TicketboxDatabaseGenerationEmptySchema {
@@ -206,9 +186,10 @@ function Assert-TicketboxDatabaseGenerationEmptySchema {
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword
     )
-    $raw = Invoke-TicketboxC07Sql `
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
+    $raw = Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
-        -Database $script:TicketboxC07DatabaseName `
+        -Database $($databasePolicy.DatabaseName) `
         -Role "postgres" `
         -Password $SuperuserPassword `
         -Label "database generation zero-write empty-source classification" `
@@ -222,7 +203,7 @@ WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema')
   AND namespace.nspname NOT LIKE 'pg_toast%'
   AND relation.relkind IN ('r', 'p', 'v', 'm', 'S', 'f');
 "@
-    $fields = ConvertFrom-TicketboxC07SingleRow `
+    $fields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
         -Output ([string]$raw) `
         -FieldCount 2 `
         -Label "database generation empty-source schema observation"
@@ -240,15 +221,20 @@ function Invoke-TicketboxDatabaseGenerationEmptySource {
         [Parameter(Mandatory = $true)][object]$MaintenanceAuthority,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $operationId = ([guid][string]$Intent.Payload.operation_id).ToString("D")
     $null = Assert-TicketboxDatabaseGenerationMaintenanceAuthority `
         $MaintenanceAuthority $Intent $HostAuthority $LifecycleLock
     $superuserPassword = $MaintenanceAuthority.Secret
     $temporaryDatabase = "ticketbox_generation_" + ([guid]$operationId).ToString("N")
-    $targetCatalog = Get-TicketboxC07DatabaseCatalogObservation `
-        $HostAuthority $superuserPassword $script:TicketboxC07DatabaseName
-    $temporaryCatalog = Get-TicketboxC07DatabaseCatalogObservation `
-        $HostAuthority $superuserPassword $temporaryDatabase
+    $targetCatalog = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+        -Authority $HostAuthority `
+        -SuperuserPassword $superuserPassword `
+        -TargetDatabase $($databasePolicy.DatabaseName)
+    $temporaryCatalog = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+        -Authority $HostAuthority `
+        -SuperuserPassword $superuserPassword `
+        -TargetDatabase $temporaryDatabase
     $attempt = Read-TicketboxDatabaseGenerationOperationArtifact `
         $StateRoot $operationId "source-create-attempt" -AllowAbsent
     if ($null -eq $attempt) {
@@ -261,7 +247,7 @@ function Invoke-TicketboxDatabaseGenerationEmptySource {
                 operation_id = $operationId
                 intent_sha256 = [string]$Intent.PayloadSha256
                 cluster_system_identifier = [string]$targetCatalog.ClusterSystemIdentifier
-                database_name = $script:TicketboxC07DatabaseName
+                database_name = $($databasePolicy.DatabaseName)
                 temporary_database = $temporaryDatabase
                 observed_target_absent = $true
             }) $LifecycleLock
@@ -270,7 +256,7 @@ function Invoke-TicketboxDatabaseGenerationEmptySource {
         [string]$attempt.Payload.intent_sha256 -cne [string]$Intent.PayloadSha256 -or
         [string]$attempt.Payload.cluster_system_identifier -cne
             [string]$targetCatalog.ClusterSystemIdentifier -or
-        [string]$attempt.Payload.database_name -cne $script:TicketboxC07DatabaseName -or
+        [string]$attempt.Payload.database_name -cne $($databasePolicy.DatabaseName) -or
         [string]$attempt.Payload.temporary_database -cne $temporaryDatabase -or
         -not [bool]$attempt.Payload.observed_target_absent -or
         ($targetCatalog.Exists -and $temporaryCatalog.Exists)
@@ -278,15 +264,17 @@ function Invoke-TicketboxDatabaseGenerationEmptySource {
         throw "database generation source create-attempt or cluster identity drifted."
     }
     if ($targetCatalog.Exists) {
-        $expectedOwnerOid = Get-TicketboxDatabaseGenerationRoleOid `
-            $HostAuthority $superuserPassword $script:TicketboxC07OwnerRole
+        $expectedOwnerOid = Get-TicketboxDatabaseRoleOid `
+            -Authority $HostAuthority `
+            -SuperuserPassword $superuserPassword `
+            -RoleName $($databasePolicy.OwnerRole)
         $expectedMarker = (
             "ticketbox-database-generation-empty-source-v1|$operationId|" +
             "$($targetCatalog.ClusterSystemIdentifier)|$($targetCatalog.DatabaseOid)"
         )
         if (
             [uint32]$targetCatalog.OwnerRoleOid -ne $expectedOwnerOid -or
-            [string]$targetCatalog.Marker -cne $expectedMarker
+            [string]$targetCatalog.Comment -cne $expectedMarker
         ) {
             throw "database generation existing database is not this operation's empty source."
         }
@@ -294,7 +282,7 @@ function Invoke-TicketboxDatabaseGenerationEmptySource {
             $HostAuthority $superuserPassword
     }
     $validUntil = [DateTime]::UtcNow.AddHours(1)
-    Invoke-TicketboxC07Sql `
+    Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
         -Database "postgres" `
         -Role "postgres" `
@@ -308,7 +296,7 @@ function Invoke-TicketboxDatabaseGenerationEmptySource {
     $catalog = $targetCatalog
     if (-not $catalog.Exists) {
         if (-not $temporaryCatalog.Exists) {
-            Invoke-TicketboxC07Sql `
+            Invoke-TicketboxPostgresqlDatabaseCommand `
                 -Authority $HostAuthority `
                 -Database "postgres" `
                 -Role "postgres" `
@@ -316,14 +304,18 @@ function Invoke-TicketboxDatabaseGenerationEmptySource {
                 -Label "database generation operation-bound database create" `
                 -Sql @"
 CREATE DATABASE "$temporaryDatabase"
-    OWNER "$script:TicketboxC07OwnerRole" TEMPLATE template0 ENCODING 'UTF8'
+    OWNER "$($databasePolicy.OwnerRole)" TEMPLATE template0 ENCODING 'UTF8'
     ALLOW_CONNECTIONS false;
 "@ | Out-Null
-            $temporaryCatalog = Get-TicketboxC07DatabaseCatalogObservation `
-                $HostAuthority $superuserPassword $temporaryDatabase
+            $temporaryCatalog = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+                -Authority $HostAuthority `
+                -SuperuserPassword $superuserPassword `
+                -TargetDatabase $temporaryDatabase
         }
-        $expectedOwnerOid = Get-TicketboxDatabaseGenerationRoleOid `
-            $HostAuthority $superuserPassword $script:TicketboxC07OwnerRole
+        $expectedOwnerOid = Get-TicketboxDatabaseRoleOid `
+            -Authority $HostAuthority `
+            -SuperuserPassword $superuserPassword `
+            -RoleName $($databasePolicy.OwnerRole)
         if (
             -not $temporaryCatalog.Exists -or
             [uint32]$temporaryCatalog.OwnerRoleOid -ne $expectedOwnerOid
@@ -334,31 +326,35 @@ CREATE DATABASE "$temporaryDatabase"
             "ticketbox-database-generation-empty-source-v1|$operationId|" +
             "$($temporaryCatalog.ClusterSystemIdentifier)|$($temporaryCatalog.DatabaseOid)"
         )
-        if ([string]::IsNullOrEmpty([string]$temporaryCatalog.Marker)) {
-            $temporaryMarkerSql = Escape-SqlLiteral $temporaryMarker
-            Invoke-TicketboxC07Sql `
+        if ([string]::IsNullOrEmpty([string]$temporaryCatalog.Comment)) {
+            $temporaryMarkerSql = ConvertTo-TicketboxPostgresqlSqlLiteral $temporaryMarker
+            Invoke-TicketboxPostgresqlDatabaseCommand `
                 -Authority $HostAuthority `
                 -Database "postgres" `
                 -Role "postgres" `
                 -Password $superuserPassword `
                 -Label "database generation operation-bound database identity" `
-                -Sql "COMMENT ON DATABASE `"$temporaryDatabase`" IS '$temporaryMarkerSql';" | Out-Null
+                -Sql "COMMENT ON DATABASE `"$temporaryDatabase`" IS $temporaryMarkerSql;" | Out-Null
         }
-        elseif ([string]$temporaryCatalog.Marker -cne $temporaryMarker) {
+        elseif ([string]$temporaryCatalog.Comment -cne $temporaryMarker) {
             throw "database generation temporary database identity drifted."
         }
-        Invoke-TicketboxC07Sql `
+        Invoke-TicketboxPostgresqlDatabaseCommand `
             -Authority $HostAuthority `
             -Database "postgres" `
             -Role "postgres" `
             -Password $superuserPassword `
             -Label "database generation operation-bound database publish" `
-            -Sql "ALTER DATABASE `"$temporaryDatabase`" RENAME TO `"$script:TicketboxC07DatabaseName`";" | Out-Null
-        $catalog = Get-TicketboxC07DatabaseCatalogObservation `
-            $HostAuthority $superuserPassword $script:TicketboxC07DatabaseName
+            -Sql "ALTER DATABASE `"$temporaryDatabase`" RENAME TO `"$($databasePolicy.DatabaseName)`";" | Out-Null
+        $catalog = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+            -Authority $HostAuthority `
+            -SuperuserPassword $superuserPassword `
+            -TargetDatabase $($databasePolicy.DatabaseName)
     }
-    $expectedOwnerOid = Get-TicketboxDatabaseGenerationRoleOid `
-        $HostAuthority $superuserPassword $script:TicketboxC07OwnerRole
+    $expectedOwnerOid = Get-TicketboxDatabaseRoleOid `
+        -Authority $HostAuthority `
+        -SuperuserPassword $superuserPassword `
+        -RoleName $($databasePolicy.OwnerRole)
     if (-not $catalog.Exists -or [uint32]$catalog.OwnerRoleOid -ne $expectedOwnerOid) {
         throw "database generation empty source 缺少 exact database/owner。"
     }
@@ -366,13 +362,13 @@ CREATE DATABASE "$temporaryDatabase"
         "ticketbox-database-generation-empty-source-v1|$operationId|" +
         "$($catalog.ClusterSystemIdentifier)|$($catalog.DatabaseOid)"
     )
-    if ([string]::IsNullOrEmpty([string]$catalog.Marker)) {
+    if ([string]::IsNullOrEmpty([string]$catalog.Comment)) {
         throw "database generation published database lost its operation identity."
     }
-    elseif ([string]$catalog.Marker -cne $expectedComment) {
+    elseif ([string]$catalog.Comment -cne $expectedComment) {
         throw "database generation empty source database identity 漂移。"
     }
-    Invoke-TicketboxC07Sql `
+    Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
         -Database "postgres" `
         -Role "postgres" `
@@ -380,35 +376,48 @@ CREATE DATABASE "$temporaryDatabase"
         -Label "database generation empty-source admission" `
         -Sql @"
 BEGIN;
-REVOKE ALL ON DATABASE "$script:TicketboxC07DatabaseName" FROM PUBLIC;
-REVOKE ALL ON DATABASE "$script:TicketboxC07DatabaseName"
-    FROM "$script:TicketboxC07RuntimeRole", "$script:TicketboxC07MigratorRole";
-GRANT CONNECT ON DATABASE "$script:TicketboxC07DatabaseName"
-    TO "$script:TicketboxC07MigratorRole";
-ALTER DATABASE "$script:TicketboxC07DatabaseName" ALLOW_CONNECTIONS true;
+REVOKE ALL ON DATABASE "$($databasePolicy.DatabaseName)" FROM PUBLIC;
+REVOKE ALL ON DATABASE "$($databasePolicy.DatabaseName)"
+    FROM "$($databasePolicy.RuntimeRole)", "$($databasePolicy.MigratorRole)";
+GRANT CONNECT ON DATABASE "$($databasePolicy.DatabaseName)"
+    TO "$($databasePolicy.MigratorRole)";
+ALTER DATABASE "$($databasePolicy.DatabaseName)" ALLOW_CONNECTIONS true;
 COMMIT;
 "@ | Out-Null
     Assert-TicketboxDatabaseGenerationEmptySchema `
         $HostAuthority $superuserPassword
-    Invoke-TicketboxC07Sql `
+    Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
-        -Database $script:TicketboxC07DatabaseName `
+        -Database $($databasePolicy.DatabaseName) `
         -Role "postgres" `
         -Password $superuserPassword `
         -Label "database generation empty-source ACL" `
-        -Sql (Get-TicketboxC07DatabasePrivilegeSql -PreserveRuntimeFence) | Out-Null
-    Assert-TicketboxC07MigratorCredential $HostAuthority $Credentials.MigratorPassword
-    Assert-TicketboxC07RoleCatalog $HostAuthority $superuserPassword -PreserveRuntimeFence
-    Assert-TicketboxC07RuntimeAclContract `
+        -Sql (New-TicketboxDatabaseRuntimeAclSql -PreserveRuntimeFence) | Out-Null
+    Assert-TicketboxDatabaseCredential `
+        -Authority $HostAuthority `
+        -Password $Credentials.MigratorPassword `
+        -CredentialKind "migrator"
+    Assert-TicketboxDatabaseRolePolicy `
         -Authority $HostAuthority `
         -SuperuserPassword $superuserPassword `
-        -PreserveRuntimeFence
+        -Phase "fenced"
+    Invoke-TicketboxPostgresqlDatabaseCommand `
+        -Authority $HostAuthority `
+        -Database $($databasePolicy.DatabaseName) `
+        -Role "postgres" `
+        -Password $superuserPassword `
+        -Label "database generation empty-source ACL attestation" `
+        -Sql (New-TicketboxDatabaseForeignAclGuardSql $databasePolicy) | Out-Null
+    Assert-TicketboxDatabaseGenerationEmptySchema `
+        $HostAuthority $superuserPassword
     $fence = Get-TicketboxDatabaseGenerationFrozenFence $HostAuthority $superuserPassword
-    $final = Get-TicketboxC07DatabaseCatalogObservation `
-        $HostAuthority $superuserPassword $script:TicketboxC07DatabaseName
+    $final = Get-TicketboxPostgresqlDatabaseCatalogObservation `
+        -Authority $HostAuthority `
+        -SuperuserPassword $superuserPassword `
+        -TargetDatabase $($databasePolicy.DatabaseName)
     if (
         -not $final.Exists -or -not $final.AllowsConnections -or
-        [string]$final.Marker -cne $expectedComment -or
+        [string]$final.Comment -cne $expectedComment -or
         [uint32]$final.DatabaseOid -ne [uint32]$catalog.DatabaseOid
     ) {
         throw "database generation empty SourceBinding live identity 未收敛。"

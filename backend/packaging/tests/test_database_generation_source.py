@@ -149,16 +149,20 @@ if (-not $rejected -or $script:writes -ne 0) {{ throw 'foreign CURRENT crossed e
 def test_empty_source_classification_is_zero_write_and_operation_bound(
     tmp_path: Path,
 ) -> None:
+    source_text = SOURCE.read_text(encoding="utf-8-sig")
     normalize = _function(
-        SOURCE.read_text(encoding="utf-8-sig"),
+        source_text,
         "Invoke-TicketboxDatabaseGenerationEmptySource",
+    )
+    role_sql = _function(source_text, "New-TicketboxDatabaseGenerationEmptyRoleSql")
+    sql_literal = _function(
+        (PACKAGING / "windows_postgresql_database_command.ps1").read_text(
+            encoding="utf-8-sig"
+        ),
+        "ConvertTo-TicketboxPostgresqlSqlLiteral",
     )
     script = f"""
 $ErrorActionPreference = 'Stop'
-$script:TicketboxC07DatabaseName = 'ticketbox'
-$script:TicketboxC07OwnerRole = 'ticketbox_owner'
-$script:TicketboxC07MigratorRole = 'ticketbox_migrator'
-$script:TicketboxC07RuntimeRole = 'ticketbox_runtime'
 $script:writes = 0
 $script:nonempty = $false
 $script:attempt = $null
@@ -166,22 +170,43 @@ $script:target = $null
 function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {{ param($Authority, $Intent, $HostAuthority, $Lock); return $Authority }}
 function Read-TicketboxDatabaseGenerationOperationArtifact {{ param($Root, $Operation, $Kind, [switch]$AllowAbsent); return $script:attempt }}
 function New-TicketboxDatabaseGenerationChainedArtifact {{ $script:writes += 1; return $script:attempt }}
-function Get-TicketboxC07DatabaseCatalogObservation {{
-    param($Authority, $Password, $Database)
-    if ($Database -ceq 'ticketbox') {{ return $script:target }}
+function Get-TicketboxDatabaseAuthorizationContract {{
     return [pscustomobject]@{{
-        Exists = $false; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]0
-        OwnerRoleOid = [uint32]0; Marker = ''; AllowsConnections = $false
+        DatabaseName = 'ticketbox'
+        OwnerRole = 'ticketbox_owner'
+        MigratorRole = 'ticketbox_migrator'
+        RuntimeRole = 'ticketbox_runtime'
+        RetiredLegacyRole = 'ticketbox'
     }}
 }}
-function Get-TicketboxDatabaseGenerationRoleOid {{ return [uint32]77 }}
+function Get-TicketboxPostgresqlDatabaseCatalogObservation {{
+    param($Authority, $SuperuserPassword, $TargetDatabase)
+    if ($TargetDatabase -ceq 'ticketbox') {{ return $script:target }}
+    return [pscustomobject]@{{
+        Exists = $false; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]0
+        OwnerRoleOid = [uint32]0; Comment = ''; AllowsConnections = $false
+    }}
+}}
+function Get-TicketboxDatabaseRoleOid {{
+    param($Authority, $SuperuserPassword, $RoleName)
+    return [uint32]77
+}}
 function Assert-TicketboxDatabaseGenerationEmptySchema {{ if ($script:nonempty) {{ throw 'nonempty' }} }}
-function New-TicketboxDatabaseGenerationEmptyRoleSql {{ return 'SELECT 1;' }}
-function Invoke-TicketboxC07Sql {{ $script:writes += 1 }}
-function Get-TicketboxC07DatabasePrivilegeSql {{ return 'SELECT 1;' }}
-function Assert-TicketboxC07MigratorCredential {{}}
-function Assert-TicketboxC07RoleCatalog {{}}
-function Assert-TicketboxC07RuntimeAclContract {{}}
+{sql_literal}
+{role_sql}
+function Invoke-TicketboxPostgresqlDatabaseCommand {{
+    param($Authority, $Database, $Role, $Password, [string]$Label, [string]$Sql)
+    $script:writes += 1
+    if ($Label -ceq 'database generation empty-source ACL attestation') {{
+        if ($Sql -cne 'DO ticketbox empty ACL guard;') {{ throw 'empty ACL guard drifted' }}
+        $script:emptyAclAttested = $true
+    }}
+}}
+function New-TicketboxDatabaseRuntimeAclSql {{ return 'SELECT 1;' }}
+function New-TicketboxDatabaseForeignAclGuardSql {{ return 'DO ticketbox empty ACL guard;' }}
+function Assert-TicketboxDatabaseCredential {{}}
+function Assert-TicketboxDatabaseRolePolicy {{}}
+function Assert-TicketboxDatabaseRuntimeAcl {{ throw 'full table ACL asserted before migration' }}
 function Get-TicketboxDatabaseGenerationFrozenFence {{ return [ordered]@{{ state = 'frozen' }} }}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); return ($Value | ConvertTo-Json -Compress) }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('f' * 64) }}
@@ -200,6 +225,18 @@ $credentials = [pscustomobject]@{{
     MigratorPassword = $migratorSecret
 }}
 $maintenanceAuthority = [pscustomobject]@{{ Secret = $superuserSecret }}
+$roleBootstrapSql = New-TicketboxDatabaseGenerationEmptyRoleSql `
+    -OperationId $operation `
+    -RuntimeVerifier $credentials.RuntimeVerifier `
+    -MigratorVerifier $credentials.MigratorVerifier `
+    -MigratorValidUntilUtc ([DateTime]'2030-01-02T03:04:05Z')
+if (
+    $roleBootstrapSql -notlike "*PASSWORD 'SCRAM-SHA-256`$4096:x';*" -or
+    $roleBootstrapSql -notlike "*PASSWORD 'SCRAM-SHA-256`$4096:y' VALID UNTIL '2030-01-02T03:04:05.000Z';*" -or
+    $roleBootstrapSql -like "*PASSWORD ''SCRAM-SHA-256*" -or
+    $roleBootstrapSql -like "*IS DISTINCT FROM ''SCRAM-SHA-256*" -or
+    $roleBootstrapSql -like "*''11111111-1111-4111-8111-111111111111''*"
+) {{ throw 'empty-source SQL literal ownership drifted' }}
 $attemptFixture = [pscustomobject]@{{
     PayloadSha256 = ('d' * 64)
     Payload = [pscustomobject]@{{
@@ -213,14 +250,14 @@ $exactMarker = "ticketbox-database-generation-empty-source-v1|$operation|cluster
 
 # A pre-existing target cannot create an attempt or mutate roles/ACL.
 $script:attempt = $null
-$script:target = [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]42; OwnerRoleOid = [uint32]77; Marker = ''; AllowsConnections = $true }}
+$script:target = [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-1'; DatabaseOid = [uint32]42; OwnerRoleOid = [uint32]77; Comment = ''; AllowsConnections = $true }}
 $rejected = $false
 try {{ Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credentials @{{}} $maintenanceAuthority @{{}} | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected -or $script:writes -ne 0) {{ throw 'pre-existing target reached mutation' }}
 
 # Even an operation marker cannot authorize a non-empty target.
 $script:attempt = $attemptFixture
-$script:target.Marker = $exactMarker
+$script:target.Comment = $exactMarker
 $script:nonempty = $true
 $rejected = $false
 try {{ Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credentials @{{}} $maintenanceAuthority @{{}} | Out-Null }} catch {{ $rejected = $true }}
@@ -228,9 +265,11 @@ if (-not $rejected -or $script:writes -ne 0) {{ throw 'non-empty exact marker re
 
 # The exact persisted attempt + marker + empty schema is the only retry lane.
 $script:nonempty = $false
+$script:emptyAclAttested = $false
 $result = Invoke-TicketboxDatabaseGenerationEmptySource 'state' $intent $credentials @{{}} $maintenanceAuthority @{{}}
 if (
-    $script:writes -ne 3 -or
+    $script:writes -ne 4 -or
+    -not $script:emptyAclAttested -or
     [string]$result.create_attempt_sha256 -cne ('d' * 64) -or
     [string]$result.source_kind -cne 'empty' -or
     [string]$result.database_oid -cne '42'

@@ -22,6 +22,11 @@ LIVE_DATABASE_QUERY = text(
            ), false),
            COALESCE((SELECT COALESCE(role.rolconfig, ARRAY[]::text[]) =
                             ARRAY['search_path=pg_catalog, public']::text[]
+                       AND NOT EXISTS (
+                           SELECT 1 FROM pg_catalog.pg_db_role_setting AS setting
+                           WHERE setting.setrole = role.oid
+                             AND setting.setdatabase = database.oid
+                       )
                 FROM pg_catalog.pg_roles AS role WHERE role.rolname = session_user
            ), false),
            NOT EXISTS (
@@ -68,11 +73,19 @@ LIVE_DATABASE_QUERY = text(
                SELECT 1 FROM pg_catalog.pg_stat_activity WHERE usename = 'ticketbox_owner' AND pid <> pg_backend_pid()
            ),
            COALESCE((SELECT NOT role.rolcanlogin AND NOT role.rolinherit
-                      AND NOT role.rolsuper AND NOT role.rolcreatedb
-                      AND NOT role.rolcreaterole AND NOT role.rolreplication
-                      AND NOT role.rolbypassrls AND role.rolconnlimit = 1
+                       AND NOT role.rolsuper AND NOT role.rolcreatedb
+                       AND NOT role.rolcreaterole AND NOT role.rolreplication
+                       AND NOT role.rolbypassrls AND role.rolconnlimit = 1
+                       AND COALESCE(role.rolconfig, ARRAY[]::text[]) =
+                           ARRAY['search_path=pg_catalog, public']::text[]
                 FROM pg_catalog.pg_roles AS role WHERE role.rolname = 'ticketbox_migrator'
            ), false)
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_catalog.pg_db_role_setting AS setting
+               JOIN pg_catalog.pg_roles AS role ON role.oid = setting.setrole
+               WHERE role.rolname = 'ticketbox_migrator'
+                 AND setting.setdatabase = database.oid
+           )
            AND NOT EXISTS (
                SELECT 1 FROM pg_catalog.pg_auth_members AS membership
                JOIN pg_catalog.pg_roles AS granted ON granted.oid = membership.roleid JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member

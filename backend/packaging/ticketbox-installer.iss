@@ -247,7 +247,10 @@ Source: "postgresql_writer_fence\session_drain.ps1"; DestDir: "{app}\installer\p
 Source: "postgresql_writer_fence\reconciler.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
 Source: "windows_release_config.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_bundled_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_c07_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_postgresql_database_command.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_ticketbox_database_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_ticketbox_database_acl.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_ticketbox_database_roles.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_security_primitives.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "security_primitives\byte_array.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
 Source: "security_primitives\token_privilege_native.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
