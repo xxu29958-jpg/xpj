@@ -116,6 +116,7 @@ class _ManagedTopology:
     migrator: str
     runtime_role: str
     owner_url: URL
+    admin_database_url: URL
     migrator_url: URL
     pgpass: Path
     previous_pgpass: str | None
@@ -202,6 +203,10 @@ def _new_managed_topology(tmp_path: Path) -> _ManagedTopology:
         password=_OWNER_PASSWORD,
         require_auth=True,
     )
+    admin_database_url = make_url(ADMIN_TEST_DATABASE_URL).set(
+        drivername="postgresql+psycopg",
+        database=database,
+    )
     migrator_url = _connection_url(
         database=database,
         username=migrator,
@@ -230,6 +235,7 @@ def _new_managed_topology(tmp_path: Path) -> _ManagedTopology:
         migrator=migrator,
         runtime_role=runtime_role,
         owner_url=owner_url,
+        admin_database_url=admin_database_url,
         migrator_url=migrator_url,
         pgpass=pgpass,
         previous_pgpass=os.environ.get("PGPASSFILE"),
@@ -263,6 +269,11 @@ def _managed_topology(
             )
         finally:
             owner_engine.dispose()
+        topology.admin.execute(
+            sql.SQL("ALTER ROLE {} NOLOGIN PASSWORD NULL").format(
+                sql.Identifier(topology.owner)
+            )
+        )
         write_protected_file_exclusive(
             topology.pgpass,
             (
@@ -277,7 +288,7 @@ def _managed_topology(
 
 
 def _assert_lease_contention(topology: _ManagedTopology) -> None:
-    blocker = create_engine(topology.owner_url, poolclass=NullPool, future=True)
+    blocker = create_engine(topology.admin_database_url, poolclass=NullPool, future=True)
     try:
         with blocker.begin() as connection:
             connection.execute(
@@ -298,7 +309,7 @@ def _assert_lease_contention(topology: _ManagedTopology) -> None:
                 )
     finally:
         blocker.dispose()
-    assert _revision(topology.owner_url) == _C07_TARGET_REVISION
+    assert _revision(topology.admin_database_url) == _C07_TARGET_REVISION
     assert (
         _migrator_sessions(
             topology.admin,
@@ -357,8 +368,8 @@ def _assert_rollback_retry_and_replay(
         "execute_database_generation",
         original_execute,
     )
-    assert _revision(topology.owner_url) == _C07_TARGET_REVISION
-    owner_probe = create_engine(topology.owner_url, poolclass=NullPool, future=True)
+    assert _revision(topology.admin_database_url) == _C07_TARGET_REVISION
+    owner_probe = create_engine(topology.admin_database_url, poolclass=NullPool, future=True)
     try:
         with owner_probe.connect() as connection:
             assert "installation_currency_bindings" not in inspect(connection).get_table_names(schema="public")
@@ -374,7 +385,7 @@ def _assert_rollback_retry_and_replay(
         "generation_operation_id": topology.operation_id,
     }
     assert topology.runtime.run(**arguments) == "target_committed"
-    assert _revision(topology.owner_url) == _RELEASE_HEAD_REVISION
+    assert _revision(topology.admin_database_url) == _RELEASE_HEAD_REVISION
     assert topology.runtime.run(**arguments) == "target_observed_after_interruption"
     monkeypatch.setattr(managed_schema, "DATABASE_NAME", topology.database)
     monkeypatch.setattr(managed_schema, "MIGRATOR_ROLE", topology.migrator)

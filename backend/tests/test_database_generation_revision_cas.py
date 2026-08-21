@@ -64,7 +64,7 @@ def _assert_alembic_owns_the_exact_transition(
     assert len(observed) == 1
     assert observed[0][0] is not None
     assert observed[0][1:] == (_RELEASE_HEAD_REVISION, topology.program)
-    assert _revision(topology.owner_url) == _RELEASE_HEAD_REVISION
+    assert _revision(topology.admin_database_url) == _RELEASE_HEAD_REVISION
 
 
 def _assert_intermediate_postcondition_is_mandatory(
@@ -96,13 +96,13 @@ def _assert_intermediate_postcondition_is_mandatory(
         topology.runtime.run(**_migration_arguments(topology))
     monkeypatch.setattr(generation_executor, "_assert_postcondition", original)
     assert _C02_TARGET_REVISION in observed
-    assert _revision(topology.owner_url) == expected_revision
+    assert _revision(topology.admin_database_url) == expected_revision
 
 
 def _assert_target_retry_revalidates_postcondition(
     topology: _ManagedTopology,
 ) -> None:
-    owner_engine = create_engine(topology.owner_url, poolclass=NullPool, future=True)
+    owner_engine = create_engine(topology.admin_database_url, poolclass=NullPool, future=True)
     try:
         with owner_engine.begin() as connection:
             connection.execute(
@@ -118,11 +118,11 @@ def _assert_target_retry_revalidates_postcondition(
             topology.runtime.run(**_migration_arguments(topology))
     finally:
         owner_engine.dispose()
-    assert _revision(topology.owner_url) == _RELEASE_HEAD_REVISION
+    assert _revision(topology.admin_database_url) == _RELEASE_HEAD_REVISION
 
 
 def _assert_executor_requires_caller_transaction(topology: _ManagedTopology) -> None:
-    engine = create_engine(topology.owner_url, poolclass=NullPool, future=True)
+    engine = create_engine(topology.admin_database_url, poolclass=NullPool, future=True)
     try:
         with engine.connect() as connection, pytest.raises(
             DatabaseGenerationExecutionError,
@@ -139,7 +139,7 @@ def _assert_executor_requires_caller_transaction(topology: _ManagedTopology) -> 
 
 
 def _assert_invalid_rows_fail_closed(topology: _ManagedTopology) -> None:
-    owner_engine = create_engine(topology.owner_url, poolclass=NullPool, future=True)
+    owner_engine = create_engine(topology.admin_database_url, poolclass=NullPool, future=True)
     try:
         with owner_engine.begin() as connection:
             connection.execute(text("DELETE FROM public.alembic_version"))
@@ -168,7 +168,7 @@ def _assert_invalid_rows_fail_closed(topology: _ManagedTopology) -> None:
             ).get_table_names(schema="public")
     finally:
         owner_engine.dispose()
-    assert _revision(topology.owner_url) == _C07_TARGET_REVISION
+    assert _revision(topology.admin_database_url) == _C07_TARGET_REVISION
 
 
 def test_generation_alembic_boundary_rejects_invalid_rows_and_owns_transition(

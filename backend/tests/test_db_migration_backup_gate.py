@@ -104,11 +104,17 @@ def _assert_old_runtime_blocks(db_pkg, calls: list[str]) -> None:
         old_runtime_engine.dispose()
 
 
-def test_managed_source_revision_refuses_before_backup_or_writes(monkeypatch):
-    """Ordinary startup cannot consume an installer-managed source revision."""
+@pytest.mark.parametrize("revision", [_OLDER_REVISION, _MANAGED_SOURCE_REVISION])
+def test_installed_runtime_refuses_known_behind_revision_before_writes(
+    monkeypatch,
+    revision: str,
+):
+    """The frozen runtime leaves every known behind revision to its host owner."""
     import app.database as db_pkg
+    from app.database import _database_generation_program as program_reader
     from app.services import backup_service
 
+    alembic = db_pkg.load_alembic_context()
     calls: list[str] = []
     monkeypatch.setattr(
         backup_service,
@@ -118,39 +124,23 @@ def test_managed_source_revision_refuses_before_backup_or_writes(monkeypatch):
     monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
     monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
     _patch_database_writes(monkeypatch, db_pkg, calls)
-
-    _stamp_revision(db_pkg, _MANAGED_SOURCE_REVISION)
-    before = _catalog_snapshot(db_pkg)
-    with pytest.raises(
-        db_pkg.DatabaseMigrationPreflightError,
-        match="只能由.*发布迁移动作推进",
-    ):
-        db_pkg.init_db()
-
-    assert calls == []
-    assert _catalog_snapshot(db_pkg) == before
-
-
-def test_older_revision_refuses_before_backup_or_writes(monkeypatch):
-    """Older managed revisions are inspect-only under ordinary startup."""
-    import app.database as db_pkg
-    from app.services import backup_service
-
-    calls: list[str] = []
     monkeypatch.setattr(
-        backup_service,
-        "create_pre_upgrade_backup",
-        lambda: calls.append("backup"),
+        program_reader,
+        "load_installed_database_generation_program",
+        lambda: object(),
     )
-    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: calls.append("upgrade"))
-    monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: calls.append("stamp"))
-    _patch_database_writes(monkeypatch, db_pkg, calls)
+    monkeypatch.setattr(
+        db_pkg,
+        "load_alembic_context",
+        lambda *, installed_program=None: alembic,
+    )
 
-    _stamp_revision(db_pkg, _OLDER_REVISION)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    _stamp_revision(db_pkg, revision)
     before = _catalog_snapshot(db_pkg)
     with pytest.raises(
         db_pkg.DatabaseMigrationPreflightError,
-        match="inspect-only REFUSED",
+        match="安装器.*短命 migrator",
     ):
         db_pkg.init_db()
 

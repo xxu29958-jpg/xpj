@@ -29,12 +29,6 @@ from app.money_contract_types import (
     final_sign_bounds,
 )
 from app.money_contract_types import (
-    MONEY_CONTRACT_PHASE_C07 as MONEY_CONTRACT_PHASE_C07,
-)
-from app.money_contract_types import (
-    MONEY_CONTRACT_PHASE_KEY as MONEY_CONTRACT_PHASE_KEY,
-)
-from app.money_contract_types import (
     MoneyCheck as MoneyCheck,
 )
 from app.money_contract_types import (

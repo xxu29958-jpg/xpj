@@ -10,8 +10,6 @@ from sqlalchemy.engine import Connection
 
 from app.money_contract import (
     MONEY_COLUMNS_V1,
-    MONEY_CONTRACT_PHASE_C07,
-    MONEY_CONTRACT_PHASE_KEY,
     MONEY_FINAL_CHECKS_V1,
     MONEY_REMOVED_LEGACY_CHECKS_V1,
 )
@@ -225,12 +223,6 @@ def read_money_schema_shape(connection: Connection) -> dict[str, object]:
         )
         for check in MONEY_REMOVED_LEGACY_CHECKS_V1
     ]
-    phase = connection.scalar(
-        text("SELECT value FROM public.app_meta WHERE key = :key"),
-        {"key": MONEY_CONTRACT_PHASE_KEY},
-    )
-    if phase != MONEY_CONTRACT_PHASE_C07:
-        raise MoneySchemaAttestationError("money schema phase marker drifted")
     if (
         len(columns) != len(MONEY_COLUMNS_V1)
         or len(checks) != len(MONEY_FINAL_CHECKS_V1)
@@ -241,13 +233,11 @@ def read_money_schema_shape(connection: Connection) -> dict[str, object]:
         "columns": columns,
         "checks": checks,
         "absent_checks": absent_checks,
-        "phase": phase,
     }
     return {
         "column_count": len(columns),
         "check_count": len(checks),
         "absent_check_count": len(absent_checks),
-        "phase": phase,
         "shape_sha256": _canonical_sha256(payload),
         **payload,
     }

@@ -18,8 +18,6 @@ from app.database._money_schema_attestation import (
 from app.models import RecurringItem
 from app.money_contract import (
     MONEY_COLUMNS_V1,
-    MONEY_CONTRACT_PHASE_C07,
-    MONEY_CONTRACT_PHASE_KEY,
     MONEY_REMOVED_LEGACY_CHECKS_V1,
 )
 from tests._infra.c07_money_migration import (
@@ -347,7 +345,7 @@ def test_mid_migration_failure_rolls_back_all_rewrites(monkeypatch) -> None:
     assert current_revision() == PREVIOUS_REVISION
 
 
-def test_phase_receipt_does_not_raise_schema_compatibility_floor() -> None:
+def test_money_widening_does_not_raise_schema_compatibility_floor() -> None:
     reset_schema()
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     with engine.connect() as connection:
@@ -355,12 +353,7 @@ def test_phase_receipt_does_not_raise_schema_compatibility_floor() -> None:
     run_alembic(command.upgrade, "head")
     with engine.connect() as connection:
         after = connection.scalar(text("SELECT value FROM app_meta WHERE key = 'schema_min_compatible'"))
-        phase = connection.scalar(
-            text("SELECT value FROM app_meta WHERE key = :key"),
-            {"key": MONEY_CONTRACT_PHASE_KEY},
-        )
     assert after == before
-    assert phase == MONEY_CONTRACT_PHASE_C07
 
 
 def test_downgrade_refuses_narrowing() -> None:
