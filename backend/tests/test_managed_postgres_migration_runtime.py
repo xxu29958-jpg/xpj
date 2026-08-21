@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -35,6 +35,7 @@ from app.services.secure_file import write_protected_file_exclusive
 from scripts.build_database_generation_program import write_program
 from tests._infra.alembic_runtime import run_alembic_for_test
 from tests._infra.env import ADMIN_TEST_DATABASE_URL
+from tests._infra.postgres_topology_cleanup import assert_database_schema_owners, cleanup_postgres_topology
 
 pytestmark = pytest.mark.real_db
 
@@ -150,37 +151,20 @@ def _create_roles_and_database(topology: _ManagedTopology) -> None:
             sql.Identifier(topology.owner),
         )
     )
-
-
-def _cleanup_topology(topology: _ManagedTopology) -> None:
-    with suppress(psycopg.Error):
-        topology.admin.execute(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s OR usename = ANY(%s)",
-            (
-                topology.database,
-                [topology.owner, topology.migrator, topology.runtime_role],
-            ),
-        )
-    with suppress(psycopg.Error):
-        topology.admin.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(topology.database))
-        )
-    with suppress(psycopg.Error):
-        topology.admin.execute(
-            sql.SQL("REVOKE {} FROM {}").format(
-                sql.Identifier(topology.owner),
-                sql.Identifier(topology.migrator),
+    target_admin_url = topology.admin_database_url.set(drivername="postgresql")
+    with psycopg.connect(
+        target_admin_url.render_as_string(hide_password=False),
+        autocommit=True,
+    ) as target_admin:
+        target_admin.execute(
+            sql.SQL("ALTER SCHEMA public OWNER TO {}").format(
+                sql.Identifier(topology.owner)
             )
         )
-    with suppress(psycopg.Error):
-        topology.admin.execute(
-            sql.SQL("DROP ROLE IF EXISTS {}, {}, {}").format(
-                sql.Identifier(topology.runtime_role),
-                sql.Identifier(topology.migrator),
-                sql.Identifier(topology.owner),
-            )
+        assert_database_schema_owners(
+            target_admin,
+            expected_owner=topology.owner,
         )
-    topology.admin.close()
 
 
 def _new_managed_topology(tmp_path: Path) -> _ManagedTopology:
@@ -256,6 +240,7 @@ def _managed_topology(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[_ManagedTopology]:
     topology = _new_managed_topology(tmp_path)
+    primary: BaseException | None = None
     try:
         _create_roles_and_database(topology)
         owner_engine = create_engine(topology.owner_url, poolclass=NullPool, future=True)
@@ -283,8 +268,25 @@ def _managed_topology(
         )
         monkeypatch.delenv("PGPASSWORD", raising=False)
         yield topology
-    finally:
-        _cleanup_topology(topology)
+    except BaseException as exc:  # noqa: BLE001 - retain body plus teardown failures
+        primary = exc
+    cleanup_error: BaseException | None = None
+    try:
+        cleanup_postgres_topology(
+            admin=topology.admin, database=topology.database,
+            roles=(topology.runtime_role, topology.migrator, topology.owner),
+        )
+    except BaseException as exc:  # noqa: BLE001 - leaked test objects must fail
+        cleanup_error = exc
+    if primary is not None and cleanup_error is not None:
+        raise BaseExceptionGroup(
+            "managed topology body and cleanup failed",
+            [primary, cleanup_error],
+        )
+    if primary is not None:
+        raise primary
+    if cleanup_error is not None:
+        raise cleanup_error
 
 
 def _assert_lease_contention(topology: _ManagedTopology) -> None:
