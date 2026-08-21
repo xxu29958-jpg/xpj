@@ -282,7 +282,8 @@ $script:TicketboxInstalledDatabaseGenerationAuthorityPaths = @(
     "_internal/migrations/versions/20260722_0001_bind_repayment_draft_idem_to_account.py",
     "_internal/migrations/versions/20260729_0001_money_minor_bigint_expand.py",
     "_internal/migrations/versions/20260802_0001_currency_binding_authority.py",
-    "_internal/migrations/versions/20260809_0001_add_installation_owner_claim.py"
+    "_internal/migrations/versions/20260809_0001_add_installation_owner_claim.py",
+    "_internal/migrations/versions/20260821_0001_add_dataset_authority.py"
 )
 
 function Get-TicketboxOpenFileSha256Lower(

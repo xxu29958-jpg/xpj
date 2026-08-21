@@ -8,7 +8,6 @@ manifests and cannot create a backup from inside the backend service.
 
 from __future__ import annotations
 
-import contextlib
 import os
 import re
 import shutil
@@ -102,6 +101,9 @@ def create_complete_backup_generation(
     target = validated.backup_root / generation_name
     lock_path = validated.backup_root / ".backup.lock"
     lease = acquire_backup_job_lease(lock_path)
+    primary: BaseException | None = None
+    cleanup: list[BaseException] = []
+    entry: BackupEntry | None = None
     try:
         if staging.exists():
             _remove_staging(staging, validated.backup_root)
@@ -110,9 +112,9 @@ def create_complete_backup_generation(
         if target.exists():
             manifest = read_manifest(target, verify_files=True)
             _assert_published_request(manifest, validated)
-            return _entry(generation_name, manifest)
-        staging.mkdir()
-        try:
+            entry = _entry(generation_name, manifest)
+        else:
+            staging.mkdir()
             manifest = _build_staged_generation(
                 validated,
                 db=db,
@@ -122,12 +124,35 @@ def create_complete_backup_generation(
             (staging / MANIFEST_NAME).write_bytes(encode_manifest(manifest))
             read_manifest(staging, verify_files=True)
             os.rename(staging, target)
-        except Exception:
-            _remove_staging(staging, validated.backup_root)
-            raise
+            entry = _entry(generation_name, manifest)
+    except BaseException as exc:  # noqa: BLE001 - preserve primary and cleanup truth
+        primary = exc
     finally:
-        lease.release()
-    return _entry(generation_name, manifest)
+        if staging.exists():
+            try:
+                _remove_staging(staging, validated.backup_root)
+            except BaseException as exc:  # noqa: BLE001 - cleanup must not replace primary
+                if primary is None:
+                    primary = exc
+                else:
+                    cleanup.append(exc)
+        try:
+            lease.release()
+        except BaseException as exc:  # noqa: BLE001 - cleanup must not replace primary
+            if primary is None:
+                primary = exc
+            else:
+                cleanup.append(exc)
+    if primary is not None and cleanup:
+        raise BaseExceptionGroup(
+            "complete dataset backup and cleanup failed",
+            [primary, *cleanup],
+        ) from primary
+    if primary is not None:
+        raise primary
+    if entry is None:
+        raise RuntimeError("complete dataset backup returned no entry")
+    return entry
 
 
 def list_backups() -> list[BackupEntry]:
@@ -136,7 +161,7 @@ def list_backups() -> list[BackupEntry]:
         if not path.is_dir():
             continue
         try:
-            manifest = read_manifest(path, verify_files=True)
+            manifest = read_manifest(path, verify_files=False)
         except AppError:
             continue
         entries.append(_entry(path.name, manifest))
@@ -182,7 +207,7 @@ def _build_staged_generation(
     backup_id: str,
     staging: Path,
 ) -> DatasetBackupManifest:
-    _begin_read_only_snapshot(db)
+    synchronized_snapshot = _begin_read_only_snapshot(db)
     _assert_database_binding(db, request.database_url)
     _assert_writers_drained(db)
     authority = read_dataset_authority(db)
@@ -195,6 +220,7 @@ def _build_staged_generation(
         pg_dump_binary=request.pg_dump_binary,
         pg_restore_binary=request.pg_restore_binary,
         target=database_path,
+        synchronized_snapshot=synchronized_snapshot,
     )
     originals = copy_complete_originals(
         upload_root=request.upload_root,
@@ -219,11 +245,15 @@ def _build_staged_generation(
     )
 
 
-def _begin_read_only_snapshot(db: Session) -> None:
+def _begin_read_only_snapshot(db: Session) -> str:
     try:
         db.execute(text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE"))
+        snapshot = db.scalar(text("SELECT pg_export_snapshot()"))
     except Exception as exc:
         raise AppError("backup_incomplete", status_code=500) from exc
+    if not isinstance(snapshot, str) or not snapshot or any(character in snapshot for character in "\x00\r\n"):
+        raise AppError("backup_incomplete", status_code=500)
+    return snapshot
 
 
 def _assert_writers_drained(db: Session) -> None:
@@ -344,12 +374,16 @@ def _remove_staging(staging: Path, backup_root: Path) -> None:
         resolved_root = backup_root.resolve(strict=True)
         lexical = Path(os.path.abspath(staging))
         lexical.relative_to(resolved_root)
-    except (OSError, ValueError):
-        return
+    except (OSError, ValueError) as exc:
+        raise AppError("backup_incomplete", status_code=500) from exc
     if lexical.parent != resolved_root or not lexical.name.startswith(_STAGING_PREFIX):
-        return
-    with contextlib.suppress(OSError):
+        raise AppError("backup_incomplete", status_code=500)
+    try:
         shutil.rmtree(lexical)
+    except OSError as exc:
+        raise AppError("backup_incomplete", status_code=500) from exc
+    if lexical.exists():
+        raise AppError("backup_incomplete", status_code=500)
 
 
 def _entry(file_name: str, manifest: DatasetBackupManifest) -> BackupEntry:

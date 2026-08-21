@@ -38,7 +38,8 @@ def test_recovery_drill_uses_complete_dataset_generation_and_bounded_restore() -
 
     assert "CompleteBackupRequest" in source
     assert "create_complete_backup_generation" in source
-    assert "restore_postgres_archive" in source
+    assert "run_isolated_dataset_restore_action" in source
+    assert "restored-originals" in source
     assert "create_manual_backup" not in source
     assert "_pg_tool_connection" not in source
     assert "_pg_tool_environment" not in source
@@ -182,6 +183,7 @@ def test_dump_uses_explicit_passfile_and_cleans_partial(tmp_path, monkeypatch, c
         pg_dump_binary=dump_binary,
         pg_restore_binary=restore_binary,
         target=target,
+        synchronized_snapshot="00000003-0000001B-1",
     )
     arguments = observed["arguments"]
     environment = observed["environment"]
@@ -190,6 +192,7 @@ def test_dump_uses_explicit_passfile_and_cleans_partial(tmp_path, monkeypatch, c
     assert "--no-password" in arguments
     assert "--format=custom" in arguments
     assert "--lock-wait-timeout=30000" in arguments
+    assert "--snapshot=00000003-0000001B-1" in arguments
     assert not set(poisoned) & set(environment)
     assert target.read_bytes() == b"archive-probe"
     assert passfile.exists()
@@ -213,6 +216,7 @@ def test_dump_uses_explicit_passfile_and_cleans_partial(tmp_path, monkeypatch, c
             pg_dump_binary=dump_binary,
             pg_restore_binary=restore_binary,
             target=failed_target,
+            synchronized_snapshot="00000003-0000001B-1",
         )
     assert not failed_target.exists()
     assert not (tmp_path / ".failed.dump.partial").exists()
@@ -228,6 +232,7 @@ def test_explicit_missing_binary_or_passfile_fails_closed(tmp_path) -> None:
             pg_dump_binary=tmp_path / "missing-pg-dump",
             pg_restore_binary=tmp_path / "missing-pg-restore",
             target=target,
+            synchronized_snapshot="00000003-0000001B-1",
         )
     assert not target.exists()
 

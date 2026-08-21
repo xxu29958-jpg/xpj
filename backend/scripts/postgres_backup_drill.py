@@ -1,15 +1,16 @@
 """Complete Ticketbox dataset backup/restore recovery drill.
 
-Proves the installed backup owner actually emits an all-or-nothing database plus
-original-attachment generation. It then restores that generation's verified
-archive through the bounded PostgreSQL adapter and compares every public table.
+Proves the installed backup owner emits an all-or-nothing database plus
+original-attachment generation. It then runs the complete isolated restore
+action, including attachment materialization, sanitation, and Dataset Authority
+publication, before comparing preserved database rows and exact original bytes.
 
 Runs on the backend-postgres CI lane right after the smoke test (which populates
 the source DB). Not needed locally.
 
     DRILL_SOURCE_URL=postgresql+psycopg://...:.../xpj_smoke?require_auth=scram-sha-256 \
     DRILL_RESTORE_URL=postgresql+psycopg://...:.../xpj_restore?require_auth=scram-sha-256 \
-        python scripts/postgres_backup_drill.py --upload-root /absolute/uploads/smoke_test
+        python scripts/postgres_backup_drill.py --upload-root /absolute/uploads
 """
 
 from __future__ import annotations
@@ -81,9 +82,10 @@ def _run_drill(
     from sqlalchemy.orm import Session
     from sqlalchemy.pool import StaticPool
 
+    from app.database import _dataset_restore_action as restore_action
     from app.services.backup_service import CompleteBackupRequest, create_complete_backup_generation
-    from app.services.dataset_backup_contract import DATABASE_ARCHIVE_NAME, read_manifest
-    from app.services.postgres_backup_adapter import restore_postgres_archive
+    from app.services.dataset_backup_contract import read_manifest, sha256_file
+    from app.services.dataset_restore_service import _SANITATION_TABLES, CompleteRestoreRequest
     from app.services.postgres_backup_validation_service import find_pg_binary
 
     pg_dump = find_pg_binary("pg_dump", "PG_DUMP_PATH")
@@ -127,33 +129,71 @@ def _run_drill(
                 )
             generation = backup_root / entry.file_name
             manifest = read_manifest(generation, verify_files=True)
-            archive = generation / DATABASE_ARCHIVE_NAME
             print(
                 "OK complete dataset generation: "
                 f"{entry.file_name} ({entry.size_bytes} bytes, {len(manifest.originals)} originals)"
             )
-            restore_postgres_archive(
-                database_url=restore_url,
-                passfile=passfile,
-                pg_restore_binary=Path(pg_restore).resolve(strict=True),
-                archive=archive,
-                restore_role=TEST_POSTGRES_CONTRACT.application_role,
+            restored_originals = Path(temporary).resolve() / "restored-originals"
+            # This ephemeral lane has one purpose-built application role and
+            # test database instead of the installed host's fixed role names.
+            # Override only those policy constants; the complete production
+            # action, transaction, sanitation, and filesystem code stay exact.
+            restore_action.DATABASE_NAME = TEST_POSTGRES_CONTRACT.restore_database
+            restore_action.MIGRATOR_ROLE = TEST_POSTGRES_CONTRACT.application_role
+            restore_action.SCHEMA_OWNER_ROLE = TEST_POSTGRES_CONTRACT.application_role
+            restored = restore_action.run_isolated_dataset_restore_action(
+                CompleteRestoreRequest(
+                    backup_generation=generation,
+                    target_upload_root=restored_originals,
+                    database_url=restore_url,
+                    passfile=passfile,
+                    pg_restore_binary=Path(pg_restore).resolve(strict=True),
+                    active_dataset_id=manifest.authority.dataset_id,
+                    active_restore_epoch=manifest.authority.restore_epoch,
+                    target_schema_revision=manifest.authority.schema_revision,
+                    restore_role=TEST_POSTGRES_CONTRACT.application_role,
+                )
             )
-            print("OK archive validation and single-transaction restore")
+            if restored["backup_id"] != manifest.backup_id or restored["original_count"] != len(manifest.originals):
+                raise SystemExit("FAIL drill: complete restore result differs from its generation")
+            actual_originals = {
+                path.relative_to(restored_originals).as_posix(): (path.stat().st_size, sha256_file(path))
+                for path in restored_originals.rglob("*")
+                if path.is_file() and not path.is_symlink()
+            }
+            expected_originals = {
+                Path(*Path(item.storage_key).parts[1:]).as_posix(): (item.size_bytes, item.sha256)
+                for item in manifest.originals
+            }
+            if not expected_originals or actual_originals != expected_originals:
+                raise SystemExit("FAIL drill: restored original attachment set or bytes differ")
+            print("OK complete isolated restore and exact original attachments")
     finally:
         # The wrapper makes close a no-op; the outer lease releases its advisory
         # lock and closes the raw connection after this function returns.
         source_engine.dispose()
 
     restore_counts = _counts(restore_url)
-    if restore_counts != source_counts:
+    preserved_tables = set(source_counts) - set(_SANITATION_TABLES) - {
+        "app_meta",
+        "dataset_authority",
+    }
+    diffs = {
+        table: (source_counts.get(table), restore_counts.get(table))
+        for table in sorted(preserved_tables)
+        if source_counts.get(table) != restore_counts.get(table)
+    }
+    unsanitized = {
+        table: restore_counts.get(table)
+        for table in sorted(set(_SANITATION_TABLES) & set(restore_counts))
+        if restore_counts.get(table) != 0
+    }
+    if set(restore_counts) != set(source_counts) or diffs or unsanitized:
         missing = sorted(set(source_counts) - set(restore_counts))
-        diffs = {
-            table: (source_counts.get(table), restore_counts.get(table))
-            for table in sorted(set(source_counts) | set(restore_counts))
-            if source_counts.get(table) != restore_counts.get(table)
-        }
-        raise SystemExit(f"FAIL drill: counts differ missing_tables={missing} (source, restore)={diffs}")
+        raise SystemExit(
+            "FAIL drill: restored database contract differs "
+            f"missing_tables={missing} preserved_diffs={diffs} unsanitized={unsanitized}"
+        )
     print(
         f"OK restored data matches source: {len(restore_counts)} tables, "
         f"{sum(restore_counts.values())} rows (incl. expenses={restore_counts.get('expenses', 0)})"

@@ -455,6 +455,31 @@ function Get-TicketboxInstalledDatasetRestorePaths {
     }
 }
 
+function Assert-TicketboxInstalledPostgresToolArtifact {
+    param(
+        [Parameter(Mandatory = $true)][object]$Subject,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("PgDump", "PgRestore")][string]$Tool
+    )
+    $relativePath = if ($Tool -ceq "PgDump") {
+        "pg\bin\pg_dump.exe"
+    }
+    else {
+        "pg\bin\pg_restore.exe"
+    }
+    $evidence = $Subject.Manifest.$Tool
+    $path = Join-Path ([string]$Subject.Identity.InstallDir) $relativePath
+    $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+    if (
+        [int64]$item.Length -ne [int64]$evidence.Size -or
+        (Get-TicketboxPortableFileSha256 $path).ToLowerInvariant() -cne
+            ([string]$evidence.Sha256).ToLowerInvariant()
+    ) {
+        throw "installed PostgreSQL tool differs from build provenance: $Tool"
+    }
+    return $path
+}
+
 function Resolve-TicketboxInstalledDatasetRestorePhysicalState {
     param([Parameter(Mandatory = $true)][object]$Paths)
     $present = @{}
@@ -477,7 +502,7 @@ function Resolve-TicketboxInstalledDatasetRestorePhysicalState {
         "111100" { return "candidate_ready" }
         "011110" { return "old_pg_staged" }
         "001111" { return "old_staged" }
-        "101011" { return "candidate_pg_published" }
+        "100111" { return "candidate_pg_published" }
         "110011" { return "candidate_published" }
         "110000" { return "complete" }
         default { throw "dataset restore physical state is not classifiable."
@@ -548,10 +573,53 @@ function Resolve-TicketboxInstalledDatasetRestoreNextAction {
     }
 }
 
-function Invoke-TicketboxInstalledDatasetRestorePromotion {
-    param([Parameter(Mandatory = $true)][object]$Paths)
+function Set-TicketboxInstalledDatasetRestorePhysicalSelection {
+    param(
+        [Parameter(Mandatory = $true)][object]$Paths,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("Candidate", "Predecessor")][string]$Selection
+    )
     while ($true) {
-        switch (Resolve-TicketboxInstalledDatasetRestorePhysicalState $Paths) {
+        $state = Resolve-TicketboxInstalledDatasetRestorePhysicalState $Paths
+        if ($Selection -ceq "Predecessor") {
+            switch ($state) {
+                { $_ -in @("complete", "candidate_building", "candidate_ready") } {
+                    if (
+                        (Get-TicketboxPathEntryKindNoFollow ([string]$Paths.rollback_root)) -ceq
+                            "Directory"
+                    ) {
+                        [IO.Directory]::Delete([string]$Paths.rollback_root, $false)
+                    }
+                    return
+                }
+                "candidate_published" {
+                    [IO.Directory]::CreateDirectory([string]$Paths.candidate_root) | Out-Null
+                    [IO.Directory]::Move(
+                        [string]$Paths.stable_uploads, [string]$Paths.candidate_uploads
+                    )
+                }
+                "candidate_pg_published" {
+                    [IO.Directory]::Move(
+                        [string]$Paths.stable_pgdata, [string]$Paths.candidate_pgdata
+                    )
+                }
+                "old_staged" {
+                    [IO.Directory]::Move(
+                        [string]$Paths.rollback_uploads, [string]$Paths.stable_uploads
+                    )
+                }
+                "old_pg_staged" {
+                    [IO.Directory]::Move(
+                        [string]$Paths.rollback_pgdata, [string]$Paths.stable_pgdata
+                    )
+                }
+                default {
+                    throw "dataset restore predecessor selection was invoked from an invalid state."
+                }
+            }
+            continue
+        }
+        switch ($state) {
             "candidate_ready" {
                 [IO.Directory]::CreateDirectory([string]$Paths.rollback_root) | Out-Null
                 [IO.Directory]::Move(

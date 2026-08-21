@@ -119,6 +119,8 @@ function Invoke-TicketboxInstalledDatasetRestoreHelper {
     $cleanup = @()
     $decoded = $null
     try {
+        $pgRestore = Assert-TicketboxInstalledPostgresToolArtifact `
+            -Subject $Subject -Tool "PgRestore"
         $passfile = Invoke-TicketboxWithPlainPostgresqlSecret `
             -Secret $Credentials.MigratorPassword `
             -Action ({
@@ -143,8 +145,7 @@ function Invoke-TicketboxInstalledDatasetRestoreHelper {
                 "--target-upload-root", [string]$Paths.candidate_uploads,
                 "--database-url", $databaseUrl,
                 "--pgpassfile", [string]$passfile.Path,
-                "--pg-restore-path", (Join-Path ([string]$Subject.Identity.InstallDir) `
-                    "pg\bin\pg_restore.exe"),
+                "--pg-restore-path", $pgRestore,
                 "--active-dataset-id", [string]$Request.Payload.active_dataset_id,
                 "--active-restore-epoch", [string]$Request.Payload.active_restore_epoch,
                 "--target-schema-revision", [string]$Request.Payload.target_revision,
@@ -297,6 +298,8 @@ try {
     $script:SecretByteCount = [int]$subject.Release.secret_byte_count
     $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
         $subject $BackupGeneration
+    [void](Assert-TicketboxInstalledPostgresToolArtifact `
+        -Subject $subject -Tool "PgRestore")
 
     $stateRoot = Get-TicketboxDatabaseGenerationStateRoot (
         Get-TicketboxInstallerStateDirectory
@@ -465,8 +468,10 @@ try {
                     $intentContext $request $candidate $lock)
             }
             "promote_candidate" {
+                Stop-TicketboxInstalledDatasetWriters $subject
                 Remove-TicketboxPostgresqlRestoreCandidateService $subject $paths
-                Invoke-TicketboxInstalledDatasetRestorePromotion $paths
+                Set-TicketboxInstalledDatasetRestorePhysicalSelection `
+                    -Paths $paths -Selection "Candidate"
             }
             "publish_current" {
                 Set-TicketboxInstalledDatasetPublishedAcls $subject $paths
@@ -516,7 +521,44 @@ try {
         Remove-TicketboxInstalledDatasetRestoreRequest $request $lock
     }
 }
-catch { $primary = $_ }
+catch {
+    $primary = $_
+    if (
+        $null -ne $subject -and
+        $null -ne $request -and
+        $null -ne $paths -and
+        -not [string]::IsNullOrWhiteSpace([string]$operationId)
+    ) {
+        try {
+            $failureCurrent = Read-TicketboxDatabaseGenerationCurrent
+            if ([string]$failureCurrent.Payload.operation_id -cne [string]$operationId) {
+                try {
+                    Remove-TicketboxPostgresqlRestoreCandidateService $subject $paths
+                }
+                catch { $cleanup += $_ }
+                Stop-TicketboxInstalledDatasetWriters $subject
+                Set-TicketboxInstalledDatasetRestorePhysicalSelection `
+                    -Paths $paths -Selection "Predecessor"
+                Set-TicketboxInstalledDatasetPublishedAcls $subject $paths
+                [void](Start-TicketboxOwnedServiceIfExists `
+                    -Name ([string]$subject.Identity.PgServiceName) `
+                    -ExpectedExecutable (Join-Path ([string]$subject.Identity.InstallDir) `
+                        "pg\bin\pg_ctl.exe") `
+                    -TimeoutMilliseconds ([int]$subject.Release.service_state_timeout_ms) `
+                    -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms))
+                if ([bool]$request.Payload.restart_backend) {
+                    [void](Start-TicketboxOwnedServiceIfExists `
+                        -Name ([string]$subject.Identity.BackendServiceName) `
+                        -ExpectedExecutable (Join-Path ([string]$subject.Identity.InstallDir) `
+                            "shawl\shawl.exe") `
+                        -TimeoutMilliseconds ([int]$subject.Release.service_state_timeout_ms) `
+                        -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms))
+                }
+            }
+        }
+        catch { $cleanup += $_ }
+    }
+}
 finally {
     if ($null -ne $candidate -and $null -ne $candidate.SuperuserPassword) {
         try { $candidate.SuperuserPassword.Dispose() }

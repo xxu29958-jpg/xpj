@@ -111,21 +111,10 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
     $manifest = $Subject.Manifest
     $programRoot = Join-Path ([string]$identity.InstallDir) "program\ticketbox-backend"
     $helperPath = Join-Path $programRoot "ticketbox-database-maintenance.exe"
-    $pgDump = Join-Path ([string]$identity.InstallDir) "pg\bin\pg_dump.exe"
-    $pgRestore = Join-Path ([string]$identity.InstallDir) "pg\bin\pg_restore.exe"
-    foreach ($tool in @(
-        @{ Path = $pgDump; Evidence = $manifest.PgDump },
-        @{ Path = $pgRestore; Evidence = $manifest.PgRestore }
-    )) {
-        $item = Get-Item -LiteralPath ([string]$tool.Path) -Force -ErrorAction Stop
-        if (
-            [int64]$item.Length -ne [int64]$tool.Evidence.Size -or
-            (Get-TicketboxPortableFileSha256 ([string]$tool.Path)).ToLowerInvariant() -cne
-                ([string]$tool.Evidence.Sha256).ToLowerInvariant()
-        ) {
-            throw "installed PostgreSQL backup tool differs from build provenance."
-        }
-    }
+    $pgDump = Assert-TicketboxInstalledPostgresToolArtifact `
+        -Subject $Subject -Tool "PgDump"
+    $pgRestore = Assert-TicketboxInstalledPostgresToolArtifact `
+        -Subject $Subject -Tool "PgRestore"
     $databaseUrl = New-TicketboxPostgresqlLocalDatabaseUrl `
         -Authority ([pscustomobject]@{
             Schema = "ticketbox-postgresql-host-authority-v1"

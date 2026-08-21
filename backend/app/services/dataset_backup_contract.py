@@ -43,6 +43,7 @@ _PAYLOAD_FIELDS = frozenset(
 _AUTHORITY_FIELDS = frozenset(
     {
         "dataset_id",
+        "client_generation",
         "restore_epoch",
         "schema_revision",
         "schema_min_compatible",
@@ -208,6 +209,7 @@ def _decode_authority(value: dict[str, object]) -> DatasetAuthority:
     restored_from = value["restored_from_backup_id"]
     return DatasetAuthority(
         dataset_id=_uuid(value["dataset_id"]),
+        client_generation=_uuid(value["client_generation"]),
         restore_epoch=_nonnegative_int(value["restore_epoch"]),
         schema_revision=revision,
         schema_min_compatible=_plain_text(value["schema_min_compatible"], limit=64),
@@ -259,6 +261,7 @@ def _verify_artifacts(generation_dir: Path, manifest: DatasetBackupManifest) -> 
 def _authority_payload(value: DatasetAuthority) -> dict[str, object]:
     return {
         "dataset_id": value.dataset_id,
+        "client_generation": value.client_generation,
         "restore_epoch": value.restore_epoch,
         "schema_revision": value.schema_revision,
         "schema_min_compatible": value.schema_min_compatible,

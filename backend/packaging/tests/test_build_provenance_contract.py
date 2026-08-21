@@ -491,6 +491,7 @@ def test_installed_generation_assets_are_manifest_bound_and_held(
             ("_internal/migrations/versions/20260729_0001_money_minor_bigint_expand.py"): b"# target",
             ("_internal/migrations/versions/20260802_0001_currency_binding_authority.py"): b"# c02 target",
             ("_internal/migrations/versions/20260809_0001_add_installation_owner_claim.py"): b"# release head",
+            ("_internal/migrations/versions/20260821_0001_add_dataset_authority.py"): b"# dataset authority",
         }.items():
             target = payload / relative
             target.parent.mkdir(parents=True, exist_ok=True)

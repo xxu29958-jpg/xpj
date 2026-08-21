@@ -29,6 +29,7 @@ _LEGACY_KEYS = (
 _COLUMNS = {
     "singleton_id",
     "dataset_id",
+    "client_generation",
     "restore_epoch",
     "schema_revision",
     "schema_min_compatible",
@@ -40,6 +41,7 @@ _CHECKS = {
     "ck_dataset_authority_singleton",
     "ck_dataset_authority_restore_epoch",
     "ck_dataset_authority_dataset_id",
+    "ck_dataset_authority_client_generation",
     "ck_dataset_authority_schema_revision",
     "ck_dataset_authority_semantic_revision",
     "ck_dataset_authority_backup_id",
@@ -63,6 +65,7 @@ def _create_table(bind: sa.Connection) -> None:
         _TABLE,
         sa.Column("singleton_id", sa.SmallInteger(), nullable=False),
         sa.Column("dataset_id", sa.String(length=36), nullable=False),
+        sa.Column("client_generation", sa.String(length=36), nullable=False),
         sa.Column("restore_epoch", sa.BigInteger(), nullable=False),
         sa.Column("schema_revision", sa.String(length=32), nullable=False),
         sa.Column("schema_min_compatible", sa.String(length=64), nullable=False),
@@ -80,6 +83,10 @@ def _create_table(bind: sa.Connection) -> None:
         sa.CheckConstraint(
             "dataset_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'",
             name="ck_dataset_authority_dataset_id",
+        ),
+        sa.CheckConstraint(
+            "client_generation ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'",
+            name="ck_dataset_authority_client_generation",
         ),
         sa.CheckConstraint(
             "schema_revision ~ '^[0-9]{8}_[0-9]{4}$'",
@@ -102,19 +109,44 @@ def _create_table(bind: sa.Connection) -> None:
 def _seed_and_retire_legacy_rows(bind: sa.Connection) -> None:
     existing = bind.execute(sa.text(f'SELECT dataset_id FROM "{_TABLE}" WHERE singleton_id = 1')).scalar_one_or_none()
     if existing is None:
+        legacy = dict(
+            bind.execute(
+                sa.text("SELECT key, value FROM app_meta WHERE key = ANY(:keys)"),
+                {"keys": list(_LEGACY_KEYS)},
+            ).all()
+        )
+        identity_keys = {key for key in ("server_id", "data_generation") if key in legacy}
+        if identity_keys == {"server_id", "data_generation"}:
+            dataset_id = _canonical_uuid(legacy["server_id"], label="server_id")
+            client_generation = _canonical_uuid(legacy["data_generation"], label="data_generation")
+        elif identity_keys:
+            raise RuntimeError("legacy dataset identity is incomplete")
+        else:
+            business_rows = sum(
+                int(bind.scalar(sa.text(f'SELECT count(*) FROM "{table}"')) or 0)
+                for table in ("accounts", "ledgers", "expenses")
+            )
+            if business_rows:
+                raise RuntimeError("non-empty database lacks legacy dataset identity")
+            dataset_id = str(uuid4())
+            client_generation = str(uuid4())
+        minimum = str(legacy.get("schema_min_compatible") or _SCHEMA_MIN_COMPATIBLE)
+        if not minimum or len(minimum) > 64:
+            raise RuntimeError("legacy schema minimum is invalid")
         bind.execute(
             sa.text(
                 f'INSERT INTO "{_TABLE}" '
-                "(singleton_id, dataset_id, restore_epoch, schema_revision, "
+                "(singleton_id, dataset_id, client_generation, restore_epoch, schema_revision, "
                 "schema_min_compatible, semantic_revision, created_at, "
                 "restored_from_backup_id) VALUES "
-                "(1, :dataset_id, 0, :schema_revision, :minimum, :semantic_revision, "
+                "(1, :dataset_id, :client_generation, 0, :schema_revision, :minimum, :semantic_revision, "
                 ":created_at, NULL)"
             ),
             {
-                "dataset_id": str(uuid4()),
+                "dataset_id": dataset_id,
+                "client_generation": client_generation,
                 "schema_revision": revision,
-                "minimum": _SCHEMA_MIN_COMPATIBLE,
+                "minimum": minimum,
                 "semantic_revision": _SEMANTIC_REVISION,
                 "created_at": datetime.now(UTC),
             },
@@ -148,7 +180,7 @@ def assert_postcondition(bind: sa.Connection) -> None:
     rows = (
         bind.execute(
             sa.text(
-                f"SELECT dataset_id, restore_epoch, schema_revision, "
+                f"SELECT dataset_id, client_generation, restore_epoch, schema_revision, "
                 f"schema_min_compatible, semantic_revision, restored_from_backup_id "
                 f'FROM "{_TABLE}"'
             )
@@ -160,6 +192,7 @@ def assert_postcondition(bind: sa.Connection) -> None:
         raise RuntimeError("dataset authority must contain exactly one row")
     row = rows[0]
     _canonical_uuid(row["dataset_id"], label="dataset_id")
+    _canonical_uuid(row["client_generation"], label="client_generation")
     if (
         row["restore_epoch"] != 0
         or row["schema_revision"] != revision

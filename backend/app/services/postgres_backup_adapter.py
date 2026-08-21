@@ -60,8 +60,15 @@ def write_postgres_archive(
     pg_dump_binary: Path,
     pg_restore_binary: Path,
     target: Path,
+    synchronized_snapshot: str,
 ) -> None:
     connection = _pg_tool_connection(database_url)
+    if (
+        not synchronized_snapshot
+        or len(synchronized_snapshot) > 200
+        or any(character in synchronized_snapshot for character in "\x00\r\n")
+    ):
+        raise AppError("backup_incomplete", status_code=500)
     if target.exists() or not target.parent.is_dir():
         raise AppError("backup_incomplete", status_code=500)
     temporary = target.with_name(f".{target.name}.partial")
@@ -73,6 +80,7 @@ def write_postgres_archive(
                     "--no-password",
                     f"--lock-wait-timeout={_PG_DUMP_LOCK_WAIT_MILLISECONDS}",
                     "--format=custom",
+                    f"--snapshot={synchronized_snapshot}",
                     "--file",
                     str(temporary),
                     "--dbname",

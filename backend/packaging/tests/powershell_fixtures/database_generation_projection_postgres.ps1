@@ -684,6 +684,7 @@ CREATE TABLE public.alembic_version (version_num varchar(32) PRIMARY KEY);
 CREATE TABLE public.dataset_authority (
     singleton_id smallint PRIMARY KEY CHECK (singleton_id = 1),
     dataset_id varchar(36) NOT NULL,
+    client_generation varchar(36) NOT NULL,
     restore_epoch bigint NOT NULL CHECK (restore_epoch >= 0),
     schema_revision varchar(32) NOT NULL,
     schema_min_compatible varchar(64) NOT NULL,
@@ -705,10 +706,10 @@ REVOKE EXECUTE ON FUNCTION public.runtime_acl_probe() FROM PUBLIC;
 INSERT INTO public.app_meta (key, value) VALUES
     ('database_generation_binding', '{}');
 INSERT INTO public.dataset_authority (
-    singleton_id, dataset_id, restore_epoch, schema_revision,
+    singleton_id, dataset_id, client_generation, restore_epoch, schema_revision,
     schema_min_compatible, semantic_revision, created_at, restored_from_backup_id
 ) VALUES (
-    1, '$datasetId', 0, '20260821_0001',
+    1, '$datasetId', '22222222-2222-4222-8222-222222222222', 0, '20260821_0001',
     '1.2.0', 'ticketbox-dataset-semantics-v1', CURRENT_TIMESTAMP, NULL
 );
 INSERT INTO public.alembic_version (version_num) VALUES ('20260821_0001');

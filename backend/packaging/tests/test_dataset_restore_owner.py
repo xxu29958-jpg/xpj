@@ -54,11 +54,18 @@ def test_restore_owner_is_explicit_durable_isolated_and_h1_published() -> None:
 
 def test_restore_candidate_uses_official_frozen_restore_and_exact_role_owner() -> None:
     restore = RESTORE.read_text(encoding="utf-8-sig")
+    contract = CONTRACT.read_text(encoding="utf-8-sig")
     cluster = CLUSTER.read_text(encoding="utf-8-sig")
 
     assert '"--isolated-dataset-restore"' in restore
     assert "--restore-role" in restore
     assert "ticketbox_owner" in restore
+    assert "function Assert-TicketboxInstalledPostgresToolArtifact" in contract
+    assert restore.count("Assert-TicketboxInstalledPostgresToolArtifact") >= 2
+    owner_body = restore.split("$inspection =", maxsplit=1)[1]
+    assert owner_body.index("Assert-TicketboxInstalledPostgresToolArtifact") < owner_body.index(
+        "Stop-TicketboxInstalledDatasetWriters"
+    )
     assert "Invoke-TicketboxBoundedNativeProcess" in cluster
     assert "initdb.exe" in cluster
     assert "New-TicketboxInitdbServiceImagePath" in cluster
@@ -90,8 +97,92 @@ def test_restore_promotion_is_forward_reconcilable_and_keeps_old_bytes_until_cur
     assert "candidate_uploads" in contract
     assert "rollback_uploads" in contract
     assert "Resolve-TicketboxInstalledDatasetRestorePhysicalState" in contract
+    assert "Set-TicketboxInstalledDatasetRestorePhysicalSelection" in contract
+    assert "Invoke-TicketboxInstalledDatasetRestorePromotion" not in contract
+    assert '-Selection "Predecessor"' in restore
+    compensation = restore.split("catch {", maxsplit=1)[-1]
+    assert compensation.index("Read-TicketboxDatabaseGenerationCurrent") < compensation.index(
+        '-Selection "Predecessor"'
+    )
     assert restore.index("Invoke-TicketboxInstalledDatabaseGeneration") < restore.index(
         "Remove-TicketboxInstalledDatasetRestoreRollback"
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_restore_physical_selection_can_recover_every_precurrent_cutpoint(tmp_path: Path) -> None:
+    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    classifier = powershell_function(
+        contract,
+        "Resolve-TicketboxInstalledDatasetRestorePhysicalState",
+    )
+    selector = powershell_function(
+        contract,
+        "Set-TicketboxInstalledDatasetRestorePhysicalSelection",
+    )
+    base = str(tmp_path).replace("'", "''")
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Get-TicketboxPathEntryKindNoFollow([string]$Path) {{
+    if (Test-Path -LiteralPath $Path -PathType Container) {{ return 'Directory' }}
+    return 'Missing'
+}}
+{classifier}
+{selector}
+$root = '{base}'
+$names = @('stable_pgdata','stable_uploads','candidate_pgdata','candidate_uploads','rollback_pgdata','rollback_uploads')
+$forwardCase = Join-Path $root 'forward'
+if (Test-Path -LiteralPath $forwardCase) {{ [IO.Directory]::Delete($forwardCase, $true) }}
+$forwardPaths = [pscustomobject][ordered]@{{
+    stable_pgdata = Join-Path $forwardCase 'stable-pg'
+    stable_uploads = Join-Path $forwardCase 'stable-uploads'
+    candidate_pgdata = Join-Path $forwardCase 'candidate/pg'
+    candidate_uploads = Join-Path $forwardCase 'candidate/uploads'
+    rollback_pgdata = Join-Path $forwardCase 'rollback/pg'
+    rollback_uploads = Join-Path $forwardCase 'rollback/uploads'
+    candidate_root = Join-Path $forwardCase 'candidate'
+    rollback_root = Join-Path $forwardCase 'rollback'
+}}
+foreach ($name in @('stable_pgdata','stable_uploads','candidate_pgdata','candidate_uploads')) {{
+    [IO.Directory]::CreateDirectory([string]$forwardPaths.$name) | Out-Null
+}}
+Set-TicketboxInstalledDatasetRestorePhysicalSelection -Paths $forwardPaths -Selection 'Candidate'
+if ((Resolve-TicketboxInstalledDatasetRestorePhysicalState $forwardPaths) -cne 'candidate_published') {{
+    throw 'candidate publication did not reach its exact physical state'
+}}
+Set-TicketboxInstalledDatasetRestorePhysicalSelection -Paths $forwardPaths -Selection 'Predecessor'
+if ((Resolve-TicketboxInstalledDatasetRestorePhysicalState $forwardPaths) -cne 'candidate_ready') {{
+    throw 'published candidate did not return to predecessor selection'
+}}
+$signatures = @('011110','001111','100111','110011')
+foreach ($signature in $signatures) {{
+    $case = Join-Path $root $signature
+    if (Test-Path -LiteralPath $case) {{ [IO.Directory]::Delete($case, $true) }}
+    $paths = [pscustomobject][ordered]@{{
+        stable_pgdata = Join-Path $case 'stable-pg'
+        stable_uploads = Join-Path $case 'stable-uploads'
+        candidate_pgdata = Join-Path $case 'candidate/pg'
+        candidate_uploads = Join-Path $case 'candidate/uploads'
+        rollback_pgdata = Join-Path $case 'rollback/pg'
+        rollback_uploads = Join-Path $case 'rollback/uploads'
+        candidate_root = Join-Path $case 'candidate'
+        rollback_root = Join-Path $case 'rollback'
+    }}
+    for ($index = 0; $index -lt $names.Count; $index++) {{
+        if ($signature[$index] -ceq '1') {{
+            [IO.Directory]::CreateDirectory([string]$paths.($names[$index])) | Out-Null
+        }}
+    }}
+    Set-TicketboxInstalledDatasetRestorePhysicalSelection -Paths $paths -Selection 'Predecessor'
+    if ((Resolve-TicketboxInstalledDatasetRestorePhysicalState $paths) -cne 'candidate_ready') {{
+        throw "predecessor recovery failed for $signature"
+    }}
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-restore-physical-compensation.ps1",
     )
 
 

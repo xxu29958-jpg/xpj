@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import contextlib
 import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import Connection, text
 
@@ -38,6 +37,7 @@ _SANITATION_TABLES = (
 @dataclass(frozen=True)
 class RestoredDatasetPlan:
     dataset_id: str
+    client_generation: str
     restore_epoch: int
     schema_revision: str
     schema_min_compatible: str
@@ -87,6 +87,12 @@ def resolve_restored_dataset_plan(
         restore_epoch = previous_epoch + 1
     return RestoredDatasetPlan(
         dataset_id=dataset_id,
+        client_generation=str(
+            uuid5(
+                NAMESPACE_URL,
+                f"https://ticketbox.local/dataset/{dataset_id}/restore/{restore_epoch}",
+            )
+        ),
         restore_epoch=restore_epoch,
         schema_revision=target_schema_revision,
         schema_min_compatible=manifest.authority.schema_min_compatible,
@@ -119,8 +125,6 @@ def materialize_restored_originals(
         if not staging.is_dir() or staging.is_symlink():
             raise AppError("backup_incomplete", status_code=409)
         _remove_staging(staging, parent)
-        if staging.exists():
-            raise AppError("backup_incomplete", status_code=409)
     staging.mkdir()
     try:
         for artifact in manifest.originals:
@@ -132,8 +136,14 @@ def materialize_restored_originals(
             if destination.stat().st_size != artifact.size_bytes or sha256_file(destination) != artifact.sha256:
                 raise AppError("backup_incomplete", status_code=500)
         os.rename(staging, target)
-    except Exception:
-        _remove_staging(staging, parent)
+    except BaseException as primary:  # noqa: BLE001 - preserve primary and cleanup truth
+        try:
+            _remove_staging(staging, parent)
+        except BaseException as cleanup:  # noqa: BLE001 - cleanup must not replace primary
+            raise BaseExceptionGroup(
+                "restored originals materialization and cleanup failed",
+                [primary, cleanup],
+            ) from primary
         raise
     return manifest
 
@@ -150,7 +160,7 @@ def assert_restored_dataset_candidate(
         connection.execute(
             text(
                 "SELECT dataset_id, restore_epoch, schema_revision, "
-                "schema_min_compatible, semantic_revision, restored_from_backup_id "
+                "client_generation, schema_min_compatible, semantic_revision, restored_from_backup_id "
                 "FROM dataset_authority WHERE singleton_id = 1"
             )
         )
@@ -179,7 +189,7 @@ def finalize_restored_dataset(
         connection.execute(
             text(
                 "SELECT dataset_id, restore_epoch, schema_revision, "
-                "schema_min_compatible, semantic_revision, restored_from_backup_id "
+                "client_generation, schema_min_compatible, semantic_revision, restored_from_backup_id "
                 "FROM dataset_authority WHERE singleton_id = 1 FOR UPDATE"
             )
         )
@@ -192,17 +202,24 @@ def finalize_restored_dataset(
         raise AppError("backup_incomplete", status_code=409)
     for table in _SANITATION_TABLES:
         connection.execute(text(f'DELETE FROM "{table}"'))
-    connection.execute(text("DELETE FROM app_meta WHERE key IN ('csrf_signing_key', 'database_generation_binding')"))
+    connection.execute(
+        text(
+            "DELETE FROM app_meta WHERE key IN "
+            "('csrf_signing_key', 'database_generation_binding', 'budget_advisor_audit_key')"
+        )
+    )
     connection.execute(
         text(
             "UPDATE dataset_authority SET dataset_id = :dataset_id, "
-            "restore_epoch = :restore_epoch, schema_revision = :schema_revision, "
+            "client_generation = :client_generation, restore_epoch = :restore_epoch, "
+            "schema_revision = :schema_revision, "
             "schema_min_compatible = :schema_min_compatible, "
             "semantic_revision = :semantic_revision, "
             "restored_from_backup_id = :backup_id WHERE singleton_id = 1"
         ),
         {
             "dataset_id": plan.dataset_id,
+            "client_generation": plan.client_generation,
             "restore_epoch": plan.restore_epoch,
             "schema_revision": plan.schema_revision,
             "schema_min_compatible": plan.schema_min_compatible,
@@ -226,6 +243,7 @@ def _source_authority_shape(source: DatasetBackupManifest) -> dict[str, object]:
     authority = source.authority
     return {
         "dataset_id": authority.dataset_id,
+        "client_generation": authority.client_generation,
         "restore_epoch": authority.restore_epoch,
         "schema_revision": authority.schema_revision,
         "schema_min_compatible": authority.schema_min_compatible,
@@ -237,6 +255,7 @@ def _source_authority_shape(source: DatasetBackupManifest) -> dict[str, object]:
 def _planned_authority_shape(plan: RestoredDatasetPlan) -> dict[str, object]:
     return {
         "dataset_id": plan.dataset_id,
+        "client_generation": plan.client_generation,
         "restore_epoch": plan.restore_epoch,
         "schema_revision": plan.schema_revision,
         "schema_min_compatible": plan.schema_min_compatible,
@@ -265,7 +284,13 @@ def _verify_restored_originals(
             or sha256_file(backup_generation / artifact.storage_key) != artifact.sha256
         ):
             raise AppError("backup_incomplete", status_code=409)
-    observed = {path.relative_to(target) for path in target.rglob("*") if path.is_file() and not path.is_symlink()}
+    try:
+        entries = tuple(target.rglob("*"))
+    except OSError as exc:
+        raise AppError("backup_incomplete", status_code=409) from exc
+    if any(path.is_symlink() or not (path.is_file() or path.is_dir()) for path in entries):
+        raise AppError("backup_incomplete", status_code=409)
+    observed = {path.relative_to(target) for path in entries if path.is_file()}
     if observed != expected:
         raise AppError("backup_incomplete", status_code=409)
 
@@ -273,6 +298,12 @@ def _verify_restored_originals(
 def _remove_staging(path: Path, parent: Path) -> None:
     lexical = Path(os.path.abspath(path))
     if lexical.parent != parent or not lexical.name.startswith(".uploads-restore-"):
+        raise AppError("backup_incomplete", status_code=500)
+    if not lexical.exists():
         return
-    with contextlib.suppress(OSError):
+    try:
         shutil.rmtree(lexical)
+    except OSError as exc:
+        raise AppError("backup_incomplete", status_code=500) from exc
+    if lexical.exists():
+        raise AppError("backup_incomplete", status_code=500)

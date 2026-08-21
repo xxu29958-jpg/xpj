@@ -19,6 +19,7 @@ _ALEMBIC_REVISION = re.compile(r"[0-9]{8}_[0-9]{4}\Z")
 @dataclass(frozen=True)
 class DatasetAuthority:
     dataset_id: str
+    client_generation: str
     restore_epoch: int
     schema_revision: str
     schema_min_compatible: str
@@ -62,6 +63,7 @@ def read_dataset_authority(db: Session) -> DatasetAuthority:
     )
     return DatasetAuthority(
         dataset_id=_canonical_uuid(row.dataset_id, field="dataset_id"),
+        client_generation=_canonical_uuid(row.client_generation, field="client_generation"),
         restore_epoch=row.restore_epoch,
         schema_revision=row.schema_revision,
         schema_min_compatible=row.schema_min_compatible,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import UUID
 
 import pytest
 from alembic import command
@@ -25,14 +24,13 @@ _LEGACY_KEYS = {
 }
 
 
-def test_dataset_authority_revision_never_adopts_or_recreates_legacy_identity() -> None:
+def test_dataset_authority_revision_preserves_valid_legacy_identity() -> None:
     revision_source = (
         Path(__file__).resolve().parents[1] / "migrations" / "versions" / "20260821_0001_add_dataset_authority.py"
     ).read_text(encoding="utf-8")
 
-    assert 'legacy.get("server_id")' not in revision_source
-    assert "uuid5(" not in revision_source
-    assert '"server_id": dataset_id' not in revision_source
+    assert 'legacy["server_id"]' in revision_source
+    assert 'legacy["data_generation"]' in revision_source
     assert "op.drop_table(_TABLE)" not in revision_source
     assert "dataset authority downgrade is not supported" in revision_source
 
@@ -77,7 +75,7 @@ def _legacy_database() -> None:
 
 
 @pytest.mark.real_db
-def test_dataset_authority_creates_fresh_identity_and_retires_old_writers() -> None:
+def test_dataset_authority_preserves_identity_and_retires_old_writers() -> None:
     _legacy_database()
     try:
         _alembic(command.upgrade, "head")
@@ -86,7 +84,7 @@ def test_dataset_authority_creates_fresh_identity_and_retires_old_writers() -> N
             authority = (
                 connection.execute(
                     text(
-                        "SELECT dataset_id, restore_epoch, schema_revision, "
+                        "SELECT dataset_id, client_generation, restore_epoch, schema_revision, "
                         "schema_min_compatible, semantic_revision, restored_from_backup_id "
                         "FROM dataset_authority"
                     )
@@ -100,8 +98,8 @@ def test_dataset_authority_creates_fresh_identity_and_retires_old_writers() -> N
                     {"keys": sorted(_LEGACY_KEYS)},
                 )
             )
-        assert UUID(authority["dataset_id"]).version in {1, 3, 4, 5}
-        assert authority["dataset_id"] != _LEGACY_DATASET_ID
+        assert authority["dataset_id"] == _LEGACY_DATASET_ID
+        assert authority["client_generation"] == "9620f662-1ebc-4695-bb39-bcc2ecbf3cc7"
         assert authority["restore_epoch"] == 0
         assert authority["schema_revision"] == _TARGET
         assert authority["schema_min_compatible"] == "1.2.0"

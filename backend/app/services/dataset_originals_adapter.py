@@ -45,7 +45,7 @@ def copy_complete_originals(
         referenced.setdefault(relative.as_posix(), []).append(reference)
 
     source_files = _source_files(root, required=frozenset(referenced))
-    if not frozenset(referenced).issubset(source_files):
+    if source_files != frozenset(referenced):
         raise AppError("backup_incomplete", status_code=500)
 
     artifacts: list[OriginalArtifact] = []
@@ -66,7 +66,7 @@ def copy_complete_originals(
         bound_references = referenced.get(relative_text, [])
         for reference in bound_references:
             expected = (reference.expected_sha256 or "").casefold()
-            if _SHA256.fullmatch(expected) is not None and expected != target_sha:
+            if _SHA256.fullmatch(expected) is None or expected != target_sha:
                 raise AppError("backup_incomplete", status_code=500)
         artifacts.append(
             OriginalArtifact(

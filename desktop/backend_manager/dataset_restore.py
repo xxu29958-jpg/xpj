@@ -104,6 +104,7 @@ def run_installed_dataset_restore(
         or result.get("schema") != "ticketbox-complete-dataset-restore-result-v1"
         or result.get("result") != "current_published"
         or not _canonical_uuid(result.get("backup_id"))
+        or result.get("backup_id") != generation.removeprefix("ticketbox-backup-")
         or not _canonical_uuid(result.get("dataset_id"))
         or not _canonical_uuid(result.get("generation_operation_id"))
         or isinstance(result.get("restore_epoch"), bool)

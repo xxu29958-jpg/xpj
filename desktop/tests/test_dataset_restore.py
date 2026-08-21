@@ -94,6 +94,27 @@ def test_installed_restore_invokes_exact_owner_with_explicit_generation(
     assert "DATABASE_URL" not in captured["env"]
 
 
+def test_installed_restore_rejects_result_for_another_backup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    layout, release, powershell, _script = _subject(tmp_path)
+    monkeypatch.setenv("SYSTEMROOT", str(powershell.parents[3]))
+    monkeypatch.setattr(dataset_restore, "require_local_fixed_regular_file", lambda path, *, label: path)
+    monkeypatch.setattr(
+        dataset_restore.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=_result(backup_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(RuntimeControlError):
+        run_installed_dataset_restore(layout, release, GENERATION)
+
+
 @pytest.mark.parametrize(
     "generation",
     [

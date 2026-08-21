@@ -7,7 +7,6 @@ are derived projections, never independently persisted or mutated.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy.orm import Session
 
@@ -22,11 +21,7 @@ class ServerDataIdentity:
 
 def read_server_data_identity(db: Session) -> ServerDataIdentity:
     authority = read_dataset_authority(db)
-    client_generation = uuid5(
-        NAMESPACE_URL,
-        (f"https://ticketbox.local/dataset/{authority.dataset_id}/restore/{authority.restore_epoch}"),
-    )
     return ServerDataIdentity(
         server_id=authority.dataset_id,
-        data_generation=str(client_generation),
+        data_generation=authority.client_generation,
     )

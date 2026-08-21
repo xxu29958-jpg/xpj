@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -81,6 +82,37 @@ def test_backup_health_uses_only_complete_generation_freshness(
     assert health.latest is entry
     assert health.age_hours == 72
     assert health.stale is True
+
+
+def test_ordinary_backup_status_does_not_hash_historical_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from app.services import backup_service
+    from app.services.time_service import now_utc
+
+    generation = tmp_path / "ticketbox-backup-8c78c277-9e2e-48cd-86a2-7a9087d650a2"
+    generation.mkdir()
+    calls: list[bool] = []
+
+    def read_metadata(_path: Path, *, verify_files: bool):
+        calls.append(verify_files)
+        return SimpleNamespace(
+            backup_id="8c78c277-9e2e-48cd-86a2-7a9087d650a2",
+            authority=SimpleNamespace(
+                dataset_id="40f0c00b-ef2b-4141-b17c-aebd2da988e2",
+                restore_epoch=2,
+            ),
+            total_size_bytes=4096,
+            created_at=now_utc(),
+            backup_kind="manual",
+        )
+
+    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
+    monkeypatch.setattr(backup_service, "read_manifest", read_metadata)
+
+    assert len(backup_service.list_backups()) == 1
+    assert calls == [False]
 
 
 def test_owner_page_never_leaks_absolute_data_path(local_client: TestClient) -> None:
