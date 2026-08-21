@@ -21,6 +21,7 @@ from app.database._postgres_operation_failures import (
     close_postgres_owner_resources,
     raise_postgres_operation_failures,
 )
+from app.errors import AppError
 from app.services.backup_service import (
     CompleteBackupRequest,
     create_complete_backup_generation,
@@ -120,7 +121,7 @@ def run_complete_dataset_backup_action(request: CompleteBackupRequest) -> dict[s
         message="complete dataset backup action failed",
     )
     if result is None:
-        raise RuntimeError("complete dataset backup action returned no result")
+        raise AppError("backup_incomplete", status_code=500)
     return result
 
 

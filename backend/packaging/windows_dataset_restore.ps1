@@ -29,6 +29,7 @@ foreach ($name in @(
     "windows_pg_recovery_tools.ps1",
     "windows_postgresql_credentials.ps1",
     "windows_postgresql_database_command.ps1",
+    "windows_backend_health.ps1",
     "windows_database_generation.ps1",
     "windows_installed_dataset_contract.ps1",
     "windows_postgresql_candidate_cluster.ps1",
@@ -276,6 +277,109 @@ function Set-TicketboxInstalledDatasetPublishedAcls {
         -Recurse
 }
 
+function Invoke-TicketboxInstalledRestoredOriginalsVerification {
+    param(
+        [Parameter(Mandatory = $true)][object]$Subject,
+        [Parameter(Mandatory = $true)][object]$Inspection,
+        [Parameter(Mandatory = $true)][object]$Paths
+    )
+    $evidence = $Subject.Manifest.DatabaseMaintenanceHelper
+    $helper = Join-Path ([string]$Subject.Identity.InstallDir) `
+        "program\ticketbox-backend\ticketbox-database-maintenance.exe"
+    $lease = $null
+    $primary = $null
+    $cleanup = @()
+    $decoded = $null
+    try {
+        $lease = Open-TicketboxVerifiedDatabaseMaintenanceHelperLease `
+            -Path $helper `
+            -ExpectedRelativePath ([string]$evidence.RelativePath) `
+            -ExpectedSize ([int64]$evidence.Size) `
+            -ExpectedSha256 ([string]$evidence.Sha256)
+        $process = Invoke-TicketboxBoundedNativeProcess `
+            -FilePath $lease.Path `
+            -Arguments @(
+                "--verify-restored-originals",
+                "--backup-generation", [string]$Inspection.GenerationPath,
+                "--restored-upload-root", [string]$Paths.stable_uploads
+            ) `
+            -StandardInputText "" `
+            -TimeoutMilliseconds ([int]$Subject.Release.database_tool_timeout_ms) `
+            -Label "restored originals verification" `
+            -ChildEnvironment (New-TicketboxDatabaseGenerationHelperChildEnvironment `
+                -PgPassFilePath "")
+        if ([int]$process.ExitCode -ne 0 -or $process.StandardError.Trim().Length -ne 0) {
+            throw "restored originals verification failed; native output is suppressed."
+        }
+        $decoded = (Get-TicketboxDatabaseGenerationJsonLine `
+            -StandardOutput ([string]$process.StandardOutput) `
+            -Label "restored originals verification") | ConvertFrom-Json
+        Assert-TicketboxDatabaseGenerationExactProperties `
+            -Value $decoded `
+            -ExpectedNames @(
+                "schema", "backup_id", "dataset_id", "restore_epoch",
+                "schema_revision", "original_count", "result"
+            ) `
+            -Label "restored originals verification"
+        if (
+            [string]$decoded.schema -cne "ticketbox-restored-originals-verification-v1" -or
+            [string]$decoded.backup_id -cne [string]$Inspection.Evidence.backup_id -or
+            [string]$decoded.dataset_id -cne [string]$Inspection.Evidence.dataset_id -or
+            [int64]$decoded.restore_epoch -ne [int64]$Inspection.Evidence.restore_epoch -or
+            [string]$decoded.schema_revision -cne [string]$Inspection.Evidence.schema_revision -or
+            [int64]$decoded.original_count -ne [int64]$Inspection.Evidence.original_count -or
+            [string]$decoded.result -cne "restored_originals_verified"
+        ) {
+            throw "restored originals verification differs from the selected backup."
+        }
+    }
+    catch { $primary = $_ }
+    finally {
+        if ($null -ne $lease) {
+            try { Assert-TicketboxDatabaseMaintenanceHelperLeaseUnchanged $lease }
+            catch { $cleanup += $_ }
+            try { Close-TicketboxDatabaseMaintenanceHelperLease $lease }
+            catch { $cleanup += $_ }
+        }
+    }
+    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    return $decoded
+}
+
+function New-TicketboxInstalledDatasetRuntimeVerification {
+    param(
+        [Parameter(Mandatory = $true)][object]$IntentContext,
+        [Parameter(Mandatory = $true)][object]$Request,
+        [Parameter(Mandatory = $true)][object]$Current,
+        [Parameter(Mandatory = $true)][object]$Inspection,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    $intent = $IntentContext.Artifact
+    $payload = [ordered]@{
+        schema = "ticketbox-installed-dataset-runtime-verification-v1"
+        operation_id = [string]$intent.Payload.operation_id
+        intent_sha256 = [string]$intent.PayloadSha256
+        source_request_sha256 = [string]$Request.PayloadSha256
+        current_sha256 = [string]$Current.PayloadSha256
+        backup_manifest_sha256 = [string]$Request.Payload.backup_manifest_sha256
+        backup_id = [string]$Request.Payload.backup_id
+        dataset_id = [string]$Request.Payload.dataset_id
+        restore_epoch = [Math]::Max(
+            [int64]$Request.Payload.backup_restore_epoch,
+            [int64]$Request.Payload.active_restore_epoch
+        ) + 1
+        original_count = [int64]$Inspection.Evidence.original_count
+        health_contract = "ticketbox-installation-health-v2"
+        result = "restored_runtime_verified"
+    }
+    return New-TicketboxDatabaseGenerationChainedArtifact `
+        -StateRoot $IntentContext.StateRoot `
+        -OperationId ([string]$intent.Payload.operation_id) `
+        -Kind "runtime-verification" `
+        -Payload $payload `
+        -LifecycleLock $LifecycleLock
+}
+
 function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
     param(
         [Parameter(Mandatory = $true)][object]$Subject,
@@ -284,7 +388,19 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
         [Parameter(Mandatory = $true)][string]$OperationId
     )
     $failureCurrent = Read-TicketboxDatabaseGenerationCurrent
-    if ([string]$failureCurrent.Payload.operation_id -ceq $OperationId) { return }
+    if ([string]$failureCurrent.Payload.operation_id -ceq $OperationId) {
+        $backend = Join-Path ([string]$Subject.Identity.InstallDir) `
+            "program\ticketbox-backend\ticketbox-backend.exe"
+        $shawl = Join-Path ([string]$Subject.Identity.InstallDir) "shawl\shawl.exe"
+        Stop-TicketboxOwnedServiceIfExists `
+            -Name ([string]$Subject.Identity.BackendServiceName) `
+            -ExpectedExecutable $shawl `
+            -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
+            -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms) `
+            -BackendPort ([int]$Subject.Identity.BackendPort) `
+            -ExpectedRuntimeExecutables @($backend, $shawl)
+        return
+    }
 
     $failures = @()
     try {
@@ -478,11 +594,22 @@ try {
             $current
         }
         else { $null }
+        $runtimeVerification = Read-TicketboxDatabaseGenerationOperationArtifact `
+            $stateRoot $operationId "runtime-verification" -AllowAbsent
+        if ($null -ne $runtimeVerification) {
+            [void](Assert-TicketboxInstalledDatasetRuntimeVerification `
+                -Verification $runtimeVerification `
+                -Intent $active `
+                -Request $request `
+                -Current $published `
+                -Inspection $inspection)
+        }
         $physical = Resolve-TicketboxInstalledDatasetRestorePhysicalState $paths
         $sourceState = if ($null -eq $source) { "absent" } else { "present" }
         $publishedState = if ($null -eq $published) { "absent" } else { "present" }
+        $verificationState = if ($null -eq $runtimeVerification) { "absent" } else { "present" }
         $next = Resolve-TicketboxInstalledDatasetRestoreNextAction `
-            $physical $sourceState $publishedState
+            $physical $sourceState $publishedState $verificationState
         switch ($next) {
             "build_candidate" {
                 Stop-TicketboxInstalledDatasetWriters $subject
@@ -529,6 +656,52 @@ try {
                     -HostContract $contracts.Host `
                     -ProjectionContract $contracts.Projection `
                     -BootstrapRecoveryPath (Get-PostgresBootstrapRecoveryPath))
+            }
+            "verify_runtime" {
+                Assert-TicketboxInstalledDatasetServiceAuthority $subject
+                [void](Start-TicketboxOwnedServiceIfExists `
+                    -Name ([string]$subject.Identity.BackendServiceName) `
+                    -ExpectedExecutable (Join-Path ([string]$subject.Identity.InstallDir) `
+                        "shawl\shawl.exe") `
+                    -TimeoutMilliseconds ([int]$subject.Release.service_state_timeout_ms) `
+                    -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms))
+                Wait-TicketboxInstalledBackendHealth `
+                    -BackendPort ([int]$subject.Identity.BackendPort) `
+                    -BackendServiceName ([string]$subject.Identity.BackendServiceName) `
+                    -ShawlExe (Join-Path ([string]$subject.Identity.InstallDir) "shawl\shawl.exe") `
+                    -BackendExe (Join-Path ([string]$subject.Identity.InstallDir) `
+                        "program\ticketbox-backend\ticketbox-backend.exe") `
+                    -ProgramDir (Join-Path ([string]$subject.Identity.InstallDir) `
+                        "program\ticketbox-backend") `
+                    -AppData (Join-Path ([string]$subject.Identity.DataRoot) "app") `
+                    -ReadyTimeoutMilliseconds ([int]$subject.Release.backend_ready_timeout_ms) `
+                    -RequestTimeoutMilliseconds ([int]$subject.Release.backend_health_request_timeout_ms) `
+                    -PollMilliseconds ([int]$subject.Release.backend_ready_poll_interval_ms) `
+                    -MaximumResponseBytes 1048576
+                [void](Invoke-TicketboxInstalledRestoredOriginalsVerification `
+                    -Subject $subject `
+                    -Inspection $inspection `
+                    -Paths $paths)
+                if (-not $restartBackend) {
+                    Stop-TicketboxOwnedServiceIfExists `
+                        -Name ([string]$subject.Identity.BackendServiceName) `
+                        -ExpectedExecutable (Join-Path ([string]$subject.Identity.InstallDir) `
+                            "shawl\shawl.exe") `
+                        -TimeoutMilliseconds ([int]$subject.Release.service_state_timeout_ms) `
+                        -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms) `
+                        -BackendPort ([int]$subject.Identity.BackendPort) `
+                        -ExpectedRuntimeExecutables @(
+                            (Join-Path ([string]$subject.Identity.InstallDir) `
+                                "program\ticketbox-backend\ticketbox-backend.exe"),
+                            (Join-Path ([string]$subject.Identity.InstallDir) "shawl\shawl.exe")
+                        )
+                }
+                [void](New-TicketboxInstalledDatasetRuntimeVerification `
+                    -IntentContext $intentContext `
+                    -Request $request `
+                    -Current $published `
+                    -Inspection $inspection `
+                    -LifecycleLock $lock)
             }
             "retire_rollback" {
                 Remove-TicketboxInstalledDatasetRestoreRollback $paths $lock

@@ -212,6 +212,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
         HelperEvidence = $manifest.DatabaseMaintenanceHelper
         DatabaseUrl = $databaseUrl
         BackupRoot = Join-Path ([string]$identity.DataRoot) "backups"
+        InventoryPath = Join-Path ([string]$identity.DataRoot) "app\backup-inventory.json"
         UploadRoot = Join-Path ([string]$identity.DataRoot) "app\uploads"
         PgDump = $pgDump
         PgRestore = $pgRestore
@@ -248,6 +249,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
                     -Arguments @(
                         "--complete-dataset-backup",
                         "--backup-root", $captured.BackupRoot,
+                        "--inventory-path", $captured.InventoryPath,
                         "--upload-root", $captured.UploadRoot,
                         "--database-url", $captured.DatabaseUrl,
                         "--pgpassfile", $passfile.Path,

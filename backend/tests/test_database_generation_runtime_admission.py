@@ -16,7 +16,7 @@ import pytest
 import app.database._database_generation_runtime_admission as admission
 import app.database._database_generation_runtime_queries as runtime_queries
 
-TARGET_REVISION = "20260809_0001"
+TARGET_REVISION = "20260821_0001"
 OPERATION_ID = "11111111-1111-4111-8111-111111111111"
 INSTALLATION_ID = "22222222-2222-4222-8222-222222222222"
 INTENT_SHA256 = "b" * 64
@@ -25,8 +25,10 @@ CLUSTER_SYSTEM_IDENTIFIER = "7643222813893222841"
 DATABASE_OID = 16384
 DATABASE_NAME = "ticketbox"
 RUNTIME_ROLE = "ticketbox_runtime"
-LOGICAL_SERVER_ID = "55555555-5555-4555-8555-555555555555"
-LOGICAL_DATA_GENERATION = "66666666-6666-4666-8666-666666666666"
+DATASET_ID = "55555555-5555-4555-8555-555555555555"
+RESTORE_EPOCH = 0
+SCHEMA_MIN_COMPATIBLE = "1.2.0"
+SEMANTIC_REVISION = "ticketbox-dataset-semantics-v1"
 RUNTIME_ACL_EVIDENCE = (
     "database\tticketbox\tPUBLIC\tCONNECT\tfalse",
     "relation\tpublic.app_meta\tticketbox_runtime\tSELECT\tfalse",
@@ -57,8 +59,11 @@ def _authority_documents() -> tuple[str, dict[str, object], dict[str, object]]:
         "database_oid": DATABASE_OID,
         "database_name": DATABASE_NAME,
         "runtime_role": RUNTIME_ROLE,
-        "logical_server_id": LOGICAL_SERVER_ID,
-        "logical_data_generation": LOGICAL_DATA_GENERATION,
+        "dataset_id": DATASET_ID,
+        "restore_epoch": RESTORE_EPOCH,
+        "schema_revision": TARGET_REVISION,
+        "schema_min_compatible": SCHEMA_MIN_COMPATIBLE,
+        "semantic_revision": SEMANTIC_REVISION,
         "execution_authority_sha256": "d" * 64,
         "role_authority_sha256": "e" * 64,
         "runtime_acl_sha256": RUNTIME_ACL_SHA256,
@@ -96,10 +101,13 @@ class _LiveDatabase:
     database_oid: int = DATABASE_OID
     database_name: str = DATABASE_NAME
     session_user: str = RUNTIME_ROLE
-    logical_server_id: str = LOGICAL_SERVER_ID
-    logical_data_generation: str = LOGICAL_DATA_GENERATION
+    dataset_id: str = DATASET_ID
+    restore_epoch: int = RESTORE_EPOCH
+    schema_revision: str = TARGET_REVISION
+    schema_min_compatible: str = SCHEMA_MIN_COMPATIBLE
+    semantic_revision: str = SEMANTIC_REVISION
     bootstrap_retirement: str = BOOTSTRAP_RETIREMENT
-    runtime_capabilities: tuple[bool, ...] = (True,) * 13
+    runtime_capabilities: tuple[bool, ...] = (True,) * 14
     runtime_acl_evidence: tuple[str, ...] = RUNTIME_ACL_EVIDENCE
 
 
@@ -150,15 +158,18 @@ class _Connection:
             "shobj_description",
         ):
             assert required_token in sql
-        assert sql.count("role.rolconfig") == 2
+        assert sql.count("role.rolconfig") == 3
         return _OneRow(
             (
                 self.live.cluster_system_identifier,
                 self.live.database_oid,
                 self.live.database_name,
                 self.live.session_user,
-                self.live.logical_server_id,
-                self.live.logical_data_generation,
+                self.live.dataset_id,
+                self.live.restore_epoch,
+                self.live.schema_revision,
+                self.live.schema_min_compatible,
+                self.live.semantic_revision,
                 self.live.bootstrap_retirement,
                 *self.live.runtime_capabilities,
             )
@@ -234,15 +245,14 @@ def _assert_live_identity_mutations_rejected(reject: Callable[..., None], live: 
         ("database_name", "database_name", "ticketbox_clone"),
         ("runtime_role", "session_user", "ticketbox_owner"),
         (
-            "logical_server_id",
-            "logical_server_id",
+            "dataset_id",
+            "dataset_id",
             "77777777-7777-4777-8777-777777777777",
         ),
-        (
-            "logical_data_generation",
-            "logical_data_generation",
-            "88888888-8888-4888-8888-888888888888",
-        ),
+        ("restore_epoch", "restore_epoch", 1),
+        ("schema_revision", "schema_revision", "20260822_0001"),
+        ("schema_min_compatible", "schema_min_compatible", "9.9.9"),
+        ("semantic_revision", "semantic_revision", "ticketbox-dataset-semantics-v2"),
     ):
         reject(binding_updates={binding_field: hostile})
         original = getattr(live, live_field)
@@ -280,7 +290,7 @@ def _assert_runtime_authority_mutations_rejected(reject: Callable[..., None], li
         try:
             reject()
         finally:
-            live.runtime_capabilities = (True,) * 13
+            live.runtime_capabilities = (True,) * 14
     original_acl = live.runtime_acl_evidence
     live.runtime_acl_evidence = (
         *original_acl,
@@ -346,7 +356,15 @@ def test_installed_runtime_admission_binds_current_program_and_live_database(
     _assert_live_identity_mutations_rejected(reject, live)
     _assert_closed_runtime_target_mutations_rejected(reject, live)
     _assert_runtime_authority_mutations_rejected(reject, live)
-    reject(current_updates={"expected_predecessor_sha256": "4" * 64})
+    binding_json, current, envelope = _authority_documents()
+    live.binding_json = binding_json
+    current["expected_predecessor_sha256"] = "4" * 64
+    _write_current(current_path, current, envelope)
+    admission.assert_database_generation_runtime_admission(
+        engine,
+        program,
+        current_path=current_path,
+    )
     reject(current_updates={"generation_program_sha256": "4" * 64})
     reject(
         binding_updates={"generation_program_sha256": "4" * 64},

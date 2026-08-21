@@ -51,7 +51,7 @@ from app.routes._web_session_common import (
     _with_ledger,
     parse_form_row_version_token,
 )
-from app.services import backup_service, web_stats_service
+from app.services import dataset_backup_inventory, web_stats_service
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import minor_amount_major_number, minor_amount_value, minor_unit_digits
@@ -268,7 +268,7 @@ def _dashboard_budget_goals_block(
 
 def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
     week_ago = now - timedelta(days=7)
-    backup = backup_service.latest_published_backup_record()
+    backup = dataset_backup_inventory.latest_published_backup_record()
     backup_age_days = None
     if backup is not None:
         backup_age_days = max(

@@ -14,19 +14,18 @@ import os
 import re
 import shutil
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import Session
 
-from app.config import DATA_ROOT
+from app.database._dataset_backup_snapshot import (
+    assert_dataset_database_binding,
+    assert_dataset_writers_drained,
+    begin_dataset_backup_snapshot,
+    read_original_reference_rows,
+)
 from app.errors import AppError
-from app.models import Expense
 from app.services.backup_job_lease import acquire_backup_job_lease
 from app.services.dataset_authority_service import read_dataset_authority
 from app.services.dataset_backup_contract import (
@@ -40,6 +39,10 @@ from app.services.dataset_backup_contract import (
     read_manifest,
     sha256_file,
 )
+from app.services.dataset_backup_inventory import (
+    BackupEntry,
+    reconcile_published_backup_inventory,
+)
 from app.services.dataset_originals_adapter import (
     OriginalReference,
     copy_complete_originals,
@@ -47,11 +50,6 @@ from app.services.dataset_originals_adapter import (
 from app.services.postgres_backup_adapter import write_postgres_archive
 from app.services.time_service import now_utc
 
-_BACKUP_DIR = (
-    DATA_ROOT.parent / "backups"
-    if os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip()
-    else DATA_ROOT / "backups"
-)
 _GENERATION_PREFIX = "ticketbox-backup-"
 _STAGING_PREFIX = ".ticketbox-backup-"
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -60,6 +58,7 @@ _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 @dataclass(frozen=True)
 class CompleteBackupRequest:
     backup_root: Path
+    inventory_path: Path
     upload_root: Path
     database_url: str
     passfile: Path
@@ -74,25 +73,6 @@ class CompleteBackupRequest:
     expected_dataset_id: str
     expected_restore_epoch: int
     expected_schema_revision: str
-
-
-@dataclass(frozen=True)
-class BackupEntry:
-    file_name: str
-    backup_id: str
-    dataset_id: str
-    restore_epoch: int
-    size_bytes: int
-    created_at: datetime
-    kind: str
-
-
-@dataclass(frozen=True)
-class PublishedBackupInventory:
-    latest: BackupEntry | None
-    age_hours: int | None
-    review_due: bool
-    integrity_status: Literal["absent", "not_rechecked"]
 
 
 def create_complete_backup_generation(
@@ -133,6 +113,11 @@ def create_complete_backup_generation(
             read_manifest(staging, verify_files=True)
             os.rename(staging, target)
             entry = _entry(generation_name, manifest)
+        reconcile_published_backup_inventory(
+            backup_root=validated.backup_root,
+            inventory_path=validated.inventory_path,
+            required_generation=generation_name,
+        )
     except BaseException as exc:  # noqa: BLE001 - preserve primary and cleanup truth
         primary = exc
     finally:
@@ -159,55 +144,8 @@ def create_complete_backup_generation(
     if primary is not None:
         raise primary
     if entry is None:
-        raise RuntimeError("complete dataset backup returned no entry")
+        raise AppError("backup_incomplete", status_code=500)
     return entry
-
-
-def list_published_backup_records() -> list[BackupEntry]:
-    """Read immutable manifest metadata without claiming current byte integrity."""
-
-    entries: list[BackupEntry] = []
-    for path in _existing_backup_root().glob(f"{_GENERATION_PREFIX}*"):
-        if not path.is_dir():
-            continue
-        try:
-            manifest = read_manifest(path, verify_files=False)
-        except AppError:
-            continue
-        if path.name != f"{_GENERATION_PREFIX}{manifest.backup_id}":
-            continue
-        entries.append(_entry(path.name, manifest))
-    entries.sort(key=lambda item: item.created_at, reverse=True)
-    return entries
-
-
-def latest_published_backup_record() -> BackupEntry | None:
-    entries = list_published_backup_records()
-    return entries[0] if entries else None
-
-
-def published_backup_inventory(*, review_after_hours: int = 48) -> PublishedBackupInventory:
-    """Report publication age separately from unperformed payload revalidation."""
-
-    entry = latest_published_backup_record()
-    if entry is None:
-        return PublishedBackupInventory(
-            latest=None,
-            age_hours=None,
-            review_due=True,
-            integrity_status="absent",
-        )
-    age_hours = int((now_utc() - entry.created_at).total_seconds() // 3600)
-    return PublishedBackupInventory(
-        latest=entry,
-        age_hours=age_hours,
-        review_due=age_hours >= review_after_hours,
-        integrity_status="not_rechecked",
-    )
-
-
-def backup_directory_label() -> str:
-    return f"{_BACKUP_DIR.parent.name}\\{_BACKUP_DIR.name}"
 
 
 def _build_staged_generation(
@@ -217,9 +155,9 @@ def _build_staged_generation(
     backup_id: str,
     staging: Path,
 ) -> DatasetBackupManifest:
-    synchronized_snapshot = _begin_read_only_snapshot(db)
-    _assert_database_binding(db, request.database_url)
-    _assert_writers_drained(db)
+    synchronized_snapshot = begin_dataset_backup_snapshot(db)
+    assert_dataset_database_binding(db, request.database_url)
+    assert_dataset_writers_drained(db)
     authority = read_dataset_authority(db)
     if (
         authority.dataset_id != request.expected_dataset_id
@@ -227,7 +165,14 @@ def _build_staged_generation(
         or authority.schema_revision != request.expected_schema_revision
     ):
         raise AppError("backup_incomplete", status_code=409)
-    references = _original_references(db)
+    references = tuple(
+        OriginalReference(
+            tenant_id=tenant_id,
+            storage_reference=storage_reference,
+            expected_sha256=expected_sha256,
+        )
+        for tenant_id, storage_reference, expected_sha256 in read_original_reference_rows(db)
+    )
 
     database_path = staging / DATABASE_ARCHIVE_NAME
     write_postgres_archive(
@@ -243,7 +188,7 @@ def _build_staged_generation(
         destination=staging / ORIGINALS_DIRECTORY_NAME,
         references=references,
     )
-    _assert_writers_drained(db)
+    assert_dataset_writers_drained(db)
     database_stat = database_path.stat()
     return DatasetBackupManifest(
         backup_id=backup_id,
@@ -258,56 +203,6 @@ def _build_staged_generation(
             sha256=sha256_file(database_path),
         ),
         originals=originals,
-    )
-
-
-def _begin_read_only_snapshot(db: Session) -> str:
-    try:
-        db.execute(text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE"))
-        snapshot = db.scalar(text("SELECT pg_export_snapshot()"))
-    except Exception as exc:
-        raise AppError("backup_incomplete", status_code=500) from exc
-    if not isinstance(snapshot, str) or not snapshot or any(character in snapshot for character in "\x00\r\n"):
-        raise AppError("backup_incomplete", status_code=500)
-    return snapshot
-
-
-def _assert_writers_drained(db: Session) -> None:
-    others = db.scalar(
-        text(
-            "SELECT count(*) FROM pg_stat_activity "
-            "WHERE datname = current_database() "
-            "AND backend_type = 'client backend' "
-            "AND pid <> pg_backend_pid()"
-        )
-    )
-    if others != 0:
-        raise AppError("backup_incomplete", status_code=409)
-
-
-def _assert_database_binding(db: Session, database_url: str) -> None:
-    try:
-        expected = make_url(database_url).database
-    except (ArgumentError, TypeError, ValueError) as exc:
-        raise AppError("backup_incomplete", status_code=500) from exc
-    if not expected or db.scalar(text("SELECT current_database()")) != expected:
-        raise AppError("backup_incomplete", status_code=500)
-
-
-def _original_references(db: Session) -> tuple[OriginalReference, ...]:
-    rows = db.execute(
-        select(Expense.tenant_id, Expense.image_path, Expense.image_hash)
-        .where(Expense.image_path.is_not(None))
-        .where(Expense.image_deleted_at.is_(None))
-        .order_by(Expense.tenant_id, Expense.image_path)
-    ).all()
-    return tuple(
-        OriginalReference(
-            tenant_id=str(row.tenant_id),
-            storage_reference=str(row.image_path),
-            expected_sha256=None if row.image_hash is None else str(row.image_hash),
-        )
-        for row in rows
     )
 
 
@@ -346,6 +241,7 @@ def _validate_request(request: CompleteBackupRequest) -> CompleteBackupRequest:
         raise AppError("backup_incomplete", status_code=409)
     backup_root = _prepare_backup_root(request.backup_root)
     for path in (
+        request.inventory_path,
         request.upload_root,
         request.passfile,
         request.pg_dump_binary,
@@ -355,6 +251,7 @@ def _validate_request(request: CompleteBackupRequest) -> CompleteBackupRequest:
             raise AppError("backup_incomplete", status_code=500)
     return CompleteBackupRequest(
         backup_root=backup_root,
+        inventory_path=request.inventory_path,
         upload_root=request.upload_root,
         database_url=request.database_url,
         passfile=request.passfile,
@@ -390,7 +287,7 @@ def _assert_published_request(
 
 
 def _prepare_backup_root(path: Path) -> Path:
-    if not path.is_absolute():
+    if not path.is_absolute() or path.is_symlink():
         raise AppError("backup_incomplete", status_code=500)
     try:
         parent = path.parent.resolve(strict=True)
@@ -405,15 +302,6 @@ def _prepare_backup_root(path: Path) -> Path:
     except (OSError, ValueError) as exc:
         raise AppError("backup_incomplete", status_code=500) from exc
     return resolved
-
-
-def _existing_backup_root() -> Path:
-    try:
-        if _BACKUP_DIR.is_dir() and not _BACKUP_DIR.is_symlink():
-            return _BACKUP_DIR.resolve(strict=True)
-    except OSError:
-        pass
-    return _BACKUP_DIR
 
 
 def _remove_staging(staging: Path, backup_root: Path) -> None:

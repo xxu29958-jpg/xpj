@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
-from app.services import backup_service
+from app.services import dataset_backup_inventory
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
@@ -21,7 +21,7 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes / 1024 / 1024:.1f} MB"
 
 
-def _backup_view(entries: list[backup_service.BackupEntry]) -> list[dict]:
+def _backup_view(entries: list[dataset_backup_inventory.BackupEntry]) -> list[dict]:
     return [
         {
             "file_name": entry.file_name,
@@ -41,10 +41,10 @@ def owner_backups_get(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    entries = backup_service.list_published_backup_records()
+    entries = dataset_backup_inventory.list_published_backup_records()
     ctx = _base(request, db)
     ctx["backups"] = _backup_view(entries)
     ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
-    ctx["backup_dir"] = backup_service.backup_directory_label()
-    ctx["backup_inventory"] = backup_service.published_backup_inventory()
+    ctx["backup_dir"] = dataset_backup_inventory.backup_directory_label()
+    ctx["backup_inventory"] = dataset_backup_inventory.published_backup_inventory()
     return templates.TemplateResponse(request=request, name="backups.html", context=ctx)

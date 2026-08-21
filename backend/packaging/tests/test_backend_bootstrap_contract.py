@@ -17,11 +17,26 @@ from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
 BOOTSTRAP_SCRIPT = PACKAGING / "windows_backend_bootstrap.ps1"
+HEALTH_SCRIPT = PACKAGING / "windows_backend_health.ps1"
 SAFETY_SCRIPT = PACKAGING / "windows_installation_safety.ps1"
 
 
 def _read() -> str:
-    return BOOTSTRAP_SCRIPT.read_text(encoding="utf-8-sig")
+    return "\n".join(
+        (
+            HEALTH_SCRIPT.read_text(encoding="utf-8-sig"),
+            BOOTSTRAP_SCRIPT.read_text(encoding="utf-8-sig"),
+        )
+    )
+
+
+def test_backend_health_mechanism_is_shared_not_owned_by_bootstrap() -> None:
+    health = HEALTH_SCRIPT.read_text(encoding="utf-8-sig")
+    bootstrap = BOOTSTRAP_SCRIPT.read_text(encoding="utf-8-sig")
+
+    assert "function Wait-TicketboxInstalledBackendHealth" in health
+    assert "function Wait-TicketboxInstalledBackendHealth" not in bootstrap
+    assert "Wait-TicketboxInstalledBackendHealth" in bootstrap
 
 
 def test_bootstrap_checks_listener_chain_and_pairing_only_handoff() -> None:
@@ -1029,8 +1044,8 @@ def test_owner_handoff_single_file_cleanup_is_crash_idempotent(tmp_path: Path) -
     handoff_path = str(tmp_path / "installation-owner-handoff-v2.txt").replace("'", "''")
     harness.write_text(
         f"""
-$ErrorActionPreference = 'Stop'
-. '{bootstrap_script}'
+    $ErrorActionPreference = 'Stop'
+    . '{bootstrap_script}'
 $OwnerHandoffPath = '{handoff_path}'
 $InstallerLockOwnerProcessId = $PID
 $operationId = 'install-op:cleanup'
@@ -1313,7 +1328,14 @@ function Restart-TicketboxOwnedServiceIfExists {{
     param($Name, $ExpectedExecutable, $BackendPort, $ExpectedRuntimeExecutables)
     $script:restartCalls++
 }}
-function Wait-BackendHealth {{ $script:healthCalls++ }}
+    function Wait-TicketboxInstalledBackendHealth {{
+        param(
+            $BackendPort, $BackendServiceName, $ShawlExe, $BackendExe,
+            $ProgramDir, $AppData, $ReadyTimeoutMilliseconds,
+            $RequestTimeoutMilliseconds, $PollMilliseconds, $MaximumResponseBytes
+        )
+        $script:healthCalls++
+    }}
 function Invoke-TicketboxInstallationOwnerBootstrapHttpRequest {{
     $script:httpCalls++
     throw 'bootstrap HTTP must not be replayed'
@@ -1416,7 +1438,7 @@ def test_backend_health_schema_is_consumed_by_ps51_and_ps7(tmp_path: Path) -> No
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
-. '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
+. '{str(HEALTH_SCRIPT).replace("'", "''")}'
 $payload = Get-Content -LiteralPath '{str(payload_path).replace("'", "''")}' -Raw | ConvertFrom-Json
 Assert-TicketboxInstallationHealthResponse `
     -Payload $payload `
@@ -1524,6 +1546,7 @@ def test_bootstrap_request_bypasses_default_proxy(tmp_path: Path) -> None:
         harness.write_text(
             f"""
 $ErrorActionPreference = 'Stop'
+. '{str(HEALTH_SCRIPT).replace("'", "''")}'
 . '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
 $AppData = '{str(app_data).replace("'", "''")}'
 $ProgramDir = '{str(tmp_path).replace("'", "''")}'
@@ -1555,10 +1578,14 @@ public sealed class TicketboxThrowingProxy : IWebProxy
 }}
 '@
 $script:listenerChecks = 0
-function Get-TicketboxBackendListenerIdentity {{ return [pscustomobject]@{{ Id = 1 }} }}
-function Assert-TicketboxBackendListenerUnchanged([object]$ExpectedIdentity) {{
-    $script:listenerChecks += 1
-}}
+    function Get-TicketboxBackendListenerIdentity {{
+        param($BackendPort, $BackendServiceName, $ShawlExe, $BackendExe)
+        return [pscustomobject]@{{ Id = 1 }}
+    }}
+    function Assert-TicketboxBackendListenerUnchanged {{
+        param($ExpectedIdentity, $BackendPort, $BackendServiceName, $ShawlExe, $BackendExe)
+        $script:listenerChecks += 1
+    }}
 $previousProxy = [System.Net.WebRequest]::DefaultWebProxy
 try {{
     [TicketboxThrowingProxy]::Calls = 0
@@ -1570,11 +1597,12 @@ try {{
         -BodyBytes $body `
         -TimeoutMilliseconds 5000
     if (-not $response.ok) {{ throw 'loopback JSON response was not parsed' }}
-    $health = Invoke-TicketboxDirectLoopbackHealthHttpRequest `
-        -Url 'http://127.0.0.1:{server.server_port}/api/health/installation' `
-        -TimeoutMilliseconds 5000
-    $expectedVersion = Get-TicketboxExpectedBackendVersion
-    $expectedInstallationId = Get-TicketboxExpectedInstallationId
+        $health = Invoke-TicketboxDirectLoopbackHealthHttpRequest `
+            -Url 'http://127.0.0.1:{server.server_port}/api/health/installation' `
+            -TimeoutMilliseconds 5000 `
+            -MaximumResponseBytes 1048576
+        $expectedVersion = Get-TicketboxExpectedBackendVersion -ProgramDir $ProgramDir
+        $expectedInstallationId = Get-TicketboxExpectedInstallationId -AppData $AppData
     Assert-TicketboxInstallationHealthResponse `
         -Payload $health `
         -ExpectedBackendVersion $expectedVersion `
@@ -1630,17 +1658,19 @@ try {{
         -ExpectedInstallationId $expectedInstallationId
     $redirectRejected = $false
     try {{
-        Invoke-TicketboxDirectLoopbackHealthHttpRequest `
-            -Url 'http://127.0.0.1:{server.server_port}/api/health/installation' `
-            -TimeoutMilliseconds 5000 | Out-Null
+            Invoke-TicketboxDirectLoopbackHealthHttpRequest `
+                -Url 'http://127.0.0.1:{server.server_port}/api/health/installation' `
+                -TimeoutMilliseconds 5000 `
+                -MaximumResponseBytes 1048576 | Out-Null
     }}
     catch {{ $redirectRejected = $true }}
     if (-not $redirectRejected) {{ throw 'health redirect was followed or accepted' }}
     $oversizedRejected = $false
     try {{
-        Invoke-TicketboxDirectLoopbackHealthHttpRequest `
-            -Url 'http://127.0.0.1:{server.server_port}/api/health/installation' `
-            -TimeoutMilliseconds 5000 | Out-Null
+            Invoke-TicketboxDirectLoopbackHealthHttpRequest `
+                -Url 'http://127.0.0.1:{server.server_port}/api/health/installation' `
+                -TimeoutMilliseconds 5000 `
+                -MaximumResponseBytes 1048576 | Out-Null
     }}
     catch {{ $oversizedRejected = $true }}
     if (-not $oversizedRejected) {{ throw 'oversized chunked health response was accepted' }}
@@ -1683,6 +1713,7 @@ def test_bootstrap_request_exception_revalidates_listener_and_stops_on_failure(
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
+. '{str(HEALTH_SCRIPT).replace("'", "''")}'
 . '{str(BOOTSTRAP_SCRIPT).replace("'", "''")}'
 $script:listenerChecks = 0
 $script:listenerFails = $false

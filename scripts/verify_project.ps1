@@ -270,7 +270,7 @@ if (-not $SkipBackend) {
             Invoke-Checked -FilePath $tools.Python -Arguments @(
                 "scripts\postgres_backup_drill.py",
                 "--upload-root",
-                (Join-Path $BackendRoot "uploads\smoke_test")
+                (Join-Path $BackendRoot "uploads")
             ) -WorkingDirectory $BackendRoot
         }
     }

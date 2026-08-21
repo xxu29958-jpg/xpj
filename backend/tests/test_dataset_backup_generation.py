@@ -252,6 +252,7 @@ def test_published_generation_is_idempotent_for_its_durable_request(tmp_path: Pa
     (generation / MANIFEST_NAME).write_bytes(encode_manifest(manifest))
     request = CompleteBackupRequest(
         backup_root=backup_root,
+        inventory_path=(tmp_path / "backup-inventory.json").resolve(),
         upload_root=(tmp_path / "uploads").resolve(),
         database_url="postgresql+psycopg://ticketbox_backup@localhost:5432/ticketbox",
         passfile=(tmp_path / "pgpass").resolve(),
@@ -290,6 +291,22 @@ def test_published_generation_is_idempotent_for_its_durable_request(tmp_path: Pa
     assert wrong_current.value.status_code == 409
 
 
+def test_backup_root_rejects_a_direct_directory_symlink_before_resolving() -> None:
+    from app.services.backup_service import _prepare_backup_root
+
+    class DirectDirectorySymlink:
+        def is_absolute(self) -> bool:
+            return True
+
+        def is_symlink(self) -> bool:
+            return True
+
+    with pytest.raises(AppError) as rejected:
+        _prepare_backup_root(DirectDirectorySymlink())  # type: ignore[arg-type]
+
+    assert rejected.value.error == "backup_incomplete"
+
+
 def test_backup_preserves_primary_and_lease_cleanup_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -311,6 +328,7 @@ def test_backup_preserves_primary_and_lease_cleanup_failures(
     monkeypatch.setattr(backup_service, "read_manifest", lambda *_args, **_kwargs: (_ for _ in ()).throw(primary))
     request = CompleteBackupRequest(
         backup_root=backup_root,
+        inventory_path=(tmp_path / "backup-inventory.json").resolve(),
         upload_root=(tmp_path / "uploads").resolve(),
         database_url="postgresql+psycopg://ticketbox_backup@localhost:5432/ticketbox",
         passfile=(tmp_path / "pgpass").resolve(),
@@ -359,6 +377,7 @@ def test_backup_preserves_primary_staging_and_baseexception_lease_cleanup(
     monkeypatch.setattr(backup_service, "_remove_staging", fail_staging_cleanup)
     request = CompleteBackupRequest(
         backup_root=backup_root,
+        inventory_path=(tmp_path / "backup-inventory.json").resolve(),
         upload_root=(tmp_path / "uploads").resolve(),
         database_url="postgresql+psycopg://ticketbox_backup@localhost:5432/ticketbox",
         passfile=(tmp_path / "pgpass").resolve(),
@@ -382,6 +401,7 @@ def test_backup_preserves_primary_staging_and_baseexception_lease_cleanup(
 
 def test_complete_backup_request_requires_structured_dataset_authority_binding() -> None:
     assert {
+        "inventory_path",
         "expected_current_sha256",
         "expected_dataset_id",
         "expected_restore_epoch",

@@ -22,7 +22,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Account, AuthToken, Device, Expense, RecurringItem
 from app.routes import web_common
-from app.services import backup_service, expense_service, web_stats_service
+from app.services import dataset_backup_inventory, expense_service, web_stats_service
 from app.services.data_quality_service import is_usable_pending_merchant
 from app.services.identity_service import hash_secret
 from app.services.insights_service import recurring_candidates, unclaimed_recurring_candidate_count
@@ -33,7 +33,11 @@ from app.services.time_service import current_month, now_utc
 def test_dashboard_backup_caliber_accepts_only_published_complete_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(backup_service, "latest_published_backup_record", lambda: None)
+    monkeypatch.setattr(
+        dataset_backup_inventory,
+        "latest_published_backup_record",
+        lambda: None,
+    )
     with SessionLocal() as db:
         block = web_common._dashboard_status_counts_block(db, "owner", now_utc())
     assert block["backup_available"] is False
@@ -257,12 +261,16 @@ def test_overview_backup_card_renders_complete_or_missing_state(
         assert card is not None
         return card.group(0)
 
-    monkeypatch.setattr(backup_service, "latest_published_backup_record", lambda: None)
+    monkeypatch.setattr(
+        dataset_backup_inventory,
+        "latest_published_backup_record",
+        lambda: None,
+    )
     page = web_client.get("/web/overview?ledger_id=owner")
     assert page.status_code == 200
     assert "还没有备份" in _card_body(page.text)
 
-    entry = backup_service.BackupEntry(
+    entry = dataset_backup_inventory.BackupEntry(
         file_name="ticketbox-backup-6f162355-9e37-4523-a090-8daf2835f9e4",
         backup_id="6f162355-9e37-4523-a090-8daf2835f9e4",
         dataset_id="1d096080-20db-4a74-a138-1e72217f7746",
@@ -271,7 +279,11 @@ def test_overview_backup_card_renders_complete_or_missing_state(
         created_at=now_utc() - timedelta(days=1),
         kind="scheduled",
     )
-    monkeypatch.setattr(backup_service, "latest_published_backup_record", lambda: entry)
+    monkeypatch.setattr(
+        dataset_backup_inventory,
+        "latest_published_backup_record",
+        lambda: entry,
+    )
     page = web_client.get("/web/overview?ledger_id=owner")
     assert page.status_code == 200
     assert "天前生成最近备份" in _card_body(page.text)

@@ -66,6 +66,7 @@ _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
 _COMPLETE_DATASET_BACKUP_SWITCH = "--complete-dataset-backup"
 _INSPECT_DATASET_BACKUP_SWITCH = "--inspect-dataset-backup"
 _ISOLATED_DATASET_RESTORE_SWITCH = "--isolated-dataset-restore"
+_VERIFY_RESTORED_ORIGINALS_SWITCH = "--verify-restored-originals"
 _GENERATION_PROGRAM_FILENAME = "DATABASE_GENERATION_PROGRAM.json"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
 _MANAGED_SCHEMA_MODULE_NAME = "_ticketbox_managed_schema_upgrade"
@@ -185,6 +186,7 @@ def _parse_complete_dataset_backup_args(argv: list[str]) -> Namespace:
         required=True,
     )
     parser.add_argument("--backup-root", type=Path, required=True)
+    parser.add_argument("--inventory-path", type=Path, required=True)
     parser.add_argument("--upload-root", type=Path, required=True)
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--pgpassfile", type=Path, required=True)
@@ -237,6 +239,22 @@ def _parse_isolated_dataset_restore_args(argv: list[str]) -> Namespace:
     parser.add_argument("--active-restore-epoch", type=int, required=True)
     parser.add_argument("--target-schema-revision", required=True)
     parser.add_argument("--restore-role", required=True)
+    return parser.parse_args(argv)
+
+
+def _parse_restored_originals_verification_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-database-maintenance",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _VERIFY_RESTORED_ORIGINALS_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--backup-generation", type=Path, required=True)
+    parser.add_argument("--restored-upload-root", type=Path, required=True)
     return parser.parse_args(argv)
 
 
@@ -497,6 +515,7 @@ def _run_complete_dataset_backup(
     result = module.run_complete_dataset_backup_action(
         CompleteBackupRequest(
             backup_root=args.backup_root,
+            inventory_path=args.inventory_path,
             upload_root=args.upload_root,
             database_url=args.database_url,
             passfile=args.pgpassfile,
@@ -578,6 +597,33 @@ def _run_isolated_dataset_restore(
     )
     if tuple(result) != module.RESULT_FIELDS:
         raise RuntimeError("isolated dataset restore returned an unsupported shape")
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
+    output_stream.flush()
+    return 0
+
+
+def _run_restored_originals_verification(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    args = _parse_restored_originals_verification_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("restored originals verification requires redirected IO")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("restored originals verification requires empty stdin")
+    module = _load_isolated_dataset_restore_module()
+    result = module.verify_restored_originals_action(
+        args.backup_generation,
+        args.restored_upload_root,
+    )
+    if tuple(result) != module.RUNTIME_VERIFICATION_FIELDS:
+        raise RuntimeError("restored originals verification returned an unsupported shape")
     output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
@@ -1159,6 +1205,7 @@ def main() -> int | None:
             _COMPLETE_DATASET_BACKUP_SWITCH,
             _INSPECT_DATASET_BACKUP_SWITCH,
             _ISOLATED_DATASET_RESTORE_SWITCH,
+            _VERIFY_RESTORED_ORIGINALS_SWITCH,
         )
         if switch in arguments
     ]
@@ -1177,6 +1224,8 @@ def main() -> int | None:
             return _run_dataset_backup_inspection(arguments)
         if generation_switches[0] == _ISOLATED_DATASET_RESTORE_SWITCH:
             return _run_isolated_dataset_restore(arguments)
+        if generation_switches[0] == _VERIFY_RESTORED_ORIGINALS_SWITCH:
+            return _run_restored_originals_verification(arguments)
         return _run_generation_program_validation(arguments)
     if _is_database_generation_helper():
         raise RuntimeError("the dedicated database generation helper requires an explicit mode")

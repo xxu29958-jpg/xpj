@@ -1002,13 +1002,10 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
         "Initialize-TicketboxInstallerStateDirectory $InstallerState"
     )
     assert '$markerReadAccounts += "NT SERVICE\\$BackendServiceName"' in acl_function
-    assert '$backupReadAccounts += "NT SERVICE\\$BackendServiceName"' in acl_function
+    assert "$backupReadAccounts" not in acl_function
     backup_acl = acl_function.index("-Path $BackupDir")
     assert acl_function.index("-Accounts $systemAndAdmins", backup_acl) > backup_acl
-    assert (
-        acl_function.index("-InheritableReadExecuteAccounts $backupReadAccounts", backup_acl)
-        > backup_acl
-    )
+    assert "-InheritableReadExecuteAccounts" not in acl_function[backup_acl:]
     marker_acl = acl_function.index("-Path (Get-TicketboxDataRootMarkerPath $DataRoot)")
     assert acl_function.index("-ReadExecuteAccounts $markerReadAccounts", marker_acl) > marker_acl
     operation = install[install.index("$operationLock =") :]
@@ -1056,9 +1053,17 @@ def test_service_lifecycle_requires_exact_image_path_and_terminal_states() -> No
     assert "Assert-TicketboxServiceDelayedAutoStart" in promotion
 
     backend_bootstrap = _read("windows_backend_bootstrap.ps1")
+    exposure_recovery = _read("windows_bootstrap_exposure_recovery.ps1")
+    assert "Wait-BackendHealth" not in install
+    assert "Wait-BackendHealth" not in exposure_recovery
+    assert "Wait-TicketboxInstalledBackendHealth" in install
+    assert "Wait-TicketboxInstalledBackendHealth" in exposure_recovery
     restart = backend_bootstrap[
         backend_bootstrap.index("Restart-TicketboxOwnedServiceIfExists") :
-        backend_bootstrap.index("Wait-BackendHealth", backend_bootstrap.index("Restart-TicketboxOwnedServiceIfExists"))
+        backend_bootstrap.index(
+            "Wait-TicketboxInstalledBackendHealth",
+            backend_bootstrap.index("Restart-TicketboxOwnedServiceIfExists"),
+        )
     ]
     assert "-BackendPort $BackendPort" in restart
     assert "-ExpectedRuntimeExecutables @($BackendExe, $ShawlExe)" in restart

@@ -115,6 +115,23 @@ def test_installed_restore_rejects_result_for_another_backup(
         run_installed_dataset_restore(layout, release, GENERATION)
 
 
+def test_installed_restore_does_not_misreport_an_unconfirmed_result_as_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    layout, release, powershell, _script = _subject(tmp_path)
+    monkeypatch.setenv("SYSTEMROOT", str(powershell.parents[3]))
+    monkeypatch.setattr(dataset_restore, "require_local_fixed_regular_file", lambda path, *, label: path)
+    monkeypatch.setattr(
+        dataset_restore.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1, stdout="", stderr="suppressed"),
+    )
+
+    with pytest.raises(RuntimeControlError, match="结果未知"):
+        run_installed_dataset_restore(layout, release, GENERATION)
+
+
 @pytest.mark.parametrize(
     "generation",
     [

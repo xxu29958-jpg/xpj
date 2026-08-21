@@ -12,6 +12,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal, engine
+from app.database._dataset_restore_action import (
+    _SANITATION_TABLES,
+    finalize_restored_dataset,
+)
 from app.errors import AppError
 from app.services.dataset_authority_service import (
     DATASET_SEMANTIC_REVISION,
@@ -26,12 +30,7 @@ from app.services.dataset_backup_contract import (
     OriginalArtifact,
     encode_manifest,
 )
-from app.services.dataset_restore_service import (
-    _SANITATION_TABLES,
-    finalize_restored_dataset,
-    materialize_restored_originals,
-    resolve_restored_dataset_plan,
-)
+from app.services.dataset_restore_service import materialize_restored_originals, resolve_restored_dataset_plan
 
 _EXPECTED_SANITATION_TABLES = {
     "desktop_activation_attempts",

@@ -317,6 +317,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_installed_dataset_contract.ps1",
         "windows_installed_dataset_backup_contract.ps1",
         "windows_postgresql_candidate_cluster.ps1",
+        "windows_backend_health.ps1",
         "windows_backend_bootstrap.ps1",
         "windows_bootstrap_exposure_recovery.ps1",
         "install_bundled_services.ps1",
@@ -5312,6 +5313,7 @@ def test_installer_input_gate_requires_lifecycle_scripts() -> None:
     assert '$DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"' in build
     assert '$WindowsDeadlineBudgetScript = Join-Path $ScriptDir "windows_deadline_budget.ps1"' in build
     assert '$BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"' in build
+    assert '$BackendHealthScript = Join-Path $ScriptDir "windows_backend_health.ps1"' in build
     assert '$ReleaseConfigScript = Join-Path $ScriptDir "windows_release_config.ps1"' in build
     assert 'Assert-File $DataRootGuardScript "Windows DataRoot guard holder 脚本"' in build
     assert 'Assert-File $PrepareScript "升级前预检脚本"' in build
@@ -5319,3 +5321,4 @@ def test_installer_input_gate_requires_lifecycle_scripts() -> None:
     assert 'Assert-File $LifecycleScript "Windows 服务生命周期脚本"' in build
     assert 'Assert-File $WindowsDeadlineBudgetScript "Windows deadline-budget adapter"' in build
     assert 'Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"' in build
+    assert 'Assert-File $BackendHealthScript "Windows backend health adapter"' in build

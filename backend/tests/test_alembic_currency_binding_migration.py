@@ -38,7 +38,7 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
 PREVIOUS_REVISION = "20260729_0001"
 TARGET_REVISION = "20260802_0001"
-HEAD_REVISION = "20260809_0001"
+HEAD_REVISION = "20260821_0001"
 EVIDENCE_TABLES = (
     "bill_split_invitations",
     "budget_categories",
@@ -273,13 +273,13 @@ def test_writer_fence_requires_active_revision_proof() -> None:
 
 def test_empty_authority_downgrade_round_trips_but_active_refuses() -> None:
     reset_schema()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, TARGET_REVISION)
     run_alembic(command.downgrade, PREVIOUS_REVISION)
     assert current_revision() == PREVIOUS_REVISION
     with engine.connect() as connection:
         assert "installation_currency_bindings" not in inspect(connection).get_table_names()
 
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, TARGET_REVISION)
     assert _binding_row()["state"] == "EMPTY"
     _activate_cny_binding()
 
@@ -288,7 +288,7 @@ def test_empty_authority_downgrade_round_trips_but_active_refuses() -> None:
         match="Refusing to remove an ACTIVE installation currency binding",
     ):
         run_alembic(command.downgrade, PREVIOUS_REVISION)
-    assert current_revision() == HEAD_REVISION
+    assert current_revision() == TARGET_REVISION
     assert _binding_row()["state"] == "ACTIVE"
 
 

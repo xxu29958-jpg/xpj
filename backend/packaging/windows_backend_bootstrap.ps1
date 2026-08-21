@@ -60,115 +60,6 @@ function Get-TicketboxInstallationOwnerPairingCode(
     }
 }
 
-function Get-TicketboxBackendListenerIdentity {
-    $listeners = @(
-        Get-NetTCPConnection `
-            -State Listen `
-            -LocalAddress "127.0.0.1" `
-            -LocalPort $BackendPort `
-            -ErrorAction Stop
-    )
-    $listenerProcessIds = @($listeners | ForEach-Object { [int]$_.OwningProcess } | Sort-Object -Unique)
-    if ($listenerProcessIds.Count -ne 1 -or $listenerProcessIds[0] -le 0) {
-        throw "后端端口没有唯一的 loopback 监听进程。"
-    }
-
-    $escapedServiceName = $BackendServiceName.Replace("'", "''")
-    $service = Get-CimInstance `
-        -ClassName Win32_Service `
-        -Filter "Name='$escapedServiceName'" `
-        -ErrorAction Stop
-    if (
-        $null -eq $service -or
-        [string]$service.State -ne "Running" -or
-        [int]$service.ProcessId -le 0
-    ) {
-        throw "后端 SCM 服务未处于可证明的 Running 状态。"
-    }
-    $listenerProcessId = $listenerProcessIds[0]
-    $listener = Get-CimInstance `
-        -ClassName Win32_Process `
-        -Filter "ProcessId=$listenerProcessId" `
-        -ErrorAction Stop
-    if ($null -eq $listener -or [string]::IsNullOrWhiteSpace([string]$listener.ExecutablePath)) {
-        throw "无法读取后端监听进程身份。"
-    }
-    $serviceProcessId = [int]$service.ProcessId
-    if ([int]$listener.ParentProcessId -ne $serviceProcessId) {
-        throw "后端监听进程不是 Shawl 服务进程的直接子进程。"
-    }
-    $serviceProcess = Get-CimInstance `
-        -ClassName Win32_Process `
-        -Filter "ProcessId=$serviceProcessId" `
-        -ErrorAction Stop
-    if (
-        $null -eq $serviceProcess -or
-        [string]::IsNullOrWhiteSpace([string]$serviceProcess.ExecutablePath) -or
-        -not (Test-TicketboxPathEquals ([string]$serviceProcess.ExecutablePath) $ShawlExe) -or
-        -not (Test-TicketboxPathEquals ([string]$listener.ExecutablePath) $BackendExe)
-    ) {
-        throw "后端监听进程链与受保护安装目录不一致。"
-    }
-    return [pscustomobject]@{
-        ListenerProcessId = $listenerProcessId
-        ServiceProcessId = $serviceProcessId
-        ListenerCreationDate = [string]$listener.CreationDate
-        ServiceCreationDate = [string]$serviceProcess.CreationDate
-    }
-}
-
-function Assert-TicketboxBackendListenerUnchanged([object]$ExpectedIdentity) {
-    $actual = Get-TicketboxBackendListenerIdentity
-    if (
-        $actual.ListenerProcessId -ne $ExpectedIdentity.ListenerProcessId -or
-        $actual.ServiceProcessId -ne $ExpectedIdentity.ServiceProcessId -or
-        $actual.ListenerCreationDate -cne $ExpectedIdentity.ListenerCreationDate -or
-        $actual.ServiceCreationDate -cne $ExpectedIdentity.ServiceCreationDate
-    ) {
-        throw "后端 HTTP 请求期间监听进程身份发生变化。"
-    }
-}
-
-function Read-TicketboxBoundedUtf8HttpResponse(
-    [System.Net.WebResponse]$Response,
-    [ValidateRange(1, 1048576)][int]$MaximumBytes
-) {
-    if ($Response.ContentLength -gt $MaximumBytes) {
-        throw "owner bootstrap HTTP 响应超过大小上限。"
-    }
-    $stream = $null
-    $buffer = New-Object 'System.Byte[]' 8192
-    $memory = New-Object System.IO.MemoryStream
-    $payloadBytes = $null
-    try {
-        $stream = $Response.GetResponseStream()
-        if ($null -eq $stream) {
-            throw "owner bootstrap HTTP 响应没有 body。"
-        }
-        $total = 0
-        while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
-            $total += $read
-            if ($total -gt $MaximumBytes) {
-                throw "owner bootstrap HTTP 响应超过大小上限。"
-            }
-            $memory.Write($buffer, 0, $read)
-        }
-        $payloadBytes = $memory.ToArray()
-        $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
-        return $utf8.GetString($payloadBytes)
-    }
-    finally {
-        if ($null -ne $stream) {
-            $stream.Dispose()
-        }
-        $memory.Dispose()
-        [System.Array]::Clear($buffer, 0, $buffer.Length)
-        if ($null -ne $payloadBytes) {
-            [System.Array]::Clear($payloadBytes, 0, $payloadBytes.Length)
-        }
-    }
-}
-
 function Invoke-TicketboxInstallationOwnerBootstrapHttpRequest(
     [string]$Url,
     [string]$Secret,
@@ -190,7 +81,11 @@ function Invoke-TicketboxInstallationOwnerBootstrapHttpRequest(
         throw "owner bootstrap HTTP 请求没有可用超时预算。"
     }
 
-    $identity = Get-TicketboxBackendListenerIdentity
+    $identity = Get-TicketboxBackendListenerIdentity `
+        -BackendPort $BackendPort `
+        -BackendServiceName $BackendServiceName `
+        -ShawlExe $ShawlExe `
+        -BackendExe $BackendExe
     $request = [System.Net.HttpWebRequest]::Create($uri)
     $request.Method = "POST"
     $request.Accept = "application/json"
@@ -240,7 +135,12 @@ function Invoke-TicketboxInstallationOwnerBootstrapHttpRequest(
             $requestFailure.Response.Dispose()
         }
         try {
-            Assert-TicketboxBackendListenerUnchanged $identity
+            Assert-TicketboxBackendListenerUnchanged `
+                -ExpectedIdentity $identity `
+                -BackendPort $BackendPort `
+                -BackendServiceName $BackendServiceName `
+                -ShawlExe $ShawlExe `
+                -BackendExe $BackendExe
         }
         catch {
             throw (New-Object System.Security.SecurityException(
@@ -260,7 +160,12 @@ function Invoke-TicketboxInstallationOwnerBootstrapHttpRequest(
         }
     }
     try {
-        Assert-TicketboxBackendListenerUnchanged $identity
+        Assert-TicketboxBackendListenerUnchanged `
+            -ExpectedIdentity $identity `
+            -BackendPort $BackendPort `
+            -BackendServiceName $BackendServiceName `
+            -ShawlExe $ShawlExe `
+            -BackendExe $BackendExe
     }
     catch {
         throw (New-Object System.Security.SecurityException(
@@ -268,174 +173,6 @@ function Invoke-TicketboxInstallationOwnerBootstrapHttpRequest(
         ))
     }
     return $payload
-}
-
-function Invoke-TicketboxDirectLoopbackHealthHttpRequest(
-    [string]$Url,
-    [int]$TimeoutMilliseconds
-) {
-    $uri = New-Object System.Uri($Url)
-    if (
-        $uri.Scheme -cne "http" -or
-        $uri.Host -cne "127.0.0.1" -or
-        $uri.UserInfo.Length -ne 0 -or
-        $uri.Query.Length -ne 0 -or
-        $uri.Fragment.Length -ne 0 -or
-        $uri.AbsolutePath -cne "/api/health/installation"
-    ) {
-        throw "后端安装就绪 URL 不符合固定 loopback 契约。"
-    }
-    if ($TimeoutMilliseconds -lt 1) {
-        throw "后端安装就绪请求没有可用超时预算。"
-    }
-
-    $request = [System.Net.HttpWebRequest]::Create($uri)
-    $request.Method = "GET"
-    $request.Accept = "application/json"
-    $request.Proxy = $null
-    $request.AllowAutoRedirect = $false
-    $request.KeepAlive = $false
-    $request.Timeout = $TimeoutMilliseconds
-    $request.ReadWriteTimeout = $TimeoutMilliseconds
-    $response = $null
-    try {
-        $response = [System.Net.HttpWebResponse]$request.GetResponse()
-        if ([int]$response.StatusCode -ne 200) {
-            throw "后端安装就绪 HTTP 状态不是 200。"
-        }
-        $mediaType = ([string]$response.ContentType -split ";", 2)[0].Trim()
-        if (-not [string]::Equals(
-            $mediaType,
-            "application/json",
-            [System.StringComparison]::OrdinalIgnoreCase
-        )) {
-            throw "后端安装就绪 HTTP 响应不是 JSON。"
-        }
-        $responseText = Read-TicketboxBoundedUtf8HttpResponse `
-            -Response $response `
-            -MaximumBytes $script:BootstrapMaximumResponseBytes
-        return $responseText | ConvertFrom-Json -ErrorAction Stop
-    }
-    finally {
-        if ($null -ne $response) {
-            $response.Dispose()
-        }
-    }
-}
-
-function Get-TicketboxExpectedBackendVersion {
-    $manifestPath = Join-Path $ProgramDir "BUILD_PROVENANCE.json"
-    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-        throw "缺少已安装 backend build manifest：$manifestPath"
-    }
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 |
-        ConvertFrom-Json -ErrorAction Stop
-    $version = [string]$manifest.backend_version
-    if ([string]::IsNullOrWhiteSpace($version)) {
-        throw "已安装 backend build manifest 缺少 backend_version。"
-    }
-    return $version
-}
-
-function Get-TicketboxExpectedInstallationId {
-    # The installed service exports TICKETBOX_DATA_DIR=$AppData. Match
-    # config.installation_identity(): normcase(resolve(path)), UTF-8 SHA-256.
-    $canonicalDataRoot = (ConvertTo-TicketboxCanonicalPath $AppData).ToLowerInvariant()
-    $identityText = "ticketbox-installation-v1`0$canonicalDataRoot"
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $digest = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($identityText))
-        $hex = ([System.BitConverter]::ToString($digest)).Replace("-", "").ToLowerInvariant()
-        return "ticketbox-$($hex.Substring(0, 32))"
-    }
-    finally {
-        $sha256.Dispose()
-    }
-}
-
-function Assert-TicketboxInstallationHealthResponse(
-    [object]$Payload,
-    [string]$ExpectedBackendVersion,
-    [string]$ExpectedInstallationId
-) {
-    $mobile = $Payload.mobile_connectivity
-    if (
-        @($Payload.PSObject.Properties).Count -ne 9 -or
-        [string]$Payload.contract -cne "ticketbox-installation-health-v2" -or
-        [string]$Payload.status -cne "ok" -or
-        [string]$Payload.product -cne "ticketbox" -or
-        [string]$Payload.backend_version -cne $ExpectedBackendVersion -or
-        [string]$Payload.installation_id -cne $ExpectedInstallationId -or
-        [string]$Payload.runtime_access_state -notin @("available", "repair_required") -or
-        [string]$Payload.owner_state -notin @("configured", "recovery_required") -or
-        [string]$Payload.owner_recovery_channel -notin @(
-            "development",
-            "managed_host",
-            "operator"
-        ) -or
-        $null -eq $mobile -or
-        @($mobile.PSObject.Properties).Count -ne 3 -or
-        [string]$mobile.mobile_endpoint_state -notin @(
-            "local_only",
-            "public_configured_unverified"
-        ) -or
-        [string]$mobile.android_binding_state -notin @(
-            "setup_required",
-            "configured_unverified"
-        ) -or
-        [string]$mobile.iphone_upload_state -notin @(
-            "setup_required",
-            "configured_unverified"
-        ) -or
-        (
-            [string]$mobile.mobile_endpoint_state -ceq "local_only" -and
-            (
-                [string]$mobile.android_binding_state -cne "setup_required" -or
-                [string]$mobile.iphone_upload_state -cne "setup_required"
-            )
-        ) -or
-        (
-            [string]$mobile.mobile_endpoint_state -ceq "public_configured_unverified" -and
-            (
-                [string]$mobile.android_binding_state -cne "configured_unverified" -or
-                [string]$mobile.iphone_upload_state -cne "configured_unverified"
-            )
-        )
-    ) {
-        throw "installation health 响应与当前安装身份不一致。"
-    }
-}
-
-function Wait-BackendHealth {
-    $url = "http://127.0.0.1:$BackendPort/api/health/installation"
-    $expectedBackendVersion = Get-TicketboxExpectedBackendVersion
-    $expectedInstallationId = Get-TicketboxExpectedInstallationId
-    $deadline = New-TicketboxWaitDeadline $BackendReadyTimeoutMs
-    $lastError = ""
-    do {
-        $remaining = [Math]::Max(1, $BackendReadyTimeoutMs - $deadline.ElapsedMilliseconds)
-        $probeBudget = [int][Math]::Min([long]$BackendHealthRequestTimeoutMs, [long]$remaining)
-        try {
-            $identity = Get-TicketboxBackendListenerIdentity
-            $payload = Invoke-TicketboxDirectLoopbackHealthHttpRequest `
-                -Url $url `
-                -TimeoutMilliseconds $probeBudget
-            Assert-TicketboxBackendListenerUnchanged $identity
-            Assert-TicketboxInstallationHealthResponse `
-                -Payload $payload `
-                -ExpectedBackendVersion $expectedBackendVersion `
-                -ExpectedInstallationId $expectedInstallationId
-            Write-Ok "后端已就绪：$url"
-            return
-        }
-        catch {
-            $lastError = $_.Exception.Message
-        }
-    } while (Wait-TicketboxPollBeforeDeadline `
-        -Deadline $deadline `
-        -TimeoutMilliseconds $BackendReadyTimeoutMs `
-        -PollMilliseconds $BackendReadyPollIntervalMs)
-    throw "后端服务未在 $BackendReadyTimeoutMs ms 内通过安装身份和就绪检查：$lastError"
 }
 
 function Assert-TicketboxInstallationOwnerBootstrapResponse {
@@ -937,7 +674,17 @@ function Complete-FirstOwnerBootstrapIfEnabled {
             -BackendPort $BackendPort `
             -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe) `
             @ServiceWaitArguments | Out-Null
-        Wait-BackendHealth
+        Wait-TicketboxInstalledBackendHealth `
+            -BackendPort $BackendPort `
+            -BackendServiceName $BackendServiceName `
+            -ShawlExe $ShawlExe `
+            -BackendExe $BackendExe `
+            -ProgramDir $ProgramDir `
+            -AppData $AppData `
+            -ReadyTimeoutMilliseconds $BackendReadyTimeoutMs `
+            -RequestTimeoutMilliseconds $BackendHealthRequestTimeoutMs `
+            -PollMilliseconds $BackendReadyPollIntervalMs `
+            -MaximumResponseBytes $script:BootstrapMaximumResponseBytes
         Write-Ok "已从持久化 owner handoff 续跑并退役 bootstrap secret。"
         return
     }
@@ -1013,5 +760,15 @@ function Complete-FirstOwnerBootstrapIfEnabled {
         -BackendPort $BackendPort `
         -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe) `
         @ServiceWaitArguments | Out-Null
-    Wait-BackendHealth
+    Wait-TicketboxInstalledBackendHealth `
+        -BackendPort $BackendPort `
+        -BackendServiceName $BackendServiceName `
+        -ShawlExe $ShawlExe `
+        -BackendExe $BackendExe `
+        -ProgramDir $ProgramDir `
+        -AppData $AppData `
+        -ReadyTimeoutMilliseconds $BackendReadyTimeoutMs `
+        -RequestTimeoutMilliseconds $BackendHealthRequestTimeoutMs `
+        -PollMilliseconds $BackendReadyPollIntervalMs `
+        -MaximumResponseBytes $script:BootstrapMaximumResponseBytes
 }

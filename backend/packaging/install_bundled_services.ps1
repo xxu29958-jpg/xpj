@@ -517,6 +517,11 @@ if (-not (Test-Path -LiteralPath $DatabaseGenerationScript -PathType Leaf)) {
     throw "缺少 Windows database generation owner：$DatabaseGenerationScript"
 }
 . $DatabaseGenerationScript
+$BackendHealthScript = Join-Path $ScriptDir "windows_backend_health.ps1"
+if (-not (Test-Path -LiteralPath $BackendHealthScript -PathType Leaf)) {
+    throw "缺少 Windows 后端健康检查机制：$BackendHealthScript"
+}
+. $BackendHealthScript
 $BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
 if (-not (Test-Path -LiteralPath $BackendBootstrapScript -PathType Leaf)) {
     throw "缺少 Windows 后端就绪/bootstrap 脚本：$BackendBootstrapScript"
@@ -1438,7 +1443,6 @@ function Set-TicketboxAcl(
     $pgAccounts = @($systemAndAdmins)
     $appAccounts = @($systemAndAdmins)
     $markerReadAccounts = @()
-    $backupReadAccounts = @()
     if ($IncludePgService) {
         $rootReadAccounts += "NT SERVICE\$PgServiceName"
         $pgAccounts += "NT SERVICE\$PgServiceName"
@@ -1447,7 +1451,6 @@ function Set-TicketboxAcl(
         $rootReadAccounts += "NT SERVICE\$BackendServiceName"
         $appAccounts += "NT SERVICE\$BackendServiceName"
         $markerReadAccounts += "NT SERVICE\$BackendServiceName"
-        $backupReadAccounts += "NT SERVICE\$BackendServiceName"
     }
     Set-TicketboxExactDirectoryAcl `
         -Path $DataRoot `
@@ -1467,7 +1470,6 @@ function Set-TicketboxAcl(
     Set-TicketboxExactDirectoryAcl `
         -Path $BackupDir `
         -Accounts $systemAndAdmins `
-        -InheritableReadExecuteAccounts $backupReadAccounts `
         -OwnerAccount $OwnerAccount `
         -Recurse
     [void](Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
@@ -2278,7 +2280,17 @@ try {
             -Name $BackendServiceName `
             -ExpectedExecutable (Get-ExpectedServiceExecutable $BackendServiceName) `
             @ServiceWaitArguments | Out-Null
-        Wait-BackendHealth
+        Wait-TicketboxInstalledBackendHealth `
+            -BackendPort $BackendPort `
+            -BackendServiceName $BackendServiceName `
+            -ShawlExe $ShawlExe `
+            -BackendExe $BackendExe `
+            -ProgramDir $ProgramDir `
+            -AppData $AppData `
+            -ReadyTimeoutMilliseconds $BackendReadyTimeoutMs `
+            -RequestTimeoutMilliseconds $BackendHealthRequestTimeoutMs `
+            -PollMilliseconds $BackendReadyPollIntervalMs `
+            -MaximumResponseBytes $script:BootstrapMaximumResponseBytes
         $installLifecycleStage = "installation_owner_claim"
         try {
             Complete-FirstOwnerBootstrapIfEnabled `

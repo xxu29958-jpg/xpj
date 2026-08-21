@@ -440,6 +440,48 @@ function Remove-TicketboxInstalledDatasetRestoreRequest {
     }
 }
 
+function Assert-TicketboxInstalledDatasetRuntimeVerification {
+    param(
+        [Parameter(Mandatory = $true)][object]$Verification,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$Request,
+        [Parameter(Mandatory = $true)][object]$Current,
+        [Parameter(Mandatory = $true)][object]$Inspection
+    )
+    $payload = $Verification.Payload
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $payload `
+        -ExpectedNames @(
+            "schema", "operation_id", "intent_sha256", "source_request_sha256",
+            "current_sha256", "backup_manifest_sha256", "backup_id", "dataset_id",
+            "restore_epoch", "original_count", "health_contract", "result"
+        ) `
+        -Label "installed dataset runtime verification"
+    $expectedEpoch = [Math]::Max(
+        [int64]$Request.Payload.backup_restore_epoch,
+        [int64]$Request.Payload.active_restore_epoch
+    ) + 1
+    if (
+        [string]$Verification.Kind -cne "runtime-verification" -or
+        [string]$payload.schema -cne "ticketbox-installed-dataset-runtime-verification-v1" -or
+        [string]$payload.operation_id -cne [string]$Intent.Payload.operation_id -or
+        [string]$payload.intent_sha256 -cne [string]$Intent.PayloadSha256 -or
+        [string]$payload.source_request_sha256 -cne [string]$Request.PayloadSha256 -or
+        [string]$payload.current_sha256 -cne [string]$Current.PayloadSha256 -or
+        [string]$payload.backup_manifest_sha256 -cne
+            [string]$Request.Payload.backup_manifest_sha256 -or
+        [string]$payload.backup_id -cne [string]$Request.Payload.backup_id -or
+        [string]$payload.dataset_id -cne [string]$Request.Payload.dataset_id -or
+        [int64]$payload.restore_epoch -ne $expectedEpoch -or
+        [int64]$payload.original_count -ne [int64]$Inspection.Evidence.original_count -or
+        [string]$payload.health_contract -cne "ticketbox-installation-health-v2" -or
+        [string]$payload.result -cne "restored_runtime_verified"
+    ) {
+        throw "installed dataset runtime verification differs from durable authority."
+    }
+    return $Verification
+}
+
 function Get-TicketboxInstalledDatasetRestorePaths {
     param(
         [Parameter(Mandatory = $true)][string]$DataRoot,
@@ -498,6 +540,14 @@ function Resolve-TicketboxInstalledDatasetRestorePhysicalState {
         }
         $present[$name] = $kind -ceq "Directory"
     }
+    $containers = @{}
+    foreach ($name in @("candidate_root", "rollback_root")) {
+        $kind = Get-TicketboxPathEntryKindNoFollow ([string]$Paths.$name)
+        if ($kind -notin @("Missing", "Directory")) {
+            throw "dataset restore container path is not a plain directory: $name"
+        }
+        $containers[$name] = $kind
+    }
     $signature = @(
         "stable_pgdata", "stable_uploads", "candidate_pgdata",
         "candidate_uploads", "rollback_pgdata", "rollback_uploads"
@@ -509,7 +559,16 @@ function Resolve-TicketboxInstalledDatasetRestorePhysicalState {
         "001111" { return "old_staged" }
         "100111" { return "candidate_pg_published" }
         "110011" { return "candidate_published" }
-        "110000" { return "complete" }
+        { $_ -in @("110001", "110010") } { return "rollback_retiring" }
+        "110000" {
+            if (
+                $containers.candidate_root -ceq "Directory" -or
+                $containers.rollback_root -ceq "Directory"
+            ) {
+                return "cleanup_pending"
+            }
+            return "complete"
+        }
         default { throw "dataset restore physical state is not classifiable."
         }
     }
@@ -521,20 +580,32 @@ function Resolve-TicketboxInstalledDatasetRestoreNextAction {
         [ValidateSet(
             "complete", "candidate_building", "candidate_ready",
             "old_pg_staged", "old_staged", "candidate_pg_published",
-            "candidate_published"
+            "candidate_published", "rollback_retiring", "cleanup_pending"
         )][string]$PhysicalState,
         [Parameter(Mandatory = $true)]
         [ValidateSet("absent", "present")][string]$RestoredSourceState,
         [Parameter(Mandatory = $true)]
-        [ValidateSet("absent", "present")][string]$PublishedCurrentState
+        [ValidateSet("absent", "present")][string]$PublishedCurrentState,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("absent", "present")][string]$RuntimeVerificationState
     )
+    if (
+        $RuntimeVerificationState -ceq "present" -and
+        $PublishedCurrentState -ceq "absent"
+    ) {
+        throw "dataset restore runtime verification exists before CURRENT publication."
+    }
     switch ($PhysicalState) {
         "complete" {
             if (
                 $RestoredSourceState -ceq "present" -and
-                $PublishedCurrentState -ceq "present"
+                $PublishedCurrentState -ceq "present" -and
+                $RuntimeVerificationState -ceq "present"
             ) {
                 return "done"
+            }
+            if ($PublishedCurrentState -ceq "present") {
+                throw "dataset restore rollback retired before runtime verification."
             }
             if ($RestoredSourceState -ceq "present") {
                 throw "dataset restore lost its candidate before CURRENT publication."
@@ -571,6 +642,17 @@ function Resolve-TicketboxInstalledDatasetRestoreNextAction {
                 throw "published dataset candidate lacks restored-source evidence."
             }
             if ($PublishedCurrentState -ceq "absent") { return "publish_current" }
+            if ($RuntimeVerificationState -ceq "absent") { return "verify_runtime" }
+            return "retire_rollback"
+        }
+        { $_ -in @("rollback_retiring", "cleanup_pending") } {
+            if (
+                $RestoredSourceState -ceq "absent" -or
+                $PublishedCurrentState -ceq "absent" -or
+                $RuntimeVerificationState -ceq "absent"
+            ) {
+                throw "dataset restore cleanup lacks committed runtime verification."
+            }
             return "retire_rollback"
         }
         default { throw "unknown dataset restore physical state."
@@ -659,8 +741,8 @@ function Remove-TicketboxInstalledDatasetRestoreRollback {
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    if ((Resolve-TicketboxInstalledDatasetRestorePhysicalState $Paths) -cne `
-        "candidate_published") {
+    $state = Resolve-TicketboxInstalledDatasetRestorePhysicalState $Paths
+    if ($state -notin @("candidate_published", "rollback_retiring", "cleanup_pending")) {
         throw "dataset restore rollback may retire only after candidate publication."
     }
     foreach ($path in @($Paths.rollback_pgdata, $Paths.rollback_uploads)) {

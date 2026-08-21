@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from sqlalchemy.pool import StaticPool
 
 import app.services.postgres_backup_adapter as postgres_adapter
 import app.services.postgres_backup_validation_service as pgval
@@ -43,6 +44,46 @@ def test_recovery_drill_uses_complete_dataset_generation_and_bounded_restore() -
     assert "create_manual_backup" not in source
     assert "_pg_tool_connection" not in source
     assert "_pg_tool_environment" not in source
+
+
+def test_recovery_drill_hands_sqlalchemy_the_real_leased_driver_connection(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    class LeasedConnection:
+        autocommit = True
+
+    class SourceEngine:
+        def dispose(self, *, close: bool = True) -> None:
+            observed["dispose_close"] = close
+
+    leased_connection = LeasedConnection()
+    source_engine = SourceEngine()
+
+    def fake_create_engine(url: str, **options: object) -> SourceEngine:
+        creator = options["creator"]
+        assert callable(creator)
+        observed.update(
+            url=url,
+            poolclass=options["poolclass"],
+            creator_connection=creator(),
+        )
+        return source_engine
+
+    monkeypatch.setattr(postgres_backup_drill, "create_engine", fake_create_engine, raising=False)
+    with postgres_backup_drill._leased_source_engine(  # noqa: SLF001
+        _DATABASE_URL,
+        leased_connection,
+    ) as actual_engine:
+        assert actual_engine is source_engine
+        assert leased_connection.autocommit is False
+
+    assert leased_connection.autocommit is True
+    assert observed == {
+        "url": _DATABASE_URL,
+        "poolclass": StaticPool,
+        "creator_connection": leased_connection,
+        "dispose_close": False,
+    }
 
 
 def test_restore_uses_explicit_passfile_and_single_transaction(tmp_path, monkeypatch) -> None:
@@ -318,5 +359,8 @@ def test_postgres_backup_validation_rejects_missing_or_invalid_file(tmp_path) ->
 def test_postgres_backup_validation_reports_pg_restore_failure(tmp_path) -> None:
     bogus = tmp_path / "ticketbox-bogus.dump"
     bogus.write_text("not an archive")
-    with pytest.raises(pgval.PostgresBackupValidationError, match="--list failed"):
+    with pytest.raises(
+        pgval.PostgresBackupValidationError,
+        match=r"--list (failed|produced an empty)",
+    ):
         pgval.validate_postgres_backup_file(bogus)

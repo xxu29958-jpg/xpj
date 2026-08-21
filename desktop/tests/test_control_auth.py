@@ -183,6 +183,9 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         assert any("ticketbox_manager_control=" in cookie and "Path=/" in cookie for cookie in cookies)
         assert all("HttpOnly" in cookie for cookie in cookies)
         assert all("SameSite=Strict" in cookie for cookie in cookies)
+        session_ids = [cookie.partition(";")[0].partition("=")[2] for cookie in cookies]
+        assert len(set(session_ids)) == 4
+        assert all(session_id not in repr(server._web_session_digests) for session_id in session_ids)
         assert _TOKEN.encode() not in response.read()
         connection.close()
         assert not bootstrap_path.exists()

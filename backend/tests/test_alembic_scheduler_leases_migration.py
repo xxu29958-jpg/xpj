@@ -10,7 +10,7 @@ the migration body), then REFLECTS the migration-built table and asserts its
 columns / nullability / primary key — not just that the table name exists.
 
 It also pins the one-way ``app_meta`` cleanup: a pre-table ``scheduler_lease:*`` row
-is removed by the upgrade while an unrelated key (``schema_version``) survives.
+is removed by the upgrade while an unrelated control key survives.
 
 Marked ``real_db`` below because it issues DDL via its
 own ``engine.begin()`` connections outside the per-test transaction.
@@ -68,7 +68,7 @@ def _seed_legacy_and_control_app_meta() -> None:
             {
                 "lease_key": "scheduler_lease:probe_sync",
                 "lease_val": "1970-01-01T00:00:00+00:00",
-                "keep_key": "schema_version",
+                "keep_key": "scheduler_test_control",
                 "keep_val": "test",
             },
         )
@@ -121,7 +121,7 @@ def test_add_scheduler_leases_round_trips_on_postgres() -> None:
 
         keys = _app_meta_keys()
         assert "scheduler_lease:probe_sync" not in keys  # transient row purged
-        assert "schema_version" in keys  # unrelated key untouched
+        assert "scheduler_test_control" in keys  # unrelated key untouched
     finally:
         _reset_empty_database()
         _drop_alembic_version()

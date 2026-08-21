@@ -100,7 +100,7 @@ from app.schemas import (
     InstallationMobileCapabilitiesResponse,
     StatusResponse,
 )
-from app.services import backup_service
+from app.services import dataset_backup_inventory
 from app.services.background_task_service import (
     recover_orphaned_tasks,
     shutdown_executor,
@@ -463,7 +463,7 @@ def private_status(_auth: AuthContext = Depends(get_current_app_context)) -> Hea
     # 仅报告已发布 manifest 记录的时间；普通公网状态不读取大体积 payload。
     # 当前字节完整性会在正式 inspection/restore 中全量复验，不能由这些字段推断。
     try:
-        backup = backup_service.published_backup_inventory()
+        backup = dataset_backup_inventory.published_backup_inventory()
         latest_backup_at = backup.latest.created_at.astimezone(UTC).isoformat() if backup.latest is not None else None
         backup_age_hours = backup.age_hours
         backup_stale = backup.review_due

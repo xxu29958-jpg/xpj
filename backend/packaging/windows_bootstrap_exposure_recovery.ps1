@@ -420,7 +420,17 @@ function Resolve-TicketboxBootstrapExposureRecoveryIntent(
             -Name $BackendServiceName `
             -ExpectedExecutable $ShawlExe `
             @ServiceWaitArguments | Out-Null
-        Wait-BackendHealth
+        Wait-TicketboxInstalledBackendHealth `
+            -BackendPort $BackendPort `
+            -BackendServiceName $BackendServiceName `
+            -ShawlExe $ShawlExe `
+            -BackendExe $BackendExe `
+            -ProgramDir $ProgramDir `
+            -AppData $AppData `
+            -ReadyTimeoutMilliseconds $BackendReadyTimeoutMs `
+            -RequestTimeoutMilliseconds $BackendHealthRequestTimeoutMs `
+            -PollMilliseconds $BackendReadyPollIntervalMs `
+            -MaximumResponseBytes $script:BootstrapMaximumResponseBytes
     }
     return $intent.ReplacementSecret
 }

@@ -61,7 +61,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 228,  # Noisy lane; ratcheted to the current measured floor.
+    "unreferenced_modules": 226,  # Noisy lane; ratcheted to the current measured floor.
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -130,13 +130,13 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 93,
-    "mutate_token_exempted": 129,
+    "mutate_token_exempted": 128,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
     "mutate_token_reason_create_row": 35,
     "mutate_token_reason_enqueue_task": 0,
-    "mutate_token_reason_external_side_effect": 4,
+    "mutate_token_reason_external_side_effect": 3,
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 4,
     "mutate_token_reason_session_rotation": 8,

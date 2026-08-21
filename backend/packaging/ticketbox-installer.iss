@@ -286,6 +286,7 @@ Source: "windows_dataset_restore.ps1"; DestDir: "{app}\installer"; Flags: ignore
 Source: "windows_installed_dataset_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_installed_dataset_backup_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_postgresql_candidate_cluster.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_backend_health.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_backend_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_bootstrap_exposure_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows-release-config.json"; DestDir: "{app}\installer"; Flags: ignoreversion

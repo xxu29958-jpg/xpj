@@ -354,7 +354,8 @@ jobs:
       - name: Windows database maintenance contract
         run: >-
           python -m pytest -q
-          tests/test_windows_task_status.py::test_db_maintenance_scripts_resolve_configured_database_url
+          tests/test_database_maintenance_entrypoint.py
+          tests/test_postgres_backup_dialect.py
           --noconftest --strict-markers -p no:cacheprovider -o addopts=
 
       - name: Installer source preflight (Windows PowerShell 5.1)

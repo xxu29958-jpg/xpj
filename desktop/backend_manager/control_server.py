@@ -31,6 +31,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import deque
 from collections.abc import Callable
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -79,6 +80,7 @@ _MAX_BOOTSTRAP_FORM_BYTES = 1024
 _BOOTSTRAP_TTL_SECONDS = 60.0
 _BOOTSTRAP_REPLAY_TTL_SECONDS = 300.0
 _BOOTSTRAP_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43,128}\Z")
+_MAX_WEB_SESSIONS = 8
 _REOPEN_REQUEST_CONTEXT = b"ticketbox-manager-reopen-request-v1\0"
 _REOPEN_RESPONSE_CONTEXT = b"ticketbox-manager-reopen-response-v1\0"
 _OWNER_SHORTCUTS = {
@@ -416,6 +418,7 @@ class _Handler(BaseHTTPRequestHandler):
         if status != 200:
             self._send(status, b"bootstrap rejected", "text/plain; charset=utf-8")
             return
+        session_ids = srv.issue_web_session()
         body = (
             b"<!doctype html><meta charset=utf-8>"
             b"<title>Opening Ticketbox</title>"
@@ -425,20 +428,22 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE}={srv.web_session_secret}; Path=/web; HttpOnly; SameSite=Strict",
+            f"{SESSION_COOKIE}={session_ids[SESSION_COOKIE]}; Path=/web; HttpOnly; SameSite=Strict",
         )
         self.send_header(
             "Set-Cookie",
-            f"{ASSET_SESSION_COOKIE}={srv.web_session_secret}; Path=/static; HttpOnly; SameSite=Strict",
+            f"{ASSET_SESSION_COOKIE}={session_ids[ASSET_SESSION_COOKIE]}; "
+            "Path=/static; HttpOnly; SameSite=Strict",
         )
         self.send_header(
             "Set-Cookie",
-            f"{PREFERENCE_SESSION_COOKIE}={srv.web_session_secret}; "
+            f"{PREFERENCE_SESSION_COOKIE}={session_ids[PREFERENCE_SESSION_COOKIE]}; "
             "Path=/api/me/ui-preferences; HttpOnly; SameSite=Strict",
         )
         self.send_header(
             "Set-Cookie",
-            f"{_CONTROL_SESSION_COOKIE}={srv.web_session_secret}; Path=/; HttpOnly; SameSite=Strict",
+            f"{_CONTROL_SESSION_COOKIE}={session_ids[_CONTROL_SESSION_COOKIE]}; "
+            "Path=/; HttpOnly; SameSite=Strict",
         )
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -455,9 +460,8 @@ class _Handler(BaseHTTPRequestHandler):
             cookie_name = SESSION_COOKIE
         return (
             self._host_allowed()
-            and browser_session_valid(
+            and srv.browser_session_valid(
                 self.headers.get("Cookie"),
-                srv.web_session_secret,
                 cookie_name=cookie_name,
             )
             and same_origin_request(
@@ -620,9 +624,8 @@ class _Handler(BaseHTTPRequestHandler):
         back. Gated by the same control cookie as the manager page itself.
         """
         srv: ControlServer = self.server  # type: ignore[assignment]
-        if not browser_session_valid(
+        if not srv.browser_session_valid(
             self.headers.get("Cookie"),
-            srv.web_session_secret,
             cookie_name=_CONTROL_SESSION_COOKIE,
         ):
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
@@ -760,9 +763,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif parsed_path.path == "/owner" or parsed_path.path.startswith("/owner/"):
             self._serve_owner_shortcut(parsed_path.path)
         elif parsed_path.path in ("/", "/index.html") and not parsed_path.query:
-            if not browser_session_valid(
+            if not srv.browser_session_valid(
                 self.headers.get("Cookie"),
-                srv.web_session_secret,
                 cookie_name=_CONTROL_SESSION_COOKIE,
             ):
                 self._send(403, b"forbidden", "text/plain; charset=utf-8")
@@ -938,14 +940,45 @@ class ControlServer(ThreadingHTTPServer):
         self.instance_secret = instance_secret
         self.ui_html = ui_html
         self.request_window = request_window or (lambda: False)
-        self.web_session_secret = secrets.token_urlsafe(48)
         self.action_lock = threading.Lock()
+        self._web_session_lock = threading.Lock()
+        self._web_session_digests = {
+            cookie_name: deque(maxlen=_MAX_WEB_SESSIONS)
+            for cookie_name in (
+                SESSION_COOKIE,
+                ASSET_SESSION_COOKIE,
+                PREFERENCE_SESSION_COOKIE,
+                _CONTROL_SESSION_COOKIE,
+            )
+        }
         self._bootstrap_lock = threading.Lock()
         self._bootstrap_pending: dict[str, tuple[float, Path]] = {}
         self._bootstrap_consumed: dict[str, float] = {}
         actual_port = int(self.server_address[1])
         self.expected_host = f"{host}:{actual_port}"
         self.expected_origin = f"http://{self.expected_host}"
+
+    def issue_web_session(self) -> dict[str, str]:
+        """Mint opaque lookup ids while retaining only their digests."""
+
+        session_ids = {
+            cookie_name: secrets.token_urlsafe(48)
+            for cookie_name in self._web_session_digests
+        }
+        with self._web_session_lock:
+            for cookie_name, session_id in session_ids.items():
+                digest = hashlib.sha256(session_id.encode("ascii")).hexdigest()
+                self._web_session_digests[cookie_name].append(digest)
+        return session_ids
+
+    def browser_session_valid(self, cookie_header: str | None, *, cookie_name: str) -> bool:
+        with self._web_session_lock:
+            expected = tuple(self._web_session_digests[cookie_name])
+        return browser_session_valid(
+            cookie_header,
+            expected,
+            cookie_name=cookie_name,
+        )
 
     @staticmethod
     def _bootstrap_digest(token: str) -> str:

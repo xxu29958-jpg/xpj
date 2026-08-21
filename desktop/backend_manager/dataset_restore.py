@@ -25,6 +25,7 @@ _RESULT_FIELDS = {
     "generation_operation_id",
     "result",
 }
+_UNKNOWN_RESULT = "完整恢复结果未知；请刷新服务和数据状态，确认后再决定是否重试。"
 
 
 def canonical_backup_generation(value: str) -> str:
@@ -88,16 +89,16 @@ def run_installed_dataset_restore(
             timeout=release.helper_watchdog_seconds("restore"),
         )
     except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
-        raise RuntimeControlError("完整恢复未能安全完成；原生诊断已抑制。") from exc
+        raise RuntimeControlError(_UNKNOWN_RESULT) from exc
     if completed.returncode != 0 or completed.stderr.strip():
-        raise RuntimeControlError("完整恢复失败；原生诊断已抑制。")
+        raise RuntimeControlError(_UNKNOWN_RESULT)
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
     if len(lines) != 1:
-        raise RuntimeControlError("完整恢复没有返回唯一结果。")
+        raise RuntimeControlError(_UNKNOWN_RESULT)
     try:
         result = json.loads(lines[0])
     except json.JSONDecodeError as exc:
-        raise RuntimeControlError("完整恢复结果无效。") from exc
+        raise RuntimeControlError(_UNKNOWN_RESULT) from exc
     if (
         not isinstance(result, dict)
         or set(result) != _RESULT_FIELDS
@@ -111,7 +112,7 @@ def run_installed_dataset_restore(
         or not isinstance(result.get("restore_epoch"), int)
         or result["restore_epoch"] < 1
     ):
-        raise RuntimeControlError("完整恢复结果未通过闭合合同校验。")
+        raise RuntimeControlError(_UNKNOWN_RESULT)
 
 
 def _canonical_uuid(value: object) -> bool:
