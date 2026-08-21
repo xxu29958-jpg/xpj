@@ -268,7 +268,7 @@ def _dashboard_budget_goals_block(
 
 def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
     week_ago = now - timedelta(days=7)
-    backup = backup_service.latest_backup()
+    backup = backup_service.latest_published_backup_record()
     backup_age_days = None
     if backup is not None:
         backup_age_days = max(

@@ -75,7 +75,9 @@ git checkout <tag>          # 例如 v0.8.0
 
 ADR-0041 把存储从 SQLite 换到本机 PostgreSQL，PG-only 瘦身后 SQLite 引擎/方言已**彻底退役**——没有 `DATABASE_URL=sqlite:///...` 回滚路径了。引擎层不可逆:
 
-- `pg_restore` 目前只能把 `.dump` 恢复到隔离 scratch 库进行可读性核对；正式恢复仍为 HOLD。
+- 正式安装恢复只接受桌面管理器明确选择的完整 generation，并在隔离候选中执行 `pg_restore`、
+  身份/语义校验和原子 CURRENT 发布；没有 exact-head 干净 Windows VM 生命周期证据前仍为
+  `QUALIFIED_HOLD`。
 - 历史背景见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 与 ADR-0041(cut-over 2026-06-04 完成,SQLite 回滚源已失效)。
 
 ## Android APK 回退

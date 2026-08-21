@@ -14,13 +14,13 @@ from fastapi.testclient import TestClient
 from app.services import backup_service
 
 
-def test_private_status_reports_backup_health(
+def test_private_status_reports_published_backup_record_age(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:
     """有备份时三字段就位,时间戳为 ISO 8601 UTC。
 
-    monkeypatch backup_health 而非铺真实备份文件:本测试钉「route → 响应字段」的
-    映射形态;48h stale 判定本身在 backup_service 测试里钉。
+    monkeypatch published inventory 而非铺真实备份文件:本测试钉「route → 响应字段」
+    的映射形态；这些字段只表示发布记录时间，不宣称当前 payload 完整。
     """
     entry = backup_service.BackupEntry(
         file_name="ticketbox-backup-82f41001-c8c3-4ec5-a0a6-ab46da0a7900",
@@ -33,8 +33,13 @@ def test_private_status_reports_backup_health(
     )
     monkeypatch.setattr(
         backup_service,
-        "backup_health",
-        lambda: backup_service.BackupHealth(latest=entry, age_hours=3, stale=False),
+        "published_backup_inventory",
+        lambda: backup_service.PublishedBackupInventory(
+            latest=entry,
+            age_hours=3,
+            review_due=False,
+            integrity_status="not_rechecked",
+        ),
     )
     body = client.get("/api/status/private", headers=identity.app_headers).json()
     assert body["latest_backup_at"] == "2026-06-13T16:00:00+00:00"
@@ -50,8 +55,13 @@ def test_private_status_reports_missing_backup_as_stale(
     """无任何备份 = 链断:latest/age 为 None,stale 必须为 True(不许装健康)。"""
     monkeypatch.setattr(
         backup_service,
-        "backup_health",
-        lambda: backup_service.BackupHealth(latest=None, age_hours=None, stale=True),
+        "published_backup_inventory",
+        lambda: backup_service.PublishedBackupInventory(
+            latest=None,
+            age_hours=None,
+            review_due=True,
+            integrity_status="absent",
+        ),
     )
     body = client.get("/api/status/private", headers=identity.app_headers).json()
     assert body["latest_backup_at"] is None
@@ -59,15 +69,15 @@ def test_private_status_reports_missing_backup_as_stale(
     assert body["backup_stale"] is True
 
 
-def test_private_status_degrades_backup_health_failure(
+def test_private_status_degrades_published_backup_inventory_failure(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:
     """备份探测异常不能打挂私有状态;保守判 stale,等待客户端提醒。"""
 
-    def fail_backup_health() -> backup_service.BackupHealth:
+    def fail_backup_inventory() -> backup_service.PublishedBackupInventory:
         raise RuntimeError("pg_restore exploded")
 
-    monkeypatch.setattr(backup_service, "backup_health", fail_backup_health)
+    monkeypatch.setattr(backup_service, "published_backup_inventory", fail_backup_inventory)
     response = client.get("/api/status/private", headers=identity.app_headers)
 
     assert response.status_code == 200

@@ -14,6 +14,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -81,10 +82,11 @@ class BackupEntry:
 
 
 @dataclass(frozen=True)
-class BackupHealth:
+class PublishedBackupInventory:
     latest: BackupEntry | None
     age_hours: int | None
-    stale: bool
+    review_due: bool
+    integrity_status: Literal["absent", "not_rechecked"]
 
 
 def create_complete_backup_generation(
@@ -155,7 +157,9 @@ def create_complete_backup_generation(
     return entry
 
 
-def list_backups() -> list[BackupEntry]:
+def list_published_backup_records() -> list[BackupEntry]:
+    """Read immutable manifest metadata without claiming current byte integrity."""
+
     entries: list[BackupEntry] = []
     for path in _existing_backup_root().glob(f"{_GENERATION_PREFIX}*"):
         if not path.is_dir():
@@ -169,31 +173,29 @@ def list_backups() -> list[BackupEntry]:
     return entries
 
 
-def latest_backup() -> BackupEntry | None:
-    entries = list_backups()
+def latest_published_backup_record() -> BackupEntry | None:
+    entries = list_published_backup_records()
     return entries[0] if entries else None
 
 
-def backup_health(*, stale_after_hours: int = 48) -> BackupHealth:
-    entry = latest_backup()
+def published_backup_inventory(*, review_after_hours: int = 48) -> PublishedBackupInventory:
+    """Report publication age separately from unperformed payload revalidation."""
+
+    entry = latest_published_backup_record()
     if entry is None:
-        return BackupHealth(latest=None, age_hours=None, stale=True)
+        return PublishedBackupInventory(
+            latest=None,
+            age_hours=None,
+            review_due=True,
+            integrity_status="absent",
+        )
     age_hours = int((now_utc() - entry.created_at).total_seconds() // 3600)
-    return BackupHealth(
+    return PublishedBackupInventory(
         latest=entry,
         age_hours=age_hours,
-        stale=age_hours >= stale_after_hours,
+        review_due=age_hours >= review_after_hours,
+        integrity_status="not_rechecked",
     )
-
-
-def is_backup_valid(file_name: str) -> bool:
-    if Path(file_name).name != file_name or not file_name.startswith(_GENERATION_PREFIX):
-        return False
-    try:
-        read_manifest(_existing_backup_root() / file_name, verify_files=True)
-    except AppError:
-        return False
-    return True
 
 
 def backup_directory_label() -> str:

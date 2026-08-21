@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}完整备份 — 小票夹{% endblock %}
+{% block title %}备份记录 — 小票夹{% endblock %}
 {% block content %}
-<h1>完整备份</h1>
+<h1>备份记录</h1>
 <details class="page-help">
   <summary>这是什么</summary>
-  <p>这里仅展示已经完整发布的备份 generation。每个 generation 同时包含数据库、原始票据附件、数据集身份和校验清单；缺少其中任何一项都不会显示为有效备份。</p>
+  <p>这里展示已发布 generation 的清单记录。每个 generation 在发布时验证数据库、原始票据附件、数据集身份和校验清单；普通页面不重复读取全部大文件，因此当前字节未复检，恢复前会再次完整校验。</p>
 </details>
 
 <div class="card">
   <h2>最近一次备份</h2>
-  {% if backup_health and backup_health.stale %}
+  {% if backup_inventory and backup_inventory.review_due %}
   <div class="alert alert-danger">
-    ⚠️ {% if backup_health.latest %}最近一次完整备份是 {{ backup_health.age_hours }} 小时前{% else %}还没有完整数据集备份{% endif %}。请从桌面 Manager 发起备份。
+    ⚠️ {% if backup_inventory.latest %}最近一次备份发布记录是 {{ backup_inventory.age_hours }} 小时前{% else %}还没有备份发布记录{% endif %}。请从桌面 Manager 发起备份。
   </div>
   {% endif %}
   {% if latest %}
@@ -26,9 +26,11 @@
     <span class="kv-val">{{ latest.size_text }}</span>
     <span class="kv-key">类型</span>
     <span class="kv-val"><span class="badge badge-ok">{{ latest.kind }}</span></span>
+    <span class="kv-key">完整性状态</span>
+    <span class="kv-val">当前字节未复检（恢复前强制校验）</span>
   </div>
   {% else %}
-  <p class="text-meta">暂无完整备份。请从桌面 Manager 发起一次完整数据集备份。</p>
+  <p class="text-meta">暂无备份发布记录。请从桌面 Manager 发起一次完整数据集备份。</p>
   {% endif %}
   <p class="secret-note mt-3">
     备份 generation 保存在 <code>{{ backup_dir }}</code>。创建和恢复只能由停止写入后的本机维护流程执行；网页进程不拥有备份或恢复权限。
@@ -36,7 +38,7 @@
 </div>
 
 <div class="card">
-  <h2>所有备份</h2>
+  <h2>所有发布记录</h2>
   {% if backups %}
   <table>
     <thead>

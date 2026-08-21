@@ -33,7 +33,7 @@ from app.services.time_service import current_month, now_utc
 def test_dashboard_backup_caliber_accepts_only_published_complete_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(backup_service, "latest_backup", lambda: None)
+    monkeypatch.setattr(backup_service, "latest_published_backup_record", lambda: None)
     with SessionLocal() as db:
         block = web_common._dashboard_status_counts_block(db, "owner", now_utc())
     assert block["backup_available"] is False
@@ -257,7 +257,7 @@ def test_overview_backup_card_renders_complete_or_missing_state(
         assert card is not None
         return card.group(0)
 
-    monkeypatch.setattr(backup_service, "latest_backup", lambda: None)
+    monkeypatch.setattr(backup_service, "latest_published_backup_record", lambda: None)
     page = web_client.get("/web/overview?ledger_id=owner")
     assert page.status_code == 200
     assert "还没有备份" in _card_body(page.text)
@@ -271,7 +271,7 @@ def test_overview_backup_card_renders_complete_or_missing_state(
         created_at=now_utc() - timedelta(days=1),
         kind="scheduled",
     )
-    monkeypatch.setattr(backup_service, "latest_backup", lambda: entry)
+    monkeypatch.setattr(backup_service, "latest_published_backup_record", lambda: entry)
     page = web_client.get("/web/overview?ledger_id=owner")
     assert page.status_code == 200
     assert "天前生成最近备份" in _card_body(page.text)

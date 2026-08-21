@@ -41,10 +41,10 @@ def owner_backups_get(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    entries = backup_service.list_backups()
+    entries = backup_service.list_published_backup_records()
     ctx = _base(request, db)
     ctx["backups"] = _backup_view(entries)
     ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
     ctx["backup_dir"] = backup_service.backup_directory_label()
-    ctx["backup_health"] = backup_service.backup_health()
+    ctx["backup_inventory"] = backup_service.published_backup_inventory()
     return templates.TemplateResponse(request=request, name="backups.html", context=ctx)

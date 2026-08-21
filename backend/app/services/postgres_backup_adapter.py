@@ -72,6 +72,8 @@ def write_postgres_archive(
     if target.exists() or not target.parent.is_dir():
         raise AppError("backup_incomplete", status_code=500)
     temporary = target.with_name(f".{target.name}.partial")
+    primary: BaseException | None = None
+    cleanup: BaseException | None = None
     try:
         try:
             with _pg_tool_environment(connection, passfile) as environment:
@@ -111,9 +113,24 @@ def write_postgres_archive(
         except PostgresBackupValidationError:
             raise AppError("server_error", "数据库备份校验失败，未写入最终备份文件。", status_code=500) from None
         temporary.replace(target)
+    except BaseException as exc:  # noqa: BLE001 - preserve dump/validation failure truth
+        primary = exc
     finally:
-        with contextlib.suppress(FileNotFoundError):
+        try:
             temporary.unlink()
+        except FileNotFoundError:
+            pass
+        except BaseException as exc:  # noqa: BLE001 - partial cleanup must remain observable
+            cleanup = exc
+    if primary is not None and cleanup is not None:
+        raise BaseExceptionGroup(
+            "PostgreSQL archive creation and partial cleanup failed",
+            [primary, cleanup],
+        ) from primary
+    if primary is not None:
+        raise primary
+    if cleanup is not None:
+        raise cleanup
 
 
 def restore_postgres_archive(

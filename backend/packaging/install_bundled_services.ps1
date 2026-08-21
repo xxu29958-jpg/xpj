@@ -7,9 +7,10 @@
   This is the script run by the Inno installer after files have been copied to
   Program Files. It keeps mutable data in ProgramData, registers the bundled
   PostgreSQL service plus the frozen backend service, and executes the unique
-  database Generation Owner. The current closed path accepts only a fresh empty
-  source; upgrade, preserved-data repair/reinstall, and operator restore remain
-  fail-closed and are not qualified by this script.
+  database Generation Owner. This installer entry accepts only a fresh empty
+  source; upgrade and preserved-data repair/reinstall remain fail-closed here.
+  User-selected complete-generation restore has a separate installed owner and
+  is intentionally not routed through this fresh-install adapter.
 
   PowerShell 5.1 file encoding must be UTF-8 with BOM. The generated .env is
   deliberately UTF-8 without BOM.
@@ -1907,7 +1908,7 @@ try {
             [bool]$lifecycleReceipt.backup_completed -or
             -not [string]::IsNullOrEmpty([string]$lifecycleReceipt.backup_path)
         ) {
-            throw "当前 Generation Owner 只接受 fresh install；既有数据必须走隔离 restore。"
+            throw "当前 installer adapter 只接受 fresh install；既有数据必须走隔离 restore owner。"
         }
     }
     else {

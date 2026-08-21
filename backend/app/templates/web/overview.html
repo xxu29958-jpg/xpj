@@ -274,9 +274,9 @@
     <div class="product-panel-title">备份状态</div>
     {% if cards.backup_available %}
     <div class="insight-stat-value num">{{ cards.backup_age_days }}</div>
-    <div class="text-muted">天前生成最近备份</div>
+    <div class="text-muted">天前生成最近备份记录（当前字节未复检）</div>
     {% else %}
-    <div class="product-status product-status--warning">还没有备份</div>
+    <div class="product-status product-status--warning">还没有备份发布记录</div>
     {% endif %}
   </article>
 

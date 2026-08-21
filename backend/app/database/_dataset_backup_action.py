@@ -87,8 +87,10 @@ def run_complete_dataset_backup_action(request: CompleteBackupRequest) -> dict[s
         connection_context = engine.connect()
         connection = connection_context.__enter__()
         entered.append(connection_context)
-        with Session(bind=connection, future=True) as db:
-            entry = create_complete_backup_generation(request, db=db)
+        session_context = Session(bind=connection, future=True)
+        db = session_context.__enter__()
+        entered.append(session_context)
+        entry = create_complete_backup_generation(request, db=db)
         result = {
             "schema": "ticketbox-complete-dataset-backup-result-v1",
             "backup_id": entry.backup_id,

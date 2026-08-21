@@ -237,6 +237,40 @@ def test_explicit_missing_binary_or_passfile_fails_closed(tmp_path) -> None:
     assert not target.exists()
 
 
+def test_archive_preserves_primary_and_partial_cleanup_baseexceptions(tmp_path, monkeypatch) -> None:
+    target = tmp_path / "database.dump"
+    passfile = _passfile(tmp_path)
+    dump_binary = _tool(tmp_path, "pg_dump.exe")
+    restore_binary = _tool(tmp_path, "pg_restore.exe")
+    primary = KeyboardInterrupt("pg_dump interrupted")
+    cleanup = SystemExit("partial cleanup interrupted")
+    original_unlink = Path.unlink
+
+    def interrupting_run(arguments, **_kwargs):
+        partial = Path(arguments[arguments.index("--file") + 1])
+        partial.write_bytes(b"partial")
+        raise primary
+
+    def interrupting_unlink(path: Path, *args, **kwargs):
+        if path.name == ".database.dump.partial":
+            raise cleanup
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(postgres_adapter.subprocess, "run", interrupting_run)
+    monkeypatch.setattr(Path, "unlink", interrupting_unlink)
+
+    with pytest.raises(BaseExceptionGroup) as caught:
+        postgres_adapter.write_postgres_archive(
+            database_url=_DATABASE_URL,
+            passfile=passfile,
+            pg_dump_binary=dump_binary,
+            pg_restore_binary=restore_binary,
+            target=target,
+            synchronized_snapshot="00000003-0000001B-1",
+        )
+    assert caught.value.exceptions == (primary, cleanup)
+
+
 def test_find_pg_binary_windows_install_glob_fallback(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("PG_RESTORE_PATH", raising=False)
     monkeypatch.setattr(pgval.shutil, "which", lambda _name: None)

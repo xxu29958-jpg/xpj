@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+from app.errors import AppError
 from app.main import app
 from app.routes.owner_console import _require_local
 
@@ -25,7 +26,7 @@ def _stub_latest_backup(monkeypatch: pytest.MonkeyPatch, *, hours_ago: int | Non
     from app.services.time_service import now_utc
 
     if hours_ago is None:
-        monkeypatch.setattr(backup_service, "latest_backup", lambda: None)
+        monkeypatch.setattr(backup_service, "latest_published_backup_record", lambda: None)
         return None
     entry = backup_service.BackupEntry(
         file_name="ticketbox-backup-8c78c277-9e2e-48cd-86a2-7a9087d650a2",
@@ -36,7 +37,7 @@ def _stub_latest_backup(monkeypatch: pytest.MonkeyPatch, *, hours_ago: int | Non
         created_at=now_utc() - timedelta(hours=hours_ago),
         kind="scheduled",
     )
-    monkeypatch.setattr(backup_service, "latest_backup", lambda: entry)
+    monkeypatch.setattr(backup_service, "latest_published_backup_record", lambda: entry)
     return entry
 
 
@@ -45,8 +46,10 @@ def test_owner_backups_page_is_read_only_complete_generation_view(
 ) -> None:
     response = local_client.get("/owner/backups")
     assert response.status_code == 200
-    assert "完整备份" in response.text
+    assert "备份记录" in response.text
     assert "数据库、原始票据附件、数据集身份和校验清单" in response.text
+    assert "当前字节未复检" in response.text
+    assert "不会显示为有效备份" not in response.text
     assert 'method="post" action="/owner/backups"' not in response.text
     assert local_client.post("/owner/backups").status_code == 405
 
@@ -67,21 +70,23 @@ def test_incomplete_generation_is_not_listed(
     (bogus / "database.dump").write_bytes(b"database-only")
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
 
-    assert backup_service.list_backups() == []
-    assert backup_service.is_backup_valid(bogus.name) is False
+    assert backup_service.list_published_backup_records() == []
+    with pytest.raises(AppError):
+        backup_service.read_manifest(bogus, verify_files=True)
     assert bogus.name not in local_client.get("/owner/backups").text
 
 
-def test_backup_health_uses_only_complete_generation_freshness(
+def test_backup_inventory_separates_record_age_from_current_integrity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.services import backup_service
 
     entry = _stub_latest_backup(monkeypatch, hours_ago=72)
-    health = backup_service.backup_health()
-    assert health.latest is entry
-    assert health.age_hours == 72
-    assert health.stale is True
+    inventory = backup_service.published_backup_inventory()
+    assert inventory.latest is entry
+    assert inventory.age_hours == 72
+    assert inventory.review_due is True
+    assert inventory.integrity_status == "not_rechecked"
 
 
 def test_ordinary_backup_status_does_not_hash_historical_payloads(
@@ -111,8 +116,10 @@ def test_ordinary_backup_status_does_not_hash_historical_payloads(
     monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
     monkeypatch.setattr(backup_service, "read_manifest", read_metadata)
 
-    assert len(backup_service.list_backups()) == 1
+    assert len(backup_service.list_published_backup_records()) == 1
     assert calls == [False]
+    inventory = backup_service.published_backup_inventory()
+    assert inventory.integrity_status == "not_rechecked"
 
 
 def test_owner_page_never_leaks_absolute_data_path(local_client: TestClient) -> None:

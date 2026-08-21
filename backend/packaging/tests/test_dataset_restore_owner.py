@@ -224,6 +224,52 @@ def test_restore_durable_request_owns_backend_restart_compensation() -> None:
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_restore_owner_compensation_is_current_guarded_and_ordered(tmp_path: Path) -> None:
+    restore = RESTORE.read_text(encoding="utf-8-sig")
+    compensation = powershell_function(
+        restore,
+        "Invoke-TicketboxInstalledDatasetRestoreFailureCompensation",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$script:events = @()
+$script:published = $false
+function Read-TicketboxDatabaseGenerationCurrent {{
+    $script:events += 'read-current'
+    $operation = if ($script:published) {{ '22222222-2222-4222-8222-222222222222' }} else {{ '11111111-1111-4111-8111-111111111111' }}
+    return [pscustomobject]@{{ Payload = [pscustomobject]@{{ operation_id = $operation }} }}
+}}
+function Remove-TicketboxPostgresqlRestoreCandidateService {{ param($Subject, $Paths); $script:events += 'remove-candidate-service' }}
+function Stop-TicketboxInstalledDatasetWriters {{ param($Subject); $script:events += 'stop-writers' }}
+function Set-TicketboxInstalledDatasetRestorePhysicalSelection {{ param($Paths, $Selection); $script:events += "select:$Selection" }}
+function Set-TicketboxInstalledDatasetPublishedAcls {{ param($Subject, $Paths); $script:events += 'set-acls' }}
+function Start-TicketboxOwnedServiceIfExists {{
+    param($Name, $ExpectedExecutable, $TimeoutMilliseconds, $PollMilliseconds)
+    $script:events += "start:$Name"
+}}
+{compensation}
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{ InstallDir = 'C:\\Ticketbox'; PgServiceName = 'ticketbox-pg'; BackendServiceName = 'ticketbox-backend' }}
+    Release = [pscustomobject]@{{ service_state_timeout_ms = 1000; service_poll_interval_ms = 10 }}
+}}
+$request = [pscustomobject]@{{ Payload = [pscustomobject]@{{ restart_backend = $true }} }}
+$paths = [pscustomobject]@{{}}
+Invoke-TicketboxInstalledDatasetRestoreFailureCompensation $subject $request $paths '22222222-2222-4222-8222-222222222222'
+$expected = 'read-current|remove-candidate-service|stop-writers|select:Predecessor|set-acls|start:ticketbox-pg|start:ticketbox-backend'
+if (($script:events -join '|') -cne $expected) {{ throw "unexpected compensation order: $($script:events -join '|')" }}
+$script:events = @()
+$script:published = $true
+Invoke-TicketboxInstalledDatasetRestoreFailureCompensation $subject $request $paths '22222222-2222-4222-8222-222222222222'
+if (($script:events -join '|') -cne 'read-current') {{ throw 'published CURRENT was rolled back' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-restore-owner-compensation.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_restore_predecessor_classifier_distinguishes_committed_and_pending_successors(
     tmp_path: Path,
 ) -> None:

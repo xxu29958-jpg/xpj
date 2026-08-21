@@ -12,10 +12,7 @@ OPERATION_ID = "11111111-1111-4111-8111-111111111111"
 PROGRAM_SHA256 = "a" * 64
 SOURCE_REVISION = "base"
 TARGET_REVISION = "20260729_0001"
-MIGRATOR_URL = (
-    "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/"
-    "ticketbox?require_auth=scram-sha-256"
-)
+MIGRATOR_URL = "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/ticketbox?require_auth=scram-sha-256"
 
 
 def _aggregate() -> PostgresOperationFailureError:
@@ -353,6 +350,7 @@ def test_timeout_boundaries_preserve_interrupt_and_autocommit_cleanup(
         connection=SimpleNamespace(driver_connection=driver),
         in_transaction=lambda: False,
     )
+
     def interrupt_timeout(_cursor):
         raise primary
 
@@ -381,3 +379,151 @@ def test_failure_ledger_preserves_baseexception_from_cleanup() -> None:
         )
     assert caught.value.__cause__ is primary
     assert caught.value.exceptions == (primary, interrupted_cleanup)
+
+
+def test_complete_backup_action_preserves_body_and_session_exit_failures(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from app.database import _dataset_backup_action as action
+
+    primary = RuntimeError("backup body failed")
+    session_cleanup = SystemExit("backup session rollback interrupted")
+
+    class QuietContext:
+        def __init__(self, value) -> None:
+            self.value = value
+
+        def __enter__(self):
+            return self.value
+
+        def __exit__(self, *_args) -> bool:
+            return False
+
+    class FailingSession(QuietContext):
+        def __exit__(self, exc_type, exc, _traceback) -> bool:
+            assert exc_type is RuntimeError
+            assert exc is primary
+            raise session_cleanup
+
+    class Engine:
+        def connect(self):
+            return QuietContext(object())
+
+        def dispose(self) -> None:
+            return None
+
+    monkeypatch.setattr(action, "validated_local_role_url", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(action, "hold_protected_file_for_read", lambda path: QuietContext(path))
+    monkeypatch.setattr(action, "_temporary_pgpass_environment", lambda path: QuietContext(path))
+    monkeypatch.setattr(action, "_create_engine", lambda _url: Engine())
+    monkeypatch.setattr(action, "Session", lambda **_kwargs: FailingSession(object()))
+    monkeypatch.setattr(
+        action,
+        "create_complete_backup_generation",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(primary),
+    )
+    request = action.CompleteBackupRequest(
+        backup_root=tmp_path,
+        upload_root=tmp_path,
+        database_url="postgresql+psycopg://ticketbox_backup@localhost/ticketbox",
+        passfile=tmp_path / "pgpass",
+        pg_dump_binary=tmp_path / "pg_dump.exe",
+        pg_restore_binary=tmp_path / "pg_restore.exe",
+        operation_id=OPERATION_ID,
+        backup_id="22222222-2222-4222-8222-222222222222",
+        release_id="release",
+        backup_kind="manual",
+        writer_fence_sha256="b" * 64,
+    )
+
+    with pytest.raises(BaseExceptionGroup) as caught:
+        action.run_complete_dataset_backup_action(request)
+    assert caught.value.exceptions == (primary, session_cleanup)
+
+
+def test_isolated_restore_action_preserves_finalization_and_rollback_failures(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from app.database import _dataset_restore_action as action
+
+    primary = RuntimeError("restore finalization failed")
+    rollback_cleanup = SystemExit("restore rollback interrupted")
+    source = SimpleNamespace(
+        backup_id="22222222-2222-4222-8222-222222222222",
+        authority=SimpleNamespace(schema_revision=TARGET_REVISION),
+        originals=(),
+    )
+    plan = SimpleNamespace(
+        dataset_id="33333333-3333-4333-8333-333333333333",
+        restore_epoch=1,
+        schema_revision=TARGET_REVISION,
+    )
+
+    class QuietContext:
+        def __init__(self, value) -> None:
+            self.value = value
+
+        def __enter__(self):
+            return self.value
+
+        def __exit__(self, *_args) -> bool:
+            return False
+
+    class Connection:
+        def scalar(self, _statement) -> int:
+            return 1
+
+        def execute(self, _statement):
+            return None
+
+    class FailingTransaction(QuietContext):
+        def __exit__(self, exc_type, exc, _traceback) -> bool:
+            assert exc_type is RuntimeError
+            assert exc is primary
+            raise rollback_cleanup
+
+    class Engine:
+        def __init__(self, *, final: bool) -> None:
+            self.final = final
+
+        def connect(self):
+            return QuietContext(Connection())
+
+        def begin(self):
+            assert self.final
+            return FailingTransaction(Connection())
+
+        def dispose(self) -> None:
+            return None
+
+    engines = iter((Engine(final=False), Engine(final=True)))
+    monkeypatch.setattr(action, "read_manifest", lambda *_args, **_kwargs: source)
+    monkeypatch.setattr(action, "resolve_restored_dataset_plan", lambda *_args, **_kwargs: plan)
+    monkeypatch.setattr(action, "_validated_migrator_url", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(action, "hold_protected_file_for_read", lambda path: QuietContext(path))
+    monkeypatch.setattr(action, "_temporary_pgpass_environment", lambda path: QuietContext(path))
+    monkeypatch.setattr(action, "_create_engine", lambda _url: next(engines))
+    monkeypatch.setattr(action, "assert_restored_dataset_candidate", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(action, "materialize_restored_originals", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        action,
+        "finalize_restored_dataset",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(primary),
+    )
+    request = action.CompleteRestoreRequest(
+        backup_generation=tmp_path,
+        target_upload_root=tmp_path / "uploads",
+        database_url="postgresql+psycopg://ticketbox_migrator@localhost/ticketbox",
+        passfile=tmp_path / "pgpass",
+        pg_restore_binary=tmp_path / "pg_restore.exe",
+        active_dataset_id="33333333-3333-4333-8333-333333333333",
+        active_restore_epoch=0,
+        target_schema_revision=TARGET_REVISION,
+        restore_role="ticketbox_owner",
+    )
+
+    with pytest.raises(BaseExceptionGroup) as caught:
+        action.run_isolated_dataset_restore_action(request)
+    assert caught.value.exceptions == (primary, rollback_cleanup)

@@ -100,7 +100,7 @@
             <div class="card-hint-sm">本月已确认</div>
             <div class="card-hint-tiny">
               目标 {{ cards.goals_count }} 条{% if cards.goals_risk_count %} · 风险 {{ cards.goals_risk_count }}{% endif %}<br>
-              {% if cards.backup_available %}最近备份 {{ cards.backup_age_days }} 天前{% else %}还没有生成备份{% endif %}
+              {% if cards.backup_available %}最近备份记录 {{ cards.backup_age_days }} 天前{% else %}还没有备份发布记录{% endif %}
             </div>
           </div>
         </div>
@@ -296,9 +296,9 @@
         </div>
         {% if cards.backup_available %}
         <div class="trend-num">{{ cards.backup_age_days }}</div>
-        <div class="card-hint-sm">天前生成最近备份</div>
+        <div class="card-hint-sm">天前生成最近备份记录（当前字节未复检）</div>
         {% else %}
-        <div class="source-empty">还没有生成备份。</div>
+        <div class="source-empty">还没有备份发布记录。</div>
         {% endif %}
       </div>
     </div>

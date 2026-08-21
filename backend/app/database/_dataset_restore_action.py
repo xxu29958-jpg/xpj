@@ -69,6 +69,7 @@ def run_isolated_dataset_restore_action(request: CompleteRestoreRequest) -> dict
     primary: BaseException | None = None
     cleanup: list[BaseException] = []
     entered: list[AbstractContextManager[Any]] = []
+    database_contexts: list[AbstractContextManager[Any]] = []
     result: dict[str, object] | None = None
     try:
         protected = hold_protected_file_for_read(request.passfile)
@@ -78,24 +79,37 @@ def run_isolated_dataset_restore_action(request: CompleteRestoreRequest) -> dict
         environment.__enter__()
         entered.append(environment)
         engine = _create_engine(parsed_url)
-        with engine.connect() as connection:
-            relation_count = connection.scalar(
-                text(
-                    "SELECT count(*) FROM pg_class AS relation "
-                    "JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace "
-                    "WHERE namespace.nspname = 'public' "
-                    "AND relation.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')"
-                )
+        connection_context = engine.connect()
+        connection = connection_context.__enter__()
+        database_contexts.append(connection_context)
+        relation_count = connection.scalar(
+            text(
+                "SELECT count(*) FROM pg_class AS relation "
+                "JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace "
+                "WHERE namespace.nspname = 'public' "
+                "AND relation.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')"
             )
+        )
         if relation_count != 0:
-            with engine.connect() as connection:
-                assert_restored_dataset_candidate(
-                    connection,
-                    source=source,
-                    plan=plan,
-                )
-        engine.dispose()
+            assert_restored_dataset_candidate(
+                connection,
+                source=source,
+                plan=plan,
+            )
+        phase_cleanup: list[BaseException] = []
+        phase_primary = close_postgres_owner_resources(
+            contexts=database_contexts,
+            engine=engine,
+            primary=None,
+            cleanup=phase_cleanup,
+        )
+        database_contexts.clear()
         engine = None
+        raise_postgres_operation_failures(
+            primary=phase_primary,
+            cleanup=phase_cleanup,
+            message="isolated dataset restore probe cleanup failed",
+        )
 
         if relation_count == 0:
             restore_postgres_archive(
@@ -111,9 +125,11 @@ def run_isolated_dataset_restore_action(request: CompleteRestoreRequest) -> dict
         )
 
         engine = _create_engine(parsed_url)
-        with engine.begin() as connection:
-            connection.execute(text(f'SET LOCAL ROLE "{SCHEMA_OWNER_ROLE}"'))
-            finalize_restored_dataset(connection, source=source, plan=plan)
+        transaction_context = engine.begin()
+        connection = transaction_context.__enter__()
+        database_contexts.append(transaction_context)
+        connection.execute(text(f'SET LOCAL ROLE "{SCHEMA_OWNER_ROLE}"'))
+        finalize_restored_dataset(connection, source=source, plan=plan)
         result = {
             "schema": "ticketbox-isolated-dataset-restore-result-v1",
             "backup_id": source.backup_id,
@@ -127,8 +143,14 @@ def run_isolated_dataset_restore_action(request: CompleteRestoreRequest) -> dict
         primary = exc
     finally:
         primary = close_postgres_owner_resources(
-            contexts=entered,
+            contexts=database_contexts,
             engine=engine,
+            primary=primary,
+            cleanup=cleanup,
+        )
+        primary = close_postgres_owner_resources(
+            contexts=entered,
+            engine=None,
             primary=primary,
             cleanup=cleanup,
         )

@@ -27,10 +27,30 @@ from app.services.dataset_backup_contract import (
     encode_manifest,
 )
 from app.services.dataset_restore_service import (
+    _SANITATION_TABLES,
     finalize_restored_dataset,
     materialize_restored_originals,
     resolve_restored_dataset_plan,
 )
+
+_EXPECTED_SANITATION_TABLES = {
+    "desktop_activation_attempts",
+    "session_refresh_attempts",
+    "auth_tokens",
+    "device_enrollment_attempts",
+    "installation_owner_claims",
+    "bootstrap_secret_consumptions",
+    "upload_link_daily_usage",
+    "upload_link_remote_attempts",
+    "upload_links",
+    "pairing_attempt_failures",
+    "pairing_codes",
+    "invitations",
+    "installation_idempotency_keys",
+    "scheduler_leases",
+    "budget_advisor_quota_locks",
+    "ai_transaction_temp_id_map",
+}
 
 
 def _manifest(tmp_path: Path, *, authority) -> tuple[Path, DatasetBackupManifest]:
@@ -132,6 +152,15 @@ def test_restore_materializes_originals_into_absent_candidate_root(tmp_path: Pat
         )
     assert corrupt.value.error == "backup_incomplete"
 
+    (target / "owner/2026/08/receipt.png").write_bytes(b"restored-original")
+    (target / "owner/orphan.png").write_bytes(b"orphan-after-first-restore")
+    with pytest.raises(AppError) as orphaned:
+        materialize_restored_originals(
+            generation,
+            target_upload_root=target,
+        )
+    assert orphaned.value.error == "backup_incomplete"
+
 
 def test_restore_rebuilds_exact_interrupted_originals_staging(tmp_path: Path) -> None:
     authority = _authority()
@@ -158,15 +187,22 @@ def test_restore_preserves_materialization_and_cleanup_failures(
     target = tmp_path / "candidate" / "uploads"
     target.parent.mkdir()
     primary = OSError("copy failed")
-    cleanup = OSError("cleanup failed")
-    monkeypatch.setattr(dataset_restore_service.shutil, "copyfile", lambda *_args, **_kwargs: (_ for _ in ()).throw(primary))
-    monkeypatch.setattr(dataset_restore_service.shutil, "rmtree", lambda *_args, **_kwargs: (_ for _ in ()).throw(cleanup))
+    cleanup = SystemExit("cleanup interrupted")
+    monkeypatch.setattr(
+        dataset_restore_service.shutil, "copyfile", lambda *_args, **_kwargs: (_ for _ in ()).throw(primary)
+    )
+    monkeypatch.setattr(
+        dataset_restore_service.shutil, "rmtree", lambda *_args, **_kwargs: (_ for _ in ()).throw(cleanup)
+    )
 
     with pytest.raises(BaseExceptionGroup) as caught:
         materialize_restored_originals(generation, target_upload_root=target)
     assert caught.value.exceptions[0] is primary
-    assert isinstance(caught.value.exceptions[1], AppError)
-    assert caught.value.exceptions[1].__cause__ is cleanup
+    assert caught.value.exceptions[1] is cleanup
+
+
+def test_restore_sanitation_allowlist_is_independent_and_closed() -> None:
+    assert set(_SANITATION_TABLES) == _EXPECTED_SANITATION_TABLES
 
 
 @pytest.mark.real_db
@@ -194,6 +230,14 @@ def test_restore_finalization_revokes_host_credentials_without_deleting_business
                 "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
             )
         )
+        connection.execute(
+            text(
+                "INSERT INTO bootstrap_secret_consumptions (secret_hash, consumed_at) "
+                "VALUES (:secret_hash, CURRENT_TIMESTAMP) "
+                "ON CONFLICT (secret_hash) DO UPDATE SET consumed_at = EXCLUDED.consumed_at"
+            ),
+            {"secret_hash": "f" * 64},
+        )
         finalize_restored_dataset(connection, source=manifest, plan=plan)
         finalize_restored_dataset(connection, source=manifest, plan=plan)
 
@@ -202,6 +246,7 @@ def test_restore_finalization_revokes_host_credentials_without_deleting_business
         assert connection.scalar(text("SELECT count(*) FROM auth_tokens")) == 0
         assert connection.scalar(text("SELECT count(*) FROM upload_links")) == 0
         assert connection.scalar(text("SELECT count(*) FROM pairing_codes")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM bootstrap_secret_consumptions")) == 0
         assert (
             connection.scalar(
                 text(
@@ -254,14 +299,12 @@ def test_restore_sanitation_rolls_back_if_authority_publication_fails(tmp_path: 
         finalize_restored_dataset(connection, source=manifest, plan=invalid_plan)
 
     with engine.connect() as connection:
-        assert connection.scalar(
-            text("SELECT value FROM app_meta WHERE key = 'budget_advisor_audit_key'")
-        ) == "must-survive-rollback"
+        assert (
+            connection.scalar(text("SELECT value FROM app_meta WHERE key = 'budget_advisor_audit_key'"))
+            == "must-survive-rollback"
+        )
         persisted = connection.execute(
-            text(
-                "SELECT dataset_id, client_generation, restore_epoch "
-                "FROM dataset_authority WHERE singleton_id = 1"
-            )
+            text("SELECT dataset_id, client_generation, restore_epoch FROM dataset_authority WHERE singleton_id = 1")
         ).one()
     assert tuple(persisted) == (
         authority.dataset_id,

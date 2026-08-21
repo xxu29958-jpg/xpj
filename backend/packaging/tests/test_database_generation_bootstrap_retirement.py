@@ -92,7 +92,7 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     )
     assert '"runtime-credentials"' in operation_reader
     assert '"terminal-state"' in artifacts
-    assert "ticketbox-database-generation-runtime-credentials-v1" in generation_credentials
+    assert "ticketbox-database-generation-runtime-credentials-v2" in generation_credentials
     assert "function Read-TicketboxDatabaseGenerationRuntimeCredentials" in generation_credentials
     assert "function New-TicketboxDatabaseGenerationRuntimeCredentials" in generation_credentials
     assert "function Close-TicketboxDatabaseGenerationRuntimeCredentials" in generation_credentials
@@ -108,10 +108,15 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     assert "HttpBootstrapSecret" not in factory
     assert "RolePassword" not in factory
     assert "HostAuthoritySha256" in factory
-    for consumer in (source, owner, projection):
+    expected_maintenance_assertions = (
+        (source, 2),  # target authorization and isolated restored-source import
+        (owner, 1),
+        (projection, 1),
+    )
+    for consumer, expected_count in expected_maintenance_assertions:
         assert consumer.count(
             "Assert-TicketboxDatabaseGenerationMaintenanceAuthority `"
-        ) == 1
+        ) == expected_count
         assert "SuperuserCapability" not in consumer
 
     retire = powershell_function(
@@ -404,14 +409,23 @@ $candidate = [pscustomobject]@{{
     }}
 }}
 $runtimeSecret = ConvertTo-TicketboxPostgresqlSecureString ('r' * 48) 'runtime'
+$backupSecret = ConvertTo-TicketboxPostgresqlSecureString ('b' * 48) 'backup'
 try {{
     $created = New-TicketboxDatabaseGenerationRuntimeCredentials `
-        'state' $intent $candidate @{{ RuntimePassword = $runtimeSecret }} ('h' * 43) @{{}}
+        'state' $intent $candidate `
+        @{{ RuntimePassword = $runtimeSecret; BackupPassword = $backupSecret }} `
+        ('h' * 43) @{{}}
     $runtimePlain = Invoke-TicketboxWithPlainPostgresqlSecret `
         $created.RuntimePassword {{ param($Value); return $Value }}
+    $backupPlain = Invoke-TicketboxWithPlainPostgresqlSecret `
+        $created.BackupPassword {{ param($Value); return $Value }}
     $httpPlain = Invoke-TicketboxWithPlainPostgresqlSecret `
         $created.HttpBootstrapSecret {{ param($Value); return $Value }}
-    if ($runtimePlain -cne ('r' * 48) -or $httpPlain -cne ('h' * 43)) {{
+    if (
+        $runtimePlain -cne ('r' * 48) -or
+        $backupPlain -cne ('b' * 48) -or
+        $httpPlain -cne ('h' * 43)
+    ) {{
         throw 'durable runtime credentials changed secret bytes'
     }}
     if ([string]$created.Artifact.Payload.candidate_sha256 -cne ('c' * 64)) {{
@@ -426,13 +440,17 @@ try {{
     Close-TicketboxDatabaseGenerationRuntimeCredentials $created
     if (
         $null -ne $created.RuntimePassword -or
+        $null -ne $created.BackupPassword -or
         $null -ne $created.HttpBootstrapSecret -or
         $null -ne $created.Artifact
     ) {{
         throw 'runtime credential secret graph remained reachable after close'
     }}
 }}
-finally {{ $runtimeSecret.Dispose() }}
+finally {{
+    $runtimeSecret.Dispose()
+    $backupSecret.Dispose()
+}}
 """
     run_powershell_contract_script(
         script,
@@ -497,13 +515,15 @@ $candidate = [pscustomobject]@{{
 }}
 $salt = [Convert]::ToBase64String((0..15))
 $script:artifact = [pscustomobject]@{{ Payload = [pscustomobject]@{{
-    schema = 'ticketbox-database-generation-credentials-v1'
+    schema = 'ticketbox-database-generation-credentials-v2'
     operation_id = '11111111-1111-4111-8111-111111111111'
     intent_sha256 = ('a' * 64)
     runtime_password = ('r' * 48)
     runtime_scram_salt = $salt
     migrator_password = ('m' * 48)
     migrator_scram_salt = $salt
+    backup_password = ('b' * 48)
+    backup_scram_salt = $salt
 }} }}
 $caught = $null
 try {{ Read-TicketboxDatabaseGenerationCredentials 'state' $intent | Out-Null }}
@@ -511,11 +531,12 @@ catch {{ $caught = $_.Exception }}
 $messages = @($caught.InnerExceptions | ForEach-Object {{ $_.Message }})
 if (
     $caught -isnot [AggregateException] -or
-    $caught.InnerExceptions.Count -ne 3 -or
+    $caught.InnerExceptions.Count -ne 4 -or
     $messages[0] -cne 'verifier primary failed' -or
     $messages[1] -cnotlike '*runtime password cleanup failed*' -or
     $messages[2] -cnotlike '*migrator password cleanup failed*' -or
-    @($script:constructedSecrets).Count -ne 2 -or
+    $messages[3] -cnotlike '*backup password cleanup failed*' -or
+    @($script:constructedSecrets).Count -ne 3 -or
     @($script:constructedSecrets | Where-Object {{ $_.DisposeAttempts -ne 1 }}).Count -ne 0
 ) {{
     throw 'database credential partial construction did not preserve primary and all cleanup failures'
@@ -524,11 +545,12 @@ $script:conversionCount = 0
 $script:constructedSecrets = @()
 $script:failSecondConversion = $true
 $script:artifact = [pscustomobject]@{{ Payload = [pscustomobject]@{{
-    schema = 'ticketbox-database-generation-runtime-credentials-v1'
+    schema = 'ticketbox-database-generation-runtime-credentials-v2'
     operation_id = '11111111-1111-4111-8111-111111111111'
     intent_sha256 = ('a' * 64)
     candidate_sha256 = ('c' * 64)
     runtime_password = ('r' * 48)
+    backup_password = ('b' * 48)
     http_bootstrap_secret = ('h' * 48)
 }} }}
 $caught = $null
@@ -547,34 +569,44 @@ if (
 }}
 $transientRuntime = [TrackedSecret]::new('transient runtime', $false)
 $transientMigrator = [TrackedSecret]::new('transient migrator', $false)
+$transientBackup = [TrackedSecret]::new('transient backup', $false)
 $transient = [pscustomobject]@{{
     Artifact = [pscustomobject]@{{ PayloadSha256 = ('1' * 64) }}
     RuntimePassword = $transientRuntime
     MigratorPassword = $transientMigrator
+    BackupPassword = $transientBackup
     RuntimeVerifier = 'runtime-verifier'
     MigratorVerifier = 'migrator-verifier'
+    BackupVerifier = 'backup-verifier'
 }}
 Close-TicketboxDatabaseGenerationCredentials $transient
 if (
     -not $transientRuntime.Disposed -or -not $transientMigrator.Disposed -or
+    -not $transientBackup.Disposed -or
     $null -ne $transient.RuntimePassword -or $null -ne $transient.MigratorPassword -or
+    $null -ne $transient.BackupPassword -or
     [string]$transient.RuntimeVerifier -cne '' -or
     [string]$transient.MigratorVerifier -cne '' -or
+    [string]$transient.BackupVerifier -cne '' -or
     $null -ne $transient.Artifact
 ) {{
     throw 'transient credential close left secret or artifact authority reachable'
 }}
 $publishedRuntime = [TrackedSecret]::new('published runtime', $false)
+$publishedBackup = [TrackedSecret]::new('published backup', $false)
 $publishedHttp = [TrackedSecret]::new('published HTTP', $false)
 $published = [pscustomobject]@{{
     Artifact = [pscustomobject]@{{ PayloadSha256 = ('2' * 64) }}
     RuntimePassword = $publishedRuntime
+    BackupPassword = $publishedBackup
     HttpBootstrapSecret = $publishedHttp
 }}
 Close-TicketboxDatabaseGenerationRuntimeCredentials $published
 if (
-    -not $publishedRuntime.Disposed -or -not $publishedHttp.Disposed -or
+    -not $publishedRuntime.Disposed -or -not $publishedBackup.Disposed -or
+    -not $publishedHttp.Disposed -or
     $null -ne $published.RuntimePassword -or
+    $null -ne $published.BackupPassword -or
     $null -ne $published.HttpBootstrapSecret -or
     $null -ne $published.Artifact
 ) {{

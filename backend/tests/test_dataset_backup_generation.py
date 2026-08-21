@@ -87,7 +87,6 @@ def test_complete_originals_reject_corrupt_and_orphan_user_bytes(tmp_path: Path)
     orphan = uploads / "owner" / "orphan.png"
     original.parent.mkdir(parents=True)
     original.write_bytes(b"actual")
-    orphan.write_bytes(b"orphan")
     staging = tmp_path / "generation"
     staging.mkdir()
 
@@ -106,6 +105,7 @@ def test_complete_originals_reject_corrupt_and_orphan_user_bytes(tmp_path: Path)
     assert corrupt.value.error == "backup_incomplete"
 
     original.write_bytes(b"expected")
+    orphan.write_bytes(b"orphan")
     with pytest.raises(AppError) as orphaned:
         copy_complete_originals(
             upload_root=uploads.resolve(),
@@ -119,6 +119,33 @@ def test_complete_originals_reject_corrupt_and_orphan_user_bytes(tmp_path: Path)
             ),
         )
     assert orphaned.value.error == "backup_incomplete"
+
+
+@pytest.mark.parametrize("expected_sha256", [None, "not-a-sha256"])
+def test_complete_originals_require_a_closed_database_digest(
+    tmp_path: Path,
+    expected_sha256: str | None,
+) -> None:
+    uploads = tmp_path / "uploads"
+    original = uploads / "owner" / "receipt.png"
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b"original")
+    destination = tmp_path / "generation" / "originals"
+    destination.parent.mkdir()
+
+    with pytest.raises(AppError) as rejected:
+        copy_complete_originals(
+            upload_root=uploads.resolve(),
+            destination=destination,
+            references=(
+                OriginalReference(
+                    tenant_id="owner",
+                    storage_reference="uploads/owner/receipt.png",
+                    expected_sha256=expected_sha256,
+                ),
+            ),
+        )
+    assert rejected.value.error == "backup_incomplete"
 
 
 def test_manifest_is_closed_canonical_and_binds_every_byte(tmp_path: Path) -> None:
@@ -256,3 +283,47 @@ def test_backup_preserves_primary_and_lease_cleanup_failures(
     with pytest.raises(BaseExceptionGroup) as caught:
         create_complete_backup_generation(request, db=object())  # type: ignore[arg-type]
     assert caught.value.exceptions == (primary, cleanup)
+
+
+def test_backup_preserves_primary_staging_and_baseexception_lease_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import backup_service
+
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+    primary = RuntimeError("backup body failed")
+    staging_cleanup = OSError("staging cleanup failed")
+    lease_cleanup = KeyboardInterrupt("lease cleanup interrupted")
+
+    class Lease:
+        def release(self) -> None:
+            raise lease_cleanup
+
+    def fail_build(*_args, **_kwargs):
+        raise primary
+
+    def fail_staging_cleanup(_path: Path, _root: Path) -> None:
+        raise staging_cleanup
+
+    monkeypatch.setattr(backup_service, "acquire_backup_job_lease", lambda _path: Lease())
+    monkeypatch.setattr(backup_service, "_build_staged_generation", fail_build)
+    monkeypatch.setattr(backup_service, "_remove_staging", fail_staging_cleanup)
+    request = CompleteBackupRequest(
+        backup_root=backup_root,
+        upload_root=(tmp_path / "uploads").resolve(),
+        database_url="postgresql+psycopg://ticketbox_backup@localhost:5432/ticketbox",
+        passfile=(tmp_path / "pgpass").resolve(),
+        pg_dump_binary=(tmp_path / "pg_dump.exe").resolve(),
+        pg_restore_binary=(tmp_path / "pg_restore.exe").resolve(),
+        operation_id="7db00670-2a24-4013-b57f-c6bbff739bf3",
+        backup_id="38ed55ba-1dc0-43a4-87b3-b29982958399",
+        release_id="release-fixture",
+        backup_kind="manual",
+        writer_fence_sha256="a" * 64,
+    )
+
+    with pytest.raises(BaseExceptionGroup) as caught:
+        create_complete_backup_generation(request, db=object())  # type: ignore[arg-type]
+    assert caught.value.exceptions == (primary, staging_cleanup, lease_cleanup)

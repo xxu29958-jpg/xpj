@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -276,6 +276,47 @@ function Set-TicketboxInstalledDatasetPublishedAcls {
         -Recurse
 }
 
+function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
+    param(
+        [Parameter(Mandatory = $true)][object]$Subject,
+        [Parameter(Mandatory = $true)][object]$Request,
+        [Parameter(Mandatory = $true)][object]$Paths,
+        [Parameter(Mandatory = $true)][string]$OperationId
+    )
+    $failureCurrent = Read-TicketboxDatabaseGenerationCurrent
+    if ([string]$failureCurrent.Payload.operation_id -ceq $OperationId) { return }
+
+    $failures = @()
+    try {
+        Remove-TicketboxPostgresqlRestoreCandidateService $Subject $Paths
+    }
+    catch { $failures += $_ }
+    try {
+        Stop-TicketboxInstalledDatasetWriters $Subject
+        Set-TicketboxInstalledDatasetRestorePhysicalSelection `
+            -Paths $Paths -Selection "Predecessor"
+        Set-TicketboxInstalledDatasetPublishedAcls $Subject $Paths
+        [void](Start-TicketboxOwnedServiceIfExists `
+            -Name ([string]$Subject.Identity.PgServiceName) `
+            -ExpectedExecutable (Join-Path ([string]$Subject.Identity.InstallDir) `
+                "pg\bin\pg_ctl.exe") `
+            -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
+            -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms))
+        if ([bool]$Request.Payload.restart_backend) {
+            [void](Start-TicketboxOwnedServiceIfExists `
+                -Name ([string]$Subject.Identity.BackendServiceName) `
+                -ExpectedExecutable (Join-Path ([string]$Subject.Identity.InstallDir) `
+                    "shawl\shawl.exe") `
+                -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
+                -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms))
+        }
+    }
+    catch { $failures += $_ }
+    if ($failures.Count -gt 0) {
+        Throw-TicketboxDatabaseGenerationOperationFailure $null $failures
+    }
+}
+
 $lock = $null
 $subject = $null
 $authority = $null
@@ -530,31 +571,8 @@ catch {
         -not [string]::IsNullOrWhiteSpace([string]$operationId)
     ) {
         try {
-            $failureCurrent = Read-TicketboxDatabaseGenerationCurrent
-            if ([string]$failureCurrent.Payload.operation_id -cne [string]$operationId) {
-                try {
-                    Remove-TicketboxPostgresqlRestoreCandidateService $subject $paths
-                }
-                catch { $cleanup += $_ }
-                Stop-TicketboxInstalledDatasetWriters $subject
-                Set-TicketboxInstalledDatasetRestorePhysicalSelection `
-                    -Paths $paths -Selection "Predecessor"
-                Set-TicketboxInstalledDatasetPublishedAcls $subject $paths
-                [void](Start-TicketboxOwnedServiceIfExists `
-                    -Name ([string]$subject.Identity.PgServiceName) `
-                    -ExpectedExecutable (Join-Path ([string]$subject.Identity.InstallDir) `
-                        "pg\bin\pg_ctl.exe") `
-                    -TimeoutMilliseconds ([int]$subject.Release.service_state_timeout_ms) `
-                    -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms))
-                if ([bool]$request.Payload.restart_backend) {
-                    [void](Start-TicketboxOwnedServiceIfExists `
-                        -Name ([string]$subject.Identity.BackendServiceName) `
-                        -ExpectedExecutable (Join-Path ([string]$subject.Identity.InstallDir) `
-                            "shawl\shawl.exe") `
-                        -TimeoutMilliseconds ([int]$subject.Release.service_state_timeout_ms) `
-                        -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms))
-                }
-            }
+            Invoke-TicketboxInstalledDatasetRestoreFailureCompensation `
+                $subject $request $paths $operationId
         }
         catch { $cleanup += $_ }
     }

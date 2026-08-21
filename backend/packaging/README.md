@@ -116,12 +116,12 @@ Ticketbox-Setup-<version>.exe /TicketboxDataRoot="D:\TicketboxData" /TicketboxBa
 手工创建空库或旧式 PowerShell 一键安装不再是受支持入口；数据库初始化、恢复和升级必须由
 安装器持有生命周期权威后调用专用 generation/migration 动作。
 
-当前 Generation Owner 只闭合全新机器上的 `empty source -> target -> candidate -> CURRENT`
-首次安装：它要求不存在 predecessor/current，实际执行冻结的 Alembic program，并在发布 CURRENT
-前完成 writer fence、ACL/role 复核、真实 `pg_dump -> 隔离库 pg_restore -> 语义复核 -> 清理`
-和数据库 binding。既有安装升级、保留数据 repair/reinstall、跨 release 未完成事务和面向 operator
-的正式恢复入口尚未实现，均继续 `QUALIFIED_HOLD`；旧 C07 READY/stage/current 代码不是这些能力的
-兼容入口，也不得重新启用。
+Generation Owner 已闭合全新机器上的 `empty source -> target -> candidate -> CURRENT`
+首次安装，以及用户明确选择的同 Dataset Authority 完整 backup generation 的隔离恢复与 CURRENT
+发布。首次安装要求不存在 predecessor/current，实际执行冻结的 Alembic program；恢复路径先校验
+完整 manifest/payload，再恢复隔离候选并重新观察数据库身份。既有安装升级、保留数据
+repair/reinstall、跨 release 未完成事务和二进制/schema 降级尚未实现，均继续
+`QUALIFIED_HOLD`；旧 C07 READY/stage/current 代码不是兼容入口，也不得重新启用。
 
 服务宿主通过 Shawl 把 `TICKETBOX_DATA_DIR` 设置为 machine-owned
 `{commonappdata}\TicketboxRuntimeBinding\data-root\app` junction；v2 DataRoot marker 与
