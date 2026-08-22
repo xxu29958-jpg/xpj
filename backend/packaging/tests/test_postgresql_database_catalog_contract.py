@@ -19,8 +19,9 @@ COMPONENTS = (
     PACKAGING / "postgresql_database_catalog" / "observation.ps1",
 )
 GENERATION_CONSUMERS = (
-    PACKAGING / "windows_database_generation.ps1",
     PACKAGING / "windows_database_generation_source.ps1",
+    PACKAGING / "windows_database_generation_source_binding.ps1",
+    PACKAGING / "windows_database_generation_target_authorization.ps1",
     PACKAGING / "windows_database_generation_target_recovery.ps1",
 )
 INNO = PACKAGING / "ticketbox-installer.iss"

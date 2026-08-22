@@ -57,9 +57,8 @@ def _install_version_key(binary_path: Path) -> tuple[int, ...]:
 def find_pg_binary(name: str, env_var: str) -> str | None:
     """Resolve a PostgreSQL client binary: env override → PATH → newest install.
 
-    Single discovery chain shared by the scheduled task, Owner Console and CLI
-    (mirrors ``backend/scripts/backup_database.ps1``); ``None`` when the binary
-    cannot be found anywhere.
+    Shared discovery chain for the explicit installed backup owner and CI
+    recovery drill; ``None`` when the binary cannot be found anywhere.
     """
     override = os.getenv(env_var)
     if override:
@@ -91,7 +90,11 @@ def _pg_restore_binary() -> str:
     return binary
 
 
-def validate_postgres_backup_file(path: Path | str) -> None:
+def validate_postgres_backup_file_with_tool(
+    path: Path | str,
+    *,
+    pg_restore_binary: Path | str,
+) -> None:
     """Raise :class:`PostgresBackupValidationError` unless ``path`` is a readable
     pg_dump custom-format archive (``pg_restore --list`` succeeds, non-empty)."""
     dump_path = Path(path)
@@ -100,7 +103,7 @@ def validate_postgres_backup_file(path: Path | str) -> None:
 
     try:
         result = subprocess.run(  # noqa: S603 (binary resolved from PATH/override, fixed args)
-            [_pg_restore_binary(), "--list", str(dump_path)],
+            [str(Path(pg_restore_binary).resolve(strict=True)), "--list", str(dump_path)],
             capture_output=True,
             text=True,
             check=False,
@@ -119,6 +122,19 @@ def validate_postgres_backup_file(path: Path | str) -> None:
         )
     if not result.stdout.strip():
         raise PostgresBackupValidationError("pg_restore --list produced an empty table of contents")
+
+
+def validate_postgres_backup_file(path: Path | str) -> None:
+    """CLI/read-only compatibility entrypoint with local tool discovery.
+
+    Production backup owners use :func:`validate_postgres_backup_file_with_tool`
+    so the selected binary is an explicit, provenance-bound input.
+    """
+
+    validate_postgres_backup_file_with_tool(
+        path,
+        pg_restore_binary=_pg_restore_binary(),
+    )
 
 
 def is_postgres_backup_valid(path: Path | str) -> bool:

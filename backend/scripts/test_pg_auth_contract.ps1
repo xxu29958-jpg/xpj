@@ -55,10 +55,11 @@ function Write-XpjTestPostgresProtectedSecret {
     )
 
     $ownerSid = Get-XpjTestPostgresSecretOwnerSid
+    $accounts = @($ownerSid, "SYSTEM", "BUILTIN\Administrators")
     Write-TicketboxProtectedUtf8FileDurable `
         -Path $Path `
         -Text $Text `
-        -FullControlAccounts @($ownerSid) `
+        -FullControlAccounts $accounts `
         -OwnerAccount $ownerSid
 }
 
@@ -69,9 +70,10 @@ function Assert-XpjTestPostgresProtectedSecret {
         throw "Test PostgreSQL secret is not a plain file: $Path"
     }
     $ownerSid = Get-XpjTestPostgresSecretOwnerSid
+    $accounts = @($ownerSid, "SYSTEM", "BUILTIN\Administrators")
     Assert-TicketboxExactFileAcl `
         -Path $Path `
-        -Accounts @($ownerSid) `
+        -Accounts $accounts `
         -OwnerAccount $ownerSid
 }
 
@@ -97,13 +99,24 @@ function Read-XpjTestPostgresCredential {
 function Get-XpjTestPostgresPassfileText {
     param(
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$HostAddress,
         [Parameter(Mandatory = $true)][string]$Credential
     )
 
+    $parsedAddress = $null
+    if (
+        -not [Net.IPAddress]::TryParse($HostAddress, [ref]$parsedAddress) -or
+        -not [Net.IPAddress]::IsLoopback($parsedAddress) -or
+        $parsedAddress.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork
+    ) {
+        throw 'Test PostgreSQL passfile host must be an IPv4 loopback literal.'
+    }
     $applicationRole = [string](Get-XpjTestPostgresContract).application_role
     return @(
-        "localhost:${Port}:*:postgres:${Credential}",
-        "localhost:${Port}:*:${applicationRole}:${Credential}"
+        foreach ($hostName in @("localhost", $parsedAddress.ToString())) {
+            "${hostName}:${Port}:*:postgres:${Credential}"
+            "${hostName}:${Port}:*:${applicationRole}:${Credential}"
+        }
     ) -join "`n"
 }
 
@@ -139,7 +152,8 @@ function Get-XpjTestPostgresHbaMode {
 function Get-XpjTestPostgresAuthenticationState {
     param(
         [Parameter(Mandatory = $true)][string]$DataDir,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$HostAddress
     )
 
     $credentialKind = Get-TicketboxPathEntryKindNoFollow -Path (Get-XpjTestPostgresCredentialPath -DataDir $DataDir)
@@ -157,7 +171,8 @@ function Get-XpjTestPostgresAuthenticationState {
             return 'legacy-superuser-only'
         }
     }
-    [void](Assert-XpjTestPostgresAuthenticationFiles -DataDir $DataDir -Port $Port)
+    [void](Assert-XpjTestPostgresAuthenticationFiles `
+        -DataDir $DataDir -Port $Port -HostAddress $HostAddress)
     return 'scram-sha-256'
 }
 
@@ -165,6 +180,7 @@ function Initialize-XpjTestPostgresAuthenticationFiles {
     param(
         [Parameter(Mandatory = $true)][string]$DataDir,
         [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$HostAddress,
         [Parameter(Mandatory = $true)][string]$Credential
     )
 
@@ -179,14 +195,17 @@ function Initialize-XpjTestPostgresAuthenticationFiles {
         -Text ($Credential + "`n")
     Write-XpjTestPostgresProtectedSecret `
         -Path (Get-XpjTestPostgresPassfilePath -DataDir $DataDir) `
-        -Text ((Get-XpjTestPostgresPassfileText -Port $Port -Credential $Credential) + "`n")
-    [void](Assert-XpjTestPostgresAuthenticationFiles -DataDir $DataDir -Port $Port)
+        -Text ((Get-XpjTestPostgresPassfileText `
+            -Port $Port -HostAddress $HostAddress -Credential $Credential) + "`n")
+    [void](Assert-XpjTestPostgresAuthenticationFiles `
+        -DataDir $DataDir -Port $Port -HostAddress $HostAddress)
 }
 
 function Assert-XpjTestPostgresAuthenticationFiles {
     param(
         [Parameter(Mandatory = $true)][string]$DataDir,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$HostAddress
     )
 
     if ((Get-XpjTestPostgresHbaMode -DataDir $DataDir) -cne 'scram-sha-256') {
@@ -195,7 +214,8 @@ function Assert-XpjTestPostgresAuthenticationFiles {
     $credential = Read-XpjTestPostgresCredential -DataDir $DataDir
     $passfile = Get-XpjTestPostgresPassfilePath -DataDir $DataDir
     Assert-XpjTestPostgresProtectedSecret -Path $passfile
-    $expected = (Get-XpjTestPostgresPassfileText -Port $Port -Credential $credential) + "`n"
+    $expected = (Get-XpjTestPostgresPassfileText `
+        -Port $Port -HostAddress $HostAddress -Credential $credential) + "`n"
     if ((Get-Content -Raw -Encoding UTF8 -LiteralPath $passfile) -cne $expected) {
         throw "Test PostgreSQL passfile does not match its credential authority: $passfile"
     }

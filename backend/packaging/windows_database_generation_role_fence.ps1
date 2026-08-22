@@ -14,7 +14,8 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
     $capturedUrl = $databaseUrl
     $allowedRoleNames = @(
         "postgres", $($databasePolicy.OwnerRole),
-        $($databasePolicy.MigratorRole), $($databasePolicy.RuntimeRole)
+        $($databasePolicy.MigratorRole), $($databasePolicy.RuntimeRole),
+        $($databasePolicy.BackupRole)
     )
     return Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $SuperuserPassword `
@@ -38,6 +39,9 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
             })
             $runtime = @($observation.Roles | Where-Object {
                 [string]$_.name -ceq $($databasePolicy.RuntimeRole)
+            })
+            $backup = @($observation.Roles | Where-Object {
+                [string]$_.name -ceq $($databasePolicy.BackupRole)
             })
             $databaseAuthority = @($observation.Roles | Where-Object {
                 [string]$_.name -ceq "postgres"
@@ -86,7 +90,14 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
                 [bool]$runtime[0].effective_connect -or
                 [bool]$runtime[0].can_table_write -or
                 [bool]$runtime[0].can_sequence_write -or
-                [bool]$runtime[0].can_assume_write_owner
+                [bool]$runtime[0].can_assume_write_owner -or
+                $backup.Count -ne 1 -or [bool]$backup[0].can_login -or
+                [int]$backup[0].connection_limit -ne 0 -or
+                [bool]$backup[0].direct_connect -or
+                [bool]$backup[0].effective_connect -or
+                [bool]$backup[0].can_table_write -or
+                [bool]$backup[0].can_sequence_write -or
+                [bool]$backup[0].can_assume_write_owner
             ) {
                 throw "database generation writer fence 未收敛。"
             }

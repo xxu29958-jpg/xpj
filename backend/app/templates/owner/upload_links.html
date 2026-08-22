@@ -151,7 +151,7 @@
   <ol class="help-text steps-list">
     <li>iPhone 提示「无效的 URL」：URL 动作里粘贴的是 <code>/u/...</code> 相对路径或 <code>/u/***</code> 掩码，必须粘贴完整公网 URL（以 <code>https://</code> 开头）。</li>
     <li>URL 中 <code>?tz=</code> 出现两次：本页给出的完整 URL 已经带上时区参数，不要再手动拼一次。</li>
-    <li>未配置 <code>PUBLIC_BASE_URL</code>：本页只能显示相对路径，需在 <code>backend/.env</code> 设置公网域名后重新创建链接。</li>
+    <li>未配置 <code>PUBLIC_BASE_URL</code>：请先在 Owner Console 的公网地址设置中保存 HTTPS 域名，再重新创建链接。</li>
     <li>确认电脑端后端正在运行（任务栏中应有 Ticketbox 任务）。</li>
     <li>确认 Cloudflare 域名当前可访问（用浏览器打开公网域名应能看到健康响应）。</li>
     <li>仍然失败时，可在请求头中添加 <code>User-Agent: TicketBox/1.0 iOS-Shortcut</code> 以便区分流量。</li>

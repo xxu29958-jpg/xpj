@@ -30,12 +30,13 @@ def _release_config() -> WindowsReleaseConfig:
         backend_ready_timeout_ms=31_000,
         backend_ready_poll_interval_ms=375,
         backend_health_request_timeout_ms=1_750,
+        database_tool_timeout_ms=600_000,
     )
 
 
 def _release_config_document(**overrides: object) -> dict[str, object]:
     document: dict[str, object] = {
-        "schema": "ticketbox-windows-release-v1",
+        "schema": "ticketbox-windows-release-v2",
         "backend_service_name": "TicketboxBackendCustom",
         "pg_service_name": "TicketboxPgCustom",
         "owner_recovery_channel": "managed_host",
@@ -45,6 +46,7 @@ def _release_config_document(**overrides: object) -> dict[str, object]:
         "backend_ready_timeout_ms": 31_000,
         "backend_ready_poll_interval_ms": 375,
         "backend_health_request_timeout_ms": 1_750,
+        "database_tool_timeout_ms": 600_000,
     }
     document.update(overrides)
     return document

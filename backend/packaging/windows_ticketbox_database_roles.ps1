@@ -9,7 +9,8 @@ function Get-TicketboxDatabaseRoleOid {
 
     $policy = Get-TicketboxDatabaseAuthorizationContract
     if ($RoleName -cnotin @(
-        $policy.OwnerRole, $policy.MigratorRole, $policy.RuntimeRole
+        $policy.OwnerRole, $policy.MigratorRole, $policy.RuntimeRole,
+        $policy.BackupRole
     )) {
         throw (New-TicketboxDatabasePolicyFailure `
             -Message "Ticketbox role OID request is outside the policy." `
@@ -46,6 +47,10 @@ function New-TicketboxDatabaseActiveRoleObservationSql {
         "NOT rolcanlogin AND rolconnlimit = 0"
     }
     else { "rolcanlogin AND rolconnlimit = -1" }
+    $backupLogin = if ($Phase -ceq "fenced") {
+        "NOT rolcanlogin AND rolconnlimit = 0"
+    }
+    else { "rolcanlogin AND rolconnlimit = 1" }
     $runtimeConnect = if ($Phase -ceq "fenced") {
         "NOT has_database_privilege('$($Policy.RuntimeRole)', '$($Policy.DatabaseName)', 'CONNECT')"
     }
@@ -69,6 +74,10 @@ SELECT
     COALESCE((SELECT $runtimeLogin AND rolinherit AND NOT rolsuper AND NOT rolcreatedb
       AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls
       FROM pg_roles WHERE rolname = '$($Policy.RuntimeRole)'), false)::text || E'\t' ||
+    COALESCE((SELECT $backupLogin AND NOT rolinherit AND NOT rolsuper AND NOT rolcreatedb
+      AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls
+      AND rolpassword IS NOT NULL
+      FROM pg_authid WHERE rolname = '$($Policy.BackupRole)'), false)::text || E'\t' ||
     (SELECT count(*) = 1 FROM pg_auth_members AS membership
       JOIN pg_roles AS granted ON granted.oid = membership.roleid
       JOIN pg_roles AS member ON member.oid = membership.member
@@ -79,8 +88,8 @@ SELECT
     (SELECT count(*) = 0 FROM pg_auth_members AS membership
       JOIN pg_roles AS granted ON granted.oid = membership.roleid
       JOIN pg_roles AS member ON member.oid = membership.member
-      WHERE (granted.rolname IN ('$($Policy.OwnerRole)', '$($Policy.MigratorRole)', '$($Policy.RuntimeRole)')
-             OR member.rolname IN ('$($Policy.OwnerRole)', '$($Policy.MigratorRole)', '$($Policy.RuntimeRole)'))
+      WHERE (granted.rolname IN ('$($Policy.OwnerRole)', '$($Policy.MigratorRole)', '$($Policy.RuntimeRole)', '$($Policy.BackupRole)')
+             OR member.rolname IN ('$($Policy.OwnerRole)', '$($Policy.MigratorRole)', '$($Policy.RuntimeRole)', '$($Policy.BackupRole)'))
         AND NOT (granted.rolname = '$($Policy.OwnerRole)'
                  AND member.rolname = '$($Policy.MigratorRole)'
                  AND NOT membership.admin_option AND NOT membership.inherit_option
@@ -97,6 +106,12 @@ SELECT
           JOIN pg_database AS database ON database.oid = setting.setdatabase
           WHERE setting.setrole = role.oid AND database.datname = '$($Policy.DatabaseName)')
       FROM pg_roles AS role WHERE role.rolname = '$($Policy.MigratorRole)'), false)::text || E'\t' ||
+    COALESCE((SELECT COALESCE(role.rolconfig = ARRAY['search_path=pg_catalog, public']::text[], false)
+      AND NOT EXISTS (
+          SELECT 1 FROM pg_db_role_setting AS setting
+          JOIN pg_database AS database ON database.oid = setting.setdatabase
+          WHERE setting.setrole = role.oid AND database.datname = '$($Policy.DatabaseName)')
+      FROM pg_roles AS role WHERE role.rolname = '$($Policy.BackupRole)'), false)::text || E'\t' ||
     COALESCE((SELECT pg_get_userbyid(datdba) = '$($Policy.OwnerRole)'
       FROM pg_database WHERE datname = '$($Policy.DatabaseName)'), false)::text || E'\t' ||
     COALESCE((SELECT pg_get_userbyid(nspowner) = '$($Policy.OwnerRole)'
@@ -107,6 +122,21 @@ SELECT
     (NOT has_database_privilege('$($Policy.RuntimeRole)', '$($Policy.DatabaseName)', 'TEMPORARY'))::text || E'\t' ||
     has_schema_privilege('$($Policy.RuntimeRole)', 'public', 'USAGE')::text || E'\t' ||
     (NOT has_schema_privilege('$($Policy.RuntimeRole)', 'public', 'CREATE'))::text || E'\t' ||
+    (has_database_privilege('$($Policy.BackupRole)', '$($Policy.DatabaseName)', 'CONNECT')
+      AND NOT has_database_privilege('$($Policy.BackupRole)', '$($Policy.DatabaseName)', 'CREATE')
+      AND NOT has_database_privilege('$($Policy.BackupRole)', '$($Policy.DatabaseName)', 'TEMPORARY')
+      AND has_schema_privilege('$($Policy.BackupRole)', 'public', 'USAGE')
+      AND NOT has_schema_privilege('$($Policy.BackupRole)', 'public', 'CREATE')
+      AND NOT EXISTS (
+          SELECT 1 FROM pg_class AS relation
+          JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+          WHERE namespace.nspname = 'public'
+            AND pg_get_userbyid(relation.relowner) = '$($Policy.BackupRole)')
+      AND NOT EXISTS (
+          SELECT 1 FROM pg_proc AS routine
+          JOIN pg_namespace AS namespace ON namespace.oid = routine.pronamespace
+          WHERE namespace.nspname = 'public'
+            AND pg_get_userbyid(routine.proowner) = '$($Policy.BackupRole)'))::text || E'\t' ||
     (NOT EXISTS (
         SELECT 1 FROM pg_class AS relation
         JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
@@ -143,11 +173,15 @@ SELECT
       AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication
       AND NOT rolbypassrls AND rolconnlimit = -1 AND rolpassword IS NOT NULL
       FROM pg_authid WHERE rolname = '$($Policy.RuntimeRole)'), false)::text || E'\t' ||
+    COALESCE((SELECT rolcanlogin AND NOT rolinherit AND NOT rolsuper
+      AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication
+      AND NOT rolbypassrls AND rolconnlimit = 1 AND rolpassword IS NOT NULL
+      FROM pg_authid WHERE rolname = '$($Policy.BackupRole)'), false)::text || E'\t' ||
     (SELECT count(*) = 0 FROM pg_auth_members AS membership
       JOIN pg_roles AS granted ON granted.oid = membership.roleid
       JOIN pg_roles AS member ON member.oid = membership.member
-      WHERE granted.rolname IN ('$($Policy.OwnerRole)', '$($Policy.MigratorRole)', '$($Policy.RuntimeRole)', '$($Policy.RetiredLegacyRole)')
-         OR member.rolname IN ('$($Policy.OwnerRole)', '$($Policy.MigratorRole)', '$($Policy.RuntimeRole)', '$($Policy.RetiredLegacyRole)'))::text || E'\t' ||
+      WHERE granted.rolname IN ('$($Policy.OwnerRole)', '$($Policy.MigratorRole)', '$($Policy.RuntimeRole)', '$($Policy.BackupRole)', '$($Policy.RetiredLegacyRole)')
+         OR member.rolname IN ('$($Policy.OwnerRole)', '$($Policy.MigratorRole)', '$($Policy.RuntimeRole)', '$($Policy.BackupRole)', '$($Policy.RetiredLegacyRole)'))::text || E'\t' ||
     COALESCE((SELECT COALESCE(role.rolconfig = ARRAY['search_path=pg_catalog, public']::text[], false)
       AND NOT EXISTS (
           SELECT 1 FROM pg_db_role_setting AS setting
@@ -160,6 +194,12 @@ SELECT
           JOIN pg_database AS database ON database.oid = setting.setdatabase
           WHERE setting.setrole = role.oid AND database.datname = '$($Policy.DatabaseName)')
       FROM pg_roles AS role WHERE role.rolname = '$($Policy.MigratorRole)'), false)::text || E'\t' ||
+    COALESCE((SELECT COALESCE(role.rolconfig = ARRAY['search_path=pg_catalog, public']::text[], false)
+      AND NOT EXISTS (
+          SELECT 1 FROM pg_db_role_setting AS setting
+          JOIN pg_database AS database ON database.oid = setting.setdatabase
+          WHERE setting.setrole = role.oid AND database.datname = '$($Policy.DatabaseName)')
+      FROM pg_roles AS role WHERE role.rolname = '$($Policy.BackupRole)'), false)::text || E'\t' ||
     COALESCE((SELECT pg_get_userbyid(datdba) = '$($Policy.OwnerRole)'
       FROM pg_database WHERE datname = '$($Policy.DatabaseName)'), false)::text || E'\t' ||
     COALESCE((SELECT pg_get_userbyid(nspowner) = '$($Policy.OwnerRole)'
@@ -170,6 +210,21 @@ SELECT
     (NOT has_database_privilege('$($Policy.MigratorRole)', '$($Policy.DatabaseName)', 'CONNECT'))::text || E'\t' ||
     has_schema_privilege('$($Policy.RuntimeRole)', 'public', 'USAGE')::text || E'\t' ||
     (NOT has_schema_privilege('$($Policy.RuntimeRole)', 'public', 'CREATE'))::text || E'\t' ||
+    (has_database_privilege('$($Policy.BackupRole)', '$($Policy.DatabaseName)', 'CONNECT')
+      AND NOT has_database_privilege('$($Policy.BackupRole)', '$($Policy.DatabaseName)', 'CREATE')
+      AND NOT has_database_privilege('$($Policy.BackupRole)', '$($Policy.DatabaseName)', 'TEMPORARY')
+      AND has_schema_privilege('$($Policy.BackupRole)', 'public', 'USAGE')
+      AND NOT has_schema_privilege('$($Policy.BackupRole)', 'public', 'CREATE')
+      AND NOT EXISTS (
+          SELECT 1 FROM pg_class AS relation
+          JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+          WHERE namespace.nspname = 'public'
+            AND pg_get_userbyid(relation.relowner) = '$($Policy.BackupRole)')
+      AND NOT EXISTS (
+          SELECT 1 FROM pg_proc AS routine
+          JOIN pg_namespace AS namespace ON namespace.oid = routine.pronamespace
+          WHERE namespace.nspname = 'public'
+            AND pg_get_userbyid(routine.proowner) = '$($Policy.BackupRole)'))::text || E'\t' ||
     (NOT EXISTS (
         SELECT 1 FROM pg_class AS relation
         JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
@@ -211,7 +266,7 @@ function Assert-TicketboxDatabaseRolePolicy {
         -Sql $sql
     $fields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
         -Output $output `
-        -FieldCount 15 `
+        -FieldCount 18 `
         -Label "Ticketbox $Phase role policy verification"
     if (@($fields | Where-Object { $_ -cne "true" }).Count -ne 0) {
         throw (New-TicketboxDatabasePolicyFailure `
@@ -224,11 +279,15 @@ function Assert-TicketboxDatabaseCredential {
     param(
         [Parameter(Mandatory = $true)][object]$Authority,
         [Parameter(Mandatory = $true)][Security.SecureString]$Password,
-        [Parameter(Mandatory = $true)][ValidateSet("migrator", "runtime")][string]$CredentialKind
+        [Parameter(Mandatory = $true)][ValidateSet("migrator", "runtime", "backup")][string]$CredentialKind
     )
 
     $policy = Get-TicketboxDatabaseAuthorizationContract
-    $role = if ($CredentialKind -ceq "migrator") { $policy.MigratorRole } else { $policy.RuntimeRole }
+    $role = switch ($CredentialKind) {
+        "migrator" { $policy.MigratorRole }
+        "runtime" { $policy.RuntimeRole }
+        "backup" { $policy.BackupRole }
+    }
     $output = Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $Authority `
         -Database $policy.DatabaseName `
@@ -270,15 +329,15 @@ SELECT 'role' || E'\t' || rolname || E'\t' || oid::text || E'\t' ||
        COALESCE(array_to_string(rolconfig, ','), '') || E'\t' ||
        COALESCE(shobj_description(oid, 'pg_authid'), '')
 FROM pg_authid
-WHERE rolname IN ('$($policy.OwnerRole)', '$($policy.MigratorRole)', '$($policy.RuntimeRole)', '$($policy.RetiredLegacyRole)')
+WHERE rolname IN ('$($policy.OwnerRole)', '$($policy.MigratorRole)', '$($policy.RuntimeRole)', '$($policy.BackupRole)', '$($policy.RetiredLegacyRole)')
 UNION ALL
 SELECT 'membership' || E'\t' || granted.rolname || E'\t' || member.rolname || E'\t' ||
        membership.admin_option::text || E'\t' || membership.inherit_option::text || E'\t' || membership.set_option::text
 FROM pg_auth_members AS membership
 JOIN pg_roles AS granted ON granted.oid = membership.roleid
 JOIN pg_roles AS member ON member.oid = membership.member
-WHERE granted.rolname IN ('$($policy.OwnerRole)', '$($policy.MigratorRole)', '$($policy.RuntimeRole)', '$($policy.RetiredLegacyRole)')
-   OR member.rolname IN ('$($policy.OwnerRole)', '$($policy.MigratorRole)', '$($policy.RuntimeRole)', '$($policy.RetiredLegacyRole)')
+WHERE granted.rolname IN ('$($policy.OwnerRole)', '$($policy.MigratorRole)', '$($policy.RuntimeRole)', '$($policy.BackupRole)', '$($policy.RetiredLegacyRole)')
+   OR member.rolname IN ('$($policy.OwnerRole)', '$($policy.MigratorRole)', '$($policy.RuntimeRole)', '$($policy.BackupRole)', '$($policy.RetiredLegacyRole)')
 ORDER BY 1;
 "@
     return (([string]$evidence).Trim() -replace "`r`n", "`n") -replace "`r", "`n"

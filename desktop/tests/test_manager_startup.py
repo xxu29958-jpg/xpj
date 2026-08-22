@@ -27,6 +27,7 @@ from backend_manager.windows_user_security import show_manager_startup_failure_w
 @contextmanager
 def _manager_instance(*, owner: bool, secret: str = "instance-secret", promote: bool = False):
     with TemporaryDirectory(prefix="ticketbox-manager-test-") as temp_root:
+
         class Instance:
             def __init__(self) -> None:
                 self.is_owner = owner
@@ -236,7 +237,6 @@ def test_control_server_binds_before_source_start_and_all_exits_close_owned_runt
 
         def server_close(self) -> None:
             events.append("control-close")
-
 
         def prepare_web_bootstrap(self, path: Path) -> str:
             return _fake_bootstrap(path)
@@ -540,7 +540,7 @@ def test_elevated_helper_rejects_invalid_frozen_payload_before_service_access(
     )
     monkeypatch.setattr(
         "backend_manager.__main__.write_helper_result",
-        lambda *_args: results.append((_args[-2], _args[-1])),
+        lambda *_args: results.append((_args[-3], _args[-2])),
     )
     nonce = "a" * 32
 
@@ -624,7 +624,6 @@ def test_last_visible_window_closes_manager_host(monkeypatch) -> None:
         def server_close(self) -> None:
             events.append("server-close")
 
-
         def prepare_web_bootstrap(self, path: Path) -> str:
             return _fake_bootstrap(path)
 
@@ -667,7 +666,6 @@ def test_external_maintenance_closes_edge_before_manager_server(monkeypatch) -> 
 
         def server_close(self) -> None:
             events.append("server-close")
-
 
         def prepare_web_bootstrap(self, path: Path) -> str:
             return _fake_bootstrap(path)
@@ -715,7 +713,6 @@ def test_foreign_user_port_squatter_falls_back_without_opening_attacker_ui(monke
         def server_close(self) -> None:
             pass
 
-
         def prepare_web_bootstrap(self, path: Path) -> str:
             return _fake_bootstrap(path)
 
@@ -733,7 +730,9 @@ def test_foreign_user_port_squatter_falls_back_without_opening_attacker_ui(monke
         "backend_manager.manager_startup.open_app_window",
         lambda url, *, profile: (opened.append(url), FakeWindow())[-1],
     )
-    monkeypatch.setattr("backend_manager.manager_startup.time.sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt))
+    monkeypatch.setattr(
+        "backend_manager.manager_startup.time.sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt)
+    )
 
     assert main([]) == 0
 

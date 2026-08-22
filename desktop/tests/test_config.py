@@ -26,6 +26,7 @@ def _release_config() -> WindowsReleaseConfig:
         backend_ready_timeout_ms=31_000,
         backend_ready_poll_interval_ms=375,
         backend_health_request_timeout_ms=1_750,
+        database_tool_timeout_ms=600_000,
     )
 
 

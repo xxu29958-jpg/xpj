@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
@@ -36,7 +37,8 @@ _CURRENT_FIELD_ORDER = (
 _BINDING_FIELD_ORDER = (
     "schema operation_id installation_id intent_sha256 source_binding_sha256 "
     "target_revision generation_program_sha256 cluster_system_identifier database_oid "
-    "database_name runtime_role logical_server_id logical_data_generation "
+    "database_name runtime_role dataset_id restore_epoch schema_revision "
+    "schema_min_compatible semantic_revision "
     "execution_authority_sha256 role_authority_sha256 runtime_acl_sha256 "
     "post_migration_writer_fence_sha256 target_recovery_evidence_sha256"
 )
@@ -47,6 +49,31 @@ _BINDING_SHA_FIELD_ORDER = (
 )
 class DatabaseGenerationAdmissionError(RuntimeError):
     """Installed runtime CURRENT or its live database binding is not exact."""
+
+
+@dataclass(frozen=True)
+class _ExpectedBinding:
+    operation_id: str
+    installation_id: str
+    intent_sha256: str
+    program_sha256: str
+    revision: str
+    candidate_sha256: str
+
+
+@dataclass(frozen=True)
+class _LiveDatabaseIdentity:
+    cluster_identifier: object
+    database_oid: object
+    database_name: object
+    session_user: object
+    dataset_id: object
+    restore_epoch: object
+    schema_revision: object
+    schema_min_compatible: object
+    semantic_revision: object
+    bootstrap_retirement: object
+    runtime_capabilities: tuple[object, ...]
 
 
 def _canonical_json(value: object) -> str:
@@ -88,6 +115,12 @@ def _positive_decimal(value: object, label: str) -> str:
 def _database_oid(value: object, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 0xFFFFFFFF:
         raise DatabaseGenerationAdmissionError(f"{label} must be a positive database OID")
+    return value
+
+
+def _nonnegative_integer(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise DatabaseGenerationAdmissionError(f"{label} must be a non-negative integer")
     return value
 
 
@@ -153,7 +186,10 @@ def _validate_current(current: dict[str, object], program: object) -> tuple[str,
         not isinstance(revision, str)
         or _REVISION.fullmatch(revision) is None
         or current["schema"] != "ticketbox-current-database-generation-v1"
-        or current["expected_predecessor_sha256"] != ""
+        or (
+            current["expected_predecessor_sha256"] != ""
+            and _SHA256.fullmatch(str(current["expected_predecessor_sha256"])) is None
+        )
         or revision != getattr(program, "target_revision", None)
         or program_sha != getattr(program, "payload_sha256", None)
     ):
@@ -206,8 +242,10 @@ def _load_binding(binding_json: object, binding_sha: str) -> dict[str, object]:
 
 
 def _assert_runtime_capability(values: tuple[object, ...]) -> None:
-    if len(values) != 13 or any(value is not True for value in values):
-        raise DatabaseGenerationAdmissionError("live runtime capability is not DML-only")
+    if len(values) != 14 or any(value is not True for value in values):
+        raise DatabaseGenerationAdmissionError(
+            "live runtime or backup capability escaped its closed contract"
+        )
 
 
 def _assert_live_binding(
@@ -216,78 +254,118 @@ def _assert_live_binding(
     revisions: tuple[str, ...],
     live_identity: object,
     live_runtime_acl_sha256: str,
-    *,
-    operation_id: str,
-    installation_id: str,
-    intent_sha: str,
-    program_sha: str,
-    revision: str,
-    candidate_sha: str,
+    expected: _ExpectedBinding,
 ) -> None:
+    live = _decode_live_identity(live_identity)
+    _assert_binding_control(binding, binding_json, revisions, live, expected)
+    _assert_binding_database(binding, live, live_runtime_acl_sha256, expected)
+    if binding["database_name"] != "ticketbox" or binding["runtime_role"] != "ticketbox_runtime":
+        raise DatabaseGenerationAdmissionError("database binding runtime target is not closed")
+    for field in _BINDING_SHA_FIELD_ORDER.split():
+        _lower_sha(binding[field], f"database binding {field}")
+
+
+def _decode_live_identity(value: object) -> _LiveDatabaseIdentity:
     try:
         (
-            live_cluster_identifier,
-            live_database_oid,
-            live_database_name,
-            live_session_user,
-            live_server_id,
-            live_data_generation,
-            live_bootstrap_retirement,
-            *live_runtime_capabilities,
-        ) = live_identity  # type: ignore[misc]
+            cluster_identifier,
+            database_oid,
+            database_name,
+            session_user,
+            dataset_id,
+            restore_epoch,
+            schema_revision,
+            schema_min_compatible,
+            semantic_revision,
+            bootstrap_retirement,
+            *runtime_capabilities,
+        ) = value  # type: ignore[misc]
     except (TypeError, ValueError) as exc:
         raise DatabaseGenerationAdmissionError("live database identity is incomplete") from exc
-    try:
-        canonical_live_database_oid = _database_oid(int(live_database_oid), "live database OID")
-    except (TypeError, ValueError) as exc:
-        raise DatabaseGenerationAdmissionError("live database OID is invalid") from exc
-    _assert_runtime_capability(tuple(live_runtime_capabilities))
+    _assert_runtime_capability(tuple(runtime_capabilities))
+    return _LiveDatabaseIdentity(
+        cluster_identifier=cluster_identifier,
+        database_oid=database_oid,
+        database_name=database_name,
+        session_user=session_user,
+        dataset_id=dataset_id,
+        restore_epoch=restore_epoch,
+        schema_revision=schema_revision,
+        schema_min_compatible=schema_min_compatible,
+        semantic_revision=semantic_revision,
+        bootstrap_retirement=bootstrap_retirement,
+        runtime_capabilities=tuple(runtime_capabilities),
+    )
+
+
+def _assert_binding_control(
+    binding: dict[str, object],
+    binding_json: str,
+    revisions: tuple[str, ...],
+    live: _LiveDatabaseIdentity,
+    expected: _ExpectedBinding,
+) -> None:
     expected_bootstrap_retirement = _canonical_json(
         {
             "schema": "ticketbox-database-generation-bootstrap-retirement-v1",
-            "operation_id": operation_id,
-            "intent_sha256": intent_sha,
-            "candidate_sha256": candidate_sha,
-            "committed_revision": revision,
+            "operation_id": expected.operation_id,
+            "intent_sha256": expected.intent_sha256,
+            "candidate_sha256": expected.candidate_sha256,
+            "committed_revision": expected.revision,
         }
     )
     if (
         " ".join(binding) != _BINDING_FIELD_ORDER
         or binding_json != _canonical_json(binding)
         or binding["schema"] != "ticketbox-database-generation-database-binding-v1"
-        or binding["operation_id"] != operation_id
-        or binding["installation_id"] != installation_id
-        or binding["intent_sha256"] != intent_sha
-        or binding["target_revision"] != revision
-        or binding["generation_program_sha256"] != program_sha
-        or revisions != (revision,)
-        or _positive_decimal(
+        or binding["operation_id"] != expected.operation_id
+        or binding["installation_id"] != expected.installation_id
+        or binding["intent_sha256"] != expected.intent_sha256
+        or binding["target_revision"] != expected.revision
+        or binding["generation_program_sha256"] != expected.program_sha256
+        or revisions != (expected.revision,)
+        or live.bootstrap_retirement != expected_bootstrap_retirement
+    ):
+        raise DatabaseGenerationAdmissionError("live database binding does not match the sole CURRENT")
+
+
+def _assert_binding_database(
+    binding: dict[str, object],
+    live: _LiveDatabaseIdentity,
+    live_runtime_acl_sha256: str,
+    expected: _ExpectedBinding,
+) -> None:
+    try:
+        canonical_live_database_oid = _database_oid(int(live.database_oid), "live database OID")
+    except (TypeError, ValueError) as exc:
+        raise DatabaseGenerationAdmissionError("live database OID is invalid") from exc
+    if (
+        _positive_decimal(
             binding["cluster_system_identifier"],
             "database binding cluster identity",
         )
-        != str(live_cluster_identifier)
+        != str(live.cluster_identifier)
         or _database_oid(binding["database_oid"], "database binding database OID") != canonical_live_database_oid
-        or binding["database_name"] != live_database_name
-        or binding["runtime_role"] != live_session_user
+        or binding["database_name"] != live.database_name
+        or binding["runtime_role"] != live.session_user
         or _lower_sha(
             binding["runtime_acl_sha256"],
             "database binding runtime ACL",
         )
         != live_runtime_acl_sha256
-        or _canonical_uuid(binding["logical_server_id"], "database binding server_id")
-        != _canonical_uuid(live_server_id, "live server_id")
-        or _canonical_uuid(
-            binding["logical_data_generation"],
-            "database binding data_generation",
-        )
-        != _canonical_uuid(live_data_generation, "live data_generation")
-        or live_bootstrap_retirement != expected_bootstrap_retirement
+        or _canonical_uuid(binding["dataset_id"], "database binding dataset_id")
+        != _canonical_uuid(live.dataset_id, "live dataset_id")
+        or _nonnegative_integer(binding["restore_epoch"], "database binding restore_epoch")
+        != _nonnegative_integer(live.restore_epoch, "live restore_epoch")
+        or binding["schema_revision"] != live.schema_revision
+        or binding["schema_revision"] != expected.revision
+        or not isinstance(binding["schema_min_compatible"], str)
+        or not binding["schema_min_compatible"]
+        or binding["schema_min_compatible"] != live.schema_min_compatible
+        or binding["semantic_revision"] != live.semantic_revision
+        or live.semantic_revision != "ticketbox-dataset-semantics-v1"
     ):
         raise DatabaseGenerationAdmissionError("live database binding does not match the sole CURRENT")
-    if binding["database_name"] != "ticketbox" or binding["runtime_role"] != "ticketbox_runtime":
-        raise DatabaseGenerationAdmissionError("database binding runtime target is not closed")
-    for field in _BINDING_SHA_FIELD_ORDER.split():
-        _lower_sha(binding[field], f"database binding {field}")
 
 
 def assert_database_generation_runtime_admission(
@@ -307,12 +385,14 @@ def assert_database_generation_runtime_admission(
         revisions,
         live_identity,
         live_runtime_acl_sha256,
-        operation_id=current_contract[0],
-        installation_id=current_contract[1],
-        intent_sha=current_contract[2],
-        program_sha=current_contract[4],
-        revision=current_contract[5],
-        candidate_sha=current_contract[6],
+        _ExpectedBinding(
+            operation_id=current_contract[0],
+            installation_id=current_contract[1],
+            intent_sha256=current_contract[2],
+            program_sha256=current_contract[4],
+            revision=current_contract[5],
+            candidate_sha256=current_contract[6],
+        ),
     )
 
 

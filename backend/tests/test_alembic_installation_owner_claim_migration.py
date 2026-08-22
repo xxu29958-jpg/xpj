@@ -131,7 +131,7 @@ def test_installation_owner_claim_round_trips_on_postgres() -> None:
         assert _TABLE not in inspect(engine).get_table_names()
         assert _current_revision() == _PREVIOUS_REVISION
 
-        _run_alembic(command.upgrade, "head")
+        _run_alembic(command.upgrade, _TARGET_REVISION)
         assert _current_revision() == _TARGET_REVISION
         _assert_full_shape()
         postcondition = import_module(

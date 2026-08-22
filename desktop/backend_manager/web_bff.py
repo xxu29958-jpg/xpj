@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import http.client
 import ipaddress
 import urllib.parse
+from collections.abc import Collection
 from dataclasses import dataclass
 from http.client import HTTPResponse
 
@@ -91,7 +94,7 @@ def allowed_target(raw_target: str, method: str) -> urllib.parse.SplitResult | N
 
 def browser_session_valid(
     cookie_header: str | None,
-    expected: str,
+    expected_digests: Collection[str],
     *,
     cookie_name: str = SESSION_COOKIE,
 ) -> bool:
@@ -102,7 +105,14 @@ def browser_session_valid(
         name, separator, value = part.strip().partition("=")
         if separator:
             values[name] = value
-    return values.get(cookie_name) == expected
+    session_id = values.get(cookie_name)
+    if session_id is None:
+        return False
+    try:
+        digest = hashlib.sha256(session_id.encode("ascii", errors="strict")).hexdigest()
+    except UnicodeEncodeError:
+        return False
+    return any(hmac.compare_digest(digest, expected) for expected in expected_digests)
 
 
 def same_origin_request(

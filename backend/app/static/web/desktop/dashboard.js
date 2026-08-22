@@ -215,7 +215,7 @@
     const meta = styled(el("div"), "font-size:11.5px;color:var(--text-meta);margin-top:8px;line-height:1.6");
     append(meta, "目标 " + text(cards.goals_count) + " 条");
     if (cards.goals_risk_count) append(meta, " · 风险 " + text(cards.goals_risk_count));
-    append(meta, document.createElement("br"), cards.backup_available ? "最近备份 " + text(cards.backup_age_days) + " 天前" : "还没有生成备份");
+    append(meta, document.createElement("br"), cards.backup_available ? "最近备份记录 " + text(cards.backup_age_days) + " 天前（当前字节未复检）" : "还没有备份发布记录");
     append(
       right,
       el("div", "trend-num", cards.confirmed_count),
@@ -404,10 +404,10 @@
         append(
           shell.card,
           el("div", "trend-num", cards.backup_age_days),
-          styled(el("div", "", "天前生成最近备份"), "font-size:12px;color:var(--text-meta);margin-top:6px")
+          styled(el("div", "", "天前生成最近备份记录（当前字节未复检）"), "font-size:12px;color:var(--text-meta);margin-top:6px")
         );
       } else {
-        append(shell.card, styled(el("div", "", "还没有生成备份。"), "font-size:12.5px;color:var(--text-meta);padding:14px 0"));
+        append(shell.card, styled(el("div", "", "还没有备份发布记录。"), "font-size:12.5px;color:var(--text-meta);padding:14px 0"));
       }
       return shell.outer;
     }

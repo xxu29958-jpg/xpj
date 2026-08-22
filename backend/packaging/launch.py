@@ -23,9 +23,6 @@ its handlers at ``sys.stdout`` — see :func:`_build_log_config`.
 
 from __future__ import annotations
 
-import importlib
-import importlib.machinery
-import importlib.util
 import json
 import ntpath
 import os
@@ -33,13 +30,31 @@ import re
 import stat
 import sys
 from argparse import ArgumentParser, Namespace
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from json import dumps
 from pathlib import Path
 from types import ModuleType
 from typing import BinaryIO, TextIO
+
+if not getattr(sys, "frozen", False):
+    source_backend_root = str(Path(__file__).resolve().parents[1])
+    if source_backend_root not in sys.path:
+        sys.path.insert(0, source_backend_root)
+
+from app.database_maintenance_runtime import (
+    assert_maintenance_libpq_environment as _assert_maintenance_libpq_environment,
+)
+from app.database_maintenance_runtime import (
+    load_standalone_database_module as _load_standalone_database_module,
+)
+from app.database_maintenance_runtime import (
+    resolve_generation_program as _resolve_generation_program,
+)
+from app.dataset_maintenance_cli import (
+    DATASET_MAINTENANCE_SWITCHES,
+    run_dataset_maintenance,
+)
+from app.services import installer_runtime_guard as _installer_guard
 
 _VOLUME_IDENTITY_PATTERN = re.compile(
     r"^\\\\\?\\Volume\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
@@ -63,7 +78,6 @@ _BOOTSTRAP_RECOVERY_GUARD_NAME = "bootstrap-exposure-recovery-pending"
 _MANAGED_SCHEMA_UPGRADE_SWITCH = "--managed-schema-upgrade"
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
-_GENERATION_PROGRAM_FILENAME = "DATABASE_GENERATION_PROGRAM.json"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
 _MANAGED_SCHEMA_MODULE_NAME = "_ticketbox_managed_schema_upgrade"
 _DATABASE_GENERATION_TARGET_MODULE_NAME = "_ticketbox_database_generation_target"
@@ -98,21 +112,12 @@ def _bundle_dir() -> Path:
 
 
 def _is_database_generation_helper() -> bool:
-    return (
-        getattr(sys, "frozen", False)
-        and Path(sys.executable).name.lower() == _DATABASE_GENERATION_HELPER_NAME
-    )
+    return getattr(sys, "frozen", False) and Path(sys.executable).name.lower() == _DATABASE_GENERATION_HELPER_NAME
 
 
 def _add_generation_program_arguments(parser: ArgumentParser) -> None:
     parser.add_argument("--generation-program-path", type=Path, required=True)
     parser.add_argument("--expected-generation-program-sha256", required=True)
-
-
-def _resolve_generation_program(path: Path) -> Path:
-    if path != Path(_GENERATION_PROGRAM_FILENAME):
-        raise RuntimeError("generation program must be the payload-root artifact")
-    return (_bundle_dir() / path).resolve(strict=True)
 
 
 def _parse_generation_program_validation_args(argv: list[str]) -> Namespace:
@@ -171,107 +176,6 @@ def _parse_database_generation_target_args(argv: list[str]) -> Namespace:
     return parser.parse_args(argv)
 
 
-def _maintenance_standalone_source_path(filename: str) -> Path:
-    if getattr(sys, "frozen", False):
-        bundle_root = getattr(sys, "_MEIPASS", None)
-        if not isinstance(bundle_root, str) or not bundle_root:
-            raise RuntimeError("frozen database maintenance source root is unavailable")
-        backend_root = Path(bundle_root)
-    else:
-        backend_root = Path(__file__).resolve().parents[1]
-    return backend_root / "app" / "database" / filename
-
-
-@contextmanager
-def _temporary_database_package(source_path: Path) -> Iterator[None]:
-    """Expose one physical helper package without importing the runtime facade."""
-
-    database_module_name = "app.database"
-    if database_module_name in sys.modules:
-        raise RuntimeError(
-            "standalone database maintenance process already loaded app.database"
-        )
-    app_package = importlib.import_module("app")
-    if hasattr(app_package, "database"):
-        raise RuntimeError(
-            "standalone database maintenance process has an unexpected database facade"
-        )
-
-    package = ModuleType(database_module_name)
-    package.__package__ = database_module_name
-    package.__path__ = [str(source_path.parent)]
-    package.__spec__ = importlib.machinery.ModuleSpec(
-        database_module_name,
-        loader=None,
-        is_package=True,
-    )
-    sys.modules[database_module_name] = package
-    app_package.database = package
-    try:
-        yield
-        if sys.modules.get(database_module_name) is not package:
-            raise RuntimeError(
-                "standalone database maintenance package identity changed"
-            )
-    finally:
-        for name in tuple(sys.modules):
-            if name == database_module_name or name.startswith(
-                f"{database_module_name}."
-            ):
-                sys.modules.pop(name, None)
-        if hasattr(app_package, "database"):
-            delattr(app_package, "database")
-
-
-def _load_standalone_database_module(
-    *,
-    module_name: str,
-    filename: str,
-    database_package_seam: bool = False,
-) -> ModuleType:
-    """Load one maintenance action without executing ``app.database.__init__``.
-
-    The package facade creates the ordinary runtime engine from global settings.
-    That is forbidden in this maintenance process, so the attested source file
-    is shipped as a PyInstaller data file and loaded under a standalone name.
-    """
-
-    source_path = _maintenance_standalone_source_path(filename).resolve()
-    if not source_path.is_file():
-        raise RuntimeError("standalone database maintenance source is unavailable")
-    backend_root = source_path.parents[2]
-    backend_root_text = str(backend_root)
-    if backend_root_text not in sys.path:
-        # A source invocation starts with backend/packaging on sys.path, while a
-        # frozen invocation starts from the bootloader's extraction directory.
-        # Add only the root that physically contains the attested action so its
-        # narrow app.money_contract / secure_file imports resolve.
-        sys.path.insert(0, backend_root_text)
-    existing = sys.modules.get(module_name)
-    if isinstance(existing, ModuleType):
-        if Path(str(existing.__file__)).resolve() != source_path.resolve():
-            raise RuntimeError("standalone database maintenance module identity changed")
-        return existing
-    spec = importlib.util.spec_from_file_location(
-        module_name,
-        source_path,
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("standalone database maintenance module is unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    try:
-        if database_package_seam:
-            with _temporary_database_package(source_path):
-                spec.loader.exec_module(module)
-        else:
-            spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop(module_name, None)
-        raise
-    return module
-
-
 def _load_managed_schema_upgrade_module() -> ModuleType:
     return _load_standalone_database_module(
         module_name=_MANAGED_SCHEMA_MODULE_NAME,
@@ -286,27 +190,6 @@ def _load_database_generation_target_module() -> ModuleType:
         filename="_database_generation_target_verification.py",
         database_package_seam=True,
     )
-
-
-def _assert_maintenance_libpq_environment(pgpassfile: Path) -> None:
-    """Fail closed unless libpq sees only the attested one-shot passfile."""
-
-    pg_entries = [
-        (name, value)
-        for name, value in os.environ.items()
-        if name.upper().startswith("PG")
-    ]
-    if len(pg_entries) != 1 or pg_entries[0][0].upper() != "PGPASSFILE":
-        raise RuntimeError("database maintenance helper libpq environment is not sealed")
-    try:
-        expected = os.path.normcase(os.path.abspath(os.fspath(pgpassfile)))
-        actual = os.path.normcase(os.path.abspath(pg_entries[0][1]))
-    except (OSError, TypeError, ValueError) as exc:
-        raise RuntimeError(
-            "database maintenance helper libpq environment is not sealed"
-        ) from exc
-    if actual != expected:
-        raise RuntimeError("database maintenance helper libpq environment is not sealed")
 
 
 def _run_generation_program_validation(
@@ -328,18 +211,12 @@ def _run_generation_program_validation(
         raise RuntimeError("generation program validation requires empty stdin")
     managed = _load_managed_schema_upgrade_module()
     result = managed.validate_database_generation_program(
-        generation_program_path=_resolve_generation_program(
-            args.generation_program_path
-        ),
-        expected_generation_program_sha256=(
-            args.expected_generation_program_sha256
-        ),
+        generation_program_path=_resolve_generation_program(args.generation_program_path),
+        expected_generation_program_sha256=(args.expected_generation_program_sha256),
     )
     if tuple(result) != _GENERATION_PROGRAM_VALIDATION_FIELDS:
         raise RuntimeError("generation program validation returned an unsupported shape")
-    output_stream.write(
-        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
-    )
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
 
@@ -365,23 +242,15 @@ def _run_managed_schema_upgrade(
     result = managed.run_managed_schema_upgrade_action(
         database_url=args.database_url,
         pgpassfile=args.pgpassfile,
-        generation_program_path=_resolve_generation_program(
-            args.generation_program_path
-        ),
-        expected_generation_program_sha256=(
-            args.expected_generation_program_sha256
-        ),
+        generation_program_path=_resolve_generation_program(args.generation_program_path),
+        expected_generation_program_sha256=(args.expected_generation_program_sha256),
         source_revision=args.source_revision,
         target_revision=args.target_revision,
         generation_operation_id=args.generation_operation_id,
     )
     if tuple(result) != _MANAGED_SCHEMA_RESULT_FIELDS:
-        raise RuntimeError(
-            "managed schema upgrade returned an unsupported result shape"
-        )
-    output_stream.write(
-        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
-    )
+        raise RuntimeError("managed schema upgrade returned an unsupported result shape")
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
 
@@ -406,20 +275,14 @@ def _run_database_generation_target_verification(
     result = module.run_database_generation_target_verification_action(
         database_url=args.database_url,
         pgpassfile=args.pgpassfile,
-        generation_program_path=_resolve_generation_program(
-            args.generation_program_path
-        ),
-        expected_generation_program_sha256=(
-            args.expected_generation_program_sha256
-        ),
+        generation_program_path=_resolve_generation_program(args.generation_program_path),
+        expected_generation_program_sha256=(args.expected_generation_program_sha256),
         operation_id=args.operation_id,
         database=args.database,
         restore_attempt_id=args.restore_attempt_id,
         target_revision=args.target_revision,
     )
-    output_stream.write(
-        json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n"
-    )
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
 
@@ -582,37 +445,27 @@ def _expected_frozen_install_dir() -> Path:
 def _assert_frozen_host_authority(host_authority: dict[str, str | None]) -> None:
     if not getattr(sys, "frozen", False):
         return
-    missing = [
-        key
-        for key in _FROZEN_HOST_AUTHORITY_KEYS
-        if not (host_authority.get(key) or "").strip()
-    ]
+    missing = [key for key in _FROZEN_HOST_AUTHORITY_KEYS if not (host_authority.get(key) or "").strip()]
     if missing:
-        raise RuntimeError(
-            "frozen backend host authority is incomplete: " + ", ".join(missing)
-        )
+        raise RuntimeError("frozen backend host authority is incomplete: " + ", ".join(missing))
     owner_recovery_channel = host_authority["TICKETBOX_OWNER_RECOVERY_CHANNEL"]
     if owner_recovery_channel not in _OWNER_RECOVERY_CHANNELS:
         raise RuntimeError("frozen backend owner recovery capability is invalid")
 
 
 def _assert_bootstrap_guard_runtime_binding(marker_path: Path) -> None:
-    bootstrap_guard_value = os.environ.get(
-        "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH", ""
-    ).strip()
+    bootstrap_guard_value = os.environ.get("TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH", "").strip()
     if not bootstrap_guard_value:
         return
     bootstrap_guard_path = Path(os.path.abspath(bootstrap_guard_value))
     expected_bootstrap_guard = marker_path.parent / _BOOTSTRAP_RECOVERY_GUARD_NAME
-    if os.path.normcase(str(bootstrap_guard_path)) != os.path.normcase(
-        str(expected_bootstrap_guard)
-    ):
-        raise RuntimeError(
-            "bootstrap recovery guard is not bound to the runtime DataRoot projection"
-        )
+    if os.path.normcase(str(bootstrap_guard_path)) != os.path.normcase(str(expected_bootstrap_guard)):
+        raise RuntimeError("bootstrap recovery guard is not bound to the runtime DataRoot projection")
 
 
-def _assert_runtime_data_root_authority(data_dir: Path) -> Path | None:
+def _assert_runtime_data_root_authority(
+    data_dir: Path,
+) -> _installer_guard.InstalledRuntimeAuthority | None:
     marker_value = os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip()
     volume_value = os.environ.get("TICKETBOX_DATA_VOLUME_IDENTITY", "").strip()
     if not marker_value and not volume_value:
@@ -646,9 +499,11 @@ def _assert_runtime_data_root_authority(data_dir: Path) -> Path | None:
         "data_volume_identity",
     }:
         raise RuntimeError("runtime DataRoot marker has an unsupported shape")
-    if marker.get("schema") != "ticketbox-data-root-v2" or not isinstance(
-        marker.get("data_root"), str
-    ) or not isinstance(marker.get("install_dir"), str):
+    if (
+        marker.get("schema") != "ticketbox-data-root-v2"
+        or not isinstance(marker.get("data_root"), str)
+        or not isinstance(marker.get("install_dir"), str)
+    ):
         raise RuntimeError("runtime DataRoot marker has an unsupported binding")
     expected_volume = volume_value.upper()
     if str(marker.get("data_volume_identity", "")).upper() != expected_volume:
@@ -666,15 +521,15 @@ def _assert_runtime_data_root_authority(data_dir: Path) -> Path | None:
     if final_volume_match is None or final_volume_match.group(0).upper() != expected_volume:
         raise RuntimeError("runtime DataRoot junction resolved to another volume")
     expected_runtime_root = _volume_bound_marker_path(marker_data_root, expected_volume)
-    if ntpath.normcase(final_runtime_root.rstrip("\\")) != ntpath.normcase(
-        expected_runtime_root.rstrip("\\")
-    ):
+    if ntpath.normcase(final_runtime_root.rstrip("\\")) != ntpath.normcase(expected_runtime_root.rstrip("\\")):
         raise RuntimeError("runtime DataRoot junction does not match the marker data_root")
-    if os.path.normcase(str(marker_install_dir)) != os.path.normcase(
-        str(_expected_frozen_install_dir())
-    ):
+    if os.path.normcase(str(marker_install_dir)) != os.path.normcase(str(_expected_frozen_install_dir())):
         raise RuntimeError("runtime DataRoot marker does not match the frozen install directory")
-    return marker_path.parent
+    return _installer_guard.InstalledRuntimeAuthority(
+        runtime_junction=marker_path.parent,
+        install_dir=marker_install_dir,
+        data_root=marker_data_root,
+    )
 
 
 def configure_environment() -> Path:
@@ -690,10 +545,7 @@ def configure_environment() -> Path:
     # These values are supplied by the host/service contract.  The writable
     # app .env may configure business/runtime settings, but it must never move
     # the process to another data root or suppress an installer-owned guard.
-    host_authority = {
-        key: os.environ.get(key)
-        for key in _FROZEN_HOST_AUTHORITY_KEYS
-    }
+    host_authority = {key: os.environ.get(key) for key in _FROZEN_HOST_AUTHORITY_KEYS}
     _assert_frozen_host_authority(host_authority)
     _assert_runtime_data_root_authority(data_dir)
     (data_dir / "uploads").mkdir(parents=True, exist_ok=True)
@@ -836,9 +688,7 @@ def _assert_bootstrap_recovery_not_pending(
         allowed_reparse_ancestor=validated_runtime_junction,
     )
     if pending:
-        raise RuntimeError(
-            "bootstrap credential recovery is pending; run installer repair before starting HTTP"
-        )
+        raise RuntimeError("bootstrap credential recovery is pending; run installer repair before starting HTTP")
 
 
 def _installer_runtime_recovery_guard_path() -> Path | None:
@@ -877,8 +727,7 @@ def _host_guard_is_present_or_malformed(
                 is_allowed_runtime_junction = (
                     normalized_allowed_reparse is not None
                     and cursor != guard_path
-                    and os.path.normcase(str(Path(os.path.abspath(cursor))))
-                    == normalized_allowed_reparse
+                    and os.path.normcase(str(Path(os.path.abspath(cursor)))) == normalized_allowed_reparse
                     and stat.S_ISDIR(entry.st_mode)
                 )
                 if not is_allowed_runtime_junction:
@@ -895,6 +744,38 @@ def _installer_runtime_recovery_is_pending(guard_path: Path | None) -> bool:
     if guard_path is None:
         return False
     return _host_guard_is_present_or_malformed(guard_path)
+
+
+def _initialize_installed_runtime_settings(
+    data_dir: Path,
+    authority: _installer_guard.InstalledRuntimeAuthority | None,
+) -> None:
+    guard_path = _installer_runtime_recovery_guard_path()
+    if guard_path is None:
+        return
+    if authority is None:
+        raise _installer_guard.InstallerRuntimeGuardError(
+            "installer runtime recovery guard lacks installed authority"
+        )
+    guard = _installer_guard.read_installer_runtime_recovery_guard(
+        guard_path,
+        authority,
+    )
+    if guard is None:
+        return
+    from app.services.runtime_settings_store import (
+        RuntimeSettingsProjection,
+        initialize_runtime_settings,
+    )
+
+    initialize_runtime_settings(
+        data_dir / "runtime-settings" / "runtime-settings.json",
+        RuntimeSettingsProjection(
+            public_base_url="",
+            budget_advisor_owner_confirmed=False,
+        ),
+        service_owned=True,
+    )
 
 
 class _InstallerRuntimeRecoveryGuard:
@@ -1011,31 +892,30 @@ def _build_log_config(log_dir: Path, *, console: bool | None = None) -> dict:
 
 def main() -> int | None:
     arguments = sys.argv[1:]
-    generation_switches = [
+    maintenance_switches = [
         switch
         for switch in (
             _MANAGED_SCHEMA_UPGRADE_SWITCH,
             _DATABASE_GENERATION_TARGET_VERIFY_SWITCH,
             _GENERATION_PROGRAM_VALIDATE_SWITCH,
+            *DATASET_MAINTENANCE_SWITCHES,
         )
         if switch in arguments
     ]
-    if len(generation_switches) > 1:
+    if len(maintenance_switches) > 1:
         raise RuntimeError("database generation helper accepts exactly one mode")
-    if generation_switches:
+    if maintenance_switches:
         if getattr(sys, "frozen", False) and not _is_database_generation_helper():
-            raise RuntimeError(
-                "database generation requires the dedicated frozen helper"
-            )
-        if generation_switches[0] == _MANAGED_SCHEMA_UPGRADE_SWITCH:
+            raise RuntimeError("database generation requires the dedicated frozen helper")
+        if maintenance_switches[0] == _MANAGED_SCHEMA_UPGRADE_SWITCH:
             return _run_managed_schema_upgrade(arguments)
-        if generation_switches[0] == _DATABASE_GENERATION_TARGET_VERIFY_SWITCH:
+        if maintenance_switches[0] == _DATABASE_GENERATION_TARGET_VERIFY_SWITCH:
             return _run_database_generation_target_verification(arguments)
+        if maintenance_switches[0] in DATASET_MAINTENANCE_SWITCHES:
+            return run_dataset_maintenance(arguments)
         return _run_generation_program_validation(arguments)
     if _is_database_generation_helper():
-        raise RuntimeError(
-            "the dedicated database generation helper requires an explicit mode"
-        )
+        raise RuntimeError("the dedicated database generation helper requires an explicit mode")
 
     import logging.config
 
@@ -1050,7 +930,12 @@ def main() -> int | None:
     host = os.getenv("TICKETBOX_HOST", "127.0.0.1")
     port = int(os.getenv("TICKETBOX_PORT", "8000"))
     validated_runtime_junction = _assert_runtime_data_root_authority(data_dir)
-    _assert_bootstrap_recovery_not_pending(validated_runtime_junction)
+    _assert_bootstrap_recovery_not_pending(
+        validated_runtime_junction.runtime_junction
+        if validated_runtime_junction is not None
+        else None
+    )
+    _initialize_installed_runtime_settings(data_dir, validated_runtime_junction)
 
     # Import the app object directly (not the "app.main:app" string form):
     # uvicorn's string import re-resolves the module via importlib, which is

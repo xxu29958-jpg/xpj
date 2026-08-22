@@ -56,6 +56,7 @@ from app.models.currency_binding import (
     InstallationCurrencyBinding,
     InstallationIdempotencyKey,
 )
+from app.models.dataset_authority import DatasetAuthorityRecord
 from app.models.debt import (
     Debt,
     DebtAdjustment,
@@ -116,6 +117,7 @@ __all__ = [
     "DebtForgiveness",
     "DebtGoalLink",
     "DebtVoid",
+    "DatasetAuthorityRecord",
     "Device",
     "DuplicateIgnore",
     "Expense",

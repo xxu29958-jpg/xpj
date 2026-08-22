@@ -30,6 +30,7 @@ pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")
 
 PACKAGING = Path(__file__).resolve().parents[1]
 PROJECTION = PACKAGING / "windows_database_generation_projection.ps1"
+FAILURE = PACKAGING / "windows_operation_failure.ps1"
 PROJECTION_LITERAL = str(PROJECTION.resolve()).replace("'", "''")
 
 
@@ -54,6 +55,8 @@ def _projection_fixture_command(
         str(PROJECTION),
         "-ContractPath",
         str(PACKAGING / "windows_database_generation_contract.ps1"),
+        "-FailurePath",
+        str(FAILURE),
         "-CredentialsPath",
         str(PACKAGING / "windows_postgresql_credentials.ps1"),
         "-RetirementPath",
@@ -82,6 +85,8 @@ def _projection_fixture_command(
         str(PACKAGING / "windows_ticketbox_database_contract.ps1"),
         "-DatabaseAclPath",
         str(PACKAGING / "windows_ticketbox_database_acl.ps1"),
+        "-DatabaseAclObservationPath",
+        str(PACKAGING / "windows_ticketbox_database_acl_observation.ps1"),
         "-DatabaseRolesPath",
         str(PACKAGING / "windows_ticketbox_database_roles.ps1"),
         "-PythonPath",
@@ -386,7 +391,7 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows projection contract")
 def test_runtime_projection_preserves_primary_and_secret_cleanup(tmp_path: Path) -> None:
     source = PROJECTION.read_text(encoding="utf-8-sig")
-    contract_source = (PACKAGING / "windows_database_generation_contract.ps1").read_text(
+    failure_source = FAILURE.read_text(
         encoding="utf-8-sig"
     )
     harness = tmp_path / "runtime-projection-failure-aggregation.ps1"
@@ -394,8 +399,10 @@ def test_runtime_projection_preserves_primary_and_secret_cleanup(tmp_path: Path)
         f"""
 $ErrorActionPreference = 'Stop'
 {powershell_function(source, "Read-TicketboxDatabaseGenerationRuntimeProjection")}
-{powershell_function(contract_source, "Throw-TicketboxDatabaseGenerationOperationFailure")}
+{powershell_function(failure_source, "Throw-TicketboxOperationFailure")}
 function Assert-TicketboxLifecycleOperationLease {{}}
+function Get-TicketboxPathEntryKindNoFollow {{ return 'File' }}
+function Assert-NoTicketboxAncestorReparsePoints {{}}
 function Read-EnvMap {{ return @{{ DATABASE_URL = 'postgresql://runtime' }} }}
 function Get-TicketboxDatabaseAuthorizationContract {{
     return [pscustomobject]@{{ DatabaseName = 'ticketbox'; RuntimeRole = 'ticketbox_runtime' }}
@@ -513,11 +520,14 @@ $script:candidate = [pscustomobject]@{{
     }}
 }}
 function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
+function Get-TicketboxPathEntryKindNoFollow {{ return 'File' }}
+function Assert-NoTicketboxAncestorReparsePoints {{}}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
     param($Value)
     return $Value | ConvertTo-Json -Compress -Depth 64
 }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('e' * 64) }}
+function Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 {{ return ('e' * 64) }}
 function Get-TicketboxDatabaseGenerationHostAuthoritySha256 {{ return ('f' * 64) }}
 function Read-EnvMap {{
     $map = [Collections.Generic.Dictionary[string,string]]::new()
@@ -535,7 +545,7 @@ function Get-TicketboxLocalDatabaseConnection {{
 function Assert-TicketboxConnectedPostgresDataRoot {{}}
 function ConvertTo-TicketboxPostgresqlSecureString {{ return $script:runtimeSecret }}
 function Test-TicketboxDatabaseGenerationBootstrapRetirement {{ return $script:mode -cne 'foreign' }}
-{powershell_function((PACKAGING / "windows_database_generation_contract.ps1").read_text(encoding="utf-8-sig"), "Throw-TicketboxDatabaseGenerationOperationFailure")}
+{powershell_function(FAILURE.read_text(encoding="utf-8-sig"), "Throw-TicketboxOperationFailure")}
 function Get-TicketboxDatabaseAuthorizationContract {{
     return [pscustomobject]@{{ DatabaseName = 'ticketbox'; RuntimeRole = 'ticketbox_runtime' }}
 }}
@@ -587,7 +597,7 @@ foreach ($mode in @('missing', 'foreign')) {{
         f"""
 $ErrorActionPreference = 'Stop'
 . '{PROJECTION_LITERAL}'
-{powershell_function((PACKAGING / "windows_database_generation_contract.ps1").read_text(encoding="utf-8-sig"), "Throw-TicketboxDatabaseGenerationOperationFailure")}
+{powershell_function(FAILURE.read_text(encoding="utf-8-sig"), "Throw-TicketboxOperationFailure")}
 $script:migratorState = 'active'
 $script:failAfterMigratorCommit = $true
 $script:failFirstEnvWrite = $true
@@ -599,6 +609,9 @@ $script:adminSecret.MakeReadOnly()
 $script:runtimeSecret = New-Object Security.SecureString
 $script:runtimeSecret.AppendChar('r')
 $script:runtimeSecret.MakeReadOnly()
+$script:backupSecret = New-Object Security.SecureString
+$script:backupSecret.AppendChar('b')
+$script:backupSecret.MakeReadOnly()
 $script:httpSecret = New-Object Security.SecureString
 $script:httpSecret.AppendChar('h')
 $script:httpSecret.MakeReadOnly()
@@ -608,6 +621,8 @@ function Assert-AdminSecret($Password) {{
     }}
 }}
 function Assert-TicketboxLifecycleOperationLease {{}}
+function Get-TicketboxPathEntryKindNoFollow {{ return 'File' }}
+function Assert-NoTicketboxAncestorReparsePoints {{}}
 function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {{
     param($Authority)
     Assert-AdminSecret $Authority.Secret
@@ -635,8 +650,9 @@ function Invoke-TicketboxPostgresqlDatabaseCommand {{
 }}
 function Assert-TicketboxDatabaseCredential {{
     param($Authority, $Password, $CredentialKind)
-    if (-not [object]::ReferenceEquals($Password, $script:runtimeSecret)) {{
-        throw 'projection did not use runtime credential'
+    $expected = if ($CredentialKind -ceq 'backup') {{ $script:backupSecret }} else {{ $script:runtimeSecret }}
+    if (-not [object]::ReferenceEquals($Password, $expected)) {{
+        throw "projection did not use $CredentialKind credential"
     }}
 }}
 function Assert-TicketboxDatabaseRolePolicy {{
@@ -696,14 +712,16 @@ function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
     return ($Value | ConvertTo-Json -Compress -Depth 20)
 }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('e' * 64) }}
+function Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 {{ return ('e' * 64) }}
 function Get-TicketboxDatabaseGenerationHostAuthoritySha256 {{ return ('f' * 64) }}
 $script:TicketboxDatabaseGenerationAclAccounts = @('SYSTEM')
 $script:TicketboxDatabaseGenerationOwnerAccount = 'SYSTEM'
 function Get-TicketboxDatabaseAuthorizationContract {{
     return [pscustomobject]@{{
         DatabaseName = 'ticketbox'
-        MigratorRole = 'ticketbox_migrator'
-        RuntimeRole = 'ticketbox_runtime'
+            MigratorRole = 'ticketbox_migrator'
+            RuntimeRole = 'ticketbox_runtime'
+            BackupRole = 'ticketbox_backup'
     }}
 }}
 $intent = [pscustomobject]@{{
@@ -720,9 +738,10 @@ $candidate = [pscustomobject]@{{
         target_revision = '20260809_0001'
     }}
 }}
-$runtimeCredentials = [pscustomobject]@{{
-    RuntimePassword = $script:runtimeSecret
-    HttpBootstrapSecret = $script:httpSecret
+    $runtimeCredentials = [pscustomobject]@{{
+        RuntimePassword = $script:runtimeSecret
+        BackupPassword = $script:backupSecret
+        HttpBootstrapSecret = $script:httpSecret
 }}
 $hostAuthority = [pscustomobject]@{{ Port = 5432 }}
 $maintenanceAuthority = [pscustomobject]@{{ Secret = $script:adminSecret }}

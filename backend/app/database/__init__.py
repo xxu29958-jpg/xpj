@@ -14,10 +14,8 @@ other public symbols are direct re-exports.
 from __future__ import annotations
 
 import logging
-import subprocess
 import sys
 
-from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from app.database._core import (
@@ -41,7 +39,6 @@ from app.database._lifecycle import (
     load_alembic_context,
     plan_database_lifecycle,
 )
-from app.database._managed_postgres_contract import MIGRATION_LEASE_LABEL
 from app.database._seed import (
     BASELINE_MIGRATION_NAME,
     reconcile_expense_tag_mirror_once,
@@ -50,7 +47,6 @@ from app.database._seed import (
     seed_runtime_data,
 )
 from app.database._uploads import migrate_upload_paths_to_tenant_dirs
-from app.errors import AppError
 from app.version import BACKEND_VERSION
 
 _logger = logging.getLogger(__name__)
@@ -118,9 +114,12 @@ def init_db() -> None:
     # are repeated under a database-scoped lease below. Installed hosts are
     # fenced above; their long-lived runtime role intentionally has no DDL.
     if plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
-        _apply_managed_schema_lifecycle(alembic)
-    else:
-        _apply_schema_lifecycle(plan, alembic)
+        raise DatabaseMigrationPreflightError(
+            "拒绝由普通后端启动执行既有数据集升级:必须先由离线维护 owner "
+            "发布完整数据库+原图 backup generation，再执行受管迁移；"
+            "本进程未执行 backup/DDL/DML。"
+        )
+    _apply_schema_lifecycle(plan, alembic)
     _assert_schema_at_head(alembic.head_revision)
     _assert_database_generation_startup_ready(
         alembic,
@@ -174,113 +173,17 @@ def _apply_schema_lifecycle(plan: DatabaseLifecyclePlan, alembic: AlembicContext
         command.upgrade(alembic.config, "head")
 
 
-def _apply_managed_schema_lifecycle(alembic: AlembicContext) -> None:
-    """Serialize reclassification, backup, and DDL for an existing database."""
-
-    from alembic import command
-
-    from app.database._managed_postgres_migration_runtime import _prearmed_transaction
-
-    # Preflight reads may have returned idle connections to this process's
-    # pool. Close those before proving that no older runtime remains connected;
-    # checked-out connections survive dispose and are therefore still rejected.
-    engine.dispose()
-    with (
-        engine.connect() as connection,
-        _prearmed_transaction(
-            connection,
-            timeout_ms=20 * 60 * 1000,
-            access_mode="read_write",
-        ),
-    ):
-        lease_acquired = connection.scalar(
-            text("SELECT pg_try_advisory_xact_lock(hashtext(current_database()), hashtext(:label))"),
-            {"label": MIGRATION_LEASE_LABEL},
-        )
-        if lease_acquired is not True:
-            raise DatabaseMigrationPreflightError(
-                "拒绝并发数据库迁移:schema migration lease 正由另一进程持有；"
-                "本进程未执行 backup/DDL/DML。请在当前迁移结束后重启。"
-            )
-        # The plan observed before the lease is never a write authorization.
-        # A competing process may have reached head between that read and this
-        # transaction, so classify again while the lease is held.
-        lifecycle = inspect_database_lifecycle(connection)
-        plan = plan_database_lifecycle(lifecycle, alembic)
-        if lifecycle.has_existing_schema:
-            _assert_existing_schema_compatible(lifecycle, connection=connection)
-        if plan.action is DatabaseLifecycleAction.NOOP:
-            return
-        if plan.action is DatabaseLifecycleAction.REFUSE:
-            raise DatabaseMigrationPreflightError(
-                f"拒绝自动变更数据库:{plan.refusal_reason}数据库未执行 backup/DDL/DML。"
-            )
-        if plan.action is not DatabaseLifecycleAction.MANAGED_UPGRADE:
-            raise DatabaseMigrationPreflightError(
-                "拒绝在 managed migration lease 内改变非托管数据库状态；数据库未执行 backup/DDL/DML。"
-            )
-
-        _assert_managed_upgrade_writer_quiescence(connection)
-        _lock_managed_upgrade_tables(connection)
-        _assert_existing_schema_owner_ready(connection)
-        _backup_before_upgrade(lifecycle.current_revision, alembic.head_revision)
-        # Alembic must use this exact connection: PostgreSQL transaction-level
-        # advisory locks are scoped to it, keeping the lease through all DDL and
-        # releasing it automatically on commit or rollback.
-        alembic.config.attributes["connection"] = connection
-        command.upgrade(alembic.config, "head")
-
-
-def _assert_managed_upgrade_writer_quiescence(connection: Connection) -> None:
-    connection.execute(text("SELECT pg_stat_clear_snapshot()"))
-    other_clients = connection.scalar(
-        text(
-            "SELECT count(*) FROM pg_stat_activity "
-            "WHERE datid = (SELECT oid FROM pg_database "
-            "WHERE datname = current_database()) "
-            "AND pid <> pg_backend_pid() AND backend_type = 'client backend'"
-        )
-    )
-    if int(other_clients or 0) != 0:
-        raise DatabaseMigrationPreflightError(
-            "拒绝在旧 runtime 仍连接时执行升级:发现 another client session；"
-            "本进程未执行 backup/DDL/DML。请先停止所有旧后端。"
-        )
-
-
-def _lock_managed_upgrade_tables(connection: Connection) -> None:
-    table_names = tuple(
-        str(name)
-        for name in connection.scalars(
-            text(
-                "SELECT c.relname FROM pg_class AS c "
-                "JOIN pg_namespace AS n ON n.oid = c.relnamespace "
-                "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') "
-                "ORDER BY c.relname"
-            )
-        )
-    )
-    if not table_names:
-        raise DatabaseMigrationPreflightError("拒绝升级缺少可锁定关系的既有数据库；本进程未执行 backup/DDL/DML。")
-    preparer = connection.dialect.identifier_preparer
-    schema = preparer.quote_schema("public")
-    relations = ", ".join(f"{schema}.{preparer.quote_identifier(name)}" for name in table_names)
-    connection.execute(text("SET LOCAL lock_timeout = '15s'"))
-    connection.execute(text(f"LOCK TABLE {relations} IN SHARE MODE"))
-
-
 def _assert_existing_schema_compatible(
     lifecycle: DatabaseLifecycleState,
     *,
     connection: Connection | None = None,
 ) -> None:
-    """Run the app_meta binary floor when that legacy schema exposes it."""
+    """Run the compatibility floor from the sole dataset authority."""
 
-    if "app_meta" not in lifecycle.table_names:
-        return
+    if "dataset_authority" not in lifecycle.table_names:
+        raise DatabaseMigrationPreflightError("拒绝启动数据库:现有 schema 缺少 dataset_authority。")
     from sqlalchemy import inspect, text
 
-    from app.models.app_meta import SCHEMA_MIN_COMPATIBLE_KEY
     from app.services.app_meta_service import assert_binary_compatible_with_minimum
 
     if connection is None:
@@ -289,18 +192,11 @@ def _assert_existing_schema_compatible(
                 lifecycle,
                 connection=owned_connection,
             )
-    columns = {column["name"] for column in inspect(connection).get_columns("app_meta")}
-    if not {"key", "value"}.issubset(columns):
-        raise DatabaseMigrationPreflightError("拒绝启动数据库:app_meta 缺少 compatibility 所需的 key/value 列。")
-    minimum = connection.scalar(
-        text("SELECT value FROM app_meta WHERE key = :key LIMIT 1"),
-        {"key": SCHEMA_MIN_COMPATIBLE_KEY},
-    )
+    columns = {column["name"] for column in inspect(connection).get_columns("dataset_authority")}
+    if "schema_min_compatible" not in columns:
+        raise DatabaseMigrationPreflightError("拒绝启动数据库:dataset_authority 缺少 schema_min_compatible。")
+    minimum = connection.scalar(text("SELECT schema_min_compatible FROM dataset_authority WHERE singleton_id = 1"))
     assert_binary_compatible_with_minimum(minimum)
-
-
-def _assert_existing_schema_owner_ready(connection: Connection) -> None:
-    _assert_role_can_alter_existing_schema(connection)
 
 
 def _assert_schema_at_head(expected_head: str) -> None:
@@ -312,54 +208,6 @@ def _assert_schema_at_head(expected_head: str) -> None:
         raise DatabaseMigrationPreflightError(
             f"数据库迁移后 revision 校验失败:expected={expected_head!r}, actual={revisions!r}。"
         )
-
-
-def _assert_role_can_alter_existing_schema(connection) -> None:
-    """Pre-flight before Alembic ``upgrade`` on an EXISTING schema: the connected
-    role must be able to ALTER the public tables, or the migration half-fails
-    cryptically mid-run.
-
-    The 2026-06-04 PostgreSQL cut-over loaded data as the ``postgres`` superuser,
-    leaving most tables owned by ``postgres`` while the app role had only DML; the
-    first ALTER migration was rejected ("must be owner") and startup silently
-    bricked for ~4 days (see docs/runbook/POSTGRES_MIGRATION.md §3 and the
-    table-owner trap). This turns that failure mode into a clear, actionable
-    pre-flight error listing the mis-owned tables.
-
-    PostgreSQL's ``USAGE`` role test reflects whether ``current_user`` can
-    actually exercise the owner role through inheritance. A bare membership is
-    insufficient when the login is ``NOINHERIT``; accepting that shape would let
-    the pre-flight pass and then fail at the first ALTER. A role has USAGE on
-    itself and a superuser has USAGE on every role, so healthy owner and migrator
-    configurations still yield zero flagged rows.
-    """
-    from sqlalchemy import text
-
-    rows = connection.execute(
-        text(
-            """
-            SELECT tablename, tableowner
-            FROM pg_tables
-            WHERE schemaname = 'public'
-              AND tableowner <> current_user
-              AND NOT pg_has_role(current_user, tableowner, 'USAGE')
-            ORDER BY tablename
-            """
-        )
-    ).all()
-    if not rows:
-        return
-
-    current = connection.scalar(text("SELECT current_user"))
-    sample = ", ".join(f"{row.tablename}(属主={row.tableowner})" for row in rows[:8])
-    suffix = "" if len(rows) <= 8 else f" 等共 {len(rows)} 张表"
-    raise DatabaseMigrationPreflightError(
-        f"拒绝执行数据库迁移:当前数据库角色 '{current}' 不是下列表的属主、"
-        f"也不能继承属主角色权限,ALTER / ADD CONSTRAINT 迁移会失败"
-        f"(历史 cut-over 表属主错位陷阱)。请先用超级用户归位表属主"
-        f"(见 docs/runbook/POSTGRES_MIGRATION.md §3 与 "
-        f"backend/scripts/fix_table_owners.sql),再重启服务。受影响表:{sample}{suffix}。"
-    )
 
 
 def _warn_if_default_database_url() -> None:
@@ -377,34 +225,3 @@ def _warn_if_default_database_url() -> None:
             "以超级用户跑 Alembic 会让表属主=postgres,埋下表属主错位陷阱"
             "(2026-06-04 静默停机根因)。生产请将 DATABASE_URL 指向应用角色。"
         )
-
-
-def _backup_before_upgrade(current_revision: str | None, head: str) -> None:
-    """Snapshot a supported behind schema immediately before Alembic writes.
-
-    Fail-CLOSED: if pg_dump fails, startup performs no database mutation.
-    Empty, at-head, and refused unknown-lineage plans never call this function.
-    """
-    from app.services.backup_service import create_pre_upgrade_backup
-
-    try:
-        entry = create_pre_upgrade_backup()
-    except (AppError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
-        raise DatabaseMigrationPreflightError(
-            f"拒绝执行数据库迁移:迁移前自动备份失败({exc})。迁移是不可逆启动步骤,"
-            f"未成功备份不迁移(数据安全优先)。请确认 pg_dump 可用、备份目录可写后重启;"
-            "不得通过 unattended 环境变量跳过恢复点。"
-        ) from exc
-    _logger.info(
-        "迁移前已写入数据库快照(%s),准备从 %s 迁移到 %s。",
-        entry.file_name,
-        current_revision,
-        head,
-    )
-
-
-def _seed_fresh_schema_metadata_if_needed() -> None:
-    from app.services.app_meta_service import seed_fresh_schema_metadata
-
-    with SessionLocal() as db:
-        seed_fresh_schema_metadata(db)

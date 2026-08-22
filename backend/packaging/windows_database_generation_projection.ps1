@@ -37,14 +37,14 @@ function Write-TicketboxDatabaseGenerationRuntimeEnvironment {
         "PG_RESTORE_PATH=$(Join-Path ([string]$ProjectionContract.pg_bin) 'pg_restore.exe')",
         "OCR_DEFAULT_TIMEZONE=$([string]$ProjectionContract.timezone)"
     )
-    if (-not [string]::IsNullOrWhiteSpace([string]$ProjectionContract.public_base_url)) {
-        $lines += "PUBLIC_BASE_URL=$([string]$ProjectionContract.public_base_url)"
-    }
     $lines += @(
         "ENABLE_HTTP_BOOTSTRAP=true",
         "HTTP_BOOTSTRAP_SECRET=$HttpBootstrapSecret"
     )
-    Write-EnvNoBom -Path ([string]$ProjectionContract.env_path) -Lines $lines
+    Write-EnvNoBom `
+        -Path ([string]$ProjectionContract.env_path) `
+        -Lines $lines `
+        -BackendServiceName ([string]$ProjectionContract.backend_service_name)
 }
 
 function Read-TicketboxDatabaseGenerationRuntimeProjection {
@@ -53,7 +53,8 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
         [Parameter(Mandatory = $true)][object]$Candidate,
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][object]$ProjectionContract,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
+        [Parameter(Mandatory = $true)][object]$LifecycleLock,
+        [switch]$AllowAbsent
     )
     $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     if (
@@ -63,7 +64,14 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
         throw "runtime projection 拒绝非 exact candidate。"
     }
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $environment = Read-EnvMap ([string]$ProjectionContract.env_path)
+    $environmentPath = [string]$ProjectionContract.env_path
+    $environmentKind = Get-TicketboxPathEntryKindNoFollow $environmentPath
+    if ($environmentKind -ceq "Missing" -and $AllowAbsent) { return $null }
+    if ($environmentKind -cne "File") {
+        throw "runtime projection environment 不是可信普通文件。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $environmentPath
+    $environment = Read-EnvMap $environmentPath
     if (-not $environment.ContainsKey("DATABASE_URL")) {
         throw "runtime projection 缺少 DATABASE_URL。"
     }
@@ -95,7 +103,7 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
         try { $runtimePassword.Dispose() }
         catch { $cleanup += $_ }
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     $payload = [ordered]@{
         schema = "ticketbox-database-generation-runtime-projection-v1"
         operation_id = [string]$Intent.Payload.operation_id
@@ -103,9 +111,9 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
         candidate_sha256 = [string]$Candidate.PayloadSha256
         committed_revision = [string]$Candidate.Payload.target_revision
         host_contract_sha256 = [string]$Intent.Payload.host_contract_sha256
-        projection_contract_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $ProjectionContract
-        )
+        projection_contract_sha256 =
+            Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+                $ProjectionContract
         database_url_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
             [string]$connection.PersistedDatabaseUrl
         )
@@ -295,12 +303,21 @@ ALTER ROLE "$($databasePolicy.RuntimeRole)"
     NOREPLICATION NOBYPASSRLS CONNECTION LIMIT -1;
 GRANT CONNECT ON DATABASE "$($databasePolicy.DatabaseName)"
     TO "$($databasePolicy.RuntimeRole)";
+ALTER ROLE "$($databasePolicy.BackupRole)"
+    LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+    NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 1;
+GRANT CONNECT ON DATABASE "$($databasePolicy.DatabaseName)"
+    TO "$($databasePolicy.BackupRole)";
 COMMIT;
 "@ | Out-Null
     Assert-TicketboxDatabaseCredential `
         -Authority $HostAuthority `
         -Password $RuntimeCredentials.RuntimePassword `
         -CredentialKind "runtime"
+    Assert-TicketboxDatabaseCredential `
+        -Authority $HostAuthority `
+        -Password $RuntimeCredentials.BackupPassword `
+        -CredentialKind "backup"
     if ($migratorState -ceq "active") {
         Assert-TicketboxDatabaseRolePolicy `
             -Authority $HostAuthority `

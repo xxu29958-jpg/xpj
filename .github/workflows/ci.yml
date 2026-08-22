@@ -342,6 +342,7 @@ jobs:
       - name: Windows installer safety behavior
         env:
           PYTEST_ADDOPTS: ""
+          XPJ_REQUIRE_ELEVATED_WINDOWS_ACL: "1"
         # This is a public repository, so GitHub's standard windows-latest
         # runner has four vCPUs. These tests explicitly exclude the shared
         # xdist_group lane and remain file-isolated; use all four CPUs without
@@ -354,7 +355,8 @@ jobs:
       - name: Windows database maintenance contract
         run: >-
           python -m pytest -q
-          tests/test_windows_task_status.py::test_db_maintenance_scripts_resolve_configured_database_url
+          tests/test_database_maintenance_entrypoint.py
+          tests/test_postgres_backup_dialect.py
           --noconftest --strict-markers -p no:cacheprovider -o addopts=
 
       - name: Installer source preflight (Windows PowerShell 5.1)
@@ -387,6 +389,72 @@ jobs:
       - name: Frozen backend locked release build
         shell: powershell
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
+
+      - name: Exact frozen dataset restore on real local PostgreSQL
+        shell: powershell
+        env:
+          PYTEST_ADDOPTS: ""
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . .\scripts\test_pg_storage_contract.ps1
+          . .\scripts\test_pg_auth_contract.ps1
+          . .\packaging\windows_operation_failure.ps1
+          $contract = Get-XpjTestPostgresContract
+          $port = [int]$contract.ports.local
+          $dataDir = Get-XpjTestPostgresDefaultDataDir -Port $port
+          $connectionEnv = Join-Path $env:RUNNER_TEMP 'ticketbox-frozen-restore.env'
+          $savedPgEnvironment = Enter-XpjCleanPostgresEnvironment
+          $primaryFailure = $null
+          $cleanupFailures = @()
+          try {
+            & .\scripts\stop_test_pg.ps1 -Port $port -DataDir $dataDir
+            & .\scripts\start_test_pg.ps1 -Port $port -DataDir $dataDir `
+              -PostgresBin (Join-Path $PWD 'packaging\vendor\pg\bin')
+            if ($LASTEXITCODE -ne 0) { throw 'frozen restore PostgreSQL start failed' }
+            $passfile = Join-Path $dataDir ([string]$contract.passfile_name)
+            python -m scripts.write_test_postgres_env `
+              --host localhost --port-profile local --admin-user postgres `
+              --existing-passfile $passfile --output $connectionEnv
+            if ($LASTEXITCODE -ne 0) { throw 'frozen restore connection contract failed' }
+            foreach ($line in [IO.File]::ReadAllLines($connectionEnv)) {
+              $separator = $line.IndexOf('=')
+              if ($separator -le 0) { throw 'malformed frozen restore connection contract' }
+              [Environment]::SetEnvironmentVariable(
+                $line.Substring(0, $separator),
+                $line.Substring($separator + 1),
+                [EnvironmentVariableTarget]::Process
+              )
+            }
+            $pgEnvironmentKeys = @(
+              Get-ChildItem Env: |
+                Where-Object { $_.Name -match '^PG' } |
+                ForEach-Object { [string]$_.Name }
+            )
+            if ($pgEnvironmentKeys.Count -ne 1 -or $pgEnvironmentKeys[0] -cne 'PGPASSFILE') {
+              throw 'frozen restore PostgreSQL environment is not sealed'
+            }
+            python scripts\smoke_test.py
+            if ($LASTEXITCODE -ne 0) { throw 'frozen restore source smoke failed' }
+            python scripts\postgres_backup_drill.py `
+              --upload-root (Join-Path $PWD 'uploads') `
+              --frozen-restore-helper `
+                (Join-Path $PWD 'dist\ticketbox-backend\ticketbox-database-maintenance.exe')
+            if ($LASTEXITCODE -ne 0) { throw 'exact frozen dataset restore failed' }
+          }
+          catch { $primaryFailure = $_ }
+          finally {
+            try { & .\scripts\stop_test_pg.ps1 -Port $port -DataDir $dataDir }
+            catch { $cleanupFailures += $_ }
+            try {
+              if (Test-Path -LiteralPath $connectionEnv) {
+                Remove-Item -LiteralPath $connectionEnv -Force -ErrorAction Stop
+              }
+            }
+            catch { $cleanupFailures += $_ }
+            try { Exit-XpjCleanPostgresEnvironment -Saved $savedPgEnvironment }
+            catch { $cleanupFailures += $_ }
+          }
+          Throw-TicketboxOperationFailure $primaryFailure $cleanupFailures
 
       - name: Frozen Desktop Manager locked release build
         shell: powershell
@@ -768,7 +836,7 @@ jobs:
         # A backup without a restore drill is not qualification evidence. Dump
         # xpj_smoke through production backup code, restore into xpj_restore,
         # then compare the expected data before this ephemeral job exits.
-        run: ./.ci-venv/bin/python scripts/postgres_backup_drill.py
+        run: ./.ci-venv/bin/python scripts/postgres_backup_drill.py --upload-root "$GITHUB_WORKSPACE/backend/uploads"
 
       - *postgres_remove_passfile
 

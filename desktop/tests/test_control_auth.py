@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import re
+import socket
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +18,7 @@ from backend_manager.control_server import (
     request_existing_manager_window,
 )
 from backend_manager.projection import UnavailableInstalledRuntimeConfigProvider
+from backend_manager.runtime import RuntimeControlError
 
 _TOKEN = "s3cr3t-token"
 _INSTANCE_SECRET = "instance-proof-secret"
@@ -64,10 +66,13 @@ def test_foreign_origin_is_rejected() -> None:
 
 
 def test_foreign_host_is_rejected_even_when_origin_matches_it() -> None:
-    assert _auth(
-        provided_host="evil.test:8799",
-        origin="http://evil.test:8799",
-    ) is False
+    assert (
+        _auth(
+            provided_host="evil.test:8799",
+            origin="http://evil.test:8799",
+        )
+        is False
+    )
 
 
 def test_token_alone_passes_when_fetch_metadata_absent() -> None:
@@ -78,12 +83,15 @@ def test_token_alone_passes_when_fetch_metadata_absent() -> None:
 
 def test_host_and_origin_are_compared_as_canonical_tuples() -> None:
     assert _auth(provided_host=" 127.0.0.1:8799 ", origin=" HTTP://127.0.0.1:8799 ") is True
-    assert _auth(
-        provided_host="LOCALHOST",
-        expected_host="localhost:80",
-        origin="HTTP://LOCALHOST",
-        expected_origin="http://localhost:80",
-    ) is True
+    assert (
+        _auth(
+            provided_host="LOCALHOST",
+            expected_host="localhost:80",
+            origin="HTTP://LOCALHOST",
+            expected_origin="http://localhost:80",
+        )
+        is True
+    )
 
 
 def test_canonicalization_does_not_accept_hostile_authorities() -> None:
@@ -102,6 +110,7 @@ def _assert_security_headers(response: http.client.HTTPResponse) -> None:
 
 def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> None:
     reopened: list[str] = []
+
     class Controller:
         def status(self) -> dict:
             return {"status": "ok"}
@@ -183,6 +192,9 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         assert any("ticketbox_manager_control=" in cookie and "Path=/" in cookie for cookie in cookies)
         assert all("HttpOnly" in cookie for cookie in cookies)
         assert all("SameSite=Strict" in cookie for cookie in cookies)
+        session_ids = [cookie.partition(";")[0].partition("=")[2] for cookie in cookies]
+        assert len(set(session_ids)) == 4
+        assert all(session_id not in repr(server._web_session_digests) for session_id in session_ids)
         assert _TOKEN.encode() not in response.read()
         connection.close()
         assert not bootstrap_path.exists()
@@ -284,14 +296,20 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         _assert_security_headers(response)
         response.read()
         connection.close()
-        assert probe_existing_manager(
-            f"http://127.0.0.1:{server.server_address[1]}/",
-            _INSTANCE_SECRET,
-        ) is True
-        assert request_existing_manager_window(
-            f"http://127.0.0.1:{server.server_address[1]}/",
-            _INSTANCE_SECRET,
-        ) is True
+        assert (
+            probe_existing_manager(
+                f"http://127.0.0.1:{server.server_address[1]}/",
+                _INSTANCE_SECRET,
+            )
+            is True
+        )
+        assert (
+            request_existing_manager_window(
+                f"http://127.0.0.1:{server.server_address[1]}/",
+                _INSTANCE_SECRET,
+            )
+            is True
+        )
         assert reopened == ["window"]
 
         browser_reopen = http.client.HTTPConnection(
@@ -354,14 +372,20 @@ def test_fake_fixed_identity_listener_cannot_prove_manager_ownership() -> None:
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     try:
-        assert probe_existing_manager(
-            f"http://127.0.0.1:{server.server_address[1]}/",
-            _INSTANCE_SECRET,
-        ) is False
-        assert request_existing_manager_window(
-            f"http://127.0.0.1:{server.server_address[1]}/",
-            _INSTANCE_SECRET,
-        ) is False
+        assert (
+            probe_existing_manager(
+                f"http://127.0.0.1:{server.server_address[1]}/",
+                _INSTANCE_SECRET,
+            )
+            is False
+        )
+        assert (
+            request_existing_manager_window(
+                f"http://127.0.0.1:{server.server_address[1]}/",
+                _INSTANCE_SECRET,
+            )
+            is False
+        )
     finally:
         server.shutdown()
         server.server_close()
@@ -441,6 +465,80 @@ def test_control_server_rejects_overlapping_actions_but_keeps_status_available(t
         server_thread.join(timeout=2)
 
     assert first_result == [(200, {"status": "ok"})]
+
+
+def test_backup_inventory_endpoint_is_authenticated_closed_and_fail_closed(tmp_path) -> None:
+    class InventoryController:
+        unavailable = False
+
+        def backup_inventory(self) -> list[dict[str, object]]:
+            if self.unavailable:
+                raise RuntimeControlError("private detail")
+            return [{"generation": "ticketbox-backup-11111111-1111-4111-8111-111111111111"}]
+
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+    controller = InventoryController()
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=controller,
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    port = server.server_address[1]
+    headers = {
+        "X-Control-Token": _TOKEN,
+        "Sec-Fetch-Site": "same-origin",
+        "Origin": f"http://127.0.0.1:{port}",
+    }
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+
+    def post(request_headers: dict[str, str], body: bytes | None = None) -> tuple[int, dict | bytes]:
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        connection.request("POST", "/api/backups", body=body, headers=request_headers)
+        response = connection.getresponse()
+        encoded = response.read()
+        connection.close()
+        if (response.getheader("Content-Type") or "").startswith("application/json"):
+            return response.status, json.loads(encoded)
+        return response.status, encoded
+
+    try:
+        assert post({})[0] == 403
+        assert post(headers, b"{}") == (400, b"request body not allowed")
+        stalled = socket.create_connection(("127.0.0.1", port), timeout=2)
+        stalled.settimeout(2)
+        try:
+            stalled.sendall(
+                (
+                    "POST /api/backups HTTP/1.1\r\n"
+                    f"Host: 127.0.0.1:{port}\r\n"
+                    f"X-Control-Token: {_TOKEN}\r\n"
+                    "Sec-Fetch-Site: same-origin\r\n"
+                    f"Origin: http://127.0.0.1:{port}\r\n"
+                    "Content-Length: 2\r\n"
+                    "Connection: close\r\n\r\n{"
+                ).encode("ascii")
+            )
+            assert stalled.recv(1) == b""
+        finally:
+            stalled.close()
+        assert post(headers) == (
+            200,
+            {"generations": [{"generation": "ticketbox-backup-11111111-1111-4111-8111-111111111111"}]},
+        )
+        controller.unavailable = True
+        assert post(headers) == (503, {"error": "backup_inventory_unavailable"})
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_control_server_rejects_every_action_and_reopen_after_shutdown_seal(tmp_path) -> None:

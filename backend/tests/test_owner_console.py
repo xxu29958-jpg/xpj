@@ -11,6 +11,7 @@ Security invariants verified:
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -874,15 +875,17 @@ def test_owner_ai_advisor_panel_opens(local_client: TestClient) -> None:
     assert '<a href="/owner/ai-advisor" class="is-active">AI 顾问</a>' in response.text
 
 
-def test_owner_ai_advisor_confirmation_updates_runtime_env(
+def test_owner_ai_advisor_confirmation_updates_runtime_projection(
     local_client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     from app import config as app_config
     from app.services import runtime_settings_service as rss
 
-    fake_env = tmp_path / ".env"
-    fake_env.write_text("", encoding="utf-8")
-    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    projection = (tmp_path / "runtime-settings.json").resolve()
+    monkeypatch.setattr(rss, "_SETTINGS_PATH", projection)
+    monkeypatch.setattr(rss, "_SERVICE_OWNED", False)
+    monkeypatch.setattr(app_config, "RUNTIME_SETTINGS_PATH", projection)
+    monkeypatch.setattr(app_config, "_RUNTIME_SETTINGS_SERVICE_OWNED", False)
     with _isolated_runtime_setting(
         monkeypatch,
         "BUDGET_ADVISOR_OWNER_CONFIRMED",
@@ -894,7 +897,7 @@ def test_owner_ai_advisor_confirmation_updates_runtime_env(
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert "BUDGET_ADVISOR_OWNER_CONFIRMED=true" in fake_env.read_text(encoding="utf-8")
+        assert json.loads(projection.read_text(encoding="utf-8"))["budget_advisor_owner_confirmed"] is True
         assert app_config.get_settings().budget_advisor_owner_confirmed is True
 
 
@@ -1247,15 +1250,17 @@ def test_owner_settings_page_remote_rejected(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
-def test_owner_settings_save_public_base_url_writes_env(
+def test_owner_settings_save_public_base_url_writes_runtime_projection(
     local_client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     from app import config as app_config
     from app.services import runtime_settings_service as rss
 
-    fake_env = tmp_path / ".env"
-    fake_env.write_text("OCR_PROVIDER=empty\nPUBLIC_BASE_URL=\n", encoding="utf-8")
-    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    projection = (tmp_path / "runtime-settings.json").resolve()
+    monkeypatch.setattr(rss, "_SETTINGS_PATH", projection)
+    monkeypatch.setattr(rss, "_SERVICE_OWNED", False)
+    monkeypatch.setattr(app_config, "RUNTIME_SETTINGS_PATH", projection)
+    monkeypatch.setattr(app_config, "_RUNTIME_SETTINGS_SERVICE_OWNED", False)
     with _isolated_runtime_setting(monkeypatch, "PUBLIC_BASE_URL", ""):
         resp = local_client.post(
             "/owner/settings/public-base-url",
@@ -1263,8 +1268,8 @@ def test_owner_settings_save_public_base_url_writes_env(
         )
         assert resp.status_code == 200
         assert "已保存" in resp.text
-        text = fake_env.read_text(encoding="utf-8")
-        assert "PUBLIC_BASE_URL=https://api.zen70.cn" in text
+        payload = json.loads(projection.read_text(encoding="utf-8"))
+        assert payload["public_base_url"] == "https://api.zen70.cn"
         # cache must be refreshed so subsequent reads see the new value
         assert app_config.get_settings().public_base_url == "https://api.zen70.cn"
 
@@ -1275,9 +1280,11 @@ def test_owner_settings_rejects_missing_scheme(
     from app import config as app_config
     from app.services import runtime_settings_service as rss
 
-    fake_env = tmp_path / ".env"
-    fake_env.write_text("", encoding="utf-8")
-    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    projection = (tmp_path / "runtime-settings.json").resolve()
+    monkeypatch.setattr(rss, "_SETTINGS_PATH", projection)
+    monkeypatch.setattr(rss, "_SERVICE_OWNED", False)
+    monkeypatch.setattr(app_config, "RUNTIME_SETTINGS_PATH", projection)
+    monkeypatch.setattr(app_config, "_RUNTIME_SETTINGS_SERVICE_OWNED", False)
     app_config.get_settings.cache_clear()
     try:
         resp = local_client.post(
@@ -1287,7 +1294,7 @@ def test_owner_settings_rejects_missing_scheme(
         assert resp.status_code == 200
         assert "http://" in resp.text or "https://" in resp.text
         # nothing was written
-        assert "PUBLIC_BASE_URL=api.zen70.cn" not in fake_env.read_text(encoding="utf-8")
+        assert not projection.exists()
     finally:
         app_config.get_settings.cache_clear()
 
@@ -1443,9 +1450,11 @@ def test_owner_settings_rejects_non_origin_url(
     from app import config as app_config
     from app.services import runtime_settings_service as rss
 
-    fake_env = tmp_path / ".env"
-    fake_env.write_text("", encoding="utf-8")
-    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    projection = (tmp_path / "runtime-settings.json").resolve()
+    monkeypatch.setattr(rss, "_SETTINGS_PATH", projection)
+    monkeypatch.setattr(rss, "_SERVICE_OWNED", False)
+    monkeypatch.setattr(app_config, "RUNTIME_SETTINGS_PATH", projection)
+    monkeypatch.setattr(app_config, "_RUNTIME_SETTINGS_SERVICE_OWNED", False)
     app_config.get_settings.cache_clear()
     try:
         resp = local_client.post(
@@ -1454,9 +1463,7 @@ def test_owner_settings_rejects_non_origin_url(
         )
         assert resp.status_code == 200, resp.text
         assert expect_fragment in resp.text, f"Expected error hint '{expect_fragment}' not found for input {bad_url!r}"
-        assert bad_url not in fake_env.read_text(encoding="utf-8"), (
-            f"Bad URL should NOT have been written to .env for input {bad_url!r}"
-        )
+        assert not projection.exists()
     finally:
         app_config.get_settings.cache_clear()
 
@@ -1474,11 +1481,14 @@ def test_owner_settings_trailing_slash_stripped(
     local_client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     """Trailing slash should be stripped; path /foo should be rejected."""
+    from app import config as app_config
     from app.services import runtime_settings_service as rss
 
-    fake_env = tmp_path / ".env"
-    fake_env.write_text("", encoding="utf-8")
-    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    projection = (tmp_path / "runtime-settings.json").resolve()
+    monkeypatch.setattr(rss, "_SETTINGS_PATH", projection)
+    monkeypatch.setattr(rss, "_SERVICE_OWNED", False)
+    monkeypatch.setattr(app_config, "RUNTIME_SETTINGS_PATH", projection)
+    monkeypatch.setattr(app_config, "_RUNTIME_SETTINGS_SERVICE_OWNED", False)
     with _isolated_runtime_setting(monkeypatch, "PUBLIC_BASE_URL", ""):
         # bare trailing slash (no path segment) is accepted and stripped
         resp = local_client.post(
@@ -1486,5 +1496,5 @@ def test_owner_settings_trailing_slash_stripped(
             data={"public_base_url": "https://api.example.com/"},
         )
         assert resp.status_code == 200
-        text = fake_env.read_text(encoding="utf-8")
-        assert "PUBLIC_BASE_URL=https://api.example.com\n" in text or "PUBLIC_BASE_URL=https://api.example.com" in text
+        payload = json.loads(projection.read_text(encoding="utf-8"))
+        assert payload["public_base_url"] == "https://api.example.com"

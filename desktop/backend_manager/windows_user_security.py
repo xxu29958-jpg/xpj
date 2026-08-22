@@ -40,8 +40,7 @@ def _show_warning(message: str, title: str) -> None:
 
 def show_elevated_manager_warning() -> None:
     _show_warning(
-        "小票夹管理器不能以管理员身份运行。请从 Windows 开始菜单正常打开；"
-        "需要控制服务时会单独请求 UAC 授权。",
+        "小票夹管理器不能以管理员身份运行。请从 Windows 开始菜单正常打开；需要控制服务时会单独请求 UAC 授权。",
         "小票夹管理器",
     )
 
@@ -82,6 +81,21 @@ def windows_system_directory() -> Path:
     if length == 0 or length >= len(buffer):
         raise RuntimeControlError("无法定位受信任的 Windows 系统目录。")
     return Path(buffer.value)
+
+
+def trusted_windows_command_environment(system_directory: Path) -> dict[str, str]:
+    """Build the closed environment for an elevated Windows system command."""
+
+    system32 = Path(os.path.abspath(system_directory))
+    windows_directory = system32.parent
+    powershell_directory = system32 / "WindowsPowerShell" / "v1.0"
+    return {
+        "SystemRoot": str(windows_directory),
+        "WINDIR": str(windows_directory),
+        "ComSpec": str(system32 / "cmd.exe"),
+        "PATH": os.pathsep.join((str(powershell_directory), str(system32), str(windows_directory))),
+        "PATHEXT": ".COM;.EXE;.BAT;.CMD",
+    }
 
 
 def local_app_data() -> Path:

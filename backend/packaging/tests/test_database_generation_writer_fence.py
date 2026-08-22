@@ -82,6 +82,7 @@ function Get-TicketboxDatabaseAuthorizationContract {
         OwnerRole = "ticketbox_owner"
         MigratorRole = "ticketbox_migrator"
         RuntimeRole = "ticketbox_runtime"
+        BackupRole = "ticketbox_backup"
     }
 }
 function New-TicketboxPostgresqlLocalDatabaseUrl {
@@ -142,6 +143,16 @@ function New-TestWriterFenceObservation {
                 can_sequence_write = $false
             },
             [pscustomobject]@{
+                name = "ticketbox_backup"
+                can_login = $false
+                connection_limit = 0
+                can_assume_write_owner = $false
+                direct_connect = $false
+                effective_connect = $false
+                can_table_write = $false
+                can_sequence_write = $false
+            },
+            [pscustomobject]@{
                 name = "postgres"
                 can_login = $true
                 is_superuser = $true
@@ -192,9 +203,9 @@ $cases = @(
     [pscustomobject]@{ Name = "database-worker"; Apply = { param($o) $o.UnexpectedDatabaseWorkerCount = 1 } },
     [pscustomobject]@{ Name = "advisory-unavailable"; Apply = { param($o) $o.AdvisoryFenceAvailable = $false } },
     [pscustomobject]@{ Name = "advisory-held"; Apply = { param($o) $o.AdvisoryFenceReleased = $false } },
-    [pscustomobject]@{ Name = "database-authority-duplicate"; Apply = { param($o) $o.Roles = @($o.Roles) + @($o.Roles[3]) } },
-    [pscustomobject]@{ Name = "database-authority-no-login"; Apply = { param($o) $o.Roles[3].can_login = $false } },
-    [pscustomobject]@{ Name = "database-authority-not-superuser"; Apply = { param($o) $o.Roles[3].is_superuser = $false } },
+    [pscustomobject]@{ Name = "database-authority-duplicate"; Apply = { param($o) $o.Roles = @($o.Roles) + @($o.Roles[4]) } },
+    [pscustomobject]@{ Name = "database-authority-no-login"; Apply = { param($o) $o.Roles[4].can_login = $false } },
+    [pscustomobject]@{ Name = "database-authority-not-superuser"; Apply = { param($o) $o.Roles[4].is_superuser = $false } },
     [pscustomobject]@{ Name = "owner-duplicate"; Apply = { param($o) $o.Roles = @($o.Roles) + @($o.Roles[0]) } },
     [pscustomobject]@{ Name = "owner-login"; Apply = { param($o) $o.Roles[0].can_login = $true } },
     [pscustomobject]@{ Name = "migrator-duplicate"; Apply = { param($o) $o.Roles = @($o.Roles) + @($o.Roles[1]) } },
@@ -208,7 +219,14 @@ $cases = @(
     [pscustomobject]@{ Name = "runtime-connect"; Apply = { param($o) $o.Roles[2].effective_connect = $true } },
     [pscustomobject]@{ Name = "runtime-table-write"; Apply = { param($o) $o.Roles[2].can_table_write = $true } },
     [pscustomobject]@{ Name = "runtime-sequence-write"; Apply = { param($o) $o.Roles[2].can_sequence_write = $true } },
-    [pscustomobject]@{ Name = "runtime-owner"; Apply = { param($o) $o.Roles[2].can_assume_write_owner = $true } }
+    [pscustomobject]@{ Name = "runtime-owner"; Apply = { param($o) $o.Roles[2].can_assume_write_owner = $true } },
+    [pscustomobject]@{ Name = "backup-login"; Apply = { param($o) $o.Roles[3].can_login = $true } },
+    [pscustomobject]@{ Name = "backup-unbounded"; Apply = { param($o) $o.Roles[3].connection_limit = -1 } },
+    [pscustomobject]@{ Name = "backup-direct-connect"; Apply = { param($o) $o.Roles[3].direct_connect = $true } },
+    [pscustomobject]@{ Name = "backup-connect"; Apply = { param($o) $o.Roles[3].effective_connect = $true } },
+    [pscustomobject]@{ Name = "backup-table-write"; Apply = { param($o) $o.Roles[3].can_table_write = $true } },
+    [pscustomobject]@{ Name = "backup-sequence-write"; Apply = { param($o) $o.Roles[3].can_sequence_write = $true } },
+    [pscustomobject]@{ Name = "backup-owner"; Apply = { param($o) $o.Roles[3].can_assume_write_owner = $true } }
 )
 
 foreach ($property in @(
@@ -225,17 +243,17 @@ foreach ($property in @(
         Name = "unregistered-$property"
         Apply = ({
             param($o)
-            $o.Roles[4].$capturedProperty = $true
+            $o.Roles[5].$capturedProperty = $true
         }.GetNewClosure())
     }
 }
 $cases += [pscustomobject]@{
     Name = "unregistered-predefined-usage"
-    Apply = { param($o) $o.Roles[4].predefined_role_usage = @("pg_read_all_data") }
+    Apply = { param($o) $o.Roles[5].predefined_role_usage = @("pg_read_all_data") }
 }
 $cases += [pscustomobject]@{
     Name = "unregistered-predefined-set"
-    Apply = { param($o) $o.Roles[4].predefined_role_set = @("pg_write_all_data") }
+    Apply = { param($o) $o.Roles[5].predefined_role_set = @("pg_write_all_data") }
 }
 
 foreach ($case in $cases) {

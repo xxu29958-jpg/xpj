@@ -516,16 +516,22 @@ try {{
     $script:PostgresBootstrapAclAccounts = $systemAccounts
     $script:PostgresBootstrapAclOwnerAccount = 'SYSTEM'
     $script:SecretByteCount = 32
-    $bootstrapState = New-PostgresBootstrapRecoveryState
-    $bootstrapPath = Get-PostgresBootstrapRecoveryPath
+    $bootstrapState = New-PostgresBootstrapRecoveryState `
+        -SecretByteCount $script:SecretByteCount
+    $bootstrapPath = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     Write-TicketboxProtectedUtf8FileDurable `
         -Path $bootstrapPath `
-        -Text (ConvertTo-PostgresBootstrapRecoveryPayload $bootstrapState) `
+        -Text (ConvertTo-PostgresBootstrapRecoveryPayload `
+            -State $bootstrapState `
+            -SecretByteCount $script:SecretByteCount) `
         -FullControlAccounts $systemAccounts `
         -OwnerAccount 'SYSTEM'
     Invoke-TicketboxIcaclsChecked $bootstrapPath @('/reset')
     $bootstrapBeforeBytes = [IO.File]::ReadAllBytes($bootstrapPath)
-    if (-not (Repair-PostgresBootstrapRecoveryFileAcl)) {{
+    if (-not (Repair-PostgresBootstrapRecoveryFileAcl `
+        -DataRoot $script:DataRoot `
+        -AppData $script:AppData `
+        -SecretByteCount $script:SecretByteCount)) {{
         throw 'SYSTEM-owned inherited bootstrap ACL was not repaired'
     }}
     $bootstrapAcl = Get-TicketboxPathAcl $bootstrapPath

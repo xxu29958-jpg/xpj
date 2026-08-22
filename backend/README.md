@@ -157,32 +157,18 @@ Get-ScheduledTask -TaskName TicketboxBackend
 
 长期运行、睡眠设置和外网诊断见 [Windows 长期运行 Runbook](../docs/runbook/WINDOWS_SERVICE_RUNBOOK.md)。
 
-## 数据库备份
+## 完整数据集备份与恢复
 
-手动备份数据库：
+正式 Windows 安装只通过桌面管理器执行备份和恢复。备份 owner 会停住 backend writer、
+确认 PostgreSQL writer barrier，并原子发布
+`<DataRoot>\backups\ticketbox-backup-<UUID>\`。每个 generation 同时包含闭合 manifest、
+`database.dump` 和数据库实际引用的原始附件；旧 DB-only 脚本、计划任务和 `.dump` 列表已经退役。
 
-```powershell
-cd E:\projects\xiaopiaojia\backend
-powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1
-```
-
-备份位置(跟随 `DATA_ROOT`):
-
-```text
-<DATA_ROOT>\backups\
-```
-
-源码运行是 `backend\backups\`；正式 Windows 服务的 `TICKETBOX_DATA_DIR` 是
-`TicketboxRuntimeBinding\data-root\app` junction，v2 marker 与 Volume GUID 将它绑定到
-安装器选择的物理 `<DataRoot>\app`；备份位于其下的 `<DataRoot>\app\backups\`。
-默认保留最近 30 个备份，可用 `-Keep` 修改：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1 -Keep 60
-```
-
-源码/测试 scratch 数据库可按 [POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)
-使用 `pg_restore`；正式 Windows 恢复入口尚未出货，不能用手工恢复冒充生命周期闭环。
+恢复必须从管理器明确选择一个完整 generation。恢复 owner 在隔离候选集群中验证并恢复，
+重建 originals，随后由唯一 Generation Owner 发布新的 CURRENT；不能对已安装库手工执行
+`DROP/CREATE/pg_restore`。源码/测试 scratch 演练见
+[POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)。在 exact-head 干净 Windows VM
+完成全生命周期前，这项能力仍是 `QUALIFIED_HOLD`。
 
 ## PowerShell 测试
 

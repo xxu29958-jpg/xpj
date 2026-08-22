@@ -383,6 +383,7 @@ def test_phase_budget_outlasts_full_reachable_restart_state_machine(tmp_path: Pa
         backend_ready_timeout_ms=4_000,
         backend_ready_poll_interval_ms=100,
         backend_health_request_timeout_ms=500,
+        database_tool_timeout_ms=600_000,
     )
 
     class SlowTransitionGateway(FakeGateway):

@@ -14,6 +14,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.middleware.csrf import csrf_context
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
 from app.routes._web_dashboard_calculations import (
@@ -51,7 +52,7 @@ from app.routes._web_session_common import (
     _with_ledger,
     parse_form_row_version_token,
 )
-from app.services import backup_status_service, web_stats_service
+from app.services import dataset_backup_inventory, web_stats_service
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import minor_amount_major_number, minor_amount_value, minor_unit_digits
@@ -175,11 +176,7 @@ def _budget_top_rows(budget, *, currency_code: str) -> list[dict]:
             category.overspent_amount_cents,
             label="web.budget_overspent",
         )
-        percent = (
-            (spent_cents * 100 + limit_cents // 2) // limit_cents
-            if limit_cents > 0
-            else 0
-        )
+        percent = (spent_cents * 100 + limit_cents // 2) // limit_cents if limit_cents > 0 else 0
         out.append(
             {
                 "name": category.category,
@@ -226,11 +223,7 @@ def _dashboard_budget_goals_block(
     *,
     currency_code: str,
 ) -> dict:
-    goal_risk_count = sum(
-        1
-        for goal in goals
-        if goal.progress_state in {"near_limit", "over_limit"}
-    )
+    goal_risk_count = sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"})
     return {
         "budget_configured": budget.configured,
         "budget_total_yuan": _amount_yuan(
@@ -268,12 +261,17 @@ def _dashboard_budget_goals_block(
 
 def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
     week_ago = now - timedelta(days=7)
-    backup_status = backup_status_service.latest_backup_lightweight()
+    try:
+        backup = dataset_backup_inventory.latest_published_backup_record()
+    except AppError as exc:
+        if exc.error != "backup_incomplete":
+            raise
+        backup = None
     backup_age_days = None
-    if backup_status.state == "valid" and backup_status.entry is not None:
+    if backup is not None:
         backup_age_days = max(
             0,
-            (now.astimezone() - backup_status.entry.created_at).days,
+            (now.astimezone() - backup.created_at).days,
         )
     return {
         "recent_count": web_stats_service.recent_expense_count(
@@ -287,8 +285,7 @@ def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
             week_ago,
         ),
         "active_device_count": web_stats_service.active_device_count(db, ledger_id),
-        "backup_available": backup_status.state == "valid",
-        "backup_unverified": backup_status.state == "unverified",
+        "backup_available": backup is not None,
         "backup_age_days": backup_age_days,
     }
 
@@ -321,18 +318,9 @@ def _dashboard_cards(
     )
     now = now_utc()
     layout = list_dashboard_cards(db, tenant_id=ledger_id, surface="web")
-    recurring_card_visible = any(
-        item.visible and item.key == "recurring"
-        for item in layout.items
-    )
-    candidate_count = (
-        unclaimed_recurring_candidate_count(db, tenant_id=ledger_id)
-        if recurring_card_visible
-        else 0
-    )
-    current_total, prev_total, delta_amount, delta_direction, delta_percent = (
-        dashboard_month_delta(stats, prev_stats)
-    )
+    recurring_card_visible = any(item.visible and item.key == "recurring" for item in layout.items)
+    candidate_count = unclaimed_recurring_candidate_count(db, tenant_id=ledger_id) if recurring_card_visible else 0
+    current_total, prev_total, delta_amount, delta_direction, delta_percent = dashboard_month_delta(stats, prev_stats)
     return {
         "layout": [
             {
@@ -449,14 +437,8 @@ def _dashboard_data_payload(
         "selected_ledger_id": selected_id,
         "month": cards["month"],
         "cards": cards,
-        "visible_layout": [
-            item for item in cards["layout"] if item["visible"]
-        ],
-        "trend14": (
-            _trend14_amounts(db, selected_id, currency_code=home)
-            if include_trend
-            else []
-        ),
+        "visible_layout": [item for item in cards["layout"] if item["visible"]],
+        "trend14": (_trend14_amounts(db, selected_id, currency_code=home) if include_trend else []),
         "category_share": _dashboard_category_share(
             db,
             selected_id,

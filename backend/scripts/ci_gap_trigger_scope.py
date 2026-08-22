@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import fnmatch
 import pathlib
 import re
@@ -84,6 +85,104 @@ _CROSS_RUNTIME_RELEASE_CONFIG = "backend/packaging/windows-release-config.json"
 _BACKEND_RELEASE_FILES = {
     "backend/requirements.txt",
 }
+_WINDOWS_SECURITY_BACKEND_FILES = {
+    "backend/app/services/installer_runtime_guard.py",
+    "backend/app/services/runtime_settings_store.py",
+    "backend/app/services/secure_file.py",
+    "backend/app/services/secure_file_windows.py",
+    "backend/app/services/secure_file_windows_acl.py",
+}
+_BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
+_DATASET_MAINTENANCE_ROOT_MODULES = (
+    "app.database_maintenance_runtime",
+    "app.dataset_maintenance_cli",
+    "app.database._dataset_backup_action",
+    "app.database._dataset_backup_snapshot",
+    "app.database._dataset_restore_action",
+    "app.database._dataset_restore_authority",
+    "app.database._dataset_restore_security",
+)
+
+
+def _app_module_source(module_name: str) -> pathlib.Path | None:
+    if module_name != "app" and not module_name.startswith("app."):
+        return None
+    relative = pathlib.Path(*module_name.split("."))
+    module = _BACKEND_ROOT / relative.with_suffix(".py")
+    package = _BACKEND_ROOT / relative / "__init__.py"
+    if module.is_file():
+        return module
+    return package if package.is_file() else None
+
+
+def _module_name(path: pathlib.Path) -> str:
+    relative = path.relative_to(_BACKEND_ROOT)
+    parts = relative.parts[:-1] if relative.name == "__init__.py" else (*relative.parts[:-1], relative.stem)
+    return ".".join(parts)
+
+
+def _app_imports(path: pathlib.Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+    module_name = _module_name(path)
+    package_parts = module_name.split(".") if path.name == "__init__.py" else module_name.split(".")[:-1]
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+            continue
+        if isinstance(node, ast.ImportFrom):
+            if node.level:
+                parent_count = len(package_parts) - node.level + 1
+                if parent_count < 1:
+                    continue
+                prefix = package_parts[:parent_count]
+                base = ".".join((*prefix, *(node.module or "").split(".")))
+            else:
+                base = node.module or ""
+            if base:
+                imported.add(base)
+                imported.update(f"{base}.{alias.name}" for alias in node.names if alias.name != "*")
+            continue
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "importlib"
+            and node.func.attr == "import_module"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            imported.add(node.args[0].value)
+    return imported
+
+
+def dataset_maintenance_python_dependencies() -> frozenset[str]:
+    pending = [
+        source
+        for module_name in _DATASET_MAINTENANCE_ROOT_MODULES
+        if (source := _app_module_source(module_name)) is not None
+    ]
+    visited: set[pathlib.Path] = set()
+    while pending:
+        source = pending.pop()
+        if source in visited:
+            continue
+        visited.add(source)
+        for imported in _app_imports(source):
+            dependency = _app_module_source(imported)
+            if dependency is not None and dependency not in visited:
+                pending.append(dependency)
+    return frozenset(
+        dependency.relative_to(_BACKEND_ROOT.parent).as_posix()
+        for dependency in visited
+    )
+
+
+_WINDOWS_DATASET_MAINTENANCE_FILES = dataset_maintenance_python_dependencies()
+_WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
+    "backend/app/database/_dataset_",
+)
 _FROZEN_DESKTOP_PREFIXES = (
     "desktop/backend_manager/",
     "desktop/packaging/",
@@ -103,6 +202,14 @@ _EXACT_SCOPE_RULES = {
         _BACKEND_RELEASE_FILES,
         ("postgres", "backend_frozen", "windows"),
     ),
+    **dict.fromkeys(
+        _WINDOWS_SECURITY_BACKEND_FILES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
+    **dict.fromkeys(
+        _WINDOWS_DATASET_MAINTENANCE_FILES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
     _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
     "backend/app/version.py": ("postgres", "desktop", "windows"),
@@ -113,6 +220,10 @@ _PREFIX_SCOPE_RULES = (
     (("android/",), ("android",)),
     (_FROZEN_DESKTOP_PREFIXES, ("desktop", "windows")),
     (("desktop/",), ("desktop",)),
+    (
+        _WINDOWS_DATASET_MAINTENANCE_PREFIXES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
     (_POSTGRES_WINDOWS_BACKEND_PREFIXES, ("postgres", "backend_frozen")),
     (_WINDOWS_ONLY_BACKEND_PREFIXES, ("windows",)),
     (_POSTGRES_BACKEND_PREFIXES, ("postgres",)),
@@ -144,11 +255,7 @@ def classify_ci_paths(paths: Iterable[str]) -> dict[str, bool]:
     for path in sorted(normalized):
         if path != path.strip():
             return all_ci_scopes()
-        if (
-            path in _FULL_PATHS
-            or path.startswith(_FULL_PREFIXES)
-            or path.startswith(_CI_POLICY_PREFIXES)
-        ):
+        if path in _FULL_PATHS or path.startswith(_FULL_PREFIXES) or path.startswith(_CI_POLICY_PREFIXES):
             return all_ci_scopes()
         scopes = _scopes_for_path(path)
         if scopes is None:
@@ -171,15 +278,10 @@ def workflow_action_requires_prior_success(value: object) -> bool:
         return True
     if status_functions != {"success"} or "||" in expression:
         return False
-    return any(
-        re.fullmatch(r"\(*\s*success\(\)\s*\)*", term, re.IGNORECASE)
-        for term in expression.split("&&")
-    )
+    return any(re.fullmatch(r"\(*\s*success\(\)\s*\)*", term, re.IGNORECASE) for term in expression.split("&&"))
 
 
-def _event_configuration(
-    workflow: dict[object, object], event_name: str
-) -> dict[object, object] | None:
+def _event_configuration(workflow: dict[object, object], event_name: str) -> dict[object, object] | None:
     trigger = workflow.get("on")
     if isinstance(trigger, str):
         return {} if trigger == event_name else None
@@ -218,10 +320,7 @@ def _event_covers_main_branch(configuration: dict[object, object]) -> bool:
     ignored = _string_patterns(configuration.get("branches-ignore"))
     if branches is None or ignored is None:
         return False
-    tag_filtered = (
-        configuration.get("tags") is not None
-        or configuration.get("tags-ignore") is not None
-    )
+    tag_filtered = configuration.get("tags") is not None or configuration.get("tags-ignore") is not None
     if tag_filtered and not branches:
         return False
     if branches and not _ordered_pattern_match("main", branches):
@@ -262,10 +361,6 @@ def protected_workflow_scope(
     event_name: str,
 ) -> str | None:
     configuration = _event_configuration(workflow, event_name)
-    if (
-        configuration is None
-        or configuration.get("types") is not None
-        or not _event_covers_main_branch(configuration)
-    ):
+    if configuration is None or configuration.get("types") is not None or not _event_covers_main_branch(configuration):
         return None
     return _protected_path_scope(path, configuration)

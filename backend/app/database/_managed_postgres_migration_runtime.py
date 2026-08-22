@@ -9,7 +9,6 @@ revision plus its release-specific postcondition before commit.
 
 from __future__ import annotations
 
-import ipaddress
 import os
 import re
 from collections.abc import Iterator
@@ -20,8 +19,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL, Connection, Engine, make_url
-from sqlalchemy.exc import ArgumentError
+from sqlalchemy.engine import URL, Connection, Engine
 from sqlalchemy.pool import NullPool
 
 from app.database._database_generation_executor import execute_database_generation
@@ -30,6 +28,10 @@ from app.database._database_generation_program import (
 )
 from app.database._managed_postgres_role_authority import (
     assume_managed_postgres_schema_owner,
+)
+from app.database._managed_postgres_url import (
+    ManagedPostgresUrlError,
+    validated_local_role_url,
 )
 from app.database._postgres_operation_failures import (
     PostgresOperationFailureError,
@@ -224,32 +226,15 @@ def _validated_migrator_url(
     *,
     contract: ManagedPostgresRuntimeContractV1,
 ) -> URL:
-    if not isinstance(database_url, str) or not database_url:
-        raise ManagedPostgresMigrationRuntimeError("managed migration database URL must be explicit")
     try:
-        parsed = make_url(database_url)
-    except ArgumentError as exc:
-        raise ManagedPostgresMigrationRuntimeError("managed migration database URL is invalid") from exc
-    if parsed.drivername not in {"postgresql", "postgresql+psycopg"}:
-        raise ManagedPostgresMigrationRuntimeError("managed migration requires PostgreSQL psycopg")
-    if (
-        parsed.username != contract.migrator_role
-        or parsed.password is not None
-        or parsed.database != contract.database_name
-        or parsed.host is None
-        or parsed.port is None
-        or not 1 <= parsed.port <= 65535
-        or set(parsed.query) != {"require_auth"}
-        or parsed.query.get("require_auth") != "scram-sha-256"
-    ):
-        raise ManagedPostgresMigrationRuntimeError("managed migration database URL violates the migrator contract")
-    try:
-        address = ipaddress.ip_address(parsed.host)
-    except ValueError as exc:
-        raise ManagedPostgresMigrationRuntimeError("managed migration host must be a loopback IP literal") from exc
-    if not address.is_loopback:
-        raise ManagedPostgresMigrationRuntimeError("managed migration host must be loopback")
-    return parsed.set(drivername="postgresql+psycopg")
+        return validated_local_role_url(
+            database_url,
+            database_name=contract.database_name,
+            role=contract.migrator_role,
+            purpose="managed migration",
+        )
+    except ManagedPostgresUrlError as exc:
+        raise ManagedPostgresMigrationRuntimeError(str(exc)) from exc
 
 
 def _create_engine(database_url: URL) -> Engine:

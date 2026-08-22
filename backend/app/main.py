@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_app_context
 from app.config import get_settings, installation_identity
 from app.database import get_db, init_db, wait_for_db
-from app.errors import Utf8JSONResponse, add_exception_handlers
+from app.errors import AppError, Utf8JSONResponse, add_exception_handlers
 from app.middleware.cloudflare_access import cloudflare_access_guard
 from app.middleware.csrf import csrf_loopback_form_guard
 from app.middleware.logging import SanitizedLoggingMiddleware
@@ -100,7 +100,7 @@ from app.schemas import (
     InstallationMobileCapabilitiesResponse,
     StatusResponse,
 )
-from app.services import backup_service
+from app.services import dataset_backup_inventory
 from app.services.background_task_service import (
     recover_orphaned_tasks,
     shutdown_executor,
@@ -306,9 +306,7 @@ def _custom_openapi() -> dict:
             if path.startswith("/api/") and method.lower() in _RUNTIME_WRITE_METHODS:
                 operation_parameters = operation.setdefault("parameters", [])
                 existing_refs = {
-                    parameter.get("$ref")
-                    for parameter in operation_parameters
-                    if isinstance(parameter, dict)
+                    parameter.get("$ref") for parameter in operation_parameters if isinstance(parameter, dict)
                 }
                 operation_parameters.extend(
                     dict(parameter_ref)
@@ -460,16 +458,15 @@ def private_status(_auth: AuthContext = Depends(get_current_app_context)) -> Hea
     # split off the v0.x roadmap). This public-tunnel endpoint never surfaces
     # host paths regardless.
     db_status = "ok"
-    # 备份链健康(轴6 备份超龄通知数据源):复用 owner dashboard 的 backup_health()
-    # ——48h stale 阈值留在服务端单源。只暴露时间戳/小时数/stale 布尔,不暴露
-    # 文件名/目录(本端点过公网 tunnel,不得泄露本机路径)。
+    # 仅报告已发布 manifest 记录的时间；普通公网状态不读取大体积 payload。
+    # 当前字节完整性会在正式 inspection/restore 中全量复验，不能由这些字段推断。
     try:
-        backup = backup_service.backup_health()
+        backup = dataset_backup_inventory.published_backup_inventory()
         latest_backup_at = backup.latest.created_at.astimezone(UTC).isoformat() if backup.latest is not None else None
         backup_age_hours = backup.age_hours
-        backup_stale = backup.stale
-    except (OSError, RuntimeError):
-        _logger.exception("private_status: backup_health failed")
+        backup_stale = backup.review_due
+    except (AppError, OSError, RuntimeError):
+        _logger.exception("private_status: published backup inventory failed")
         latest_backup_at = None
         backup_age_hours = None
         backup_stale = True

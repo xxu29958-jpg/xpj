@@ -1,123 +1,52 @@
-# 小票夹 Windows 自动备份任务
+# Ticketbox Windows 完整数据集备份与恢复
 
-小票夹的主数据源是 Windows 后端的 PostgreSQL 数据库（本机 `ticketbox` 库）。
+## 当前出货边界
 
-`scripts\install_windows_tasks.ps1` 默认会创建每日备份任务：
+正式 Windows 安装没有 `TicketboxBackup` 计划任务，也不再出货 DB-only
+`backup_database.ps1`。唯一用户入口是桌面管理器：
 
-```text
-TicketboxBackup
-```
+- “立即备份”经短时提权 helper 调用已安装的
+  `installer\windows_dataset_backup.ps1`。
+- “恢复”必须由用户明确选择一个 `ticketbox-backup-<UUID>` generation，再经短时提权 helper
+  调用 `installer\windows_dataset_restore.ps1`。
+- 源码模式没有正式安装 backup/restore owner；源码历史只用于演进和测试，不构成正式运行记录。
 
-默认执行时间为每天 `03:30`，实际运行：
+## 完整备份 generation
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -Backup -BackupRetentionDays 30
-```
+备份写入 `<DataRoot>\backups\ticketbox-backup-<UUID>\`，并且只有整个目录完成校验后才原子
+发布。generation 包含：
 
-备份文件写入：
+- 严格、不可变的 `manifest.json`，绑定 Dataset Authority、restore epoch、schema revision、
+  writer fence、release 和每个 artifact 的长度/hash；
+- PostgreSQL custom-format archive；
+- 数据库仍然引用的全部原始附件。
 
-```text
-<DATA_ROOT>/backups/
-```
+备份 owner 在第一笔数据读取前验证 installed identity、Generation CURRENT 和服务合同，停止 backend
+writer，确认 PostgreSQL 没有其他 client writer，再调用 frozen backend 的 complete-dataset helper。
+任一数据库、附件、manifest 或 publication 失败只留下失败，不发布半个 generation。
 
-`DATA_ROOT` 跟随部署形态(`backend/app/services/backup_service.py:_BACKUP_DIR = DATA_ROOT / "backups"`):
+## 恢复
 
-- 源码运行(`uvicorn app.main:app` from `backend/`):`DATA_ROOT = backend/`,实际路径 `backend/backups/`。
-- 正式 Windows 服务:`TICKETBOX_DATA_DIR` 指向 machine-owned `TicketboxRuntimeBinding\data-root\app` junction；v2 marker 与 Volume GUID 将其绑定到物理 `<DataRoot>\app`，备份位于 `<DataRoot>\app\backups\`。
-- 任何运行形态下,实际路径都可以用 `Owner Console`「备份」页面看到。
+恢复 owner 先把明确选择的 generation 校验为同一 Dataset Authority，再在任何停服或覆盖前持久化
+恢复请求。它将数据库恢复到隔离候选集群、重建 originals、重读 live database identity，随后同卷
+提升候选。最终 CURRENT 仍只由 H1 Generation Owner 发布；restore、journal、receipt 和 historical
+reader 都没有第二份 current/publication 权限。
 
-调整备份时间：
+崩溃重试从 durable request、candidate evidence、Dataset Authority 和 CURRENT 重新分类，不按目录时间
+猜“最新备份”，也不依赖旧 stage coordinator。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -BackupTime "02:10"
-```
+## 凭据与工具
 
-调整自动保留天数：
+`pg_dump` / `pg_restore` 只接收显式、无内联口令的 PostgreSQL URL、受保护 passfile 和已解析的
+工具绝对路径。子进程环境会移除 ambient PostgreSQL/数据库路由变量；原生 stdout/stderr 不进入用户
+日志。恢复使用 `--single-transaction --exit-on-error --no-owner --no-privileges --role <owner>`。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -BackupRetentionDays 14
-```
+## 资格边界
 
-手动清理超过保留天数的旧备份：
+CI 的真实 PostgreSQL recovery lane 会通过生产 complete-generation owner 备份 smoke dataset，验证
+manifest/files，再恢复到专用 scratch 库并比较全部 public tables。该证据不能替代正式 Windows
+生命周期证据。没有同一 exact-head EXE 在真正干净的本地 Windows VM 完成首装、备份、恢复、重启、
+卸载前，项目继续 `QUALIFIED_HOLD`。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -PruneBackups -BackupRetentionDays 30
-```
-
-如果只想手动备份但暂时不清理旧备份：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -Backup -SkipBackupPrune
-```
-
-只安装后端和 Tunnel，不创建自动备份：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -SkipBackup
-```
-
-卸载计划任务时，默认会一起移除 `TicketboxBackup`：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_tasks.ps1
-```
-
-如果要保留备份任务：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_tasks.ps1 -SkipBackup
-```
-
-## PostgreSQL 备份格式
-
-`TicketboxBackup` 任务运行 `maintenance_ticketbox.ps1 -Backup`，产出 `pg_dump -Fc` 归档 → `<DATA_ROOT>\backups\ticketbox-*.dump`（自定义格式），并用 `pg_restore --list` 校验归档可读；保留天数清理按 `.dump` 后缀。备份逻辑委托给 [backend/scripts/backup_database.ps1](../../backend/scripts/backup_database.ps1)（单一真相源）。
-
-凭证与二进制：
-
-- `pg_dump` / `pg_restore` 的发现链：环境变量（`PG_DUMP_PATH` / `PG_RESTORE_PATH`）→ `PATH` → 当前机器 `ProgramFiles` 根下的 PostgreSQL 最高版本自动探测（脚本与 Python 校验服务同一条链；三者都没有才报错）。
-- 任务从受保护配置读取 `DATABASE_URL`，但调用 `pg_dump` 时会把口令从 `--dbname` 参数中剥离，只放入该子进程的临时 `PGPASSWORD`；父进程环境会精确恢复，日志不记录原生输出或 DSN。
-
-`pg_restore --list` 和 scratch 恢复只验证归档可读性；它们不构成正式 Windows 恢复入口。
-
-## 异地备份（offsite）
-
-本地备份成功后，只有同时满足显式开关与目标目录合同，`backup_database.ps1` 才会同步到异地目录：
-
-- 默认关闭，不因发现 OneDrive 自动外传数据库或票据图片。
-- 启用时必须同时设置 `XPJ_OFFSITE_BACKUP_ENABLED=true` 和绝对路径 `XPJ_OFFSITE_BACKUP_DIR`；缺项、相对路径或非法开关都会保留本地备份并明确报错。
-- `db\`：增量复制 `ticketbox-*.dump`（不做镜像删除——本地目录被清空时不殃及异地副本），异地保留 90 天（本地 30 天）。
-- `uploads\`：robocopy `/MIR` 镜像票据图片；本地 uploads 为空时跳过（空源守卫，防把异地副本一并清空）。
-- 目标目录可以由用户明确选择 OneDrive、加密盘或 NAS；归档本身未加密，选择会被云同步的目录前必须确认其隐私边界。
-
-## 备份链健康自查
-
-计划任务失败是**静默**的（出过实例：PG cut-over 后 `pg_restore` 发现链断裂，`TicketboxBackup`
-连续 6 天每晚 result=1，没有任何主动告警，期间 0 个新 `.dump` 存活）。每隔几天、以及任何
-大改（cut-over / 换机 / 改备份脚本）之后，跑一遍三查：
-
-```powershell
-# 1. 任务上次结果应为 0
-Get-ScheduledTaskInfo TicketboxBackup | Select-Object LastRunTime, LastTaskResult
-# 2. 备份目录应有近日归档
-Get-ChildItem "<DATA_ROOT>\backups\ticketbox-*.dump" | Sort-Object LastWriteTime -Descending | Select-Object -First 3
-# 3. 异地副本应在更新（显式启用了 offsite 时）
-Get-ChildItem (Join-Path $env:XPJ_OFFSITE_BACKUP_DIR "db") | Sort-Object LastWriteTime -Descending | Select-Object -First 3
-```
-
-任一查不过：先看任务历史 / 手跑 `maintenance_ticketbox.ps1 -Backup` 拿真实报错，再对照
-「PostgreSQL 备份格式」一节的发现链与凭证两条排查。
-
-## Scratch 恢复演练
-
-PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。只在隔离的源码/测试数据库中
-按 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 恢复到 scratch 库并核对；不要停止、覆盖
-或重启正式安装。正式 Windows 恢复入口尚未出货，整体能力继续 `QUALIFIED_HOLD`。
-
-边界：
-
-- 不提交 `backend/backups/` 或 `ticketbox-data/backups/`(`.gitignore` 已覆盖)。
-- 不把真实 Token 写进备份文档、日志或 Git。
-- 备份默认只在本机生成 `pg_dump` 归档；只有显式启用后才同步到用户指定目录（见「异地备份」），应用不选择或发现第三方云目录。
-- 默认只保留最近 30 天的备份（`ticketbox-*.dump`）。
-- Scratch 演练不覆盖正式库，也不验证 uploads 与数据库恢复后的一致性。
-- 清理图片不影响 confirmed 账本数据。
+禁止把单独 `pg_dump`、手工复制 uploads、只运行 `pg_restore --list`、CI green 或旧源码升级历史称为
+正式备份/恢复闭环。

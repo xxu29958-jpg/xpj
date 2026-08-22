@@ -6,6 +6,7 @@ from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 SCAN_ROOTS = (APP_ROOT / "routes", APP_ROOT / "services")
+EXTRA_SCAN_FILES = (APP_ROOT / "database" / "_dataset_backup_snapshot.py",)
 
 LEDGER_SCOPED_MODELS = {
     "Budget",
@@ -52,6 +53,18 @@ class QuerySite:
 
 
 EXEMPTIONS: tuple[ScopeExemption, ...] = (
+    ScopeExemption(
+        path="database/_dataset_backup_snapshot.py",
+        function="read_original_reference_rows",
+        model="Expense",
+        occurrences=1,
+        reason=(
+            "H2 complete-dataset backup runs only inside the frozen maintenance "
+            "snapshot and must enumerate every ledger's referenced original. "
+            "The sole production consumer is backup_service's complete-dataset "
+            "writer; this is not a request- or ledger-scoped read path."
+        ),
+    ),
     ScopeExemption(
         path="services/cleanup_service.py",
         function="purge_expired_soft_deletes",
@@ -135,9 +148,7 @@ def test_ledger_scoped_orm_queries_are_explicitly_filtered() -> None:
     unscoped_sites = list(_find_unscoped_query_sites())
     remaining, used_counts = _apply_exemptions(unscoped_sites)
     stale_exemptions = [
-        exemption
-        for exemption in EXEMPTIONS
-        if used_counts.get(_exemption_key(exemption), 0) != exemption.occurrences
+        exemption for exemption in EXEMPTIONS if used_counts.get(_exemption_key(exemption), 0) != exemption.occurrences
     ]
 
     messages: list[str] = []
@@ -153,12 +164,24 @@ def test_ledger_scoped_orm_queries_are_explicitly_filtered() -> None:
     if stale_exemptions:
         messages.append("Stale or mismatched ledger query exemptions:")
         messages.extend(
-            f"- {item.path}:{item.function} model={item.model} "
-            f"expected={item.occurrences} reason={item.reason}"
+            f"- {item.path}:{item.function} model={item.model} expected={item.occurrences} reason={item.reason}"
             for item in stale_exemptions
         )
 
     assert not messages, "\n".join(messages)
+
+
+def test_dataset_wide_snapshot_query_has_one_frozen_maintenance_consumer() -> None:
+    symbol = "read_original_reference_rows"
+    callers = [
+        path.relative_to(APP_ROOT).as_posix()
+        for path in APP_ROOT.rglob("*.py")
+        if path not in EXTRA_SCAN_FILES and symbol in path.read_text(encoding="utf-8")
+    ]
+
+    assert callers == ["services/backup_service.py"]
+    consumer = (APP_ROOT / callers[0]).read_text(encoding="utf-8")
+    assert consumer.count(f"{symbol}(") == 1
 
 
 def _find_unscoped_query_sites() -> list[QuerySite]:
@@ -200,15 +223,12 @@ def _iter_python_files() -> list[Path]:
     files: list[Path] = []
     for root in SCAN_ROOTS:
         files.extend(path for path in root.rglob("*.py") if path.name != "__init__.py")
+    files.extend(EXTRA_SCAN_FILES)
     return sorted(files)
 
 
 def _iter_functions(tree: ast.AST) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
-    return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
+    return [node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
 
 def _iter_query_statements(
@@ -217,8 +237,7 @@ def _iter_query_statements(
     return [
         node
         for node in ast.walk(function)
-        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.Expr, ast.Return))
-        and _contains_orm_query(node)
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.Expr, ast.Return)) and _contains_orm_query(node)
     ]
 
 
@@ -331,10 +350,7 @@ def _site_key(site: QuerySite) -> tuple[str, str, str]:
 
 
 def _format_site(site: QuerySite) -> str:
-    return (
-        f"- {site.path}:{site.line} in {site.function} "
-        f"model={site.model}: {site.snippet}"
-    )
+    return f"- {site.path}:{site.line} in {site.function} model={site.model}: {site.snippet}"
 
 
 def _relative_app_path(path: Path) -> str:

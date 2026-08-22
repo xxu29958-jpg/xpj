@@ -13,6 +13,7 @@ _TOKEN_QUERY = 0x0008
 _TOKEN_USER = 1
 _TOKEN_GROUPS = 2
 _SE_GROUP_ENABLED = 0x00000004
+_SE_GROUP_OWNER = 0x00000008
 _SE_GROUP_USE_FOR_DENY_ONLY = 0x00000010
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _ERROR_INSUFFICIENT_BUFFER = 122
@@ -253,9 +254,7 @@ def process_start_filetime(
 
 def current_process_sid(advapi32: object, kernel32: object) -> str:
     token = wintypes.HANDLE()
-    if not advapi32.OpenProcessToken(
-        kernel32.GetCurrentProcess(), _TOKEN_QUERY, ctypes.byref(token)
-    ):
+    if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), _TOKEN_QUERY, ctypes.byref(token)):
         raise ctypes.WinError(ctypes.get_last_error())
     sid_string = wintypes.LPWSTR()
     try:
@@ -273,9 +272,7 @@ def current_process_sid(advapi32: object, kernel32: object) -> str:
         ):
             raise ctypes.WinError(ctypes.get_last_error())
         token_user = ctypes.cast(buffer, ctypes.POINTER(_TokenUser)).contents
-        if not advapi32.ConvertSidToStringSidW(
-            token_user.user.sid, ctypes.byref(sid_string)
-        ):
+        if not advapi32.ConvertSidToStringSidW(token_user.user.sid, ctypes.byref(sid_string)):
             raise ctypes.WinError(ctypes.get_last_error())
         return str(sid_string.value)
     finally:
@@ -430,9 +427,7 @@ def _write_file(
     try:
         written = wintypes.DWORD()
         buffer = ctypes.create_string_buffer(payload)
-        if not kernel32.WriteFile(
-            handle, buffer, len(payload), ctypes.byref(written), None
-        ):
+        if not kernel32.WriteFile(handle, buffer, len(payload), ctypes.byref(written), None):
             raise ctypes.WinError(ctypes.get_last_error())
         if written.value != len(payload):
             raise OSError("short write while creating protected file")
@@ -447,11 +442,12 @@ def write_protected_file(
     payload: bytes,
     *,
     apis: tuple[object, object],
+    owner_sid: str | None = None,
 ) -> None:
     advapi32, kernel32 = apis
     descriptor = protected_security_descriptor(
         advapi32,
-        current_process_sid(advapi32, kernel32),
+        owner_sid or current_process_sid(advapi32, kernel32),
     )
     try:
         _write_file(kernel32, path, payload, descriptor)

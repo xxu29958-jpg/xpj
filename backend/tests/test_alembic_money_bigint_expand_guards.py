@@ -51,7 +51,7 @@ def test_money_widening_uses_caller_transaction_without_c07_context() -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
 
-    assert current_revision() == "20260809_0001"
+    assert current_revision() == "20260821_0001"
 
 
 def test_frozen_migration_legacy_checks_match_ready_absence_contract() -> None:
@@ -352,8 +352,14 @@ def test_money_widening_does_not_raise_schema_compatibility_floor() -> None:
         before = connection.scalar(text("SELECT value FROM app_meta WHERE key = 'schema_min_compatible'"))
     run_alembic(command.upgrade, "head")
     with engine.connect() as connection:
-        after = connection.scalar(text("SELECT value FROM app_meta WHERE key = 'schema_min_compatible'"))
+        after = connection.scalar(
+            text("SELECT schema_min_compatible FROM dataset_authority WHERE singleton_id = 1")
+        )
+        retired = connection.scalar(
+            text("SELECT value FROM app_meta WHERE key = 'schema_min_compatible'")
+        )
     assert after == before
+    assert retired is None
 
 
 def test_downgrade_refuses_narrowing() -> None:

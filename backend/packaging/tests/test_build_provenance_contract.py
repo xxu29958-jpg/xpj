@@ -79,15 +79,8 @@ def _assert_shawl_legal_evidence_chain(
         legal["notice_sha256"],
     ):
         assert isinstance(value, str) and value
-    expected_entry = (
-        f'Source: "vendor\\shawl\\{legal["notice_name"]}"; '
-        'DestDir: "{app}\\shawl"; Flags: ignoreversion'
-    )
-    assert [
-        line.strip()
-        for line in installer.splitlines()
-        if str(legal["notice_name"]) in line
-    ] == [expected_entry]
+    expected_entry = f'Source: "vendor\\shawl\\{legal["notice_name"]}"; DestDir: "{{app}}\\shawl"; Flags: ignoreversion'
+    assert [line.strip() for line in installer.splitlines() if str(legal["notice_name"]) in line] == [expected_entry]
 
 
 def _write_minimal_backend(root: Path) -> Path:
@@ -176,9 +169,7 @@ def _write_minimal_backend(root: Path) -> Path:
     dist = root / "dist" / "ticketbox-backend"
     (dist / "_internal").mkdir(parents=True)
     (dist / "ticketbox-backend.exe").write_bytes(b"frozen-exe-v1")
-    (dist / "ticketbox-database-maintenance.exe").write_bytes(
-        b"database-maintenance-v1"
-    )
+    (dist / "ticketbox-database-maintenance.exe").write_bytes(b"database-maintenance-v1")
     (dist / "DATABASE_GENERATION_PROGRAM.json").write_text(
         '{"schema":"synthetic-generation-program"}', encoding="utf-8"
     )
@@ -235,6 +226,7 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_postgresql_database_command.ps1",
     "packaging/windows_ticketbox_database_contract.ps1",
     "packaging/windows_ticketbox_database_acl.ps1",
+    "packaging/windows_ticketbox_database_acl_observation.ps1",
     "packaging/windows_ticketbox_database_roles.ps1",
     "packaging/windows_security_primitives.ps1",
     "packaging/security_primitives/byte_array.ps1",
@@ -254,18 +246,40 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_database_generation_program_execution.ps1",
     "packaging/windows_database_generation.ps1",
     "packaging/windows_database_generation_contract.ps1",
+    "packaging/windows_database_generation_release.ps1",
+    "packaging/windows_operation_failure.ps1",
     "packaging/windows_database_generation_artifacts.ps1",
     "packaging/windows_database_generation_commit_verifier.ps1",
     "packaging/windows_database_generation_policy.ps1",
     "packaging/windows_database_generation_credentials.ps1",
     "packaging/windows_database_generation_role_fence.ps1",
     "packaging/windows_database_generation_database_binding.ps1",
+    "packaging/windows_database_generation_current.ps1",
+    "packaging/windows_database_generation_host_authority.ps1",
+    "packaging/windows_database_generation_role_bootstrap.ps1",
     "packaging/windows_database_generation_source.ps1",
+    "packaging/windows_database_generation_source_binding.ps1",
     "packaging/windows_database_generation_recovery_evidence.ps1",
     "packaging/windows_database_generation_target_recovery.ps1",
+    "packaging/windows_database_generation_target_authorization.ps1",
     "packaging/windows_database_generation_retirement.ps1",
     "packaging/windows_database_generation_single_user.ps1",
     "packaging/windows_database_generation_projection.ps1",
+    "packaging/windows_dataset_backup.ps1",
+    "packaging/windows_dataset_inventory.ps1",
+    "packaging/windows_dataset_restore.ps1",
+    "packaging/windows_installed_dataset_reader.ps1",
+    "packaging/windows_installed_dataset_operation.ps1",
+    "packaging/windows_installed_dataset_restore_artifacts.ps1",
+    "packaging/windows_installed_dataset_restore_verification.ps1",
+    "packaging/windows_dataset_restore_filesystem.ps1",
+    "packaging/windows_dataset_restore_reducer.ps1",
+    "packaging/windows_dataset_restore_database.ps1",
+    "packaging/windows_dataset_restore_runtime.ps1",
+    "packaging/windows_postgresql_candidate_cluster.ps1",
+    "packaging/windows_postgresql_candidate_initdb.ps1",
+    "packaging/windows_postgresql_candidate_runtime.ps1",
+    "packaging/windows_backend_health.ps1",
     "packaging/windows_backend_bootstrap.ps1",
     "packaging/windows_bootstrap_exposure_recovery.ps1",
     "packaging/install_bundled_services.ps1",
@@ -380,9 +394,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     validate = _manifest_command(backend, dist, "Assert-TicketboxBackendBuildManifest")
     assert _run_powershell(validate).returncode == 0
 
-    manifest["payload"]["database_maintenance_helper_smoke"]["result"][
-        "source_revision"
-    ] = "other"
+    manifest["payload"]["database_maintenance_helper_smoke"]["result"]["source_revision"] = "other"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     tampered_helper_smoke = _run_powershell(validate)
     assert tampered_helper_smoke.returncode != 0
@@ -486,6 +498,7 @@ def test_installed_generation_assets_are_manifest_bound_and_held(
             ("_internal/migrations/versions/20260729_0001_money_minor_bigint_expand.py"): b"# target",
             ("_internal/migrations/versions/20260802_0001_currency_binding_authority.py"): b"# c02 target",
             ("_internal/migrations/versions/20260809_0001_add_installation_owner_claim.py"): b"# release head",
+            ("_internal/migrations/versions/20260821_0001_add_dataset_authority.py"): b"# dataset authority",
         }.items():
             target = payload / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -1032,9 +1045,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "PostgreSQL bundle manifest 与 Windows 工具链 archive/payload pin 不一致" in build
     assert "archive_payload_fingerprint" in build
     assert postgres_source["version"] == "17.11-1"
-    assert postgres_source["sha256"] == (
-        "6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3"
-    )
+    assert postgres_source["sha256"] == ("6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3")
     assert postgres_source["payload_fingerprint"] == (
         "301416a98605233b704bde01b38dfdd8defa3e21cad40be1b40ad047bfc91bdf"
     )
@@ -1069,10 +1080,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
                 shawl_source,
             )
     with pytest.raises(AssertionError):
-        legal_entry = (
-            'Source: "vendor\\shawl\\shawl-v1.9.0-legal.txt"; '
-            'DestDir: "{app}\\shawl"; Flags: ignoreversion'
-        )
+        legal_entry = 'Source: "vendor\\shawl\\shawl-v1.9.0-legal.txt"; DestDir: "{app}\\shawl"; Flags: ignoreversion'
         _assert_shawl_legal_evidence_chain(
             build,
             installer.replace(
@@ -1225,30 +1233,19 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "Frozen backend archive contains retired C07 database modules" in backend_build
     assert 'name="ticketbox-database-maintenance"' in backend_spec
     assert (
-        '$stagedDatabaseMaintenanceHelper = Join-Path $StagingDir '
-        '"ticketbox-database-maintenance.exe"'
+        '$stagedDatabaseMaintenanceHelper = Join-Path $StagingDir "ticketbox-database-maintenance.exe"'
     ) in backend_build
-    smoke_call = backend_build.index(
-        "$databaseMaintenanceHelperSmoke = "
-        "Invoke-TicketboxDatabaseMaintenanceHelperSmoke"
-    )
+    smoke_call = backend_build.index("$databaseMaintenanceHelperSmoke = Invoke-TicketboxDatabaseMaintenanceHelperSmoke")
     payload_gate = backend_build.index("Assert-TicketboxPostgresOnlyFrozenPayload `")
     manifest_write = backend_build.index("Write-TicketboxBackendBuildManifest `")
     assert payload_gate < smoke_call < manifest_write
     assert "-HelperPath $stagedDatabaseMaintenanceHelper" in backend_build
     assert "-PayloadSnapshot $databaseMaintenanceSmokePayloadSnapshot" in backend_build
-    assert (
-        "-DatabaseMaintenanceHelperSmokeEvidence "
-        "$databaseMaintenanceHelperSmoke"
-    ) in backend_build
+    assert ("-DatabaseMaintenanceHelperSmokeEvidence $databaseMaintenanceHelperSmoke") in backend_build
     payload_snapshot = backend_build.index(
-        "$databaseMaintenanceSmokePayloadSnapshot = "
-        "Get-TicketboxBackendPayloadSnapshot"
+        "$databaseMaintenanceSmokePayloadSnapshot = Get-TicketboxBackendPayloadSnapshot"
     )
-    payload_lock = backend_build.index(
-        "$DatabaseMaintenanceSmokePayloadLocks = "
-        "@(Enter-TicketboxFileSetReadLocks"
-    )
+    payload_lock = backend_build.index("$DatabaseMaintenanceSmokePayloadLocks = @(Enter-TicketboxFileSetReadLocks")
     payload_unlock = backend_build.index(
         "Exit-TicketboxFileSetReadLocks $DatabaseMaintenanceSmokePayloadLocks",
         manifest_write,
@@ -1286,10 +1283,7 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
         )
         == 2
     )
-    assert (
-        'Assert-File (Join-Path $BackendDist "ticketbox-database-maintenance.exe")'
-        in build
-    )
+    assert 'Assert-File (Join-Path $BackendDist "ticketbox-database-maintenance.exe")' in build
     assert "Read-TicketboxWindowsBuildToolchain $BackendRoot" in backend_build
     assert "prepare_windows_build_toolchain.ps1" in backend_build
     assert "-Component Backend" in backend_build

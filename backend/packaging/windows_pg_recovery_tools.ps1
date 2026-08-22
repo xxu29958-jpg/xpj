@@ -150,7 +150,7 @@ function Invoke-TicketboxPostgresqlHostPsqlWithProtectedPassfile {
 function ConvertFrom-TicketboxPostgresqlHostEvidenceRow {
     param(
         [AllowEmptyString()][Parameter(Mandatory = $true)][string]$Output,
-        [ValidateRange(1, 16)][int]$FieldCount,
+        [ValidateRange(1, 18)][int]$FieldCount,
         [Parameter(Mandatory = $true)][string]$Label
     )
 

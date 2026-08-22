@@ -124,6 +124,9 @@ $TicketboxDatabaseContractScript = Join-Path `
 $TicketboxDatabaseAclScript = Join-Path `
     $ScriptDir `
     "windows_ticketbox_database_acl.ps1"
+$TicketboxDatabaseAclObservationScript = Join-Path `
+    $ScriptDir `
+    "windows_ticketbox_database_acl_observation.ps1"
 $TicketboxDatabaseRolesScript = Join-Path `
     $ScriptDir `
     "windows_ticketbox_database_roles.ps1"
@@ -173,6 +176,10 @@ $DatabaseGenerationScript = Join-Path $ScriptDir "windows_database_generation.ps
 $DatabaseGenerationContractScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_contract.ps1"
+$DatabaseGenerationReleaseScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_release.ps1"
+$OperationFailureScript = Join-Path $ScriptDir "windows_operation_failure.ps1"
 $DatabaseGenerationArtifactsScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_artifacts.ps1"
@@ -191,15 +198,30 @@ $DatabaseGenerationRoleFenceScript = Join-Path `
 $DatabaseGenerationDatabaseBindingScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_database_binding.ps1"
+$DatabaseGenerationCurrentScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_current.ps1"
+$DatabaseGenerationHostAuthorityScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_host_authority.ps1"
+$DatabaseGenerationRoleBootstrapScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_role_bootstrap.ps1"
 $DatabaseGenerationSourceScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_source.ps1"
+$DatabaseGenerationSourceBindingScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_source_binding.ps1"
 $DatabaseGenerationRecoveryEvidenceScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_recovery_evidence.ps1"
 $DatabaseGenerationTargetRecoveryScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_target_recovery.ps1"
+$DatabaseGenerationTargetAuthorizationScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_target_authorization.ps1"
 $DatabaseGenerationRetirementScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_retirement.ps1"
@@ -209,6 +231,23 @@ $DatabaseGenerationSingleUserScript = Join-Path `
 $DatabaseGenerationProjectionScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_projection.ps1"
+$DatasetBackupScript = Join-Path $ScriptDir "windows_dataset_backup.ps1"
+$DatasetInventoryScript = Join-Path $ScriptDir "windows_dataset_inventory.ps1"
+$DatasetRestoreScript = Join-Path $ScriptDir "windows_dataset_restore.ps1"
+$InstalledDatasetLifecycleScripts = @(
+    "windows_installed_dataset_reader.ps1",
+    "windows_installed_dataset_operation.ps1",
+    "windows_installed_dataset_restore_artifacts.ps1",
+    "windows_installed_dataset_restore_verification.ps1",
+    "windows_dataset_restore_filesystem.ps1",
+    "windows_dataset_restore_reducer.ps1",
+    "windows_dataset_restore_database.ps1",
+    "windows_dataset_restore_runtime.ps1",
+    "windows_postgresql_candidate_cluster.ps1",
+    "windows_postgresql_candidate_initdb.ps1",
+    "windows_postgresql_candidate_runtime.ps1"
+) | ForEach-Object { Join-Path $ScriptDir $_ }
+$BackendHealthScript = Join-Path $ScriptDir "windows_backend_health.ps1"
 $BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
 $BootstrapExposureRecoveryScript = Join-Path $ScriptDir "windows_bootstrap_exposure_recovery.ps1"
 $InstallScript = Join-Path $ScriptDir "install_bundled_services.ps1"
@@ -1168,6 +1207,7 @@ Assert-File `
     $TicketboxDatabaseContractScript `
     "Ticketbox database authorization contract"
 Assert-File $TicketboxDatabaseAclScript "Ticketbox database ACL policy"
+Assert-File $TicketboxDatabaseAclObservationScript "Ticketbox database ACL observation"
 Assert-File $TicketboxDatabaseRolesScript "Ticketbox database role policy"
 Assert-File $WindowsSecurityPrimitivesScript "Windows security primitives 脚本"
 Assert-File $WindowsSecurityByteArrayScript "Windows security byte-array primitives 脚本"
@@ -1195,6 +1235,8 @@ Assert-File `
     "Windows database generation program execution"
 Assert-File $DatabaseGenerationScript "Windows database generation owner"
 Assert-File $DatabaseGenerationContractScript "Windows database generation contract"
+Assert-File $DatabaseGenerationReleaseScript "Windows database generation release binding"
+Assert-File $OperationFailureScript "Windows operation failure preservation"
 Assert-File $DatabaseGenerationArtifactsScript "Windows database generation artifact store"
 Assert-File `
     $DatabaseGenerationCommitVerifierScript `
@@ -1202,16 +1244,23 @@ Assert-File `
 Assert-File $DatabaseGenerationPolicyScript "Windows database generation policy"
 Assert-File $DatabaseGenerationCredentialsScript "Windows database generation credentials"
 Assert-File $DatabaseGenerationRoleFenceScript "Windows database generation role fence"
+Assert-File $DatabaseGenerationHostAuthorityScript "Windows database generation host authority"
+Assert-File $DatabaseGenerationRoleBootstrapScript "Windows database generation role bootstrap"
 Assert-File `
     $DatabaseGenerationDatabaseBindingScript `
     "Windows database generation database binding"
+Assert-File $DatabaseGenerationCurrentScript "Windows database generation CURRENT publisher"
 Assert-File $DatabaseGenerationSourceScript "Windows database generation source mechanism"
+Assert-File $DatabaseGenerationSourceBindingScript "Windows database generation SourceBinding"
 Assert-File `
     $DatabaseGenerationRecoveryEvidenceScript `
     "Windows database generation recovery evidence"
 Assert-File `
     $DatabaseGenerationTargetRecoveryScript `
     "Windows database generation fixed target recovery"
+Assert-File `
+    $DatabaseGenerationTargetAuthorizationScript `
+    "Windows database generation target authorization"
 Assert-File `
     $DatabaseGenerationRetirementScript `
     "Windows database generation bootstrap retirement"
@@ -1221,6 +1270,13 @@ Assert-File `
 Assert-File `
     $DatabaseGenerationProjectionScript `
     "Windows database generation runtime projection"
+Assert-File $DatasetBackupScript "Windows complete dataset backup owner"
+Assert-File $DatasetInventoryScript "Windows sanitized dataset backup inventory reader"
+Assert-File $DatasetRestoreScript "Windows complete dataset restore owner"
+foreach ($installedDatasetScript in $InstalledDatasetLifecycleScripts) {
+    Assert-File $installedDatasetScript "Windows installed dataset lifecycle contract"
+}
+Assert-File $BackendHealthScript "Windows backend health adapter"
 Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"
 Assert-File $BootstrapExposureRecoveryScript "Windows bootstrap 暴露恢复脚本"
 Assert-File $InstallScript "install_bundled_services.ps1"
@@ -1354,6 +1410,8 @@ $defines = @(
     "/DBackendBuildProvenanceScriptSha256=$(Get-TicketboxFileSha256 $BackendBuildProvenanceScript)",
     "/DDatabaseGenerationScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationScript)",
     "/DDatabaseGenerationContractScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationContractScript)",
+    "/DDatabaseGenerationReleaseScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationReleaseScript)",
+    "/DOperationFailureScriptSha256=$(Get-TicketboxFileSha256 $OperationFailureScript)",
     "/DDatabaseGenerationArtifactsScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationArtifactsScript)",
     "/DDatabaseGenerationCommitVerifierScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationCommitVerifierScript)",
     "/DDatabaseGenerationPolicyScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationPolicyScript)",

@@ -269,6 +269,7 @@ def _installed_config(tmp_path: Path, *, port: int, service_suffix: str) -> Mana
         backend_ready_timeout_ms=30_000,
         backend_ready_poll_interval_ms=200,
         backend_health_request_timeout_ms=1_000,
+        database_tool_timeout_ms=600_000,
     )
     return ManagerConfig(
         runtime=InstalledRuntimeConfig(layout, release),

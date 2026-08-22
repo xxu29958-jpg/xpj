@@ -1,4 +1,4 @@
-"""app_meta_service tests — schema-version defaults + binary-compatibility gate.
+"""Dataset compatibility and non-authoritative app metadata tests.
 
 Covers the surviving startup-critical app_meta helpers: structured version
 comparison, Alembic-owned fresh metadata, and the binary↔DB compatibility gate.
@@ -13,8 +13,8 @@ from __future__ import annotations
 import pytest
 
 from app.database import SessionLocal
-from app.database_model_registry import Base
 from app.errors import AppError
+from app.models import DatasetAuthorityRecord
 from app.services import app_meta_service
 from app.services.app_meta_service import _version_tuple
 from app.version import BACKEND_VERSION
@@ -43,13 +43,18 @@ def test_version_tuple_compare_zero_nine_lt_one_oh() -> None:
     assert _version_tuple("1.2.0") < _version_tuple("1.2.1-alpha.1")
 
 
-# --- schema_version defaults ----------------------------------------------
+# --- dataset compatibility authority --------------------------------------
 
 
-def test_fresh_schema_version_is_seeded_to_backend_version() -> None:
+def test_fresh_schema_minimum_is_owned_by_dataset_authority() -> None:
     with SessionLocal() as db:
-        assert app_meta_service.schema_version(db) == BACKEND_VERSION
         assert app_meta_service.schema_min_compatible(db) == BACKEND_VERSION
+
+
+def test_legacy_dataset_keys_cannot_be_reintroduced_through_app_meta() -> None:
+    with SessionLocal() as db, pytest.raises(AppError) as excinfo:
+        app_meta_service.set_value(db, "server_id", "not-authoritative")
+    assert excinfo.value.error == "dataset_authority_read_only"
 
 
 # --- binary compatibility gate --------------------------------------------
@@ -65,28 +70,13 @@ def test_binary_rejected_when_db_locked_to_v1_one_higher(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Compatibility refusal occurs before backup, Alembic, or seed writes."""
-    import app.database as db_pkg
-    from app.services import backup_service
-
     monkeypatch.setattr(app_meta_service, "BACKEND_VERSION", "0.9.0a1")
     with SessionLocal() as db:
-        app_meta_service.set_value(db, "schema_min_compatible", "1.0")
+        authority = db.get(DatasetAuthorityRecord, 1)
+        assert authority is not None
+        authority.schema_min_compatible = "1.3.0"
+        db.commit()
 
-    writes: list[str] = []
-    monkeypatch.setattr(
-        backup_service,
-        "create_pre_upgrade_backup",
-        lambda: writes.append("backup"),
-    )
-    monkeypatch.setattr("alembic.command.upgrade", lambda *a, **k: writes.append("upgrade"))
-    monkeypatch.setattr("alembic.command.stamp", lambda *a, **k: writes.append("stamp"))
-    monkeypatch.setattr(Base.metadata, "create_all", lambda *a, **k: writes.append("create_all"))
-    monkeypatch.setattr(db_pkg, "record_schema_migration", lambda *a, **k: writes.append("seed"))
-    monkeypatch.setattr(db_pkg, "seed_identity_data", lambda: writes.append("seed"))
-    monkeypatch.setattr(db_pkg, "seed_runtime_data", lambda: writes.append("seed"))
-    monkeypatch.setattr(db_pkg, "reconcile_expense_tag_mirror_once", lambda: writes.append("seed"))
-
-    with pytest.raises(AppError) as exc:
-        db_pkg.init_db()
+    with SessionLocal() as db, pytest.raises(AppError) as exc:
+        app_meta_service.assert_binary_compatible_with_db(db)
     assert exc.value.error == "backend_version_too_old"
-    assert writes == []

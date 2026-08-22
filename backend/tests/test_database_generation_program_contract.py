@@ -17,8 +17,8 @@ COMPILER = BACKEND / "scripts" / "build_database_generation_program.py"
 PROGRAM_READER = BACKEND / "app" / "database" / "_database_generation_program.py"
 SOURCE_REVISION = "20260722_0001"
 MONEY_BIGINT_REVISION = "20260729_0001"
-TARGET_REVISION = "20260809_0001"
-EXPECTED_PROGRAM_SHA256 = "9a91545b06d1f1190f1e8a00eaf4bbfde1f76425297438c1c1949b8f6ce399a9"
+TARGET_REVISION = "20260821_0001"
+EXPECTED_PROGRAM_SHA256 = "f574c229c5ac7fd62c62b4209fdd32cbeb5ed38b50e414cddbac61ad7c3d9dd7"
 
 _BUILD_COMPILER_PURITY_PROBE = r"""
 import builtins
@@ -112,7 +112,7 @@ def test_build_compiler_emits_one_canonical_base_to_head_program(
     assert program["schema"] == "ticketbox-database-generation-program-v2"
     assert program["source_revision"] == "base"
     assert program["target_revision"] == TARGET_REVISION
-    assert len(program["revisions"]) == 43
+    assert len(program["revisions"]) == 44
 
     previous = None
     money_bigint_entries = []
@@ -293,7 +293,6 @@ def test_installed_init_db_uses_one_frozen_release_fact(
     monkeypatch.setattr(database, "_assert_existing_schema_compatible", lambda *_a, **_k: None)
     monkeypatch.setattr(database, "assert_database_generation_startup_ready", stop_on_authority)
     monkeypatch.setattr(database, "_apply_schema_lifecycle", lambda *_a: pytest.fail("frozen DDL"))
-    monkeypatch.setattr(database, "_apply_managed_schema_lifecycle", lambda *_a, **_k: pytest.fail("frozen DDL"))
     monkeypatch.setattr(
         database,
         "plan_database_lifecycle",
@@ -385,7 +384,7 @@ def test_program_validation_result_is_closed_and_c07_free(tmp_path: Path) -> Non
         "schema": "ticketbox-database-generation-program-validation-v2",
         "source_revision": "base",
         "target_revision": TARGET_REVISION,
-        "revision_count": 43,
+        "revision_count": 44,
         "generation_program_sha256": expected_sha,
     }
 

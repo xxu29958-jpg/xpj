@@ -115,6 +115,24 @@ datas = [
         ),
         "app/database",
     ),
+    (
+        os.path.join(
+            BACKEND,
+            "app",
+            "database",
+            "_dataset_backup_action.py",
+        ),
+        "app/database",
+    ),
+    (
+        os.path.join(
+            BACKEND,
+            "app",
+            "database",
+            "_dataset_restore_action.py",
+        ),
+        "app/database",
+    ),
     (os.path.join(BACKEND, "alembic.ini"), "."),
     (os.path.join(BACKEND, "migrations"), "migrations"),
 ]
