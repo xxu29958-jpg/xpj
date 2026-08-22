@@ -108,7 +108,7 @@ def test_complete_originals_copy_user_bytes_and_omit_derived_thumbnails(tmp_path
     assert not (staging / "originals/owner/2026/08/thumbs/receipt.jpg").exists()
 
 
-def test_complete_originals_reject_corrupt_and_orphan_user_bytes(tmp_path: Path) -> None:
+def test_complete_originals_reject_corrupt_and_ignore_unreferenced_user_bytes(tmp_path: Path) -> None:
     uploads = tmp_path / "uploads"
     original = uploads / "owner" / "receipt.png"
     orphan = uploads / "owner" / "orphan.png"
@@ -133,19 +133,19 @@ def test_complete_originals_reject_corrupt_and_orphan_user_bytes(tmp_path: Path)
 
     original.write_bytes(b"expected")
     orphan.write_bytes(b"orphan")
-    with pytest.raises(AppError) as orphaned:
-        copy_complete_originals(
-            upload_root=uploads.resolve(),
-            destination=staging / "orphan-originals",
-            references=(
-                OriginalReference(
-                    tenant_id="owner",
-                    storage_reference="uploads/owner/receipt.png",
-                    expected_sha256=hashlib.sha256(b"expected").hexdigest(),
-                ),
+    artifacts = copy_complete_originals(
+        upload_root=uploads.resolve(),
+        destination=staging / "orphan-originals",
+        references=(
+            OriginalReference(
+                tenant_id="owner",
+                storage_reference="uploads/owner/receipt.png",
+                expected_sha256=hashlib.sha256(b"expected").hexdigest(),
             ),
-        )
-    assert orphaned.value.error == "backup_incomplete"
+        ),
+    )
+    assert [artifact.storage_key for artifact in artifacts] == ["originals/owner/receipt.png"]
+    assert not (staging / "orphan-originals/owner/orphan.png").exists()
 
 
 @pytest.mark.parametrize("expected_sha256", [None, "not-a-sha256"])

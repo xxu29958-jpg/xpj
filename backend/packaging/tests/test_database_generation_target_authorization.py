@@ -10,6 +10,7 @@ PACKAGING = Path(__file__).resolve().parents[1]
 OWNER = PACKAGING / "windows_database_generation.ps1"
 COMMIT_VERIFIER = PACKAGING / "windows_database_generation_commit_verifier.ps1"
 DATABASE_BINDING = PACKAGING / "windows_database_generation_database_binding.ps1"
+TARGET_AUTHORIZATION = PACKAGING / "windows_database_generation_target_authorization.ps1"
 FAILURE = PACKAGING / "windows_operation_failure.ps1"
 CREDENTIALS = PACKAGING / "windows_database_generation_credentials.ps1"
 
@@ -23,6 +24,12 @@ def test_target_authorization_consumes_normalized_source_without_mode_reclassifi
 
     assert "source_kind" not in target
     assert "source_request_sha256" not in target
+
+    authorization = TARGET_AUTHORIZATION.read_text(encoding="utf-8-sig")
+    assert 'schema = "ticketbox-database-generation-target-authorization-v2"' in authorization
+    assert "database_binding_sha256 = [string]$databaseBinding.PayloadSha256" in authorization
+    for field in ("dataset_id", "restore_epoch", "schema_revision"):
+        assert f"{field} =" in authorization
 
 
 def test_source_binding_downstream_does_not_reclassify_install_modes() -> None:

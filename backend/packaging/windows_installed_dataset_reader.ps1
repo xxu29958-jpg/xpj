@@ -69,12 +69,36 @@ function Read-TicketboxInstalledDatasetAuthority {
     $intent = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
     $candidate = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot ([string]$intent.Payload.operation_id) "candidate"
+    $targetAuthorization = Read-TicketboxDatabaseGenerationOperationArtifact `
+        $stateRoot ([string]$intent.Payload.operation_id) "target-authorization"
     $current = Read-TicketboxDatabaseGenerationCurrent
+    $datasetId = ([guid][string]$targetAuthorization.Payload.dataset_id).ToString("D")
+    $restoreEpoch = [int64]$targetAuthorization.Payload.restore_epoch
+    $schemaRevision = [string]$targetAuthorization.Payload.schema_revision
     if (
         [string]$current.Payload.operation_id -cne [string]$intent.Payload.operation_id -or
         [string]$current.Payload.installation_id -cne [string]$Subject.Identity.InstallationId -or
         [string]$current.Payload.intent_sha256 -cne [string]$intent.PayloadSha256 -or
-        [string]$current.Payload.candidate_sha256 -cne [string]$candidate.PayloadSha256
+        [string]$current.Payload.candidate_sha256 -cne [string]$candidate.PayloadSha256 -or
+        [string]$candidate.Payload.target_authorization_sha256 -cne
+            [string]$targetAuthorization.PayloadSha256 -or
+        [string]$candidate.Payload.database_binding_sha256 -cne
+            [string]$targetAuthorization.Payload.database_binding_sha256 -or
+        [string]$current.Payload.database_binding_sha256 -cne
+            [string]$targetAuthorization.Payload.database_binding_sha256 -or
+        [string]$targetAuthorization.Payload.schema -cne
+            "ticketbox-database-generation-target-authorization-v2" -or
+        [string]$targetAuthorization.Payload.operation_id -cne
+            [string]$intent.Payload.operation_id -or
+        [string]$targetAuthorization.Payload.intent_sha256 -cne
+            [string]$intent.PayloadSha256 -or
+        $datasetId -ceq [guid]::Empty.ToString("D") -or
+        $datasetId -cne [string]$targetAuthorization.Payload.dataset_id -or
+        $restoreEpoch -lt 0 -or
+        [string]::IsNullOrWhiteSpace($schemaRevision) -or
+        $schemaRevision -cne [string]$targetAuthorization.Payload.target_revision -or
+        $schemaRevision -cne [string]$candidate.Payload.target_revision -or
+        $schemaRevision -cne [string]$current.Payload.committed_revision
     ) {
         throw "installed dataset authority does not match Generation CURRENT."
     }
@@ -89,7 +113,13 @@ function Read-TicketboxInstalledDatasetAuthority {
         StateRoot = $stateRoot
         Intent = $intent
         Candidate = $candidate
+        TargetAuthorization = $targetAuthorization
         Current = $current
+        ActiveDataset = [pscustomobject][ordered]@{
+            DatasetId = $datasetId
+            RestoreEpoch = $restoreEpoch
+            SchemaRevision = $schemaRevision
+        }
         Credentials = $credentials
     }
 }

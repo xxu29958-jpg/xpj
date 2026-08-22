@@ -41,16 +41,19 @@ def copy_complete_originals(
     destination.mkdir()
 
     referenced: dict[str, list[OriginalReference]] = {}
+    casefolded: dict[str, str] = {}
     for reference in references:
         relative = _reference_relative_path(reference.storage_reference)
-        referenced.setdefault(relative.as_posix(), []).append(reference)
-
-    source_files = _source_files(root, required=frozenset(referenced))
-    if source_files != frozenset(referenced):
-        raise AppError("backup_incomplete", status_code=500)
+        relative_text = relative.as_posix()
+        collision_key = os.path.normcase(relative_text).casefold()
+        previous = casefolded.get(collision_key)
+        if previous is not None and previous != relative_text:
+            raise AppError("backup_incomplete", status_code=500)
+        casefolded[collision_key] = relative_text
+        referenced.setdefault(relative_text, []).append(reference)
 
     artifacts: list[OriginalArtifact] = []
-    for relative_text in sorted(source_files):
+    for relative_text in sorted(referenced):
         relative = Path(relative_text)
         source = _bounded_file(root, relative)
         target = destination / relative
@@ -78,32 +81,6 @@ def copy_complete_originals(
             )
         )
     return tuple(artifacts)
-
-
-def _source_files(root: Path, *, required: frozenset[str]) -> frozenset[str]:
-    files: set[str] = set()
-    casefolded: set[str] = set()
-    try:
-        candidates = tuple(root.rglob("*"))
-    except OSError as exc:
-        raise AppError("backup_incomplete", status_code=500) from exc
-    for candidate in candidates:
-        if is_link_or_reparse(candidate):
-            raise AppError("backup_incomplete", status_code=500)
-        if candidate.is_dir():
-            continue
-        if not candidate.is_file():
-            raise AppError("backup_incomplete", status_code=500)
-        relative = candidate.relative_to(root)
-        relative_text = relative.as_posix()
-        if _is_derived_thumbnail(relative) and relative_text not in required:
-            continue
-        collision_key = os.path.normcase(relative_text).casefold()
-        if collision_key in casefolded:
-            raise AppError("backup_incomplete", status_code=500)
-        casefolded.add(collision_key)
-        files.add(relative_text)
-    return frozenset(files)
 
 
 def _absolute_directory(path: Path) -> Path:
@@ -143,7 +120,3 @@ def _bounded_file(root: Path, relative: Path) -> Path:
     if is_link_or_reparse(source) or not resolved.is_file():
         raise AppError("backup_incomplete", status_code=500)
     return resolved
-
-
-def _is_derived_thumbnail(relative: Path) -> bool:
-    return any(part.casefold() == "thumbs" for part in relative.parts)

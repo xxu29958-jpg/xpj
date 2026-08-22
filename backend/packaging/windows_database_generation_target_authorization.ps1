@@ -86,7 +86,7 @@ function Invoke-TicketboxDatabaseGenerationTargetAuthorization {
     $writerFenceSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
         ConvertTo-TicketboxDatabaseGenerationCanonicalJson $fence
     )
-    $databaseBindingSha256 = Set-TicketboxDatabaseGenerationDatabaseBinding `
+    $databaseBinding = Set-TicketboxDatabaseGenerationDatabaseBinding `
         -Intent $Intent `
         -SourceBinding $SourceBinding `
         -HostAuthority $hostAuthority `
@@ -98,7 +98,7 @@ function Invoke-TicketboxDatabaseGenerationTargetAuthorization {
         -TargetRecoveryEvidenceSha256 ([string]$recovery.PayloadSha256) `
         -LifecycleLock $LifecycleLock
     return [ordered]@{
-        schema = "ticketbox-database-generation-target-authorization-v1"
+        schema = "ticketbox-database-generation-target-authorization-v2"
         operation_id = $operationId
         intent_sha256 = [string]$Intent.PayloadSha256
         source_binding_sha256 = [string]$SourceBinding.PayloadSha256
@@ -108,6 +108,9 @@ function Invoke-TicketboxDatabaseGenerationTargetAuthorization {
         runtime_acl_sha256 = $aclSha256
         post_migration_writer_fence_sha256 = $writerFenceSha256
         target_recovery_evidence_sha256 = [string]$recovery.PayloadSha256
-        database_binding_sha256 = $databaseBindingSha256
+        database_binding_sha256 = [string]$databaseBinding.PayloadSha256
+        dataset_id = [string]$databaseBinding.Payload.dataset_id
+        restore_epoch = [int64]$databaseBinding.Payload.restore_epoch
+        schema_revision = [string]$databaseBinding.Payload.schema_revision
     }
 }

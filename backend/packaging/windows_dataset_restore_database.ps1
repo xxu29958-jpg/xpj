@@ -1,38 +1,7 @@
 ﻿#Requires -Version 5.1
 
-# Candidate database observation, restore, and immutable source evidence.
+# Candidate database restore and immutable source evidence.
 
-function Get-TicketboxInstalledActiveDatasetObservation {
-    param(
-        [Parameter(Mandatory = $true)][object]$Subject,
-        [Parameter(Mandatory = $true)][object]$Authority
-    )
-    $hostAuthority = [pscustomobject][ordered]@{
-        Schema = "ticketbox-postgresql-host-authority-v1"
-        PsqlPath = Join-Path ([string]$Subject.Identity.InstallDir) "pg\bin\psql.exe"
-        Port = [int]$Subject.Identity.PgPort
-    }
-    $raw = Invoke-TicketboxPostgresqlDatabaseCommand `
-        -Authority $hostAuthority `
-        -Database "ticketbox" `
-        -Role "ticketbox_backup" `
-        -Password $Authority.Credentials.BackupPassword `
-        -Label "active dataset authority observation" `
-        -Sql @"
-SELECT dataset_id::text || E'\t' || restore_epoch::text || E'\t' ||
-       schema_revision
-FROM public.dataset_authority
-WHERE singleton_id = 1;
-"@
-    $fields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
-        -Output $raw -FieldCount 3 `
-        -Label "active dataset authority observation"
-    return [pscustomobject][ordered]@{
-        DatasetId = ([guid][string]$fields[0]).ToString("D")
-        RestoreEpoch = [int64]$fields[1]
-        SchemaRevision = [string]$fields[2]
-    }
-}
 function Invoke-TicketboxInstalledDatasetRestoreHelper {
     param(
         [Parameter(Mandatory = $true)][object]$Subject,

@@ -164,7 +164,8 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
                 "source_binding_sha256", "target_revision",
                 "execution_authority_sha256", "role_authority_sha256",
                 "runtime_acl_sha256", "post_migration_writer_fence_sha256",
-                "target_recovery_evidence_sha256", "database_binding_sha256"
+                "target_recovery_evidence_sha256", "database_binding_sha256",
+                "dataset_id", "restore_epoch", "schema_revision"
             )
         }
         "candidate" {

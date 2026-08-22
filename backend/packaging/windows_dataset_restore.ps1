@@ -139,8 +139,7 @@ try {
             -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms)
         $restartBackend = $backendState -ceq "running"
         $authority = Read-TicketboxInstalledDatasetAuthority $subject
-        $activeDataset = Get-TicketboxInstalledActiveDatasetObservation `
-            $subject $authority
+        $activeDataset = $authority.ActiveDataset
         if (
             [string]$inspection.Evidence.source_installation_id -cne
                 [string]$subject.Identity.InstallationId -or

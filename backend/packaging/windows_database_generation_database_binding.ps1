@@ -195,5 +195,8 @@ COMMIT;
     if ([string]$observed -cne $bindingJson) {
         throw "database generation binding 未通过同事务复读。"
     }
-    return $bindingSha256
+    return [pscustomobject][ordered]@{
+        Payload = [pscustomobject]$payload
+        PayloadSha256 = $bindingSha256
+    }
 }

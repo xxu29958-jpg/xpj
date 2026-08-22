@@ -57,6 +57,92 @@ def test_backup_and_restore_share_one_active_dataset_operation_authority() -> No
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_restore_planning_uses_current_bound_host_evidence_without_live_database(
+    tmp_path: Path,
+) -> None:
+    restore = RESTORE.read_text(encoding="utf-8-sig")
+    new_request = restore.split("if ($null -eq $request) {", maxsplit=1)[1].split(
+        "if ($null -eq $contracts)", maxsplit=1
+    )[0]
+    assert "$activeDataset = $authority.ActiveDataset" in new_request
+    assert "Get-TicketboxInstalledActiveDatasetObservation" not in restore
+
+    reader = powershell_function(
+        INSTALLED_READER.read_text(encoding="utf-8-sig"),
+        "Read-TicketboxInstalledDatasetAuthority",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+{reader}
+$operation = '11111111-1111-4111-8111-111111111111'
+$intent = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{ operation_id = $operation }}
+}}
+$target = [pscustomobject]@{{
+    PayloadSha256 = ('b' * 64)
+    Payload = [pscustomobject]@{{
+        schema = 'ticketbox-database-generation-target-authorization-v2'
+        operation_id = $operation
+        intent_sha256 = ('a' * 64)
+        database_binding_sha256 = ('c' * 64)
+        dataset_id = '22222222-2222-4222-8222-222222222222'
+        restore_epoch = 7
+        target_revision = '20260821_0001'
+        schema_revision = '20260821_0001'
+    }}
+}}
+$candidate = [pscustomobject]@{{
+    PayloadSha256 = ('d' * 64)
+    Payload = [pscustomobject]@{{
+        intent_sha256 = ('a' * 64)
+        target_authorization_sha256 = ('b' * 64)
+        database_binding_sha256 = ('c' * 64)
+        target_revision = '20260821_0001'
+    }}
+}}
+$current = [pscustomobject]@{{
+    PayloadSha256 = ('e' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = $operation
+        installation_id = '33333333-3333-4333-8333-333333333333'
+        intent_sha256 = ('a' * 64)
+        candidate_sha256 = ('d' * 64)
+        database_binding_sha256 = ('c' * 64)
+        committed_revision = '20260821_0001'
+    }}
+}}
+function Get-TicketboxDatabaseGenerationStateRoot {{ return 'C:\\state' }}
+function Get-TicketboxInstallerStateDirectory {{ return 'C:\\installer-state' }}
+function Read-TicketboxDatabaseGenerationActiveIntent {{ return $intent }}
+function Read-TicketboxDatabaseGenerationOperationArtifact {{
+    param($StateRoot, $OperationId, $Kind)
+    if ($Kind -ceq 'candidate') {{ return $candidate }}
+    if ($Kind -ceq 'target-authorization') {{ return $target }}
+    throw "unexpected artifact read: $Kind"
+}}
+function Read-TicketboxDatabaseGenerationCurrent {{ return $current }}
+function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {{ param($ExpectedOperationId, $ExpectedCurrentSha256) }}
+function Read-TicketboxDatabaseGenerationRuntimeCredentials {{ return [pscustomobject]@{{}} }}
+function Invoke-TicketboxPostgresqlDatabaseCommand {{ throw 'live database observation poison' }}
+$subject = [pscustomobject]@{{ Identity = [pscustomobject]@{{
+    InstallationId = '33333333-3333-4333-8333-333333333333'
+}} }}
+$observed = Read-TicketboxInstalledDatasetAuthority $subject
+if (
+    [string]$observed.ActiveDataset.DatasetId -cne '22222222-2222-4222-8222-222222222222' -or
+    [int64]$observed.ActiveDataset.RestoreEpoch -ne 7 -or
+    [string]$observed.ActiveDataset.SchemaRevision -cne '20260821_0001'
+) {{ throw 'CURRENT-bound dataset evidence was not returned' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-restore-current-bound-evidence.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_dataset_operation_path_is_singleton_across_kinds_and_attempts(
     tmp_path: Path,
 ) -> None:
