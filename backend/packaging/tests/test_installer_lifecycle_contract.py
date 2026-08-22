@@ -291,6 +291,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_postgresql_database_command.ps1",
         "windows_ticketbox_database_contract.ps1",
         "windows_ticketbox_database_acl.ps1",
+        "windows_ticketbox_database_acl_observation.ps1",
         "windows_ticketbox_database_roles.ps1",
         "windows_postgresql_credentials.ps1",
         "windows_postgresql_single_user.ps1",
@@ -300,15 +301,22 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_database_generation_program_execution.ps1",
         "windows_database_generation.ps1",
         "windows_database_generation_contract.ps1",
+        "windows_database_generation_release.ps1",
+        "windows_operation_failure.ps1",
         "windows_database_generation_artifacts.ps1",
         "windows_database_generation_commit_verifier.ps1",
         "windows_database_generation_policy.ps1",
         "windows_database_generation_credentials.ps1",
         "windows_database_generation_role_fence.ps1",
         "windows_database_generation_database_binding.ps1",
+        "windows_database_generation_current.ps1",
+        "windows_database_generation_host_authority.ps1",
+        "windows_database_generation_role_bootstrap.ps1",
         "windows_database_generation_source.ps1",
+        "windows_database_generation_source_binding.ps1",
         "windows_database_generation_recovery_evidence.ps1",
         "windows_database_generation_target_recovery.ps1",
+        "windows_database_generation_target_authorization.ps1",
         "windows_database_generation_retirement.ps1",
         "windows_database_generation_single_user.ps1",
         "windows_database_generation_projection.ps1",
@@ -378,6 +386,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert '"windows_postgresql_database_command.ps1"' in database_generation
     assert '"windows_ticketbox_database_contract.ps1"' in database_generation
     assert '"windows_ticketbox_database_acl.ps1"' in database_generation
+    assert '"windows_ticketbox_database_acl_observation.ps1"' in database_generation
     assert '"windows_ticketbox_database_roles.ps1"' in database_generation
     assert '"windows_c07_database.ps1"' not in database_generation
     assert ('$DatabaseMaintenanceHelper = Join-Path $ProgramDir "ticketbox-database-maintenance.exe"') in install
@@ -2753,6 +2762,8 @@ def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Pa
         "BackendBuildProvenanceScriptSha256": digest,
         "DatabaseGenerationScriptSha256": digest,
         "DatabaseGenerationContractScriptSha256": digest,
+        "DatabaseGenerationReleaseScriptSha256": digest,
+        "OperationFailureScriptSha256": digest,
         "DatabaseGenerationArtifactsScriptSha256": digest,
         "DatabaseGenerationCommitVerifierScriptSha256": digest,
         "DatabaseGenerationPolicyScriptSha256": digest,

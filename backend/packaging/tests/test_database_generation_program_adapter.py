@@ -114,6 +114,7 @@ def test_program_validation_binds_exact_bytes_schema_and_helper_lease(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{_ps_literal(PACKAGING / "windows_database_generation_contract.ps1")}'
+. '{_ps_literal(PACKAGING / "windows_operation_failure.ps1")}'
 . '{_ps_literal(PACKAGING / "windows_database_generation_program_adapter.ps1")}'
 . '{_ps_literal(PACKAGING / "windows_database_generation_program_execution.ps1")}'
 $script:closeCount = 0

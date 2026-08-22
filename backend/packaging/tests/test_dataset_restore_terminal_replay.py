@@ -59,7 +59,7 @@ def test_restore_terminal_result_uses_one_bounded_replay_slot() -> None:
 
     assert '"dataset-restore-result.json"' in path_owner
     assert "RestoreAttemptId" not in path_owner
-    assert "Replace-TicketboxDatabaseGenerationEnvelope" in writer
+    assert "Replace-TicketboxInstalledDatasetRestoreResultEnvelope" in writer
 
 
 def test_restore_terminal_replay_slot_atomically_supersedes_prior_current(
@@ -71,7 +71,11 @@ def test_restore_terminal_replay_slot_atomically_supersedes_prior_current(
         [
             powershell_function(
                 generation_artifacts,
-                "Replace-TicketboxDatabaseGenerationEnvelope",
+                "Get-TicketboxDatabaseGenerationPayloadProperties",
+            ),
+            powershell_function(
+                generation_artifacts,
+                "New-TicketboxDatabaseGenerationEnvelopeText",
             ),
             *(
                 powershell_function(artifacts, name)
@@ -79,6 +83,8 @@ def test_restore_terminal_replay_slot_atomically_supersedes_prior_current(
                     "Get-TicketboxInstalledDatasetRestoreResultPath",
                     "Assert-TicketboxInstalledDatasetRestoreResult",
                     "Read-TicketboxInstalledDatasetRestoreResult",
+                    "New-TicketboxInstalledDatasetRestoreResultEnvelope",
+                    "Replace-TicketboxInstalledDatasetRestoreResultEnvelope",
                     "New-TicketboxInstalledDatasetRestoreResult",
                 )
             ),
@@ -125,25 +131,18 @@ function Read-TicketboxDatabaseGenerationEnvelope {{
     }}
     return $script:stored
 }}
-function Write-TicketboxDatabaseGenerationEnvelope {{
-    param($Path, $Kind, $Payload, $LifecycleLock)
-    if ($null -ne $script:stored) {{ throw 'bounded replay created a second slot' }}
-    $script:path = $Path
-    $script:writes++
-    $script:stored = [pscustomobject]@{{
-        PayloadSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $Payload
-        )
-        Payload = [pscustomobject]$Payload
-    }}
-    return $script:stored
-}}
 function Write-TicketboxProtectedUtf8FileDurable {{
     param($Path, $Text, $FullControlAccounts, $OwnerAccount, [switch]$ReplaceExisting)
-    if (-not $ReplaceExisting -or $Path -cne $script:path) {{
-        throw 'bounded replay replacement was not atomic'
+    if ($ReplaceExisting) {{
+        if ($null -eq $script:stored -or $Path -cne $script:path) {{
+            throw 'bounded replay replacement was not atomic'
+        }}
+        $script:replacements++
+    }} else {{
+        if ($null -ne $script:stored) {{ throw 'bounded replay created a second slot' }}
+        $script:path = $Path
+        $script:writes++
     }}
-    $script:replacements++
     $envelope = $Text | ConvertFrom-Json
     $script:stored = [pscustomobject]@{{
         PayloadSha256 = [string]$envelope.payload_sha256
@@ -241,18 +240,37 @@ def test_restore_terminal_result_survives_response_loss_and_is_attempt_bound(
         terminal_resume.index("Remove-TicketboxInstalledDatasetOperation")
     )
 
+    generation_artifacts = (
+        PACKAGING / "windows_database_generation_artifacts.ps1"
+    ).read_text(encoding="utf-8-sig")
     functions = "\n".join(
-        powershell_function(artifacts, name)
-        for name in (
-            "Get-TicketboxInstalledDatasetRestoreResultPath",
-            "Assert-TicketboxInstalledDatasetRestoreResult",
-            "Read-TicketboxInstalledDatasetRestoreResult",
-            "New-TicketboxInstalledDatasetRestoreResult",
-        )
+        [
+            powershell_function(
+                generation_artifacts,
+                "Get-TicketboxDatabaseGenerationPayloadProperties",
+            ),
+            powershell_function(
+                generation_artifacts,
+                "New-TicketboxDatabaseGenerationEnvelopeText",
+            ),
+            *(
+                powershell_function(artifacts, name)
+                for name in (
+                    "Get-TicketboxInstalledDatasetRestoreResultPath",
+                    "Assert-TicketboxInstalledDatasetRestoreResult",
+                    "Read-TicketboxInstalledDatasetRestoreResult",
+                    "New-TicketboxInstalledDatasetRestoreResultEnvelope",
+                    "Replace-TicketboxInstalledDatasetRestoreResultEnvelope",
+                    "New-TicketboxInstalledDatasetRestoreResult",
+                )
+            ),
+        ]
     )
     script = rf"""
 $ErrorActionPreference = 'Stop'
 $script:stored = $null
+$script:TicketboxDatabaseGenerationAclAccounts = @('SYSTEM', 'Administrators')
+$script:TicketboxDatabaseGenerationOwnerAccount = 'SYSTEM'
 function Assert-TicketboxLifecycleOperationLease {{ param($Lock) }}
 function Assert-TicketboxDatabaseGenerationLowerSha256 {{
     param($Value, $Label)
@@ -269,15 +287,17 @@ function Read-TicketboxDatabaseGenerationEnvelope {{
     if ($null -eq $script:stored) {{ if ($AllowAbsent) {{ return $null }}; throw 'absent' }}
     return $script:stored
 }}
-function Write-TicketboxDatabaseGenerationEnvelope {{
-    param($Path, $Kind, $Payload, $LifecycleLock)
+function Get-TicketboxDatabaseGenerationTextSha256 {{ param($Text); return ('d' * 64) }}
+function Write-TicketboxProtectedUtf8FileDurable {{
+    param($Path, $Text, $FullControlAccounts, $OwnerAccount, [switch]$ReplaceExisting)
+    if ($ReplaceExisting) {{ throw 'same-attempt retry unexpectedly replaced terminal result' }}
+    $envelope = $Text | ConvertFrom-Json
     $script:stored = [pscustomobject]@{{
         Path = $Path
-        Kind = $Kind
-        PayloadSha256 = ('d' * 64)
-        Payload = [pscustomobject]$Payload
+        Kind = [string]$envelope.kind
+        PayloadSha256 = [string]$envelope.payload_sha256
+        Payload = $envelope.payload
     }}
-    return $script:stored
 }}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
     param($Value)

@@ -83,7 +83,7 @@ function Restore-TicketboxInstalledDatabaseGenerationPredecessor {{
     $script:events += 'generation-owner-rollback'
 }}
 function Close-TicketboxDatabaseGenerationRuntimeCredentials {{ param($Credentials); $script:events += 'close-credentials' }}
-function Throw-TicketboxDatabaseGenerationOperationFailure {{
+function Throw-TicketboxOperationFailure {{
     param($Primary, $Cleanup)
     if ($null -ne $Primary) {{ throw $Primary }}
     if (@($Cleanup).Count -gt 0) {{ throw [string]@($Cleanup)[0] }}
@@ -235,7 +235,7 @@ function Read-TicketboxInstalledDatasetRestoreResult {
 }
 function Invoke-TicketboxInstalledDatasetBackupInspection { throw 'terminal replay entered restore mutation path' }
 function Exit-TicketboxLifecycleLock { param($Lock) }
-function Throw-TicketboxDatabaseGenerationOperationFailure {
+function Throw-TicketboxOperationFailure {
     param($Primary, $Cleanup)
     if ($null -ne $Primary) { throw $Primary }
     if (@($Cleanup).Count -gt 0) { throw [string]@($Cleanup)[0] }

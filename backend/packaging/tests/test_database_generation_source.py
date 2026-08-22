@@ -7,7 +7,10 @@ from _powershell_contract import powershell_contract_engines, run_powershell_con
 
 PACKAGING = Path(__file__).resolve().parents[1]
 SOURCE = PACKAGING / "windows_database_generation_source.ps1"
+SOURCE_BINDING = PACKAGING / "windows_database_generation_source_binding.ps1"
+ROLE_BOOTSTRAP = PACKAGING / "windows_database_generation_role_bootstrap.ps1"
 CONTRACT = PACKAGING / "windows_database_generation_contract.ps1"
+POLICY = PACKAGING / "windows_database_generation_policy.ps1"
 
 
 def _function(source: str, name: str) -> str:
@@ -27,7 +30,7 @@ def _function(source: str, name: str) -> str:
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_source_binding_boundary_rejects_mode_request_mismatch(tmp_path: Path) -> None:
     validator = _function(
-        SOURCE.read_text(encoding="utf-8-sig"),
+        SOURCE_BINDING.read_text(encoding="utf-8-sig"),
         "Assert-TicketboxDatabaseGenerationSourceBinding",
     )
     script = f"""
@@ -91,7 +94,7 @@ $binding.Payload.source_revision = '20260821_0001'
 def test_source_binding_chain_rejects_missing_or_corrupt_backing_evidence(
     tmp_path: Path,
 ) -> None:
-    source = SOURCE.read_text(encoding="utf-8-sig")
+    source = SOURCE_BINDING.read_text(encoding="utf-8-sig")
     validator = _function(
         source,
         "Assert-TicketboxDatabaseGenerationSourceBinding",
@@ -216,7 +219,7 @@ if (-not $emptyCorruptRejected) {{ throw 'corrupt empty-source evidence was acce
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_preinstall_eligibility_is_read_only_and_fails_closed(tmp_path: Path) -> None:
     eligibility = _function(
-        CONTRACT.read_text(encoding="utf-8-sig"),
+        POLICY.read_text(encoding="utf-8-sig"),
         "Assert-TicketboxDatabaseGenerationPreinstallEligibility",
     )
     script = f"""
@@ -343,7 +346,10 @@ def test_empty_source_classification_is_zero_write_and_operation_bound(
         source_text,
         "Invoke-TicketboxDatabaseGenerationEmptySource",
     )
-    role_sql = _function(source_text, "New-TicketboxDatabaseGenerationEmptyRoleSql")
+    role_sql = _function(
+        ROLE_BOOTSTRAP.read_text(encoding="utf-8-sig"),
+        "New-TicketboxDatabaseGenerationEmptyRoleSql",
+    )
     sql_literal = _function(
         (PACKAGING / "windows_postgresql_database_command.ps1").read_text(
             encoding="utf-8-sig"
@@ -485,7 +491,7 @@ if (
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_restored_source_normalizes_exact_evidence_and_rejects_drift(tmp_path: Path) -> None:
-    source_text = SOURCE.read_text(encoding="utf-8-sig")
+    source_text = SOURCE_BINDING.read_text(encoding="utf-8-sig")
     normalize = _function(
         source_text,
         "Invoke-TicketboxDatabaseGenerationRestoredSource",

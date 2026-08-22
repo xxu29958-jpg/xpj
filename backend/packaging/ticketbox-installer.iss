@@ -97,6 +97,12 @@
 #ifndef DatabaseGenerationContractScriptSha256
 #error DatabaseGenerationContractScriptSha256 must be injected by build_inno_installer.ps1
 #endif
+#ifndef DatabaseGenerationReleaseScriptSha256
+#error DatabaseGenerationReleaseScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef OperationFailureScriptSha256
+#error OperationFailureScriptSha256 must be injected by build_inno_installer.ps1
+#endif
 #ifndef DatabaseGenerationArtifactsScriptSha256
 #error DatabaseGenerationArtifactsScriptSha256 must be injected by build_inno_installer.ps1
 #endif
@@ -209,6 +215,8 @@ Source: "windows_release_config.ps1"; Flags: dontcopy noencryption
 Source: "windows-release-config.json"; Flags: dontcopy noencryption
 Source: "windows_database_generation.ps1"; Flags: dontcopy noencryption
 Source: "windows_database_generation_contract.ps1"; Flags: dontcopy noencryption
+Source: "windows_database_generation_release.ps1"; Flags: dontcopy noencryption
+Source: "windows_operation_failure.ps1"; Flags: dontcopy noencryption
 Source: "windows_database_generation_artifacts.ps1"; Flags: dontcopy noencryption
 Source: "windows_database_generation_commit_verifier.ps1"; Flags: dontcopy noencryption
 Source: "windows_database_generation_policy.ps1"; Flags: dontcopy noencryption
@@ -250,6 +258,7 @@ Source: "windows_bundled_database.ps1"; DestDir: "{app}\installer"; Flags: ignor
 Source: "windows_postgresql_database_command.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_ticketbox_database_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_ticketbox_database_acl.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_ticketbox_database_acl_observation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_ticketbox_database_roles.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_security_primitives.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "security_primitives\byte_array.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
@@ -269,15 +278,22 @@ Source: "windows_database_generation_program_adapter.ps1"; DestDir: "{app}\insta
 Source: "windows_database_generation_program_execution.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_release.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_operation_failure.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_commit_verifier.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_policy.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_credentials.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_role_fence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_database_binding.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_host_authority.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_role_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_source.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_source_binding.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_current.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_recovery_evidence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_target_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_database_generation_target_authorization.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_retirement.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_single_user.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_projection.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion

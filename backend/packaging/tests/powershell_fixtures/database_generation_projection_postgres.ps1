@@ -1,6 +1,7 @@
 ﻿param(
     [Parameter(Mandatory = $true)][string]$ProjectionPath,
     [Parameter(Mandatory = $true)][string]$ContractPath,
+    [Parameter(Mandatory = $true)][string]$FailurePath,
     [Parameter(Mandatory = $true)][string]$CredentialsPath,
     [Parameter(Mandatory = $true)][string]$RetirementPath,
     [Parameter(Mandatory = $true)][string]$ReleaseConfigPath,
@@ -14,6 +15,7 @@
     [Parameter(Mandatory = $true)][string]$DatabaseCommandPath,
     [Parameter(Mandatory = $true)][string]$DatabaseContractPath,
     [Parameter(Mandatory = $true)][string]$DatabaseAclPath,
+    [Parameter(Mandatory = $true)][string]$DatabaseAclObservationPath,
     [Parameter(Mandatory = $true)][string]$DatabaseRolesPath,
     [Parameter(Mandatory = $true)][string]$PythonPath,
     [Parameter(Mandatory = $true)][string]$BackendRoot,
@@ -119,10 +121,12 @@ finally:
 . $DatabaseSafetyPath
 . $PgRecoveryToolsPath
 . $ContractPath
+. $FailurePath
 . $CredentialsPath
 . $DatabaseCommandPath
 . $DatabaseContractPath
 . $DatabaseAclPath
+. $DatabaseAclObservationPath
 . $DatabaseRolesPath
 . $ReleaseConfigPath
 . $ServiceLifecyclePath

@@ -49,6 +49,9 @@
   DatabaseGenerationScriptSha256 = '{#DatabaseGenerationScriptSha256}';
   DatabaseGenerationContractScriptSha256 =
     '{#DatabaseGenerationContractScriptSha256}';
+  DatabaseGenerationReleaseScriptSha256 =
+    '{#DatabaseGenerationReleaseScriptSha256}';
+  OperationFailureScriptSha256 = '{#OperationFailureScriptSha256}';
   DatabaseGenerationArtifactsScriptSha256 =
     '{#DatabaseGenerationArtifactsScriptSha256}';
   DatabaseGenerationCommitVerifierScriptSha256 =
@@ -773,6 +776,11 @@ begin
       'windows_database_generation_contract.ps1',
       DatabaseGenerationContractScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
+      'windows_database_generation_release.ps1',
+      DatabaseGenerationReleaseScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_operation_failure.ps1', OperationFailureScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
       'windows_database_generation_artifacts.ps1',
       DatabaseGenerationArtifactsScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
@@ -922,6 +930,12 @@ begin
      not StageLifecycleLockBootstrapFile(
     'windows_database_generation_contract.ps1',
     DatabaseGenerationContractScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_generation_release.ps1',
+    DatabaseGenerationReleaseScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_operation_failure.ps1',
+    OperationFailureScriptSha256) or
      not StageLifecycleLockBootstrapFile(
     'windows_database_generation_artifacts.ps1',
     DatabaseGenerationArtifactsScriptSha256) or

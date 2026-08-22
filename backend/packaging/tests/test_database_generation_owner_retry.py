@@ -27,6 +27,7 @@ $script:bootstrapReads = 0
 $script:credentialCreates = 0
 $script:retirementCalls = 0
 $script:projectionWrites = 0
+$script:runtimeProjectionExists = $false
 $script:terminalWrites = 0
 $script:currentWrites = 0
 $script:sourceBindingReads = 0
@@ -70,6 +71,10 @@ function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('9' * 64) }}
 function Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 {{ return ('9' * 64) }}
 function Assert-TicketboxDatabaseGenerationReleaseBinding {{}}
 function Repair-TicketboxDatabaseGenerationServiceTransition {{}}
+function Read-TicketboxDatabaseGenerationServiceTransition {{
+    param($StateRoot, [switch]$AllowAbsent)
+    return $null
+}}
 function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {{ return [pscustomobject]@{{ Port = 5432 }} }}
 function Get-TicketboxDatabaseAuthorizationContract {{
     return [pscustomobject]@{{
@@ -90,6 +95,7 @@ function Read-TicketboxDatabaseGenerationOperationArtifact {{
         return $script:sourceBinding
     }}
     if ($Kind -eq 'target-authorization') {{ return $script:targetAuthorization }}
+    if ($Kind -eq 'terminal-state') {{ return $script:terminal }}
     throw "unexpected artifact $Kind"
 }}
 function Assert-TicketboxDatabaseGenerationSourceBindingChain {{
@@ -111,6 +117,10 @@ function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
     if (-not [object]::ReferenceEquals($RuntimePassword, $script:runtimeSecret)) {{ throw 'wrong runtime secret' }}
     if (-not $script:runtimeReady) {{ throw 'runtime login is still disabled' }}
     return $script:retired
+}}
+function Test-TicketboxDatabaseGenerationBootstrapRetirementWithMaintenanceAuthority {{
+    if ($script:retired) {{ throw 'maintenance fallback used after retirement' }}
+    return $false
 }}
 function Get-TicketboxDatabaseGenerationBootstrapRetirementJson {{ return '{{"retired":true}}' }}
 function Read-PostgresBootstrapRecoveryState {{
@@ -150,10 +160,18 @@ function Retire-TicketboxDatabaseGenerationBootstrapAuthority {{
     throw 'simulated response loss after retirement commit'
 }}
 function Publish-TicketboxDatabaseGenerationRuntimeProjection {{
-    if ($script:projectionWrites -eq 0) {{ $script:projectionWrites = 1 }}
+    if (-not $script:runtimeProjectionExists) {{
+        $script:runtimeProjectionExists = $true
+        $script:projectionWrites += 1
+    }}
     return Read-TicketboxDatabaseGenerationRuntimeProjection
 }}
 function Read-TicketboxDatabaseGenerationRuntimeProjection {{
+    param($Intent, $Candidate, $HostAuthority, $ProjectionContract, $LifecycleLock, [switch]$AllowAbsent)
+    if (-not $script:runtimeProjectionExists) {{
+        if ($AllowAbsent) {{ return $null }}
+        throw 'runtime projection is absent'
+    }}
     return [pscustomobject]@{{
         Payload = [pscustomobject]@{{ operation_id = $script:intent.Payload.operation_id; candidate_sha256 = $script:candidate.PayloadSha256; committed_revision = $script:candidate.Payload.target_revision }}
         PayloadSha256 = ('7' * 64)
@@ -169,6 +187,10 @@ function Remove-PostgresBootstrapRecoveryState {{
     $script:bootstrapExists = $false
 }}
 function Remove-TicketboxDatabaseGenerationCredentials {{ $script:credentialsExist = $false }}
+function Remove-TicketboxDatabaseGenerationTransientAuthority {{
+    $script:bootstrapExists = $false
+    $script:credentialsExist = $false
+}}
 function Get-TicketboxDatabaseGenerationArtifactPath {{ return 'credentials.json' }}
 function Get-TicketboxDatabaseGenerationServiceTransitionPath {{ return 'service-transition.json' }}
 function New-TicketboxDatabaseGenerationChainedArtifact {{
@@ -186,6 +208,15 @@ function New-TicketboxDatabaseGenerationChainedArtifact {{
         }}
     }}
     return $script:terminal
+}}
+function New-TicketboxDatabaseGenerationTerminalState {{
+    param($StateRoot, $Intent, $Candidate, $RuntimeCredentials, $RuntimeProjection, $LifecycleLock)
+    $payload = [ordered]@{{
+        operation_id = $Intent.Payload.operation_id
+        candidate_sha256 = $Candidate.PayloadSha256
+    }}
+    return New-TicketboxDatabaseGenerationChainedArtifact `
+        $StateRoot $Intent.Payload.operation_id 'terminal-state' $payload $LifecycleLock
 }}
 function New-TicketboxDatabaseGenerationAdvanceCurrentTransition {{
     param($Intent, $Candidate, $TerminalState)
@@ -209,7 +240,7 @@ function Publish-TicketboxDatabaseGenerationCurrent {{
     return $script:current
 }}
 function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {{ return $script:current }}
-function Throw-TicketboxDatabaseGenerationOperationFailure {{
+function Throw-TicketboxOperationFailure {{
     param($Primary, $Cleanup)
     if ($null -ne $Primary) {{ throw $Primary }}
     if (@($Cleanup).Count -gt 0) {{ throw $Cleanup }}
@@ -257,13 +288,24 @@ $result = Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $cont
 $again = Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $contract $contract 'bootstrap.json'
 if (
     $script:bootstrapReads -ne 1 -or $script:retirementCalls -ne 1 -or
-    $script:credentialCreates -ne 1 -or
+    $script:credentialCreates -ne 0 -or
     $script:projectionWrites -ne 1 -or $script:terminalWrites -ne 1 -or
     $script:currentWrites -ne 1 -or
     $script:sourceChainCalls -lt 1 -or
     $script:sourceChainCalls -ne $script:sourceBindingReads -or
     $result.CurrentSha256 -cne ('5' * 64) -or $again.CurrentSha256 -cne ('5' * 64) -or
     $result.CommittedRevision -cne '20260809_0001' -or $result.DatabaseUrl -cne 'postgresql://runtime'
-) {{ throw 'owner retry did not converge through one terminal CURRENT publication' }}
+) {{
+    throw (
+        'owner retry did not converge: bootstrapReads=' + $script:bootstrapReads +
+        ', retirementCalls=' + $script:retirementCalls +
+        ', credentialCreates=' + $script:credentialCreates +
+        ', projectionWrites=' + $script:projectionWrites +
+        ', terminalWrites=' + $script:terminalWrites +
+        ', currentWrites=' + $script:currentWrites +
+        ', sourceReads=' + $script:sourceBindingReads +
+        ', sourceChains=' + $script:sourceChainCalls
+    )
+}}
 """
     run_powershell_contract_script(script, tmp_path, filename="generation-owner-retry.ps1")

@@ -54,6 +54,7 @@ from app.dataset_maintenance_cli import (
     DATASET_MAINTENANCE_SWITCHES,
     run_dataset_maintenance,
 )
+from app.services import installer_runtime_guard as _installer_guard
 
 _VOLUME_IDENTITY_PATTERN = re.compile(
     r"^\\\\\?\\Volume\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
@@ -462,7 +463,9 @@ def _assert_bootstrap_guard_runtime_binding(marker_path: Path) -> None:
         raise RuntimeError("bootstrap recovery guard is not bound to the runtime DataRoot projection")
 
 
-def _assert_runtime_data_root_authority(data_dir: Path) -> Path | None:
+def _assert_runtime_data_root_authority(
+    data_dir: Path,
+) -> _installer_guard.InstalledRuntimeAuthority | None:
     marker_value = os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip()
     volume_value = os.environ.get("TICKETBOX_DATA_VOLUME_IDENTITY", "").strip()
     if not marker_value and not volume_value:
@@ -522,7 +525,11 @@ def _assert_runtime_data_root_authority(data_dir: Path) -> Path | None:
         raise RuntimeError("runtime DataRoot junction does not match the marker data_root")
     if os.path.normcase(str(marker_install_dir)) != os.path.normcase(str(_expected_frozen_install_dir())):
         raise RuntimeError("runtime DataRoot marker does not match the frozen install directory")
-    return marker_path.parent
+    return _installer_guard.InstalledRuntimeAuthority(
+        runtime_junction=marker_path.parent,
+        install_dir=marker_install_dir,
+        data_root=marker_data_root,
+    )
 
 
 def configure_environment() -> Path:
@@ -739,9 +746,22 @@ def _installer_runtime_recovery_is_pending(guard_path: Path | None) -> bool:
     return _host_guard_is_present_or_malformed(guard_path)
 
 
-def _initialize_installed_runtime_settings(data_dir: Path) -> None:
+def _initialize_installed_runtime_settings(
+    data_dir: Path,
+    authority: _installer_guard.InstalledRuntimeAuthority | None,
+) -> None:
     guard_path = _installer_runtime_recovery_guard_path()
-    if not _installer_runtime_recovery_is_pending(guard_path):
+    if guard_path is None:
+        return
+    if authority is None:
+        raise _installer_guard.InstallerRuntimeGuardError(
+            "installer runtime recovery guard lacks installed authority"
+        )
+    guard = _installer_guard.read_installer_runtime_recovery_guard(
+        guard_path,
+        authority,
+    )
+    if guard is None:
         return
     from app.services.runtime_settings_store import (
         RuntimeSettingsProjection,
@@ -910,8 +930,12 @@ def main() -> int | None:
     host = os.getenv("TICKETBOX_HOST", "127.0.0.1")
     port = int(os.getenv("TICKETBOX_PORT", "8000"))
     validated_runtime_junction = _assert_runtime_data_root_authority(data_dir)
-    _assert_bootstrap_recovery_not_pending(validated_runtime_junction)
-    _initialize_installed_runtime_settings(data_dir)
+    _assert_bootstrap_recovery_not_pending(
+        validated_runtime_junction.runtime_junction
+        if validated_runtime_junction is not None
+        else None
+    )
+    _initialize_installed_runtime_settings(data_dir, validated_runtime_junction)
 
     # Import the app object directly (not the "app.main:app" string form):
     # uvicorn's string import re-resolves the module via importlib, which is

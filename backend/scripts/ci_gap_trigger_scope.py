@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import fnmatch
 import pathlib
 import re
@@ -85,76 +86,100 @@ _BACKEND_RELEASE_FILES = {
     "backend/requirements.txt",
 }
 _WINDOWS_SECURITY_BACKEND_FILES = {
+    "backend/app/services/installer_runtime_guard.py",
     "backend/app/services/runtime_settings_store.py",
     "backend/app/services/secure_file.py",
     "backend/app/services/secure_file_windows.py",
     "backend/app/services/secure_file_windows_acl.py",
 }
-_WINDOWS_DATASET_MAINTENANCE_FILES = {
-    "backend/app/app_meta_observation.py",
-    "backend/app/canonical_money_facts.py",
-    "backend/app/canonical_money_facts_contract.py",
-    "backend/app/config.py",
-    "backend/app/database/_database_generation_executor.py",
-    "backend/app/database/_database_generation_program.py",
-    "backend/app/database/_database_generation_target_verification.py",
-    "backend/app/database/_dataset_backup_action.py",
-    "backend/app/database/_dataset_backup_snapshot.py",
-    "backend/app/database/_dataset_restore_action.py",
-    "backend/app/database/_dataset_restore_authority.py",
-    "backend/app/database/_dataset_restore_security.py",
-    "backend/app/database/_managed_postgres_contract.py",
-    "backend/app/database/_managed_postgres_migration_runtime.py",
-    "backend/app/database/_managed_postgres_role_authority.py",
-    "backend/app/database/_managed_postgres_url.py",
-    "backend/app/database/_money_schema_attestation.py",
-    "backend/app/database/_postgres_operation_failures.py",
-    "backend/app/database/_release_schema_readiness.py",
-    "backend/app/database_maintenance_runtime.py",
-    "backend/app/database_model_registry.py",
-    "backend/app/dataset_maintenance_cli.py",
-    "backend/app/errors.py",
-    "backend/app/fx_constants.py",
-    "backend/app/models/__init__.py",
-    "backend/app/models/ai_advisor.py",
-    "backend/app/models/app_meta.py",
-    "backend/app/models/auth.py",
-    "backend/app/models/background_task.py",
-    "backend/app/models/bill_split.py",
-    "backend/app/models/budget.py",
-    "backend/app/models/catalog.py",
-    "backend/app/models/classification.py",
-    "backend/app/models/currency_binding.py",
-    "backend/app/models/dataset_authority.py",
-    "backend/app/models/debt.py",
-    "backend/app/models/exchange.py",
-    "backend/app/models/expense.py",
-    "backend/app/models/financial_planning.py",
-    "backend/app/models/idempotency.py",
-    "backend/app/models/identity.py",
-    "backend/app/models/import_csv.py",
-    "backend/app/models/learning.py",
-    "backend/app/models/ocr_facts.py",
-    "backend/app/models/recurring.py",
-    "backend/app/models/system.py",
-    "backend/app/money_contract.py",
-    "backend/app/money_contract_manifest.py",
-    "backend/app/money_contract_types.py",
-    "backend/app/services/backup_job_lease.py",
-    "backend/app/services/backup_service.py",
-    "backend/app/services/dataset_authority_service.py",
-    "backend/app/services/dataset_backup_contract.py",
-    "backend/app/services/dataset_backup_inventory.py",
-    "backend/app/services/dataset_originals_adapter.py",
-    "backend/app/services/dataset_restore_service.py",
-    "backend/app/services/path_entry_safety.py",
-    "backend/app/services/postgres_backup_adapter.py",
-    "backend/app/services/postgres_backup_validation_service.py",
-    "backend/app/services/runtime_settings_store.py",
-    "backend/app/services/secure_file.py",
-    "backend/app/services/time_service.py",
-    "backend/app/tenant_contract.py",
-}
+_BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
+_DATASET_MAINTENANCE_ROOT_MODULES = (
+    "app.database_maintenance_runtime",
+    "app.dataset_maintenance_cli",
+    "app.database._dataset_backup_action",
+    "app.database._dataset_backup_snapshot",
+    "app.database._dataset_restore_action",
+    "app.database._dataset_restore_authority",
+    "app.database._dataset_restore_security",
+)
+
+
+def _app_module_source(module_name: str) -> pathlib.Path | None:
+    if module_name != "app" and not module_name.startswith("app."):
+        return None
+    relative = pathlib.Path(*module_name.split("."))
+    module = _BACKEND_ROOT / relative.with_suffix(".py")
+    package = _BACKEND_ROOT / relative / "__init__.py"
+    if module.is_file():
+        return module
+    return package if package.is_file() else None
+
+
+def _module_name(path: pathlib.Path) -> str:
+    relative = path.relative_to(_BACKEND_ROOT)
+    parts = relative.parts[:-1] if relative.name == "__init__.py" else (*relative.parts[:-1], relative.stem)
+    return ".".join(parts)
+
+
+def _app_imports(path: pathlib.Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+    module_name = _module_name(path)
+    package_parts = module_name.split(".") if path.name == "__init__.py" else module_name.split(".")[:-1]
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+            continue
+        if isinstance(node, ast.ImportFrom):
+            if node.level:
+                parent_count = len(package_parts) - node.level + 1
+                if parent_count < 1:
+                    continue
+                prefix = package_parts[:parent_count]
+                base = ".".join((*prefix, *(node.module or "").split(".")))
+            else:
+                base = node.module or ""
+            if base:
+                imported.add(base)
+                imported.update(f"{base}.{alias.name}" for alias in node.names if alias.name != "*")
+            continue
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "importlib"
+            and node.func.attr == "import_module"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            imported.add(node.args[0].value)
+    return imported
+
+
+def dataset_maintenance_python_dependencies() -> frozenset[str]:
+    pending = [
+        source
+        for module_name in _DATASET_MAINTENANCE_ROOT_MODULES
+        if (source := _app_module_source(module_name)) is not None
+    ]
+    visited: set[pathlib.Path] = set()
+    while pending:
+        source = pending.pop()
+        if source in visited:
+            continue
+        visited.add(source)
+        for imported in _app_imports(source):
+            dependency = _app_module_source(imported)
+            if dependency is not None and dependency not in visited:
+                pending.append(dependency)
+    return frozenset(
+        dependency.relative_to(_BACKEND_ROOT.parent).as_posix()
+        for dependency in visited
+    )
+
+
+_WINDOWS_DATASET_MAINTENANCE_FILES = dataset_maintenance_python_dependencies()
 _WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
     "backend/app/database/_dataset_",
 )

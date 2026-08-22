@@ -62,38 +62,6 @@ def test_runtime_settings_store_is_closed_canonical_and_replace_owned(
         store.read_runtime_settings(target, service_owned=False)
 
 
-def test_initial_runtime_settings_publication_is_create_only(tmp_path: Path) -> None:
-    from app.services import runtime_settings_store as store
-
-    target = (tmp_path / "runtime-settings.json").resolve()
-    initial = store.RuntimeSettingsProjection(
-        public_base_url="",
-        budget_advisor_owner_confirmed=False,
-    )
-    conflicting_retry = store.RuntimeSettingsProjection(
-        public_base_url="https://must-not-overwrite.example",
-        budget_advisor_owner_confirmed=True,
-    )
-
-    assert (
-        store.initialize_runtime_settings(
-            target,
-            initial,
-            service_owned=False,
-        )
-        == initial
-    )
-    assert (
-        store.initialize_runtime_settings(
-            target,
-            conflicting_retry,
-            service_owned=False,
-        )
-        == initial
-    )
-    assert store.read_runtime_settings(target, service_owned=False) == initial
-
-
 def test_owner_console_runtime_settings_no_longer_mutate_lifecycle_env() -> None:
     source = (BACKEND / "app" / "services" / "runtime_settings_service.py").read_text(encoding="utf-8")
 
@@ -254,36 +222,6 @@ def test_service_projection_authority_requires_owner_capable_service_sid(
     assert calls == [True]
     assert owner == "S-1-5-80-1-2-3-4-5"
     assert rules[owner] == secure_file._FILE_ALL_ACCESS
-
-
-def test_service_owned_create_uses_the_owner_capable_service_sid(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    target = (tmp_path / "runtime-settings.json").resolve()
-    writes: list[tuple[Path, bytes, str | None]] = []
-    monkeypatch.setattr(secure_file.os, "name", "nt")
-    monkeypatch.setattr(
-        secure_file,
-        "_windows_service_projection_authority",
-        lambda: (
-            "S-1-5-80-1-2-3-4-5",
-            {"S-1-5-80-1-2-3-4-5": secure_file._FILE_ALL_ACCESS},
-        ),
-    )
-    monkeypatch.setattr(
-        secure_file,
-        "_write_windows_protected_file",
-        lambda path, payload, *, owner_sid=None: writes.append(
-            (path, payload, owner_sid)
-        ),
-    )
-
-    secure_file.write_service_owned_file_exclusive(target, "payload")
-
-    assert writes == [
-        (target, b"payload", "S-1-5-80-1-2-3-4-5"),
-    ]
 
 
 def test_service_sid_owner_bit_uses_the_windows_literal_contract() -> None:

@@ -194,7 +194,7 @@ def test_runtime_verification_round_trips_through_closed_artifact_api(
             "Get-TicketboxDatabaseGenerationArtifactPath",
             "Get-TicketboxDatabaseGenerationPayloadProperties",
             "Read-TicketboxDatabaseGenerationEnvelope",
-            "Write-TicketboxDatabaseGenerationEnvelope",
+            "New-TicketboxDatabaseGenerationEnvelopeText",
             "Read-TicketboxDatabaseGenerationOperationArtifact",
             "New-TicketboxDatabaseGenerationChainedArtifact",
         )

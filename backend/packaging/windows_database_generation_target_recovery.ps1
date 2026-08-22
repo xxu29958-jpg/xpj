@@ -77,7 +77,7 @@ function Get-TicketboxDatabaseGenerationTargetVerification {
                     catch { $cleanup += $_ }
                 }
             }
-            Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+            Throw-TicketboxOperationFailure $primary $cleanup
             return $operationResult
         }.GetNewClosure())
     try { $payload = $result.Trim() | ConvertFrom-Json }

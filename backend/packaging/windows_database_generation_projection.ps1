@@ -53,7 +53,8 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
         [Parameter(Mandatory = $true)][object]$Candidate,
         [Parameter(Mandatory = $true)][object]$HostAuthority,
         [Parameter(Mandatory = $true)][object]$ProjectionContract,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
+        [Parameter(Mandatory = $true)][object]$LifecycleLock,
+        [switch]$AllowAbsent
     )
     $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     if (
@@ -63,7 +64,14 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
         throw "runtime projection 拒绝非 exact candidate。"
     }
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $environment = Read-EnvMap ([string]$ProjectionContract.env_path)
+    $environmentPath = [string]$ProjectionContract.env_path
+    $environmentKind = Get-TicketboxPathEntryKindNoFollow $environmentPath
+    if ($environmentKind -ceq "Missing" -and $AllowAbsent) { return $null }
+    if ($environmentKind -cne "File") {
+        throw "runtime projection environment 不是可信普通文件。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $environmentPath
+    $environment = Read-EnvMap $environmentPath
     if (-not $environment.ContainsKey("DATABASE_URL")) {
         throw "runtime projection 缺少 DATABASE_URL。"
     }
@@ -95,7 +103,7 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
         try { $runtimePassword.Dispose() }
         catch { $cleanup += $_ }
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     $payload = [ordered]@{
         schema = "ticketbox-database-generation-runtime-projection-v1"
         operation_id = [string]$Intent.Payload.operation_id

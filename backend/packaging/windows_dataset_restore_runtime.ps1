@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 # Runtime projection, health evidence, and failure compensation for restore.
 
@@ -111,7 +111,7 @@ function Invoke-TicketboxInstalledRestoredOriginalsVerification {
             catch { $cleanup += $_ }
         }
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     return $decoded
 }
 
@@ -288,7 +288,7 @@ function Restore-TicketboxInstalledDatasetPredecessorRuntime {
             catch { $cleanup += $_ }
         }
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
 }
 
 function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
@@ -345,7 +345,7 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
     }
     catch { $failures += $_ }
     if ($failures.Count -gt 0) {
-        Throw-TicketboxDatabaseGenerationOperationFailure $null $failures
+        Throw-TicketboxOperationFailure $null $failures
     }
     return "rolled_back"
 }

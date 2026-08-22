@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -146,7 +146,7 @@ function Invoke-TicketboxPostgresqlRestoreCandidateInitdbOneShot {
                 $Subject $OperationId $Paths $LifecycleLock
         }
         catch { $cleanup += $_ }
-        Throw-TicketboxDatabaseGenerationOperationFailure $failure $cleanup
+        Throw-TicketboxOperationFailure $failure $cleanup
     }
 }
 

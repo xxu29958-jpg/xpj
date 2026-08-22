@@ -327,7 +327,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
                     catch { $cleanup += $_ }
                 }
             }
-            Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+            Throw-TicketboxOperationFailure $primary $cleanup
             return $result
         }.GetNewClosure())
 }
@@ -457,5 +457,5 @@ finally {
         catch { $cleanup += $_ }
     }
 }
-Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+Throw-TicketboxOperationFailure $primary $cleanup
 $backupResult | ConvertTo-Json -Depth 4 -Compress

@@ -239,7 +239,7 @@ function Remove-TicketboxDataRootExact {{
     if (Test-Path -LiteralPath $Path) {{ Remove-Item -LiteralPath $Path -Recurse -Force }}
     $script:events += 'pgdata-remove'
 }}
-function Throw-TicketboxDatabaseGenerationOperationFailure {{
+function Throw-TicketboxOperationFailure {{
     param($Failure, $CleanupFailures)
     if ($null -ne $Failure) {{
         $message = [string]$Failure.Message

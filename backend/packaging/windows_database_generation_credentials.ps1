@@ -1,5 +1,38 @@
 ﻿#Requires -Version 5.1
 
+function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        $Authority `
+        @(
+            "Closed", "HostAuthoritySha256", "IntentSha256", "OperationId",
+            "Schema", "Secret"
+        ) `
+        "database generation maintenance authority"
+    if (
+        [string]$Authority.Schema -cne
+            "ticketbox-database-generation-maintenance-authority-v1" -or
+        [string]$Authority.OperationId -cne
+            ([guid][string]$Intent.Payload.operation_id).ToString("D") -or
+        [string]$Authority.IntentSha256 -cne [string]$Intent.PayloadSha256 -or
+        [string]$Authority.HostAuthoritySha256 -cne
+            (Get-TicketboxDatabaseGenerationHostAuthoritySha256 $HostAuthority) -or
+        [bool]$Authority.Closed
+    ) {
+        throw "database generation maintenance authority 已关闭或绑定漂移。"
+    }
+    Assert-TicketboxPostgresqlSecureString `
+        $Authority.Secret `
+        "database generation maintenance authority"
+    return $Authority
+}
+
 function New-TicketboxDatabaseGenerationMaintenanceAuthority {
     param(
         [Parameter(Mandatory = $true)][object]$Intent,
@@ -51,7 +84,7 @@ function Close-TicketboxDatabaseGenerationMaintenanceAuthority {
         $Authority.Secret = $null
         $Authority.Closed = $true
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure `
+    Throw-TicketboxOperationFailure `
         $validationFailure $cleanupFailures
 }
 
@@ -152,7 +185,7 @@ function Read-TicketboxDatabaseGenerationCredentials {
         $migratorPassword = $null
         $backupPassword = $null
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     return $result
 }
 
@@ -171,7 +204,7 @@ function Close-TicketboxDatabaseGenerationCredentials {
     $Credentials.MigratorVerifier = ""
     $Credentials.BackupVerifier = ""
     $Credentials.Artifact = $null
-    Throw-TicketboxDatabaseGenerationOperationFailure $null $cleanupFailures
+    Throw-TicketboxOperationFailure $null $cleanupFailures
 }
 
 function New-TicketboxDatabaseGenerationCredentials {
@@ -229,10 +262,9 @@ function New-TicketboxDatabaseGenerationCredentials {
         backup_password = $backup
         backup_scram_salt = [Convert]::ToBase64String($backupSalt)
     }
-    $path = Get-TicketboxDatabaseGenerationArtifactPath `
-        $StateRoot "credentials" ([string]$Intent.Payload.operation_id)
-    [void](Write-TicketboxDatabaseGenerationEnvelope `
-        $path "credentials" $payload $LifecycleLock)
+    [void](New-TicketboxDatabaseGenerationChainedArtifact `
+        $StateRoot ([string]$Intent.Payload.operation_id) `
+        "credentials" $payload $LifecycleLock)
     return Read-TicketboxDatabaseGenerationCredentials `
         -StateRoot $StateRoot -Intent $Intent
 }
@@ -318,7 +350,7 @@ function Read-TicketboxDatabaseGenerationRuntimeCredentials {
         $backupPassword = $null
         $httpBootstrapSecret = $null
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     return $result
 }
 
@@ -334,7 +366,7 @@ function Close-TicketboxDatabaseGenerationRuntimeCredentials {
         $Credentials.$name = $null
     }
     $Credentials.Artifact = $null
-    Throw-TicketboxDatabaseGenerationOperationFailure $null $cleanupFailures
+    Throw-TicketboxOperationFailure $null $cleanupFailures
 }
 
 function New-TicketboxDatabaseGenerationRuntimeCredentials {

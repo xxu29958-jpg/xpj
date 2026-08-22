@@ -160,7 +160,7 @@ function New-TicketboxDatabaseGenerationIntent {{
 function Stop-TicketboxInstalledDatasetWriters {{ throw 'writer mutation poison' }}
 function Initialize-TicketboxPostgresqlRestoreCandidateCluster {{ throw 'candidate mutation poison' }}
 function Exit-TicketboxLifecycleLock {{ param($Lock) }}
-function Throw-TicketboxDatabaseGenerationOperationFailure {{
+function Throw-TicketboxOperationFailure {{
     param($Primary, $Cleanup)
     if ($null -ne $Primary) {{ throw $Primary }}
 }}
@@ -335,7 +335,7 @@ function Stop-TicketboxInstalledDatasetWriters {{ $script:poison += 'writers'; t
 function Initialize-TicketboxPostgresqlRestoreCandidateCluster {{ $script:poison += 'candidate'; throw 'candidate poison' }}
 function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {{ return 'rejected-before-mutation' }}
 function Exit-TicketboxLifecycleLock {{ param($Lock) }}
-function Throw-TicketboxDatabaseGenerationOperationFailure {{
+function Throw-TicketboxOperationFailure {{
     param($Primary, $Cleanup)
     if ($null -eq $Primary) {{ throw 'expected authority rejection' }}
     if ($Primary.Exception.Message -cnotmatch 'active intent differs') {{ throw $Primary }}

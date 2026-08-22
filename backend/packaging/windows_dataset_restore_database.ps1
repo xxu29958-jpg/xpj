@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 # Candidate database observation, restore, and immutable source evidence.
 
@@ -153,7 +153,7 @@ function Invoke-TicketboxInstalledDatasetRestoreHelper {
             catch { $cleanup += $_ }
         }
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     return $decoded
 }
 

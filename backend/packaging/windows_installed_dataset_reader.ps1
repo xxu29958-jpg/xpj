@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 # Read-only installed dataset authority and packaged-tool evidence.
 
@@ -257,7 +257,7 @@ function Invoke-TicketboxInstalledDatasetBackupInspection {
             catch { $cleanup += $_ }
         }
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     return [pscustomobject][ordered]@{
         GenerationPath = $generationPath
         Evidence = $decoded

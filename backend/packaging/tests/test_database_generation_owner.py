@@ -11,7 +11,10 @@ PACKAGING = Path(__file__).resolve().parents[1]
 BACKEND = PACKAGING.parent
 OWNER = PACKAGING / "windows_database_generation.ps1"
 CONTRACT = PACKAGING / "windows_database_generation_contract.ps1"
+RELEASE = PACKAGING / "windows_database_generation_release.ps1"
+FAILURE = PACKAGING / "windows_operation_failure.ps1"
 ARTIFACTS = PACKAGING / "windows_database_generation_artifacts.ps1"
+CURRENT = PACKAGING / "windows_database_generation_current.ps1"
 CREDENTIALS = PACKAGING / "windows_database_generation_credentials.ps1"
 ROLE_FENCE = PACKAGING / "windows_database_generation_role_fence.ps1"
 DATABASE_BINDING = PACKAGING / "windows_database_generation_database_binding.ps1"
@@ -19,8 +22,12 @@ COMMIT_VERIFIER = PACKAGING / "windows_database_generation_commit_verifier.ps1"
 POLICY = PACKAGING / "windows_database_generation_policy.ps1"
 RETIRED_ADAPTER = PACKAGING / "windows_database_generation_adapter.ps1"
 SOURCE = PACKAGING / "windows_database_generation_source.ps1"
+SOURCE_BINDING = PACKAGING / "windows_database_generation_source_binding.ps1"
+HOST_AUTHORITY = PACKAGING / "windows_database_generation_host_authority.ps1"
+ROLE_BOOTSTRAP = PACKAGING / "windows_database_generation_role_bootstrap.ps1"
 RECOVERY_EVIDENCE = PACKAGING / "windows_database_generation_recovery_evidence.ps1"
 TARGET_RECOVERY = PACKAGING / "windows_database_generation_target_recovery.ps1"
+TARGET_AUTHORIZATION = PACKAGING / "windows_database_generation_target_authorization.ps1"
 PROJECTION = PACKAGING / "windows_database_generation_projection.ps1"
 LIFECYCLE_LOCK = PACKAGING / "windows_lifecycle_lock.ps1"
 PREPARE = PACKAGING / "prepare_bundled_upgrade.ps1"
@@ -77,7 +84,7 @@ def _inno_function(source: str, name: str, next_name: str) -> str:
 def _owner_failure_handoff_is_exact(source: str) -> bool:
     owner = _function(source, "Invoke-TicketboxInstalledDatabaseGeneration")
     normalized = re.sub(r"\s+", " ", owner)
-    return "Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup" in normalized
+    return "Throw-TicketboxOperationFailure $primary $cleanup" in normalized
 
 
 def test_target_authorization_consumes_normalized_source_without_mode_reclassification() -> None:
@@ -120,15 +127,21 @@ def _unexpected_c07_production_lines(sources: dict[Path, str]) -> list[str]:
 def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authorities() -> None:
     owner = OWNER.read_text(encoding="utf-8-sig")
     contract = CONTRACT.read_text(encoding="utf-8-sig")
-    artifacts = ARTIFACTS.read_text(encoding="utf-8-sig")
+    artifacts = ARTIFACTS.read_text(encoding="utf-8-sig") + CURRENT.read_text(
+        encoding="utf-8-sig"
+    )
     credentials = CREDENTIALS.read_text(encoding="utf-8-sig")
     role_fence = ROLE_FENCE.read_text(encoding="utf-8-sig")
     database_binding = DATABASE_BINDING.read_text(encoding="utf-8-sig")
     commit_verifier = COMMIT_VERIFIER.read_text(encoding="utf-8-sig")
     policy = POLICY.read_text(encoding="utf-8-sig")
-    source = SOURCE.read_text(encoding="utf-8-sig")
+    source = "\n".join(
+        path.read_text(encoding="utf-8-sig")
+        for path in (HOST_AUTHORITY, ROLE_BOOTSTRAP, SOURCE, SOURCE_BINDING)
+    )
     recovery_evidence = RECOVERY_EVIDENCE.read_text(encoding="utf-8-sig")
     target_recovery = TARGET_RECOVERY.read_text(encoding="utf-8-sig")
+    target_authorization = TARGET_AUTHORIZATION.read_text(encoding="utf-8-sig")
     installer = INSTALLER.read_text(encoding="utf-8-sig")
     flow = FLOW.read_text(encoding="utf-8-sig")
     production = "\n".join(path.read_text(encoding="utf-8-sig") for path in PACKAGING.rglob("*.ps1"))
@@ -177,6 +190,7 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
         "windows_postgresql_database_command.ps1",
         "windows_ticketbox_database_contract.ps1",
         "windows_ticketbox_database_acl.ps1",
+        "windows_ticketbox_database_acl_observation.ps1",
         "windows_ticketbox_database_roles.ps1",
     ):
         assert owner.count(f'"{database_owner}"') == 1
@@ -256,7 +270,7 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
             assert retired_relative.replace("\\", "/") not in shipment_surface
     assert "Invoke-TicketboxDatabaseGenerationTargetRecovery" in target_recovery
     assert "[scriptblock]" not in recovery_evidence + target_recovery
-    assert "Invoke-TicketboxDatabaseGenerationTargetRecovery" in owner
+    assert "Invoke-TicketboxDatabaseGenerationTargetRecovery" in target_authorization
     assert "Get-TicketboxPostgresqlWriterFenceObservation" in role_fence
     assert "Get-TicketboxC07RawWriterDatabaseFenceObservationForAuthority" not in role_fence
     assert "target_recovery_evidence_sha256" in owner + database_binding
@@ -283,7 +297,8 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     assert 'source_kind = "empty"' in source
     assert 'source_kind = "current_generation"' in source
     assert '"restored-source"' in artifacts + owner
-    assert "Invoke-TicketboxDatabaseGenerationRestoredSource" in owner
+    assert "Invoke-TicketboxDatabaseGenerationSourceBinding" in owner
+    assert "Invoke-TicketboxDatabaseGenerationRestoredSource" in source
     assert "source_evidence_sha256" in artifacts + source
     assert "create_attempt_sha256" not in artifacts + source
     assert "backup_password" in artifacts
@@ -306,12 +321,12 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
     assert _owner_failure_handoff_is_exact(owner)
     for escaped_handoff in (
         owner.replace(
-            "Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup",
-            "Throw-TicketboxDatabaseGenerationOperationFailure $primary @()",
+            "Throw-TicketboxOperationFailure $primary $cleanup",
+            "Throw-TicketboxOperationFailure $primary @()",
         ),
         owner.replace(
-            "Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup",
-            "Throw-TicketboxDatabaseGenerationOperationFailure $null $cleanup",
+            "Throw-TicketboxOperationFailure $primary $cleanup",
+            "Throw-TicketboxOperationFailure $null $cleanup",
         ),
     ):
         assert not _owner_failure_handoff_is_exact(escaped_handoff)
@@ -323,15 +338,22 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
         "windows_database_generation.ps1",
         "windows_database_generation_program_execution.ps1",
         "windows_database_generation_contract.ps1",
+        "windows_database_generation_release.ps1",
+        "windows_operation_failure.ps1",
         "windows_database_generation_artifacts.ps1",
         "windows_database_generation_commit_verifier.ps1",
         "windows_database_generation_policy.ps1",
         "windows_database_generation_credentials.ps1",
         "windows_database_generation_role_fence.ps1",
         "windows_database_generation_database_binding.ps1",
+        "windows_database_generation_current.ps1",
+        "windows_database_generation_host_authority.ps1",
+        "windows_database_generation_role_bootstrap.ps1",
         "windows_database_generation_source.ps1",
+        "windows_database_generation_source_binding.ps1",
         "windows_database_generation_recovery_evidence.ps1",
         "windows_database_generation_target_recovery.ps1",
+        "windows_database_generation_target_authorization.ps1",
         "windows_database_generation_projection.ps1",
     ):
         assert name in ISS.read_text(encoding="utf-8-sig")
@@ -346,8 +368,8 @@ def test_target_execution_authority_is_retry_stable_and_binding_is_insert_only(t
         "New-TicketboxDatabaseGenerationExecutionAuthority",
     )
     failure = _function(
-        CONTRACT.read_text(encoding="utf-8-sig"),
-        "Throw-TicketboxDatabaseGenerationOperationFailure",
+        FAILURE.read_text(encoding="utf-8-sig"),
+        "Throw-TicketboxOperationFailure",
     )
     close_credentials = _function(
         CREDENTIALS.read_text(encoding="utf-8-sig"),
@@ -424,7 +446,7 @@ $primaryError.Data['TicketboxFailureCodes'] = @('C07-PRIMARY')
 try {{ throw $primaryError }} catch {{ $primary = $_ }}
 try {{ throw [InvalidOperationException]::new('cleanup-one') }} catch {{ $cleanupOne = $_ }}
 try {{ throw [InvalidOperationException]::new('cleanup-two') }} catch {{ $cleanupTwo = $_ }}
-try {{ Throw-TicketboxDatabaseGenerationOperationFailure $primary @($cleanupOne, $cleanupTwo) }} catch {{ $aggregate = $_.Exception }}
+try {{ Throw-TicketboxOperationFailure $primary @($cleanupOne, $cleanupTwo) }} catch {{ $aggregate = $_.Exception }}
 if (
     $aggregate -isnot [AggregateException] -or
     $aggregate.InnerExceptions.Count -ne 3 -or
@@ -520,7 +542,15 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     assert 'Join-Path $ScriptDir "windows_database_generation.ps1"' in bootstrap_path
     bootstrap = tmp_path / "bootstrap"
     bootstrap.mkdir()
-    for source in (OWNER, CONTRACT, ARTIFACTS, COMMIT_VERIFIER, POLICY):
+    for source in (
+        OWNER,
+        CONTRACT,
+        RELEASE,
+        FAILURE,
+        ARTIFACTS,
+        COMMIT_VERIFIER,
+        POLICY,
+    ):
         (bootstrap / source.name).write_bytes(source.read_bytes())
     owner_path = bootstrap / OWNER.name
     state_root = bootstrap / "state"
@@ -679,18 +709,24 @@ if (
             'windows_postgresql_writer_fence.ps1',
             'windows_ticketbox_database_contract.ps1',
             'windows_ticketbox_database_acl.ps1',
+            'windows_ticketbox_database_acl_observation.ps1',
             'windows_ticketbox_database_roles.ps1',
             'windows_service_contract.ps1',
             'windows_service_identity.ps1',
             'windows_service_lifecycle.ps1',
             'windows_database_generation_credentials.ps1',
             'windows_database_generation_role_fence.ps1',
+            'windows_database_generation_host_authority.ps1',
+            'windows_database_generation_role_bootstrap.ps1',
             'windows_database_generation_source.ps1',
+            'windows_database_generation_source_binding.ps1',
             'windows_database_generation_program_adapter.ps1',
             'windows_database_generation_program_execution.ps1',
             'windows_database_generation_recovery_evidence.ps1',
-            'windows_database_generation_target_recovery.ps1',
-            'windows_database_generation_database_binding.ps1',
+                'windows_database_generation_target_recovery.ps1',
+                'windows_database_generation_target_authorization.ps1',
+                'windows_database_generation_database_binding.ps1',
+            'windows_database_generation_current.ps1',
             'windows_database_generation_retirement.ps1',
             'windows_database_generation_projection.ps1'
         )
@@ -759,8 +795,14 @@ $script:current = [pscustomobject]@{{
 }}
 function Read-TicketboxDatabaseGenerationActiveIntent {{ return $script:existing }}
 function Read-TicketboxDatabaseGenerationCurrent {{ return $script:current }}
-function Write-TicketboxDatabaseGenerationEnvelope {{
-    param($Path, $Kind, $Payload, $Lock)
+function New-TicketboxDatabaseGenerationActiveIntent {{
+    throw 'create-only writer cannot replace active intent'
+}}
+function Replace-TicketboxDatabaseGenerationActiveIntent {{
+    param($StateRoot, $ExpectedPayloadSha256, $Payload, $Lock)
+    if ([string]$ExpectedPayloadSha256 -cne [string]$script:existing.PayloadSha256) {{
+        throw 'stale active-intent CAS'
+    }}
     $script:writes += 1
     $script:existing = [pscustomobject]@{{
         PayloadSha256 = ('c' * 64)
@@ -810,7 +852,7 @@ def test_successor_release_binding_keeps_installation_identity_without_reusing_i
     tmp_path: Path,
 ) -> None:
     assertion = _function(
-        CONTRACT.read_text(encoding="utf-8-sig"),
+        RELEASE.read_text(encoding="utf-8-sig"),
         "Assert-TicketboxDatabaseGenerationReleaseBinding",
     )
     script = f"""
@@ -906,18 +948,52 @@ def test_generation_reducer_is_pure_closed_and_mode_free(tmp_path: Path) -> None
 $ErrorActionPreference = 'Stop'
 {reducer}
 $x = [pscustomobject]@{{ value = 1 }}
+function New-Observation {{
+    param(
+        $Credentials = $null,
+        $SourceBinding = $null,
+        $TargetAuthorization = $null,
+        $Candidate = $null,
+        $RuntimeCredentials = $null,
+        $BootstrapRetired = $null,
+        $RuntimeProjection = $null,
+        [bool]$TransientAuthorityPresent = $true,
+        $TerminalState = $null,
+        $Current = $null,
+        [bool]$ServiceTransitionPresent = $false
+    )
+    return [pscustomobject][ordered]@{{
+        bootstrap_retired = $BootstrapRetired
+        candidate = $Candidate
+        credentials = $Credentials
+        current = $Current
+        runtime_credentials = $RuntimeCredentials
+        runtime_projection = $RuntimeProjection
+        service_transition_present = $ServiceTransitionPresent
+        source_binding = $SourceBinding
+        target_authorization = $TargetAuthorization
+        terminal_state = $TerminalState
+        transient_authority_present = $TransientAuthorityPresent
+    }}
+}}
 $actions = @(
-    Resolve-TicketboxDatabaseGenerationNextAction $null $null $null $null $null
-    Resolve-TicketboxDatabaseGenerationNextAction $x $null $null $null $null
-    Resolve-TicketboxDatabaseGenerationNextAction $x $x $null $null $null
-    Resolve-TicketboxDatabaseGenerationNextAction $x $x $x $null $null
-    Resolve-TicketboxDatabaseGenerationNextAction $x $x $x $x $null
-    Resolve-TicketboxDatabaseGenerationNextAction $null $x $x $x $x
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -ServiceTransitionPresent $true)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -Credentials $x)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -Credentials $x -SourceBinding $x)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -Credentials $x -SourceBinding $x -TargetAuthorization $x)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -Credentials $x -SourceBinding $x -TargetAuthorization $x -Candidate $x)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -Credentials $x -SourceBinding $x -TargetAuthorization $x -Candidate $x -RuntimeCredentials $x -BootstrapRetired $false)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -Credentials $x -SourceBinding $x -TargetAuthorization $x -Candidate $x -RuntimeCredentials $x -BootstrapRetired $true)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -Credentials $x -SourceBinding $x -TargetAuthorization $x -Candidate $x -RuntimeCredentials $x -BootstrapRetired $true -RuntimeProjection $x)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -SourceBinding $x -TargetAuthorization $x -Candidate $x -RuntimeCredentials $x -BootstrapRetired $true -RuntimeProjection $x -TransientAuthorityPresent $false)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -SourceBinding $x -TargetAuthorization $x -Candidate $x -RuntimeCredentials $x -BootstrapRetired $true -RuntimeProjection $x -TransientAuthorityPresent $false -TerminalState $x)
+    Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -SourceBinding $x -TargetAuthorization $x -Candidate $x -RuntimeCredentials $x -BootstrapRetired $true -RuntimeProjection $x -TransientAuthorityPresent $false -TerminalState $x -Current $x)
 )
-$expected = 'ensure_credentials,bind_source,authorize_target,seal_candidate,finalize_current,read_current'
+$expected = 'reconcile_service_transition,ensure_credentials,bind_source,authorize_target,seal_candidate,seal_runtime_credentials,transition_bootstrap_authority,publish_runtime_projection,retire_transient_authority,seal_terminal,publish_current,read_current'
 if (($actions -join ',') -cne $expected) {{ throw "unexpected reducer: $($actions -join ',')" }}
 $invalid = $false
-try {{ Resolve-TicketboxDatabaseGenerationNextAction $null $x $null $null $null | Out-Null }} catch {{ $invalid = $true }}
+try {{ Resolve-TicketboxDatabaseGenerationNextAction (New-Observation -SourceBinding $x) | Out-Null }} catch {{ $invalid = $true }}
 if (-not $invalid) {{ throw 'reducer accepted source without credential/current' }}
 """
     run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")
@@ -928,19 +1004,19 @@ def test_generation_owner_current_and_predecessor_restore_are_idempotent_cas(
     tmp_path: Path,
 ) -> None:
     prospective = _function(
-        ARTIFACTS.read_text(encoding="utf-8-sig"),
+        CURRENT.read_text(encoding="utf-8-sig"),
         "Get-TicketboxDatabaseGenerationProspectiveCurrent",
     )
     advance = _function(
-        ARTIFACTS.read_text(encoding="utf-8-sig"),
+        CURRENT.read_text(encoding="utf-8-sig"),
         "New-TicketboxDatabaseGenerationAdvanceCurrentTransition",
     )
     validate_transition = _function(
-        ARTIFACTS.read_text(encoding="utf-8-sig"),
+        CURRENT.read_text(encoding="utf-8-sig"),
         "Assert-TicketboxDatabaseGenerationCurrentTransition",
     )
     publish = _function(
-        ARTIFACTS.read_text(encoding="utf-8-sig"),
+        CURRENT.read_text(encoding="utf-8-sig"),
         "Publish-TicketboxDatabaseGenerationCurrent",
     )
     restore_predecessor = _function(

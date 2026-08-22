@@ -478,7 +478,7 @@ finally {
         catch { $cleanup += $_ }
     }
 }
-Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+Throw-TicketboxOperationFailure $primary $cleanup
 if ($null -eq $result) { throw "complete dataset restore returned no result." }
 $publicResult = [ordered]@{
     schema = "ticketbox-complete-dataset-restore-result-v1"

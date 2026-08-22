@@ -24,21 +24,23 @@ function Get-TicketboxDatabaseGenerationBootstrapRetirementJson {
     })
 }
 
-function Test-TicketboxDatabaseGenerationBootstrapRetirement {
+function Read-TicketboxDatabaseGenerationBootstrapRetirementMarker {
     param(
         [Parameter(Mandatory = $true)][object]$Intent,
         [Parameter(Mandatory = $true)][object]$Candidate,
         [Parameter(Mandatory = $true)][object]$HostAuthority,
-        [Parameter(Mandatory = $true)][Security.SecureString]$RuntimePassword
+        [Parameter(Mandatory = $true)][string]$Role,
+        [Parameter(Mandatory = $true)][Security.SecureString]$Password,
+        [Parameter(Mandatory = $true)][string]$Label
     )
     $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $expected = Get-TicketboxDatabaseGenerationBootstrapRetirementJson $Intent $Candidate
     $observed = Invoke-TicketboxPostgresqlDatabaseCommand `
         -Authority $HostAuthority `
         -Database $($databasePolicy.DatabaseName) `
-        -Role $($databasePolicy.RuntimeRole) `
-        -Password $RuntimePassword `
-        -Label "database generation bootstrap retirement observation" `
+        -Role $Role `
+        -Password $Password `
+        -Label $Label `
         -Sql @"
 SELECT pg_catalog.json_build_array(
            role.oid IS NOT NULL,
@@ -76,6 +78,42 @@ FROM (
         throw "database generation bootstrap retirement marker 与 candidate 漂移。"
     }
     return $true
+}
+
+function Test-TicketboxDatabaseGenerationBootstrapRetirement {
+    param(
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][Security.SecureString]$RuntimePassword
+    )
+    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
+    return Read-TicketboxDatabaseGenerationBootstrapRetirementMarker `
+        -Intent $Intent `
+        -Candidate $Candidate `
+        -HostAuthority $HostAuthority `
+        -Role $($databasePolicy.RuntimeRole) `
+        -Password $RuntimePassword `
+        -Label "database generation runtime retirement observation"
+}
+
+function Test-TicketboxDatabaseGenerationBootstrapRetirementWithMaintenanceAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][object]$MaintenanceAuthority,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    [void](Assert-TicketboxDatabaseGenerationMaintenanceAuthority `
+        $MaintenanceAuthority $Intent $HostAuthority $LifecycleLock)
+    return Read-TicketboxDatabaseGenerationBootstrapRetirementMarker `
+        -Intent $Intent `
+        -Candidate $Candidate `
+        -HostAuthority $HostAuthority `
+        -Role "postgres" `
+        -Password $MaintenanceAuthority.Secret `
+        -Label "database generation maintenance retirement observation"
 }
 
 function Get-TicketboxDatabaseGenerationServiceTransitionPath {
@@ -157,6 +195,39 @@ function Remove-TicketboxDatabaseGenerationServiceTransition {
         -Path $path `
         -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
         -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
+}
+
+function Remove-TicketboxDatabaseGenerationTransientAuthority {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][string]$BootstrapRecoveryPath,
+        [Parameter(Mandatory = $true)][string]$BootstrapAppData,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    $operationId = ([guid][string]$Intent.Payload.operation_id).ToString("D")
+    $serviceTransitionPath =
+        Get-TicketboxDatabaseGenerationServiceTransitionPath $StateRoot
+    if ((Get-TicketboxPathEntryKindNoFollow $serviceTransitionPath) -cne "Missing") {
+        throw "transient authority retirement 遇到未闭合 service transition。"
+    }
+    Remove-PostgresBootstrapRecoveryState `
+        -Path $BootstrapRecoveryPath `
+        -AppData $BootstrapAppData
+    Remove-TicketboxDatabaseGenerationCredentials `
+        -StateRoot $StateRoot `
+        -Intent $Intent `
+        -LifecycleLock $LifecycleLock
+    $credentialsPath = Get-TicketboxDatabaseGenerationArtifactPath `
+        $StateRoot "credentials" $operationId
+    if (
+        (Get-TicketboxPathEntryKindNoFollow $BootstrapRecoveryPath) -cne "Missing" -or
+        (Get-TicketboxPathEntryKindNoFollow $credentialsPath) -cne "Missing" -or
+        (Get-TicketboxPathEntryKindNoFollow $serviceTransitionPath) -cne "Missing"
+    ) {
+        throw "database generation transient authority retirement 未闭合。"
+    }
 }
 
 function Restore-TicketboxDatabaseGenerationFormalPostgresqlService {
@@ -268,7 +339,7 @@ function Repair-TicketboxDatabaseGenerationServiceTransition {
         try { Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials }
         catch { $cleanup += $_ }
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     Remove-TicketboxDatabaseGenerationServiceTransition $StateRoot $LifecycleLock
 }
 
@@ -375,7 +446,7 @@ function Retire-TicketboxDatabaseGenerationBootstrapAuthority {
         catch { $restore = $_ }
     }
     if ($null -ne $restore) {
-        Throw-TicketboxDatabaseGenerationOperationFailure $primary $restore
+        Throw-TicketboxOperationFailure $primary $restore
     }
     [void](Write-TicketboxDatabaseGenerationServiceTransition `
         $StateRoot $transition "pgctl_restored" $LifecycleLock)
@@ -387,7 +458,7 @@ function Retire-TicketboxDatabaseGenerationBootstrapAuthority {
     }
     catch {
         if ($null -ne $primary) {
-            Throw-TicketboxDatabaseGenerationOperationFailure $primary $_
+            Throw-TicketboxOperationFailure $primary $_
         }
         throw
     }

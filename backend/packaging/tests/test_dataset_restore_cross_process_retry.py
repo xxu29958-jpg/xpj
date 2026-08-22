@@ -220,7 +220,7 @@ function Set-TicketboxInstalledDatasetRestorePhysicalSelection {{
 }}
 function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {{ return 'rolled_back' }}
 function Exit-TicketboxLifecycleLock {{ param($Lock) }}
-function Throw-TicketboxDatabaseGenerationOperationFailure {{
+function Throw-TicketboxOperationFailure {{
     param($Primary, $Cleanup)
     if ($null -ne $Primary) {{ throw $Primary }}
 }}

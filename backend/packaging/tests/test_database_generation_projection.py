@@ -30,6 +30,7 @@ pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")
 
 PACKAGING = Path(__file__).resolve().parents[1]
 PROJECTION = PACKAGING / "windows_database_generation_projection.ps1"
+FAILURE = PACKAGING / "windows_operation_failure.ps1"
 PROJECTION_LITERAL = str(PROJECTION.resolve()).replace("'", "''")
 
 
@@ -54,6 +55,8 @@ def _projection_fixture_command(
         str(PROJECTION),
         "-ContractPath",
         str(PACKAGING / "windows_database_generation_contract.ps1"),
+        "-FailurePath",
+        str(FAILURE),
         "-CredentialsPath",
         str(PACKAGING / "windows_postgresql_credentials.ps1"),
         "-RetirementPath",
@@ -82,6 +85,8 @@ def _projection_fixture_command(
         str(PACKAGING / "windows_ticketbox_database_contract.ps1"),
         "-DatabaseAclPath",
         str(PACKAGING / "windows_ticketbox_database_acl.ps1"),
+        "-DatabaseAclObservationPath",
+        str(PACKAGING / "windows_ticketbox_database_acl_observation.ps1"),
         "-DatabaseRolesPath",
         str(PACKAGING / "windows_ticketbox_database_roles.ps1"),
         "-PythonPath",
@@ -386,7 +391,7 @@ def _assert_real_pg17_migrator_authority_states(tmp_path: Path) -> None:
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows projection contract")
 def test_runtime_projection_preserves_primary_and_secret_cleanup(tmp_path: Path) -> None:
     source = PROJECTION.read_text(encoding="utf-8-sig")
-    contract_source = (PACKAGING / "windows_database_generation_contract.ps1").read_text(
+    failure_source = FAILURE.read_text(
         encoding="utf-8-sig"
     )
     harness = tmp_path / "runtime-projection-failure-aggregation.ps1"
@@ -394,7 +399,7 @@ def test_runtime_projection_preserves_primary_and_secret_cleanup(tmp_path: Path)
         f"""
 $ErrorActionPreference = 'Stop'
 {powershell_function(source, "Read-TicketboxDatabaseGenerationRuntimeProjection")}
-{powershell_function(contract_source, "Throw-TicketboxDatabaseGenerationOperationFailure")}
+{powershell_function(failure_source, "Throw-TicketboxOperationFailure")}
 function Assert-TicketboxLifecycleOperationLease {{}}
 function Read-EnvMap {{ return @{{ DATABASE_URL = 'postgresql://runtime' }} }}
 function Get-TicketboxDatabaseAuthorizationContract {{
@@ -536,7 +541,7 @@ function Get-TicketboxLocalDatabaseConnection {{
 function Assert-TicketboxConnectedPostgresDataRoot {{}}
 function ConvertTo-TicketboxPostgresqlSecureString {{ return $script:runtimeSecret }}
 function Test-TicketboxDatabaseGenerationBootstrapRetirement {{ return $script:mode -cne 'foreign' }}
-{powershell_function((PACKAGING / "windows_database_generation_contract.ps1").read_text(encoding="utf-8-sig"), "Throw-TicketboxDatabaseGenerationOperationFailure")}
+{powershell_function(FAILURE.read_text(encoding="utf-8-sig"), "Throw-TicketboxOperationFailure")}
 function Get-TicketboxDatabaseAuthorizationContract {{
     return [pscustomobject]@{{ DatabaseName = 'ticketbox'; RuntimeRole = 'ticketbox_runtime' }}
 }}
@@ -588,7 +593,7 @@ foreach ($mode in @('missing', 'foreign')) {{
         f"""
 $ErrorActionPreference = 'Stop'
 . '{PROJECTION_LITERAL}'
-{powershell_function((PACKAGING / "windows_database_generation_contract.ps1").read_text(encoding="utf-8-sig"), "Throw-TicketboxDatabaseGenerationOperationFailure")}
+{powershell_function(FAILURE.read_text(encoding="utf-8-sig"), "Throw-TicketboxOperationFailure")}
 $script:migratorState = 'active'
 $script:failAfterMigratorCommit = $true
 $script:failFirstEnvWrite = $true

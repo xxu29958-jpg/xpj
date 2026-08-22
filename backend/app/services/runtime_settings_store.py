@@ -12,9 +12,8 @@ from typing import Literal
 from app.services.secure_file import (
     hold_protected_file_for_read,
     hold_service_owned_projection_for_read,
-    write_protected_file_exclusive,
+    write_protected_file_no_replace,
     write_protected_file_replace,
-    write_service_owned_file_exclusive,
 )
 
 _SCHEMA = "ticketbox-runtime-settings-v1"
@@ -138,12 +137,11 @@ def initialize_runtime_settings(
         if current is not None:
             return current
         try:
-            writer = (
-                write_service_owned_file_exclusive
-                if service_owned
-                else write_protected_file_exclusive
+            write_protected_file_no_replace(
+                target,
+                encoded,
+                service_owned=service_owned,
             )
-            writer(target, encoded)
         except FileExistsError as exc:
             current = read_runtime_settings(target, service_owned=service_owned)
             if current is None:

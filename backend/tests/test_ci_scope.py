@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import ast
 import json
 from pathlib import Path
 
-from scripts import ci_scope
+import app.services.installer_runtime_guard as installer_runtime_guard
+from scripts import ci_gap_trigger_scope, ci_scope
 from scripts.ci_gap_trigger_scope import all_ci_scopes, classify_ci_paths
 from scripts.postgres_release_policy import POSTGRES_RELEASE_POLICY
 
@@ -140,37 +140,24 @@ def test_dataset_maintenance_changes_select_all_required_execution_scopes() -> N
     )
 
 
-def test_dataset_maintenance_transitive_app_dependencies_select_windows() -> None:
-    roots = (
-        BACKEND_ROOT / "app/database/_dataset_backup_action.py",
-        BACKEND_ROOT / "app/database/_dataset_backup_snapshot.py",
-        BACKEND_ROOT / "app/database/_dataset_restore_action.py",
-        BACKEND_ROOT / "app/database/_dataset_restore_authority.py",
-        BACKEND_ROOT / "app/database/_dataset_restore_security.py",
+def test_installer_guard_adapter_changes_select_windows() -> None:
+    assert installer_runtime_guard.GUARD_FILENAME == "installer-runtime-recovery-pending"
+    _assert_path_scopes(
+        ("backend/app/services/installer_runtime_guard.py",),
+        "postgres",
+        "backend_frozen",
+        "windows",
     )
-    pending = list(roots)
-    visited: set[Path] = set()
-    while pending:
-        path = pending.pop()
-        if path in visited:
-            continue
-        visited.add(path)
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ImportFrom) or not node.module:
-                continue
-            if not node.module.startswith("app."):
-                continue
-            relative = Path(*node.module.split("."))
-            module = BACKEND_ROOT / relative.with_suffix(".py")
-            package = BACKEND_ROOT / relative / "__init__.py"
-            dependency = module if module.is_file() else package
-            if dependency.is_file():
-                pending.append(dependency)
 
-    for dependency in visited:
-        relative = dependency.relative_to(BACKEND_ROOT.parent).as_posix()
-        assert classify_ci_paths([relative])["windows"], relative
+
+def test_dataset_maintenance_transitive_app_dependencies_select_windows() -> None:
+    dependencies = ci_gap_trigger_scope.dataset_maintenance_python_dependencies()
+    assert "backend/app/__init__.py" in dependencies
+    assert "backend/app/database_maintenance_runtime.py" in dependencies
+    assert "backend/app/dataset_maintenance_cli.py" in dependencies
+    assert "backend/app/models/__init__.py" in dependencies
+    for dependency in dependencies:
+        assert classify_ci_paths([dependency])["windows"], dependency
 
 
 def test_desktop_build_contract_runs_tests_and_packaging() -> None:

@@ -10,6 +10,7 @@ PACKAGING = Path(__file__).resolve().parents[1]
 COMMAND = PACKAGING / "windows_postgresql_database_command.ps1"
 CONTRACT = PACKAGING / "windows_ticketbox_database_contract.ps1"
 ACL = PACKAGING / "windows_ticketbox_database_acl.ps1"
+ACL_OBSERVATION = PACKAGING / "windows_ticketbox_database_acl_observation.ps1"
 ROLES = PACKAGING / "windows_ticketbox_database_roles.ps1"
 OLD_C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
 OWNER = PACKAGING / "windows_database_generation.ps1"
@@ -133,7 +134,12 @@ def test_database_host_cutover_has_real_consumers_shipment_and_retirement() -> N
 def test_database_policy_is_closed_normalized_and_secret_safe() -> None:
     command = COMMAND.read_text(encoding="utf-8-sig")
     contract = CONTRACT.read_text(encoding="utf-8-sig")
-    acl = ACL.read_text(encoding="utf-8-sig")
+    acl = "\n".join(
+        (
+            ACL.read_text(encoding="utf-8-sig"),
+            ACL_OBSERVATION.read_text(encoding="utf-8-sig"),
+        )
+    )
     roles = ROLES.read_text(encoding="utf-8-sig")
     source = SOURCE.read_text(encoding="utf-8-sig")
     recovery = RECOVERY.read_text(encoding="utf-8-sig")
@@ -256,6 +262,7 @@ $ErrorActionPreference = 'Stop'
 . '{_ps_literal(COMMAND)}'
 . '{_ps_literal(CONTRACT)}'
 . '{_ps_literal(ACL)}'
+. '{_ps_literal(ACL_OBSERVATION)}'
 $baseSql = New-TicketboxDatabaseRuntimeAclSql -PreserveRuntimeFence
 $managedSql = New-TicketboxDatabaseRuntimeAclSql `
     -IncludeManagedSchemaCurrencyAuthority
@@ -310,6 +317,7 @@ $ErrorActionPreference = 'Stop'
 . '{_ps_literal(COMMAND)}'
 . '{_ps_literal(CONTRACT)}'
 . '{_ps_literal(ACL)}'
+. '{_ps_literal(ACL_OBSERVATION)}'
 $password = [Security.SecureString]::new()
 foreach ($character in ('not-a-real-secret-0123456789abcdef').ToCharArray()) {{
     $password.AppendChar($character)
@@ -402,6 +410,7 @@ $ErrorActionPreference = 'Stop'
 . '{_ps_literal(COMMAND)}'
 . '{_ps_literal(CONTRACT)}'
 . '{_ps_literal(ACL)}'
+. '{_ps_literal(ACL_OBSERVATION)}'
 . '{_ps_literal(ROLES)}'
 . '{_ps_literal(RECOVERY_EVIDENCE)}'
 . '{_ps_literal(RECOVERY)}'

@@ -1,4 +1,4 @@
-# Durable terminal replay evidence for one installed dataset restore operation.
+﻿# Durable terminal replay evidence for one installed dataset restore operation.
 
 function Get-TicketboxInstalledDatasetRestoreResultPath {
     param([Parameter(Mandatory = $true)][string]$StateRoot)
@@ -84,6 +84,49 @@ function Read-TicketboxInstalledDatasetRestoreResult {
     }
 }
 
+function New-TicketboxInstalledDatasetRestoreResultEnvelope {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Payload,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    $path = Get-TicketboxInstalledDatasetRestoreResultPath $StateRoot
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $path `
+        -Text (New-TicketboxDatabaseGenerationEnvelopeText `
+            "dataset-restore-result" $Payload) `
+        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
+        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
+    return Read-TicketboxDatabaseGenerationEnvelope $path "dataset-restore-result"
+}
+
+function Replace-TicketboxInstalledDatasetRestoreResultEnvelope {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][string]$ExpectedPayloadSha256,
+        [Parameter(Mandatory = $true)][object]$Payload,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Assert-TicketboxDatabaseGenerationLowerSha256 `
+        $ExpectedPayloadSha256 "dataset restore result CAS predecessor"
+    $path = Get-TicketboxInstalledDatasetRestoreResultPath $StateRoot
+    $existing = Read-TicketboxDatabaseGenerationEnvelope `
+        $path "dataset-restore-result"
+    if ([string]$existing.PayloadSha256 -cne $ExpectedPayloadSha256) {
+        throw "dataset restore result CAS predecessor changed."
+    }
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $path `
+        -Text (New-TicketboxDatabaseGenerationEnvelopeText `
+            "dataset-restore-result" $Payload) `
+        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
+        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount `
+        -ReplaceExisting
+    return Read-TicketboxDatabaseGenerationEnvelope $path "dataset-restore-result"
+}
+
 function New-TicketboxInstalledDatasetRestoreResult {
     param(
         [Parameter(Mandatory = $true)][string]$StateRoot,
@@ -121,9 +164,8 @@ function New-TicketboxInstalledDatasetRestoreResult {
             ) {
                 throw "another restore result still owns CURRENT."
             }
-            $replaced = Replace-TicketboxDatabaseGenerationEnvelope `
-                -Path $path `
-                -Kind "dataset-restore-result" `
+            $replaced = Replace-TicketboxInstalledDatasetRestoreResultEnvelope `
+                -StateRoot $StateRoot `
                 -ExpectedPayloadSha256 ([string]$existing.PayloadSha256) `
                 -Payload $expected `
                 -LifecycleLock $LifecycleLock
@@ -137,7 +179,7 @@ function New-TicketboxInstalledDatasetRestoreResult {
         }
         return Assert-TicketboxInstalledDatasetRestoreResult $existing
     }
-    $written = Write-TicketboxDatabaseGenerationEnvelope `
-        $path "dataset-restore-result" $expected $LifecycleLock
+    $written = New-TicketboxInstalledDatasetRestoreResultEnvelope `
+        $StateRoot $expected $LifecycleLock
     return Assert-TicketboxInstalledDatasetRestoreResult $written
 }
