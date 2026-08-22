@@ -41,7 +41,7 @@ def finalize_restored_dataset(
     connection.execute(
         text(
             "DELETE FROM app_meta WHERE key IN "
-            "('csrf_signing_key', 'database_generation_binding', 'budget_advisor_audit_key')"
+            "('csrf_signing_key', 'database_generation_binding')"
         )
     )
     connection.execute(
@@ -93,7 +93,7 @@ def assert_restored_dataset_candidate_accepted(
         connection.scalar(
             text(
                 "SELECT count(*) FROM app_meta WHERE key IN "
-                "('csrf_signing_key', 'database_generation_binding', 'budget_advisor_audit_key')"
+                "('csrf_signing_key', 'database_generation_binding')"
             )
         )
         != 0

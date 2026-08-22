@@ -240,6 +240,7 @@ def test_restore_finalization_executes_every_sanitation_delete_once(tmp_path: Pa
         target_schema_revision=manifest.authority.schema_revision,
     )
     deleted: list[str] = []
+    executed_sql: list[str] = []
 
     class MappingResult:
         def mappings(self):
@@ -263,6 +264,7 @@ def test_restore_finalization_executes_every_sanitation_delete_once(tmp_path: Pa
 
         def execute(self, statement, _parameters=None):
             sql = str(statement)
+            executed_sql.append(sql)
             if sql.startswith("SELECT dataset_id"):
                 return MappingResult()
             if sql.startswith('DELETE FROM "'):
@@ -273,6 +275,10 @@ def test_restore_finalization_executes_every_sanitation_delete_once(tmp_path: Pa
 
     assert set(deleted) == _EXPECTED_SANITATION_TABLES
     assert len(deleted) == len(_EXPECTED_SANITATION_TABLES)
+    app_meta_filter = next(sql for sql in executed_sql if sql.startswith("DELETE FROM app_meta"))
+    assert "csrf_signing_key" in app_meta_filter
+    assert "database_generation_binding" in app_meta_filter
+    assert "budget_advisor_audit_key" not in app_meta_filter
 
 
 def test_candidate_acceptance_requires_final_authority_and_empty_host_capabilities(
@@ -374,10 +380,14 @@ def test_restore_finalization_revokes_host_credentials_without_deleting_business
             connection.scalar(
                 text(
                     "SELECT count(*) FROM app_meta WHERE key IN "
-                    "('csrf_signing_key', 'database_generation_binding', 'budget_advisor_audit_key')"
+                    "('csrf_signing_key', 'database_generation_binding')"
                 )
             )
             == 0
+        )
+        assert (
+            connection.scalar(text("SELECT value FROM app_meta WHERE key = 'budget_advisor_audit_key'"))
+            == "old-install-secret"
         )
         restored = (
             connection.execute(
