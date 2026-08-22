@@ -114,9 +114,9 @@ function New-TicketboxDatabaseGenerationIntent {
         host_contract_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
             ConvertTo-TicketboxDatabaseGenerationCanonicalJson $HostContract
         )
-        projection_contract_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $ProjectionContract
-        )
+        projection_contract_sha256 =
+            Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+                $ProjectionContract
         target_revision = [string]$ProgramContract.TargetRevision
     }
     if ($null -ne $existing) {
@@ -201,9 +201,8 @@ function Read-TicketboxDatabaseGenerationIntentContext {
                 ConvertTo-TicketboxDatabaseGenerationCanonicalJson $HostContract
             )) -or
         [string]$intent.Payload.projection_contract_sha256 -cne
-            (Get-TicketboxDatabaseGenerationTextSha256 (
-                ConvertTo-TicketboxDatabaseGenerationCanonicalJson $ProjectionContract
-            ))
+            (Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+                $ProjectionContract)
     ) {
         throw "database generation intent 与 installed host/projection 漂移。"
     }

@@ -598,7 +598,18 @@ $program = [pscustomobject]@{{
     TargetRevision = '20260809_0001'
 }}
 $hostContract = [ordered]@{{ schema = 'host-v1'; pg_major = 17 }}
-$projectionContract = [ordered]@{{ schema = 'projection-v1'; backend_port = 8765 }}
+$projectionContract = [pscustomobject][ordered]@{{
+    backend_service_name = 'ticketbox-backend'
+    env_path = 'C:\\data\\app\\.env'
+    stop_timeout_ms = 60000
+    backend_port = 8765
+    pg_bin = 'C:\\Ticketbox\\pg\\bin'
+    timezone = 'Asia/Shanghai'
+    public_base_url = ''
+    psql_path = 'C:\\Ticketbox\\pg\\bin\\psql.exe'
+    pg_data = 'C:\\data\\pgdata'
+    database_tool_timeout_ms = 60000
+}}
 $preinstallFacts = [pscustomobject][ordered]@{{
     BackendServiceName = 'backend'
     ExistingPathFacts = @()
@@ -737,6 +748,7 @@ function Initialize-TicketboxDatabaseGenerationStateRoot {{ return 'state' }}
 function Get-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); return ($Value | ConvertTo-Json -Depth 8 -Compress) }}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); return ($Value | ConvertTo-Json -Depth 8 -Compress) }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('9' * 64) }}
+function Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 {{ return ('9' * 64) }}
 $script:TicketboxDatabaseGenerationProgramRelativePath = 'DATABASE_GENERATION_PROGRAM.json'
 $script:TicketboxDatabaseMaintenanceHelperRelativePath = 'ticketbox-database-maintenance.exe'
 $script:writes = 0

@@ -111,7 +111,8 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
                 "predecessor_current_sha256", "predecessor_intent_sha256",
                 "predecessor_current_payload", "predecessor_intent_payload",
                 "release_manifest_sha256",
-                "active_dataset_id", "active_restore_epoch", "restart_backend"
+                "active_dataset_id", "active_restore_epoch", "restart_backend",
+                "public_base_url"
             )
         }
         "dataset-restore-result" {

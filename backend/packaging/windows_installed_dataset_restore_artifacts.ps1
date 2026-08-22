@@ -31,7 +31,8 @@ function Assert-TicketboxInstalledDatasetRestoreRequest {
             "predecessor_current_sha256", "predecessor_intent_sha256",
             "predecessor_current_payload", "predecessor_intent_payload",
             "release_manifest_sha256",
-            "active_dataset_id", "active_restore_epoch", "restart_backend"
+            "active_dataset_id", "active_restore_epoch", "restart_backend",
+            "public_base_url"
         ) `
         -Label "installed dataset restore request"
     foreach ($digest in @(
@@ -47,6 +48,8 @@ function Assert-TicketboxInstalledDatasetRestoreRequest {
     $backupId = ([guid][string]$payload.backup_id).ToString("D")
     $datasetId = ([guid][string]$payload.dataset_id).ToString("D")
     $activeDatasetId = ([guid][string]$payload.active_dataset_id).ToString("D")
+    $publicBaseUrl = ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl `
+        ([string]$payload.public_base_url)
     Assert-TicketboxDatabaseGenerationExactProperties `
         -Value $payload.predecessor_intent_payload `
         -ExpectedNames (Get-TicketboxDatabaseGenerationPayloadProperties "intent") `
@@ -65,7 +68,7 @@ function Assert-TicketboxInstalledDatasetRestoreRequest {
     )
     if (
         [string]$payload.schema -cne
-            "ticketbox-installed-dataset-restore-request-v3" -or
+            "ticketbox-installed-dataset-restore-request-v4" -or
         $attemptId -cne [string]$payload.restore_attempt_id -or
         $backupId -cne [string]$payload.backup_id -or
         $datasetId -cne [string]$payload.dataset_id -or
@@ -74,6 +77,7 @@ function Assert-TicketboxInstalledDatasetRestoreRequest {
         [int64]$payload.backup_restore_epoch -lt 0 -or
         [int64]$payload.active_restore_epoch -lt 0 -or
         $payload.restart_backend -isnot [bool] -or
+        $publicBaseUrl -cne [string]$payload.public_base_url -or
         [string]::IsNullOrWhiteSpace([string]$payload.target_revision) -or
         $predecessorIntentSha -cne [string]$payload.predecessor_intent_sha256 -or
         $predecessorCurrentSha -cne [string]$payload.predecessor_current_sha256 -or
@@ -168,6 +172,7 @@ function New-TicketboxInstalledDatasetRestoreRequest {
         [Parameter(Mandatory = $true)][string]$ActiveDatasetId,
         [Parameter(Mandatory = $true)][int64]$ActiveRestoreEpoch,
         [Parameter(Mandatory = $true)][bool]$RestartBackend,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PublicBaseUrl,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
@@ -193,6 +198,8 @@ function New-TicketboxInstalledDatasetRestoreRequest {
         active_dataset_id = ([guid]$ActiveDatasetId).ToString("D")
         active_restore_epoch = $ActiveRestoreEpoch
         restart_backend = $RestartBackend
+        public_base_url = ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl `
+            $PublicBaseUrl
     }
     if ($null -ne $existing) {
         foreach ($name in @($immutable.Keys)) {
@@ -205,7 +212,7 @@ function New-TicketboxInstalledDatasetRestoreRequest {
         }
         return Assert-TicketboxInstalledDatasetRestoreRequest $existing
     }
-    $payload = [ordered]@{ schema = "ticketbox-installed-dataset-restore-request-v3" }
+    $payload = [ordered]@{ schema = "ticketbox-installed-dataset-restore-request-v4" }
     foreach ($name in @($immutable.Keys)) { $payload[$name] = $immutable[$name] }
     $written = Write-TicketboxDatabaseGenerationEnvelope `
         $path "dataset-restore-request" $payload $LifecycleLock

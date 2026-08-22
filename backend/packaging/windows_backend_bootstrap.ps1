@@ -667,7 +667,10 @@ function Complete-FirstOwnerBootstrapIfEnabled {
             -ExpectedInstallationId $InstallationId) -cne "pending") {
             throw "只能为已持久化的 pending owner handoff 退役 bootstrap secret。"
         }
-        Write-EnvNoBom -Path $EnvPath -Lines (New-BaseEnvLines $DatabaseUrl)
+        Write-EnvNoBom `
+            -Path $EnvPath `
+            -Lines (New-BaseEnvLines $DatabaseUrl) `
+            -BackendServiceName $BackendServiceName
         Restart-TicketboxOwnedServiceIfExists `
             -Name $BackendServiceName `
             -ExpectedExecutable (Get-ExpectedServiceExecutable $BackendServiceName) `
@@ -753,7 +756,10 @@ function Complete-FirstOwnerBootstrapIfEnabled {
         -OperationId $InstallationOperationId `
         -InstallationId $InstallationId
     Write-Ok "installation owner 短期配对交付记录已写入：$OwnerHandoffPath"
-    Write-EnvNoBom -Path $EnvPath -Lines (New-BaseEnvLines $DatabaseUrl)
+    Write-EnvNoBom `
+        -Path $EnvPath `
+        -Lines (New-BaseEnvLines $DatabaseUrl) `
+        -BackendServiceName $BackendServiceName
     Restart-TicketboxOwnedServiceIfExists `
         -Name $BackendServiceName `
         -ExpectedExecutable (Get-ExpectedServiceExecutable $BackendServiceName) `

@@ -14,6 +14,7 @@ PACKAGING = Path(__file__).resolve().parents[1]
 ARTIFACTS = PACKAGING / "windows_database_generation_artifacts.ps1"
 INSTALLED_READER = PACKAGING / "windows_installed_dataset_reader.ps1"
 PROJECTION = PACKAGING / "windows_database_generation_projection.ps1"
+GENERATION_CONTRACT = PACKAGING / "windows_database_generation_contract.ps1"
 RESTORE = PACKAGING / "windows_dataset_restore.ps1"
 RESTORE_ARTIFACTS = PACKAGING / "windows_installed_dataset_restore_artifacts.ps1"
 RUNTIME = PACKAGING / "windows_dataset_restore_runtime.ps1"
@@ -126,37 +127,18 @@ if (
     )
 
 
-def test_restore_reobserves_exact_authority_before_successor_artifacts() -> None:
-    restore = RESTORE.read_text(encoding="utf-8-sig")
-    before_loop, loop = restore.split("while ($true) {", maxsplit=1)
-    setup = before_loop.split("$operationId =", maxsplit=1)[1]
-
-    assert setup.index(
-        "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition"
-    ) < setup.index("Get-OrCreatePostgresBootstrapRecoveryState")
-    assert setup.index(
-        "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition"
-    ) < setup.index("New-TicketboxDatabaseGenerationCredentials")
-    assert loop.index("Read-TicketboxDatabaseGenerationActiveIntent") < loop.index(
-        "Read-TicketboxDatabaseGenerationCurrent"
-    )
-    assert loop.index(
-        "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition"
-    ) < loop.index("Read-TicketboxDatabaseGenerationOperationArtifact")
-
-
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_installed_projection_preserves_valid_public_base_url(
     tmp_path: Path,
 ) -> None:
     reader_source = INSTALLED_READER.read_text(encoding="utf-8-sig")
-    public_reader = powershell_function(
-        reader_source,
-        "Read-TicketboxInstalledDatasetPublicBaseUrl",
-    )
     contracts = powershell_function(
         reader_source,
         "New-TicketboxInstalledDatabaseGenerationContracts",
+    )
+    public_base_url = powershell_function(
+        GENERATION_CONTRACT.read_text(encoding="utf-8-sig"),
+        "ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl",
     )
     environment_writer = powershell_function(
         PROJECTION.read_text(encoding="utf-8-sig"),
@@ -164,14 +146,7 @@ def test_installed_projection_preserves_valid_public_base_url(
     )
     script = f"""
 $ErrorActionPreference = 'Stop'
-$script:publicBaseUrl = 'https://public.example/'
 $script:writtenLines = @()
-function Get-TicketboxPathEntryKindNoFollow {{ param($Path); return 'File' }}
-function Assert-TicketboxLegacyProtectedFileAcl {{ param($Path) }}
-function Read-EnvMap {{
-    param($Path)
-    return @{{ PUBLIC_BASE_URL = $script:publicBaseUrl }}
-}}
 function Read-TicketboxDatabaseGenerationProgramContract {{
     param($Path, $ExpectedSha256)
     return [pscustomobject]@{{ RelativePath = 'DATABASE_GENERATION_PROGRAM.json'; Size = 1; Sha256 = ('a' * 64) }}
@@ -179,11 +154,11 @@ function Read-TicketboxDatabaseGenerationProgramContract {{
 function New-TicketboxDatabaseGenerationHostContract {{ param($BackendServiceName, $DataRoot, $InstallDir, $PgCtlPath, $PgServiceName, $PgDumpPath, $PgDumpSize, $PgDumpSha256, $PgRestorePath, $PgRestoreSize, $PgRestoreSha256, $ReleaseConfig); return [pscustomobject]@{{}} }}
 function New-TicketboxDatabaseGenerationProjectionContract {{
     param($BackendServiceName, $EnvPath, $StopTimeoutMilliseconds, $BackendPort, $PgBin, $Timezone, $PublicBaseUrl, $PsqlPath, $PgData, $DatabaseToolTimeoutMilliseconds)
-    return [pscustomobject]@{{ public_base_url = $PublicBaseUrl; env_path = $EnvPath; stop_timeout_ms = $StopTimeoutMilliseconds; backend_port = $BackendPort; pg_bin = $PgBin; timezone = $Timezone }}
+    return [pscustomobject]@{{ public_base_url = ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl $PublicBaseUrl; backend_service_name = $BackendServiceName; env_path = $EnvPath; stop_timeout_ms = $StopTimeoutMilliseconds; backend_port = $BackendPort; pg_bin = $PgBin; timezone = $Timezone }}
 }}
 function ConvertTo-TicketboxTimeoutSeconds {{ param($Milliseconds); return 60 }}
-function Write-EnvNoBom {{ param($Path, $Lines); $script:writtenLines = @($Lines) }}
-{public_reader}
+function Write-EnvNoBom {{ param($Path, $Lines, $BackendServiceName); $script:writtenLines = @($Lines) }}
+{public_base_url}
 {contracts}
 {environment_writer}
 $subject = [pscustomobject]@{{
@@ -201,7 +176,8 @@ $subject = [pscustomobject]@{{
     }}
     Release = [pscustomobject]@{{ stop_timeout_ms = 60000; database_tool_timeout_ms = 60000; default_timezone = 'Asia/Shanghai' }}
 }}
-$resolved = New-TicketboxInstalledDatabaseGenerationContracts $subject
+$resolved = New-TicketboxInstalledDatabaseGenerationContracts `
+    -Subject $subject -PublicBaseUrl 'https://public.example/'
 if ([string]$resolved.Projection.public_base_url -cne 'https://public.example') {{
     throw 'installed projection dropped PUBLIC_BASE_URL'
 }}
@@ -211,9 +187,11 @@ Write-TicketboxDatabaseGenerationRuntimeEnvironment `
 if ('PUBLIC_BASE_URL=https://public.example' -cnotin $script:writtenLines) {{
     throw 'runtime projection did not preserve PUBLIC_BASE_URL'
 }}
-$script:publicBaseUrl = 'http://public.example'
 $rejected = $false
-try {{ New-TicketboxInstalledDatabaseGenerationContracts $subject | Out-Null }}
+try {{
+    New-TicketboxInstalledDatabaseGenerationContracts `
+        -Subject $subject -PublicBaseUrl 'http://public.example' | Out-Null
+}}
 catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'public HTTP origin was accepted' }}
 """

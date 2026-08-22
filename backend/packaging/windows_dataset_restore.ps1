@@ -74,6 +74,7 @@ $cleanup = @()
 $result = $null
 $restartBackend = $false
 $resumeCommittedRestore = $false
+$publicBaseUrl = $null
 try {
     $lock = Enter-TicketboxLifecycleLock
     Assert-TicketboxLifecycleOperationLease $lock
@@ -142,6 +143,19 @@ try {
         ) {
             throw "restore requires a backup of the installed dataset and exact release schema."
         }
+        $publicBaseUrl = Read-TicketboxInstalledDatasetPublicBaseUrl `
+            -Subject $subject
+        $contracts = New-TicketboxInstalledDatabaseGenerationContracts `
+            -Subject $subject -PublicBaseUrl $publicBaseUrl
+        $projectionContractSha256 =
+            Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+                $contracts.Projection
+        if (
+            $projectionContractSha256 -cne
+                [string]$authority.Intent.Payload.projection_contract_sha256
+        ) {
+            throw "installed projection differs from predecessor Generation authority."
+        }
         $request = New-TicketboxInstalledDatasetRestoreRequest `
             -Subject $subject `
             -Authority $authority `
@@ -150,9 +164,30 @@ try {
             -ActiveDatasetId ([string]$activeDataset.DatasetId) `
             -ActiveRestoreEpoch ([int64]$activeDataset.RestoreEpoch) `
             -RestartBackend $restartBackend `
+            -PublicBaseUrl $publicBaseUrl `
             -LifecycleLock $lock
         Close-TicketboxDatabaseGenerationRuntimeCredentials $authority.Credentials
         $authority.Credentials = $null
+    }
+    if ($null -eq $contracts) {
+        $contracts = New-TicketboxInstalledDatabaseGenerationContracts `
+            -Subject $subject `
+            -PublicBaseUrl ([string]$request.Payload.public_base_url)
+    }
+    $projectionContractSha256 =
+        Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+            $contracts.Projection
+    if (
+        $projectionContractSha256 -cne
+            [string]$request.Payload.predecessor_intent_payload.projection_contract_sha256 -or
+        (
+            [string]$active.Payload.source_request_sha256 -ceq
+                [string]$request.PayloadSha256 -and
+            $projectionContractSha256 -cne
+                [string]$active.Payload.projection_contract_sha256
+        )
+    ) {
+        throw "restore projection differs from durable Generation authority."
     }
     $restartBackend = [bool]$request.Payload.restart_backend
     if (
@@ -165,7 +200,6 @@ try {
         throw "restore request differs from the explicitly selected backup."
     }
 
-    $contracts = New-TicketboxInstalledDatabaseGenerationContracts $subject
     if (
         [string]$active.Payload.operation_id -ceq [string]$current.Payload.operation_id -and
         -not $resumeCommittedRestore

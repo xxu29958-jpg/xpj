@@ -93,43 +93,33 @@ function Read-TicketboxInstalledDatasetAuthority {
 }
 
 function Read-TicketboxInstalledDatasetPublicBaseUrl {
-    param([Parameter(Mandatory = $true)][string]$EnvPath)
+    param([Parameter(Mandatory = $true)][object]$Subject)
 
-    $kind = Get-TicketboxPathEntryKindNoFollow $EnvPath
+    $identity = $Subject.Identity
+    $envPath = Join-Path ([string]$identity.DataRoot) "app\.env"
+    $kind = Get-TicketboxPathEntryKindNoFollow $envPath
     if ($kind -ceq "Missing") { return "" }
     if ($kind -cne "File") {
         throw "installed runtime environment is not a regular file."
     }
-    Assert-TicketboxLegacyProtectedFileAcl $EnvPath
-    $environment = Read-EnvMap $EnvPath
+    Assert-TicketboxExactFileAcl `
+        -Path $envPath `
+        -Accounts @(
+            "SYSTEM", "BUILTIN\Administrators",
+            "NT SERVICE\$([string]$identity.BackendServiceName)"
+        ) `
+        -OwnerAccount "SYSTEM"
+    $environment = Read-EnvMap $envPath
     if (-not $environment.ContainsKey("PUBLIC_BASE_URL")) { return "" }
-    $value = ([string]$environment["PUBLIC_BASE_URL"]).Trim().TrimEnd("/")
-    if ($value.Length -eq 0) { return "" }
-    if ($value.IndexOfAny([char[]]@(' ', "`r", "`n", "`t")) -ge 0) {
-        throw "installed PUBLIC_BASE_URL contains whitespace."
-    }
-    $uri = $null
-    if (-not [Uri]::TryCreate($value, [UriKind]::Absolute, [ref]$uri)) {
-        throw "installed PUBLIC_BASE_URL is not an absolute origin."
-    }
-    $publicHost = ([string]$uri.DnsSafeHost).ToLowerInvariant()
-    $loopback = $publicHost -in @("127.0.0.1", "::1", "localhost")
-    if (
-        ([string]$uri.Scheme -cne "https" -and
-            -not ([string]$uri.Scheme -ceq "http" -and $loopback)) -or
-        -not [string]::IsNullOrEmpty([string]$uri.UserInfo) -or
-        ([string]$uri.AbsolutePath -cne "/" -and
-            -not [string]::IsNullOrEmpty([string]$uri.AbsolutePath)) -or
-        -not [string]::IsNullOrEmpty([string]$uri.Query) -or
-        -not [string]::IsNullOrEmpty([string]$uri.Fragment)
-    ) {
-        throw "installed PUBLIC_BASE_URL is not an authorized origin."
-    }
-    return $uri.GetLeftPart([UriPartial]::Authority)
+    return ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl `
+        ([string]$environment["PUBLIC_BASE_URL"])
 }
 
 function New-TicketboxInstalledDatabaseGenerationContracts {
-    param([Parameter(Mandatory = $true)][object]$Subject)
+    param(
+        [Parameter(Mandatory = $true)][object]$Subject,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PublicBaseUrl
+    )
 
     $identity = $Subject.Identity
     $manifest = $Subject.Manifest
@@ -155,7 +145,6 @@ function New-TicketboxInstalledDatabaseGenerationContracts {
         -PgRestoreSha256 (([string]$manifest.PgRestore.Sha256).ToLowerInvariant()) `
         -ReleaseConfig $release
     $envPath = Join-Path ([string]$identity.DataRoot) "app\.env"
-    $publicBaseUrl = Read-TicketboxInstalledDatasetPublicBaseUrl $envPath
     $projection = New-TicketboxDatabaseGenerationProjectionContract `
         -BackendServiceName ([string]$identity.BackendServiceName) `
         -EnvPath $envPath `

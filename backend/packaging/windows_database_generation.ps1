@@ -78,9 +78,9 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
     $hostContractSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
         ConvertTo-TicketboxDatabaseGenerationCanonicalJson $HostContract
     )
-    $projectionContractSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $ProjectionContract
-    )
+    $projectionContractSha256 =
+        Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+            $ProjectionContract
     if (
         [string]$intent.Payload.host_contract_sha256 -cne $hostContractSha256 -or
         [string]$intent.Payload.projection_contract_sha256 -cne

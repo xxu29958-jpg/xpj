@@ -82,10 +82,21 @@ function Write-TicketboxFileAtomically([string]$Path, [byte[]]$Bytes) {
     }
 }
 
-function Write-EnvNoBom([string]$Path, [string[]]$Lines) {
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+function Write-EnvNoBom {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$Lines,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName
+    )
     $text = [string]::Join([Environment]::NewLine, $Lines) + [Environment]::NewLine
-    Write-TicketboxFileAtomically -Path $Path -Bytes ($utf8NoBom.GetBytes($text))
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $Path `
+        -Text $text `
+        -FullControlAccounts @(
+            "SYSTEM", "BUILTIN\Administrators", "NT SERVICE\$BackendServiceName"
+        ) `
+        -OwnerAccount "SYSTEM" `
+        -ReplaceExisting
 }
 
 function New-StrongPassword {

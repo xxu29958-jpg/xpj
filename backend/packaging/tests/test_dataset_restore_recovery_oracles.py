@@ -218,6 +218,9 @@ function Throw-TicketboxDatabaseGenerationOperationFailure {{
     if (@($Cleanup).Count -gt 0) {{ throw [string]@($Cleanup)[0] }}
 }}
 function Assert-TicketboxInstalledDatasetRestoreRequest {{ param($Request); return $Request }}
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); return '{{}}' }}
+function Get-TicketboxDatabaseGenerationTextSha256 {{ param($Text); return ('9' * 64) }}
+function Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 {{ param($ProjectionContract); return ('9' * 64) }}
 {classifier}
 {predecessor}
 $request = [pscustomobject]@{{
@@ -225,7 +228,10 @@ $request = [pscustomobject]@{{
     Payload = [pscustomobject]@{{
         predecessor_current_sha256 = ('a' * 64)
         predecessor_intent_sha256 = ('c' * 64)
-        predecessor_intent_payload = [pscustomobject]@{{ operation_id = $predecessorOperation }}
+        predecessor_intent_payload = [pscustomobject]@{{
+            operation_id = $predecessorOperation
+            projection_contract_sha256 = ('9' * 64)
+        }}
         predecessor_current_payload = [pscustomobject]@{{
             intent_sha256 = ('c' * 64)
             candidate_sha256 = ('d' * 64)

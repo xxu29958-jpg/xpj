@@ -53,6 +53,7 @@ function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {{ return @() }
 function Assert-TicketboxLifecycleOperationLease {{}}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); $Value | ConvertTo-Json -Depth 20 -Compress }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('9' * 64) }}
+function Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 {{ return ('9' * 64) }}
 function Assert-TicketboxDatabaseGenerationReleaseBinding {{}}
 function Repair-TicketboxDatabaseGenerationServiceTransition {{}}
 function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {{ return [pscustomobject]@{{ Port = 5432 }} }}

@@ -518,6 +518,7 @@ function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
     return $Value | ConvertTo-Json -Compress -Depth 64
 }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('e' * 64) }}
+function Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 {{ return ('e' * 64) }}
 function Get-TicketboxDatabaseGenerationHostAuthoritySha256 {{ return ('f' * 64) }}
 function Read-EnvMap {{
     $map = [Collections.Generic.Dictionary[string,string]]::new()
@@ -700,6 +701,7 @@ function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
     return ($Value | ConvertTo-Json -Compress -Depth 20)
 }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('e' * 64) }}
+function Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 {{ return ('e' * 64) }}
 function Get-TicketboxDatabaseGenerationHostAuthoritySha256 {{ return ('f' * 64) }}
 $script:TicketboxDatabaseGenerationAclAccounts = @('SYSTEM')
 $script:TicketboxDatabaseGenerationOwnerAccount = 'SYSTEM'

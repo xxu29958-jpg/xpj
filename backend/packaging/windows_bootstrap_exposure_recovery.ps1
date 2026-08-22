@@ -8,7 +8,8 @@ function Write-TicketboxBootstrapEnabledEnvironment(
         "ENABLE_HTTP_BOOTSTRAP=true",
         "HTTP_BOOTSTRAP_SECRET=$BootstrapSecret"
     )
-    Write-EnvNoBom -Path $EnvPath -Lines $lines
+    Write-EnvNoBom `
+        -Path $EnvPath -Lines $lines -BackendServiceName $BackendServiceName
     $persisted = Read-EnvMap $EnvPath
     if (
         -not $persisted.ContainsKey("DATABASE_URL") -or
@@ -23,7 +24,10 @@ function Write-TicketboxBootstrapEnabledEnvironment(
 }
 
 function Write-TicketboxBootstrapQuarantineEnvironment([string]$DatabaseUrl) {
-    Write-EnvNoBom -Path $EnvPath -Lines (New-BaseEnvLines $DatabaseUrl)
+    Write-EnvNoBom `
+        -Path $EnvPath `
+        -Lines (New-BaseEnvLines $DatabaseUrl) `
+        -BackendServiceName $BackendServiceName
     $persisted = Read-EnvMap $EnvPath
     if (
         -not $persisted.ContainsKey("DATABASE_URL") -or

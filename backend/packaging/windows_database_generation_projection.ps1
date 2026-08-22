@@ -44,7 +44,10 @@ function Write-TicketboxDatabaseGenerationRuntimeEnvironment {
         "ENABLE_HTTP_BOOTSTRAP=true",
         "HTTP_BOOTSTRAP_SECRET=$HttpBootstrapSecret"
     )
-    Write-EnvNoBom -Path ([string]$ProjectionContract.env_path) -Lines $lines
+    Write-EnvNoBom `
+        -Path ([string]$ProjectionContract.env_path) `
+        -Lines $lines `
+        -BackendServiceName ([string]$ProjectionContract.backend_service_name)
 }
 
 function Read-TicketboxDatabaseGenerationRuntimeProjection {
@@ -103,9 +106,9 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {
         candidate_sha256 = [string]$Candidate.PayloadSha256
         committed_revision = [string]$Candidate.Payload.target_revision
         host_contract_sha256 = [string]$Intent.Payload.host_contract_sha256
-        projection_contract_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $ProjectionContract
-        )
+        projection_contract_sha256 =
+            Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+                $ProjectionContract
         database_url_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
             [string]$connection.PersistedDatabaseUrl
         )

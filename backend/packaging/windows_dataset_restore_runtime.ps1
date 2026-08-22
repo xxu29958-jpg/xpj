@@ -236,6 +236,15 @@ function Restore-TicketboxInstalledDatasetPredecessorRuntime {
         -Request $Request -Intent $Intent -Current $Current `
         -SuccessorOperationId $successorOperationId
     $currentIsSuccessor = $currentDisposition -ceq "successor"
+    $projectionContractSha256 =
+        Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+            $Contracts.Projection
+    if (
+        $projectionContractSha256 -cne
+            [string]$Request.Payload.predecessor_intent_payload.projection_contract_sha256
+    ) {
+        throw "dataset restore predecessor projection contract differs from durable authority."
+    }
     Set-TicketboxInstalledDatasetRestorePhysicalSelection `
         -Paths $Paths -Selection "Predecessor"
     Set-TicketboxInstalledDatasetPublishedAcls $Subject $Paths

@@ -113,7 +113,7 @@ def test_bootstrap_checks_listener_chain_and_pairing_only_handoff() -> None:
     assert "$OwnerBootstrapPath" not in handoff_writer
     assert "$OwnerHandoffPendingPath" not in handoff_writer
     persisted_owner = script.index("Write-TicketboxOwnerHandoffFromResponse `")
-    assert persisted_owner < script.index("Write-EnvNoBom -Path $EnvPath", persisted_owner)
+    assert persisted_owner < script.index("Write-EnvNoBom `", persisted_owner)
     assert "bootstrap_already_initialized" not in script
     assert "Write-TicketboxBootstrapExposureRecoveryIntent" in recovery
     assert "Write-TicketboxBootstrapQuarantineEnvironment" in recovery
@@ -867,7 +867,7 @@ $script:quiescenceProofs = 0
 $script:maintenanceCalls = 0
 $script:newSecretCalls = 0
 $script:collisionOnce = $false
-function Write-EnvNoBom([string]$Path, [string[]]$Lines) {{
+function Write-EnvNoBom([string]$Path, [string[]]$Lines, [string]$BackendServiceName) {{
         [System.IO.File]::WriteAllText(
             $Path,
             (($Lines -join [Environment]::NewLine) + [Environment]::NewLine),
@@ -1321,7 +1321,7 @@ $ShawlExe = 'shawl.exe'
 $ServiceWaitArguments = @{{}}
 function Read-EnvMap([string]$Path) {{ return @{{ HTTP_BOOTSTRAP_SECRET = 'secret-still-present' }} }}
 function New-BaseEnvLines([string]$DatabaseUrl) {{ return @('DATABASE_URL=postgresql://local/test') }}
-function Write-EnvNoBom {{ param($Path, $Lines) $script:envWrites++ }}
+function Write-EnvNoBom {{ param($Path, $Lines, $BackendServiceName) $script:envWrites++ }}
 function Write-Ok([string]$Message) {{ }}
 function Get-ExpectedServiceExecutable([string]$Name) {{ return $ShawlExe }}
 function Restart-TicketboxOwnedServiceIfExists {{
