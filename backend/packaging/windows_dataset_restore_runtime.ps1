@@ -302,17 +302,35 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
         [Parameter(Mandatory = $true)][object]$Paths,
         [Parameter(Mandatory = $true)][string]$StateRoot,
         [Parameter(Mandatory = $true)][object]$Contracts,
-        [Parameter(Mandatory = $true)][AllowNull()][object]$RuntimeVerification,
+        [Parameter(Mandatory = $true)][object]$Inspection,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     $failureCurrent = Read-TicketboxDatabaseGenerationCurrent
     $successorOperationId = ([guid][string]$Paths.operation_id).ToString("D")
-    if ($null -ne $RuntimeVerification) {
+    $failureIntent = Read-TicketboxDatabaseGenerationActiveIntent $StateRoot
+    if (
+        [string]$failureIntent.Payload.operation_id -cne $successorOperationId
+    ) {
+        throw "dataset restore compensation lost its active intent authority."
+    }
+    $durableRuntimeVerification = `
+        Read-TicketboxDatabaseGenerationOperationArtifact `
+            -StateRoot $StateRoot `
+            -OperationId $successorOperationId `
+            -Kind "runtime-verification" `
+            -AllowAbsent
+    if ($null -ne $durableRuntimeVerification) {
         if (
             [string]$failureCurrent.Payload.operation_id -cne $successorOperationId
         ) {
             throw "verified dataset restore no longer owns CURRENT."
         }
+        [void](Assert-TicketboxInstalledDatasetRuntimeVerification `
+            -Verification $durableRuntimeVerification `
+            -Intent $failureIntent `
+            -Request $Request `
+            -Current $failureCurrent `
+            -Inspection $Inspection)
         Set-TicketboxInstalledDatasetBackendDesiredState `
             -Subject $Subject `
             -ShouldRun ([bool]$Request.Payload.restart_backend)

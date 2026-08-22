@@ -467,6 +467,16 @@ function Read-TicketboxDatabaseGenerationCurrent {{
         }}
     }}
 }}
+function Read-TicketboxDatabaseGenerationActiveIntent {{
+    param($StateRoot)
+    $script:events += 'read-intent'
+    return [pscustomobject]@{{ Payload = [pscustomobject]@{{ operation_id = '22222222-2222-4222-8222-222222222222' }} }}
+}}
+function Read-TicketboxDatabaseGenerationOperationArtifact {{
+    param($StateRoot, $OperationId, $Kind, [switch]$AllowAbsent)
+    $script:events += 'read-runtime-verification'
+    return $null
+}}
 function Remove-TicketboxPostgresqlRestoreCandidateService {{ param($Subject, $Paths); $script:events += 'remove-candidate-service' }}
 function Stop-TicketboxInstalledDatasetWriters {{ param($Subject); $script:events += 'stop-writers' }}
 function Stop-TicketboxOwnedServiceIfExists {{
@@ -503,9 +513,10 @@ $paths = [pscustomobject]@{{ operation_id = '22222222-2222-4222-8222-22222222222
 $script:published = $true
 $outcome = Invoke-TicketboxInstalledDatasetRestoreFailureCompensation `
     -Subject $subject -Request $request -Paths $paths -StateRoot 'C:\\state' `
-    -Contracts ([pscustomobject]@{{}}) -RuntimeVerification $null `
+    -Contracts ([pscustomobject]@{{}}) `
+    -Inspection ([pscustomobject]@{{ Evidence = [pscustomobject]@{{ original_count = 9 }} }}) `
     -LifecycleLock ([pscustomobject]@{{}})
-$expected = 'read-current|remove-candidate-service|stop-writers|restore-predecessor:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|desired:True'
+$expected = 'read-current|read-intent|read-runtime-verification|remove-candidate-service|stop-writers|restore-predecessor:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|desired:True'
 if (($script:events -join '|') -cne $expected -or $outcome -cne 'rolled_back') {{
     throw "published CURRENT did not restore exact predecessor: $outcome / $($script:events -join '|')"
 }}

@@ -66,6 +66,8 @@ $operationId = $null
 $stateRoot = $null
 $contracts = $null
 $runtimeVerification = $null
+$active = $null
+$inspection = $null
 $terminalReplay = $false
 $primary = $null
 $cleanup = @()
@@ -426,13 +428,14 @@ catch {
         $null -ne $request -and
         $null -ne $paths -and
         $null -ne $stateRoot -and
-        $null -ne $contracts
+        $null -ne $contracts -and
+        $null -ne $inspection
     ) {
         try {
             [void](Invoke-TicketboxInstalledDatasetRestoreFailureCompensation `
                 -Subject $subject -Request $request -Paths $paths `
                 -StateRoot $stateRoot -Contracts $contracts `
-                -RuntimeVerification $runtimeVerification `
+                -Inspection $inspection `
                 -LifecycleLock $lock)
         }
         catch { $cleanup += $_ }

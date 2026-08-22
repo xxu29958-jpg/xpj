@@ -107,41 +107,53 @@ def _install_topology(contract: _TopologyContract, state: _TopologyState) -> Non
         )
 
 
-def _remove_owned_topology(contract: _TopologyContract) -> None:
-    with psycopg.connect(
-        contract.admin_restore_conninfo,
-        autocommit=True,
-        passfile=str(contract.passfile),
-    ) as admin_restore:
-        admin_restore.execute(
-            sql.SQL("REASSIGN OWNED BY {} TO {}").format(
-                sql.Identifier(contract.owner),
-                sql.Identifier(contract.migrator),
-            )
-        )
-        admin_restore.execute(
-            sql.SQL("ALTER SCHEMA public OWNER TO {}").format(
-                sql.Identifier(contract.migrator)
-            )
-        )
-    with psycopg.connect(
-        contract.admin_conninfo,
-        autocommit=True,
-        passfile=str(contract.passfile),
-    ) as admin:
-        admin.execute(
-            sql.SQL("ALTER DATABASE {} OWNER TO {}").format(
-                sql.Identifier(contract.database),
-                sql.Identifier(contract.migrator),
-            )
-        )
-        admin.execute(
-            sql.SQL("REVOKE {} FROM {}").format(
-                sql.Identifier(contract.owner),
-                sql.Identifier(contract.migrator),
-            )
-        )
-        admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(contract.owner)))
+def _remove_owned_topology(contract: _TopologyContract) -> list[BaseException]:
+    failures: list[BaseException] = []
+    try:
+        with psycopg.connect(
+            contract.admin_restore_conninfo,
+            autocommit=True,
+            passfile=str(contract.passfile),
+        ) as admin_restore:
+            for statement in (
+                sql.SQL("REASSIGN OWNED BY {} TO {}").format(
+                    sql.Identifier(contract.owner),
+                    sql.Identifier(contract.migrator),
+                ),
+                sql.SQL("ALTER SCHEMA public OWNER TO {}").format(
+                    sql.Identifier(contract.migrator)
+                ),
+            ):
+                try:
+                    admin_restore.execute(statement)
+                except BaseException as exc:  # noqa: BLE001 - continue cleanup
+                    failures.append(exc)
+    except BaseException as exc:  # noqa: BLE001 - try the admin-side repairs
+        failures.append(exc)
+    try:
+        with psycopg.connect(
+            contract.admin_conninfo,
+            autocommit=True,
+            passfile=str(contract.passfile),
+        ) as admin:
+            for statement in (
+                sql.SQL("ALTER DATABASE {} OWNER TO {}").format(
+                    sql.Identifier(contract.database),
+                    sql.Identifier(contract.migrator),
+                ),
+                sql.SQL("REVOKE {} FROM {}").format(
+                    sql.Identifier(contract.owner),
+                    sql.Identifier(contract.migrator),
+                ),
+                sql.SQL("DROP ROLE {}").format(sql.Identifier(contract.owner)),
+            ):
+                try:
+                    admin.execute(statement)
+                except BaseException as exc:  # noqa: BLE001 - continue cleanup
+                    failures.append(exc)
+    except BaseException as exc:  # noqa: BLE001 - preserve cleanup truth
+        failures.append(exc)
+    return failures
 
 
 def _cleanup_topology(
@@ -151,7 +163,7 @@ def _cleanup_topology(
     failures: list[BaseException] = []
     if state.role_created:
         try:
-            _remove_owned_topology(contract)
+            failures.extend(_remove_owned_topology(contract))
         except BaseException as exc:  # noqa: BLE001 - preserve cleanup truth
             failures.append(exc)
     if state.migrator_changed:
