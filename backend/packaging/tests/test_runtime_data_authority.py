@@ -171,6 +171,49 @@ def test_volume_bound_runtime_authority_allows_writes(monkeypatch, tmp_path):
     assert (preset / "uploads").is_dir()
 
 
+def test_installed_recovery_initializes_runtime_settings_before_app_import(
+    monkeypatch,
+    tmp_path,
+):
+    launch = _load_launch_module()
+    data_dir = (tmp_path / "runtime-binding" / "app").resolve()
+    settings_dir = data_dir / "runtime-settings"
+    settings_dir.mkdir(parents=True)
+    guard = (tmp_path / "installer-recovery-pending").resolve()
+    guard.write_text("pending", encoding="utf-8")
+    monkeypatch.setenv("TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH", str(guard))
+
+    from app.services import runtime_settings_store as store
+
+    publications = []
+
+    def initialize(path, projection, *, service_owned):
+        publications.append((path, projection, service_owned))
+        return projection
+
+    monkeypatch.setattr(store, "initialize_runtime_settings", initialize)
+    launch._initialize_installed_runtime_settings(data_dir)
+
+    assert publications == [
+        (
+            settings_dir / "runtime-settings.json",
+            store.RuntimeSettingsProjection(
+                public_base_url="",
+                budget_advisor_owner_confirmed=False,
+            ),
+            True,
+        )
+    ]
+    source = (Path(__file__).resolve().parents[1] / "launch.py").read_text(encoding="utf-8")
+    assert source.index("_initialize_installed_runtime_settings(data_dir)") < source.index(
+        "from app.main import app as fastapi_app"
+    )
+
+    guard.unlink()
+    launch._initialize_installed_runtime_settings(data_dir)
+    assert len(publications) == 1
+
+
 def test_frozen_runtime_rejects_unknown_recovery_capability_before_write(
     monkeypatch,
     tmp_path,

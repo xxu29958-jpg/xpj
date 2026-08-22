@@ -138,7 +138,10 @@ backups 的 bytes 位于物理 DataRoot，不会写入 Program Files，也不直
 | `TICKETBOX_PORT` | `8000` | 端口 |
 | `DATABASE_URL` | （`app.config` 本机 PostgreSQL 默认） | 数据库（PostgreSQL-only，见下） |
 | `UPLOAD_DIR` | `<data>/uploads` | 上传目录 |
-| `PUBLIC_BASE_URL` | （空） | 隧道公网地址（如有） |
+
+`PUBLIC_BASE_URL` 不再属于 Generation、restore 或 `.env` authority。正式安装首次启动由
+backend-owned store 以 create-only 默认值发布 service-owned runtime projection；此后只能在
+Owner Console 修改。安装重试只校验并复用已有值，不覆盖 operator 设置。
 
 ### 备份与恢复
 

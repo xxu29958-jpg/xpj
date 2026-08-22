@@ -61,6 +61,10 @@ def test_cross_process_retry_republishes_verified_candidate_without_new_bootstra
         operation_source,
         "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition",
     )
+    assert_operation = powershell_function(
+        operation_source,
+        "Assert-TicketboxInstalledDatasetOperation",
+    )
     reducer = powershell_function(
         reducer_source,
         "Resolve-TicketboxInstalledDatasetRestoreNextAction",
@@ -70,6 +74,9 @@ $successor = '22222222-2222-4222-8222-222222222222'
 $attempt = '11111111-1111-4111-8111-111111111111'
 $predecessorSha = ('a' * 64)
 $requestSha = ('b' * 64)
+$installation = '66666666-6666-4666-8666-666666666666'
+$predecessorOperation = '33333333-3333-4333-8333-333333333333'
+$targetRevision = '20260821_0001'
 $global:testIntent = [pscustomobject]@{{
     PayloadSha256 = ('c' * 64)
     Payload = [pscustomobject]@{{
@@ -81,22 +88,39 @@ $global:testIntent = [pscustomobject]@{{
 }}
 $global:testCurrent = [pscustomobject]@{{
     PayloadSha256 = $predecessorSha
-    Payload = [pscustomobject]@{{ operation_id = '33333333-3333-4333-8333-333333333333' }}
+    Payload = [pscustomobject]@{{ operation_id = $predecessorOperation }}
 }}
 $global:testRequest = [pscustomobject]@{{
     PayloadSha256 = $requestSha
     Payload = [pscustomobject]@{{
+        schema = 'ticketbox-installed-dataset-operation-v1'
         operation_kind = 'restore'
         operation_id = $attempt
+        installation_id = $installation
         backup_generation = 'ticketbox-backup-44444444-4444-4444-8444-444444444444'
         backup_manifest_sha256 = ('e' * 64)
         release_manifest_sha256 = ('f' * 64)
+        backup_id = '44444444-4444-4444-8444-444444444444'
         dataset_id = '55555555-5555-4555-8555-555555555555'
+        backup_restore_epoch = 0
+        target_revision = $targetRevision
         active_dataset_id = '55555555-5555-4555-8555-555555555555'
+        active_restore_epoch = 0
         current_sha256 = $predecessorSha
         predecessor_intent_sha256 = ('9' * 64)
-        predecessor_intent_payload = [pscustomobject]@{{ projection_contract_sha256 = ('d' * 64) }}
-        public_base_url = 'https://ticketbox.example'
+        predecessor_intent_payload = [pscustomobject]@{{
+            schema = 'ticketbox-database-generation-intent-v2'
+            operation_id = $predecessorOperation
+            installation_id = $installation
+            projection_contract_sha256 = ('d' * 64)
+        }}
+        predecessor_current_payload = [pscustomobject]@{{
+            schema = 'ticketbox-current-database-generation-v1'
+            operation_id = $predecessorOperation
+            installation_id = $installation
+            intent_sha256 = ('9' * 64)
+            committed_revision = $targetRevision
+        }}
         restart_backend = $true
     }}
 }}
@@ -126,7 +150,35 @@ function Read-TicketboxInstalledDatasetOperation {{
     param($StateRoot, $ExpectedOperationKind, [switch]$AllowAbsent)
     return $global:testRequest
 }}
-function Assert-TicketboxInstalledDatasetOperation {{ param($Operation, $ExpectedOperationKind); return $Operation }}
+function Assert-TicketboxDatabaseGenerationExactProperties {{
+    param($Value, $ExpectedNames, $Label)
+    $actual = @($Value.PSObject.Properties.Name | Sort-Object)
+    $expected = @($ExpectedNames | Sort-Object)
+    if (($actual -join '|') -cne ($expected -join '|')) {{
+        throw "$Label properties are not closed"
+    }}
+}}
+function Assert-TicketboxDatabaseGenerationLowerSha256 {{
+    param($Value, $Label)
+    if ([string]$Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw "$Label digest invalid" }}
+}}
+function Get-TicketboxDatabaseGenerationPayloadProperties {{
+    param($Kind)
+    if ($Kind -ceq 'intent') {{
+        return @('schema', 'operation_id', 'installation_id', 'projection_contract_sha256')
+    }}
+    if ($Kind -ceq 'current') {{
+        return @('schema', 'operation_id', 'installation_id', 'intent_sha256', 'committed_revision')
+    }}
+    throw "unexpected payload kind: $Kind"
+}}
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); return [string]$Value.schema }}
+function Get-TicketboxDatabaseGenerationTextSha256 {{
+    param($Value)
+    if ($Value -ceq 'ticketbox-database-generation-intent-v2') {{ return ('9' * 64) }}
+    if ($Value -ceq 'ticketbox-current-database-generation-v1') {{ return $predecessorSha }}
+    throw "unexpected hash subject: $Value"
+}}
 function Read-TicketboxInstalledDatasetRestoreResult {{ return $null }}
 function Invoke-TicketboxInstalledDatasetBackupInspection {{
     return [pscustomobject]@{{ Evidence = [pscustomobject]@{{
@@ -172,6 +224,7 @@ function Throw-TicketboxDatabaseGenerationOperationFailure {{
     param($Primary, $Cleanup)
     if ($null -ne $Primary) {{ throw $Primary }}
 }}
+{assert_operation}
 {classifier}
 {reducer}
 """

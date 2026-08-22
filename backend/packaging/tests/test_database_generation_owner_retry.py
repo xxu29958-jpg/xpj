@@ -41,6 +41,9 @@ $script:runtimeSecret = [Security.SecureString]::new()
 $script:runtimeSecret.AppendChar('r'); $script:runtimeSecret.MakeReadOnly()
 $script:httpSecret = [Security.SecureString]::new()
 $script:httpSecret.AppendChar('h'); $script:httpSecret.MakeReadOnly()
+$script:AppData = 'C:\ambient-poison'
+$script:SecretByteCount = 1
+$script:expectedAppData = $null
 function Get-TicketboxPathEntryKindNoFollow {{
     param([string]$Path)
     if ($Path -eq 'bootstrap.json') {{ if ($script:bootstrapExists) {{ return 'File' }}; return 'Missing' }}
@@ -50,8 +53,17 @@ function Get-TicketboxPathEntryKindNoFollow {{
 }}
 function Assert-NoTicketboxAncestorReparsePoints {{}}
 function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {{ return @() }}
-function Get-PostgresBootstrapRecoveryPath {{ return 'bootstrap.json' }}
-function Test-TicketboxPathEquals {{ return $true }}
+function Get-PostgresBootstrapRecoveryPath {{
+    param($AppData)
+    if ([string]$AppData -cne [string]$script:expectedAppData) {{
+        throw 'bootstrap path used ambient AppData'
+    }}
+    return 'bootstrap.json'
+}}
+function Test-TicketboxPathEquals {{
+    param($Left, $Right)
+    return [string]$Left -ceq [string]$Right
+}}
 function Assert-TicketboxLifecycleOperationLease {{}}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); $Value | ConvertTo-Json -Depth 20 -Compress }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('9' * 64) }}
@@ -103,6 +115,11 @@ function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
 function Get-TicketboxDatabaseGenerationBootstrapRetirementJson {{ return '{{"retired":true}}' }}
 function Read-PostgresBootstrapRecoveryState {{
     param($Path, $AppData, $SecretByteCount)
+    if (
+        [string]$Path -cne 'bootstrap.json' -or
+        [string]$AppData -cne [string]$script:expectedAppData -or
+        [int]$SecretByteCount -ne 32
+    ) {{ throw 'bootstrap reader did not receive HostContract operands' }}
     $script:bootstrapReads += 1
     return [pscustomobject]@{{ SuperuserPassword = 'admin'; HttpBootstrapSecret = 'http-bootstrap-secret-0000000000000000' }}
 }}
@@ -145,6 +162,10 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {{
 }}
 function Remove-PostgresBootstrapRecoveryState {{
     param($Path, $AppData)
+    if (
+        [string]$Path -cne 'bootstrap.json' -or
+        [string]$AppData -cne [string]$script:expectedAppData
+    ) {{ throw 'bootstrap cleanup did not receive HostContract AppData' }}
     $script:bootstrapExists = $false
 }}
 function Remove-TicketboxDatabaseGenerationCredentials {{ $script:credentialsExist = $false }}
@@ -209,6 +230,7 @@ $contract = [pscustomobject]@{{
     data_root = 'C:\\data'
     release_config = [pscustomobject]@{{ secret_byte_count = 32 }}
 }}
+$script:expectedAppData = Join-Path ([string]$contract.data_root) 'app'
 $sourceRejected = $false
 try {{ Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $contract $contract 'bootstrap.json' | Out-Null }}
 catch {{ $sourceRejected = ([string]$_ -like '*rejected source binding evidence*') }}

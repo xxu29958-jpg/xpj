@@ -222,6 +222,18 @@ def write_protected_file_exclusive(path: Path, text: str) -> None:
             os.fsync(output.fileno())
 
 
+def write_service_owned_file_exclusive(path: Path, text: str) -> None:
+    """Create a Windows service projection with its owner-capable Service SID."""
+    if os.name != "nt":
+        raise OSError("service-owned exclusive files are Windows-only")
+    owner_sid, _access_rules = _windows_service_projection_authority()
+    _write_windows_protected_file(
+        path,
+        text.encode("utf-8"),
+        owner_sid=owner_sid,
+    )
+
+
 def _windows_service_projection_authority() -> tuple[str, dict[str, int]]:
     advapi32, kernel32 = _windows_apis()
     service_sid = _windows_acl.current_process_service_sid(

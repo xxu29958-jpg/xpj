@@ -105,7 +105,6 @@ $script:durableRequest = [pscustomobject]@{{
         predecessor_intent_sha256 = $predecessorIntentSha
         current_sha256 = $predecessorCurrentSha
         predecessor_intent_payload = [pscustomobject]@{{ projection_contract_sha256 = ('6' * 64) }}
-        public_base_url = 'https://lifecycle.example'
         restart_backend = $false
     }}
 }}
@@ -250,7 +249,6 @@ $script:durableRequest = [pscustomobject]@{{
         dataset_id = '44444444-4444-4444-8444-444444444444'
         active_dataset_id = '44444444-4444-4444-8444-444444444444'
         current_sha256 = $predecessorSha
-        public_base_url = 'https://public.example'
         predecessor_intent_payload = [pscustomobject]@{{ projection_contract_sha256 = ('6' * 64) }}
         restart_backend = $false
     }}

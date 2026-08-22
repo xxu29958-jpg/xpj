@@ -739,6 +739,25 @@ def _installer_runtime_recovery_is_pending(guard_path: Path | None) -> bool:
     return _host_guard_is_present_or_malformed(guard_path)
 
 
+def _initialize_installed_runtime_settings(data_dir: Path) -> None:
+    guard_path = _installer_runtime_recovery_guard_path()
+    if not _installer_runtime_recovery_is_pending(guard_path):
+        return
+    from app.services.runtime_settings_store import (
+        RuntimeSettingsProjection,
+        initialize_runtime_settings,
+    )
+
+    initialize_runtime_settings(
+        data_dir / "runtime-settings" / "runtime-settings.json",
+        RuntimeSettingsProjection(
+            public_base_url="",
+            budget_advisor_owner_confirmed=False,
+        ),
+        service_owned=True,
+    )
+
+
 class _InstallerRuntimeRecoveryGuard:
     _ALLOWED_PATHS = frozenset(
         {
@@ -892,6 +911,7 @@ def main() -> int | None:
     port = int(os.getenv("TICKETBOX_PORT", "8000"))
     validated_runtime_junction = _assert_runtime_data_root_authority(data_dir)
     _assert_bootstrap_recovery_not_pending(validated_runtime_junction)
+    _initialize_installed_runtime_settings(data_dir)
 
     # Import the app object directly (not the "app.main:app" string form):
     # uvicorn's string import re-resolves the module via importlib, which is

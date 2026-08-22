@@ -12,7 +12,9 @@ from typing import Literal
 from app.services.secure_file import (
     hold_protected_file_for_read,
     hold_service_owned_projection_for_read,
+    write_protected_file_exclusive,
     write_protected_file_replace,
+    write_service_owned_file_exclusive,
 )
 
 _SCHEMA = "ticketbox-runtime-settings-v1"
@@ -118,6 +120,39 @@ def write_runtime_settings(
     if not service_owned:
         target.parent.mkdir(parents=True, exist_ok=True)
     write_protected_file_replace(target, encoded, service_owned=service_owned)
+
+
+def initialize_runtime_settings(
+    path: Path,
+    projection: RuntimeSettingsProjection,
+    *,
+    service_owned: bool,
+) -> RuntimeSettingsProjection:
+    """Create the first projection without replacing an existing owner value."""
+    encoded = _encode(projection)
+    target = Path(os.path.abspath(path))
+    if not target.is_absolute() or not target.name:
+        raise ValueError("runtime settings path must be an absolute file path")
+    with _SETTINGS_LOCK:
+        current = read_runtime_settings(target, service_owned=service_owned)
+        if current is not None:
+            return current
+        try:
+            writer = (
+                write_service_owned_file_exclusive
+                if service_owned
+                else write_protected_file_exclusive
+            )
+            writer(target, encoded)
+        except FileExistsError as exc:
+            current = read_runtime_settings(target, service_owned=service_owned)
+            if current is None:
+                raise OSError("runtime settings appeared without readable authority") from exc
+            return current
+        created = read_runtime_settings(target, service_owned=service_owned)
+        if created != projection:
+            raise OSError("initial runtime settings publication changed bytes")
+        return created
 
 
 def patch_runtime_settings(

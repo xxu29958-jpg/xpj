@@ -67,8 +67,8 @@ function Read-TicketboxDatabaseGenerationRuntimeCredentials {{
 function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {{ param($HostContract); return [pscustomobject]@{{}} }}
 function Publish-TicketboxDatabaseGenerationRuntimeProjection {{
     param($Intent, $Candidate, $Credentials, $HostAuthority, $ProjectionContract, $LifecycleLock)
-    if ([string]$ProjectionContract.public_base_url -cne 'https://public.example') {{
-        throw 'rollback projection dropped PUBLIC_BASE_URL'
+    if (-not [object]::ReferenceEquals($ProjectionContract, $script:projectionContract)) {{
+        throw 'rollback projection contract identity drifted'
     }}
     $script:events += "projection:$($Intent.Payload.operation_id):$($Candidate.PayloadSha256)"
 }}
@@ -125,6 +125,10 @@ $intent = [pscustomobject]@{{
         expected_predecessor_sha256 = ('a' * 64)
     }}
 }}
+$script:projectionContract = [pscustomobject]@{{
+    schema = 'ticketbox-database-generation-projection-authority-v1'
+    authority_sha256 = ('9' * 64)
+}}
 $subject = [pscustomobject]@{{
     Identity = [pscustomobject]@{{ InstallDir = 'C:\\Ticketbox'; PgServiceName = 'ticketbox-pg' }}
     Release = [pscustomobject]@{{ service_state_timeout_ms = 1000; service_poll_interval_ms = 10 }}
@@ -133,7 +137,7 @@ Restore-TicketboxInstalledDatasetPredecessorRuntime `
     -Subject $subject -Request $request `
     -Paths ([pscustomobject]@{{ operation_id = $successorOperation }}) `
     -StateRoot 'C:\\state' `
-    -Contracts ([pscustomobject]@{{ Host = [pscustomobject]@{{}}; Projection = [pscustomobject]@{{ public_base_url = 'https://public.example' }} }}) `
+    -Contracts ([pscustomobject]@{{ Host = [pscustomobject]@{{}}; Projection = $script:projectionContract }}) `
     -Intent $intent -Current $current -LifecycleLock $lifecycleLock
 $expected = @(
     "read:${{predecessorOperation}}:candidate",

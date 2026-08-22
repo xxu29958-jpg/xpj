@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import ast
 import json
+from pathlib import Path
 
 from scripts import ci_scope
 from scripts.ci_gap_trigger_scope import all_ci_scopes, classify_ci_paths
 from scripts.postgres_release_policy import POSTGRES_RELEASE_POLICY
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_docs_only_change_skips_heavy_jobs() -> None:
@@ -134,6 +138,39 @@ def test_dataset_maintenance_changes_select_all_required_execution_scopes() -> N
         "backend_frozen",
         "windows",
     )
+
+
+def test_dataset_maintenance_transitive_app_dependencies_select_windows() -> None:
+    roots = (
+        BACKEND_ROOT / "app/database/_dataset_backup_action.py",
+        BACKEND_ROOT / "app/database/_dataset_backup_snapshot.py",
+        BACKEND_ROOT / "app/database/_dataset_restore_action.py",
+        BACKEND_ROOT / "app/database/_dataset_restore_authority.py",
+        BACKEND_ROOT / "app/database/_dataset_restore_security.py",
+    )
+    pending = list(roots)
+    visited: set[Path] = set()
+    while pending:
+        path = pending.pop()
+        if path in visited:
+            continue
+        visited.add(path)
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            if not node.module.startswith("app."):
+                continue
+            relative = Path(*node.module.split("."))
+            module = BACKEND_ROOT / relative.with_suffix(".py")
+            package = BACKEND_ROOT / relative / "__init__.py"
+            dependency = module if module.is_file() else package
+            if dependency.is_file():
+                pending.append(dependency)
+
+    for dependency in visited:
+        relative = dependency.relative_to(BACKEND_ROOT.parent).as_posix()
+        assert classify_ci_paths([relative])["windows"], relative
 
 
 def test_desktop_build_contract_runs_tests_and_packaging() -> None:
