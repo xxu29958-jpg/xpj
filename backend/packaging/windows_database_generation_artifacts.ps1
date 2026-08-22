@@ -23,6 +23,7 @@ function Get-TicketboxDatabaseGenerationArtifactPath {
             "runtime-credentials",
             "source-create-attempt",
             "restored-source",
+            "candidate-verification",
             "source-binding",
             "target-recovery-attempt",
             "target-recovery-archive",
@@ -84,14 +85,32 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
                 "writer_fence_sha256", "result"
             )
         }
+        "candidate-verification" {
+            return @(
+                "schema", "operation_id", "intent_sha256",
+                "source_request_sha256", "restored_source_sha256",
+                "backup_manifest_sha256", "backup_id", "dataset_id",
+                "restore_epoch", "target_revision", "original_count",
+                "generation_program_sha256", "resource_shape_sha256",
+                "money_facts_sha256", "result"
+            )
+        }
         "dataset-restore-request" {
             return @(
-                "schema", "request_id", "backup_generation",
+                "schema", "restore_attempt_id", "backup_generation",
                 "backup_manifest_sha256", "backup_id", "dataset_id",
                 "backup_restore_epoch", "target_revision",
                 "predecessor_current_sha256", "predecessor_intent_sha256",
                 "predecessor_intent_payload", "release_manifest_sha256",
                 "active_dataset_id", "active_restore_epoch", "restart_backend"
+            )
+        }
+        "dataset-restore-result" {
+            return @(
+                "schema", "restore_attempt_id", "request_sha256",
+                "release_manifest_sha256", "backup_generation", "backup_id",
+                "dataset_id", "restore_epoch", "generation_operation_id",
+                "current_sha256", "result"
             )
         }
         "source-binding" {
@@ -258,6 +277,7 @@ function Read-TicketboxDatabaseGenerationOperationArtifact {
             "runtime-credentials",
             "source-create-attempt",
             "restored-source",
+            "candidate-verification",
             "source-binding",
             "target-recovery-attempt",
             "target-recovery-archive",
@@ -292,7 +312,7 @@ function New-TicketboxDatabaseGenerationChainedArtifact {
         [Parameter(Mandatory = $true)][string]$OperationId,
         [Parameter(Mandatory = $true)][ValidateSet(
             "runtime-credentials", "source-create-attempt", "restored-source",
-            "source-binding",
+            "candidate-verification", "source-binding",
             "target-authorization", "candidate", "terminal-state",
             "target-recovery-attempt", "target-recovery-archive",
             "target-recovery-binding", "target-recovery-verification",

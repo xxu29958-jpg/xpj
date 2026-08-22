@@ -239,6 +239,8 @@ def _parse_isolated_dataset_restore_args(argv: list[str]) -> Namespace:
     parser.add_argument("--active-restore-epoch", type=int, required=True)
     parser.add_argument("--target-schema-revision", required=True)
     parser.add_argument("--restore-role", required=True)
+    _add_generation_program_arguments(parser)
+    parser.add_argument("--operation-id", required=True)
     return parser.parse_args(argv)
 
 
@@ -582,8 +584,8 @@ def _run_isolated_dataset_restore(
     module = _load_isolated_dataset_restore_module()
     from app.services.dataset_restore_service import CompleteRestoreRequest
 
-    result = module.run_isolated_dataset_restore_action(
-        CompleteRestoreRequest(
+    result = module.run_verified_isolated_dataset_restore_action(
+        request=CompleteRestoreRequest(
             backup_generation=args.backup_generation,
             target_upload_root=args.target_upload_root,
             database_url=args.database_url,
@@ -593,7 +595,10 @@ def _run_isolated_dataset_restore(
             active_restore_epoch=args.active_restore_epoch,
             target_schema_revision=args.target_schema_revision,
             restore_role=args.restore_role,
-        )
+        ),
+        generation_program_path=_resolve_generation_program(args.generation_program_path),
+        expected_generation_program_sha256=args.expected_generation_program_sha256,
+        operation_id=args.operation_id,
     )
     if tuple(result) != module.RESULT_FIELDS:
         raise RuntimeError("isolated dataset restore returned an unsupported shape")

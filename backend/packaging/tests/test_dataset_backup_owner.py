@@ -39,6 +39,95 @@ def test_backup_owner_passes_structured_barrier_and_inspects_before_request_reti
     assert inspection < validation < retirement
 
 
+def test_backup_owner_reasserts_privileged_payload_acl_before_and_after_write() -> None:
+    backup = BACKUP.read_text(encoding="utf-8-sig")
+    request = backup.rindex("Get-OrCreateTicketboxInstalledDatasetBackupRequest")
+    stop = backup.index("Stop-TicketboxOwnedServiceIfExists", request)
+    helper = backup.rindex("Invoke-TicketboxInstalledCompleteBackupHelper")
+    inspection = backup.rindex("Invoke-TicketboxInstalledDatasetBackupInspection")
+    validation = backup.rindex("Assert-TicketboxInstalledCompleteBackupResult")
+
+    before_write = backup[request:stop]
+    assert "Set-TicketboxExactDirectoryAcl" in before_write
+    assert '-Accounts @("SYSTEM", "BUILTIN\\Administrators")' in before_write
+    assert "-Recurse" in before_write
+
+    after_write = backup[inspection:validation]
+    assert helper < inspection
+    assert "Set-TicketboxExactDirectoryAcl" in after_write
+    assert '-Accounts @("SYSTEM", "BUILTIN\\Administrators")' in after_write
+    assert "-Recurse" in after_write
+    assert "BackendServiceName" not in before_write + after_write
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_installer_backup_acl_accounts_are_not_polluted_by_backend_service(
+    tmp_path: Path,
+) -> None:
+    install = (PACKAGING / "install_bundled_services.ps1").read_text(encoding="utf-8-sig")
+    start = install.index("function Set-TicketboxAcl(")
+    end = install.index("\nfunction Initialize-TicketboxInstallerStateArtifacts", start)
+    set_acl = install[start:end]
+    root = str(tmp_path).replace("'", "''")
+    script = rf"""
+$ErrorActionPreference = 'Stop'
+$script:calls = @()
+function Write-Step {{ param($Message) }}
+function Write-Ok {{ param($Message) }}
+function Set-TicketboxExactDirectoryAcl {{
+    param(
+        [string]$Path, [string[]]$Accounts,
+        [string[]]$ReadExecuteAccounts = @(), [string]$OwnerAccount,
+        [switch]$Recurse
+    )
+    $script:calls += [pscustomobject]@{{
+        Path = $Path
+        Accounts = @($Accounts)
+        ReadExecuteAccounts = @($ReadExecuteAccounts)
+        OwnerAccount = $OwnerAccount
+        Recurse = [bool]$Recurse
+    }}
+}}
+function Set-TicketboxExactFileAcl {{ param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount) }}
+function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {{ param($ParentFullControlAccounts) }}
+function Initialize-TicketboxInstallerStateDirectory {{ param($Path) }}
+function Get-TicketboxDataRootMarkerPath {{ param($DataRoot); return (Join-Path $DataRoot 'marker.json') }}
+function Invoke-IcaclsChecked {{ param($Arguments) }}
+{set_acl}
+$DataRoot = Join-Path '{root}' 'data'
+$PgData = Join-Path $DataRoot 'pgdata'
+$AppData = Join-Path $DataRoot 'app'
+$DefaultUploadRoot = Join-Path $AppData 'uploads'
+$LogDir = Join-Path $DataRoot 'logs'
+$BackupDir = Join-Path $DataRoot 'backups'
+$InstallerState = Join-Path $DataRoot 'installer-state'
+$BootstrapExposureRecoveryGuardPath = Join-Path $DataRoot 'absent-bootstrap'
+$InstallerRuntimeRecoveryGuardPath = Join-Path $DataRoot 'absent-runtime'
+$ProgramDir = Join-Path '{root}' 'program'
+$PgHome = Join-Path '{root}' 'pg'
+$PgServiceName = 'ticketbox-pg'
+$BackendServiceName = 'ticketbox-backend'
+Set-TicketboxAcl -IncludePgService $true -IncludeBackendService $true
+$backup = @($script:calls | Where-Object {{ $_.Path -ceq $BackupDir }})
+if ($backup.Count -ne 1) {{ throw 'backup ACL call count drifted' }}
+if (($backup[0].Accounts -join '|') -cne 'SYSTEM|BUILTIN\Administrators') {{
+    throw 'backup ACL gained a runtime principal'
+}}
+if ($backup[0].ReadExecuteAccounts.Count -ne 0 -or -not $backup[0].Recurse) {{
+    throw 'backup ACL lost its exact recursive contract'
+}}
+$app = @($script:calls | Where-Object {{ $_.Path -ceq $AppData }})
+if (($app[0].Accounts -join '|') -cnotmatch 'NT SERVICE\\ticketbox-backend') {{
+    throw 'backend-enabled branch was not exercised'
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="installed-backup-acl-isolation.ps1",
+    )
+
+
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_backup_owner_argv_is_accepted_by_the_real_frozen_cli_parser(
     tmp_path: Path,

@@ -11,8 +11,20 @@ from _powershell_contract import (
 
 PACKAGING = Path(__file__).resolve().parents[1]
 RESTORE = PACKAGING / "windows_dataset_restore.ps1"
-CONTRACT = PACKAGING / "windows_installed_dataset_contract.ps1"
+CONTRACTS = (
+    PACKAGING / "windows_installed_dataset_reader.ps1",
+    PACKAGING / "windows_installed_dataset_restore_artifacts.ps1",
+    PACKAGING / "windows_installed_dataset_restore_verification.ps1",
+    PACKAGING / "windows_dataset_restore_filesystem.ps1",
+    PACKAGING / "windows_dataset_restore_reducer.ps1",
+    PACKAGING / "windows_dataset_restore_database.ps1",
+    PACKAGING / "windows_dataset_restore_runtime.ps1",
+)
 CLUSTER = PACKAGING / "windows_postgresql_candidate_cluster.ps1"
+
+
+def _restore_contract() -> str:
+    return "\n".join(path.read_text(encoding="utf-8-sig") for path in CONTRACTS)
 
 
 def test_restore_does_not_ship_unowned_clone_identity_producer() -> None:
@@ -31,7 +43,7 @@ def test_restore_does_not_ship_unowned_clone_identity_producer() -> None:
 
 def test_restore_owner_is_explicit_durable_isolated_and_h1_published() -> None:
     restore = RESTORE.read_text(encoding="utf-8-sig")
-    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    contract = _restore_contract()
     cluster = CLUSTER.read_text(encoding="utf-8-sig")
 
     assert "[Parameter(Mandatory = $true)][string]$BackupGeneration" in restore
@@ -68,14 +80,25 @@ def test_restore_owner_is_explicit_durable_isolated_and_h1_published() -> None:
 
 def test_restore_candidate_uses_official_frozen_restore_and_exact_role_owner() -> None:
     restore = RESTORE.read_text(encoding="utf-8-sig")
-    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    contract = _restore_contract()
     cluster = CLUSTER.read_text(encoding="utf-8-sig")
+    launch = (PACKAGING / "launch.py").read_text(encoding="utf-8")
 
-    assert '"--isolated-dataset-restore"' in restore
-    assert "--restore-role" in restore
-    assert "ticketbox_owner" in restore
+    assert '"--isolated-dataset-restore"' in contract
+    assert "--verify-restored-dataset-candidate" not in restore + launch
+    assert "run_verified_isolated_dataset_restore_action" in launch
+    helper = powershell_function(contract, "Invoke-TicketboxInstalledDatasetRestoreHelper")
+    for argument in (
+        "--generation-program-path",
+        "--expected-generation-program-sha256",
+        "--operation-id",
+    ):
+        assert argument in helper
+    assert "--restore-role" in contract
+    assert "ticketbox_owner" in contract
     assert "function Assert-TicketboxInstalledPostgresToolArtifact" in contract
-    assert restore.count("Assert-TicketboxInstalledPostgresToolArtifact") >= 2
+    assert restore.count("Assert-TicketboxInstalledPostgresToolArtifact") == 1
+    assert "Assert-TicketboxInstalledPostgresToolArtifact" in helper
     owner_body = restore.split("$inspection =", maxsplit=1)[1]
     assert owner_body.index("Assert-TicketboxInstalledPostgresToolArtifact") < owner_body.index(
         "Stop-TicketboxInstalledDatasetWriters"
@@ -101,10 +124,16 @@ def test_restore_candidate_uses_official_frozen_restore_and_exact_role_owner() -
     assert "Assert-TicketboxPgServiceCommand" in removal
     assert "Assert-TicketboxReleaseServiceIdentity" in removal
 
+    restore_action = restore.index('"restore_candidate" {')
+    verified = restore.index("Invoke-TicketboxInstalledDatasetRestoreHelper", restore_action)
+    evidence = restore.index("New-TicketboxInstalledDatasetCandidateVerification", verified)
+    promotion = restore.index('"promote_candidate" {', evidence)
+    assert verified < evidence < promotion
+
 
 def test_restore_promotion_is_forward_reconcilable_and_keeps_old_bytes_until_current() -> None:
     restore = RESTORE.read_text(encoding="utf-8-sig")
-    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    contract = _restore_contract()
 
     assert "candidate_pgdata" in contract
     assert "rollback_pgdata" in contract
@@ -113,8 +142,11 @@ def test_restore_promotion_is_forward_reconcilable_and_keeps_old_bytes_until_cur
     assert "Resolve-TicketboxInstalledDatasetRestorePhysicalState" in contract
     assert "Set-TicketboxInstalledDatasetRestorePhysicalSelection" in contract
     assert "Invoke-TicketboxInstalledDatasetRestorePromotion" not in contract
-    assert '-Selection "Predecessor"' in restore
-    compensation = restore.split("catch {", maxsplit=1)[-1]
+    assert '-Selection "Predecessor"' in contract
+    compensation = powershell_function(
+        contract,
+        "Invoke-TicketboxInstalledDatasetRestoreFailureCompensation",
+    )
     assert compensation.index("Read-TicketboxDatabaseGenerationCurrent") < compensation.index(
         '-Selection "Predecessor"'
     )
@@ -125,7 +157,7 @@ def test_restore_promotion_is_forward_reconcilable_and_keeps_old_bytes_until_cur
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_restore_physical_selection_can_recover_every_precurrent_cutpoint(tmp_path: Path) -> None:
-    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    contract = _restore_contract()
     classifier = powershell_function(
         contract,
         "Resolve-TicketboxInstalledDatasetRestorePhysicalState",
@@ -202,7 +234,9 @@ foreach ($signature in $signatures) {{
 
 def test_restore_durable_request_owns_backend_restart_compensation() -> None:
     restore = RESTORE.read_text(encoding="utf-8-sig")
-    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    contract = (PACKAGING / "windows_installed_dataset_restore_artifacts.ps1").read_text(
+        encoding="utf-8-sig"
+    )
     artifacts = (PACKAGING / "windows_database_generation_artifacts.ps1").read_text(encoding="utf-8-sig")
     request = powershell_function(
         contract,
@@ -222,8 +256,7 @@ def test_restore_durable_request_owns_backend_restart_compensation() -> None:
     )[0]
     assert '"restart_backend"' in request_fields
     assert "RestartBackend $restartBackend" in restore
-    assert "priorPredecessor" in restore
-    assert "expected_predecessor_sha256" in restore
+    assert "RestoreAttemptId" in restore
     assert "source_request_sha256" in restore
     done = restore.index('"done" {')
     backend_restart = restore.index("Start-TicketboxOwnedServiceIfExists", done)
@@ -233,15 +266,108 @@ def test_restore_durable_request_owns_backend_restart_compensation() -> None:
         "Remove-TicketboxInstalledDatasetRestoreRequest",
         backend_restart,
     )
+    terminal = restore.index("New-TicketboxInstalledDatasetRestoreResult", backend_restart)
+    assert backend_restart < terminal < retirement
     assert backend_restart < retirement
     assert "function Remove-TicketboxInstalledDatasetRestoreRequest" in contract
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
-def test_restore_owner_compensation_is_current_guarded_and_ordered(tmp_path: Path) -> None:
+def test_restore_terminal_result_survives_response_loss_and_is_attempt_bound(
+    tmp_path: Path,
+) -> None:
     restore = RESTORE.read_text(encoding="utf-8-sig")
+    artifacts = (PACKAGING / "windows_installed_dataset_restore_artifacts.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+    terminal_read = restore.index("Read-TicketboxInstalledDatasetRestoreResult")
+    subject_read = restore.index("Assert-TicketboxInstalledDatasetSubject")
+    terminal_write = restore.rindex("New-TicketboxInstalledDatasetRestoreResult")
+    request_retire = restore.rindex("Remove-TicketboxInstalledDatasetRestoreRequest")
+    assert terminal_read < subject_read
+    assert terminal_write < request_retire
+
+    functions = "\n".join(
+        powershell_function(artifacts, name)
+        for name in (
+            "Get-TicketboxInstalledDatasetRestoreResultPath",
+            "Assert-TicketboxInstalledDatasetRestoreResult",
+            "Read-TicketboxInstalledDatasetRestoreResult",
+            "New-TicketboxInstalledDatasetRestoreResult",
+        )
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$script:stored = $null
+function Assert-TicketboxLifecycleOperationLease {{ param($Lock) }}
+function Assert-TicketboxDatabaseGenerationLowerSha256 {{
+    param($Value, $Label)
+    if ([string]$Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw 'bad digest' }}
+}}
+function Read-TicketboxDatabaseGenerationEnvelope {{
+    param($Path, $ExpectedKind, [switch]$AllowAbsent)
+    if ($null -eq $script:stored) {{ if ($AllowAbsent) {{ return $null }}; throw 'absent' }}
+    return $script:stored
+}}
+function Write-TicketboxDatabaseGenerationEnvelope {{
+    param($Path, $Kind, $Payload, $LifecycleLock)
+    $script:stored = [pscustomobject]@{{
+        Path = $Path
+        Kind = $Kind
+        PayloadSha256 = ('d' * 64)
+        Payload = [pscustomobject]$Payload
+    }}
+    return $script:stored
+}}
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
+    param($Value)
+    return ($Value | ConvertTo-Json -Depth 20 -Compress)
+}}
+{functions}
+$attempt = '11111111-1111-4111-8111-111111111111'
+$backup = '22222222-2222-4222-8222-222222222222'
+$request = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{
+        restore_attempt_id = $attempt
+        backup_generation = "ticketbox-backup-$backup"
+        release_manifest_sha256 = ('c' * 64)
+    }}
+}}
+$current = [pscustomobject]@{{ PayloadSha256 = ('b' * 64) }}
+$payload = [pscustomobject]@{{
+    backup_id = $backup
+    dataset_id = '33333333-3333-4333-8333-333333333333'
+    restore_epoch = 5
+    generation_operation_id = '44444444-4444-4444-8444-444444444444'
+}}
+$first = New-TicketboxInstalledDatasetRestoreResult `
+    -StateRoot 'C:\\state' -Request $request -Current $current `
+    -Payload $payload -LifecycleLock ([pscustomobject]@{{}})
+$retry = Read-TicketboxInstalledDatasetRestoreResult `
+    -StateRoot 'C:\\state' -RestoreAttemptId $attempt `
+    -BackupGeneration "ticketbox-backup-$backup"
+if ($first.PayloadSha256 -cne $retry.PayloadSha256) {{ throw 'terminal result changed on retry' }}
+$rejected = $false
+try {{
+    Read-TicketboxInstalledDatasetRestoreResult `
+        -StateRoot 'C:\\state' -RestoreAttemptId $attempt `
+        -BackupGeneration 'ticketbox-backup-55555555-5555-4555-8555-555555555555' | Out-Null
+}} catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'terminal result crossed backup authority' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-restore-terminal-retry.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_restore_owner_compensation_is_current_guarded_and_ordered(tmp_path: Path) -> None:
+    contract = _restore_contract()
     compensation = powershell_function(
-        restore,
+        contract,
         "Invoke-TicketboxInstalledDatasetRestoreFailureCompensation",
     )
     script = f"""
@@ -274,13 +400,13 @@ $subject = [pscustomobject]@{{
     Release = [pscustomobject]@{{ service_state_timeout_ms = 1000; service_poll_interval_ms = 10 }}
 }}
 $request = [pscustomobject]@{{ Payload = [pscustomobject]@{{ restart_backend = $true }} }}
-$paths = [pscustomobject]@{{}}
-Invoke-TicketboxInstalledDatasetRestoreFailureCompensation $subject $request $paths '22222222-2222-4222-8222-222222222222'
+$paths = [pscustomobject]@{{ operation_id = '22222222-2222-4222-8222-222222222222' }}
+Invoke-TicketboxInstalledDatasetRestoreFailureCompensation $subject $request $paths
 $expected = 'read-current|remove-candidate-service|stop-writers|select:Predecessor|set-acls|start:ticketbox-pg|start:ticketbox-backend'
 if (($script:events -join '|') -cne $expected) {{ throw "unexpected compensation order: $($script:events -join '|')" }}
 $script:events = @()
 $script:published = $true
-Invoke-TicketboxInstalledDatasetRestoreFailureCompensation $subject $request $paths '22222222-2222-4222-8222-222222222222'
+Invoke-TicketboxInstalledDatasetRestoreFailureCompensation $subject $request $paths
 $expected = 'read-current|stop:ticketbox-backend'
 if (($script:events -join '|') -cne $expected) {{
     throw "published CURRENT compensation did not fail closed: $($script:events -join '|')"
@@ -297,7 +423,7 @@ if (($script:events -join '|') -cne $expected) {{
 def test_restore_predecessor_classifier_distinguishes_committed_and_pending_successors(
     tmp_path: Path,
 ) -> None:
-    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    contract = _restore_contract()
     classifier = powershell_function(
         contract,
         "Resolve-TicketboxInstalledDatasetRestorePredecessor",
@@ -363,7 +489,7 @@ def test_published_candidate_reconciles_main_host_before_h1_publication() -> Non
 
 def test_restore_keeps_rollback_until_runtime_and_originals_are_verified() -> None:
     restore = RESTORE.read_text(encoding="utf-8-sig")
-    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    contract = _restore_contract()
 
     verification = restore.split('"verify_runtime" {', maxsplit=1)[1].split(
         '"retire_rollback" {', maxsplit=1
@@ -382,37 +508,38 @@ def test_restore_keeps_rollback_until_runtime_and_originals_are_verified() -> No
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_restore_next_action_reducer_is_closed_and_io_free(tmp_path: Path) -> None:
-    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    contract = _restore_contract()
     reducer = powershell_function(
         contract,
         "Resolve-TicketboxInstalledDatasetRestoreNextAction",
     )
     assert "[AllowNull()]" not in reducer
-    assert reducer.count('[ValidateSet("absent", "present")]') == 3
+    assert reducer.count('[ValidateSet("absent", "present")]') == 4
     script = f"""
 $ErrorActionPreference = 'Stop'
 {reducer}
 $cases = @(
-    @('complete', 'absent', 'absent', 'absent', 'build_candidate'),
-    @('candidate_building', 'absent', 'absent', 'absent', 'restore_candidate'),
-    @('candidate_ready', 'present', 'absent', 'absent', 'promote_candidate'),
-    @('old_pg_staged', 'present', 'absent', 'absent', 'promote_candidate'),
-    @('old_staged', 'present', 'absent', 'absent', 'promote_candidate'),
-    @('candidate_pg_published', 'present', 'absent', 'absent', 'promote_candidate'),
-    @('candidate_published', 'present', 'absent', 'absent', 'publish_current'),
-    @('candidate_published', 'present', 'present', 'absent', 'verify_runtime'),
-    @('candidate_published', 'present', 'present', 'present', 'retire_rollback'),
-    @('complete', 'present', 'present', 'present', 'done')
+    @('complete', 'absent', 'absent', 'absent', 'absent', 'build_candidate'),
+    @('candidate_building', 'absent', 'absent', 'absent', 'absent', 'restore_candidate'),
+    @('candidate_ready', 'present', 'absent', 'absent', 'absent', 'verify_candidate'),
+    @('candidate_ready', 'present', 'present', 'absent', 'absent', 'promote_candidate'),
+    @('old_pg_staged', 'present', 'present', 'absent', 'absent', 'promote_candidate'),
+    @('old_staged', 'present', 'present', 'absent', 'absent', 'promote_candidate'),
+    @('candidate_pg_published', 'present', 'present', 'absent', 'absent', 'promote_candidate'),
+    @('candidate_published', 'present', 'present', 'absent', 'absent', 'publish_current'),
+    @('candidate_published', 'present', 'present', 'present', 'absent', 'verify_runtime'),
+    @('candidate_published', 'present', 'present', 'present', 'present', 'retire_rollback'),
+    @('complete', 'present', 'present', 'present', 'present', 'done')
 )
 foreach ($case in $cases) {{
     $actual = Resolve-TicketboxInstalledDatasetRestoreNextAction `
-        $case[0] $case[1] $case[2] $case[3]
-    if ($actual -cne $case[4]) {{ throw "unexpected next action: $actual" }}
+        $case[0] $case[1] $case[2] $case[3] $case[4]
+    if ($actual -cne $case[5]) {{ throw "unexpected next action: $actual" }}
 }}
 $rejected = $false
 try {{
     Resolve-TicketboxInstalledDatasetRestoreNextAction `
-        'candidate_published' 'absent' 'absent' 'absent' | Out-Null
+        'candidate_published' 'absent' 'absent' 'absent' 'absent' | Out-Null
 }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'authority-free publication state was accepted' }}
 """
@@ -427,7 +554,7 @@ if (-not $rejected) {{ throw 'authority-free publication state was accepted' }}
 def test_restore_retirement_partial_effects_remain_classifiable_and_retryable(
     tmp_path: Path,
 ) -> None:
-    contract = CONTRACT.read_text(encoding="utf-8-sig")
+    contract = _restore_contract()
     classifier = powershell_function(
         contract,
         "Resolve-TicketboxInstalledDatasetRestorePhysicalState",
@@ -466,7 +593,7 @@ foreach ($path in @($partial.stable_pgdata, $partial.stable_uploads, $partial.ro
 $partialState = Resolve-TicketboxInstalledDatasetRestorePhysicalState $partial
 if ($partialState -cne 'rollback_retiring') {{ throw "partial delete was not classified: $partialState" }}
 $partialAction = Resolve-TicketboxInstalledDatasetRestoreNextAction `
-    $partialState 'present' 'present' 'present'
+    $partialState 'present' 'present' 'present' 'present'
 if ($partialAction -cne 'retire_rollback') {{ throw "partial delete was not retried: $partialAction" }}
 
 $containers = New-Paths 'empty-containers'
@@ -479,13 +606,13 @@ foreach ($path in @(
 $containerState = Resolve-TicketboxInstalledDatasetRestorePhysicalState $containers
 if ($containerState -cne 'cleanup_pending') {{ throw "empty cleanup roots were ignored: $containerState" }}
 $containerAction = Resolve-TicketboxInstalledDatasetRestoreNextAction `
-    $containerState 'present' 'present' 'present'
+    $containerState 'present' 'present' 'present' 'present'
 if ($containerAction -cne 'retire_rollback') {{ throw "container cleanup was not retried: $containerAction" }}
 
 $rejected = $false
 try {{
     Resolve-TicketboxInstalledDatasetRestoreNextAction `
-        'rollback_retiring' 'present' 'present' 'absent' | Out-Null
+        'rollback_retiring' 'present' 'present' 'present' 'absent' | Out-Null
 }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'rollback retirement proceeded without runtime verification' }}
 """

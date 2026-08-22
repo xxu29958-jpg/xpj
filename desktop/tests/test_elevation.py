@@ -160,6 +160,57 @@ def test_action_runner_maps_helper_exit_to_actionable_message(
         runner.run("start")
 
 
+def test_restore_reuses_attempt_after_trusted_helper_response_is_lost(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    generation = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+    helper = tmp_path / "program" / "manager" / "ticketbox-manager.exe"
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes(b"MZ")
+    attempts: list[str] = []
+    reads = iter((None, HelperResult(exit_code=0, diagnostic="")))
+
+    @contextmanager
+    def channels(action: str):
+        assert action == "restore"
+
+        class Channel:
+            path = tmp_path / "result.json"
+            root = tmp_path
+            nonce = "n" * 43
+            owner_sid = "S-1-5-21-1000"
+            file_identity = "1:2"
+
+            @staticmethod
+            def read(actual_exit_code: int) -> HelperResult | None:
+                assert actual_exit_code == 0
+                return next(reads)
+
+        yield Channel()
+
+    def launch(command) -> int:
+        flag = command.arguments.index("--restore-attempt-id")
+        attempts.append(command.arguments[flag + 1])
+        return 0
+
+    monkeypatch.setattr(windows_user_security, "local_app_data", lambda: tmp_path / "local")
+    runner = ElevatedServiceActionRunner(
+        _release(),
+        helper,
+        launcher=launch,
+        channel_factory=channels,
+    )
+
+    with pytest.raises(RuntimeControlError, match="未返回可信结果"):
+        runner.restore(generation)
+    runner.restore(generation)
+
+    assert len(attempts) == 2
+    assert attempts[0] == attempts[1]
+    assert not list((tmp_path / "local" / "Ticketbox" / "restore-attempts").glob("*.json"))
+
+
 def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_path: Path, monkeypatch) -> None:
     nonce = "n" * 43
     path = tmp_path / f"{nonce}.json"

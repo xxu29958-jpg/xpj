@@ -382,20 +382,28 @@ def build_helper_command(
 
 def build_restore_helper_command(
     backup_generation: str,
+    restore_attempt_id: str,
     channel: HelperResultChannel,
     wait_timeout_ms: int,
     *,
     helper_executable: Path,
 ) -> HelperCommand:
     from backend_manager.dataset_restore import canonical_backup_generation
+    from backend_manager.restore_attempt import canonical_restore_attempt_id
 
     generation = canonical_backup_generation(backup_generation)
+    attempt_id = canonical_restore_attempt_id(restore_attempt_id)
     return _build_helper_command(
         "restore",
         channel,
         wait_timeout_ms,
         helper_executable=helper_executable,
-        request_arguments=("--backup-generation", generation),
+        request_arguments=(
+            "--backup-generation",
+            generation,
+            "--restore-attempt-id",
+            attempt_id,
+        ),
     )
 
 
@@ -493,10 +501,16 @@ class ElevatedServiceActionRunner:
             raise RuntimeControlError(message)
 
     def restore(self, backup_generation: str) -> None:
+        from backend_manager.restore_attempt import RestoreAttemptStore
+        from backend_manager.windows_user_security import local_app_data
+
         action: ServiceAction = "restore"
+        attempt_store = RestoreAttemptStore(local_app_data() / "Ticketbox" / "restore-attempts")
+        restore_attempt_id = attempt_store.get_or_create(backup_generation)
         with self._channel_factory(action) as channel:
             command = build_restore_helper_command(
                 backup_generation,
+                restore_attempt_id,
                 channel,
                 self._release.helper_parent_timeout_ms(action),
                 helper_executable=self._helper_executable,
@@ -513,3 +527,4 @@ class ElevatedServiceActionRunner:
                 f"管理员服务操作失败（exit={exit_code}），请刷新服务状态后重试。",
             )
             raise RuntimeControlError(message)
+        attempt_store.retire_confirmed(backup_generation, restore_attempt_id)

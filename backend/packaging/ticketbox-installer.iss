@@ -283,8 +283,14 @@ Source: "windows_database_generation_single_user.ps1"; DestDir: "{app}\installer
 Source: "windows_database_generation_projection.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_dataset_backup.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_dataset_restore.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_installed_dataset_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_installed_dataset_reader.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_installed_dataset_backup_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_installed_dataset_restore_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_installed_dataset_restore_verification.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_dataset_restore_filesystem.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_dataset_restore_reducer.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_dataset_restore_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_dataset_restore_runtime.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_postgresql_candidate_cluster.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_backend_health.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_backend_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion

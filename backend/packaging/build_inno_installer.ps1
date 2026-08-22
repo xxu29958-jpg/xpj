@@ -211,8 +211,15 @@ $DatabaseGenerationProjectionScript = Join-Path `
     "windows_database_generation_projection.ps1"
 $DatasetBackupScript = Join-Path $ScriptDir "windows_dataset_backup.ps1"
 $DatasetRestoreScript = Join-Path $ScriptDir "windows_dataset_restore.ps1"
-$InstalledDatasetContractScript = Join-Path `
-    $ScriptDir "windows_installed_dataset_contract.ps1"
+$InstalledDatasetLifecycleScripts = @(
+    "windows_installed_dataset_reader.ps1",
+    "windows_installed_dataset_restore_artifacts.ps1",
+    "windows_installed_dataset_restore_verification.ps1",
+    "windows_dataset_restore_filesystem.ps1",
+    "windows_dataset_restore_reducer.ps1",
+    "windows_dataset_restore_database.ps1",
+    "windows_dataset_restore_runtime.ps1"
+) | ForEach-Object { Join-Path $ScriptDir $_ }
 $InstalledDatasetBackupContractScript = Join-Path `
     $ScriptDir "windows_installed_dataset_backup_contract.ps1"
 $PostgresqlCandidateClusterScript = Join-Path `
@@ -1232,7 +1239,9 @@ Assert-File `
     "Windows database generation runtime projection"
 Assert-File $DatasetBackupScript "Windows complete dataset backup owner"
 Assert-File $DatasetRestoreScript "Windows complete dataset restore owner"
-Assert-File $InstalledDatasetContractScript "Windows installed dataset contract"
+foreach ($installedDatasetScript in $InstalledDatasetLifecycleScripts) {
+    Assert-File $installedDatasetScript "Windows installed dataset lifecycle contract"
+}
 Assert-File $InstalledDatasetBackupContractScript "Windows installed dataset backup contract"
 Assert-File $PostgresqlCandidateClusterScript "Windows PostgreSQL candidate cluster"
 Assert-File $BackendHealthScript "Windows backend health adapter"

@@ -6,8 +6,16 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Connection, text
+from sqlalchemy import text
 
+from app.database._database_generation_target_verification import (
+    run_database_generation_target_verification_action,
+)
+from app.database._dataset_restore_authority import (
+    assert_restored_dataset_candidate,
+    assert_restored_dataset_candidate_accepted,
+    finalize_restored_dataset,
+)
 from app.database._managed_postgres_contract import (
     DATABASE_NAME,
     MIGRATION_LEASE_LABEL,
@@ -17,8 +25,12 @@ from app.database._managed_postgres_contract import (
 from app.database._managed_postgres_migration_runtime import (
     ManagedPostgresRuntimeContractV1,
     _create_engine,
+    _prearmed_transaction,
     _temporary_pgpass_environment,
     _validated_migrator_url,
+)
+from app.database._managed_postgres_role_authority import (
+    assume_managed_postgres_schema_owner,
 )
 from app.database._postgres_operation_failures import (
     close_postgres_owner_resources,
@@ -43,6 +55,9 @@ RESULT_FIELDS = (
     "restore_epoch",
     "schema_revision",
     "original_count",
+    "generation_program_sha256",
+    "resource_shape_sha256",
+    "money_facts_sha256",
     "result",
 )
 RUNTIME_VERIFICATION_FIELDS = (
@@ -54,126 +69,6 @@ RUNTIME_VERIFICATION_FIELDS = (
     "original_count",
     "result",
 )
-_SANITATION_TABLES = (
-    "desktop_activation_attempts",
-    "session_refresh_attempts",
-    "auth_tokens",
-    "device_enrollment_attempts",
-    "installation_owner_claims",
-    "bootstrap_secret_consumptions",
-    "upload_link_daily_usage",
-    "upload_link_remote_attempts",
-    "upload_links",
-    "pairing_attempt_failures",
-    "pairing_codes",
-    "invitations",
-    "installation_idempotency_keys",
-    "scheduler_leases",
-    "budget_advisor_quota_locks",
-    "ai_transaction_temp_id_map",
-)
-
-
-def assert_restored_dataset_candidate(
-    connection: Connection,
-    *,
-    source: DatasetBackupManifest,
-    plan: RestoredDatasetPlan,
-) -> None:
-    """Accept only the source snapshot or this request's finalized candidate."""
-
-    observed = (
-        connection.execute(
-            text(
-                "SELECT dataset_id, restore_epoch, schema_revision, "
-                "client_generation, schema_min_compatible, semantic_revision, restored_from_backup_id "
-                "FROM dataset_authority WHERE singleton_id = 1"
-            )
-        )
-        .mappings()
-        .one()
-    )
-    if dict(observed) not in (_source_authority_shape(source), _planned_authority_shape(plan)):
-        raise AppError("backup_incomplete", status_code=409)
-
-
-def finalize_restored_dataset(
-    connection: Connection,
-    *,
-    source: DatasetBackupManifest,
-    plan: RestoredDatasetPlan,
-) -> None:
-    """Sanitize host credentials and publish Dataset Authority in one DB transaction."""
-
-    alembic_revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-    if alembic_revision != plan.schema_revision:
-        raise AppError("backup_incomplete", status_code=409)
-    observed = (
-        connection.execute(
-            text(
-                "SELECT dataset_id, restore_epoch, schema_revision, "
-                "client_generation, schema_min_compatible, semantic_revision, restored_from_backup_id "
-                "FROM dataset_authority WHERE singleton_id = 1 FOR UPDATE"
-            )
-        )
-        .mappings()
-        .one()
-    )
-    if dict(observed) == _planned_authority_shape(plan):
-        return
-    if dict(observed) != _source_authority_shape(source):
-        raise AppError("backup_incomplete", status_code=409)
-    for table in _SANITATION_TABLES:
-        connection.execute(text(f'DELETE FROM "{table}"'))
-    connection.execute(
-        text(
-            "DELETE FROM app_meta WHERE key IN "
-            "('csrf_signing_key', 'database_generation_binding', 'budget_advisor_audit_key')"
-        )
-    )
-    connection.execute(
-        text(
-            "UPDATE dataset_authority SET dataset_id = :dataset_id, "
-            "client_generation = :client_generation, restore_epoch = :restore_epoch, "
-            "schema_revision = :schema_revision, schema_min_compatible = :schema_min_compatible, "
-            "semantic_revision = :semantic_revision, "
-            "restored_from_backup_id = :backup_id WHERE singleton_id = 1"
-        ),
-        {
-            "dataset_id": plan.dataset_id,
-            "client_generation": plan.client_generation,
-            "restore_epoch": plan.restore_epoch,
-            "schema_revision": plan.schema_revision,
-            "schema_min_compatible": plan.schema_min_compatible,
-            "semantic_revision": plan.semantic_revision,
-            "backup_id": plan.restored_from_backup_id,
-        },
-    )
-
-
-def _source_authority_shape(source: DatasetBackupManifest) -> dict[str, object]:
-    authority = source.authority
-    return {
-        "dataset_id": authority.dataset_id,
-        "client_generation": authority.client_generation,
-        "restore_epoch": authority.restore_epoch,
-        "schema_revision": authority.schema_revision,
-        "schema_min_compatible": authority.schema_min_compatible,
-        "semantic_revision": authority.semantic_revision,
-        "restored_from_backup_id": authority.restored_from_backup_id,
-    }
-
-
-def _planned_authority_shape(plan: RestoredDatasetPlan) -> dict[str, object]:
-    return {
-        "dataset_id": plan.dataset_id,
-        "client_generation": plan.client_generation,
-        "restore_epoch": plan.restore_epoch,
-        "schema_revision": plan.schema_revision,
-        "schema_min_compatible": plan.schema_min_compatible,
-        "semantic_revision": plan.semantic_revision,
-        "restored_from_backup_id": plan.restored_from_backup_id,
-    }
 
 
 def run_isolated_dataset_restore_action(request: CompleteRestoreRequest) -> dict[str, object]:
@@ -359,11 +254,108 @@ def verify_restored_originals_action(
     }
 
 
+def _verify_restored_dataset_candidate(
+    request: CompleteRestoreRequest,
+    *,
+    source: DatasetBackupManifest,
+    plan: RestoredDatasetPlan,
+) -> None:
+    verify_restored_originals(source, request.backup_generation, request.target_upload_root)
+    contract = ManagedPostgresRuntimeContractV1(
+        database_name=DATABASE_NAME,
+        migrator_role=MIGRATOR_ROLE,
+        schema_owner_role=SCHEMA_OWNER_ROLE,
+        lease_label=MIGRATION_LEASE_LABEL,
+        transaction_timeout_ms=20 * 60 * 1000,
+    )
+    parsed_url = _validated_migrator_url(request.database_url, contract=contract)
+    engine = None
+    primary: BaseException | None = None
+    cleanup: list[BaseException] = []
+    entered: list[AbstractContextManager[Any]] = []
+    try:
+        protected = hold_protected_file_for_read(request.passfile)
+        protected_passfile = protected.__enter__()
+        entered.append(protected)
+        environment = _temporary_pgpass_environment(protected_passfile)
+        environment.__enter__()
+        entered.append(environment)
+        engine = _create_engine(parsed_url)
+        connection_context = engine.connect()
+        connection = connection_context.__enter__()
+        entered.append(connection_context)
+        with _prearmed_transaction(
+            connection,
+            timeout_ms=contract.transaction_timeout_ms,
+            access_mode="read_only",
+        ):
+            assume_managed_postgres_schema_owner(connection, contract=contract)
+            assert_restored_dataset_candidate_accepted(connection, plan=plan)
+    except BaseException as exc:  # noqa: BLE001 - preserve verifier owner failure
+        primary = exc
+    finally:
+        primary = close_postgres_owner_resources(
+            contexts=entered,
+            engine=engine,
+            primary=primary,
+            cleanup=cleanup,
+        )
+    raise_postgres_operation_failures(
+        primary=primary,
+        cleanup=cleanup,
+        message="restored dataset candidate verification failed",
+    )
+
+
+def run_verified_isolated_dataset_restore_action(
+    *,
+    request: CompleteRestoreRequest,
+    generation_program_path: Path,
+    expected_generation_program_sha256: str,
+    operation_id: str,
+) -> dict[str, object]:
+    """Restore and fully accept one isolated candidate before returning success."""
+
+    restored = run_isolated_dataset_restore_action(request)
+    target = run_database_generation_target_verification_action(
+        database_url=request.database_url,
+        pgpassfile=request.passfile,
+        generation_program_path=generation_program_path,
+        expected_generation_program_sha256=expected_generation_program_sha256,
+        operation_id=operation_id,
+        database=DATABASE_NAME,
+        restore_attempt_id="",
+        target_revision=request.target_schema_revision,
+    )
+    source = read_manifest(request.backup_generation, verify_files=True)
+    plan = resolve_restored_dataset_plan(
+        source,
+        active_dataset_id=request.active_dataset_id,
+        active_restore_epoch=request.active_restore_epoch,
+        target_schema_revision=request.target_schema_revision,
+    )
+    _verify_restored_dataset_candidate(request, source=source, plan=plan)
+    return {
+        "schema": "ticketbox-isolated-dataset-restore-result-v2",
+        "backup_id": restored["backup_id"],
+        "dataset_id": restored["dataset_id"],
+        "restore_epoch": restored["restore_epoch"],
+        "schema_revision": restored["schema_revision"],
+        "original_count": restored["original_count"],
+        "generation_program_sha256": target["generation_program_sha256"],
+        "resource_shape_sha256": target["resource_shape_sha256"],
+        "money_facts_sha256": target["money_facts_sha256"],
+        "result": "isolated_restore_candidate_verified",
+    }
+
+
 __all__ = [
     "RESULT_FIELDS",
     "RUNTIME_VERIFICATION_FIELDS",
     "assert_restored_dataset_candidate",
+    "assert_restored_dataset_candidate_accepted",
     "finalize_restored_dataset",
     "run_isolated_dataset_restore_action",
+    "run_verified_isolated_dataset_restore_action",
     "verify_restored_originals_action",
 ]

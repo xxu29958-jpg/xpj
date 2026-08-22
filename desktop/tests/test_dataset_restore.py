@@ -14,6 +14,7 @@ from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
 from backend_manager.runtime import RuntimeControlError
 
 GENERATION = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+ATTEMPT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 
 def _subject(tmp_path: Path) -> tuple[InstalledLayout, WindowsReleaseConfig, Path, Path]:
@@ -73,7 +74,7 @@ def test_installed_restore_invokes_exact_owner_with_explicit_generation(
         return SimpleNamespace(returncode=0, stdout=_result(), stderr="")
 
     monkeypatch.setattr(dataset_restore.subprocess, "run", run)
-    run_installed_dataset_restore(layout, release, GENERATION)
+    run_installed_dataset_restore(layout, release, GENERATION, ATTEMPT_ID)
 
     assert captured["command"] == [
         str(powershell),
@@ -88,6 +89,8 @@ def test_installed_restore_invokes_exact_owner_with_explicit_generation(
         str(layout.data_root),
         "-BackupGeneration",
         GENERATION,
+        "-RestoreAttemptId",
+        ATTEMPT_ID,
     ]
     assert captured["cwd"] == script.parent
     assert captured["timeout"] == release.helper_watchdog_seconds("restore")
@@ -112,7 +115,7 @@ def test_installed_restore_rejects_result_for_another_backup(
     )
 
     with pytest.raises(RuntimeControlError):
-        run_installed_dataset_restore(layout, release, GENERATION)
+        run_installed_dataset_restore(layout, release, GENERATION, ATTEMPT_ID)
 
 
 def test_installed_restore_does_not_misreport_an_unconfirmed_result_as_failure(
@@ -129,7 +132,39 @@ def test_installed_restore_does_not_misreport_an_unconfirmed_result_as_failure(
     )
 
     with pytest.raises(RuntimeControlError, match="结果未知"):
-        run_installed_dataset_restore(layout, release, GENERATION)
+        run_installed_dataset_restore(layout, release, GENERATION, ATTEMPT_ID)
+
+
+@pytest.mark.parametrize(
+    ("completed", "expected_cause"),
+    [
+        (SimpleNamespace(returncode=0, stdout="{", stderr=""), json.JSONDecodeError),
+        (SimpleNamespace(returncode=0, stdout=_result() + _result(), stderr=""), None),
+        (
+            SimpleNamespace(
+                returncode=0,
+                stdout=_result(dataset_id="not-a-uuid"),
+                stderr="",
+            ),
+            None,
+        ),
+    ],
+)
+def test_installed_restore_all_unconfirmed_results_use_unknown_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    completed: SimpleNamespace,
+    expected_cause: type[BaseException] | None,
+) -> None:
+    layout, release, powershell, _script = _subject(tmp_path)
+    monkeypatch.setenv("SYSTEMROOT", str(powershell.parents[3]))
+    monkeypatch.setattr(dataset_restore, "require_local_fixed_regular_file", lambda path, *, label: path)
+    monkeypatch.setattr(dataset_restore.subprocess, "run", lambda *_args, **_kwargs: completed)
+
+    with pytest.raises(RuntimeControlError, match="结果未知") as raised:
+        run_installed_dataset_restore(layout, release, GENERATION, ATTEMPT_ID)
+    if expected_cause is not None:
+        assert isinstance(raised.value.__cause__, expected_cause)
 
 
 @pytest.mark.parametrize(
@@ -149,4 +184,4 @@ def test_installed_restore_rejects_implicit_or_noncanonical_selection(
     monkeypatch.setenv("SYSTEMROOT", str(powershell.parents[3]))
     monkeypatch.setattr(dataset_restore, "require_local_fixed_regular_file", lambda path, *, label: path)
     with pytest.raises(RuntimeControlError, match="备份 generation"):
-        run_installed_dataset_restore(layout, release, generation)
+        run_installed_dataset_restore(layout, release, generation, ATTEMPT_ID)

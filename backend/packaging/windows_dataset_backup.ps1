@@ -31,7 +31,7 @@ foreach ($name in @(
     "windows_postgresql_credentials.ps1",
     "windows_postgresql_database_command.ps1",
     "windows_database_generation.ps1",
-    "windows_installed_dataset_contract.ps1",
+    "windows_installed_dataset_reader.ps1",
     "windows_installed_dataset_backup_contract.ps1"
 )) {
     $dependency = Join-Path $scriptRoot $name
@@ -348,6 +348,19 @@ try {
         -RestartBackend $restartBackend `
         -LifecycleLock $lock
     $restartBackend = [bool]$request.Payload.restart_backend
+    $backupRoot = Join-Path ([string]$identity.DataRoot) "backups"
+    $backupRootKind = Get-TicketboxPathEntryKindNoFollow $backupRoot
+    if ($backupRootKind -ceq "Missing") {
+        [IO.Directory]::CreateDirectory($backupRoot) | Out-Null
+    }
+    elseif ($backupRootKind -cne "Directory") {
+        throw "complete dataset backup root is not a plain directory."
+    }
+    Set-TicketboxExactDirectoryAcl `
+        -Path $backupRoot `
+        -Accounts @("SYSTEM", "BUILTIN\Administrators") `
+        -OwnerAccount "SYSTEM" `
+        -Recurse
     Stop-TicketboxOwnedServiceIfExists `
         -Name ([string]$identity.BackendServiceName) `
         -ExpectedExecutable $backendExecutable `
@@ -360,6 +373,11 @@ try {
         $subject $authority $request $barrier
     $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
         $subject ([string]$backupResult.generation)
+    Set-TicketboxExactDirectoryAcl `
+        -Path ([string]$inspection.GenerationPath) `
+        -Accounts @("SYSTEM", "BUILTIN\Administrators") `
+        -OwnerAccount "SYSTEM" `
+        -Recurse
     $backupResult = Assert-TicketboxInstalledCompleteBackupResult `
         $subject $request $barrier $backupResult $inspection
 }

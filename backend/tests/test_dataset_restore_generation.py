@@ -12,8 +12,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal, engine
-from app.database._dataset_restore_action import (
+from app.database._dataset_restore_authority import (
     _SANITATION_TABLES,
+    assert_restored_dataset_candidate_accepted,
     finalize_restored_dataset,
 )
 from app.errors import AppError
@@ -257,6 +258,59 @@ def test_restore_finalization_executes_every_sanitation_delete_once(tmp_path: Pa
 
     assert set(deleted) == _EXPECTED_SANITATION_TABLES
     assert len(deleted) == len(_EXPECTED_SANITATION_TABLES)
+
+
+def test_candidate_acceptance_requires_final_authority_and_empty_host_capabilities(
+    tmp_path: Path,
+) -> None:
+    _generation, manifest = _manifest(tmp_path, authority=_authority())
+    plan = resolve_restored_dataset_plan(
+        manifest,
+        active_dataset_id=manifest.authority.dataset_id,
+        active_restore_epoch=manifest.authority.restore_epoch,
+        target_schema_revision=manifest.authority.schema_revision,
+    )
+
+    class MappingResult:
+        def mappings(self):
+            return self
+
+        def one(self):
+            return {
+                "dataset_id": plan.dataset_id,
+                "restore_epoch": plan.restore_epoch,
+                "schema_revision": plan.schema_revision,
+                "client_generation": plan.client_generation,
+                "schema_min_compatible": plan.schema_min_compatible,
+                "semantic_revision": plan.semantic_revision,
+                "restored_from_backup_id": plan.restored_from_backup_id,
+            }
+
+    class AcceptedConnection:
+        def scalar(self, statement):
+            sql = str(statement)
+            if sql == "SELECT version_num FROM alembic_version":
+                return plan.schema_revision
+            if sql.startswith("SELECT count(*) FROM"):
+                return 0
+            raise AssertionError(sql)
+
+        def execute(self, statement):
+            assert str(statement).startswith("SELECT dataset_id")
+            return MappingResult()
+
+    assert_restored_dataset_candidate_accepted(AcceptedConnection(), plan=plan)  # type: ignore[arg-type]
+
+    class UnsanitizedConnection(AcceptedConnection):
+        def scalar(self, statement):
+            sql = str(statement)
+            if 'FROM "auth_tokens"' in sql:
+                return 1
+            return super().scalar(statement)
+
+    with pytest.raises(AppError) as rejected:
+        assert_restored_dataset_candidate_accepted(UnsanitizedConnection(), plan=plan)  # type: ignore[arg-type]
+    assert rejected.value.error == "backup_incomplete"
 
 
 @pytest.mark.real_db

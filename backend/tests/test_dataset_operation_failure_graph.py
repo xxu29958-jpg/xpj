@@ -129,7 +129,7 @@ def test_isolated_restore_action_preserves_finalization_and_rollback_failures(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from app.database import _dataset_restore_action as action
+    import app.database._dataset_restore_action as action
 
     primary = RuntimeError("restore finalization failed")
     rollback_cleanup = SystemExit("restore rollback interrupted")
@@ -183,7 +183,7 @@ def test_isolated_restore_action_rejects_foreign_dataset_before_mutation(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from app.database import _dataset_restore_action as action
+    import app.database._dataset_restore_action as action
     from app.errors import AppError
 
     source = SimpleNamespace(

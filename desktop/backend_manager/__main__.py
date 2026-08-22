@@ -69,6 +69,7 @@ def _execute_validated_installed_action(
     config: ManagerConfig,
     runtime_config: InstalledRuntimeConfig,
     backup_generation: str | None,
+    restore_attempt_id: str | None,
 ) -> str:
     """Dispatch one validated installed action to its sole production owner."""
 
@@ -80,6 +81,7 @@ def _execute_validated_installed_action(
             runtime_config.layout,
             runtime_config.release,
             backup_generation or "",
+            restore_attempt_id or "",
         )
         return "Ticketbox 完整数据集恢复已完成。"
     runtime = build_direct_service_runtime(
@@ -103,6 +105,7 @@ def _run_elevated_service_action(
     channel_owner_sid: str | None,
     channel_file_id: str | None,
     backup_generation: str | None,
+    restore_attempt_id: str | None,
 ) -> int:
     if not is_process_elevated():
         return HELPER_EXIT_NOT_ELEVATED
@@ -114,7 +117,9 @@ def _run_elevated_service_action(
         or channel_file_id is None
     ):
         return HELPER_EXIT_CONFIG
-    if (action == "restore") != (backup_generation is not None):
+    if (action == "restore") != (
+        backup_generation is not None and restore_attempt_id is not None
+    ):
         return HELPER_EXIT_CONFIG
     watchdog: threading.Event | None = None
     exit_code = 0
@@ -153,6 +158,7 @@ def _run_elevated_service_action(
                 config,
                 runtime_config,
                 backup_generation,
+                restore_attempt_id,
             )
     except LifecycleBusyError as exc:
         exit_code, diagnostic = HELPER_EXIT_LIFECYCLE_BUSY, str(exc)
@@ -197,6 +203,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--helper-channel-owner-sid")
     parser.add_argument("--helper-channel-file-id")
     parser.add_argument("--backup-generation")
+    parser.add_argument("--restore-attempt-id")
     return parser.parse_args(argv)
 
 
@@ -211,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
             args.helper_channel_owner_sid,
             args.helper_channel_file_id,
             args.backup_generation,
+            args.restore_attempt_id,
         )
     if is_process_elevated():
         show_elevated_manager_warning()

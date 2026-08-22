@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
+from backend_manager.restore_attempt import canonical_restore_attempt_id
 from backend_manager.runtime import RuntimeControlError
 from backend_manager.windows_user_security import require_local_fixed_regular_file
 
@@ -44,8 +45,10 @@ def run_installed_dataset_restore(
     layout: InstalledLayout,
     release: WindowsReleaseConfig,
     backup_generation: str,
+    restore_attempt_id: str,
 ) -> None:
     generation = canonical_backup_generation(backup_generation)
+    attempt_id = canonical_restore_attempt_id(restore_attempt_id)
     system_root = os.environ.get("SYSTEMROOT")
     if not system_root:
         raise RuntimeControlError("Windows 系统目录不可用，未执行恢复。")
@@ -77,6 +80,8 @@ def run_installed_dataset_restore(
                 str(layout.data_root),
                 "-BackupGeneration",
                 generation,
+                "-RestoreAttemptId",
+                attempt_id,
             ],
             cwd=layout.install_dir / "installer",
             env=environment,
