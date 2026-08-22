@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 # One installed instance may have only one durable dataset operation.
 $script:TicketboxInstalledDatasetOperationAclAccounts = @(

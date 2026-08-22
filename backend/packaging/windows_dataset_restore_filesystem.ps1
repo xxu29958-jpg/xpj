@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 # Restore path classification and same-volume filesystem reconciliation.
 
