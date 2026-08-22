@@ -516,11 +516,14 @@ try {{
     $script:PostgresBootstrapAclAccounts = $systemAccounts
     $script:PostgresBootstrapAclOwnerAccount = 'SYSTEM'
     $script:SecretByteCount = 32
-    $bootstrapState = New-PostgresBootstrapRecoveryState
+    $bootstrapState = New-PostgresBootstrapRecoveryState `
+        -SecretByteCount $script:SecretByteCount
     $bootstrapPath = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     Write-TicketboxProtectedUtf8FileDurable `
         -Path $bootstrapPath `
-        -Text (ConvertTo-PostgresBootstrapRecoveryPayload $bootstrapState) `
+        -Text (ConvertTo-PostgresBootstrapRecoveryPayload `
+            -State $bootstrapState `
+            -SecretByteCount $script:SecretByteCount) `
         -FullControlAccounts $systemAccounts `
         -OwnerAccount 'SYSTEM'
     Invoke-TicketboxIcaclsChecked $bootstrapPath @('/reset')

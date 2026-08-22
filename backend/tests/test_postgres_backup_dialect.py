@@ -73,6 +73,11 @@ def test_recovery_drill_uses_complete_dataset_generation_and_bounded_restore() -
     assert "SCHEMA_OWNER_ROLE = TEST_POSTGRES_CONTRACT.application_role" not in source
     assert "MIGRATOR_ROLE = TEST_POSTGRES_CONTRACT.application_role" in source
     assert "managed_restore_role_topology" in source
+    topology_call = source.split("with managed_restore_role_topology(", maxsplit=1)[1].split(
+        ") as schema_owner_role:", maxsplit=1
+    )[0]
+    assert "restore_url=inputs.restore_url" in topology_call
+    assert "managed_restore_url" not in topology_call
     assert "ALTER ROLE" in topology
     assert "NOINHERIT" in topology
     assert "WITH INHERIT FALSE, SET TRUE" in topology

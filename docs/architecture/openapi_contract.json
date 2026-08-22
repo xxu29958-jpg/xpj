@@ -31871,25 +31871,6 @@
         "tags": [
           "owner-console"
         ]
-      },
-      "post": {
-        "operationId": "owner_backups_create_owner_backups_post",
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Owner Backups Create",
-        "tags": [
-          "owner-console"
-        ]
       }
     },
     "/owner/devices": {

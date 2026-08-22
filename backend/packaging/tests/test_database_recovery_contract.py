@@ -15,6 +15,7 @@ INSTALLATION_SAFETY_SCRIPT = PACKAGING / "windows_installation_safety.ps1"
 SERVICE_LIFECYCLE_SCRIPT = PACKAGING / "windows_service_lifecycle.ps1"
 PREPARE_SCRIPT = PACKAGING / "prepare_bundled_upgrade.ps1"
 GENERATION_OWNER_SCRIPT = PACKAGING / "windows_database_generation.ps1"
+GENERATION_CREDENTIALS_SCRIPT = PACKAGING / "windows_database_generation_credentials.ps1"
 
 
 def _read_database_script() -> str:
@@ -667,7 +668,10 @@ def test_service_owned_initdb_uses_a_separate_single_secret_authority() -> None:
     assert "$c07Disposition" not in install
     assert "Invoke-TicketboxC07InstalledReleaseMigration" not in install
     generation = GENERATION_OWNER_SCRIPT.read_text(encoding="utf-8-sig")
-    assert generation.count("New-TicketboxDatabaseGenerationMaintenanceAuthority `") == 1
+    credentials = GENERATION_CREDENTIALS_SCRIPT.read_text(encoding="utf-8-sig")
+    assert generation.count("New-TicketboxDatabaseGenerationMaintenanceAuthority `") == 0
+    assert "Open-TicketboxDatabaseGenerationMaintenanceAuthority `" in generation
+    assert credentials.count("New-TicketboxDatabaseGenerationMaintenanceAuthority `") == 1
     assert generation.count("Close-TicketboxDatabaseGenerationMaintenanceAuthority `") == 2
     assert "SuperuserCapability" not in generation
     assert "Invoke-TicketboxC07RecoveredSuperuserAction" not in generation

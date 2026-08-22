@@ -259,7 +259,7 @@ def _restore_complete_generation(
     program_sha256 = write_program(backend_root=BACKEND_ROOT, output=program_path)
     operation_id = str(uuid4())
     with managed_restore_role_topology(
-        restore_url=managed_restore_url,
+        restore_url=inputs.restore_url,
         passfile=inputs.passfile,
     ) as schema_owner_role:
         restore_action.DATABASE_NAME = TEST_POSTGRES_CONTRACT.restore_database
