@@ -11,6 +11,7 @@ from uuid import UUID, uuid5
 from app.errors import AppError
 from app.services.dataset_authority_service import DATASET_SEMANTIC_REVISION
 from app.services.dataset_backup_contract import DatasetBackupManifest, read_manifest, sha256_file
+from app.services.durable_publication import publish_durable_tree
 from app.services.path_entry_safety import is_link_or_reparse
 
 
@@ -32,6 +33,7 @@ class CompleteRestoreRequest:
     database_url: str
     passfile: Path
     pg_restore_binary: Path
+    active_installation_id: str
     active_dataset_id: str
     active_restore_epoch: int
     target_schema_revision: str
@@ -41,16 +43,20 @@ class CompleteRestoreRequest:
 def resolve_restored_dataset_plan(
     manifest: DatasetBackupManifest,
     *,
+    active_installation_id: str,
     active_dataset_id: str,
     active_restore_epoch: int,
     target_schema_revision: str,
 ) -> RestoredDatasetPlan:
     """Pure identity policy for an in-place restore of the same dataset."""
 
+    active_installation_id = _canonical_uuid(active_installation_id)
     active_dataset_id = _canonical_uuid(active_dataset_id)
     if active_restore_epoch < 0 or not target_schema_revision:
         raise AppError("backup_incomplete", status_code=500)
     if manifest.authority.semantic_revision != DATASET_SEMANTIC_REVISION:
+        raise AppError("backup_incomplete", status_code=409)
+    if active_installation_id != manifest.source_installation_id:
         raise AppError("backup_incomplete", status_code=409)
     if active_dataset_id != manifest.authority.dataset_id:
         raise AppError("backup_incomplete", status_code=409)
@@ -107,7 +113,7 @@ def materialize_restored_originals(
             shutil.copyfile(source, destination, follow_symlinks=False)
             if destination.stat().st_size != artifact.size_bytes or sha256_file(destination) != artifact.sha256:
                 raise AppError("backup_incomplete", status_code=500)
-        os.rename(staging, target)
+        publish_durable_tree(staging, target)
     except BaseException as primary:  # noqa: BLE001 - preserve primary and cleanup truth
         try:
             _remove_staging(staging, parent)

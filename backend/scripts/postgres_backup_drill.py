@@ -36,6 +36,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.services.path_entry_safety import is_link_or_reparse  # noqa: E402
+from scripts.postgres_dataset_facts import DatabaseFacts, read_database_facts  # noqa: E402
 from scripts.postgres_frozen_restore_drill import (  # noqa: E402
     restore_with_frozen_helper,
 )
@@ -99,29 +100,6 @@ def _leased_source_engine(source_url: str, source_connection: Connection) -> Ite
         raise BaseExceptionGroup("leased PostgreSQL source cleanup failed", cleanup)
 
 
-def _counts(url: str) -> dict[str, int]:
-    """Row count per PUBLIC table — the whole schema, not a hand-kept list.
-
-    Comparing every table catches a dump/restore that silently dropped a NEW
-    table (the old fixed five-table list would have stayed green); comparing
-    the table-name SETS catches a table that never came back at all.
-    """
-    from sqlalchemy import create_engine, text
-
-    engine = create_engine(url)
-    try:
-        with engine.connect() as conn:
-            tables = [
-                row[0]
-                for row in conn.execute(
-                    text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
-                )
-            ]
-            return {table: int(conn.execute(text(f'SELECT count(*) FROM "{table}"')).scalar() or 0) for table in tables}
-    finally:
-        engine.dispose()
-
-
 def _run_drill(
     source_url: str,
     restore_url: str,
@@ -139,8 +117,8 @@ def _run_drill(
     pg_restore = find_pg_binary("pg_restore", "PG_RESTORE_PATH")
     if not pg_dump or not pg_restore:
         raise SystemExit("FAIL drill: supported PostgreSQL backup tools not found")
-    source_counts = _counts(source_url)
-    if source_counts["expenses"] == 0:
+    source_facts = read_database_facts(source_url)
+    if source_facts.tables["expenses"].row_count == 0:
         raise SystemExit("FAIL drill: source has no expenses — did the smoke test run first?")
     inputs = _DrillInputs(
         source_url=source_url,
@@ -156,12 +134,12 @@ def _run_drill(
         _leased_source_engine(source_url, source_connection) as source_engine,
         tempfile.TemporaryDirectory(prefix="ticketbox-dataset-drill-") as temporary,
     ):
-        restored_counts = _exercise_complete_generation(
+        restored_facts = _exercise_complete_generation(
             inputs,
             source_engine,
             Path(temporary).resolve(),
         )
-    _assert_restored_database(source_counts, restored_counts, SANITATION_TABLES)
+    _assert_restored_database(source_facts, restored_facts, SANITATION_TABLES)
     print("\nPASS postgres backup/restore drill")
     return 0
 
@@ -170,10 +148,10 @@ def _exercise_complete_generation(
     inputs: _DrillInputs,
     source_engine: Engine,
     temporary: Path,
-) -> dict[str, int]:
+) -> DatabaseFacts:
     generation, manifest = _create_complete_generation(inputs, source_engine, temporary)
     if inputs.frozen_restore_helper is not None:
-        restored_counts, restored_originals = restore_with_frozen_helper(
+        restored_facts, restored_originals = restore_with_frozen_helper(
             source_url=inputs.source_url,
             admin_url=os.environ["XPJ_TEST_ADMIN_URL"],
             admin_passfile=inputs.passfile,
@@ -184,9 +162,9 @@ def _exercise_complete_generation(
             manifest=manifest,
         )
         _assert_restored_originals(manifest, restored_originals)
-        return restored_counts
+        return restored_facts
     _restore_complete_generation(inputs, temporary, generation, manifest)
-    return _counts(inputs.restore_url)
+    return read_database_facts(inputs.restore_url)
 
 
 def _create_complete_generation(
@@ -220,6 +198,7 @@ def _create_complete_generation(
                 backup_kind="manual",
                 writer_fence_sha256=_writer_fence_sha256(authority, current_sha256),
                 expected_current_sha256=current_sha256,
+                expected_installation_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                 expected_dataset_id=authority.dataset_id,
                 expected_restore_epoch=authority.restore_epoch,
                 expected_schema_revision=authority.schema_revision,
@@ -275,6 +254,7 @@ def _restore_complete_generation(
                 database_url=managed_restore_url,
                 passfile=inputs.passfile,
                 pg_restore_binary=inputs.pg_restore,
+                active_installation_id=manifest.source_installation_id,
                 active_dataset_id=manifest.authority.dataset_id,
                 active_restore_epoch=manifest.authority.restore_epoch,
                 target_schema_revision=manifest.authority.schema_revision,
@@ -322,12 +302,12 @@ def _assert_restored_originals(manifest: object, restored_originals: Path) -> No
 
 
 def _assert_restored_database(
-    source_counts: dict[str, int],
-    restore_counts: dict[str, int],
+    source_facts: DatabaseFacts,
+    restore_facts: DatabaseFacts,
     sanitation_tables: tuple[str, ...],
 ) -> None:
     preserved_tables = (
-        set(source_counts)
+        set(source_facts.tables)
         - set(sanitation_tables)
         - {
             "app_meta",
@@ -335,24 +315,30 @@ def _assert_restored_database(
         }
     )
     diffs = {
-        table: (source_counts.get(table), restore_counts.get(table))
+        table: (source_facts.tables.get(table), restore_facts.tables.get(table))
         for table in sorted(preserved_tables)
-        if source_counts.get(table) != restore_counts.get(table)
+        if source_facts.tables.get(table) != restore_facts.tables.get(table)
     }
     unsanitized = {
-        table: restore_counts.get(table)
-        for table in sorted(set(sanitation_tables) & set(restore_counts))
-        if restore_counts.get(table) != 0
+        table: restore_facts.tables[table].row_count
+        for table in sorted(set(sanitation_tables) & set(restore_facts.tables))
+        if restore_facts.tables[table].row_count != 0
     }
-    if set(restore_counts) != set(source_counts) or diffs or unsanitized:
-        missing = sorted(set(source_counts) - set(restore_counts))
+    if (
+        set(restore_facts.tables) != set(source_facts.tables)
+        or restore_facts.sequences != source_facts.sequences
+        or diffs
+        or unsanitized
+    ):
+        missing = sorted(set(source_facts.tables) - set(restore_facts.tables))
         raise SystemExit(
             "FAIL drill: restored database contract differs "
             f"missing_tables={missing} preserved_diffs={diffs} unsanitized={unsanitized}"
         )
     print(
-        f"OK restored data matches source: {len(restore_counts)} tables, "
-        f"{sum(restore_counts.values())} rows (incl. expenses={restore_counts.get('expenses', 0)})"
+        f"OK restored data matches source: {len(restore_facts.tables)} tables, "
+        f"{sum(item.row_count for item in restore_facts.tables.values())} rows "
+        f"(incl. expenses={restore_facts.tables['expenses'].row_count})"
     )
 
 

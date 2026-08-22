@@ -127,7 +127,7 @@ class WindowsReleaseConfig:
         service = self.service_state_timeout_seconds
         postgres = max(service, self.postgres_ready_timeout_seconds)
         process_margin = self.process_boundary_margin_seconds
-        if action not in {"start", "stop", "restart", "backup", "restore"}:
+        if action not in {"start", "stop", "restart", "backup", "restore", "inventory"}:
             raise InstallationConfigError(f"不支持的服务操作：{action}")
 
         phases = {
@@ -155,8 +155,7 @@ class WindowsReleaseConfig:
                 {
                     "backend_stop": service,
                     "postgres_stop": postgres,
-                    "candidate_initdb_restore_and_generation": 4
-                    * (self.database_tool_timeout_ms / 1000.0),
+                    "candidate_initdb_restore_and_generation": 4 * (self.database_tool_timeout_ms / 1000.0),
                     "postgres_restore": postgres,
                     "backend_restore": service + self.backend_ready_timeout_seconds,
                 },
@@ -169,8 +168,7 @@ class WindowsReleaseConfig:
                     "backend_settle_before_start": service,
                     "backend_start": service,
                     "backend_readiness": (
-                        self.backend_ready_timeout_seconds
-                        + self.backend_health_request_timeout_seconds
+                        self.backend_ready_timeout_seconds + self.backend_health_request_timeout_seconds
                     ),
                 },
             )

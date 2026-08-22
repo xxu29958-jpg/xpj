@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_app_context
 from app.config import get_settings, installation_identity
 from app.database import get_db, init_db, wait_for_db
-from app.errors import Utf8JSONResponse, add_exception_handlers
+from app.errors import AppError, Utf8JSONResponse, add_exception_handlers
 from app.middleware.cloudflare_access import cloudflare_access_guard
 from app.middleware.csrf import csrf_loopback_form_guard
 from app.middleware.logging import SanitizedLoggingMiddleware
@@ -306,9 +306,7 @@ def _custom_openapi() -> dict:
             if path.startswith("/api/") and method.lower() in _RUNTIME_WRITE_METHODS:
                 operation_parameters = operation.setdefault("parameters", [])
                 existing_refs = {
-                    parameter.get("$ref")
-                    for parameter in operation_parameters
-                    if isinstance(parameter, dict)
+                    parameter.get("$ref") for parameter in operation_parameters if isinstance(parameter, dict)
                 }
                 operation_parameters.extend(
                     dict(parameter_ref)
@@ -467,7 +465,7 @@ def private_status(_auth: AuthContext = Depends(get_current_app_context)) -> Hea
         latest_backup_at = backup.latest.created_at.astimezone(UTC).isoformat() if backup.latest is not None else None
         backup_age_hours = backup.age_hours
         backup_stale = backup.review_due
-    except (OSError, RuntimeError):
+    except (AppError, OSError, RuntimeError):
         _logger.exception("private_status: published backup inventory failed")
         latest_backup_at = None
         backup_age_hours = None

@@ -232,6 +232,7 @@ $DatabaseGenerationProjectionScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_projection.ps1"
 $DatasetBackupScript = Join-Path $ScriptDir "windows_dataset_backup.ps1"
+$DatasetInventoryScript = Join-Path $ScriptDir "windows_dataset_inventory.ps1"
 $DatasetRestoreScript = Join-Path $ScriptDir "windows_dataset_restore.ps1"
 $InstalledDatasetLifecycleScripts = @(
     "windows_installed_dataset_reader.ps1",
@@ -1270,6 +1271,7 @@ Assert-File `
     $DatabaseGenerationProjectionScript `
     "Windows database generation runtime projection"
 Assert-File $DatasetBackupScript "Windows complete dataset backup owner"
+Assert-File $DatasetInventoryScript "Windows sanitized dataset backup inventory reader"
 Assert-File $DatasetRestoreScript "Windows complete dataset restore owner"
 foreach ($installedDatasetScript in $InstalledDatasetLifecycleScripts) {
     Assert-File $installedDatasetScript "Windows installed dataset lifecycle contract"

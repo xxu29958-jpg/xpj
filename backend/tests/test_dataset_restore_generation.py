@@ -53,6 +53,7 @@ _EXPECTED_SANITATION_TABLES = {
     "budget_advisor_quota_locks",
     "ai_transaction_temp_id_map",
 }
+_EXPECTED_INSTALLATION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 
 def test_every_registered_table_has_one_restore_security_classification() -> None:
@@ -60,11 +61,9 @@ def test_every_registered_table_has_one_restore_security_classification() -> Non
 
     assert set(RESTORE_TABLE_SECURITY) == set(Base.metadata.tables)
     assert set(RESTORE_TABLE_SECURITY.values()) <= {"preserve", "sanitize", "filter"}
-    assert {
-        table
-        for table, classification in RESTORE_TABLE_SECURITY.items()
-        if classification == "sanitize"
-    } == set(SANITATION_TABLES)
+    assert {table for table, classification in RESTORE_TABLE_SECURITY.items() if classification == "sanitize"} == set(
+        SANITATION_TABLES
+    )
     assert RESTORE_TABLE_SECURITY["app_meta"] == "filter"
 
 
@@ -81,6 +80,7 @@ def _manifest(tmp_path: Path, *, authority) -> tuple[Path, DatasetBackupManifest
         backup_kind="manual",
         created_at=datetime(2026, 8, 21, 3, 4, 5, tzinfo=UTC),
         release_id="restore-fixture",
+        source_installation_id=_EXPECTED_INSTALLATION_ID,
         writer_fence_sha256="c" * 64,
         authority=authority,
         database=DatabaseArtifact(
@@ -119,6 +119,7 @@ def test_restore_epoch_advances_without_shipping_an_unowned_clone_mode(tmp_path:
 
     restored = resolve_restored_dataset_plan(
         manifest,
+        active_installation_id=_EXPECTED_INSTALLATION_ID,
         active_dataset_id=authority.dataset_id,
         active_restore_epoch=authority.restore_epoch + 4,
         target_schema_revision=authority.schema_revision,
@@ -141,8 +142,26 @@ def test_restore_rejects_a_backup_from_a_foreign_dataset(tmp_path: Path) -> None
     with pytest.raises(AppError) as rejected:
         resolve_restored_dataset_plan(
             manifest,
+            active_installation_id=_EXPECTED_INSTALLATION_ID,
             active_dataset_id="7adafba4-2f79-4627-8620-62ee79a8e481",
             active_restore_epoch=0,
+            target_schema_revision=authority.schema_revision,
+        )
+
+    assert rejected.value.error == "backup_incomplete"
+    assert rejected.value.status_code == 409
+
+
+def test_restore_rejects_same_dataset_backup_from_foreign_installation(tmp_path: Path) -> None:
+    authority = _authority()
+    _generation, manifest = _manifest(tmp_path, authority=authority)
+
+    with pytest.raises(AppError) as rejected:
+        resolve_restored_dataset_plan(
+            manifest,
+            active_installation_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            active_dataset_id=authority.dataset_id,
+            active_restore_epoch=authority.restore_epoch,
             target_schema_revision=authority.schema_revision,
         )
 
@@ -235,6 +254,7 @@ def test_restore_finalization_executes_every_sanitation_delete_once(tmp_path: Pa
     _generation, manifest = _manifest(tmp_path, authority=_authority())
     plan = resolve_restored_dataset_plan(
         manifest,
+        active_installation_id=_EXPECTED_INSTALLATION_ID,
         active_dataset_id=manifest.authority.dataset_id,
         active_restore_epoch=manifest.authority.restore_epoch,
         target_schema_revision=manifest.authority.schema_revision,
@@ -287,6 +307,7 @@ def test_candidate_acceptance_requires_final_authority_and_empty_host_capabiliti
     _generation, manifest = _manifest(tmp_path, authority=_authority())
     plan = resolve_restored_dataset_plan(
         manifest,
+        active_installation_id=_EXPECTED_INSTALLATION_ID,
         active_dataset_id=manifest.authority.dataset_id,
         active_restore_epoch=manifest.authority.restore_epoch,
         target_schema_revision=manifest.authority.schema_revision,
@@ -343,6 +364,7 @@ def test_restore_finalization_revokes_host_credentials_without_deleting_business
     _generation, manifest = _manifest(tmp_path, authority=authority)
     plan = resolve_restored_dataset_plan(
         manifest,
+        active_installation_id=_EXPECTED_INSTALLATION_ID,
         active_dataset_id=authority.dataset_id,
         active_restore_epoch=authority.restore_epoch,
         target_schema_revision=authority.schema_revision,
@@ -378,10 +400,7 @@ def test_restore_finalization_revokes_host_credentials_without_deleting_business
         assert connection.scalar(text("SELECT count(*) FROM bootstrap_secret_consumptions")) == 0
         assert (
             connection.scalar(
-                text(
-                    "SELECT count(*) FROM app_meta WHERE key IN "
-                    "('csrf_signing_key', 'database_generation_binding')"
-                )
+                text("SELECT count(*) FROM app_meta WHERE key IN ('csrf_signing_key', 'database_generation_binding')")
             )
             == 0
         )
@@ -413,6 +432,7 @@ def test_restore_sanitation_rolls_back_if_authority_publication_fails(tmp_path: 
     _generation, manifest = _manifest(tmp_path, authority=authority)
     plan = resolve_restored_dataset_plan(
         manifest,
+        active_installation_id=_EXPECTED_INSTALLATION_ID,
         active_dataset_id=authority.dataset_id,
         active_restore_epoch=authority.restore_epoch,
         target_schema_revision=authority.schema_revision,

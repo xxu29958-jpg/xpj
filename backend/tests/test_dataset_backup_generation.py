@@ -36,6 +36,7 @@ _EXPECTED_DATASET_ID = "5895e71e-1c87-4a59-b1c7-04f68817795e"
 _EXPECTED_RESTORE_EPOCH = 3
 _EXPECTED_SCHEMA_REVISION = "20260821_0001"
 _EXPECTED_CURRENT_SHA256 = "c" * 64
+_EXPECTED_INSTALLATION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 _EXPECTED_WRITER_FENCE_SHA256 = hashlib.sha256(
     json.dumps(
         {
@@ -195,6 +196,7 @@ def test_manifest_is_closed_canonical_and_binds_every_byte(tmp_path: Path) -> No
         backup_kind="manual",
         created_at=datetime(2026, 8, 21, 2, 3, 4, tzinfo=UTC),
         release_id="release-fixture",
+        source_installation_id=_EXPECTED_INSTALLATION_ID,
         writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
         authority=authority,
         database=DatabaseArtifact(
@@ -244,6 +246,7 @@ def test_published_generation_is_idempotent_for_its_durable_request(tmp_path: Pa
         backup_kind="manual",
         created_at=datetime(2026, 8, 21, 2, 3, 4, tzinfo=UTC),
         release_id="release-fixture",
+        source_installation_id=_EXPECTED_INSTALLATION_ID,
         writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
         authority=authority,
         database=DatabaseArtifact(
@@ -267,6 +270,7 @@ def test_published_generation_is_idempotent_for_its_durable_request(tmp_path: Pa
         backup_kind="manual",
         writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
         expected_current_sha256=_EXPECTED_CURRENT_SHA256,
+        expected_installation_id=_EXPECTED_INSTALLATION_ID,
         expected_dataset_id=authority.dataset_id,
         expected_restore_epoch=authority.restore_epoch,
         expected_schema_revision=authority.schema_revision,
@@ -366,6 +370,7 @@ def test_backup_preserves_primary_and_lease_cleanup_failures(
         backup_kind="manual",
         writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
         expected_current_sha256=_EXPECTED_CURRENT_SHA256,
+        expected_installation_id=_EXPECTED_INSTALLATION_ID,
         expected_dataset_id=_EXPECTED_DATASET_ID,
         expected_restore_epoch=_EXPECTED_RESTORE_EPOCH,
         expected_schema_revision=_EXPECTED_SCHEMA_REVISION,
@@ -415,6 +420,7 @@ def test_backup_preserves_primary_staging_and_baseexception_lease_cleanup(
         backup_kind="manual",
         writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
         expected_current_sha256=_EXPECTED_CURRENT_SHA256,
+        expected_installation_id=_EXPECTED_INSTALLATION_ID,
         expected_dataset_id=_EXPECTED_DATASET_ID,
         expected_restore_epoch=_EXPECTED_RESTORE_EPOCH,
         expected_schema_revision=_EXPECTED_SCHEMA_REVISION,

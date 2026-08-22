@@ -17,7 +17,7 @@ from app.services.path_entry_safety import is_link_or_reparse
 MANIFEST_NAME = "manifest.json"
 DATABASE_ARCHIVE_NAME = "database.dump"
 ORIGINALS_DIRECTORY_NAME = "originals"
-MANIFEST_SCHEMA = "ticketbox-dataset-backup-v1"
+MANIFEST_SCHEMA = "ticketbox-dataset-backup-v2"
 MANIFEST_KIND = "ticketbox-dataset-backup"
 SANITATION_POLICY = "ticketbox-restore-sanitation-v1"
 BACKUP_KINDS = frozenset({"manual"})
@@ -31,6 +31,7 @@ _PAYLOAD_FIELDS = frozenset(
         "backup_kind",
         "created_at_utc",
         "release_id",
+        "source_installation_id",
         "writer_fence_sha256",
         "dataset_authority",
         "database",
@@ -78,6 +79,7 @@ class DatasetBackupManifest:
     backup_kind: str
     created_at: datetime
     release_id: str
+    source_installation_id: str
     writer_fence_sha256: str
     authority: DatasetAuthority
     database: DatabaseArtifact
@@ -114,6 +116,7 @@ def encode_manifest(manifest: DatasetBackupManifest) -> bytes:
         "backup_kind": manifest.backup_kind,
         "created_at_utc": _utc_text(manifest.created_at),
         "release_id": manifest.release_id,
+        "source_installation_id": manifest.source_installation_id,
         "writer_fence_sha256": manifest.writer_fence_sha256,
         "dataset_authority": _authority_payload(manifest.authority),
         "database": {
@@ -193,6 +196,7 @@ def _decode_payload(payload: dict[str, object]) -> DatasetBackupManifest:
         backup_kind=str(payload["backup_kind"]),
         created_at=_datetime(payload["created_at_utc"]),
         release_id=_plain_text(payload["release_id"], limit=128),
+        source_installation_id=_uuid(payload["source_installation_id"]),
         writer_fence_sha256=_sha(payload["writer_fence_sha256"]),
         authority=authority,
         database=DatabaseArtifact(

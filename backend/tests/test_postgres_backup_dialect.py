@@ -19,8 +19,23 @@ import app.services.postgres_backup_validation_service as pgval
 from app.errors import AppError
 from app.services.secure_file import write_protected_file_exclusive
 from scripts import postgres_backup_drill, postgres_frozen_restore_drill
+from scripts.postgres_dataset_facts import DatabaseFacts, TableFacts
 
 _DATABASE_URL = "postgresql+psycopg://ticketbox@localhost:5432/ticketbox?require_auth=scram-sha-256&sslmode=require"
+
+
+def test_restore_drill_rejects_same_count_content_mutation() -> None:
+    source = DatabaseFacts(
+        tables={"expenses": TableFacts(row_count=1, rows_sha256="a" * 64)},
+        sequences={"expenses_id_seq": (3, True)},
+    )
+    mutated = DatabaseFacts(
+        tables={"expenses": TableFacts(row_count=1, rows_sha256="b" * 64)},
+        sequences={"expenses_id_seq": (3, True)},
+    )
+
+    with pytest.raises(SystemExit, match="restored database contract differs"):
+        postgres_backup_drill._assert_restored_database(source, mutated, ())  # noqa: SLF001
 
 
 def test_frozen_dataset_maintenance_modules_expose_closed_action_surfaces() -> None:
@@ -103,17 +118,13 @@ def test_gitea_recovery_drill_qualifies_the_exact_frozen_restore_helper() -> Non
     workflow = (Path(__file__).resolve().parents[2] / ".gitea" / "workflows" / "windows-ci.yml").read_text(
         encoding="utf-8"
     )
-    postgres_job = workflow.split("  backend-postgres:", maxsplit=1)[1].split(
-        "  desktop-manager:", maxsplit=1
-    )[0]
+    postgres_job = workflow.split("  backend-postgres:", maxsplit=1)[1].split("  desktop-manager:", maxsplit=1)[0]
     drill = postgres_job.split("scripts\\postgres_backup_drill.py", maxsplit=1)[1].split(
         "if ($LASTEXITCODE", maxsplit=1
     )[0]
 
     assert "scripts\\build_backend_exe.ps1 -Clean" in postgres_job
-    assert postgres_job.index("scripts\\build_backend_exe.ps1 -Clean") < postgres_job.index(
-        "--frozen-restore-helper"
-    )
+    assert postgres_job.index("scripts\\build_backend_exe.ps1 -Clean") < postgres_job.index("--frozen-restore-helper")
     assert "--frozen-restore-helper" in drill
     assert "dist\\ticketbox-backend\\ticketbox-database-maintenance.exe" in drill
 

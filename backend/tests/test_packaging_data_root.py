@@ -194,6 +194,23 @@ def test_runtime_settings_follow_data_root_and_backup_root_is_explicit(tmp_path)
         importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
 
 
+def test_source_data_root_does_not_claim_installer_runtime_settings_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Only the installer marker grants service-owned projection authority."""
+
+    original = config.DATA_ROOT
+    config.DATA_ROOT = tmp_path
+    monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH", raising=False)
+    try:
+        runtime_settings = importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
+        assert runtime_settings._SERVICE_OWNED is False
+    finally:
+        config.DATA_ROOT = original
+        importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
+
+
 def test_installed_backup_inventory_exposes_only_sanitized_sibling_label(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

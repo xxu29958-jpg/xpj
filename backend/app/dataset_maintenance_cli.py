@@ -56,6 +56,7 @@ def _parse_complete_dataset_backup_args(argv: list[str]) -> Namespace:
     parser.add_argument("--backup-kind", choices=("manual",), required=True)
     parser.add_argument("--writer-fence-sha256", required=True)
     parser.add_argument("--expected-current-sha256", required=True)
+    parser.add_argument("--expected-installation-id", required=True)
     parser.add_argument("--expected-dataset-id", required=True)
     parser.add_argument("--expected-restore-epoch", type=int, required=True)
     parser.add_argument("--expected-schema-revision", required=True)
@@ -77,6 +78,7 @@ def _parse_isolated_dataset_restore_args(argv: list[str]) -> Namespace:
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--pgpassfile", type=Path, required=True)
     parser.add_argument("--pg-restore-path", type=Path, required=True)
+    parser.add_argument("--active-installation-id", required=True)
     parser.add_argument("--active-dataset-id", required=True)
     parser.add_argument("--active-restore-epoch", type=int, required=True)
     parser.add_argument("--target-schema-revision", required=True)
@@ -157,6 +159,7 @@ def _run_complete_dataset_backup(
             backup_kind=args.backup_kind,
             writer_fence_sha256=args.writer_fence_sha256,
             expected_current_sha256=args.expected_current_sha256,
+            expected_installation_id=args.expected_installation_id,
             expected_dataset_id=args.expected_dataset_id,
             expected_restore_epoch=args.expected_restore_epoch,
             expected_schema_revision=args.expected_schema_revision,
@@ -203,6 +206,7 @@ def _run_isolated_dataset_restore(
             database_url=args.database_url,
             passfile=args.pgpassfile,
             pg_restore_binary=args.pg_restore_path,
+            active_installation_id=args.active_installation_id,
             active_dataset_id=args.active_dataset_id,
             active_restore_epoch=args.active_restore_epoch,
             target_schema_revision=args.target_schema_revision,

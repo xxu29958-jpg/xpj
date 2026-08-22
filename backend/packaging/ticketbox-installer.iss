@@ -298,6 +298,7 @@ Source: "windows_database_generation_retirement.ps1"; DestDir: "{app}\installer"
 Source: "windows_database_generation_single_user.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_database_generation_projection.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_dataset_backup.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "windows_dataset_inventory.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_dataset_restore.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_installed_dataset_reader.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "windows_installed_dataset_operation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion

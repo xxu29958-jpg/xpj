@@ -266,6 +266,7 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_database_generation_single_user.ps1",
     "packaging/windows_database_generation_projection.ps1",
     "packaging/windows_dataset_backup.ps1",
+    "packaging/windows_dataset_inventory.ps1",
     "packaging/windows_dataset_restore.ps1",
     "packaging/windows_installed_dataset_reader.ps1",
     "packaging/windows_installed_dataset_operation.ps1",

@@ -88,8 +88,13 @@ try {
     $appData = Join-Path ([string]$subject.Identity.DataRoot) "app"
     $active = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
     $current = Read-TicketboxDatabaseGenerationCurrent
-    $request = Read-TicketboxInstalledDatasetOperation `
-        -StateRoot $stateRoot -ExpectedOperationKind "restore" -AllowAbsent
+    $operation = Read-TicketboxInstalledDatasetOperationAuthority `
+        -StateRoot $stateRoot -AllowAbsent
+    $request = if (
+        $null -ne $operation -and
+        [string]$operation.Payload.operation_kind -ceq "restore"
+    ) { $operation }
+    else { $null }
     $terminalResult = Read-TicketboxInstalledDatasetRestoreResult `
         -StateRoot $stateRoot `
         -RestoreAttemptId $RestoreAttemptId `
@@ -124,6 +129,8 @@ try {
         $activeDataset = Get-TicketboxInstalledActiveDatasetObservation `
             $subject $authority
         if (
+            [string]$inspection.Evidence.source_installation_id -cne
+                [string]$subject.Identity.InstallationId -or
             [string]$inspection.Evidence.dataset_id -cne [string]$activeDataset.DatasetId -or
             [string]$inspection.Evidence.schema_revision -cne [string]$activeDataset.SchemaRevision
         ) {

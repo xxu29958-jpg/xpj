@@ -93,9 +93,10 @@ $script:predecessorCurrent = [pscustomobject]@{{
     Payload = [pscustomobject]@{{ operation_id = $predecessorOperation }}
 }}
 $script:durableRequest = [pscustomobject]@{{
-    PayloadSha256 = $requestSha
-    Payload = [pscustomobject]@{{
-        operation_id = '22222222-2222-4222-8222-222222222222'
+        PayloadSha256 = $requestSha
+        Payload = [pscustomobject]@{{
+            operation_kind = 'restore'
+            operation_id = '22222222-2222-4222-8222-222222222222'
         backup_generation = 'ticketbox-backup-33333333-3333-4333-8333-333333333333'
         backup_manifest_sha256 = ('e' * 64)
         release_manifest_sha256 = ('7' * 64)
@@ -129,6 +130,7 @@ function Assert-TicketboxInstalledDatasetServiceAuthority {{ param($Subject) }}
 function Read-TicketboxDatabaseGenerationActiveIntent {{ return $script:predecessorIntent }}
 function Read-TicketboxDatabaseGenerationCurrent {{ return $script:predecessorCurrent }}
 function Read-TicketboxInstalledDatasetOperation {{ return $script:durableRequest }}
+function Read-TicketboxInstalledDatasetOperationAuthority {{ return $script:durableRequest }}
 function Read-TicketboxInstalledDatasetRestoreResult {{ return $null }}
 function Invoke-TicketboxInstalledDatasetBackupInspection {{
     return [pscustomobject]@{{ Evidence = [pscustomobject]@{{
@@ -239,9 +241,10 @@ $script:poison = @()
 $successor = '22222222-2222-4222-8222-222222222222'
 $predecessorSha = ('a' * 64)
 $script:durableRequest = [pscustomobject]@{{
-    PayloadSha256 = ('d' * 64)
-    Payload = [pscustomobject]@{{
-        operation_id = '11111111-1111-4111-8111-111111111111'
+        PayloadSha256 = ('d' * 64)
+        Payload = [pscustomobject]@{{
+            operation_kind = 'restore'
+            operation_id = '11111111-1111-4111-8111-111111111111'
         backup_generation = 'ticketbox-backup-33333333-3333-4333-8333-333333333333'
         backup_manifest_sha256 = ('e' * 64)
         release_manifest_sha256 = ('7' * 64)
@@ -307,6 +310,7 @@ function Read-TicketboxDatabaseGenerationActiveIntent {{
 }}
 function Read-TicketboxDatabaseGenerationCurrent {{ return $current }}
 function Read-TicketboxInstalledDatasetOperation {{ param($StateRoot, $ExpectedOperationKind, [switch]$AllowAbsent); return $script:durableRequest }}
+function Read-TicketboxInstalledDatasetOperationAuthority {{ param($StateRoot, [switch]$AllowAbsent); return $script:durableRequest }}
 function Read-TicketboxInstalledDatasetRestoreResult {{ return $null }}
 function Invoke-TicketboxInstalledDatasetBackupInspection {{
     return [pscustomobject]@{{ Evidence = [pscustomobject]@{{

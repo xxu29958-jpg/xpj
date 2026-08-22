@@ -218,6 +218,7 @@ function Read-TicketboxDatabaseGenerationCurrent {
     }
 }
 function Read-TicketboxInstalledDatasetOperation { param($StateRoot, $ExpectedOperationKind, [switch]$AllowAbsent); return $null }
+function Read-TicketboxInstalledDatasetOperationAuthority { param($StateRoot, [switch]$AllowAbsent); return $null }
 function Read-TicketboxInstalledDatasetRestoreResult {
     param($StateRoot, $RestoreAttemptId, $BackupGeneration, $Current, $ExpectedReleaseManifestSha256, [switch]$AllowAbsent)
     return [pscustomobject]@{

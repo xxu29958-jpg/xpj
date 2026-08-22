@@ -9,7 +9,10 @@ import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from backend_manager.dataset_inventory import BackupInventoryItem
 
 from backend_manager.process import HealthProbeResult
 from backend_manager.runtime import (
@@ -84,6 +87,7 @@ class ServiceGateway(Protocol):
 
 class ServiceActionRunner(Protocol):
     def run(self, action: str) -> None: ...
+    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]: ...
     def restore(self, backup_generation: str) -> None: ...
 
 
@@ -434,6 +438,9 @@ class BrokeredWindowsServiceRuntime:
 
     def backup(self) -> None:
         self._action_runner.run("backup")
+
+    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
+        return self._action_runner.backup_inventory()
 
     def restore(self, backup_generation: str) -> None:
         self._action_runner.restore(backup_generation)

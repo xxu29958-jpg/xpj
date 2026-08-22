@@ -40,6 +40,7 @@ from typing import Protocol
 
 from backend_manager.app_controller import ManagerShuttingDownError
 from backend_manager.product_data import ProductDataError
+from backend_manager.runtime import RuntimeControlError
 from backend_manager.web_bff import (
     ASSET_SESSION_COOKIE,
     MAX_REQUEST_BYTES,
@@ -298,6 +299,7 @@ class Controller(Protocol):
     def stop(self) -> None: ...
     def restart(self) -> None: ...
     def backup(self) -> None: ...
+    def backup_inventory(self) -> list[dict[str, object]]: ...
     def restore(self, backup_generation: str) -> None: ...
     def auto_restart(self) -> None: ...
     def open_console(self) -> None: ...
@@ -432,8 +434,7 @@ class _Handler(BaseHTTPRequestHandler):
         )
         self.send_header(
             "Set-Cookie",
-            f"{ASSET_SESSION_COOKIE}={session_ids[ASSET_SESSION_COOKIE]}; "
-            "Path=/static; HttpOnly; SameSite=Strict",
+            f"{ASSET_SESSION_COOKIE}={session_ids[ASSET_SESSION_COOKIE]}; Path=/static; HttpOnly; SameSite=Strict",
         )
         self.send_header(
             "Set-Cookie",
@@ -442,8 +443,7 @@ class _Handler(BaseHTTPRequestHandler):
         )
         self.send_header(
             "Set-Cookie",
-            f"{_CONTROL_SESSION_COOKIE}={session_ids[_CONTROL_SESSION_COOKIE]}; "
-            "Path=/; HttpOnly; SameSite=Strict",
+            f"{_CONTROL_SESSION_COOKIE}={session_ids[_CONTROL_SESSION_COOKIE]}; Path=/; HttpOnly; SameSite=Strict",
         )
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -895,6 +895,26 @@ class _Handler(BaseHTTPRequestHandler):
                 srv.action_lock.release()
             self._send_json(response_payload)
             return
+        if parsed_path.path == "/api/backups" and not parsed_path.query:
+            if not self._authorized():
+                self._send(403, b"forbidden", "text/plain; charset=utf-8")
+                return
+            if not self._has_empty_request_body():
+                self._send(400, b"request body not allowed", "text/plain; charset=utf-8")
+                return
+            if not srv.action_lock.acquire(blocking=False):
+                self._send_json({"error": "operation_in_progress"}, code=409)
+                return
+            try:
+                try:
+                    generations = srv.controller.backup_inventory()
+                except RuntimeControlError:
+                    self._send_json({"error": "backup_inventory_unavailable"}, code=503)
+                    return
+            finally:
+                srv.action_lock.release()
+            self._send_json({"generations": generations})
+            return
         action = _ACTION_PATHS.get(self.path)
         if action is None:
             self._send(404, b"unknown action", "text/plain; charset=utf-8")
@@ -961,10 +981,7 @@ class ControlServer(ThreadingHTTPServer):
     def issue_web_session(self) -> dict[str, str]:
         """Mint opaque lookup ids while retaining only their digests."""
 
-        session_ids = {
-            cookie_name: secrets.token_urlsafe(48)
-            for cookie_name in self._web_session_digests
-        }
+        session_ids = {cookie_name: secrets.token_urlsafe(48) for cookie_name in self._web_session_digests}
         with self._web_session_lock:
             for cookie_name, session_id in session_ids.items():
                 digest = hashlib.sha256(session_id.encode("ascii")).hexdigest()

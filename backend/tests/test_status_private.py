@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
+from app.errors import AppError
 from app.services import dataset_backup_inventory
 
 
@@ -91,3 +92,23 @@ def test_private_status_degrades_published_backup_inventory_failure(
     assert body["backup_age_hours"] is None
     assert body["backup_stale"] is True
     assert "pg_restore exploded" not in response.text
+
+
+def test_private_status_degrades_invalid_published_inventory(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity
+) -> None:
+    """A malformed sanitized projection is an unavailable observation, not a 500."""
+
+    def fail_backup_inventory() -> dataset_backup_inventory.PublishedBackupInventory:
+        raise AppError("backup_incomplete", status_code=500)
+
+    monkeypatch.setattr(
+        dataset_backup_inventory,
+        "published_backup_inventory",
+        fail_backup_inventory,
+    )
+
+    response = client.get("/api/status/private", headers=identity.app_headers)
+
+    assert response.status_code == 200
+    assert response.json()["backup_stale"] is True

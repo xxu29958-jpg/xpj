@@ -22,6 +22,7 @@ def test_backup_owner_passes_structured_barrier_and_inspects_before_request_reti
     cli = (APP / "dataset_maintenance_cli.py").read_text(encoding="utf-8")
     for field in (
         "--expected-current-sha256",
+        "--expected-installation-id",
         "--expected-dataset-id",
         "--expected-restore-epoch",
         "--expected-schema-revision",
@@ -117,13 +118,18 @@ function Get-TicketboxDatabaseGenerationTextSha256 {{ param($Value); return ('b'
 $operation = '11111111-1111-4111-8111-111111111111'
 $backup = '22222222-2222-4222-8222-222222222222'
 $dataset = '33333333-3333-4333-8333-333333333333'
+$installation = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 $release = ('a' * 64)
 $fence = ('b' * 64)
-$subject = [pscustomobject]@{{ Manifest = [pscustomobject]@{{ Sha256 = $release }} }}
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{ InstallationId = $installation }}
+    Manifest = [pscustomobject]@{{ Sha256 = $release }}
+}}
 $request = [pscustomobject]@{{ Payload = [pscustomobject]@{{
     operation_id = $operation
     backup_id = $backup
     backup_kind = 'manual'
+    installation_id = $installation
     current_sha256 = ('c' * 64)
     release_manifest_sha256 = $release
 }} }}
@@ -148,11 +154,12 @@ $result = [pscustomobject][ordered]@{{
     size_bytes = 4096
 }}
 $evidence = [pscustomobject][ordered]@{{
-    schema = 'ticketbox-complete-dataset-backup-inspection-v1'
+    schema = 'ticketbox-complete-dataset-backup-inspection-v2'
     operation_id = $operation
     backup_id = $backup
     backup_kind = 'manual'
     generation = "ticketbox-backup-$backup"
+    source_installation_id = $installation
     dataset_id = $dataset
     restore_epoch = 4
     schema_revision = '20260821_0001'
@@ -166,7 +173,7 @@ $inspection = [pscustomobject]@{{ Evidence = $evidence }}
 foreach ($case in @(
     'result_dataset', 'result_epoch',
     'inspection_dataset', 'inspection_epoch',
-    'operation', 'request_release', 'inspection_release', 'fence'
+    'operation', 'installation', 'request_release', 'inspection_release', 'fence'
 )) {{
     switch ($case) {{
         'result_dataset' {{ $result.dataset_id = '44444444-4444-4444-8444-444444444444' }}
@@ -174,6 +181,7 @@ foreach ($case in @(
         'inspection_dataset' {{ $evidence.dataset_id = '44444444-4444-4444-8444-444444444444' }}
         'inspection_epoch' {{ $evidence.restore_epoch = 5 }}
         'operation' {{ $evidence.operation_id = '55555555-5555-4555-8555-555555555555' }}
+        'installation' {{ $evidence.source_installation_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }}
         'request_release' {{ $request.Payload.release_manifest_sha256 = ('e' * 64) }}
         'inspection_release' {{ $evidence.release_id = ('e' * 64) }}
         'fence' {{ $evidence.writer_fence_sha256 = ('f' * 64) }}
@@ -189,6 +197,7 @@ foreach ($case in @(
     $evidence.dataset_id = $dataset
     $evidence.restore_epoch = 4
     $evidence.operation_id = $operation
+    $evidence.source_installation_id = $installation
     $request.Payload.release_manifest_sha256 = $release
     $evidence.release_id = $release
     $evidence.writer_fence_sha256 = $fence

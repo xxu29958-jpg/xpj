@@ -118,11 +118,9 @@ function Assert-TicketboxInstalledDatasetOperation {
     return $Operation
 }
 
-function Read-TicketboxInstalledDatasetOperation {
+function Read-TicketboxInstalledDatasetOperationAuthority {
     param(
         [Parameter(Mandatory = $true)][string]$StateRoot,
-        [Parameter(Mandatory = $true)][ValidateSet("backup", "restore")]
-        [string]$ExpectedOperationKind,
         [switch]$AllowAbsent
     )
     $path = Get-TicketboxInstalledDatasetOperationPath $StateRoot
@@ -165,6 +163,20 @@ function Read-TicketboxInstalledDatasetOperation {
             PayloadSha256 = $payloadSha256
         }) `
         -ExpectedOperationKind $actualKind
+    return $operation
+}
+
+function Read-TicketboxInstalledDatasetOperation {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][ValidateSet("backup", "restore")]
+        [string]$ExpectedOperationKind,
+        [switch]$AllowAbsent
+    )
+    $operation = Read-TicketboxInstalledDatasetOperationAuthority `
+        -StateRoot $StateRoot -AllowAbsent:$AllowAbsent
+    if ($null -eq $operation) { return $null }
+    $actualKind = [string]$operation.Payload.operation_kind
     if ($actualKind -cne $ExpectedOperationKind) {
         throw "installed dataset $actualKind operation is already active."
     }
@@ -177,9 +189,24 @@ function Write-TicketboxInstalledDatasetOperation {
         [Parameter(Mandatory = $true)][object]$Payload,
         [Parameter(Mandatory = $true)][ValidateSet("backup", "restore")]
         [string]$OperationKind,
+        [Parameter(Mandatory = $true)][AllowNull()][object]$ExpectedExisting,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    $replaceExisting = $null -ne $ExpectedExisting
+    $observed = Read-TicketboxInstalledDatasetOperationAuthority `
+        -StateRoot $StateRoot -AllowAbsent
+    if (
+        ($replaceExisting -and $null -eq $observed) -or
+        (-not $replaceExisting -and $null -ne $observed) -or
+        (
+            $replaceExisting -and
+            [string]$observed.PayloadSha256 -cne
+                [string]$ExpectedExisting.PayloadSha256
+        )
+    ) {
+        throw "installed dataset operation changed before publication."
+    }
     $payloadJson = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $Payload
     $envelope = [ordered]@{
         schema = "ticketbox-installed-dataset-operation-envelope-v1"
@@ -191,7 +218,8 @@ function Write-TicketboxInstalledDatasetOperation {
         -Path (Get-TicketboxInstalledDatasetOperationPath $StateRoot) `
         -Text (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope) `
         -FullControlAccounts $script:TicketboxInstalledDatasetOperationAclAccounts `
-        -OwnerAccount "SYSTEM"
+        -OwnerAccount "SYSTEM" `
+        -ReplaceExisting:$replaceExisting
     return Read-TicketboxInstalledDatasetOperation `
         $StateRoot $OperationKind
 }
@@ -232,7 +260,7 @@ function Start-TicketboxInstalledDatasetBackupOperation {
         backup_kind = $BackupKind
     }
     return Write-TicketboxInstalledDatasetOperation `
-        $Authority.StateRoot $payload "backup" $LifecycleLock
+        $Authority.StateRoot $payload "backup" $null $LifecycleLock
 }
 
 function Start-TicketboxInstalledDatasetRestoreOperation {
@@ -269,19 +297,41 @@ function Start-TicketboxInstalledDatasetRestoreOperation {
         active_dataset_id = ([guid]$ActiveDatasetId).ToString("D")
         active_restore_epoch = $ActiveRestoreEpoch
     }
-    $existing = Read-TicketboxInstalledDatasetOperation `
-        $Authority.StateRoot "restore" -AllowAbsent
+    $existing = Read-TicketboxInstalledDatasetOperationAuthority `
+        -StateRoot $Authority.StateRoot -AllowAbsent
     if ($null -ne $existing) {
-        if (
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $existing.Payload) -cne
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $immutable)
-        ) {
-            throw "active dataset restore operation differs from immutable input."
+        if ([string]$existing.Payload.operation_kind -ceq "restore") {
+            if (
+                (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $existing.Payload) -cne
+                (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $immutable)
+            ) {
+                throw "active dataset restore operation differs from immutable input."
+            }
+            return $existing
         }
-        return $existing
+        if (
+            [string]$existing.Payload.installation_id -cne
+                [string]$Subject.Identity.InstallationId -or
+            [string]$existing.Payload.current_sha256 -cne
+                [string]$Authority.Current.PayloadSha256 -or
+            [string]$existing.Payload.release_manifest_sha256 -cne
+                ([string]$Subject.Manifest.Sha256).ToLowerInvariant()
+        ) {
+            throw "active dataset backup operation differs from installed authority."
+        }
+        $backupId = ([guid][string]$existing.Payload.backup_id).ToString("D")
+        $backupRoot = Join-Path ([string]$Subject.Identity.DataRoot) "backups"
+        foreach ($path in @(
+            (Join-Path $backupRoot "ticketbox-backup-$backupId"),
+            (Join-Path $backupRoot ".ticketbox-backup-$backupId.staging")
+        )) {
+            if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "Missing") {
+                throw "active dataset backup has physical state and cannot be superseded."
+            }
+        }
     }
     return Write-TicketboxInstalledDatasetOperation `
-        $Authority.StateRoot $immutable "restore" $LifecycleLock
+        $Authority.StateRoot $immutable "restore" $existing $LifecycleLock
 }
 
 function Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition {

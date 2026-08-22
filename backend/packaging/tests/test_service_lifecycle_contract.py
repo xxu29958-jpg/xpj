@@ -1111,7 +1111,7 @@ def test_complete_dataset_backup_persists_request_before_stopping_writers() -> N
     assert 'choices=("manual",)' in maintenance_cli
 
 
-def test_complete_dataset_backup_request_is_write_once_and_retriable_cross_engine(
+def test_dataset_operation_is_retriable_and_supersedes_only_empty_backup_cross_engine(
     tmp_path: Path,
 ) -> None:
     contract = PACKAGING / "windows_installed_dataset_operation.ps1"
@@ -1151,7 +1151,10 @@ function Get-TicketboxPathEntryKindNoFollow {{
     return 'Missing'
 }}
 function Write-TicketboxProtectedUtf8FileDurable {{
-    param([string]$Path, [string]$Text, [string[]]$FullControlAccounts, [string]$OwnerAccount)
+    param(
+        [string]$Path, [string]$Text, [string[]]$FullControlAccounts,
+        [string]$OwnerAccount, [switch]$ReplaceExisting
+    )
     [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
 }}
 function Read-TicketboxProtectedUtf8Artifact {{
@@ -1189,9 +1192,13 @@ $currentSha = Get-TicketboxDatabaseGenerationTextSha256 (
     ConvertTo-TicketboxDatabaseGenerationCanonicalJson $currentPayload
 )
 $subject = [pscustomobject]@{{
-    Identity = [pscustomobject]@{{ InstallationId = $installation }}
+    Identity = [pscustomobject]@{{
+        InstallationId = $installation
+        DataRoot = '{_ps_literal(tmp_path / "data")}'
+    }}
     Manifest = [pscustomobject]@{{ Sha256 = ('b' * 64) }}
 }}
+[void][IO.Directory]::CreateDirectory((Join-Path $subject.Identity.DataRoot 'backups'))
 $authority = [pscustomobject]@{{
     StateRoot = '{_ps_literal(state_root)}'
     Intent = [pscustomobject]@{{ PayloadSha256 = $intentSha; Payload = $intentPayload }}
@@ -1219,25 +1226,43 @@ if (
 ) {{ throw 'retry did not reuse the exact durable request' }}
 $activePath = Get-TicketboxInstalledDatasetOperationPath $authority.StateRoot
 $backupBytes = [IO.File]::ReadAllText($activePath, [Text.Encoding]::UTF8)
+$restore = Start-TicketboxInstalledDatasetRestoreOperation `
+    $subject $authority $inspection `
+    '55555555-5555-4555-8555-555555555555' `
+    '44444444-4444-4444-8444-444444444444' 0 $false `
+    $lease
+if (
+    [string]$restore.Payload.operation_kind -cne 'restore' -or
+    [string]$restore.Payload.operation_id -cne '55555555-5555-4555-8555-555555555555' -or
+    [IO.File]::ReadAllText($activePath, [Text.Encoding]::UTF8) -ceq $backupBytes
+) {{ throw 'empty failed backup was not atomically superseded by restore' }}
+Remove-TicketboxInstalledDatasetOperation $restore $lease
+
+$partial = Start-TicketboxInstalledDatasetBackupOperation `
+    $subject $authority manual $false $lease
+$partialBytes = [IO.File]::ReadAllText($activePath, [Text.Encoding]::UTF8)
+$partialPath = Join-Path `
+    (Join-Path $subject.Identity.DataRoot 'backups') `
+    ('.ticketbox-backup-' + [string]$partial.Payload.backup_id + '.staging')
+[void][IO.Directory]::CreateDirectory($partialPath)
 $rejected = $false
 try {{
     Start-TicketboxInstalledDatasetRestoreOperation `
         $subject $authority $inspection `
-        '55555555-5555-4555-8555-555555555555' `
+        '66666666-6666-4666-8666-666666666666' `
         '44444444-4444-4444-8444-444444444444' 0 $false `
         $lease | Out-Null
 }}
-catch {{ $rejected = $_.Exception.Message -like '*backup operation is already active*' }}
-if (-not $rejected -or [IO.File]::ReadAllText($activePath, [Text.Encoding]::UTF8) -cne $backupBytes) {{
-    throw 'active backup did not reject restore without mutation'
+catch {{ $rejected = $_.Exception.Message -like '*physical state*' }}
+if (-not $rejected -or [IO.File]::ReadAllText($activePath, [Text.Encoding]::UTF8) -cne $partialBytes) {{
+    throw 'partial backup did not block restore without mutation'
 }}
-Remove-TicketboxInstalledDatasetOperation $second $lease
-if ($null -ne (Read-TicketboxInstalledDatasetOperation $authority.StateRoot backup -AllowAbsent)) {{
-    throw 'completed request was not retired'
-}}
+Remove-TicketboxInstalledDatasetOperation $partial $lease
+[IO.Directory]::Delete($partialPath)
+
 $restore = Start-TicketboxInstalledDatasetRestoreOperation `
     $subject $authority $inspection `
-    '55555555-5555-4555-8555-555555555555' `
+    '77777777-7777-4777-8777-777777777777' `
     '44444444-4444-4444-8444-444444444444' 0 $false `
     $lease
 $restoreBytes = [IO.File]::ReadAllText($activePath, [Text.Encoding]::UTF8)

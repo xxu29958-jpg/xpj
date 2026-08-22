@@ -64,7 +64,7 @@ def _fake_result_channel(action: str, exit_code: int, diagnostic: str):
         @staticmethod
         def read(actual_exit_code: int) -> HelperResult | None:
             assert actual_exit_code == exit_code
-            return HelperResult(exit_code=exit_code, diagnostic=diagnostic)
+            return HelperResult(exit_code=exit_code, diagnostic=diagnostic, payload=None)
 
     yield Channel()
 
@@ -170,7 +170,7 @@ def test_restore_reuses_attempt_after_trusted_helper_response_is_lost(
     helper.parent.mkdir(parents=True)
     helper.write_bytes(b"MZ")
     attempts: list[str] = []
-    reads = iter((None, HelperResult(exit_code=0, diagnostic="")))
+    reads = iter((None, HelperResult(exit_code=0, diagnostic="", payload=None)))
 
     @contextmanager
     def channels(action: str):
@@ -239,6 +239,7 @@ def test_superseded_restore_retires_stale_attempt_before_requiring_new_confirmat
                 return HelperResult(
                     exit_code=actual_exit_code,
                     diagnostic="此前恢复已被后续 generation 取代。",
+                    payload=None,
                 )
 
         yield Channel()
@@ -273,7 +274,7 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
     path.write_text(
         json.dumps(
             {
-                "schema": "ticketbox-manager-helper-result-v1",
+                "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path),
                 "nonce": nonce,
                 "action": "start",
@@ -295,6 +296,7 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
         file_identity,
         HELPER_EXIT_CONFIG,
         "DATABASE_URL=postgresql://owner:super-secret@127.0.0.1/db token=abc123 " + "x" * 1200,
+        None,
     )
     result = HelperResultChannel(
         path,
@@ -309,14 +311,20 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
     assert "abc123" not in result.diagnostic
     assert result.diagnostic == "小票夹安装信息不可用，请修复或重新安装后重试。"
     assert len(result.diagnostic) <= 800
-    assert HelperResultChannel(path, tmp_path, "z" * 43, "start", "S-1-5-21-1000", file_identity).read(
-        HELPER_EXIT_CONFIG,
-    ) is None
+    assert (
+        HelperResultChannel(path, tmp_path, "z" * 43, "start", "S-1-5-21-1000", file_identity).read(
+            HELPER_EXIT_CONFIG,
+        )
+        is None
+    )
     assert sanitize_helper_diagnostic("secret=hunter2", "固定公开错误") == "固定公开错误"
-    assert sanitize_helper_diagnostic(
-        r"failed at C:\Program Files\Ticketbox\app\.env",
-        "固定公开错误",
-    ) == "固定公开错误"
+    assert (
+        sanitize_helper_diagnostic(
+            r"failed at C:\Program Files\Ticketbox\app\.env",
+            "固定公开错误",
+        )
+        == "固定公开错误"
+    )
 
     forced = threading.Event()
     exit_codes: list[int] = []
@@ -403,25 +411,30 @@ def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path:
     results: list[tuple[int, str]] = []
     monkeypatch.setattr(
         "backend_manager.__main__.write_helper_result",
-        lambda _path, _root, _nonce, _action, _owner_sid, _file_id, code, detail: results.append((code, detail)),
+        lambda _path, _root, _nonce, _action, _owner_sid, _file_id, code, detail, _payload: results.append(
+            (code, detail)
+        ),
     )
 
-    assert main(
-        [
-            "--elevated-service-action",
-            "stop",
-            "--helper-result-path",
-            str(tmp_path / "result.json"),
-            "--helper-result-root",
-            str(tmp_path),
-            "--helper-result-nonce",
-            "n" * 43,
-            "--helper-channel-owner-sid",
-            "S-1-5-21-1000",
-            "--helper-channel-file-id",
-            "1:2",
-        ],
-    ) == HELPER_EXIT_MISSING_SERVICE
+    assert (
+        main(
+            [
+                "--elevated-service-action",
+                "stop",
+                "--helper-result-path",
+                str(tmp_path / "result.json"),
+                "--helper-result-root",
+                str(tmp_path),
+                "--helper-result-nonce",
+                "n" * 43,
+                "--helper-channel-owner-sid",
+                "S-1-5-21-1000",
+                "--helper-channel-file-id",
+                "1:2",
+            ],
+        )
+        == HELPER_EXIT_MISSING_SERVICE
+    )
     assert events == ["validate", "build"]
     assert watchdog_timeouts == [release.helper_watchdog_seconds("stop")]
     assert results == [(HELPER_EXIT_MISSING_SERVICE, "missing")]
@@ -477,25 +490,30 @@ def test_elevated_backup_delegates_to_installed_owner_without_python_lock(
     )
     monkeypatch.setattr(
         "backend_manager.__main__.write_helper_result",
-        lambda _path, _root, _nonce, _action, _owner_sid, _file_id, code, detail: results.append((code, detail)),
+        lambda _path, _root, _nonce, _action, _owner_sid, _file_id, code, detail, _payload: results.append(
+            (code, detail)
+        ),
     )
 
-    assert main(
-        [
-            "--elevated-service-action",
-            "backup",
-            "--helper-result-path",
-            str(tmp_path / "result.json"),
-            "--helper-result-root",
-            str(tmp_path),
-            "--helper-result-nonce",
-            "n" * 43,
-            "--helper-channel-owner-sid",
-            "S-1-5-21-1000",
-            "--helper-channel-file-id",
-            "1:2",
-        ],
-    ) == 0
+    assert (
+        main(
+            [
+                "--elevated-service-action",
+                "backup",
+                "--helper-result-path",
+                str(tmp_path / "result.json"),
+                "--helper-result-root",
+                str(tmp_path),
+                "--helper-result-nonce",
+                "n" * 43,
+                "--helper-channel-owner-sid",
+                "S-1-5-21-1000",
+                "--helper-channel-file-id",
+                "1:2",
+            ],
+        )
+        == 0
+    )
     assert events == [
         "watchdog:" + str(release.helper_watchdog_seconds("backup")),
         "validate",

@@ -22,6 +22,7 @@ _EXPECTED_DATASET_ID = "5895e71e-1c87-4a59-b1c7-04f68817795e"
 _EXPECTED_RESTORE_EPOCH = 3
 _EXPECTED_SCHEMA_REVISION = "20260821_0001"
 _EXPECTED_WRITER_FENCE_SHA256 = "b" * 64
+_EXPECTED_INSTALLATION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 
 def _write_complete_generation(
@@ -40,6 +41,7 @@ def _write_complete_generation(
         backup_kind="manual",
         created_at=created_at,
         release_id="release-fixture",
+        source_installation_id=_EXPECTED_INSTALLATION_ID,
         writer_fence_sha256=_EXPECTED_WRITER_FENCE_SHA256,
         authority=DatasetAuthority(
             dataset_id=_EXPECTED_DATASET_ID,
@@ -134,6 +136,39 @@ def test_corrupt_new_generation_cannot_trigger_retention(tmp_path: Path) -> None
 
     assert all((backup_root / f"ticketbox-backup-{item}").is_dir() for item in old_ids)
     assert not inventory_path.exists()
+
+
+def test_corrupt_retained_generation_does_not_block_new_verified_publication(
+    tmp_path: Path,
+) -> None:
+    from app.services.dataset_backup_inventory import (
+        list_published_backup_records,
+        reconcile_published_backup_inventory,
+    )
+
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+    inventory_path = tmp_path / "app" / "backup-inventory.json"
+    inventory_path.parent.mkdir()
+    created = datetime(2026, 8, 21, tzinfo=UTC)
+    old_id = "11111111-1111-4111-8111-111111111111"
+    required_id = "22222222-2222-4222-8222-222222222222"
+    corrupt = _write_complete_generation(backup_root, backup_id=old_id, created_at=created)
+    (corrupt / DATABASE_ARCHIVE_NAME).write_bytes(b"corrupt-old-payload")
+    required = _write_complete_generation(
+        backup_root,
+        backup_id=required_id,
+        created_at=created + timedelta(minutes=1),
+    )
+
+    reconcile_published_backup_inventory(
+        backup_root=backup_root,
+        inventory_path=inventory_path,
+        required_generation=required.name,
+    )
+
+    assert [item.backup_id for item in list_published_backup_records(inventory_path=inventory_path)] == [required_id]
+    assert corrupt.is_dir()
 
 
 def test_inventory_must_publish_before_any_retention_delete(

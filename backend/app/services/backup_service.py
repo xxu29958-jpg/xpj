@@ -47,6 +47,7 @@ from app.services.dataset_originals_adapter import (
     OriginalReference,
     copy_complete_originals,
 )
+from app.services.durable_publication import publish_durable_tree
 from app.services.path_entry_safety import is_link_or_reparse
 from app.services.postgres_backup_adapter import write_postgres_archive
 from app.services.time_service import now_utc
@@ -71,6 +72,7 @@ class CompleteBackupRequest:
     backup_kind: str
     writer_fence_sha256: str
     expected_current_sha256: str
+    expected_installation_id: str
     expected_dataset_id: str
     expected_restore_epoch: int
     expected_schema_revision: str
@@ -112,7 +114,7 @@ def create_complete_backup_generation(
             )
             (staging / MANIFEST_NAME).write_bytes(encode_manifest(manifest))
             read_manifest(staging, verify_files=True)
-            os.rename(staging, target)
+            publish_durable_tree(staging, target)
             entry = _entry(generation_name, manifest)
         reconcile_published_backup_inventory(
             backup_root=validated.backup_root,
@@ -197,6 +199,7 @@ def _build_staged_generation(
         backup_kind=request.backup_kind,
         created_at=now_utc(),
         release_id=request.release_id,
+        source_installation_id=request.expected_installation_id,
         writer_fence_sha256=request.writer_fence_sha256,
         authority=authority,
         database=DatabaseArtifact(
@@ -215,6 +218,7 @@ def _validate_request(request: CompleteBackupRequest) -> CompleteBackupRequest:
         or not _plain_text(request.release_id, limit=128)
         or _SHA256.fullmatch(request.writer_fence_sha256) is None
         or _SHA256.fullmatch(request.expected_current_sha256) is None
+        or _canonical_uuid(request.expected_installation_id) is None
         or _canonical_uuid(request.expected_dataset_id) is None
         or not isinstance(request.expected_restore_epoch, int)
         or isinstance(request.expected_restore_epoch, bool)
@@ -264,6 +268,7 @@ def _validate_request(request: CompleteBackupRequest) -> CompleteBackupRequest:
         backup_kind=request.backup_kind,
         writer_fence_sha256=request.writer_fence_sha256,
         expected_current_sha256=request.expected_current_sha256,
+        expected_installation_id=request.expected_installation_id,
         expected_dataset_id=request.expected_dataset_id,
         expected_restore_epoch=request.expected_restore_epoch,
         expected_schema_revision=request.expected_schema_revision,
@@ -280,6 +285,7 @@ def _assert_published_request(
         or manifest.backup_kind != request.backup_kind
         or manifest.release_id != request.release_id
         or manifest.writer_fence_sha256 != request.writer_fence_sha256
+        or manifest.source_installation_id != request.expected_installation_id
         or manifest.authority.dataset_id != request.expected_dataset_id
         or manifest.authority.restore_epoch != request.expected_restore_epoch
         or manifest.authority.schema_revision != request.expected_schema_revision

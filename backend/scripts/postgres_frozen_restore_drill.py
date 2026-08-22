@@ -13,11 +13,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from psycopg import Connection, sql
-from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 from app.services.dataset_backup_contract import DatasetBackupManifest
 from app.services.secure_file import write_protected_file_exclusive
+from scripts.postgres_dataset_facts import DatabaseFacts, read_database_facts
 
 
 def restore_with_frozen_helper(
@@ -30,7 +30,7 @@ def restore_with_frozen_helper(
     temporary: Path,
     generation: Path,
     manifest: DatasetBackupManifest,
-) -> tuple[dict[str, int], Path]:
+) -> tuple[DatabaseFacts, Path]:
     """Run the shipped maintenance EXE with its exact program and role topology."""
 
     program = helper.parent / "DATABASE_GENERATION_PROGRAM.json"
@@ -63,6 +63,8 @@ def restore_with_frozen_helper(
                 str(restore_passfile),
                 "--pg-restore-path",
                 str(pg_restore),
+                "--active-installation-id",
+                manifest.source_installation_id,
                 "--active-dataset-id",
                 manifest.authority.dataset_id,
                 "--active-restore-epoch",
@@ -97,9 +99,9 @@ def restore_with_frozen_helper(
             or result.get("generation_program_sha256") != program_sha256
         ):
             raise SystemExit("FAIL drill: frozen restore result escaped its generation")
-        restored_counts = _counts(admin_ticketbox_url)
+        restored_facts = read_database_facts(admin_ticketbox_url)
     print("OK exact frozen helper restored and verified the real PostgreSQL dataset")
-    return restored_counts, restored_originals
+    return restored_facts, restored_originals
 
 
 @contextmanager
@@ -191,24 +193,6 @@ def _admin_connection(admin_url: str, passfile: Path) -> Connection:
         autocommit=True,
         passfile=str(passfile),
     )
-
-
-def _counts(url: str) -> dict[str, int]:
-    engine = create_engine(url, pool_pre_ping=True)
-    try:
-        with engine.connect() as connection:
-            tables = [
-                str(row[0])
-                for row in connection.execute(
-                    text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
-                )
-            ]
-            return {
-                table: int(connection.execute(text(f'SELECT count(*) FROM "{table}"')).scalar() or 0)
-                for table in tables
-            }
-    finally:
-        engine.dispose()
 
 
 __all__ = ["restore_with_frozen_helper"]

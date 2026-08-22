@@ -12,7 +12,7 @@ import threading
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from backend_manager import windows_user_security
 from backend_manager.helper_channel import (
@@ -24,16 +24,19 @@ from backend_manager.helper_channel import (
 from backend_manager.installation import WindowsReleaseConfig
 from backend_manager.runtime import RuntimeControlError
 
-ServiceAction = Literal["start", "stop", "restart", "backup", "restore"]
+if TYPE_CHECKING:
+    from backend_manager.dataset_inventory import BackupInventoryItem
+
+ServiceAction = Literal["start", "stop", "restart", "backup", "restore", "inventory"]
 
 _SEE_MASK_NOCLOSEPROCESS = 0x00000040
 _SW_HIDE = 0
 _WAIT_OBJECT_0 = 0
 _WAIT_TIMEOUT = 258
 _ERROR_CANCELLED = 1223
-_MAX_RESULT_BYTES = 4096
+_MAX_RESULT_BYTES = 16 * 1024
 _MAX_DIAGNOSTIC_CHARS = 800
-_RESULT_SCHEMA = "ticketbox-manager-helper-result-v1"
+_RESULT_SCHEMA = "ticketbox-manager-helper-result-v2"
 _FILE_ID_PATTERN = re.compile(r"[0-9a-f]+:[0-9a-f]+\Z")
 HELPER_EXIT_NOT_ELEVATED = 2
 HELPER_EXIT_CONFIG = 3
@@ -90,6 +93,7 @@ class HelperCommand:
 class HelperResult:
     exit_code: int
     diagnostic: str
+    payload: object
 
 
 @dataclass(frozen=True)
@@ -114,7 +118,7 @@ class HelperResultChannel:
             )
         except RuntimeControlError:
             return None
-        expected_keys = {"schema", "root", "nonce", "action", "file_identity", "exit_code", "diagnostic"}
+        expected_keys = {"schema", "root", "nonce", "action", "file_identity", "exit_code", "diagnostic", "payload"}
         if not isinstance(payload, dict) or set(payload) != expected_keys:
             return None
         if (
@@ -129,7 +133,7 @@ class HelperResultChannel:
         diagnostic = payload.get("diagnostic")
         if not isinstance(diagnostic, str) or not diagnostic or len(diagnostic) > _MAX_DIAGNOSTIC_CHARS:
             return None
-        return HelperResult(exit_code=process_exit_code, diagnostic=diagnostic)
+        return HelperResult(exit_code=process_exit_code, diagnostic=diagnostic, payload=payload["payload"])
 
 
 def is_process_elevated() -> bool:
@@ -180,6 +184,7 @@ def _read_channel_payload(
             "file_identity",
             "exit_code",
             "diagnostic",
+            "payload",
         }
     )
     if not isinstance(payload, dict) or set(payload) != expected:
@@ -272,6 +277,7 @@ def write_helper_result(
     file_identity: str,
     exit_code: int,
     diagnostic: str,
+    payload: object,
 ) -> None:
     public_fallback = "操作已完成。" if exit_code == 0 else _HELPER_FAILURE_MESSAGES.get(exit_code, "操作失败。")
     payload = {
@@ -282,6 +288,7 @@ def write_helper_result(
         "file_identity": file_identity,
         "exit_code": exit_code,
         "diagnostic": sanitize_helper_diagnostic(diagnostic, public_fallback),
+        "payload": payload,
     }
     encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
     if len(encoded.encode("utf-8")) > _MAX_RESULT_BYTES:
@@ -525,9 +532,7 @@ class ElevatedServiceActionRunner:
             raise RuntimeControlError("管理员服务助手未返回可信结果；请刷新服务状态后重试。")
         if exit_code == HELPER_EXIT_RESTORE_SUPERSEDED:
             attempt_store.retire_confirmed(backup_generation, restore_attempt_id)
-            raise RuntimeControlError(
-                result.diagnostic or _HELPER_FAILURE_MESSAGES[HELPER_EXIT_RESTORE_SUPERSEDED]
-            )
+            raise RuntimeControlError(result.diagnostic or _HELPER_FAILURE_MESSAGES[HELPER_EXIT_RESTORE_SUPERSEDED])
         if exit_code != 0:
             message = result.diagnostic or _HELPER_FAILURE_MESSAGES.get(
                 exit_code,
@@ -535,3 +540,20 @@ class ElevatedServiceActionRunner:
             )
             raise RuntimeControlError(message)
         attempt_store.retire_confirmed(backup_generation, restore_attempt_id)
+
+    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
+        from backend_manager.dataset_inventory import decode_public_inventory
+
+        action: ServiceAction = "inventory"
+        with self._channel_factory(action) as channel:
+            command = build_helper_command(
+                action,
+                channel,
+                self._release.helper_parent_timeout_ms(action),
+                helper_executable=self._helper_executable,
+            )
+            exit_code = self._launcher(command)
+            result = channel.read(exit_code)
+        if result is None or exit_code != 0:
+            raise RuntimeControlError("无法读取可信的完整备份列表。")
+        return decode_public_inventory(result.payload)

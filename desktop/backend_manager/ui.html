@@ -94,7 +94,7 @@
     .product-link:hover { color: var(--ink); text-decoration: underline; }
     .product-link + .overall-state { margin-left: 0; }
     .product-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .product-actions input[type="text"], .product-actions select, .restore-actions input[type="text"] {
+    .product-actions input[type="text"], .product-actions select, .restore-actions select {
       min-height: 34px;
       padding: 6px 9px;
       border: 1px solid var(--line);
@@ -106,7 +106,7 @@
     }
     .product-actions input[type="text"] { width: 9em; letter-spacing: 0.12em; }
     .restore-actions { display: grid; gap: 8px; margin-top: 10px; }
-    .restore-actions input[type="text"] { width: 100%; font-family: var(--mono); font-size: 11px; }
+    .restore-actions select { width: 100%; font-family: var(--mono); font-size: 11px; }
     /* The hidden attribute is authoritative over every display rule above —
        pair form / manage group / product link must never coexist. */
     [hidden] { display: none !important; }
@@ -329,7 +329,10 @@
           <button class="button manager-action owner-action" type="button" onclick="act('open_backups', this)">查看备份</button>
         </div>
         <div class="restore-actions">
-          <input type="text" id="restoreGeneration" autocomplete="off" spellcheck="false" placeholder="ticketbox-backup-…" aria-label="要恢复的完整备份 generation">
+          <select id="restoreGeneration" aria-label="要恢复的完整备份 generation">
+            <option value="">请先读取备份列表</option>
+          </select>
+          <button class="button manager-action" id="backupInventoryAction" type="button" onclick="loadBackupInventory(this)">读取备份列表</button>
           <button class="button manager-action" id="restoreAction" type="button" onclick="restoreDataset(this)">恢复所选备份</button>
         </div>
       </article>
@@ -405,6 +408,7 @@
       $("backupAction").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed" || !serviceControls;
       $("restoreAction").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed" || !serviceControls;
       $("restoreGeneration").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed";
+      $("backupInventoryAction").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed";
       document.querySelector("main").setAttribute("aria-busy", String(actionInFlight));
     }
 
@@ -735,7 +739,7 @@
     async function restoreDataset(button) {
       const generation = $("restoreGeneration").value.trim();
       if (!/^ticketbox-backup-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(generation)) {
-        setMessage("controlError", "请从完整备份页面复制一个明确的 generation 名称。");
+        setMessage("controlError", "请先读取并选择一个完整备份。");
         return;
       }
       if (!window.confirm("恢复会停止服务，并用所选备份发布新的数据 generation。原数据会保留到发布成功。继续吗？")) return;
@@ -766,6 +770,42 @@
         actionInFlight = false;
         applyActionAvailability(latestStatus);
         await refresh();
+      }
+    }
+
+    async function loadBackupInventory(button) {
+      if (actionInFlight) return;
+      actionInFlight = true;
+      applyActionAvailability(latestStatus);
+      const original = button.textContent;
+      button.textContent = "读取中";
+      try {
+        const response = await fetch("/api/backups", {
+          method: "POST",
+          headers: {"X-Control-Token": window.CONTROL_TOKEN}
+        });
+        if (!response.ok) throw new Error("inventory");
+        const payload = await response.json();
+        const rows = Array.isArray(payload.generations) ? payload.generations : [];
+        $("restoreGeneration").replaceChildren(...rows.map((row) => {
+          const option = document.createElement("option");
+          option.value = row.generation;
+          option.textContent = `${row.created_at} · ${row.generation}`;
+          return option;
+        }));
+        if (rows.length === 0) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "没有已发布的完整备份";
+          $("restoreGeneration").append(option);
+        }
+        setMessage("controlError", "");
+      } catch (_error) {
+        setMessage("controlError", "无法读取可信的完整备份列表；备份 payload 未被开放给管理器。");
+      } finally {
+        button.textContent = original;
+        actionInFlight = false;
+        applyActionAvailability(latestStatus);
       }
     }
 

@@ -8,11 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 OPERATION_ID = "11111111-1111-4111-8111-111111111111"
+INSTALLATION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 TARGET_REVISION = "20260729_0001"
-MIGRATOR_URL = (
-    "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/"
-    "ticketbox?require_auth=scram-sha-256"
-)
+MIGRATOR_URL = "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/ticketbox?require_auth=scram-sha-256"
 
 
 class _QuietContext:
@@ -118,6 +116,7 @@ def test_complete_backup_action_preserves_body_and_session_exit_failures(
         backup_kind="manual",
         writer_fence_sha256="b" * 64,
         expected_current_sha256="c" * 64,
+        expected_installation_id=INSTALLATION_ID,
         expected_dataset_id="33333333-3333-4333-8333-333333333333",
         expected_restore_epoch=0,
         expected_schema_revision=TARGET_REVISION,
@@ -171,6 +170,7 @@ def test_isolated_restore_action_preserves_finalization_and_rollback_failures(
         database_url="postgresql+psycopg://ticketbox_migrator@localhost/ticketbox",
         passfile=tmp_path / "pgpass",
         pg_restore_binary=tmp_path / "pg_restore.exe",
+        active_installation_id=INSTALLATION_ID,
         active_dataset_id="33333333-3333-4333-8333-333333333333",
         active_restore_epoch=0,
         target_schema_revision=TARGET_REVISION,
@@ -218,6 +218,7 @@ def test_isolated_restore_action_rejects_foreign_dataset_before_mutation(
         database_url=MIGRATOR_URL,
         passfile=tmp_path / "pgpass",
         pg_restore_binary=tmp_path / "pg_restore.exe",
+        active_installation_id=INSTALLATION_ID,
         active_dataset_id="44444444-4444-4444-8444-444444444444",
         active_restore_epoch=0,
         target_schema_revision=TARGET_REVISION,
@@ -259,6 +260,7 @@ def test_repeated_isolated_restore_discards_public_schema_before_reloading_archi
         database_url=MIGRATOR_URL,
         passfile=tmp_path / "pgpass",
         pg_restore_binary=tmp_path / "pg_restore.exe",
+        active_installation_id=INSTALLATION_ID,
         active_dataset_id="33333333-3333-4333-8333-333333333333",
         active_restore_epoch=0,
         target_schema_revision=TARGET_REVISION,
@@ -277,10 +279,7 @@ def test_repeated_isolated_restore_discards_public_schema_before_reloading_archi
     assert any("nspname !~ '^pg_'" in statement for statement in statements)
     assert not any("LIKE 'pg_%'" in statement for statement in statements)
     assert any("DROP SCHEMA public CASCADE" in statement for statement in statements)
-    assert any(
-        'CREATE SCHEMA public AUTHORIZATION "ticketbox_owner"' in statement
-        for statement in statements
-    )
+    assert any('CREATE SCHEMA public AUTHORIZATION "ticketbox_owner"' in statement for statement in statements)
     assert restored == [tmp_path / action.DATABASE_ARCHIVE_NAME]
 
     class ForeignSchemaConnection(Connection):

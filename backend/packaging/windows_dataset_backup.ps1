@@ -129,7 +129,7 @@ function Assert-TicketboxInstalledCompleteBackupResult {
         -Value $Inspection.Evidence `
         -ExpectedNames @(
             "schema", "operation_id", "backup_id", "backup_kind",
-            "generation", "dataset_id", "restore_epoch", "schema_revision",
+            "generation", "source_installation_id", "dataset_id", "restore_epoch", "schema_revision",
             "release_id", "writer_fence_sha256", "manifest_sha256",
             "original_count"
         ) `
@@ -166,6 +166,10 @@ function Assert-TicketboxInstalledCompleteBackupResult {
         [string]$evidence.backup_id -cne $backupId -or
         [string]$evidence.backup_kind -cne [string]$Request.Payload.backup_kind -or
         [string]$evidence.generation -cne [string]$Result.generation -or
+        [string]$evidence.source_installation_id -cne
+            [string]$Request.Payload.installation_id -or
+        [string]$evidence.source_installation_id -cne
+            [string]$Subject.Identity.InstallationId -or
         [string]$evidence.dataset_id -cne $datasetId -or
         [string]$evidence.dataset_id -cne [string]$WriterBarrier.Payload.dataset_id -or
         [int64]$evidence.restore_epoch -ne [int64]$Result.restore_epoch -or
@@ -242,6 +246,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
         Kind = [string]$Request.Payload.backup_kind
         Barrier = [string]$WriterBarrier.PayloadSha256
         CurrentSha256 = [string]$WriterBarrier.Payload.current_sha256
+        InstallationId = [string]$Request.Payload.installation_id
         DatasetId = [string]$WriterBarrier.Payload.dataset_id
         RestoreEpoch = [int64]$WriterBarrier.Payload.restore_epoch
         SchemaRevision = [string]$WriterBarrier.Payload.schema_revision
@@ -281,6 +286,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
                         "--backup-kind", $captured.Kind,
                         "--writer-fence-sha256", $captured.Barrier,
                         "--expected-current-sha256", $captured.CurrentSha256,
+                        "--expected-installation-id", $captured.InstallationId,
                         "--expected-dataset-id", $captured.DatasetId,
                         "--expected-restore-epoch", [string]$captured.RestoreEpoch,
                         "--expected-schema-revision", $captured.SchemaRevision

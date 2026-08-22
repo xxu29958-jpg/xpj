@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from app.config import BACKEND_ROOT, DATA_ROOT, get_settings
+from app.config import BACKEND_ROOT, DATA_ROOT, get_settings, runtime_settings_service_owned
 from app.errors import AppError
 from app.services.runtime_settings_store import (
     RuntimeSettingsMutation,
@@ -26,7 +26,7 @@ from app.services.runtime_settings_store import (
 from app.version import BACKEND_VERSION
 
 _SETTINGS_PATH = DATA_ROOT / "runtime-settings" / "runtime-settings.json"
-_SERVICE_OWNED = DATA_ROOT != BACKEND_ROOT
+_SERVICE_OWNED = runtime_settings_service_owned()
 
 _EDITABLE_KEYS: frozenset[str] = frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL"})
 

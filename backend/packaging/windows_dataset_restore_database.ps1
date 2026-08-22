@@ -82,6 +82,7 @@ function Invoke-TicketboxInstalledDatasetRestoreHelper {
                 "--database-url", $databaseUrl,
                 "--pgpassfile", [string]$passfile.Path,
                 "--pg-restore-path", $pgRestore,
+                "--active-installation-id", [string]$Request.Payload.installation_id,
                 "--active-dataset-id", [string]$Request.Payload.active_dataset_id,
                 "--active-restore-epoch", [string]$Request.Payload.active_restore_epoch,
                 "--target-schema-revision", [string]$Request.Payload.target_revision,

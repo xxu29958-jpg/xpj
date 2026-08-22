@@ -74,7 +74,7 @@ def test_helper_rejects_pending_json_with_extra_fields(monkeypatch, tmp_path: Pa
     path.write_text(
         json.dumps(
             {
-                "schema": "ticketbox-manager-helper-result-v1",
+                "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path),
                 "nonce": nonce,
                 "action": "start",
@@ -105,7 +105,7 @@ def test_helper_binds_pending_payload_and_acl_to_exact_redirected_root(monkeypat
     path.write_text(
         json.dumps(
             {
-                "schema": "ticketbox-manager-helper-result-v1",
+                "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(root),
                 "nonce": nonce,
                 "action": "start",
@@ -139,7 +139,7 @@ def test_helper_rejects_payload_bound_to_a_different_root(monkeypatch, tmp_path:
     path.write_text(
         json.dumps(
             {
-                "schema": "ticketbox-manager-helper-result-v1",
+                "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path / "attacker-selected-root"),
                 "nonce": nonce,
                 "action": "start",
@@ -168,7 +168,7 @@ def test_helper_rejects_hardlinked_result_file(monkeypatch, tmp_path: Path) -> N
     path.write_text(
         json.dumps(
             {
-                "schema": "ticketbox-manager-helper-result-v1",
+                "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path),
                 "nonce": nonce,
                 "action": "start",
@@ -198,7 +198,7 @@ def test_helper_rejects_replaced_file_even_with_same_nonce_action_and_acl(monkey
     replacement.write_text(
         json.dumps(
             {
-                "schema": "ticketbox-manager-helper-result-v1",
+                "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path),
                 "nonce": nonce,
                 "action": "start",

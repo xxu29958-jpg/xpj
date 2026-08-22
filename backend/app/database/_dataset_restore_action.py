@@ -76,6 +76,7 @@ def run_isolated_dataset_restore_action(request: CompleteRestoreRequest) -> dict
         raise AppError("backup_incomplete", status_code=409)
     plan = resolve_restored_dataset_plan(
         source,
+        active_installation_id=request.active_installation_id,
         active_dataset_id=request.active_dataset_id,
         active_restore_epoch=request.active_restore_epoch,
         target_schema_revision=request.target_schema_revision,
@@ -321,6 +322,7 @@ def run_verified_isolated_dataset_restore_action(
     source = read_manifest(request.backup_generation, verify_files=True)
     plan = resolve_restored_dataset_plan(
         source,
+        active_installation_id=request.active_installation_id,
         active_dataset_id=request.active_dataset_id,
         active_restore_epoch=request.active_restore_epoch,
         target_schema_revision=request.target_schema_revision,

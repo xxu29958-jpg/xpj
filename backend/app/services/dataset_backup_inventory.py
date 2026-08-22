@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 from app.config import DATA_ROOT
 from app.errors import AppError
 from app.services.dataset_backup_contract import BACKUP_KINDS, DatasetBackupManifest, read_manifest
+from app.services.durable_publication import replace_durable_file
 from app.services.path_entry_safety import is_link_or_reparse
 from app.services.time_service import now_utc
 
@@ -65,7 +66,7 @@ def reconcile_published_backup_inventory(
     root = _plain_absolute_directory(backup_root)
     projection = _plain_absolute_file_target(inventory_path)
     required_id = _generation_backup_id(required_generation)
-    verified = _verified_generations(root)
+    verified = _verified_generations(root, required_generation=required_generation)
     required = next(
         (item for item in verified if item.entry.backup_id == required_id),
         None,
@@ -153,7 +154,11 @@ def backup_directory_label() -> str:
     return _BACKUP_DIRECTORY_LABEL
 
 
-def _verified_generations(root: Path) -> list[_VerifiedGeneration]:
+def _verified_generations(
+    root: Path,
+    *,
+    required_generation: str,
+) -> list[_VerifiedGeneration]:
     generations: list[_VerifiedGeneration] = []
     try:
         children = tuple(root.iterdir())
@@ -179,12 +184,18 @@ def _verified_generations(root: Path) -> list[_VerifiedGeneration]:
     for path in children:
         if not path.name.startswith(_GENERATION_PREFIX):
             continue
-        _generation_backup_id(path.name)
-        if not path.is_dir() or is_link_or_reparse(path):
-            raise AppError("backup_incomplete", status_code=409)
-        manifest = read_manifest(path, verify_files=True)
-        if path.name != f"{_GENERATION_PREFIX}{manifest.backup_id}":
-            raise AppError("backup_incomplete", status_code=409)
+        required = path.name == required_generation
+        try:
+            _generation_backup_id(path.name)
+            if not path.is_dir() or is_link_or_reparse(path):
+                raise AppError("backup_incomplete", status_code=409)
+            manifest = read_manifest(path, verify_files=True)
+            if path.name != f"{_GENERATION_PREFIX}{manifest.backup_id}":
+                raise AppError("backup_incomplete", status_code=409)
+        except AppError:
+            if required:
+                raise
+            continue
         generations.append(_VerifiedGeneration(path=path, entry=_entry(path.name, manifest)))
     return generations
 
@@ -238,7 +249,7 @@ def _write_inventory(path: Path, entries: tuple[BackupEntry, ...]) -> None:
             output.write(encoded)
             output.flush()
             os.fsync(output.fileno())
-        os.replace(staging, path)
+        replace_durable_file(staging, path)
     except BaseException as exc:  # noqa: BLE001 - preserve publication failure
         primary = exc
     finally:

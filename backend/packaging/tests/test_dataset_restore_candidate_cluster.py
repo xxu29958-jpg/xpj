@@ -57,6 +57,7 @@ def test_restore_candidate_uses_official_frozen_restore_and_exact_role_owner() -
     for argument in (
         "--generation-program-path",
         "--expected-generation-program-sha256",
+        "--active-installation-id",
         "--operation-id",
     ):
         assert argument in helper

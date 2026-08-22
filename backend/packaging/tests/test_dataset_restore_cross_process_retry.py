@@ -150,6 +150,10 @@ function Read-TicketboxInstalledDatasetOperation {{
     param($StateRoot, $ExpectedOperationKind, [switch]$AllowAbsent)
     return $global:testRequest
 }}
+function Read-TicketboxInstalledDatasetOperationAuthority {{
+    param($StateRoot, [switch]$AllowAbsent)
+    return $global:testRequest
+}}
 function Assert-TicketboxDatabaseGenerationExactProperties {{
     param($Value, $ExpectedNames, $Label)
     $actual = @($Value.PSObject.Properties.Name | Sort-Object)
