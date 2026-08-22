@@ -4,28 +4,10 @@ from __future__ import annotations
 
 from sqlalchemy import Connection, text
 
+from app.database._dataset_restore_security import SANITATION_TABLES
 from app.errors import AppError
 from app.services.dataset_backup_contract import DatasetBackupManifest
 from app.services.dataset_restore_service import RestoredDatasetPlan
-
-SANITATION_TABLES: tuple[str, ...] = (
-    "desktop_activation_attempts",
-    "session_refresh_attempts",
-    "auth_tokens",
-    "device_enrollment_attempts",
-    "installation_owner_claims",
-    "bootstrap_secret_consumptions",
-    "upload_link_daily_usage",
-    "upload_link_remote_attempts",
-    "upload_links",
-    "pairing_attempt_failures",
-    "pairing_codes",
-    "invitations",
-    "installation_idempotency_keys",
-    "scheduler_leases",
-    "budget_advisor_quota_locks",
-    "ai_transaction_temp_id_map",
-)
 
 
 def finalize_restored_dataset(

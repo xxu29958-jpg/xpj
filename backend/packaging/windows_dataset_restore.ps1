@@ -63,6 +63,10 @@ $request = $null
 $paths = $null
 $published = $null
 $operationId = $null
+$stateRoot = $null
+$contracts = $null
+$runtimeVerification = $null
+$terminalReplay = $false
 $primary = $null
 $cleanup = @()
 $result = $null
@@ -92,36 +96,11 @@ try {
         -ExpectedReleaseManifestSha256 ([string]$subject.Manifest.Sha256) `
         -AllowAbsent
     if ($null -ne $terminalResult) {
-        $terminalArtifact = $terminalResult.Artifact
-        if (
-            $null -ne $request -and
-            [string]$request.Payload.restore_attempt_id -ceq $RestoreAttemptId
-        ) {
-            if (
-                [string]$request.PayloadSha256 -cne
-                    [string]$terminalArtifact.Payload.request_sha256 -or
-                [string]$request.Payload.backup_generation -cne $BackupGeneration -or
-                [string]$request.Payload.release_manifest_sha256 -cne
-                    [string]$terminalArtifact.Payload.release_manifest_sha256
-            ) {
-                throw "terminal restore result differs from its remaining request."
-            }
-            Remove-TicketboxInstalledDatasetRestoreRequest $request $lock
-            $request = $null
-        }
-        $result = [ordered]@{
-            schema = "ticketbox-complete-dataset-restore-result-v1"
-            restore_attempt_id = [string]$terminalArtifact.Payload.restore_attempt_id
-            backup_id = [string]$terminalArtifact.Payload.backup_id
-            dataset_id = [string]$terminalArtifact.Payload.dataset_id
-            restore_epoch = [int64]$terminalArtifact.Payload.restore_epoch
-            generation_operation_id =
-                [string]$terminalArtifact.Payload.generation_operation_id
-            result = if ([string]$terminalResult.Disposition -ceq "current") {
-                "current_published"
-            }
-            else { "superseded" }
-        }
+        $result = Complete-TicketboxInstalledDatasetRestoreTerminalReplay `
+            -Subject $subject -Request $request -TerminalResult $terminalResult `
+            -BackupGeneration $BackupGeneration -LifecycleLock $lock
+        $terminalReplay = $true
+        $request = $null
     }
     if ($null -eq $result) {
     $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
@@ -399,26 +378,14 @@ try {
                     -Subject $subject `
                     -Inspection $inspection `
                     -Paths $paths)
-                if (-not $restartBackend) {
-                    Stop-TicketboxOwnedServiceIfExists `
-                        -Name ([string]$subject.Identity.BackendServiceName) `
-                        -ExpectedExecutable (Join-Path ([string]$subject.Identity.InstallDir) `
-                            "shawl\shawl.exe") `
-                        -TimeoutMilliseconds ([int]$subject.Release.service_state_timeout_ms) `
-                        -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms) `
-                        -BackendPort ([int]$subject.Identity.BackendPort) `
-                        -ExpectedRuntimeExecutables @(
-                            (Join-Path ([string]$subject.Identity.InstallDir) `
-                                "program\ticketbox-backend\ticketbox-backend.exe"),
-                            (Join-Path ([string]$subject.Identity.InstallDir) "shawl\shawl.exe")
-                        )
-                }
-                [void](New-TicketboxInstalledDatasetRuntimeVerification `
+                Set-TicketboxInstalledDatasetBackendDesiredState `
+                    -Subject $subject -ShouldRun $restartBackend
+                $runtimeVerification = New-TicketboxInstalledDatasetRuntimeVerification `
                     -IntentContext $intentContext `
                     -Request $request `
                     -Current $published `
                     -Inspection $inspection `
-                    -LifecycleLock $lock)
+                    -LifecycleLock $lock
             }
             "retire_rollback" {
                 Remove-TicketboxInstalledDatasetRestoreRollback $paths $lock
@@ -440,16 +407,7 @@ try {
         }
         if ($null -ne $result) { break }
     }
-    if ($restartBackend -and $null -ne $result) {
-        Assert-TicketboxInstalledDatasetServiceAuthority $subject
-        [void](Start-TicketboxOwnedServiceIfExists `
-            -Name ([string]$subject.Identity.BackendServiceName) `
-            -ExpectedExecutable (Join-Path ([string]$subject.Identity.InstallDir) `
-                "shawl\shawl.exe") `
-            -TimeoutMilliseconds ([int]$subject.Release.service_state_timeout_ms) `
-            -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms))
-    }
-    if ($null -ne $result) {
+    if ($null -ne $result -and -not $terminalReplay) {
         $terminalResult = New-TicketboxInstalledDatasetRestoreResult `
             -StateRoot $stateRoot `
             -Request $request `
@@ -466,11 +424,16 @@ catch {
     if (
         $null -ne $subject -and
         $null -ne $request -and
-        $null -ne $paths
+        $null -ne $paths -and
+        $null -ne $stateRoot -and
+        $null -ne $contracts
     ) {
         try {
             [void](Invoke-TicketboxInstalledDatasetRestoreFailureCompensation `
-                $subject $request $paths)
+                -Subject $subject -Request $request -Paths $paths `
+                -StateRoot $stateRoot -Contracts $contracts `
+                -RuntimeVerification $runtimeVerification `
+                -LifecycleLock $lock)
         }
         catch { $cleanup += $_ }
     }

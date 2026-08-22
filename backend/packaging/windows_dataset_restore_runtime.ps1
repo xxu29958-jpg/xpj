@@ -149,29 +149,173 @@ function New-TicketboxInstalledDatasetRuntimeVerification {
         -LifecycleLock $LifecycleLock
 }
 
+function Set-TicketboxInstalledDatasetBackendDesiredState {
+    param(
+        [Parameter(Mandatory = $true)][object]$Subject,
+        [Parameter(Mandatory = $true)][bool]$ShouldRun
+    )
+    Assert-TicketboxInstalledDatasetServiceAuthority $Subject
+    $identity = $Subject.Identity
+    $release = $Subject.Release
+    $shawl = Join-Path ([string]$identity.InstallDir) "shawl\shawl.exe"
+    if ($ShouldRun) {
+        [void](Start-TicketboxOwnedServiceIfExists `
+            -Name ([string]$identity.BackendServiceName) `
+            -ExpectedExecutable $shawl `
+            -TimeoutMilliseconds ([int]$release.service_state_timeout_ms) `
+            -PollMilliseconds ([int]$release.service_poll_interval_ms))
+        return
+    }
+    Stop-TicketboxOwnedServiceIfExists `
+        -Name ([string]$identity.BackendServiceName) `
+        -ExpectedExecutable $shawl `
+        -TimeoutMilliseconds ([int]$release.service_state_timeout_ms) `
+        -PollMilliseconds ([int]$release.service_poll_interval_ms) `
+        -BackendPort ([int]$identity.BackendPort) `
+        -ExpectedRuntimeExecutables @(
+            (Join-Path ([string]$identity.InstallDir) `
+                "program\ticketbox-backend\ticketbox-backend.exe"),
+            $shawl
+        )
+}
+
+function Complete-TicketboxInstalledDatasetRestoreTerminalReplay {
+    param(
+        [Parameter(Mandatory = $true)][object]$Subject,
+        [Parameter(Mandatory = $true)][AllowNull()][object]$Request,
+        [Parameter(Mandatory = $true)][object]$TerminalResult,
+        [Parameter(Mandatory = $true)][string]$BackupGeneration,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    $terminal = $TerminalResult.Artifact.Payload
+    if ($null -ne $Request) {
+        if (
+            [string]$Request.Payload.restore_attempt_id -cne
+                [string]$terminal.restore_attempt_id -or
+            [string]$Request.PayloadSha256 -cne [string]$terminal.request_sha256 -or
+            [string]$Request.Payload.backup_generation -cne $BackupGeneration -or
+            [string]$Request.Payload.release_manifest_sha256 -cne
+                [string]$terminal.release_manifest_sha256
+        ) {
+            throw "terminal restore result differs from its remaining request."
+        }
+        if ([string]$TerminalResult.Disposition -ceq "current") {
+            Set-TicketboxInstalledDatasetBackendDesiredState `
+                -Subject $Subject `
+                -ShouldRun ([bool]$Request.Payload.restart_backend)
+        }
+        Remove-TicketboxInstalledDatasetRestoreRequest $Request $LifecycleLock
+    }
+    return [ordered]@{
+        schema = "ticketbox-complete-dataset-restore-result-v1"
+        restore_attempt_id = [string]$terminal.restore_attempt_id
+        backup_id = [string]$terminal.backup_id
+        dataset_id = [string]$terminal.dataset_id
+        restore_epoch = [int64]$terminal.restore_epoch
+        generation_operation_id = [string]$terminal.generation_operation_id
+        result = if ([string]$TerminalResult.Disposition -ceq "current") {
+            "current_published"
+        }
+        else { "superseded" }
+    }
+}
+
+function Restore-TicketboxInstalledDatasetPredecessorRuntime {
+    param(
+        [Parameter(Mandatory = $true)][object]$Subject,
+        [Parameter(Mandatory = $true)][object]$Request,
+        [Parameter(Mandatory = $true)][object]$Paths,
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Contracts,
+        [Parameter(Mandatory = $true)][object]$Current,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    $predecessorSha256 = [string]$Request.Payload.predecessor_current_sha256
+    $successorOperationId = ([guid][string]$Paths.operation_id).ToString("D")
+    $currentIsSuccessor = (
+        [string]$Current.Payload.operation_id -ceq $successorOperationId
+    )
+    if (
+        -not $currentIsSuccessor -and
+        [string]$Current.PayloadSha256 -cne $predecessorSha256
+    ) {
+        throw "dataset restore compensation observed a foreign CURRENT."
+    }
+    Set-TicketboxInstalledDatasetRestorePhysicalSelection `
+        -Paths $Paths -Selection "Predecessor"
+    Set-TicketboxInstalledDatasetPublishedAcls $Subject $Paths
+    [void](Start-TicketboxOwnedServiceIfExists `
+        -Name ([string]$Subject.Identity.PgServiceName) `
+        -ExpectedExecutable (Join-Path ([string]$Subject.Identity.InstallDir) `
+            "pg\bin\pg_ctl.exe") `
+        -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
+        -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms))
+
+    $intent = [pscustomobject]@{
+        PayloadSha256 = [string]$Request.Payload.predecessor_intent_sha256
+        Payload = $Request.Payload.predecessor_intent_payload
+    }
+    $candidate = Read-TicketboxDatabaseGenerationOperationArtifact `
+        -StateRoot $StateRoot `
+        -OperationId ([string]$intent.Payload.operation_id) `
+        -Kind "candidate"
+    $target = $Request.Payload.predecessor_current_payload
+    if (
+        [string]$target.intent_sha256 -cne [string]$intent.PayloadSha256 -or
+        [string]$target.candidate_sha256 -cne [string]$candidate.PayloadSha256
+    ) {
+        throw "dataset restore predecessor runtime artifacts differ from CURRENT."
+    }
+    $credentials = $null
+    $primary = $null
+    $cleanup = @()
+    try {
+        $credentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
+            -StateRoot $StateRoot -Intent $intent -Candidate $candidate
+        $hostAuthority = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
+            $Contracts.Host
+        [void](Publish-TicketboxDatabaseGenerationRuntimeProjection `
+            $intent $candidate $credentials $hostAuthority `
+            $Contracts.Projection $LifecycleLock)
+        if ($currentIsSuccessor) {
+            $transition = `
+                New-TicketboxInstalledDatasetRestorePredecessorCurrentTransition `
+                    $Current $Request
+            [void](Publish-TicketboxDatabaseGenerationCurrent `
+                $transition $LifecycleLock)
+        }
+    }
+    catch { $primary = $_ }
+    finally {
+        if ($null -ne $credentials) {
+            try { Close-TicketboxDatabaseGenerationRuntimeCredentials $credentials }
+            catch { $cleanup += $_ }
+        }
+    }
+    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+}
+
 function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
     param(
         [Parameter(Mandatory = $true)][object]$Subject,
         [Parameter(Mandatory = $true)][object]$Request,
-        [Parameter(Mandatory = $true)][object]$Paths
+        [Parameter(Mandatory = $true)][object]$Paths,
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Contracts,
+        [Parameter(Mandatory = $true)][AllowNull()][object]$RuntimeVerification,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     $failureCurrent = Read-TicketboxDatabaseGenerationCurrent
-    if (
-        [string]$failureCurrent.Payload.operation_id -ceq
-            ([guid][string]$Paths.operation_id).ToString("D")
-    ) {
-        Stop-TicketboxOwnedServiceIfExists `
-            -Name ([string]$Subject.Identity.BackendServiceName) `
-            -ExpectedExecutable (Join-Path ([string]$Subject.Identity.InstallDir) `
-                "shawl\shawl.exe") `
-            -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
-            -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms) `
-            -BackendPort ([int]$Subject.Identity.BackendPort) `
-            -ExpectedRuntimeExecutables @(
-                (Join-Path ([string]$Subject.Identity.InstallDir) `
-                    "program\ticketbox-backend\ticketbox-backend.exe"),
-                (Join-Path ([string]$Subject.Identity.InstallDir) "shawl\shawl.exe")
-            )
+    $successorOperationId = ([guid][string]$Paths.operation_id).ToString("D")
+    if ($null -ne $RuntimeVerification) {
+        if (
+            [string]$failureCurrent.Payload.operation_id -cne $successorOperationId
+        ) {
+            throw "verified dataset restore no longer owns CURRENT."
+        }
+        Set-TicketboxInstalledDatasetBackendDesiredState `
+            -Subject $Subject `
+            -ShouldRun ([bool]$Request.Payload.restart_backend)
         return "committed"
     }
 
@@ -182,23 +326,13 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
     catch { $failures += $_ }
     try {
         Stop-TicketboxInstalledDatasetWriters $Subject
-        Set-TicketboxInstalledDatasetRestorePhysicalSelection `
-            -Paths $Paths -Selection "Predecessor"
-        Set-TicketboxInstalledDatasetPublishedAcls $Subject $Paths
-        [void](Start-TicketboxOwnedServiceIfExists `
-            -Name ([string]$Subject.Identity.PgServiceName) `
-            -ExpectedExecutable (Join-Path ([string]$Subject.Identity.InstallDir) `
-                "pg\bin\pg_ctl.exe") `
-            -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
-            -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms))
-        if ([bool]$Request.Payload.restart_backend) {
-            [void](Start-TicketboxOwnedServiceIfExists `
-                -Name ([string]$Subject.Identity.BackendServiceName) `
-                -ExpectedExecutable (Join-Path ([string]$Subject.Identity.InstallDir) `
-                    "shawl\shawl.exe") `
-                -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
-                -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms))
-        }
+        Restore-TicketboxInstalledDatasetPredecessorRuntime `
+            -Subject $Subject -Request $Request -Paths $Paths `
+            -StateRoot $StateRoot -Contracts $Contracts `
+            -Current $failureCurrent -LifecycleLock $LifecycleLock
+        Set-TicketboxInstalledDatasetBackendDesiredState `
+            -Subject $Subject `
+            -ShouldRun ([bool]$Request.Payload.restart_backend)
     }
     catch { $failures += $_ }
     if ($failures.Count -gt 0) {

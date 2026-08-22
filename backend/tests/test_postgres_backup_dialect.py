@@ -36,10 +36,20 @@ def _passfile(tmp_path: Path) -> Path:
 
 def test_recovery_drill_uses_complete_dataset_generation_and_bounded_restore() -> None:
     source = Path(postgres_backup_drill.__file__).read_text(encoding="utf-8")
+    topology = Path(postgres_backup_drill.__file__).with_name(
+        "postgres_restore_drill_topology.py"
+    ).read_text(encoding="utf-8")
 
     assert "CompleteBackupRequest" in source
     assert "create_complete_backup_generation" in source
-    assert "run_isolated_dataset_restore_action" in source
+    assert "run_verified_isolated_dataset_restore_action" in source
+    assert "write_program" in source
+    assert "SCHEMA_OWNER_ROLE = TEST_POSTGRES_CONTRACT.application_role" not in source
+    assert "MIGRATOR_ROLE = TEST_POSTGRES_CONTRACT.application_role" in source
+    assert "managed_restore_role_topology" in source
+    assert "ALTER ROLE" in topology
+    assert "NOINHERIT" in topology
+    assert "WITH INHERIT FALSE, SET TRUE" in topology
     assert "restored-originals" in source
     assert "create_manual_backup" not in source
     assert "_pg_tool_connection" not in source

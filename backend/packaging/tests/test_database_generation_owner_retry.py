@@ -159,7 +159,18 @@ function New-TicketboxDatabaseGenerationChainedArtifact {{
     }}
     return $script:terminal
 }}
+function New-TicketboxDatabaseGenerationAdvanceCurrentTransition {{
+    param($Intent, $Candidate, $TerminalState)
+    return [pscustomobject]@{{
+        schema = 'ticketbox-database-generation-current-transition-v1'
+        mode = 'advance'
+        expected_current_sha256 = ''
+        target_payload_sha256 = ('5' * 64)
+        target_payload = [pscustomobject]@{{ operation_id = $Intent.Payload.operation_id }}
+    }}
+}}
 function Publish-TicketboxDatabaseGenerationCurrent {{
+    param($Transition, $LifecycleLock)
     if ($null -eq $script:current) {{
         $script:currentWrites += 1
         $script:current = [pscustomobject]@{{

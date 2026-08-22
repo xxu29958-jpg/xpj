@@ -172,8 +172,17 @@ def test_restore_promotion_is_forward_reconcilable_and_keeps_old_bytes_until_cur
         contract,
         "Invoke-TicketboxInstalledDatasetRestoreFailureCompensation",
     )
-    assert compensation.index("Read-TicketboxDatabaseGenerationCurrent") < compensation.index(
-        '-Selection "Predecessor"'
+    predecessor = powershell_function(
+        contract,
+        "Restore-TicketboxInstalledDatasetPredecessorRuntime",
+    )
+    assert "Read-TicketboxDatabaseGenerationCurrent" in compensation
+    assert "Restore-TicketboxInstalledDatasetPredecessorRuntime" in compensation
+    assert predecessor.index('-Selection "Predecessor"') < predecessor.index(
+        "Publish-TicketboxDatabaseGenerationRuntimeProjection"
+    )
+    assert predecessor.index("Publish-TicketboxDatabaseGenerationRuntimeProjection") < (
+        predecessor.index("Publish-TicketboxDatabaseGenerationCurrent")
     )
     assert restore.index("Invoke-TicketboxInstalledDatabaseGeneration") < restore.index(
         "Remove-TicketboxInstalledDatasetRestoreRollback"
@@ -280,20 +289,19 @@ def test_restore_durable_request_owns_backend_restart_compensation() -> None:
         '"source-binding" {', maxsplit=1
     )[0]
     assert '"restart_backend"' in request_fields
+    assert '"predecessor_current_payload"' in request_fields
     assert "RestartBackend $restartBackend" in restore
     assert "RestoreAttemptId" in restore
     assert "source_request_sha256" in restore
-    done = restore.index('"done" {')
-    backend_restart = restore.index("Start-TicketboxOwnedServiceIfExists", done)
-    assert done < backend_restart
-    assert "if ($restartBackend -and $null -ne $result)" in restore[done:backend_restart]
-    retirement = restore.index(
-        "Remove-TicketboxInstalledDatasetRestoreRequest",
-        backend_restart,
+    runtime = restore.split('"verify_runtime" {', maxsplit=1)[1].split(
+        '"retire_rollback" {', maxsplit=1
+    )[0]
+    assert runtime.index("Set-TicketboxInstalledDatasetBackendDesiredState") < runtime.index(
+        "New-TicketboxInstalledDatasetRuntimeVerification"
     )
-    terminal = restore.index("New-TicketboxInstalledDatasetRestoreResult", backend_restart)
-    assert backend_restart < terminal < retirement
-    assert backend_restart < retirement
+    terminal = restore.rindex("New-TicketboxInstalledDatasetRestoreResult")
+    retirement = restore.rindex("Remove-TicketboxInstalledDatasetRestoreRequest")
+    assert terminal < retirement
     assert "function Remove-TicketboxInstalledDatasetRestoreRequest" in contract
 
 
@@ -313,9 +321,15 @@ def test_restore_terminal_result_survives_response_loss_and_is_attempt_bound(
     request_retire = restore.rindex("Remove-TicketboxInstalledDatasetRestoreRequest")
     assert subject_read < current_read < request_read < terminal_read
     assert terminal_write < request_retire
-    terminal_resume = restore[terminal_read : restore.index("if ($null -eq $result)", terminal_read)]
-    assert "terminalArtifact.Payload.request_sha256" in terminal_resume
-    assert "Remove-TicketboxInstalledDatasetRestoreRequest $request $lock" in terminal_resume
+    terminal_resume = powershell_function(
+        _restore_contract(),
+        "Complete-TicketboxInstalledDatasetRestoreTerminalReplay",
+    )
+    assert "terminal.request_sha256" in terminal_resume
+    assert "terminal.release_manifest_sha256" in terminal_resume
+    assert terminal_resume.index("Set-TicketboxInstalledDatasetBackendDesiredState") < (
+        terminal_resume.index("Remove-TicketboxInstalledDatasetRestoreRequest")
+    )
 
     functions = "\n".join(
         powershell_function(artifacts, name)
@@ -429,7 +443,9 @@ if (
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
-def test_restore_owner_compensation_is_current_guarded_and_ordered(tmp_path: Path) -> None:
+def test_restore_owner_compensation_restores_exact_predecessor_before_restart(
+    tmp_path: Path,
+) -> None:
     contract = _restore_contract()
     compensation = powershell_function(
         contract,
@@ -442,7 +458,14 @@ $script:published = $false
 function Read-TicketboxDatabaseGenerationCurrent {{
     $script:events += 'read-current'
     $operation = if ($script:published) {{ '22222222-2222-4222-8222-222222222222' }} else {{ '11111111-1111-4111-8111-111111111111' }}
-    return [pscustomobject]@{{ Payload = [pscustomobject]@{{ operation_id = $operation }} }}
+    $sha = if ($script:published) {{ ('b' * 64) }} else {{ ('a' * 64) }}
+    return [pscustomobject]@{{
+        PayloadSha256 = $sha
+        Payload = [pscustomobject]@{{
+            operation_id = $operation
+            expected_predecessor_sha256 = ('a' * 64)
+        }}
+    }}
 }}
 function Remove-TicketboxPostgresqlRestoreCandidateService {{ param($Subject, $Paths); $script:events += 'remove-candidate-service' }}
 function Stop-TicketboxInstalledDatasetWriters {{ param($Subject); $script:events += 'stop-writers' }}
@@ -459,28 +482,101 @@ function Start-TicketboxOwnedServiceIfExists {{
     param($Name, $ExpectedExecutable, $TimeoutMilliseconds, $PollMilliseconds)
     $script:events += "start:$Name"
 }}
+function Restore-TicketboxInstalledDatasetPredecessorRuntime {{
+    param($Subject, $Request, $Paths, $StateRoot, $Contracts, $Current, $LifecycleLock)
+    $script:events += "restore-predecessor:$($Current.PayloadSha256)"
+}}
+function Set-TicketboxInstalledDatasetBackendDesiredState {{
+    param($Subject, $ShouldRun)
+    $script:events += "desired:$ShouldRun"
+}}
 {compensation}
 $subject = [pscustomobject]@{{
     Identity = [pscustomobject]@{{ InstallDir = 'C:\\Ticketbox'; PgServiceName = 'ticketbox-pg'; BackendServiceName = 'ticketbox-backend' }}
     Release = [pscustomobject]@{{ service_state_timeout_ms = 1000; service_poll_interval_ms = 10 }}
 }}
-$request = [pscustomobject]@{{ Payload = [pscustomobject]@{{ restart_backend = $true }} }}
+$request = [pscustomobject]@{{ Payload = [pscustomobject]@{{
+    restart_backend = $true
+    predecessor_current_sha256 = ('a' * 64)
+}} }}
 $paths = [pscustomobject]@{{ operation_id = '22222222-2222-4222-8222-222222222222' }}
-Invoke-TicketboxInstalledDatasetRestoreFailureCompensation $subject $request $paths
-$expected = 'read-current|remove-candidate-service|stop-writers|select:Predecessor|set-acls|start:ticketbox-pg|start:ticketbox-backend'
-if (($script:events -join '|') -cne $expected) {{ throw "unexpected compensation order: $($script:events -join '|')" }}
-$script:events = @()
 $script:published = $true
-$outcome = Invoke-TicketboxInstalledDatasetRestoreFailureCompensation $subject $request $paths
-$expected = 'read-current|stop:ticketbox-backend'
-if (($script:events -join '|') -cne $expected -or $outcome -cne 'committed') {{
-    throw "published CURRENT was misreported as rollback-safe: $outcome / $($script:events -join '|')"
+$outcome = Invoke-TicketboxInstalledDatasetRestoreFailureCompensation `
+    -Subject $subject -Request $request -Paths $paths -StateRoot 'C:\\state' `
+    -Contracts ([pscustomobject]@{{}}) -RuntimeVerification $null `
+    -LifecycleLock ([pscustomobject]@{{}})
+$expected = 'read-current|remove-candidate-service|stop-writers|restore-predecessor:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|desired:True'
+if (($script:events -join '|') -cne $expected -or $outcome -cne 'rolled_back') {{
+    throw "published CURRENT did not restore exact predecessor: $outcome / $($script:events -join '|')"
 }}
 """
     run_powershell_contract_script(
         script,
         tmp_path,
         filename="dataset-restore-owner-compensation.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_terminal_replay_reconciles_desired_backend_before_request_retirement(
+    tmp_path: Path,
+) -> None:
+    contract = _restore_contract()
+    replay = powershell_function(
+        contract,
+        "Complete-TicketboxInstalledDatasetRestoreTerminalReplay",
+    )
+    desired_state = powershell_function(
+        contract,
+        "Set-TicketboxInstalledDatasetBackendDesiredState",
+    )
+    script = rf"""
+$ErrorActionPreference = 'Stop'
+$script:events = @()
+function Assert-TicketboxInstalledDatasetServiceAuthority {{ param($Subject); $script:events += 'authority' }}
+function Start-TicketboxOwnedServiceIfExists {{ param($Name, $ExpectedExecutable, $TimeoutMilliseconds, $PollMilliseconds); $script:events += "start:$Name" }}
+function Stop-TicketboxOwnedServiceIfExists {{ param($Name, $ExpectedExecutable, $TimeoutMilliseconds, $PollMilliseconds, $BackendPort, $ExpectedRuntimeExecutables); $script:events += "stop:$Name" }}
+function Remove-TicketboxInstalledDatasetRestoreRequest {{ param($Request, $LifecycleLock); $script:events += 'remove-request' }}
+{desired_state}
+{replay}
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{ InstallDir = 'C:\Ticketbox'; BackendServiceName = 'ticketbox-backend'; BackendPort = 8123 }}
+    Release = [pscustomobject]@{{ service_state_timeout_ms = 1000; service_poll_interval_ms = 10 }}
+}}
+$request = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{
+        restore_attempt_id = '11111111-1111-4111-8111-111111111111'
+        backup_generation = 'ticketbox-backup-22222222-2222-4222-8222-222222222222'
+        release_manifest_sha256 = ('c' * 64)
+        restart_backend = $true
+    }}
+}}
+$terminal = [pscustomobject]@{{
+    Disposition = 'current'
+    Artifact = [pscustomobject]@{{ Payload = [pscustomobject]@{{
+        request_sha256 = ('a' * 64)
+        release_manifest_sha256 = ('c' * 64)
+        restore_attempt_id = '11111111-1111-4111-8111-111111111111'
+        backup_id = '22222222-2222-4222-8222-222222222222'
+        dataset_id = '33333333-3333-4333-8333-333333333333'
+        restore_epoch = 4
+        generation_operation_id = '44444444-4444-4444-8444-444444444444'
+    }} }}
+}}
+$result = Complete-TicketboxInstalledDatasetRestoreTerminalReplay `
+    -Subject $subject -Request $request -TerminalResult $terminal `
+    -BackupGeneration ([string]$request.Payload.backup_generation) `
+    -LifecycleLock ([pscustomobject]@{{}})
+if (($script:events -join '|') -cne 'authority|start:ticketbox-backend|remove-request') {{
+    throw "terminal replay retired request before desired state: $($script:events -join '|')"
+}}
+if ([string]$result.result -cne 'current_published') {{ throw 'terminal replay lost current result' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-restore-terminal-state-reconciliation.ps1",
     )
 
 

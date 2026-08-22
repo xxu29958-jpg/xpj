@@ -101,7 +101,8 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
                 "backup_manifest_sha256", "backup_id", "dataset_id",
                 "backup_restore_epoch", "target_revision",
                 "predecessor_current_sha256", "predecessor_intent_sha256",
-                "predecessor_intent_payload", "release_manifest_sha256",
+                "predecessor_current_payload", "predecessor_intent_payload",
+                "release_manifest_sha256",
                 "active_dataset_id", "active_restore_epoch", "restart_backend"
             )
         }
@@ -394,42 +395,113 @@ function Get-TicketboxDatabaseGenerationProspectiveCurrent {
     }
 }
 
-function Publish-TicketboxDatabaseGenerationCurrent {
+function New-TicketboxDatabaseGenerationAdvanceCurrentTransition {
     param(
         [Parameter(Mandatory = $true)][object]$Intent,
         [Parameter(Mandatory = $true)][object]$Candidate,
-        [Parameter(Mandatory = $true)][object]$TerminalState,
+        [Parameter(Mandatory = $true)][object]$TerminalState
+    )
+    $proposed = Get-TicketboxDatabaseGenerationProspectiveCurrent `
+        $Intent $Candidate $TerminalState
+    return [pscustomobject][ordered]@{
+        schema = "ticketbox-database-generation-current-transition-v1"
+        mode = "advance"
+        expected_current_sha256 = [string]$Intent.Payload.expected_predecessor_sha256
+        target_payload_sha256 = [string]$proposed.PayloadSha256
+        target_payload = $proposed.Payload
+    }
+}
+
+function Assert-TicketboxDatabaseGenerationCurrentTransition {
+    param([Parameter(Mandatory = $true)][object]$Transition)
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $Transition `
+        -ExpectedNames @(
+            "schema", "mode", "expected_current_sha256",
+            "target_payload_sha256", "target_payload"
+        ) `
+        -Label "database generation CURRENT transition"
+    if (
+        [string]$Transition.schema -cne
+            "ticketbox-database-generation-current-transition-v1" -or
+        [string]$Transition.mode -cnotin @("advance", "restore_predecessor")
+    ) {
+        throw "database generation CURRENT transition is not closed."
+    }
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $Transition.target_payload `
+        -ExpectedNames (Get-TicketboxDatabaseGenerationPayloadProperties "current") `
+        -Label "database generation CURRENT transition target"
+    $targetSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $Transition.target_payload
+    )
+    Assert-TicketboxDatabaseGenerationLowerSha256 `
+        ([string]$Transition.target_payload_sha256) `
+        "database generation CURRENT transition target"
+    if ($targetSha256 -cne [string]$Transition.target_payload_sha256) {
+        throw "database generation CURRENT transition target digest changed."
+    }
+    $expected = [string]$Transition.expected_current_sha256
+    if (-not [string]::IsNullOrEmpty($expected)) {
+        Assert-TicketboxDatabaseGenerationLowerSha256 `
+            $expected "database generation CURRENT transition predecessor"
+    }
+    if (
+        [string]$Transition.mode -ceq "advance" -and
+        [string]$Transition.target_payload.expected_predecessor_sha256 -cne $expected
+    ) {
+        throw "database generation advance transition lost its predecessor binding."
+    }
+    if (
+        [string]$Transition.mode -ceq "restore_predecessor" -and
+        [string]::IsNullOrEmpty($expected)
+    ) {
+        throw "database generation predecessor restoration requires exact CURRENT CAS."
+    }
+    return $Transition
+}
+
+function Publish-TicketboxDatabaseGenerationCurrent {
+    param(
+        [Parameter(Mandatory = $true)][object]$Transition,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $proposed = Get-TicketboxDatabaseGenerationProspectiveCurrent `
-        $Intent $Candidate $TerminalState
+    $validated = Assert-TicketboxDatabaseGenerationCurrentTransition $Transition
     $existing = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
     if ($null -ne $existing) {
         if (
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $existing.Payload) -cne
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $proposed.Payload)
+            [string]$existing.PayloadSha256 -ceq
+                [string]$validated.target_payload_sha256
         ) {
-            if (
-                [string]::IsNullOrEmpty(
-                    [string]$Intent.Payload.expected_predecessor_sha256
-                ) -or
-                [string]$existing.PayloadSha256 -cne
-                    [string]$Intent.Payload.expected_predecessor_sha256
-            ) {
-                throw "database generation current CAS predecessor/current 冲突。"
-            }
-        }
-        else {
             return $existing
+        }
+        if (
+            [string]::IsNullOrEmpty(
+                [string]$validated.expected_current_sha256
+            ) -or
+            [string]$existing.PayloadSha256 -cne
+                [string]$validated.expected_current_sha256
+        ) {
+            throw "database generation current CAS predecessor/current 冲突。"
+        }
+        if (
+            [string]$validated.mode -ceq "restore_predecessor" -and
+            [string]$existing.Payload.expected_predecessor_sha256 -cne
+                [string]$validated.target_payload_sha256
+        ) {
+            throw "database generation CURRENT rollback target is not its predecessor."
         }
     }
     elseif (-not [string]::IsNullOrEmpty(
-        [string]$Intent.Payload.expected_predecessor_sha256
+        [string]$validated.expected_current_sha256
     )) {
         throw "database generation current CAS predecessor 缺失。"
     }
-    $path = [string]$proposed.Path
+    elseif ([string]$validated.mode -ceq "restore_predecessor") {
+        throw "database generation predecessor restoration lacks CURRENT."
+    }
+    $path = Get-TicketboxDatabaseGenerationRuntimeCurrentPath
     $runtimeRoot = Split-Path -Parent $path
     [void](Initialize-TicketboxProtectedDirectoryAtomically `
         -Path $runtimeRoot `
@@ -439,8 +511,8 @@ function Publish-TicketboxDatabaseGenerationCurrent {
     $envelope = [ordered]@{
         schema = "ticketbox-database-generation-envelope-v1"
         kind = "current"
-        payload_sha256 = [string]$proposed.PayloadSha256
-        payload = $proposed.Payload
+        payload_sha256 = [string]$validated.target_payload_sha256
+        payload = $validated.target_payload
     }
     Write-TicketboxProtectedUtf8FileDurable `
         -Path $path `

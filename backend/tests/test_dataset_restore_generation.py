@@ -17,6 +17,8 @@ from app.database._dataset_restore_authority import (
     assert_restored_dataset_candidate_accepted,
     finalize_restored_dataset,
 )
+from app.database._dataset_restore_security import RESTORE_TABLE_SECURITY
+from app.database_model_registry import Base
 from app.errors import AppError
 from app.services.dataset_authority_service import (
     DATASET_SEMANTIC_REVISION,
@@ -51,6 +53,19 @@ _EXPECTED_SANITATION_TABLES = {
     "budget_advisor_quota_locks",
     "ai_transaction_temp_id_map",
 }
+
+
+def test_every_registered_table_has_one_restore_security_classification() -> None:
+    import app.models  # noqa: F401 - populate the production SQLAlchemy registry
+
+    assert set(RESTORE_TABLE_SECURITY) == set(Base.metadata.tables)
+    assert set(RESTORE_TABLE_SECURITY.values()) <= {"preserve", "sanitize", "filter"}
+    assert {
+        table
+        for table, classification in RESTORE_TABLE_SECURITY.items()
+        if classification == "sanitize"
+    } == set(SANITATION_TABLES)
+    assert RESTORE_TABLE_SECURITY["app_meta"] == "filter"
 
 
 def _manifest(tmp_path: Path, *, authority) -> tuple[Path, DatasetBackupManifest]:

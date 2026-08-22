@@ -29,7 +29,8 @@ function Assert-TicketboxInstalledDatasetRestoreRequest {
             "backup_manifest_sha256", "backup_id", "dataset_id",
             "backup_restore_epoch", "target_revision",
             "predecessor_current_sha256", "predecessor_intent_sha256",
-            "predecessor_intent_payload", "release_manifest_sha256",
+            "predecessor_current_payload", "predecessor_intent_payload",
+            "release_manifest_sha256",
             "active_dataset_id", "active_restore_epoch", "restart_backend"
         ) `
         -Label "installed dataset restore request"
@@ -46,13 +47,25 @@ function Assert-TicketboxInstalledDatasetRestoreRequest {
     $backupId = ([guid][string]$payload.backup_id).ToString("D")
     $datasetId = ([guid][string]$payload.dataset_id).ToString("D")
     $activeDatasetId = ([guid][string]$payload.active_dataset_id).ToString("D")
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $payload.predecessor_intent_payload `
+        -ExpectedNames (Get-TicketboxDatabaseGenerationPayloadProperties "intent") `
+        -Label "installed dataset restore predecessor intent"
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $payload.predecessor_current_payload `
+        -ExpectedNames (Get-TicketboxDatabaseGenerationPayloadProperties "current") `
+        -Label "installed dataset restore predecessor CURRENT"
     $predecessorIntentSha = Get-TicketboxDatabaseGenerationTextSha256 (
         ConvertTo-TicketboxDatabaseGenerationCanonicalJson `
             $payload.predecessor_intent_payload
     )
+    $predecessorCurrentSha = Get-TicketboxDatabaseGenerationTextSha256 (
+        ConvertTo-TicketboxDatabaseGenerationCanonicalJson `
+            $payload.predecessor_current_payload
+    )
     if (
         [string]$payload.schema -cne
-            "ticketbox-installed-dataset-restore-request-v2" -or
+            "ticketbox-installed-dataset-restore-request-v3" -or
         $attemptId -cne [string]$payload.restore_attempt_id -or
         $backupId -cne [string]$payload.backup_id -or
         $datasetId -cne [string]$payload.dataset_id -or
@@ -62,11 +75,54 @@ function Assert-TicketboxInstalledDatasetRestoreRequest {
         [int64]$payload.active_restore_epoch -lt 0 -or
         $payload.restart_backend -isnot [bool] -or
         [string]::IsNullOrWhiteSpace([string]$payload.target_revision) -or
-        $predecessorIntentSha -cne [string]$payload.predecessor_intent_sha256
+        $predecessorIntentSha -cne [string]$payload.predecessor_intent_sha256 -or
+        $predecessorCurrentSha -cne [string]$payload.predecessor_current_sha256 -or
+        [string]$payload.predecessor_intent_payload.schema -cne
+            "ticketbox-database-generation-intent-v2" -or
+        [string]$payload.predecessor_current_payload.schema -cne
+            "ticketbox-current-database-generation-v1" -or
+        [string]$payload.predecessor_current_payload.operation_id -cne
+            [string]$payload.predecessor_intent_payload.operation_id -or
+        [string]$payload.predecessor_current_payload.installation_id -cne
+            [string]$payload.predecessor_intent_payload.installation_id -or
+        [string]$payload.predecessor_current_payload.intent_sha256 -cne
+            $predecessorIntentSha -or
+        [string]$payload.predecessor_current_payload.committed_revision -cne
+            [string]$payload.target_revision
     ) {
         throw "installed dataset restore request is not canonical or self-bound."
     }
     return $Request
+}
+
+function New-TicketboxInstalledDatasetRestorePredecessorCurrentTransition {
+    param(
+        [Parameter(Mandatory = $true)][object]$Current,
+        [Parameter(Mandatory = $true)][object]$RestoreRequest
+    )
+    $request = Assert-TicketboxInstalledDatasetRestoreRequest $RestoreRequest
+    $targetPayload = $request.Payload.predecessor_current_payload
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $targetPayload `
+        -ExpectedNames (Get-TicketboxDatabaseGenerationPayloadProperties "current") `
+        -Label "dataset restore predecessor CURRENT"
+    $targetSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $targetPayload
+    )
+    if (
+        $targetSha256 -cne [string]$request.Payload.predecessor_current_sha256 -or
+        [string]$Current.Payload.expected_predecessor_sha256 -cne $targetSha256 -or
+        [string]$Current.Payload.operation_id -ceq [string]$targetPayload.operation_id
+    ) {
+        throw "dataset restore CURRENT rollback is not the exact immediate predecessor."
+    }
+    return [pscustomobject][ordered]@{
+        schema = "ticketbox-database-generation-current-transition-v1"
+        mode = "restore_predecessor"
+        expected_current_sha256 = [string]$Current.PayloadSha256
+        target_payload_sha256 = $targetSha256
+        target_payload = $targetPayload
+    }
 }
 
 function New-TicketboxInstalledDatasetRestoreRequest {
@@ -96,6 +152,7 @@ function New-TicketboxInstalledDatasetRestoreRequest {
         target_revision = [string]$backup.schema_revision
         predecessor_current_sha256 = [string]$Authority.Current.PayloadSha256
         predecessor_intent_sha256 = [string]$Authority.Intent.PayloadSha256
+        predecessor_current_payload = $Authority.Current.Payload
         predecessor_intent_payload = $Authority.Intent.Payload
         release_manifest_sha256 =
             ([string]$Subject.Manifest.Sha256).ToLowerInvariant()
@@ -114,7 +171,7 @@ function New-TicketboxInstalledDatasetRestoreRequest {
         }
         return Assert-TicketboxInstalledDatasetRestoreRequest $existing
     }
-    $payload = [ordered]@{ schema = "ticketbox-installed-dataset-restore-request-v2" }
+    $payload = [ordered]@{ schema = "ticketbox-installed-dataset-restore-request-v3" }
     foreach ($name in @($immutable.Keys)) { $payload[$name] = $immutable[$name] }
     $written = Write-TicketboxDatabaseGenerationEnvelope `
         $path "dataset-restore-request" $payload $LifecycleLock

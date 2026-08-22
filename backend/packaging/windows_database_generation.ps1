@@ -511,8 +511,11 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                     }
                     $terminal = New-TicketboxDatabaseGenerationChainedArtifact `
                         $stateRoot $operationId "terminal-state" $terminalPayload $LifecycleLock
+                    $currentTransition = `
+                        New-TicketboxDatabaseGenerationAdvanceCurrentTransition `
+                            $intent $candidate $terminal
                     $current = Publish-TicketboxDatabaseGenerationCurrent `
-                        $intent $candidate $terminal $LifecycleLock
+                        $currentTransition $LifecycleLock
                     Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
                         -ExpectedOperationId $operationId `
                         -ExpectedCurrentSha256 ([string]$current.PayloadSha256) | Out-Null

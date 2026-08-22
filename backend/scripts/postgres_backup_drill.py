@@ -35,6 +35,9 @@ from sqlalchemy.pool import StaticPool
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from scripts.postgres_restore_drill_topology import (  # noqa: E402
+    managed_restore_role_topology,
+)
 from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT  # noqa: E402
 from scripts.test_postgres_database import dedicated_test_database_lease  # noqa: E402
 
@@ -152,14 +155,25 @@ def _run_drill(
     return 0
 
 
-def _exercise_complete_generation(inputs: _DrillInputs, source_engine: Engine, temporary: Path) -> None:
+def _exercise_complete_generation(
+    inputs: _DrillInputs,
+    source_engine: Engine,
+    temporary: Path,
+) -> None:
+    generation, manifest = _create_complete_generation(inputs, source_engine, temporary)
+    _restore_complete_generation(inputs, temporary, generation, manifest)
+
+
+def _create_complete_generation(
+    inputs: _DrillInputs,
+    source_engine: Engine,
+    temporary: Path,
+) -> tuple[Path, object]:
     from sqlalchemy.orm import Session
 
-    from app.database import _dataset_restore_action as restore_action
     from app.services.backup_service import CompleteBackupRequest, create_complete_backup_generation
     from app.services.dataset_authority_service import read_dataset_authority
     from app.services.dataset_backup_contract import read_manifest
-    from app.services.dataset_restore_service import CompleteRestoreRequest
 
     backup_root = temporary / "backups"
     with Session(source_engine) as authority_session:
@@ -193,6 +207,20 @@ def _exercise_complete_generation(inputs: _DrillInputs, source_engine: Engine, t
         "OK complete dataset generation: "
         f"{entry.file_name} ({entry.size_bytes} bytes, {len(manifest.originals)} originals)"
     )
+    return generation, manifest
+
+
+def _restore_complete_generation(
+    inputs: _DrillInputs,
+    temporary: Path,
+    generation: Path,
+    manifest: object,
+) -> None:
+    from app.database import _database_generation_target_verification as target_verification
+    from app.database import _dataset_restore_action as restore_action
+    from app.services.dataset_restore_service import CompleteRestoreRequest
+    from scripts.build_database_generation_program import write_program
+
     restored_originals = temporary / "restored-originals"
     restore_transport = make_url(inputs.restore_url)
     restore_hostaddr = restore_transport.query.get("hostaddr")
@@ -202,22 +230,35 @@ def _exercise_complete_generation(inputs: _DrillInputs, source_engine: Engine, t
         host=restore_hostaddr,
         query={"require_auth": "scram-sha-256"},
     ).render_as_string(hide_password=False)
-    restore_action.DATABASE_NAME = TEST_POSTGRES_CONTRACT.restore_database
-    restore_action.MIGRATOR_ROLE = TEST_POSTGRES_CONTRACT.application_role
-    restore_action.SCHEMA_OWNER_ROLE = TEST_POSTGRES_CONTRACT.application_role
-    restored = restore_action.run_isolated_dataset_restore_action(
-        CompleteRestoreRequest(
-            backup_generation=generation,
-            target_upload_root=restored_originals,
-            database_url=managed_restore_url,
-            passfile=inputs.passfile,
-            pg_restore_binary=inputs.pg_restore,
-            active_dataset_id=manifest.authority.dataset_id,
-            active_restore_epoch=manifest.authority.restore_epoch,
-            target_schema_revision=manifest.authority.schema_revision,
-            restore_role=TEST_POSTGRES_CONTRACT.application_role,
+    program_path = temporary / "DATABASE_GENERATION_PROGRAM.json"
+    program_sha256 = write_program(backend_root=BACKEND_ROOT, output=program_path)
+    operation_id = str(uuid4())
+    with managed_restore_role_topology(
+        restore_url=managed_restore_url,
+        passfile=inputs.passfile,
+    ) as schema_owner_role:
+        restore_action.DATABASE_NAME = TEST_POSTGRES_CONTRACT.restore_database
+        restore_action.MIGRATOR_ROLE = TEST_POSTGRES_CONTRACT.application_role
+        restore_action.SCHEMA_OWNER_ROLE = schema_owner_role
+        target_verification.LIVE_DATABASE = TEST_POSTGRES_CONTRACT.restore_database
+        target_verification.MIGRATOR_ROLE = TEST_POSTGRES_CONTRACT.application_role
+        target_verification.SCHEMA_OWNER_ROLE = schema_owner_role
+        restored = restore_action.run_verified_isolated_dataset_restore_action(
+            request=CompleteRestoreRequest(
+                backup_generation=generation,
+                target_upload_root=restored_originals,
+                database_url=managed_restore_url,
+                passfile=inputs.passfile,
+                pg_restore_binary=inputs.pg_restore,
+                active_dataset_id=manifest.authority.dataset_id,
+                active_restore_epoch=manifest.authority.restore_epoch,
+                target_schema_revision=manifest.authority.schema_revision,
+                restore_role=schema_owner_role,
+            ),
+            generation_program_path=program_path,
+            expected_generation_program_sha256=program_sha256,
+            operation_id=operation_id,
         )
-    )
     if restored["backup_id"] != manifest.backup_id or restored["original_count"] != len(manifest.originals):
         raise SystemExit("FAIL drill: complete restore result differs from its generation")
     _assert_restored_originals(manifest, restored_originals)

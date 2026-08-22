@@ -928,6 +928,14 @@ def test_generation_current_is_idempotent_expected_predecessor_cas(tmp_path: Pat
         ARTIFACTS.read_text(encoding="utf-8-sig"),
         "Get-TicketboxDatabaseGenerationProspectiveCurrent",
     )
+    advance = _function(
+        ARTIFACTS.read_text(encoding="utf-8-sig"),
+        "New-TicketboxDatabaseGenerationAdvanceCurrentTransition",
+    )
+    validate_transition = _function(
+        ARTIFACTS.read_text(encoding="utf-8-sig"),
+        "Assert-TicketboxDatabaseGenerationCurrentTransition",
+    )
     publish = _function(
         ARTIFACTS.read_text(encoding="utf-8-sig"),
         "Publish-TicketboxDatabaseGenerationCurrent",
@@ -935,8 +943,16 @@ def test_generation_current_is_idempotent_expected_predecessor_cas(tmp_path: Pat
     script = f"""
 $ErrorActionPreference = 'Stop'
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); $Value | ConvertTo-Json -Depth 12 -Compress }}
-function Get-TicketboxDatabaseGenerationTextSha256 {{ param($Text); return ('a' * 64) }}
+function Get-TicketboxDatabaseGenerationTextSha256 {{
+    param($Text)
+    $bytes = [Text.Encoding]::UTF8.GetBytes([string]$Text)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {{ return ([BitConverter]::ToString($sha256.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }}
+    finally {{ $sha256.Dispose() }}
+}}
 function Assert-TicketboxDatabaseGenerationLowerSha256 {{ param($Value, $Label); if ($Value -cnotmatch '^[0-9a-f]{{64}}$') {{ throw "$Label invalid" }} }}
+function Assert-TicketboxDatabaseGenerationExactProperties {{ param($Value, $ExpectedNames, $Label) }}
+function Get-TicketboxDatabaseGenerationPayloadProperties {{ param($Kind); return @() }}
 function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
 $script:TicketboxDatabaseGenerationAclAccounts = @('SYSTEM', 'Administrators')
 $script:TicketboxDatabaseGenerationRuntimeAccount = 'NT SERVICE\\TicketboxBackend'
@@ -956,6 +972,8 @@ function Write-TicketboxProtectedUtf8FileDurable {{
     }}
 }}
 {prospective}
+{advance}
+{validate_transition}
 {publish}
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('b' * 64)
@@ -985,29 +1003,60 @@ $terminal = [pscustomobject]@{{
     }}
 }}
 $lock = @{{}}
-$first = Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock
-$second = Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock
+$transition = New-TicketboxDatabaseGenerationAdvanceCurrentTransition $intent $candidate $terminal
+$first = Publish-TicketboxDatabaseGenerationCurrent $transition $lock
+$second = Publish-TicketboxDatabaseGenerationCurrent $transition $lock
 if ($script:writes -ne 1 -or $first.PayloadSha256 -cne $second.PayloadSha256) {{ throw 'idempotent CURRENT failed' }}
-$script:current.Payload.candidate_sha256 = ('e' * 64)
+$script:current.PayloadSha256 = ('e' * 64)
 $conflict = $false
-try {{ Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock | Out-Null }} catch {{ $conflict = $true }}
+try {{ Publish-TicketboxDatabaseGenerationCurrent $transition $lock | Out-Null }} catch {{ $conflict = $true }}
 if (-not $conflict -or $script:writes -ne 1) {{ throw 'CURRENT conflict did not fail closed' }}
+$predecessorPayload = [pscustomobject]@{{
+    schema = 'ticketbox-current-database-generation-v1'
+    operation_id = '33333333-3333-4333-8333-333333333333'
+    installation_id = '22222222-2222-4222-8222-222222222222'
+    intent_sha256 = ('6' * 64)
+    candidate_sha256 = ('7' * 64)
+    committed_revision = '20260809_0001'
+    generation_program_sha256 = ('8' * 64)
+    database_binding_sha256 = ('9' * 64)
+    terminal_state_sha256 = ('0' * 64)
+    expected_predecessor_sha256 = ''
+}}
+$predecessorSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+    ConvertTo-TicketboxDatabaseGenerationCanonicalJson $predecessorPayload
+)
 $script:current = [pscustomobject]@{{
-    Payload = [pscustomobject]@{{ operation_id = '33333333-3333-4333-8333-333333333333' }}
-    PayloadSha256 = ('f' * 64)
+    Payload = $predecessorPayload
+    PayloadSha256 = $predecessorSha256
 }}
 $intent.Payload.operation_id = '44444444-4444-4444-8444-444444444444'
-$intent.Payload.expected_predecessor_sha256 = ('f' * 64)
-$successor = Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock
-$successorAgain = Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock
+$intent.Payload.expected_predecessor_sha256 = $predecessorSha256
+$successorTransition = New-TicketboxDatabaseGenerationAdvanceCurrentTransition $intent $candidate $terminal
+$successor = Publish-TicketboxDatabaseGenerationCurrent $successorTransition $lock
+$successorAgain = Publish-TicketboxDatabaseGenerationCurrent $successorTransition $lock
 if (
     $script:writes -ne 2 -or
     $successor.Payload.operation_id -cne $intent.Payload.operation_id -or
     $successorAgain.PayloadSha256 -cne $successor.PayloadSha256
 ) {{ throw 'successor CURRENT predecessor CAS did not converge' }}
+$rollbackTransition = [pscustomobject][ordered]@{{
+    schema = 'ticketbox-database-generation-current-transition-v1'
+    mode = 'restore_predecessor'
+    expected_current_sha256 = [string]$successor.PayloadSha256
+    target_payload_sha256 = $predecessorSha256
+    target_payload = $predecessorPayload
+}}
+$rolledBack = Publish-TicketboxDatabaseGenerationCurrent $rollbackTransition $lock
+$rolledBackAgain = Publish-TicketboxDatabaseGenerationCurrent $rollbackTransition $lock
+if (
+    $script:writes -ne 3 -or
+    $rolledBack.PayloadSha256 -cne $predecessorSha256 -or
+    $rolledBackAgain.PayloadSha256 -cne $predecessorSha256
+) {{ throw 'CURRENT predecessor restoration did not converge' }}
 $script:current = $null
 $missing = $false
-try {{ Publish-TicketboxDatabaseGenerationCurrent $intent $candidate $terminal $lock | Out-Null }} catch {{ $missing = $true }}
-if (-not $missing -or $script:writes -ne 2) {{ throw 'missing predecessor mutated CURRENT' }}
+try {{ Publish-TicketboxDatabaseGenerationCurrent $successorTransition $lock | Out-Null }} catch {{ $missing = $true }}
+if (-not $missing -or $script:writes -ne 3) {{ throw 'missing predecessor mutated CURRENT' }}
 """
     run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")
