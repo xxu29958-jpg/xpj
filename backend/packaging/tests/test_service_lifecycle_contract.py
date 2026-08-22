@@ -1234,6 +1234,7 @@ $restore = Start-TicketboxInstalledDatasetRestoreOperation `
 if (
     [string]$restore.Payload.operation_kind -cne 'restore' -or
     [string]$restore.Payload.operation_id -cne '55555555-5555-4555-8555-555555555555' -or
+    -not [bool]$restore.Payload.restart_backend -or
     [IO.File]::ReadAllText($activePath, [Text.Encoding]::UTF8) -ceq $backupBytes
 ) {{ throw 'empty failed backup was not atomically superseded by restore' }}
 Remove-TicketboxInstalledDatasetOperation $restore $lease

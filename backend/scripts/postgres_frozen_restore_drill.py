@@ -17,7 +17,11 @@ from sqlalchemy.engine import make_url
 
 from app.services.dataset_backup_contract import DatasetBackupManifest
 from app.services.secure_file import write_protected_file_exclusive
-from scripts.postgres_dataset_facts import DatabaseFacts, read_database_facts
+from scripts.postgres_dataset_facts import (
+    DatabaseFacts,
+    assert_database_fact_mutations_observed,
+    read_database_facts,
+)
 
 
 def restore_with_frozen_helper(
@@ -100,6 +104,7 @@ def restore_with_frozen_helper(
         ):
             raise SystemExit("FAIL drill: frozen restore result escaped its generation")
         restored_facts = read_database_facts(admin_ticketbox_url)
+        assert_database_fact_mutations_observed(admin_ticketbox_url, restored_facts)
     print("OK exact frozen helper restored and verified the real PostgreSQL dataset")
     return restored_facts, restored_originals
 

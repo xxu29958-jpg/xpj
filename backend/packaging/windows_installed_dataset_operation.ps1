@@ -329,6 +329,7 @@ function Start-TicketboxInstalledDatasetRestoreOperation {
                 throw "active dataset backup has physical state and cannot be superseded."
             }
         }
+        $immutable.restart_backend = [bool]$existing.Payload.restart_backend
     }
     return Write-TicketboxInstalledDatasetOperation `
         $Authority.StateRoot $immutable "restore" $existing $LifecycleLock

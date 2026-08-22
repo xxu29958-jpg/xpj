@@ -28,6 +28,17 @@ foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPath
 
 $subject = Assert-TicketboxInstalledDatasetSubject $DataRoot
 $path = Join-Path ([string]$subject.Identity.DataRoot) "app\backup-inventory.json"
+$pathKind = Get-TicketboxPathEntryKindNoFollow $path
+if ($pathKind -ceq "Missing") {
+    [pscustomobject][ordered]@{
+        schema = "ticketbox-manager-backup-inventory-v1"
+        generations = @()
+    } | ConvertTo-Json -Depth 4 -Compress
+    return
+}
+if ($pathKind -cne "File") {
+    throw "installed backup inventory is not a plain file."
+}
 $backendService = "NT SERVICE\$([string]$subject.Identity.BackendServiceName)"
 $artifact = Read-TicketboxProtectedUtf8Artifact `
     -Path $path `
@@ -41,6 +52,7 @@ Assert-TicketboxDatabaseGenerationExactProperties `
     $inventory @("generations", "schema") "installed backup inventory"
 if (
     [string]$inventory.schema -cne "ticketbox-complete-backup-inventory-v1" -or
+    $inventory.generations -isnot [array] -or
     @($inventory.generations).Count -gt 3
 ) {
     throw "installed backup inventory contract drifted."

@@ -36,7 +36,11 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.services.path_entry_safety import is_link_or_reparse  # noqa: E402
-from scripts.postgres_dataset_facts import DatabaseFacts, read_database_facts  # noqa: E402
+from scripts.postgres_dataset_facts import (  # noqa: E402
+    DatabaseFacts,
+    assert_database_fact_mutations_observed,
+    read_database_facts,
+)
 from scripts.postgres_frozen_restore_drill import (  # noqa: E402
     restore_with_frozen_helper,
 )
@@ -164,7 +168,9 @@ def _exercise_complete_generation(
         _assert_restored_originals(manifest, restored_originals)
         return restored_facts
     _restore_complete_generation(inputs, temporary, generation, manifest)
-    return read_database_facts(inputs.restore_url)
+    restored_facts = read_database_facts(inputs.restore_url)
+    assert_database_fact_mutations_observed(inputs.restore_url, restored_facts)
+    return restored_facts
 
 
 def _create_complete_generation(

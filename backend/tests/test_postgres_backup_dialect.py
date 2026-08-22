@@ -38,6 +38,20 @@ def test_restore_drill_rejects_same_count_content_mutation() -> None:
         postgres_backup_drill._assert_restored_database(source, mutated, ())  # noqa: SLF001
 
 
+def test_restore_drill_rejects_sequence_only_mutation() -> None:
+    source = DatabaseFacts(
+        tables={"expenses": TableFacts(row_count=1, rows_sha256="a" * 64)},
+        sequences={"expenses_id_seq": (3, True)},
+    )
+    mutated = DatabaseFacts(
+        tables=source.tables,
+        sequences={"expenses_id_seq": (4, True)},
+    )
+
+    with pytest.raises(SystemExit, match="restored database contract differs"):
+        postgres_backup_drill._assert_restored_database(source, mutated, ())  # noqa: SLF001
+
+
 def test_frozen_dataset_maintenance_modules_expose_closed_action_surfaces() -> None:
     assert maintenance_runtime.__all__ == [
         "DatabaseMaintenanceContractError",
