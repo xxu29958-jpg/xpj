@@ -24,6 +24,27 @@ from scripts.postgres_dataset_facts import (
 )
 
 
+def _validate_frozen_restore_result(
+    completed: subprocess.CompletedProcess[bytes],
+    *,
+    expected_backup_id: str,
+    expected_program_sha256: str,
+) -> None:
+    if completed.returncode != 0 or completed.stderr:
+        raise SystemExit("FAIL drill: frozen isolated restore helper rejected its exact shipment")
+    try:
+        result = json.loads(completed.stdout.decode("utf-8").strip())
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit("FAIL drill: frozen restore result is invalid") from exc
+    if (
+        result.get("schema") != "ticketbox-isolated-dataset-restore-result-v2"
+        or result.get("backup_id") != expected_backup_id
+        or result.get("result") != "isolated_restore_candidate_verified"
+        or result.get("generation_program_sha256") != expected_program_sha256
+    ):
+        raise SystemExit("FAIL drill: frozen restore result escaped its generation")
+
+
 def restore_with_frozen_helper(
     *,
     source_url: str,
@@ -90,19 +111,11 @@ def restore_with_frozen_helper(
             env=environment,
             timeout=20 * 60,
         )
-        if completed.returncode != 0 or completed.stderr:
-            raise SystemExit("FAIL drill: frozen isolated restore helper rejected its exact shipment")
-        try:
-            result = json.loads(completed.stdout.decode("utf-8").strip())
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise SystemExit("FAIL drill: frozen restore result is invalid") from exc
-        if (
-            result.get("schema") != "ticketbox-isolated-dataset-restore-result-v2"
-            or result.get("backup_id") != manifest.backup_id
-            or result.get("result") != "isolated_restore_candidate_verified"
-            or result.get("generation_program_sha256") != program_sha256
-        ):
-            raise SystemExit("FAIL drill: frozen restore result escaped its generation")
+        _validate_frozen_restore_result(
+            completed,
+            expected_backup_id=manifest.backup_id,
+            expected_program_sha256=program_sha256,
+        )
         restored_facts = read_database_facts(admin_ticketbox_url)
         assert_database_fact_mutations_observed(admin_ticketbox_url, restored_facts)
     print("OK exact frozen helper restored and verified the real PostgreSQL dataset")
