@@ -52,13 +52,13 @@ function Get-TicketboxInstalledBackupBarrier {
     )
 
     $policy = Get-TicketboxDatabaseAuthorizationContract
-    $host = [pscustomobject]@{
+    $hostAuthority = [pscustomobject]@{
         Schema = "ticketbox-postgresql-host-authority-v1"
         PsqlPath = Join-Path ([string]$Subject.Identity.InstallDir) "pg\bin\psql.exe"
         Port = [int]$Subject.Identity.PgPort
     }
     $raw = Invoke-TicketboxPostgresqlDatabaseCommand `
-        -Authority $host `
+        -Authority $hostAuthority `
         -Database ([string]$policy.DatabaseName) `
         -Role ([string]$policy.BackupRole) `
         -Password $Authority.Credentials.BackupPassword `

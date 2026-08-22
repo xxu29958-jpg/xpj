@@ -105,20 +105,26 @@ try {
         $request = $null
     }
     if ($null -eq $result) {
+    if ($null -ne $request) {
+        $resumeOperationId = ([guid][string]$active.Payload.operation_id).ToString("D")
+        if (
+            [string]$active.Payload.source_request_sha256 -cne
+                [string]$request.PayloadSha256
+        ) {
+            throw "active Generation successor differs from the restore request."
+        }
+        [void](Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
+            -Request $request -Intent $active -Current $current `
+            -SuccessorOperationId $resumeOperationId)
+        $resumeCommittedRestore = $true
+    }
     $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
         $subject $BackupGeneration
     [void](Assert-TicketboxInstalledPostgresToolArtifact `
         -Subject $subject -Tool "PgRestore")
-    $predecessor = Resolve-TicketboxInstalledDatasetRestorePredecessor `
-        $active $current
-    if (
-        $null -ne $request -and
-        [string]$active.Payload.source_request_sha256 -ceq
-            [string]$request.PayloadSha256
-    ) {
-        $resumeCommittedRestore = $true
-    }
     if ($null -eq $request) {
+        $predecessor = Resolve-TicketboxInstalledDatasetRestorePredecessor `
+            $active $current
         if ([bool]$predecessor.HasPendingSuccessor) {
             throw "an in-progress Generation successor lacks its durable restore request."
         }
@@ -193,7 +199,10 @@ try {
     $operationId = [string]$active.Payload.operation_id
     $paths = Get-TicketboxInstalledDatasetRestorePaths `
         ([string]$subject.Identity.DataRoot) $operationId
-    $published = if ([string]$current.Payload.operation_id -ceq $operationId) {
+    $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
+        -Request $request -Intent $active -Current $current `
+        -SuccessorOperationId $operationId
+    $published = if ($currentDisposition -ceq "successor") {
         $current
     }
     else { $null }
@@ -208,6 +217,19 @@ try {
 
     while ($true) {
         Assert-TicketboxLifecycleOperationLease $lock
+        $active = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
+        $current = Read-TicketboxDatabaseGenerationCurrent
+        $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
+            -Request $request -Intent $active -Current $current `
+            -SuccessorOperationId $operationId
+        $intentContext = [pscustomobject]@{
+            StateRoot = $stateRoot
+            Artifact = $active
+        }
+        $published = if ($currentDisposition -ceq "successor") {
+            $current
+        }
+        else { $null }
         $source = Read-TicketboxDatabaseGenerationOperationArtifact `
             $stateRoot $operationId "restored-source" -AllowAbsent
         $candidateVerification = Read-TicketboxDatabaseGenerationOperationArtifact `
@@ -223,14 +245,6 @@ try {
                 -RestoredSource $source `
                 -Inspection $inspection)
         }
-        $current = Read-TicketboxDatabaseGenerationCurrent
-        $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
-            -Request $request -Intent $active -Current $current `
-            -SuccessorOperationId $operationId
-        $published = if ($currentDisposition -ceq "successor") {
-            $current
-        }
-        else { $null }
         $runtimeVerification = Read-TicketboxDatabaseGenerationOperationArtifact `
             $stateRoot $operationId "runtime-verification" -AllowAbsent
         if ($null -ne $runtimeVerification) {

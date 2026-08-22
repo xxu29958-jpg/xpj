@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -11,8 +12,24 @@ from _powershell_contract import (
 
 PACKAGING = Path(__file__).resolve().parents[1]
 ARTIFACTS = PACKAGING / "windows_database_generation_artifacts.ps1"
+INSTALLED_READER = PACKAGING / "windows_installed_dataset_reader.ps1"
+PROJECTION = PACKAGING / "windows_database_generation_projection.ps1"
+RESTORE = PACKAGING / "windows_dataset_restore.ps1"
 RESTORE_ARTIFACTS = PACKAGING / "windows_installed_dataset_restore_artifacts.ps1"
 RUNTIME = PACKAGING / "windows_dataset_restore_runtime.ps1"
+
+
+def test_dataset_owners_do_not_assign_powershell_host_automatic_variable() -> None:
+    offenders = []
+    paths = {
+        *PACKAGING.glob("windows_*dataset*.ps1"),
+        *PACKAGING.glob("windows_database_generation*.ps1"),
+    }
+    for path in sorted(paths):
+        source = path.read_text(encoding="utf-8-sig")
+        if re.search(r"(?im)^\s*\$host\s*=", source):
+            offenders.append(path.name)
+    assert offenders == []
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
@@ -30,6 +47,10 @@ def test_runtime_verification_round_trips_through_closed_artifact_api(
             "Read-TicketboxDatabaseGenerationOperationArtifact",
             "New-TicketboxDatabaseGenerationChainedArtifact",
         )
+    )
+    producer = powershell_function(
+        RUNTIME.read_text(encoding="utf-8-sig"),
+        "New-TicketboxInstalledDatasetRuntimeVerification",
     )
     script = f"""
 $ErrorActionPreference = 'Stop'
@@ -62,38 +83,144 @@ function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
 }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ param($Text); return ('a' * 64) }}
 {functions}
+{producer}
 $operation = '22222222-2222-4222-8222-222222222222'
-$payload = [ordered]@{{
-    schema = 'ticketbox-installed-dataset-runtime-verification-v1'
-    operation_id = $operation
-    intent_sha256 = ('b' * 64)
-    source_request_sha256 = ('c' * 64)
-    current_sha256 = ('d' * 64)
-    backup_manifest_sha256 = ('e' * 64)
-    backup_id = '33333333-3333-4333-8333-333333333333'
-    dataset_id = '44444444-4444-4444-8444-444444444444'
-    restore_epoch = 7
-    original_count = 9
-    health_contract = 'ticketbox-installation-health-v2'
-    result = 'restored_runtime_verified'
+$intentContext = [pscustomobject]@{{
+    StateRoot = 'C:\\state'
+    Artifact = [pscustomobject]@{{
+        PayloadSha256 = ('b' * 64)
+        Payload = [pscustomobject]@{{ operation_id = $operation }}
+    }}
 }}
-$written = New-TicketboxDatabaseGenerationChainedArtifact `
-    -StateRoot 'C:\\state' -OperationId $operation `
-    -Kind 'runtime-verification' -Payload $payload `
-    -LifecycleLock ([pscustomobject]@{{}})
+$request = [pscustomobject]@{{
+    PayloadSha256 = ('c' * 64)
+    Payload = [pscustomobject]@{{
+        backup_manifest_sha256 = ('e' * 64)
+        backup_id = '33333333-3333-4333-8333-333333333333'
+        dataset_id = '44444444-4444-4444-8444-444444444444'
+        backup_restore_epoch = 4
+        active_restore_epoch = 6
+    }}
+}}
+$current = [pscustomobject]@{{ PayloadSha256 = ('d' * 64) }}
+$inspection = [pscustomobject]@{{ Evidence = [pscustomobject]@{{ original_count = 9 }} }}
+$written = New-TicketboxInstalledDatasetRuntimeVerification `
+    -IntentContext $intentContext -Request $request -Current $current `
+    -Inspection $inspection -LifecycleLock ([pscustomobject]@{{}})
 $read = Read-TicketboxDatabaseGenerationOperationArtifact `
     -StateRoot 'C:\\state' -OperationId $operation -Kind 'runtime-verification'
+$candidatePath = Get-TicketboxDatabaseGenerationArtifactPath `
+    -StateRoot 'C:\\state' -OperationId $operation -Kind 'candidate-verification'
 if (
     [string]$written.Kind -cne 'runtime-verification' -or
     [string]$read.Kind -cne 'runtime-verification' -or
     [string]$read.Payload.operation_id -cne $operation -or
-    [string]$read.Payload.result -cne 'restored_runtime_verified'
+    [string]$read.Payload.result -cne 'restored_runtime_verified' -or
+    $script:store.ContainsKey($candidatePath)
 ) {{ throw 'runtime verification did not round-trip through the closed artifact API' }}
 """
     run_powershell_contract_script(
         script,
         tmp_path,
         filename="dataset-restore-runtime-verification-artifact-registry.ps1",
+    )
+
+
+def test_restore_reobserves_exact_authority_before_successor_artifacts() -> None:
+    restore = RESTORE.read_text(encoding="utf-8-sig")
+    before_loop, loop = restore.split("while ($true) {", maxsplit=1)
+    setup = before_loop.split("$operationId =", maxsplit=1)[1]
+
+    assert setup.index(
+        "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition"
+    ) < setup.index("Get-OrCreatePostgresBootstrapRecoveryState")
+    assert setup.index(
+        "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition"
+    ) < setup.index("New-TicketboxDatabaseGenerationCredentials")
+    assert loop.index("Read-TicketboxDatabaseGenerationActiveIntent") < loop.index(
+        "Read-TicketboxDatabaseGenerationCurrent"
+    )
+    assert loop.index(
+        "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition"
+    ) < loop.index("Read-TicketboxDatabaseGenerationOperationArtifact")
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_installed_projection_preserves_valid_public_base_url(
+    tmp_path: Path,
+) -> None:
+    reader_source = INSTALLED_READER.read_text(encoding="utf-8-sig")
+    public_reader = powershell_function(
+        reader_source,
+        "Read-TicketboxInstalledDatasetPublicBaseUrl",
+    )
+    contracts = powershell_function(
+        reader_source,
+        "New-TicketboxInstalledDatabaseGenerationContracts",
+    )
+    environment_writer = powershell_function(
+        PROJECTION.read_text(encoding="utf-8-sig"),
+        "Write-TicketboxDatabaseGenerationRuntimeEnvironment",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$script:publicBaseUrl = 'https://public.example/'
+$script:writtenLines = @()
+function Get-TicketboxPathEntryKindNoFollow {{ param($Path); return 'File' }}
+function Assert-TicketboxLegacyProtectedFileAcl {{ param($Path) }}
+function Read-EnvMap {{
+    param($Path)
+    return @{{ PUBLIC_BASE_URL = $script:publicBaseUrl }}
+}}
+function Read-TicketboxDatabaseGenerationProgramContract {{
+    param($Path, $ExpectedSha256)
+    return [pscustomobject]@{{ RelativePath = 'DATABASE_GENERATION_PROGRAM.json'; Size = 1; Sha256 = ('a' * 64) }}
+}}
+function New-TicketboxDatabaseGenerationHostContract {{ param($BackendServiceName, $DataRoot, $InstallDir, $PgCtlPath, $PgServiceName, $PgDumpPath, $PgDumpSize, $PgDumpSha256, $PgRestorePath, $PgRestoreSize, $PgRestoreSha256, $ReleaseConfig); return [pscustomobject]@{{}} }}
+function New-TicketboxDatabaseGenerationProjectionContract {{
+    param($BackendServiceName, $EnvPath, $StopTimeoutMilliseconds, $BackendPort, $PgBin, $Timezone, $PublicBaseUrl, $PsqlPath, $PgData, $DatabaseToolTimeoutMilliseconds)
+    return [pscustomobject]@{{ public_base_url = $PublicBaseUrl; env_path = $EnvPath; stop_timeout_ms = $StopTimeoutMilliseconds; backend_port = $BackendPort; pg_bin = $PgBin; timezone = $Timezone }}
+}}
+function ConvertTo-TicketboxTimeoutSeconds {{ param($Milliseconds); return 60 }}
+function Write-EnvNoBom {{ param($Path, $Lines); $script:writtenLines = @($Lines) }}
+{public_reader}
+{contracts}
+{environment_writer}
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{
+        InstallDir = 'C:\\Ticketbox'; DataRoot = 'C:\\TicketboxData'
+        BackendServiceName = 'ticketbox-backend'; PgServiceName = 'ticketbox-pg'
+        BackendPort = 8000; OperationId = '11111111-1111-4111-8111-111111111111'
+        InstallationId = '22222222-2222-4222-8222-222222222222'; BackendVersionFloor = '1.0.0'
+    }}
+    Manifest = [pscustomobject]@{{
+        DatabaseGenerationProgram = [pscustomobject]@{{ RelativePath = 'DATABASE_GENERATION_PROGRAM.json'; Sha256 = ('a' * 64) }}
+        PgDump = [pscustomobject]@{{ Size = 1; Sha256 = ('b' * 64) }}
+        PgRestore = [pscustomobject]@{{ Size = 1; Sha256 = ('c' * 64) }}
+        DatabaseMaintenanceHelper = [pscustomobject]@{{ RelativePath = 'helper.exe'; Size = 1; Sha256 = ('d' * 64) }}
+    }}
+    Release = [pscustomobject]@{{ stop_timeout_ms = 60000; database_tool_timeout_ms = 60000; default_timezone = 'Asia/Shanghai' }}
+}}
+$resolved = New-TicketboxInstalledDatabaseGenerationContracts $subject
+if ([string]$resolved.Projection.public_base_url -cne 'https://public.example') {{
+    throw 'installed projection dropped PUBLIC_BASE_URL'
+}}
+Write-TicketboxDatabaseGenerationRuntimeEnvironment `
+    -DatabaseUrl 'postgresql://runtime' -ProjectionContract $resolved.Projection `
+    -HttpBootstrapSecret 'bootstrap'
+if ('PUBLIC_BASE_URL=https://public.example' -cnotin $script:writtenLines) {{
+    throw 'runtime projection did not preserve PUBLIC_BASE_URL'
+}}
+$script:publicBaseUrl = 'http://public.example'
+$rejected = $false
+try {{ New-TicketboxInstalledDatabaseGenerationContracts $subject | Out-Null }}
+catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'public HTTP origin was accepted' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-restore-public-base-url-preservation.ps1",
     )
 
 

@@ -92,6 +92,42 @@ function Read-TicketboxInstalledDatasetAuthority {
     }
 }
 
+function Read-TicketboxInstalledDatasetPublicBaseUrl {
+    param([Parameter(Mandatory = $true)][string]$EnvPath)
+
+    $kind = Get-TicketboxPathEntryKindNoFollow $EnvPath
+    if ($kind -ceq "Missing") { return "" }
+    if ($kind -cne "File") {
+        throw "installed runtime environment is not a regular file."
+    }
+    Assert-TicketboxLegacyProtectedFileAcl $EnvPath
+    $environment = Read-EnvMap $EnvPath
+    if (-not $environment.ContainsKey("PUBLIC_BASE_URL")) { return "" }
+    $value = ([string]$environment["PUBLIC_BASE_URL"]).Trim().TrimEnd("/")
+    if ($value.Length -eq 0) { return "" }
+    if ($value.IndexOfAny([char[]]@(' ', "`r", "`n", "`t")) -ge 0) {
+        throw "installed PUBLIC_BASE_URL contains whitespace."
+    }
+    $uri = $null
+    if (-not [Uri]::TryCreate($value, [UriKind]::Absolute, [ref]$uri)) {
+        throw "installed PUBLIC_BASE_URL is not an absolute origin."
+    }
+    $publicHost = ([string]$uri.DnsSafeHost).ToLowerInvariant()
+    $loopback = $publicHost -in @("127.0.0.1", "::1", "localhost")
+    if (
+        ([string]$uri.Scheme -cne "https" -and
+            -not ([string]$uri.Scheme -ceq "http" -and $loopback)) -or
+        -not [string]::IsNullOrEmpty([string]$uri.UserInfo) -or
+        ([string]$uri.AbsolutePath -cne "/" -and
+            -not [string]::IsNullOrEmpty([string]$uri.AbsolutePath)) -or
+        -not [string]::IsNullOrEmpty([string]$uri.Query) -or
+        -not [string]::IsNullOrEmpty([string]$uri.Fragment)
+    ) {
+        throw "installed PUBLIC_BASE_URL is not an authorized origin."
+    }
+    return $uri.GetLeftPart([UriPartial]::Authority)
+}
+
 function New-TicketboxInstalledDatabaseGenerationContracts {
     param([Parameter(Mandatory = $true)][object]$Subject)
 
@@ -105,7 +141,7 @@ function New-TicketboxInstalledDatabaseGenerationContracts {
     $program = Read-TicketboxDatabaseGenerationProgramContract `
         -Path $programPath `
         -ExpectedSha256 (([string]$manifest.DatabaseGenerationProgram.Sha256).ToLowerInvariant())
-    $host = New-TicketboxDatabaseGenerationHostContract `
+    $hostContract = New-TicketboxDatabaseGenerationHostContract `
         -BackendServiceName ([string]$identity.BackendServiceName) `
         -DataRoot ([string]$identity.DataRoot) `
         -InstallDir ([string]$identity.InstallDir) `
@@ -118,14 +154,16 @@ function New-TicketboxInstalledDatabaseGenerationContracts {
         -PgRestoreSize ([int64]$manifest.PgRestore.Size) `
         -PgRestoreSha256 (([string]$manifest.PgRestore.Sha256).ToLowerInvariant()) `
         -ReleaseConfig $release
+    $envPath = Join-Path ([string]$identity.DataRoot) "app\.env"
+    $publicBaseUrl = Read-TicketboxInstalledDatasetPublicBaseUrl $envPath
     $projection = New-TicketboxDatabaseGenerationProjectionContract `
         -BackendServiceName ([string]$identity.BackendServiceName) `
-        -EnvPath (Join-Path ([string]$identity.DataRoot) "app\.env") `
+        -EnvPath $envPath `
         -StopTimeoutMilliseconds ([int]$release.stop_timeout_ms) `
         -BackendPort ([int]$identity.BackendPort) `
         -PgBin (Join-Path ([string]$identity.InstallDir) "pg\bin") `
         -Timezone ([string]$release.default_timezone) `
-        -PublicBaseUrl "" `
+        -PublicBaseUrl $publicBaseUrl `
         -PsqlPath (Join-Path ([string]$identity.InstallDir) "pg\bin\psql.exe") `
         -PgData (Join-Path ([string]$identity.DataRoot) "pgdata") `
         -DatabaseToolTimeoutMilliseconds ([int]$release.database_tool_timeout_ms)
@@ -148,7 +186,7 @@ function New-TicketboxInstalledDatabaseGenerationContracts {
     }
     return [pscustomobject][ordered]@{
         Program = $program
-        Host = $host
+        Host = $hostContract
         Projection = $projection
         ReleaseIdentity = $releaseIdentity
     }

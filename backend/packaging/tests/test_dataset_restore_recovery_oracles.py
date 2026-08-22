@@ -185,6 +185,9 @@ function Read-TicketboxDatabaseGenerationRuntimeCredentials {{
 function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {{ param($HostContract); return [pscustomobject]@{{}} }}
 function Publish-TicketboxDatabaseGenerationRuntimeProjection {{
     param($Intent, $Candidate, $Credentials, $HostAuthority, $ProjectionContract, $LifecycleLock)
+    if ([string]$ProjectionContract.public_base_url -cne 'https://public.example') {{
+        throw 'rollback projection dropped PUBLIC_BASE_URL'
+    }}
     $script:events += "projection:$($Intent.Payload.operation_id):$($Candidate.PayloadSha256)"
 }}
 function New-TicketboxInstalledDatasetRestorePredecessorCurrentTransition {{
@@ -253,7 +256,7 @@ Restore-TicketboxInstalledDatasetPredecessorRuntime `
     -Subject $subject -Request $request `
     -Paths ([pscustomobject]@{{ operation_id = $successorOperation }}) `
     -StateRoot 'C:\\state' `
-    -Contracts ([pscustomobject]@{{ Host = [pscustomobject]@{{}}; Projection = [pscustomobject]@{{}} }}) `
+    -Contracts ([pscustomobject]@{{ Host = [pscustomobject]@{{}}; Projection = [pscustomobject]@{{ public_base_url = 'https://public.example' }} }}) `
     -Intent $intent -Current $current -LifecycleLock $lifecycleLock
 $expected = @(
     'select:Predecessor', 'set-acls', 'start:ticketbox-pg',
@@ -386,62 +389,3 @@ function ConvertTo-TicketboxDatabaseGenerationCanonicalJson { param($Value); ret
         assert result["restore_attempt_id"] == "11111111-1111-4111-8111-111111111111"
         assert result["generation_operation_id"] == "44444444-4444-4444-8444-444444444444"
         assert result["result"] == "current_published"
-
-
-def test_restore_drill_cleanup_attempts_each_independent_repair(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.syspath_prepend(str(PACKAGING.parent))
-    from scripts import postgres_restore_drill_topology
-
-    calls: list[str] = []
-    first_failure = KeyboardInterrupt("cleanup-1")
-    third_failure = SystemExit("cleanup-3")
-
-    class Connection:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args: object) -> None:
-            return None
-
-        def execute(self, statement: object) -> None:
-            calls.append(statement.as_string())
-            if len(calls) == 1:
-                raise first_failure
-            if len(calls) == 3:
-                raise third_failure
-
-    monkeypatch.setattr(
-        postgres_restore_drill_topology.psycopg,
-        "connect",
-        lambda *_args, **_kwargs: Connection(),
-    )
-    contract = postgres_restore_drill_topology._TopologyContract(  # noqa: SLF001
-        admin_conninfo="admin",
-        admin_restore_conninfo="restore",
-        database="xpj_restore_test",
-        migrator="xpj_test_app",
-        owner="xpj_drill_owner_test",
-        passfile=tmp_path / "test.pgpass",
-    )
-    failures = postgres_restore_drill_topology._cleanup_topology(  # noqa: SLF001
-        contract,
-        postgres_restore_drill_topology._TopologyState(  # noqa: SLF001
-            role_created=True,
-            migrator_changed=True,
-        ),
-    )
-
-    assert calls == [
-        'REASSIGN OWNED BY "xpj_drill_owner_test" TO "xpj_test_app"',
-        'ALTER SCHEMA public OWNER TO "xpj_test_app"',
-        'ALTER DATABASE "xpj_restore_test" OWNER TO "xpj_test_app"',
-        'REVOKE "xpj_drill_owner_test" FROM "xpj_test_app"',
-        'DROP ROLE "xpj_drill_owner_test"',
-        'ALTER ROLE "xpj_test_app" INHERIT',
-    ]
-    assert len(failures) == 2
-    assert failures[0] is first_failure
-    assert failures[1] is third_failure

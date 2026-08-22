@@ -7,13 +7,13 @@ function Get-TicketboxInstalledActiveDatasetObservation {
         [Parameter(Mandatory = $true)][object]$Subject,
         [Parameter(Mandatory = $true)][object]$Authority
     )
-    $host = [pscustomobject][ordered]@{
+    $hostAuthority = [pscustomobject][ordered]@{
         Schema = "ticketbox-postgresql-host-authority-v1"
         PsqlPath = Join-Path ([string]$Subject.Identity.InstallDir) "pg\bin\psql.exe"
         Port = [int]$Subject.Identity.PgPort
     }
     $raw = Invoke-TicketboxPostgresqlDatabaseCommand `
-        -Authority $host `
+        -Authority $hostAuthority `
         -Database "ticketbox" `
         -Role "ticketbox_backup" `
         -Password $Authority.Credentials.BackupPassword `
