@@ -34,6 +34,7 @@ import urllib.request
 from collections import deque
 from collections.abc import Callable
 from contextlib import suppress
+from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Protocol
@@ -78,6 +79,9 @@ _SHA256_PROOF_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_PRODUCT_BODY_BYTES = 1024
 _MAX_RESTORE_BODY_BYTES = 256
 _MAX_BOOTSTRAP_FORM_BYTES = 1024
+_MAX_REJECTED_BODY_DRAIN_BYTES = 4096
+_REJECTED_BODY_DRAIN_CHUNK_BYTES = 1024
+_REJECTED_BODY_DRAIN_TIMEOUT_SECONDS = 0.25
 _BOOTSTRAP_TTL_SECONDS = 60.0
 _BOOTSTRAP_REPLAY_TTL_SECONDS = 300.0
 _BOOTSTRAP_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43,128}\Z")
@@ -103,6 +107,12 @@ _CONTENT_SECURITY_POLICY = (
     "form-action 'none'; "
     "frame-ancestors 'none'"
 )
+
+
+class _EmptyRequestBodyState(Enum):
+    EMPTY = "empty"
+    DRAINED_NONEMPTY = "drained_nonempty"
+    INCOMPLETE = "incomplete"
 
 
 def _normalized_host(host: str) -> str | None:
@@ -583,11 +593,45 @@ class _Handler(BaseHTTPRequestHandler):
         provided = self.headers.get("X-Control-Token")
         return provided is not None and secrets.compare_digest(provided, srv.token)
 
-    def _has_empty_request_body(self) -> bool:
+    def _read_empty_request_body_state(self) -> _EmptyRequestBodyState:
         if self.headers.get("Transfer-Encoding") is not None:
-            return False
+            self.close_connection = True
+            return _EmptyRequestBodyState.INCOMPLETE
         lengths = self.headers.get_all("Content-Length", [])
-        return not lengths or (len(lengths) == 1 and lengths[0].strip() == "0")
+        if not lengths:
+            return _EmptyRequestBodyState.EMPTY
+        if len(lengths) != 1:
+            self.close_connection = True
+            return _EmptyRequestBodyState.INCOMPLETE
+        try:
+            length = int(lengths[0])
+        except ValueError:
+            self.close_connection = True
+            return _EmptyRequestBodyState.INCOMPLETE
+        if length == 0:
+            return _EmptyRequestBodyState.EMPTY
+        self.close_connection = True
+        if length < 0 or length > _MAX_REJECTED_BODY_DRAIN_BYTES:
+            return _EmptyRequestBodyState.INCOMPLETE
+        deadline = time.monotonic() + _REJECTED_BODY_DRAIN_TIMEOUT_SECONDS
+        remaining = length
+        previous_timeout = self.connection.gettimeout()
+        try:
+            while remaining:
+                timeout = deadline - time.monotonic()
+                if timeout <= 0:
+                    return _EmptyRequestBodyState.INCOMPLETE
+                self.connection.settimeout(timeout)
+                chunk = self.rfile.read(min(remaining, _REJECTED_BODY_DRAIN_CHUNK_BYTES))
+                if not chunk:
+                    return _EmptyRequestBodyState.INCOMPLETE
+                remaining -= len(chunk)
+        except (OSError, TimeoutError):
+            return _EmptyRequestBodyState.INCOMPLETE
+        finally:
+            with suppress(OSError):
+                self.connection.settimeout(previous_timeout)
+        return _EmptyRequestBodyState.DRAINED_NONEMPTY
 
     def _read_json_body(self, *, max_bytes: int) -> dict | None:
         if self.headers.get("Transfer-Encoding") is not None:
@@ -703,7 +747,10 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
             return
-        if not self._has_empty_request_body():
+        body_state = self._read_empty_request_body_state()
+        if body_state is _EmptyRequestBodyState.INCOMPLETE:
+            return
+        if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
             self._send_json({"error": "invalid_request"}, code=400)
             return
         if not srv.action_lock.acquire(blocking=False):
@@ -846,8 +893,11 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/api/reopen":
             challenge = self.headers.get("X-Ticketbox-Reopen-Challenge", "")
             request_proof = self.headers.get("X-Ticketbox-Reopen-Proof", "")
+            body_state = self._read_empty_request_body_state()
+            if body_state is _EmptyRequestBodyState.INCOMPLETE:
+                return
             if (
-                not self._has_empty_request_body()
+                body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY
                 or self.headers.get("Origin") is not None
                 or self.headers.get("Sec-Fetch-Site") is not None
                 or not _CHALLENGE_PATTERN.fullmatch(challenge)
@@ -899,7 +949,10 @@ class _Handler(BaseHTTPRequestHandler):
             if not self._authorized():
                 self._send(403, b"forbidden", "text/plain; charset=utf-8")
                 return
-            if not self._has_empty_request_body():
+            body_state = self._read_empty_request_body_state()
+            if body_state is _EmptyRequestBodyState.INCOMPLETE:
+                return
+            if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
                 self._send(400, b"request body not allowed", "text/plain; charset=utf-8")
                 return
             if not srv.action_lock.acquire(blocking=False):
@@ -922,7 +975,10 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
             return
-        if not self._has_empty_request_body():
+        body_state = self._read_empty_request_body_state()
+        if body_state is _EmptyRequestBodyState.INCOMPLETE:
+            return
+        if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
             self._send(400, b"request body not allowed", "text/plain; charset=utf-8")
             return
         if not srv.action_lock.acquire(blocking=False):

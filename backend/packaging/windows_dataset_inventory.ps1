@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 # Read-only, backend-independent projection of the installed backup inventory.
 [CmdletBinding()]

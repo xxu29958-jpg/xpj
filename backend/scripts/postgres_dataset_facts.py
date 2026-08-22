@@ -35,7 +35,8 @@ def read_database_facts(url: str) -> DatabaseFacts:
 def assert_database_fact_mutations_observed(url: str, baseline: DatabaseFacts) -> None:
     """Prove same-count row and sequence-only changes alter the real PG facts."""
 
-    if baseline.tables.get("expenses", TableFacts(0, "")).row_count == 0 or not baseline.sequences:
+    row_probe_table = "alembic_version"
+    if baseline.tables.get(row_probe_table, TableFacts(0, "")).row_count != 1 or not baseline.sequences:
         raise SystemExit("FAIL drill: database fact mutation oracle lacks a row or sequence")
     engine = create_engine(url, pool_pre_ping=True)
     try:
@@ -44,10 +45,11 @@ def assert_database_fact_mutations_observed(url: str, baseline: DatabaseFacts) -
             try:
                 connection.execute(
                     text(
-                        "UPDATE public.expenses SET note = COALESCE(note, '') || :probe "
-                        "WHERE id = (SELECT MIN(id) FROM public.expenses)"
-                    ),
-                    {"probe": "__ticketbox_fact_probe__"},
+                        "UPDATE public.alembic_version "
+                        "SET version_num = "
+                        "CASE WHEN left(version_num, 1) = '0' THEN '1' ELSE '0' END "
+                        "|| substring(version_num FROM 2)"
+                    )
                 )
                 row_mutation = _read_database_facts(connection)
             finally:
@@ -67,8 +69,8 @@ def assert_database_fact_mutations_observed(url: str, baseline: DatabaseFacts) -
 
     restored = read_database_facts(url)
     if (
-        row_mutation.tables["expenses"].row_count != baseline.tables["expenses"].row_count
-        or row_mutation.tables["expenses"].rows_sha256 == baseline.tables["expenses"].rows_sha256
+        row_mutation.tables[row_probe_table].row_count != baseline.tables[row_probe_table].row_count
+        or row_mutation.tables[row_probe_table].rows_sha256 == baseline.tables[row_probe_table].rows_sha256
         or row_mutation.sequences != baseline.sequences
         or sequence_mutation.tables != baseline.tables
         or sequence_mutation.sequences == baseline.sequences

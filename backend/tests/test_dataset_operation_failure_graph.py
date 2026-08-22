@@ -191,6 +191,7 @@ def test_isolated_restore_action_rejects_foreign_dataset_before_mutation(
 
     source = SimpleNamespace(
         backup_id="22222222-2222-4222-8222-222222222222",
+        source_installation_id=INSTALLATION_ID,
         authority=SimpleNamespace(
             dataset_id="33333333-3333-4333-8333-333333333333",
             restore_epoch=4,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import re
+import socket
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -511,6 +512,23 @@ def test_backup_inventory_endpoint_is_authenticated_closed_and_fail_closed(tmp_p
     try:
         assert post({})[0] == 403
         assert post(headers, b"{}") == (400, b"request body not allowed")
+        stalled = socket.create_connection(("127.0.0.1", port), timeout=2)
+        stalled.settimeout(2)
+        try:
+            stalled.sendall(
+                (
+                    "POST /api/backups HTTP/1.1\r\n"
+                    f"Host: 127.0.0.1:{port}\r\n"
+                    f"X-Control-Token: {_TOKEN}\r\n"
+                    "Sec-Fetch-Site: same-origin\r\n"
+                    f"Origin: http://127.0.0.1:{port}\r\n"
+                    "Content-Length: 2\r\n"
+                    "Connection: close\r\n\r\n{"
+                ).encode("ascii")
+            )
+            assert stalled.recv(1) == b""
+        finally:
+            stalled.close()
         assert post(headers) == (
             200,
             {"generations": [{"generation": "ticketbox-backup-11111111-1111-4111-8111-111111111111"}]},
