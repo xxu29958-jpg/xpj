@@ -56,6 +56,37 @@ function New-TicketboxDatabaseGenerationMaintenanceAuthority {
     }
 }
 
+function Open-TicketboxDatabaseGenerationMaintenanceAuthority {
+    param(
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$HostAuthority,
+        [Parameter(Mandatory = $true)][string]$BootstrapRecoveryPath,
+        [Parameter(Mandatory = $true)][string]$BootstrapAppData,
+        [Parameter(Mandatory = $true)][int]$BootstrapSecretByteCount,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    $bootstrapRecoveryState = $null
+    try {
+        $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState `
+            -Path $BootstrapRecoveryPath `
+            -AppData $BootstrapAppData `
+            -SecretByteCount $BootstrapSecretByteCount
+        return New-TicketboxDatabaseGenerationMaintenanceAuthority `
+            -Intent $Intent `
+            -SuperuserPassword (
+                [string]$bootstrapRecoveryState.SuperuserPassword
+            ) `
+            -HostAuthority $HostAuthority `
+            -LifecycleLock $LifecycleLock
+    }
+    finally {
+        if ($null -ne $bootstrapRecoveryState) {
+            $bootstrapRecoveryState.SuperuserPassword = ""
+            $bootstrapRecoveryState.HttpBootstrapSecret = ""
+        }
+    }
+}
+
 function Close-TicketboxDatabaseGenerationMaintenanceAuthority {
     param(
         [Parameter(Mandatory = $true)][object]$Authority,

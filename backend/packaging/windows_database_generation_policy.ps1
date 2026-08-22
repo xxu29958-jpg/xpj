@@ -324,10 +324,11 @@ function Resolve-TicketboxDatabaseGenerationNextAction {
         [Parameter(Mandatory = $true)][object]$Observation
     )
     $expectedNames = @(
-        "bootstrap_retired", "candidate", "credentials", "current",
-        "runtime_credentials", "runtime_projection",
-        "service_transition_present", "source_binding",
-        "target_authorization", "terminal_state",
+        "bootstrap_retirement_state", "candidate_present",
+        "credentials_present", "current_present",
+        "runtime_credentials_present", "runtime_projection_present",
+        "service_transition_present", "source_binding_present",
+        "target_authorization_present", "terminal_state_present",
         "transient_authority_present"
     )
     $actualNames = @($Observation.PSObject.Properties.Name | Sort-Object -CaseSensitive)
@@ -335,63 +336,70 @@ function Resolve-TicketboxDatabaseGenerationNextAction {
     if (($actualNames -join "`n") -cne ($sortedExpected -join "`n")) {
         throw "database generation observation 不是 closed contract。"
     }
+    foreach ($name in @(
+        "candidate_present", "credentials_present", "current_present",
+        "runtime_credentials_present", "runtime_projection_present",
+        "service_transition_present", "source_binding_present",
+        "target_authorization_present", "terminal_state_present",
+        "transient_authority_present"
+    )) {
+        if ($Observation.$name -isnot [bool]) {
+            throw "database generation observation boolean state 无效。"
+        }
+    }
     if (
-        $Observation.service_transition_present -isnot [bool] -or
-        $Observation.transient_authority_present -isnot [bool] -or
-        (
-            $null -ne $Observation.bootstrap_retired -and
-            $Observation.bootstrap_retired -isnot [bool]
+        [string]$Observation.bootstrap_retirement_state -cnotin @(
+            "not_applicable", "active", "retired", "unknown"
         )
     ) {
-        throw "database generation observation boolean state 无效。"
+        throw "database generation bootstrap retirement state 无效。"
     }
-    $credentials = $Observation.credentials
-    $sourceBinding = $Observation.source_binding
-    $targetAuthorization = $Observation.target_authorization
-    $candidate = $Observation.candidate
-    $runtimeCredentials = $Observation.runtime_credentials
-    $runtimeProjection = $Observation.runtime_projection
-    $terminalState = $Observation.terminal_state
-    $current = $Observation.current
     if (
-        $null -ne $candidate -and
-        ($null -eq $targetAuthorization -or $null -eq $sourceBinding)
+        $Observation.candidate_present -and
+        (
+            -not $Observation.target_authorization_present -or
+            -not $Observation.source_binding_present
+        )
     ) {
         throw "database generation candidate 缺少前置 authority。"
     }
-    if ($null -ne $targetAuthorization -and $null -eq $sourceBinding) {
+    if (
+        $Observation.target_authorization_present -and
+        -not $Observation.source_binding_present
+    ) {
         throw "database generation target authorization 缺少 SourceBinding。"
     }
     if (
-        $null -ne $sourceBinding -and
-        $null -eq $credentials -and
-        $null -eq $candidate -and
-        $null -eq $current
+        $Observation.source_binding_present -and
+        -not $Observation.credentials_present -and
+        -not $Observation.candidate_present -and
+        -not $Observation.current_present
     ) {
         throw "database generation CURRENT 前 credential 不得缺失。"
     }
     if (
-        $null -ne $runtimeCredentials -and $null -eq $candidate -or
-        $null -ne $runtimeProjection -and (
-            $null -eq $runtimeCredentials -or
-            $Observation.bootstrap_retired -ne $true
+        $Observation.runtime_credentials_present -and
+            -not $Observation.candidate_present -or
+        $Observation.runtime_projection_present -and (
+            -not $Observation.runtime_credentials_present -or
+            $Observation.bootstrap_retirement_state -cne "retired"
         ) -or
-        $null -ne $terminalState -and (
-            $null -eq $runtimeProjection -or
+        $Observation.terminal_state_present -and (
+            -not $Observation.runtime_projection_present -or
             $Observation.transient_authority_present
         )
     ) {
         throw "database generation terminal authority chain 不完整。"
     }
-    if ($null -ne $Current) {
+    if ($Observation.current_present) {
         if (
-            $null -eq $candidate -or
-            $null -eq $targetAuthorization -or
-            $null -eq $sourceBinding -or
-            $null -eq $runtimeCredentials -or
-            $Observation.bootstrap_retired -ne $true -or
-            $null -eq $runtimeProjection -or
-            $null -eq $terminalState -or
+            -not $Observation.candidate_present -or
+            -not $Observation.target_authorization_present -or
+            -not $Observation.source_binding_present -or
+            -not $Observation.runtime_credentials_present -or
+            $Observation.bootstrap_retirement_state -cne "retired" -or
+            -not $Observation.runtime_projection_present -or
+            -not $Observation.terminal_state_present -or
             $Observation.transient_authority_present -or
             $Observation.service_transition_present
         ) {
@@ -402,29 +410,36 @@ function Resolve-TicketboxDatabaseGenerationNextAction {
     if ($Observation.service_transition_present) {
         return "reconcile_service_transition"
     }
-    if ($null -eq $credentials -and $null -eq $candidate) {
+    if (
+        -not $Observation.credentials_present -and
+        -not $Observation.candidate_present
+    ) {
         return "ensure_credentials"
     }
-    if ($null -eq $sourceBinding) { return "bind_source" }
-    if ($null -eq $targetAuthorization) { return "authorize_target" }
-    if ($null -eq $candidate) { return "seal_candidate" }
-    if ($null -eq $runtimeCredentials) {
-        if ($null -eq $credentials) {
+    if (-not $Observation.source_binding_present) { return "bind_source" }
+    if (-not $Observation.target_authorization_present) { return "authorize_target" }
+    if (-not $Observation.candidate_present) { return "seal_candidate" }
+    if (-not $Observation.runtime_credentials_present) {
+        if (-not $Observation.credentials_present) {
             throw "candidate 已封存但 durable runtime credentials 缺失。"
         }
         return "seal_runtime_credentials"
     }
-    if ($Observation.bootstrap_retired -isnot [bool]) {
+    if ($Observation.bootstrap_retirement_state -ceq "not_applicable") {
         throw "candidate bootstrap retirement observation 缺失。"
     }
-    if (-not $Observation.bootstrap_retired) {
+    if (
+        $Observation.bootstrap_retirement_state -in @("active", "unknown")
+    ) {
         return "transition_bootstrap_authority"
     }
-    if ($null -eq $runtimeProjection) { return "publish_runtime_projection" }
+    if (-not $Observation.runtime_projection_present) {
+        return "publish_runtime_projection"
+    }
     if ($Observation.transient_authority_present) {
         return "retire_transient_authority"
     }
-    if ($null -eq $terminalState) { return "seal_terminal" }
+    if (-not $Observation.terminal_state_present) { return "seal_terminal" }
     return "publish_current"
 }
 

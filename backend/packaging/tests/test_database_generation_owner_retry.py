@@ -15,6 +15,10 @@ def test_owner_recovers_after_bootstrap_retirement_response_loss(tmp_path: Path)
     source = OWNER.read_text(encoding="utf-8-sig")
     policy = POLICY.read_text(encoding="utf-8-sig")
     invoke = powershell_function(source, "Invoke-TicketboxInstalledDatabaseGeneration")
+    retirement_state_reader = powershell_function(
+        source,
+        "Read-TicketboxDatabaseGenerationBootstrapRetirementState",
+    )
     reducer = powershell_function(policy, "Resolve-TicketboxDatabaseGenerationNextAction")
     result_factory = powershell_function(policy, "New-TicketboxInstalledDatabaseGenerationResult")
     script = rf"""
@@ -49,6 +53,7 @@ function Get-TicketboxPathEntryKindNoFollow {{
     param([string]$Path)
     if ($Path -eq 'bootstrap.json') {{ if ($script:bootstrapExists) {{ return 'File' }}; return 'Missing' }}
     if ($Path -eq 'credentials.json') {{ if ($script:credentialsExist) {{ return 'File' }}; return 'Missing' }}
+    if ($Path -eq 'runtime-credentials.json') {{ return 'File' }}
     if ($Path -eq 'service-transition.json') {{ return 'Missing' }}
     return 'File'
 }}
@@ -115,7 +120,7 @@ function Close-TicketboxDatabaseGenerationCredentials {{}}
 function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
     param($Intent, $Candidate, $HostAuthority, $RuntimePassword)
     if (-not [object]::ReferenceEquals($RuntimePassword, $script:runtimeSecret)) {{ throw 'wrong runtime secret' }}
-    if (-not $script:runtimeReady) {{ throw 'runtime login is still disabled' }}
+    if (-not $script:runtimeReady) {{ return $false }}
     return $script:retired
 }}
 function Test-TicketboxDatabaseGenerationBootstrapRetirementWithMaintenanceAuthority {{
@@ -135,6 +140,15 @@ function Read-PostgresBootstrapRecoveryState {{
 }}
 function New-TicketboxDatabaseGenerationMaintenanceAuthority {{
     return [pscustomobject]@{{ Secret = $script:adminSecret }}
+}}
+function Open-TicketboxDatabaseGenerationMaintenanceAuthority {{
+    param(
+        $Intent, $HostAuthority, $BootstrapRecoveryPath,
+        $BootstrapAppData, $BootstrapSecretByteCount, $LifecycleLock
+    )
+    $state = Read-PostgresBootstrapRecoveryState `
+        $BootstrapRecoveryPath $BootstrapAppData $BootstrapSecretByteCount
+    return New-TicketboxDatabaseGenerationMaintenanceAuthority
 }}
 function Close-TicketboxDatabaseGenerationMaintenanceAuthority {{}}
 function Read-TicketboxDatabaseGenerationCredentials {{
@@ -191,7 +205,11 @@ function Remove-TicketboxDatabaseGenerationTransientAuthority {{
     $script:bootstrapExists = $false
     $script:credentialsExist = $false
 }}
-function Get-TicketboxDatabaseGenerationArtifactPath {{ return 'credentials.json' }}
+function Get-TicketboxDatabaseGenerationArtifactPath {{
+    param($StateRoot, $Kind, $OperationId)
+    if ($Kind -ceq 'runtime-credentials') {{ return 'runtime-credentials.json' }}
+    return 'credentials.json'
+}}
 function Get-TicketboxDatabaseGenerationServiceTransitionPath {{ return 'service-transition.json' }}
 function New-TicketboxDatabaseGenerationChainedArtifact {{
     param($StateRoot, $OperationId, $Kind, $Payload, $LifecycleLock)
@@ -247,6 +265,7 @@ function Throw-TicketboxOperationFailure {{
 }}
     {result_factory}
     {reducer}
+    {retirement_state_reader}
     {invoke}
 $script:intent = [pscustomobject]@{{
     PayloadSha256 = ('a' * 64)
@@ -277,13 +296,22 @@ try {{ Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $contrac
 catch {{ $interrupted = $true }}
 if (-not $interrupted -or -not $script:retired -or $script:retirementCalls -ne 1 -or $script:currentWrites -ne 0) {{ throw 'retirement response-loss boundary was not preserved' }}
 $terminalInterrupted = $false
+$terminalFailure = ''
 try {{ Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $contract $contract 'bootstrap.json' | Out-Null }}
-catch {{ $terminalInterrupted = $true }}
+catch {{ $terminalInterrupted = $true; $terminalFailure = [string]$_ }}
 if (
     -not $terminalInterrupted -or $script:terminalWrites -ne 1 -or
     $script:currentWrites -ne 0 -or $script:bootstrapExists -or
     $script:credentialsExist
-) {{ throw 'terminal-state response-loss boundary was not preserved' }}
+) {{
+    throw (
+        'terminal-state response-loss boundary was not preserved: interrupted=' +
+        $terminalInterrupted + ', terminalWrites=' + $script:terminalWrites +
+        ', currentWrites=' + $script:currentWrites + ', bootstrapExists=' +
+        $script:bootstrapExists + ', credentialsExist=' + $script:credentialsExist +
+        ', failure=' + $terminalFailure
+    )
+}}
 $result = Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $contract $contract 'bootstrap.json'
 $again = Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $contract $contract 'bootstrap.json'
 if (

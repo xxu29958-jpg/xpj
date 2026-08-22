@@ -84,7 +84,8 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
         "windows_database_generation_single_user.ps1",
     ):
         assert filename in shipment
-    assert owner.count("New-TicketboxDatabaseGenerationMaintenanceAuthority `") == 1
+    assert "New-TicketboxDatabaseGenerationMaintenanceAuthority `" not in owner
+    assert owner.count("Open-TicketboxDatabaseGenerationMaintenanceAuthority `") == 4
     assert (
         owner
     ).count("Close-TicketboxDatabaseGenerationMaintenanceAuthority `") == 2
@@ -113,9 +114,16 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
         generation_credentials,
         "New-TicketboxDatabaseGenerationMaintenanceAuthority",
     )
+    opener = powershell_function(
+        generation_credentials,
+        "Open-TicketboxDatabaseGenerationMaintenanceAuthority",
+    )
     assert "HttpBootstrapSecret" not in factory
     assert "RolePassword" not in factory
     assert "HostAuthoritySha256" in factory
+    assert "Read-PostgresBootstrapRecoveryState" in opener
+    assert "New-TicketboxDatabaseGenerationMaintenanceAuthority" in opener
+    assert 'bootstrapRecoveryState.SuperuserPassword = ""' in opener
     expected_maintenance_assertions = (
         (source, 1),
         (source_binding, 1),
@@ -175,9 +183,15 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     )
     assert "Write-TicketboxDatabaseGenerationRuntimeCurrent" not in publish_projection
     assert "Test-TicketboxDatabaseGenerationBootstrapRetirement" in read_projection
-    assert invoke.index("Test-TicketboxDatabaseGenerationBootstrapRetirement") < invoke.index(
-        "Read-PostgresBootstrapRecoveryState"
+    transition = invoke.split('"transition_bootstrap_authority" {', maxsplit=1)[
+        1
+    ].split('"publish_runtime_projection" {', maxsplit=1)[0]
+    assert transition.index(
+        "Test-TicketboxDatabaseGenerationBootstrapRetirement"
+    ) < transition.index(
+        "Open-TicketboxDatabaseGenerationMaintenanceAuthority"
     )
+    assert "Read-PostgresBootstrapRecoveryState" not in transition
     assert invoke.index(
         "Prepare-TicketboxDatabaseGenerationRuntimeProjection"
     ) < invoke.index("Retire-TicketboxDatabaseGenerationBootstrapAuthority")

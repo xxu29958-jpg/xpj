@@ -401,6 +401,8 @@ $ErrorActionPreference = 'Stop'
 {powershell_function(source, "Read-TicketboxDatabaseGenerationRuntimeProjection")}
 {powershell_function(failure_source, "Throw-TicketboxOperationFailure")}
 function Assert-TicketboxLifecycleOperationLease {{}}
+function Get-TicketboxPathEntryKindNoFollow {{ return 'File' }}
+function Assert-NoTicketboxAncestorReparsePoints {{}}
 function Read-EnvMap {{ return @{{ DATABASE_URL = 'postgresql://runtime' }} }}
 function Get-TicketboxDatabaseAuthorizationContract {{
     return [pscustomobject]@{{ DatabaseName = 'ticketbox'; RuntimeRole = 'ticketbox_runtime' }}
@@ -518,6 +520,8 @@ $script:candidate = [pscustomobject]@{{
     }}
 }}
 function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
+function Get-TicketboxPathEntryKindNoFollow {{ return 'File' }}
+function Assert-NoTicketboxAncestorReparsePoints {{}}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
     param($Value)
     return $Value | ConvertTo-Json -Compress -Depth 64
@@ -617,6 +621,8 @@ function Assert-AdminSecret($Password) {{
     }}
 }}
 function Assert-TicketboxLifecycleOperationLease {{}}
+function Get-TicketboxPathEntryKindNoFollow {{ return 'File' }}
+function Assert-NoTicketboxAncestorReparsePoints {{}}
 function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {{
     param($Authority)
     Assert-AdminSecret $Authority.Secret
