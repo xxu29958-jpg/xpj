@@ -188,6 +188,7 @@ def test_ci_environment_uses_passwordless_scram_urls_and_private_passfile(tmp_pa
     assert values["XPJ_TEST_SMOKE_DATABASE"] == TEST_POSTGRES_CONTRACT.smoke_database
     assert values["XPJ_TEST_RESTORE_DATABASE"] == TEST_POSTGRES_CONTRACT.restore_database
     assert values["XPJ_TEST_APPLICATION_ROLE"] == TEST_POSTGRES_CONTRACT.application_role
+    resolved_hostaddr = parse_qs(urlsplit(values["XPJ_TEST_DATABASE_URL"]).query)["hostaddr"][0]
     for key in (
         "XPJ_TEST_ADMIN_URL",
         "XPJ_TEST_DATABASE_URL",
@@ -209,6 +210,8 @@ def test_ci_environment_uses_passwordless_scram_urls_and_private_passfile(tmp_pa
     assert passfile.read_text(encoding="utf-8") == (
         f"localhost:{TEST_POSTGRES_CONTRACT.ports.local}:*:postgres:ad\\:min\\\\password\n"
         f"localhost:{TEST_POSTGRES_CONTRACT.ports.local}:*:{TEST_POSTGRES_CONTRACT.application_role}:te\\:st\\\\password\n"
+        f"{resolved_hostaddr}:{TEST_POSTGRES_CONTRACT.ports.local}:*:postgres:ad\\:min\\\\password\n"
+        f"{resolved_hostaddr}:{TEST_POSTGRES_CONTRACT.ports.local}:*:{TEST_POSTGRES_CONTRACT.application_role}:te\\:st\\\\password\n"
     )
     with pytest.raises(FileExistsError):
         write_passfile(

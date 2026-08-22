@@ -29,7 +29,7 @@ from uuid import uuid4
 
 from psycopg import Connection
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.pool import StaticPool
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -123,7 +123,7 @@ def _run_drill(
     cluster_identity: str,
     source_connection: Connection,
 ) -> int:
-    from app.database._dataset_restore_action import _SANITATION_TABLES
+    from app.database._dataset_restore_authority import SANITATION_TABLES
     from app.services.postgres_backup_validation_service import find_pg_binary
 
     pg_dump = find_pg_binary("pg_dump", "PG_DUMP_PATH")
@@ -147,7 +147,7 @@ def _run_drill(
         tempfile.TemporaryDirectory(prefix="ticketbox-dataset-drill-") as temporary,
     ):
         _exercise_complete_generation(inputs, source_engine, Path(temporary).resolve())
-    _assert_restored_database(source_counts, _counts(restore_url), _SANITATION_TABLES)
+    _assert_restored_database(source_counts, _counts(restore_url), SANITATION_TABLES)
     print("\nPASS postgres backup/restore drill")
     return 0
 
@@ -194,6 +194,14 @@ def _exercise_complete_generation(inputs: _DrillInputs, source_engine: Engine, t
         f"{entry.file_name} ({entry.size_bytes} bytes, {len(manifest.originals)} originals)"
     )
     restored_originals = temporary / "restored-originals"
+    restore_transport = make_url(inputs.restore_url)
+    restore_hostaddr = restore_transport.query.get("hostaddr")
+    if not isinstance(restore_hostaddr, str):
+        raise SystemExit("FAIL drill: restore transport has no singular loopback hostaddr")
+    managed_restore_url = restore_transport.set(
+        host=restore_hostaddr,
+        query={"require_auth": "scram-sha-256"},
+    ).render_as_string(hide_password=False)
     restore_action.DATABASE_NAME = TEST_POSTGRES_CONTRACT.restore_database
     restore_action.MIGRATOR_ROLE = TEST_POSTGRES_CONTRACT.application_role
     restore_action.SCHEMA_OWNER_ROLE = TEST_POSTGRES_CONTRACT.application_role
@@ -201,7 +209,7 @@ def _exercise_complete_generation(inputs: _DrillInputs, source_engine: Engine, t
         CompleteRestoreRequest(
             backup_generation=generation,
             target_upload_root=restored_originals,
-            database_url=inputs.restore_url,
+            database_url=managed_restore_url,
             passfile=inputs.passfile,
             pg_restore_binary=inputs.pg_restore,
             active_dataset_id=manifest.authority.dataset_id,

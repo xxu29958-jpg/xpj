@@ -83,9 +83,7 @@ try {
     $active = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
     $current = Read-TicketboxDatabaseGenerationCurrent
     $request = Get-TicketboxInstalledDatasetRestoreRequest `
-        -StateRoot $stateRoot `
-        -RestoreAttemptId $RestoreAttemptId `
-        -AllowAbsent
+        -StateRoot $stateRoot -AllowAbsent
     $terminalResult = Read-TicketboxInstalledDatasetRestoreResult `
         -StateRoot $stateRoot `
         -RestoreAttemptId $RestoreAttemptId `
@@ -94,20 +92,36 @@ try {
         -ExpectedReleaseManifestSha256 ([string]$subject.Manifest.Sha256) `
         -AllowAbsent
     if ($null -ne $terminalResult) {
-        if ($null -ne $request) {
+        $terminalArtifact = $terminalResult.Artifact
+        if (
+            $null -ne $request -and
+            [string]$request.Payload.restore_attempt_id -ceq $RestoreAttemptId
+        ) {
             if (
                 [string]$request.PayloadSha256 -cne
-                    [string]$terminalResult.Payload.request_sha256 -or
+                    [string]$terminalArtifact.Payload.request_sha256 -or
                 [string]$request.Payload.backup_generation -cne $BackupGeneration -or
                 [string]$request.Payload.release_manifest_sha256 -cne
-                    [string]$terminalResult.Payload.release_manifest_sha256
+                    [string]$terminalArtifact.Payload.release_manifest_sha256
             ) {
                 throw "terminal restore result differs from its remaining request."
             }
             Remove-TicketboxInstalledDatasetRestoreRequest $request $lock
             $request = $null
         }
-        $result = $terminalResult.Payload
+        $result = [ordered]@{
+            schema = "ticketbox-complete-dataset-restore-result-v1"
+            restore_attempt_id = [string]$terminalArtifact.Payload.restore_attempt_id
+            backup_id = [string]$terminalArtifact.Payload.backup_id
+            dataset_id = [string]$terminalArtifact.Payload.dataset_id
+            restore_epoch = [int64]$terminalArtifact.Payload.restore_epoch
+            generation_operation_id =
+                [string]$terminalArtifact.Payload.generation_operation_id
+            result = if ([string]$terminalResult.Disposition -ceq "current") {
+                "current_published"
+            }
+            else { "superseded" }
+        }
     }
     if ($null -eq $result) {
     $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
@@ -493,7 +507,7 @@ $publicResult = [ordered]@{
     dataset_id = [string]$result.dataset_id
     restore_epoch = [int64]$result.restore_epoch
     generation_operation_id = [string]$result.generation_operation_id
-    result = "current_published"
+    result = [string]$result.result
 }
 $resultJson = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $publicResult
 [Console]::Out.WriteLine($resultJson)

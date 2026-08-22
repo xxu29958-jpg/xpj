@@ -371,13 +371,40 @@ try {
     $barrier = Get-TicketboxInstalledBackupBarrier $subject $authority
     $backupResult = Invoke-TicketboxInstalledCompleteBackupHelper `
         $subject $authority $request $barrier
-    $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
-        $subject ([string]$backupResult.generation)
+    $generation = [string]$backupResult.generation
+    if ($generation -cnotmatch `
+        '^ticketbox-backup-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+        throw "backup helper returned a noncanonical generation identifier."
+    }
+    $generationPath = Join-Path $backupRoot $generation
+    if (-not (Test-TicketboxPathEquals (Split-Path -Parent $generationPath) $backupRoot)) {
+        throw "backup helper generation escaped the installed backup root."
+    }
     Set-TicketboxExactDirectoryAcl `
-        -Path ([string]$inspection.GenerationPath) `
+        -Path $generationPath `
         -Accounts @("SYSTEM", "BUILTIN\Administrators") `
         -OwnerAccount "SYSTEM" `
         -Recurse
+    foreach ($entry in @(Get-ChildItem -LiteralPath $generationPath -Force -Recurse)) {
+        $kind = Get-TicketboxPathEntryKindNoFollow ([string]$entry.FullName)
+        if ($kind -ceq "Directory") {
+            Set-TicketboxExactDirectoryAcl `
+                -Path ([string]$entry.FullName) `
+                -Accounts @("SYSTEM", "BUILTIN\Administrators") `
+                -OwnerAccount "SYSTEM"
+        }
+        elseif ($kind -ceq "File") {
+            Set-TicketboxExactFileAcl `
+                -Path ([string]$entry.FullName) `
+                -Accounts @("SYSTEM", "BUILTIN\Administrators") `
+                -OwnerAccount "SYSTEM"
+        }
+        else {
+            throw "backup generation contains a non-regular filesystem entry."
+        }
+    }
+    $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
+        $subject $generation
     $backupResult = Assert-TicketboxInstalledCompleteBackupResult `
         $subject $request $barrier $backupResult $inspection
 }

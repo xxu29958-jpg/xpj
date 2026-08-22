@@ -20,6 +20,7 @@ from backend_manager.elevation import (
     HELPER_EXIT_LIFECYCLE_BUSY,
     HELPER_EXIT_MISSING_SERVICE,
     HELPER_EXIT_NOT_ELEVATED,
+    HELPER_EXIT_RESTORE_SUPERSEDED,
     HELPER_EXIT_TIMEOUT,
     ElevatedServiceActionRunner,
     HelperResult,
@@ -209,6 +210,58 @@ def test_restore_reuses_attempt_after_trusted_helper_response_is_lost(
     assert len(attempts) == 2
     assert attempts[0] == attempts[1]
     assert not list((tmp_path / "local" / "Ticketbox" / "restore-attempts").glob("*.json"))
+
+
+def test_superseded_restore_retires_stale_attempt_before_requiring_new_confirmation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    generation = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+    helper = tmp_path / "program" / "manager" / "ticketbox-manager.exe"
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes(b"MZ")
+    observed_attempts: list[str] = []
+
+    @contextmanager
+    def channels(action: str):
+        assert action == "restore"
+
+        class Channel:
+            path = tmp_path / "result.json"
+            root = tmp_path
+            nonce = "n" * 43
+            owner_sid = "S-1-5-21-1000"
+            file_identity = "1:2"
+
+            @staticmethod
+            def read(actual_exit_code: int) -> HelperResult:
+                assert actual_exit_code == HELPER_EXIT_RESTORE_SUPERSEDED
+                return HelperResult(
+                    exit_code=actual_exit_code,
+                    diagnostic="此前恢复已被后续 generation 取代。",
+                )
+
+        yield Channel()
+
+    def launch(command) -> int:
+        flag = command.arguments.index("--restore-attempt-id")
+        observed_attempts.append(command.arguments[flag + 1])
+        return HELPER_EXIT_RESTORE_SUPERSEDED
+
+    monkeypatch.setattr(windows_user_security, "local_app_data", lambda: tmp_path / "local")
+    runner = ElevatedServiceActionRunner(
+        _release(),
+        helper,
+        launcher=launch,
+        channel_factory=channels,
+    )
+
+    with pytest.raises(RuntimeControlError, match="后续 generation"):
+        runner.restore(generation)
+
+    attempts_root = tmp_path / "local" / "Ticketbox" / "restore-attempts"
+    assert not list(attempts_root.glob("*.json"))
+    assert len(observed_attempts) == 1
 
 
 def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_path: Path, monkeypatch) -> None:

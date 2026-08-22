@@ -71,6 +71,7 @@ def write_passfile(
     application_user: str,
     application_password: str,
 ) -> None:
+    hostaddr = _loopback_hostaddr(host, port)
     credentials = (
         (admin_user, admin_password),
         (application_user, application_password),
@@ -91,8 +92,9 @@ def write_passfile(
     lines = (
         ":".join(
             _escape_passfile(value)
-            for value in (host, str(port), "*", user, password)
+            for value in (route, str(port), "*", user, password)
         )
+        for route in dict.fromkeys((host, hostaddr))
         for user, password in credentials
     )
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

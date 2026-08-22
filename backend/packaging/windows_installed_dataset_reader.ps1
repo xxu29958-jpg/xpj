@@ -171,6 +171,22 @@ function Invoke-TicketboxInstalledDatasetBackupInspection {
     }
     Assert-TicketboxProtectedDirectoryAcl -Path $backupRoot
     Assert-TicketboxProtectedDirectoryAcl -Path $generationPath
+    Assert-NoTicketboxReparsePoints $generationPath
+    foreach ($entry in @(Get-ChildItem -LiteralPath $generationPath -Force -Recurse)) {
+        $kind = Get-TicketboxPathEntryKindNoFollow ([string]$entry.FullName)
+        if ($kind -ceq "Directory") {
+            Assert-TicketboxProtectedDirectoryAcl -Path ([string]$entry.FullName)
+        }
+        elseif ($kind -ceq "File") {
+            Assert-TicketboxExactFileAcl `
+                -Path ([string]$entry.FullName) `
+                -Accounts @("SYSTEM", "BUILTIN\Administrators") `
+                -OwnerAccount "SYSTEM"
+        }
+        else {
+            throw "backup generation contains a non-regular filesystem entry."
+        }
+    }
     $helperPath = Join-Path `
         ([string]$Subject.Identity.InstallDir) `
         "program\ticketbox-backend\ticketbox-database-maintenance.exe"

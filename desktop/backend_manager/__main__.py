@@ -18,7 +18,7 @@ from backend_manager.config import (
     load_maintenance_manager_config,
 )
 from backend_manager.dataset_backup import run_installed_dataset_backup
-from backend_manager.dataset_restore import run_installed_dataset_restore
+from backend_manager.dataset_restore import RestoreSupersededError, run_installed_dataset_restore
 from backend_manager.elevation import (
     HELPER_EXIT_ACCESS,
     HELPER_EXIT_CONFIG,
@@ -26,6 +26,7 @@ from backend_manager.elevation import (
     HELPER_EXIT_MISSING_SERVICE,
     HELPER_EXIT_NOT_ELEVATED,
     HELPER_EXIT_OS,
+    HELPER_EXIT_RESTORE_SUPERSEDED,
     HELPER_EXIT_TRANSITION,
     ServiceAction,
     is_process_elevated,
@@ -77,12 +78,16 @@ def _execute_validated_installed_action(
         run_installed_dataset_backup(runtime_config.layout, runtime_config.release)
         return "Ticketbox 完整数据集备份已完成。"
     if action == "restore":
-        run_installed_dataset_restore(
+        outcome = run_installed_dataset_restore(
             runtime_config.layout,
             runtime_config.release,
             backup_generation or "",
             restore_attempt_id or "",
         )
+        if outcome == "superseded":
+            raise RestoreSupersededError(
+                "此前恢复已完成，但已被后续数据 generation 取代；请重新确认后再发起恢复。"
+            )
         return "Ticketbox 完整数据集恢复已完成。"
     runtime = build_direct_service_runtime(
         config,
@@ -170,6 +175,8 @@ def _run_elevated_service_action(
         exit_code, diagnostic = HELPER_EXIT_TRANSITION, str(exc)
     except ServiceAccessError as exc:
         exit_code, diagnostic = HELPER_EXIT_ACCESS, str(exc)
+    except RestoreSupersededError as exc:
+        exit_code, diagnostic = HELPER_EXIT_RESTORE_SUPERSEDED, str(exc)
     except (OSError, RuntimeControlError) as exc:
         exit_code, diagnostic = HELPER_EXIT_OS, str(exc)
     finally:

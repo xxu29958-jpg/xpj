@@ -549,7 +549,13 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     assert "LocalApplicationData" in passfile_directory
     assert "CommonProgramFiles" not in passfile_directory
     assert "WindowsPrincipal" not in passfile_directory
-    assert "$accounts = @($identity.User.Value)" in passfile_directory
+    assert "$directoryAccounts = @($identity.User.Value)" in passfile_directory
+    assert (
+        '$fileAccounts = @($identity.User.Value, "SYSTEM", "BUILTIN\\Administrators")'
+        in passfile_directory
+    )
+    assert "-Accounts $fileAccounts" in passfile_directory
+    assert "FullControlAccounts = $fileAccounts" in passfile_directory
     assert ".ticketbox-protected-*.tmp" in passfile_directory
     passfile_cleanup = database_safety[
         database_safety.index(
@@ -592,6 +598,39 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
         with hold_protected_file_for_read(protected_file) as held:
             assert held == protected_file
         protected_file.unlink()
+
+        for index, engine in enumerate(_powershell_engines()):
+            passfile_root = (tmp_path / f"powershell-passfile-{index}").resolve()
+            passfile_root.mkdir()
+            harness = tmp_path / f"powershell-passfile-{index}.ps1"
+            _write_ps1(
+                harness,
+                f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(INSTALLATION_SAFETY_SCRIPT)}'
+. '{_ps_literal(DATABASE_SAFETY_SCRIPT)}'
+$owner = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$accounts = @($owner, 'SYSTEM', 'BUILTIN\\Administrators')
+function Get-TicketboxProtectedPgPassDirectory {{
+    return [pscustomobject]@{{
+        Path = '{_ps_literal(passfile_root)}'
+        FullControlAccounts = $accounts
+        OwnerAccount = $owner
+    }}
+}}
+$hostAddress = [Net.IPAddress]::Loopback.ToString()
+$created = New-TicketboxProtectedPgPassFile `
+    -DatabaseUrl "postgresql://ticketbox_backup@${{hostAddress}}:5432/ticketbox?require_auth=scram-sha-256" `
+    -Password 'test-only-secret'
+[Console]::Out.Write($created.Path)
+""",
+            )
+            completed = _run_ps1(engine, harness)
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            powershell_file = Path(completed.stdout.strip()).resolve()
+            with hold_protected_file_for_read(powershell_file) as held:
+                assert held == powershell_file
+            powershell_file.unlink()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows atomic configuration contract")

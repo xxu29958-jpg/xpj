@@ -1,22 +1,16 @@
 # Durable request, candidate-verification, activation-verification, and terminal result artifacts.
 
 function Get-TicketboxInstalledDatasetRestoreRequestPath {
-    param(
-        [Parameter(Mandatory = $true)][string]$StateRoot,
-        [Parameter(Mandatory = $true)][string]$RestoreAttemptId
-    )
-    $attempt = ([guid]$RestoreAttemptId).ToString("D")
-    return Join-Path $StateRoot "dataset-restore-request-$attempt.json"
+    param([Parameter(Mandatory = $true)][string]$StateRoot)
+    return Join-Path $StateRoot "dataset-restore-request.json"
 }
 
 function Get-TicketboxInstalledDatasetRestoreRequest {
     param(
         [Parameter(Mandatory = $true)][string]$StateRoot,
-        [Parameter(Mandatory = $true)][string]$RestoreAttemptId,
         [switch]$AllowAbsent
     )
-    $path = Get-TicketboxInstalledDatasetRestoreRequestPath `
-        $StateRoot $RestoreAttemptId
+    $path = Get-TicketboxInstalledDatasetRestoreRequestPath $StateRoot
     $request = Read-TicketboxDatabaseGenerationEnvelope `
         -Path $path `
         -ExpectedKind "dataset-restore-request" `
@@ -89,8 +83,7 @@ function New-TicketboxInstalledDatasetRestoreRequest {
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
     $backup = $Inspection.Evidence
     $attemptId = ([guid]$RestoreAttemptId).ToString("D")
-    $path = Get-TicketboxInstalledDatasetRestoreRequestPath `
-        $Authority.StateRoot $attemptId
+    $path = Get-TicketboxInstalledDatasetRestoreRequestPath $Authority.StateRoot
     $existing = Read-TicketboxDatabaseGenerationEnvelope `
         $path "dataset-restore-request" -AllowAbsent
     $immutable = [ordered]@{
@@ -142,7 +135,6 @@ function Assert-TicketboxInstalledDatasetRestoreResult {
         [Parameter(Mandatory = $true)][object]$Result,
         [Parameter(Mandatory = $true)][string]$RestoreAttemptId,
         [Parameter(Mandatory = $true)][string]$BackupGeneration,
-        [Parameter(Mandatory = $true)][object]$Current,
         [Parameter(Mandatory = $true)][string]$ExpectedReleaseManifestSha256
     )
     $payload = $Result.Payload
@@ -175,9 +167,6 @@ function Assert-TicketboxInstalledDatasetRestoreResult {
         [string]$payload.backup_id -cne $backupId -or
         [string]$payload.dataset_id -cne $datasetId -or
         [string]$payload.generation_operation_id -cne $operationId -or
-        [string]$payload.generation_operation_id -cne
-            ([guid][string]$Current.Payload.operation_id).ToString("D") -or
-        [string]$payload.current_sha256 -cne [string]$Current.PayloadSha256 -or
         [string]$payload.release_manifest_sha256 -cne
             $ExpectedReleaseManifestSha256.ToLowerInvariant() -or
         [int64]$payload.restore_epoch -lt 1 -or
@@ -204,9 +193,19 @@ function Read-TicketboxInstalledDatasetRestoreResult {
         -ExpectedKind "dataset-restore-result" `
         -AllowAbsent:$AllowAbsent
     if ($null -eq $result) { return $null }
-    return Assert-TicketboxInstalledDatasetRestoreResult `
+    $validated = Assert-TicketboxInstalledDatasetRestoreResult `
         $result $RestoreAttemptId $BackupGeneration `
-        $Current $ExpectedReleaseManifestSha256
+        $ExpectedReleaseManifestSha256
+    $disposition = if (
+        [string]$validated.Payload.generation_operation_id -ceq
+            ([guid][string]$Current.Payload.operation_id).ToString("D") -and
+        [string]$validated.Payload.current_sha256 -ceq [string]$Current.PayloadSha256
+    ) { "current" }
+    else { "superseded" }
+    return [pscustomobject][ordered]@{
+        Artifact = $validated
+        Disposition = $disposition
+    }
 }
 
 function New-TicketboxInstalledDatasetRestoreResult {
@@ -246,7 +245,6 @@ function New-TicketboxInstalledDatasetRestoreResult {
             $existing `
             ([string]$Request.Payload.restore_attempt_id) `
             ([string]$Request.Payload.backup_generation) `
-            $Current `
             ([string]$Request.Payload.release_manifest_sha256)
     }
     $written = Write-TicketboxDatabaseGenerationEnvelope `
@@ -255,7 +253,6 @@ function New-TicketboxInstalledDatasetRestoreResult {
         $written `
         ([string]$Request.Payload.restore_attempt_id) `
         ([string]$Request.Payload.backup_generation) `
-        $Current `
         ([string]$Request.Payload.release_manifest_sha256)
 }
 

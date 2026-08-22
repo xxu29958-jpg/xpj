@@ -52,12 +52,14 @@ def test_backup_owner_reasserts_privileged_payload_acl_before_and_after_write() 
     assert '-Accounts @("SYSTEM", "BUILTIN\\Administrators")' in before_write
     assert "-Recurse" in before_write
 
-    after_write = backup[inspection:validation]
+    after_write = backup[helper:validation]
     assert helper < inspection
     assert "Set-TicketboxExactDirectoryAcl" in after_write
-    assert "-Path ([string]$inspection.GenerationPath)" in after_write
+    assert "-Path $generationPath" in after_write
     assert '-Accounts @("SYSTEM", "BUILTIN\\Administrators")' in after_write
     assert "-Recurse" in after_write
+    assert "Get-ChildItem -LiteralPath $generationPath -Force -Recurse" in after_write
+    assert "Set-TicketboxExactFileAcl" in after_write
     assert "BackendServiceName" not in before_write + after_write
 
 

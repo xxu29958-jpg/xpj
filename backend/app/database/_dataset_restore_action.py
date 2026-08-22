@@ -12,7 +12,6 @@ from app.database._database_generation_target_verification import (
     run_database_generation_target_verification_action,
 )
 from app.database._dataset_restore_authority import (
-    assert_restored_dataset_candidate,
     assert_restored_dataset_candidate_accepted,
     finalize_restored_dataset,
 )
@@ -113,11 +112,9 @@ def _execute_isolated_restore(
         environment.__enter__()
         entered.append(environment)
         engine = _create_engine(parsed_url)
-        relation_count = _probe_restore_target(
+        _reset_restore_target(
             engine,
             contexts=database_contexts,
-            source=source,
-            plan=plan,
         )
         phase_cleanup: list[BaseException] = []
         phase_primary = close_postgres_owner_resources(
@@ -134,10 +131,7 @@ def _execute_isolated_restore(
             message="isolated dataset restore probe cleanup failed",
         )
 
-        _materialize_restore_payload(
-            request,
-            target_is_empty=relation_count == 0,
-        )
+        _materialize_restore_payload(request)
         engine = _create_engine(parsed_url)
         result = _publish_restore_candidate(
             engine,
@@ -170,42 +164,39 @@ def _execute_isolated_restore(
     return result
 
 
-def _probe_restore_target(
+def _reset_restore_target(
     engine: Any,
     *,
     contexts: list[AbstractContextManager[Any]],
-    source: DatasetBackupManifest,
-    plan: RestoredDatasetPlan,
-) -> int:
-    connection_context = engine.connect()
-    connection = connection_context.__enter__()
-    contexts.append(connection_context)
-    relation_count = connection.scalar(
+) -> None:
+    transaction_context = engine.begin()
+    connection = transaction_context.__enter__()
+    contexts.append(transaction_context)
+    connection.execute(text(f'SET LOCAL ROLE "{SCHEMA_OWNER_ROLE}"'))
+    foreign_schema_count = connection.scalar(
         text(
-            "SELECT count(*) FROM pg_class AS relation "
-            "JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace "
-            "WHERE namespace.nspname = 'public' "
-            "AND relation.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')"
+            "SELECT count(*) FROM pg_namespace "
+            "WHERE nspname <> 'public' "
+            "AND nspname <> 'information_schema' "
+            "AND nspname !~ '^pg_'"
         )
     )
-    if relation_count != 0:
-        assert_restored_dataset_candidate(connection, source=source, plan=plan)
-    return int(relation_count)
+    if foreign_schema_count != 0:
+        raise AppError("backup_incomplete", status_code=409)
+    connection.execute(text("DROP SCHEMA public CASCADE"))
+    connection.execute(text(f'CREATE SCHEMA public AUTHORIZATION "{SCHEMA_OWNER_ROLE}"'))
 
 
 def _materialize_restore_payload(
     request: CompleteRestoreRequest,
-    *,
-    target_is_empty: bool,
 ) -> None:
-    if target_is_empty:
-        restore_postgres_archive(
-            database_url=request.database_url,
-            passfile=request.passfile,
-            pg_restore_binary=request.pg_restore_binary,
-            archive=request.backup_generation / DATABASE_ARCHIVE_NAME,
-            restore_role=request.restore_role,
-        )
+    restore_postgres_archive(
+        database_url=request.database_url,
+        passfile=request.passfile,
+        pg_restore_binary=request.pg_restore_binary,
+        archive=request.backup_generation / DATABASE_ARCHIVE_NAME,
+        restore_role=request.restore_role,
+    )
     materialize_restored_originals(
         request.backup_generation,
         target_upload_root=request.target_upload_root,
@@ -352,7 +343,6 @@ def run_verified_isolated_dataset_restore_action(
 __all__ = [
     "RESULT_FIELDS",
     "RUNTIME_VERIFICATION_FIELDS",
-    "assert_restored_dataset_candidate",
     "assert_restored_dataset_candidate_accepted",
     "finalize_restored_dataset",
     "run_isolated_dataset_restore_action",

@@ -75,7 +75,7 @@ def test_installed_restore_invokes_exact_owner_with_explicit_generation(
         return SimpleNamespace(returncode=0, stdout=_result(), stderr="")
 
     monkeypatch.setattr(dataset_restore.subprocess, "run", run)
-    run_installed_dataset_restore(layout, release, GENERATION, ATTEMPT_ID)
+    outcome = run_installed_dataset_restore(layout, release, GENERATION, ATTEMPT_ID)
 
     assert captured["command"] == [
         str(powershell),
@@ -96,6 +96,32 @@ def test_installed_restore_invokes_exact_owner_with_explicit_generation(
     assert captured["cwd"] == script.parent
     assert captured["timeout"] == release.helper_watchdog_seconds("restore")
     assert "DATABASE_URL" not in captured["env"]
+    assert outcome == "current_published"
+
+
+def test_installed_restore_reports_superseded_terminal_without_claiming_current_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    layout, release, powershell, _script = _subject(tmp_path)
+    monkeypatch.setenv("SYSTEMROOT", str(powershell.parents[3]))
+    monkeypatch.setattr(dataset_restore, "require_local_fixed_regular_file", lambda path, *, label: path)
+    monkeypatch.setattr(
+        dataset_restore.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=_result(result="superseded"),
+            stderr="",
+        ),
+    )
+
+    assert run_installed_dataset_restore(
+        layout,
+        release,
+        GENERATION,
+        ATTEMPT_ID,
+    ) == "superseded"
 
 
 def test_installed_restore_rejects_result_for_another_backup(

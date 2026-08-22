@@ -61,6 +61,7 @@ $smokeDatabase = [string]$contract.smoke_database
 $restoreDatabase = [string]$contract.restore_database
 $applicationRole = [string]$contract.application_role
 $clusterMarker = [string]$contract.cluster_marker
+$loopbackHost = [Net.IPAddress]::Loopback.ToString()
 
 function Resolve-XpjRequestedPostgresBin {
     if ($null -eq $resolvedRequestedPostgresBin) {
@@ -293,7 +294,8 @@ if ($dataKind -eq 'Missing' -and $hostMarkerKind -eq 'File') {
     $postgresExe = Join-Path $pgbin 'postgres.exe'
 }
 if ($dataKind -eq 'Directory') {
-    $authenticationState = Get-XpjTestPostgresAuthenticationState -DataDir $DataDir -Port $Port
+    $authenticationState = Get-XpjTestPostgresAuthenticationState `
+        -DataDir $DataDir -Port $Port -HostAddress $loopbackHost
     if ($authenticationState -in @('legacy-trust', 'legacy-superuser-only')) {
         Remove-XpjTestPostgresCluster -DataDir $DataDir -Port $Port -PostgresExe $postgresExe
         $dataKind = 'Missing'
@@ -346,6 +348,7 @@ if (-not $alreadyUp) {
         Initialize-XpjTestPostgresAuthenticationFiles `
             -DataDir $stagingDataDir `
             -Port $Port `
+            -HostAddress $loopbackHost `
             -Credential $credential
         $ownershipText = ConvertTo-XpjTestPostgresOwnershipMarkerText `
             -DataDir $DataDir `
@@ -360,7 +363,7 @@ if (-not $alreadyUp) {
         $provisioningInstanceId = [Guid]::Empty
     }
     Remove-XpjStalePostmasterIdentity -DataDir $DataDir -PostgresExe $postgresExe
-    $opts = "-p $Port -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off -c full_page_writes=off"
+    $opts = "-p $Port -c listen_addresses=$loopbackHost -c fsync=off -c synchronous_commit=off -c full_page_writes=off"
     $startEnvironment = Enter-XpjCleanPostgresEnvironment
     try {
         $startAttemptedByInvocation = $true
@@ -377,13 +380,14 @@ if (-not $alreadyUp) {
     finally {
         Exit-XpjCleanPostgresEnvironment -Saved $startEnvironment
     }
-    Write-Host "Started PostgreSQL on 127.0.0.1:$Port (datadir=$DataDir)"
+    Write-Host "Started PostgreSQL on ${loopbackHost}:$Port (datadir=$DataDir)"
 }
 
 $identity = Assert-XpjOwnedPostgresProcess -DataDir $DataDir -Port $Port -PostgresExe $postgresExe
 $clusterOwnership = Assert-XpjTestPostgresOwnership -DataDir $DataDir
 $databaseIdentity = "${clusterMarker}:$($clusterOwnership.InstanceId.ToString('D'))"
-$passfile = Assert-XpjTestPostgresAuthenticationFiles -DataDir $DataDir -Port $Port
+$passfile = Assert-XpjTestPostgresAuthenticationFiles `
+    -DataDir $DataDir -Port $Port -HostAddress $identity.HostAddress
 $adminConnection = "host=localhost hostaddr=$($identity.HostAddress) port=$Port user=postgres dbname=postgres connect_timeout=5 require_auth=scram-sha-256 sslmode=disable options='-csearch_path=public,pg_catalog'"
 $savedPgEnvironment = Enter-XpjCleanPostgresEnvironment
 $env:PGPASSFILE = $passfile

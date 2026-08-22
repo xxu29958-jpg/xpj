@@ -43,6 +43,7 @@ HELPER_EXIT_TRANSITION = 6
 HELPER_EXIT_ACCESS = 7
 HELPER_EXIT_OS = 8
 HELPER_EXIT_LIFECYCLE_BUSY = 9
+HELPER_EXIT_RESTORE_SUPERSEDED = 10
 
 _HELPER_FAILURE_MESSAGES = {
     HELPER_EXIT_NOT_ELEVATED: "管理员授权未生效，服务没有变化。",
@@ -53,6 +54,7 @@ _HELPER_FAILURE_MESSAGES = {
     HELPER_EXIT_ACCESS: "Windows 拒绝服务操作，请修复安装或服务权限后重试。",
     HELPER_EXIT_OS: "Windows 服务操作失败，请刷新状态并查看 Windows 服务事件。",
     HELPER_EXIT_LIFECYCLE_BUSY: "小票夹正在安装、升级或卸载，请等待完成后再操作服务。",
+    HELPER_EXIT_RESTORE_SUPERSEDED: "此前恢复已被后续数据 generation 取代，请重新确认后再发起恢复。",
 }
 
 
@@ -521,6 +523,11 @@ class ElevatedServiceActionRunner:
             if exit_code in _HELPER_FAILURE_MESSAGES:
                 raise RuntimeControlError(_HELPER_FAILURE_MESSAGES[exit_code])
             raise RuntimeControlError("管理员服务助手未返回可信结果；请刷新服务状态后重试。")
+        if exit_code == HELPER_EXIT_RESTORE_SUPERSEDED:
+            attempt_store.retire_confirmed(backup_generation, restore_attempt_id)
+            raise RuntimeControlError(
+                result.diagnostic or _HELPER_FAILURE_MESSAGES[HELPER_EXIT_RESTORE_SUPERSEDED]
+            )
         if exit_code != 0:
             message = result.diagnostic or _HELPER_FAILURE_MESSAGES.get(
                 exit_code,

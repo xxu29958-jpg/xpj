@@ -8,7 +8,7 @@ from app.errors import AppError
 from app.services.dataset_backup_contract import DatasetBackupManifest
 from app.services.dataset_restore_service import RestoredDatasetPlan
 
-_SANITATION_TABLES = (
+SANITATION_TABLES: tuple[str, ...] = (
     "desktop_activation_attempts",
     "session_refresh_attempts",
     "auth_tokens",
@@ -26,29 +26,6 @@ _SANITATION_TABLES = (
     "budget_advisor_quota_locks",
     "ai_transaction_temp_id_map",
 )
-
-
-def assert_restored_dataset_candidate(
-    connection: Connection,
-    *,
-    source: DatasetBackupManifest,
-    plan: RestoredDatasetPlan,
-) -> None:
-    """Accept only the source snapshot or this request's finalized candidate."""
-
-    observed = (
-        connection.execute(
-            text(
-                "SELECT dataset_id, restore_epoch, schema_revision, "
-                "client_generation, schema_min_compatible, semantic_revision, restored_from_backup_id "
-                "FROM dataset_authority WHERE singleton_id = 1"
-            )
-        )
-        .mappings()
-        .one()
-    )
-    if dict(observed) not in (_source_authority_shape(source), _planned_authority_shape(plan)):
-        raise AppError("backup_incomplete", status_code=409)
 
 
 def finalize_restored_dataset(
@@ -77,7 +54,7 @@ def finalize_restored_dataset(
         return
     if dict(observed) != _source_authority_shape(source):
         raise AppError("backup_incomplete", status_code=409)
-    for table in _SANITATION_TABLES:
+    for table in SANITATION_TABLES:
         connection.execute(text(f'DELETE FROM "{table}"'))
     connection.execute(
         text(
@@ -127,7 +104,7 @@ def assert_restored_dataset_candidate_accepted(
     )
     if dict(observed) != _planned_authority_shape(plan):
         raise AppError("backup_incomplete", status_code=409)
-    for table in _SANITATION_TABLES:
+    for table in SANITATION_TABLES:
         if connection.scalar(text(f'SELECT count(*) FROM "{table}"')) != 0:
             raise AppError("backup_incomplete", status_code=409)
     if (
@@ -168,7 +145,7 @@ def _planned_authority_shape(plan: RestoredDatasetPlan) -> dict[str, object]:
 
 
 __all__ = [
-    "assert_restored_dataset_candidate",
+    "SANITATION_TABLES",
     "assert_restored_dataset_candidate_accepted",
     "finalize_restored_dataset",
 ]

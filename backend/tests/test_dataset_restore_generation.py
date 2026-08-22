@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal, engine
 from app.database._dataset_restore_authority import (
-    _SANITATION_TABLES,
+    SANITATION_TABLES,
     assert_restored_dataset_candidate_accepted,
     finalize_restored_dataset,
 )
@@ -213,7 +213,7 @@ def test_restore_preserves_materialization_and_cleanup_failures(
 
 
 def test_restore_sanitation_allowlist_is_independent_and_closed() -> None:
-    assert set(_SANITATION_TABLES) == _EXPECTED_SANITATION_TABLES
+    assert set(SANITATION_TABLES) == _EXPECTED_SANITATION_TABLES
 
 
 def test_restore_finalization_executes_every_sanitation_delete_once(tmp_path: Path) -> None:

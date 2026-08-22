@@ -27,7 +27,9 @@ class _QuietContext:
 
 
 class _RestoreConnection:
-    def scalar(self, _statement) -> int:
+    def scalar(self, statement) -> int:
+        if "FROM pg_namespace" in str(statement):
+            return 0
         return 1
 
     def execute(self, _statement):
@@ -62,8 +64,9 @@ class _RestoreEngine:
         return _QuietContext(_RestoreConnection())
 
     def begin(self):
-        assert self.final
-        return _FailingTransaction(self.primary, self.cleanup)
+        if self.final:
+            return _FailingTransaction(self.primary, self.cleanup)
+        return _QuietContext(_RestoreConnection())
 
     def dispose(self) -> None:
         return None
@@ -155,7 +158,7 @@ def test_isolated_restore_action_preserves_finalization_and_rollback_failures(
     monkeypatch.setattr(action, "hold_protected_file_for_read", lambda path: _QuietContext(path))
     monkeypatch.setattr(action, "_temporary_pgpass_environment", lambda path: _QuietContext(path))
     monkeypatch.setattr(action, "_create_engine", lambda _url: next(engines))
-    monkeypatch.setattr(action, "assert_restored_dataset_candidate", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(action, "restore_postgres_archive", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(action, "materialize_restored_originals", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         action,
@@ -226,3 +229,73 @@ def test_isolated_restore_action_rejects_foreign_dataset_before_mutation(
 
     assert rejected.value.error == "backup_incomplete"
     assert rejected.value.status_code == 409
+
+
+def test_repeated_isolated_restore_discards_public_schema_before_reloading_archive(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import app.database._dataset_restore_action as action
+
+    statements: list[str] = []
+    restored: list[Path] = []
+
+    class Connection:
+        def scalar(self, statement) -> int:
+            statements.append(str(statement))
+            return 0
+
+        def execute(self, statement):
+            statements.append(str(statement))
+            return None
+
+    class Engine:
+        def begin(self):
+            return _QuietContext(Connection())
+
+    request = action.CompleteRestoreRequest(
+        backup_generation=tmp_path,
+        target_upload_root=tmp_path / "uploads",
+        database_url=MIGRATOR_URL,
+        passfile=tmp_path / "pgpass",
+        pg_restore_binary=tmp_path / "pg_restore.exe",
+        active_dataset_id="33333333-3333-4333-8333-333333333333",
+        active_restore_epoch=0,
+        target_schema_revision=TARGET_REVISION,
+        restore_role="ticketbox_owner",
+    )
+    monkeypatch.setattr(
+        action,
+        "restore_postgres_archive",
+        lambda **kwargs: restored.append(kwargs["archive"]),
+    )
+    monkeypatch.setattr(action, "materialize_restored_originals", lambda *_args, **_kwargs: None)
+
+    action._reset_restore_target(Engine(), contexts=[])
+    action._materialize_restore_payload(request)
+
+    assert any("nspname !~ '^pg_'" in statement for statement in statements)
+    assert not any("LIKE 'pg_%'" in statement for statement in statements)
+    assert any("DROP SCHEMA public CASCADE" in statement for statement in statements)
+    assert any(
+        'CREATE SCHEMA public AUTHORIZATION "ticketbox_owner"' in statement
+        for statement in statements
+    )
+    assert restored == [tmp_path / action.DATABASE_ARCHIVE_NAME]
+
+    class ForeignSchemaConnection(Connection):
+        def scalar(self, statement) -> int:
+            statements.append(str(statement))
+            return 1
+
+    class ForeignSchemaEngine:
+        def begin(self):
+            return _QuietContext(ForeignSchemaConnection())
+
+    from app.errors import AppError
+
+    statements.clear()
+    with pytest.raises(AppError) as rejected:
+        action._reset_restore_target(ForeignSchemaEngine(), contexts=[])
+    assert rejected.value.status_code == 409
+    assert not any("DROP SCHEMA" in statement for statement in statements)

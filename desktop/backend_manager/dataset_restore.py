@@ -8,6 +8,7 @@ import re
 import subprocess
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
 from backend_manager.restore_attempt import canonical_restore_attempt_id
@@ -28,6 +29,11 @@ _RESULT_FIELDS = {
     "result",
 }
 _UNKNOWN_RESULT = "完整恢复结果未知；请刷新服务和数据状态，确认后再决定是否重试。"
+RestoreDisposition = Literal["current_published", "superseded"]
+
+
+class RestoreSupersededError(RuntimeControlError):
+    """The attempt completed, but a later Generation is CURRENT."""
 
 
 def canonical_backup_generation(value: str) -> str:
@@ -47,7 +53,7 @@ def run_installed_dataset_restore(
     release: WindowsReleaseConfig,
     backup_generation: str,
     restore_attempt_id: str,
-) -> None:
+) -> RestoreDisposition:
     generation = canonical_backup_generation(backup_generation)
     attempt_id = canonical_restore_attempt_id(restore_attempt_id)
     system_root = os.environ.get("SYSTEMROOT")
@@ -109,7 +115,7 @@ def run_installed_dataset_restore(
         not isinstance(result, dict)
         or set(result) != _RESULT_FIELDS
         or result.get("schema") != "ticketbox-complete-dataset-restore-result-v1"
-        or result.get("result") != "current_published"
+        or result.get("result") not in {"current_published", "superseded"}
         or result.get("restore_attempt_id") != attempt_id
         or not _canonical_uuid(result.get("backup_id"))
         or result.get("backup_id") != generation.removeprefix("ticketbox-backup-")
@@ -120,6 +126,7 @@ def run_installed_dataset_restore(
         or result["restore_epoch"] < 1
     ):
         raise RuntimeControlError(_UNKNOWN_RESULT)
+    return result["result"]
 
 
 def _canonical_uuid(value: object) -> bool:

@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 from _powershell_contract import powershell_contract_engines
 
+from app.services.secure_file import hold_protected_file_for_read
+
 pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -729,6 +731,8 @@ def _assert_scram_contract(postgres_bin: Path, data_dir: Path, port: int) -> Non
     passfile = data_dir / _POSTGRES_CONTRACT["passfile_name"]
     credential = data_dir / _POSTGRES_CONTRACT["credential_name"]
     assert passfile.is_file() and credential.is_file()
+    with hold_protected_file_for_read(passfile) as held_passfile:
+        assert held_passfile == passfile.resolve()
     environment = {key: value for key, value in os.environ.items() if not key.startswith("PG")}
     environment["PGPASSFILE"] = str(passfile)
     base = (

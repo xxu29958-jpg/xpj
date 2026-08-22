@@ -80,8 +80,9 @@ def test_restore_owner_is_explicit_durable_isolated_and_h1_published() -> None:
         contract,
         "Invoke-TicketboxInstalledDatasetBackupInspection",
     )
-    assert inspection.count("Assert-TicketboxProtectedDirectoryAcl") == 2
-    assert inspection.rindex("Assert-TicketboxProtectedDirectoryAcl") < inspection.index(
+    assert "Get-ChildItem -LiteralPath $generationPath -Force -Recurse" in inspection
+    assert "Assert-TicketboxExactFileAcl" in inspection
+    assert inspection.rindex("Assert-TicketboxExactFileAcl") < inspection.index(
         "Open-TicketboxVerifiedDatabaseMaintenanceHelperLease"
     )
 
@@ -142,6 +143,17 @@ def test_restore_candidate_uses_official_frozen_restore_and_exact_role_owner() -
     rebound = promotion_body.index("New-TicketboxInstalledDatasetCandidateVerification")
     physical_move = promotion_body.index("Set-TicketboxInstalledDatasetRestorePhysicalSelection")
     assert reobserved < rebound < physical_move
+    assert 'if ($physical -ceq "candidate_ready")' in promotion_body
+
+    restore_action_source = (
+        PACKAGING.parent / "app" / "database" / "_dataset_restore_action.py"
+    ).read_text(encoding="utf-8")
+    assert "def _reset_restore_target(" in restore_action_source
+    assert "DROP SCHEMA public CASCADE" in restore_action_source
+    assert "target_is_empty" not in restore_action_source
+    assert "def assert_restored_dataset_candidate(" not in (
+        PACKAGING.parent / "app" / "database" / "_dataset_restore_authority.py"
+    ).read_text(encoding="utf-8")
 
 
 def test_restore_promotion_is_forward_reconcilable_and_keeps_old_bytes_until_current() -> None:
@@ -180,7 +192,7 @@ def test_restore_physical_selection_can_recover_every_precurrent_cutpoint(tmp_pa
         "Set-TicketboxInstalledDatasetRestorePhysicalSelection",
     )
     base = str(tmp_path).replace("'", "''")
-    script = f"""
+    script = rf"""
 $ErrorActionPreference = 'Stop'
 function Get-TicketboxPathEntryKindNoFollow([string]$Path) {{
     if (Test-Path -LiteralPath $Path -PathType Container) {{ return 'Directory' }}
@@ -302,7 +314,7 @@ def test_restore_terminal_result_survives_response_loss_and_is_attempt_bound(
     assert subject_read < current_read < request_read < terminal_read
     assert terminal_write < request_retire
     terminal_resume = restore[terminal_read : restore.index("if ($null -eq $result)", terminal_read)]
-    assert "terminalResult.Payload.request_sha256" in terminal_resume
+    assert "terminalArtifact.Payload.request_sha256" in terminal_resume
     assert "Remove-TicketboxInstalledDatasetRestoreRequest $request $lock" in terminal_resume
 
     functions = "\n".join(
@@ -376,7 +388,10 @@ $retry = Read-TicketboxInstalledDatasetRestoreResult `
     -StateRoot 'C:\\state' -RestoreAttemptId $attempt `
     -BackupGeneration "ticketbox-backup-$backup" `
     -Current $current -ExpectedReleaseManifestSha256 ('c' * 64)
-if ($first.PayloadSha256 -cne $retry.PayloadSha256) {{ throw 'terminal result changed on retry' }}
+if (
+    $first.PayloadSha256 -cne $retry.Artifact.PayloadSha256 -or
+    $retry.Disposition -cne 'current'
+) {{ throw 'terminal result changed on retry' }}
 $rejected = $false
 try {{
     Read-TicketboxInstalledDatasetRestoreResult `
@@ -385,18 +400,26 @@ try {{
         -Current $current -ExpectedReleaseManifestSha256 ('c' * 64) | Out-Null
 }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'terminal result crossed backup authority' }}
-$foreignCurrent = [pscustomobject]@{{
-    PayloadSha256 = ('e' * 64)
-    Payload = [pscustomobject]@{{ operation_id = '55555555-5555-4555-8555-555555555555' }}
-}}
 $rejected = $false
 try {{
     Read-TicketboxInstalledDatasetRestoreResult `
         -StateRoot 'C:\\state' -RestoreAttemptId $attempt `
         -BackupGeneration "ticketbox-backup-$backup" `
-        -Current $foreignCurrent -ExpectedReleaseManifestSha256 ('c' * 64) | Out-Null
+        -Current $current -ExpectedReleaseManifestSha256 ('f' * 64) | Out-Null
 }} catch {{ $rejected = $true }}
-if (-not $rejected) {{ throw 'terminal result crossed CURRENT authority' }}
+if (-not $rejected) {{ throw 'terminal result crossed release authority' }}
+$foreignCurrent = [pscustomobject]@{{
+    PayloadSha256 = ('e' * 64)
+    Payload = [pscustomobject]@{{ operation_id = '55555555-5555-4555-8555-555555555555' }}
+}}
+$superseded = Read-TicketboxInstalledDatasetRestoreResult `
+    -StateRoot 'C:\\state' -RestoreAttemptId $attempt `
+    -BackupGeneration "ticketbox-backup-$backup" `
+    -Current $foreignCurrent -ExpectedReleaseManifestSha256 ('c' * 64)
+if (
+    $superseded.Artifact.PayloadSha256 -cne $first.PayloadSha256 -or
+    $superseded.Disposition -cne 'superseded'
+) {{ throw 'stale terminal did not classify as superseded' }}
 """
     run_powershell_contract_script(
         script,
@@ -449,7 +472,7 @@ if (($script:events -join '|') -cne $expected) {{ throw "unexpected compensation
 $script:events = @()
 $script:published = $true
 $outcome = Invoke-TicketboxInstalledDatasetRestoreFailureCompensation $subject $request $paths
-$expected = 'read-current'
+$expected = 'read-current|stop:ticketbox-backend'
 if (($script:events -join '|') -cne $expected -or $outcome -cne 'committed') {{
     throw "published CURRENT was misreported as rollback-safe: $outcome / $($script:events -join '|')"
 }}
@@ -458,6 +481,96 @@ if (($script:events -join '|') -cne $expected -or $outcome -cne 'committed') {{
         script,
         tmp_path,
         filename="dataset-restore-owner-compensation.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_restore_request_path_is_singleton_across_attempts(tmp_path: Path) -> None:
+    contract = _restore_contract()
+    path_function = powershell_function(
+        contract,
+        "Get-TicketboxInstalledDatasetRestoreRequestPath",
+    )
+    root = str(tmp_path).replace("'", "''")
+    script = f"""
+$ErrorActionPreference = 'Stop'
+{path_function}
+$first = Get-TicketboxInstalledDatasetRestoreRequestPath -StateRoot '{root}'
+$second = Get-TicketboxInstalledDatasetRestoreRequestPath -StateRoot '{root}'
+if ($first -cne $second) {{ throw 'restore request path split by attempt' }}
+if ((Split-Path -Leaf $first) -cne 'dataset-restore-request.json') {{
+    throw "restore request is not the singleton authority: $first"
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-restore-request-singleton.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_backup_inspection_checks_each_exact_acl_operand_before_opening_helper(
+    tmp_path: Path,
+) -> None:
+    contract = _restore_contract()
+    inspection = powershell_function(
+        contract,
+        "Invoke-TicketboxInstalledDatasetBackupInspection",
+    )
+    root = str(tmp_path).replace("'", "''")
+    generation = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+    script = rf"""
+$ErrorActionPreference = 'Stop'
+$script:events = @()
+function Test-TicketboxPathEquals {{ param($Left, $Right); return $true }}
+function Assert-TicketboxProtectedDirectoryAcl {{
+    param($Path)
+    $script:events += "dir:$Path"
+}}
+function Assert-NoTicketboxReparsePoints {{ param($Path) }}
+function Get-ChildItem {{
+    param($LiteralPath, [switch]$Force, [switch]$Recurse)
+    return @(
+        [pscustomobject]@{{ FullName = (Join-Path $LiteralPath 'originals'); Kind = 'Directory' }},
+        [pscustomobject]@{{ FullName = (Join-Path $LiteralPath 'manifest.json'); Kind = 'File' }},
+        [pscustomobject]@{{ FullName = (Join-Path $LiteralPath 'database.dump'); Kind = 'File' }}
+    )
+}}
+function Get-TicketboxPathEntryKindNoFollow {{ param($Path); if ($Path.EndsWith('originals')) {{ return 'Directory' }}; return 'File' }}
+function Assert-TicketboxExactFileAcl {{
+    param($Path, $Accounts, $OwnerAccount)
+    $script:events += "file:${{Path}}:$($Accounts -join ','):$OwnerAccount"
+}}
+function Open-TicketboxVerifiedDatabaseMaintenanceHelperLease {{ throw 'stop-after-acl' }}
+function Throw-TicketboxDatabaseGenerationOperationFailure {{
+    param($Primary, $Cleanup)
+    if ($null -ne $Primary) {{ throw $Primary }}
+}}
+{inspection}
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{ DataRoot = (Join-Path '{root}' 'data'); InstallDir = (Join-Path '{root}' 'install') }}
+}}
+$failed = $false
+try {{ Invoke-TicketboxInstalledDatasetBackupInspection $subject '{generation}' | Out-Null }}
+catch {{ if ($_.Exception.Message -ceq 'stop-after-acl') {{ $failed = $true }} else {{ throw }} }}
+if (-not $failed) {{ throw 'inspection crossed the helper boundary' }}
+$generationPath = Join-Path (Join-Path $subject.Identity.DataRoot 'backups') '{generation}'
+$expected = @(
+    "dir:$(Join-Path $subject.Identity.DataRoot 'backups')",
+    "dir:$generationPath",
+    "dir:$(Join-Path $generationPath 'originals')",
+    "file:$(Join-Path $generationPath 'manifest.json'):SYSTEM,BUILTIN\Administrators:SYSTEM",
+    "file:$(Join-Path $generationPath 'database.dump'):SYSTEM,BUILTIN\Administrators:SYSTEM"
+)
+if (($script:events -join '|') -cne ($expected -join '|')) {{
+    throw "backup ACL operands drifted: $($script:events -join '|')"
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-backup-tree-acl-operands.ps1",
     )
 
 
@@ -550,6 +663,7 @@ def test_restore_keeps_rollback_until_runtime_and_originals_are_verified() -> No
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_restore_next_action_reducer_is_closed_and_io_free(tmp_path: Path) -> None:
+    restore = RESTORE.read_text(encoding="utf-8-sig")
     contract = _restore_contract()
     reducer = powershell_function(
         contract,
@@ -557,6 +671,7 @@ def test_restore_next_action_reducer_is_closed_and_io_free(tmp_path: Path) -> No
     )
     assert reducer.count("[AllowNull()][object]") == 4
     assert '[ValidateSet("absent", "present")]' not in reducer
+    assert "-RuntimeVerification $runtimeVerification" in restore
     script = f"""
 $ErrorActionPreference = 'Stop'
 {reducer}
