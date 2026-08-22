@@ -149,6 +149,12 @@ function Set-TicketboxDatabaseGenerationDatabaseBinding {
     ) {
         throw "database generation live identity 与 SourceBinding 漂移。"
     }
+    if (
+        [string]$identity.SchemaRevision -cne
+            [string]$Intent.Payload.target_revision
+    ) {
+        throw "database generation live schema revision 未达到 intent target。"
+    }
     $payload = [ordered]@{
         schema = "ticketbox-database-generation-database-binding-v1"
         operation_id = [string]$Intent.Payload.operation_id

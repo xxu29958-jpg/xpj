@@ -15,6 +15,7 @@ PACKAGING = Path(__file__).resolve().parents[1]
 APP = PACKAGING.parent / "app"
 BACKUP = PACKAGING / "windows_dataset_backup.ps1"
 GENERATION_CONTRACT = PACKAGING / "windows_database_generation_contract.ps1"
+GENERATION_CREDENTIALS = PACKAGING / "windows_database_generation_credentials.ps1"
 
 
 def test_backup_owner_passes_structured_barrier_and_inspects_before_request_retirement() -> None:
@@ -37,6 +38,22 @@ def test_backup_owner_passes_structured_barrier_and_inspects_before_request_reti
     validation = backup.rindex("Assert-TicketboxInstalledCompleteBackupResult")
     retirement = backup.rindex("Remove-TicketboxInstalledDatasetOperation")
     assert inspection < validation < retirement
+
+
+def test_backup_owner_opens_only_the_candidate_bound_backup_credential() -> None:
+    backup = BACKUP.read_text(encoding="utf-8-sig")
+    credentials = GENERATION_CREDENTIALS.read_text(encoding="utf-8-sig")
+
+    assert "Read-TicketboxDatabaseGenerationBackupCredential" in backup
+    assert "Close-TicketboxDatabaseGenerationBackupCredential" in backup
+    assert "Read-TicketboxDatabaseGenerationRuntimeCredentials" not in backup
+    narrow_reader = powershell_function(
+        credentials,
+        "Read-TicketboxDatabaseGenerationBackupCredential",
+    )
+    assert "backup_password" in narrow_reader
+    assert "runtime_password" not in narrow_reader
+    assert "http_bootstrap_secret" not in narrow_reader
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")

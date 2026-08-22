@@ -357,6 +357,7 @@ jobs:
           python -m pytest -q
           tests/test_database_maintenance_entrypoint.py
           tests/test_postgres_backup_dialect.py
+          tests/test_dataset_originals_file_identity.py
           --noconftest --strict-markers -p no:cacheprovider -o addopts=
 
       - name: Installer source preflight (Windows PowerShell 5.1)

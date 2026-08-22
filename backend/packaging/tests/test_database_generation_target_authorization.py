@@ -65,7 +65,7 @@ $binding = [pscustomobject]@{{
     Payload = [pscustomobject]@{{
         dataset_id = '22222222-2222-4222-8222-222222222222'
         restore_epoch = 37
-        schema_revision = 'binding-schema-revision'
+        schema_revision = 'intent-target-revision'
     }}
 }}
 function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {{ return [pscustomobject]@{{}} }}
@@ -104,8 +104,19 @@ if (
     [string]$actual.database_binding_sha256 -cne ('b' * 64) -or
     [string]$actual.dataset_id -cne '22222222-2222-4222-8222-222222222222' -or
     [int64]$actual.restore_epoch -ne 37 -or
-    [string]$actual.schema_revision -cne 'binding-schema-revision'
+    [string]$actual.schema_revision -cne 'intent-target-revision'
 ) {{ throw 'target authorization did not use exact database binding operands' }}
+$binding.Payload.schema_revision = 'foreign-live-revision'
+$rejected = $false
+try {{
+    Invoke-TicketboxDatabaseGenerationTargetAuthorization `
+        -StateRoot 'C:\\state' -Intent $intent -SourceBinding $source `
+        -Credentials $credentials -ReleaseIdentity $release `
+        -LifecycleLock ([pscustomobject]@{{}}) -HostContract ([pscustomobject]@{{}}) `
+        -MaintenanceAuthority $maintenance | Out-Null
+}}
+catch {{ $rejected = $true }}
+if (-not $rejected) {{ throw 'target authorization accepted a foreign live schema revision' }}
 """
     run_powershell_contract_script(
         script,
@@ -142,6 +153,10 @@ def test_target_execution_authority_is_retry_stable_and_binding_is_insert_only(t
         CREDENTIALS.read_text(encoding="utf-8-sig"),
         "Close-TicketboxDatabaseGenerationRuntimeCredentials",
     )
+    close_backup_credential = _function(
+        CREDENTIALS.read_text(encoding="utf-8-sig"),
+        "Close-TicketboxDatabaseGenerationBackupCredential",
+    )
     binding = _function(
         database_binding,
         "Set-TicketboxDatabaseGenerationDatabaseBinding",
@@ -177,6 +192,7 @@ function Assert-TicketboxDatabaseGenerationLowerSha256 {{ param($Value, $Label) 
 {failure}
 {close_credentials}
 {close_runtime_credentials}
+{close_backup_credential}
 $intent = [pscustomobject]@{{ PayloadSha256 = ('a' * 64); Payload = [pscustomobject]@{{
     operation_id = '11111111-1111-4111-8111-111111111111'
     target_revision = '20260809_0001'
@@ -263,5 +279,86 @@ if (
     $null -ne $runtimeCredentials.BackupPassword -or
     $null -ne $runtimeCredentials.HttpBootstrapSecret
 ) {{ throw 'runtime credential cleanup did not preserve every failure and attempt' }}
+$backupCredential = [pscustomobject]@{{
+    CandidateSha256 = ('c' * 64)
+    BackupPassword = New-FailingSecret 'backup-capability'
+}}
+try {{ Close-TicketboxDatabaseGenerationBackupCredential $backupCredential }}
+catch {{ $backupCleanup = $_.Exception }}
+if (
+    $backupCleanup.Message -cnotlike '*dispose failure: backup-capability*' -or
+    ($script:disposed -join ',') -cne
+        'runtime,migrator,backup,runtime-again,backup-again,http,backup-capability' -or
+    $null -ne $backupCredential.BackupPassword -or
+    $null -ne $backupCredential.CandidateSha256
+) {{ throw 'backup credential cleanup lost failure or retained capability' }}
 """
     run_powershell_contract_script(script, tmp_path, filename="database-generation-owner.ps1")
+
+
+def test_database_binding_rejects_live_revision_before_publication(tmp_path: Path) -> None:
+    binding = _function(
+        DATABASE_BINDING.read_text(encoding="utf-8-sig"),
+        "Set-TicketboxDatabaseGenerationDatabaseBinding",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Get-TicketboxDatabaseAuthorizationContract {{
+    return [pscustomobject]@{{ DatabaseName = 'ticketbox'; RuntimeRole = 'ticketbox_runtime' }}
+}}
+function Assert-TicketboxLifecycleOperationLease {{}}
+function Assert-TicketboxDatabaseGenerationLowerSha256 {{}}
+function Get-TicketboxDatabaseGenerationLiveIdentity {{ return $script:identity }}
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ return 'canonical-binding' }}
+function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('f' * 64) }}
+function ConvertTo-TicketboxPostgresqlSqlLiteral {{ param($Value); return "'$Value'" }}
+function Invoke-TicketboxPostgresqlDatabaseCommand {{
+    $script:publicationCalls += 1
+    return 'canonical-binding'
+}}
+{binding}
+$intent = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = '11111111-1111-4111-8111-111111111111'
+        installation_id = '22222222-2222-4222-8222-222222222222'
+        target_revision = '20260821_0001'
+        generation_program_sha256 = ('b' * 64)
+    }}
+}}
+$source = [pscustomobject]@{{
+    PayloadSha256 = ('c' * 64)
+    Payload = [pscustomobject]@{{ cluster_system_identifier = 'cluster'; database_oid = 42 }}
+}}
+$script:identity = [pscustomobject]@{{
+    ClusterSystemIdentifier = 'cluster'; DatabaseOid = 42; DatabaseName = 'ticketbox'
+    DatasetId = '33333333-3333-4333-8333-333333333333'; RestoreEpoch = 0
+    SchemaRevision = 'foreign-live-revision'; SchemaMinCompatible = '20260809_0001'
+    SemanticRevision = 'ticketbox-dataset-semantics-v1'
+}}
+$script:publicationCalls = 0
+$arguments = @{{
+    Intent = $intent; SourceBinding = $source; HostAuthority = @{{}}
+    SuperuserPassword = [Security.SecureString]::new()
+    ExecutionAuthoritySha256 = ('1' * 64); RoleAuthoritySha256 = ('2' * 64)
+    RuntimeAclSha256 = ('3' * 64); WriterFenceSha256 = ('4' * 64)
+    TargetRecoveryEvidenceSha256 = ('5' * 64); LifecycleLock = @{{}}
+}}
+$rejected = $false
+try {{ Set-TicketboxDatabaseGenerationDatabaseBinding @arguments | Out-Null }}
+catch {{ $rejected = $true }}
+if (-not $rejected -or $script:publicationCalls -ne 0) {{
+    throw 'foreign live schema revision reached database binding publication'
+}}
+$script:identity.SchemaRevision = '20260821_0001'
+$actual = Set-TicketboxDatabaseGenerationDatabaseBinding @arguments
+if (
+    $script:publicationCalls -ne 1 -or
+    [string]$actual.Payload.schema_revision -cne '20260821_0001'
+) {{ throw 'matching live schema revision was not published exactly once' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="database-generation-binding-revision.ps1",
+    )

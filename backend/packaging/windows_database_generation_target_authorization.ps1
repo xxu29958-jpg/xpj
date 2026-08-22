@@ -97,6 +97,12 @@ function Invoke-TicketboxDatabaseGenerationTargetAuthorization {
         -WriterFenceSha256 $writerFenceSha256 `
         -TargetRecoveryEvidenceSha256 ([string]$recovery.PayloadSha256) `
         -LifecycleLock $LifecycleLock
+    if (
+        [string]$databaseBinding.Payload.schema_revision -cne
+            [string]$Intent.Payload.target_revision
+    ) {
+        throw "target authorization 拒绝非 intent target 的 database binding。"
+    }
     return [ordered]@{
         schema = "ticketbox-database-generation-target-authorization-v2"
         operation_id = $operationId

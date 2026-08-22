@@ -343,7 +343,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
 $lock = $null
 $subject = $null
 $authority = $null
-$runtimeCredentials = $null
+$backupCredential = $null
 $request = $null
 $primary = $null
 $cleanup = @()
@@ -414,14 +414,14 @@ try {
         -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms) `
         -BackendPort ([int]$identity.BackendPort) `
         -ExpectedRuntimeExecutables @($backendRuntime, $backendExecutable)
-    $runtimeCredentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
+    $backupCredential = Read-TicketboxDatabaseGenerationBackupCredential `
         $authority.StateRoot $authority.Intent $authority.Candidate
-    $barrier = Get-TicketboxInstalledBackupBarrier $subject $authority $runtimeCredentials
+    $barrier = Get-TicketboxInstalledBackupBarrier $subject $authority $backupCredential
     $helperTimeout = [int]$subject.Release.dataset_backup_helper_timeout_ms
     $backupResult = Invoke-TicketboxInstalledCompleteBackupHelper $subject `
-        $runtimeCredentials $request $barrier $helperTimeout
-    try { Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials }
-    finally { $runtimeCredentials = $null }
+        $backupCredential $request $barrier $helperTimeout
+    try { Close-TicketboxDatabaseGenerationBackupCredential $backupCredential }
+    finally { $backupCredential = $null }
     Protect-TicketboxInstalledBackupInventory $subject
     $generation = [string]$backupResult.generation
     if ($generation -cnotmatch `
@@ -481,10 +481,10 @@ finally {
         }
         catch { $cleanup += $_ }
     }
-    if ($null -ne $runtimeCredentials) {
-        try { Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials }
+    if ($null -ne $backupCredential) {
+        try { Close-TicketboxDatabaseGenerationBackupCredential $backupCredential }
         catch { $cleanup += $_ }
-        $runtimeCredentials = $null
+        $backupCredential = $null
     }
     if (
         $null -eq $primary -and $cleanup.Count -eq 0 -and

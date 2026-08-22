@@ -429,8 +429,11 @@ function Read-TicketboxDatabaseGenerationOperationArtifact {{ return $script:art
 {powershell_function(credentials, "ConvertTo-TicketboxPostgresqlSecureString")}
 {powershell_function(credentials, "Invoke-TicketboxWithPlainPostgresqlSecret")}
 {powershell_function(FAILURE.read_text(encoding="utf-8-sig"), "Throw-TicketboxOperationFailure")}
+{powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentialArtifact")}
 {powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentials")}
 {powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationRuntimeCredentials")}
+{powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationBackupCredential")}
+{powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationBackupCredential")}
 {powershell_function(generation_credentials, "New-TicketboxDatabaseGenerationRuntimeCredentials")}
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('a' * 64)
@@ -467,6 +470,22 @@ try {{
     if ([string]$created.Artifact.Payload.candidate_sha256 -cne ('c' * 64)) {{
         throw 'runtime credentials did not bind the sealed candidate'
     }}
+    $backupCredential = Read-TicketboxDatabaseGenerationBackupCredential `
+        'state' $intent $candidate
+    $backupCredentialNames = @($backupCredential.PSObject.Properties.Name | Sort-Object)
+    if (($backupCredentialNames -join '|') -cne 'BackupPassword|CandidateSha256') {{
+        throw 'backup credential capability exposed unrelated runtime secrets'
+    }}
+    $narrowBackupPlain = Invoke-TicketboxWithPlainPostgresqlSecret `
+        $backupCredential.BackupPassword {{ param($Value); return $Value }}
+    if ($narrowBackupPlain -cne ('b' * 48)) {{
+        throw 'backup credential capability changed secret bytes'
+    }}
+    Close-TicketboxDatabaseGenerationBackupCredential $backupCredential
+    if (
+        $null -ne $backupCredential.BackupPassword -or
+        $null -ne $backupCredential.CandidateSha256
+    ) {{ throw 'backup credential capability remained reachable after close' }}
     $candidate.PayloadSha256 = ('d' * 64)
     $driftRejected = $false
     try {{
@@ -536,6 +555,7 @@ function Read-TicketboxDatabaseGenerationOperationArtifact {{ return $script:art
 {powershell_function(FAILURE.read_text(encoding="utf-8-sig"), "Throw-TicketboxOperationFailure")}
 {powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationCredentials")}
 {powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationCredentials")}
+{powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentialArtifact")}
 {powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentials")}
 {powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationRuntimeCredentials")}
 $intent = [pscustomobject]@{{

@@ -51,7 +51,11 @@ function Assert-TicketboxInstalledPostgresToolArtifact {{
     return 'C:\\pg\\pg_restore.exe'
 }}
 function New-TicketboxPostgresqlLocalDatabaseUrl {{ param($Authority, $Database, $Role); return 'postgresql://local' }}
-function Invoke-TicketboxWithPlainPostgresqlSecret {{ param($Secret, $Action); return (& $Action 'password') }}
+function Invoke-TicketboxWithPlainPostgresqlSecret {{
+    param($Secret, $Action)
+    if ([string]$Secret -cne 'backup-secret') {{ throw 'wrong backup credential capability' }}
+    return (& $Action 'password')
+}}
 function New-TicketboxProtectedPgPassFile {{ param($DatabaseUrl, $Password); return [pscustomobject]@{{ Path = 'C:\\state\\pgpass'; FullControlAccounts = @(); OwnerAccount = 'owner' }} }}
 function Open-TicketboxVerifiedDatabaseMaintenanceHelperLease {{ param($Path, $ExpectedRelativePath, $ExpectedSize, $ExpectedSha256); return [pscustomobject]@{{ Path = $Path }} }}
 function New-TicketboxDatabaseGenerationHelperChildEnvironment {{ param($PgPassFilePath); return @{{}} }}
@@ -83,7 +87,7 @@ $subject = [pscustomobject]@{{
         dataset_backup_helper_timeout_ms = 2000
     }}
 }}
-$authority = [pscustomobject]@{{ Credentials = [pscustomobject]@{{ BackupPassword = 'secret' }} }}
+$credentials = [pscustomobject]@{{ BackupPassword = 'backup-secret' }}
 $request = [pscustomobject]@{{ Payload = [pscustomobject]@{{
     operation_id = '11111111-1111-4111-8111-111111111111'
     backup_id = '22222222-2222-4222-8222-222222222222'
@@ -98,7 +102,7 @@ $barrier = [pscustomobject]@{{
         schema_revision = '20260821_0001'
     }}
 }}
-[void](Invoke-TicketboxInstalledCompleteBackupHelper $subject $authority $request $barrier 2000)
+[void](Invoke-TicketboxInstalledCompleteBackupHelper $subject $credentials $request $barrier 2000)
 if ([int]$script:capturedTimeoutMilliseconds -ne 2000) {{
     throw 'complete backup helper did not receive its composite timeout budget'
 }}

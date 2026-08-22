@@ -316,7 +316,7 @@ function Remove-TicketboxDatabaseGenerationCredentials {
         -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
 }
 
-function Read-TicketboxDatabaseGenerationRuntimeCredentials {
+function Read-TicketboxDatabaseGenerationRuntimeCredentialArtifact {
     param(
         [Parameter(Mandatory = $true)][string]$StateRoot,
         [Parameter(Mandatory = $true)][object]$Intent,
@@ -347,6 +347,22 @@ function Read-TicketboxDatabaseGenerationRuntimeCredentials {
     ) {
         throw "database generation runtime credentials 未绑定 exact candidate。"
     }
+    return $artifact
+}
+
+function Read-TicketboxDatabaseGenerationRuntimeCredentials {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [switch]$AllowAbsent
+    )
+    $artifact = Read-TicketboxDatabaseGenerationRuntimeCredentialArtifact `
+        -StateRoot $StateRoot `
+        -Intent $Intent `
+        -Candidate $Candidate `
+        -AllowAbsent:$AllowAbsent
+    if ($null -eq $artifact) { return $null }
     $runtimePassword = $null
     $backupPassword = $null
     $httpBootstrapSecret = $null
@@ -398,6 +414,41 @@ function Close-TicketboxDatabaseGenerationRuntimeCredentials {
     }
     $Credentials.Artifact = $null
     Throw-TicketboxOperationFailure $null $cleanupFailures
+}
+
+function Read-TicketboxDatabaseGenerationBackupCredential {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$Candidate
+    )
+    $artifact = Read-TicketboxDatabaseGenerationRuntimeCredentialArtifact `
+        -StateRoot $StateRoot `
+        -Intent $Intent `
+        -Candidate $Candidate
+    $backupPassword = ConvertTo-TicketboxPostgresqlSecureString `
+        ([string]$artifact.Payload.backup_password) `
+        "backup password"
+    return [pscustomobject][ordered]@{
+        CandidateSha256 = [string]$Candidate.PayloadSha256
+        BackupPassword = $backupPassword
+    }
+}
+
+function Close-TicketboxDatabaseGenerationBackupCredential {
+    param([Parameter(Mandatory = $true)][object]$Credential)
+    $cleanupFailure = $null
+    try {
+        if ($null -ne $Credential.BackupPassword) {
+            $Credential.BackupPassword.Dispose()
+        }
+    }
+    catch { $cleanupFailure = $_ }
+    finally {
+        $Credential.BackupPassword = $null
+        $Credential.CandidateSha256 = $null
+    }
+    Throw-TicketboxOperationFailure $null @($cleanupFailure)
 }
 
 function New-TicketboxDatabaseGenerationRuntimeCredentials {
