@@ -41,22 +41,35 @@ def test_restore_compensation_reclassifies_durable_runtime_verification(
         contract,
         "Invoke-TicketboxInstalledDatasetRestoreFailureCompensation",
     )
+    classifier = powershell_function(
+        contract,
+        "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition",
+    )
     script = f"""
 $ErrorActionPreference = 'Stop'
 $script:events = @()
 $successor = '22222222-2222-4222-8222-222222222222'
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('c' * 64)
-    Payload = [pscustomobject]@{{ operation_id = $successor }}
+    Payload = [pscustomobject]@{{
+        operation_id = $successor
+        source_request_sha256 = ('d' * 64)
+        expected_predecessor_sha256 = ('a' * 64)
+    }}
 }}
 $current = [pscustomobject]@{{
     PayloadSha256 = ('b' * 64)
-    Payload = [pscustomobject]@{{ operation_id = $successor }}
+    Payload = [pscustomobject]@{{
+        operation_id = $successor
+        intent_sha256 = ('c' * 64)
+        expected_predecessor_sha256 = ('a' * 64)
+    }}
 }}
 $request = [pscustomobject]@{{
     PayloadSha256 = ('d' * 64)
     Payload = [pscustomobject]@{{
         restart_backend = $true
+        predecessor_current_sha256 = ('a' * 64)
         backup_manifest_sha256 = ('e' * 64)
         backup_id = '33333333-3333-4333-8333-333333333333'
         dataset_id = '44444444-4444-4444-8444-444444444444'
@@ -87,6 +100,7 @@ function Assert-TicketboxDatabaseGenerationExactProperties {{
     $expected = @($ExpectedNames | Sort-Object)
     if (($actual -join '|') -cne ($expected -join '|')) {{ throw "unexpected fields: $Label" }}
 }}
+function Assert-TicketboxInstalledDatasetRestoreRequest {{ param($Request); return $Request }}
 function Read-TicketboxDatabaseGenerationCurrent {{
     $script:events += 'read-current'
     return $current
@@ -112,6 +126,7 @@ function Remove-TicketboxPostgresqlRestoreCandidateService {{ throw 'rollback af
 function Stop-TicketboxInstalledDatasetWriters {{ throw 'rollback after durable verification' }}
 function Restore-TicketboxInstalledDatasetPredecessorRuntime {{ throw 'rollback after durable verification' }}
 {verification}
+{classifier}
 {compensation}
 $inspection = [pscustomobject]@{{ Evidence = [pscustomobject]@{{ original_count = 9 }} }}
 $outcome = Invoke-TicketboxInstalledDatasetRestoreFailureCompensation `
@@ -139,11 +154,17 @@ def test_restore_predecessor_runtime_uses_one_exact_predecessor_artifact_chain(
         _restore_contract(),
         "Restore-TicketboxInstalledDatasetPredecessorRuntime",
     )
+    classifier = powershell_function(
+        _restore_contract(),
+        "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition",
+    )
     script = f"""
 $ErrorActionPreference = 'Stop'
 $script:events = @()
 $predecessorOperation = '11111111-1111-4111-8111-111111111111'
 $successorOperation = '22222222-2222-4222-8222-222222222222'
+$lifecycleLock = [pscustomobject]@{{ token = 'lock' }}
+$transitionSentinel = [pscustomobject]@{{ token = 'transition' }}
 $predecessorCandidate = [pscustomobject]@{{ PayloadSha256 = ('d' * 64); Payload = [pscustomobject]@{{ operation_id = $predecessorOperation }} }}
 $successorCandidate = [pscustomobject]@{{ PayloadSha256 = ('e' * 64); Payload = [pscustomobject]@{{ operation_id = $successorOperation }} }}
 function Set-TicketboxInstalledDatasetRestorePhysicalSelection {{ param($Paths, $Selection); $script:events += "select:$Selection" }}
@@ -168,18 +189,36 @@ function Publish-TicketboxDatabaseGenerationRuntimeProjection {{
 }}
 function New-TicketboxInstalledDatasetRestorePredecessorCurrentTransition {{
     param($Current, $RestoreRequest)
+    if (-not [object]::ReferenceEquals($Current, $current)) {{
+        throw 'transition builder did not receive exact observed CURRENT'
+    }}
+    if (-not [object]::ReferenceEquals($RestoreRequest, $request)) {{
+        throw 'transition builder did not receive exact restore request'
+    }}
     $script:events += "transition:$($RestoreRequest.Payload.predecessor_current_sha256)"
-    return [pscustomobject]@{{}}
+    return $transitionSentinel
 }}
-function Publish-TicketboxDatabaseGenerationCurrent {{ param($Transition, $LifecycleLock); $script:events += 'publish-current' }}
+function Publish-TicketboxDatabaseGenerationCurrent {{
+    param($Transition, $LifecycleLock)
+    if (-not [object]::ReferenceEquals($Transition, $transitionSentinel)) {{
+        throw 'CURRENT publisher did not receive exact transition'
+    }}
+    if (-not [object]::ReferenceEquals($LifecycleLock, $lifecycleLock)) {{
+        throw 'CURRENT publisher did not receive exact lifecycle lock'
+    }}
+    $script:events += 'publish-current'
+}}
 function Close-TicketboxDatabaseGenerationRuntimeCredentials {{ param($Credentials); $script:events += 'close-credentials' }}
 function Throw-TicketboxDatabaseGenerationOperationFailure {{
     param($Primary, $Cleanup)
     if ($null -ne $Primary) {{ throw $Primary }}
     if (@($Cleanup).Count -gt 0) {{ throw [string]@($Cleanup)[0] }}
 }}
+function Assert-TicketboxInstalledDatasetRestoreRequest {{ param($Request); return $Request }}
+{classifier}
 {predecessor}
 $request = [pscustomobject]@{{
+    PayloadSha256 = ('f' * 64)
     Payload = [pscustomobject]@{{
         predecessor_current_sha256 = ('a' * 64)
         predecessor_intent_sha256 = ('c' * 64)
@@ -192,7 +231,19 @@ $request = [pscustomobject]@{{
 }}
 $current = [pscustomobject]@{{
     PayloadSha256 = ('b' * 64)
-    Payload = [pscustomobject]@{{ operation_id = $successorOperation }}
+    Payload = [pscustomobject]@{{
+        operation_id = $successorOperation
+        intent_sha256 = ('b' * 64)
+        expected_predecessor_sha256 = ('a' * 64)
+    }}
+}}
+$intent = [pscustomobject]@{{
+    PayloadSha256 = ('b' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = $successorOperation
+        source_request_sha256 = ('f' * 64)
+        expected_predecessor_sha256 = ('a' * 64)
+    }}
 }}
 $subject = [pscustomobject]@{{
     Identity = [pscustomobject]@{{ InstallDir = 'C:\\Ticketbox'; PgServiceName = 'ticketbox-pg' }}
@@ -203,7 +254,7 @@ Restore-TicketboxInstalledDatasetPredecessorRuntime `
     -Paths ([pscustomobject]@{{ operation_id = $successorOperation }}) `
     -StateRoot 'C:\\state' `
     -Contracts ([pscustomobject]@{{ Host = [pscustomobject]@{{}}; Projection = [pscustomobject]@{{}} }}) `
-    -Current $current -LifecycleLock ([pscustomobject]@{{}})
+    -Intent $intent -Current $current -LifecycleLock $lifecycleLock
 $expected = @(
     'select:Predecessor', 'set-acls', 'start:ticketbox-pg',
     "read:${{predecessorOperation}}:candidate",
@@ -344,7 +395,9 @@ def test_restore_drill_cleanup_attempts_each_independent_repair(
     monkeypatch.syspath_prepend(str(PACKAGING.parent))
     from scripts import postgres_restore_drill_topology
 
-    calls: list[int] = []
+    calls: list[str] = []
+    first_failure = KeyboardInterrupt("cleanup-1")
+    third_failure = SystemExit("cleanup-3")
 
     class Connection:
         def __enter__(self):
@@ -353,10 +406,12 @@ def test_restore_drill_cleanup_attempts_each_independent_repair(
         def __exit__(self, *_args: object) -> None:
             return None
 
-        def execute(self, _statement: object) -> None:
-            calls.append(len(calls) + 1)
-            if calls[-1] in {1, 3}:
-                raise RuntimeError(f"cleanup-{calls[-1]}")
+        def execute(self, statement: object) -> None:
+            calls.append(statement.as_string())
+            if len(calls) == 1:
+                raise first_failure
+            if len(calls) == 3:
+                raise third_failure
 
     monkeypatch.setattr(
         postgres_restore_drill_topology.psycopg,
@@ -379,6 +434,14 @@ def test_restore_drill_cleanup_attempts_each_independent_repair(
         ),
     )
 
-    assert calls == [1, 2, 3, 4, 5, 6]
-    assert [str(failure) for failure in failures] == ["cleanup-1", "cleanup-3"]
-
+    assert calls == [
+        'REASSIGN OWNED BY "xpj_drill_owner_test" TO "xpj_test_app"',
+        'ALTER SCHEMA public OWNER TO "xpj_test_app"',
+        'ALTER DATABASE "xpj_restore_test" OWNER TO "xpj_test_app"',
+        'REVOKE "xpj_drill_owner_test" FROM "xpj_test_app"',
+        'DROP ROLE "xpj_drill_owner_test"',
+        'ALTER ROLE "xpj_test_app" INHERIT',
+    ]
+    assert len(failures) == 2
+    assert failures[0] is first_failure
+    assert failures[1] is third_failure

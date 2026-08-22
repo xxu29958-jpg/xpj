@@ -24,6 +24,7 @@ function Get-TicketboxDatabaseGenerationArtifactPath {
             "source-create-attempt",
             "restored-source",
             "candidate-verification",
+            "runtime-verification",
             "source-binding",
             "target-recovery-attempt",
             "target-recovery-archive",
@@ -93,6 +94,13 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
                 "restore_epoch", "target_revision", "original_count",
                 "generation_program_sha256", "resource_shape_sha256",
                 "money_facts_sha256", "result"
+            )
+        }
+        "runtime-verification" {
+            return @(
+                "schema", "operation_id", "intent_sha256", "source_request_sha256",
+                "current_sha256", "backup_manifest_sha256", "backup_id", "dataset_id",
+                "restore_epoch", "original_count", "health_contract", "result"
             )
         }
         "dataset-restore-request" {
@@ -239,6 +247,7 @@ function Read-TicketboxDatabaseGenerationEnvelope {
         throw "database generation artifact canonical payload/digest 漂移：$Path"
     }
     return [pscustomobject]@{
+        Kind = $ExpectedKind
         Path = $Path
         Payload = $envelope.payload
         PayloadSha256 = $payloadSha256
@@ -279,6 +288,7 @@ function Read-TicketboxDatabaseGenerationOperationArtifact {
             "source-create-attempt",
             "restored-source",
             "candidate-verification",
+            "runtime-verification",
             "source-binding",
             "target-recovery-attempt",
             "target-recovery-archive",
@@ -313,7 +323,7 @@ function New-TicketboxDatabaseGenerationChainedArtifact {
         [Parameter(Mandatory = $true)][string]$OperationId,
         [Parameter(Mandatory = $true)][ValidateSet(
             "runtime-credentials", "source-create-attempt", "restored-source",
-            "candidate-verification", "source-binding",
+            "candidate-verification", "runtime-verification", "source-binding",
             "target-authorization", "candidate", "terminal-state",
             "target-recovery-attempt", "target-recovery-archive",
             "target-recovery-binding", "target-recovery-verification",

@@ -451,6 +451,10 @@ def test_restore_owner_compensation_restores_exact_predecessor_before_restart(
         contract,
         "Invoke-TicketboxInstalledDatasetRestoreFailureCompensation",
     )
+    classifier = powershell_function(
+        contract,
+        "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition",
+    )
     script = f"""
 $ErrorActionPreference = 'Stop'
 $script:events = @()
@@ -464,13 +468,21 @@ function Read-TicketboxDatabaseGenerationCurrent {{
         Payload = [pscustomobject]@{{
             operation_id = $operation
             expected_predecessor_sha256 = ('a' * 64)
+            intent_sha256 = ('c' * 64)
         }}
     }}
 }}
 function Read-TicketboxDatabaseGenerationActiveIntent {{
     param($StateRoot)
     $script:events += 'read-intent'
-    return [pscustomobject]@{{ Payload = [pscustomobject]@{{ operation_id = '22222222-2222-4222-8222-222222222222' }} }}
+    return [pscustomobject]@{{
+        PayloadSha256 = ('c' * 64)
+        Payload = [pscustomobject]@{{
+            operation_id = '22222222-2222-4222-8222-222222222222'
+            source_request_sha256 = ('d' * 64)
+            expected_predecessor_sha256 = ('a' * 64)
+        }}
+    }}
 }}
 function Read-TicketboxDatabaseGenerationOperationArtifact {{
     param($StateRoot, $OperationId, $Kind, [switch]$AllowAbsent)
@@ -493,19 +505,21 @@ function Start-TicketboxOwnedServiceIfExists {{
     $script:events += "start:$Name"
 }}
 function Restore-TicketboxInstalledDatasetPredecessorRuntime {{
-    param($Subject, $Request, $Paths, $StateRoot, $Contracts, $Current, $LifecycleLock)
+    param($Subject, $Request, $Paths, $StateRoot, $Contracts, $Intent, $Current, $LifecycleLock)
     $script:events += "restore-predecessor:$($Current.PayloadSha256)"
 }}
 function Set-TicketboxInstalledDatasetBackendDesiredState {{
     param($Subject, $ShouldRun)
     $script:events += "desired:$ShouldRun"
 }}
+function Assert-TicketboxInstalledDatasetRestoreRequest {{ param($Request); return $Request }}
+{classifier}
 {compensation}
 $subject = [pscustomobject]@{{
     Identity = [pscustomobject]@{{ InstallDir = 'C:\\Ticketbox'; PgServiceName = 'ticketbox-pg'; BackendServiceName = 'ticketbox-backend' }}
     Release = [pscustomobject]@{{ service_state_timeout_ms = 1000; service_poll_interval_ms = 10 }}
 }}
-$request = [pscustomobject]@{{ Payload = [pscustomobject]@{{
+$request = [pscustomobject]@{{ PayloadSha256 = ('d' * 64); Payload = [pscustomobject]@{{
     restart_backend = $true
     predecessor_current_sha256 = ('a' * 64)
 }} }}

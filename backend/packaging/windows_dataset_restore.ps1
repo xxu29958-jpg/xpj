@@ -224,7 +224,10 @@ try {
                 -Inspection $inspection)
         }
         $current = Read-TicketboxDatabaseGenerationCurrent
-        $published = if ([string]$current.Payload.operation_id -ceq $operationId) {
+        $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
+            -Request $request -Intent $active -Current $current `
+            -SuccessorOperationId $operationId
+        $published = if ($currentDisposition -ceq "successor") {
             $current
         }
         else { $null }

@@ -95,6 +95,40 @@ function Assert-TicketboxInstalledDatasetRestoreRequest {
     return $Request
 }
 
+function Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition {
+    param(
+        [Parameter(Mandatory = $true)][object]$Request,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$Current,
+        [Parameter(Mandatory = $true)][string]$SuccessorOperationId
+    )
+    $request = Assert-TicketboxInstalledDatasetRestoreRequest $Request
+    $successor = ([guid]$SuccessorOperationId).ToString("D")
+    $predecessorSha256 = [string]$request.Payload.predecessor_current_sha256
+    if (
+        [string]$Intent.Payload.operation_id -cne $successor -or
+        [string]$Intent.Payload.source_request_sha256 -cne
+            [string]$request.PayloadSha256 -or
+        [string]$Intent.Payload.expected_predecessor_sha256 -cne
+            $predecessorSha256
+    ) {
+        throw "dataset restore active intent differs from its durable request."
+    }
+    if ([string]$Current.PayloadSha256 -ceq $predecessorSha256) {
+        return "predecessor"
+    }
+    if (
+        [string]$Current.Payload.operation_id -ceq $successor -and
+        [string]$Current.Payload.intent_sha256 -ceq
+            [string]$Intent.PayloadSha256 -and
+        [string]$Current.Payload.expected_predecessor_sha256 -ceq
+            $predecessorSha256
+    ) {
+        return "successor"
+    }
+    throw "dataset restore observed a foreign CURRENT authority."
+}
+
 function New-TicketboxInstalledDatasetRestorePredecessorCurrentTransition {
     param(
         [Parameter(Mandatory = $true)][object]$Current,

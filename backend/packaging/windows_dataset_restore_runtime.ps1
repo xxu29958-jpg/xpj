@@ -227,20 +227,15 @@ function Restore-TicketboxInstalledDatasetPredecessorRuntime {
         [Parameter(Mandatory = $true)][object]$Paths,
         [Parameter(Mandatory = $true)][string]$StateRoot,
         [Parameter(Mandatory = $true)][object]$Contracts,
+        [Parameter(Mandatory = $true)][object]$Intent,
         [Parameter(Mandatory = $true)][object]$Current,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
-    $predecessorSha256 = [string]$Request.Payload.predecessor_current_sha256
     $successorOperationId = ([guid][string]$Paths.operation_id).ToString("D")
-    $currentIsSuccessor = (
-        [string]$Current.Payload.operation_id -ceq $successorOperationId
-    )
-    if (
-        -not $currentIsSuccessor -and
-        [string]$Current.PayloadSha256 -cne $predecessorSha256
-    ) {
-        throw "dataset restore compensation observed a foreign CURRENT."
-    }
+    $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
+        -Request $Request -Intent $Intent -Current $Current `
+        -SuccessorOperationId $successorOperationId
+    $currentIsSuccessor = $currentDisposition -ceq "successor"
     Set-TicketboxInstalledDatasetRestorePhysicalSelection `
         -Paths $Paths -Selection "Predecessor"
     Set-TicketboxInstalledDatasetPublishedAcls $Subject $Paths
@@ -308,11 +303,9 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
     $failureCurrent = Read-TicketboxDatabaseGenerationCurrent
     $successorOperationId = ([guid][string]$Paths.operation_id).ToString("D")
     $failureIntent = Read-TicketboxDatabaseGenerationActiveIntent $StateRoot
-    if (
-        [string]$failureIntent.Payload.operation_id -cne $successorOperationId
-    ) {
-        throw "dataset restore compensation lost its active intent authority."
-    }
+    $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
+        -Request $Request -Intent $failureIntent -Current $failureCurrent `
+        -SuccessorOperationId $successorOperationId
     $durableRuntimeVerification = `
         Read-TicketboxDatabaseGenerationOperationArtifact `
             -StateRoot $StateRoot `
@@ -320,9 +313,7 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
             -Kind "runtime-verification" `
             -AllowAbsent
     if ($null -ne $durableRuntimeVerification) {
-        if (
-            [string]$failureCurrent.Payload.operation_id -cne $successorOperationId
-        ) {
+        if ($currentDisposition -cne "successor") {
             throw "verified dataset restore no longer owns CURRENT."
         }
         [void](Assert-TicketboxInstalledDatasetRuntimeVerification `
@@ -346,7 +337,7 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
         Stop-TicketboxInstalledDatasetWriters $Subject
         Restore-TicketboxInstalledDatasetPredecessorRuntime `
             -Subject $Subject -Request $Request -Paths $Paths `
-            -StateRoot $StateRoot -Contracts $Contracts `
+            -StateRoot $StateRoot -Contracts $Contracts -Intent $failureIntent `
             -Current $failureCurrent -LifecycleLock $LifecycleLock
         Set-TicketboxInstalledDatasetBackendDesiredState `
             -Subject $Subject `
