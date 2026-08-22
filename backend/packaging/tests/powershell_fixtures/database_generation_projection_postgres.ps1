@@ -726,7 +726,7 @@ GRANT SELECT ON public.app_meta, public.alembic_version TO ticketbox_runtime;
         -IncludeManagedSchemaCurrencyAuthority)
     $tableCreationSql = @(
         foreach ($tableName in @($runtimeSpecifications.Table | Sort-Object -Unique)) {
-            if ($tableName -cin @("app_meta", "alembic_version")) {
+            if ($tableName -cin @("app_meta", "alembic_version", "dataset_authority")) {
                 continue
             }
             $idColumn = if ($tableName -ceq "accounts") {
