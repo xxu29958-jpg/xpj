@@ -270,8 +270,11 @@ def _installed_config(tmp_path: Path, *, port: int, service_suffix: str) -> Mana
         backend_ready_poll_interval_ms=200,
         backend_health_request_timeout_ms=1_000,
         database_tool_timeout_ms=600_000,
-        complete_dataset_backup_timeout_ms=1_800_000,
-        complete_dataset_restore_timeout_ms=3_600_000,
+        dataset_backup_helper_timeout_ms=1_800_000,
+        dataset_restore_helper_timeout_ms=3_600_000,
+        dataset_payload_verification_timeout_ms=1_800_000,
+        complete_dataset_backup_timeout_ms=5_400_000,
+        complete_dataset_restore_timeout_ms=10_800_000,
     )
     return ManagerConfig(
         runtime=InstalledRuntimeConfig(layout, release),

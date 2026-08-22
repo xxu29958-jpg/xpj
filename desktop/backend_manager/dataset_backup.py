@@ -71,7 +71,7 @@ def run_installed_dataset_backup(
             encoding="utf-8",
             errors="strict",
             check=False,
-            timeout=release.helper_watchdog_seconds("backup"),
+            timeout=release.powershell_action_timeout_seconds("backup"),
         )
     except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         raise RuntimeControlError("完整备份未能安全完成；原生诊断已抑制。") from exc

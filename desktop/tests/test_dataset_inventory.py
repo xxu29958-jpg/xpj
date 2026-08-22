@@ -35,8 +35,11 @@ def _release() -> WindowsReleaseConfig:
         backend_ready_poll_interval_ms=20,
         backend_health_request_timeout_ms=100,
         database_tool_timeout_ms=5_000,
-        complete_dataset_backup_timeout_ms=15_000,
-        complete_dataset_restore_timeout_ms=30_000,
+        dataset_backup_helper_timeout_ms=15_000,
+        dataset_restore_helper_timeout_ms=30_000,
+        dataset_payload_verification_timeout_ms=15_000,
+        complete_dataset_backup_timeout_ms=45_000,
+        complete_dataset_restore_timeout_ms=90_000,
     )
 
 

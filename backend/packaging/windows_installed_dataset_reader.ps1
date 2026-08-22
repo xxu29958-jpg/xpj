@@ -207,7 +207,7 @@ function Invoke-TicketboxInstalledDatasetBackupInspection {
             -FilePath $lease.Path `
             -Arguments @("--inspect-dataset-backup", "--backup-generation", $generationPath) `
             -StandardInputText "" `
-            -TimeoutMilliseconds ([int]$Subject.Release.database_tool_timeout_ms) `
+            -TimeoutMilliseconds ([int]$Subject.Release.dataset_payload_verification_timeout_ms) `
             -Label "complete dataset backup inspection" `
             -ChildEnvironment (New-TicketboxDatabaseGenerationHelperChildEnvironment)
         if ([int]$process.ExitCode -ne 0 -or $process.StandardError.Trim().Length -ne 0) {

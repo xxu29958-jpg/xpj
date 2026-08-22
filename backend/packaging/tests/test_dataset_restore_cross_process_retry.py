@@ -53,7 +53,8 @@ def test_cross_process_retry_republishes_verified_candidate_without_new_bootstra
     entrypoint = tmp_path / "windows_dataset_restore.ps1"
     entrypoint.write_text(RESTORE.read_text(encoding="utf-8-sig"), encoding="utf-8-sig")
     for name in RESTORE_DEPENDENCIES:
-        (tmp_path / name).write_text("", encoding="utf-8-sig")
+        source = (PACKAGING / name).read_text(encoding="utf-8-sig") if name == "windows_deadline_budget.ps1" else ""
+        (tmp_path / name).write_text(source, encoding="utf-8-sig")
 
     operation_source = DATASET_OPERATION.read_text(encoding="utf-8-sig")
     reducer_source = (PACKAGING / "windows_dataset_restore_reducer.ps1").read_text(encoding="utf-8-sig")
@@ -139,7 +140,13 @@ function Assert-TicketboxInstalledDatasetSubject {{
             PgServiceName = 'ticketbox-pg'; BackendServiceName = 'ticketbox-backend'
             BackendPort = 8123; BackendVersionFloor = '1.0.0'
         }}
-        Release = [pscustomobject]@{{ secret_byte_count = 32 }}
+        Release = [pscustomobject]@{{
+            secret_byte_count = 32
+            database_tool_timeout_ms = 10000
+            dataset_restore_helper_timeout_ms = 10000
+            dataset_payload_verification_timeout_ms = 10000
+            complete_dataset_restore_timeout_ms = 60000
+        }}
         Manifest = [pscustomobject]@{{ Sha256 = ('f' * 64) }}
     }}
 }}

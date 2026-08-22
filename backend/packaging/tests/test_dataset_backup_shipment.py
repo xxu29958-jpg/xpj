@@ -80,7 +80,7 @@ $subject = [pscustomobject]@{{
     }}
     Release = [pscustomobject]@{{
         database_tool_timeout_ms = 1000
-        complete_dataset_backup_timeout_ms = 2000
+        dataset_backup_helper_timeout_ms = 2000
     }}
 }}
 $authority = [pscustomobject]@{{ Credentials = [pscustomobject]@{{ BackupPassword = 'secret' }} }}
@@ -98,7 +98,7 @@ $barrier = [pscustomobject]@{{
         schema_revision = '20260821_0001'
     }}
 }}
-[void](Invoke-TicketboxInstalledCompleteBackupHelper $subject $authority $request $barrier)
+[void](Invoke-TicketboxInstalledCompleteBackupHelper $subject $authority $request $barrier 2000)
 if ([int]$script:capturedTimeoutMilliseconds -ne 2000) {{
     throw 'complete backup helper did not receive its composite timeout budget'
 }}
@@ -120,12 +120,47 @@ if ([int]$script:capturedTimeoutMilliseconds -ne 2000) {{
 
 def test_restore_helper_uses_its_complete_composite_timeout_budget() -> None:
     restore_database = PACKAGING / "windows_dataset_restore_database.ps1"
+    restore_owner = (PACKAGING / "windows_dataset_restore.ps1").read_text(encoding="utf-8-sig")
     helper = powershell_function(
         restore_database.read_text(encoding="utf-8-sig"),
         "Invoke-TicketboxInstalledDatasetRestoreHelper",
     )
 
-    assert (
-        "-TimeoutMilliseconds ([int]$Subject.Release.complete_dataset_restore_timeout_ms"
-        in helper
+    assert "-TimeoutMilliseconds $TimeoutMilliseconds" in helper
+    assert "RequiredMilliseconds ([int]$subject.Release.dataset_restore_helper_timeout_ms" in restore_owner
+    assert "-TimeoutMilliseconds $restoreHelperTimeout" in restore_owner
+
+
+def test_payload_verifiers_do_not_reuse_database_tool_timeout() -> None:
+    reader = (PACKAGING / "windows_installed_dataset_reader.ps1").read_text(encoding="utf-8-sig")
+    runtime = (PACKAGING / "windows_dataset_restore_runtime.ps1").read_text(encoding="utf-8-sig")
+
+    assert "dataset_payload_verification_timeout_ms" in reader
+    assert "dataset_payload_verification_timeout_ms" in runtime
+    assert "Subject.Release.database_tool_timeout_ms" not in powershell_function(
+        reader,
+        "Invoke-TicketboxInstalledDatasetBackupInspection",
     )
+    assert "Subject.Release.database_tool_timeout_ms" not in powershell_function(
+        runtime,
+        "Invoke-TicketboxInstalledRestoredOriginalsVerification",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_complete_dataset_phase_cannot_start_without_its_full_remaining_budget(tmp_path: Path) -> None:
+    deadline_source = (PACKAGING / "windows_deadline_budget.ps1").read_text(encoding="utf-8-sig")
+    script = "\n".join(
+        (
+            "$ErrorActionPreference = 'Stop'",
+            powershell_function(deadline_source, "New-TicketboxProcessDeadlineBudget"),
+            powershell_function(deadline_source, "Get-TicketboxProcessDeadlinePhaseTimeout"),
+            "$budget = New-TicketboxProcessDeadlineBudget -TimeoutMilliseconds 2000",
+            "try {",
+            "  Get-TicketboxProcessDeadlinePhaseTimeout -Budget $budget -RequiredMilliseconds 3000 -Label 'probe'",
+            "  throw 'expired phase was admitted'",
+            "} catch { if ($_.Exception.Message -notlike '*cannot start*') { throw } }",
+        )
+    )
+
+    run_powershell_contract_script(script, tmp_path, filename="dataset-deadline-budget.ps1")

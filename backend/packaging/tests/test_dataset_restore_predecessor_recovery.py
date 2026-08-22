@@ -189,7 +189,8 @@ def test_restore_entrypoint_replays_terminal_after_request_retirement(
         "windows_bundled_database.ps1",
     )
     for name in dependency_names:
-        (tmp_path / name).write_text("", encoding="utf-8-sig")
+        source = (PACKAGING / name).read_text(encoding="utf-8-sig") if name == "windows_deadline_budget.ps1" else ""
+        (tmp_path / name).write_text(source, encoding="utf-8-sig")
     replay = powershell_function(
         _restore_contract(),
         "Complete-TicketboxInstalledDatasetRestoreTerminalReplay",
@@ -205,7 +206,10 @@ function Assert-TicketboxInstalledDatasetSubject {
     param($DataRoot)
     return [pscustomobject]@{
         Identity = [pscustomobject]@{ DataRoot = $DataRoot; PgPort = 15432 }
-        Release = [pscustomobject]@{ secret_byte_count = 32 }
+        Release = [pscustomobject]@{
+            secret_byte_count = 32
+            complete_dataset_restore_timeout_ms = 60000
+        }
         Manifest = [pscustomobject]@{ Sha256 = ('c' * 64) }
     }
 }

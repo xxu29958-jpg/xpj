@@ -74,7 +74,8 @@ def test_request_only_crash_state_creates_exact_successor_before_mutation(
     entrypoint = tmp_path / "windows_dataset_restore.ps1"
     entrypoint.write_text(RESTORE.read_text(encoding="utf-8-sig"), encoding="utf-8-sig")
     for name in RESTORE_DEPENDENCIES:
-        (tmp_path / name).write_text("", encoding="utf-8-sig")
+        source = (PACKAGING / name).read_text(encoding="utf-8-sig") if name == "windows_deadline_budget.ps1" else ""
+        (tmp_path / name).write_text(source, encoding="utf-8-sig")
     classifier = powershell_function(
         DATASET_OPERATION.read_text(encoding="utf-8-sig"),
         "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition",
@@ -119,7 +120,11 @@ function Assert-TicketboxInstalledDatasetSubject {{
         Identity = [pscustomobject]@{{
             DataRoot = 'C:\TicketboxData'; PgPort = 5432; BackendVersionFloor = '1.0.0'
         }}
-        Release = [pscustomobject]@{{ secret_byte_count = 32 }}
+        Release = [pscustomobject]@{{
+            secret_byte_count = 32
+            dataset_payload_verification_timeout_ms = 10000
+            complete_dataset_restore_timeout_ms = 60000
+        }}
         Manifest = [pscustomobject]@{{
             Sha256 = ('7' * 64)
             DatabaseMaintenanceHelper = [pscustomobject]@{{ Size = 123; Sha256 = ('8' * 64) }}
@@ -230,7 +235,8 @@ def test_restore_reobserves_exact_authority_before_successor_artifacts(
         "windows_bundled_database.ps1",
     )
     for name in dependency_names:
-        (tmp_path / name).write_text("", encoding="utf-8-sig")
+        source = (PACKAGING / name).read_text(encoding="utf-8-sig") if name == "windows_deadline_budget.ps1" else ""
+        (tmp_path / name).write_text(source, encoding="utf-8-sig")
     classifier = powershell_function(
         DATASET_OPERATION.read_text(encoding="utf-8-sig"),
         "Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition",
@@ -297,6 +303,10 @@ function Assert-TicketboxInstalledDatasetSubject {{
         Release = [pscustomobject]@{{
             secret_byte_count = 32; service_state_timeout_ms = 1000
             service_poll_interval_ms = 10
+            database_tool_timeout_ms = 10000
+            dataset_restore_helper_timeout_ms = 10000
+            dataset_payload_verification_timeout_ms = 10000
+            complete_dataset_restore_timeout_ms = 60000
         }}
         Manifest = [pscustomobject]@{{ Sha256 = ('7' * 64) }}
     }}

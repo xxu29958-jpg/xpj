@@ -215,7 +215,13 @@
     const meta = styled(el("div"), "font-size:11.5px;color:var(--text-meta);margin-top:8px;line-height:1.6");
     append(meta, "目标 " + text(cards.goals_count) + " 条");
     if (cards.goals_risk_count) append(meta, " · 风险 " + text(cards.goals_risk_count));
-    append(meta, document.createElement("br"), cards.backup_available ? "最近备份记录 " + text(cards.backup_age_days) + " 天前（当前字节未复检）" : "还没有备份发布记录");
+    let backupCopy = "还没有备份发布记录";
+    if (cards.backup_age_status === "future") {
+      backupCopy = "备份发布时间晚于当前系统时间";
+    } else if (cards.backup_available) {
+      backupCopy = "最近备份记录 " + text(cards.backup_age_days) + " 天前（当前字节未复检）";
+    }
+    append(meta, document.createElement("br"), backupCopy);
     append(
       right,
       el("div", "trend-num", cards.confirmed_count),
@@ -400,7 +406,9 @@
     if (key === "backup_status") {
       const shell = cardShell("col-4", "backup_status");
       append(shell.card, cardHead("备份状态", "", link("card-sub", "/owner/backups", "打开 →")));
-      if (cards.backup_available) {
+      if (cards.backup_age_status === "future") {
+        append(shell.card, styled(el("div", "", "备份发布时间晚于当前系统时间。"), "font-size:12.5px;color:var(--state-danger-fg);padding:14px 0"));
+      } else if (cards.backup_available) {
         append(
           shell.card,
           el("div", "trend-num", cards.backup_age_days),

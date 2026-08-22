@@ -98,7 +98,7 @@ class RestoreAttemptStore:
             raise RuntimeControlError("无法验证完整恢复 attempt identity。")
         return attempt_id
 
-    def retire_confirmed(self, backup_generation: str, attempt_id: str) -> None:
+    def retire_confirmed(self, backup_generation: str, attempt_id: str) -> bool:
         canonical_restore_attempt_id(attempt_id)
         path = self._root / f"{_backup_id(backup_generation)}.json"
         if self._read(path, backup_generation) != attempt_id:
@@ -107,7 +107,11 @@ class RestoreAttemptStore:
         _move_durable_no_replace(path, retired)
         if path.exists():
             raise RuntimeControlError("完整恢复 attempt identity 未能清理。")
-        retired.unlink(missing_ok=True)
+        try:
+            retired.unlink(missing_ok=True)
+        except OSError:
+            return False
+        return True
 
     def _read(self, path: Path, backup_generation: str) -> str:
         self._secure_root()

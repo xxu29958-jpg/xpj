@@ -212,7 +212,8 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
         [Parameter(Mandatory = $true)][object]$Subject,
         [Parameter(Mandatory = $true)][object]$Authority,
         [Parameter(Mandatory = $true)][object]$Request,
-        [Parameter(Mandatory = $true)][object]$WriterBarrier
+        [Parameter(Mandatory = $true)][object]$WriterBarrier,
+        [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds
     )
 
     $identity = $Subject.Identity
@@ -250,7 +251,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
         DatasetId = [string]$WriterBarrier.Payload.dataset_id
         RestoreEpoch = [int64]$WriterBarrier.Payload.restore_epoch
         SchemaRevision = [string]$WriterBarrier.Payload.schema_revision
-        Timeout = [int]$Subject.Release.complete_dataset_backup_timeout_ms
+        Timeout = $TimeoutMilliseconds
     }
     return Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $Authority.Credentials.BackupPassword `
@@ -346,10 +347,13 @@ $primary = $null
 $cleanup = @()
 $backupResult = $null
 $restartBackend = $false
+$actionBudget = $null
 try {
     $lock = Enter-TicketboxLifecycleLock
     Assert-TicketboxLifecycleOperationLease $lock
     $subject = Assert-TicketboxInstalledDatasetSubject $DataRoot
+    $actionBudget = New-TicketboxProcessDeadlineBudget `
+        -TimeoutMilliseconds ([int64]$subject.Release.complete_dataset_backup_timeout_ms)
     Assert-TicketboxInstalledDatasetServiceAuthority $subject
     $identity = $subject.Identity
     $backendExecutable = Join-Path ([string]$identity.InstallDir) "shawl\shawl.exe"
@@ -395,8 +399,12 @@ try {
         -BackendPort ([int]$identity.BackendPort) `
         -ExpectedRuntimeExecutables @($backendRuntime, $backendExecutable)
     $barrier = Get-TicketboxInstalledBackupBarrier $subject $authority
+    $helperTimeout = Get-TicketboxProcessDeadlinePhaseTimeout `
+        -Budget $actionBudget `
+        -RequiredMilliseconds ([int]$subject.Release.dataset_backup_helper_timeout_ms) `
+        -Label "complete dataset backup helper"
     $backupResult = Invoke-TicketboxInstalledCompleteBackupHelper `
-        $subject $authority $request $barrier
+        $subject $authority $request $barrier $helperTimeout
     Protect-TicketboxInstalledBackupInventory $subject
     $generation = [string]$backupResult.generation
     if ($generation -cnotmatch `
@@ -413,6 +421,9 @@ try {
         -OwnerAccount "SYSTEM" `
         -Recurse
     foreach ($entry in @(Get-ChildItem -LiteralPath $generationPath -Force -Recurse)) {
+        [void](Get-TicketboxProcessDeadlinePhaseTimeout `
+            -Budget $actionBudget -RequiredMilliseconds 1000 `
+            -Label "complete dataset backup ACL projection")
         $kind = Get-TicketboxPathEntryKindNoFollow ([string]$entry.FullName)
         if ($kind -ceq "Directory") {
             Set-TicketboxExactDirectoryAcl `
@@ -430,6 +441,10 @@ try {
             throw "backup generation contains a non-regular filesystem entry."
         }
     }
+    [void](Get-TicketboxProcessDeadlinePhaseTimeout `
+        -Budget $actionBudget `
+        -RequiredMilliseconds ([int]$subject.Release.dataset_payload_verification_timeout_ms) `
+        -Label "complete dataset backup inspection")
     $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
         $subject $generation
     $backupResult = Assert-TicketboxInstalledCompleteBackupResult `

@@ -73,7 +73,7 @@ function Invoke-TicketboxInstalledRestoredOriginalsVerification {
                 "--restored-upload-root", [string]$Paths.stable_uploads
             ) `
             -StandardInputText "" `
-            -TimeoutMilliseconds ([int]$Subject.Release.database_tool_timeout_ms) `
+            -TimeoutMilliseconds ([int]$Subject.Release.dataset_payload_verification_timeout_ms) `
             -Label "restored originals verification" `
             -ChildEnvironment (New-TicketboxDatabaseGenerationHelperChildEnvironment `
                 -PgPassFilePath "")

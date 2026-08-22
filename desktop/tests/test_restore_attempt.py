@@ -65,6 +65,27 @@ def test_restore_attempt_survives_response_loss_and_retires_only_after_confirmat
     assert successor != first
 
 
+def test_confirmed_retirement_cleanup_failure_cannot_reclassify_restore_success(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    store = RestoreAttemptStore(tmp_path)
+    attempt = store.get_or_create(GENERATION)
+    canonical = tmp_path / "11111111-1111-4111-8111-111111111111.json"
+    real_unlink = Path.unlink
+
+    def fail_tombstone_cleanup(path: Path, *args, **kwargs) -> None:
+        if path.suffix == ".retired":
+            raise OSError("scanner retained tombstone")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_tombstone_cleanup)
+
+    assert store.retire_confirmed(GENERATION, attempt) is False
+    assert not canonical.exists()
+    assert tuple(tmp_path.glob("*.retired"))
+
+
 def test_restore_attempt_rejects_tampered_binding(tmp_path: Path) -> None:
     store = RestoreAttemptStore(tmp_path)
     attempt = store.get_or_create(GENERATION)

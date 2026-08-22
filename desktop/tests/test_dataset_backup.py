@@ -50,8 +50,11 @@ def _subject(tmp_path: Path) -> tuple[InstalledLayout, WindowsReleaseConfig, Pat
         backend_ready_poll_interval_ms=375,
         backend_health_request_timeout_ms=1_750,
         database_tool_timeout_ms=600_000,
-        complete_dataset_backup_timeout_ms=1_800_000,
-        complete_dataset_restore_timeout_ms=3_600_000,
+        dataset_backup_helper_timeout_ms=1_800_000,
+        dataset_restore_helper_timeout_ms=3_600_000,
+        dataset_payload_verification_timeout_ms=1_800_000,
+        complete_dataset_backup_timeout_ms=5_400_000,
+        complete_dataset_restore_timeout_ms=10_800_000,
     )
     return layout, release, powershell, script
 
@@ -103,7 +106,7 @@ def test_installed_backup_invokes_exact_owner_with_closed_environment(
         "manual",
     ]
     assert captured["cwd"] == script.parent
-    assert captured["timeout"] == release.helper_watchdog_seconds("backup")
+    assert captured["timeout"] == release.powershell_action_timeout_seconds("backup")
     assert "DATABASE_URL" not in captured["env"]
 
 

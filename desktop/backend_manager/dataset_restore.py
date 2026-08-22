@@ -94,7 +94,7 @@ def run_installed_dataset_restore(
             encoding="utf-8",
             errors="strict",
             check=False,
-            timeout=release.helper_watchdog_seconds("restore"),
+            timeout=release.powershell_action_timeout_seconds("restore"),
         )
     except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         raise RuntimeControlError(_UNKNOWN_RESULT) from exc
