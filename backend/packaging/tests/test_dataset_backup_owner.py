@@ -57,6 +57,81 @@ def test_backup_owner_opens_only_the_candidate_bound_backup_credential() -> None
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_backup_barrier_rejects_live_dataset_drift_before_helper(tmp_path: Path) -> None:
+    barrier = powershell_function(
+        BACKUP.read_text(encoding="utf-8-sig"),
+        "Get-TicketboxInstalledBackupBarrier",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+function Get-TicketboxDatabaseAuthorizationContract {{
+    return [pscustomobject]@{{ DatabaseName = 'ticketbox'; BackupRole = 'ticketbox_backup' }}
+}}
+function Invoke-TicketboxPostgresqlDatabaseCommand {{
+    return @(
+        'ticketbox', 'ticketbox_backup', $script:liveDataset,
+        [string]$script:liveEpoch, $script:liveRevision, '0'
+    ) -join "`t"
+}}
+function ConvertFrom-TicketboxPostgresqlHostEvidenceRow {{
+    param($Output, $FieldCount, $Label)
+    return @($Output -split "`t")
+}}
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ return 'barrier-json' }}
+function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('b' * 64) }}
+function Invoke-TicketboxInstalledCompleteBackupHelper {{ $script:helperCalls += 1 }}
+{barrier}
+$dataset = '33333333-3333-4333-8333-333333333333'
+$subject = [pscustomobject]@{{ Identity = [pscustomobject]@{{ InstallDir = 'C:\\Ticketbox'; PgPort = 5432 }} }}
+$authority = [pscustomobject]@{{
+    Current = [pscustomobject]@{{ PayloadSha256 = ('c' * 64) }}
+    ActiveDataset = [pscustomobject]@{{
+        DatasetId = $dataset
+        RestoreEpoch = 4
+        SchemaRevision = '20260821_0001'
+    }}
+}}
+$credentials = [pscustomobject]@{{ BackupPassword = 'backup-secret' }}
+$script:helperCalls = 0
+foreach ($case in @('dataset', 'epoch', 'revision')) {{
+    $script:liveDataset = $dataset
+    $script:liveEpoch = 4
+    $script:liveRevision = '20260821_0001'
+    switch ($case) {{
+        'dataset' {{ $script:liveDataset = '44444444-4444-4444-8444-444444444444' }}
+        'epoch' {{ $script:liveEpoch = 9 }}
+        'revision' {{ $script:liveRevision = '20260809_0001' }}
+    }}
+    $rejected = $false
+    try {{
+        $observed = Get-TicketboxInstalledBackupBarrier $subject $authority $credentials
+        Invoke-TicketboxInstalledCompleteBackupHelper $observed
+    }}
+    catch {{ $rejected = $true }}
+    if (-not $rejected -or $script:helperCalls -ne 0) {{
+        throw "$case live dataset drift reached backup helper"
+    }}
+}}
+$script:liveDataset = $dataset
+$script:liveEpoch = 4
+$script:liveRevision = '20260821_0001'
+$accepted = Get-TicketboxInstalledBackupBarrier $subject $authority $credentials
+Invoke-TicketboxInstalledCompleteBackupHelper $accepted
+if (
+    $script:helperCalls -ne 1 -or
+    [string]$accepted.Payload.dataset_id -cne $dataset -or
+    [int64]$accepted.Payload.restore_epoch -ne 4 -or
+    [string]$accepted.Payload.schema_revision -cne '20260821_0001'
+) {{ throw 'matching live dataset did not cross the barrier exactly once' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-backup-live-authority-barrier.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_python_and_powershell_writer_barrier_codecs_match(tmp_path: Path) -> None:
     payload = {
         "schema": "ticketbox-dataset-backup-writer-barrier-v1",

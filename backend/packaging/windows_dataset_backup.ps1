@@ -86,11 +86,21 @@ WHERE authority.singleton_id = 1;
     ) {
         throw "complete dataset backup could not prove the zero-writer barrier."
     }
+    $liveDatasetId = ([guid][string]$fields[2]).ToString("D")
+    $liveRestoreEpoch = [int64]$fields[3]
+    $activeDataset = $Authority.ActiveDataset
+    if (
+        $liveDatasetId -cne [string]$activeDataset.DatasetId -or
+        $liveRestoreEpoch -ne [int64]$activeDataset.RestoreEpoch -or
+        [string]$fields[4] -cne [string]$activeDataset.SchemaRevision
+    ) {
+        throw "complete dataset backup live database 与 durable Dataset Authority 漂移。"
+    }
     $payload = [ordered]@{
         schema = "ticketbox-dataset-backup-writer-barrier-v1"
         current_sha256 = [string]$Authority.Current.PayloadSha256
-        dataset_id = [string]$fields[2]
-        restore_epoch = [int64]$fields[3]
+        dataset_id = $liveDatasetId
+        restore_epoch = $liveRestoreEpoch
         schema_revision = [string]$fields[4]
         backend_service_state = "stopped"
         other_client_session_count = 0
