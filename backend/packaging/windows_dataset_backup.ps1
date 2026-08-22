@@ -250,7 +250,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
         DatasetId = [string]$WriterBarrier.Payload.dataset_id
         RestoreEpoch = [int64]$WriterBarrier.Payload.restore_epoch
         SchemaRevision = [string]$WriterBarrier.Payload.schema_revision
-        Timeout = [int]$Subject.Release.database_tool_timeout_ms
+        Timeout = [int]$Subject.Release.complete_dataset_backup_timeout_ms
     }
     return Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $Authority.Credentials.BackupPassword `

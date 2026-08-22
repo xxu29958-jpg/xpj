@@ -38,6 +38,7 @@ def test_private_status_reports_published_backup_record_age(
         lambda: dataset_backup_inventory.PublishedBackupInventory(
             latest=entry,
             age_hours=3,
+            age_status="observed",
             review_due=False,
             integrity_status="not_rechecked",
         ),
@@ -60,6 +61,7 @@ def test_private_status_reports_missing_backup_as_stale(
         lambda: dataset_backup_inventory.PublishedBackupInventory(
             latest=None,
             age_hours=None,
+            age_status="absent",
             review_due=True,
             integrity_status="absent",
         ),

@@ -94,7 +94,7 @@ function Invoke-TicketboxInstalledDatasetRestoreHelper {
                 "--operation-id", [string]$IntentContext.Artifact.Payload.operation_id
             ) `
             -StandardInputText "" `
-            -TimeoutMilliseconds ([int]$Subject.Release.database_tool_timeout_ms) `
+            -TimeoutMilliseconds ([int]$Subject.Release.complete_dataset_restore_timeout_ms) `
             -Label "isolated complete dataset restore" `
             -ChildEnvironment (New-TicketboxDatabaseGenerationHelperChildEnvironment `
                 -PgPassFilePath ([string]$passfile.Path))

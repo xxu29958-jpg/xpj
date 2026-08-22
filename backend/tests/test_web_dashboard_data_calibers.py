@@ -42,6 +42,35 @@ def test_dashboard_backup_caliber_accepts_only_published_complete_generation(
         block = web_common._dashboard_status_counts_block(db, "owner", now_utc())
     assert block["backup_available"] is False
     assert block["backup_age_days"] is None
+    assert block["backup_age_status"] == "absent"
+
+
+def test_dashboard_backup_caliber_rejects_future_publication_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = dataset_backup_inventory.BackupEntry(
+        file_name="ticketbox-backup-6f162355-9e37-4523-a090-8daf2835f9e4",
+        backup_id="6f162355-9e37-4523-a090-8daf2835f9e4",
+        dataset_id="1d096080-20db-4a74-a138-1e72217f7746",
+        restore_epoch=0,
+        size_bytes=4096,
+        created_at=now_utc() + timedelta(hours=1),
+        kind="scheduled",
+    )
+    monkeypatch.setattr(
+        dataset_backup_inventory,
+        "latest_published_backup_record",
+        lambda: entry,
+    )
+    monkeypatch.setattr(web_stats_service, "recent_expense_count", lambda *_args: 0)
+    monkeypatch.setattr(web_stats_service, "recent_confirmed_expense_count", lambda *_args: 0)
+    monkeypatch.setattr(web_stats_service, "active_device_count", lambda *_args: 0)
+
+    block = web_common._dashboard_status_counts_block(object(), "owner", now_utc())
+
+    assert block["backup_available"] is True
+    assert block["backup_age_days"] is None
+    assert block["backup_age_status"] == "future"
 
 
 def test_overview_category_share_aggregates_overflow_into_other(

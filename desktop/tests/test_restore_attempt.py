@@ -4,9 +4,51 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from backend_manager import restore_attempt
 from backend_manager.restore_attempt import RestoreAttemptStore
 
 GENERATION = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+
+
+def test_windows_attempt_publication_is_write_through_and_create_only(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, str, int]] = []
+
+    class MoveFileEx:
+        argtypes = None
+        restype = None
+
+        def __call__(self, source: str, target: str, flags: int) -> int:
+            calls.append((source, target, flags))
+            return 1
+
+    class Kernel32:
+        MoveFileExW = MoveFileEx()
+
+    monkeypatch.setattr(restore_attempt.ctypes, "WinDLL", lambda *_args, **_kwargs: Kernel32())
+    source = tmp_path / "attempt.tmp"
+    target = tmp_path / "attempt.json"
+    restore_attempt._move_windows_durable_no_replace(source, target)
+
+    assert calls == [(str(source), str(target), restore_attempt._MOVEFILE_WRITE_THROUGH)]
+
+
+def test_restore_attempt_publication_failure_cannot_return_an_identity(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fail_publication(_source: Path, _target: Path) -> None:
+        raise OSError("durable publication failed")
+
+    monkeypatch.setattr(restore_attempt, "_move_durable_no_replace", fail_publication)
+    try:
+        RestoreAttemptStore(tmp_path).get_or_create(GENERATION)
+    except OSError as exc:
+        assert "durable publication failed" in str(exc)
+    else:
+        raise AssertionError("restore attempt escaped failed durable publication")
 
 
 def test_restore_attempt_survives_response_loss_and_retires_only_after_confirmation(

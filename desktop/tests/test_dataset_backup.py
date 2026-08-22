@@ -50,6 +50,8 @@ def _subject(tmp_path: Path) -> tuple[InstalledLayout, WindowsReleaseConfig, Pat
         backend_ready_poll_interval_ms=375,
         backend_health_request_timeout_ms=1_750,
         database_tool_timeout_ms=600_000,
+        complete_dataset_backup_timeout_ms=1_800_000,
+        complete_dataset_restore_timeout_ms=3_600_000,
     )
     return layout, release, powershell, script
 

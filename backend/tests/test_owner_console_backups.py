@@ -102,6 +102,20 @@ def test_backup_inventory_separates_record_age_from_current_integrity(
     assert inventory.integrity_status == "not_rechecked"
 
 
+def test_future_backup_record_is_stale_without_a_negative_age(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import dataset_backup_inventory
+
+    entry = _stub_latest_backup(monkeypatch, hours_ago=-1)
+    inventory = dataset_backup_inventory.published_backup_inventory()
+
+    assert inventory.latest is entry
+    assert inventory.age_hours is None
+    assert inventory.review_due is True
+    assert inventory.age_status == "future"
+
+
 def test_ordinary_backup_status_does_not_hash_historical_payloads(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

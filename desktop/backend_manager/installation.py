@@ -86,6 +86,8 @@ class WindowsReleaseConfig:
     backend_ready_poll_interval_ms: int
     backend_health_request_timeout_ms: int
     database_tool_timeout_ms: int
+    complete_dataset_backup_timeout_ms: int
+    complete_dataset_restore_timeout_ms: int
 
     @property
     def service_state_timeout_seconds(self) -> float:
@@ -146,7 +148,7 @@ class WindowsReleaseConfig:
                 {
                     "backend_settle_before_stop": service,
                     "backend_stop": service,
-                    "complete_dataset_backup": self.database_tool_timeout_ms / 1000.0,
+                    "complete_dataset_backup": self.complete_dataset_backup_timeout_ms / 1000.0,
                     "backend_restore": service,
                 },
             )
@@ -155,7 +157,7 @@ class WindowsReleaseConfig:
                 {
                     "backend_stop": service,
                     "postgres_stop": postgres,
-                    "candidate_initdb_restore_and_generation": 4 * (self.database_tool_timeout_ms / 1000.0),
+                    "candidate_initdb_restore_and_generation": (self.complete_dataset_restore_timeout_ms / 1000.0),
                     "postgres_restore": postgres,
                     "backend_restore": service + self.backend_ready_timeout_seconds,
                 },
@@ -242,8 +244,12 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
     backend_poll = _config_integer(config, "backend_ready_poll_interval_ms", 10, 10000)
     health_timeout = _config_integer(config, "backend_health_request_timeout_ms", 1000, 300000)
     database_tool_timeout = _config_integer(config, "database_tool_timeout_ms", 1000, 3600000)
+    backup_timeout = _config_integer(config, "complete_dataset_backup_timeout_ms", 1000, 3600000)
+    restore_timeout = _config_integer(config, "complete_dataset_restore_timeout_ms", 1000, 3600000)
     if service_poll > service_timeout or backend_poll > backend_timeout or health_timeout > backend_timeout:
         raise InstallationConfigError("Windows release config 的轮询或请求超时不能大于对应就绪超时。")
+    if not database_tool_timeout < backup_timeout < restore_timeout:
+        raise InstallationConfigError("Windows release config 的完整数据集超时顺序无效。")
     return WindowsReleaseConfig(
         backend_service_name=backend_service_name,
         pg_service_name=pg_service_name,
@@ -254,6 +260,8 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
         backend_ready_poll_interval_ms=backend_poll,
         backend_health_request_timeout_ms=health_timeout,
         database_tool_timeout_ms=database_tool_timeout,
+        complete_dataset_backup_timeout_ms=backup_timeout,
+        complete_dataset_restore_timeout_ms=restore_timeout,
     )
 
 

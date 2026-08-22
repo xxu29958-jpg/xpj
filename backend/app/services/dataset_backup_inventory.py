@@ -45,6 +45,7 @@ class BackupEntry:
 class PublishedBackupInventory:
     latest: BackupEntry | None
     age_hours: int | None
+    age_status: Literal["absent", "observed", "future"]
     review_due: bool
     integrity_status: Literal["absent", "not_rechecked"]
 
@@ -138,13 +139,24 @@ def published_backup_inventory(*, review_after_hours: int = 48) -> PublishedBack
         return PublishedBackupInventory(
             latest=None,
             age_hours=None,
+            age_status="absent",
             review_due=True,
             integrity_status="absent",
         )
-    age_hours = int((now_utc() - entry.created_at).total_seconds() // 3600)
+    age_seconds = (now_utc() - entry.created_at).total_seconds()
+    if age_seconds < 0:
+        return PublishedBackupInventory(
+            latest=entry,
+            age_hours=None,
+            age_status="future",
+            review_due=True,
+            integrity_status="not_rechecked",
+        )
+    age_hours = int(age_seconds // 3600)
     return PublishedBackupInventory(
         latest=entry,
         age_hours=age_hours,
+        age_status="observed",
         review_due=age_hours >= review_after_hours,
         integrity_status="not_rechecked",
     )

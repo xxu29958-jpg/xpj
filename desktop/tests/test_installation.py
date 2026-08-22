@@ -31,6 +31,8 @@ def _release_config() -> WindowsReleaseConfig:
         backend_ready_poll_interval_ms=375,
         backend_health_request_timeout_ms=1_750,
         database_tool_timeout_ms=600_000,
+        complete_dataset_backup_timeout_ms=1_800_000,
+        complete_dataset_restore_timeout_ms=3_600_000,
     )
 
 
@@ -47,6 +49,8 @@ def _release_config_document(**overrides: object) -> dict[str, object]:
         "backend_ready_poll_interval_ms": 375,
         "backend_health_request_timeout_ms": 1_750,
         "database_tool_timeout_ms": 600_000,
+        "complete_dataset_backup_timeout_ms": 1_800_000,
+        "complete_dataset_restore_timeout_ms": 3_600_000,
     }
     document.update(overrides)
     return document
@@ -125,6 +129,8 @@ def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> Non
     start = release.helper_action_phase_budget_seconds("start")
     stop = release.helper_action_phase_budget_seconds("stop")
     restart = release.helper_action_phase_budget_seconds("restart")
+    backup = release.helper_action_phase_budget_seconds("backup")
+    restore = release.helper_action_phase_budget_seconds("restore")
 
     assert tuple(start) == (
         "pre_action_contract_validation",
@@ -158,8 +164,16 @@ def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> Non
     assert start["postgres_start"] == 23
     assert start["backend_readiness"] == 32.75
     assert stop["post_stop_runtime_validation"] == 18.75
+    assert backup["complete_dataset_backup"] == 1800
+    assert restore["candidate_initdb_restore_and_generation"] == 3600
     assert release.service_validation_timeout_seconds == 18.75
-    for action, phases in (("start", start), ("stop", stop), ("restart", restart)):
+    for action, phases in (
+        ("start", start),
+        ("stop", stop),
+        ("restart", restart),
+        ("backup", backup),
+        ("restore", restore),
+    ):
         watchdog = release.helper_watchdog_seconds(action)
         parent = release.helper_parent_timeout_ms(action) / 1000
         assert watchdog == sum(phases.values())

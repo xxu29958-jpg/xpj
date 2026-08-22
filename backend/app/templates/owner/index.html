@@ -9,7 +9,7 @@
 
 {% if backup_inventory and backup_inventory.review_due %}
 <div class="alert alert-danger">
-  ⚠️ {% if backup_inventory.latest %}最近一次备份发布记录是 {{ backup_inventory.age_hours }} 小时前{% else %}还没有备份发布记录{% endif %}。请从桌面 Manager 发起备份。
+  ⚠️ {% if backup_inventory.age_status == 'future' %}最近一次备份发布时间晚于当前系统时间{% elif backup_inventory.latest %}最近一次备份发布记录是 {{ backup_inventory.age_hours }} 小时前{% else %}还没有备份发布记录{% endif %}。请从桌面 Manager 发起备份。
   <a href="/owner/backups">查看备份</a>
 </div>
 {% endif %}
@@ -129,6 +129,7 @@
     <span class="kv-key">最近备份</span>
     <span class="kv-val">
       {% if backup_inventory is none or backup_inventory is not defined %}—
+      {% elif backup_inventory.age_status == 'future' %}<span class="badge badge-err">发布时间晚于系统时间</span>
       {% elif backup_inventory.age_hours is not none %}
         {% if backup_inventory.review_due %}<span class="badge badge-err">{{ backup_inventory.age_hours }} 小时前</span>
         {% else %}<span>{{ backup_inventory.age_hours }} 小时前</span>{% endif %}

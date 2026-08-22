@@ -1563,6 +1563,8 @@ def test_mutable_windows_runtime_policy_is_read_from_release_config() -> None:
         "bootstrap_request_timeout_ms",
         "secret_byte_count",
         "database_tool_timeout_ms",
+        "complete_dataset_backup_timeout_ms",
+        "complete_dataset_restore_timeout_ms",
     ):
         assert name in config
         assert name in _read("windows_release_config.ps1")

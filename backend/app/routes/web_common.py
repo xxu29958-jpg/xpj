@@ -262,17 +262,17 @@ def _dashboard_budget_goals_block(
 def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
     week_ago = now - timedelta(days=7)
     try:
-        backup = dataset_backup_inventory.latest_published_backup_record()
+        backup_inventory = dataset_backup_inventory.published_backup_inventory()
     except AppError as exc:
         if exc.error != "backup_incomplete":
             raise
-        backup = None
-    backup_age_days = None
-    if backup is not None:
-        backup_age_days = max(
-            0,
-            (now.astimezone() - backup.created_at).days,
-        )
+        backup_inventory = None
+    backup = backup_inventory.latest if backup_inventory is not None else None
+    backup_age_days = (
+        backup_inventory.age_hours // 24
+        if backup_inventory is not None and backup_inventory.age_hours is not None
+        else None
+    )
     return {
         "recent_count": web_stats_service.recent_expense_count(
             db,
@@ -287,6 +287,7 @@ def _dashboard_status_counts_block(db: Session, ledger_id: str, now) -> dict:
         "active_device_count": web_stats_service.active_device_count(db, ledger_id),
         "backup_available": backup is not None,
         "backup_age_days": backup_age_days,
+        "backup_age_status": backup_inventory.age_status if backup_inventory else "absent",
     }
 
 

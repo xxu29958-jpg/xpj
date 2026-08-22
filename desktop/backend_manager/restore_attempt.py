@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import stat
@@ -13,6 +14,40 @@ from backend_manager.runtime import RuntimeControlError
 
 _SCHEMA = "ticketbox-restore-attempt-v1"
 _MAX_BYTES = 1024
+_MOVEFILE_WRITE_THROUGH = 0x00000008
+_ERROR_FILE_EXISTS = 80
+_ERROR_ALREADY_EXISTS = 183
+
+
+def _move_windows_durable_no_replace(source: Path, target: Path) -> None:
+    kernel32 = ctypes.WinDLL("Kernel32", use_last_error=True)
+    move_file = kernel32.MoveFileExW
+    move_file.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
+    move_file.restype = ctypes.c_int
+    if move_file(str(source), str(target), _MOVEFILE_WRITE_THROUGH):
+        return
+    error = ctypes.get_last_error()
+    if error in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
+        raise FileExistsError(error, "restore attempt already exists", str(target))
+    raise ctypes.WinError(error)
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _move_durable_no_replace(source: Path, target: Path) -> None:
+    if os.name == "nt":
+        _move_windows_durable_no_replace(source, target)
+        return
+    os.link(source, target)
+    _fsync_directory(target.parent)
+    source.unlink()
+    _fsync_directory(target.parent)
 
 
 def canonical_restore_attempt_id(value: str) -> str:
@@ -53,7 +88,7 @@ class RestoreAttemptStore:
                 stream.flush()
                 os.fsync(stream.fileno())
             self._secure_file(temporary)
-            os.link(temporary, path)
+            _move_durable_no_replace(temporary, path)
             self._secure_file(path)
         except FileExistsError:
             return self._read(path, backup_generation)
@@ -68,9 +103,11 @@ class RestoreAttemptStore:
         path = self._root / f"{_backup_id(backup_generation)}.json"
         if self._read(path, backup_generation) != attempt_id:
             raise RuntimeControlError("完整恢复 attempt identity 已变化，拒绝清理。")
-        path.unlink()
+        retired = self._root / f".{_backup_id(backup_generation)}.{attempt_id}.retired"
+        _move_durable_no_replace(path, retired)
         if path.exists():
             raise RuntimeControlError("完整恢复 attempt identity 未能清理。")
+        retired.unlink(missing_ok=True)
 
     def _read(self, path: Path, backup_generation: str) -> str:
         self._secure_root()

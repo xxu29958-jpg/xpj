@@ -272,7 +272,9 @@
   <article class="product-panel product-panel--padded insight-module"
            data-overview-card="backup_status">
     <div class="product-panel-title">备份状态</div>
-    {% if cards.backup_available %}
+    {% if cards.backup_age_status == 'future' %}
+    <div class="product-status product-status--warning">备份发布时间晚于当前系统时间</div>
+    {% elif cards.backup_available %}
     <div class="insight-stat-value num">{{ cards.backup_age_days }}</div>
     <div class="text-muted">天前生成最近备份记录（当前字节未复检）</div>
     {% else %}

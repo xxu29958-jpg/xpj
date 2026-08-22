@@ -58,6 +58,7 @@ function New-TicketboxDatabaseGenerationHelperChildEnvironment {{ param($PgPassF
 function Invoke-TicketboxBoundedNativeProcess {{
     param($FilePath, $Arguments, $StandardInputText, $TimeoutMilliseconds, $Label, $ChildEnvironment)
     $script:capturedArgv = @($Arguments)
+    $script:capturedTimeoutMilliseconds = [int]$TimeoutMilliseconds
     return [pscustomobject]@{{
         ExitCode = 0
         StandardError = ''
@@ -77,7 +78,10 @@ $subject = [pscustomobject]@{{
         Sha256 = ('a' * 64)
         DatabaseMaintenanceHelper = [pscustomobject]@{{ RelativePath = 'helper.exe'; Size = 1; Sha256 = ('d' * 64) }}
     }}
-    Release = [pscustomobject]@{{ database_tool_timeout_ms = 1000 }}
+    Release = [pscustomobject]@{{
+        database_tool_timeout_ms = 1000
+        complete_dataset_backup_timeout_ms = 2000
+    }}
 }}
 $authority = [pscustomobject]@{{ Credentials = [pscustomobject]@{{ BackupPassword = 'secret' }} }}
 $request = [pscustomobject]@{{ Payload = [pscustomobject]@{{
@@ -95,6 +99,9 @@ $barrier = [pscustomobject]@{{
     }}
 }}
 [void](Invoke-TicketboxInstalledCompleteBackupHelper $subject $authority $request $barrier)
+if ([int]$script:capturedTimeoutMilliseconds -ne 2000) {{
+    throw 'complete backup helper did not receive its composite timeout budget'
+}}
 [IO.File]::WriteAllText(
     '{escaped_argv_path}',
     ($script:capturedArgv | ConvertTo-Json -Compress),
@@ -109,3 +116,16 @@ $barrier = [pscustomobject]@{{
     parsed = parser(argv)
     assert parsed.pg_dump_path == Path(r"C:\pg\pg_dump.exe")
     assert parsed.pg_restore_path == Path(r"C:\pg\pg_restore.exe")
+
+
+def test_restore_helper_uses_its_complete_composite_timeout_budget() -> None:
+    restore_database = PACKAGING / "windows_dataset_restore_database.ps1"
+    helper = powershell_function(
+        restore_database.read_text(encoding="utf-8-sig"),
+        "Invoke-TicketboxInstalledDatasetRestoreHelper",
+    )
+
+    assert (
+        "-TimeoutMilliseconds ([int]$Subject.Release.complete_dataset_restore_timeout_ms"
+        in helper
+    )
