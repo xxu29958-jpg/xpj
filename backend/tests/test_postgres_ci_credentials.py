@@ -85,6 +85,40 @@ def _assert_ci_database_routes_are_sealed(values: dict[str, str]) -> None:
         )
 
 
+def _assert_passfile_routes_are_complete(passfile: Path, hostaddr: str) -> None:
+    port = TEST_POSTGRES_CONTRACT.ports.local
+    application_role = TEST_POSTGRES_CONTRACT.application_role
+    assert passfile.read_text(encoding="utf-8") == (
+        f"localhost:{port}:*:postgres:ad\\:min\\\\password\n"
+        f"localhost:{port}:*:{application_role}:te\\:st\\\\password\n"
+        f"{hostaddr}:{port}:*:postgres:ad\\:min\\\\password\n"
+        f"{hostaddr}:{port}:*:{application_role}:te\\:st\\\\password\n"
+    )
+
+
+def _assert_frozen_restore_seals_postgres_environment() -> None:
+    workflow = (Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    frozen_restore = workflow[
+        workflow.index("      - name: Exact frozen dataset restore") : workflow.index(
+            "      - name: Frozen Desktop Manager"
+        )
+    ]
+    clean_environment = "$savedPgEnvironment = Enter-XpjCleanPostgresEnvironment"
+    sealed_environment = "python -m scripts.write_test_postgres_env"
+    assert ". .\\scripts\\test_pg_auth_contract.ps1" in frozen_restore
+    assert ". .\\packaging\\windows_operation_failure.ps1" in frozen_restore
+    assert clean_environment in frozen_restore
+    assert frozen_restore.index(clean_environment) < frozen_restore.index(sealed_environment)
+    assert "$pgEnvironmentKeys.Count -ne 1" in frozen_restore
+    assert "$pgEnvironmentKeys[0] -cne 'PGPASSFILE'" in frozen_restore
+    assert "catch { $primaryFailure = $_ }" in frozen_restore
+    assert frozen_restore.count("catch { $cleanupFailures += $_ }") == 3
+    assert "Exit-XpjCleanPostgresEnvironment -Saved $savedPgEnvironment" in frozen_restore
+    assert "Throw-TicketboxOperationFailure $primaryFailure $cleanupFailures" in frozen_restore
+
+
 def test_lane_runner_scrubs_ambient_libpq_routes_but_keeps_passfile() -> None:
     test_port = TEST_POSTGRES_CONTRACT.ports.local
     source = {
@@ -207,12 +241,7 @@ def test_ci_environment_uses_passwordless_scram_urls_and_private_passfile(tmp_pa
         assert query["hostaddr"][0] in {"127.0.0.1", "::1"}
     if os.name != "nt":
         assert stat.S_IMODE(passfile.stat().st_mode) == 0o600
-    assert passfile.read_text(encoding="utf-8") == (
-        f"localhost:{TEST_POSTGRES_CONTRACT.ports.local}:*:postgres:ad\\:min\\\\password\n"
-        f"localhost:{TEST_POSTGRES_CONTRACT.ports.local}:*:{TEST_POSTGRES_CONTRACT.application_role}:te\\:st\\\\password\n"
-        f"{resolved_hostaddr}:{TEST_POSTGRES_CONTRACT.ports.local}:*:postgres:ad\\:min\\\\password\n"
-        f"{resolved_hostaddr}:{TEST_POSTGRES_CONTRACT.ports.local}:*:{TEST_POSTGRES_CONTRACT.application_role}:te\\:st\\\\password\n"
-    )
+    _assert_passfile_routes_are_complete(passfile, resolved_hostaddr)
     with pytest.raises(FileExistsError):
         write_passfile(
             passfile,
@@ -233,6 +262,8 @@ def test_ci_environment_uses_passwordless_scram_urls_and_private_passfile(tmp_pa
             passfile=passfile,
             cluster_identity=_CLUSTER_IDENTITY,
         )
+
+    _assert_frozen_restore_seals_postgres_environment()
     unsafe_url = values["XPJ_TEST_DATABASE_URL"].replace(
         f":{TEST_POSTGRES_CONTRACT.ports.local}/",
         f":{forbidden_port}/",

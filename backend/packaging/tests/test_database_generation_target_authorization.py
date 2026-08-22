@@ -120,10 +120,13 @@ $primaryError.Data['TicketboxFailureCodes'] = @('C07-PRIMARY')
 try {{ throw $primaryError }} catch {{ $primary = $_ }}
 try {{ throw [InvalidOperationException]::new('cleanup-one') }} catch {{ $cleanupOne = $_ }}
 try {{ throw [InvalidOperationException]::new('cleanup-two') }} catch {{ $cleanupTwo = $_ }}
-try {{ Throw-TicketboxOperationFailure $primary @($cleanupOne, $cleanupTwo) }} catch {{ $aggregate = $_.Exception }}
+try {{ throw [InvalidOperationException]::new('cleanup-three') }} catch {{ $cleanupThree = $_ }}
+try {{ Throw-TicketboxOperationFailure $primary @($cleanupOne, $cleanupTwo, $cleanupThree) }} catch {{ $aggregate = $_.Exception }}
 if (
     $aggregate -isnot [AggregateException] -or
-    $aggregate.InnerExceptions.Count -ne 3 -or
+    $aggregate.InnerExceptions.Count -ne 4 -or
+    (($aggregate.InnerExceptions | ForEach-Object {{ $_.Message }}) -join '|') -cne
+        'primary|cleanup-one|cleanup-two|cleanup-three' -or
     [string]$aggregate.Data['TicketboxFailureCode'] -cne 'C07-PRIMARY' -or
     @($aggregate.Data['TicketboxFailureCodes']).Count -ne 1
 ) {{ throw 'aggregate failure lost primary identity' }}

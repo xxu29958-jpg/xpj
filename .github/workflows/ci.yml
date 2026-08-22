@@ -397,10 +397,15 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           . .\scripts\test_pg_storage_contract.ps1
+          . .\scripts\test_pg_auth_contract.ps1
+          . .\packaging\windows_operation_failure.ps1
           $contract = Get-XpjTestPostgresContract
           $port = [int]$contract.ports.local
           $dataDir = Get-XpjTestPostgresDefaultDataDir -Port $port
           $connectionEnv = Join-Path $env:RUNNER_TEMP 'ticketbox-frozen-restore.env'
+          $savedPgEnvironment = Enter-XpjCleanPostgresEnvironment
+          $primaryFailure = $null
+          $cleanupFailures = @()
           try {
             & .\scripts\stop_test_pg.ps1 -Port $port -DataDir $dataDir
             & .\scripts\start_test_pg.ps1 -Port $port -DataDir $dataDir `
@@ -420,6 +425,14 @@ jobs:
                 [EnvironmentVariableTarget]::Process
               )
             }
+            $pgEnvironmentKeys = @(
+              Get-ChildItem Env: |
+                Where-Object { $_.Name -match '^PG' } |
+                ForEach-Object { [string]$_.Name }
+            )
+            if ($pgEnvironmentKeys.Count -ne 1 -or $pgEnvironmentKeys[0] -cne 'PGPASSFILE') {
+              throw 'frozen restore PostgreSQL environment is not sealed'
+            }
             python scripts\smoke_test.py
             if ($LASTEXITCODE -ne 0) { throw 'frozen restore source smoke failed' }
             python scripts\postgres_backup_drill.py `
@@ -428,10 +441,20 @@ jobs:
                 (Join-Path $PWD 'dist\ticketbox-backend\ticketbox-database-maintenance.exe')
             if ($LASTEXITCODE -ne 0) { throw 'exact frozen dataset restore failed' }
           }
+          catch { $primaryFailure = $_ }
           finally {
-            & .\scripts\stop_test_pg.ps1 -Port $port -DataDir $dataDir
-            Remove-Item -LiteralPath $connectionEnv -Force -ErrorAction SilentlyContinue
+            try { & .\scripts\stop_test_pg.ps1 -Port $port -DataDir $dataDir }
+            catch { $cleanupFailures += $_ }
+            try {
+              if (Test-Path -LiteralPath $connectionEnv) {
+                Remove-Item -LiteralPath $connectionEnv -Force -ErrorAction Stop
+              }
+            }
+            catch { $cleanupFailures += $_ }
+            try { Exit-XpjCleanPostgresEnvironment -Saved $savedPgEnvironment }
+            catch { $cleanupFailures += $_ }
           }
+          Throw-TicketboxOperationFailure $primaryFailure $cleanupFailures
 
       - name: Frozen Desktop Manager locked release build
         shell: powershell

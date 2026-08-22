@@ -759,6 +759,32 @@ def _assert_scram_contract(postgres_bin: Path, data_dir: Path, port: int) -> Non
     assert accepted.returncode == 0, accepted.stdout + accepted.stderr
     assert accepted.stdout.strip() == "scram-sha-256"
 
+    application_role = _POSTGRES_CONTRACT["application_role"]
+    application = subprocess.run(
+        [
+            str(postgres_bin / "psql.exe"),
+            "--dbname="
+            f"host=localhost hostaddr=127.0.0.1 port={port} user={application_role} "
+            f"dbname={_POSTGRES_CONTRACT['smoke_database']} connect_timeout=5 "
+            "sslmode=disable require_auth=scram-sha-256",
+            "--no-psqlrc",
+            "--no-password",
+            "-tAc",
+            "SELECT session_user || '/' || current_user || '/' || current_database()",
+        ],
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+    )
+    assert application.returncode == 0, application.stdout + application.stderr
+    assert application.stdout.strip() == (
+        f"{application_role}/{application_role}/{_POSTGRES_CONTRACT['smoke_database']}"
+    )
+
     for rejected_environment, required_auth in (
         ({key: value for key, value in environment.items() if key != "PGPASSFILE"}, "scram-sha-256"),
         (environment, "none"),
