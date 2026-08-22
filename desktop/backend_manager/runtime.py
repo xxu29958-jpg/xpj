@@ -6,7 +6,10 @@ import subprocess
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from backend_manager.dataset_inventory import BackupInventoryItem
 
 from backend_manager.process import HealthProbeResult
 from backend_manager.supervisor import BackendSupervisor, SupervisorControlError
@@ -26,6 +29,11 @@ class ServiceTransitionError(RuntimeControlError):
 
 class ServiceAccessError(RuntimeControlError):
     """Windows rejected an SCM query or mutation."""
+
+
+@dataclass(frozen=True)
+class RestoreOutcome:
+    cleanup_pending: bool
 
 
 @dataclass(frozen=True)
@@ -59,6 +67,9 @@ class BackendRuntime(Protocol):
     def start(self) -> None: ...
     def stop(self) -> None: ...
     def restart(self) -> None: ...
+    def backup(self) -> None: ...
+    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]: ...
+    def restore(self, backup_generation: str) -> RestoreOutcome: ...
     def toggle_auto_restart(self) -> bool: ...
     def run_monitor(self, stop_event: threading.Event) -> None: ...
     def shutdown(self) -> None: ...
@@ -117,6 +128,16 @@ class SourceBackendRuntime:
 
     def restart(self) -> None:
         self._control(self._supervisor.restart)
+
+    def backup(self) -> None:
+        raise RuntimeControlError("源码运行不具备正式安装的完整备份 owner。")
+
+    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
+        raise RuntimeControlError("源码运行不具备正式安装的完整备份 inventory。")
+
+    def restore(self, backup_generation: str) -> RestoreOutcome:
+        del backup_generation
+        raise RuntimeControlError("源码运行不具备正式安装的完整恢复 owner。")
 
     def toggle_auto_restart(self) -> bool:
         return self._supervisor.toggle_auto_restart()

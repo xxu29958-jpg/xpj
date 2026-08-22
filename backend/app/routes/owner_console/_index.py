@@ -32,12 +32,12 @@ def owner_index(
         logger.exception("owner_console index: list_windows_tasks failed")
         ctx["windows_tasks"] = []
     try:
-        from app.services import backup_service
+        from app.services import dataset_backup_inventory
 
-        ctx["backup_health"] = backup_service.backup_health()
+        ctx["backup_inventory"] = dataset_backup_inventory.published_backup_inventory()
     except Exception:  # noqa: BLE001 — index must not 500 if the backup scan fails
-        logger.exception("owner_console index: backup_health failed")
-        ctx["backup_health"] = None
+        logger.exception("owner_console index: published_backup_inventory failed")
+        ctx["backup_inventory"] = None
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
 

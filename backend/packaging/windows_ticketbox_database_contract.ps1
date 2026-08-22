@@ -27,6 +27,7 @@ function Get-TicketboxDatabaseAuthorizationContract {
         OwnerRole = "ticketbox_owner"
         MigratorRole = "ticketbox_migrator"
         RuntimeRole = "ticketbox_runtime"
+        BackupRole = "ticketbox_backup"
         RetiredLegacyRole = "ticketbox"
         BusinessTables = @(
             "accounts", "ai_member_anon_map", "ai_merchant_anon_map",
@@ -57,7 +58,7 @@ function Get-TicketboxDatabaseAuthorizationContract {
         AuditAppendTables = @("ledger_audit_logs")
         AuditMutableTables = @("budget_advisor_audit_logs")
         RetentionFactTables = @("ledger_learning_events", "ocr_facts")
-        ReadOnlyTables = @("alembic_version")
+        ReadOnlyTables = @("alembic_version", "dataset_authority")
         ManagedBindingTables = @("installation_currency_bindings")
         ManagedAuthorityTables = @("installation_idempotency_keys")
         ManagedAuditInsertTables = @("installation_currency_audit_log")

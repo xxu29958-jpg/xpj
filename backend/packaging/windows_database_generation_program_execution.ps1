@@ -149,7 +149,7 @@ function Invoke-TicketboxDatabaseGenerationBoundHelper {
         try { Close-TicketboxDatabaseMaintenanceHelperLease $lease }
         catch { $cleanup += $_ }
     }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     return $result
 }
 
@@ -297,7 +297,7 @@ function Invoke-TicketboxPackagedManagedSchemaUpgrade {
                     catch { $cleanup += $_ }
                 }
             }
-            Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+            Throw-TicketboxOperationFailure $primary $cleanup
             return $operationResult
         }.GetNewClosure())
 }

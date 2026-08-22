@@ -29,7 +29,6 @@ Navigation:
     POST /owner/recycle-bin/restore — restore one recycle-bin item
     GET  /owner/settings(/*)        — runtime settings (5 endpoints)
     GET  /owner/backups             — list manual backups
-    POST /owner/backups             — create new manual backup
 """
 
 from __future__ import annotations

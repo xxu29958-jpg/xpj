@@ -504,44 +504,33 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 ---
 
-## 12. 备份与 scratch 可读性演练
+## 12. 完整数据集备份与恢复
 
-**验收项**：Windows 计划任务能自动备份 PostgreSQL 数据库，归档可恢复到隔离 scratch 库。
+**验收项**：正式安装能从桌面管理器创建完整 dataset generation，并从用户明确选择的 generation
+恢复为新的 Generation CURRENT。
 
 **执行人**：服务拥有者
 
 **执行命令/动作**：
 
-检查备份任务是否存在：
-
-```powershell
-Get-ScheduledTask -TaskName TicketboxBackup
-```
-
-手动触发一次备份（可选）：
-
-```powershell
-# 查看已有备份（源码默认 backend\backups；正式服务经 runtime junction 访问物理 <DataRoot>\app\backups）
-$BackupDir = if ($env:TICKETBOX_DATA_DIR) { Join-Path $env:TICKETBOX_DATA_DIR "backups" } else { "E:\projects\xiaopiaojia\backend\backups" }
-Get-ChildItem (Join-Path $BackupDir "*.dump") -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3
-```
-
-恢复测试（在测试环境或非生产数据库上执行）：PostgreSQL 备份（`.dump`）用 `pg_restore` 恢复到一个
-**scratch 库**核对（不要直接覆盖生产库），恢复演练步骤见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。
+在干净 Windows VM 首装 exact-head EXE，创建一笔带原始附件的数据；从管理器执行“立即备份”，记录
+返回的 `ticketbox-backup-<UUID>`。再新增可区分数据，明确选择刚才的 generation 执行恢复，并完成
+服务重启与卸载检查。源码/CI scratch 演练步骤见
+[POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)，不能替代这项真机证据。
 
 **预期结果**：
 
-- `TicketboxBackup` 计划任务状态为 Ready 或 Running。
-- `<DATA_ROOT>\backups\` 目录下有 `.dump` 备份文件（源码运行 `backend\backups\`；正式服务经 `TicketboxRuntimeBinding\data-root\app` 访问物理 `<DataRoot>\app\backups\`）。
-- `pg_restore` 能把 `.dump` 归档恢复到 scratch 库，数据计数与源库一致。
-- 本项不证明正式 Windows 恢复入口；该能力尚未出货并继续 `QUALIFIED_HOLD`。
+- `<DataRoot>\backups\ticketbox-backup-<UUID>\` 的 manifest、database archive 与 originals 均通过 hash/长度校验。
+- 恢复后 Dataset Authority 保持同一 dataset id、restore epoch 单调递增，所选备份的数据与附件一致。
+- CURRENT 只由 Generation Owner 发布；重启后服务和 runtime projection 指向该 exact generation。
+- 缺少同一 exact-head EXE 的完整证据时继续 `QUALIFIED_HOLD`。
 
 **失败处理**：
 
-- 若备份任务不存在，运行 `scripts\install_windows_tasks.ps1` 创建。
-- 若 scratch 演练失败，检查备份文件、隔离数据库和 PostgreSQL 工具链；不要停止或覆盖正式安装。
+- 任一步失败都保留原始诊断与 candidate/intent evidence，不手工改 CURRENT、数据库或 originals。
+- CI scratch 演练失败时检查显式 passfile、工具版本和 dedicated database；不得拿它冒充 VM 通过。
 
-**是否阻断灰度**：否。备份是运维保障，不直接影响用户功能，但首次灰度前建议确认备份机制正常。
+**是否阻断灰度**：是。完整 dataset 恢复是 Windows 生命周期资格的一部分。
 
 **证据路径**：计划任务状态截图 + backups 目录文件列表截图
 

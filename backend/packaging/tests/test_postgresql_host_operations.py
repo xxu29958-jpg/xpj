@@ -82,6 +82,12 @@ $fields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
 if (($fields -join '|') -cne 'postgres|postgres') {{
     throw 'quiet tuple evidence changed'
 }}
+$rolePolicyFields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
+    -Output ((@('true') * 18) -join "`t") `
+    -FieldCount 18 -Label 'role policy evidence'
+if ($rolePolicyFields.Count -ne 18) {{
+    throw 'closed role policy evidence width was rejected'
+}}
 $commandTagRejected = $false
 try {{
     ConvertFrom-TicketboxPostgresqlHostEvidenceRow `

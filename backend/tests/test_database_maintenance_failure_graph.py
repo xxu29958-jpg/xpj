@@ -12,10 +12,7 @@ OPERATION_ID = "11111111-1111-4111-8111-111111111111"
 PROGRAM_SHA256 = "a" * 64
 SOURCE_REVISION = "base"
 TARGET_REVISION = "20260729_0001"
-MIGRATOR_URL = (
-    "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/"
-    "ticketbox?require_auth=scram-sha-256"
-)
+MIGRATOR_URL = "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/ticketbox?require_auth=scram-sha-256"
 
 
 def _aggregate() -> PostgresOperationFailureError:
@@ -353,6 +350,7 @@ def test_timeout_boundaries_preserve_interrupt_and_autocommit_cleanup(
         connection=SimpleNamespace(driver_connection=driver),
         in_transaction=lambda: False,
     )
+
     def interrupt_timeout(_cursor):
         raise primary
 

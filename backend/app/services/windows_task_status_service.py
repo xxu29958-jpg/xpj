@@ -1,7 +1,7 @@
 """T27: Read-only Windows scheduled task status for the Owner Console.
 
 This module surfaces the status of the scheduled tasks the Windows host runs
-(backend service, Cloudflare tunnel, daily backup, public boundary check) so
+(backend service, Cloudflare tunnel, public boundary check) so
 the owner can spot when something has stopped without opening Task Scheduler.
 
 Strictly read-only: we never create, modify, start, or stop tasks from the
@@ -26,7 +26,6 @@ from dataclasses import dataclass
 _DEFAULT_TASKS: tuple[str, ...] = (
     "TicketboxBackend",
     "TicketboxCloudflareTunnel",
-    "TicketboxBackup",
     "TicketboxBoundaryCheck",
 )
 

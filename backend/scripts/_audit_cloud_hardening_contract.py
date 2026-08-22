@@ -114,15 +114,20 @@ def _auth_runtime_missing() -> list[str]:
 def _app_meta_missing() -> list[str]:
     app_meta = _read("app/services/app_meta_service.py")
     database_init = _read("app/database/__init__.py")
-    return _require_tokens(
-        "fresh schema metadata",
-        app_meta + database_init,
+    combined = app_meta + database_init
+    missing = _require_tokens(
+        "dataset authority compatibility",
+        combined,
         (
-            "def seed_fresh_schema_metadata",
-            "BACKEND_VERSION",
-            "_seed_fresh_schema_metadata_if_needed",
+            "read_dataset_authority",
+            "_RETIRED_DATASET_KEYS",
+            "_assert_existing_schema_compatible",
+            "dataset_authority",
         ),
     )
+    if "seed_fresh_schema_metadata" in combined or "_seed_fresh_schema_metadata_if_needed" in combined:
+        missing.append("dataset authority compatibility: retired fresh metadata writer returned")
+    return missing
 
 
 def _advisor_provider_runtime_missing() -> list[str]:
@@ -225,7 +230,7 @@ def _regression_test_missing() -> list[str]:
             # retired with the SQLite startup migrator (PG-only, debt #4): it
             # exercised legacy-duplicate dedup during migration, which fresh PG
             # never has — the uq_auth_tokens_active_principal constraint stands alone.
-            "test_fresh_schema_version_is_seeded_to_backend_version",
+            "test_fresh_schema_minimum_is_owned_by_dataset_authority",
             "test_factory_rejects_public_api_key_with_unsafe_shape",
             "test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails",
             "split_total_exceeds_parent",

@@ -1659,12 +1659,13 @@ function Get-TicketboxProtectedPgPassDirectory {
     if ([string]::IsNullOrWhiteSpace($parent)) {
         throw "Windows 未提供受保护的本机凭据根目录。"
     }
-    $accounts = @($identity.User.Value)
+    $directoryAccounts = @($identity.User.Value)
+    $fileAccounts = @($identity.User.Value, "SYSTEM", "BUILTIN\Administrators")
     $ownerAccount = $identity.User.Value
     $directory = Join-Path $parent "TicketboxInstallerSecrets"
     Initialize-TicketboxProtectedDirectoryAtomically `
         -Path $directory `
-        -FullControlAccounts $accounts `
+        -FullControlAccounts $directoryAccounts `
         -OwnerAccount $ownerAccount | Out-Null
     # The longest supported database-tool budget is one hour. Keep a second
     # hour of margin so scavenging can never delete another live invocation's
@@ -1679,20 +1680,34 @@ function Get-TicketboxProtectedPgPassDirectory {
         if ((Get-TicketboxPathEntryKindNoFollow -Path $item.FullName) -cne 'File') {
             throw "PostgreSQL 临时凭据不是普通文件：$($item.FullName)"
         }
-        Assert-TicketboxExactFileAcl `
-            -Path $item.FullName `
-            -Accounts $accounts `
-            -OwnerAccount $ownerAccount
+        $legacyAcl = $false
+        try {
+            Assert-TicketboxExactFileAcl `
+                -Path $item.FullName `
+                -Accounts $fileAccounts `
+                -OwnerAccount $ownerAccount
+        }
+        catch {
+            Assert-TicketboxExactFileAcl `
+                -Path $item.FullName `
+                -Accounts $directoryAccounts `
+                -OwnerAccount $ownerAccount
+            $legacyAcl = $true
+        }
+        if ($legacyAcl -and $item.LastWriteTimeUtc -ge $staleBefore) {
+            throw "PostgreSQL 临时凭据仍使用旧 ACL 且未到安全回收时间：$($item.FullName)"
+        }
+        $itemAccounts = if ($legacyAcl) { $directoryAccounts } else { $fileAccounts }
         if ($item.LastWriteTimeUtc -lt $staleBefore) {
             Remove-TicketboxProtectedPgPassArtifact `
                 -Path $item.FullName `
-                -FullControlAccounts $accounts `
+                -FullControlAccounts $itemAccounts `
                 -OwnerAccount $ownerAccount
         }
     }
     return [pscustomobject]@{
         Path = $directory
-        FullControlAccounts = $accounts
+        FullControlAccounts = $fileAccounts
         OwnerAccount = $ownerAccount
     }
 }

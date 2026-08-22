@@ -269,7 +269,7 @@ def _assert_recovery_job(job: object) -> None:
     assert steps["PostgreSQL end-to-end smoke (ADR-0041)"]["run"] == ("./.ci-venv/bin/python scripts/smoke_test.py")
     assert (
         steps["PostgreSQL backup/restore recovery drill (ADR-0041 phase-2)"]["run"]
-        == "./.ci-venv/bin/python scripts/postgres_backup_drill.py"
+        == './.ci-venv/bin/python scripts/postgres_backup_drill.py --upload-root "$GITHUB_WORKSPACE/backend/uploads"'
     )
     scripts = "\n".join(str(step.get("run", "")) for step in job["steps"])
     assert _LANE_RUNNER not in scripts
@@ -368,7 +368,7 @@ def _assert_windows_lifecycle_matrix(
         ),
         (
             "Database generation authority",
-            "test_database_generation_owner or test_database_generation_bootstrap_retirement",
+            "test_database_generation_owner or test_database_generation_bootstrap_retirement or test_database_generation_target_authorization",
             20,
         ),
         ("Service lifecycle remainder", "test_service_lifecycle_contract and not heartbeat", 20),
@@ -385,6 +385,8 @@ def _assert_windows_lifecycle_matrix(
     windows_environment = _steps(jobs["windows_packaging"])["Enforce Windows release lane results"]["env"]
     assert windows_environment["LIFECYCLE_RESULT"] == "${{ needs.windows_packaging_lifecycle.result }}"
     assert windows_environment["BUILD_RESULT"] == "${{ needs.windows_packaging_build.result }}"
+    maintenance = _steps(jobs["windows_packaging_build"])["Windows database maintenance contract"]["run"]
+    assert "tests/test_dataset_originals_file_identity.py" in maintenance
 
 
 def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> None:
@@ -453,6 +455,8 @@ def test_gitea_keeps_the_shared_lane_runner_without_scope_modernization() -> Non
         job = jobs[job_id]
         assert "needs" not in job
         assert "if" not in job
+    maintenance = _steps(jobs["backend-full"])["Windows database maintenance contract"]["run"]
+    assert "tests/test_dataset_originals_file_identity.py" in maintenance
     postgres = jobs["backend-postgres"]
     assert isinstance(postgres, dict)
     lane = next(step["run"] for step in postgres["steps"] if step["name"].startswith("PostgreSQL lane"))

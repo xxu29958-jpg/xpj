@@ -31,14 +31,17 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import deque
 from collections.abc import Callable
 from contextlib import suppress
+from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Protocol
 
 from backend_manager.app_controller import ManagerShuttingDownError
 from backend_manager.product_data import ProductDataError
+from backend_manager.runtime import RuntimeControlError
 from backend_manager.web_bff import (
     ASSET_SESSION_COOKIE,
     MAX_REQUEST_BYTES,
@@ -57,6 +60,7 @@ _ACTIONS = (
     "start",
     "stop",
     "restart",
+    "backup",
     "auto_restart",
     "open_console",
     "open_pairing",
@@ -73,10 +77,15 @@ _IDENTITY_RESPONSE_LIMIT = 512
 _CHALLENGE_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}\Z")
 _SHA256_PROOF_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_PRODUCT_BODY_BYTES = 1024
+_MAX_RESTORE_BODY_BYTES = 256
 _MAX_BOOTSTRAP_FORM_BYTES = 1024
+_MAX_REJECTED_BODY_DRAIN_BYTES = 4096
+_REJECTED_BODY_DRAIN_CHUNK_BYTES = 1024
+_REJECTED_BODY_DRAIN_TIMEOUT_SECONDS = 0.25
 _BOOTSTRAP_TTL_SECONDS = 60.0
 _BOOTSTRAP_REPLAY_TTL_SECONDS = 300.0
 _BOOTSTRAP_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43,128}\Z")
+_MAX_WEB_SESSIONS = 8
 _REOPEN_REQUEST_CONTEXT = b"ticketbox-manager-reopen-request-v1\0"
 _REOPEN_RESPONSE_CONTEXT = b"ticketbox-manager-reopen-response-v1\0"
 _OWNER_SHORTCUTS = {
@@ -98,6 +107,12 @@ _CONTENT_SECURITY_POLICY = (
     "form-action 'none'; "
     "frame-ancestors 'none'"
 )
+
+
+class _EmptyRequestBodyState(Enum):
+    EMPTY = "empty"
+    DRAINED_NONEMPTY = "drained_nonempty"
+    INCOMPLETE = "incomplete"
 
 
 def _normalized_host(host: str) -> str | None:
@@ -167,10 +182,7 @@ def probe_existing_manager(manager_url: str, instance_secret: str, *, timeout: f
     except (TypeError, ValueError):
         return False
     try:
-        loopback_v4 = (
-            ipaddress.ip_address(hostname).version == 4
-            and ipaddress.ip_address(hostname).is_loopback
-        )
+        loopback_v4 = ipaddress.ip_address(hostname).version == 4 and ipaddress.ip_address(hostname).is_loopback
     except ValueError:
         loopback_v4 = False
     if (
@@ -296,6 +308,9 @@ class Controller(Protocol):
     def start(self) -> None: ...
     def stop(self) -> None: ...
     def restart(self) -> None: ...
+    def backup(self) -> None: ...
+    def backup_inventory(self) -> list[dict[str, object]]: ...
+    def restore(self, backup_generation: str) -> None: ...
     def auto_restart(self) -> None: ...
     def open_console(self) -> None: ...
     def open_pairing(self) -> None: ...
@@ -331,10 +346,7 @@ def is_authorized(
     if sec_fetch_site is not None and sec_fetch_site not in ("same-origin", "none"):
         return False
     expected_origin_tuple = _origin_tuple(expected_origin)
-    return origin is None or (
-        expected_origin_tuple is not None
-        and _origin_tuple(origin) == expected_origin_tuple
-    )
+    return origin is None or (expected_origin_tuple is not None and _origin_tuple(origin) == expected_origin_tuple)
 
 
 def _recovery_page(message: str) -> bytes:
@@ -418,6 +430,7 @@ class _Handler(BaseHTTPRequestHandler):
         if status != 200:
             self._send(status, b"bootstrap rejected", "text/plain; charset=utf-8")
             return
+        session_ids = srv.issue_web_session()
         body = (
             b"<!doctype html><meta charset=utf-8>"
             b"<title>Opening Ticketbox</title>"
@@ -427,21 +440,20 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE}={srv.web_session_secret}; Path=/web; HttpOnly; SameSite=Strict",
+            f"{SESSION_COOKIE}={session_ids[SESSION_COOKIE]}; Path=/web; HttpOnly; SameSite=Strict",
         )
         self.send_header(
             "Set-Cookie",
-            f"{ASSET_SESSION_COOKIE}={srv.web_session_secret}; Path=/static; HttpOnly; SameSite=Strict",
+            f"{ASSET_SESSION_COOKIE}={session_ids[ASSET_SESSION_COOKIE]}; Path=/static; HttpOnly; SameSite=Strict",
         )
         self.send_header(
             "Set-Cookie",
-            f"{PREFERENCE_SESSION_COOKIE}={srv.web_session_secret}; "
+            f"{PREFERENCE_SESSION_COOKIE}={session_ids[PREFERENCE_SESSION_COOKIE]}; "
             "Path=/api/me/ui-preferences; HttpOnly; SameSite=Strict",
         )
         self.send_header(
             "Set-Cookie",
-            f"{_CONTROL_SESSION_COOKIE}={srv.web_session_secret}; "
-            "Path=/; HttpOnly; SameSite=Strict",
+            f"{_CONTROL_SESSION_COOKIE}={session_ids[_CONTROL_SESSION_COOKIE]}; Path=/; HttpOnly; SameSite=Strict",
         )
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -458,9 +470,8 @@ class _Handler(BaseHTTPRequestHandler):
             cookie_name = SESSION_COOKIE
         return (
             self._host_allowed()
-            and browser_session_valid(
+            and srv.browser_session_valid(
                 self.headers.get("Cookie"),
-                srv.web_session_secret,
                 cookie_name=cookie_name,
             )
             and same_origin_request(
@@ -582,11 +593,45 @@ class _Handler(BaseHTTPRequestHandler):
         provided = self.headers.get("X-Control-Token")
         return provided is not None and secrets.compare_digest(provided, srv.token)
 
-    def _has_empty_request_body(self) -> bool:
+    def _read_empty_request_body_state(self) -> _EmptyRequestBodyState:
         if self.headers.get("Transfer-Encoding") is not None:
-            return False
+            self.close_connection = True
+            return _EmptyRequestBodyState.INCOMPLETE
         lengths = self.headers.get_all("Content-Length", [])
-        return not lengths or (len(lengths) == 1 and lengths[0].strip() == "0")
+        if not lengths:
+            return _EmptyRequestBodyState.EMPTY
+        if len(lengths) != 1:
+            self.close_connection = True
+            return _EmptyRequestBodyState.INCOMPLETE
+        try:
+            length = int(lengths[0])
+        except ValueError:
+            self.close_connection = True
+            return _EmptyRequestBodyState.INCOMPLETE
+        if length == 0:
+            return _EmptyRequestBodyState.EMPTY
+        self.close_connection = True
+        if length < 0 or length > _MAX_REJECTED_BODY_DRAIN_BYTES:
+            return _EmptyRequestBodyState.INCOMPLETE
+        deadline = time.monotonic() + _REJECTED_BODY_DRAIN_TIMEOUT_SECONDS
+        remaining = length
+        previous_timeout = self.connection.gettimeout()
+        try:
+            while remaining:
+                timeout = deadline - time.monotonic()
+                if timeout <= 0:
+                    return _EmptyRequestBodyState.INCOMPLETE
+                self.connection.settimeout(timeout)
+                chunk = self.rfile.read(min(remaining, _REJECTED_BODY_DRAIN_CHUNK_BYTES))
+                if not chunk:
+                    return _EmptyRequestBodyState.INCOMPLETE
+                remaining -= len(chunk)
+        except (OSError, TimeoutError):
+            return _EmptyRequestBodyState.INCOMPLETE
+        finally:
+            with suppress(OSError):
+                self.connection.settimeout(previous_timeout)
+        return _EmptyRequestBodyState.DRAINED_NONEMPTY
 
     def _read_json_body(self, *, max_bytes: int) -> dict | None:
         if self.headers.get("Transfer-Encoding") is not None:
@@ -623,9 +668,8 @@ class _Handler(BaseHTTPRequestHandler):
         back. Gated by the same control cookie as the manager page itself.
         """
         srv: ControlServer = self.server  # type: ignore[assignment]
-        if not browser_session_valid(
+        if not srv.browser_session_valid(
             self.headers.get("Cookie"),
-            srv.web_session_secret,
             cookie_name=_CONTROL_SESSION_COOKIE,
         ):
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
@@ -703,7 +747,10 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
             return
-        if not self._has_empty_request_body():
+        body_state = self._read_empty_request_body_state()
+        if body_state is _EmptyRequestBodyState.INCOMPLETE:
+            return
+        if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
             self._send_json({"error": "invalid_request"}, code=400)
             return
         if not srv.action_lock.acquire(blocking=False):
@@ -763,9 +810,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif parsed_path.path == "/owner" or parsed_path.path.startswith("/owner/"):
             self._serve_owner_shortcut(parsed_path.path)
         elif parsed_path.path in ("/", "/index.html") and not parsed_path.query:
-            if not browser_session_valid(
+            if not srv.browser_session_valid(
                 self.headers.get("Cookie"),
-                srv.web_session_secret,
                 cookie_name=_CONTROL_SESSION_COOKIE,
             ):
                 self._send(403, b"forbidden", "text/plain; charset=utf-8")
@@ -847,8 +893,11 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/api/reopen":
             challenge = self.headers.get("X-Ticketbox-Reopen-Challenge", "")
             request_proof = self.headers.get("X-Ticketbox-Reopen-Proof", "")
+            body_state = self._read_empty_request_body_state()
+            if body_state is _EmptyRequestBodyState.INCOMPLETE:
+                return
             if (
-                not self._has_empty_request_body()
+                body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY
                 or self.headers.get("Origin") is not None
                 or self.headers.get("Sec-Fetch-Site") is not None
                 or not _CHALLENGE_PATTERN.fullmatch(challenge)
@@ -874,6 +923,51 @@ class _Handler(BaseHTTPRequestHandler):
             ).hexdigest()
             self._send_json({**_IDENTITY, "challenge": challenge, "proof": proof})
             return
+        if parsed_path.path == "/api/restore" and not parsed_path.query:
+            if not self._authorized():
+                self._send(403, b"forbidden", "text/plain; charset=utf-8")
+                return
+            payload = self._read_json_body(max_bytes=_MAX_RESTORE_BODY_BYTES)
+            if (
+                payload is None
+                or set(payload) != {"backup_generation"}
+                or not isinstance(payload.get("backup_generation"), str)
+            ):
+                self._send(400, b"invalid restore request", "text/plain; charset=utf-8")
+                return
+            if not srv.action_lock.acquire(blocking=False):
+                self._send_json({"error": "operation_in_progress"}, code=409)
+                return
+            try:
+                srv.controller.restore(payload["backup_generation"])
+                response_payload = srv.controller.status()
+            finally:
+                srv.action_lock.release()
+            self._send_json(response_payload)
+            return
+        if parsed_path.path == "/api/backups" and not parsed_path.query:
+            if not self._authorized():
+                self._send(403, b"forbidden", "text/plain; charset=utf-8")
+                return
+            body_state = self._read_empty_request_body_state()
+            if body_state is _EmptyRequestBodyState.INCOMPLETE:
+                return
+            if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
+                self._send(400, b"request body not allowed", "text/plain; charset=utf-8")
+                return
+            if not srv.action_lock.acquire(blocking=False):
+                self._send_json({"error": "operation_in_progress"}, code=409)
+                return
+            try:
+                try:
+                    generations = srv.controller.backup_inventory()
+                except RuntimeControlError:
+                    self._send_json({"error": "backup_inventory_unavailable"}, code=503)
+                    return
+            finally:
+                srv.action_lock.release()
+            self._send_json({"generations": generations})
+            return
         action = _ACTION_PATHS.get(self.path)
         if action is None:
             self._send(404, b"unknown action", "text/plain; charset=utf-8")
@@ -881,7 +975,10 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
             return
-        if not self._has_empty_request_body():
+        body_state = self._read_empty_request_body_state()
+        if body_state is _EmptyRequestBodyState.INCOMPLETE:
+            return
+        if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
             self._send(400, b"request body not allowed", "text/plain; charset=utf-8")
             return
         if not srv.action_lock.acquire(blocking=False):
@@ -919,14 +1016,42 @@ class ControlServer(ThreadingHTTPServer):
         self.instance_secret = instance_secret
         self.ui_html = ui_html
         self.request_window = request_window or (lambda: False)
-        self.web_session_secret = secrets.token_urlsafe(48)
         self.action_lock = threading.Lock()
+        self._web_session_lock = threading.Lock()
+        self._web_session_digests = {
+            cookie_name: deque(maxlen=_MAX_WEB_SESSIONS)
+            for cookie_name in (
+                SESSION_COOKIE,
+                ASSET_SESSION_COOKIE,
+                PREFERENCE_SESSION_COOKIE,
+                _CONTROL_SESSION_COOKIE,
+            )
+        }
         self._bootstrap_lock = threading.Lock()
         self._bootstrap_pending: dict[str, tuple[float, Path]] = {}
         self._bootstrap_consumed: dict[str, float] = {}
         actual_port = int(self.server_address[1])
         self.expected_host = f"{host}:{actual_port}"
         self.expected_origin = f"http://{self.expected_host}"
+
+    def issue_web_session(self) -> dict[str, str]:
+        """Mint opaque lookup ids while retaining only their digests."""
+
+        session_ids = {cookie_name: secrets.token_urlsafe(48) for cookie_name in self._web_session_digests}
+        with self._web_session_lock:
+            for cookie_name, session_id in session_ids.items():
+                digest = hashlib.sha256(session_id.encode("ascii")).hexdigest()
+                self._web_session_digests[cookie_name].append(digest)
+        return session_ids
+
+    def browser_session_valid(self, cookie_header: str | None, *, cookie_name: str) -> bool:
+        with self._web_session_lock:
+            expected = tuple(self._web_session_digests[cookie_name])
+        return browser_session_valid(
+            cookie_header,
+            expected,
+            cookie_name=cookie_name,
+        )
 
     @staticmethod
     def _bootstrap_digest(token: str) -> str:
@@ -961,10 +1086,10 @@ class ControlServer(ThreadingHTTPServer):
         token = secrets.token_urlsafe(32)
         action = f"{self.expected_origin}/api/bootstrap"
         document = (
-            "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+            '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
             "<title>正在打开小票夹</title></head><body>"
-            f"<form method=\"post\" action=\"{html.escape(action)}\">"
-            f"<input type=\"hidden\" name=\"bootstrap_token\" value=\"{html.escape(token)}\">"
+            f'<form method="post" action="{html.escape(action)}">'
+            f'<input type="hidden" name="bootstrap_token" value="{html.escape(token)}">'
             "</form><script>document.forms[0].submit()</script></body></html>"
         )
         try:
@@ -1009,9 +1134,7 @@ class ControlServer(ThreadingHTTPServer):
                 if pending_path != path:
                     continue
                 self._bootstrap_pending.pop(digest, None)
-                self._bootstrap_consumed[digest] = (
-                    now + _BOOTSTRAP_REPLAY_TTL_SECONDS
-                )
+                self._bootstrap_consumed[digest] = now + _BOOTSTRAP_REPLAY_TTL_SECONDS
                 cancelled_path = pending_path
                 break
         for expired_path in expired:
@@ -1036,9 +1159,7 @@ class ControlServer(ThreadingHTTPServer):
                     path = None
                 else:
                     _, path = grant
-                    self._bootstrap_consumed[digest] = (
-                        now + _BOOTSTRAP_REPLAY_TTL_SECONDS
-                    )
+                    self._bootstrap_consumed[digest] = now + _BOOTSTRAP_REPLAY_TTL_SECONDS
                     status = 200
         for expired_path in expired:
             self._remove_bootstrap_file(expired_path)

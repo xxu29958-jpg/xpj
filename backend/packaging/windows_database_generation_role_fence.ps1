@@ -1,5 +1,7 @@
 ﻿#Requires -Version 5.1
 
+$script:TicketboxDatabaseGenerationWriterFenceTimeoutMs = 30000
+
 function Get-TicketboxDatabaseGenerationFrozenFence {
     param(
         [Parameter(Mandatory = $true)][object]$HostAuthority,
@@ -14,7 +16,8 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
     $capturedUrl = $databaseUrl
     $allowedRoleNames = @(
         "postgres", $($databasePolicy.OwnerRole),
-        $($databasePolicy.MigratorRole), $($databasePolicy.RuntimeRole)
+        $($databasePolicy.MigratorRole), $($databasePolicy.RuntimeRole),
+        $($databasePolicy.BackupRole)
     )
     return Invoke-TicketboxWithPlainPostgresqlSecret `
         -Secret $SuperuserPassword `
@@ -27,7 +30,7 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
                 -ManagedSchemaName "public" `
                 -AdvisoryLockLabel "xiaopiaojia:schema" `
                 -ApplicationName "ticketbox-generation-fence" `
-                -TimeoutMilliseconds 30000 `
+                -TimeoutMilliseconds $script:TicketboxDatabaseGenerationWriterFenceTimeoutMs `
                 -StatementTimeoutMilliseconds 5000 `
                 -LockTimeoutMilliseconds 1000
             $owner = @($observation.Roles | Where-Object {
@@ -38,6 +41,9 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
             })
             $runtime = @($observation.Roles | Where-Object {
                 [string]$_.name -ceq $($databasePolicy.RuntimeRole)
+            })
+            $backup = @($observation.Roles | Where-Object {
+                [string]$_.name -ceq $($databasePolicy.BackupRole)
             })
             $databaseAuthority = @($observation.Roles | Where-Object {
                 [string]$_.name -ceq "postgres"
@@ -86,7 +92,14 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
                 [bool]$runtime[0].effective_connect -or
                 [bool]$runtime[0].can_table_write -or
                 [bool]$runtime[0].can_sequence_write -or
-                [bool]$runtime[0].can_assume_write_owner
+                [bool]$runtime[0].can_assume_write_owner -or
+                $backup.Count -ne 1 -or [bool]$backup[0].can_login -or
+                [int]$backup[0].connection_limit -ne 0 -or
+                [bool]$backup[0].direct_connect -or
+                [bool]$backup[0].effective_connect -or
+                [bool]$backup[0].can_table_write -or
+                [bool]$backup[0].can_sequence_write -or
+                [bool]$backup[0].can_assume_write_owner
             ) {
                 throw "database generation writer fence 未收敛。"
             }

@@ -9,6 +9,8 @@
   remain caller-owned.
 #>
 
+$script:TicketboxPostgresqlDatabaseCommandTimeoutMs = 600000
+
 function Assert-TicketboxPostgresqlDatabaseCommandDependencies {
     foreach ($commandName in @(
         "Assert-TicketboxPostgresqlSecureString",
@@ -98,7 +100,8 @@ function Invoke-TicketboxPostgresqlDatabaseCommandResult {
         [Parameter(Mandatory = $true)][Security.SecureString]$Password,
         [Parameter(Mandatory = $true)][string]$Sql,
         [Parameter(Mandatory = $true)][string]$Label,
-        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds = 600000
+        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds =
+            $script:TicketboxPostgresqlDatabaseCommandTimeoutMs
     )
 
     Assert-TicketboxPostgresqlDatabaseCommandDependencies
@@ -144,7 +147,8 @@ function Invoke-TicketboxPostgresqlDatabaseCommand {
         [Parameter(Mandatory = $true)][Security.SecureString]$Password,
         [Parameter(Mandatory = $true)][string]$Sql,
         [Parameter(Mandatory = $true)][string]$Label,
-        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds = 600000
+        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds =
+            $script:TicketboxPostgresqlDatabaseCommandTimeoutMs
     )
 
     $result = Invoke-TicketboxPostgresqlDatabaseCommandResult @PSBoundParameters

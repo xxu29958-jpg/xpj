@@ -42,22 +42,31 @@ from backend_manager.projection import RuntimeConfigProvider, StaticRuntimeConfi
 from backend_manager.runtime import BackendRuntime, RuntimeControlError, RuntimeStatus
 from backend_manager.web_bff import BridgeContext
 
-_OWNER_PATHS = MappingProxyType({
-    "console": "",
-    "pairing": "/pairing",
-    "devices": "/devices",
-    "upload_links": "/upload-links",
-    "backups": "/backups",
-    "diagnostics": "/diagnostics",
-    "settings": "/settings",
-})
-_CONTROL_NOTICES = MappingProxyType({
-    "start": "启动操作已完成。",
-    "stop": "停止操作已完成。",
-    "restart": "重启操作已完成。",
-    "toggle_auto_restart": "自动重启设置已更新。",
-})
+_OWNER_PATHS = MappingProxyType(
+    {
+        "console": "",
+        "pairing": "/pairing",
+        "devices": "/devices",
+        "upload_links": "/upload-links",
+        "backups": "/backups",
+        "diagnostics": "/diagnostics",
+        "settings": "/settings",
+    }
+)
+_CONTROL_NOTICES = MappingProxyType(
+    {
+        "start": "启动操作已完成。",
+        "stop": "停止操作已完成。",
+        "restart": "重启操作已完成。",
+        "backup": "数据库与原始附件完整备份已完成。",
+        "restore": "已从所选完整备份恢复，并发布新的数据 generation。",
+        "toggle_auto_restart": "自动重启设置已更新。",
+    }
+)
 _NOTICE_SECONDS = 8.0
+_RESTORE_CLEANUP_PENDING_NOTICE = (
+    "已从所选完整备份恢复并发布新数据 generation；本地恢复身份清理待下次维护重试。"
+)
 
 
 class ManagerShuttingDownError(RuntimeError):
@@ -79,9 +88,7 @@ _PROVISIONAL_ATTEMPT_EXPIRY_MARGIN_SECONDS = 60
 
 
 def _provisional_deadline() -> str:
-    return (
-        datetime.now(UTC) + timedelta(seconds=_PROVISIONAL_ATTEMPT_TTL_SECONDS)
-    ).isoformat()
+    return (datetime.now(UTC) + timedelta(seconds=_PROVISIONAL_ATTEMPT_TTL_SECONDS)).isoformat()
 
 
 def _provisional_expired(recovery: RebindRecovery) -> bool:
@@ -179,9 +186,7 @@ class AppController:
         product_recovery_deleter: Callable[[str], None] = delete_rebind_recovery,
     ) -> None:
         self._provider = (
-            StaticRuntimeConfigProvider(runtime_or_provider, config)
-            if config is not None
-            else runtime_or_provider
+            StaticRuntimeConfigProvider(runtime_or_provider, config) if config is not None else runtime_or_provider
         )
         self._last_error: str | None = None
         self._last_notice: str | None = None
@@ -189,9 +194,7 @@ class AppController:
         self._last_export_file: str | None = None
         self._monotonic = monotonic
         self._maintenance_version = maintenance_version or (
-            config.expected_backend_version
-            if config is not None and config.runtime_mode == "installed"
-            else None
+            config.expected_backend_version if config is not None and config.runtime_mode == "installed" else None
         )
         self._startup_failure_code = startup_failure_code
         self._startup_failure_stage = startup_failure_stage
@@ -234,10 +237,7 @@ class AppController:
             lan_text = "未发现局域网地址"
         with self._lock:
             last_error = self._last_error or status_error or snapshot.control_error
-            if (
-                self._last_notice_expires_at is not None
-                and self._monotonic() >= self._last_notice_expires_at
-            ):
+            if self._last_notice_expires_at is not None and self._monotonic() >= self._last_notice_expires_at:
                 self._last_notice = None
                 self._last_notice_expires_at = None
             last_notice = None if last_error else self._last_notice
@@ -302,6 +302,30 @@ class AppController:
 
     def restart(self) -> None:
         self._control("restart")
+
+    def backup(self) -> None:
+        self._control("backup")
+
+    def backup_inventory(self) -> list[dict[str, object]]:
+        try:
+            items = self._provider.current().runtime.backup_inventory()
+        except (ConfigError, RuntimeControlError) as exc:
+            raise RuntimeControlError(self._display_error(exc)) from exc
+        return [item.public_projection() for item in items]
+
+    def restore(self, backup_generation: str) -> None:
+        self._begin_action()
+        try:
+            runtime = self._provider.current().runtime
+            outcome = runtime.restore(backup_generation)
+        except (ConfigError, RuntimeControlError) as exc:
+            self._record_error(self._display_error(exc))
+        else:
+            self._record_notice(
+                _RESTORE_CLEANUP_PENDING_NOTICE
+                if outcome.cleanup_pending
+                else _CONTROL_NOTICES["restore"]
+            )
 
     def auto_restart(self) -> None:
         self._control("toggle_auto_restart")
@@ -412,9 +436,7 @@ class AppController:
         if existing is None or not existing.ledger_id:
             return
         owed = existing.superseded_session_token
-        owed_is_orphaned = owed and (
-            current is None or not secrets.compare_digest(current.session_token, owed)
-        )
+        owed_is_orphaned = owed and (current is None or not secrets.compare_digest(current.session_token, owed))
         if owed_is_orphaned and not self._revoke_superseded_session(
             config,
             loopback_origin,
@@ -448,11 +470,7 @@ class AppController:
         # transient failure refuses to start the new pair and keeps the record).
         self._settle_outstanding_recovery(config, loopback_origin, current)
         provisional = self._load_rebind_recovery(config)
-        if (
-            provisional is not None
-            and not provisional.ledger_id
-            and _provisional_expired(provisional)
-        ):
+        if provisional is not None and not provisional.ledger_id and _provisional_expired(provisional):
             # Past the pending TTL (plus margin), the backend receipt is
             # closed by construction — drop the proof so a regenerated
             # code can pair again instead of wedging this installation.
@@ -747,10 +765,7 @@ class AppController:
                 # only once the owed revoke succeeded or the token was dead.
                 owed = recovery.superseded_session_token
                 owed_settled = True
-                if owed and (
-                    current is None
-                    or not secrets.compare_digest(current.session_token, owed)
-                ):
+                if owed and (current is None or not secrets.compare_digest(current.session_token, owed)):
                     owed_settled = self._revoke_superseded_session(
                         config,
                         loopback_origin,
@@ -772,11 +787,7 @@ class AppController:
         # Only a same-ledger re-pair may prove the predecessor: the backend
         # binds X-Ticketbox-Previous-Session to the staged account AND ledger,
         # so a switch (cross-ledger) must never send it.
-        previous = (
-            current.session_token
-            if current is not None and current.ledger_id == recovery.ledger_id
-            else None
-        )
+        previous = current.session_token if current is not None and current.ledger_id == recovery.ledger_id else None
         try:
             activated = self._product_session_activator(
                 loopback_origin,

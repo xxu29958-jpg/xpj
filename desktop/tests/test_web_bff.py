@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 
 from backend_manager.web_bff import (
@@ -60,10 +62,15 @@ def test_web_bff_rejects_privileged_and_ambiguous_targets(
 
 
 def test_web_bff_session_and_same_origin_matrix() -> None:
-    secret = "high-entropy-process-session"
+    session_id = "high-entropy-process-session"
+    session_digest = hashlib.sha256(session_id.encode("ascii")).hexdigest()
     origin = "http://127.0.0.1:8799"
-    assert browser_session_valid(f"{SESSION_COOKIE}={secret}; ui_theme=mono", secret)
-    assert not browser_session_valid(f"{SESSION_COOKIE}=wrong", secret)
+    assert browser_session_valid(
+        f"{SESSION_COOKIE}={session_id}; ui_theme=mono",
+        (session_digest,),
+    )
+    assert not browser_session_valid(f"{SESSION_COOKIE}=wrong", (session_digest,))
+    assert not browser_session_valid(f"{SESSION_COOKIE}=非ASCII", (session_digest,))
     assert same_origin_request(
         method="POST",
         origin=origin,

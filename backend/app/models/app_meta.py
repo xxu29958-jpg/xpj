@@ -1,17 +1,7 @@
-"""ADR-0031 ``app_meta`` key-value table — schema version + binary-compat state.
+"""Small runtime metadata that is not dataset identity or compatibility.
 
-Single-key API by design (``get(key) / set(key, value)``). Keys:
-
-- ``schema_version`` (free-form string, e.g. ``"0.9"`` or ``"1.0"``) —
-  what the DB believes its schema is.
-- ``schema_min_compatible`` (free-form string) — the lowest backend
-  version that this DB can still be opened by. After a v1.0 cut-over
-  it gets set to ``"1.0"``; old v0.9 binaries seeing this value at
-  startup must refuse to mount.
-- ``identity_schema_version`` — mirror of [[ADR-0028]] frozen v0.3
-  ``IDENTITY_SCHEMA_VERSION`` constant. Lives here so future cut-overs
-  can sanity-check identity stability without depending on a Python
-  constant.
+Dataset lineage, restore epoch, schema compatibility, and semantic revision
+belong exclusively to ``dataset_authority``.
 """
 
 from __future__ import annotations
@@ -37,9 +27,6 @@ class AppMeta(Base):
     )
 
 
-# Public key constants. Tests / handlers use these instead of literals.
-SCHEMA_VERSION_KEY = "schema_version"
-SCHEMA_MIN_COMPATIBLE_KEY = "schema_min_compatible"
 IDENTITY_SCHEMA_VERSION_KEY = "identity_schema_version"
 # v1.2 ops: when the maintenance route last ran the learning-table
 # retention cleanup. Owner Console shows it; cleanup-scheduling logic

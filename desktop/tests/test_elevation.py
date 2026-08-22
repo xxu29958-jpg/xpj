@@ -20,6 +20,7 @@ from backend_manager.elevation import (
     HELPER_EXIT_LIFECYCLE_BUSY,
     HELPER_EXIT_MISSING_SERVICE,
     HELPER_EXIT_NOT_ELEVATED,
+    HELPER_EXIT_RESTORE_SUPERSEDED,
     HELPER_EXIT_TIMEOUT,
     ElevatedServiceActionRunner,
     HelperResult,
@@ -47,6 +48,13 @@ def _release() -> WindowsReleaseConfig:
         backend_ready_timeout_ms=31_000,
         backend_ready_poll_interval_ms=375,
         backend_health_request_timeout_ms=1_750,
+        database_tool_timeout_ms=600_000,
+        dataset_backup_helper_timeout_ms=1_800_000,
+        dataset_restore_helper_timeout_ms=3_600_000,
+        dataset_payload_verification_timeout_ms=1_800_000,
+        complete_dataset_cleanup_reserve_ms=3_600_000,
+        complete_dataset_backup_timeout_ms=5_400_000,
+        complete_dataset_restore_timeout_ms=10_800_000,
     )
 
 
@@ -62,7 +70,7 @@ def _fake_result_channel(action: str, exit_code: int, diagnostic: str):
         @staticmethod
         def read(actual_exit_code: int) -> HelperResult | None:
             assert actual_exit_code == exit_code
-            return HelperResult(exit_code=exit_code, diagnostic=diagnostic)
+            return HelperResult(exit_code=exit_code, diagnostic=diagnostic, payload=None)
 
     yield Channel()
 
@@ -159,6 +167,164 @@ def test_action_runner_maps_helper_exit_to_actionable_message(
         runner.run("start")
 
 
+def test_restore_reuses_attempt_after_trusted_helper_response_is_lost(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    generation = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+    helper = tmp_path / "program" / "manager" / "ticketbox-manager.exe"
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes(b"MZ")
+    attempts: list[str] = []
+    reads = iter((None, HelperResult(exit_code=0, diagnostic="", payload=None)))
+
+    @contextmanager
+    def channels(action: str):
+        assert action == "restore"
+
+        class Channel:
+            path = tmp_path / "result.json"
+            root = tmp_path
+            nonce = "n" * 43
+            owner_sid = "S-1-5-21-1000"
+            file_identity = "1:2"
+
+            @staticmethod
+            def read(actual_exit_code: int) -> HelperResult | None:
+                assert actual_exit_code == 0
+                return next(reads)
+
+        yield Channel()
+
+    def launch(command) -> int:
+        flag = command.arguments.index("--restore-attempt-id")
+        attempts.append(command.arguments[flag + 1])
+        return 0
+
+    monkeypatch.setattr(windows_user_security, "local_app_data", lambda: tmp_path / "local")
+    runner = ElevatedServiceActionRunner(
+        _release(),
+        helper,
+        launcher=launch,
+        channel_factory=channels,
+    )
+
+    with pytest.raises(RuntimeControlError, match="未返回可信结果"):
+        runner.restore(generation)
+    runner.restore(generation)
+
+    assert len(attempts) == 2
+    assert attempts[0] == attempts[1]
+    assert not list((tmp_path / "local" / "Ticketbox" / "restore-attempts").glob("*.json"))
+
+
+def test_superseded_restore_retires_stale_attempt_before_requiring_new_confirmation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    generation = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+    helper = tmp_path / "program" / "manager" / "ticketbox-manager.exe"
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes(b"MZ")
+    observed_attempts: list[str] = []
+
+    @contextmanager
+    def channels(action: str):
+        assert action == "restore"
+
+        class Channel:
+            path = tmp_path / "result.json"
+            root = tmp_path
+            nonce = "n" * 43
+            owner_sid = "S-1-5-21-1000"
+            file_identity = "1:2"
+
+            @staticmethod
+            def read(actual_exit_code: int) -> HelperResult:
+                assert actual_exit_code == HELPER_EXIT_RESTORE_SUPERSEDED
+                return HelperResult(
+                    exit_code=actual_exit_code,
+                    diagnostic="此前恢复已被后续 generation 取代。",
+                    payload=None,
+                )
+
+        yield Channel()
+
+    def launch(command) -> int:
+        flag = command.arguments.index("--restore-attempt-id")
+        observed_attempts.append(command.arguments[flag + 1])
+        return HELPER_EXIT_RESTORE_SUPERSEDED
+
+    monkeypatch.setattr(windows_user_security, "local_app_data", lambda: tmp_path / "local")
+    runner = ElevatedServiceActionRunner(
+        _release(),
+        helper,
+        launcher=launch,
+        channel_factory=channels,
+    )
+
+    with pytest.raises(RuntimeControlError, match="后续 generation"):
+        runner.restore(generation)
+
+    attempts_root = tmp_path / "local" / "Ticketbox" / "restore-attempts"
+    assert not list(attempts_root.glob("*.json"))
+    assert len(observed_attempts) == 1
+
+
+def test_confirmed_restore_reports_cleanup_pending_without_second_helper_attempt(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    generation = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+    helper = tmp_path / "program" / "manager" / "ticketbox-manager.exe"
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes(b"MZ")
+    launches = 0
+    real_unlink = Path.unlink
+
+    @contextmanager
+    def channels(action: str):
+        assert action == "restore"
+
+        class Channel:
+            path = tmp_path / "result.json"
+            root = tmp_path
+            nonce = "n" * 43
+            owner_sid = "S-1-5-21-1000"
+            file_identity = "1:2"
+
+            @staticmethod
+            def read(actual_exit_code: int) -> HelperResult:
+                assert actual_exit_code == 0
+                return HelperResult(exit_code=0, diagnostic="ok", payload=None)
+
+        yield Channel()
+
+    def launch(_command) -> int:
+        nonlocal launches
+        launches += 1
+        return 0
+
+    def fail_tombstone_cleanup(path: Path, *args, **kwargs) -> None:
+        if path.suffix == ".retired":
+            raise OSError("scanner retained tombstone")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(windows_user_security, "local_app_data", lambda: tmp_path / "local")
+    monkeypatch.setattr(Path, "unlink", fail_tombstone_cleanup)
+    runner = ElevatedServiceActionRunner(
+        _release(),
+        helper,
+        launcher=launch,
+        channel_factory=channels,
+    )
+
+    outcome = runner.restore(generation)
+
+    assert outcome.cleanup_pending is True
+    assert launches == 1
+
+
 def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_path: Path, monkeypatch) -> None:
     nonce = "n" * 43
     path = tmp_path / f"{nonce}.json"
@@ -168,7 +334,7 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
     path.write_text(
         json.dumps(
             {
-                "schema": "ticketbox-manager-helper-result-v1",
+                "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path),
                 "nonce": nonce,
                 "action": "start",
@@ -190,6 +356,7 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
         file_identity,
         HELPER_EXIT_CONFIG,
         "DATABASE_URL=postgresql://owner:super-secret@127.0.0.1/db token=abc123 " + "x" * 1200,
+        None,
     )
     result = HelperResultChannel(
         path,
@@ -204,14 +371,20 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
     assert "abc123" not in result.diagnostic
     assert result.diagnostic == "小票夹安装信息不可用，请修复或重新安装后重试。"
     assert len(result.diagnostic) <= 800
-    assert HelperResultChannel(path, tmp_path, "z" * 43, "start", "S-1-5-21-1000", file_identity).read(
-        HELPER_EXIT_CONFIG,
-    ) is None
+    assert (
+        HelperResultChannel(path, tmp_path, "z" * 43, "start", "S-1-5-21-1000", file_identity).read(
+            HELPER_EXIT_CONFIG,
+        )
+        is None
+    )
     assert sanitize_helper_diagnostic("secret=hunter2", "固定公开错误") == "固定公开错误"
-    assert sanitize_helper_diagnostic(
-        r"failed at C:\Program Files\Ticketbox\app\.env",
-        "固定公开错误",
-    ) == "固定公开错误"
+    assert (
+        sanitize_helper_diagnostic(
+            r"failed at C:\Program Files\Ticketbox\app\.env",
+            "固定公开错误",
+        )
+        == "固定公开错误"
+    )
 
     forced = threading.Event()
     exit_codes: list[int] = []
@@ -298,28 +471,115 @@ def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path:
     results: list[tuple[int, str]] = []
     monkeypatch.setattr(
         "backend_manager.__main__.write_helper_result",
-        lambda _path, _root, _nonce, _action, _owner_sid, _file_id, code, detail: results.append((code, detail)),
+        lambda _path, _root, _nonce, _action, _owner_sid, _file_id, code, detail, _payload: results.append(
+            (code, detail)
+        ),
     )
 
-    assert main(
-        [
-            "--elevated-service-action",
-            "stop",
-            "--helper-result-path",
-            str(tmp_path / "result.json"),
-            "--helper-result-root",
-            str(tmp_path),
-            "--helper-result-nonce",
-            "n" * 43,
-            "--helper-channel-owner-sid",
-            "S-1-5-21-1000",
-            "--helper-channel-file-id",
-            "1:2",
-        ],
-    ) == HELPER_EXIT_MISSING_SERVICE
+    assert (
+        main(
+            [
+                "--elevated-service-action",
+                "stop",
+                "--helper-result-path",
+                str(tmp_path / "result.json"),
+                "--helper-result-root",
+                str(tmp_path),
+                "--helper-result-nonce",
+                "n" * 43,
+                "--helper-channel-owner-sid",
+                "S-1-5-21-1000",
+                "--helper-channel-file-id",
+                "1:2",
+            ],
+        )
+        == HELPER_EXIT_MISSING_SERVICE
+    )
     assert events == ["validate", "build"]
     assert watchdog_timeouts == [release.helper_watchdog_seconds("stop")]
     assert results == [(HELPER_EXIT_MISSING_SERVICE, "missing")]
+
+
+def test_elevated_backup_delegates_to_installed_owner_without_python_lock(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    layout = InstalledLayout(
+        tmp_path / "program",
+        tmp_path / "data",
+        8000,
+        5432,
+        "TicketboxBackend",
+        "TicketboxPg",
+        "9.8.7",
+    )
+    release = _release()
+    config = ManagerConfig(
+        runtime=InstalledRuntimeConfig(layout, release),
+        backend_host="127.0.0.1",
+        backend_port=8000,
+        manager_host="127.0.0.1",
+        manager_port=8799,
+        public_base_url=None,
+        expected_backend_version=layout.backend_version,
+        expected_installation_id=layout.installation_id,
+        health_request_timeout_seconds=1.0,
+    )
+    events: list[str] = []
+    results: list[tuple[int, str]] = []
+    monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: True)
+    monkeypatch.setattr("backend_manager.__main__.validate_helper_result_channel", lambda *_args: None)
+    monkeypatch.setattr("backend_manager.__main__.load_config", lambda **_kwargs: config)
+    monkeypatch.setattr(
+        "backend_manager.__main__.validate_installed_service_contract",
+        lambda _layout, _release: events.append("validate"),
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.run_installed_dataset_backup",
+        lambda actual_layout, actual_release: events.append(
+            "backup" if (actual_layout, actual_release) == (layout, release) else "wrong",
+        ),
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.hold_installer_lifecycle_lock",
+        lambda: (_ for _ in ()).throw(AssertionError("PowerShell owner must hold the lifecycle lock")),
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.start_helper_watchdog",
+        lambda *, timeout_seconds: (events.append(f"watchdog:{timeout_seconds}"), threading.Event())[-1],
+    )
+    monkeypatch.setattr(
+        "backend_manager.__main__.write_helper_result",
+        lambda _path, _root, _nonce, _action, _owner_sid, _file_id, code, detail, _payload: results.append(
+            (code, detail)
+        ),
+    )
+
+    assert (
+        main(
+            [
+                "--elevated-service-action",
+                "backup",
+                "--helper-result-path",
+                str(tmp_path / "result.json"),
+                "--helper-result-root",
+                str(tmp_path),
+                "--helper-result-nonce",
+                "n" * 43,
+                "--helper-channel-owner-sid",
+                "S-1-5-21-1000",
+                "--helper-channel-file-id",
+                "1:2",
+            ],
+        )
+        == 0
+    )
+    assert events == [
+        "watchdog:" + str(release.helper_watchdog_seconds("backup")),
+        "validate",
+        "backup",
+    ]
+    assert results == [(0, "Ticketbox 完整数据集备份已完成。")]
 
 
 def _no_op_lock():

@@ -15,7 +15,6 @@ $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
 $BackendVersionFile = Join-Path $BackendRoot "app\version.py"
 $EnvPath = Join-Path $BackendRoot ".env"
-$BackupDir = Join-Path $BackendRoot "backups"
 $LogDir = Join-Path $BackendRoot "logs"
 $BaseUrl = $ServerUrl.TrimEnd("/")
 $Summary = New-Object System.Collections.Generic.List[object]
@@ -119,26 +118,13 @@ else {
     Add-Row -Target $Summary -Name "Cloudflare Tunnel" -Status "WARN" -Detail "未发现进程"
 }
 
-$tasks = Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel,TicketboxBackup -ErrorAction SilentlyContinue
+$tasks = Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel -ErrorAction SilentlyContinue
 if ($tasks) {
     $taskSummary = ($tasks | ForEach-Object { "$($_.TaskName):$($_.State)" }) -join "，"
     Add-Row -Target $Details -Name "开机自启" -Status "OK" -Detail $taskSummary
 }
 else {
     Add-Row -Target $Details -Name "开机自启" -Status "WARN" -Detail "未找到小票夹计划任务"
-}
-
-$backupFiles = @(Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.dump" -File -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending)
-if ($backupFiles.Count -gt 0) {
-    $latestBackup = $backupFiles[0]
-    $backupBytes = ($backupFiles | Measure-Object -Property Length -Sum).Sum
-    Add-Row -Target $Summary -Name "最近备份" -Status "OK" -Detail "$($latestBackup.LastWriteTime.ToString('yyyy-MM-dd HH:mm')) · $(Format-Bytes $latestBackup.Length)"
-    Add-Row -Target $Summary -Name "备份占用" -Status "OK" -Detail "$(Format-Bytes $backupBytes)"
-    Add-Row -Target $Details -Name "备份数量" -Status "OK" -Detail "$($backupFiles.Count) 个"
-}
-else {
-    Add-Row -Target $Summary -Name "最近备份" -Status "WARN" -Detail "暂无备份"
 }
 
 $expectedBackendVersion = Get-ExpectedBackendVersion

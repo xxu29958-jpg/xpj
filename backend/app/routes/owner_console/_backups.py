@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
-from app.services import backup_service
+from app.services import dataset_backup_inventory
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
@@ -21,13 +21,15 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes / 1024 / 1024:.1f} MB"
 
 
-def _backup_view(entries: list[backup_service.BackupEntry]) -> list[dict]:
+def _backup_view(entries: list[dataset_backup_inventory.BackupEntry]) -> list[dict]:
     return [
         {
             "file_name": entry.file_name,
             "size_text": _format_size(entry.size_bytes),
             "created_at": entry.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             "kind": entry.kind,
+            "dataset_id": entry.dataset_id,
+            "restore_epoch": entry.restore_epoch,
         }
         for entry in entries
     ]
@@ -39,36 +41,10 @@ def owner_backups_get(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    entries = backup_service.list_backups()
+    entries = dataset_backup_inventory.list_published_backup_records()
     ctx = _base(request, db)
     ctx["backups"] = _backup_view(entries)
     ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
-    ctx["created_now"] = None
-    ctx["error"] = None
-    ctx["backup_dir"] = backup_service.backup_directory_label()
-    ctx["backup_health"] = backup_service.backup_health()
-    return templates.TemplateResponse(request=request, name="backups.html", context=ctx)
-
-
-@router.post("/backups", response_class=HTMLResponse)
-def owner_backups_create(
-    request: Request,
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> HTMLResponse:
-    error: str | None = None
-    created: dict | None = None
-    try:
-        entry = backup_service.create_manual_backup()
-        created = _backup_view([entry])[0]
-    except Exception as exc:  # noqa: BLE001 — AppError or unexpected I/O surfaces to UI
-        error = getattr(exc, "message", None) or "备份失败，请稍后再试。"
-    entries = backup_service.list_backups()
-    ctx = _base(request, db)
-    ctx["backups"] = _backup_view(entries)
-    ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
-    ctx["created_now"] = created
-    ctx["error"] = error
-    ctx["backup_dir"] = backup_service.backup_directory_label()
-    ctx["backup_health"] = backup_service.backup_health()
+    ctx["backup_dir"] = dataset_backup_inventory.backup_directory_label()
+    ctx["backup_inventory"] = dataset_backup_inventory.published_backup_inventory()
     return templates.TemplateResponse(request=request, name="backups.html", context=ctx)

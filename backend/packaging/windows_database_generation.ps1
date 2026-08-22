@@ -1,11 +1,15 @@
 ﻿#Requires -Version 5.1
 
 $contractPath = Join-Path $PSScriptRoot "windows_database_generation_contract.ps1"
+$releasePath = Join-Path $PSScriptRoot "windows_database_generation_release.ps1"
+$operationFailurePath = Join-Path $PSScriptRoot "windows_operation_failure.ps1"
 $artifactsPath = Join-Path $PSScriptRoot "windows_database_generation_artifacts.ps1"
 $commitVerifierPath = Join-Path $PSScriptRoot "windows_database_generation_commit_verifier.ps1"
 $policyPath = Join-Path $PSScriptRoot "windows_database_generation_policy.ps1"
 foreach ($dependency in @(
     $contractPath,
+    $releasePath,
+    $operationFailurePath,
     $artifactsPath,
     $commitVerifierPath,
     $policyPath
@@ -31,6 +35,7 @@ function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {
         "windows_postgresql_writer_fence.ps1",
         "windows_ticketbox_database_contract.ps1",
         "windows_ticketbox_database_acl.ps1",
+        "windows_ticketbox_database_acl_observation.ps1",
         "windows_ticketbox_database_roles.ps1",
         "windows_service_contract.ps1",
         "windows_service_identity.ps1",
@@ -38,12 +43,17 @@ function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {
         "windows_postgresql_single_user.ps1",
         "windows_database_generation_credentials.ps1",
         "windows_database_generation_role_fence.ps1",
+        "windows_database_generation_host_authority.ps1",
+        "windows_database_generation_role_bootstrap.ps1",
         "windows_database_generation_source.ps1",
+        "windows_database_generation_source_binding.ps1",
         "windows_database_generation_program_adapter.ps1",
         "windows_database_generation_program_execution.ps1",
         "windows_database_generation_recovery_evidence.ps1",
         "windows_database_generation_target_recovery.ps1",
+        "windows_database_generation_target_authorization.ps1",
         "windows_database_generation_database_binding.ps1",
+        "windows_database_generation_current.ps1",
         "windows_database_generation_retirement.ps1",
         "windows_database_generation_projection.ps1"
     )) {
@@ -55,6 +65,153 @@ function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {
         $paths += $dependency
     }
     return $paths
+}
+
+function Read-TicketboxDatabaseGenerationBootstrapRetirementState {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$Candidate,
+        [Parameter(Mandatory = $true)][object]$HostAuthority
+    )
+    $runtimeCredentials = $null
+    $primary = $null
+    $cleanup = @()
+    $state = $null
+    try {
+        $runtimeCredentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
+            -StateRoot $StateRoot -Intent $Intent -Candidate $Candidate
+        try {
+            $retired = Test-TicketboxDatabaseGenerationBootstrapRetirement `
+                $Intent $Candidate $HostAuthority `
+                $runtimeCredentials.RuntimePassword
+            $state = if ($retired) { "retired" } else { "active" }
+        }
+        catch { $state = "unknown" }
+    }
+    catch { $primary = $_ }
+    finally {
+        if ($null -ne $runtimeCredentials) {
+            try {
+                Close-TicketboxDatabaseGenerationRuntimeCredentials `
+                    $runtimeCredentials
+            }
+            catch { $cleanup += $_ }
+        }
+    }
+    Throw-TicketboxOperationFailure $primary $cleanup
+    return $state
+}
+
+function Get-TicketboxInstalledDatabaseGenerationBudget {
+    param([Parameter(Mandatory = $true)][object]$Release)
+    $service = [int64]$Release.service_state_timeout_ms
+    $database = [int64]$Release.database_tool_timeout_ms
+    $postgres = [int64]$Release.postgres_ready_timeout_ms
+    $command = [int64]$script:TicketboxPostgresqlDatabaseCommandTimeoutMs
+    $catalog = [int64]$script:TicketboxPostgresqlDatabaseCatalogTimeoutMs
+    $fence = [int64]$script:TicketboxDatabaseGenerationWriterFenceTimeoutMs
+    $program = [int64]$script:TicketboxDatabaseGenerationProgramTimeoutMs
+    $recovery = [int64]$script:TicketboxDatabaseGenerationRecoveryTimeoutMs
+    foreach ($value in @(
+        $service, $database, $postgres, $command, $catalog, $fence,
+        $program, $recovery
+    )) {
+        if ($value -lt 1) {
+            throw "database generation budget dependency is unavailable."
+        }
+    }
+
+    # Restored SourceBinding: catalog identity, live Dataset Authority, fence.
+    $sourceBinding = $catalog + $command + $fence
+
+    # Target authorization before its isolated recovery proof.
+    $targetPrelude =
+        $catalog +                         # live SourceBinding catalog
+        $command + $command +             # migrator window + credential
+        $program +                         # frozen Alembic program
+        $command + $command +             # ACL apply + verification
+        $fence +                           # post-migration writer fence
+        $command + $command                # role + ACL evidence
+
+    # Recovery performs dump and archive inspection, binds an isolated DB,
+    # restores it, verifies both copies, then deletes and re-observes the copy.
+    $recoveryArchive = $recovery + $recovery
+    $recoveryBinding =
+        $catalog + $command + $command + $catalog + $command + $catalog
+    $recoveryRestore =
+        $command + $command +              # revision table + revision value
+        $command + $command +              # public owner read + optional repair
+        $recovery
+    $recoveryVerification = $recovery + $recovery
+    $recoveryCleanup = $catalog + $command + $command + $catalog
+    $targetRecovery =
+        $recoveryArchive + $recoveryBinding + $recoveryRestore +
+        $recoveryVerification + $recoveryCleanup
+    $databaseBinding = $command + $command # live identity + publication
+    $targetAuthorization = $targetPrelude + $targetRecovery + $databaseBinding
+
+    # Prepare-runtime has two mutually exclusive longest branches. Both spell
+    # out their real DB calls; max selects the legal branch, not a multiplier.
+    $projectionActive =
+        $command +                         # migrator state
+        $command +                         # runtime admission
+        $command + $command +              # runtime + backup credential probes
+        $command +                         # active role policy
+        $command +                         # runtime ACL
+        $command +                         # migrator retirement
+        $command +                         # retirement verification
+        $command                           # retired role policy
+    $projectionPending =
+        $command +                         # migrator state
+        $command + $command +              # pending retirement + verification
+        $command +                         # runtime admission
+        $command + $command +              # runtime + backup credential probes
+        $command +                         # runtime ACL
+        $command +                         # final retirement verification
+        $command                           # retired role policy
+    $projectionPrepare = [Math]::Max($projectionActive, $projectionPending)
+    $bootstrapTransition =
+        $command + $command +              # runtime + maintenance probes
+        $projectionPrepare +
+        $service +                         # stop formal service
+        $database +                        # single-user retirement
+        $service + $postgres +             # retire helper + restart PG
+        $command                           # runtime semantic reread
+
+    # Publication validates marker and PGDATA directly, then through the
+    # persisted runtime descriptor.
+    $runtimeProjectionPublication =
+        $command + $database + $database + $command
+
+    # After runtime credentials exist, two pre-publication observations and
+    # four later durable actions re-observe marker + PGDATA + projection.
+    $ownerObservation =
+        $command + $command +
+        ($command + $database + $command) +
+        ($command + $database + $command) +
+        ($command + $database + $command) +
+        ($command + $database + $command)
+
+    # A process resumed inside single-user transition restores the formal
+    # service and proves retirement before normal reducer execution.
+    $serviceTransitionRecovery = $service + $postgres + $command
+
+    $components = [ordered]@{
+        service_transition_recovery_ms = $serviceTransitionRecovery
+        restored_source_binding_ms = $sourceBinding
+        target_authorization_ms = $targetAuthorization
+        bootstrap_transition_ms = $bootstrapTransition
+        runtime_projection_publication_ms = $runtimeProjectionPublication
+        reducer_observation_ms = $ownerObservation
+    }
+    $total = [int64]0
+    foreach ($value in $components.Values) { $total += [int64]$value }
+    return [pscustomobject][ordered]@{
+        Schema = "ticketbox-installed-database-generation-budget-v1"
+        Components = $components
+        TotalMilliseconds = $total
+    }
 }
 
 function Invoke-TicketboxInstalledDatabaseGeneration {
@@ -71,16 +228,29 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
         -Root $PSScriptRoot)) {
         . $dependency
     }
-    $databasePolicy = Get-TicketboxDatabaseAuthorizationContract
     $stateRoot = [string]$IntentContext.StateRoot
     $intent = $IntentContext.Artifact
     $operationId = [string]$intent.Payload.operation_id
+    $bootstrapDataRoot = [string]$HostContract.data_root
+    $bootstrapAppData = Join-Path $bootstrapDataRoot "app"
+    $bootstrapSecretByteCount =
+        [int]$HostContract.release_config.secret_byte_count
+    $expectedBootstrapRecoveryPath =
+        Get-PostgresBootstrapRecoveryPath -AppData $bootstrapAppData
+    if (
+        $bootstrapSecretByteCount -lt 32 -or
+        -not (Test-TicketboxPathEquals `
+            $BootstrapRecoveryPath `
+            $expectedBootstrapRecoveryPath)
+    ) {
+        throw "database generation bootstrap binding 与 HostContract 漂移。"
+    }
     $hostContractSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
         ConvertTo-TicketboxDatabaseGenerationCanonicalJson $HostContract
     )
-    $projectionContractSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $ProjectionContract
-    )
+    $projectionContractSha256 =
+        Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+            $ProjectionContract
     if (
         [string]$intent.Payload.host_contract_sha256 -cne $hostContractSha256 -or
         [string]$intent.Payload.projection_contract_sha256 -cne
@@ -91,132 +261,113 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
     Assert-TicketboxDatabaseGenerationReleaseBinding `
         -Intent $intent `
         -ReleaseIdentity $ReleaseIdentity
-    Repair-TicketboxDatabaseGenerationServiceTransition `
-        -StateRoot $stateRoot `
-        -Intent $intent `
-        -HostContract $HostContract `
-        -LifecycleLock $LifecycleLock
-    $hostAuthority = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority $HostContract
-    $publishedCurrent = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
-    if ($null -ne $publishedCurrent) {
-        Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
-            -ExpectedOperationId $operationId `
-            -ExpectedCurrentSha256 ([string]$publishedCurrent.PayloadSha256) | Out-Null
-        $publishedCandidate = Read-TicketboxDatabaseGenerationOperationArtifact `
-            $stateRoot $operationId "candidate"
-        $publishedRuntimeCredentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
-            -StateRoot $stateRoot `
-            -Intent $intent `
-            -Candidate $publishedCandidate
-        $publishedPrimary = $null
-        $publishedCleanup = @()
-        $publishedResult = $null
-        try {
-            if ((Get-TicketboxPathEntryKindNoFollow $BootstrapRecoveryPath) -cne "Missing") {
-                throw "Generation CURRENT 已发布但 bootstrap recovery artifact 仍存在。"
-            }
-            $publishedProjection = Read-TicketboxDatabaseGenerationRuntimeProjection `
-                $intent $publishedCandidate $hostAuthority $ProjectionContract $LifecycleLock
-            $publishedResult = New-TicketboxInstalledDatabaseGenerationResult `
-                $publishedCurrent $publishedProjection
-        }
-        catch { $publishedPrimary = $_ }
-        finally {
-            try {
-                Close-TicketboxDatabaseGenerationRuntimeCredentials `
-                    $publishedRuntimeCredentials
-            }
-            catch { $publishedCleanup += $_ }
-        }
-        Throw-TicketboxDatabaseGenerationOperationFailure `
-            $publishedPrimary $publishedCleanup
-        return $publishedResult
-    }
-    $resumeCandidate = Read-TicketboxDatabaseGenerationOperationArtifact `
-        $stateRoot $operationId "candidate" -AllowAbsent
-    $bootstrapRetired = $false
-    $bootstrapRetirementProbeFailure = $null
-    if ($null -ne $resumeCandidate) {
-        $resumeRuntimeCredentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
-            -StateRoot $stateRoot `
-            -Intent $intent `
-            -Candidate $resumeCandidate `
-            -AllowAbsent
-        if ($null -ne $resumeRuntimeCredentials) {
-            $resumeCleanup = @()
-            try {
-                $bootstrapRetired = Test-TicketboxDatabaseGenerationBootstrapRetirement `
-                    $intent $resumeCandidate $hostAuthority `
-                    $resumeRuntimeCredentials.RuntimePassword
-            }
-            catch { $bootstrapRetirementProbeFailure = $_ }
-            finally {
-                try {
-                    Close-TicketboxDatabaseGenerationRuntimeCredentials `
-                        $resumeRuntimeCredentials
-                }
-                catch { $resumeCleanup += $_ }
-            }
-            if ($resumeCleanup.Count -gt 0) {
-                Throw-TicketboxDatabaseGenerationOperationFailure `
-                    $bootstrapRetirementProbeFailure $resumeCleanup
-            }
-        }
-    }
-    $bootstrapRecoveryState = $null
-    $httpBootstrapSecret = ""
-    $maintenanceAuthority = $null
-    if (-not $bootstrapRetired) {
-        if (
-            (Get-TicketboxPathEntryKindNoFollow $BootstrapRecoveryPath) -ceq "Missing" -and
-            $null -ne $bootstrapRetirementProbeFailure
-        ) {
-            throw $bootstrapRetirementProbeFailure
-        }
-        try {
-            $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState `
-                -Path $BootstrapRecoveryPath
-            $httpBootstrapSecret = [string]$bootstrapRecoveryState.HttpBootstrapSecret
-            if ($httpBootstrapSecret -cnotmatch '^[A-Za-z0-9_-]{32,128}$') {
-                throw "HTTP bootstrap secret 不是受控 secret。"
-            }
-            $maintenanceAuthority = New-TicketboxDatabaseGenerationMaintenanceAuthority `
-                -Intent $intent `
-                -SuperuserPassword ([string]$bootstrapRecoveryState.SuperuserPassword) `
-                -HostAuthority $hostAuthority `
-                -LifecycleLock $LifecycleLock
-        }
-        finally {
-            if ($null -ne $bootstrapRecoveryState) {
-                $bootstrapRecoveryState.SuperuserPassword = ""
-                $bootstrapRecoveryState.HttpBootstrapSecret = ""
-            }
-        }
-    }
     $primary = $null
     $cleanup = @()
     $completed = $null
-    $credentials = $null
-    $runtimeCredentials = $null
     try {
         while ($true) {
-            Assert-TicketboxLifecycleOperationLease $LifecycleLock
-            if ($null -ne $credentials) {
-                Close-TicketboxDatabaseGenerationCredentials $credentials
-                $credentials = $null
-            }
-            $credentials = Read-TicketboxDatabaseGenerationCredentials `
-                -StateRoot $stateRoot -Intent $intent -AllowAbsent
-            $source = Read-TicketboxDatabaseGenerationOperationArtifact `
-                $stateRoot $operationId "source-binding" -AllowAbsent
-            $target = Read-TicketboxDatabaseGenerationOperationArtifact `
-                $stateRoot $operationId "target-authorization" -AllowAbsent
-            $candidate = Read-TicketboxDatabaseGenerationOperationArtifact `
-                $stateRoot $operationId "candidate" -AllowAbsent
-            $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
-            $next = Resolve-TicketboxDatabaseGenerationNextAction `
-                $credentials $source $target $candidate $current
-            switch ($next) {
+            $credentials = $null
+            $runtimeCredentials = $null
+            $maintenanceAuthority = $null
+            $httpBootstrapSecret = ""
+            $iterationPrimary = $null
+            $iterationCleanup = @()
+            try {
+                Assert-TicketboxLifecycleOperationLease $LifecycleLock
+                $source = Read-TicketboxDatabaseGenerationOperationArtifact `
+                    $stateRoot $operationId "source-binding" -AllowAbsent
+                if ($null -ne $source) {
+                    $source = Assert-TicketboxDatabaseGenerationSourceBindingChain `
+                        -StateRoot $stateRoot -Binding $source -Intent $intent
+                }
+                $target = Read-TicketboxDatabaseGenerationOperationArtifact `
+                    $stateRoot $operationId "target-authorization" -AllowAbsent
+                $candidate = Read-TicketboxDatabaseGenerationOperationArtifact `
+                    $stateRoot $operationId "candidate" -AllowAbsent
+                $terminal = Read-TicketboxDatabaseGenerationOperationArtifact `
+                    $stateRoot $operationId "terminal-state" -AllowAbsent
+                $serviceTransition = Read-TicketboxDatabaseGenerationServiceTransition `
+                    $stateRoot -AllowAbsent
+                $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
+                $currentForOperation = $null
+                if ($null -ne $current) {
+                    if ([string]$current.Payload.operation_id -ceq $operationId) {
+                        $currentForOperation = $current
+                    }
+                    elseif (
+                        [string]::IsNullOrEmpty(
+                            [string]$intent.Payload.expected_predecessor_sha256
+                        ) -or
+                        [string]$current.PayloadSha256 -cne
+                            [string]$intent.Payload.expected_predecessor_sha256
+                    ) {
+                        throw "database generation predecessor CURRENT changed during execution。"
+                    }
+                }
+                $credentialsPath = Get-TicketboxDatabaseGenerationArtifactPath `
+                    $stateRoot "credentials" $operationId
+                $runtimeCredentialsPath = Get-TicketboxDatabaseGenerationArtifactPath `
+                    $stateRoot "runtime-credentials" $operationId
+                $credentialsKind =
+                    Get-TicketboxPathEntryKindNoFollow $credentialsPath
+                $runtimeCredentialsKind =
+                    Get-TicketboxPathEntryKindNoFollow $runtimeCredentialsPath
+                if (
+                    $credentialsKind -cnotin @("File", "Missing") -or
+                    $runtimeCredentialsKind -cnotin @("File", "Missing")
+                ) {
+                    throw "database generation credential artifact 不是可信普通文件。"
+                }
+                $credentialsPresent = $credentialsKind -ceq "File"
+                $runtimeCredentialsPresent =
+                    $runtimeCredentialsKind -ceq "File"
+                $hostAuthority = $null
+                $bootstrapRetirementState = "not_applicable"
+                $runtimeProjection = $null
+                if (
+                    $null -eq $serviceTransition -and
+                    $null -ne $candidate -and
+                    $runtimeCredentialsPresent
+                ) {
+                    $hostAuthority =
+                        Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
+                            $HostContract
+                    $bootstrapRetirementState =
+                        Read-TicketboxDatabaseGenerationBootstrapRetirementState `
+                            $stateRoot $intent $candidate $hostAuthority
+                    if ($bootstrapRetirementState -ceq "retired") {
+                        $runtimeProjection =
+                            Read-TicketboxDatabaseGenerationRuntimeProjection `
+                                $intent $candidate $hostAuthority `
+                                $ProjectionContract $LifecycleLock -AllowAbsent
+                    }
+                }
+                $transientAuthorityPresent =
+                    (Get-TicketboxPathEntryKindNoFollow `
+                        $BootstrapRecoveryPath) -cne "Missing" -or
+                    $credentialsPresent -or $null -ne $serviceTransition
+                $observation = [pscustomobject][ordered]@{
+                    bootstrap_retirement_state = $bootstrapRetirementState
+                    candidate_present = $null -ne $candidate
+                    credentials_present = $credentialsPresent
+                    current_present = $null -ne $currentForOperation
+                    runtime_credentials_present = $runtimeCredentialsPresent
+                    runtime_projection_present = $null -ne $runtimeProjection
+                    service_transition_present = $null -ne $serviceTransition
+                    source_binding_present = $null -ne $source
+                    target_authorization_present = $null -ne $target
+                    terminal_state_present = $null -ne $terminal
+                    transient_authority_present = $transientAuthorityPresent
+                }
+                $next = Resolve-TicketboxDatabaseGenerationNextAction $observation
+                switch ($next) {
+                "reconcile_service_transition" {
+                    Repair-TicketboxDatabaseGenerationServiceTransition `
+                        -StateRoot $stateRoot `
+                        -Intent $intent `
+                        -HostContract $HostContract `
+                        -LifecycleLock $LifecycleLock
+                }
                 "ensure_credentials" {
                     $createdCredentials = New-TicketboxDatabaseGenerationCredentials `
                         -StateRoot $stateRoot `
@@ -225,174 +376,114 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                     Close-TicketboxDatabaseGenerationCredentials $createdCredentials
                 }
                 "bind_source" {
-                    $hostAuthority = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
-                        $HostContract
-                    $evidence = Invoke-TicketboxDatabaseGenerationEmptySource `
-                        -StateRoot $stateRoot `
-                        -Intent $intent `
-                        -Credentials $credentials `
-                        -HostAuthority $hostAuthority `
-                        -MaintenanceAuthority $maintenanceAuthority `
-                        -LifecycleLock $LifecycleLock
+                    $credentials = Read-TicketboxDatabaseGenerationCredentials `
+                        -StateRoot $stateRoot -Intent $intent
+                    $hostAuthority =
+                        Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
+                            $HostContract
+                    $maintenanceAuthority =
+                        Open-TicketboxDatabaseGenerationMaintenanceAuthority `
+                            $intent $hostAuthority $BootstrapRecoveryPath `
+                            $bootstrapAppData $bootstrapSecretByteCount `
+                            $LifecycleLock
+                    $evidence = Invoke-TicketboxDatabaseGenerationSourceBinding `
+                        $stateRoot $intent $credentials $HostContract `
+                        $maintenanceAuthority $LifecycleLock
                     [void](New-TicketboxDatabaseGenerationChainedArtifact `
                         $stateRoot $operationId "source-binding" $evidence `
                         $LifecycleLock)
                 }
                 "authorize_target" {
-                    $hostAuthority = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
-                        $HostContract
-                    [void](Assert-TicketboxDatabaseGenerationMaintenanceAuthority `
-                        $maintenanceAuthority $intent $hostAuthority $LifecycleLock)
-                    $superuserPassword = $maintenanceAuthority.Secret
-                    if (
-                        [string]$source.Payload.source_kind -cne "empty" -or
-                        [string]$source.Payload.source_revision -cne "base" -or
-                        [string]$source.Payload.intent_sha256 -cne [string]$intent.PayloadSha256
-                    ) {
-                        throw "target authority 只接受已规范化的 exact SourceBinding。"
-                    }
-                    $liveSource = Get-TicketboxPostgresqlDatabaseCatalogObservation `
-                        -Authority $hostAuthority `
-                        -SuperuserPassword $superuserPassword `
-                        -TargetDatabase $($databasePolicy.DatabaseName)
-                    if (
-                        -not [bool]$liveSource.Exists -or
-                        [string]$liveSource.ClusterSystemIdentifier -cne
-                            [string]$source.Payload.cluster_system_identifier -or
-                        [uint32]$liveSource.DatabaseOid -ne [uint32]$source.Payload.database_oid
-                    ) {
-                        throw "target authority 在 mutation 前发现 SourceBinding identity 漂移。"
-                    }
-                    Renew-TicketboxDatabaseGenerationMigratorWindow `
-                        $hostAuthority $superuserPassword $credentials
-                    $plan = [pscustomobject][ordered]@{
-                        generation_operation_id = $operationId
-                        source_revision = [string]$source.Payload.source_revision
-                        target_revision = [string]$intent.Payload.target_revision
-                        generation_program_sha256 = [string]$intent.Payload.generation_program_sha256
-                        upgrade_required = $true
-                    }
-                    $result = Invoke-TicketboxPackagedManagedSchemaUpgrade `
-                        -HostAuthority $hostAuthority `
-                        -MigratorPassword $credentials.MigratorPassword `
-                        -Plan $plan `
-                        -MaintenanceHelperPath ([string]$ReleaseIdentity.MaintenanceHelperPath) `
-                        -MaintenanceHelperEvidence (
-                            Get-TicketboxDatabaseMaintenanceHelperEvidence $ReleaseIdentity
-                        ) `
-                        -ExpectedMaintenanceHelperPath ([string]$ReleaseIdentity.MaintenanceHelperPath) `
-                        -ProgramPath ([string]$ReleaseIdentity.DatabaseGenerationProgramPath) `
-                        -ProgramEvidence (
-                            Get-TicketboxDatabaseGenerationProgramEvidence $ReleaseIdentity
-                        )
-                    Set-TicketboxDatabaseRuntimeAcl `
-                        -Authority $hostAuthority `
-                        -SuperuserPassword $superuserPassword `
-                        -PreserveRuntimeFence
-                    $fence = Get-TicketboxDatabaseGenerationFrozenFence `
-                        $hostAuthority $superuserPassword
-                    $roleSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-                        Get-TicketboxDatabaseRoleAuthorityEvidence `
-                            $hostAuthority $superuserPassword
-                    )
-                    $aclSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-                        Get-TicketboxDatabaseRuntimeAclEvidence `
-                            $hostAuthority $superuserPassword
-                    )
-                    $recovery = Invoke-TicketboxDatabaseGenerationTargetRecovery `
-                        -StateRoot $stateRoot `
-                        -Intent $intent `
-                        -SourceBinding $source `
-                        -Credentials $credentials `
-                        -ReleaseIdentity $ReleaseIdentity `
-                        -LifecycleLock $LifecycleLock `
-                        -HostContract $HostContract `
-                        -HostAuthority $hostAuthority `
-                        -SuperuserPassword $superuserPassword
-                    $executionAuthority = New-TicketboxDatabaseGenerationExecutionAuthority `
-                        $intent $source $result
-                    $executionAuthoritySha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-                        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $executionAuthority
-                    )
-                    $writerFenceSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-                        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $fence
-                    )
-                    $databaseBindingSha256 = Set-TicketboxDatabaseGenerationDatabaseBinding `
-                        -Intent $intent `
-                        -SourceBinding $source `
-                        -HostAuthority $hostAuthority `
-                        -SuperuserPassword $superuserPassword `
-                        -ExecutionAuthoritySha256 $executionAuthoritySha256 `
-                        -RoleAuthoritySha256 $roleSha256 `
-                        -RuntimeAclSha256 $aclSha256 `
-                        -WriterFenceSha256 $writerFenceSha256 `
-                        -TargetRecoveryEvidenceSha256 ([string]$recovery.PayloadSha256) `
-                        -LifecycleLock $LifecycleLock
-                    $evidence = [ordered]@{
-                        schema = "ticketbox-database-generation-target-authorization-v1"
-                        operation_id = $operationId
-                        intent_sha256 = [string]$intent.PayloadSha256
-                        source_binding_sha256 = [string]$source.PayloadSha256
-                        target_revision = [string]$intent.Payload.target_revision
-                        execution_authority_sha256 = $executionAuthoritySha256
-                        role_authority_sha256 = $roleSha256
-                        runtime_acl_sha256 = $aclSha256
-                        post_migration_writer_fence_sha256 = $writerFenceSha256
-                        target_recovery_evidence_sha256 = [string]$recovery.PayloadSha256
-                        database_binding_sha256 = $databaseBindingSha256
-                    }
+                    $credentials = Read-TicketboxDatabaseGenerationCredentials `
+                        -StateRoot $stateRoot -Intent $intent
+                    $hostAuthority =
+                        Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
+                            $HostContract
+                    $maintenanceAuthority =
+                        Open-TicketboxDatabaseGenerationMaintenanceAuthority `
+                            $intent $hostAuthority $BootstrapRecoveryPath `
+                            $bootstrapAppData $bootstrapSecretByteCount `
+                            $LifecycleLock
+                    $evidence = Invoke-TicketboxDatabaseGenerationTargetAuthorization `
+                        $stateRoot $intent $source $credentials $ReleaseIdentity `
+                        $LifecycleLock $HostContract $maintenanceAuthority
                     [void](New-TicketboxDatabaseGenerationChainedArtifact `
                         $stateRoot $operationId "target-authorization" $evidence `
                         $LifecycleLock)
                 }
                 "seal_candidate" {
-                    $payload = [ordered]@{
-                        schema = "ticketbox-database-generation-candidate-v1"
-                        operation_id = $operationId
-                        intent_sha256 = [string]$intent.PayloadSha256
-                        source_binding_sha256 = [string]$source.PayloadSha256
-                        target_authorization_sha256 = [string]$target.PayloadSha256
-                        database_binding_sha256 = [string]$target.Payload.database_binding_sha256
-                        target_revision = [string]$intent.Payload.target_revision
-                        generation_program_sha256 =
-                            [string]$intent.Payload.generation_program_sha256
-                    }
-                    [void](New-TicketboxDatabaseGenerationChainedArtifact `
-                        $stateRoot $operationId "candidate" $payload $LifecycleLock)
+                    [void](New-TicketboxDatabaseGenerationCandidate `
+                        $stateRoot $intent $source $target $LifecycleLock)
                 }
-                "finalize_current" {
-                    $hostAuthority = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
-                        $HostContract
-                    $runtimeCredentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
+                "seal_runtime_credentials" {
+                    $credentials = Read-TicketboxDatabaseGenerationCredentials `
+                        -StateRoot $stateRoot -Intent $intent
+                    $bootstrapRecoveryState = $null
+                    try {
+                        $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState `
+                            -Path $BootstrapRecoveryPath `
+                            -AppData $bootstrapAppData `
+                            -SecretByteCount $bootstrapSecretByteCount
+                        $httpBootstrapSecret =
+                            [string]$bootstrapRecoveryState.HttpBootstrapSecret
+                        if ($httpBootstrapSecret -cnotmatch '^[A-Za-z0-9_-]{32,128}$') {
+                            throw "HTTP bootstrap secret 不是受控 secret。"
+                        }
+                    }
+                    finally {
+                        if ($null -ne $bootstrapRecoveryState) {
+                            $bootstrapRecoveryState.SuperuserPassword = ""
+                            $bootstrapRecoveryState.HttpBootstrapSecret = ""
+                        }
+                    }
+                    $runtimeCredentials = New-TicketboxDatabaseGenerationRuntimeCredentials `
                         -StateRoot $stateRoot `
                         -Intent $intent `
                         -Candidate $candidate `
-                        -AllowAbsent
-                    if ($null -eq $runtimeCredentials) {
-                        if ($null -eq $credentials) {
-                            throw "candidate 已封存但 durable runtime credentials 缺失。"
-                        }
-                        $runtimeCredentials = New-TicketboxDatabaseGenerationRuntimeCredentials `
-                            -StateRoot $stateRoot `
-                            -Intent $intent `
-                            -Candidate $candidate `
-                            -Credentials $credentials `
-                            -HttpBootstrapSecret $httpBootstrapSecret `
-                            -LifecycleLock $LifecycleLock
-                    }
-                    $retired = $false
-                    $retirementProbeFailure = $null
+                        -Credentials $credentials `
+                        -HttpBootstrapSecret $httpBootstrapSecret `
+                        -LifecycleLock $LifecycleLock
+                }
+                "transition_bootstrap_authority" {
+                    $runtimeCredentials =
+                        Read-TicketboxDatabaseGenerationRuntimeCredentials `
+                            $stateRoot $intent $candidate
+                    $hostAuthority =
+                        Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
+                            $HostContract
+                    $runtimeProbeFailure = $null
                     try {
-                        $retired = Test-TicketboxDatabaseGenerationBootstrapRetirement `
-                            $intent $candidate $hostAuthority $runtimeCredentials.RuntimePassword
+                        $bootstrapRetired =
+                            Test-TicketboxDatabaseGenerationBootstrapRetirement `
+                                $intent $candidate $hostAuthority `
+                                $runtimeCredentials.RuntimePassword
                     }
-                    catch { $retirementProbeFailure = $_ }
-                    if (-not $retired) {
+                    catch { $runtimeProbeFailure = $_ }
+                    if ($null -ne $runtimeProbeFailure) {
+                        if (
+                            (Get-TicketboxPathEntryKindNoFollow `
+                                $BootstrapRecoveryPath) -cne "File"
+                        ) {
+                            throw $runtimeProbeFailure
+                        }
+                        $maintenanceAuthority =
+                            Open-TicketboxDatabaseGenerationMaintenanceAuthority `
+                                $intent $hostAuthority $BootstrapRecoveryPath `
+                                $bootstrapAppData $bootstrapSecretByteCount `
+                                $LifecycleLock
+                        $bootstrapRetired =
+                            Test-TicketboxDatabaseGenerationBootstrapRetirementWithMaintenanceAuthority `
+                                $intent $candidate $hostAuthority `
+                                $maintenanceAuthority $LifecycleLock
+                        if ($bootstrapRetired) { throw $runtimeProbeFailure }
+                    }
+                    if (-not $bootstrapRetired) {
                         if ($null -eq $maintenanceAuthority) {
-                            if ($null -ne $retirementProbeFailure) {
-                                throw $retirementProbeFailure
-                            }
-                            throw "bootstrap authority 未退役且 durable bootstrap credential 缺失。"
+                            $maintenanceAuthority =
+                                Open-TicketboxDatabaseGenerationMaintenanceAuthority `
+                                    $intent $hostAuthority $BootstrapRecoveryPath `
+                                    $bootstrapAppData $bootstrapSecretByteCount `
+                                    $LifecycleLock
                         }
                         [void](Prepare-TicketboxDatabaseGenerationRuntimeProjection `
                             -Intent $intent `
@@ -402,117 +493,131 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                             -MaintenanceAuthority $maintenanceAuthority `
                             -ProjectionContract $ProjectionContract `
                             -LifecycleLock $LifecycleLock)
-                        if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
-                            $intent $candidate $hostAuthority $runtimeCredentials.RuntimePassword)) {
-                            Close-TicketboxDatabaseGenerationMaintenanceAuthority `
-                                $maintenanceAuthority $intent $hostAuthority $LifecycleLock
-                            $maintenanceAuthority = $null
-                            $hostAuthority = Retire-TicketboxDatabaseGenerationBootstrapAuthority `
-                                -StateRoot $stateRoot `
-                                -Intent $intent `
-                                -Candidate $candidate `
-                                -HostContract $HostContract `
-                                -HostAuthority $hostAuthority `
-                                -RuntimePassword $runtimeCredentials.RuntimePassword `
-                                -LifecycleLock $LifecycleLock
-                        }
+                        Close-TicketboxDatabaseGenerationMaintenanceAuthority `
+                            $maintenanceAuthority $intent $hostAuthority `
+                            $LifecycleLock
+                        $maintenanceAuthority = $null
+                        [void](Retire-TicketboxDatabaseGenerationBootstrapAuthority `
+                            -StateRoot $stateRoot `
+                            -Intent $intent `
+                            -Candidate $candidate `
+                            -HostContract $HostContract `
+                            -HostAuthority $hostAuthority `
+                            -RuntimePassword $runtimeCredentials.RuntimePassword `
+                            -LifecycleLock $LifecycleLock)
                     }
-                    if (-not (Test-TicketboxDatabaseGenerationBootstrapRetirement `
-                        $intent $candidate $hostAuthority $runtimeCredentials.RuntimePassword)) {
-                        throw "database generation bootstrap authority retirement 未通过 runtime 复读。"
-                    }
+                }
+                "publish_runtime_projection" {
+                    $runtimeCredentials =
+                        Read-TicketboxDatabaseGenerationRuntimeCredentials `
+                            $stateRoot $intent $candidate
+                    $hostAuthority =
+                        Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
+                            $HostContract
                     [void](Publish-TicketboxDatabaseGenerationRuntimeProjection `
                         $intent $candidate $runtimeCredentials $hostAuthority `
                         $ProjectionContract $LifecycleLock)
-                    Remove-PostgresBootstrapRecoveryState -Path $BootstrapRecoveryPath
-                    Remove-TicketboxDatabaseGenerationCredentials `
-                        -StateRoot $stateRoot -Intent $intent -LifecycleLock $LifecycleLock
-                    $credentialsPath = Get-TicketboxDatabaseGenerationArtifactPath `
-                        $stateRoot "credentials" $operationId
-                    $transitionPath = Get-TicketboxDatabaseGenerationServiceTransitionPath $stateRoot
-                    if (
-                        (Get-TicketboxPathEntryKindNoFollow $BootstrapRecoveryPath) -cne "Missing" -or
-                        (Get-TicketboxPathEntryKindNoFollow $credentialsPath) -cne "Missing" -or
-                        (Get-TicketboxPathEntryKindNoFollow $transitionPath) -cne "Missing"
-                    ) {
-                        throw "terminal publication 前 bootstrap/transient credential 未清理。"
-                    }
-                    $projectionEvidence = Read-TicketboxDatabaseGenerationRuntimeProjection `
-                        $intent $candidate $hostAuthority $ProjectionContract $LifecycleLock
-                    $terminalPayload = [ordered]@{
-                        schema = "ticketbox-database-generation-terminal-state-v1"
-                        operation_id = $operationId
-                        intent_sha256 = [string]$intent.PayloadSha256
-                        candidate_sha256 = [string]$candidate.PayloadSha256
-                        runtime_credentials_sha256 =
-                            [string]$runtimeCredentials.Artifact.PayloadSha256
-                        bootstrap_retirement_sha256 =
-                            Get-TicketboxDatabaseGenerationTextSha256 (
-                                Get-TicketboxDatabaseGenerationBootstrapRetirementJson `
-                                    $intent $candidate
-                            )
-                        runtime_projection_sha256 = [string]$projectionEvidence.PayloadSha256
-                        host_contract_sha256 = [string]$intent.Payload.host_contract_sha256
-                        projection_contract_sha256 = $projectionContractSha256
-                        transient_credentials_state = "absent"
-                        bootstrap_recovery_state = "absent"
-                        maintenance_service_transition_state = "absent"
-                    }
-                    $terminal = New-TicketboxDatabaseGenerationChainedArtifact `
-                        $stateRoot $operationId "terminal-state" $terminalPayload $LifecycleLock
-                    $current = Publish-TicketboxDatabaseGenerationCurrent `
-                        $intent $candidate $terminal $LifecycleLock
-                    Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
-                        -ExpectedOperationId $operationId `
-                        -ExpectedCurrentSha256 ([string]$current.PayloadSha256) | Out-Null
-                    $projection = Read-TicketboxDatabaseGenerationRuntimeProjection `
-                        $intent $candidate $hostAuthority $ProjectionContract $LifecycleLock
-                    $completed = New-TicketboxInstalledDatabaseGenerationResult $current $projection
+                }
+                "retire_transient_authority" {
+                    Remove-TicketboxDatabaseGenerationTransientAuthority `
+                        $stateRoot $intent $BootstrapRecoveryPath `
+                        $bootstrapAppData $LifecycleLock
+                }
+                "seal_terminal" {
+                    $runtimeCredentials =
+                        Read-TicketboxDatabaseGenerationRuntimeCredentials `
+                            $stateRoot $intent $candidate
+                    [void](New-TicketboxDatabaseGenerationTerminalState `
+                        $stateRoot $intent $candidate $runtimeCredentials `
+                        $runtimeProjection $LifecycleLock)
+                }
+                "publish_current" {
+                    $currentTransition = `
+                        New-TicketboxDatabaseGenerationAdvanceCurrentTransition `
+                            $intent $candidate $terminal
+                    [void](Publish-TicketboxDatabaseGenerationCurrent `
+                        $currentTransition $LifecycleLock)
                 }
                 "read_current" {
                     Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
                         -ExpectedOperationId $operationId `
-                        -ExpectedCurrentSha256 ([string]$current.PayloadSha256) | Out-Null
-                    $runtimeCredentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
-                        -StateRoot $stateRoot `
-                        -Intent $intent `
-                        -Candidate $candidate
-                    $projection = Read-TicketboxDatabaseGenerationRuntimeProjection `
-                        $intent $candidate $hostAuthority $ProjectionContract $LifecycleLock
-                    $completed = New-TicketboxInstalledDatabaseGenerationResult $current $projection
+                        -ExpectedCurrentSha256 (
+                            [string]$currentForOperation.PayloadSha256
+                        ) | Out-Null
+                    $completed = New-TicketboxInstalledDatabaseGenerationResult `
+                        $currentForOperation $runtimeProjection
                 }
                 default { throw "unknown database generation action: $next" }
+                }
             }
+            catch { $iterationPrimary = $_ }
+            finally {
+                if ($null -ne $maintenanceAuthority) {
+                    try {
+                        Close-TicketboxDatabaseGenerationMaintenanceAuthority `
+                            $maintenanceAuthority $intent $hostAuthority `
+                            $LifecycleLock
+                    }
+                    catch { $iterationCleanup += $_ }
+                }
+                if ($null -ne $credentials) {
+                    try {
+                        Close-TicketboxDatabaseGenerationCredentials $credentials
+                    }
+                    catch { $iterationCleanup += $_ }
+                }
+                if ($null -ne $runtimeCredentials) {
+                    try {
+                        Close-TicketboxDatabaseGenerationRuntimeCredentials `
+                            $runtimeCredentials
+                    }
+                    catch { $iterationCleanup += $_ }
+                }
+                $httpBootstrapSecret = ""
+            }
+            Throw-TicketboxOperationFailure `
+                $iterationPrimary $iterationCleanup
             if ($null -ne $completed) { break }
         }
     }
     catch { $primary = $_ }
-    finally {
-        try {
-            if ($null -ne $maintenanceAuthority) {
-                Close-TicketboxDatabaseGenerationMaintenanceAuthority `
-                    -Authority $maintenanceAuthority `
-                    -Intent $intent `
-                    -HostAuthority $hostAuthority `
-                    -LifecycleLock $LifecycleLock
-            }
-        }
-        catch { $cleanup += $_ }
-        if ($null -ne $credentials) {
-            try { Close-TicketboxDatabaseGenerationCredentials $credentials }
-            catch { $cleanup += $_ }
-            $credentials = $null
-        }
-        if ($null -ne $runtimeCredentials) {
-            try {
-                Close-TicketboxDatabaseGenerationRuntimeCredentials `
-                    $runtimeCredentials
-            }
-            catch { $cleanup += $_ }
-            $runtimeCredentials = $null
-        }
-        $httpBootstrapSecret = ""
-    }
-    Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
+    Throw-TicketboxOperationFailure $primary $cleanup
     return $completed
+}
+
+function Restore-TicketboxInstalledDatabaseGenerationPredecessor {
+    param(
+        [Parameter(Mandatory = $true)][object]$PredecessorCurrentPayload,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $PredecessorCurrentPayload `
+        -ExpectedNames (Get-TicketboxDatabaseGenerationPayloadProperties "current") `
+        -Label "database generation predecessor CURRENT"
+    $targetSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $PredecessorCurrentPayload
+    )
+    $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
+    if ($null -eq $current) {
+        throw "database generation predecessor restoration lacks CURRENT."
+    }
+    if ([string]$current.PayloadSha256 -ceq $targetSha256) { return $current }
+    if (
+        [string]$current.Payload.expected_predecessor_sha256 -cne $targetSha256 -or
+        [string]$current.Payload.installation_id -cne
+            [string]$PredecessorCurrentPayload.installation_id -or
+        [string]$current.Payload.operation_id -ceq
+            [string]$PredecessorCurrentPayload.operation_id
+    ) {
+        throw "database generation predecessor restoration is not the exact immediate predecessor."
+    }
+    $transition = [pscustomobject][ordered]@{
+        schema = "ticketbox-database-generation-current-transition-v1"
+        mode = "restore_predecessor"
+        expected_current_sha256 = [string]$current.PayloadSha256
+        target_payload_sha256 = $targetSha256
+        target_payload = $PredecessorCurrentPayload
+    }
+    return Publish-TicketboxDatabaseGenerationCurrent $transition $LifecycleLock
 }

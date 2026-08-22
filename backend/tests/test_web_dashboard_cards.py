@@ -181,6 +181,8 @@ def test_web_dashboard_static_js_wires_category_donut(client: TestClient) -> Non
     assert "AbortController" in dashboard_js.text
     assert 'data-dashboard-state", "slow"' in dashboard_js.text
     assert "data-dashboard-retry" in dashboard_js.text
+    assert 'cards.backup_age_status === "future"' in dashboard_js.text
+    assert "备份发布时间晚于当前系统时间" in dashboard_js.text
 
     donut_js = client.get("/static/web/desktop/category-donut.js")
     assert donut_js.status_code == 200

@@ -67,8 +67,8 @@ BootstrapAdmin 初始化时生成的 admin scope token，用于后续管理操�
 - 不提供数据库下载、文件管理、命令执行、远程关机等危险接口。
 - API 只返回业务字段，不返回真实数据库路径。
 - CSV 导出只返回已确认账单业务数据，不提供任意文件下载或目录浏览。
-- Windows 备份脚本使用 `pg_dump -Fc` 把 PostgreSQL 库导出成 `<DATA_ROOT>\backups\ticketbox-*.dump` 归档（源码默认 `backend\`；正式服务经 machine-owned runtime junction 访问物理 `<DataRoot>\app`），清理旧备份前会校验目标仍在备份目录内。
-- `pg_restore` 手工恢复只用于源码/测试 scratch 库；正式 Windows 恢复入口尚未出货，不能冒充安装器生命周期已完成。
+- Windows complete-dataset owner 在 writer barrier 下原子发布 manifest、PostgreSQL custom archive 和数据库实际引用的 originals；任何部分失败都不能形成可选 generation。
+- 正式恢复只接受桌面管理器传入的明确 generation，经隔离候选和唯一 Generation CURRENT publisher 完成；手工 `pg_restore` 只用于源码/测试 scratch，不能冒充 Windows 生命周期证据。
 
 ## 维护接口
 

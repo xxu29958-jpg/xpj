@@ -16,7 +16,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 def _resolve_data_root(backend_root: Path) -> Path:
     """Writable-data root for files the running backend *creates* — settings
-    ``.env`` (Owner Console) and PostgreSQL backups.
+    projection (Owner Console) and uploaded originals.
 
     Defaults to ``backend_root`` so a normal source/dev run (and the whole test
     suite) is unchanged. The formal Windows service contract sets
@@ -38,7 +38,15 @@ def _resolve_data_root(backend_root: Path) -> Path:
 
 DATA_ROOT = _resolve_data_root(BACKEND_ROOT)
 load_dotenv(DATA_ROOT / ".env", encoding="utf-8-sig")
+RUNTIME_SETTINGS_PATH = DATA_ROOT / "runtime-settings" / "runtime-settings.json"
+_RUNTIME_SETTINGS_SERVICE_OWNED = bool(os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip())
 _INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
+
+
+def runtime_settings_service_owned() -> bool:
+    """Return whether the installer granted the service-owned projection contract."""
+
+    return _RUNTIME_SETTINGS_SERVICE_OWNED
 
 
 def installation_identity(data_root: Path = DATA_ROOT) -> str:
@@ -46,6 +54,7 @@ def installation_identity(data_root: Path = DATA_ROOT) -> str:
     canonical = os.path.normcase(str(data_root.resolve())).encode("utf-8")
     digest = hashlib.sha256(_INSTALLATION_ID_NAMESPACE + canonical).hexdigest()
     return f"ticketbox-{digest[:32]}"
+
 
 # Hosts considered loopback for outbound calls from the backend (e.g. local
 # vision LLM). Anything else makes the URL effectively "off" — see
@@ -263,14 +272,12 @@ def _resolve_cloudflare_access_team_domain(raw: str | None) -> str:
 
 def reset_settings_cache() -> None:
     """Drop the cached ``Settings`` snapshot so the next ``get_settings()``
-    re-reads ``os.environ``.
+    re-reads ``os.environ`` and the closed runtime-settings projection.
 
-    Production never calls this — settings are immutable for the process
-    lifetime. Tests and dev tooling that mutate ``os.environ`` between
-    runs use it explicitly. This is the *only* documented escape hatch
-    out of the lru_cache; callers that need a per-request settings view
-    should refactor to dependency injection instead of widening this
-    contract.
+    The Owner Console calls this only after atomically publishing that bounded
+    projection. Tests and dev tooling also use it after changing their inputs.
+    Callers needing unrelated per-request settings should use dependency
+    injection instead of widening this contract.
     """
     get_settings.cache_clear()
 
@@ -288,10 +295,11 @@ PLACEHOLDER_SECRETS = frozenset({PLACEHOLDER_UPLOAD_TOKEN, PLACEHOLDER_APP_TOKEN
 # is exactly the 2026-06-04 cut-over setup that left tables owned by ``postgres``
 # and bricked startup for ~4 days (see docs/runbook/POSTGRES_MIGRATION.md §3 and
 # the table-owner trap). Real deployments MUST set DATABASE_URL to the app role.
-DEFAULT_DATABASE_URL = (
-    "postgresql+psycopg://postgres@localhost:5432/ticketbox"
-    "?require_auth=scram-sha-256"
-)
+DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5432/ticketbox?require_auth=scram-sha-256"
+
+
+class InstalledRuntimeSettingsError(RuntimeError):
+    """The installed backend lacks its mandatory service-owned settings projection."""
 
 
 def database_url_is_default_fallback() -> bool:
@@ -306,6 +314,14 @@ def database_url_is_default_fallback() -> bool:
 
 @lru_cache
 def get_settings() -> Settings:
+    from app.services.runtime_settings_store import read_runtime_settings
+
+    runtime_settings = read_runtime_settings(
+        RUNTIME_SETTINGS_PATH,
+        service_owned=runtime_settings_service_owned(),
+    )
+    if runtime_settings_service_owned() and runtime_settings is None:
+        raise InstalledRuntimeSettingsError("installed runtime settings projection is missing")
     upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
     if not upload_dir.is_absolute():
         upload_dir = DATA_ROOT / upload_dir
@@ -400,7 +416,9 @@ def get_settings() -> Settings:
             "development",
             OWNER_RECOVERY_CHANNELS,
         ),
-        public_base_url=_resolve_public_base_url(os.getenv("PUBLIC_BASE_URL")),
+        public_base_url=_resolve_public_base_url(
+            runtime_settings.public_base_url if runtime_settings is not None else os.getenv("PUBLIC_BASE_URL")
+        ),
         cloudflare_access_required=_bool_env("CLOUDFLARE_ACCESS_REQUIRED", False),
         cloudflare_access_team_domain=_resolve_cloudflare_access_team_domain(
             os.getenv("CLOUDFLARE_ACCESS_TEAM_DOMAIN")
@@ -418,12 +436,8 @@ def get_settings() -> Settings:
         csv_import_max_bytes=int(os.getenv("CSV_IMPORT_MAX_BYTES", str(8 * 1024 * 1024))),
         csv_import_max_lines=int(os.getenv("CSV_IMPORT_MAX_LINES", "25000")),
         csv_import_max_cell_bytes=int(os.getenv("CSV_IMPORT_MAX_CELL_BYTES", "4096")),
-        csv_import_apply_lease_minutes=max(
-            1, int(os.getenv("CSV_IMPORT_APPLY_LEASE_MINUTES", "5"))
-        ),
-        csv_import_row_apply_lease_minutes=max(
-            1, int(os.getenv("CSV_IMPORT_ROW_APPLY_LEASE_MINUTES", "2"))
-        ),
+        csv_import_apply_lease_minutes=max(1, int(os.getenv("CSV_IMPORT_APPLY_LEASE_MINUTES", "5"))),
+        csv_import_row_apply_lease_minutes=max(1, int(os.getenv("CSV_IMPORT_ROW_APPLY_LEASE_MINUTES", "2"))),
         app_token_ttl_days=int(os.getenv("APP_TOKEN_TTL_DAYS", "90")),
         app_token_refresh_window_days=int(os.getenv("APP_TOKEN_REFRESH_WINDOW_DAYS", "14")),
         app_token_rotation_grace_seconds=max(
@@ -435,26 +449,20 @@ def get_settings() -> Settings:
             int(os.getenv("DEVICE_CLEANUP_RETENTION_DAYS", "180")),
         ),
         device_cleanup_auto_enabled=_bool_env("DEVICE_CLEANUP_AUTO_ENABLED", False),
-        device_cleanup_daily_at=os.getenv(
-            "DEVICE_CLEANUP_DAILY_AT", "04:10"
-        ).strip() or "04:10",
-        device_cleanup_timezone=os.getenv(
-            "DEVICE_CLEANUP_TIMEZONE", "Asia/Shanghai"
-        ).strip() or "Asia/Shanghai",
+        device_cleanup_daily_at=os.getenv("DEVICE_CLEANUP_DAILY_AT", "04:10").strip() or "04:10",
+        device_cleanup_timezone=os.getenv("DEVICE_CLEANUP_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
         duplicate_phash_scan_limit=max(
             1,
             int(os.getenv("DUPLICATE_PHASH_SCAN_LIMIT", "500")),
         ),
-        budget_advisor_owner_confirmed=_bool_env("BUDGET_ADVISOR_OWNER_CONFIRMED", False),
-        learning_cleanup_auto_enabled=_bool_env(
-            "LEARNING_CLEANUP_AUTO_ENABLED", False
+        budget_advisor_owner_confirmed=(
+            runtime_settings.budget_advisor_owner_confirmed
+            if runtime_settings is not None
+            else _bool_env("BUDGET_ADVISOR_OWNER_CONFIRMED", False)
         ),
-        learning_cleanup_daily_at=os.getenv(
-            "LEARNING_CLEANUP_DAILY_AT", "03:30"
-        ).strip() or "03:30",
-        learning_cleanup_timezone=os.getenv(
-            "LEARNING_CLEANUP_TIMEZONE", "Asia/Shanghai"
-        ).strip() or "Asia/Shanghai",
+        learning_cleanup_auto_enabled=_bool_env("LEARNING_CLEANUP_AUTO_ENABLED", False),
+        learning_cleanup_daily_at=os.getenv("LEARNING_CLEANUP_DAILY_AT", "03:30").strip() or "03:30",
+        learning_cleanup_timezone=os.getenv("LEARNING_CLEANUP_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
         fx_home_currency_code=os.getenv("FX_HOME_CURRENCY_CODE", DEFAULT_HOME_CURRENCY_CODE).strip().upper()
         or DEFAULT_HOME_CURRENCY_CODE,
         fx_supported_currency_codes=os.getenv(

@@ -5,14 +5,17 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
         [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
         [Parameter(Mandatory = $true)][string]$ExpectedCurrentSha256
     )
-    $recoveryEvidencePath = Join-Path `
-        $PSScriptRoot `
+    foreach ($dependencyName in @(
+        "windows_database_generation_source_binding.ps1",
         "windows_database_generation_recovery_evidence.ps1"
-    if ((Get-TicketboxPathEntryKindNoFollow $recoveryEvidencePath) -cne "File") {
-        throw "database generation commit verifier dependency 不是可信普通文件：$recoveryEvidencePath"
+    )) {
+        $dependencyPath = Join-Path $PSScriptRoot $dependencyName
+        if ((Get-TicketboxPathEntryKindNoFollow $dependencyPath) -cne "File") {
+            throw "database generation commit verifier dependency 不是可信普通文件：$dependencyPath"
+        }
+        Assert-NoTicketboxAncestorReparsePoints $dependencyPath
+        . $dependencyPath
     }
-    Assert-NoTicketboxAncestorReparsePoints $recoveryEvidencePath
-    . $recoveryEvidencePath
 
     $operationId = ([guid]$ExpectedOperationId).ToString("D")
     Assert-TicketboxDatabaseGenerationLowerSha256 $ExpectedCurrentSha256 "commit CURRENT"
@@ -20,10 +23,10 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
         Get-TicketboxInstallerStateDirectory
     )
     $intent = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
-    $sourceCreateAttempt = Read-TicketboxDatabaseGenerationOperationArtifact `
-        $stateRoot $operationId "source-create-attempt"
     $source = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "source-binding"
+    $source = Assert-TicketboxDatabaseGenerationSourceBindingChain `
+        -StateRoot $stateRoot -Binding $source -Intent $intent
     $target = Read-TicketboxDatabaseGenerationOperationArtifact `
         $stateRoot $operationId "target-authorization"
     $recoveryProof = Read-TicketboxDatabaseGenerationOperationArtifact `
@@ -79,10 +82,6 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
         [string]$terminalState.Payload.maintenance_service_transition_state -cne "absent" -or
         [string]$candidate.Payload.source_binding_sha256 -cne [string]$source.PayloadSha256 -or
         [string]$candidate.Payload.target_authorization_sha256 -cne [string]$target.PayloadSha256 -or
-        [string]$source.Payload.create_attempt_sha256 -cne
-            [string]$sourceCreateAttempt.PayloadSha256 -or
-        [string]$sourceCreateAttempt.Payload.intent_sha256 -cne
-            [string]$intent.PayloadSha256 -or
         [string]$source.Payload.intent_sha256 -cne [string]$intent.PayloadSha256 -or
         [string]$target.Payload.intent_sha256 -cne [string]$intent.PayloadSha256 -or
         [string]$target.Payload.source_binding_sha256 -cne [string]$source.PayloadSha256 -or

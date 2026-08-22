@@ -184,3 +184,34 @@ function Get-TicketboxBoundedDeadlineUtc {
     }
     return $bounded
 }
+
+function New-TicketboxProcessDeadlineBudget {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1000, 61200000)][int64]$TimeoutMilliseconds
+    )
+    return [pscustomobject]@{
+        TimeoutMilliseconds = $TimeoutMilliseconds
+        Stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    }
+}
+
+function Assert-TicketboxProcessDeadlinePhaseBudget {
+    param(
+        [Parameter(Mandatory = $true)][object]$Budget,
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1000, 57600000)][int64]$RequiredMilliseconds,
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1000, 3600000)][int64]$CleanupReserveMilliseconds,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    if ($null -eq $Budget.Stopwatch -or -not [bool]$Budget.Stopwatch.IsRunning) {
+        throw "$Label lacks an active whole-operation deadline."
+    }
+    $remaining = [int64]$Budget.TimeoutMilliseconds -
+        [int64]$Budget.Stopwatch.ElapsedMilliseconds
+    $requiredWithCleanup = $RequiredMilliseconds + $CleanupReserveMilliseconds
+    if ($requiredWithCleanup -lt $RequiredMilliseconds -or $remaining -lt $requiredWithCleanup) {
+        throw "$Label cannot start within the remaining whole-operation deadline."
+    }
+}

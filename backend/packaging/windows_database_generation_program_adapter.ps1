@@ -29,7 +29,7 @@ function Assert-TicketboxDatabaseGenerationProgramAdapterDependencies {
         "Invoke-TicketboxBoundedNativeProcess",
         "Open-TicketboxVerifiedDatabaseMaintenanceHelperLease",
         "Test-TicketboxPathEquals",
-        "Throw-TicketboxDatabaseGenerationOperationFailure"
+        "Throw-TicketboxOperationFailure"
     )) {
         if ($null -eq (Get-Command $commandName -ErrorAction SilentlyContinue)) {
             throw "database generation program adapter 缺少依赖：$commandName"

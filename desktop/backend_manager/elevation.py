@@ -12,7 +12,7 @@ import threading
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from backend_manager import windows_user_security
 from backend_manager.helper_channel import (
@@ -22,18 +22,21 @@ from backend_manager.helper_channel import (
     validate_exact_file_security,
 )
 from backend_manager.installation import WindowsReleaseConfig
-from backend_manager.runtime import RuntimeControlError
+from backend_manager.runtime import RestoreOutcome, RuntimeControlError
 
-ServiceAction = Literal["start", "stop", "restart"]
+if TYPE_CHECKING:
+    from backend_manager.dataset_inventory import BackupInventoryItem
+
+ServiceAction = Literal["start", "stop", "restart", "backup", "restore", "inventory"]
 
 _SEE_MASK_NOCLOSEPROCESS = 0x00000040
 _SW_HIDE = 0
 _WAIT_OBJECT_0 = 0
 _WAIT_TIMEOUT = 258
 _ERROR_CANCELLED = 1223
-_MAX_RESULT_BYTES = 4096
+_MAX_RESULT_BYTES = 16 * 1024
 _MAX_DIAGNOSTIC_CHARS = 800
-_RESULT_SCHEMA = "ticketbox-manager-helper-result-v1"
+_RESULT_SCHEMA = "ticketbox-manager-helper-result-v2"
 _FILE_ID_PATTERN = re.compile(r"[0-9a-f]+:[0-9a-f]+\Z")
 HELPER_EXIT_NOT_ELEVATED = 2
 HELPER_EXIT_CONFIG = 3
@@ -43,6 +46,7 @@ HELPER_EXIT_TRANSITION = 6
 HELPER_EXIT_ACCESS = 7
 HELPER_EXIT_OS = 8
 HELPER_EXIT_LIFECYCLE_BUSY = 9
+HELPER_EXIT_RESTORE_SUPERSEDED = 10
 
 _HELPER_FAILURE_MESSAGES = {
     HELPER_EXIT_NOT_ELEVATED: "管理员授权未生效，服务没有变化。",
@@ -53,6 +57,7 @@ _HELPER_FAILURE_MESSAGES = {
     HELPER_EXIT_ACCESS: "Windows 拒绝服务操作，请修复安装或服务权限后重试。",
     HELPER_EXIT_OS: "Windows 服务操作失败，请刷新状态并查看 Windows 服务事件。",
     HELPER_EXIT_LIFECYCLE_BUSY: "小票夹正在安装、升级或卸载，请等待完成后再操作服务。",
+    HELPER_EXIT_RESTORE_SUPERSEDED: "此前恢复已被后续数据 generation 取代，请重新确认后再发起恢复。",
 }
 
 
@@ -88,6 +93,7 @@ class HelperCommand:
 class HelperResult:
     exit_code: int
     diagnostic: str
+    payload: object
 
 
 @dataclass(frozen=True)
@@ -112,7 +118,7 @@ class HelperResultChannel:
             )
         except RuntimeControlError:
             return None
-        expected_keys = {"schema", "root", "nonce", "action", "file_identity", "exit_code", "diagnostic"}
+        expected_keys = {"schema", "root", "nonce", "action", "file_identity", "exit_code", "diagnostic", "payload"}
         if not isinstance(payload, dict) or set(payload) != expected_keys:
             return None
         if (
@@ -127,7 +133,7 @@ class HelperResultChannel:
         diagnostic = payload.get("diagnostic")
         if not isinstance(diagnostic, str) or not diagnostic or len(diagnostic) > _MAX_DIAGNOSTIC_CHARS:
             return None
-        return HelperResult(exit_code=process_exit_code, diagnostic=diagnostic)
+        return HelperResult(exit_code=process_exit_code, diagnostic=diagnostic, payload=payload["payload"])
 
 
 def is_process_elevated() -> bool:
@@ -167,9 +173,20 @@ def _read_channel_payload(
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise RuntimeControlError("管理员结果通道 JSON 无效。") from exc
-    expected = {"schema", "root", "nonce", "action", "state", "owner_sid", "file_identity"} if pending else {
-        "schema", "root", "nonce", "action", "file_identity", "exit_code", "diagnostic",
-    }
+    expected = (
+        {"schema", "root", "nonce", "action", "state", "owner_sid", "file_identity"}
+        if pending
+        else {
+            "schema",
+            "root",
+            "nonce",
+            "action",
+            "file_identity",
+            "exit_code",
+            "diagnostic",
+            "payload",
+        }
+    )
     if not isinstance(payload, dict) or set(payload) != expected:
         raise RuntimeControlError("管理员结果通道字段不符合精确契约。")
     if (
@@ -260,12 +277,9 @@ def write_helper_result(
     file_identity: str,
     exit_code: int,
     diagnostic: str,
+    payload: object,
 ) -> None:
-    public_fallback = (
-        "操作已完成。"
-        if exit_code == 0
-        else _HELPER_FAILURE_MESSAGES.get(exit_code, "操作失败。")
-    )
+    public_fallback = "操作已完成。" if exit_code == 0 else _HELPER_FAILURE_MESSAGES.get(exit_code, "操作失败。")
     payload = {
         "schema": _RESULT_SCHEMA,
         "root": str(Path(os.path.abspath(root))),
@@ -274,6 +288,7 @@ def write_helper_result(
         "file_identity": file_identity,
         "exit_code": exit_code,
         "diagnostic": sanitize_helper_diagnostic(diagnostic, public_fallback),
+        "payload": payload,
     }
     encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
     if len(encoded.encode("utf-8")) > _MAX_RESULT_BYTES:
@@ -316,18 +331,16 @@ def write_helper_result(
         raise RuntimeControlError("无法写入管理员结果通道。") from exc
 
 
-def build_helper_command(
+def _build_helper_command(
     action: ServiceAction,
     channel: HelperResultChannel,
     wait_timeout_ms: int,
     *,
     helper_executable: Path,
+    request_arguments: tuple[str, ...],
 ) -> HelperCommand:
     expected_parent = Path(os.path.abspath(helper_executable.parent))
-    if (
-        helper_executable.name.casefold() != "ticketbox-manager.exe"
-        or expected_parent.name.casefold() != "manager"
-    ):
+    if helper_executable.name.casefold() != "ticketbox-manager.exe" or expected_parent.name.casefold() != "manager":
         raise RuntimeControlError("正式服务操作只能使用安装目录中的 ticketbox-manager.exe。")
     executable = windows_user_security.require_local_fixed_regular_file(
         helper_executable,
@@ -338,6 +351,7 @@ def build_helper_command(
     helper_args = (
         "--elevated-service-action",
         action,
+        *request_arguments,
         "--helper-result-path",
         str(channel.path),
         "--helper-result-root",
@@ -354,6 +368,51 @@ def build_helper_command(
         arguments=helper_args,
         working_dir=executable.parent,
         wait_timeout_ms=wait_timeout_ms,
+    )
+
+
+def build_helper_command(
+    action: ServiceAction,
+    channel: HelperResultChannel,
+    wait_timeout_ms: int,
+    *,
+    helper_executable: Path,
+) -> HelperCommand:
+    if action == "restore":
+        raise RuntimeControlError("restore helper 缺少明确 backup generation。")
+    return _build_helper_command(
+        action,
+        channel,
+        wait_timeout_ms,
+        helper_executable=helper_executable,
+        request_arguments=(),
+    )
+
+
+def build_restore_helper_command(
+    backup_generation: str,
+    restore_attempt_id: str,
+    channel: HelperResultChannel,
+    wait_timeout_ms: int,
+    *,
+    helper_executable: Path,
+) -> HelperCommand:
+    from backend_manager.dataset_restore import canonical_backup_generation
+    from backend_manager.restore_attempt import canonical_restore_attempt_id
+
+    generation = canonical_backup_generation(backup_generation)
+    attempt_id = canonical_restore_attempt_id(restore_attempt_id)
+    return _build_helper_command(
+        "restore",
+        channel,
+        wait_timeout_ms,
+        helper_executable=helper_executable,
+        request_arguments=(
+            "--backup-generation",
+            generation,
+            "--restore-attempt-id",
+            attempt_id,
+        ),
     )
 
 
@@ -449,3 +508,56 @@ class ElevatedServiceActionRunner:
                 f"管理员服务操作失败（exit={exit_code}），请刷新服务状态后重试。",
             )
             raise RuntimeControlError(message)
+
+    def restore(self, backup_generation: str) -> RestoreOutcome:
+        from backend_manager.restore_attempt import RestoreAttemptStore
+        from backend_manager.windows_user_security import local_app_data
+
+        action: ServiceAction = "restore"
+        attempt_store = RestoreAttemptStore(local_app_data() / "Ticketbox" / "restore-attempts")
+        restore_attempt_id = attempt_store.get_or_create(backup_generation)
+        with self._channel_factory(action) as channel:
+            command = build_restore_helper_command(
+                backup_generation,
+                restore_attempt_id,
+                channel,
+                self._release.helper_parent_timeout_ms(action),
+                helper_executable=self._helper_executable,
+            )
+            exit_code = self._launcher(command)
+            result = channel.read(exit_code)
+        if result is None:
+            if exit_code in _HELPER_FAILURE_MESSAGES:
+                raise RuntimeControlError(_HELPER_FAILURE_MESSAGES[exit_code])
+            raise RuntimeControlError("管理员服务助手未返回可信结果；请刷新服务状态后重试。")
+        if exit_code == HELPER_EXIT_RESTORE_SUPERSEDED:
+            retirement = attempt_store.retire_confirmed(backup_generation, restore_attempt_id)
+            message = result.diagnostic or _HELPER_FAILURE_MESSAGES[HELPER_EXIT_RESTORE_SUPERSEDED]
+            if retirement == "cleanup_pending":
+                message += " 本地恢复身份清理待下次维护重试。"
+            raise RuntimeControlError(message)
+        if exit_code != 0:
+            message = result.diagnostic or _HELPER_FAILURE_MESSAGES.get(
+                exit_code,
+                f"管理员服务操作失败（exit={exit_code}），请刷新服务状态后重试。",
+            )
+            raise RuntimeControlError(message)
+        retirement = attempt_store.retire_confirmed(backup_generation, restore_attempt_id)
+        return RestoreOutcome(cleanup_pending=retirement == "cleanup_pending")
+
+    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
+        from backend_manager.dataset_inventory import decode_public_inventory
+
+        action: ServiceAction = "inventory"
+        with self._channel_factory(action) as channel:
+            command = build_helper_command(
+                action,
+                channel,
+                self._release.helper_parent_timeout_ms(action),
+                helper_executable=self._helper_executable,
+            )
+            exit_code = self._launcher(command)
+            result = channel.read(exit_code)
+        if result is None or exit_code != 0:
+            raise RuntimeControlError("无法读取可信的完整备份列表。")
+        return decode_public_inventory(result.payload)

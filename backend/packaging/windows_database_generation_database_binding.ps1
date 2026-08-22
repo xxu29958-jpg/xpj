@@ -56,15 +56,18 @@ function Get-TicketboxDatabaseGenerationLiveIdentity {
 SELECT control.system_identifier::text || E'\t' ||
        database.oid::text || E'\t' ||
        current_database() || E'\t' ||
-       (SELECT value FROM public.app_meta WHERE key = 'server_id') || E'\t' ||
-       (SELECT value FROM public.app_meta WHERE key = 'data_generation')
+       (SELECT dataset_id FROM public.dataset_authority WHERE singleton_id = 1) || E'\t' ||
+       (SELECT restore_epoch::text FROM public.dataset_authority WHERE singleton_id = 1) || E'\t' ||
+       (SELECT schema_revision FROM public.dataset_authority WHERE singleton_id = 1) || E'\t' ||
+       (SELECT schema_min_compatible FROM public.dataset_authority WHERE singleton_id = 1) || E'\t' ||
+       (SELECT semantic_revision FROM public.dataset_authority WHERE singleton_id = 1)
 FROM pg_catalog.pg_database AS database
 CROSS JOIN pg_catalog.pg_control_system() AS control
 WHERE database.datname = current_database();
 "@
     $fields = ConvertFrom-TicketboxPostgresqlHostEvidenceRow `
         -Output $output `
-        -FieldCount 5 `
+        -FieldCount 8 `
         -Label "database generation live identity"
     if ($fields[0] -cnotmatch '^[1-9][0-9]*$') {
         throw "database generation live cluster identity 无效。"
@@ -79,22 +82,34 @@ WHERE database.datname = current_database();
     if ([string]$fields[2] -cne $($databasePolicy.DatabaseName)) {
         throw "database generation live database name 漂移。"
     }
-    foreach ($index in 3, 4) {
-        $parsed = [guid]::Empty
-        if (
-            -not [guid]::TryParseExact([string]$fields[$index], "D", [ref]$parsed) -or
-            $parsed -eq [guid]::Empty -or
-            $parsed.ToString("D") -cne [string]$fields[$index]
-        ) {
-            throw "database generation live logical identity 无效。"
-        }
+    $datasetId = [guid]::Empty
+    if (
+        -not [guid]::TryParseExact([string]$fields[3], "D", [ref]$datasetId) -or
+        $datasetId -eq [guid]::Empty -or
+        $datasetId.ToString("D") -cne [string]$fields[3]
+    ) {
+        throw "database generation live dataset identity 无效。"
+    }
+    $restoreEpoch = 0L
+    if (-not [long]::TryParse([string]$fields[4], [ref]$restoreEpoch) -or $restoreEpoch -lt 0) {
+        throw "database generation live restore epoch 无效。"
+    }
+    if (
+        [string]$fields[5] -cnotmatch '^[0-9]{8}_[0-9]{4}$' -or
+        [string]::IsNullOrWhiteSpace([string]$fields[6]) -or
+        [string]$fields[7] -cne "ticketbox-dataset-semantics-v1"
+    ) {
+        throw "database generation live dataset contract 无效。"
     }
     return [pscustomobject][ordered]@{
         ClusterSystemIdentifier = [string]$fields[0]
         DatabaseOid = [uint32]$databaseOid
         DatabaseName = [string]$fields[2]
-        LogicalServerId = [string]$fields[3]
-        LogicalDataGeneration = [string]$fields[4]
+        DatasetId = [string]$fields[3]
+        RestoreEpoch = [int64]$restoreEpoch
+        SchemaRevision = [string]$fields[5]
+        SchemaMinCompatible = [string]$fields[6]
+        SemanticRevision = [string]$fields[7]
     }
 }
 
@@ -134,6 +149,12 @@ function Set-TicketboxDatabaseGenerationDatabaseBinding {
     ) {
         throw "database generation live identity 与 SourceBinding 漂移。"
     }
+    if (
+        [string]$identity.SchemaRevision -cne
+            [string]$Intent.Payload.target_revision
+    ) {
+        throw "database generation live schema revision 未达到 intent target。"
+    }
     $payload = [ordered]@{
         schema = "ticketbox-database-generation-database-binding-v1"
         operation_id = [string]$Intent.Payload.operation_id
@@ -146,8 +167,11 @@ function Set-TicketboxDatabaseGenerationDatabaseBinding {
         database_oid = [uint32]$identity.DatabaseOid
         database_name = [string]$identity.DatabaseName
         runtime_role = [string]$($databasePolicy.RuntimeRole)
-        logical_server_id = [string]$identity.LogicalServerId
-        logical_data_generation = [string]$identity.LogicalDataGeneration
+        dataset_id = [string]$identity.DatasetId
+        restore_epoch = [int64]$identity.RestoreEpoch
+        schema_revision = [string]$identity.SchemaRevision
+        schema_min_compatible = [string]$identity.SchemaMinCompatible
+        semantic_revision = [string]$identity.SemanticRevision
         execution_authority_sha256 = $ExecutionAuthoritySha256
         role_authority_sha256 = $RoleAuthoritySha256
         runtime_acl_sha256 = $RuntimeAclSha256
@@ -177,5 +201,8 @@ COMMIT;
     if ([string]$observed -cne $bindingJson) {
         throw "database generation binding 未通过同事务复读。"
     }
-    return $bindingSha256
+    return [pscustomobject][ordered]@{
+        Payload = [pscustomobject]$payload
+        PayloadSha256 = $bindingSha256
+    }
 }

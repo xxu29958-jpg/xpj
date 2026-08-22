@@ -2,10 +2,119 @@
 
 # Durable intent policy and the IO-free next-action reducer.  This module is
 # safe to load during Inno's preinstall bootstrap; execution adapters are not.
+function Assert-TicketboxDatabaseGenerationPreinstallEligibility {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock,
+        [Parameter(Mandatory = $true)][string]$PgServiceName,
+        [Parameter(Mandatory = $true)][string]$BackendServiceName,
+        [Parameter(Mandatory = $true)][bool]$HasPersistedInstalledReleaseConfig,
+        [Parameter(Mandatory = $true)][object]$LifecycleEvidence,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$ExistingPathFacts
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        $LifecycleEvidence `
+        @("current_sha256", "install_completed", "operation_id", "receipt_present", "schema") `
+        "database generation lifecycle evidence"
+    if (
+        [string]$LifecycleEvidence.schema -cne
+            "ticketbox-database-generation-lifecycle-evidence-v1" -or
+        $LifecycleEvidence.receipt_present -isnot [bool] -or
+        $LifecycleEvidence.install_completed -isnot [bool] -or
+        (
+            -not [bool]$LifecycleEvidence.receipt_present -and
+            (
+                [bool]$LifecycleEvidence.install_completed -or
+                -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.operation_id) -or
+                -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.current_sha256)
+            )
+        ) -or
+        (
+            [bool]$LifecycleEvidence.receipt_present -and
+            (
+                ([guid][string]$LifecycleEvidence.operation_id).ToString("D") -cne
+                    [string]$LifecycleEvidence.operation_id -or
+                (
+                    -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.current_sha256) -and
+                    [string]$LifecycleEvidence.current_sha256 -cnotmatch '^[0-9a-f]{64}$'
+                )
+            )
+        )
+    ) {
+        throw "database generation lifecycle evidence 不是闭合合同。"
+    }
+    if ([bool]$LifecycleEvidence.install_completed) {
+        throw "尚未实现 repair/reinstall；completed install 不得进入 fresh-only generation。"
+    }
+    $activeIntent = Read-TicketboxDatabaseGenerationActiveIntent `
+        $StateRoot -AllowAbsent
+    $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
+    if ($null -eq $activeIntent) {
+        $existingFacts = @()
+        if ($null -ne $current) { $existingFacts += "database generation CURRENT" }
+        if (Test-TicketboxServiceExists $PgServiceName) {
+            $existingFacts += "PostgreSQL service"
+        }
+        if (Test-TicketboxServiceExists $BackendServiceName) {
+            $existingFacts += "backend service"
+        }
+        if ($HasPersistedInstalledReleaseConfig) {
+            $existingFacts += "installed release config"
+        }
+        foreach ($fact in $ExistingPathFacts) {
+            Assert-TicketboxDatabaseGenerationExactProperties `
+                $fact @("Label", "Path") "preinstall path fact"
+            if ((Get-TicketboxPathEntryKindNoFollow ([string]$fact.Path)) -cne "Missing") {
+                $existingFacts += [string]$fact.Label
+            }
+        }
+        if ($existingFacts.Count -gt 0) {
+            throw (
+                "尚未实现既有安装 successor；首笔 generation intent 前已发现：" +
+                ($existingFacts -join ", ")
+            )
+        }
+        return
+    }
+    if (
+        [bool]$LifecycleEvidence.receipt_present -and
+        [string]$LifecycleEvidence.operation_id -cne
+            [string]$activeIntent.Payload.operation_id
+    ) {
+        throw "lifecycle receipt 不属于现有 active intent。"
+    }
+    if ($null -ne $current) {
+        if (
+            [string]$current.Payload.operation_id -cne
+                [string]$activeIntent.Payload.operation_id -or
+            [string]$current.Payload.intent_sha256 -cne
+                [string]$activeIntent.PayloadSha256
+        ) {
+            throw "database generation CURRENT 不属于现有 active intent。"
+        }
+        if (-not [bool]$LifecycleEvidence.receipt_present) {
+            throw "CURRENT 缺少未完成 lifecycle receipt，拒绝猜测恢复。"
+        }
+        if (
+            -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.current_sha256) -and
+            [string]$LifecycleEvidence.current_sha256 -cne
+                [string]$current.PayloadSha256
+        ) {
+            throw "lifecycle receipt 绑定了其他 database generation CURRENT。"
+        }
+    }
+    elseif (-not [string]::IsNullOrEmpty([string]$LifecycleEvidence.current_sha256)) {
+        throw "lifecycle receipt 声明了缺失的 database generation CURRENT。"
+    }
+}
+
 function New-TicketboxDatabaseGenerationIntent {
     param(
         [Parameter(Mandatory = $true)][string]$InstallerState,
         [Parameter(Mandatory = $true)][object]$LifecycleLock,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ExpectedPredecessorSha256,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$SourceRequestSha256,
         [Parameter(Mandatory = $true)][string]$TargetBackendVersion,
         [Parameter(Mandatory = $true)][int64]$MaintenanceHelperSize,
         [Parameter(Mandatory = $true)][string]$MaintenanceHelperSha256,
@@ -36,23 +145,71 @@ function New-TicketboxDatabaseGenerationIntent {
     $stateRoot = Initialize-TicketboxDatabaseGenerationStateRoot $InstallerState $LifecycleLock
     $path = Join-Path $stateRoot $script:TicketboxDatabaseGenerationActiveIntentName
     $existing = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot -AllowAbsent
-    $operationId = if ($null -eq $existing) {
-        [guid]::NewGuid().ToString("D")
+    $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
+    $successor = -not [string]::IsNullOrEmpty($ExpectedPredecessorSha256)
+    $hasSourceRequest = -not [string]::IsNullOrEmpty($SourceRequestSha256)
+    if ($successor -ne $hasSourceRequest) {
+        throw "database generation predecessor 与 source request 必须同时存在。"
+    }
+    if ($hasSourceRequest) {
+        Assert-TicketboxDatabaseGenerationLowerSha256 `
+            $SourceRequestSha256 "database generation source request"
+    }
+    if ($successor) {
+        Assert-TicketboxDatabaseGenerationLowerSha256 `
+            $ExpectedPredecessorSha256 "database generation predecessor"
+        if (
+            $null -eq $current -or
+            [string]$current.PayloadSha256 -cne $ExpectedPredecessorSha256
+        ) {
+            throw "database generation successor predecessor CURRENT 漂移。"
+        }
+    }
+    elseif ($null -ne $current) {
+        throw "fresh database generation 拒绝既有 CURRENT。"
+    }
+
+    if (
+        $successor -and
+        $null -ne $existing -and
+        [string]$existing.Payload.expected_predecessor_sha256 -ceq
+            $ExpectedPredecessorSha256
+    ) {
+        $operationId = ([guid][string]$existing.Payload.operation_id).ToString("D")
+        $installationId = ([guid][string]$existing.Payload.installation_id).ToString("D")
+    }
+    elseif ($successor) {
+        if (
+            $null -eq $existing -or
+            [string]$existing.PayloadSha256 -cne [string]$current.Payload.intent_sha256 -or
+            [string]$existing.Payload.operation_id -cne
+                [string]$current.Payload.operation_id
+        ) {
+            throw "database generation successor active intent 不等于 predecessor authority。"
+        }
+        $operationId = [guid]::NewGuid().ToString("D")
+        $installationId = ([guid][string]$current.Payload.installation_id).ToString("D")
+    }
+    elseif ($null -ne $existing) {
+        if (-not [string]::IsNullOrEmpty(
+            [string]$existing.Payload.expected_predecessor_sha256
+        )) {
+            throw "fresh database generation active intent 已属于 successor。"
+        }
+        $operationId = ([guid][string]$existing.Payload.operation_id).ToString("D")
+        $installationId = ([guid][string]$existing.Payload.installation_id).ToString("D")
     }
     else {
-        ([guid][string]$existing.Payload.operation_id).ToString("D")
+        $operationId = [guid]::NewGuid().ToString("D")
+        $installationId = [guid]::NewGuid().ToString("D")
     }
-    $installationId = if ($null -eq $existing) {
-        [guid]::NewGuid().ToString("D")
-    }
-    else {
-        ([guid][string]$existing.Payload.installation_id).ToString("D")
-    }
+
     $expected = [ordered]@{
         schema = "ticketbox-database-generation-intent-v2"
         operation_id = $operationId
         installation_id = $installationId
-        expected_predecessor_sha256 = ""
+        expected_predecessor_sha256 = $ExpectedPredecessorSha256
+        source_request_sha256 = $SourceRequestSha256
         target_backend_version = $TargetBackendVersion
         database_maintenance_helper_relative_path =
             $script:TicketboxDatabaseMaintenanceHelperRelativePath
@@ -64,30 +221,32 @@ function New-TicketboxDatabaseGenerationIntent {
         host_contract_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
             ConvertTo-TicketboxDatabaseGenerationCanonicalJson $HostContract
         )
-        projection_contract_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
-            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $ProjectionContract
-        )
+        projection_contract_sha256 =
+            Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+                $ProjectionContract
         target_revision = [string]$ProgramContract.TargetRevision
     }
     if ($null -ne $existing) {
-        Assert-TicketboxDatabaseGenerationExactProperties `
-            $existing.Payload `
-            @($expected.Keys) `
-            "database generation intent"
+        $same = (
+            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $existing.Payload
+        ) -ceq (
+            ConvertTo-TicketboxDatabaseGenerationCanonicalJson $expected
+        )
+        if ($same) {
+            return [pscustomobject]@{ StateRoot = $stateRoot; Artifact = $existing }
+        }
         if (
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $existing.Payload) -cne
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $expected)
+            -not $successor -or
+            [string]$existing.PayloadSha256 -cne [string]$current.Payload.intent_sha256
         ) {
             throw "existing database generation intent 与当前 immutable request 漂移。"
         }
-        return [pscustomobject]@{ StateRoot = $stateRoot; Artifact = $existing }
+        $intent = Replace-TicketboxDatabaseGenerationActiveIntent `
+            $stateRoot ([string]$existing.PayloadSha256) $expected $LifecycleLock
+        return [pscustomobject]@{ StateRoot = $stateRoot; Artifact = $intent }
     }
-    $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
-    if ($null -ne $current) {
-        throw "尚未实现跨 generation successor；既有 current 必须进入显式升级裁决。"
-    }
-    $intent = Write-TicketboxDatabaseGenerationEnvelope `
-        $path "intent" $expected $LifecycleLock
+    $intent = New-TicketboxDatabaseGenerationActiveIntent `
+        $stateRoot $expected $LifecycleLock
     return [pscustomobject]@{ StateRoot = $stateRoot; Artifact = $intent }
 }
 
@@ -126,6 +285,8 @@ function Start-TicketboxDatabaseGenerationIntent {
     return New-TicketboxDatabaseGenerationIntent `
         -InstallerState $InstallerState `
         -LifecycleLock $LifecycleLock `
+        -ExpectedPredecessorSha256 "" `
+        -SourceRequestSha256 "" `
         -TargetBackendVersion $TargetBackendVersion `
         -MaintenanceHelperSize $MaintenanceHelperSize `
         -MaintenanceHelperSha256 $MaintenanceHelperSha256 `
@@ -150,9 +311,8 @@ function Read-TicketboxDatabaseGenerationIntentContext {
                 ConvertTo-TicketboxDatabaseGenerationCanonicalJson $HostContract
             )) -or
         [string]$intent.Payload.projection_contract_sha256 -cne
-            (Get-TicketboxDatabaseGenerationTextSha256 (
-                ConvertTo-TicketboxDatabaseGenerationCanonicalJson $ProjectionContract
-            ))
+            (Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
+                $ProjectionContract)
     ) {
         throw "database generation intent 与 installed host/projection 漂移。"
     }
@@ -161,40 +321,126 @@ function Read-TicketboxDatabaseGenerationIntentContext {
 
 function Resolve-TicketboxDatabaseGenerationNextAction {
     param(
-        [AllowNull()][object]$Credentials,
-        [AllowNull()][object]$SourceBinding,
-        [AllowNull()][object]$TargetAuthorization,
-        [AllowNull()][object]$Candidate,
-        [AllowNull()][object]$Current
+        [Parameter(Mandatory = $true)][object]$Observation
     )
+    $expectedNames = @(
+        "bootstrap_retirement_state", "candidate_present",
+        "credentials_present", "current_present",
+        "runtime_credentials_present", "runtime_projection_present",
+        "service_transition_present", "source_binding_present",
+        "target_authorization_present", "terminal_state_present",
+        "transient_authority_present"
+    )
+    $actualNames = @($Observation.PSObject.Properties.Name | Sort-Object -CaseSensitive)
+    $sortedExpected = @($expectedNames | Sort-Object -CaseSensitive)
+    if (($actualNames -join "`n") -cne ($sortedExpected -join "`n")) {
+        throw "database generation observation 不是 closed contract。"
+    }
+    foreach ($name in @(
+        "candidate_present", "credentials_present", "current_present",
+        "runtime_credentials_present", "runtime_projection_present",
+        "service_transition_present", "source_binding_present",
+        "target_authorization_present", "terminal_state_present",
+        "transient_authority_present"
+    )) {
+        if ($Observation.$name -isnot [bool]) {
+            throw "database generation observation boolean state 无效。"
+        }
+    }
     if (
-        $null -ne $Candidate -and
-        ($null -eq $TargetAuthorization -or $null -eq $SourceBinding)
+        [string]$Observation.bootstrap_retirement_state -cnotin @(
+            "not_applicable", "active", "retired", "unknown"
+        )
+    ) {
+        throw "database generation bootstrap retirement state 无效。"
+    }
+    if (
+        $Observation.candidate_present -and
+        (
+            -not $Observation.target_authorization_present -or
+            -not $Observation.source_binding_present
+        )
     ) {
         throw "database generation candidate 缺少前置 authority。"
     }
-    if ($null -ne $TargetAuthorization -and $null -eq $SourceBinding) {
+    if (
+        $Observation.target_authorization_present -and
+        -not $Observation.source_binding_present
+    ) {
         throw "database generation target authorization 缺少 SourceBinding。"
     }
     if (
-        $null -ne $SourceBinding -and
-        $null -eq $Credentials -and
-        $null -eq $Candidate -and
-        $null -eq $Current
+        $Observation.source_binding_present -and
+        -not $Observation.credentials_present -and
+        -not $Observation.candidate_present -and
+        -not $Observation.current_present
     ) {
         throw "database generation CURRENT 前 credential 不得缺失。"
     }
-    if ($null -ne $Current) {
-        if ($null -eq $Candidate -or $null -eq $TargetAuthorization -or $null -eq $SourceBinding) {
+    if (
+        $Observation.runtime_credentials_present -and
+            -not $Observation.candidate_present -or
+        $Observation.runtime_projection_present -and (
+            -not $Observation.runtime_credentials_present -or
+            $Observation.bootstrap_retirement_state -cne "retired"
+        ) -or
+        $Observation.terminal_state_present -and (
+            -not $Observation.runtime_projection_present -or
+            $Observation.transient_authority_present
+        )
+    ) {
+        throw "database generation terminal authority chain 不完整。"
+    }
+    if ($Observation.current_present) {
+        if (
+            -not $Observation.candidate_present -or
+            -not $Observation.target_authorization_present -or
+            -not $Observation.source_binding_present -or
+            -not $Observation.runtime_credentials_present -or
+            $Observation.bootstrap_retirement_state -cne "retired" -or
+            -not $Observation.runtime_projection_present -or
+            -not $Observation.terminal_state_present -or
+            $Observation.transient_authority_present -or
+            $Observation.service_transition_present
+        ) {
             throw "database generation CURRENT 缺少 immutable authority chain。"
         }
         return "read_current"
     }
-    if ($null -eq $Credentials) { return "ensure_credentials" }
-    if ($null -eq $SourceBinding) { return "bind_source" }
-    if ($null -eq $TargetAuthorization) { return "authorize_target" }
-    if ($null -eq $Candidate) { return "seal_candidate" }
-    return "finalize_current"
+    if ($Observation.service_transition_present) {
+        return "reconcile_service_transition"
+    }
+    if (
+        -not $Observation.credentials_present -and
+        -not $Observation.candidate_present
+    ) {
+        return "ensure_credentials"
+    }
+    if (-not $Observation.source_binding_present) { return "bind_source" }
+    if (-not $Observation.target_authorization_present) { return "authorize_target" }
+    if (-not $Observation.candidate_present) { return "seal_candidate" }
+    if (-not $Observation.runtime_credentials_present) {
+        if (-not $Observation.credentials_present) {
+            throw "candidate 已封存但 durable runtime credentials 缺失。"
+        }
+        return "seal_runtime_credentials"
+    }
+    if ($Observation.bootstrap_retirement_state -ceq "not_applicable") {
+        throw "candidate bootstrap retirement observation 缺失。"
+    }
+    if (
+        $Observation.bootstrap_retirement_state -in @("active", "unknown")
+    ) {
+        return "transition_bootstrap_authority"
+    }
+    if (-not $Observation.runtime_projection_present) {
+        return "publish_runtime_projection"
+    }
+    if ($Observation.transient_authority_present) {
+        return "retire_transient_authority"
+    }
+    if (-not $Observation.terminal_state_present) { return "seal_terminal" }
+    return "publish_current"
 }
 
 function New-TicketboxInstalledDatabaseGenerationResult {

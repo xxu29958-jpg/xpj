@@ -267,7 +267,11 @@ if (-not $SkipBackend) {
         Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot
         if (-not $SkipSmoke) {
             Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\smoke_test.py") -WorkingDirectory $BackendRoot
-            Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\postgres_backup_drill.py") -WorkingDirectory $BackendRoot
+            Invoke-Checked -FilePath $tools.Python -Arguments @(
+                "scripts\postgres_backup_drill.py",
+                "--upload-root",
+                (Join-Path $BackendRoot "uploads")
+            ) -WorkingDirectory $BackendRoot
         }
     }
 }

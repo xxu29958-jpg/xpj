@@ -56,8 +56,8 @@ class BackupStaleRuntime(
  * 备份超龄提醒检测引擎(轴6 主动性 · 五类事件之五,收官)。由 24h 周期
  * [BackupStaleWorker] 唤醒(0046 边界契约:Worker 只做调度,业务判断在本纯层)。
  *
- * 判定超薄:`stale` 布尔由服务端 `backup_service.backup_health()` 算好
- * (48h 阈值服务端单源),本层只做开关/session 前置、日级去重与投递编排——
+ * 判定超薄:`stale` 布尔由服务端 published backup inventory 算好；它只表示
+ * 发布记录年龄，不表示当前 payload 已复检。本层只做开关/session 前置、日级去重与投递编排——
  * 不在客户端重算年龄、不写服务端任何状态。
  *
  * 与 budget 检测器(事件驱动)的差别:备份超龄与用户记账动作无关,是纯运维

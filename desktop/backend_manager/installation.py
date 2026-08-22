@@ -27,7 +27,7 @@ _REGISTRY_VALUE_NAMES = (
 )
 _SERVICE_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 _OWNER_RECOVERY_CHANNEL_PATTERN = re.compile(r"managed_host\Z")
-_RELEASE_CONFIG_SCHEMA = "ticketbox-windows-release-v1"
+_RELEASE_CONFIG_SCHEMA = "ticketbox-windows-release-v2"
 _MAX_RELEASE_CONFIG_BYTES = 64 * 1024
 _INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
 
@@ -85,6 +85,13 @@ class WindowsReleaseConfig:
     backend_ready_timeout_ms: int
     backend_ready_poll_interval_ms: int
     backend_health_request_timeout_ms: int
+    database_tool_timeout_ms: int
+    dataset_backup_helper_timeout_ms: int
+    dataset_restore_helper_timeout_ms: int
+    dataset_payload_verification_timeout_ms: int
+    complete_dataset_cleanup_reserve_ms: int
+    complete_dataset_backup_timeout_ms: int
+    complete_dataset_restore_timeout_ms: int
 
     @property
     def service_state_timeout_seconds(self) -> float:
@@ -122,11 +129,25 @@ class WindowsReleaseConfig:
     def service_validation_timeout_seconds(self) -> float:
         return self.service_state_timeout_seconds + self.process_boundary_margin_seconds
 
+    def complete_dataset_action_timeout_seconds(self, action: str) -> float:
+        if action == "backup":
+            return self.complete_dataset_backup_timeout_ms / 1000.0
+        if action == "restore":
+            return self.complete_dataset_restore_timeout_ms / 1000.0
+        raise InstallationConfigError(f"操作没有完整数据集预算：{action}")
+
+    def powershell_action_timeout_seconds(self, action: str) -> float:
+        process_deadline = (
+            self.complete_dataset_action_timeout_seconds(action)
+            + self.complete_dataset_cleanup_reserve_ms / 1000.0
+        )
+        return process_deadline + self.process_boundary_margin_seconds
+
     def helper_action_phase_budget_seconds(self, action: str) -> dict[str, float]:
         service = self.service_state_timeout_seconds
         postgres = max(service, self.postgres_ready_timeout_seconds)
         process_margin = self.process_boundary_margin_seconds
-        if action not in {"start", "stop", "restart"}:
+        if action not in {"start", "stop", "restart", "backup", "restore", "inventory"}:
             raise InstallationConfigError(f"不支持的服务操作：{action}")
 
         phases = {
@@ -140,6 +161,18 @@ class WindowsReleaseConfig:
                     "post_stop_runtime_validation": service + process_margin,
                 },
             )
+        if action == "backup":
+            phases.update(
+                {
+                    "complete_dataset_backup_owner": self.powershell_action_timeout_seconds(action),
+                },
+            )
+        if action == "restore":
+            phases.update(
+                {
+                    "complete_dataset_restore_owner": self.powershell_action_timeout_seconds(action),
+                },
+            )
         if action in {"start", "restart"}:
             phases.update(
                 {
@@ -148,8 +181,7 @@ class WindowsReleaseConfig:
                     "backend_settle_before_start": service,
                     "backend_start": service,
                     "backend_readiness": (
-                        self.backend_ready_timeout_seconds
-                        + self.backend_health_request_timeout_seconds
+                        self.backend_ready_timeout_seconds + self.backend_health_request_timeout_seconds
                     ),
                 },
             )
@@ -222,8 +254,25 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
     backend_timeout = _config_integer(config, "backend_ready_timeout_ms", 1000, 300000)
     backend_poll = _config_integer(config, "backend_ready_poll_interval_ms", 10, 10000)
     health_timeout = _config_integer(config, "backend_health_request_timeout_ms", 1000, 300000)
+    database_tool_timeout = _config_integer(config, "database_tool_timeout_ms", 10000, 3600000)
+    backup_helper_timeout = _config_integer(config, "dataset_backup_helper_timeout_ms", 10000, 3600000)
+    restore_helper_timeout = _config_integer(config, "dataset_restore_helper_timeout_ms", 10000, 3600000)
+    payload_timeout = _config_integer(config, "dataset_payload_verification_timeout_ms", 10000, 3600000)
+    cleanup_reserve = _config_integer(config, "complete_dataset_cleanup_reserve_ms", 10000, 3600000)
+    backup_timeout = _config_integer(config, "complete_dataset_backup_timeout_ms", 10000, 21600000)
+    restore_timeout = _config_integer(config, "complete_dataset_restore_timeout_ms", 10000, 57600000)
     if service_poll > service_timeout or backend_poll > backend_timeout or health_timeout > backend_timeout:
         raise InstallationConfigError("Windows release config 的轮询或请求超时不能大于对应就绪超时。")
+    if not (
+        database_tool_timeout < backup_helper_timeout < backup_timeout
+        and database_tool_timeout < restore_helper_timeout < restore_timeout
+        and database_tool_timeout < payload_timeout < backup_timeout
+        and payload_timeout <= cleanup_reserve
+        and payload_timeout < restore_timeout
+        and backup_timeout + cleanup_reserve <= 61_200_000
+        and restore_timeout + cleanup_reserve <= 61_200_000
+    ):
+        raise InstallationConfigError("Windows release config 的完整数据集 child/action 超时顺序无效。")
     return WindowsReleaseConfig(
         backend_service_name=backend_service_name,
         pg_service_name=pg_service_name,
@@ -233,6 +282,13 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
         backend_ready_timeout_ms=backend_timeout,
         backend_ready_poll_interval_ms=backend_poll,
         backend_health_request_timeout_ms=health_timeout,
+        database_tool_timeout_ms=database_tool_timeout,
+        dataset_backup_helper_timeout_ms=backup_helper_timeout,
+        dataset_restore_helper_timeout_ms=restore_helper_timeout,
+        dataset_payload_verification_timeout_ms=payload_timeout,
+        complete_dataset_cleanup_reserve_ms=cleanup_reserve,
+        complete_dataset_backup_timeout_ms=backup_timeout,
+        complete_dataset_restore_timeout_ms=restore_timeout,
     )
 
 

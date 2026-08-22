@@ -22,6 +22,9 @@ function Get-TicketboxDatabaseGenerationArtifactPath {
             "credentials",
             "runtime-credentials",
             "source-create-attempt",
+            "restored-source",
+            "candidate-verification",
+            "runtime-verification",
             "source-binding",
             "target-recovery-attempt",
             "target-recovery-archive",
@@ -44,7 +47,8 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
         "intent" {
             return @(
                 "schema", "operation_id", "installation_id",
-                "expected_predecessor_sha256", "target_backend_version",
+                "expected_predecessor_sha256", "source_request_sha256",
+                "target_backend_version",
                 "database_maintenance_helper_relative_path", "database_maintenance_helper_size",
                 "database_maintenance_helper_sha256", "generation_program_relative_path",
                 "generation_program_size", "generation_program_sha256",
@@ -55,13 +59,14 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
         "credentials" {
             return @(
                 "schema", "operation_id", "intent_sha256", "runtime_password",
-                "runtime_scram_salt", "migrator_password", "migrator_scram_salt"
+                "runtime_scram_salt", "migrator_password", "migrator_scram_salt",
+                "backup_password", "backup_scram_salt"
             )
         }
         "runtime-credentials" {
             return @(
                 "schema", "operation_id", "intent_sha256", "candidate_sha256",
-                "runtime_password", "http_bootstrap_secret"
+                "runtime_password", "backup_password", "http_bootstrap_secret"
             )
         }
         "source-create-attempt" {
@@ -71,10 +76,45 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
                 "temporary_database", "observed_target_absent"
             )
         }
+        "restored-source" {
+            return @(
+                "schema", "operation_id", "intent_sha256",
+                "source_request_sha256", "predecessor_current_sha256",
+                "backup_manifest_sha256", "backup_id", "dataset_id",
+                "restore_epoch", "source_revision",
+                "cluster_system_identifier", "database_oid",
+                "writer_fence_sha256", "result"
+            )
+        }
+        "candidate-verification" {
+            return @(
+                "schema", "operation_id", "intent_sha256",
+                "source_request_sha256", "restored_source_sha256",
+                "backup_manifest_sha256", "backup_id", "dataset_id",
+                "restore_epoch", "target_revision", "original_count",
+                "generation_program_sha256", "resource_shape_sha256",
+                "money_facts_sha256", "result"
+            )
+        }
+        "runtime-verification" {
+            return @(
+                "schema", "operation_id", "intent_sha256", "source_request_sha256",
+                "current_sha256", "backup_manifest_sha256", "backup_id", "dataset_id",
+                "restore_epoch", "original_count", "health_contract", "result"
+            )
+        }
+        "dataset-restore-result" {
+            return @(
+                "schema", "restore_attempt_id", "request_sha256",
+                "release_manifest_sha256", "backup_generation", "backup_id",
+                "dataset_id", "restore_epoch", "generation_operation_id",
+                "current_sha256", "result"
+            )
+        }
         "source-binding" {
             return @(
                 "schema", "operation_id", "intent_sha256",
-                "create_attempt_sha256", "source_kind", "source_revision",
+                "source_evidence_sha256", "source_kind", "source_revision",
                 "cluster_system_identifier", "database_oid", "writer_fence_sha256"
             )
         }
@@ -124,7 +164,8 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
                 "source_binding_sha256", "target_revision",
                 "execution_authority_sha256", "role_authority_sha256",
                 "runtime_acl_sha256", "post_migration_writer_fence_sha256",
-                "target_recovery_evidence_sha256", "database_binding_sha256"
+                "target_recovery_evidence_sha256", "database_binding_sha256",
+                "dataset_id", "restore_epoch", "schema_revision"
             )
         }
         "candidate" {
@@ -196,21 +237,25 @@ function Read-TicketboxDatabaseGenerationEnvelope {
         throw "database generation artifact canonical payload/digest 漂移：$Path"
     }
     return [pscustomobject]@{
+        Kind = $ExpectedKind
         Path = $Path
         Payload = $envelope.payload
         PayloadSha256 = $payloadSha256
     }
 }
 
-function Write-TicketboxDatabaseGenerationEnvelope {
+function New-TicketboxDatabaseGenerationEnvelopeText {
     param(
-        [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$Kind,
-        [Parameter(Mandatory = $true)][object]$Payload,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
+        [Parameter(Mandatory = $true)][object]$Payload
     )
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
     $payloadJson = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $Payload
+    try { $closedPayload = $payloadJson | ConvertFrom-Json -ErrorAction Stop }
+    catch { throw "database generation $Kind payload 不是 canonical JSON。" }
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        $closedPayload `
+        (Get-TicketboxDatabaseGenerationPayloadProperties $Kind) `
+        "database generation $Kind payload"
     $payloadSha256 = Get-TicketboxDatabaseGenerationTextSha256 $payloadJson
     $envelope = [ordered]@{
         schema = "ticketbox-database-generation-envelope-v1"
@@ -218,12 +263,47 @@ function Write-TicketboxDatabaseGenerationEnvelope {
         payload_sha256 = $payloadSha256
         payload = $Payload
     }
+    return ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope
+}
+
+function New-TicketboxDatabaseGenerationActiveIntent {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Payload,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    $path = Join-Path $StateRoot $script:TicketboxDatabaseGenerationActiveIntentName
     Write-TicketboxProtectedUtf8FileDurable `
         -Path $Path `
-        -Text (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope) `
+        -Text (New-TicketboxDatabaseGenerationEnvelopeText "intent" $Payload) `
         -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
         -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
-    return Read-TicketboxDatabaseGenerationEnvelope -Path $Path -ExpectedKind $Kind
+    return Read-TicketboxDatabaseGenerationEnvelope $path "intent"
+}
+
+function Replace-TicketboxDatabaseGenerationActiveIntent {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][string]$ExpectedPayloadSha256,
+        [Parameter(Mandatory = $true)][object]$Payload,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Assert-TicketboxDatabaseGenerationLowerSha256 `
+        $ExpectedPayloadSha256 "database generation active intent CAS predecessor"
+    $path = Join-Path $StateRoot $script:TicketboxDatabaseGenerationActiveIntentName
+    $existing = Read-TicketboxDatabaseGenerationEnvelope $path "intent"
+    if ([string]$existing.PayloadSha256 -cne $ExpectedPayloadSha256) {
+        throw "database generation active intent CAS predecessor changed."
+    }
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $path `
+        -Text (New-TicketboxDatabaseGenerationEnvelopeText "intent" $Payload) `
+        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
+        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount `
+        -ReplaceExisting
+    return Read-TicketboxDatabaseGenerationEnvelope $path "intent"
 }
 
 function Read-TicketboxDatabaseGenerationOperationArtifact {
@@ -234,6 +314,9 @@ function Read-TicketboxDatabaseGenerationOperationArtifact {
             "credentials",
             "runtime-credentials",
             "source-create-attempt",
+            "restored-source",
+            "candidate-verification",
+            "runtime-verification",
             "source-binding",
             "target-recovery-attempt",
             "target-recovery-archive",
@@ -267,7 +350,8 @@ function New-TicketboxDatabaseGenerationChainedArtifact {
         [Parameter(Mandatory = $true)][string]$StateRoot,
         [Parameter(Mandatory = $true)][string]$OperationId,
         [Parameter(Mandatory = $true)][ValidateSet(
-            "runtime-credentials", "source-create-attempt", "source-binding",
+            "credentials", "runtime-credentials", "source-create-attempt", "restored-source",
+            "candidate-verification", "runtime-verification", "source-binding",
             "target-authorization", "candidate", "terminal-state",
             "target-recovery-attempt", "target-recovery-archive",
             "target-recovery-binding", "target-recovery-verification",
@@ -288,110 +372,85 @@ function New-TicketboxDatabaseGenerationChainedArtifact {
         }
         return $existing
     }
-    return Write-TicketboxDatabaseGenerationEnvelope `
-        $path $Kind $Payload $LifecycleLock
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $path `
+        -Text (New-TicketboxDatabaseGenerationEnvelopeText $Kind $Payload) `
+        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
+        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
+    return Read-TicketboxDatabaseGenerationEnvelope $path $Kind
 }
 
-function Get-TicketboxDatabaseGenerationProspectiveCurrent {
+function New-TicketboxDatabaseGenerationCandidate {
     param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
+        [Parameter(Mandatory = $true)][object]$Intent,
+        [Parameter(Mandatory = $true)][object]$SourceBinding,
+        [Parameter(Mandatory = $true)][object]$TargetAuthorization,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    $payload = [ordered]@{
+        schema = "ticketbox-database-generation-candidate-v1"
+        operation_id = [string]$Intent.Payload.operation_id
+        intent_sha256 = [string]$Intent.PayloadSha256
+        source_binding_sha256 = [string]$SourceBinding.PayloadSha256
+        target_authorization_sha256 = [string]$TargetAuthorization.PayloadSha256
+        database_binding_sha256 =
+            [string]$TargetAuthorization.Payload.database_binding_sha256
+        target_revision = [string]$Intent.Payload.target_revision
+        generation_program_sha256 = [string]$Intent.Payload.generation_program_sha256
+    }
+    return New-TicketboxDatabaseGenerationChainedArtifact `
+        $StateRoot ([string]$Intent.Payload.operation_id) `
+        "candidate" $payload $LifecycleLock
+}
+
+function New-TicketboxDatabaseGenerationTerminalState {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot,
         [Parameter(Mandatory = $true)][object]$Intent,
         [Parameter(Mandatory = $true)][object]$Candidate,
-        [Parameter(Mandatory = $true)][object]$TerminalState
+        [Parameter(Mandatory = $true)][object]$RuntimeCredentials,
+        [Parameter(Mandatory = $true)][object]$RuntimeProjection,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     if (
         [string]$Candidate.Payload.intent_sha256 -cne [string]$Intent.PayloadSha256 -or
-        [string]$TerminalState.Payload.intent_sha256 -cne [string]$Intent.PayloadSha256 -or
-        [string]$TerminalState.Payload.candidate_sha256 -cne [string]$Candidate.PayloadSha256 -or
-        [string]$TerminalState.Payload.host_contract_sha256 -cne
+        [string]$RuntimeCredentials.Artifact.Payload.intent_sha256 -cne
+            [string]$Intent.PayloadSha256 -or
+        [string]$RuntimeCredentials.Artifact.Payload.candidate_sha256 -cne
+            [string]$Candidate.PayloadSha256 -or
+        [string]$RuntimeProjection.Payload.operation_id -cne
+            [string]$Intent.Payload.operation_id -or
+        [string]$RuntimeProjection.Payload.candidate_sha256 -cne
+            [string]$Candidate.PayloadSha256 -or
+        [string]$RuntimeProjection.Payload.host_contract_sha256 -cne
             [string]$Intent.Payload.host_contract_sha256 -or
-        [string]$TerminalState.Payload.projection_contract_sha256 -cne
+        [string]$RuntimeProjection.Payload.projection_contract_sha256 -cne
             [string]$Intent.Payload.projection_contract_sha256
     ) {
-        throw "database generation CURRENT 输入 authority chain 漂移。"
-    }
-    foreach ($digest in @(
-        [string]$Intent.PayloadSha256,
-        [string]$Candidate.PayloadSha256,
-        [string]$Candidate.Payload.database_binding_sha256,
-        [string]$TerminalState.PayloadSha256,
-        [string]$TerminalState.Payload.runtime_credentials_sha256,
-        [string]$TerminalState.Payload.bootstrap_retirement_sha256,
-        [string]$TerminalState.Payload.runtime_projection_sha256,
-        [string]$TerminalState.Payload.host_contract_sha256,
-        [string]$TerminalState.Payload.projection_contract_sha256
-    )) {
-        Assert-TicketboxDatabaseGenerationLowerSha256 $digest "CURRENT authority binding"
-    }
-    if (
-        [string]$TerminalState.Payload.transient_credentials_state -cne "absent" -or
-        [string]$TerminalState.Payload.bootstrap_recovery_state -cne "absent" -or
-        [string]$TerminalState.Payload.maintenance_service_transition_state -cne "absent"
-    ) {
-        throw "database generation CURRENT 拒绝未完成 cleanup 的 terminal state。"
+        throw "terminal state 拒绝不完整的 candidate/runtime authority chain。"
     }
     $payload = [ordered]@{
-        schema = "ticketbox-current-database-generation-v1"
+        schema = "ticketbox-database-generation-terminal-state-v1"
         operation_id = [string]$Intent.Payload.operation_id
-        installation_id = [string]$Intent.Payload.installation_id
         intent_sha256 = [string]$Intent.PayloadSha256
         candidate_sha256 = [string]$Candidate.PayloadSha256
-        committed_revision = [string]$Candidate.Payload.target_revision
-        generation_program_sha256 = [string]$Intent.Payload.generation_program_sha256
-        database_binding_sha256 = [string]$Candidate.Payload.database_binding_sha256
-        terminal_state_sha256 = [string]$TerminalState.PayloadSha256
-        expected_predecessor_sha256 = [string]$Intent.Payload.expected_predecessor_sha256
+        runtime_credentials_sha256 =
+            [string]$RuntimeCredentials.Artifact.PayloadSha256
+        bootstrap_retirement_sha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+            Get-TicketboxDatabaseGenerationBootstrapRetirementJson $Intent $Candidate
+        )
+        runtime_projection_sha256 = [string]$RuntimeProjection.PayloadSha256
+        host_contract_sha256 = [string]$Intent.Payload.host_contract_sha256
+        projection_contract_sha256 =
+            [string]$Intent.Payload.projection_contract_sha256
+        transient_credentials_state = "absent"
+        bootstrap_recovery_state = "absent"
+        maintenance_service_transition_state = "absent"
     }
-    $payloadJson = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $payload
-    return [pscustomobject]@{
-        Path = Get-TicketboxDatabaseGenerationRuntimeCurrentPath
-        Payload = [pscustomobject]$payload
-        PayloadSha256 = Get-TicketboxDatabaseGenerationTextSha256 $payloadJson
-    }
-}
-
-function Publish-TicketboxDatabaseGenerationCurrent {
-    param(
-        [Parameter(Mandatory = $true)][object]$Intent,
-        [Parameter(Mandatory = $true)][object]$Candidate,
-        [Parameter(Mandatory = $true)][object]$TerminalState,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
-    )
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $proposed = Get-TicketboxDatabaseGenerationProspectiveCurrent `
-        $Intent $Candidate $TerminalState
-    $existing = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
-    if ($null -ne $existing) {
-        if (
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $existing.Payload) -cne
-            (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $proposed.Payload)
-        ) {
-            throw "database generation current CAS predecessor/current 冲突。"
-        }
-        return $existing
-    }
-    if (-not [string]::IsNullOrEmpty([string]$Intent.Payload.expected_predecessor_sha256)) {
-        throw "empty-source current publish 的 expected predecessor 必须为空。"
-    }
-    $path = [string]$proposed.Path
-    $runtimeRoot = Split-Path -Parent $path
-    [void](Initialize-TicketboxProtectedDirectoryAtomically `
-        -Path $runtimeRoot `
-        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
-        -ReadExecuteAccounts @($script:TicketboxDatabaseGenerationRuntimeAccount) `
-        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount)
-    $envelope = [ordered]@{
-        schema = "ticketbox-database-generation-envelope-v1"
-        kind = "current"
-        payload_sha256 = [string]$proposed.PayloadSha256
-        payload = $proposed.Payload
-    }
-    Write-TicketboxProtectedUtf8FileDurable `
-        -Path $path `
-        -Text (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope) `
-        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
-        -ReadExecuteAccounts @($script:TicketboxDatabaseGenerationRuntimeAccount) `
-        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
-    return Read-TicketboxDatabaseGenerationCurrent
+    return New-TicketboxDatabaseGenerationChainedArtifact `
+        $StateRoot ([string]$Intent.Payload.operation_id) `
+        "terminal-state" $payload $LifecycleLock
 }
 
 function Read-TicketboxDatabaseGenerationActiveIntent {

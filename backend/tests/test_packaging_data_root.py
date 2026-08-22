@@ -1,9 +1,9 @@
 """Managed-host and source/development data-root contract.
 
 When the backend runs as a PyInstaller one-file EXE, ``BACKEND_ROOT`` is the
-throwaway ``_MEIPASS`` extraction dir. Files the backend *writes* — the Owner
-Console settings ``.env`` and PostgreSQL backups — must instead live under
-``DATA_ROOT``. The formal Windows service receives the machine-owned
+throwaway ``_MEIPASS`` extraction dir. Runtime settings and uploads live under
+``DATA_ROOT``; complete installed backups live in its protected sibling. The
+formal Windows service receives the machine-owned
 ``TicketboxRuntimeBinding/data-root/app`` junction through
 ``TICKETBOX_DATA_DIR``; its v2 marker and Volume GUID bind the physical
 ``<DataRoot>/app`` bytes. Only source/development runs may use the adjacent
@@ -73,11 +73,14 @@ def test_owner_recovery_channel_accepts_only_declared_deployment_capabilities(
 ):
     monkeypatch.setenv("TICKETBOX_OWNER_RECOVERY_CHANNEL", channel.upper())
 
-    assert config._choice_env(
-        "TICKETBOX_OWNER_RECOVERY_CHANNEL",
-        "development",
-        config.OWNER_RECOVERY_CHANNELS,
-    ) == channel
+    assert (
+        config._choice_env(
+            "TICKETBOX_OWNER_RECOVERY_CHANNEL",
+            "development",
+            config.OWNER_RECOVERY_CHANNELS,
+        )
+        == channel
+    )
 
 
 def test_owner_recovery_channel_rejects_undeclared_host_guess(monkeypatch):
@@ -168,27 +171,65 @@ def test_build_log_config_keeps_console_when_stdout_present(tmp_path):
     assert cfg["root"]["handlers"] == ["file", "console"]
 
 
-def test_writable_dirs_follow_data_root_override(tmp_path):
-    """settings .env + backups must re-anchor when DATA_ROOT is redirected.
+def test_runtime_settings_follow_data_root_and_backup_root_is_explicit(tmp_path):
+    """Runtime projection follows DATA_ROOT; maintenance owns backup placement.
 
     Simulates a managed host where DATA_ROOT diverges from the read-only program
-    root. Reloads the leaf service modules so their module-level path constants
-    recompute against the redirected DATA_ROOT, then restores the real value so
-    no other test is affected.
+    root. The long-running backend may project runtime settings below that root,
+    but the short-lived backup owner must receive its protected sibling root as
+    a mandatory request field instead of deriving ambient filesystem authority.
     """
     original = config.DATA_ROOT
     config.DATA_ROOT = tmp_path
     try:
         backup_service = importlib.reload(importlib.import_module("app.services.backup_service"))
         runtime_settings = importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
-        expected_backups = tmp_path / "backups"
-        expected_env = tmp_path / ".env"
-        assert expected_backups == backup_service._BACKUP_DIR
-        assert expected_env == runtime_settings._ENV_PATH
+        expected_settings = tmp_path / "runtime-settings" / "runtime-settings.json"
+        assert expected_settings == runtime_settings._SETTINGS_PATH
+        assert "backup_root" in backup_service.CompleteBackupRequest.__dataclass_fields__
+        assert not hasattr(backup_service, "_BACKUP_DIR")
     finally:
         config.DATA_ROOT = original
         importlib.reload(importlib.import_module("app.services.backup_service"))
         importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
+
+
+def test_source_data_root_does_not_claim_installer_runtime_settings_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Only the installer marker grants service-owned projection authority."""
+
+    original = config.DATA_ROOT
+    config.DATA_ROOT = tmp_path
+    monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH", raising=False)
+    try:
+        runtime_settings = importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
+        assert runtime_settings._SERVICE_OWNED is False
+    finally:
+        config.DATA_ROOT = original
+        importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
+
+
+def test_installed_backup_inventory_exposes_only_sanitized_sibling_label(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    original = config.DATA_ROOT
+    config.DATA_ROOT = tmp_path / "app"
+    monkeypatch.setenv(
+        "TICKETBOX_DATA_ROOT_MARKER_PATH",
+        str(tmp_path / ".ticketbox-data-root.json"),
+    )
+    try:
+        inventory = importlib.reload(importlib.import_module("app.services.dataset_backup_inventory"))
+        assert inventory.backup_directory_label() == f"{tmp_path.name}\\backups"
+        assert str(tmp_path) not in inventory.backup_directory_label()
+        assert "app" not in inventory.backup_directory_label().split("\\")
+    finally:
+        monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH")
+        config.DATA_ROOT = original
+        importlib.reload(importlib.import_module("app.services.dataset_backup_inventory"))
 
 
 def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_path):
@@ -203,11 +244,16 @@ def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_
     launch = _load_launch_module()
     captured: dict = {}
     validated_junction = tmp_path / "validated-runtime-junction"
+    validated_authority = launch._installer_guard.InstalledRuntimeAuthority(
+        runtime_junction=validated_junction,
+        install_dir=tmp_path / "install",
+        data_root=tmp_path / "data-root",
+    )
     monkeypatch.setattr(launch, "configure_environment", lambda: tmp_path)
     monkeypatch.setattr(
         launch,
         "_assert_runtime_data_root_authority",
-        lambda data_dir: validated_junction,
+        lambda data_dir: validated_authority,
     )
     monkeypatch.setattr(
         launch,
@@ -227,16 +273,11 @@ def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_
     assert captured["validated_runtime_junction"] == validated_junction
 
 
-def test_main_refuses_http_startup_while_bootstrap_recovery_is_pending(
-    monkeypatch, tmp_path
-):
+def test_main_refuses_http_startup_while_bootstrap_recovery_is_pending(monkeypatch, tmp_path):
     from app.services.identity_service import ReplacementCredentialCollisionError
 
     launch = _load_launch_module()
-    assert (
-        launch._maintenance_error_code(ReplacementCredentialCollisionError())
-        == "replacement_credential_collision"
-    )
+    assert launch._maintenance_error_code(ReplacementCredentialCollisionError()) == "replacement_credential_collision"
     guard = tmp_path / "bootstrap-recovery-pending"
     guard.write_text("STATE=pending\n", encoding="utf-8")
     monkeypatch.setenv("TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH", str(guard))

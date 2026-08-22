@@ -96,6 +96,11 @@ if (-not (Test-Path -LiteralPath $PgRecoveryToolsScript -PathType Leaf)) {
     throw "缺少 Windows PostgreSQL 恢复工具脚本：$PgRecoveryToolsScript"
 }
 . $PgRecoveryToolsScript
+$BackendHealthScript = Join-Path $ScriptDir "windows_backend_health.ps1"
+if (-not (Test-Path -LiteralPath $BackendHealthScript -PathType Leaf)) {
+    throw "缺少 Windows 后端健康检查机制：$BackendHealthScript"
+}
+. $BackendHealthScript
 $BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
 if (-not (Test-Path -LiteralPath $BackendBootstrapScript -PathType Leaf)) {
     throw "缺少 Windows owner handoff 脚本：$BackendBootstrapScript"

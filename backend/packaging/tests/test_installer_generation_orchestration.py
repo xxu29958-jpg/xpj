@@ -272,7 +272,10 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "try {",
             "  Invoke-TicketboxInstallFailureCompensation "
             "-Reason 'install failed' "
-            "-ServiceCompensationAuthority $compensationAuthority",
+            "-ServiceCompensationAuthority $compensationAuthority "
+            "-DataRoot $script:DataRoot "
+            "-AppData 'C:\\ticketbox-data\\app' "
+            "-SecretByteCount 32",
             "}",
             "catch { $compensation = $_.Exception }",
             "if ($null -eq $compensation) { "
@@ -480,7 +483,7 @@ def test_installer_finalization_failure_preserves_all_four_causes(
 
 
 @pytest.mark.parametrize("engine", powershell_contract_engines())
-def test_prepare_failure_preserves_action_compensations_and_lock_exit(
+def test_prepare_failure_preserves_current_compensations_and_lock_exit(
     engine: str,
 ) -> None:
     source = PREPARE.read_text(encoding="utf-8-sig")
@@ -491,12 +494,12 @@ def test_prepare_failure_preserves_action_compensations_and_lock_exit(
             helper,
             "$action = [InvalidOperationException]::new('prepare action failed')",
             "$action.Data['TicketboxFailureCode'] = 'shape_not_ready'",
-            "$cleanup = [InvalidOperationException]::new('recovery cleanup failed')",
             "$acl = [InvalidOperationException]::new('ACL restore failed')",
             "$service = [InvalidOperationException]::new('service restore failed')",
+            "$receipt = [InvalidOperationException]::new('receipt retire failed')",
             "$operation = New-TicketboxPrepareAggregateFailure "
             "-OperationFailure $action "
-            "-SecondaryFailures ([Exception[]]@($cleanup, $acl, $service)) "
+            "-SecondaryFailures ([Exception[]]@($acl, $service, $receipt)) "
             "-FailureKind compensation",
             "$unlock = [InvalidOperationException]::new('lock exit failed')",
             "$failure = New-TicketboxPrepareAggregateFailure "
@@ -527,9 +530,9 @@ def test_prepare_failure_preserves_action_compensations_and_lock_exit(
         "inner_count": 5,
         "messages": [
             "prepare action failed",
-            "recovery cleanup failed",
             "ACL restore failed",
             "service restore failed",
+            "receipt retire failed",
             "lock exit failed",
         ],
         "failure_code": "shape_not_ready",
@@ -540,8 +543,8 @@ def test_prepare_failure_preserves_action_compensations_and_lock_exit(
     }
 
     assert '$prepareOperationFailure = $_.Exception' in source
+    assert "recovery_pg_cleanup" not in source
     for step in (
-        "recovery_pg_cleanup",
         "install_acl_restore",
         "service_state_restore",
         "receipt_retire",

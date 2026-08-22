@@ -1,13 +1,12 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-  Prepare an existing Ticketbox installation before Inno replaces program files.
+  Prepare a fresh Ticketbox installation before Inno copies program files.
 
 .DESCRIPTION
-  Verifies that same-name Windows services belong to this InstallDir, stops the
-  backend, creates and validates a pg_dump snapshot with the currently installed
-  PostgreSQL tools, then stops PostgreSQL. Any failure restores the prior running
-  state while the old program files are still intact and aborts the upgrade.
+  Captures the first durable Generation intent and verifies that the selected
+  DataRoot, service names, and ports are a fresh empty source. Existing datasets
+  are never upgraded or backed up here; they must enter the isolated restore flow.
 #>
 [CmdletBinding()]
 param(
@@ -24,7 +23,7 @@ param(
     [switch]$RecoverPreparedInstall,
     [switch]$FilesReplaced,
     [switch]$CommitCompletedInstall,
-    [switch]$MarkProgramFilesInstalledBackupPending,
+    [switch]$MarkProgramFilesInstalled,
     [switch]$PersistDatabaseGenerationIntentOnly,
     [string]$DatabaseGenerationProgramPath = "",
     [string]$DatabaseGenerationProgramSha256 = "",
@@ -55,7 +54,6 @@ $DatabaseToolTimeoutMs = [int]$TargetReleaseConfig.database_tool_timeout_ms
 $HasPersistedInstalledReleaseConfig = $false
 $InstalledReleaseConfig = $TargetReleaseConfig | ConvertTo-Json -Depth 8 | ConvertFrom-Json
 $PreparedServiceIdentityLifecycleReceipt = $null
-$script:TicketboxPreparedRuntimeDatabaseRole = "ticketbox_runtime"
 
 function Set-TicketboxInstalledReleaseConfiguration([object]$Config, [bool]$Persisted) {
     $script:InstalledReleaseConfig = $Config
@@ -502,53 +500,6 @@ function New-TicketboxPrepareAggregateFailure {
     return $aggregateFailure
 }
 
-function Set-TicketboxPreparedServiceDemandStart([string]$Name, [string]$ExpectedExecutable) {
-    Set-TicketboxOwnedServiceDemandStartIfExists `
-        -Name $Name `
-        -ExpectedExecutable $ExpectedExecutable
-}
-
-function Read-EnvMap([string]$Path) {
-    $map = @{}
-    foreach ($raw in Get-Content -LiteralPath $Path -Encoding UTF8) {
-        $line = $raw.Trim()
-        if ($line.Length -eq 0 -or $line.StartsWith("#") -or -not $line.Contains("=")) {
-            continue
-        }
-        $parts = $line.Split(@("="), 2, [System.StringSplitOptions]::None)
-        $map[$parts[0].Trim()] = $parts[1].Trim()
-    }
-    return $map
-}
-
-function Get-TicketboxPreparedApplicationDatabaseConnection {
-    param([Parameter(Mandatory = $true)][string]$DatabaseUrl)
-
-    $persistedDatabaseUrl = ConvertTo-TicketboxRequiredDatabaseUrl $DatabaseUrl
-    $libpqUrl = Assert-TicketboxLocalDatabaseUrl `
-        -DatabaseUrl $persistedDatabaseUrl `
-        -PgPort $PgPort
-    $builder = New-Object System.UriBuilder($libpqUrl)
-    $role = [System.Uri]::UnescapeDataString($builder.UserName)
-    if (
-        $role -cne $DbRole -and
-        $role -cne $script:TicketboxPreparedRuntimeDatabaseRole
-    ) {
-        throw "DATABASE_URL 的 PostgreSQL 角色不属于已登记的 legacy/runtime authority。"
-    }
-    $connection = Get-TicketboxLocalDatabaseConnection `
-        -DatabaseUrl $persistedDatabaseUrl `
-        -PgPort $PgPort `
-        -ExpectedDatabase $DbName `
-        -ExpectedRole $role
-    return [pscustomobject]@{
-        DatabaseUrl = $connection.DatabaseUrl
-        PersistedDatabaseUrl = $connection.PersistedDatabaseUrl
-        Password = $connection.Password
-        Role = $role
-    }
-}
-
 function Assert-TicketboxPreparedServiceRuntimeCommand {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
@@ -793,39 +744,6 @@ function Assert-TicketboxRecoveryPgServiceConfiguration {
         -ExpectedExecutable $recoveryPgCtl `
         -ExpectedServiceName $PgRecoveryServiceName `
         -ExpectedDataRoot $PgData
-}
-
-function Register-TicketboxRecoveryPgService {
-    $recoveryHome = Get-TicketboxPgRecoveryHome
-    $recoveryPgCtl = Join-Path $recoveryHome "bin\pg_ctl.exe"
-    if (Test-TicketboxServiceExists $PgRecoveryServiceName) {
-        Assert-TicketboxRecoveryPgServiceConfiguration
-        return
-    }
-    $imagePath = New-TicketboxPgServiceImagePath `
-        -PgCtlPath $recoveryPgCtl `
-        -ServiceName $PgRecoveryServiceName `
-        -DataRoot $PgData
-    Invoke-TicketboxScChecked @(
-        "create",
-        $PgRecoveryServiceName,
-        "binPath=",
-        $imagePath,
-        "start=",
-        "demand",
-        "obj=",
-        (Get-TicketboxReleaseServiceLogonAccount `
-            -Config $TargetReleaseConfig `
-            -ServiceName $PgRecoveryServiceName)
-    ) | Out-Null
-    Set-TicketboxServiceIdentityContract `
-        -Name $PgRecoveryServiceName `
-        -LogonAccount (Get-TicketboxReleaseServiceLogonAccount `
-            -Config $TargetReleaseConfig `
-            -ServiceName $PgRecoveryServiceName) `
-        -SidType (Get-TicketboxReleaseServiceSidType $TargetReleaseConfig)
-    Set-TicketboxRecoveryServiceDataAcl $true
-    Assert-TicketboxRecoveryPgServiceConfiguration
 }
 
 function Remove-TicketboxRecoveryPgServiceIfExists {
@@ -1561,7 +1479,6 @@ try {
             -BackendPort $BackendPort `
             -PgBin (Join-Path $InstallDir "pg\bin") `
             -Timezone ([string]$TargetReleaseConfig.default_timezone) `
-            -PublicBaseUrl "" `
             -PsqlPath (Join-Path $InstallDir "pg\bin\psql.exe") `
             -PgData (Join-Path $DataRoot "pgdata") `
             -DatabaseToolTimeoutMilliseconds (
@@ -1621,7 +1538,7 @@ try {
     Set-TicketboxPreparedRuntimeServiceContract
     Invoke-TicketboxInterruptedInitdbServiceRecovery
     Assert-TicketboxTargetPgMajor
-    if ($MarkProgramFilesInstalledBackupPending) {
+    if ($MarkProgramFilesInstalled) {
         $receipt = Read-TicketboxLifecycleReceipt `
             -Path $LifecycleReceiptPath `
             -InstallDir $InstallDir `
@@ -1631,23 +1548,22 @@ try {
             -TargetReleaseConfig $TargetReleaseConfig `
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-        if ([string]$receipt.preparation_stage -eq "backup_deferred_until_program_files_installed") {
-            Set-TicketboxLifecycleReceiptProgramFilesInstalledBackupPending `
-                -Path $LifecycleReceiptPath `
-                -Receipt $receipt `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+        if (
+            [string]$receipt.mode -cne "fresh_install" -or
+            [bool]$receipt.backup_required -or
+            [bool]$receipt.backup_completed -or
+            -not [string]::IsNullOrEmpty([string]$receipt.backup_path)
+        ) {
+            throw "程序文件复制边界只接受 fresh install 回执。"
         }
-        elseif ([string]$receipt.preparation_stage -eq "prepared") {
+        if ([string]$receipt.preparation_stage -eq "prepared") {
             Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced `
                 -Path $LifecycleReceiptPath `
                 -Receipt $receipt `
                 -InstallerOwnerProcessId $InstallerLockOwnerProcessId
         }
-        elseif ([string]$receipt.preparation_stage -notin @(
-            "program_files_installed_backup_pending",
-            "files_may_have_been_replaced"
-        )) {
-            throw "程序文件复制边界与 preserved-data 生命周期回执阶段不一致。"
+        elseif ([string]$receipt.preparation_stage -ne "files_may_have_been_replaced") {
+            throw "程序文件复制边界与 fresh install 生命周期回执阶段不一致。"
         }
         Close-TicketboxLifecycleBackupGuard $receipt
         $receipt = Read-TicketboxLifecycleReceipt `
@@ -1693,17 +1609,16 @@ try {
             -TargetReleaseConfig $TargetReleaseConfig `
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+        if (
+            [string]$receipt.mode -cne "fresh_install" -or
+            [bool]$receipt.backup_required -or
+            [bool]$receipt.backup_completed -or
+            -not [string]::IsNullOrEmpty([string]$receipt.backup_path)
+        ) {
+            throw "当前安装恢复只接受 fresh install 回执；既有数据必须走隔离 restore。"
+        }
         $PreparedServiceIdentityLifecycleReceipt = $receipt
         $recoveryStage = [string]$receipt.preparation_stage
-        if ([bool]$receipt.temporary_pg_service_cleanup_pending) {
-            Remove-TicketboxDeferredPreservedPgServiceIfExists
-            Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending `
-                -Path $LifecycleReceiptPath `
-                -Receipt $receipt `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-                -CleanupPending $false
-            $receipt.temporary_pg_service_cleanup_pending = $false
-        }
         Remove-TicketboxRecoveryPgServiceIfExists
         Set-TicketboxInstalledReleaseConfiguration `
             -Config $receipt.installed_release_config `
@@ -1712,34 +1627,8 @@ try {
             -AllowTargetPolicyFallback `
             -AllowLegacyRuntimeDataContract:($RuntimeDataBindingPresent -and $recoveryStage -in @(
                 "prepared",
-                "program_files_installed_backup_pending",
                 "files_may_have_been_replaced"
             ))
-        $isDeferredPreservedBackup =
-            [string]$receipt.mode -eq "preserved_data_reinstall" -and
-            $recoveryStage -in @(
-                "backup_deferred_until_program_files_installed",
-                "program_files_installed_backup_pending"
-            ) -and
-            [bool]$receipt.backup_required -and
-            -not [bool]$receipt.backup_completed
-        if ($isDeferredPreservedBackup) {
-            $programFilesWereReplaced =
-                $recoveryStage -eq "program_files_installed_backup_pending"
-            Invoke-TicketboxPreparedInstallRecovery `
-                -Receipt $receipt `
-                -ProgramFilesWereReplaced $programFilesWereReplaced
-            if ($programFilesWereReplaced) {
-                Write-Host `
-                    "保留数据重装在备份提交前中断；数据根保持不变，请重新运行修复安装。" `
-                    -ForegroundColor Yellow
-            }
-            else {
-                Remove-TicketboxLifecycleReceipt -Path $LifecycleReceiptPath
-                Write-Host "保留数据重装在复制前中断；已清理捕获回执。" -ForegroundColor Yellow
-            }
-            return
-        }
         if (
             ($FilesReplaced -and $recoveryStage -notin @("prepared", "files_may_have_been_replaced")) -or
             (-not $FilesReplaced -and $recoveryStage -ne "prepared")
@@ -1793,6 +1682,14 @@ try {
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -AllowPreviousInstallerOwnerProcessId
+        if (
+            [string]$staleReceipt.mode -cne "fresh_install" -or
+            [bool]$staleReceipt.backup_required -or
+            [bool]$staleReceipt.backup_completed -or
+            -not [string]::IsNullOrEmpty([string]$staleReceipt.backup_path)
+        ) {
+            throw "当前安装重试只接受 fresh install 回执；既有数据必须走隔离 restore。"
+        }
         $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
         if ([bool]$staleReceipt.install_completed) {
             Set-TicketboxInstalledReleaseConfiguration `
@@ -1833,12 +1730,9 @@ try {
             Remove-TicketboxCompletedLifecycleReceipt `
                 -Path $LifecycleReceiptPath `
                 -Receipt $staleReceipt
-            Write-Host "已补完上次中断的安装提交并退役旧回执；本次将重新执行复制前备份。" -ForegroundColor Yellow
+            Write-Host "已补完上次中断的安装提交并退役旧回执；本次将重新执行 fresh preflight。" -ForegroundColor Yellow
         }
-        elseif ([string]$staleReceipt.preparation_stage -in @(
-            "captured",
-            "backup_deferred_until_program_files_installed"
-        )) {
+        elseif ([string]$staleReceipt.preparation_stage -eq "captured") {
             Set-TicketboxInstalledReleaseConfiguration `
                 -Config $staleReceipt.installed_release_config `
                 -Persisted $true
@@ -1849,37 +1743,6 @@ try {
                 -ProgramFilesWereReplaced $false
             Remove-TicketboxLifecycleReceipt -Path $LifecycleReceiptPath
             Write-Host "检测到复制前 prepare 中断；已按预先持久化的原始状态完成补偿，本次重新预检。" -ForegroundColor Yellow
-        }
-        elseif ([string]$staleReceipt.preparation_stage -eq "program_files_installed_backup_pending") {
-            Set-TicketboxInstalledReleaseConfiguration `
-                -Config $staleReceipt.installed_release_config `
-                -Persisted $true
-            Repair-TicketboxInterruptedPayloadLeaseAcl
-            Remove-TicketboxRecoveryPgServiceIfExists
-            if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending) {
-                Remove-TicketboxDeferredPreservedPgServiceIfExists
-            }
-            Assert-TicketboxPreparedServiceContracts `
-                -AllowTargetPolicyFallback `
-                -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
-            Close-TicketboxLifecycleBackupGuard $staleReceipt
-            if ([bool]$staleReceipt.temporary_pg_service_cleanup_pending) {
-                Set-TicketboxLifecycleReceiptTemporaryPgServiceCleanupPending `
-                    -Path $LifecycleReceiptPath `
-                    -Receipt $staleReceipt `
-                    -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-                    -CleanupPending $false
-                $staleReceipt.temporary_pg_service_cleanup_pending = $false
-            }
-            Invoke-TicketboxPreparedInstallRecovery `
-                -Receipt $staleReceipt `
-                -ProgramFilesWereReplaced $true
-            Set-TicketboxLifecycleReceiptInstallerOwner `
-                -Path $LifecycleReceiptPath `
-                -Receipt $staleReceipt `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-            Write-Host "检测到 preserved-data 备份前文件复制中断；已精确清理临时服务并保持 post-copy 隔离。" -ForegroundColor Yellow
-            return
         }
         else {
             Set-TicketboxInstalledReleaseConfiguration `
@@ -1926,6 +1789,9 @@ try {
         -HasPgData $hasPgData `
         -HasEnv $hasEnv `
         -HasPgBootstrapRecovery $hasPgBootstrapRecovery
+    if ($mode -cne "fresh_install") {
+        throw "当前安装入口只接受 fresh install；既有数据必须走隔离 restore。"
+    }
 
     $serviceReadAccounts = @()
     if ($hasPgService) { $serviceReadAccounts += "NT SERVICE\$PgServiceName" }
@@ -1942,33 +1808,6 @@ try {
     if ($hasBackendService) {
         Assert-ExpectedServiceConfiguration -Name $BackendServiceName
     }
-    if ($mode -eq "preserved_data_reinstall") {
-        Assert-TicketboxLegacyPreservedDataLayout `
-            -DataRoot $DataRoot `
-            -InstallDir $InstallDir `
-            -EnvPath $EnvPath `
-            -PgData $PgData `
-            -ExpectedPgMajor $TargetPgMajor | Out-Null
-        $legacyEnvironment = Read-EnvMap $EnvPath
-        if (-not $legacyEnvironment.ContainsKey("DATABASE_URL")) {
-            throw "legacy 保留数据的 .env 缺少 DATABASE_URL。"
-        }
-        Get-TicketboxPreparedApplicationDatabaseConnection `
-            -DatabaseUrl $legacyEnvironment["DATABASE_URL"] | Out-Null
-    }
-    elseif ($mode -ne "fresh_install") {
-        Assert-TicketboxRegisteredDataRootBinding -DataRoot $DataRoot
-        Assert-NoTicketboxReparsePoints $DataRoot
-    }
-    if ($mode -ne "fresh_install") {
-        Initialize-TicketboxDataRootMarker `
-            -DataRoot $DataRoot `
-            -InstallDir $InstallDir `
-            -AllowLegacyV1Migration `
-            -AclPhase backend_read_optional `
-            -ExpectedBackendServiceName $BackendServiceName
-    }
-
     Remove-TicketboxRecoveryPgServiceIfExists
     Assert-TicketboxPortAvailableForMissingService `
         -Name $PgServiceName `
@@ -1999,28 +1838,6 @@ try {
         throw "既有服务状态不一致：后端运行但 PostgreSQL 未运行。"
     }
 
-    $backupRequired = $hasPgData -and $hasEnv
-    $deferredPreservedBackup =
-        $mode -eq "preserved_data_reinstall" -and $backupRequired
-    $usingRecoveryPgService =
-        $backupRequired -and -not $hasPgService -and -not $deferredPreservedBackup
-    if ($backupRequired -and -not $hasPgService) {
-        if ($mode -eq "repair_install") {
-            Save-TicketboxPgRecoveryToolset `
-                -SourcePgHome $InstalledPgHome `
-                -BuildManifestPath $InstalledBuildManifestPath `
-                -ExpectedMajor $TargetPgMajor | Out-Null
-        }
-        elseif ($mode -ne "preserved_data_reinstall") {
-            throw "检测到需保留的 PostgreSQL 数据和 .env，但正式 PostgreSQL 服务缺失且安装状态不能安全取得复制前备份。"
-        }
-        if (-not $deferredPreservedBackup) {
-            Assert-TicketboxPgRecoveryToolset -ExpectedMajor $TargetPgMajor | Out-Null
-            Set-TicketboxActivePgTools (Get-TicketboxPgRecoveryHome)
-        }
-    }
-    $backupCompleted = $false
-    $backupPath = ""
     . (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)
     $capturedGenerationStateRoot =
         Get-TicketboxDatabaseGenerationStateRoot $InstallerState
@@ -2043,7 +1860,7 @@ try {
         -PreviousBackendState $backendState `
         -PreviousPgStartPolicy $pgStartPolicy `
         -PreviousBackendStartPolicy $backendStartPolicy `
-        -BackupRequired $backupRequired `
+        -BackupRequired $false `
         -BackupCompleted $false `
         -PreparationStage "captured"
     $capturedReceipt = Read-TicketboxLifecycleReceipt `
@@ -2056,16 +1873,6 @@ try {
         -CurrentTargetBackendVersion $TargetBackendVersion `
         -InstallerOwnerProcessId $InstallerLockOwnerProcessId
     $PreparedServiceIdentityLifecycleReceipt = $capturedReceipt
-    if ($deferredPreservedBackup) {
-        Set-TicketboxLifecycleReceiptDeferredBackup `
-            -Path $LifecycleReceiptPath `
-            -Receipt $capturedReceipt `
-            -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-        Write-Host `
-            "legacy 保留数据只读预检完成；复制目标 PG 工具后、任何服务/数据变更前执行备份。" `
-            -ForegroundColor Green
-        return
-    }
     $installAclMutationStarted = $false
     try {
         $installAclMutationStarted = $true
@@ -2077,92 +1884,6 @@ try {
                 -BackendPort $BackendPort `
                 -ExpectedRuntimeExecutables @($BackendExe, $ShawlExe) `
                 @ServiceWaitArguments
-        }
-        if ($usingRecoveryPgService) {
-            Register-TicketboxRecoveryPgService
-        }
-        if ($backupRequired) {
-            Assert-File $PgCtl "pg_ctl.exe"
-            Assert-File $PgReady "pg_isready.exe"
-            Assert-File $PgDump "pg_dump.exe"
-            Assert-File $PgRestore "pg_restore.exe"
-            Assert-File $Psql "psql.exe"
-            $envMap = Read-EnvMap $EnvPath
-            if (-not $envMap.ContainsKey("DATABASE_URL")) {
-                throw "既有 .env 缺少 DATABASE_URL，拒绝无备份升级。"
-            }
-            $connection = Get-TicketboxPreparedApplicationDatabaseConnection `
-                -DatabaseUrl $envMap["DATABASE_URL"]
-            if ($hasPgService -and $pgStartPolicy -eq "disabled") {
-                Set-TicketboxPreparedServiceDemandStart `
-                    -Name $PgServiceName `
-                    -ExpectedExecutable $PgCtl
-            }
-            $backupServiceName = if ($usingRecoveryPgService) {
-                $PgRecoveryServiceName
-            }
-            else {
-                $PgServiceName
-            }
-            Start-TicketboxOwnedServiceIfExists `
-                -Name $backupServiceName `
-                -ExpectedExecutable $PgCtl `
-                @ServiceWaitArguments | Out-Null
-            Wait-PgReady
-            Assert-TicketboxConnectedPostgresDataRoot `
-                -PsqlPath $Psql `
-                -DatabaseUrl $connection.DatabaseUrl `
-                -ExpectedDataRoot $PgData `
-                -ExpectedPort $PgPort `
-                -Password $connection.Password `
-                -TimeoutMilliseconds $DatabaseToolTimeoutMs
-
-            New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
-            Set-TicketboxExactDirectoryAcl `
-                -Path $BackupDir `
-                -Accounts @("SYSTEM", "BUILTIN\Administrators")
-            $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-            $target = Join-Path $BackupDir "ticketbox-pre-upgrade-installer-$stamp.dump"
-            $temp = "$target.tmp"
-            $dumpResult = Invoke-TicketboxPgDumpCustom `
-                -PgDumpPath $PgDump `
-                -DatabaseUrl $connection.DatabaseUrl `
-                -OutputPath $temp `
-                -Password $connection.Password `
-                -TimeoutMilliseconds $DatabaseToolTimeoutMs
-            if ($dumpResult -ne 0) {
-                Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
-                throw "升级前 pg_dump 失败，旧程序保持不变。"
-            }
-            Sync-TicketboxFileDurable $temp
-            Set-TicketboxExactFileAcl `
-                -Path $temp `
-                -Accounts @("SYSTEM", "BUILTIN\Administrators")
-            $previousPreference = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            try {
-                $restoreRc = Invoke-TicketboxPgRestoreList `
-                    -PgRestorePath $PgRestore `
-                    -ArchivePath $temp `
-                    -TimeoutMilliseconds $DatabaseToolTimeoutMs
-            }
-            finally {
-                $ErrorActionPreference = $previousPreference
-            }
-            if ($restoreRc -ne 0) {
-                Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
-                throw "升级前备份校验失败，旧程序保持不变。"
-            }
-            Move-TicketboxFileDurable $temp $target
-            Set-TicketboxExactFileAcl `
-                -Path $target `
-                -Accounts @("SYSTEM", "BUILTIN\Administrators")
-            $backupCompleted = $true
-            $backupPath = $target
-        }
-        if ($usingRecoveryPgService) {
-            Remove-TicketboxRecoveryPgServiceIfExists
-            Set-TicketboxActivePgTools $InstalledPgHome
         }
         if ($hasPgService) {
             Disable-TicketboxOwnedServiceIfExists `
@@ -2176,25 +1897,13 @@ try {
             -Path $LifecycleReceiptPath `
             -Receipt $capturedReceipt `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-            -BackupCompleted $backupCompleted `
-            -BackupPath $backupPath
+            -BackupCompleted $false `
+            -BackupPath ""
         Write-Host "安装预检完成：$mode" -ForegroundColor Green
     }
     catch {
         $failure = $_.Exception
         [Exception[]]$compensationFailures = @()
-        if ($usingRecoveryPgService) {
-            try {
-                Remove-TicketboxRecoveryPgServiceIfExists
-                Set-TicketboxActivePgTools $InstalledPgHome
-            }
-            catch {
-                $compensationFailure = $_.Exception
-                $compensationFailure.Data["TicketboxPrepareCompensationStep"] =
-                    "recovery_pg_cleanup"
-                $compensationFailures += $compensationFailure
-            }
-        }
         if ($installAclMutationStarted) {
             try {
                 Repair-TicketboxPreflightInstallAcl -ServiceReadAccounts $serviceReadAccounts

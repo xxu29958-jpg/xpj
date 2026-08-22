@@ -391,7 +391,6 @@ ALLOWLIST: dict[str, Exempt] = {
     # --- /owner console (loopback-only admin / single-writer / batch) ---
     "POST /owner/ai-advisor/confirmation": Exempt("external_side_effect", "owner_console", (), "medium"),
     "POST /owner/algorithm-versions/withdraw": Exempt("batch_db_write", "learning", _ALGO_DECISIONS, "medium"),
-    "POST /owner/backups": Exempt("external_side_effect", "owner_console", ()),
     "POST /owner/devices/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _DEVICE_REVOKE, "medium"),
     "POST /owner/devices/{public_id}/rename": Exempt("admin_single_writer", "owner_console", ("devices",)),
     "POST /owner/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "owner_console", _DEVICE_REVOKE),

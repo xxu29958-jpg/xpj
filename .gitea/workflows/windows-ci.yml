@@ -98,6 +98,7 @@ jobs:
         working-directory: backend
         env:
           PYTEST_ADDOPTS: ""
+          XPJ_REQUIRE_ELEVATED_WINDOWS_ACL: "1"
         run: >-
           .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests -m "not xdist_group"
           --strict-markers -p no:cacheprovider -o addopts=
@@ -116,7 +117,9 @@ jobs:
         working-directory: backend
         run: >-
           .\.ci-venv\Scripts\python.exe -m pytest -q
-          tests/test_windows_task_status.py::test_db_maintenance_scripts_resolve_configured_database_url
+          tests/test_database_maintenance_entrypoint.py
+          tests/test_postgres_backup_dialect.py
+          tests/test_dataset_originals_file_identity.py
           --noconftest --strict-markers -p no:cacheprovider -o addopts=
 
       - name: Installer source preflight (Windows PowerShell 5.1)
@@ -311,6 +314,9 @@ jobs:
           .\.ci-venv\Scripts\python.exe -m pip install --upgrade pip
           .\.ci-venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 
+      - name: Frozen backend locked restore-helper build
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
+
       - name: PostgreSQL lane — ephemeral cluster + smoke + suite
         # initdb spins a throwaway policy-compatible PG on the contract's
         # Gitea profile. start + smoke + suite + stop run in ONE
@@ -376,7 +382,10 @@ jobs:
             # mutates anything; pg_restore resolves via the same Program Files
             # glob as pg_dump (not on the runner's PATH).
             Write-Host "--- PostgreSQL backup/restore drill ---"
-            .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py
+            .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py `
+              --upload-root (Join-Path $PWD "uploads") `
+              --frozen-restore-helper `
+                (Join-Path $PWD "dist\ticketbox-backend\ticketbox-database-maintenance.exe")
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL backup/restore drill failed" }
 
             # Keep the offline single-runner mirror serial. Source-local real_db

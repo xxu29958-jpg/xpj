@@ -129,7 +129,7 @@ def dedicated_test_database_lease(
     reset: bool,
     cluster_identity: str,
     passfile: str | None = None,
-) -> Iterator[None]:
+) -> Iterator[psycopg.Connection]:
     """Fail fast on competing runs and optionally rebuild the dedicated schema."""
     if expected_database not in _DEDICATED_DATABASES:
         raise RuntimeError("database is not a dedicated smoke or restore resource")
@@ -152,7 +152,7 @@ def dedicated_test_database_lease(
         try:
             if reset:
                 _reset_public_schema(connection)
-            yield
+            yield connection
         finally:
             released = connection.execute(
                 "SELECT pg_catalog.pg_advisory_unlock(%s)",

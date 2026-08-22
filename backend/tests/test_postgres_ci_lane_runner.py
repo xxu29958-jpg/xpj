@@ -222,6 +222,8 @@ def _assert_local_verify_uses_postgres_authorities() -> None:
     assert '"test_pg_auth_contract.ps1"' in script
     assert '"scripts\\release_audit.py"' in script
     assert '"scripts\\postgres_backup_drill.py"' in script
+    assert 'Join-Path $BackendRoot "uploads"' in script
+    assert 'Join-Path $BackendRoot "uploads\\smoke_test"' not in script
     assert '"-m", "pytest"' not in script
     assert "C:\\Program Files" not in script
     assert "GetFolderPath" in script

@@ -12,10 +12,14 @@ PACKAGING = Path(__file__).resolve().parents[1]
 BACKEND = PACKAGING.parent
 OWNER = PACKAGING / "windows_database_generation.ps1"
 CONTRACT = PACKAGING / "windows_database_generation_contract.ps1"
+FAILURE = PACKAGING / "windows_operation_failure.ps1"
 GENERATION_CREDENTIALS = PACKAGING / "windows_database_generation_credentials.ps1"
+HOST_AUTHORITY = PACKAGING / "windows_database_generation_host_authority.ps1"
 RETIRED_ADAPTER = PACKAGING / "windows_database_generation_adapter.ps1"
 CREDENTIALS = PACKAGING / "windows_postgresql_credentials.ps1"
 SOURCE = PACKAGING / "windows_database_generation_source.ps1"
+SOURCE_BINDING = PACKAGING / "windows_database_generation_source_binding.ps1"
+TARGET_AUTHORIZATION = PACKAGING / "windows_database_generation_target_authorization.ps1"
 PROJECTION = PACKAGING / "windows_database_generation_projection.ps1"
 RETIREMENT = PACKAGING / "windows_database_generation_retirement.ps1"
 SINGLE_USER = PACKAGING / "windows_database_generation_single_user.ps1"
@@ -35,6 +39,8 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     generation_credentials = GENERATION_CREDENTIALS.read_text(encoding="utf-8-sig")
     credentials = CREDENTIALS.read_text(encoding="utf-8-sig")
     source = SOURCE.read_text(encoding="utf-8-sig")
+    source_binding = SOURCE_BINDING.read_text(encoding="utf-8-sig")
+    target_authorization = TARGET_AUTHORIZATION.read_text(encoding="utf-8-sig")
     projection = PROJECTION.read_text(encoding="utf-8-sig")
     retirement = RETIREMENT.read_text(encoding="utf-8-sig")
     single_user = SINGLE_USER.read_text(encoding="utf-8-sig")
@@ -78,13 +84,16 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
         "windows_database_generation_single_user.ps1",
     ):
         assert filename in shipment
-    assert owner.count("New-TicketboxDatabaseGenerationMaintenanceAuthority `") == 1
+    assert "New-TicketboxDatabaseGenerationMaintenanceAuthority `" not in owner
+    assert owner.count("Open-TicketboxDatabaseGenerationMaintenanceAuthority `") == 4
     assert (
         owner
     ).count("Close-TicketboxDatabaseGenerationMaintenanceAuthority `") == 2
     assert "[object]$BootstrapRecoveryState" not in owner
     assert "$databaseGenerationBootstrapState = Read-PostgresBootstrapRecoveryState" not in installer
-    assert installer.count("-BootstrapRecoveryPath (Get-PostgresBootstrapRecoveryPath)") == 1
+    assert installer.count(
+        "-BootstrapRecoveryPath (Get-PostgresBootstrapRecoveryPath -AppData $AppData)"
+    ) == 1
     assert '"runtime-credentials"' in artifacts
     operation_reader = powershell_function(
         artifacts,
@@ -92,7 +101,7 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     )
     assert '"runtime-credentials"' in operation_reader
     assert '"terminal-state"' in artifacts
-    assert "ticketbox-database-generation-runtime-credentials-v1" in generation_credentials
+    assert "ticketbox-database-generation-runtime-credentials-v2" in generation_credentials
     assert "function Read-TicketboxDatabaseGenerationRuntimeCredentials" in generation_credentials
     assert "function New-TicketboxDatabaseGenerationRuntimeCredentials" in generation_credentials
     assert "function Close-TicketboxDatabaseGenerationRuntimeCredentials" in generation_credentials
@@ -105,13 +114,27 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
         generation_credentials,
         "New-TicketboxDatabaseGenerationMaintenanceAuthority",
     )
+    opener = powershell_function(
+        generation_credentials,
+        "Open-TicketboxDatabaseGenerationMaintenanceAuthority",
+    )
     assert "HttpBootstrapSecret" not in factory
     assert "RolePassword" not in factory
     assert "HostAuthoritySha256" in factory
-    for consumer in (source, owner, projection):
+    assert "Read-PostgresBootstrapRecoveryState" in opener
+    assert "New-TicketboxDatabaseGenerationMaintenanceAuthority" in opener
+    assert 'bootstrapRecoveryState.SuperuserPassword = ""' in opener
+    expected_maintenance_assertions = (
+        (source, 1),
+        (source_binding, 1),
+        (target_authorization, 1),
+        (projection, 1),
+        (retirement, 1),
+    )
+    for consumer, expected_count in expected_maintenance_assertions:
         assert consumer.count(
             "Assert-TicketboxDatabaseGenerationMaintenanceAuthority `"
-        ) == 1
+        ) == expected_count
         assert "SuperuserCapability" not in consumer
 
     retire = powershell_function(
@@ -135,6 +158,10 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
         retirement,
         "Test-TicketboxDatabaseGenerationBootstrapRetirement",
     )
+    retirement_marker = powershell_function(
+        retirement,
+        "Read-TicketboxDatabaseGenerationBootstrapRetirementMarker",
+    )
     assert "COMMENT ON ROLE postgres" in single_user
     assert "ALTER ROLE postgres PASSWORD NULL" in single_user
     assert "--single" in single_user
@@ -144,31 +171,44 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     assert "Enter-TicketboxPostgresqlStoppedHostAuthority" in retire
     assert "Restore-TicketboxDatabaseGenerationFormalPostgresqlService" in retire
     assert "Restore-TicketboxPostgresqlFormalServiceCommand" in retirement
-    assert "pg_stat_activity" not in retirement_read
-    assert "shobj_description" in retirement_read
-    assert "json_build_array" in retirement_read
-    assert "role.oid IS NOT NULL" in retirement_read
-    assert "COALESCE" not in retirement_read
-    assert "public.app_meta" not in retire + retirement_read + single_user
+    assert "pg_stat_activity" not in retirement_marker
+    assert "shobj_description" in retirement_marker
+    assert "json_build_array" in retirement_marker
+    assert "role.oid IS NOT NULL" in retirement_marker
+    assert "COALESCE" not in retirement_marker
+    assert "public.app_meta" not in retire + retirement_read + retirement_marker + single_user
     assert "HBA" not in retire + postgresql_single_user
     assert "Retire-TicketboxDatabaseGenerationBootstrapAuthority" not in (
         prepare_projection + publish_projection
     )
     assert "Write-TicketboxDatabaseGenerationRuntimeCurrent" not in publish_projection
     assert "Test-TicketboxDatabaseGenerationBootstrapRetirement" in read_projection
-    assert invoke.index("Test-TicketboxDatabaseGenerationBootstrapRetirement") < invoke.index(
-        "Read-PostgresBootstrapRecoveryState"
+    transition = invoke.split('"transition_bootstrap_authority" {', maxsplit=1)[
+        1
+    ].split('"publish_runtime_projection" {', maxsplit=1)[0]
+    assert transition.index(
+        "Test-TicketboxDatabaseGenerationBootstrapRetirement"
+    ) < transition.index(
+        "Open-TicketboxDatabaseGenerationMaintenanceAuthority"
     )
+    assert "Read-PostgresBootstrapRecoveryState" not in transition
     assert invoke.index(
         "Prepare-TicketboxDatabaseGenerationRuntimeProjection"
     ) < invoke.index("Retire-TicketboxDatabaseGenerationBootstrapAuthority")
     assert invoke.index(
         "Retire-TicketboxDatabaseGenerationBootstrapAuthority"
     ) < invoke.rindex("Publish-TicketboxDatabaseGenerationRuntimeProjection")
-    cleanup = invoke.index("Remove-TicketboxDatabaseGenerationCredentials")
-    terminal = invoke.index('"terminal-state"')
+    cleanup = invoke.index("Remove-TicketboxDatabaseGenerationTransientAuthority")
+    terminal = invoke.index("New-TicketboxDatabaseGenerationTerminalState")
     current = invoke.rindex("Publish-TicketboxDatabaseGenerationCurrent")
-    assert invoke.index("Remove-PostgresBootstrapRecoveryState") < cleanup < terminal < current
+    assert cleanup < terminal < current
+    transient_retirement = powershell_function(
+        retirement,
+        "Remove-TicketboxDatabaseGenerationTransientAuthority",
+    )
+    assert transient_retirement.index("Remove-PostgresBootstrapRecoveryState") < (
+        transient_retirement.index("Remove-TicketboxDatabaseGenerationCredentials")
+    )
     terminal_contract = artifacts[
         artifacts.index('"terminal-state" {') : artifacts.index('"current" {')
     ]
@@ -208,8 +248,9 @@ function ConvertFrom-TicketboxPostgresqlHostEvidenceRow {{
     return $fields
 }}
 $script:observed = ''
-function Invoke-TicketboxPostgresqlDatabaseCommand {{ return $script:observed }}
-{powershell_function(retirement, "Test-TicketboxDatabaseGenerationBootstrapRetirement")}
+    function Invoke-TicketboxPostgresqlDatabaseCommand {{ return $script:observed }}
+    {powershell_function(retirement, "Read-TicketboxDatabaseGenerationBootstrapRetirementMarker")}
+    {powershell_function(retirement, "Test-TicketboxDatabaseGenerationBootstrapRetirement")}
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('a' * 64)
     Payload = [pscustomobject]@{{
@@ -286,9 +327,9 @@ function Get-TicketboxDatabaseGenerationTextSha256 {{
     try {{ return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }}
     finally {{ $sha.Dispose() }}
 }}
-    {powershell_function(CONTRACT.read_text(encoding="utf-8-sig"), "Get-TicketboxDatabaseGenerationHostAuthoritySha256")}
+    {powershell_function(HOST_AUTHORITY.read_text(encoding="utf-8-sig"), "Get-TicketboxDatabaseGenerationHostAuthoritySha256")}
 {powershell_function(generation_credentials, "New-TicketboxDatabaseGenerationMaintenanceAuthority")}
-    {powershell_function(CONTRACT.read_text(encoding="utf-8-sig"), "Assert-TicketboxDatabaseGenerationMaintenanceAuthority")}
+    {powershell_function(generation_credentials, "Assert-TicketboxDatabaseGenerationMaintenanceAuthority")}
 {powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationMaintenanceAuthority")}
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('a' * 64)
@@ -387,9 +428,12 @@ function New-TicketboxDatabaseGenerationChainedArtifact {{
 function Read-TicketboxDatabaseGenerationOperationArtifact {{ return $script:artifact }}
 {powershell_function(credentials, "ConvertTo-TicketboxPostgresqlSecureString")}
 {powershell_function(credentials, "Invoke-TicketboxWithPlainPostgresqlSecret")}
-{powershell_function(CONTRACT.read_text(encoding="utf-8-sig"), "Throw-TicketboxDatabaseGenerationOperationFailure")}
+{powershell_function(FAILURE.read_text(encoding="utf-8-sig"), "Throw-TicketboxOperationFailure")}
+{powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentialArtifact")}
 {powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentials")}
 {powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationRuntimeCredentials")}
+{powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationBackupCredential")}
+{powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationBackupCredential")}
 {powershell_function(generation_credentials, "New-TicketboxDatabaseGenerationRuntimeCredentials")}
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('a' * 64)
@@ -404,19 +448,44 @@ $candidate = [pscustomobject]@{{
     }}
 }}
 $runtimeSecret = ConvertTo-TicketboxPostgresqlSecureString ('r' * 48) 'runtime'
+$backupSecret = ConvertTo-TicketboxPostgresqlSecureString ('b' * 48) 'backup'
 try {{
     $created = New-TicketboxDatabaseGenerationRuntimeCredentials `
-        'state' $intent $candidate @{{ RuntimePassword = $runtimeSecret }} ('h' * 43) @{{}}
+        'state' $intent $candidate `
+        @{{ RuntimePassword = $runtimeSecret; BackupPassword = $backupSecret }} `
+        ('h' * 43) @{{}}
     $runtimePlain = Invoke-TicketboxWithPlainPostgresqlSecret `
         $created.RuntimePassword {{ param($Value); return $Value }}
+    $backupPlain = Invoke-TicketboxWithPlainPostgresqlSecret `
+        $created.BackupPassword {{ param($Value); return $Value }}
     $httpPlain = Invoke-TicketboxWithPlainPostgresqlSecret `
         $created.HttpBootstrapSecret {{ param($Value); return $Value }}
-    if ($runtimePlain -cne ('r' * 48) -or $httpPlain -cne ('h' * 43)) {{
+    if (
+        $runtimePlain -cne ('r' * 48) -or
+        $backupPlain -cne ('b' * 48) -or
+        $httpPlain -cne ('h' * 43)
+    ) {{
         throw 'durable runtime credentials changed secret bytes'
     }}
     if ([string]$created.Artifact.Payload.candidate_sha256 -cne ('c' * 64)) {{
         throw 'runtime credentials did not bind the sealed candidate'
     }}
+    $backupCredential = Read-TicketboxDatabaseGenerationBackupCredential `
+        'state' $intent $candidate
+    $backupCredentialNames = @($backupCredential.PSObject.Properties.Name | Sort-Object)
+    if (($backupCredentialNames -join '|') -cne 'BackupPassword|CandidateSha256') {{
+        throw 'backup credential capability exposed unrelated runtime secrets'
+    }}
+    $narrowBackupPlain = Invoke-TicketboxWithPlainPostgresqlSecret `
+        $backupCredential.BackupPassword {{ param($Value); return $Value }}
+    if ($narrowBackupPlain -cne ('b' * 48)) {{
+        throw 'backup credential capability changed secret bytes'
+    }}
+    Close-TicketboxDatabaseGenerationBackupCredential $backupCredential
+    if (
+        $null -ne $backupCredential.BackupPassword -or
+        $null -ne $backupCredential.CandidateSha256
+    ) {{ throw 'backup credential capability remained reachable after close' }}
     $candidate.PayloadSha256 = ('d' * 64)
     $driftRejected = $false
     try {{
@@ -426,13 +495,17 @@ try {{
     Close-TicketboxDatabaseGenerationRuntimeCredentials $created
     if (
         $null -ne $created.RuntimePassword -or
+        $null -ne $created.BackupPassword -or
         $null -ne $created.HttpBootstrapSecret -or
         $null -ne $created.Artifact
     ) {{
         throw 'runtime credential secret graph remained reachable after close'
     }}
 }}
-finally {{ $runtimeSecret.Dispose() }}
+finally {{
+    $runtimeSecret.Dispose()
+    $backupSecret.Dispose()
+}}
 """
     run_powershell_contract_script(
         script,
@@ -479,9 +552,10 @@ function ConvertTo-TicketboxPostgresqlSecureString {{
 function ConvertTo-TicketboxPostgresqlScramVerifier {{ throw 'verifier primary failed' }}
 function Assert-TicketboxDatabaseGenerationExactProperties {{}}
 function Read-TicketboxDatabaseGenerationOperationArtifact {{ return $script:artifact }}
-{powershell_function(CONTRACT.read_text(encoding="utf-8-sig"), "Throw-TicketboxDatabaseGenerationOperationFailure")}
+{powershell_function(FAILURE.read_text(encoding="utf-8-sig"), "Throw-TicketboxOperationFailure")}
 {powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationCredentials")}
 {powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationCredentials")}
+{powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentialArtifact")}
 {powershell_function(generation_credentials, "Read-TicketboxDatabaseGenerationRuntimeCredentials")}
 {powershell_function(generation_credentials, "Close-TicketboxDatabaseGenerationRuntimeCredentials")}
 $intent = [pscustomobject]@{{
@@ -497,13 +571,15 @@ $candidate = [pscustomobject]@{{
 }}
 $salt = [Convert]::ToBase64String((0..15))
 $script:artifact = [pscustomobject]@{{ Payload = [pscustomobject]@{{
-    schema = 'ticketbox-database-generation-credentials-v1'
+    schema = 'ticketbox-database-generation-credentials-v2'
     operation_id = '11111111-1111-4111-8111-111111111111'
     intent_sha256 = ('a' * 64)
     runtime_password = ('r' * 48)
     runtime_scram_salt = $salt
     migrator_password = ('m' * 48)
     migrator_scram_salt = $salt
+    backup_password = ('b' * 48)
+    backup_scram_salt = $salt
 }} }}
 $caught = $null
 try {{ Read-TicketboxDatabaseGenerationCredentials 'state' $intent | Out-Null }}
@@ -511,11 +587,12 @@ catch {{ $caught = $_.Exception }}
 $messages = @($caught.InnerExceptions | ForEach-Object {{ $_.Message }})
 if (
     $caught -isnot [AggregateException] -or
-    $caught.InnerExceptions.Count -ne 3 -or
+    $caught.InnerExceptions.Count -ne 4 -or
     $messages[0] -cne 'verifier primary failed' -or
     $messages[1] -cnotlike '*runtime password cleanup failed*' -or
     $messages[2] -cnotlike '*migrator password cleanup failed*' -or
-    @($script:constructedSecrets).Count -ne 2 -or
+    $messages[3] -cnotlike '*backup password cleanup failed*' -or
+    @($script:constructedSecrets).Count -ne 3 -or
     @($script:constructedSecrets | Where-Object {{ $_.DisposeAttempts -ne 1 }}).Count -ne 0
 ) {{
     throw 'database credential partial construction did not preserve primary and all cleanup failures'
@@ -524,11 +601,12 @@ $script:conversionCount = 0
 $script:constructedSecrets = @()
 $script:failSecondConversion = $true
 $script:artifact = [pscustomobject]@{{ Payload = [pscustomobject]@{{
-    schema = 'ticketbox-database-generation-runtime-credentials-v1'
+    schema = 'ticketbox-database-generation-runtime-credentials-v2'
     operation_id = '11111111-1111-4111-8111-111111111111'
     intent_sha256 = ('a' * 64)
     candidate_sha256 = ('c' * 64)
     runtime_password = ('r' * 48)
+    backup_password = ('b' * 48)
     http_bootstrap_secret = ('h' * 48)
 }} }}
 $caught = $null
@@ -547,34 +625,44 @@ if (
 }}
 $transientRuntime = [TrackedSecret]::new('transient runtime', $false)
 $transientMigrator = [TrackedSecret]::new('transient migrator', $false)
+$transientBackup = [TrackedSecret]::new('transient backup', $false)
 $transient = [pscustomobject]@{{
     Artifact = [pscustomobject]@{{ PayloadSha256 = ('1' * 64) }}
     RuntimePassword = $transientRuntime
     MigratorPassword = $transientMigrator
+    BackupPassword = $transientBackup
     RuntimeVerifier = 'runtime-verifier'
     MigratorVerifier = 'migrator-verifier'
+    BackupVerifier = 'backup-verifier'
 }}
 Close-TicketboxDatabaseGenerationCredentials $transient
 if (
     -not $transientRuntime.Disposed -or -not $transientMigrator.Disposed -or
+    -not $transientBackup.Disposed -or
     $null -ne $transient.RuntimePassword -or $null -ne $transient.MigratorPassword -or
+    $null -ne $transient.BackupPassword -or
     [string]$transient.RuntimeVerifier -cne '' -or
     [string]$transient.MigratorVerifier -cne '' -or
+    [string]$transient.BackupVerifier -cne '' -or
     $null -ne $transient.Artifact
 ) {{
     throw 'transient credential close left secret or artifact authority reachable'
 }}
 $publishedRuntime = [TrackedSecret]::new('published runtime', $false)
+$publishedBackup = [TrackedSecret]::new('published backup', $false)
 $publishedHttp = [TrackedSecret]::new('published HTTP', $false)
 $published = [pscustomobject]@{{
     Artifact = [pscustomobject]@{{ PayloadSha256 = ('2' * 64) }}
     RuntimePassword = $publishedRuntime
+    BackupPassword = $publishedBackup
     HttpBootstrapSecret = $publishedHttp
 }}
 Close-TicketboxDatabaseGenerationRuntimeCredentials $published
 if (
-    -not $publishedRuntime.Disposed -or -not $publishedHttp.Disposed -or
+    -not $publishedRuntime.Disposed -or -not $publishedBackup.Disposed -or
+    -not $publishedHttp.Disposed -or
     $null -ne $published.RuntimePassword -or
+    $null -ne $published.BackupPassword -or
     $null -ne $published.HttpBootstrapSecret -or
     $null -ne $published.Artifact
 ) {{
@@ -675,7 +763,7 @@ function Close-TicketboxDatabaseGenerationRuntimeCredentials {{
     $script:events.Add('close')
     if ($script:throwClose) {{ throw 'close failed' }}
 }}
-function Throw-TicketboxDatabaseGenerationOperationFailure {{
+function Throw-TicketboxOperationFailure {{
     param($Primary, $Cleanup)
     $cleanupFailures = @($Cleanup | Where-Object {{ $null -ne $_ }})
     if ($null -ne $Primary -and $cleanupFailures.Count -gt 0) {{
@@ -840,7 +928,7 @@ function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
     return $script:retired
 }}
 function Remove-TicketboxDatabaseGenerationServiceTransition {{ $script:events.Add('remove') }}
-function Throw-TicketboxDatabaseGenerationOperationFailure {{
+function Throw-TicketboxOperationFailure {{
     param($Primary, $Cleanup)
     throw "aggregate:$($Primary.Exception.Message)|$($Cleanup.Exception.Message)"
 }}
