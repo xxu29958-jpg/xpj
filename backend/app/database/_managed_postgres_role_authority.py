@@ -43,7 +43,7 @@ def _assert_role_attributes(
     connection: Connection,
     contract: ManagedPostgresRoleContract,
 ) -> None:
-    roles = tuple(
+    rows = tuple(
         connection.execute(
             text(
                 "SELECT rolname, rolcanlogin, rolinherit, rolsuper, "
@@ -54,11 +54,12 @@ def _assert_role_attributes(
             {"owner": contract.schema_owner_role, "migrator": contract.migrator_role},
         ).all()
     )
-    expected = (
-        (contract.migrator_role, True, False, False, False, False, False, False),
-        (contract.schema_owner_role, False, False, False, False, False, False, False),
-    )
-    if roles != expected:
+    roles = {str(row[0]): tuple(row[1:]) for row in rows}
+    expected = {
+        contract.migrator_role: (True, False, False, False, False, False, False),
+        contract.schema_owner_role: (False, False, False, False, False, False, False),
+    }
+    if len(rows) != 2 or roles != expected:
         raise ManagedPostgresRoleAuthorityError(
             "managed migration owner/migrator role attributes are not exact"
         )

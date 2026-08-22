@@ -227,11 +227,16 @@ def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_
     launch = _load_launch_module()
     captured: dict = {}
     validated_junction = tmp_path / "validated-runtime-junction"
+    validated_authority = launch._installer_guard.InstalledRuntimeAuthority(
+        runtime_junction=validated_junction,
+        install_dir=tmp_path / "install",
+        data_root=tmp_path / "data-root",
+    )
     monkeypatch.setattr(launch, "configure_environment", lambda: tmp_path)
     monkeypatch.setattr(
         launch,
         "_assert_runtime_data_root_authority",
-        lambda data_dir: validated_junction,
+        lambda data_dir: validated_authority,
     )
     monkeypatch.setattr(
         launch,
