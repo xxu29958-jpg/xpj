@@ -19,6 +19,7 @@ from app.services.time_service import now_utc
 INVENTORY_SCHEMA = "ticketbox-complete-backup-inventory-v1"
 RETAINED_COMPLETE_GENERATIONS = 3
 _GENERATION_PREFIX = "ticketbox-backup-"
+_RETIRED_GENERATION_PREFIX = ".ticketbox-retired-backup-"
 _INVENTORY_PATH = DATA_ROOT / "backup-inventory.json"
 _BACKUP_DIRECTORY_LABEL = (
     f"{DATA_ROOT.parent.name}\\backups"
@@ -160,6 +161,23 @@ def _verified_generations(root: Path) -> list[_VerifiedGeneration]:
     except OSError as exc:
         raise AppError("backup_incomplete", status_code=500) from exc
     for path in children:
+        if not path.name.startswith(_RETIRED_GENERATION_PREFIX):
+            continue
+        backup_id = _canonical_uuid(path.name.removeprefix(_RETIRED_GENERATION_PREFIX))
+        if (
+            path.parent != root
+            or path.name != f"{_RETIRED_GENERATION_PREFIX}{backup_id}"
+            or not path.is_dir()
+            or path.is_symlink()
+        ):
+            raise AppError("backup_incomplete", status_code=500)
+        try:
+            shutil.rmtree(path)
+        except OSError as exc:
+            raise AppError("backup_incomplete", status_code=500) from exc
+        if path.exists():
+            raise AppError("backup_incomplete", status_code=500)
+    for path in children:
         if not path.name.startswith(_GENERATION_PREFIX):
             continue
         _generation_backup_id(path.name)
@@ -185,11 +203,20 @@ def _remove_verified_generation(root: Path, generation: _VerifiedGeneration) -> 
     current = read_manifest(lexical, verify_files=True)
     if current.backup_id != generation.entry.backup_id:
         raise AppError("backup_incomplete", status_code=409)
+    tombstone = resolved_root / f"{_RETIRED_GENERATION_PREFIX}{current.backup_id}"
+    if tombstone.exists():
+        raise AppError("backup_incomplete", status_code=500)
     try:
-        shutil.rmtree(lexical)
+        lexical.rename(tombstone)
     except OSError as exc:
         raise AppError("backup_incomplete", status_code=500) from exc
     if lexical.exists():
+        raise AppError("backup_incomplete", status_code=500)
+    try:
+        shutil.rmtree(tombstone)
+    except OSError as exc:
+        raise AppError("backup_incomplete", status_code=500) from exc
+    if tombstone.exists():
         raise AppError("backup_incomplete", status_code=500)
 
 

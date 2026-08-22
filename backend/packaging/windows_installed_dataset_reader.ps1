@@ -169,6 +169,8 @@ function Invoke-TicketboxInstalledDatasetBackupInspection {
     if (-not (Test-TicketboxPathEquals (Split-Path -Parent $generationPath) $backupRoot)) {
         throw "backup generation escaped the installed backup root."
     }
+    Assert-TicketboxProtectedDirectoryAcl -Path $backupRoot
+    Assert-TicketboxProtectedDirectoryAcl -Path $generationPath
     $helperPath = Join-Path `
         ([string]$Subject.Identity.InstallDir) `
         "program\ticketbox-backend\ticketbox-database-maintenance.exe"

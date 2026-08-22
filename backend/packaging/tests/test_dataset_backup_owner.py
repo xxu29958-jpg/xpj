@@ -55,6 +55,7 @@ def test_backup_owner_reasserts_privileged_payload_acl_before_and_after_write() 
     after_write = backup[inspection:validation]
     assert helper < inspection
     assert "Set-TicketboxExactDirectoryAcl" in after_write
+    assert "-Path ([string]$inspection.GenerationPath)" in after_write
     assert '-Accounts @("SYSTEM", "BUILTIN\\Administrators")' in after_write
     assert "-Recurse" in after_write
     assert "BackendServiceName" not in before_write + after_write

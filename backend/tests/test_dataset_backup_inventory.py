@@ -136,6 +136,99 @@ def test_corrupt_new_generation_cannot_trigger_retention(tmp_path: Path) -> None
     assert not inventory_path.exists()
 
 
+def test_inventory_must_publish_before_any_retention_delete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import dataset_backup_inventory
+
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+    inventory_path = tmp_path / "app" / "backup-inventory.json"
+    inventory_path.parent.mkdir()
+    created = datetime(2026, 8, 21, tzinfo=UTC)
+    ids = (
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+        "44444444-4444-4444-8444-444444444444",
+    )
+    for index, backup_id in enumerate(ids):
+        _write_complete_generation(
+            backup_root,
+            backup_id=backup_id,
+            created_at=created + timedelta(minutes=index),
+        )
+
+    def fail_publication(*_args, **_kwargs) -> None:
+        raise OSError("inventory publication failed")
+
+    monkeypatch.setattr(dataset_backup_inventory, "_write_inventory", fail_publication)
+    with pytest.raises(OSError, match="inventory publication failed"):
+        dataset_backup_inventory.reconcile_published_backup_inventory(
+            backup_root=backup_root,
+            inventory_path=inventory_path,
+            required_generation=f"ticketbox-backup-{ids[-1]}",
+        )
+
+    assert all((backup_root / f"ticketbox-backup-{item}").is_dir() for item in ids)
+
+
+def test_partial_retention_delete_leaves_retryable_tombstone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import dataset_backup_inventory
+
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+    inventory_path = tmp_path / "app" / "backup-inventory.json"
+    inventory_path.parent.mkdir()
+    created = datetime(2026, 8, 21, tzinfo=UTC)
+    ids = (
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+        "44444444-4444-4444-8444-444444444444",
+    )
+    for index, backup_id in enumerate(ids):
+        _write_complete_generation(
+            backup_root,
+            backup_id=backup_id,
+            created_at=created + timedelta(minutes=index),
+        )
+
+    real_rmtree = dataset_backup_inventory.shutil.rmtree
+    failed = False
+
+    def fail_after_partial_delete(path: Path) -> None:
+        nonlocal failed
+        if not failed:
+            failed = True
+            (Path(path) / DATABASE_ARCHIVE_NAME).unlink()
+            raise OSError("partial retention failure")
+        real_rmtree(path)
+
+    monkeypatch.setattr(dataset_backup_inventory.shutil, "rmtree", fail_after_partial_delete)
+    with pytest.raises(AppError):
+        dataset_backup_inventory.reconcile_published_backup_inventory(
+            backup_root=backup_root,
+            inventory_path=inventory_path,
+            required_generation=f"ticketbox-backup-{ids[-1]}",
+        )
+
+    assert not (backup_root / f"ticketbox-backup-{ids[0]}").exists()
+    tombstones = tuple(backup_root.glob(".ticketbox-retired-backup-*"))
+    assert len(tombstones) == 1
+
+    dataset_backup_inventory.reconcile_published_backup_inventory(
+        backup_root=backup_root,
+        inventory_path=inventory_path,
+        required_generation=f"ticketbox-backup-{ids[-1]}",
+    )
+    assert not tombstones[0].exists()
+
+
 def test_inventory_publication_preserves_primary_and_cleanup_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

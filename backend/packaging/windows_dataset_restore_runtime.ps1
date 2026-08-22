@@ -160,17 +160,7 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
         [string]$failureCurrent.Payload.operation_id -ceq
             ([guid][string]$Paths.operation_id).ToString("D")
     ) {
-        $backend = Join-Path ([string]$Subject.Identity.InstallDir) `
-            "program\ticketbox-backend\ticketbox-backend.exe"
-        $shawl = Join-Path ([string]$Subject.Identity.InstallDir) "shawl\shawl.exe"
-        Stop-TicketboxOwnedServiceIfExists `
-            -Name ([string]$Subject.Identity.BackendServiceName) `
-            -ExpectedExecutable $shawl `
-            -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
-            -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms) `
-            -BackendPort ([int]$Subject.Identity.BackendPort) `
-            -ExpectedRuntimeExecutables @($backend, $shawl)
-        return
+        return "committed"
     }
 
     $failures = @()
@@ -202,4 +192,5 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
     if ($failures.Count -gt 0) {
         Throw-TicketboxDatabaseGenerationOperationFailure $null $failures
     }
+    return "rolled_back"
 }

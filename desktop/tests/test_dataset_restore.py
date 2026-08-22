@@ -50,6 +50,7 @@ def _subject(tmp_path: Path) -> tuple[InstalledLayout, WindowsReleaseConfig, Pat
 def _result(**overrides: object) -> str:
     payload: dict[str, object] = {
         "schema": "ticketbox-complete-dataset-restore-result-v1",
+        "restore_attempt_id": ATTEMPT_ID,
         "backup_id": "11111111-1111-4111-8111-111111111111",
         "dataset_id": "22222222-2222-4222-8222-222222222222",
         "restore_epoch": 5,
@@ -115,6 +116,27 @@ def test_installed_restore_rejects_result_for_another_backup(
     )
 
     with pytest.raises(RuntimeControlError):
+        run_installed_dataset_restore(layout, release, GENERATION, ATTEMPT_ID)
+
+
+def test_installed_restore_rejects_result_for_another_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    layout, release, powershell, _script = _subject(tmp_path)
+    monkeypatch.setenv("SYSTEMROOT", str(powershell.parents[3]))
+    monkeypatch.setattr(dataset_restore, "require_local_fixed_regular_file", lambda path, *, label: path)
+    monkeypatch.setattr(
+        dataset_restore.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=_result(restore_attempt_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(RuntimeControlError, match="结果未知"):
         run_installed_dataset_restore(layout, release, GENERATION, ATTEMPT_ID)
 
 

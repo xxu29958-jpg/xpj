@@ -10,97 +10,97 @@ function Resolve-TicketboxInstalledDatasetRestoreNextAction {
             "old_pg_staged", "old_staged", "candidate_pg_published",
             "candidate_published", "rollback_retiring", "cleanup_pending"
         )][string]$PhysicalState,
-        [Parameter(Mandatory = $true)]
-        [ValidateSet("absent", "present")][string]$RestoredSourceState,
-        [Parameter(Mandatory = $true)]
-        [ValidateSet("absent", "present")][string]$CandidateVerificationState,
-        [Parameter(Mandatory = $true)]
-        [ValidateSet("absent", "present")][string]$PublishedCurrentState,
-        [Parameter(Mandatory = $true)]
-        [ValidateSet("absent", "present")][string]$RuntimeVerificationState
+        [Parameter(Mandatory = $true)][AllowNull()][object]$RestoredSource,
+        [Parameter(Mandatory = $true)][AllowNull()][object]$CandidateVerification,
+        [Parameter(Mandatory = $true)][AllowNull()][object]$PublishedCurrent,
+        [Parameter(Mandatory = $true)][AllowNull()][object]$RuntimeVerification
     )
+    $restoredSourcePresent = $null -ne $RestoredSource
+    $candidateVerificationPresent = $null -ne $CandidateVerification
+    $publishedCurrentPresent = $null -ne $PublishedCurrent
+    $runtimeVerificationPresent = $null -ne $RuntimeVerification
     if (
-        $CandidateVerificationState -ceq "present" -and
-        $RestoredSourceState -ceq "absent"
+        $candidateVerificationPresent -and
+        -not $restoredSourcePresent
     ) {
         throw "dataset restore candidate verification exists before restored source."
     }
     if (
-        $PublishedCurrentState -ceq "present" -and
-        $CandidateVerificationState -ceq "absent"
+        $publishedCurrentPresent -and
+        -not $candidateVerificationPresent
     ) {
         throw "dataset restore CURRENT exists before candidate verification."
     }
     if (
-        $RuntimeVerificationState -ceq "present" -and
-        $PublishedCurrentState -ceq "absent"
+        $runtimeVerificationPresent -and
+        -not $publishedCurrentPresent
     ) {
         throw "dataset restore runtime verification exists before CURRENT publication."
     }
     switch ($PhysicalState) {
         "complete" {
             if (
-                $RestoredSourceState -ceq "present" -and
-                $CandidateVerificationState -ceq "present" -and
-                $PublishedCurrentState -ceq "present" -and
-                $RuntimeVerificationState -ceq "present"
+                $restoredSourcePresent -and
+                $candidateVerificationPresent -and
+                $publishedCurrentPresent -and
+                $runtimeVerificationPresent
             ) {
                 return "done"
             }
-            if ($PublishedCurrentState -ceq "present") {
+            if ($publishedCurrentPresent) {
                 throw "dataset restore rollback retired before runtime verification."
             }
-            if ($RestoredSourceState -ceq "present") {
+            if ($restoredSourcePresent) {
                 throw "dataset restore lost its candidate before CURRENT publication."
             }
             return "build_candidate"
         }
         "candidate_building" {
             if (
-                $RestoredSourceState -ceq "present" -or
-                $PublishedCurrentState -ceq "present"
+                $restoredSourcePresent -or
+                $publishedCurrentPresent
             ) {
                 throw "dataset restore building state conflicts with published authority."
             }
             return "restore_candidate"
         }
         "candidate_ready" {
-            if ($RestoredSourceState -ceq "absent") { return "restore_candidate" }
-            if ($PublishedCurrentState -ceq "present") {
+            if (-not $restoredSourcePresent) { return "restore_candidate" }
+            if ($publishedCurrentPresent) {
                 throw "dataset restore CURRENT exists before physical publication."
             }
-            if ($CandidateVerificationState -ceq "absent") {
+            if (-not $candidateVerificationPresent) {
                 return "verify_candidate"
             }
             return "promote_candidate"
         }
         { $_ -in @("old_pg_staged", "old_staged", "candidate_pg_published") } {
             if (
-                $RestoredSourceState -ceq "absent" -or
-                $CandidateVerificationState -ceq "absent" -or
-                $PublishedCurrentState -ceq "present"
+                -not $restoredSourcePresent -or
+                -not $candidateVerificationPresent -or
+                $publishedCurrentPresent
             ) {
                 throw "dataset restore partial promotion lacks its immutable source evidence."
             }
             return "promote_candidate"
         }
         "candidate_published" {
-            if ($RestoredSourceState -ceq "absent") {
+            if (-not $restoredSourcePresent) {
                 throw "published dataset candidate lacks restored-source evidence."
             }
-            if ($CandidateVerificationState -ceq "absent") {
+            if (-not $candidateVerificationPresent) {
                 throw "published dataset candidate lacks candidate verification."
             }
-            if ($PublishedCurrentState -ceq "absent") { return "publish_current" }
-            if ($RuntimeVerificationState -ceq "absent") { return "verify_runtime" }
+            if (-not $publishedCurrentPresent) { return "publish_current" }
+            if (-not $runtimeVerificationPresent) { return "verify_runtime" }
             return "retire_rollback"
         }
         { $_ -in @("rollback_retiring", "cleanup_pending") } {
             if (
-                $RestoredSourceState -ceq "absent" -or
-                $CandidateVerificationState -ceq "absent" -or
-                $PublishedCurrentState -ceq "absent" -or
-                $RuntimeVerificationState -ceq "absent"
+                -not $restoredSourcePresent -or
+                -not $candidateVerificationPresent -or
+                -not $publishedCurrentPresent -or
+                -not $runtimeVerificationPresent
             ) {
                 throw "dataset restore cleanup lacks committed runtime verification."
             }

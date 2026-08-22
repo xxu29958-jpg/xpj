@@ -74,34 +74,48 @@ try {
     $stateRoot = Get-TicketboxDatabaseGenerationStateRoot (
         Get-TicketboxInstallerStateDirectory
     )
-    $terminalResult = Read-TicketboxInstalledDatasetRestoreResult `
-        -StateRoot $stateRoot `
-        -RestoreAttemptId $RestoreAttemptId `
-        -BackupGeneration $BackupGeneration `
-        -AllowAbsent
-    if ($null -ne $terminalResult) {
-        $result = $terminalResult.Payload
-    }
-    if ($null -eq $result) {
     $subject = Assert-TicketboxInstalledDatasetSubject $DataRoot
     Assert-TicketboxInstalledDatasetServiceAuthority $subject
     $script:AppData = Join-Path ([string]$subject.Identity.DataRoot) "app"
     $script:PgData = Join-Path ([string]$subject.Identity.DataRoot) "pgdata"
     $script:PgPort = [int]$subject.Identity.PgPort
     $script:SecretByteCount = [int]$subject.Release.secret_byte_count
-    $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
-        $subject $BackupGeneration
-    [void](Assert-TicketboxInstalledPostgresToolArtifact `
-        -Subject $subject -Tool "PgRestore")
-
     $active = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
     $current = Read-TicketboxDatabaseGenerationCurrent
-    $predecessor = Resolve-TicketboxInstalledDatasetRestorePredecessor `
-        $active $current
     $request = Get-TicketboxInstalledDatasetRestoreRequest `
         -StateRoot $stateRoot `
         -RestoreAttemptId $RestoreAttemptId `
         -AllowAbsent
+    $terminalResult = Read-TicketboxInstalledDatasetRestoreResult `
+        -StateRoot $stateRoot `
+        -RestoreAttemptId $RestoreAttemptId `
+        -BackupGeneration $BackupGeneration `
+        -Current $current `
+        -ExpectedReleaseManifestSha256 ([string]$subject.Manifest.Sha256) `
+        -AllowAbsent
+    if ($null -ne $terminalResult) {
+        if ($null -ne $request) {
+            if (
+                [string]$request.PayloadSha256 -cne
+                    [string]$terminalResult.Payload.request_sha256 -or
+                [string]$request.Payload.backup_generation -cne $BackupGeneration -or
+                [string]$request.Payload.release_manifest_sha256 -cne
+                    [string]$terminalResult.Payload.release_manifest_sha256
+            ) {
+                throw "terminal restore result differs from its remaining request."
+            }
+            Remove-TicketboxInstalledDatasetRestoreRequest $request $lock
+            $request = $null
+        }
+        $result = $terminalResult.Payload
+    }
+    if ($null -eq $result) {
+    $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
+        $subject $BackupGeneration
+    [void](Assert-TicketboxInstalledPostgresToolArtifact `
+        -Subject $subject -Tool "PgRestore")
+    $predecessor = Resolve-TicketboxInstalledDatasetRestorePredecessor `
+        $active $current
     if (
         $null -ne $request -and
         [string]$active.Payload.source_request_sha256 -ceq
@@ -232,14 +246,10 @@ try {
         $physical = Resolve-TicketboxInstalledDatasetRestorePhysicalState $paths
         $next = Resolve-TicketboxInstalledDatasetRestoreNextAction `
             -PhysicalState $physical `
-            -RestoredSourceState $(if ($null -eq $source) { "absent" } else { "present" }) `
-            -CandidateVerificationState $(
-                if ($null -eq $candidateVerification) { "absent" } else { "present" }
-            ) `
-            -PublishedCurrentState $(if ($null -eq $published) { "absent" } else { "present" }) `
-            -RuntimeVerificationState $(
-                if ($null -eq $runtimeVerification) { "absent" } else { "present" }
-            )
+            -RestoredSource $source `
+            -CandidateVerification $candidateVerification `
+            -PublishedCurrent $published `
+            -RuntimeVerification $runtimeVerification
         switch ($next) {
             "build_candidate" {
                 Stop-TicketboxInstalledDatasetWriters $subject
@@ -306,6 +316,30 @@ try {
             }
             "promote_candidate" {
                 Stop-TicketboxInstalledDatasetWriters $subject
+                if ($physical -ceq "candidate_ready") {
+                    if ($null -eq $candidate) {
+                        Start-TicketboxPostgresqlRestoreCandidateService `
+                            $subject $paths $lock
+                        $candidate = Initialize-TicketboxPostgresqlRestoreCandidateDatabase `
+                            $subject $operationId $credentials $bootstrapState $lock
+                    }
+                    $verified = Invoke-TicketboxInstalledDatasetRestoreHelper `
+                        -Subject $subject `
+                        -IntentContext $intentContext `
+                        -Request $request `
+                        -Inspection $inspection `
+                        -Paths $paths `
+                        -Candidate $candidate `
+                        -Credentials $credentials `
+                        -ReleaseIdentity $contracts.ReleaseIdentity
+                    [void](New-TicketboxInstalledDatasetCandidateVerification `
+                        -IntentContext $intentContext `
+                        -Request $request `
+                        -RestoredSource $source `
+                        -Inspection $inspection `
+                        -VerificationResult $verified `
+                        -LifecycleLock $lock)
+                }
                 Remove-TicketboxPostgresqlRestoreCandidateService $subject $paths
                 Set-TicketboxInstalledDatasetRestorePhysicalSelection `
                     -Paths $paths -Selection "Candidate"
@@ -378,6 +412,7 @@ try {
             "done" {
                 $result = [ordered]@{
                     schema = "ticketbox-complete-dataset-restore-result-v1"
+                    restore_attempt_id = $RestoreAttemptId
                     backup_id = [string]$request.Payload.backup_id
                     dataset_id = [string]$request.Payload.dataset_id
                     restore_epoch = [Math]::Max(
@@ -420,8 +455,8 @@ catch {
         $null -ne $paths
     ) {
         try {
-            Invoke-TicketboxInstalledDatasetRestoreFailureCompensation `
-                $subject $request $paths
+            [void](Invoke-TicketboxInstalledDatasetRestoreFailureCompensation `
+                $subject $request $paths)
         }
         catch { $cleanup += $_ }
     }
@@ -453,6 +488,7 @@ Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
 if ($null -eq $result) { throw "complete dataset restore returned no result." }
 $publicResult = [ordered]@{
     schema = "ticketbox-complete-dataset-restore-result-v1"
+    restore_attempt_id = [string]$result.restore_attempt_id
     backup_id = [string]$result.backup_id
     dataset_id = [string]$result.dataset_id
     restore_epoch = [int64]$result.restore_epoch
