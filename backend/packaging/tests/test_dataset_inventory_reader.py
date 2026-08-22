@@ -82,13 +82,6 @@ def _run_reader(engine: str, script: Path, data_root: Path) -> subprocess.Comple
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_installed_inventory_reader_maps_only_missing_projection_to_empty(tmp_path: Path) -> None:
     script, data_root = _installed_reader(tmp_path)
-    for engine in powershell_contract_engines():
-        result = _run_reader(engine, script, data_root)
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert json.loads(result.stdout) == {
-            "schema": "ticketbox-manager-backup-inventory-v1",
-            "generations": [],
-        }
     (data_root / "backups").mkdir()
     for engine in powershell_contract_engines():
         result = _run_reader(engine, script, data_root)
@@ -107,6 +100,15 @@ def test_installed_inventory_reader_maps_only_missing_projection_to_empty(tmp_pa
         result = _run_reader(engine, script, data_root)
         assert result.returncode == 0, result.stdout + result.stderr
         assert json.loads(result.stdout)["generations"] == []
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_installed_inventory_reader_rejects_missing_backup_root(tmp_path: Path) -> None:
+    script, data_root = _installed_reader(tmp_path)
+    for engine in powershell_contract_engines():
+        result = _run_reader(engine, script, data_root)
+        assert result.returncode != 0
+        assert "backup root is not a plain directory" in (result.stdout + result.stderr)
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")

@@ -32,14 +32,12 @@ $pathKind = Get-TicketboxPathEntryKindNoFollow $path
 if ($pathKind -ceq "Missing") {
     $backupRoot = Join-Path ([string]$subject.Identity.DataRoot) "backups"
     $backupRootKind = Get-TicketboxPathEntryKindNoFollow $backupRoot
-    if ($backupRootKind -ceq "Directory") {
-        Assert-TicketboxProtectedDirectoryAcl -Path $backupRoot
-        if (@(Get-ChildItem -LiteralPath $backupRoot -Force -ErrorAction Stop).Count -ne 0) {
-            throw "installed backup inventory is missing while backup state exists."
-        }
-    }
-    elseif ($backupRootKind -cne "Missing") {
+    if ($backupRootKind -cne "Directory") {
         throw "installed backup root is not a plain directory."
+    }
+    Assert-TicketboxProtectedDirectoryAcl -Path $backupRoot
+    if (@(Get-ChildItem -LiteralPath $backupRoot -Force -ErrorAction Stop).Count -ne 0) {
+        throw "installed backup inventory is missing while backup state exists."
     }
     [pscustomobject][ordered]@{
         schema = "ticketbox-manager-backup-inventory-v1"
