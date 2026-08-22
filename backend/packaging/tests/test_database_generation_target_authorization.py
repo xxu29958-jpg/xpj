@@ -32,6 +32,88 @@ def test_target_authorization_consumes_normalized_source_without_mode_reclassifi
         assert f"{field} =" in authorization
 
 
+def test_target_authorization_binds_dataset_identity_from_exact_database_binding(
+    tmp_path: Path,
+) -> None:
+    authorization = _function(
+        TARGET_AUTHORIZATION.read_text(encoding="utf-8-sig"),
+        "Invoke-TicketboxDatabaseGenerationTargetAuthorization",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+{authorization}
+$operation = '11111111-1111-4111-8111-111111111111'
+$intent = [pscustomobject]@{{
+    PayloadSha256 = ('a' * 64)
+    Payload = [pscustomobject]@{{
+        operation_id = $operation
+        target_revision = 'intent-target-revision'
+        generation_program_sha256 = ('9' * 64)
+    }}
+}}
+$source = [pscustomobject]@{{
+    PayloadSha256 = ('2' * 64)
+    Payload = [pscustomobject]@{{
+        intent_sha256 = ('a' * 64)
+        cluster_system_identifier = 'cluster-one'
+        database_oid = 42
+        source_revision = 'source-revision'
+    }}
+}}
+$binding = [pscustomobject]@{{
+    PayloadSha256 = ('b' * 64)
+    Payload = [pscustomobject]@{{
+        dataset_id = '22222222-2222-4222-8222-222222222222'
+        restore_epoch = 37
+        schema_revision = 'binding-schema-revision'
+    }}
+}}
+function Resolve-TicketboxInstalledDatabaseGenerationHostAuthority {{ return [pscustomobject]@{{}} }}
+function Assert-TicketboxDatabaseGenerationMaintenanceAuthority {{}}
+function Get-TicketboxDatabaseAuthorizationContract {{ return [pscustomobject]@{{ DatabaseName = 'ticketbox' }} }}
+function Get-TicketboxPostgresqlDatabaseCatalogObservation {{
+    return [pscustomobject]@{{ Exists = $true; ClusterSystemIdentifier = 'cluster-one'; DatabaseOid = 42 }}
+}}
+function Renew-TicketboxDatabaseGenerationMigratorWindow {{}}
+function Invoke-TicketboxPackagedManagedSchemaUpgrade {{ return [pscustomobject]@{{ result = 'target_committed' }} }}
+function Get-TicketboxDatabaseMaintenanceHelperEvidence {{ return [pscustomobject]@{{}} }}
+function Get-TicketboxDatabaseGenerationProgramEvidence {{ return [pscustomobject]@{{}} }}
+function Set-TicketboxDatabaseRuntimeAcl {{}}
+function Get-TicketboxDatabaseGenerationFrozenFence {{ return [ordered]@{{ schema = 'fence' }} }}
+function Get-TicketboxDatabaseRoleAuthorityEvidence {{ return 'role-evidence' }}
+function Get-TicketboxDatabaseRuntimeAclEvidence {{ return 'acl-evidence' }}
+function Invoke-TicketboxDatabaseGenerationTargetRecovery {{
+    return [pscustomobject]@{{ PayloadSha256 = ('7' * 64) }}
+}}
+function New-TicketboxDatabaseGenerationExecutionAuthority {{ return [ordered]@{{ schema = 'execution' }} }}
+function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ return 'canonical' }}
+function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('6' * 64) }}
+function Set-TicketboxDatabaseGenerationDatabaseBinding {{ return $binding }}
+$credentials = [pscustomobject]@{{ MigratorPassword = 'migrator' }}
+$maintenance = [pscustomobject]@{{ Secret = 'superuser' }}
+$release = [pscustomobject]@{{
+    MaintenanceHelperPath = 'maintenance.exe'
+    DatabaseGenerationProgramPath = 'program.json'
+}}
+$actual = Invoke-TicketboxDatabaseGenerationTargetAuthorization `
+    -StateRoot 'C:\\state' -Intent $intent -SourceBinding $source `
+    -Credentials $credentials -ReleaseIdentity $release `
+    -LifecycleLock ([pscustomobject]@{{}}) -HostContract ([pscustomobject]@{{}}) `
+    -MaintenanceAuthority $maintenance
+if (
+    [string]$actual.database_binding_sha256 -cne ('b' * 64) -or
+    [string]$actual.dataset_id -cne '22222222-2222-4222-8222-222222222222' -or
+    [int64]$actual.restore_epoch -ne 37 -or
+    [string]$actual.schema_revision -cne 'binding-schema-revision'
+) {{ throw 'target authorization did not use exact database binding operands' }}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="database-generation-target-binding.ps1",
+    )
+
+
 def test_source_binding_downstream_does_not_reclassify_install_modes() -> None:
     verifier = COMMIT_VERIFIER.read_text(encoding="utf-8-sig")
 

@@ -48,7 +48,8 @@ foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPath
 function Get-TicketboxInstalledBackupBarrier {
     param(
         [Parameter(Mandatory = $true)][object]$Subject,
-        [Parameter(Mandatory = $true)][object]$Authority
+        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][object]$Credentials
     )
 
     $policy = Get-TicketboxDatabaseAuthorizationContract
@@ -61,7 +62,7 @@ function Get-TicketboxInstalledBackupBarrier {
         -Authority $hostAuthority `
         -Database ([string]$policy.DatabaseName) `
         -Role ([string]$policy.BackupRole) `
-        -Password $Authority.Credentials.BackupPassword `
+        -Password $Credentials.BackupPassword `
         -Label "complete dataset backup writer barrier" `
         -Sql @"
 SELECT current_database() || E'\t' || current_user || E'\t' ||
@@ -210,7 +211,7 @@ function Protect-TicketboxInstalledBackupInventory {
 function Invoke-TicketboxInstalledCompleteBackupHelper {
     param(
         [Parameter(Mandatory = $true)][object]$Subject,
-        [Parameter(Mandatory = $true)][object]$Authority,
+        [Parameter(Mandatory = $true)][object]$Credentials,
         [Parameter(Mandatory = $true)][object]$Request,
         [Parameter(Mandatory = $true)][object]$WriterBarrier,
         [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds
@@ -254,7 +255,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
         Timeout = $TimeoutMilliseconds
     }
     return Invoke-TicketboxWithPlainPostgresqlSecret `
-        -Secret $Authority.Credentials.BackupPassword `
+        -Secret $Credentials.BackupPassword `
         -Action ({
             param([string]$PlainPassword)
             $passfile = New-TicketboxProtectedPgPassFile `
@@ -342,6 +343,7 @@ function Invoke-TicketboxInstalledCompleteBackupHelper {
 $lock = $null
 $subject = $null
 $authority = $null
+$runtimeCredentials = $null
 $request = $null
 $primary = $null
 $cleanup = @()
@@ -412,10 +414,14 @@ try {
         -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms) `
         -BackendPort ([int]$identity.BackendPort) `
         -ExpectedRuntimeExecutables @($backendRuntime, $backendExecutable)
-    $barrier = Get-TicketboxInstalledBackupBarrier $subject $authority
+    $runtimeCredentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
+        $authority.StateRoot $authority.Intent $authority.Candidate
+    $barrier = Get-TicketboxInstalledBackupBarrier $subject $authority $runtimeCredentials
     $helperTimeout = [int]$subject.Release.dataset_backup_helper_timeout_ms
-    $backupResult = Invoke-TicketboxInstalledCompleteBackupHelper `
-        $subject $authority $request $barrier $helperTimeout
+    $backupResult = Invoke-TicketboxInstalledCompleteBackupHelper $subject `
+        $runtimeCredentials $request $barrier $helperTimeout
+    try { Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials }
+    finally { $runtimeCredentials = $null }
     Protect-TicketboxInstalledBackupInventory $subject
     $generation = [string]$backupResult.generation
     if ($generation -cnotmatch `
@@ -475,9 +481,10 @@ finally {
         }
         catch { $cleanup += $_ }
     }
-    if ($null -ne $authority -and $null -ne $authority.Credentials) {
-        try { Close-TicketboxDatabaseGenerationRuntimeCredentials $authority.Credentials }
+    if ($null -ne $runtimeCredentials) {
+        try { Close-TicketboxDatabaseGenerationRuntimeCredentials $runtimeCredentials }
         catch { $cleanup += $_ }
+        $runtimeCredentials = $null
     }
     if (
         $null -eq $primary -and $cleanup.Count -eq 0 -and

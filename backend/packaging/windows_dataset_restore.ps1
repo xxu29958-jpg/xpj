@@ -168,8 +168,6 @@ try {
             -ActiveRestoreEpoch ([int64]$activeDataset.RestoreEpoch) `
             -RestartBackend $restartBackend `
             -LifecycleLock $lock
-        Close-TicketboxDatabaseGenerationRuntimeCredentials $authority.Credentials
-        $authority.Credentials = $null
     }
     if ($null -eq $contracts) {
         $contracts = New-TicketboxInstalledDatabaseGenerationContracts `
@@ -513,13 +511,6 @@ finally {
         try { Close-TicketboxDatabaseGenerationCredentials $credentials }
         catch { $cleanup += $_ }
         $credentials = $null
-    }
-    if ($null -ne $authority -and $null -ne $authority.Credentials) {
-        try {
-            Close-TicketboxDatabaseGenerationRuntimeCredentials `
-                $authority.Credentials
-        }
-        catch { $cleanup += $_ }
     }
     if ($null -ne $lock) {
         try { Exit-TicketboxLifecycleLock $lock }

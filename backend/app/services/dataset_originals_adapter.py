@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.errors import AppError
 from app.services.dataset_backup_contract import OriginalArtifact, sha256_file
 from app.services.path_entry_safety import is_link_or_reparse
+from app.services.stable_file_reader import hold_stable_file_for_read
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -58,15 +59,7 @@ def copy_complete_originals(
         source = _bounded_file(root, relative)
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            shutil.copyfile(source, target, follow_symlinks=False)
-            source_sha = sha256_file(source)
-            target_sha = sha256_file(target)
-            size = target.stat().st_size
-        except OSError as exc:
-            raise AppError("backup_incomplete", status_code=500) from exc
-        if source_sha != target_sha or size < 1:
-            raise AppError("backup_incomplete", status_code=500)
+        size, target_sha = _copy_stable_file(source, target)
         bound_references = referenced.get(relative_text, [])
         for reference in bound_references:
             expected = (reference.expected_sha256 or "").casefold()
@@ -81,6 +74,26 @@ def copy_complete_originals(
             )
         )
     return tuple(artifacts)
+
+
+def _copy_stable_file(source: Path, target: Path) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with hold_stable_file_for_read(source) as input_stream, target.open("xb") as output_stream:
+            while chunk := input_stream.read(1024 * 1024):
+                output_stream.write(chunk)
+                digest.update(chunk)
+                size += len(chunk)
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+        copied_sha = digest.hexdigest()
+        target_sha = sha256_file(target)
+    except (OSError, ValueError) as exc:
+        raise AppError("backup_incomplete", status_code=500) from exc
+    if size < 1 or copied_sha != target_sha:
+        raise AppError("backup_incomplete", status_code=500)
+    return size, target_sha
 
 
 def _absolute_directory(path: Path) -> Path:
@@ -119,4 +132,4 @@ def _bounded_file(root: Path, relative: Path) -> Path:
         raise AppError("backup_incomplete", status_code=500) from exc
     if is_link_or_reparse(source) or not resolved.is_file():
         raise AppError("backup_incomplete", status_code=500)
-    return resolved
+    return source

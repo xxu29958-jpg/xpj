@@ -123,7 +123,7 @@ function Read-TicketboxDatabaseGenerationOperationArtifact {{
 }}
 function Read-TicketboxDatabaseGenerationCurrent {{ return $current }}
 function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {{ param($ExpectedOperationId, $ExpectedCurrentSha256) }}
-function Read-TicketboxDatabaseGenerationRuntimeCredentials {{ return [pscustomobject]@{{}} }}
+function Read-TicketboxDatabaseGenerationRuntimeCredentials {{ throw 'runtime credentials poison' }}
 function Invoke-TicketboxPostgresqlDatabaseCommand {{ throw 'live database observation poison' }}
 $subject = [pscustomobject]@{{ Identity = [pscustomobject]@{{
     InstallationId = '33333333-3333-4333-8333-333333333333'
@@ -134,6 +134,9 @@ if (
     [int64]$observed.ActiveDataset.RestoreEpoch -ne 7 -or
     [string]$observed.ActiveDataset.SchemaRevision -cne '20260821_0001'
 ) {{ throw 'CURRENT-bound dataset evidence was not returned' }}
+if ($observed.PSObject.Properties.Name -contains 'Credentials') {{
+    throw 'secret-bearing credentials leaked into read-only dataset authority'
+}}
 """
     run_powershell_contract_script(
         script,

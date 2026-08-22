@@ -105,10 +105,6 @@ function Read-TicketboxInstalledDatasetAuthority {
     Assert-TicketboxDatabaseGenerationCommitReadyArtifact `
         -ExpectedOperationId ([string]$intent.Payload.operation_id) `
         -ExpectedCurrentSha256 ([string]$current.PayloadSha256) | Out-Null
-    $credentials = Read-TicketboxDatabaseGenerationRuntimeCredentials `
-        -StateRoot $stateRoot `
-        -Intent $intent `
-        -Candidate $candidate
     return [pscustomobject][ordered]@{
         StateRoot = $stateRoot
         Intent = $intent
@@ -120,7 +116,6 @@ function Read-TicketboxInstalledDatasetAuthority {
             RestoreEpoch = $restoreEpoch
             SchemaRevision = $schemaRevision
         }
-        Credentials = $credentials
     }
 }
 
