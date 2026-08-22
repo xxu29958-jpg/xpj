@@ -1,11 +1,14 @@
 ﻿#Requires -Version 5.1
 
+$script:TicketboxPostgresqlDatabaseCatalogTimeoutMs = 30000
+
 function Get-TicketboxPostgresqlDatabaseCatalogObservation {
     param(
         [Parameter(Mandatory = $true)][object]$Authority,
         [Parameter(Mandatory = $true)][Security.SecureString]$SuperuserPassword,
         [Parameter(Mandatory = $true)][string]$TargetDatabase,
-        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds = 30000
+        [ValidateRange(1000, 3600000)][int]$TimeoutMilliseconds =
+            $script:TicketboxPostgresqlDatabaseCatalogTimeoutMs
     )
 
     Assert-TicketboxPostgresqlDatabaseCatalogDependencies

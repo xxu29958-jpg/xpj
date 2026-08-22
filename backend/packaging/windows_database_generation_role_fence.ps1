@@ -1,5 +1,7 @@
 ﻿#Requires -Version 5.1
 
+$script:TicketboxDatabaseGenerationWriterFenceTimeoutMs = 30000
+
 function Get-TicketboxDatabaseGenerationFrozenFence {
     param(
         [Parameter(Mandatory = $true)][object]$HostAuthority,
@@ -28,7 +30,7 @@ function Get-TicketboxDatabaseGenerationFrozenFence {
                 -ManagedSchemaName "public" `
                 -AdvisoryLockLabel "xiaopiaojia:schema" `
                 -ApplicationName "ticketbox-generation-fence" `
-                -TimeoutMilliseconds 30000 `
+                -TimeoutMilliseconds $script:TicketboxDatabaseGenerationWriterFenceTimeoutMs `
                 -StatementTimeoutMilliseconds 5000 `
                 -LockTimeoutMilliseconds 1000
             $owner = @($observation.Roles | Where-Object {

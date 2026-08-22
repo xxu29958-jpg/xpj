@@ -188,7 +188,7 @@ function Get-TicketboxBoundedDeadlineUtc {
 function New-TicketboxProcessDeadlineBudget {
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateRange(1000, 25200000)][int64]$TimeoutMilliseconds
+        [ValidateRange(1000, 61200000)][int64]$TimeoutMilliseconds
     )
     return [pscustomobject]@{
         TimeoutMilliseconds = $TimeoutMilliseconds
@@ -200,7 +200,7 @@ function Assert-TicketboxProcessDeadlinePhaseBudget {
     param(
         [Parameter(Mandatory = $true)][object]$Budget,
         [Parameter(Mandatory = $true)]
-        [ValidateRange(1000, 21600000)][int64]$RequiredMilliseconds,
+        [ValidateRange(1000, 57600000)][int64]$RequiredMilliseconds,
         [Parameter(Mandatory = $true)]
         [ValidateRange(1000, 3600000)][int64]$CleanupReserveMilliseconds,
         [Parameter(Mandatory = $true)][string]$Label

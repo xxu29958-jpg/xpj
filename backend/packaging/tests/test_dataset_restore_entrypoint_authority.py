@@ -111,6 +111,9 @@ $script:durableRequest = [pscustomobject]@{{
     }}
 }}
 function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {{ return @() }}
+function Get-TicketboxPostgresqlRestoreCandidateClusterBudget {{ return [pscustomobject]@{{ TotalMilliseconds = 1000 }} }}
+function Get-TicketboxPostgresqlRestoreCandidateDatabaseBudget {{ return [pscustomobject]@{{ TotalMilliseconds = 1000 }} }}
+function Get-TicketboxInstalledDatabaseGenerationBudget {{ return [pscustomobject]@{{ TotalMilliseconds = 1000 }} }}
 function Enter-TicketboxLifecycleLock {{ return [pscustomobject]@{{ token = 'lock' }} }}
 function Assert-TicketboxLifecycleOperationLease {{ param($Lock) }}
 function Get-TicketboxInstallerStateDirectory {{ return 'C:\installer-state' }}
@@ -289,6 +292,9 @@ $current = [pscustomobject]@{{
     }}
 }}
 function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {{ param($Root); return @() }}
+function Get-TicketboxPostgresqlRestoreCandidateClusterBudget {{ return [pscustomobject]@{{ TotalMilliseconds = 1000 }} }}
+function Get-TicketboxPostgresqlRestoreCandidateDatabaseBudget {{ return [pscustomobject]@{{ TotalMilliseconds = 1000 }} }}
+function Get-TicketboxInstalledDatabaseGenerationBudget {{ return [pscustomobject]@{{ TotalMilliseconds = 1000 }} }}
 function Enter-TicketboxLifecycleLock {{ return [pscustomobject]@{{}} }}
 function Assert-TicketboxLifecycleOperationLease {{ param($Lock) }}
 function Get-TicketboxInstallerStateDirectory {{ return 'C:\\installer-state' }}

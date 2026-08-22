@@ -78,6 +78,7 @@ $result = $null
 $restartBackend = $false
 $appData = $null
 $actionBudget = $null
+$restoreBudgetContract = $null
 try {
     $lock = Enter-TicketboxLifecycleLock
     Assert-TicketboxLifecycleOperationLease $lock
@@ -240,6 +241,18 @@ try {
     }
     else { $null }
     $bootstrapState = $null
+    $candidateClusterBudget =
+        Get-TicketboxPostgresqlRestoreCandidateClusterBudget $subject.Release
+    $candidateDatabaseBudget =
+        Get-TicketboxPostgresqlRestoreCandidateDatabaseBudget
+    $databaseGenerationBudget =
+        Get-TicketboxInstalledDatabaseGenerationBudget $subject.Release
+    $restoreBudgetContract = [pscustomobject][ordered]@{
+        schema = "ticketbox-installed-dataset-restore-budget-v1"
+        candidate_cluster_ms = [int64]$candidateClusterBudget.TotalMilliseconds
+        candidate_database_ms = [int64]$candidateDatabaseBudget.TotalMilliseconds
+        database_generation_ms = [int64]$databaseGenerationBudget.TotalMilliseconds
+    }
 
     while ($true) {
         Assert-TicketboxProcessDeadlinePhaseBudget `
@@ -292,7 +305,9 @@ try {
             -PublishedCurrentPresent ($null -ne $published) `
             -RuntimeVerificationPresent ($null -ne $runtimeVerification)
         $phaseRequirement = Get-TicketboxInstalledDatasetRestoreActionBudgetMilliseconds `
-            -Action $next -Release $subject.Release
+            -Action $next `
+            -Release $subject.Release `
+            -BudgetContract $restoreBudgetContract
         Assert-TicketboxProcessDeadlinePhaseBudget `
             -Budget $actionBudget `
             -RequiredMilliseconds $phaseRequirement `

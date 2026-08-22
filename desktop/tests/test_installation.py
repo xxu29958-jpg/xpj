@@ -131,6 +131,26 @@ def test_release_config_requires_managed_host_owner_recovery_contract(
         installation.parse_windows_release_config(document)
 
 
+def test_release_config_closes_cleanup_and_total_deadline_ranges() -> None:
+    accepted = _release_config_document(
+        complete_dataset_cleanup_reserve_ms=3_600_000,
+        complete_dataset_restore_timeout_ms=57_600_000,
+    )
+    parsed = installation.parse_windows_release_config(accepted)
+    assert parsed.complete_dataset_cleanup_reserve_ms == 3_600_000
+    assert parsed.complete_dataset_restore_timeout_ms == 57_600_000
+
+    for document in (
+        {**accepted, "complete_dataset_cleanup_reserve_ms": 3_600_001},
+        {
+            **accepted,
+            "complete_dataset_restore_timeout_ms": 57_600_001,
+        },
+    ):
+        with pytest.raises(InstallationConfigError):
+            installation.parse_windows_release_config(document)
+
+
 def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> None:
     release = _release_config()
 

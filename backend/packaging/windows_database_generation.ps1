@@ -103,6 +103,117 @@ function Read-TicketboxDatabaseGenerationBootstrapRetirementState {
     return $state
 }
 
+function Get-TicketboxInstalledDatabaseGenerationBudget {
+    param([Parameter(Mandatory = $true)][object]$Release)
+    $service = [int64]$Release.service_state_timeout_ms
+    $database = [int64]$Release.database_tool_timeout_ms
+    $postgres = [int64]$Release.postgres_ready_timeout_ms
+    $command = [int64]$script:TicketboxPostgresqlDatabaseCommandTimeoutMs
+    $catalog = [int64]$script:TicketboxPostgresqlDatabaseCatalogTimeoutMs
+    $fence = [int64]$script:TicketboxDatabaseGenerationWriterFenceTimeoutMs
+    $program = [int64]$script:TicketboxDatabaseGenerationProgramTimeoutMs
+    $recovery = [int64]$script:TicketboxDatabaseGenerationRecoveryTimeoutMs
+    foreach ($value in @(
+        $service, $database, $postgres, $command, $catalog, $fence,
+        $program, $recovery
+    )) {
+        if ($value -lt 1) {
+            throw "database generation budget dependency is unavailable."
+        }
+    }
+
+    # Restored SourceBinding: catalog identity, live Dataset Authority, fence.
+    $sourceBinding = $catalog + $command + $fence
+
+    # Target authorization before its isolated recovery proof.
+    $targetPrelude =
+        $catalog +                         # live SourceBinding catalog
+        $command + $command +             # migrator window + credential
+        $program +                         # frozen Alembic program
+        $command + $command +             # ACL apply + verification
+        $fence +                           # post-migration writer fence
+        $command + $command                # role + ACL evidence
+
+    # Recovery performs dump and archive inspection, binds an isolated DB,
+    # restores it, verifies both copies, then deletes and re-observes the copy.
+    $recoveryArchive = $recovery + $recovery
+    $recoveryBinding =
+        $catalog + $command + $command + $catalog + $command + $catalog
+    $recoveryRestore =
+        $command + $command +              # revision table + revision value
+        $command + $command +              # public owner read + optional repair
+        $recovery
+    $recoveryVerification = $recovery + $recovery
+    $recoveryCleanup = $catalog + $command + $command + $catalog
+    $targetRecovery =
+        $recoveryArchive + $recoveryBinding + $recoveryRestore +
+        $recoveryVerification + $recoveryCleanup
+    $databaseBinding = $command + $command # live identity + publication
+    $targetAuthorization = $targetPrelude + $targetRecovery + $databaseBinding
+
+    # Prepare-runtime has two mutually exclusive longest branches. Both spell
+    # out their real DB calls; max selects the legal branch, not a multiplier.
+    $projectionActive =
+        $command +                         # migrator state
+        $command +                         # runtime admission
+        $command + $command +              # runtime + backup credential probes
+        $command +                         # active role policy
+        $command +                         # runtime ACL
+        $command +                         # migrator retirement
+        $command +                         # retirement verification
+        $command                           # retired role policy
+    $projectionPending =
+        $command +                         # migrator state
+        $command + $command +              # pending retirement + verification
+        $command +                         # runtime admission
+        $command + $command +              # runtime + backup credential probes
+        $command +                         # runtime ACL
+        $command +                         # final retirement verification
+        $command                           # retired role policy
+    $projectionPrepare = [Math]::Max($projectionActive, $projectionPending)
+    $bootstrapTransition =
+        $command + $command +              # runtime + maintenance probes
+        $projectionPrepare +
+        $service +                         # stop formal service
+        $database +                        # single-user retirement
+        $service + $postgres +             # retire helper + restart PG
+        $command                           # runtime semantic reread
+
+    # Publication validates marker and PGDATA directly, then through the
+    # persisted runtime descriptor.
+    $runtimeProjectionPublication =
+        $command + $database + $database + $command
+
+    # After runtime credentials exist, two pre-publication observations and
+    # four later durable actions re-observe marker + PGDATA + projection.
+    $ownerObservation =
+        $command + $command +
+        ($command + $database + $command) +
+        ($command + $database + $command) +
+        ($command + $database + $command) +
+        ($command + $database + $command)
+
+    # A process resumed inside single-user transition restores the formal
+    # service and proves retirement before normal reducer execution.
+    $serviceTransitionRecovery = $service + $postgres + $command
+
+    $components = [ordered]@{
+        service_transition_recovery_ms = $serviceTransitionRecovery
+        restored_source_binding_ms = $sourceBinding
+        target_authorization_ms = $targetAuthorization
+        bootstrap_transition_ms = $bootstrapTransition
+        runtime_projection_publication_ms = $runtimeProjectionPublication
+        reducer_observation_ms = $ownerObservation
+    }
+    $total = [int64]0
+    foreach ($value in $components.Values) { $total += [int64]$value }
+    return [pscustomobject][ordered]@{
+        Schema = "ticketbox-installed-database-generation-budget-v1"
+        Components = $components
+        TotalMilliseconds = $total
+    }
+}
+
 function Invoke-TicketboxInstalledDatabaseGeneration {
     param(
         [Parameter(Mandatory = $true)][object]$IntentContext,

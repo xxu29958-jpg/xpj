@@ -9,6 +9,31 @@
   Dataset/Generation authority.
 #>
 
+function Get-TicketboxPostgresqlRestoreCandidateDatabaseBudget {
+    $database = [int64]$script:TicketboxPostgresqlDatabaseCommandTimeoutMs
+    $catalog = [int64]$script:TicketboxPostgresqlDatabaseCatalogTimeoutMs
+    if ($database -lt 1 -or $catalog -lt 1) {
+        throw "restore candidate database budget dependencies are unavailable."
+    }
+    # The optional CREATE is included because a fresh candidate is the longest
+    # legal path. Other entries map one-for-one to the calls below.
+    $components = [ordered]@{
+        role_authority_ms = $database
+        catalog_observation_ms = $catalog
+        database_creation_ms = $database
+        database_admission_ms = $database
+        managed_acl_ms = $database
+        role_policy_verification_ms = $database
+    }
+    $total = [int64]0
+    foreach ($value in $components.Values) { $total += [int64]$value }
+    return [pscustomobject][ordered]@{
+        Schema = "ticketbox-postgresql-restore-candidate-database-budget-v1"
+        Components = $components
+        TotalMilliseconds = $total
+    }
+}
+
 function Start-TicketboxPostgresqlRestoreCandidateService {
     param(
         [Parameter(Mandatory = $true)][object]$Subject,

@@ -10,31 +10,65 @@ function Get-TicketboxInstalledDatasetRestoreActionBudgetMilliseconds {
             "promote_candidate", "publish_current", "verify_runtime",
             "retire_rollback", "done"
         )][string]$Action,
-        [Parameter(Mandatory = $true)][object]$Release
+        [Parameter(Mandatory = $true)][object]$Release,
+        [Parameter(Mandatory = $true)][object]$BudgetContract
     )
+    $expectedNames = @(
+        "candidate_cluster_ms", "candidate_database_ms",
+        "database_generation_ms", "schema"
+    )
+    $actualNames = @($BudgetContract.PSObject.Properties.Name | Sort-Object)
+    if (
+        [string]$BudgetContract.schema -cne
+            "ticketbox-installed-dataset-restore-budget-v1" -or
+        ($actualNames -join "|") -cne (($expectedNames | Sort-Object) -join "|")
+    ) {
+        throw "installed dataset restore budget contract is not closed."
+    }
+    foreach ($name in @(
+        "candidate_cluster_ms", "candidate_database_ms", "database_generation_ms"
+    )) {
+        $value = $BudgetContract.$name
+        if (
+            ($value -isnot [int] -and $value -isnot [long]) -or
+            [int64]$value -lt 1
+        ) {
+            throw "installed dataset restore budget contract has an invalid component."
+        }
+    }
     $service = [int64]$Release.service_state_timeout_ms
-    $database = [int64]$Release.database_tool_timeout_ms
     $postgres = [int64]$Release.postgres_ready_timeout_ms
+    $stopWriters = $service + $service
+    $candidateService = $service + $postgres
+    $candidateCluster = [int64]$BudgetContract.candidate_cluster_ms
+    $candidateDatabase = [int64]$BudgetContract.candidate_database_ms
+    $generation = [int64]$BudgetContract.database_generation_ms
     switch ($Action) {
-        "build_candidate" { return (4 * $service) + (2 * $database) + $postgres }
+        "build_candidate" {
+            return $stopWriters + $candidateCluster +
+                $candidateService + $candidateDatabase
+        }
         "restore_candidate" {
-            return (4 * $service) + (2 * $database) + $postgres +
+            # A retry process has no in-memory candidate handle and must
+            # re-observe/reconcile the already durable candidate first.
+            return $stopWriters + $candidateCluster +
+                $candidateService + $candidateDatabase +
                 [int64]$Release.dataset_restore_helper_timeout_ms
         }
         "verify_candidate" {
-            return (2 * $service) + $database + $postgres +
+            return $stopWriters + $candidateService + $candidateDatabase +
                 [int64]$Release.dataset_restore_helper_timeout_ms
         }
-        "promote_candidate" { return 2 * $service }
-        # The delegated H1 owner has twelve closed reducer actions. Fifteen
-        # database-tool windows cover one per action plus retry observation.
-        "publish_current" { return (6 * $service) + (15 * $database) + (2 * $postgres) }
+        "promote_candidate" { return $stopWriters + $service }
+        "publish_current" { return $service + $generation }
         "verify_runtime" {
-            return (2 * $service) + [int64]$Release.backend_ready_timeout_ms +
+            return $service + [int64]$Release.backend_ready_timeout_ms +
                 [int64]$Release.backend_health_request_timeout_ms +
                 [int64]$Release.dataset_payload_verification_timeout_ms
         }
-        "retire_rollback" { return $database }
+        # Rollback retirement is resumable after durable runtime verification;
+        # the admission floor leaves the process deadline authoritative.
+        "retire_rollback" { return 1000 }
         "done" { return 1000 }
     }
 }

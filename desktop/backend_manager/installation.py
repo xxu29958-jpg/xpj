@@ -260,7 +260,7 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
     payload_timeout = _config_integer(config, "dataset_payload_verification_timeout_ms", 10000, 3600000)
     cleanup_reserve = _config_integer(config, "complete_dataset_cleanup_reserve_ms", 10000, 3600000)
     backup_timeout = _config_integer(config, "complete_dataset_backup_timeout_ms", 10000, 21600000)
-    restore_timeout = _config_integer(config, "complete_dataset_restore_timeout_ms", 10000, 21600000)
+    restore_timeout = _config_integer(config, "complete_dataset_restore_timeout_ms", 10000, 57600000)
     if service_poll > service_timeout or backend_poll > backend_timeout or health_timeout > backend_timeout:
         raise InstallationConfigError("Windows release config 的轮询或请求超时不能大于对应就绪超时。")
     if not (
@@ -269,6 +269,8 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
         and database_tool_timeout < payload_timeout < backup_timeout
         and payload_timeout <= cleanup_reserve
         and payload_timeout < restore_timeout
+        and backup_timeout + cleanup_reserve <= 61_200_000
+        and restore_timeout + cleanup_reserve <= 61_200_000
     ):
         raise InstallationConfigError("Windows release config 的完整数据集 child/action 超时顺序无效。")
     return WindowsReleaseConfig(

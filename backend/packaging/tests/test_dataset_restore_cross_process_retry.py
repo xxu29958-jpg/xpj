@@ -132,6 +132,9 @@ $global:testRequest = [pscustomobject]@{{
 $global:testSource = [pscustomobject]@{{ PayloadSha256 = ('1' * 64); Payload = [pscustomobject]@{{}} }}
 $global:testVerification = [pscustomobject]@{{ Kind = 'candidate-verification'; Payload = [pscustomobject]@{{}} }}
 function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {{ return @() }}
+function Get-TicketboxPostgresqlRestoreCandidateClusterBudget {{ return [pscustomobject]@{{ TotalMilliseconds = 1000 }} }}
+function Get-TicketboxPostgresqlRestoreCandidateDatabaseBudget {{ return [pscustomobject]@{{ TotalMilliseconds = 1000 }} }}
+function Get-TicketboxInstalledDatabaseGenerationBudget {{ return [pscustomobject]@{{ TotalMilliseconds = 1000 }} }}
 function Enter-TicketboxLifecycleLock {{ return [pscustomobject]@{{ token = 'lock' }} }}
 function Assert-TicketboxLifecycleOperationLease {{ param($Lock) }}
 function Get-TicketboxInstallerStateDirectory {{ return 'C:\\installer-state' }}

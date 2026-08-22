@@ -8,6 +8,30 @@
   Cluster observation/policy and runtime service projection remain separate.
 #>
 
+function Get-TicketboxPostgresqlRestoreCandidateClusterBudget {
+    param([Parameter(Mandatory = $true)][object]$Release)
+    $service = [int64]$Release.service_state_timeout_ms
+    $database = [int64]$Release.database_tool_timeout_ms
+    if ($service -lt 1 -or $database -lt 1) {
+        throw "restore candidate cluster budget requires positive release timeouts."
+    }
+    # A resumed owned initdb may first consume its old wait, then be reset and
+    # run once more before the temporary capability is retired.
+    $components = [ordered]@{
+        resumed_initdb_terminal_wait_ms = $database
+        stale_initdb_service_reset_ms = $service
+        initdb_one_shot_ms = $database
+        initdb_capability_retirement_ms = $service
+    }
+    $total = [int64]0
+    foreach ($value in $components.Values) { $total += [int64]$value }
+    return [pscustomobject][ordered]@{
+        Schema = "ticketbox-postgresql-restore-candidate-cluster-budget-v1"
+        Components = $components
+        TotalMilliseconds = $total
+    }
+}
+
 function Reset-TicketboxPostgresqlRestoreCandidateInitdbAttempt {
     param(
         [Parameter(Mandatory = $true)][object]$Subject,
