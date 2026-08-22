@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.errors import AppError
 from app.services.dataset_backup_contract import OriginalArtifact, sha256_file
+from app.services.path_entry_safety import is_link_or_reparse
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -87,7 +88,7 @@ def _source_files(root: Path, *, required: frozenset[str]) -> frozenset[str]:
     except OSError as exc:
         raise AppError("backup_incomplete", status_code=500) from exc
     for candidate in candidates:
-        if candidate.is_symlink():
+        if is_link_or_reparse(candidate):
             raise AppError("backup_incomplete", status_code=500)
         if candidate.is_dir():
             continue
@@ -108,11 +109,13 @@ def _source_files(root: Path, *, required: frozenset[str]) -> frozenset[str]:
 def _absolute_directory(path: Path) -> Path:
     if not path.is_absolute():
         raise AppError("backup_incomplete", status_code=500)
+    if is_link_or_reparse(path):
+        raise AppError("backup_incomplete", status_code=500)
     try:
         resolved = path.resolve(strict=True)
     except OSError as exc:
         raise AppError("backup_incomplete", status_code=500) from exc
-    if not resolved.is_dir() or resolved.is_symlink():
+    if not resolved.is_dir() or is_link_or_reparse(resolved):
         raise AppError("backup_incomplete", status_code=500)
     return resolved
 
@@ -137,7 +140,7 @@ def _bounded_file(root: Path, relative: Path) -> Path:
         resolved.relative_to(root)
     except (OSError, ValueError) as exc:
         raise AppError("backup_incomplete", status_code=500) from exc
-    if source.is_symlink() or not resolved.is_file():
+    if is_link_or_reparse(source) or not resolved.is_file():
         raise AppError("backup_incomplete", status_code=500)
     return resolved
 

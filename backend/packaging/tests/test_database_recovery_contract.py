@@ -425,82 +425,64 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     cluster = CLUSTER_SCRIPT.read_text(encoding="utf-8-sig")
     database_safety = DATABASE_SAFETY_SCRIPT.read_text(encoding="utf-8-sig")
     install = INSTALL_SCRIPT.read_text(encoding="utf-8-sig")
-    service_contract = (PACKAGING / "windows_service_contract.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    service_contract = (PACKAGING / "windows_service_contract.ps1").read_text(encoding="utf-8-sig")
 
     assert '$script:PostgresBootstrapRecoveryFileName = ".postgres-bootstrap-password"' in database
     assert '$script:PostgresBootstrapAclAccounts = @("SYSTEM", "BUILTIN\\Administrators")' in database
     assert '$script:PostgresBootstrapAclOwnerAccount = "SYSTEM"' in database
-    assert 'FileMode]::CreateNew' in database
-    assert 'FileOptions]::WriteThrough' in database
-    assert '$stream.Flush($true)' in database
-    assert 'Move-TicketboxFileAtomically -Source $tempPath -Destination $pwfile' in database
-    assert 'Set-TicketboxExactFileAcl `' in database
-    assert 'Assert-PostgresBootstrapRecoveryFileSecurity -Path $pwfile' in database
-    assert 'Get-OrCreatePostgresBootstrapRecoveryState' in database
+    assert "FileMode]::CreateNew" in database
+    assert "FileOptions]::WriteThrough" in database
+    assert "$stream.Flush($true)" in database
+    assert "Move-TicketboxFileAtomically -Source $tempPath -Destination $pwfile" in database
+    assert "Set-TicketboxExactFileAcl `" in database
+    assert "Assert-PostgresBootstrapRecoveryFileSecurity -Path $pwfile" in database
+    assert "Get-OrCreatePostgresBootstrapRecoveryState" in database
     assert "function Repair-PostgresBootstrapRecoveryFileAcl" in database
     assert "function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization" in database
-    assert '--pwfile=$pwfile' not in database
+    assert "--pwfile=$pwfile" not in database
     assert '"--pwfile=$(ConvertTo-TicketboxFullPath $PasswordFile)"' in service_contract
     assert "RolePassword" not in database
     assert "role_password=" not in database
     password_factory = database[
-        database.index("function New-StrongPassword") : database.index(
-            "function Get-HttpBootstrapSecretByteCount"
-        )
+        database.index("function New-StrongPassword") : database.index("function Get-HttpBootstrapSecretByteCount")
     ]
-    assert password_factory.index("return -join") < password_factory.index(
-        "[Array]::Clear($bytes, 0, $bytes.Length)"
-    ) < password_factory.index("$rng.Dispose()")
-    assert '$script:HttpBootstrapSecretByteCount = 32' not in database
-    assert '$script:HttpBootstrapSecretEncodedLength = 43' not in database
+    assert (
+        password_factory.index("return -join")
+        < password_factory.index("[Array]::Clear($bytes, 0, $bytes.Length)")
+        < password_factory.index("$rng.Dispose()")
+    )
+    assert "$script:HttpBootstrapSecretByteCount = 32" not in database
+    assert "$script:HttpBootstrapSecretEncodedLength = 43" not in database
     assert "$byteCount = [int]$SecretByteCount" in database
     assert "$expectedLength = Get-HttpBootstrapSecretEncodedLength" in database
     assert '"=" * $paddingLength' in database
-    assert (
-        "$SecretByteCount = [int]$ReleaseConfig.secret_byte_count"
-        in INSTALL_SCRIPT.read_text(encoding="utf-8-sig")
-    )
+    assert "$SecretByteCount = [int]$ReleaseConfig.secret_byte_count" in INSTALL_SCRIPT.read_text(encoding="utf-8-sig")
     assert "function New-HttpBootstrapSecret" in database
     assert "[Convert]::ToBase64String($bytes)" in database
     http_secret_factory = database[
-        database.index("function New-HttpBootstrapSecret") : database.index(
-            "function Escape-SqlLiteral"
-        )
+        database.index("function New-HttpBootstrapSecret") : database.index("function Escape-SqlLiteral")
     ]
-    assert http_secret_factory.index("[Convert]::ToBase64String($bytes)") < (
-        http_secret_factory.index("[Array]::Clear($bytes, 0, $bytes.Length)")
-    ) < http_secret_factory.index("$rng.Dispose()")
+    assert (
+        http_secret_factory.index("[Convert]::ToBase64String($bytes)")
+        < (http_secret_factory.index("[Array]::Clear($bytes, 0, $bytes.Length)"))
+        < http_secret_factory.index("$rng.Dispose()")
+    )
     assert "HttpBootstrapSecret = New-HttpBootstrapSecret" in database
     assert "HttpBootstrapSecret = New-StrongPassword" not in database
-    assert (
-        "return Join-Path $AppData $script:PostgresBootstrapRecoveryFileName"
-        in database
+    assert "return Join-Path $AppData $script:PostgresBootstrapRecoveryFileName" in database
+    assert '$PgBootstrapRecoveryPath = Join-Path $AppData ".postgres-bootstrap-password"' in PREPARE_SCRIPT.read_text(
+        encoding="utf-8-sig"
     )
-    assert (
-        '$PgBootstrapRecoveryPath = Join-Path $AppData ".postgres-bootstrap-password"'
-        in PREPARE_SCRIPT.read_text(encoding="utf-8-sig")
-    )
-    fresh_write = database.index(
-        "$bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState"
-    )
-    initdb_dispatch = database.index(
-        "$initResult = Invoke-TicketboxServiceOwnedInitdb", fresh_write
-    )
+    fresh_write = database.index("$bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState")
+    initdb_dispatch = database.index("$initResult = Invoke-TicketboxServiceOwnedInitdb", fresh_write)
     service_owned_initdb = install[
-        install.index("function Invoke-TicketboxServiceOwnedInitdb") : install.index(
-            "function Register-PgService"
-        )
+        install.index("function Invoke-TicketboxServiceOwnedInitdb") : install.index("function Register-PgService")
     ]
     assert fresh_write < initdb_dispatch
     assert 'Join-Path $PgBin "initdb.exe"' not in database
     assert "New-TicketboxInitdbServiceImagePath" in service_owned_initdb
     assert "Invoke-TicketboxOwnedOneShotService" in service_owned_initdb
-    assert (
-        "Assert-TicketboxInstallServiceCompensationAuthority"
-        in service_owned_initdb
-    )
+    assert "Assert-TicketboxInstallServiceCompensationAuthority" in service_owned_initdb
 
     set_acl = install[
         install.index("function Set-TicketboxAcl(") : install.index(
@@ -520,15 +502,9 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     )
     assert app_acl < bootstrap_reprotection < installer_state
 
-    existing_cluster = database.index(
-        "if (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)"
-    )
-    recovery_validation = database.index(
-        "[void](Read-PostgresBootstrapRecoveryState -Path $pwfile)", existing_cluster
-    )
-    config_mutation = database.index(
-        "Set-TicketboxPostgresqlLoopbackConfiguration", existing_cluster
-    )
+    existing_cluster = database.index("if (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)")
+    recovery_validation = database.index("[void](Read-PostgresBootstrapRecoveryState -Path $pwfile)", existing_cluster)
+    config_mutation = database.index("Set-TicketboxPostgresqlLoopbackConfiguration", existing_cluster)
     assert "function Set-TicketboxPostgresqlLoopbackConfiguration" in cluster
     assert recovery_validation < config_mutation
 
@@ -540,9 +516,7 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
         assert retired_writer not in database
 
     passfile_directory = database_safety[
-        database_safety.index(
-            "function Get-TicketboxProtectedPgPassDirectory"
-        ) : database_safety.index(
+        database_safety.index("function Get-TicketboxProtectedPgPassDirectory") : database_safety.index(
             "function New-TicketboxProtectedPgPassFile"
         )
     ]
@@ -550,17 +524,12 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     assert "CommonProgramFiles" not in passfile_directory
     assert "WindowsPrincipal" not in passfile_directory
     assert "$directoryAccounts = @($identity.User.Value)" in passfile_directory
-    assert (
-        '$fileAccounts = @($identity.User.Value, "SYSTEM", "BUILTIN\\Administrators")'
-        in passfile_directory
-    )
+    assert '$fileAccounts = @($identity.User.Value, "SYSTEM", "BUILTIN\\Administrators")' in passfile_directory
     assert "-Accounts $fileAccounts" in passfile_directory
     assert "FullControlAccounts = $fileAccounts" in passfile_directory
     assert ".ticketbox-protected-*.tmp" in passfile_directory
     passfile_cleanup = database_safety[
-        database_safety.index(
-            "function Remove-TicketboxProtectedPgPassArtifact"
-        ) : database_safety.index(
+        database_safety.index("function Remove-TicketboxProtectedPgPassArtifact") : database_safety.index(
             "function Get-TicketboxProtectedPgPassDirectory"
         )
     ]
@@ -568,9 +537,7 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     assert "$item.Length -gt $MaximumBytes" in passfile_cleanup
 
     passfile_writer = database_safety[
-        database_safety.index(
-            "function New-TicketboxProtectedPgPassFile"
-        ) : database_safety.index(
+        database_safety.index("function New-TicketboxProtectedPgPassFile") : database_safety.index(
             "function Invoke-TicketboxWithPgPassFile"
         )
     ]
@@ -578,9 +545,7 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     assert "Write-TicketboxProtectedUtf8FileDurable" not in passfile_writer
 
     protected_action = database_safety[
-        database_safety.index(
-            "function Invoke-TicketboxWithPgPassFile"
-        ) : database_safety.index(
+        database_safety.index("function Invoke-TicketboxWithPgPassFile") : database_safety.index(
             "function Invoke-TicketboxPgDumpCustom"
         )
     ]
@@ -638,18 +603,11 @@ def test_service_owned_initdb_uses_a_separate_single_secret_authority() -> None:
     database = _read_database_script()
     install = INSTALL_SCRIPT.read_text(encoding="utf-8-sig")
     safety = INSTALLATION_SAFETY_SCRIPT.read_text(encoding="utf-8-sig")
-    service_contract = (PACKAGING / "windows_service_contract.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    service_contract = (PACKAGING / "windows_service_contract.ps1").read_text(encoding="utf-8-sig")
     prepare = PREPARE_SCRIPT.read_text(encoding="utf-8-sig")
-    uninstall = (PACKAGING / "uninstall_bundled_services.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    uninstall = (PACKAGING / "uninstall_bundled_services.ps1").read_text(encoding="utf-8-sig")
 
-    assert (
-        '$script:PostgresBootstrapAclAccounts = @("SYSTEM", "BUILTIN\\Administrators")'
-        in database
-    )
+    assert '$script:PostgresBootstrapAclAccounts = @("SYSTEM", "BUILTIN\\Administrators")' in database
     bootstrap_writer = database[
         database.index("function Write-PostgresBootstrapRecoveryState") : database.index(
             "function Read-PostgresBootstrapRecoveryState"
@@ -699,12 +657,8 @@ def test_service_owned_initdb_uses_a_separate_single_secret_authority() -> None:
     assert "Invoke-TicketboxIcaclsChecked" not in transient_writer
     dispatch = install.index("[void](Initialize-PgClusterIfNeeded `")
     runtime_binding = install.index("Initialize-TicketboxRuntimeDataBinding", dispatch)
-    generation_intent = install.index(
-        "Read-TicketboxDatabaseGenerationIntentContext"
-    )
-    generation_owner = install.index(
-        "Invoke-TicketboxInstalledDatabaseGeneration", runtime_binding
-    )
+    generation_intent = install.index("Read-TicketboxDatabaseGenerationIntentContext")
+    generation_owner = install.index("Invoke-TicketboxInstalledDatabaseGeneration", runtime_binding)
     dispatch_composition = install[dispatch:generation_owner]
     assert generation_intent < dispatch < runtime_binding < generation_owner
     assert "-CompensationAuthority $serviceCompensationAuthority" in dispatch_composition
@@ -743,19 +697,13 @@ def test_initdb_password_read_acl_accepts_only_windows_synchronize_normalization
     assert "$rule.IsInherited -or" in password_acl
     assert (
         "$rule.AccessControlType -ne\n"
-        "                [Security.AccessControl.AccessControlType]::Allow -or"
-        in password_acl
+        "                [Security.AccessControl.AccessControlType]::Allow -or" in password_acl
     )
     assert (
         "$rule.InheritanceFlags -ne\n"
-        "                [Security.AccessControl.InheritanceFlags]::None -or"
-        in password_acl
+        "                [Security.AccessControl.InheritanceFlags]::None -or" in password_acl
     )
-    assert (
-        "$rule.PropagationFlags -ne\n"
-        "                [Security.AccessControl.PropagationFlags]::None"
-        in password_acl
-    )
+    assert "$rule.PropagationFlags -ne\n                [Security.AccessControl.PropagationFlags]::None" in password_acl
     assert 'throw "initdb 临时密码文件含有重复授权规则。"' in password_acl
     assert 'throw "initdb 临时密码文件含有未授权账户。"' in password_acl
 
@@ -1192,9 +1140,7 @@ def test_interrupted_initdb_exact_delete_uses_one_bound_runtime_guard() -> None:
     delete_end = safety.index("function Assert-TicketboxRecoverableInheritedFileAcl", delete_start)
     delete = safety[delete_start:delete_end]
     assert delete.count("New-TicketboxRuntimeAbsentAssertion") == 1
-    assert delete.index("$runtimeAbsentGuard = New-TicketboxRuntimeAbsentAssertion") < delete.index(
-        "$deleteGuard = {"
-    )
+    assert delete.index("$runtimeAbsentGuard = New-TicketboxRuntimeAbsentAssertion") < delete.index("$deleteGuard = {")
     factory_call_end = delete.index("& $runtimeAbsentGuard")
     factory_call = delete[:factory_call_end]
     assert "-Name $ServiceName `" in factory_call
@@ -1209,18 +1155,10 @@ def test_interrupted_initdb_exact_delete_uses_one_bound_runtime_guard() -> None:
     assert guard.count("& $runtimeAbsentGuard") == 1
     assert "}.GetNewClosure()" in guard
     opened_identity = guard.index("$openedIdentity = @(")
-    poison_check = guard.index(
-        "[TicketboxExactTreeDeleteNativeMethods]::InspectEntry($EnvPath)"
-    )
-    path_rejection = guard.index(
-        'throw "中断 initdb PgData 句柄与已验证目标不一致。"'
-    )
-    identity_rejection = guard.index(
-        'throw "中断 initdb PgData 身份在删除前发生变化。"'
-    )
-    poison_rejection = guard.index(
-        'throw "中断 initdb 删除边界出现 .env 或 postmaster.pid。"'
-    )
+    poison_check = guard.index("[TicketboxExactTreeDeleteNativeMethods]::InspectEntry($EnvPath)")
+    path_rejection = guard.index('throw "中断 initdb PgData 句柄与已验证目标不一致。"')
+    identity_rejection = guard.index('throw "中断 initdb PgData 身份在删除前发生变化。"')
+    poison_rejection = guard.index('throw "中断 initdb 删除边界出现 .env 或 postmaster.pid。"')
     runtime_recheck = guard.index("& $runtimeAbsentGuard")
     assert path_rejection < opened_identity < identity_rejection
     assert identity_rejection < poison_check < poison_rejection < runtime_recheck
@@ -1235,11 +1173,7 @@ def test_postgres_managed_block_replacement_preserves_following_configuration(tm
             "port = 5432\r\n"
             "# END Ticketbox installer overrides\r\n"
         ),
-        "legacy": (
-            "# Ticketbox installer overrides\r\n"
-            "listen_addresses = '127.0.0.1'\r\n"
-            "port = 5432\r\n"
-        ),
+        "legacy": ("# Ticketbox installer overrides\r\nlisten_addresses = '127.0.0.1'\r\nport = 5432\r\n"),
     }
     for engine_index, engine in enumerate(_powershell_engines()):
         for format_name, managed_block in configurations.items():
@@ -1247,11 +1181,7 @@ def test_postgres_managed_block_replacement_preserves_following_configuration(tm
             pg_data.mkdir()
             config_path = pg_data / "postgresql.conf"
             config_path.write_text(
-                "shared_buffers = '128MB'\r\n"
-                "\r\n"
-                f"{managed_block}"
-                "\r\n"
-                "custom_after_ticketbox = 'must-survive'\r\n",
+                f"shared_buffers = '128MB'\r\n\r\n{managed_block}\r\ncustom_after_ticketbox = 'must-survive'\r\n",
                 encoding="ascii",
                 newline="",
             )
@@ -1800,6 +1730,7 @@ $script:AppData = $actual.AppData
 $script:PgData = Join-Path $actual.DataRoot 'pgdata'
 $script:DefaultUploadRoot = Join-Path $actual.AppData 'uploads'
 $script:LogDir = Join-Path $actual.AppData 'logs'
+$script:RuntimeSettingsDir = Join-Path $actual.AppData 'runtime-settings'
 $script:BackupDir = Join-Path $actual.DataRoot 'backups'
 $script:InstallerState = Join-Path $actual.DataRoot 'installer-state-test'
 $script:BootstrapExposureRecoveryGuardPath = Join-Path $actual.DataRoot 'missing-bootstrap-guard'

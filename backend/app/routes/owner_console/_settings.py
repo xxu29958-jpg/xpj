@@ -51,9 +51,7 @@ def owner_settings_index(
 ) -> HTMLResponse:
     ctx = _settings_ctx(request, db, active="")
     ctx["security_view"] = runtime_settings_service.get_security_view()
-    return templates.TemplateResponse(
-        request=request, name="settings/index.html", context=ctx
-    )
+    return templates.TemplateResponse(request=request, name="settings/index.html", context=ctx)
 
 
 @router.get("/settings/public-base-url", response_class=HTMLResponse)
@@ -63,9 +61,7 @@ def owner_settings_public_base_url_get(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     ctx = _settings_ctx(request, db, active="public-base-url")
-    return templates.TemplateResponse(
-        request=request, name="settings/public_base_url.html", context=ctx
-    )
+    return templates.TemplateResponse(request=request, name="settings/public_base_url.html", context=ctx)
 
 
 @router.post("/settings/public-base-url", response_class=HTMLResponse)
@@ -80,18 +76,14 @@ def owner_settings_set_public_base_url(
     except Exception as exc:  # noqa: BLE001 — surfaced to UI via getattr(exc, "message", ...)
         message = getattr(exc, "message", None) or "保存失败，请检查输入。"
         ctx = _settings_ctx(request, db, active="public-base-url", error=message)
-        return templates.TemplateResponse(
-            request=request, name="settings/public_base_url.html", context=ctx
-        )
+        return templates.TemplateResponse(request=request, name="settings/public_base_url.html", context=ctx)
     ctx = _settings_ctx(
         request,
         db,
         active="public-base-url",
-        message="已保存到 backend/.env，下一次创建上传链接即生效。",
+        message="已保存到受保护的运行时设置，下一次创建上传链接即生效。",
     )
-    return templates.TemplateResponse(
-        request=request, name="settings/public_base_url.html", context=ctx
-    )
+    return templates.TemplateResponse(request=request, name="settings/public_base_url.html", context=ctx)
 
 
 @router.get("/settings/security", response_class=HTMLResponse)
@@ -102,9 +94,7 @@ def owner_settings_security(
 ) -> HTMLResponse:
     ctx = _settings_ctx(request, db, active="security")
     ctx["security_view"] = runtime_settings_service.get_security_view()
-    return templates.TemplateResponse(
-        request=request, name="settings/security.html", context=ctx
-    )
+    return templates.TemplateResponse(request=request, name="settings/security.html", context=ctx)
 
 
 @router.get("/settings/api", response_class=HTMLResponse)
@@ -117,9 +107,7 @@ def owner_settings_api(
     groups = route_inspector_service.list_route_groups(request.app)
     ctx["route_groups"] = groups
     ctx["route_total"] = route_inspector_service.count_routes(groups)
-    return templates.TemplateResponse(
-        request=request, name="settings/api.html", context=ctx
-    )
+    return templates.TemplateResponse(request=request, name="settings/api.html", context=ctx)
 
 
 @router.get("/settings/about", response_class=HTMLResponse)
@@ -130,6 +118,4 @@ def owner_settings_about(
 ) -> HTMLResponse:
     ctx = _settings_ctx(request, db, active="about")
     ctx["about_view"] = runtime_settings_service.get_about_view()
-    return templates.TemplateResponse(
-        request=request, name="settings/about.html", context=ctx
-    )
+    return templates.TemplateResponse(request=request, name="settings/about.html", context=ctx)

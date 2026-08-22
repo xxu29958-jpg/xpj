@@ -190,7 +190,7 @@ function Complete-TicketboxInstalledDatasetRestoreTerminalReplay {
     $terminal = $TerminalResult.Artifact.Payload
     if ($null -ne $Request) {
         if (
-            [string]$Request.Payload.restore_attempt_id -cne
+            [string]$Request.Payload.operation_id -cne
                 [string]$terminal.restore_attempt_id -or
             [string]$Request.PayloadSha256 -cne [string]$terminal.request_sha256 -or
             [string]$Request.Payload.backup_generation -cne $BackupGeneration -or
@@ -204,7 +204,7 @@ function Complete-TicketboxInstalledDatasetRestoreTerminalReplay {
                 -Subject $Subject `
                 -ShouldRun ([bool]$Request.Payload.restart_backend)
         }
-        Remove-TicketboxInstalledDatasetRestoreRequest $Request $LifecycleLock
+        Remove-TicketboxInstalledDatasetOperation $Request $LifecycleLock
     }
     return [ordered]@{
         schema = "ticketbox-complete-dataset-restore-result-v1"
@@ -231,11 +231,8 @@ function Restore-TicketboxInstalledDatasetPredecessorRuntime {
         [Parameter(Mandatory = $true)][object]$Current,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
-    $successorOperationId = ([guid][string]$Paths.operation_id).ToString("D")
-    $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
-        -Request $Request -Intent $Intent -Current $Current `
-        -SuccessorOperationId $successorOperationId
-    $currentIsSuccessor = $currentDisposition -ceq "successor"
+    [void](Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
+        -Request $Request -Intent $Intent -Current $Current)
     $projectionContractSha256 =
         Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
             $Contracts.Projection
@@ -245,16 +242,6 @@ function Restore-TicketboxInstalledDatasetPredecessorRuntime {
     ) {
         throw "dataset restore predecessor projection contract differs from durable authority."
     }
-    Set-TicketboxInstalledDatasetRestorePhysicalSelection `
-        -Paths $Paths -Selection "Predecessor"
-    Set-TicketboxInstalledDatasetPublishedAcls $Subject $Paths
-    [void](Start-TicketboxOwnedServiceIfExists `
-        -Name ([string]$Subject.Identity.PgServiceName) `
-        -ExpectedExecutable (Join-Path ([string]$Subject.Identity.InstallDir) `
-            "pg\bin\pg_ctl.exe") `
-        -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
-        -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms))
-
     $intent = [pscustomobject]@{
         PayloadSha256 = [string]$Request.Payload.predecessor_intent_sha256
         Payload = $Request.Payload.predecessor_intent_payload
@@ -278,16 +265,21 @@ function Restore-TicketboxInstalledDatasetPredecessorRuntime {
             -StateRoot $StateRoot -Intent $intent -Candidate $candidate
         $hostAuthority = Resolve-TicketboxInstalledDatabaseGenerationHostAuthority `
             $Contracts.Host
+        Set-TicketboxInstalledDatasetRestorePhysicalSelection `
+            -Paths $Paths -Selection "Predecessor"
+        Set-TicketboxInstalledDatasetPublishedAcls $Subject $Paths
+        [void](Start-TicketboxOwnedServiceIfExists `
+            -Name ([string]$Subject.Identity.PgServiceName) `
+            -ExpectedExecutable (Join-Path ([string]$Subject.Identity.InstallDir) `
+                "pg\bin\pg_ctl.exe") `
+            -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
+            -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms))
         [void](Publish-TicketboxDatabaseGenerationRuntimeProjection `
             $intent $candidate $credentials $hostAuthority `
             $Contracts.Projection $LifecycleLock)
-        if ($currentIsSuccessor) {
-            $transition = `
-                New-TicketboxInstalledDatasetRestorePredecessorCurrentTransition `
-                    $Current $Request
-            [void](Publish-TicketboxDatabaseGenerationCurrent `
-                $transition $LifecycleLock)
-        }
+        [void](Restore-TicketboxInstalledDatabaseGenerationPredecessor `
+            -PredecessorCurrentPayload $target `
+            -LifecycleLock $LifecycleLock)
     }
     catch { $primary = $_ }
     finally {
@@ -313,8 +305,7 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
     $successorOperationId = ([guid][string]$Paths.operation_id).ToString("D")
     $failureIntent = Read-TicketboxDatabaseGenerationActiveIntent $StateRoot
     $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
-        -Request $Request -Intent $failureIntent -Current $failureCurrent `
-        -SuccessorOperationId $successorOperationId
+        -Request $Request -Intent $failureIntent -Current $failureCurrent
     $durableRuntimeVerification = `
         Read-TicketboxDatabaseGenerationOperationArtifact `
             -StateRoot $StateRoot `
@@ -322,7 +313,7 @@ function Invoke-TicketboxInstalledDatasetRestoreFailureCompensation {
             -Kind "runtime-verification" `
             -AllowAbsent
     if ($null -ne $durableRuntimeVerification) {
-        if ($currentDisposition -cne "successor") {
+        if ($currentDisposition -cne "successor_current") {
             throw "verified dataset restore no longer owns CURRENT."
         }
         [void](Assert-TicketboxInstalledDatasetRuntimeVerification `

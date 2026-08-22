@@ -14,7 +14,7 @@ import app.services.postgres_backup_adapter as postgres_adapter
 import app.services.postgres_backup_validation_service as pgval
 from app.errors import AppError
 from app.services.secure_file import write_protected_file_exclusive
-from scripts import postgres_backup_drill
+from scripts import postgres_backup_drill, postgres_frozen_restore_drill
 
 _DATABASE_URL = "postgresql+psycopg://ticketbox@localhost:5432/ticketbox?require_auth=scram-sha-256&sslmode=require"
 
@@ -36,9 +36,9 @@ def _passfile(tmp_path: Path) -> Path:
 
 def test_recovery_drill_uses_complete_dataset_generation_and_bounded_restore() -> None:
     source = Path(postgres_backup_drill.__file__).read_text(encoding="utf-8")
-    topology = Path(postgres_backup_drill.__file__).with_name(
-        "postgres_restore_drill_topology.py"
-    ).read_text(encoding="utf-8")
+    topology = (
+        Path(postgres_backup_drill.__file__).with_name("postgres_restore_drill_topology.py").read_text(encoding="utf-8")
+    )
 
     assert "CompleteBackupRequest" in source
     assert "create_complete_backup_generation" in source
@@ -54,6 +54,18 @@ def test_recovery_drill_uses_complete_dataset_generation_and_bounded_restore() -
     assert "create_manual_backup" not in source
     assert "_pg_tool_connection" not in source
     assert "_pg_tool_environment" not in source
+
+
+def test_recovery_drill_can_execute_the_exact_frozen_restore_helper() -> None:
+    source = Path(postgres_backup_drill.__file__).read_text(encoding="utf-8")
+    frozen = Path(postgres_frozen_restore_drill.__file__).read_text(encoding="utf-8")
+
+    assert '"--frozen-restore-helper"' in source
+    assert "restore_with_frozen_helper" in source
+    assert '"DATABASE_GENERATION_PROGRAM.json"' in frozen
+    assert '"ticketbox_migrator"' in frozen
+    assert '"ticketbox_owner"' in frozen
+    assert "subprocess.run" in frozen
 
 
 def test_recovery_drill_hands_sqlalchemy_the_real_leased_driver_connection(monkeypatch) -> None:

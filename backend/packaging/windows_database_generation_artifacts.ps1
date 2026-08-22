@@ -103,18 +103,6 @@ function Get-TicketboxDatabaseGenerationPayloadProperties {
                 "restore_epoch", "original_count", "health_contract", "result"
             )
         }
-        "dataset-restore-request" {
-            return @(
-                "schema", "restore_attempt_id", "backup_generation",
-                "backup_manifest_sha256", "backup_id", "dataset_id",
-                "backup_restore_epoch", "target_revision",
-                "predecessor_current_sha256", "predecessor_intent_sha256",
-                "predecessor_current_payload", "predecessor_intent_payload",
-                "release_manifest_sha256",
-                "active_dataset_id", "active_restore_epoch", "restart_backend",
-                "public_base_url"
-            )
-        }
         "dataset-restore-result" {
             return @(
                 "schema", "restore_attempt_id", "request_sha256",
@@ -276,6 +264,38 @@ function Write-TicketboxDatabaseGenerationEnvelope {
         -Text (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope) `
         -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
         -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
+    return Read-TicketboxDatabaseGenerationEnvelope -Path $Path -ExpectedKind $Kind
+}
+
+function Replace-TicketboxDatabaseGenerationEnvelope {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Kind,
+        [Parameter(Mandatory = $true)][string]$ExpectedPayloadSha256,
+        [Parameter(Mandatory = $true)][object]$Payload,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Assert-TicketboxDatabaseGenerationLowerSha256 `
+        $ExpectedPayloadSha256 "database generation envelope CAS predecessor"
+    $existing = Read-TicketboxDatabaseGenerationEnvelope $Path $Kind
+    if ([string]$existing.PayloadSha256 -cne $ExpectedPayloadSha256) {
+        throw "database generation envelope CAS predecessor changed."
+    }
+    $payloadJson = ConvertTo-TicketboxDatabaseGenerationCanonicalJson $Payload
+    $payloadSha256 = Get-TicketboxDatabaseGenerationTextSha256 $payloadJson
+    $envelope = [ordered]@{
+        schema = "ticketbox-database-generation-envelope-v1"
+        kind = $Kind
+        payload_sha256 = $payloadSha256
+        payload = $Payload
+    }
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $Path `
+        -Text (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope) `
+        -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
+        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount `
+        -ReplaceExisting
     return Read-TicketboxDatabaseGenerationEnvelope -Path $Path -ExpectedKind $Kind
 }
 
@@ -530,7 +550,8 @@ function Publish-TicketboxDatabaseGenerationCurrent {
         -Text (ConvertTo-TicketboxDatabaseGenerationCanonicalJson $envelope) `
         -FullControlAccounts $script:TicketboxDatabaseGenerationAclAccounts `
         -ReadExecuteAccounts @($script:TicketboxDatabaseGenerationRuntimeAccount) `
-        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount
+        -OwnerAccount $script:TicketboxDatabaseGenerationOwnerAccount `
+        -ReplaceExisting:($null -ne $existing)
     return Read-TicketboxDatabaseGenerationCurrent
 }
 

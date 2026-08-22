@@ -12,6 +12,7 @@ function Get-TicketboxInstalledDatasetRestorePaths {
     $rollbackRoot = Join-Path $DataRoot "restore-rollbacks\$operation"
     return [pscustomobject][ordered]@{
         operation_id = $operation
+        data_root = [IO.Path]::GetFullPath($DataRoot)
         stable_pgdata = Join-Path $DataRoot "pgdata"
         stable_uploads = Join-Path $DataRoot "app\uploads"
         candidate_pgdata = Join-Path $candidateRoot "pgdata"
@@ -23,8 +24,35 @@ function Get-TicketboxInstalledDatasetRestorePaths {
     }
 }
 
+function Assert-TicketboxInstalledDatasetRestorePathAuthority {
+    param([Parameter(Mandatory = $true)][object]$Paths)
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $Paths `
+        -ExpectedNames @(
+            "operation_id", "data_root", "stable_pgdata", "stable_uploads",
+            "candidate_pgdata", "candidate_uploads", "rollback_pgdata",
+            "rollback_uploads", "candidate_root", "rollback_root"
+        ) `
+        -Label "installed dataset restore paths"
+    $expected = Get-TicketboxInstalledDatasetRestorePaths `
+        -DataRoot ([string]$Paths.data_root) `
+        -OperationId ([string]$Paths.operation_id)
+    foreach ($name in @(
+        "data_root", "stable_pgdata", "stable_uploads", "candidate_pgdata",
+        "candidate_uploads", "rollback_pgdata", "rollback_uploads",
+        "candidate_root", "rollback_root"
+    )) {
+        if (-not (Test-TicketboxPathEquals ([string]$Paths.$name) ([string]$expected.$name))) {
+            throw "dataset restore path escaped its closed DataRoot/operation authority: $name"
+        }
+        Assert-NoTicketboxAncestorReparsePoints ([string]$expected.$name)
+    }
+    return $expected
+}
+
 function Resolve-TicketboxInstalledDatasetRestorePhysicalState {
     param([Parameter(Mandatory = $true)][object]$Paths)
+    [void](Assert-TicketboxInstalledDatasetRestorePathAuthority $Paths)
     $present = @{}
     foreach ($name in @(
         "stable_pgdata", "stable_uploads", "candidate_pgdata",

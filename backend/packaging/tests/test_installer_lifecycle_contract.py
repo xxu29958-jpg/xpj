@@ -315,7 +315,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_dataset_backup.ps1",
         "windows_dataset_restore.ps1",
         "windows_installed_dataset_reader.ps1",
-        "windows_installed_dataset_backup_contract.ps1",
+        "windows_installed_dataset_operation.ps1",
         "windows_installed_dataset_restore_artifacts.ps1",
         "windows_installed_dataset_restore_verification.ps1",
         "windows_dataset_restore_filesystem.ps1",
@@ -323,6 +323,8 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_dataset_restore_database.ps1",
         "windows_dataset_restore_runtime.ps1",
         "windows_postgresql_candidate_cluster.ps1",
+        "windows_postgresql_candidate_initdb.ps1",
+        "windows_postgresql_candidate_runtime.ps1",
         "windows_backend_health.ps1",
         "windows_backend_bootstrap.ps1",
         "windows_bootstrap_exposure_recovery.ps1",
@@ -378,19 +380,13 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert '"windows_ticketbox_database_acl.ps1"' in database_generation
     assert '"windows_ticketbox_database_roles.ps1"' in database_generation
     assert '"windows_c07_database.ps1"' not in database_generation
-    assert (
-        '$DatabaseMaintenanceHelper = Join-Path $ProgramDir '
-        '"ticketbox-database-maintenance.exe"'
-    ) in install
+    assert ('$DatabaseMaintenanceHelper = Join-Path $ProgramDir "ticketbox-database-maintenance.exe"') in install
     assert ". $DatabaseGenerationScript" in install
     assert "Invoke-TicketboxInstalledDatabaseGeneration" in install
     assert "Invoke-TicketboxC07InstalledMigrationAction" not in install
     assert "Invoke-TicketboxC07InstalledFreshSourceBootstrapAction" not in install
     assert 'Write-Step "收敛 release schema 到 frozen head"' in install
-    assert (
-        'Assert-File $DatabaseMaintenanceHelper '
-        '"ticketbox-database-maintenance.exe"'
-    ) in install
+    assert ('Assert-File $DatabaseMaintenanceHelper "ticketbox-database-maintenance.exe"') in install
     for script in (prepare, install, uninstall):
         assert ". $ReleaseConfigScript" in script
         assert ". $LifecycleScript" in script
@@ -916,8 +912,6 @@ def test_legacy_database_only_installer_backup_producers_are_retired() -> None:
     fresh_gate = prepare.index('$mode -cne "fresh_install"', source_classification)
     first_mutation = prepare.index("Repair-TicketboxPreflightInstallAcl", fresh_gate)
     assert source_classification < fresh_gate < first_mutation
-
-
 
 
 def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:

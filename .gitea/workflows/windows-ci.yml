@@ -98,6 +98,7 @@ jobs:
         working-directory: backend
         env:
           PYTEST_ADDOPTS: ""
+          XPJ_REQUIRE_ELEVATED_WINDOWS_ACL: "1"
         run: >-
           .\.ci-venv\Scripts\python.exe -m pytest -q packaging/tests -m "not xdist_group"
           --strict-markers -p no:cacheprovider -o addopts=

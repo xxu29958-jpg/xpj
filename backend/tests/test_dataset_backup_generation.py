@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
+import sys
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -303,6 +306,29 @@ def test_backup_root_rejects_a_direct_directory_symlink_before_resolving() -> No
 
     with pytest.raises(AppError) as rejected:
         _prepare_backup_root(DirectDirectorySymlink())  # type: ignore[arg-type]
+
+    assert rejected.value.error == "backup_incomplete"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NTFS directory junction contract")
+def test_backup_root_rejects_a_directory_junction_before_resolving(tmp_path: Path) -> None:
+    from app.services.backup_service import _prepare_backup_root
+
+    target = tmp_path / "junction-target"
+    junction = tmp_path / "backup-root"
+    target.mkdir()
+    subprocess.run(
+        ["cmd.exe", "/d", "/c", "mklink", "/J", str(junction), str(target)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    try:
+        with pytest.raises(AppError) as rejected:
+            _prepare_backup_root(Path(os.path.abspath(junction)))
+    finally:
+        if os.path.lexists(junction):
+            os.rmdir(junction)
 
     assert rejected.value.error == "backup_incomplete"
 

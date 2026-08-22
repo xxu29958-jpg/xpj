@@ -32,7 +32,7 @@ foreach ($name in @(
     "windows_postgresql_database_command.ps1",
     "windows_database_generation.ps1",
     "windows_installed_dataset_reader.ps1",
-    "windows_installed_dataset_backup_contract.ps1"
+    "windows_installed_dataset_operation.ps1"
 )) {
     $dependency = Join-Path $scriptRoot $name
     if (-not (Test-Path -LiteralPath $dependency -PathType Leaf)) {
@@ -341,7 +341,7 @@ try {
         -PollMilliseconds ([int]$subject.Release.service_poll_interval_ms)
     $restartBackend = $backendState -ceq "running"
     $authority = Read-TicketboxInstalledDatasetAuthority $subject
-    $request = Get-OrCreateTicketboxInstalledDatasetBackupRequest `
+    $request = Start-TicketboxInstalledDatasetBackupOperation `
         -Subject $subject `
         -Authority $authority `
         -BackupKind $BackupKind `
@@ -428,7 +428,7 @@ finally {
         $null -eq $primary -and $cleanup.Count -eq 0 -and
         $null -ne $backupResult -and $null -ne $request
     ) {
-        try { Remove-TicketboxInstalledDatasetBackupRequest $request $lock }
+        try { Remove-TicketboxInstalledDatasetOperation $request $lock }
         catch { $cleanup += $_ }
     }
     if ($null -ne $lock) {

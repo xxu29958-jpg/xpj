@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 from app.config import DATA_ROOT
 from app.errors import AppError
 from app.services.dataset_backup_contract import BACKUP_KINDS, DatasetBackupManifest, read_manifest
+from app.services.path_entry_safety import is_link_or_reparse
 from app.services.time_service import now_utc
 
 INVENTORY_SCHEMA = "ticketbox-complete-backup-inventory-v1"
@@ -93,15 +94,13 @@ def reconcile_published_backup_inventory(
     return entries
 
 
-def list_published_backup_records(
-    *, inventory_path: Path | None = None
-) -> list[BackupEntry]:
+def list_published_backup_records(*, inventory_path: Path | None = None) -> list[BackupEntry]:
     """Read only the sanitized projection; never traverse backup payloads."""
 
     path = Path(os.path.abspath(inventory_path or _INVENTORY_PATH))
     if not path.exists():
         return []
-    if not path.is_file() or path.is_symlink():
+    if not path.is_file() or is_link_or_reparse(path):
         raise AppError("backup_incomplete", status_code=500)
     try:
         payload = json.loads(path.read_bytes())
@@ -168,7 +167,7 @@ def _verified_generations(root: Path) -> list[_VerifiedGeneration]:
             path.parent != root
             or path.name != f"{_RETIRED_GENERATION_PREFIX}{backup_id}"
             or not path.is_dir()
-            or path.is_symlink()
+            or is_link_or_reparse(path)
         ):
             raise AppError("backup_incomplete", status_code=500)
         try:
@@ -181,7 +180,7 @@ def _verified_generations(root: Path) -> list[_VerifiedGeneration]:
         if not path.name.startswith(_GENERATION_PREFIX):
             continue
         _generation_backup_id(path.name)
-        if not path.is_dir() or path.is_symlink():
+        if not path.is_dir() or is_link_or_reparse(path):
             raise AppError("backup_incomplete", status_code=409)
         manifest = read_manifest(path, verify_files=True)
         if path.name != f"{_GENERATION_PREFIX}{manifest.backup_id}":
@@ -266,9 +265,7 @@ def _encode_entry(entry: BackupEntry) -> dict[str, object]:
         "dataset_id": entry.dataset_id,
         "restore_epoch": entry.restore_epoch,
         "size_bytes": entry.size_bytes,
-        "created_at": entry.created_at.astimezone(UTC).isoformat(timespec="microseconds").replace(
-            "+00:00", "Z"
-        ),
+        "created_at": entry.created_at.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z"),
         "kind": entry.kind,
     }
 
@@ -327,7 +324,7 @@ def _entry(file_name: str, manifest: DatasetBackupManifest) -> BackupEntry:
 
 
 def _plain_absolute_directory(path: Path) -> Path:
-    if not path.is_absolute() or path.is_symlink():
+    if not path.is_absolute() or is_link_or_reparse(path):
         raise AppError("backup_incomplete", status_code=500)
     try:
         resolved = path.resolve(strict=True)
@@ -339,14 +336,14 @@ def _plain_absolute_directory(path: Path) -> Path:
 
 
 def _plain_absolute_file_target(path: Path) -> Path:
-    if not path.is_absolute() or not path.name or path.parent.is_symlink():
+    if not path.is_absolute() or not path.name or is_link_or_reparse(path.parent):
         raise AppError("backup_incomplete", status_code=500)
     try:
         parent = path.parent.resolve(strict=True)
     except OSError as exc:
         raise AppError("backup_incomplete", status_code=500) from exc
     target = Path(os.path.abspath(path))
-    if target.parent != parent or (target.exists() and target.is_symlink()):
+    if target.parent != parent or is_link_or_reparse(target):
         raise AppError("backup_incomplete", status_code=500)
     return target
 

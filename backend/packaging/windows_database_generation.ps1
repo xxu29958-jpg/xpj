@@ -570,3 +570,40 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
     Throw-TicketboxDatabaseGenerationOperationFailure $primary $cleanup
     return $completed
 }
+
+function Restore-TicketboxInstalledDatabaseGenerationPredecessor {
+    param(
+        [Parameter(Mandatory = $true)][object]$PredecessorCurrentPayload,
+        [Parameter(Mandatory = $true)][object]$LifecycleLock
+    )
+    Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $PredecessorCurrentPayload `
+        -ExpectedNames (Get-TicketboxDatabaseGenerationPayloadProperties "current") `
+        -Label "database generation predecessor CURRENT"
+    $targetSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
+        ConvertTo-TicketboxDatabaseGenerationCanonicalJson $PredecessorCurrentPayload
+    )
+    $current = Read-TicketboxDatabaseGenerationCurrent -AllowAbsent
+    if ($null -eq $current) {
+        throw "database generation predecessor restoration lacks CURRENT."
+    }
+    if ([string]$current.PayloadSha256 -ceq $targetSha256) { return $current }
+    if (
+        [string]$current.Payload.expected_predecessor_sha256 -cne $targetSha256 -or
+        [string]$current.Payload.installation_id -cne
+            [string]$PredecessorCurrentPayload.installation_id -or
+        [string]$current.Payload.operation_id -ceq
+            [string]$PredecessorCurrentPayload.operation_id
+    ) {
+        throw "database generation predecessor restoration is not the exact immediate predecessor."
+    }
+    $transition = [pscustomobject][ordered]@{
+        schema = "ticketbox-database-generation-current-transition-v1"
+        mode = "restore_predecessor"
+        expected_current_sha256 = [string]$current.PayloadSha256
+        target_payload_sha256 = $targetSha256
+        target_payload = $PredecessorCurrentPayload
+    }
+    return Publish-TicketboxDatabaseGenerationCurrent $transition $LifecycleLock
+}

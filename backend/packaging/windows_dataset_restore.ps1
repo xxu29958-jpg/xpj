@@ -34,6 +34,7 @@ foreach ($name in @(
     "windows_backend_health.ps1",
     "windows_database_generation.ps1",
     "windows_installed_dataset_reader.ps1",
+    "windows_installed_dataset_operation.ps1",
     "windows_installed_dataset_restore_artifacts.ps1",
     "windows_installed_dataset_restore_verification.ps1",
     "windows_dataset_restore_filesystem.ps1",
@@ -41,6 +42,8 @@ foreach ($name in @(
     "windows_dataset_restore_database.ps1",
     "windows_dataset_restore_runtime.ps1",
     "windows_postgresql_candidate_cluster.ps1",
+    "windows_postgresql_candidate_initdb.ps1",
+    "windows_postgresql_candidate_runtime.ps1",
     "windows_bundled_database.ps1"
 )) {
     $dependency = Join-Path $scriptRoot $name
@@ -73,7 +76,6 @@ $primary = $null
 $cleanup = @()
 $result = $null
 $restartBackend = $false
-$resumeCommittedRestore = $false
 $publicBaseUrl = $null
 try {
     $lock = Enter-TicketboxLifecycleLock
@@ -89,8 +91,8 @@ try {
     $script:SecretByteCount = [int]$subject.Release.secret_byte_count
     $active = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
     $current = Read-TicketboxDatabaseGenerationCurrent
-    $request = Get-TicketboxInstalledDatasetRestoreRequest `
-        -StateRoot $stateRoot -AllowAbsent
+    $request = Read-TicketboxInstalledDatasetOperation `
+        -StateRoot $stateRoot -ExpectedOperationKind "restore" -AllowAbsent
     $terminalResult = Read-TicketboxInstalledDatasetRestoreResult `
         -StateRoot $stateRoot `
         -RestoreAttemptId $RestoreAttemptId `
@@ -106,19 +108,6 @@ try {
         $request = $null
     }
     if ($null -eq $result) {
-    if ($null -ne $request) {
-        $resumeOperationId = ([guid][string]$active.Payload.operation_id).ToString("D")
-        if (
-            [string]$active.Payload.source_request_sha256 -cne
-                [string]$request.PayloadSha256
-        ) {
-            throw "active Generation successor differs from the restore request."
-        }
-        [void](Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
-            -Request $request -Intent $active -Current $current `
-            -SuccessorOperationId $resumeOperationId)
-        $resumeCommittedRestore = $true
-    }
     $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
         $subject $BackupGeneration
     [void](Assert-TicketboxInstalledPostgresToolArtifact `
@@ -156,7 +145,7 @@ try {
         ) {
             throw "installed projection differs from predecessor Generation authority."
         }
-        $request = New-TicketboxInstalledDatasetRestoreRequest `
+        $request = Start-TicketboxInstalledDatasetRestoreOperation `
             -Subject $subject `
             -Authority $authority `
             -Inspection $inspection `
@@ -191,7 +180,9 @@ try {
     }
     $restartBackend = [bool]$request.Payload.restart_backend
     if (
-        [string]$request.Payload.restore_attempt_id -cne $RestoreAttemptId -or
+        [string]$request.Payload.release_manifest_sha256 -cne
+            [string]$subject.Manifest.Sha256 -or
+        [string]$request.Payload.operation_id -cne $RestoreAttemptId -or
         [string]$request.Payload.backup_generation -cne $BackupGeneration -or
         [string]$request.Payload.backup_manifest_sha256 -cne
             [string]$inspection.Evidence.manifest_sha256 -or
@@ -200,10 +191,9 @@ try {
         throw "restore request differs from the explicitly selected backup."
     }
 
-    if (
-        [string]$active.Payload.operation_id -ceq [string]$current.Payload.operation_id -and
-        -not $resumeCommittedRestore
-    ) {
+    $intentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
+        -Request $request -Intent $active -Current $current
+    if ($intentDisposition -ceq "request_only") {
         $intentContext = New-TicketboxDatabaseGenerationIntent `
             -InstallerState (Get-TicketboxInstallerStateDirectory) `
             -LifecycleLock $lock `
@@ -216,15 +206,13 @@ try {
             -HostContract $contracts.Host `
             -ProjectionContract $contracts.Projection
         $active = $intentContext.Artifact
+        $intentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
+            -Request $request -Intent $active -Current $current
+        if ($intentDisposition -cne "successor_pending") {
+            throw "dataset restore successor intent did not become pending."
+        }
     }
     else {
-        if (
-            [string]$active.Payload.source_request_sha256 -cne [string]$request.PayloadSha256 -or
-            [string]$active.Payload.expected_predecessor_sha256 -cne
-                [string]$request.Payload.predecessor_current_sha256
-        ) {
-            throw "active Generation successor differs from the restore request."
-        }
         $intentContext = [pscustomobject]@{
             StateRoot = $stateRoot
             Artifact = $active
@@ -234,33 +222,24 @@ try {
     $paths = Get-TicketboxInstalledDatasetRestorePaths `
         ([string]$subject.Identity.DataRoot) $operationId
     $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
-        -Request $request -Intent $active -Current $current `
-        -SuccessorOperationId $operationId
-    $published = if ($currentDisposition -ceq "successor") {
+        -Request $request -Intent $active -Current $current
+    $published = if ($currentDisposition -ceq "successor_current") {
         $current
     }
     else { $null }
     $bootstrapState = $null
-    if ($null -eq $published) {
-        $bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState
-        $credentials = New-TicketboxDatabaseGenerationCredentials `
-            -StateRoot $stateRoot `
-            -Intent $active `
-            -LifecycleLock $lock
-    }
 
     while ($true) {
         Assert-TicketboxLifecycleOperationLease $lock
         $active = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
         $current = Read-TicketboxDatabaseGenerationCurrent
         $currentDisposition = Resolve-TicketboxInstalledDatasetRestoreCurrentDisposition `
-            -Request $request -Intent $active -Current $current `
-            -SuccessorOperationId $operationId
+            -Request $request -Intent $active -Current $current
         $intentContext = [pscustomobject]@{
             StateRoot = $stateRoot
             Artifact = $active
         }
-        $published = if ($currentDisposition -ceq "successor") {
+        $published = if ($currentDisposition -ceq "successor_current") {
             $current
         }
         else { $null }
@@ -296,6 +275,16 @@ try {
             -CandidateVerification $candidateVerification `
             -PublishedCurrent $published `
             -RuntimeVerification $runtimeVerification
+        if (
+            $next -in @("build_candidate", "restore_candidate", "verify_candidate") -and
+            $null -eq $credentials
+        ) {
+            $bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState
+            $credentials = New-TicketboxDatabaseGenerationCredentials `
+                -StateRoot $stateRoot `
+                -Intent $active `
+                -LifecycleLock $lock
+        }
         switch ($next) {
             "build_candidate" {
                 Stop-TicketboxInstalledDatasetWriters $subject
@@ -362,30 +351,6 @@ try {
             }
             "promote_candidate" {
                 Stop-TicketboxInstalledDatasetWriters $subject
-                if ($physical -ceq "candidate_ready") {
-                    if ($null -eq $candidate) {
-                        Start-TicketboxPostgresqlRestoreCandidateService `
-                            $subject $paths $lock
-                        $candidate = Initialize-TicketboxPostgresqlRestoreCandidateDatabase `
-                            $subject $operationId $credentials $bootstrapState $lock
-                    }
-                    $verified = Invoke-TicketboxInstalledDatasetRestoreHelper `
-                        -Subject $subject `
-                        -IntentContext $intentContext `
-                        -Request $request `
-                        -Inspection $inspection `
-                        -Paths $paths `
-                        -Candidate $candidate `
-                        -Credentials $credentials `
-                        -ReleaseIdentity $contracts.ReleaseIdentity
-                    [void](New-TicketboxInstalledDatasetCandidateVerification `
-                        -IntentContext $intentContext `
-                        -Request $request `
-                        -RestoredSource $source `
-                        -Inspection $inspection `
-                        -VerificationResult $verified `
-                        -LifecycleLock $lock)
-                }
                 Remove-TicketboxPostgresqlRestoreCandidateService $subject $paths
                 Set-TicketboxInstalledDatasetRestorePhysicalSelection `
                     -Paths $paths -Selection "Candidate"
@@ -468,7 +433,7 @@ try {
             -Payload $result `
             -LifecycleLock $lock
         $result = $terminalResult.Payload
-        Remove-TicketboxInstalledDatasetRestoreRequest $request $lock
+        Remove-TicketboxInstalledDatasetOperation $request $lock
     }
     }
 }

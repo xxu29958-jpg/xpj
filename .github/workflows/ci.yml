@@ -342,6 +342,7 @@ jobs:
       - name: Windows installer safety behavior
         env:
           PYTEST_ADDOPTS: ""
+          XPJ_REQUIRE_ELEVATED_WINDOWS_ACL: "1"
         # This is a public repository, so GitHub's standard windows-latest
         # runner has four vCPUs. These tests explicitly exclude the shared
         # xdist_group lane and remain file-isolated; use all four CPUs without
@@ -388,6 +389,49 @@ jobs:
       - name: Frozen backend locked release build
         shell: powershell
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
+
+      - name: Exact frozen dataset restore on real local PostgreSQL
+        shell: powershell
+        env:
+          PYTEST_ADDOPTS: ""
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . .\scripts\test_pg_storage_contract.ps1
+          $contract = Get-XpjTestPostgresContract
+          $port = [int]$contract.ports.local
+          $dataDir = Get-XpjTestPostgresDefaultDataDir -Port $port
+          $connectionEnv = Join-Path $env:RUNNER_TEMP 'ticketbox-frozen-restore.env'
+          try {
+            & .\scripts\stop_test_pg.ps1 -Port $port -DataDir $dataDir
+            & .\scripts\start_test_pg.ps1 -Port $port -DataDir $dataDir `
+              -PostgresBin (Join-Path $PWD 'packaging\vendor\pg\bin')
+            if ($LASTEXITCODE -ne 0) { throw 'frozen restore PostgreSQL start failed' }
+            $passfile = Join-Path $dataDir ([string]$contract.passfile_name)
+            python -m scripts.write_test_postgres_env `
+              --host localhost --port-profile local --admin-user postgres `
+              --existing-passfile $passfile --output $connectionEnv
+            if ($LASTEXITCODE -ne 0) { throw 'frozen restore connection contract failed' }
+            foreach ($line in [IO.File]::ReadAllLines($connectionEnv)) {
+              $separator = $line.IndexOf('=')
+              if ($separator -le 0) { throw 'malformed frozen restore connection contract' }
+              [Environment]::SetEnvironmentVariable(
+                $line.Substring(0, $separator),
+                $line.Substring($separator + 1),
+                [EnvironmentVariableTarget]::Process
+              )
+            }
+            python scripts\smoke_test.py
+            if ($LASTEXITCODE -ne 0) { throw 'frozen restore source smoke failed' }
+            python scripts\postgres_backup_drill.py `
+              --upload-root (Join-Path $PWD 'uploads') `
+              --frozen-restore-helper `
+                (Join-Path $PWD 'dist\ticketbox-backend\ticketbox-database-maintenance.exe')
+            if ($LASTEXITCODE -ne 0) { throw 'exact frozen dataset restore failed' }
+          }
+          finally {
+            & .\scripts\stop_test_pg.ps1 -Port $port -DataDir $dataDir
+            Remove-Item -LiteralPath $connectionEnv -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Frozen Desktop Manager locked release build
         shell: powershell

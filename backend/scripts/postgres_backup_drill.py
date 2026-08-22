@@ -35,6 +35,10 @@ from sqlalchemy.pool import StaticPool
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.services.path_entry_safety import is_link_or_reparse  # noqa: E402
+from scripts.postgres_frozen_restore_drill import (  # noqa: E402
+    restore_with_frozen_helper,
+)
 from scripts.postgres_restore_drill_topology import (  # noqa: E402
     managed_restore_role_topology,
 )
@@ -51,6 +55,7 @@ class _DrillInputs:
     pg_dump: Path
     pg_restore: Path
     cluster_identity: str
+    frozen_restore_helper: Path | None
 
 
 @contextmanager
@@ -125,6 +130,7 @@ def _run_drill(
     passfile: Path,
     cluster_identity: str,
     source_connection: Connection,
+    frozen_restore_helper: Path | None,
 ) -> int:
     from app.database._dataset_restore_authority import SANITATION_TABLES
     from app.services.postgres_backup_validation_service import find_pg_binary
@@ -144,13 +150,18 @@ def _run_drill(
         pg_dump=Path(pg_dump).resolve(strict=True),
         pg_restore=Path(pg_restore).resolve(strict=True),
         cluster_identity=cluster_identity,
+        frozen_restore_helper=frozen_restore_helper,
     )
     with (
         _leased_source_engine(source_url, source_connection) as source_engine,
         tempfile.TemporaryDirectory(prefix="ticketbox-dataset-drill-") as temporary,
     ):
-        _exercise_complete_generation(inputs, source_engine, Path(temporary).resolve())
-    _assert_restored_database(source_counts, _counts(restore_url), SANITATION_TABLES)
+        restored_counts = _exercise_complete_generation(
+            inputs,
+            source_engine,
+            Path(temporary).resolve(),
+        )
+    _assert_restored_database(source_counts, restored_counts, SANITATION_TABLES)
     print("\nPASS postgres backup/restore drill")
     return 0
 
@@ -159,9 +170,23 @@ def _exercise_complete_generation(
     inputs: _DrillInputs,
     source_engine: Engine,
     temporary: Path,
-) -> None:
+) -> dict[str, int]:
     generation, manifest = _create_complete_generation(inputs, source_engine, temporary)
+    if inputs.frozen_restore_helper is not None:
+        restored_counts, restored_originals = restore_with_frozen_helper(
+            source_url=inputs.source_url,
+            admin_url=os.environ["XPJ_TEST_ADMIN_URL"],
+            admin_passfile=inputs.passfile,
+            helper=inputs.frozen_restore_helper,
+            pg_restore=inputs.pg_restore,
+            temporary=temporary,
+            generation=generation,
+            manifest=manifest,
+        )
+        _assert_restored_originals(manifest, restored_originals)
+        return restored_counts
     _restore_complete_generation(inputs, temporary, generation, manifest)
+    return _counts(inputs.restore_url)
 
 
 def _create_complete_generation(
@@ -285,7 +310,7 @@ def _assert_restored_originals(manifest: object, restored_originals: Path) -> No
     actual = {
         path.relative_to(restored_originals).as_posix(): (path.stat().st_size, sha256_file(path))
         for path in restored_originals.rglob("*")
-        if path.is_file() and not path.is_symlink()
+        if path.is_file() and not is_link_or_reparse(path)
     }
     expected = {
         Path(*Path(item.storage_key).parts[1:]).as_posix(): (item.size_bytes, item.sha256)
@@ -334,6 +359,7 @@ def _assert_restored_database(
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--upload-root", type=Path, required=True)
+    parser.add_argument("--frozen-restore-helper", type=Path)
     return parser.parse_args()
 
 
@@ -347,9 +373,12 @@ def main() -> int:
     try:
         passfile = Path(passfile_value).resolve(strict=True)
         upload_root = args.upload_root.resolve(strict=True)
+        frozen_restore_helper = (
+            args.frozen_restore_helper.resolve(strict=True) if args.frozen_restore_helper is not None else None
+        )
     except OSError:
         raise SystemExit("FAIL drill: explicit passfile or upload root is unavailable") from None
-    if not upload_root.is_dir() or upload_root.is_symlink():
+    if not upload_root.is_dir() or is_link_or_reparse(upload_root):
         raise SystemExit("FAIL drill: upload root is not a plain directory")
     cluster_identity = os.environ["XPJ_TEST_CLUSTER_IDENTITY"]
     with (
@@ -375,6 +404,7 @@ def main() -> int:
             passfile=passfile,
             cluster_identity=cluster_identity,
             source_connection=source_connection,
+            frozen_restore_helper=frozen_restore_helper,
         )
 
 

@@ -181,7 +181,7 @@ function New-TicketboxInstalledDatasetRestoredSource {
         operation_id = [string]$intent.Payload.operation_id
         intent_sha256 = [string]$intent.PayloadSha256
         source_request_sha256 = [string]$Request.PayloadSha256
-        predecessor_current_sha256 = [string]$Request.Payload.predecessor_current_sha256
+        predecessor_current_sha256 = [string]$Request.Payload.current_sha256
         backup_manifest_sha256 = [string]$Request.Payload.backup_manifest_sha256
         backup_id = [string]$Request.Payload.backup_id
         dataset_id = [string]$Request.Payload.dataset_id

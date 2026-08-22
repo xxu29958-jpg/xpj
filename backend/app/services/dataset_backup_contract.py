@@ -12,6 +12,7 @@ from uuid import UUID
 
 from app.errors import AppError
 from app.services.dataset_authority_service import DatasetAuthority
+from app.services.path_entry_safety import is_link_or_reparse
 
 MANIFEST_NAME = "manifest.json"
 DATABASE_ARCHIVE_NAME = "database.dump"
@@ -249,9 +250,11 @@ def _verify_artifacts(generation_dir: Path, manifest: DatasetBackupManifest) -> 
         actual = {
             path.relative_to(generation_dir).as_posix()
             for path in generation_dir.rglob("*")
-            if path.is_file() and not path.is_symlink()
+            if path.is_file() and not is_link_or_reparse(path)
         }
-        unsafe = any(path.is_symlink() or not (path.is_file() or path.is_dir()) for path in generation_dir.rglob("*"))
+        unsafe = any(
+            is_link_or_reparse(path) or not (path.is_file() or path.is_dir()) for path in generation_dir.rglob("*")
+        )
     except OSError as exc:
         raise AppError("backup_incomplete", status_code=500) from exc
     if unsafe or actual != {MANIFEST_NAME, *expected}:

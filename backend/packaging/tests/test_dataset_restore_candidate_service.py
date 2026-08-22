@@ -10,14 +10,15 @@ from _powershell_contract import (
 )
 
 PACKAGING = Path(__file__).resolve().parents[1]
-CLUSTER = PACKAGING / "windows_postgresql_candidate_cluster.ps1"
+RUNTIME = PACKAGING / "windows_postgresql_candidate_runtime.ps1"
+
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_restore_candidate_service_executes_exact_scm_acl_and_readiness_contract(
     tmp_path: Path,
 ) -> None:
     starter = powershell_function(
-        CLUSTER.read_text(encoding="utf-8-sig"),
+        RUNTIME.read_text(encoding="utf-8-sig"),
         "Start-TicketboxPostgresqlRestoreCandidateService",
     )
     root = str(tmp_path.resolve()).replace("'", "''")
@@ -164,7 +165,7 @@ def test_restore_candidate_database_executes_absent_existing_and_secret_lifetime
     tmp_path: Path,
 ) -> None:
     initializer = powershell_function(
-        CLUSTER.read_text(encoding="utf-8-sig"),
+        RUNTIME.read_text(encoding="utf-8-sig"),
         "Initialize-TicketboxPostgresqlRestoreCandidateDatabase",
     )
     root = str(tmp_path.resolve()).replace("'", "''")
@@ -308,5 +309,3 @@ if (-not $failed -or $script:disposeCount -ne 3) {{ throw 'failed database initi
         tmp_path,
         filename="dataset-restore-candidate-database.ps1",
     )
-
-

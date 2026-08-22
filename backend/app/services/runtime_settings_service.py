@@ -1,14 +1,12 @@
-"""Owner Console — runtime settings backed by ``backend/.env``.
+"""Owner Console for the closed service-owned runtime settings projection.
 
-Lets the operator change a small set of operator-friendly settings from the
-Owner Console (currently just :envvar:`PUBLIC_BASE_URL`) without dropping
-into a text editor. The .env file is rewritten in-place and
-:func:`app.config.get_settings` cache is invalidated so subsequent requests
-see the new value immediately.
+Lets the operator change a small set of operator-friendly settings without
+granting the running backend write access to the lifecycle ``.env`` that also
+contains database credentials.
 
 Security:
 - Only callable from Owner Console routes (loopback-only).
-- The .env file lives outside the web root and is never served.
+- The service-owned projection lives outside the web root and is never served.
 - We only allow keys whitelisted in :data:`_EDITABLE_KEYS`.
 - Values are validated before being written.
 """
@@ -20,12 +18,15 @@ from urllib.parse import urlparse
 
 from app.config import BACKEND_ROOT, DATA_ROOT, get_settings
 from app.errors import AppError
+from app.services.runtime_settings_store import (
+    RuntimeSettingsMutation,
+    RuntimeSettingsProjection,
+    patch_runtime_settings,
+)
 from app.version import BACKEND_VERSION
 
-# The .env the Owner Console rewrites must live in the writable data dir, not the
-# program root — in a frozen EXE BACKEND_ROOT is the throwaway _MEIPASS dir and
-# the launcher reads DATA_ROOT/.env back on restart. See app.config.DATA_ROOT.
-_ENV_PATH = DATA_ROOT / ".env"
+_SETTINGS_PATH = DATA_ROOT / "runtime-settings" / "runtime-settings.json"
+_SERVICE_OWNED = DATA_ROOT != BACKEND_ROOT
 
 _EDITABLE_KEYS: frozenset[str] = frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL"})
 
@@ -34,8 +35,8 @@ _EDITABLE_KEYS: frozenset[str] = frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "P
 class RuntimeSettingsView:
     public_base_url: str
     public_base_url_configured: bool
-    env_path: str
-    env_exists: bool
+    settings_path: str
+    settings_exists: bool
 
 
 @dataclass(frozen=True)
@@ -71,8 +72,8 @@ def get_view() -> RuntimeSettingsView:
     return RuntimeSettingsView(
         public_base_url=cfg.public_base_url,
         public_base_url_configured=bool(cfg.public_base_url),
-        env_path=str(_ENV_PATH),
-        env_exists=_ENV_PATH.is_file(),
+        settings_path=str(_SETTINGS_PATH),
+        settings_exists=_SETTINGS_PATH.is_file(),
     )
 
 
@@ -162,70 +163,41 @@ def _validate_public_base_url(raw: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}"
 
 
-def _read_env_lines() -> list[str]:
-    if not _ENV_PATH.is_file():
-        return []
-    return _ENV_PATH.read_text(encoding="utf-8-sig").splitlines()
-
-
-def _write_env_lines(lines: list[str]) -> None:
-    _ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
-    text = "\n".join(lines).rstrip("\n") + "\n"
-    _ENV_PATH.write_text(text, encoding="utf-8")
-
-
-def _set_env_key(lines: list[str], key: str, value: str) -> list[str]:
-    """Replace ``KEY=...`` in-place; append at end if absent.
-
-    Lines starting with ``# KEY=`` (commented examples) are left intact.
-    """
-    new_line = f"{key}={value}"
-    out: list[str] = []
-    replaced = False
-    for line in lines:
-        stripped = line.lstrip()
-        if stripped.startswith("#"):
-            out.append(line)
-            continue
-        head = line.split("=", 1)[0].strip()
-        if head == key:
-            if not replaced:
-                out.append(new_line)
-                replaced = True
-            # drop duplicates
-            continue
-        out.append(line)
-    if not replaced:
-        out.append(new_line)
-    return out
-
-
-def _write_runtime_env_value(key: str, value: str) -> None:
+def _write_runtime_value(key: str, value: str) -> RuntimeSettingsProjection:
     if key not in _EDITABLE_KEYS:
         raise AppError(
             "invalid_request",
             "This setting cannot be changed from Owner Console.",
             status_code=403,
         )
-    lines = _read_env_lines()
-    lines = _set_env_key(lines, key, value)
-    _write_env_lines(lines)
-
-    import os
-
-    os.environ[key] = value
+    settings = get_settings()
+    defaults = RuntimeSettingsProjection(
+        public_base_url=settings.public_base_url,
+        budget_advisor_owner_confirmed=settings.budget_advisor_owner_confirmed,
+    )
+    mutation = RuntimeSettingsMutation(
+        field=("public_base_url" if key == "PUBLIC_BASE_URL" else "budget_advisor_owner_confirmed"),
+        value=value if key == "PUBLIC_BASE_URL" else value == "true",
+    )
+    projection = patch_runtime_settings(
+        _SETTINGS_PATH,
+        defaults=defaults,
+        mutation=mutation,
+        service_owned=_SERVICE_OWNED,
+    )
     get_settings.cache_clear()  # type: ignore[attr-defined]
+    return projection
 
 
 def update_public_base_url(raw: str) -> RuntimeSettingsView:
     if "PUBLIC_BASE_URL" not in _EDITABLE_KEYS:
         raise AppError("invalid_request", "该配置项不允许在 Owner Console 中修改。", status_code=403)
     value = _validate_public_base_url(raw)
-    _write_runtime_env_value("PUBLIC_BASE_URL", value)
+    _write_runtime_value("PUBLIC_BASE_URL", value)
     return get_view()
 
 
 def update_budget_advisor_owner_confirmed(confirmed: bool) -> bool:
     value = "true" if confirmed else "false"
-    _write_runtime_env_value("BUDGET_ADVISOR_OWNER_CONFIRMED", value)
-    return get_settings().budget_advisor_owner_confirmed
+    projection = _write_runtime_value("BUDGET_ADVISOR_OWNER_CONFIRMED", value)
+    return projection.budget_advisor_owner_confirmed

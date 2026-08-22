@@ -1,11 +1,11 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 
 <#
 .SYNOPSIS
   Bounded PostgreSQL cluster mechanisms used by install and dataset restore.
 .DESCRIPTION
-  This adapter owns cluster initialization, loopback configuration, and the
-  temporary recovery SCM projection.  Dataset identity and CURRENT publication
+  This adapter observes candidate cluster state and resolves the next bounded
+  mechanism action. Dataset identity, initdb mutation, and CURRENT publication
   remain outside this module.
 #>
 
@@ -18,7 +18,6 @@ function Assert-TicketboxPostgresqlLoopbackConfigurationSafe {
         throw "postgresql.auto.conf overrides the managed loopback/port boundary."
     }
 }
-
 function Set-TicketboxPostgresqlLoopbackConfiguration {
     param(
         [Parameter(Mandatory = $true)][string]$PgData,
@@ -120,28 +119,28 @@ function Wait-TicketboxPostgresqlCandidateReady {
     throw "restore candidate PostgreSQL did not become ready."
 }
 
-function Initialize-TicketboxPostgresqlRestoreCandidateCluster {
+function Get-TicketboxPostgresqlRestoreCandidateClusterObservation {
     param(
         [Parameter(Mandatory = $true)][object]$Subject,
         [Parameter(Mandatory = $true)][ValidatePattern(
             '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
         )][string]$OperationId,
-        [Parameter(Mandatory = $true)][object]$Paths,
-        [Parameter(Mandatory = $true)][object]$BootstrapState,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
+        [Parameter(Mandatory = $true)][object]$Paths
     )
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
     $identity = $Subject.Identity
     $release = $Subject.Release
-    $expectedPaths = Get-TicketboxInstalledDatasetRestorePaths `
-        ([string]$identity.DataRoot) $OperationId
+    $expectedPaths = Assert-TicketboxInstalledDatasetRestorePathAuthority $Paths
     if (
-        -not (Test-TicketboxPathEquals $Paths.candidate_pgdata $expectedPaths.candidate_pgdata) -or
-        -not (Test-TicketboxPathEquals $Paths.candidate_uploads $expectedPaths.candidate_uploads)
+        [string]$expectedPaths.operation_id -cne ([guid]$OperationId).ToString("D") -or
+        -not (Test-TicketboxPathEquals `
+            ([string]$expectedPaths.data_root) ([string]$identity.DataRoot))
     ) {
         throw "restore candidate paths escaped the exact operation root."
     }
-    [IO.Directory]::CreateDirectory([string]$Paths.candidate_root) | Out-Null
+    $candidateRootKind = Get-TicketboxPathEntryKindNoFollow $Paths.candidate_root
+    if ($candidateRootKind -notin @("Missing", "Directory")) {
+        throw "restore candidate root is not a plain directory."
+    }
     $candidateKind = Get-TicketboxPathEntryKindNoFollow $Paths.candidate_pgdata
     if ($candidateKind -notin @("Missing", "Directory")) {
         throw "restore candidate PGDATA is not a plain directory."
@@ -151,21 +150,44 @@ function Initialize-TicketboxPostgresqlRestoreCandidateCluster {
     $shawl = Join-Path ([string]$identity.InstallDir) "shawl\shawl.exe"
     $serviceName = [string]$release.pg_recovery_service_name
     $pwfile = Join-Path ([string]$Paths.candidate_root) ".initdb-password"
-    $pgVersion = Join-Path ([string]$Paths.candidate_pgdata) "PG_VERSION"
-    $initdbImage = New-TicketboxInitdbServiceImagePath `
-        -ShawlPath $shawl `
-        -ServiceName $serviceName `
-        -WorkingDirectory $pgBin `
-        -InitdbPath $initdb `
-        -DataRoot ([string]$Paths.candidate_pgdata) `
-        -PasswordFile $pwfile `
-        -StopTimeoutMs ([int]$release.stop_timeout_ms)
-    $initdbServicePresent = Test-TicketboxServiceExists $serviceName
-    $ownedServiceExecutable = $null
-    if ($initdbServicePresent) {
+    $passwordKind = Get-TicketboxPathEntryKindNoFollow $pwfile
+    if ($passwordKind -notin @("Missing", "File")) {
+        throw "restore candidate initdb password path is not a protected file."
+    }
+    $requiredClusterFiles = @(
+        (Join-Path ([string]$Paths.candidate_pgdata) "PG_VERSION"),
+        (Join-Path ([string]$Paths.candidate_pgdata) "global\pg_control"),
+        (Join-Path ([string]$Paths.candidate_pgdata) "postgresql.conf"),
+        (Join-Path ([string]$Paths.candidate_pgdata) "pg_hba.conf")
+    )
+    $pgdataState = "missing"
+    if ($candidateKind -ceq "Directory") {
+        $complete = $true
+        foreach ($required in $requiredClusterFiles) {
+            if ((Get-TicketboxPathEntryKindNoFollow $required) -cne "File") {
+                $complete = $false
+            }
+        }
+        $pgdataState = if ($complete) { "complete" } else { "partial" }
+    }
+    $serviceKind = "absent"
+    $serviceExecutable = ""
+    $serviceState = "absent"
+    $exitCode = [uint32]0
+    $serviceSpecificExitCode = [uint32]0
+    if (Test-TicketboxServiceExists $serviceName) {
         $actualExecutable = Get-TicketboxServiceExecutablePath $serviceName
         if (Test-TicketboxPathEquals $actualExecutable $shawl) {
-            $ownedServiceExecutable = $shawl
+            $serviceKind = "owned_initdb"
+            $serviceExecutable = $shawl
+            $initdbImage = New-TicketboxInitdbServiceImagePath `
+                -ShawlPath $shawl `
+                -ServiceName $serviceName `
+                -WorkingDirectory $pgBin `
+                -InitdbPath $initdb `
+                -DataRoot ([string]$Paths.candidate_pgdata) `
+                -PasswordFile $pwfile `
+                -StopTimeoutMs ([int]$release.stop_timeout_ms)
             Assert-TicketboxInitdbServiceCommand `
                 -Name $serviceName `
                 -ExpectedShawl $shawl `
@@ -181,360 +203,112 @@ function Initialize-TicketboxPostgresqlRestoreCandidateCluster {
                 -InstalledConfig $release `
                 -TargetConfig $release `
                 -AllowTargetSidTypePending | Out-Null
-            Set-TicketboxServiceIdentityContract `
-                -Name $serviceName `
-                -LogonAccount ([string]$release.service_logon_account) `
-                -SidType ([string]$release.service_sid_type)
             Assert-TicketboxServiceStartMode `
                 -Name $serviceName -ExpectedStartMode "Manual"
             Assert-TicketboxServiceHasNoFailureActions $serviceName
             $snapshot = Get-TicketboxServiceRuntimeSnapshot $serviceName
-            if ([string]$snapshot.State -cne "stopped") {
-                $deadline = New-TicketboxWaitDeadline `
-                    ([int]$release.database_tool_timeout_ms)
-                do {
-                    $snapshot = Get-TicketboxServiceRuntimeSnapshot $serviceName
-                    if ([string]$snapshot.State -ceq "stopped") { break }
-                } while (Wait-TicketboxPollBeforeDeadline `
-                    -Deadline $deadline `
-                    -TimeoutMilliseconds ([int]$release.database_tool_timeout_ms) `
-                    -PollMilliseconds ([int]$release.service_poll_interval_ms))
-                if ([string]$snapshot.State -cne "stopped") {
-                    throw "restore candidate initdb service did not reach a terminal state."
-                }
-            }
-            if (
-                [uint32]$snapshot.ExitCode -ne 0 -or
-                [uint32]$snapshot.ServiceSpecificExitCode -ne 0
-            ) {
-                $failedServiceSid = Get-TicketboxServiceSid $serviceName
-                if ((Get-TicketboxPathEntryKindNoFollow $pwfile) -ceq "File") {
-                    Remove-TicketboxProtectedUtf8Artifact `
-                        -Path $pwfile `
-                        -FullControlAccounts @(
-                            "SYSTEM", "BUILTIN\Administrators", $failedServiceSid
-                        ) `
-                        -OwnerAccount "SYSTEM"
-                }
-                Remove-TicketboxOwnedServiceIfExists `
-                    -Name $serviceName `
-                    -ExpectedExecutable $shawl `
-                    -TimeoutMilliseconds ([int]$release.service_state_timeout_ms) `
-                    -PollMilliseconds ([int]$release.service_poll_interval_ms)
-                if ($candidateKind -ceq "Directory") {
-                    Remove-TicketboxDataRootExact -Path ([string]$Paths.candidate_pgdata)
-                    $candidateKind = "Missing"
-                }
-                $initdbServicePresent = $false
-            }
+            $serviceState = [string]$snapshot.State
+            $exitCode = [uint32]$snapshot.ExitCode
+            $serviceSpecificExitCode = [uint32]$snapshot.ServiceSpecificExitCode
         }
         else {
             $pgCtl = Join-Path $pgBin "pg_ctl.exe"
             if (-not (Test-TicketboxPathEquals $actualExecutable $pgCtl)) {
-                throw "restore candidate recovery service executable is foreign."
+                $serviceKind = "foreign"
+                $serviceExecutable = [string]$actualExecutable
             }
-            Assert-TicketboxPgServiceCommand `
-                -Name $serviceName `
-                -ExpectedExecutable $pgCtl `
-                -ExpectedServiceName $serviceName `
-                -ExpectedDataRoot ([string]$Paths.candidate_pgdata)
-            Assert-TicketboxReleaseServiceIdentity `
-                -Name $serviceName `
-                -InstalledConfig $release `
-                -TargetConfig $release `
-                -AllowTargetSidTypePending | Out-Null
-            $ownedServiceExecutable = $pgCtl
-        }
-    }
-    if ((Get-TicketboxPathEntryKindNoFollow $pgVersion) -cne "File") {
-        if ($initdbServicePresent) {
-            Remove-TicketboxOwnedServiceIfExists `
-                -Name $serviceName `
-                -ExpectedExecutable $ownedServiceExecutable `
-                -TimeoutMilliseconds ([int]$release.service_state_timeout_ms) `
-                -PollMilliseconds ([int]$release.service_poll_interval_ms)
-            $initdbServicePresent = $false
-        }
-        if ((Get-TicketboxPathEntryKindNoFollow $Paths.candidate_pgdata) -ceq "Directory") {
-            Remove-TicketboxDataRootExact -Path ([string]$Paths.candidate_pgdata)
-        }
-        Invoke-TicketboxScChecked @(
-            "create", $serviceName, "binPath=", $initdbImage,
-            "start=", "demand", "obj=", ([string]$release.service_logon_account)
-        ) | Out-Null
-        Set-TicketboxServiceIdentityContract `
-            -Name $serviceName `
-            -LogonAccount ([string]$release.service_logon_account) `
-            -SidType ([string]$release.service_sid_type)
-        Assert-TicketboxServiceStartMode -Name $serviceName -ExpectedStartMode "Manual"
-        Assert-TicketboxServiceHasNoFailureActions $serviceName
-        Assert-TicketboxInitdbServiceCommand `
-            -Name $serviceName `
-            -ExpectedShawl $shawl `
-            -ExpectedServiceName $serviceName `
-            -ExpectedWorkingDirectory $pgBin `
-            -ExpectedInitdb $initdb `
-            -ExpectedDataRoot ([string]$Paths.candidate_pgdata) `
-            -ExpectedPasswordFile $pwfile `
-            -ExpectedStopTimeoutMs ([int]$release.stop_timeout_ms) `
-            -ExpectedImagePath $initdbImage
-        $serviceSid = Get-TicketboxServiceSid $serviceName
-        Set-TicketboxExactDirectoryAcl `
-            -Path ([string]$Paths.candidate_root) `
-            -Accounts @("SYSTEM", "BUILTIN\Administrators", $serviceSid) `
-            -OwnerAccount "SYSTEM" `
-            -Recurse
-        $pwfileKind = Get-TicketboxPathEntryKindNoFollow $pwfile
-        if ($pwfileKind -ceq "File") {
-            Remove-TicketboxProtectedUtf8Artifact `
-                -Path $pwfile `
-                -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators", $serviceSid) `
-                -OwnerAccount "SYSTEM"
-        }
-        elseif ($pwfileKind -cne "Missing") {
-            throw "restore candidate initdb password path is not a protected file."
-        }
-        Write-TicketboxProtectedUtf8FileDurable `
-            -Path $pwfile `
-            -Text ([string]$BootstrapState.SuperuserPassword) `
-            -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators", $serviceSid) `
-            -OwnerAccount "SYSTEM"
-        $snapshot = Invoke-TicketboxOwnedOneShotService `
-            -Name $serviceName `
-            -ExpectedExecutable $shawl `
-            -ExpectedRuntimeExecutables @($shawl, $initdb) `
-            -TimeoutMilliseconds ([int]$release.database_tool_timeout_ms) `
-            -PollMilliseconds ([int]$release.service_poll_interval_ms)
-        if (
-            [uint32]$snapshot.ExitCode -ne 0 -or
-            [uint32]$snapshot.ServiceSpecificExitCode -ne 0
-        ) {
-            $failure = [InvalidOperationException]::new(
-                "restore candidate initdb failed under its service identity."
-            )
-            $cleanupFailures = @()
-            try {
-                if ((Get-TicketboxPathEntryKindNoFollow $pwfile) -ceq "File") {
-                    Remove-TicketboxProtectedUtf8Artifact `
-                        -Path $pwfile `
-                        -FullControlAccounts @(
-                            "SYSTEM", "BUILTIN\Administrators", $serviceSid
-                        ) `
-                        -OwnerAccount "SYSTEM"
-                }
-            }
-            catch { $cleanupFailures += $_ }
-            try {
-                Remove-TicketboxOwnedServiceIfExists `
+            else {
+                $serviceKind = "owned_pgctl"
+                $serviceExecutable = $pgCtl
+                Assert-TicketboxPgServiceCommand `
                     -Name $serviceName `
-                    -ExpectedExecutable $shawl `
-                    -TimeoutMilliseconds ([int]$release.service_state_timeout_ms) `
-                    -PollMilliseconds ([int]$release.service_poll_interval_ms)
+                    -ExpectedExecutable $pgCtl `
+                    -ExpectedServiceName $serviceName `
+                    -ExpectedDataRoot ([string]$Paths.candidate_pgdata)
+                Assert-TicketboxReleaseServiceIdentity `
+                    -Name $serviceName `
+                    -InstalledConfig $release `
+                    -TargetConfig $release `
+                    -AllowTargetSidTypePending | Out-Null
             }
-            catch { $cleanupFailures += $_ }
-            try {
-                if ((Get-TicketboxPathEntryKindNoFollow $Paths.candidate_pgdata) -ceq "Directory") {
-                    Remove-TicketboxDataRootExact -Path ([string]$Paths.candidate_pgdata)
-                }
-            }
-            catch { $cleanupFailures += $_ }
-            Throw-TicketboxDatabaseGenerationOperationFailure $failure $cleanupFailures
         }
-    }
-    foreach ($required in @(
-        $pgVersion,
-        (Join-Path ([string]$Paths.candidate_pgdata) "global\pg_control"),
-        (Join-Path ([string]$Paths.candidate_pgdata) "postgresql.conf"),
-        (Join-Path ([string]$Paths.candidate_pgdata) "pg_hba.conf")
-    )) {
-        if ((Get-TicketboxPathEntryKindNoFollow $required) -cne "File") {
-            throw "restore candidate initdb did not publish a complete cluster."
-        }
-    }
-    if ((Get-TicketboxPathEntryKindNoFollow $pwfile) -ceq "File") {
-        $serviceSid = Get-TicketboxServiceSid $serviceName
-        Remove-TicketboxProtectedUtf8Artifact `
-            -Path $pwfile `
-            -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators", $serviceSid) `
-            -OwnerAccount "SYSTEM"
-    }
-    if (Test-TicketboxServiceExists $serviceName) {
-        $actualExecutable = Get-TicketboxServiceExecutablePath $serviceName
-        if (Test-TicketboxPathEquals $actualExecutable $shawl) {
-            Remove-TicketboxOwnedServiceIfExists `
-                -Name $serviceName `
-                -ExpectedExecutable $shawl `
-                -TimeoutMilliseconds ([int]$release.service_state_timeout_ms) `
-                -PollMilliseconds ([int]$release.service_poll_interval_ms)
-        }
-    }
-    Set-TicketboxPostgresqlLoopbackConfiguration `
-        -PgData ([string]$Paths.candidate_pgdata) `
-        -Port ([int]$identity.PgPort)
-}
-
-function Start-TicketboxPostgresqlRestoreCandidateService {
-    param(
-        [Parameter(Mandatory = $true)][object]$Subject,
-        [Parameter(Mandatory = $true)][object]$Paths,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
-    )
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $identity = $Subject.Identity
-    $release = $Subject.Release
-    $pgBin = Join-Path ([string]$identity.InstallDir) "pg\bin"
-    $serviceName = [string]$release.pg_recovery_service_name
-    $pgCtl = Join-Path $pgBin "pg_ctl.exe"
-    $imagePath = New-TicketboxPgServiceImagePath `
-        -PgCtlPath $pgCtl `
-        -ServiceName $serviceName `
-        -DataRoot ([string]$Paths.candidate_pgdata)
-    if (-not (Test-TicketboxServiceExists $serviceName)) {
-        Invoke-TicketboxScChecked @(
-            "create", $serviceName, "binPath=", $imagePath,
-            "start=", "demand", "obj=", ([string]$release.service_logon_account)
-        ) | Out-Null
-    }
-    Assert-TicketboxServiceOwnership $serviceName $pgCtl | Out-Null
-    Assert-TicketboxPgServiceCommand `
-        -Name $serviceName `
-        -ExpectedExecutable $pgCtl `
-        -ExpectedServiceName $serviceName `
-        -ExpectedDataRoot ([string]$Paths.candidate_pgdata)
-    Set-TicketboxServiceIdentityContract `
-        -Name $serviceName `
-        -LogonAccount ([string]$release.service_logon_account) `
-        -SidType ([string]$release.service_sid_type)
-    Assert-TicketboxServiceDependencies -Name $serviceName -ExpectedDependencies @()
-    $serviceSid = Get-TicketboxServiceSid $serviceName
-    Set-TicketboxExactDirectoryAcl `
-        -Path ([string]$Paths.candidate_pgdata) `
-        -Accounts @("SYSTEM", "BUILTIN\Administrators", $serviceSid) `
-        -OwnerAccount "SYSTEM" `
-        -Recurse
-    Start-TicketboxOwnedServiceIfExists `
-        -Name $serviceName `
-        -ExpectedExecutable $pgCtl `
-        -TimeoutMilliseconds ([int]$release.service_state_timeout_ms) `
-        -PollMilliseconds ([int]$release.service_poll_interval_ms) | Out-Null
-    Wait-TicketboxPostgresqlCandidateReady `
-        -PgIsReadyPath (Join-Path ([string]$identity.InstallDir) "pg\bin\pg_isready.exe") `
-        -Port ([int]$identity.PgPort) `
-        -TimeoutMilliseconds ([int]$release.postgres_ready_timeout_ms) `
-        -PollMilliseconds ([int]$release.postgres_ready_poll_interval_ms)
-}
-
-function Initialize-TicketboxPostgresqlRestoreCandidateDatabase {
-    param(
-        [Parameter(Mandatory = $true)][object]$Subject,
-        [Parameter(Mandatory = $true)][ValidatePattern(
-            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-        )][string]$OperationId,
-        [Parameter(Mandatory = $true)][object]$Credentials,
-        [Parameter(Mandatory = $true)][object]$BootstrapState,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
-    )
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $identity = $Subject.Identity
-    $release = $Subject.Release
-    $pgBin = Join-Path ([string]$identity.InstallDir) "pg\bin"
-    $serviceName = [string]$release.pg_recovery_service_name
-    $pgCtl = Join-Path $pgBin "pg_ctl.exe"
-    $superuser = ConvertTo-TicketboxPostgresqlSecureString `
-        ([string]$BootstrapState.SuperuserPassword) `
-        "restore candidate superuser password"
-    $authority = [pscustomobject][ordered]@{
-        Schema = "ticketbox-postgresql-host-authority-v1"
-        PsqlPath = Join-Path ([string]$identity.InstallDir) "pg\bin\psql.exe"
-        Port = [int]$identity.PgPort
-    }
-    try {
-        Invoke-TicketboxPostgresqlDatabaseCommand `
-            -Authority $authority `
-            -Database "postgres" `
-            -Role "postgres" `
-            -Password $superuser `
-            -Label "restore candidate role authority" `
-            -Sql (New-TicketboxDatabaseGenerationEmptyRoleSql `
-                -OperationId $OperationId `
-                -RuntimeVerifier ([string]$Credentials.RuntimeVerifier) `
-                -MigratorVerifier ([string]$Credentials.MigratorVerifier) `
-                -BackupVerifier ([string]$Credentials.BackupVerifier) `
-                -MigratorValidUntilUtc ([DateTime]::UtcNow.AddHours(1))) | Out-Null
-        $policy = Get-TicketboxDatabaseAuthorizationContract
-        $catalog = Get-TicketboxPostgresqlDatabaseCatalogObservation `
-            -Authority $authority `
-            -SuperuserPassword $superuser `
-            -TargetDatabase ([string]$policy.DatabaseName)
-        if (-not $catalog.Exists) {
-            Invoke-TicketboxPostgresqlDatabaseCommand `
-                -Authority $authority `
-                -Database "postgres" `
-                -Role "postgres" `
-                -Password $superuser `
-                -Label "restore candidate database creation" `
-                -Sql "CREATE DATABASE `"$($policy.DatabaseName)`" OWNER `"$($policy.OwnerRole)`" TEMPLATE template0 ENCODING 'UTF8';" | Out-Null
-        }
-        Invoke-TicketboxPostgresqlDatabaseCommand `
-            -Authority $authority `
-            -Database "postgres" `
-            -Role "postgres" `
-            -Password $superuser `
-            -Label "restore candidate database admission" `
-            -Sql @"
-BEGIN;
-REVOKE ALL ON DATABASE "$($policy.DatabaseName)" FROM PUBLIC;
-REVOKE ALL ON DATABASE "$($policy.DatabaseName)"
-    FROM "$($policy.RuntimeRole)", "$($policy.MigratorRole)";
-GRANT CONNECT ON DATABASE "$($policy.DatabaseName)"
-    TO "$($policy.MigratorRole)";
-COMMIT;
-"@ | Out-Null
-        Invoke-TicketboxPostgresqlDatabaseCommand `
-            -Authority $authority `
-            -Database ([string]$policy.DatabaseName) `
-            -Role "postgres" `
-            -Password $superuser `
-            -Label "restore candidate managed ACL" `
-            -Sql (New-TicketboxDatabaseRuntimeAclSql -PreserveRuntimeFence) | Out-Null
-        Assert-TicketboxDatabaseRolePolicy `
-            -Authority $authority `
-            -SuperuserPassword $superuser `
-            -Phase "fenced"
-    }
-    catch {
-        $superuser.Dispose()
-        throw
     }
     return [pscustomobject][ordered]@{
-        Authority = $authority
-        SuperuserPassword = $superuser
-        ServiceName = $serviceName
-        PgCtlPath = $pgCtl
+        schema = "ticketbox-postgresql-restore-candidate-observation-v1"
+        candidate_root_kind = $candidateRootKind.ToLowerInvariant()
+        pgdata_state = $pgdataState
+        password_kind = $passwordKind.ToLowerInvariant()
+        service_kind = $serviceKind
+        service_executable = $serviceExecutable
+        service_state = $serviceState
+        exit_code = $exitCode
+        service_specific_exit_code = $serviceSpecificExitCode
     }
 }
 
-function Remove-TicketboxPostgresqlRestoreCandidateService {
-    param(
-        [Parameter(Mandatory = $true)][object]$Subject,
-        [Parameter(Mandatory = $true)][object]$Paths
-    )
-    $serviceName = [string]$Subject.Release.pg_recovery_service_name
-    if (-not (Test-TicketboxServiceExists $serviceName)) { return }
-    $pgCtl = Join-Path ([string]$Subject.Identity.InstallDir) "pg\bin\pg_ctl.exe"
-    Assert-TicketboxPgServiceCommand `
-        -Name $serviceName `
-        -ExpectedExecutable $pgCtl `
-        -ExpectedServiceName $serviceName `
-        -ExpectedDataRoot ([string]$Paths.candidate_pgdata)
-    Assert-TicketboxReleaseServiceIdentity `
-        -Name $serviceName `
-        -InstalledConfig $Subject.Release `
-        -TargetConfig $Subject.Release `
-        -AllowTargetSidTypePending | Out-Null
-    Remove-TicketboxOwnedServiceIfExists `
-        -Name $serviceName `
-        -ExpectedExecutable $pgCtl `
-        -TimeoutMilliseconds ([int]$Subject.Release.service_state_timeout_ms) `
-        -PollMilliseconds ([int]$Subject.Release.service_poll_interval_ms)
+function Resolve-TicketboxPostgresqlRestoreCandidateClusterNextAction {
+    param([Parameter(Mandatory = $true)][object]$Observation)
+    Assert-TicketboxDatabaseGenerationExactProperties `
+        -Value $Observation `
+        -ExpectedNames @(
+            "schema", "candidate_root_kind", "pgdata_state", "password_kind",
+            "service_kind", "service_executable", "service_state", "exit_code",
+            "service_specific_exit_code"
+        ) `
+        -Label "restore candidate cluster observation"
+    if (
+        [string]$Observation.schema -cne
+            "ticketbox-postgresql-restore-candidate-observation-v1" -or
+        [string]$Observation.candidate_root_kind -notin @("missing", "directory") -or
+        [string]$Observation.pgdata_state -notin @("missing", "partial", "complete") -or
+        [string]$Observation.password_kind -notin @("missing", "file") -or
+        [string]$Observation.service_kind -notin @(
+            "absent", "owned_initdb", "owned_pgctl", "foreign"
+        )
+    ) {
+        throw "restore candidate cluster observation is not closed."
+    }
+    if ([string]$Observation.service_kind -ceq "foreign") {
+        throw "restore candidate recovery service executable is foreign."
+    }
+    if ([string]$Observation.service_kind -ceq "owned_pgctl") {
+        if (
+            [string]$Observation.pgdata_state -cne "complete" -or
+            [string]$Observation.password_kind -cne "missing"
+        ) {
+            throw "restore candidate recovery service owns an incomplete cluster."
+        }
+        return "reconcile_loopback"
+    }
+    if ([string]$Observation.service_kind -ceq "owned_initdb") {
+        if ([string]$Observation.service_state -cne "stopped") {
+            return "wait_initdb_terminal"
+        }
+        if (
+            [uint32]$Observation.exit_code -ne 0 -or
+            [uint32]$Observation.service_specific_exit_code -ne 0
+        ) {
+            return "reset_stale_attempt"
+        }
+        if ([string]$Observation.pgdata_state -ceq "complete") {
+            return "retire_initdb_capability"
+        }
+        if (
+            [string]$Observation.pgdata_state -ceq "missing" -and
+            [string]$Observation.password_kind -ceq "file"
+        ) {
+            return "run_prepared_initdb"
+        }
+        return "reset_stale_attempt"
+    }
+    if ([string]$Observation.password_kind -cne "missing") {
+        throw "restore candidate password artifact has no owning service capability."
+    }
+    if ([string]$Observation.pgdata_state -ceq "complete") {
+        return "reconcile_loopback"
+    }
+    if ([string]$Observation.pgdata_state -ceq "partial") {
+        return "reset_stale_attempt"
+    }
+    return "prepare_initdb"
 }

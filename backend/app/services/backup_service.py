@@ -47,6 +47,7 @@ from app.services.dataset_originals_adapter import (
     OriginalReference,
     copy_complete_originals,
 )
+from app.services.path_entry_safety import is_link_or_reparse
 from app.services.postgres_backup_adapter import write_postgres_archive
 from app.services.time_service import now_utc
 
@@ -287,13 +288,13 @@ def _assert_published_request(
 
 
 def _prepare_backup_root(path: Path) -> Path:
-    if not path.is_absolute() or path.is_symlink():
+    if not path.is_absolute() or is_link_or_reparse(path):
         raise AppError("backup_incomplete", status_code=500)
     try:
         parent = path.parent.resolve(strict=True)
         if path.exists():
             resolved = path.resolve(strict=True)
-            if not resolved.is_dir() or resolved.is_symlink():
+            if not resolved.is_dir() or is_link_or_reparse(resolved):
                 raise OSError
         else:
             path.mkdir()

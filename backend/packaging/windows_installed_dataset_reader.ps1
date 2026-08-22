@@ -2,6 +2,8 @@
 
 # Read-only installed dataset authority and packaged-tool evidence.
 
+$script:TicketboxInstalledRuntimeEnvironmentMaximumBytes = 1MB
+
 function Assert-TicketboxInstalledDatasetSubject {
     param([Parameter(Mandatory = $true)][string]$RequestedDataRoot)
 
@@ -96,17 +98,60 @@ function Read-TicketboxInstalledDatasetPublicBaseUrl {
     param([Parameter(Mandatory = $true)][object]$Subject)
 
     $identity = $Subject.Identity
+    $backendService = "NT SERVICE\$([string]$identity.BackendServiceName)"
+    $settingsPath = Join-Path `
+        ([string]$identity.DataRoot) `
+        "app\runtime-settings\runtime-settings.json"
+    Assert-NoTicketboxAncestorReparsePoints $settingsPath
+    $settingsKind = Get-TicketboxPathEntryKindNoFollow $settingsPath
+    if ($settingsKind -ne "Missing") {
+        if ($settingsKind -cne "File") {
+            throw "installed runtime settings projection is not a regular file."
+        }
+        if ([int64](Get-Item -LiteralPath $settingsPath -Force).Length -gt 4096) {
+            throw "installed runtime settings projection exceeds its bounded size."
+        }
+        $artifact = Read-TicketboxProtectedUtf8Artifact `
+            -Path $settingsPath `
+            -FullControlAccounts @(
+                "SYSTEM", "BUILTIN\Administrators", $backendService
+            ) `
+            -OwnerAccount $backendService
+        try { $projection = $artifact.Text | ConvertFrom-Json }
+        catch { throw "installed runtime settings projection is not valid JSON." }
+        Assert-TicketboxDatabaseGenerationExactProperties `
+            -Value $projection `
+            -ExpectedNames @(
+                "schema", "public_base_url", "budget_advisor_owner_confirmed"
+            ) `
+            -Label "installed runtime settings projection"
+        if (
+            [string]$projection.schema -cne "ticketbox-runtime-settings-v1" -or
+            $projection.public_base_url -isnot [string] -or
+            $projection.budget_advisor_owner_confirmed -isnot [bool]
+        ) {
+            throw "installed runtime settings projection is not closed."
+        }
+        return ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl `
+            ([string]$projection.public_base_url)
+    }
+
     $envPath = Join-Path ([string]$identity.DataRoot) "app\.env"
+    Assert-NoTicketboxAncestorReparsePoints $envPath
     $kind = Get-TicketboxPathEntryKindNoFollow $envPath
     if ($kind -ceq "Missing") { return "" }
     if ($kind -cne "File") {
         throw "installed runtime environment is not a regular file."
     }
+    $environmentLength = [int64](Get-Item -LiteralPath $envPath -Force).Length
+    if ($environmentLength -gt $script:TicketboxInstalledRuntimeEnvironmentMaximumBytes) {
+        throw "installed runtime environment exceeds its bounded size."
+    }
     Assert-TicketboxExactFileAcl `
         -Path $envPath `
         -Accounts @(
             "SYSTEM", "BUILTIN\Administrators",
-            "NT SERVICE\$([string]$identity.BackendServiceName)"
+            $backendService
         ) `
         -OwnerAccount "SYSTEM"
     $environment = Read-EnvMap $envPath

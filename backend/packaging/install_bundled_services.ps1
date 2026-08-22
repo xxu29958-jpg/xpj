@@ -109,6 +109,7 @@ $PgData = Join-Path $DataRoot "pgdata"
 $AppData = Join-Path $DataRoot "app"
 $DefaultUploadRoot = Join-Path $AppData "uploads"
 $LogDir = Join-Path $AppData "logs"
+$RuntimeSettingsDir = Join-Path $AppData "runtime-settings"
 $BootstrapExposureRecoveryResultPath = Join-Path `
     $LogDir `
     "bootstrap-exposure-recovery-result.json"
@@ -257,12 +258,17 @@ if (-not (Test-Path -LiteralPath $PgRecoveryToolsScript -PathType Leaf)) {
     throw "缺少 Windows PostgreSQL 恢复工具脚本：$PgRecoveryToolsScript"
 }
 . $PgRecoveryToolsScript
-$PostgresqlClusterScript = Join-Path $ScriptDir `
-    "windows_postgresql_candidate_cluster.ps1"
-if (-not (Test-Path -LiteralPath $PostgresqlClusterScript -PathType Leaf)) {
-    throw "缺少 Windows PostgreSQL cluster adapter：$PostgresqlClusterScript"
+$PostgresqlClusterScripts = @(
+    "windows_postgresql_candidate_cluster.ps1",
+    "windows_postgresql_candidate_initdb.ps1",
+    "windows_postgresql_candidate_runtime.ps1"
+) | ForEach-Object { Join-Path $ScriptDir $_ }
+foreach ($PostgresqlClusterScript in $PostgresqlClusterScripts) {
+    if (-not (Test-Path -LiteralPath $PostgresqlClusterScript -PathType Leaf)) {
+        throw "缺少 Windows PostgreSQL cluster adapter：$PostgresqlClusterScript"
+    }
+    . $PostgresqlClusterScript
 }
-. $PostgresqlClusterScript
 $DatabaseScript = Join-Path $ScriptDir "windows_bundled_database.ps1"
 if (-not (Test-Path -LiteralPath $DatabaseScript -PathType Leaf)) {
     throw "缺少 Windows bundled database 脚本：$DatabaseScript"
@@ -1436,12 +1442,14 @@ function Set-TicketboxAcl(
         $AppData, `
         $DefaultUploadRoot, `
         $LogDir, `
+        $RuntimeSettingsDir, `
         $BackupDir | Out-Null
 
     $systemAndAdmins = @($PrivilegedAccounts)
     $rootReadAccounts = @()
     $pgAccounts = @($systemAndAdmins)
-    $appAccounts = @($systemAndAdmins)
+    $appReadAccounts = @()
+    $backendWritableAccounts = @($systemAndAdmins)
     $markerReadAccounts = @()
     if ($IncludePgService) {
         $rootReadAccounts += "NT SERVICE\$PgServiceName"
@@ -1449,7 +1457,8 @@ function Set-TicketboxAcl(
     }
     if ($IncludeBackendService) {
         $rootReadAccounts += "NT SERVICE\$BackendServiceName"
-        $appAccounts += "NT SERVICE\$BackendServiceName"
+        $appReadAccounts += "NT SERVICE\$BackendServiceName"
+        $backendWritableAccounts += "NT SERVICE\$BackendServiceName"
         $markerReadAccounts += "NT SERVICE\$BackendServiceName"
     }
     Set-TicketboxExactDirectoryAcl `
@@ -1464,16 +1473,27 @@ function Set-TicketboxAcl(
         -Recurse
     Set-TicketboxExactDirectoryAcl `
         -Path $AppData `
-        -Accounts $appAccounts `
-        -OwnerAccount $OwnerAccount `
-        -Recurse
+        -Accounts $systemAndAdmins `
+        -ReadExecuteAccounts $appReadAccounts `
+        -OwnerAccount $OwnerAccount
+    foreach ($backendWritablePath in @(
+        $DefaultUploadRoot,
+        $LogDir,
+        $RuntimeSettingsDir
+    )) {
+        Set-TicketboxExactDirectoryAcl `
+            -Path $backendWritablePath `
+            -Accounts $backendWritableAccounts `
+            -OwnerAccount $OwnerAccount `
+            -Recurse
+    }
     Set-TicketboxExactDirectoryAcl `
         -Path $BackupDir `
         -Accounts $systemAndAdmins `
         -OwnerAccount $OwnerAccount `
         -Recurse
     [void](Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
-        -ParentFullControlAccounts $appAccounts)
+        -ParentFullControlAccounts $systemAndAdmins)
     Initialize-TicketboxInstallerStateDirectory $InstallerState | Out-Null
     if (Test-Path -LiteralPath $BootstrapExposureRecoveryGuardPath -PathType Leaf) {
         Set-TicketboxExactFileAcl `
@@ -2049,6 +2069,7 @@ try {
         $AppData, `
         $DefaultUploadRoot, `
         $LogDir, `
+        $RuntimeSettingsDir, `
         $BackupDir | Out-Null
     Initialize-TicketboxInstallerStateArtifacts
     if ($hadExistingPgService) {

@@ -61,8 +61,8 @@ _C07_RETIREMENT_GUARDS = {
         '"app\\database_generation_c07_contract.py"',
         "if ($retiredC07Sources.Count -ne 0 -or (Test-Path -LiteralPath $retiredC07Contract)) {",
         'throw "Retired C07 database modules returned to the source snapshot."',
-        '$_ -match "\'app\\.database\\._c07_[^\']+\'$" -or',
-        '$_ -match "\'app\\.database_generation_c07_contract\'$"',
+        "$_ -match \"'app\\.database\\._c07_[^']+'$\" -or",
+        "$_ -match \"'app\\.database_generation_c07_contract'$\"",
         'throw "Frozen backend archive contains retired C07 database modules."',
     ),
 }
@@ -85,9 +85,7 @@ def test_target_authorization_consumes_normalized_source_without_mode_reclassifi
         OWNER.read_text(encoding="utf-8-sig"),
         "Invoke-TicketboxInstalledDatabaseGeneration",
     )
-    target = owner.split('"authorize_target" {', maxsplit=1)[1].split(
-        '"seal_candidate" {', maxsplit=1
-    )[0]
+    target = owner.split('"authorize_target" {', maxsplit=1)[1].split('"seal_candidate" {', maxsplit=1)[0]
 
     assert "source_kind" not in target
     assert "source_request_sha256" not in target
@@ -139,7 +137,8 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
         if (
             not path.is_file()
             or "tests" in path.parts
-            or path.suffix.lower() not in {
+            or path.suffix.lower()
+            not in {
                 ".isph",
                 ".iss",
                 ".json",
@@ -173,7 +172,7 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
         mutated[mutation_path] += "\npositive_ticketbox_c07_lifecycle_producer\n"
         assert _unexpected_c07_production_lines(mutated)
     assert installer.count("Invoke-TicketboxInstalledDatabaseGeneration `") == 1
-    assert '. $C07DatabaseScript' not in installer
+    assert ". $C07DatabaseScript" not in installer
     for database_owner in (
         "windows_postgresql_database_command.ps1",
         "windows_ticketbox_database_contract.ps1",
@@ -503,21 +502,12 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
         "Assert-TicketboxDatabaseGenerationCommitReadyArtifact",
     )
     assert (
-        owner_consumer.count(
-            "foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `"
-        )
-        == 1
+        owner_consumer.count("foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `") == 1
     )
     assert "-Root $PSScriptRoot" in owner_consumer
-    assert "Get-TicketboxDatabaseGenerationExecutionDependencyPaths" not in (
-        commit_ready_consumer
-    )
-    assert "windows_database_generation_recovery_evidence.ps1" in (
-        commit_verifier_source
-    )
-    assert "Assert-TicketboxDatabaseGenerationCommitReadyArtifact" not in (
-        artifacts_source
-    )
+    assert "Get-TicketboxDatabaseGenerationExecutionDependencyPaths" not in (commit_ready_consumer)
+    assert "windows_database_generation_recovery_evidence.ps1" in (commit_verifier_source)
+    assert "Assert-TicketboxDatabaseGenerationCommitReadyArtifact" not in (artifacts_source)
     installed_path = _function(
         prepare_source,
         "Get-TicketboxInstalledDatabaseGenerationAuthorityPath",
@@ -935,7 +925,9 @@ if (-not $invalid) {{ throw 'reducer accepted source without credential/current'
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
-def test_generation_current_is_idempotent_expected_predecessor_cas(tmp_path: Path) -> None:
+def test_generation_owner_current_and_predecessor_restore_are_idempotent_cas(
+    tmp_path: Path,
+) -> None:
     prospective = _function(
         ARTIFACTS.read_text(encoding="utf-8-sig"),
         "Get-TicketboxDatabaseGenerationProspectiveCurrent",
@@ -951,6 +943,10 @@ def test_generation_current_is_idempotent_expected_predecessor_cas(tmp_path: Pat
     publish = _function(
         ARTIFACTS.read_text(encoding="utf-8-sig"),
         "Publish-TicketboxDatabaseGenerationCurrent",
+    )
+    restore_predecessor = _function(
+        OWNER.read_text(encoding="utf-8-sig"),
+        "Restore-TicketboxInstalledDatabaseGenerationPredecessor",
     )
     script = f"""
 $ErrorActionPreference = 'Stop'
@@ -975,7 +971,10 @@ function Get-TicketboxDatabaseGenerationRuntimeCurrentPath {{ return 'C:\\Ticket
 function Read-TicketboxDatabaseGenerationCurrent {{ param([switch]$AllowAbsent); return $script:current }}
 function Initialize-TicketboxProtectedDirectoryAtomically {{}}
 function Write-TicketboxProtectedUtf8FileDurable {{
-    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount)
+    param($Path, $Text, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount, [switch]$ReplaceExisting)
+    if ($null -ne $script:current -and -not $ReplaceExisting) {{
+        throw 'CURRENT replacement omitted the atomic replace contract'
+    }}
     $script:writes += 1
     $envelope = $Text | ConvertFrom-Json
     $script:current = [pscustomobject]@{{
@@ -987,6 +986,7 @@ function Write-TicketboxProtectedUtf8FileDurable {{
 {advance}
 {validate_transition}
 {publish}
+{restore_predecessor}
 $intent = [pscustomobject]@{{
     PayloadSha256 = ('b' * 64)
     Payload = [pscustomobject]@{{
@@ -1052,15 +1052,8 @@ if (
     $successor.Payload.operation_id -cne $intent.Payload.operation_id -or
     $successorAgain.PayloadSha256 -cne $successor.PayloadSha256
 ) {{ throw 'successor CURRENT predecessor CAS did not converge' }}
-$rollbackTransition = [pscustomobject][ordered]@{{
-    schema = 'ticketbox-database-generation-current-transition-v1'
-    mode = 'restore_predecessor'
-    expected_current_sha256 = [string]$successor.PayloadSha256
-    target_payload_sha256 = $predecessorSha256
-    target_payload = $predecessorPayload
-}}
-$rolledBack = Publish-TicketboxDatabaseGenerationCurrent $rollbackTransition $lock
-$rolledBackAgain = Publish-TicketboxDatabaseGenerationCurrent $rollbackTransition $lock
+$rolledBack = Restore-TicketboxInstalledDatabaseGenerationPredecessor $predecessorPayload $lock
+$rolledBackAgain = Restore-TicketboxInstalledDatabaseGenerationPredecessor $predecessorPayload $lock
 if (
     $script:writes -ne 3 -or
     $rolledBack.PayloadSha256 -cne $predecessorSha256 -or

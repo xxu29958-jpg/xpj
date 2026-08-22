@@ -11,6 +11,7 @@ from uuid import UUID, uuid5
 from app.errors import AppError
 from app.services.dataset_authority_service import DATASET_SEMANTIC_REVISION
 from app.services.dataset_backup_contract import DatasetBackupManifest, read_manifest, sha256_file
+from app.services.path_entry_safety import is_link_or_reparse
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,7 @@ def materialize_restored_originals(
         return manifest
     staging = parent / f".uploads-restore-{manifest.backup_id}.staging"
     if staging.exists():
-        if not staging.is_dir() or staging.is_symlink():
+        if not staging.is_dir() or is_link_or_reparse(staging):
             raise AppError("backup_incomplete", status_code=409)
         _remove_staging(staging, parent)
     staging.mkdir()
@@ -134,7 +135,7 @@ def verify_restored_originals(
     backup_generation: Path,
     target: Path,
 ) -> None:
-    if not target.is_dir() or target.is_symlink():
+    if not target.is_dir() or is_link_or_reparse(target):
         raise AppError("backup_incomplete", status_code=409)
     expected: set[Path] = set()
     for artifact in manifest.originals:
@@ -143,7 +144,7 @@ def verify_restored_originals(
         restored = target / relative
         if (
             not restored.is_file()
-            or restored.is_symlink()
+            or is_link_or_reparse(restored)
             or restored.stat().st_size != artifact.size_bytes
             or sha256_file(restored) != artifact.sha256
             or sha256_file(backup_generation / artifact.storage_key) != artifact.sha256
@@ -153,7 +154,7 @@ def verify_restored_originals(
         entries = tuple(target.rglob("*"))
     except OSError as exc:
         raise AppError("backup_incomplete", status_code=409) from exc
-    if any(path.is_symlink() or not (path.is_file() or path.is_dir()) for path in entries):
+    if any(is_link_or_reparse(path) or not (path.is_file() or path.is_dir()) for path in entries):
         raise AppError("backup_incomplete", status_code=409)
     observed = {path.relative_to(target) for path in entries if path.is_file()}
     if observed != expected:

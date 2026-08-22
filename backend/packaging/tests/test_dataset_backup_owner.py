@@ -15,6 +15,71 @@ from _powershell_contract import (
 PACKAGING = Path(__file__).resolve().parents[1]
 BACKUP = PACKAGING / "windows_dataset_backup.ps1"
 GENERATION_CONTRACT = PACKAGING / "windows_database_generation_contract.ps1"
+INSTALLED_READER = PACKAGING / "windows_installed_dataset_reader.ps1"
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_backup_inspection_checks_each_exact_acl_operand_before_opening_helper(
+    tmp_path: Path,
+) -> None:
+    inspection = powershell_function(
+        INSTALLED_READER.read_text(encoding="utf-8-sig"),
+        "Invoke-TicketboxInstalledDatasetBackupInspection",
+    )
+    root = str(tmp_path).replace("'", "''")
+    generation = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+    script = rf"""
+$ErrorActionPreference = 'Stop'
+$script:events = @()
+function Test-TicketboxPathEquals {{ param($Left, $Right); return $true }}
+function Assert-TicketboxProtectedDirectoryAcl {{
+    param($Path)
+    $script:events += "dir:$Path"
+}}
+function Assert-NoTicketboxReparsePoints {{ param($Path) }}
+function Get-ChildItem {{
+    param($LiteralPath, [switch]$Force, [switch]$Recurse)
+    return @(
+        [pscustomobject]@{{ FullName = (Join-Path $LiteralPath 'originals'); Kind = 'Directory' }},
+        [pscustomobject]@{{ FullName = (Join-Path $LiteralPath 'manifest.json'); Kind = 'File' }},
+        [pscustomobject]@{{ FullName = (Join-Path $LiteralPath 'database.dump'); Kind = 'File' }}
+    )
+}}
+function Get-TicketboxPathEntryKindNoFollow {{ param($Path); if ($Path.EndsWith('originals')) {{ return 'Directory' }}; return 'File' }}
+function Assert-TicketboxExactFileAcl {{
+    param($Path, $Accounts, $OwnerAccount)
+    $script:events += "file:${{Path}}:$($Accounts -join ','):$OwnerAccount"
+}}
+function Open-TicketboxVerifiedDatabaseMaintenanceHelperLease {{ throw 'stop-after-acl' }}
+function Throw-TicketboxDatabaseGenerationOperationFailure {{
+    param($Primary, $Cleanup)
+    if ($null -ne $Primary) {{ throw $Primary }}
+}}
+{inspection}
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{ DataRoot = (Join-Path '{root}' 'data'); InstallDir = (Join-Path '{root}' 'install') }}
+}}
+$failed = $false
+try {{ Invoke-TicketboxInstalledDatasetBackupInspection $subject '{generation}' | Out-Null }}
+catch {{ if ($_.Exception.Message -ceq 'stop-after-acl') {{ $failed = $true }} else {{ throw }} }}
+if (-not $failed) {{ throw 'inspection crossed the helper boundary' }}
+$generationPath = Join-Path (Join-Path $subject.Identity.DataRoot 'backups') '{generation}'
+$expected = @(
+    "dir:$(Join-Path $subject.Identity.DataRoot 'backups')",
+    "dir:$generationPath",
+    "dir:$(Join-Path $generationPath 'originals')",
+    "file:$(Join-Path $generationPath 'manifest.json'):SYSTEM,BUILTIN\Administrators:SYSTEM",
+    "file:$(Join-Path $generationPath 'database.dump'):SYSTEM,BUILTIN\Administrators:SYSTEM"
+)
+if (($script:events -join '|') -cne ($expected -join '|')) {{
+    throw "backup ACL operands drifted: $($script:events -join '|')"
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-backup-tree-acl-operands.ps1",
+    )
 
 
 def test_backup_owner_passes_structured_barrier_and_inspects_before_request_retirement() -> None:
@@ -35,13 +100,13 @@ def test_backup_owner_passes_structured_barrier_and_inspects_before_request_reti
     )
     inspection = backup.rindex("Invoke-TicketboxInstalledDatasetBackupInspection")
     validation = backup.rindex("Assert-TicketboxInstalledCompleteBackupResult")
-    retirement = backup.rindex("Remove-TicketboxInstalledDatasetBackupRequest")
+    retirement = backup.rindex("Remove-TicketboxInstalledDatasetOperation")
     assert inspection < validation < retirement
 
 
 def test_backup_owner_reasserts_privileged_payload_acl_before_and_after_write() -> None:
     backup = BACKUP.read_text(encoding="utf-8-sig")
-    request = backup.rindex("Get-OrCreateTicketboxInstalledDatasetBackupRequest")
+    request = backup.rindex("Start-TicketboxInstalledDatasetBackupOperation")
     stop = backup.index("Stop-TicketboxOwnedServiceIfExists", request)
     helper = backup.rindex("Invoke-TicketboxInstalledCompleteBackupHelper")
     inspection = backup.rindex("Invoke-TicketboxInstalledDatasetBackupInspection")
@@ -101,7 +166,8 @@ $DataRoot = Join-Path '{root}' 'data'
 $PgData = Join-Path $DataRoot 'pgdata'
 $AppData = Join-Path $DataRoot 'app'
 $DefaultUploadRoot = Join-Path $AppData 'uploads'
-$LogDir = Join-Path $DataRoot 'logs'
+$LogDir = Join-Path $AppData 'logs'
+$RuntimeSettingsDir = Join-Path $AppData 'runtime-settings'
 $BackupDir = Join-Path $DataRoot 'backups'
 $InstallerState = Join-Path $DataRoot 'installer-state'
 $BootstrapExposureRecoveryGuardPath = Join-Path $DataRoot 'absent-bootstrap'
@@ -120,8 +186,19 @@ if ($backup[0].ReadExecuteAccounts.Count -ne 0 -or -not $backup[0].Recurse) {{
     throw 'backup ACL lost its exact recursive contract'
 }}
 $app = @($script:calls | Where-Object {{ $_.Path -ceq $AppData }})
-if (($app[0].Accounts -join '|') -cnotmatch 'NT SERVICE\\ticketbox-backend') {{
-    throw 'backend-enabled branch was not exercised'
+if (
+    ($app[0].Accounts -join '|') -cne 'SYSTEM|BUILTIN\Administrators' -or
+    ($app[0].ReadExecuteAccounts -join '|') -cne 'NT SERVICE\ticketbox-backend' -or
+    $app[0].Recurse
+) {{ throw 'app authority root still grants runtime replacement authority' }}
+foreach ($writable in @($DefaultUploadRoot, $LogDir, $RuntimeSettingsDir)) {{
+    $entry = @($script:calls | Where-Object {{ $_.Path -ceq $writable }})
+    if (
+        $entry.Count -ne 1 -or
+        ($entry[0].Accounts -join '|') -cne
+            'SYSTEM|BUILTIN\Administrators|NT SERVICE\ticketbox-backend' -or
+        -not $entry[0].Recurse
+    ) {{ throw "backend writable leaf ACL drifted: $writable" }}
 }}
 """
     run_powershell_contract_script(
@@ -205,9 +282,7 @@ $barrier = [pscustomobject]@{{
         filename="dataset-backup-real-cli-argv.ps1",
     )
     argv = json.loads(argv_path.read_text(encoding="utf-8"))
-    parser = runpy.run_path(str(PACKAGING / "launch.py"))[
-        "_parse_complete_dataset_backup_args"
-    ]
+    parser = runpy.run_path(str(PACKAGING / "launch.py"))["_parse_complete_dataset_backup_args"]
     parsed = parser(argv)
     assert parsed.pg_dump_path == Path(r"C:\pg\pg_dump.exe")
     assert parsed.pg_restore_path == Path(r"C:\pg\pg_restore.exe")
