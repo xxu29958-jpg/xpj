@@ -292,6 +292,10 @@ PLACEHOLDER_SECRETS = frozenset({PLACEHOLDER_UPLOAD_TOKEN, PLACEHOLDER_APP_TOKEN
 DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5432/ticketbox?require_auth=scram-sha-256"
 
 
+class InstalledRuntimeSettingsError(RuntimeError):
+    """The installed backend lacks its mandatory service-owned settings projection."""
+
+
 def database_url_is_default_fallback() -> bool:
     """True when DATABASE_URL is unset and the superuser@localhost default is in use.
 
@@ -311,7 +315,7 @@ def get_settings() -> Settings:
         service_owned=_RUNTIME_SETTINGS_SERVICE_OWNED,
     )
     if _RUNTIME_SETTINGS_SERVICE_OWNED and runtime_settings is None:
-        raise RuntimeError("installed runtime settings projection is missing")
+        raise InstalledRuntimeSettingsError("installed runtime settings projection is missing")
     upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
     if not upload_dir.is_absolute():
         upload_dir = DATA_ROOT / upload_dir

@@ -119,6 +119,23 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
     }
 
 
+def test_dataset_maintenance_changes_select_all_required_execution_scopes() -> None:
+    _assert_path_scopes(
+        (
+            "backend/app/database_maintenance_runtime.py",
+            "backend/app/dataset_maintenance_cli.py",
+            "backend/app/database/_dataset_backup_action.py",
+            "backend/app/database/_dataset_backup_snapshot.py",
+            "backend/app/database/_dataset_restore_action.py",
+            "backend/app/database/_dataset_restore_authority.py",
+            "backend/app/database/_dataset_restore_security.py",
+        ),
+        "postgres",
+        "backend_frozen",
+        "windows",
+    )
+
+
 def test_desktop_build_contract_runs_tests_and_packaging() -> None:
     for path in (
         "desktop/backend_manager/__main__.py",

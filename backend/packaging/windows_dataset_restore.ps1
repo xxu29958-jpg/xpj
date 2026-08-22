@@ -76,7 +76,6 @@ $primary = $null
 $cleanup = @()
 $result = $null
 $restartBackend = $false
-$publicBaseUrl = $null
 $appData = $null
 try {
     $lock = Enter-TicketboxLifecycleLock
@@ -130,10 +129,8 @@ try {
         ) {
             throw "restore requires a backup of the installed dataset and exact release schema."
         }
-        $publicBaseUrl = Read-TicketboxInstalledDatasetPublicBaseUrl `
-            -Subject $subject
         $contracts = New-TicketboxInstalledDatabaseGenerationContracts `
-            -Subject $subject -PublicBaseUrl $publicBaseUrl
+            -Subject $subject
         $projectionContractSha256 =
             Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `
                 $contracts.Projection
@@ -151,15 +148,13 @@ try {
             -ActiveDatasetId ([string]$activeDataset.DatasetId) `
             -ActiveRestoreEpoch ([int64]$activeDataset.RestoreEpoch) `
             -RestartBackend $restartBackend `
-            -PublicBaseUrl $publicBaseUrl `
             -LifecycleLock $lock
         Close-TicketboxDatabaseGenerationRuntimeCredentials $authority.Credentials
         $authority.Credentials = $null
     }
     if ($null -eq $contracts) {
         $contracts = New-TicketboxInstalledDatabaseGenerationContracts `
-            -Subject $subject `
-            -PublicBaseUrl ([string]$request.Payload.public_base_url)
+            -Subject $subject
     }
     $projectionContractSha256 =
         Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 `

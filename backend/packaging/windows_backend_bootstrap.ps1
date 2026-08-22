@@ -641,7 +641,8 @@ function Complete-FirstOwnerBootstrapIfEnabled {
     param(
         [Parameter(Mandatory = $true)][string]$DatabaseUrl,
         [Parameter(Mandatory = $true)][string]$InstallationOperationId,
-        [Parameter(Mandatory = $true)][string]$InstallationId
+        [Parameter(Mandatory = $true)][string]$InstallationId,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
     )
     $envMap = Read-EnvMap $EnvPath
     if (-not $envMap.ContainsKey("HTTP_BOOTSTRAP_SECRET")) {
@@ -726,12 +727,16 @@ function Complete-FirstOwnerBootstrapIfEnabled {
             if ($listenerExposureRecovered) {
                 Protect-TicketboxBootstrapAfterRepeatedListenerFailure `
                     -DatabaseUrl $DatabaseUrl `
-                    -ExposedSecret $secret
+                    -ExposedSecret $secret `
+                    -SecretByteCount $SecretByteCount
                 throw (New-Object System.Security.SecurityException(
                     "replacement listener 后验复核再次失败；已隔离当前 secret 并持久化下一轮恢复 intent。"
                 ))
             }
-            $secret = Invoke-TicketboxBootstrapExposureRecovery $DatabaseUrl $secret
+            $secret = Invoke-TicketboxBootstrapExposureRecovery `
+                -DatabaseUrl $DatabaseUrl `
+                -ExposedSecret $secret `
+                -SecretByteCount $SecretByteCount
             Assert-TicketboxBootstrapSecret $secret
             $listenerExposureRecovered = $true
             $deadline = New-TicketboxWaitDeadline $BootstrapRequestTimeoutMs

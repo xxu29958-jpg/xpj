@@ -1479,7 +1479,6 @@ try {
             -BackendPort $BackendPort `
             -PgBin (Join-Path $InstallDir "pg\bin") `
             -Timezone ([string]$TargetReleaseConfig.default_timezone) `
-            -PublicBaseUrl "" `
             -PsqlPath (Join-Path $InstallDir "pg\bin\psql.exe") `
             -PgData (Join-Path $DataRoot "pgdata") `
             -DatabaseToolTimeoutMilliseconds (

@@ -99,6 +99,8 @@ function Write-EnvNoBom {
 }
 
 function New-StrongPassword {
+    param([Parameter(Mandatory = $true)][int]$SecretByteCount)
+
     $chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789".ToCharArray()
     $bytes = New-Object 'System.Byte[]' $SecretByteCount
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
@@ -113,20 +115,25 @@ function New-StrongPassword {
 }
 
 function Get-HttpBootstrapSecretByteCount {
-    $byteCount = [int]$SecretByteCount
-    if ($byteCount -lt 32) {
+    param([Parameter(Mandatory = $true)][int]$SecretByteCount)
+
+    if ($SecretByteCount -lt 32) {
         throw "HTTP bootstrap secret 必须至少包含 32 个随机字节。"
     }
-    return $byteCount
+    return $SecretByteCount
 }
 
 function Get-HttpBootstrapSecretEncodedLength {
-    $byteCount = Get-HttpBootstrapSecretByteCount
+    param([Parameter(Mandatory = $true)][int]$SecretByteCount)
+
+    $byteCount = Get-HttpBootstrapSecretByteCount $SecretByteCount
     return [int][Math]::Ceiling(($byteCount * 8.0) / 6.0)
 }
 
 function New-HttpBootstrapSecret {
-    $byteCount = Get-HttpBootstrapSecretByteCount
+    param([Parameter(Mandatory = $true)][int]$SecretByteCount)
+
+    $byteCount = Get-HttpBootstrapSecretByteCount $SecretByteCount
     $bytes = New-Object 'System.Byte[]' $byteCount
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     try {
@@ -201,9 +208,6 @@ function New-BaseEnvLines([string]$DatabaseUrl) {
         "PG_RESTORE_PATH=$(Join-Path $PgBin 'pg_restore.exe')",
         "OCR_DEFAULT_TIMEZONE=$Timezone"
     )
-    if ($PublicBaseUrl.Trim().Length -gt 0) {
-        $lines += "PUBLIC_BASE_URL=$PublicBaseUrl"
-    }
     return $lines
 }
 
@@ -276,7 +280,13 @@ function Get-PostgresBootstrapRecoveryPath {
     return Join-Path $AppData $script:PostgresBootstrapRecoveryFileName
 }
 
-function Assert-PostgresBootstrapPasswordValue([string]$Value, [string]$FieldName) {
+function Assert-PostgresBootstrapPasswordValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Value,
+        [Parameter(Mandatory = $true)][string]$FieldName,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
+    )
+
     $allowedChars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
     if ([string]::IsNullOrEmpty($Value) -or $Value.Length -ne $SecretByteCount) {
         throw "PostgreSQL bootstrap 恢复文件中的 $FieldName 长度无效。"
@@ -288,9 +298,14 @@ function Assert-PostgresBootstrapPasswordValue([string]$Value, [string]$FieldNam
     }
 }
 
-function Assert-HttpBootstrapSecretValue([string]$Value) {
-    $byteCount = Get-HttpBootstrapSecretByteCount
-    $expectedLength = Get-HttpBootstrapSecretEncodedLength
+function Assert-HttpBootstrapSecretValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Value,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
+    )
+
+    $byteCount = Get-HttpBootstrapSecretByteCount $SecretByteCount
+    $expectedLength = Get-HttpBootstrapSecretEncodedLength $SecretByteCount
     if ([string]::IsNullOrEmpty($Value) -or
         $Value.Length -ne $expectedLength -or
         $Value -cnotmatch '^[A-Za-z0-9_-]+$') {
@@ -316,15 +331,23 @@ function Assert-HttpBootstrapSecretValue([string]$Value) {
 }
 
 function New-PostgresBootstrapRecoveryState {
+    param([Parameter(Mandatory = $true)][int]$SecretByteCount)
+
     return [pscustomobject]@{
-        SuperuserPassword = New-StrongPassword
-        HttpBootstrapSecret = New-HttpBootstrapSecret
+        SuperuserPassword = New-StrongPassword $SecretByteCount
+        HttpBootstrapSecret = New-HttpBootstrapSecret $SecretByteCount
     }
 }
 
-function ConvertTo-PostgresBootstrapRecoveryPayload([object]$State) {
-    Assert-PostgresBootstrapPasswordValue $State.SuperuserPassword "superuser_password"
-    Assert-HttpBootstrapSecretValue $State.HttpBootstrapSecret
+function ConvertTo-PostgresBootstrapRecoveryPayload {
+    param(
+        [Parameter(Mandatory = $true)][object]$State,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
+    )
+
+    Assert-PostgresBootstrapPasswordValue `
+        $State.SuperuserPassword "superuser_password" $SecretByteCount
+    Assert-HttpBootstrapSecretValue $State.HttpBootstrapSecret $SecretByteCount
     return @(
         $State.SuperuserPassword
         "schema=$script:PostgresBootstrapRecoverySchema"
@@ -332,7 +355,12 @@ function ConvertTo-PostgresBootstrapRecoveryPayload([object]$State) {
     ) -join "`n"
 }
 
-function ConvertFrom-PostgresBootstrapRecoveryPayload([byte[]]$Bytes) {
+function ConvertFrom-PostgresBootstrapRecoveryPayload {
+    param(
+        [Parameter(Mandatory = $true)][byte[]]$Bytes,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
+    )
+
     if ($null -eq $Bytes -or $Bytes.Length -eq 0 -or $Bytes.Length -gt 4096) {
         throw "PostgreSQL bootstrap 恢复文件大小无效。"
     }
@@ -357,8 +385,9 @@ function ConvertFrom-PostgresBootstrapRecoveryPayload([byte[]]$Bytes) {
         SuperuserPassword = $lines[0]
         HttpBootstrapSecret = $lines[2].Substring($bootstrapPrefix.Length)
     }
-    Assert-PostgresBootstrapPasswordValue $state.SuperuserPassword "superuser_password"
-    Assert-HttpBootstrapSecretValue $state.HttpBootstrapSecret
+    Assert-PostgresBootstrapPasswordValue `
+        $state.SuperuserPassword "superuser_password" $SecretByteCount
+    Assert-HttpBootstrapSecretValue $state.HttpBootstrapSecret $SecretByteCount
     return $state
 }
 
@@ -410,7 +439,11 @@ function Assert-PostgresBootstrapRecoveryFileSecurity {
 }
 
 function Read-PostgresBootstrapRecoveryState {
-    param([Parameter(Mandatory = $true)][string]$Path)
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$AppData,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
+    )
     $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     if (-not (Test-TicketboxPathEquals $Path $pwfile)) {
         throw "PostgreSQL bootstrap 恢复文件路径不匹配当前 DataRoot。"
@@ -422,11 +455,14 @@ function Read-PostgresBootstrapRecoveryState {
     catch {
         throw "无法读取 PostgreSQL bootstrap 恢复文件。"
     }
-    return ConvertFrom-PostgresBootstrapRecoveryPayload $bytes
+    return ConvertFrom-PostgresBootstrapRecoveryPayload $bytes $SecretByteCount
 }
 
 function Remove-PostgresBootstrapRecoveryState {
-    param([Parameter(Mandatory = $true)][string]$Path)
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$AppData
+    )
     $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     if (-not (Test-TicketboxPathEquals $Path $pwfile)) {
         throw "PostgreSQL bootstrap 恢复文件路径不匹配当前 DataRoot。"
@@ -445,6 +481,12 @@ function Remove-PostgresBootstrapRecoveryState {
 }
 
 function Repair-PostgresBootstrapRecoveryFileAcl {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$AppData,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
+    )
+
     $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     if ((Get-TicketboxPathEntryKindNoFollow $pwfile) -cne "File") {
         throw "PostgreSQL bootstrap 恢复文件不是普通文件，拒绝 ACL 恢复。"
@@ -465,7 +507,8 @@ function Repair-PostgresBootstrapRecoveryFileAcl {
 
     $acl = Get-TicketboxPathAcl $pwfile
     if ($acl.AreAccessRulesProtected) {
-        [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
+        [void](Read-PostgresBootstrapRecoveryState `
+            -Path $pwfile -AppData $AppData -SecretByteCount $SecretByteCount)
         return $false
     }
 
@@ -495,7 +538,8 @@ function Repair-PostgresBootstrapRecoveryFileAcl {
     catch {
         throw "无法读取待恢复的 PostgreSQL bootstrap 恢复文件。"
     }
-    [void](ConvertFrom-PostgresBootstrapRecoveryPayload $beforeBytes)
+    [void](ConvertFrom-PostgresBootstrapRecoveryPayload `
+        $beforeBytes $SecretByteCount)
 
     Set-TicketboxExactFileAcl `
         -Path $pwfile `
@@ -508,12 +552,16 @@ function Repair-PostgresBootstrapRecoveryFileAcl {
     if (-not (Test-TicketboxWindowsByteArrayEquals $beforeBytes $afterBytes)) {
         throw "PostgreSQL bootstrap 恢复文件 ACL 恢复改变了受保护字节。"
     }
-    [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
+    [void](Read-PostgresBootstrapRecoveryState `
+        -Path $pwfile -AppData $AppData -SecretByteCount $SecretByteCount)
     return $true
 }
 
 function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
     param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$AppData,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount,
         [Parameter(Mandatory = $true)][string[]]$ParentFullControlAccounts
     )
 
@@ -545,7 +593,8 @@ function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
 
     $acl = Get-TicketboxPathAcl $pwfile
     if ($acl.AreAccessRulesProtected) {
-        [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
+        [void](Read-PostgresBootstrapRecoveryState `
+            -Path $pwfile -AppData $AppData -SecretByteCount $SecretByteCount)
         return $false
     }
     Assert-TicketboxRecoverableInheritedFileAcl `
@@ -555,7 +604,8 @@ function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
     $beforeBytes = [IO.File]::ReadAllBytes(
         (ConvertTo-TicketboxWin32ExtendedPath $pwfile)
     )
-    [void](ConvertFrom-PostgresBootstrapRecoveryPayload $beforeBytes)
+    [void](ConvertFrom-PostgresBootstrapRecoveryPayload `
+        $beforeBytes $SecretByteCount)
 
     Set-TicketboxExactFileAcl `
         -Path $pwfile `
@@ -568,11 +618,14 @@ function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
     if (-not (Test-TicketboxWindowsByteArrayEquals $beforeBytes $afterBytes)) {
         throw "AppData ACL 收敛改变了 PostgreSQL bootstrap 恢复字节。"
     }
-    [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
+    [void](Read-PostgresBootstrapRecoveryState `
+        -Path $pwfile -AppData $AppData -SecretByteCount $SecretByteCount)
     return $true
 }
 
 function Remove-PostgresBootstrapRecoveryTempIfPresent {
+    param([Parameter(Mandatory = $true)][string]$AppData)
+
     $tempPath = (Get-PostgresBootstrapRecoveryPath -AppData $AppData) + ".tmp"
     if (-not (Test-Path -LiteralPath $tempPath)) {
         return
@@ -580,14 +633,20 @@ function Remove-PostgresBootstrapRecoveryTempIfPresent {
     Remove-TicketboxSensitiveFile $tempPath
 }
 
-function Write-PostgresBootstrapRecoveryState([object]$State) {
+function Write-PostgresBootstrapRecoveryState {
+    param(
+        [Parameter(Mandatory = $true)][object]$State,
+        [Parameter(Mandatory = $true)][string]$AppData,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
+    )
+
     $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     $tempPath = "$pwfile.tmp"
     if (Test-Path -LiteralPath $pwfile) {
         throw "PostgreSQL bootstrap 恢复文件已存在，拒绝覆盖。"
     }
-    Remove-PostgresBootstrapRecoveryTempIfPresent
-    $payload = ConvertTo-PostgresBootstrapRecoveryPayload $State
+    Remove-PostgresBootstrapRecoveryTempIfPresent -AppData $AppData
+    $payload = ConvertTo-PostgresBootstrapRecoveryPayload $State $SecretByteCount
     $bytes = [System.Text.Encoding]::ASCII.GetBytes($payload)
     $stream = $null
     $moved = $false
@@ -613,7 +672,8 @@ function Write-PostgresBootstrapRecoveryState([object]$State) {
         Move-TicketboxFileAtomically -Source $tempPath -Destination $pwfile
         $moved = $true
         Assert-PostgresBootstrapRecoveryFileSecurity -Path $pwfile
-        $persisted = Read-PostgresBootstrapRecoveryState -Path $pwfile
+        $persisted = Read-PostgresBootstrapRecoveryState `
+            -Path $pwfile -AppData $AppData -SecretByteCount $SecretByteCount
         if ($persisted.SuperuserPassword -cne $State.SuperuserPassword -or
             $persisted.HttpBootstrapSecret -cne $State.HttpBootstrapSecret) {
             throw "PostgreSQL bootstrap 恢复文件持久化校验失败。"
@@ -651,15 +711,20 @@ function Get-OrCreatePostgresBootstrapRecoveryState {
     ) {
         throw "PostgreSQL bootstrap recovery binding is invalid."
     }
-    Remove-PostgresBootstrapRecoveryTempIfPresent
+    Remove-PostgresBootstrapRecoveryTempIfPresent -AppData $AppData
     $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     if (Test-Path -LiteralPath $pwfile) {
-        [void](Repair-PostgresBootstrapRecoveryFileAcl)
-        return Read-PostgresBootstrapRecoveryState -Path $pwfile
+        [void](Repair-PostgresBootstrapRecoveryFileAcl `
+            -DataRoot $DataRoot -AppData $AppData `
+            -SecretByteCount $SecretByteCount)
+        return Read-PostgresBootstrapRecoveryState `
+            -Path $pwfile -AppData $AppData -SecretByteCount $SecretByteCount
     }
-    $state = New-PostgresBootstrapRecoveryState
-    Write-PostgresBootstrapRecoveryState $state
-    return Read-PostgresBootstrapRecoveryState -Path $pwfile
+    $state = New-PostgresBootstrapRecoveryState $SecretByteCount
+    Write-PostgresBootstrapRecoveryState `
+        -State $state -AppData $AppData -SecretByteCount $SecretByteCount
+    return Read-PostgresBootstrapRecoveryState `
+        -Path $pwfile -AppData $AppData -SecretByteCount $SecretByteCount
 }
 
 function Remove-TicketboxEmptyPgDataBeforeInitdb {
@@ -791,7 +856,10 @@ function New-TicketboxInitdbFailure {
 
 function Initialize-PgClusterIfNeeded {
     param(
-        [Parameter(Mandatory = $true)][object]$CompensationAuthority
+        [Parameter(Mandatory = $true)][object]$CompensationAuthority,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$AppData,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
     )
 
     Assert-TicketboxInstallServiceCompensationAuthority `
@@ -808,13 +876,17 @@ function Initialize-PgClusterIfNeeded {
         throw ".env 路径不是普通文件，拒绝继续：$EnvPath"
     }
     if ((Get-TicketboxPathEntryKindNoFollow $pwfile) -ceq "File") {
-        [void](Repair-PostgresBootstrapRecoveryFileAcl)
+        [void](Repair-PostgresBootstrapRecoveryFileAcl `
+            -DataRoot $DataRoot -AppData $AppData `
+            -SecretByteCount $SecretByteCount)
     }
     $existingEnv = Read-EnvMap $EnvPath
     $hasDatabaseUrl = $existingEnv.ContainsKey("DATABASE_URL")
     if (Test-Path -LiteralPath $pgVersionPath -PathType Leaf) {
         if (Test-Path -LiteralPath $pwfile) {
-            [void](Read-PostgresBootstrapRecoveryState -Path $pwfile)
+            [void](Read-PostgresBootstrapRecoveryState `
+                -Path $pwfile -AppData $AppData `
+                -SecretByteCount $SecretByteCount)
         }
         elseif (-not $hasDatabaseUrl) {
             throw "既有 PostgreSQL 簇缺少 .env 和安全 bootstrap 恢复文件，拒绝继续。"
@@ -832,9 +904,12 @@ function Initialize-PgClusterIfNeeded {
         (Test-Path -LiteralPath $PgData -PathType Container) -and
         @(Get-ChildItem -LiteralPath $PgData -Force).Count -gt 0
     ) {
-        $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState -Path $pwfile
+        $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState `
+            -Path $pwfile -AppData $AppData `
+            -SecretByteCount $SecretByteCount
         $expectedBootstrapRecoveryText =
-            ConvertTo-PostgresBootstrapRecoveryPayload $bootstrapRecoveryState
+            ConvertTo-PostgresBootstrapRecoveryPayload `
+                $bootstrapRecoveryState $SecretByteCount
         if (Test-Path -LiteralPath (Join-Path $PgData "postmaster.pid")) {
             throw "未完成的 PostgreSQL 初始化仍含 postmaster.pid，拒绝自动清理。"
         }
@@ -855,9 +930,12 @@ function Initialize-PgClusterIfNeeded {
         # Revalidate ACL, structure, and secret bytes immediately before the
         # root handle is opened.  The native callback below intentionally uses
         # only BCL/native helpers so it also works in Windows PowerShell 5.1.
-        $revalidatedBootstrapRecoveryState = Read-PostgresBootstrapRecoveryState -Path $pwfile
+        $revalidatedBootstrapRecoveryState = Read-PostgresBootstrapRecoveryState `
+            -Path $pwfile -AppData $AppData `
+            -SecretByteCount $SecretByteCount
         if (
-            (ConvertTo-PostgresBootstrapRecoveryPayload $revalidatedBootstrapRecoveryState) -cne
+            (ConvertTo-PostgresBootstrapRecoveryPayload `
+                $revalidatedBootstrapRecoveryState $SecretByteCount) -cne
             $expectedBootstrapRecoveryText
         ) {
             throw "PostgreSQL bootstrap 恢复文件在部分初始化清理前发生变化。"
@@ -916,7 +994,10 @@ function Initialize-PgClusterIfNeeded {
         -SecretByteCount $SecretByteCount
     $initResult = Invoke-TicketboxServiceOwnedInitdb `
         -BootstrapState $bootstrapState `
-        -CompensationAuthority $CompensationAuthority
+        -CompensationAuthority $CompensationAuthority `
+        -DataRoot $DataRoot `
+        -AppData $AppData `
+        -SecretByteCount $SecretByteCount
     if ($initResult.ExitCode -ne 0) {
         throw (New-TicketboxInitdbFailure `
             -FailureKind "native_process_failed" `

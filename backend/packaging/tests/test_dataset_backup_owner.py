@@ -231,7 +231,9 @@ function Set-TicketboxExactDirectoryAcl {{
     }}
 }}
 function Set-TicketboxExactFileAcl {{ param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount) }}
-function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {{ param($ParentFullControlAccounts) }}
+function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {{
+    param($DataRoot, $AppData, $SecretByteCount, $ParentFullControlAccounts)
+}}
 function Initialize-TicketboxInstallerStateDirectory {{ param($Path) }}
 function Get-TicketboxDataRootMarkerPath {{ param($DataRoot); return (Join-Path $DataRoot 'marker.json') }}
 function Invoke-IcaclsChecked {{ param($Arguments) }}
@@ -250,7 +252,12 @@ $ProgramDir = Join-Path '{root}' 'program'
 $PgHome = Join-Path '{root}' 'pg'
 $PgServiceName = 'ticketbox-pg'
 $BackendServiceName = 'ticketbox-backend'
-Set-TicketboxAcl -IncludePgService $true -IncludeBackendService $true
+Set-TicketboxAcl `
+    -IncludePgService $true `
+    -IncludeBackendService $true `
+    -DataRoot $DataRoot `
+    -AppData $AppData `
+    -SecretByteCount 32
 $backup = @($script:calls | Where-Object {{ $_.Path -ceq $BackupDir }})
 if ($backup.Count -ne 1) {{ throw 'backup ACL call count drifted' }}
 if (($backup[0].Accounts -join '|') -cne 'SYSTEM|BUILTIN\Administrators') {{

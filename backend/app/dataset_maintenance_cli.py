@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import BinaryIO, TextIO
 
 from app.database_maintenance_runtime import (
+    DatabaseMaintenanceContractError,
     assert_maintenance_libpq_environment,
     load_standalone_database_module,
     resolve_generation_program,
@@ -118,9 +119,9 @@ def _streams(
     resolved_input = input_stream if input_stream is not None else sys.stdin.buffer
     resolved_output = output_stream if output_stream is not None else sys.stdout
     if resolved_input is None or resolved_output is None:
-        raise RuntimeError(f"{label} requires redirected IO")
+        raise DatabaseMaintenanceContractError(f"{label} requires redirected IO")
     if resolved_input.read(1) != b"":
-        raise RuntimeError(f"{label} requires empty stdin")
+        raise DatabaseMaintenanceContractError(f"{label} requires empty stdin")
     return resolved_input, resolved_output
 
 
@@ -162,7 +163,7 @@ def _run_complete_dataset_backup(
         )
     )
     if tuple(result) != module.RESULT_FIELDS:
-        raise RuntimeError("complete dataset backup returned an unsupported shape")
+        raise DatabaseMaintenanceContractError("complete dataset backup returned an unsupported shape")
     _write_result(output, result)
     return 0
 
@@ -178,7 +179,7 @@ def _run_dataset_backup_inspection(
     module = _load_complete_dataset_backup_module()
     result = module.inspect_complete_dataset_backup_action(args.backup_generation)
     if tuple(result) != module.INSPECTION_FIELDS:
-        raise RuntimeError("dataset backup inspection returned an unsupported shape")
+        raise DatabaseMaintenanceContractError("dataset backup inspection returned an unsupported shape")
     _write_result(output, result)
     return 0
 
@@ -212,7 +213,7 @@ def _run_isolated_dataset_restore(
         operation_id=args.operation_id,
     )
     if tuple(result) != module.RESULT_FIELDS:
-        raise RuntimeError("isolated dataset restore returned an unsupported shape")
+        raise DatabaseMaintenanceContractError("isolated dataset restore returned an unsupported shape")
     _write_result(output, result)
     return 0
 
@@ -231,7 +232,7 @@ def _run_restored_originals_verification(
         args.restored_upload_root,
     )
     if tuple(result) != module.RUNTIME_VERIFICATION_FIELDS:
-        raise RuntimeError("restored originals verification returned an unsupported shape")
+        raise DatabaseMaintenanceContractError("restored originals verification returned an unsupported shape")
     _write_result(output, result)
     return 0
 
@@ -244,7 +245,7 @@ def run_dataset_maintenance(
 ) -> int:
     selected = [switch for switch in DATASET_MAINTENANCE_SWITCHES if switch in argv]
     if len(selected) != 1:
-        raise RuntimeError("dataset maintenance helper accepts exactly one mode")
+        raise DatabaseMaintenanceContractError("dataset maintenance helper accepts exactly one mode")
     runners = {
         _COMPLETE_DATASET_BACKUP_SWITCH: _run_complete_dataset_backup,
         _INSPECT_DATASET_BACKUP_SWITCH: _run_dataset_backup_inspection,

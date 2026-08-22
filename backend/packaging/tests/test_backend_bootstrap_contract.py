@@ -898,6 +898,7 @@ function New-BaseEnvLines([string]$DatabaseUrl) {{
     return @("DATABASE_URL=$DatabaseUrl", 'TICKETBOX_HOST=127.0.0.1')
 }}
 function New-HttpBootstrapSecret {{
+    param($SecretByteCount)
     $script:newSecretCalls += 1
     if ($script:newSecretCalls -eq 1) {{ return 'replacement-secret-with-at-least-32-bytes' }}
     if ($script:newSecretCalls -eq 2) {{ return 'second-replacement-secret-with-at-least-32-bytes' }}
@@ -952,7 +953,8 @@ $failed = $false
 try {{
     Invoke-TicketboxBootstrapExposureRecovery `
         'postgresql://local/test' `
-        'exposed-secret-with-at-least-32-bytes' | Out-Null
+        'exposed-secret-with-at-least-32-bytes' `
+        -SecretByteCount 32 | Out-Null
 }}
 catch {{ $failed = $true }}
 if (-not $failed) {{ throw 'quiescence failure did not abort recovery' }}
@@ -965,6 +967,7 @@ if ($guardedEnvironment['HTTP_BOOTSTRAP_SECRET'] -cne 'exposed-secret-with-at-le
 $script:disableFails = $false
 $replacement = Resolve-TicketboxBootstrapExposureRecoveryIntent `
     -DatabaseUrl 'postgresql://local/test' `
+    -SecretByteCount 32 `
     -StartBackendAfterRecovery $false
 if ($replacement -cne 'replacement-secret-with-at-least-32-bytes') {{ throw 'resume returned wrong secret' }}
 if ($script:maintenanceCalls -ne 1) {{ throw 'maintenance action count mismatch' }}
@@ -977,7 +980,8 @@ $repeatFailed = $false
 try {{
     Protect-TicketboxBootstrapAfterRepeatedListenerFailure `
         -DatabaseUrl 'postgresql://local/test' `
-        -ExposedSecret $replacement
+        -ExposedSecret $replacement `
+        -SecretByteCount 32
 }}
 catch {{ $repeatFailed = $true }}
 if (-not $repeatFailed) {{ throw 'second listener failure ignored quiescence failure' }}
@@ -990,6 +994,7 @@ if ($stillEnabled.ContainsKey('ENABLE_HTTP_BOOTSTRAP') -or $stillEnabled.Contain
 $script:disableFails = $false
 $secondReplacement = Resolve-TicketboxBootstrapExposureRecoveryIntent `
     -DatabaseUrl 'postgresql://local/test' `
+    -SecretByteCount 32 `
     -StartBackendAfterRecovery $false
 if ($secondReplacement -cne 'second-replacement-secret-with-at-least-32-bytes') {{ throw 'second repair returned wrong secret' }}
 if (Test-Path -LiteralPath $BootstrapExposureRecoveryPath) {{ throw 'second resolved intent survived cleanup' }}
@@ -1005,6 +1010,7 @@ $script:collisionOnce = $true
 $collisionRetry = Invoke-TicketboxBootstrapExposureRecovery `
     -DatabaseUrl 'postgresql://local/test' `
     -ExposedSecret $secondReplacement `
+    -SecretByteCount 32 `
     -StartBackendAfterRecovery $false
 if ($collisionRetry -cne 'collision-retry-secret-with-at-least-32-bytes') {{
     throw 'credential collision did not rotate the persisted replacement generation'
@@ -1343,7 +1349,8 @@ function Invoke-TicketboxInstallationOwnerBootstrapHttpRequest {{
 Complete-FirstOwnerBootstrapIfEnabled `
     -DatabaseUrl 'postgresql://local/test' `
     -InstallationOperationId $operationId `
-    -InstallationId $installationId
+    -InstallationId $installationId `
+    -SecretByteCount 32
 if ($script:httpCalls -ne 0 -or $script:envWrites -ne 1 -or
     $script:restartCalls -ne 1 -or $script:healthCalls -ne 1) {{
     throw 'persisted owner handoff did not resume through secret retirement only'

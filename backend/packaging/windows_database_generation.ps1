@@ -75,6 +75,20 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
     $stateRoot = [string]$IntentContext.StateRoot
     $intent = $IntentContext.Artifact
     $operationId = [string]$intent.Payload.operation_id
+    $bootstrapDataRoot = [string]$HostContract.data_root
+    $bootstrapAppData = Join-Path $bootstrapDataRoot "app"
+    $bootstrapSecretByteCount =
+        [int]$HostContract.release_config.secret_byte_count
+    $expectedBootstrapRecoveryPath =
+        Get-PostgresBootstrapRecoveryPath -AppData $bootstrapAppData
+    if (
+        $bootstrapSecretByteCount -lt 32 -or
+        -not (Test-TicketboxPathEquals `
+            $BootstrapRecoveryPath `
+            $expectedBootstrapRecoveryPath)
+    ) {
+        throw "database generation bootstrap binding 与 HostContract 漂移。"
+    }
     $hostContractSha256 = Get-TicketboxDatabaseGenerationTextSha256 (
         ConvertTo-TicketboxDatabaseGenerationCanonicalJson $HostContract
     )
@@ -190,7 +204,9 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
         }
         try {
             $bootstrapRecoveryState = Read-PostgresBootstrapRecoveryState `
-                -Path $BootstrapRecoveryPath
+                -Path $BootstrapRecoveryPath `
+                -AppData $bootstrapAppData `
+                -SecretByteCount $bootstrapSecretByteCount
             $httpBootstrapSecret = [string]$bootstrapRecoveryState.HttpBootstrapSecret
             if ($httpBootstrapSecret -cnotmatch '^[A-Za-z0-9_-]{32,128}$') {
                 throw "HTTP bootstrap secret 不是受控 secret。"
@@ -475,7 +491,9 @@ function Invoke-TicketboxInstalledDatabaseGeneration {
                     [void](Publish-TicketboxDatabaseGenerationRuntimeProjection `
                         $intent $candidate $runtimeCredentials $hostAuthority `
                         $ProjectionContract $LifecycleLock)
-                    Remove-PostgresBootstrapRecoveryState -Path $BootstrapRecoveryPath
+                    Remove-PostgresBootstrapRecoveryState `
+                        -Path $BootstrapRecoveryPath `
+                        -AppData $bootstrapAppData
                     Remove-TicketboxDatabaseGenerationCredentials `
                         -StateRoot $stateRoot -Intent $intent -LifecycleLock $LifecycleLock
                     $credentialsPath = Get-TicketboxDatabaseGenerationArtifactPath `

@@ -1159,7 +1159,6 @@ function Read-TicketboxProtectedUtf8Artifact {{
     return [pscustomobject]@{{ Text = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8) }}
 }}
 function Assert-TicketboxLifecycleOperationLease {{ param([object]$LifecycleLock) }}
-function ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl {{ param([string]$Value); return $Value }}
 function Get-TicketboxDatabaseGenerationPayloadProperties {{
     param([string]$Kind)
     if ($Kind -ceq 'intent') {{ return @('schema', 'operation_id', 'installation_id') }}
@@ -1226,7 +1225,7 @@ try {{
         $subject $authority $inspection `
         '55555555-5555-4555-8555-555555555555' `
         '44444444-4444-4444-8444-444444444444' 0 $false `
-        'https://public.example' $lease | Out-Null
+        $lease | Out-Null
 }}
 catch {{ $rejected = $_.Exception.Message -like '*backup operation is already active*' }}
 if (-not $rejected -or [IO.File]::ReadAllText($activePath, [Text.Encoding]::UTF8) -cne $backupBytes) {{
@@ -1240,7 +1239,7 @@ $restore = Start-TicketboxInstalledDatasetRestoreOperation `
     $subject $authority $inspection `
     '55555555-5555-4555-8555-555555555555' `
     '44444444-4444-4444-8444-444444444444' 0 $false `
-    'https://public.example' $lease
+    $lease
 $restoreBytes = [IO.File]::ReadAllText($activePath, [Text.Encoding]::UTF8)
 $rejected = $false
 try {{
@@ -2307,9 +2306,9 @@ function Remove-TicketboxInitdbPasswordFileIfPresent {
     param($Receipt)
     $script:passwordRemoves += 1
 }
-function Repair-PostgresBootstrapRecoveryFileAcl { return $false }
+function Repair-PostgresBootstrapRecoveryFileAcl { param($DataRoot,$AppData,$SecretByteCount); return $false }
 function Get-PostgresBootstrapRecoveryPath { param($AppData); return $script:InitdbPasswordPath }
-function Read-PostgresBootstrapRecoveryState { param($Path) return $null }
+function Read-PostgresBootstrapRecoveryState { param($Path,$AppData,$SecretByteCount) return $null }
 function Disable-TicketboxInitdbServiceIfPresent {
     param($Receipt)
     $script:disableCalls += 1
@@ -2343,7 +2342,10 @@ function Invoke-TestScenario([string]$Scenario) {
     try {
         Invoke-TicketboxServiceOwnedInitdb `
             -BootstrapState $bootstrap `
-            -CompensationAuthority $authority | Out-Null
+            -CompensationAuthority $authority `
+            -DataRoot 'C:\ProgramData\Ticketbox' `
+            -AppData 'C:\ProgramData\Ticketbox\app' `
+            -SecretByteCount 32 | Out-Null
     }
     catch { $caught = $_.Exception }
     if ($null -eq $caught) { throw "$Scenario did not fail" }
@@ -2453,6 +2455,8 @@ $script:LegacyRecoveryRequiredPath = 'C:\ProgramData\Ticketbox\legacy-recovery'
 $script:RecoveryRequiredPath = 'C:\ProgramData\Ticketbox\installer-state\recovery.json'
 $script:InstallDir = 'C:\Program Files\Ticketbox'
 $script:DataRoot = 'C:\ProgramData\Ticketbox'
+$script:ServiceAppData = 'C:\ProgramData\Ticketbox\app'
+$script:SecretByteCount = 32
 $script:ServiceWaitArguments = @{ TimeoutMilliseconds = 1000; PollMilliseconds = 1 }
 
 function Service-Exists { param($Name) return $true }
@@ -2491,7 +2495,10 @@ $caught = $null
 try {
     Invoke-TicketboxInstallFailureCompensation `
         -Reason 'injected install failure' `
-        -ServiceCompensationAuthority $unauthorized
+        -ServiceCompensationAuthority $unauthorized `
+        -DataRoot $script:DataRoot `
+        -AppData $script:ServiceAppData `
+        -SecretByteCount $script:SecretByteCount
 }
 catch { $caught = $_.Exception }
 if ($null -eq $caught -or
@@ -2520,7 +2527,10 @@ $caught = $null
 try {
     Invoke-TicketboxInstallFailureCompensation `
         -Reason 'injected install failure' `
-        -ServiceCompensationAuthority $backendOnly
+        -ServiceCompensationAuthority $backendOnly `
+        -DataRoot $script:DataRoot `
+        -AppData $script:ServiceAppData `
+        -SecretByteCount $script:SecretByteCount
 }
 catch { $caught = $_.Exception }
 if ($null -eq $caught -or
@@ -2545,7 +2555,10 @@ $caught = $null
 try {
     Invoke-TicketboxInstallFailureCompensation `
         -Reason 'injected install failure' `
-        -ServiceCompensationAuthority $postgresOnly
+        -ServiceCompensationAuthority $postgresOnly `
+        -DataRoot $script:DataRoot `
+        -AppData $script:ServiceAppData `
+        -SecretByteCount $script:SecretByteCount
 }
 catch { $caught = $_.Exception }
 if ($null -eq $caught -or
@@ -2572,7 +2585,10 @@ Grant-TicketboxInstallServiceCompensationAuthority `
     -Grant created_by_installer
 Invoke-TicketboxInstallFailureCompensation `
     -Reason 'injected install failure' `
-    -ServiceCompensationAuthority $authorized
+    -ServiceCompensationAuthority $authorized `
+    -DataRoot $script:DataRoot `
+    -AppData $script:ServiceAppData `
+    -SecretByteCount $script:SecretByteCount
 if (($script:disableNames -join ',') -cne 'TicketboxBackend,TicketboxPg' -or
     $script:executableReads -ne 1 -or $script:markerWrites -ne 1 -or
     $script:clusterChecks -ne 1) {
@@ -2666,7 +2682,11 @@ foreach ($serviceKind in @('PostgresService','BackendService')) {
     $caught = $null
     try {
         if ($serviceKind -ceq 'PostgresService') {
-            Register-PgService -CompensationAuthority $authority
+            Register-PgService `
+                -CompensationAuthority $authority `
+                -DataRoot 'C:\ProgramData\Ticketbox' `
+                -AppData $script:ServiceAppData `
+                -SecretByteCount 32
         }
         else {
             Register-BackendService -CompensationAuthority $authority
@@ -2747,9 +2767,9 @@ function Read-TicketboxCurrentInitdbServiceReceipt {
 function Assert-TicketboxInitdbServiceConfiguration { param($Receipt,$StartMode) }
 function Assert-TicketboxFreshPgClusterComplete {}
 function Get-TicketboxPathEntryKindNoFollow { param($Path) return 'Missing' }
-function Repair-PostgresBootstrapRecoveryFileAcl { return $false }
+function Repair-PostgresBootstrapRecoveryFileAcl { param($DataRoot,$AppData,$SecretByteCount); return $false }
 function Get-PostgresBootstrapRecoveryPath { param($AppData); return $script:InitdbPasswordPath }
-function Read-PostgresBootstrapRecoveryState { param($Path) return $null }
+function Read-PostgresBootstrapRecoveryState { param($Path,$AppData,$SecretByteCount) return $null }
 function Invoke-ScChecked { param([string[]]$ScArgs) return 0 }
 function Assert-TicketboxServiceOwnership { param($Name,$ExpectedExecutable) return $true }
 function Set-TicketboxServiceIdentityContract {
@@ -2805,7 +2825,10 @@ $caught = $null
 try {
     Register-PgService `
         -RuntimeBindingTransition `
-        -CompensationAuthority $authority
+        -CompensationAuthority $authority `
+        -DataRoot 'C:\ProgramData\Ticketbox' `
+        -AppData 'C:\ProgramData\Ticketbox\app' `
+        -SecretByteCount 32
 }
 catch { $caught = $_.Exception }
 if ($null -eq $caught -or $script:policyChecks -ne 1 -or
@@ -2821,7 +2844,10 @@ $script:receiptPresent = $true
 $script:injectPolicyReadbackFailure = $false
 Register-PgService `
     -RuntimeBindingTransition `
-    -CompensationAuthority $authority
+    -CompensationAuthority $authority `
+    -DataRoot 'C:\ProgramData\Ticketbox' `
+    -AppData 'C:\ProgramData\Ticketbox\app' `
+    -SecretByteCount 32
 if ($script:policyChecks -ne 1 -or $script:receiptPhaseWrites -ne 1 -or
     $script:receiptRemoves -ne 1 -or $script:receiptPresent) {
     throw 'verified failure policy did not retire the initdb recovery receipt exactly once'

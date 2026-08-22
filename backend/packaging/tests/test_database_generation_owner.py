@@ -595,7 +595,6 @@ $projectionContract = [pscustomobject][ordered]@{{
     backend_port = 8765
     pg_bin = 'C:\\Ticketbox\\pg\\bin'
     timezone = 'Asia/Shanghai'
-    public_base_url = ''
     psql_path = 'C:\\Ticketbox\\pg\\bin\\psql.exe'
     pg_data = 'C:\\data\\pgdata'
     database_tool_timeout_ms = 60000

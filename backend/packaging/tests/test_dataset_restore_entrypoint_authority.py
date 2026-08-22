@@ -317,7 +317,7 @@ function Invoke-TicketboxInstalledDatasetBackupInspection {{
 }}
 function Assert-TicketboxInstalledPostgresToolArtifact {{ param($Subject, $Tool) }}
 function New-TicketboxInstalledDatabaseGenerationContracts {{
-    param($Subject, $PublicBaseUrl)
+    param($Subject)
     return [pscustomobject]@{{ Program = @{{}}; Host = @{{}}; Projection = @{{}}; ReleaseIdentity = @{{}} }}
 }}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); return '{{}}' }}

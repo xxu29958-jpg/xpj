@@ -27,7 +27,6 @@ param(
     [string]$LedgerName = "",
     [string]$DeviceName = "",
     [string]$Timezone = "",
-    [string]$PublicBaseUrl = "",
     [string]$ReleaseConfigPath = "",
     [string]$LifecycleReceiptPath = "",
     [switch]$SkipServiceStart,
@@ -947,10 +946,16 @@ function Assert-TicketboxInitdbPasswordFileSecurity {
         -ServiceName $PgServiceName
 }
 
-function Write-TicketboxInitdbPasswordFile([string]$SuperuserPassword) {
+function Write-TicketboxInitdbPasswordFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$SuperuserPassword,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
+    )
+
     Assert-PostgresBootstrapPasswordValue `
         $SuperuserPassword `
-        "superuser_password"
+        "superuser_password" `
+        $SecretByteCount
     Write-TicketboxInitdbPasswordFileAtomically `
         -Path $InitdbPasswordPath `
         -Text $SuperuserPassword `
@@ -1106,7 +1111,10 @@ function Disable-TicketboxInitdbServiceIfPresent([object]$Receipt) {
 function Invoke-TicketboxServiceOwnedInitdb {
     param(
         [Parameter(Mandatory = $true)][object]$BootstrapState,
-        [Parameter(Mandatory = $true)][object]$CompensationAuthority
+        [Parameter(Mandatory = $true)][object]$CompensationAuthority,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$AppData,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
     )
 
     Assert-TicketboxInstallServiceCompensationAuthority $CompensationAuthority
@@ -1160,9 +1168,13 @@ function Invoke-TicketboxServiceOwnedInitdb {
             -Phase "registered"
         Set-TicketboxAcl `
             -IncludePgService $true `
-            -IncludeBackendService $false
+            -IncludeBackendService $false `
+            -DataRoot $DataRoot `
+            -AppData $AppData `
+            -SecretByteCount $SecretByteCount
         Write-TicketboxInitdbPasswordFile `
-            ([string]$BootstrapState.SuperuserPassword)
+            -SuperuserPassword ([string]$BootstrapState.SuperuserPassword) `
+            -SecretByteCount $SecretByteCount
         $receipt = Set-TicketboxCurrentInitdbServiceReceiptPhase `
             -Receipt $receipt `
             -Phase "start_authorized"
@@ -1194,10 +1206,13 @@ function Invoke-TicketboxServiceOwnedInitdb {
         }
         Assert-TicketboxFreshPgClusterComplete
         Remove-TicketboxInitdbPasswordFileIfPresent $receipt
-        [void](Repair-PostgresBootstrapRecoveryFileAcl)
-        [void](Read-PostgresBootstrapRecoveryState -Path (
-            Get-PostgresBootstrapRecoveryPath -AppData $AppData
-        ))
+        [void](Repair-PostgresBootstrapRecoveryFileAcl `
+            -DataRoot $DataRoot -AppData $AppData `
+            -SecretByteCount $SecretByteCount)
+        [void](Read-PostgresBootstrapRecoveryState `
+            -Path (Get-PostgresBootstrapRecoveryPath -AppData $AppData) `
+            -AppData $AppData `
+            -SecretByteCount $SecretByteCount)
         $receipt = Set-TicketboxCurrentInitdbServiceReceiptPhase `
             -Receipt $receipt `
             -Phase "initdb_succeeded"
@@ -1215,10 +1230,13 @@ function Invoke-TicketboxServiceOwnedInitdb {
                 Disable-TicketboxInitdbServiceIfPresent $receipt
             }
             Remove-TicketboxInitdbPasswordFileIfPresent $receipt
-            [void](Repair-PostgresBootstrapRecoveryFileAcl)
-            [void](Read-PostgresBootstrapRecoveryState -Path (
-                Get-PostgresBootstrapRecoveryPath -AppData $AppData
-            ))
+            [void](Repair-PostgresBootstrapRecoveryFileAcl `
+                -DataRoot $DataRoot -AppData $AppData `
+                -SecretByteCount $SecretByteCount)
+            [void](Read-PostgresBootstrapRecoveryState `
+                -Path (Get-PostgresBootstrapRecoveryPath -AppData $AppData) `
+                -AppData $AppData `
+                -SecretByteCount $SecretByteCount)
             if (
                 -not $createdByThisInvocation -and
                 (Get-TicketboxPathEntryKindNoFollow $InitdbServiceReceiptPath) -ceq "File"
@@ -1250,7 +1268,10 @@ function Invoke-TicketboxServiceOwnedInitdb {
 function Register-PgService {
     param(
         [switch]$RuntimeBindingTransition,
-        [Parameter(Mandatory = $true)][object]$CompensationAuthority
+        [Parameter(Mandatory = $true)][object]$CompensationAuthority,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$AppData,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
     )
 
     Write-Step "注册 PostgreSQL 服务 $PgServiceName"
@@ -1280,10 +1301,13 @@ function Register-PgService {
             if ((Get-TicketboxPathEntryKindNoFollow $InitdbPasswordPath) -cne "Missing") {
                 throw "initdb 临时密码文件尚未退役，拒绝提交正式服务。"
             }
-            [void](Repair-PostgresBootstrapRecoveryFileAcl)
-            [void](Read-PostgresBootstrapRecoveryState -Path (
-                Get-PostgresBootstrapRecoveryPath -AppData $AppData
-            ))
+            [void](Repair-PostgresBootstrapRecoveryFileAcl `
+                -DataRoot $DataRoot -AppData $AppData `
+                -SecretByteCount $SecretByteCount)
+            [void](Read-PostgresBootstrapRecoveryState `
+                -Path (Get-PostgresBootstrapRecoveryPath -AppData $AppData) `
+                -AppData $AppData `
+                -SecretByteCount $SecretByteCount)
             Invoke-ScChecked @(
                 "config", $PgServiceName,
                 "start=", "disabled",
@@ -1438,6 +1462,9 @@ function Invoke-IcaclsChecked([string[]]$Arguments) {
 function Set-TicketboxAcl(
     [bool]$IncludePgService = $true,
     [bool]$IncludeBackendService = $true,
+    [Parameter(Mandatory = $true)][string]$DataRoot,
+    [Parameter(Mandatory = $true)][string]$AppData,
+    [Parameter(Mandatory = $true)][int]$SecretByteCount,
     [string[]]$PrivilegedAccounts = @("SYSTEM", "BUILTIN\Administrators"),
     [string]$OwnerAccount = "SYSTEM"
 ) {
@@ -1499,6 +1526,9 @@ function Set-TicketboxAcl(
         -OwnerAccount $OwnerAccount `
         -Recurse
     [void](Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
+        -DataRoot $DataRoot `
+        -AppData $AppData `
+        -SecretByteCount $SecretByteCount `
         -ParentFullControlAccounts $systemAndAdmins)
     Initialize-TicketboxInstallerStateDirectory $InstallerState | Out-Null
     if (Test-Path -LiteralPath $BootstrapExposureRecoveryGuardPath -PathType Leaf) {
@@ -1587,7 +1617,10 @@ function Assert-TicketboxPgClusterStoppedAfterFailure {
 function Invoke-TicketboxInstallFailureCompensation {
     param(
         [Parameter(Mandatory = $true)][string]$Reason,
-        [Parameter(Mandatory = $true)][object]$ServiceCompensationAuthority
+        [Parameter(Mandatory = $true)][object]$ServiceCompensationAuthority,
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$AppData,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
     )
 
     Assert-TicketboxInstallServiceCompensationAuthority `
@@ -1663,10 +1696,13 @@ function Invoke-TicketboxInstallFailureCompensation {
                 $initdbReceipt = Read-TicketboxCurrentInitdbServiceReceipt
                 Disable-TicketboxInitdbServiceIfPresent $initdbReceipt
                 Remove-TicketboxInitdbPasswordFileIfPresent $initdbReceipt
-                [void](Repair-PostgresBootstrapRecoveryFileAcl)
-                [void](Read-PostgresBootstrapRecoveryState -Path (
-                    Get-PostgresBootstrapRecoveryPath -AppData $AppData
-                ))
+                [void](Repair-PostgresBootstrapRecoveryFileAcl `
+                    -DataRoot $DataRoot -AppData $AppData `
+                    -SecretByteCount $SecretByteCount)
+                [void](Read-PostgresBootstrapRecoveryState `
+                    -Path (Get-PostgresBootstrapRecoveryPath -AppData $AppData) `
+                    -AppData $AppData `
+                    -SecretByteCount $SecretByteCount)
             }
             else {
                 throw "拒绝补偿 executable 不匹配的同名 PostgreSQL 服务。"
@@ -2083,7 +2119,10 @@ try {
     if ($hadExistingPgService) {
         Set-TicketboxAcl `
             -IncludePgService $true `
-            -IncludeBackendService $hadExistingBackendService
+            -IncludeBackendService $hadExistingBackendService `
+            -DataRoot $DataRoot `
+            -AppData $AppData `
+            -SecretByteCount $SecretByteCount
     }
     $databaseGenerationHostContract =
         New-TicketboxDatabaseGenerationHostContract `
@@ -2107,7 +2146,6 @@ try {
             -BackendPort $BackendPort `
             -PgBin $PgBin `
             -Timezone $Timezone `
-            -PublicBaseUrl $PublicBaseUrl `
             -PsqlPath $Psql `
             -PgData $PgData `
             -DatabaseToolTimeoutMilliseconds $DatabaseToolTimeoutMs
@@ -2240,7 +2278,10 @@ try {
     $installLifecycleStage = "database_cluster"
     $databaseMutationState = "started_or_possible"
     [void](Initialize-PgClusterIfNeeded `
-        -CompensationAuthority $serviceCompensationAuthority)
+        -CompensationAuthority $serviceCompensationAuthority `
+        -DataRoot $DataRoot `
+        -AppData $AppData `
+        -SecretByteCount $SecretByteCount)
     Initialize-TicketboxRuntimeDataBinding `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
@@ -2251,7 +2292,10 @@ try {
     $installLifecycleStage = "service_registration"
     Register-PgService `
         -RuntimeBindingTransition `
-        -CompensationAuthority $serviceCompensationAuthority
+        -CompensationAuthority $serviceCompensationAuthority `
+        -DataRoot $DataRoot `
+        -AppData $AppData `
+        -SecretByteCount $SecretByteCount
     Register-BackendService `
         -CompensationAuthority $serviceCompensationAuthority
     Write-TicketboxInstallerRuntimeRecoveryGuard `
@@ -2259,7 +2303,10 @@ try {
         -InstallDir $InstallDir `
         -DataRoot $DataRoot `
         -BackendServiceName $BackendServiceName
-    Set-TicketboxAcl
+    Set-TicketboxAcl `
+        -DataRoot $DataRoot `
+        -AppData $AppData `
+        -SecretByteCount $SecretByteCount
     Read-TicketboxInstallerRuntimeRecoveryGuard `
         -Path $InstallerRuntimeRecoveryGuardPath `
         -InstallDir $InstallDir `
@@ -2295,6 +2342,7 @@ try {
         -CurrentSha256 ([string]$databaseGeneration.CurrentSha256)
     $resumedBootstrapSecret = Resolve-TicketboxBootstrapExposureRecoveryIntent `
         -DatabaseUrl $databaseUrl `
+        -SecretByteCount $SecretByteCount `
         -StartBackendAfterRecovery:(-not $SkipServiceStart)
     if (-not [string]::IsNullOrWhiteSpace([string]$resumedBootstrapSecret)) {
         Write-Warn2 "已完成上次中断的 bootstrap 暴露恢复。"
@@ -2325,7 +2373,8 @@ try {
             Complete-FirstOwnerBootstrapIfEnabled `
                 -DatabaseUrl $databaseUrl `
                 -InstallationOperationId ([string]$installationIdentity.OperationId) `
-                -InstallationId ([string]$installationIdentity.InstallationId)
+                -InstallationId ([string]$installationIdentity.InstallationId) `
+                -SecretByteCount $SecretByteCount
         }
         catch {
             $ownerBindingFailure = [InvalidOperationException]::new(
@@ -2356,7 +2405,10 @@ catch {
         try {
             Invoke-TicketboxInstallFailureCompensation `
                 -Reason $failure.Message `
-                -ServiceCompensationAuthority $serviceCompensationAuthority
+                -ServiceCompensationAuthority $serviceCompensationAuthority `
+                -DataRoot $DataRoot `
+                -AppData $AppData `
+                -SecretByteCount $SecretByteCount
         }
         catch {
             $compensationFailure = $_.Exception

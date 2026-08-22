@@ -90,6 +90,13 @@ _WINDOWS_SECURITY_BACKEND_FILES = {
     "backend/app/services/secure_file_windows.py",
     "backend/app/services/secure_file_windows_acl.py",
 }
+_WINDOWS_DATASET_MAINTENANCE_FILES = {
+    "backend/app/database_maintenance_runtime.py",
+    "backend/app/dataset_maintenance_cli.py",
+}
+_WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
+    "backend/app/database/_dataset_",
+)
 _FROZEN_DESKTOP_PREFIXES = (
     "desktop/backend_manager/",
     "desktop/packaging/",
@@ -113,6 +120,10 @@ _EXACT_SCOPE_RULES = {
         _WINDOWS_SECURITY_BACKEND_FILES,
         ("postgres", "backend_frozen", "windows"),
     ),
+    **dict.fromkeys(
+        _WINDOWS_DATASET_MAINTENANCE_FILES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
     _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
     "backend/app/version.py": ("postgres", "desktop", "windows"),
@@ -123,6 +134,10 @@ _PREFIX_SCOPE_RULES = (
     (("android/",), ("android",)),
     (_FROZEN_DESKTOP_PREFIXES, ("desktop", "windows")),
     (("desktop/",), ("desktop",)),
+    (
+        _WINDOWS_DATASET_MAINTENANCE_PREFIXES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
     (_POSTGRES_WINDOWS_BACKEND_PREFIXES, ("postgres", "backend_frozen")),
     (_WINDOWS_ONLY_BACKEND_PREFIXES, ("windows",)),
     (_POSTGRES_BACKEND_PREFIXES, ("postgres",)),

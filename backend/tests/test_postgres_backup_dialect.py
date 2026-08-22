@@ -10,6 +10,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy.pool import StaticPool
 
+import app.database._dataset_backup_action as dataset_backup_action
+import app.database._dataset_backup_snapshot as dataset_backup_snapshot
+import app.database_maintenance_runtime as maintenance_runtime
+import app.dataset_maintenance_cli as maintenance_cli
 import app.services.postgres_backup_adapter as postgres_adapter
 import app.services.postgres_backup_validation_service as pgval
 from app.errors import AppError
@@ -17,6 +21,28 @@ from app.services.secure_file import write_protected_file_exclusive
 from scripts import postgres_backup_drill, postgres_frozen_restore_drill
 
 _DATABASE_URL = "postgresql+psycopg://ticketbox@localhost:5432/ticketbox?require_auth=scram-sha-256&sslmode=require"
+
+
+def test_frozen_dataset_maintenance_modules_expose_closed_action_surfaces() -> None:
+    assert maintenance_runtime.__all__ == [
+        "DatabaseMaintenanceContractError",
+        "assert_maintenance_libpq_environment",
+        "load_standalone_database_module",
+        "resolve_generation_program",
+    ]
+    assert maintenance_cli.__all__ == ["DATASET_MAINTENANCE_SWITCHES", "run_dataset_maintenance"]
+    assert dataset_backup_action.__all__ == [
+        "INSPECTION_FIELDS",
+        "RESULT_FIELDS",
+        "inspect_complete_dataset_backup_action",
+        "run_complete_dataset_backup_action",
+    ]
+    assert dataset_backup_snapshot.__all__ == [
+        "assert_dataset_database_binding",
+        "assert_dataset_writers_drained",
+        "begin_dataset_backup_snapshot",
+        "read_original_reference_rows",
+    ]
 
 
 def _tool(tmp_path: Path, name: str) -> Path:
@@ -72,8 +98,17 @@ def test_gitea_recovery_drill_qualifies_the_exact_frozen_restore_helper() -> Non
     workflow = (Path(__file__).resolve().parents[2] / ".gitea" / "workflows" / "windows-ci.yml").read_text(
         encoding="utf-8"
     )
-    drill = workflow.split("scripts\\postgres_backup_drill.py", maxsplit=1)[1].split("if ($LASTEXITCODE", maxsplit=1)[0]
+    postgres_job = workflow.split("  backend-postgres:", maxsplit=1)[1].split(
+        "  desktop-manager:", maxsplit=1
+    )[0]
+    drill = postgres_job.split("scripts\\postgres_backup_drill.py", maxsplit=1)[1].split(
+        "if ($LASTEXITCODE", maxsplit=1
+    )[0]
 
+    assert "scripts\\build_backend_exe.ps1 -Clean" in postgres_job
+    assert postgres_job.index("scripts\\build_backend_exe.ps1 -Clean") < postgres_job.index(
+        "--frozen-restore-helper"
+    )
     assert "--frozen-restore-helper" in drill
     assert "dist\\ticketbox-backend\\ticketbox-database-maintenance.exe" in drill
 

@@ -453,8 +453,8 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     )
     assert "$script:HttpBootstrapSecretByteCount = 32" not in database
     assert "$script:HttpBootstrapSecretEncodedLength = 43" not in database
-    assert "$byteCount = [int]$SecretByteCount" in database
-    assert "$expectedLength = Get-HttpBootstrapSecretEncodedLength" in database
+    assert "[Parameter(Mandatory = $true)][int]$SecretByteCount" in database
+    assert "$expectedLength = Get-HttpBootstrapSecretEncodedLength $SecretByteCount" in database
     assert '"=" * $paddingLength' in database
     assert "$SecretByteCount = [int]$ReleaseConfig.secret_byte_count" in INSTALL_SCRIPT.read_text(encoding="utf-8-sig")
     assert "function New-HttpBootstrapSecret" in database
@@ -503,7 +503,7 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
     assert app_acl < bootstrap_reprotection < installer_state
 
     existing_cluster = database.index("if (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)")
-    recovery_validation = database.index("[void](Read-PostgresBootstrapRecoveryState -Path $pwfile)", existing_cluster)
+    recovery_validation = database.index("[void](Read-PostgresBootstrapRecoveryState `", existing_cluster)
     config_mutation = database.index("Set-TicketboxPostgresqlLoopbackConfiguration", existing_cluster)
     assert "function Set-TicketboxPostgresqlLoopbackConfiguration" in cluster
     assert recovery_validation < config_mutation
@@ -1228,12 +1228,12 @@ foreach ($case in @(
     [pscustomobject]@{{ Bytes = 32; Encoded = 43 }},
     [pscustomobject]@{{ Bytes = 64; Encoded = 86 }}
 )) {{
-    $SecretByteCount = [int]$case.Bytes
-    $value = New-HttpBootstrapSecret
+    $secretByteCount = [int]$case.Bytes
+    $value = New-HttpBootstrapSecret -SecretByteCount $secretByteCount
     if ($value.Length -ne [int]$case.Encoded -or $value -cnotmatch '^[A-Za-z0-9_-]+$') {{
         throw "unexpected base64url length for $($case.Bytes) bytes"
     }}
-    Assert-HttpBootstrapSecretValue $value
+    Assert-HttpBootstrapSecretValue $value $secretByteCount
     $paddingLength = (4 - ($value.Length % 4)) % 4
     $decoded = [Convert]::FromBase64String(
         $value.Replace('-', '+').Replace('_', '/') + ('=' * $paddingLength)
@@ -1242,9 +1242,8 @@ foreach ($case in @(
         throw "decoded secret length mismatch for $($case.Bytes) bytes"
     }}
 }}
-$SecretByteCount = 31
 $rejected = $false
-try {{ New-HttpBootstrapSecret | Out-Null }} catch {{ $rejected = $true }}
+try {{ New-HttpBootstrapSecret -SecretByteCount 31 | Out-Null }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'sub-256-bit HTTP bootstrap secret was accepted' }}
 """,
         encoding="utf-8-sig",
@@ -1279,11 +1278,15 @@ function Assert-TicketboxInstallServiceCompensationAuthority {{ param($Authority
 $script:configured = 0
 $script:initdbCalls = 0
 function Invoke-TicketboxServiceOwnedInitdb {{
-    param($BootstrapState, $CompensationAuthority)
+    param($BootstrapState, $CompensationAuthority, $DataRoot, $AppData, $SecretByteCount)
     $script:initdbCalls += 1
     throw 'existing cluster invoked fresh initdb owner'
 }}
-$result = Initialize-PgClusterIfNeeded -CompensationAuthority @{{}}
+$result = Initialize-PgClusterIfNeeded `
+    -CompensationAuthority @{{}} `
+    -DataRoot $DataRoot `
+    -AppData $AppData `
+    -SecretByteCount 32
 if ($null -ne $result -or $script:initdbCalls -ne 0 -or $script:configured -ne 1) {{
     throw 'existing cluster did not take the verified no-initdb path'
 }}
@@ -1328,7 +1331,6 @@ $StopTimeoutMs = 25000
 $DatabaseToolTimeoutMs = 10000
 $BackendPort = 8000
 $Timezone = 'Asia/Shanghai'
-$PublicBaseUrl = ''
 $currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $script:PostgresBootstrapAclAccounts = @($currentAccount)
 $script:PostgresBootstrapAclOwnerAccount = $currentAccount
@@ -1341,7 +1343,7 @@ function ConvertTo-TicketboxTimeoutSeconds([int]$Milliseconds) {
 }
 function Assert-TicketboxInstallServiceCompensationAuthority { param($Authority) }
 function Invoke-TicketboxServiceOwnedInitdb {
-    param($BootstrapState, $CompensationAuthority)
+    param($BootstrapState, $CompensationAuthority, $DataRoot, $AppData, $SecretByteCount)
     return Invoke-TicketboxBoundedNativeProcess `
         -FilePath (Join-Path $PgBin 'initdb.exe') `
         -Arguments @(
@@ -1360,7 +1362,12 @@ $script:initdbAuthority = [pscustomobject]@{ Owner = 'test' }
 
 $env:TICKETBOX_TEST_NATIVE_MODE = 'partial-init-fail'
 $partialFailed = $false
-try { Initialize-PgClusterIfNeeded -CompensationAuthority $script:initdbAuthority | Out-Null }
+try {
+    Initialize-PgClusterIfNeeded `
+        -CompensationAuthority $script:initdbAuthority `
+        -DataRoot $DataRoot -AppData $AppData `
+        -SecretByteCount $SecretByteCount | Out-Null
+}
 catch {
     $partialFailed = $true
     if ($_.Exception.Data['TicketboxInstallPublicFailureCode'] -cne
@@ -1376,7 +1383,10 @@ if (-not (Test-Path -LiteralPath $recoveryPath -PathType Leaf) -or
     throw 'partial initdb evidence was not preserved for a safe retry'
 }
 $env:TICKETBOX_TEST_NATIVE_MODE = ''
-$firstResult = Initialize-PgClusterIfNeeded -CompensationAuthority $script:initdbAuthority
+$firstResult = Initialize-PgClusterIfNeeded `
+    -CompensationAuthority $script:initdbAuthority `
+    -DataRoot $DataRoot -AppData $AppData `
+    -SecretByteCount $SecretByteCount
 if ($null -ne $firstResult) { throw 'fresh init returned a secret' }
 if (Test-Path -LiteralPath (Join-Path $PgData 'partial-init.tmp')) {
     throw 'recoverable partial initdb directory was not cleaned before retry'
@@ -1384,7 +1394,9 @@ if (Test-Path -LiteralPath (Join-Path $PgData 'partial-init.tmp')) {
 if (-not (Test-Path -LiteralPath $recoveryPath -PathType Leaf)) {
     throw 'fresh init did not persist recovery state'
 }
-$state = Read-PostgresBootstrapRecoveryState -Path $recoveryPath
+$state = Read-PostgresBootstrapRecoveryState `
+    -Path $recoveryPath -AppData $AppData `
+    -SecretByteCount $SecretByteCount
 if ($state.HttpBootstrapSecret.Length -ne 43 -or
     $state.HttpBootstrapSecret -cnotmatch '^[A-Za-z0-9_-]{43}$') {
     throw 'HTTP bootstrap secret is not unpadded base64url'
@@ -1395,7 +1407,7 @@ $decodedHttpSecret = [Convert]::FromBase64String(
 if ($decodedHttpSecret.Length -ne 32) {
     throw 'HTTP bootstrap secret does not preserve 256 bits'
 }
-$secondHttpSecret = New-HttpBootstrapSecret
+$secondHttpSecret = New-HttpBootstrapSecret $SecretByteCount
 if ($secondHttpSecret -ceq $state.HttpBootstrapSecret) {
     throw 'HTTP bootstrap secret generator repeated output'
 }
@@ -1407,10 +1419,15 @@ if (-not $firstTrace.Contains("--pwfile=$recoveryPath")) {
     throw 'initdb did not receive the protected recovery path'
 }
 
-[void](Initialize-PgClusterIfNeeded -CompensationAuthority $script:initdbAuthority)
+[void](Initialize-PgClusterIfNeeded `
+    -CompensationAuthority $script:initdbAuthority `
+    -DataRoot $DataRoot -AppData $AppData `
+    -SecretByteCount $SecretByteCount)
 $secondTrace = Get-Content -LiteralPath '__TRACE_PATH__' -Raw -Encoding UTF8
 if ($secondTrace -cne $firstTrace) { throw 'recovery reran initdb' }
-$recoveredState = Read-PostgresBootstrapRecoveryState -Path $recoveryPath
+$recoveredState = Read-PostgresBootstrapRecoveryState `
+    -Path $recoveryPath -AppData $AppData `
+    -SecretByteCount $SecretByteCount
 if ($recoveredState.SuperuserPassword -cne $state.SuperuserPassword -or
     $recoveredState.HttpBootstrapSecret -cne $state.HttpBootstrapSecret) {
     throw 'crash recovery changed persisted secrets'
@@ -1528,8 +1545,8 @@ function New-InheritedRecoveryCase {
     }
 }
 
-$state = New-PostgresBootstrapRecoveryState
-$payload = ConvertTo-PostgresBootstrapRecoveryPayload $state
+$state = New-PostgresBootstrapRecoveryState $SecretByteCount
+$payload = ConvertTo-PostgresBootstrapRecoveryPayload $state $SecretByteCount
 $accepted = New-InheritedRecoveryCase `
     -Root (Join-Path '__ROOT__' 'accepted') `
     -Payload $payload
@@ -1546,7 +1563,9 @@ if ($beforeDirectoryAcl.AreAccessRulesProtected -or
     @($beforeFileAcl.Access | Where-Object { -not $_.IsInherited }).Count -ne 0) {
     throw 'accepted precondition was not an exact inherited ACL chain'
 }
-if (-not (Repair-PostgresBootstrapRecoveryFileAcl)) {
+if (-not (Repair-PostgresBootstrapRecoveryFileAcl `
+    -DataRoot $script:DataRoot -AppData $script:AppData `
+    -SecretByteCount $SecretByteCount)) {
     throw 'exact inherited bootstrap ACL was not repaired'
 }
 $afterBytes = [IO.File]::ReadAllBytes($accepted.Path)
@@ -1557,12 +1576,16 @@ if ((Get-AclShape $accepted.DataRoot) -cne $acceptedRootShape -or
     (Get-AclShape $accepted.AppData) -cne $acceptedAppShape) {
     throw 'bootstrap ACL repair changed its validated parent ACL chain'
 }
-$roundTrip = Read-PostgresBootstrapRecoveryState -Path $accepted.Path
+$roundTrip = Read-PostgresBootstrapRecoveryState `
+    -Path $accepted.Path -AppData $script:AppData `
+    -SecretByteCount $SecretByteCount
 if ($roundTrip.SuperuserPassword -cne $state.SuperuserPassword -or
     $roundTrip.HttpBootstrapSecret -cne $state.HttpBootstrapSecret) {
     throw 'bootstrap ACL repair changed recovery authority'
 }
-if (Repair-PostgresBootstrapRecoveryFileAcl) {
+if (Repair-PostgresBootstrapRecoveryFileAcl `
+    -DataRoot $script:DataRoot -AppData $script:AppData `
+    -SecretByteCount $SecretByteCount) {
     throw 'protected bootstrap ACL did not converge idempotently'
 }
 
@@ -1578,6 +1601,9 @@ if ($normalizedAcl.AreAccessRulesProtected -or
     throw 'AppData recursive normalization did not expose the expected inherited test shape'
 }
 if (-not (Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
+    -DataRoot $script:DataRoot `
+    -AppData $script:AppData `
+    -SecretByteCount $SecretByteCount `
     -ParentFullControlAccounts $parentAccounts)) {
     throw 'post-normalization bootstrap ACL was not re-protected'
 }
@@ -1586,8 +1612,13 @@ if (-not (Test-TicketboxWindowsByteArrayEquals `
     ([IO.File]::ReadAllBytes($accepted.Path)))) {
     throw 'post-normalization bootstrap protection changed recovery bytes'
 }
-[void](Read-PostgresBootstrapRecoveryState -Path $accepted.Path)
+[void](Read-PostgresBootstrapRecoveryState `
+    -Path $accepted.Path -AppData $script:AppData `
+    -SecretByteCount $SecretByteCount)
 if (Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
+    -DataRoot $script:DataRoot `
+    -AppData $script:AppData `
+    -SecretByteCount $SecretByteCount `
     -ParentFullControlAccounts $parentAccounts) {
     throw 'post-normalization bootstrap protection was not idempotent'
 }
@@ -1603,7 +1634,11 @@ $malformedRootShape = Get-AclShape $malformed.DataRoot
 $malformedAppShape = Get-AclShape $malformed.AppData
 $malformedFileShape = Get-AclShape $malformed.Path
 $malformedRejected = $false
-try { Repair-PostgresBootstrapRecoveryFileAcl | Out-Null }
+try {
+    Repair-PostgresBootstrapRecoveryFileAcl `
+        -DataRoot $script:DataRoot -AppData $script:AppData `
+        -SecretByteCount $SecretByteCount | Out-Null
+}
 catch {
     $malformedRejected = $true
     if ($_.Exception.Message.Contains($malformedSentinel)) {
@@ -1636,7 +1671,11 @@ if ($unsafeFileShape -ceq $unsafeInheritedFileShape) {
     throw 'unsafe ACL precondition was not established'
 }
 $unsafeRejected = $false
-try { Repair-PostgresBootstrapRecoveryFileAcl | Out-Null }
+try {
+    Repair-PostgresBootstrapRecoveryFileAcl `
+        -DataRoot $script:DataRoot -AppData $script:AppData `
+        -SecretByteCount $SecretByteCount | Out-Null
+}
 catch { $unsafeRejected = $true }
 if (-not $unsafeRejected) {
     throw 'unsafe inherited bootstrap ACL was accepted'
@@ -1667,6 +1706,9 @@ $postMalformedBytes = [IO.File]::ReadAllBytes($postMalformed.Path)
 $postMalformedRejected = $false
 try {
     Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
+        -DataRoot $script:DataRoot `
+        -AppData $script:AppData `
+        -SecretByteCount $SecretByteCount `
         -ParentFullControlAccounts $parentAccounts | Out-Null
 }
 catch {
@@ -1707,6 +1749,9 @@ $postUnsafeBytes = [IO.File]::ReadAllBytes($postUnsafe.Path)
 $postUnsafeRejected = $false
 try {
     Protect-PostgresBootstrapRecoveryFileAfterAclNormalization `
+        -DataRoot $script:DataRoot `
+        -AppData $script:AppData `
+        -SecretByteCount $SecretByteCount `
         -ParentFullControlAccounts $parentAccounts | Out-Null
 }
 catch { $postUnsafeRejected = $true }
@@ -1767,6 +1812,9 @@ $actualBeforeBytes = [IO.File]::ReadAllBytes($actual.Path)
 Set-TicketboxAcl `
     -IncludePgService $false `
     -IncludeBackendService $false `
+    -DataRoot $script:DataRoot `
+    -AppData $script:AppData `
+    -SecretByteCount $SecretByteCount `
     -PrivilegedAccounts @($currentAccount) `
     -OwnerAccount $currentAccount
 $actualAfterAcl = Get-TicketboxPathAcl $actual.Path
@@ -1777,7 +1825,9 @@ if (-not $actualAfterAcl.AreAccessRulesProtected -or
         ([IO.File]::ReadAllBytes($actual.Path)))) {
     throw 'actual Set-TicketboxAcl did not re-protect bootstrap recovery bytes'
 }
-[void](Read-PostgresBootstrapRecoveryState -Path $actual.Path)
+[void](Read-PostgresBootstrapRecoveryState `
+    -Path $actual.Path -AppData $script:AppData `
+    -SecretByteCount $SecretByteCount)
 
 $wired = New-InheritedRecoveryCase `
     -Root (Join-Path '__ROOT__' 'initialize-wiring') `
@@ -1798,7 +1848,13 @@ function Set-TicketboxPostgresqlLoopbackConfiguration {
     throw 'initialize-wiring-reached-after-repair'
 }
 $wiredReached = $false
-try { Initialize-PgClusterIfNeeded -CompensationAuthority @{} | Out-Null }
+try {
+    Initialize-PgClusterIfNeeded `
+        -CompensationAuthority @{} `
+        -DataRoot $script:DataRoot `
+        -AppData $script:AppData `
+        -SecretByteCount $SecretByteCount | Out-Null
+}
 catch {
     if ($_.Exception.Message -cne 'initialize-wiring-reached-after-repair') {
         throw
@@ -1809,7 +1865,9 @@ if (-not $wiredReached -or
     -not (Get-TicketboxPathAcl $wired.Path).AreAccessRulesProtected) {
     throw 'Initialize-PgClusterIfNeeded bypassed inherited bootstrap ACL repair'
 }
-[void](Read-PostgresBootstrapRecoveryState -Path $wired.Path)
+[void](Read-PostgresBootstrapRecoveryState `
+    -Path $wired.Path -AppData $script:AppData `
+    -SecretByteCount $SecretByteCount)
 """
         replacements = {
             "__INSTALLATION_SAFETY__": _ps_literal(INSTALLATION_SAFETY_SCRIPT),
@@ -1847,9 +1905,9 @@ $script:PostgresBootstrapAclOwnerAccount = $currentAccount
 $fixedHttpSecret = [Convert]::ToBase64String((New-Object 'System.Byte[]' 32)).TrimEnd(
     [char[]]@([char]'=')
 ).Replace('+', '-').Replace('/', '_')
-Assert-HttpBootstrapSecretValue $fixedHttpSecret
+Assert-HttpBootstrapSecretValue $fixedHttpSecret $SecretByteCount
 $paddedSecretRejected = $false
-try { Assert-HttpBootstrapSecretValue ($fixedHttpSecret + '=') }
+try { Assert-HttpBootstrapSecretValue ($fixedHttpSecret + '=') $SecretByteCount }
 catch {
     $paddedSecretRejected = $true
     if ($_.Exception.Message.Contains($fixedHttpSecret)) {
@@ -1867,7 +1925,11 @@ $recoveryPath = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     [System.Text.Encoding]::ASCII
 )
 $malformedRejected = $false
-try { Read-PostgresBootstrapRecoveryState -Path $recoveryPath | Out-Null }
+try {
+    Read-PostgresBootstrapRecoveryState `
+        -Path $recoveryPath -AppData $AppData `
+        -SecretByteCount $SecretByteCount | Out-Null
+}
 catch {
     $malformedRejected = $true
     if ($_.Exception.Message.Contains('malformed-secret-sentinel')) {
@@ -1876,12 +1938,16 @@ catch {
 }
 if (-not $malformedRejected) { throw 'malformed recovery state was accepted' }
 
-$validPayload = ConvertTo-PostgresBootstrapRecoveryPayload $state
+$validPayload = ConvertTo-PostgresBootstrapRecoveryPayload $state $SecretByteCount
 [System.IO.File]::WriteAllText($recoveryPath, $validPayload, [System.Text.Encoding]::ASCII)
 & icacls.exe $recoveryPath /grant '*S-1-1-0:R' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'failed to seed insecure recovery ACL' }
 $unsafeRejected = $false
-try { Read-PostgresBootstrapRecoveryState -Path $recoveryPath | Out-Null }
+try {
+    Read-PostgresBootstrapRecoveryState `
+        -Path $recoveryPath -AppData $AppData `
+        -SecretByteCount $SecretByteCount | Out-Null
+}
 catch { $unsafeRejected = $true }
 if (-not $unsafeRejected) { throw 'recovery state with an extra ACL was accepted' }
 
@@ -1889,14 +1955,20 @@ Set-TicketboxExactFileAcl `
     -Path $recoveryPath `
     -Accounts @($currentAccount) `
     -OwnerAccount $currentAccount
-$roundTrip = Read-PostgresBootstrapRecoveryState -Path $recoveryPath
+$roundTrip = Read-PostgresBootstrapRecoveryState `
+    -Path $recoveryPath -AppData $AppData `
+    -SecretByteCount $SecretByteCount
 if ($roundTrip.SuperuserPassword -cne $state.SuperuserPassword) {
     throw 'secure recovery state stopped working after ACL repair'
 }
 Remove-TicketboxSensitiveFile $recoveryPath
 New-Item -ItemType Directory -Path $recoveryPath | Out-Null
 $nonFileRejected = $false
-try { Read-PostgresBootstrapRecoveryState -Path $recoveryPath | Out-Null }
+try {
+    Read-PostgresBootstrapRecoveryState `
+        -Path $recoveryPath -AppData $AppData `
+        -SecretByteCount $SecretByteCount | Out-Null
+}
 catch { $nonFileRejected = $true }
 if (-not $nonFileRejected) { throw 'recovery directory was accepted as a file' }
 Remove-Item -LiteralPath $recoveryPath -Force

@@ -309,9 +309,10 @@ function Invoke-TicketboxBootstrapExposureMaintenance(
 function Invoke-TicketboxBootstrapExposureRecovery(
     [string]$DatabaseUrl,
     [string]$ExposedSecret,
+    [Parameter(Mandatory = $true)][int]$SecretByteCount,
     [bool]$StartBackendAfterRecovery = $true
 ) {
-    $replacementSecret = New-HttpBootstrapSecret
+    $replacementSecret = New-HttpBootstrapSecret $SecretByteCount
     if ($replacementSecret -ceq $ExposedSecret) {
         throw "bootstrap 暴露恢复生成了重复 secret。"
     }
@@ -320,14 +321,16 @@ function Invoke-TicketboxBootstrapExposureRecovery(
     Write-TicketboxBootstrapExposureRecoveryIntent $ExposedSecret $replacementSecret
     return Resolve-TicketboxBootstrapExposureRecoveryIntent `
         -DatabaseUrl $DatabaseUrl `
+        -SecretByteCount $SecretByteCount `
         -StartBackendAfterRecovery $StartBackendAfterRecovery
 }
 
 function Protect-TicketboxBootstrapAfterRepeatedListenerFailure(
     [string]$DatabaseUrl,
-    [string]$ExposedSecret
+    [string]$ExposedSecret,
+    [Parameter(Mandatory = $true)][int]$SecretByteCount
 ) {
-    $replacementSecret = New-HttpBootstrapSecret
+    $replacementSecret = New-HttpBootstrapSecret $SecretByteCount
     if ($replacementSecret -ceq $ExposedSecret) {
         throw "bootstrap 二次暴露恢复生成了重复 secret。"
     }
@@ -354,6 +357,7 @@ function Protect-TicketboxBootstrapAfterRepeatedListenerFailure(
 
 function Resolve-TicketboxBootstrapExposureRecoveryIntent(
     [string]$DatabaseUrl,
+    [Parameter(Mandatory = $true)][int]$SecretByteCount,
     [bool]$StartBackendAfterRecovery
 ) {
     $intent = Read-TicketboxBootstrapExposureRecoveryIntent
@@ -370,6 +374,7 @@ function Resolve-TicketboxBootstrapExposureRecoveryIntent(
             return Invoke-TicketboxBootstrapExposureRecovery `
                 -DatabaseUrl $DatabaseUrl `
                 -ExposedSecret ([string]$environment["HTTP_BOOTSTRAP_SECRET"]) `
+                -SecretByteCount $SecretByteCount `
                 -StartBackendAfterRecovery $StartBackendAfterRecovery
         }
         return $null
@@ -401,7 +406,7 @@ function Resolve-TicketboxBootstrapExposureRecoveryIntent(
         if ($collisionRetries -gt 5) {
             throw "bootstrap 暴露恢复 replacement credential 连续碰撞，保持隔离等待修复。"
         }
-        $nextReplacementSecret = New-HttpBootstrapSecret
+        $nextReplacementSecret = New-HttpBootstrapSecret $SecretByteCount
         if ($nextReplacementSecret -ceq $intent.ExposedSecret) {
             throw "bootstrap 暴露恢复换代生成了重复 secret。"
         }

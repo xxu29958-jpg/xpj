@@ -31,7 +31,7 @@ function Assert-TicketboxInstalledDatasetOperation {
             "dataset_id", "backup_restore_epoch", "target_revision",
             "predecessor_intent_sha256", "predecessor_current_payload",
             "predecessor_intent_payload", "active_dataset_id",
-            "active_restore_epoch", "public_base_url"
+            "active_restore_epoch"
         )
     }
     Assert-TicketboxDatabaseGenerationExactProperties `
@@ -75,8 +75,6 @@ function Assert-TicketboxInstalledDatasetOperation {
     }
     $datasetId = ([guid][string]$payload.dataset_id).ToString("D")
     $activeDatasetId = ([guid][string]$payload.active_dataset_id).ToString("D")
-    $publicBaseUrl = ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl `
-        ([string]$payload.public_base_url)
     Assert-TicketboxDatabaseGenerationExactProperties `
         -Value $payload.predecessor_intent_payload `
         -ExpectedNames (Get-TicketboxDatabaseGenerationPayloadProperties "intent") `
@@ -99,7 +97,6 @@ function Assert-TicketboxInstalledDatasetOperation {
         [string]$payload.backup_generation -cne "ticketbox-backup-$backupId" -or
         [int64]$payload.backup_restore_epoch -lt 0 -or
         [int64]$payload.active_restore_epoch -lt 0 -or
-        $publicBaseUrl -cne [string]$payload.public_base_url -or
         [string]::IsNullOrWhiteSpace([string]$payload.target_revision) -or
         $predecessorIntentSha -cne [string]$payload.predecessor_intent_sha256 -or
         $predecessorCurrentSha -cne [string]$payload.current_sha256 -or
@@ -247,7 +244,6 @@ function Start-TicketboxInstalledDatasetRestoreOperation {
         [Parameter(Mandatory = $true)][string]$ActiveDatasetId,
         [Parameter(Mandatory = $true)][int64]$ActiveRestoreEpoch,
         [Parameter(Mandatory = $true)][bool]$RestartBackend,
-        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PublicBaseUrl,
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
@@ -272,8 +268,6 @@ function Start-TicketboxInstalledDatasetRestoreOperation {
         predecessor_intent_payload = $Authority.Intent.Payload
         active_dataset_id = ([guid]$ActiveDatasetId).ToString("D")
         active_restore_epoch = $ActiveRestoreEpoch
-        public_base_url = ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl `
-            $PublicBaseUrl
     }
     $existing = Read-TicketboxInstalledDatasetOperation `
         $Authority.StateRoot "restore" -AllowAbsent

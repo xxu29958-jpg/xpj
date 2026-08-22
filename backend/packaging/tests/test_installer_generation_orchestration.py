@@ -272,7 +272,10 @@ def test_install_failure_preserves_action_all_compensations_and_finalizers(
             "try {",
             "  Invoke-TicketboxInstallFailureCompensation "
             "-Reason 'install failed' "
-            "-ServiceCompensationAuthority $compensationAuthority",
+            "-ServiceCompensationAuthority $compensationAuthority "
+            "-DataRoot $script:DataRoot "
+            "-AppData 'C:\\ticketbox-data\\app' "
+            "-SecretByteCount 32",
             "}",
             "catch { $compensation = $_.Exception }",
             "if ($null -eq $compensation) { "

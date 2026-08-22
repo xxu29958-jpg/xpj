@@ -313,6 +313,9 @@ jobs:
           .\.ci-venv\Scripts\python.exe -m pip install --upgrade pip
           .\.ci-venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 
+      - name: Frozen backend locked restore-helper build
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
+
       - name: PostgreSQL lane — ephemeral cluster + smoke + suite
         # initdb spins a throwaway policy-compatible PG on the contract's
         # Gitea profile. start + smoke + suite + stop run in ONE

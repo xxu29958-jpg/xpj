@@ -308,34 +308,6 @@ function New-TicketboxDatabaseGenerationReleaseContract {
     }
 }
 
-function ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl {
-    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
-
-    $normalized = $Value.Trim().TrimEnd("/")
-    if ($normalized.Length -eq 0) { return "" }
-    if ($normalized.IndexOfAny([char[]]@(' ', "`r", "`n", "`t")) -ge 0) {
-        throw "PUBLIC_BASE_URL contains whitespace."
-    }
-    $uri = $null
-    if (-not [Uri]::TryCreate($normalized, [UriKind]::Absolute, [ref]$uri)) {
-        throw "PUBLIC_BASE_URL is not an absolute origin."
-    }
-    $publicHost = ([string]$uri.DnsSafeHost).ToLowerInvariant()
-    $loopback = $publicHost -in @("127.0.0.1", "::1", "localhost")
-    if (
-        ([string]$uri.Scheme -cne "https" -and
-            -not ([string]$uri.Scheme -ceq "http" -and $loopback)) -or
-        -not [string]::IsNullOrEmpty([string]$uri.UserInfo) -or
-        ([string]$uri.AbsolutePath -cne "/" -and
-            -not [string]::IsNullOrEmpty([string]$uri.AbsolutePath)) -or
-        -not [string]::IsNullOrEmpty([string]$uri.Query) -or
-        -not [string]::IsNullOrEmpty([string]$uri.Fragment)
-    ) {
-        throw "PUBLIC_BASE_URL is not an authorized origin."
-    }
-    return $uri.GetLeftPart([UriPartial]::Authority)
-}
-
 function New-TicketboxDatabaseGenerationProjectionContract {
     param(
         [Parameter(Mandatory = $true)][string]$BackendServiceName,
@@ -344,7 +316,6 @@ function New-TicketboxDatabaseGenerationProjectionContract {
         [Parameter(Mandatory = $true)][int]$BackendPort,
         [Parameter(Mandatory = $true)][string]$PgBin,
         [Parameter(Mandatory = $true)][string]$Timezone,
-        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PublicBaseUrl,
         [Parameter(Mandatory = $true)][string]$PsqlPath,
         [Parameter(Mandatory = $true)][string]$PgData,
         [Parameter(Mandatory = $true)][int]$DatabaseToolTimeoutMilliseconds
@@ -359,7 +330,6 @@ function New-TicketboxDatabaseGenerationProjectionContract {
         backend_port = $BackendPort
         pg_bin = $PgBin
         timezone = $Timezone
-        public_base_url = ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl $PublicBaseUrl
         psql_path = $PsqlPath
         pg_data = $PgData
         database_tool_timeout_ms = $DatabaseToolTimeoutMilliseconds
@@ -373,15 +343,10 @@ function Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 {
         -Value $ProjectionContract `
         -ExpectedNames @(
             "backend_service_name", "env_path", "stop_timeout_ms", "backend_port",
-            "pg_bin", "timezone", "public_base_url", "psql_path", "pg_data",
+            "pg_bin", "timezone", "psql_path", "pg_data",
             "database_tool_timeout_ms"
         ) `
         -Label "database generation projection contract"
-    $normalizedPublicBaseUrl = ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl `
-        ([string]$ProjectionContract.public_base_url)
-    if ($normalizedPublicBaseUrl -cne [string]$ProjectionContract.public_base_url) {
-        throw "database generation projection contains a non-canonical public origin."
-    }
     $authority = [ordered]@{
         schema = "ticketbox-database-generation-projection-authority-v1"
         backend_service_name = [string]$ProjectionContract.backend_service_name

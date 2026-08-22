@@ -50,6 +50,8 @@ function Get-TicketboxPathEntryKindNoFollow {{
 }}
 function Assert-NoTicketboxAncestorReparsePoints {{}}
 function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {{ return @() }}
+function Get-PostgresBootstrapRecoveryPath {{ return 'bootstrap.json' }}
+function Test-TicketboxPathEquals {{ return $true }}
 function Assert-TicketboxLifecycleOperationLease {{}}
 function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{ param($Value); $Value | ConvertTo-Json -Depth 20 -Compress }}
 function Get-TicketboxDatabaseGenerationTextSha256 {{ return ('9' * 64) }}
@@ -100,6 +102,7 @@ function Test-TicketboxDatabaseGenerationBootstrapRetirement {{
 }}
 function Get-TicketboxDatabaseGenerationBootstrapRetirementJson {{ return '{{"retired":true}}' }}
 function Read-PostgresBootstrapRecoveryState {{
+    param($Path, $AppData, $SecretByteCount)
     $script:bootstrapReads += 1
     return [pscustomobject]@{{ SuperuserPassword = 'admin'; HttpBootstrapSecret = 'http-bootstrap-secret-0000000000000000' }}
 }}
@@ -140,7 +143,10 @@ function Read-TicketboxDatabaseGenerationRuntimeProjection {{
         DatabaseUrl = 'postgresql://runtime'
     }}
 }}
-function Remove-PostgresBootstrapRecoveryState {{ $script:bootstrapExists = $false }}
+function Remove-PostgresBootstrapRecoveryState {{
+    param($Path, $AppData)
+    $script:bootstrapExists = $false
+}}
 function Remove-TicketboxDatabaseGenerationCredentials {{ $script:credentialsExist = $false }}
 function Get-TicketboxDatabaseGenerationArtifactPath {{ return 'credentials.json' }}
 function Get-TicketboxDatabaseGenerationServiceTransitionPath {{ return 'service-transition.json' }}
@@ -199,7 +205,10 @@ $script:sourceBinding = [pscustomobject]@{{ PayloadSha256 = ('b' * 64) }}
 $script:targetAuthorization = [pscustomobject]@{{ PayloadSha256 = ('d' * 64) }}
 $script:runtimeCredentials = [pscustomobject]@{{ RuntimePassword = $script:runtimeSecret; HttpBootstrapSecret = $script:httpSecret; Artifact = [pscustomobject]@{{ PayloadSha256 = ('4' * 64) }} }}
 $context = [pscustomobject]@{{ StateRoot = 'state'; Artifact = $script:intent }}
-$contract = [pscustomobject]@{{ value = 'contract' }}
+$contract = [pscustomobject]@{{
+    data_root = 'C:\\data'
+    release_config = [pscustomobject]@{{ secret_byte_count = 32 }}
+}}
 $sourceRejected = $false
 try {{ Invoke-TicketboxInstalledDatabaseGeneration $context @{{}} @{{}} $contract $contract 'bootstrap.json' | Out-Null }}
 catch {{ $sourceRejected = ([string]$_ -like '*rejected source binding evidence*') }}

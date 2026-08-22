@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import ctypes
 import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -22,8 +20,12 @@ RESTORE = PACKAGING / "windows_dataset_restore.ps1"
 DATASET_OPERATION = PACKAGING / "windows_installed_dataset_operation.ps1"
 RESTORE_ARTIFACTS = PACKAGING / "windows_installed_dataset_restore_artifacts.ps1"
 RESTORE_RUNTIME = PACKAGING / "windows_dataset_restore_runtime.ps1"
-
-_ELEVATED_WINDOWS = sys.platform == "win32" and bool(ctypes.windll.shell32.IsUserAnAdmin())
+RUNTIME_SETTINGS = PACKAGING / "windows_installed_runtime_settings.ps1"
+INSTALLER = PACKAGING / "install_bundled_services.ps1"
+BUILD_INNO = PACKAGING / "build_inno_installer.ps1"
+INNO = PACKAGING / "ticketbox-installer.iss"
+PROVENANCE = PACKAGING.parent / "scripts" / "windows_build_provenance.ps1"
+RUNTIME_SETTINGS_STORE = PACKAGING.parent / "app" / "services" / "runtime_settings_store.py"
 
 
 def _require_elevated_windows_acl(value: str | None) -> bool:
@@ -69,15 +71,6 @@ def test_runtime_environment_acl_contract_is_exact_and_writer_owned() -> None:
         PROJECTION.read_text(encoding="utf-8-sig"),
         "Write-TicketboxDatabaseGenerationRuntimeEnvironment",
     )
-    settings_writer = powershell_function(
-        PROJECTION.read_text(encoding="utf-8-sig"),
-        "Write-TicketboxDatabaseGenerationRuntimeSettingsProjection",
-    )
-    reader = powershell_function(
-        INSTALLED_READER.read_text(encoding="utf-8-sig"),
-        "Read-TicketboxInstalledDatasetPublicBaseUrl",
-    )
-
     assert "[Parameter(Mandatory = $true)][string]$BackendServiceName" in writer
     assert "Write-TicketboxProtectedUtf8FileDurable" in writer
     assert '-FullControlAccounts @("SYSTEM", "BUILTIN\\Administrators")' in writer
@@ -86,19 +79,11 @@ def test_runtime_environment_acl_contract_is_exact_and_writer_owned() -> None:
     assert "-ReplaceExisting" in writer
     assert "Write-TicketboxFileAtomically" not in writer
     assert "-BackendServiceName ([string]$ProjectionContract.backend_service_name)" in (projection_writer)
-    assert "Write-TicketboxDatabaseGenerationRuntimeSettingsProjection" in projection_writer
-    assert "-FullControlAccounts @(" in settings_writer
-    assert '"SYSTEM", "BUILTIN\\Administrators", $backendService' in settings_writer
-    assert "-OwnerAccount $backendService" in settings_writer
-    assert "-ReplaceExisting" in settings_writer
-    assert "Read-TicketboxProtectedUtf8Artifact" in reader
-    assert '"NT SERVICE\\$([string]$identity.BackendServiceName)"' in reader
-    assert '"SYSTEM", "BUILTIN\\Administrators", $backendService' in reader
-    assert "-OwnerAccount $backendService" in reader
-    assert "Assert-TicketboxLegacyProtectedFileAcl" not in reader
-    assert '"app\\runtime-settings\\runtime-settings.json"' in reader
-    assert '"app\\.env"' not in reader
-    assert "installed runtime settings projection is missing" in reader
+    assert "RuntimeSettings" not in projection_writer
+    assert "runtime-settings" not in PROJECTION.read_text(encoding="utf-8-sig")
+    assert "Read-TicketboxInstalledDatasetPublicBaseUrl" not in INSTALLED_READER.read_text(
+        encoding="utf-8-sig"
+    )
 
 
 def test_restore_bootstrap_binding_is_explicit_and_does_not_seed_script_globals() -> None:
@@ -112,6 +97,10 @@ def test_restore_bootstrap_binding_is_explicit_and_does_not_seed_script_globals(
         database,
         "Get-PostgresBootstrapRecoveryPath",
     )
+    bootstrap_reader = powershell_function(
+        database,
+        "Read-PostgresBootstrapRecoveryState",
+    )
 
     for name in ("AppData", "PgData", "PgPort", "SecretByteCount"):
         assert f"$script:{name}" not in restore
@@ -123,134 +112,23 @@ def test_restore_bootstrap_binding_is_explicit_and_does_not_seed_script_globals(
     assert "[Parameter(Mandatory = $true)][string]$AppData" in bootstrap_owner
     assert "[Parameter(Mandatory = $true)][int]$SecretByteCount" in bootstrap_owner
     assert "[Parameter(Mandatory = $true)][string]$AppData" in path_resolver
+    assert "[Parameter(Mandatory = $true)][string]$AppData" in bootstrap_reader
+    assert "[Parameter(Mandatory = $true)][int]$SecretByteCount" in bootstrap_reader
+
+
+def test_runtime_settings_mutation_has_one_backend_writer() -> None:
+    store = RUNTIME_SETTINGS_STORE.read_text(encoding="utf-8")
+    assert "def patch_runtime_settings(" in store
+    assert "write_protected_file_replace(" in store
+    assert not RUNTIME_SETTINGS.exists()
+    for path in (INSTALLER, BUILD_INNO, INNO, PROVENANCE):
+        source = path.read_text(encoding="utf-8-sig")
+        assert "windows_installed_runtime_settings.ps1" not in source
+        assert "Initialize-TicketboxInstalledRuntimeSettings" not in source
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
-def test_mutable_public_origin_is_not_generation_projection_authority(
-    tmp_path: Path,
-) -> None:
-    source = GENERATION_CONTRACT.read_text(encoding="utf-8-sig")
-    normalizer = powershell_function(
-        source,
-        "ConvertTo-TicketboxDatabaseGenerationPublicBaseUrl",
-    )
-    projection = powershell_function(
-        source,
-        "New-TicketboxDatabaseGenerationProjectionContract",
-    )
-    authority_digest = powershell_function(
-        source,
-        "Get-TicketboxDatabaseGenerationProjectionAuthoritySha256",
-    )
-    script = f"""
-$ErrorActionPreference = 'Stop'
-$script:TicketboxDatabaseGenerationBackendServiceName = 'ticketbox-backend'
-$script:inputs = @()
-function Assert-TicketboxDatabaseGenerationExactProperties {{ param($Value, $ExpectedNames, $Label) }}
-function ConvertTo-TicketboxDatabaseGenerationCanonicalJson {{
-    param($Value)
-    return ($Value | ConvertTo-Json -Depth 10 -Compress)
-}}
-function Get-TicketboxDatabaseGenerationTextSha256 {{
-    param($Text)
-    $script:inputs += $Text
-    return ('a' * 64)
-}}
-{normalizer}
-{projection}
-{authority_digest}
-function New-Projection {{
-    param($PublicBaseUrl, $BackendPort)
-    return New-TicketboxDatabaseGenerationProjectionContract `
-        -BackendServiceName 'ticketbox-backend' -EnvPath 'C:\\data\\app\\.env' `
-        -StopTimeoutMilliseconds 60000 -BackendPort $BackendPort `
-        -PgBin 'C:\\Ticketbox\\pg\\bin' -Timezone 'Asia/Shanghai' `
-        -PublicBaseUrl $PublicBaseUrl -PsqlPath 'C:\\Ticketbox\\pg\\bin\\psql.exe' `
-        -PgData 'C:\\data\\pgdata' -DatabaseToolTimeoutMilliseconds 60000
-}}
-$a = New-Projection 'https://one.example' 8123
-$b = New-Projection 'https://two.example' 8123
-$c = New-Projection 'https://two.example' 8124
-[void](Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 $a)
-[void](Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 $b)
-[void](Get-TicketboxDatabaseGenerationProjectionAuthoritySha256 $c)
-if ($script:inputs[0] -cne $script:inputs[1]) {{ throw 'mutable public origin changed Generation authority' }}
-if ($script:inputs[1] -ceq $script:inputs[2]) {{ throw 'immutable backend port left Generation authority' }}
-"""
-    run_powershell_contract_script(
-        script,
-        tmp_path,
-        filename="dataset-restore-projection-authority-boundary.ps1",
-    )
-
-
-@pytest.mark.skipif(
-    not _ELEVATED_WINDOWS and not _REQUIRE_ELEVATED_WINDOWS_ACL,
-    reason="exact SYSTEM-owned Windows ACL contract requires elevation",
-)
-def test_runtime_environment_writer_and_public_reader_share_exact_acl(
-    tmp_path: Path,
-) -> None:
-    assert _ELEVATED_WINDOWS, "XPJ_REQUIRE_ELEVATED_WINDOWS_ACL=1 but the runner is not elevated"
-    root = str(tmp_path).replace("'", "''")
-    paths = {
-        "safety": str(INSTALLATION_SAFETY).replace("'", "''"),
-        "database": str(BUNDLED_DATABASE).replace("'", "''"),
-        "projection": str(PROJECTION).replace("'", "''"),
-        "reader": str(INSTALLED_READER).replace("'", "''"),
-    }
-    script = rf"""
-$ErrorActionPreference = 'Stop'
-. '{paths["safety"]}'
-. '{paths["database"]}'
-. '{paths["projection"]}'
-. '{paths["reader"]}'
-function ConvertTo-TicketboxTimeoutSeconds {{ param($Milliseconds); return 60 }}
-$dataRoot = Join-Path '{root}' 'data'
-$appRoot = Join-Path $dataRoot 'app'
-New-Item -ItemType Directory -Force -Path $appRoot | Out-Null
-$runtimeSettingsRoot = Join-Path $appRoot 'runtime-settings'
-New-Item -ItemType Directory -Force -Path $runtimeSettingsRoot | Out-Null
-$envPath = Join-Path $appRoot '.env'
-Set-Content -LiteralPath $envPath -Value 'stale=broad' -Encoding UTF8
-Invoke-TicketboxIcaclsChecked $envPath @('/inheritance:e')
-Invoke-TicketboxIcaclsChecked $envPath @('/grant', '*S-1-1-0:F')
-$projection = [pscustomobject]@{{
-    backend_service_name = 'TrustedInstaller'
-    env_path = $envPath
-    stop_timeout_ms = 60000
-    backend_port = 8123
-    pg_bin = 'C:\Ticketbox\pg\bin'
-    timezone = 'Asia/Shanghai'
-    public_base_url = 'https://public.example'
-}}
-$subject = [pscustomobject]@{{ Identity = [pscustomobject]@{{
-    DataRoot = $dataRoot
-    BackendServiceName = 'TrustedInstaller'
-}} }}
-Write-TicketboxDatabaseGenerationRuntimeEnvironment `
-    -DatabaseUrl 'postgresql://runtime' `
-    -ProjectionContract $projection `
-    -HttpBootstrapSecret 'bootstrap'
-$resolved = Read-TicketboxInstalledDatasetPublicBaseUrl -Subject $subject
-if ($resolved -cne 'https://public.example') {{ throw 'exact writer-reader round trip failed' }}
-$settingsPath = Join-Path $runtimeSettingsRoot 'runtime-settings.json'
-$extraSid = ConvertTo-TicketboxAccountSid 'NT SERVICE\wuauserv'
-Invoke-TicketboxIcaclsChecked $settingsPath @('/grant', "*${{extraSid}}:F")
-$rejected = $false
-try {{ Read-TicketboxInstalledDatasetPublicBaseUrl -Subject $subject | Out-Null }}
-catch {{ if ($_.Exception.Message -match '未授权账户') {{ $rejected = $true }} else {{ throw }} }}
-if (-not $rejected) {{ throw 'unrelated service SID retained PUBLIC_BASE_URL authority' }}
-"""
-    run_powershell_contract_script(
-        script,
-        tmp_path,
-        filename="dataset-restore-public-base-url-exact-acl.ps1",
-    )
-
-
-@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
-def test_restore_contracts_use_durable_public_origin_without_ambient_reread(
+def test_mutable_runtime_settings_are_not_generation_or_restore_authority(
     tmp_path: Path,
 ) -> None:
     contracts = powershell_function(
@@ -259,14 +137,13 @@ def test_restore_contracts_use_durable_public_origin_without_ambient_reread(
     )
     script = f"""
 $ErrorActionPreference = 'Stop'
-function Read-TicketboxInstalledDatasetPublicBaseUrl {{ throw 'ambient env was reread' }}
 function Read-TicketboxDatabaseGenerationProgramContract {{
     return [pscustomobject]@{{ RelativePath = 'DATABASE_GENERATION_PROGRAM.json'; Size = 1; Sha256 = ('a' * 64) }}
 }}
 function New-TicketboxDatabaseGenerationHostContract {{ return [pscustomobject]@{{}} }}
 function New-TicketboxDatabaseGenerationProjectionContract {{
-    param($BackendServiceName, $EnvPath, $StopTimeoutMilliseconds, $BackendPort, $PgBin, $Timezone, $PublicBaseUrl, $PsqlPath, $PgData, $DatabaseToolTimeoutMilliseconds)
-    return [pscustomobject]@{{ public_base_url = $PublicBaseUrl }}
+    param($BackendServiceName, $EnvPath, $StopTimeoutMilliseconds, $BackendPort, $PgBin, $Timezone, $PsqlPath, $PgData, $DatabaseToolTimeoutMilliseconds)
+    return [pscustomobject]@{{ backend_port = $BackendPort }}
 }}
 {contracts}
 $subject = [pscustomobject]@{{
@@ -284,22 +161,24 @@ $subject = [pscustomobject]@{{
     }}
     Release = [pscustomobject]@{{ stop_timeout_ms = 60000; database_tool_timeout_ms = 60000; default_timezone = 'Asia/Shanghai' }}
 }}
-$resolved = New-TicketboxInstalledDatabaseGenerationContracts `
-    -Subject $subject -PublicBaseUrl 'https://public.example'
-if ([string]$resolved.Projection.public_base_url -cne 'https://public.example') {{
-    throw 'durable public origin was not used'
-}}
+$resolved = New-TicketboxInstalledDatabaseGenerationContracts -Subject $subject
+if ([int]$resolved.Projection.backend_port -ne 8123) {{ throw 'projection contract was not built' }}
 """
     run_powershell_contract_script(
         script,
         tmp_path,
-        filename="dataset-restore-durable-public-origin.ps1",
+        filename="dataset-restore-runtime-settings-boundary.ps1",
     )
     restore = RESTORE.read_text(encoding="utf-8-sig")
     artifact_contract = DATASET_OPERATION.read_text(encoding="utf-8-sig")
-    assert '"public_base_url"' in artifact_contract
-    assert "-PublicBaseUrl $publicBaseUrl" in restore
-    assert "-PublicBaseUrl ([string]$request.Payload.public_base_url)" in restore
+    projection_contract = powershell_function(
+        GENERATION_CONTRACT.read_text(encoding="utf-8-sig"),
+        "New-TicketboxDatabaseGenerationProjectionContract",
+    )
+    assert "public_base_url" not in projection_contract
+    assert '"public_base_url"' not in artifact_contract
+    assert "PublicBaseUrl" not in contracts
+    assert "publicBaseUrl" not in restore
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")

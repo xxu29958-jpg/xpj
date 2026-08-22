@@ -277,6 +277,52 @@ def _publish_windows_file_replace(
         raise OSError("protected replacement changed volume or file identity")
 
 
+def _write_protected_file_staging(
+    staging: Path,
+    path: Path,
+    text: str,
+    *,
+    service_owned: bool,
+) -> None:
+    if os.name == "nt" and service_owned:
+        owner_sid, access_rules = _windows_service_projection_authority()
+        _write_windows_protected_file(
+            staging,
+            text.encode("utf-8"),
+            owner_sid=owner_sid,
+        )
+        _publish_windows_file_replace(
+            staging,
+            path,
+            owner_sid=owner_sid,
+            access_rules=access_rules,
+        )
+        return
+
+    write_protected_file_exclusive(staging, text)
+    if os.name == "nt":
+        owner_sid = _current_process_sid(*_windows_apis())
+        access_rules = {
+            owner_sid: _FILE_ALL_ACCESS,
+            _SYSTEM_SID: _FILE_ALL_ACCESS,
+            _ADMINISTRATORS_SID: _FILE_ALL_ACCESS,
+        }
+        _publish_windows_file_replace(
+            staging,
+            path,
+            owner_sid=owner_sid,
+            access_rules=access_rules,
+        )
+        return
+
+    if path.exists():
+        with hold_protected_file_for_read(path):
+            pass
+    os.replace(staging, path)
+    with hold_protected_file_for_read(path):
+        _fsync_unix_directory(path.parent)
+
+
 def write_protected_file_replace(
     path: Path,
     text: str,
@@ -290,41 +336,12 @@ def write_protected_file_replace(
     primary: BaseException | None = None
     cleanup: list[BaseException] = []
     try:
-        if os.name == "nt" and service_owned:
-            owner_sid, access_rules = _windows_service_projection_authority()
-            _write_windows_protected_file(
-                staging,
-                text.encode("utf-8"),
-                owner_sid=owner_sid,
-            )
-            _publish_windows_file_replace(
-                staging,
-                path,
-                owner_sid=owner_sid,
-                access_rules=access_rules,
-            )
-        else:
-            write_protected_file_exclusive(staging, text)
-            if os.name == "nt":
-                owner_sid = _current_process_sid(*_windows_apis())
-                access_rules = {
-                    owner_sid: _FILE_ALL_ACCESS,
-                    _SYSTEM_SID: _FILE_ALL_ACCESS,
-                    _ADMINISTRATORS_SID: _FILE_ALL_ACCESS,
-                }
-                _publish_windows_file_replace(
-                    staging,
-                    path,
-                    owner_sid=owner_sid,
-                    access_rules=access_rules,
-                )
-            else:
-                if path.exists():
-                    with hold_protected_file_for_read(path):
-                        pass
-                os.replace(staging, path)
-                with hold_protected_file_for_read(path):
-                    _fsync_unix_directory(path.parent)
+        _write_protected_file_staging(
+            staging,
+            path,
+            text,
+            service_owned=service_owned,
+        )
     except BaseException as exc:  # noqa: BLE001 - preserve publication failure
         primary = exc
     finally:
