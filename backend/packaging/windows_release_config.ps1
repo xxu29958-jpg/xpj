@@ -127,6 +127,7 @@ function Read-TicketboxWindowsReleaseConfig {
         Assert-TicketboxReleaseConfigInteger $config $name 10000 3600000 | Out-Null
     }
     foreach ($name in @(
+        "complete_dataset_cleanup_reserve_ms",
         "complete_dataset_backup_timeout_ms",
         "complete_dataset_restore_timeout_ms"
     )) {
@@ -139,6 +140,8 @@ function Read-TicketboxWindowsReleaseConfig {
             [int64]$config.database_tool_timeout_ms -or
         [int64]$config.dataset_payload_verification_timeout_ms -le
             [int64]$config.database_tool_timeout_ms -or
+        [int64]$config.complete_dataset_cleanup_reserve_ms -lt
+            [int64]$config.dataset_payload_verification_timeout_ms -or
         [int64]$config.complete_dataset_backup_timeout_ms -le
             [int64]$config.dataset_backup_helper_timeout_ms -or
         [int64]$config.complete_dataset_backup_timeout_ms -le

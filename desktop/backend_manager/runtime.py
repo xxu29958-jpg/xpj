@@ -32,6 +32,11 @@ class ServiceAccessError(RuntimeControlError):
 
 
 @dataclass(frozen=True)
+class RestoreOutcome:
+    cleanup_pending: bool
+
+
+@dataclass(frozen=True)
 class RuntimeStatus:
     mode: str
     running: bool
@@ -64,7 +69,7 @@ class BackendRuntime(Protocol):
     def restart(self) -> None: ...
     def backup(self) -> None: ...
     def backup_inventory(self) -> tuple[BackupInventoryItem, ...]: ...
-    def restore(self, backup_generation: str) -> None: ...
+    def restore(self, backup_generation: str) -> RestoreOutcome: ...
     def toggle_auto_restart(self) -> bool: ...
     def run_monitor(self, stop_event: threading.Event) -> None: ...
     def shutdown(self) -> None: ...
@@ -130,7 +135,7 @@ class SourceBackendRuntime:
     def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
         raise RuntimeControlError("源码运行不具备正式安装的完整备份 inventory。")
 
-    def restore(self, backup_generation: str) -> None:
+    def restore(self, backup_generation: str) -> RestoreOutcome:
         del backup_generation
         raise RuntimeControlError("源码运行不具备正式安装的完整恢复 owner。")
 

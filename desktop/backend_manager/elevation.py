@@ -22,7 +22,7 @@ from backend_manager.helper_channel import (
     validate_exact_file_security,
 )
 from backend_manager.installation import WindowsReleaseConfig
-from backend_manager.runtime import RuntimeControlError
+from backend_manager.runtime import RestoreOutcome, RuntimeControlError
 
 if TYPE_CHECKING:
     from backend_manager.dataset_inventory import BackupInventoryItem
@@ -509,7 +509,7 @@ class ElevatedServiceActionRunner:
             )
             raise RuntimeControlError(message)
 
-    def restore(self, backup_generation: str) -> None:
+    def restore(self, backup_generation: str) -> RestoreOutcome:
         from backend_manager.restore_attempt import RestoreAttemptStore
         from backend_manager.windows_user_security import local_app_data
 
@@ -531,15 +531,19 @@ class ElevatedServiceActionRunner:
                 raise RuntimeControlError(_HELPER_FAILURE_MESSAGES[exit_code])
             raise RuntimeControlError("管理员服务助手未返回可信结果；请刷新服务状态后重试。")
         if exit_code == HELPER_EXIT_RESTORE_SUPERSEDED:
-            attempt_store.retire_confirmed(backup_generation, restore_attempt_id)
-            raise RuntimeControlError(result.diagnostic or _HELPER_FAILURE_MESSAGES[HELPER_EXIT_RESTORE_SUPERSEDED])
+            retirement = attempt_store.retire_confirmed(backup_generation, restore_attempt_id)
+            message = result.diagnostic or _HELPER_FAILURE_MESSAGES[HELPER_EXIT_RESTORE_SUPERSEDED]
+            if retirement == "cleanup_pending":
+                message += " 本地恢复身份清理待下次维护重试。"
+            raise RuntimeControlError(message)
         if exit_code != 0:
             message = result.diagnostic or _HELPER_FAILURE_MESSAGES.get(
                 exit_code,
                 f"管理员服务操作失败（exit={exit_code}），请刷新服务状态后重试。",
             )
             raise RuntimeControlError(message)
-        attempt_store.retire_confirmed(backup_generation, restore_attempt_id)
+        retirement = attempt_store.retire_confirmed(backup_generation, restore_attempt_id)
+        return RestoreOutcome(cleanup_pending=retirement == "cleanup_pending")
 
     def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
         from backend_manager.dataset_inventory import decode_public_inventory

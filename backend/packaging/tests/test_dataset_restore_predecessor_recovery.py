@@ -208,7 +208,8 @@ function Assert-TicketboxInstalledDatasetSubject {
         Identity = [pscustomobject]@{ DataRoot = $DataRoot; PgPort = 15432 }
         Release = [pscustomobject]@{
             secret_byte_count = 32
-            complete_dataset_restore_timeout_ms = 60000
+            complete_dataset_cleanup_reserve_ms = 10000
+            complete_dataset_restore_timeout_ms = 120000
         }
         Manifest = [pscustomobject]@{ Sha256 = ('c' * 64) }
     }

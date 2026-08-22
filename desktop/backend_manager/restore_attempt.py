@@ -5,9 +5,11 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 import stat
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from backend_manager import windows_user_security
 from backend_manager.runtime import RuntimeControlError
@@ -17,6 +19,12 @@ _MAX_BYTES = 1024
 _MOVEFILE_WRITE_THROUGH = 0x00000008
 _ERROR_FILE_EXISTS = 80
 _ERROR_ALREADY_EXISTS = 183
+_MAX_RETIRED_CLEANUP = 32
+_RETIRED_NAME = re.compile(
+    r"\.([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})"
+    r"\.([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.retired\Z",
+)
+CleanupDisposition = Literal["clean", "cleanup_pending"]
 
 
 def _move_windows_durable_no_replace(source: Path, target: Path) -> None:
@@ -98,7 +106,7 @@ class RestoreAttemptStore:
             raise RuntimeControlError("无法验证完整恢复 attempt identity。")
         return attempt_id
 
-    def retire_confirmed(self, backup_generation: str, attempt_id: str) -> bool:
+    def retire_confirmed(self, backup_generation: str, attempt_id: str) -> CleanupDisposition:
         canonical_restore_attempt_id(attempt_id)
         path = self._root / f"{_backup_id(backup_generation)}.json"
         if self._read(path, backup_generation) != attempt_id:
@@ -107,11 +115,29 @@ class RestoreAttemptStore:
         _move_durable_no_replace(path, retired)
         if path.exists():
             raise RuntimeControlError("完整恢复 attempt identity 未能清理。")
+        return self.cleanup_retired()
+
+    def cleanup_retired(self) -> CleanupDisposition:
+        """Remove only bounded, exact-name tombstones without changing restore truth."""
+
+        pending = False
+        processed = 0
         try:
-            retired.unlink(missing_ok=True)
-        except OSError:
-            return False
-        return True
+            self._secure_root()
+            for path in self._root.iterdir():
+                if _RETIRED_NAME.fullmatch(path.name) is None:
+                    continue
+                if processed >= _MAX_RETIRED_CLEANUP:
+                    return "cleanup_pending"
+                processed += 1
+                try:
+                    self._secure_file(path)
+                    path.unlink(missing_ok=True)
+                except (OSError, RuntimeControlError):
+                    pending = True
+        except (OSError, RuntimeControlError):
+            return "cleanup_pending"
+        return "cleanup_pending" if pending else "clean"
 
     def _read(self, path: Path, backup_generation: str) -> str:
         self._secure_root()
@@ -168,4 +194,4 @@ def _backup_id(backup_generation: str) -> str:
     return value
 
 
-__all__ = ["RestoreAttemptStore", "canonical_restore_attempt_id"]
+__all__ = ["CleanupDisposition", "RestoreAttemptStore", "canonical_restore_attempt_id"]

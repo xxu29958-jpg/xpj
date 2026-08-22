@@ -85,8 +85,12 @@ try {
         Get-TicketboxInstallerStateDirectory
     )
     $subject = Assert-TicketboxInstalledDatasetSubject $DataRoot
+    $cleanupReserve = [int64]$subject.Release.complete_dataset_cleanup_reserve_ms
     $actionBudget = New-TicketboxProcessDeadlineBudget `
-        -TimeoutMilliseconds ([int64]$subject.Release.complete_dataset_restore_timeout_ms)
+        -TimeoutMilliseconds (
+            [int64]$subject.Release.complete_dataset_restore_timeout_ms +
+            $cleanupReserve
+        )
     Assert-TicketboxInstalledDatasetServiceAuthority $subject
     $appData = Join-Path ([string]$subject.Identity.DataRoot) "app"
     $active = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
@@ -113,10 +117,11 @@ try {
         $request = $null
     }
     if ($null -eq $result) {
-    [void](Get-TicketboxProcessDeadlinePhaseTimeout `
+    Assert-TicketboxProcessDeadlinePhaseBudget `
         -Budget $actionBudget `
         -RequiredMilliseconds ([int]$subject.Release.dataset_payload_verification_timeout_ms) `
-        -Label "selected backup inspection")
+        -CleanupReserveMilliseconds $cleanupReserve `
+        -Label "selected backup inspection"
     $inspection = Invoke-TicketboxInstalledDatasetBackupInspection `
         $subject $BackupGeneration
     [void](Assert-TicketboxInstalledPostgresToolArtifact `
@@ -237,9 +242,10 @@ try {
     $bootstrapState = $null
 
     while ($true) {
-        [void](Get-TicketboxProcessDeadlinePhaseTimeout `
+        Assert-TicketboxProcessDeadlinePhaseBudget `
             -Budget $actionBudget -RequiredMilliseconds 1000 `
-            -Label "complete dataset restore reducer")
+            -CleanupReserveMilliseconds $cleanupReserve `
+            -Label "complete dataset restore reducer"
         Assert-TicketboxLifecycleOperationLease $lock
         $active = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
         $current = Read-TicketboxDatabaseGenerationCurrent
@@ -285,6 +291,13 @@ try {
             -CandidateVerificationPresent ($null -ne $candidateVerification) `
             -PublishedCurrentPresent ($null -ne $published) `
             -RuntimeVerificationPresent ($null -ne $runtimeVerification)
+        $phaseRequirement = Get-TicketboxInstalledDatasetRestoreActionBudgetMilliseconds `
+            -Action $next -Release $subject.Release
+        Assert-TicketboxProcessDeadlinePhaseBudget `
+            -Budget $actionBudget `
+            -RequiredMilliseconds $phaseRequirement `
+            -CleanupReserveMilliseconds $cleanupReserve `
+            -Label "complete dataset restore action $next"
         if (
             $next -in @("build_candidate", "restore_candidate", "verify_candidate") -and
             $null -eq $credentials
@@ -300,10 +313,6 @@ try {
         }
         switch ($next) {
             "build_candidate" {
-                [void](Get-TicketboxProcessDeadlinePhaseTimeout `
-                    -Budget $actionBudget `
-                    -RequiredMilliseconds ([int]$subject.Release.database_tool_timeout_ms) `
-                    -Label "restore candidate build")
                 Stop-TicketboxInstalledDatasetWriters $subject
                 Initialize-TicketboxPostgresqlRestoreCandidateCluster `
                     $subject $operationId $paths $bootstrapState $lock
@@ -315,10 +324,6 @@ try {
             "restore_candidate" {
                 Stop-TicketboxInstalledDatasetWriters $subject
                 if ($null -eq $candidate) {
-                    [void](Get-TicketboxProcessDeadlinePhaseTimeout `
-                        -Budget $actionBudget `
-                        -RequiredMilliseconds ([int]$subject.Release.database_tool_timeout_ms) `
-                        -Label "restore candidate initialization")
                     Initialize-TicketboxPostgresqlRestoreCandidateCluster `
                         $subject $operationId $paths $bootstrapState $lock
                     Start-TicketboxPostgresqlRestoreCandidateService `
@@ -326,10 +331,7 @@ try {
                     $candidate = Initialize-TicketboxPostgresqlRestoreCandidateDatabase `
                         $subject $operationId $credentials $bootstrapState $lock
                 }
-                $restoreHelperTimeout = Get-TicketboxProcessDeadlinePhaseTimeout `
-                    -Budget $actionBudget `
-                    -RequiredMilliseconds ([int]$subject.Release.dataset_restore_helper_timeout_ms) `
-                    -Label "complete dataset restore helper"
+                $restoreHelperTimeout = [int]$subject.Release.dataset_restore_helper_timeout_ms
                 $verified = Invoke-TicketboxInstalledDatasetRestoreHelper `
                     -Subject $subject `
                     -IntentContext $intentContext `
@@ -353,19 +355,12 @@ try {
             "verify_candidate" {
                 Stop-TicketboxInstalledDatasetWriters $subject
                 if ($null -eq $candidate) {
-                    [void](Get-TicketboxProcessDeadlinePhaseTimeout `
-                        -Budget $actionBudget `
-                        -RequiredMilliseconds ([int]$subject.Release.database_tool_timeout_ms) `
-                        -Label "restore candidate verification initialization")
                     Start-TicketboxPostgresqlRestoreCandidateService `
                         $subject $paths $lock
                     $candidate = Initialize-TicketboxPostgresqlRestoreCandidateDatabase `
                         $subject $operationId $credentials $bootstrapState $lock
                 }
-                $restoreHelperTimeout = Get-TicketboxProcessDeadlinePhaseTimeout `
-                    -Budget $actionBudget `
-                    -RequiredMilliseconds ([int]$subject.Release.dataset_restore_helper_timeout_ms) `
-                    -Label "complete dataset restore verification helper"
+                $restoreHelperTimeout = [int]$subject.Release.dataset_restore_helper_timeout_ms
                 $verified = Invoke-TicketboxInstalledDatasetRestoreHelper `
                     -Subject $subject `
                     -IntentContext $intentContext `
@@ -391,10 +386,6 @@ try {
                     -Paths $paths -Selection "Candidate"
             }
             "publish_current" {
-                [void](Get-TicketboxProcessDeadlinePhaseTimeout `
-                    -Budget $actionBudget `
-                    -RequiredMilliseconds ([int]$subject.Release.database_tool_timeout_ms) `
-                    -Label "restored generation publication")
                 Set-TicketboxInstalledDatasetPublishedAcls $subject $paths
                 Start-TicketboxOwnedServiceIfExists `
                     -Name ([string]$subject.Identity.PgServiceName) `
@@ -413,10 +404,6 @@ try {
                     ))
             }
             "verify_runtime" {
-                [void](Get-TicketboxProcessDeadlinePhaseTimeout `
-                    -Budget $actionBudget `
-                    -RequiredMilliseconds ([int]$subject.Release.dataset_payload_verification_timeout_ms) `
-                    -Label "restored runtime verification")
                 Assert-TicketboxInstalledDatasetServiceAuthority $subject
                 [void](Start-TicketboxOwnedServiceIfExists `
                     -Name ([string]$subject.Identity.BackendServiceName) `

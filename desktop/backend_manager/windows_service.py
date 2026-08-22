@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 from backend_manager.process import HealthProbeResult
 from backend_manager.runtime import (
+    RestoreOutcome,
     RuntimeControlError,
     RuntimeStatus,
     ServiceAccessError,
@@ -88,7 +89,7 @@ class ServiceGateway(Protocol):
 class ServiceActionRunner(Protocol):
     def run(self, action: str) -> None: ...
     def backup_inventory(self) -> tuple[BackupInventoryItem, ...]: ...
-    def restore(self, backup_generation: str) -> None: ...
+    def restore(self, backup_generation: str) -> RestoreOutcome: ...
 
 
 class WindowsServiceGateway:
@@ -287,7 +288,7 @@ class WindowsServiceRuntime:
     def backup(self) -> None:
         raise RuntimeControlError("完整备份必须通过短时提权维护 owner 执行。")
 
-    def restore(self, backup_generation: str) -> None:
+    def restore(self, backup_generation: str) -> RestoreOutcome:
         del backup_generation
         raise RuntimeControlError("完整恢复必须通过短时提权维护 owner 执行。")
 
@@ -442,8 +443,8 @@ class BrokeredWindowsServiceRuntime:
     def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
         return self._action_runner.backup_inventory()
 
-    def restore(self, backup_generation: str) -> None:
-        self._action_runner.restore(backup_generation)
+    def restore(self, backup_generation: str) -> RestoreOutcome:
+        return self._action_runner.restore(backup_generation)
 
     def toggle_auto_restart(self) -> bool:
         return True

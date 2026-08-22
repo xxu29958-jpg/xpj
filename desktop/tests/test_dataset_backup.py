@@ -53,6 +53,7 @@ def _subject(tmp_path: Path) -> tuple[InstalledLayout, WindowsReleaseConfig, Pat
         dataset_backup_helper_timeout_ms=1_800_000,
         dataset_restore_helper_timeout_ms=3_600_000,
         dataset_payload_verification_timeout_ms=1_800_000,
+        complete_dataset_cleanup_reserve_ms=3_600_000,
         complete_dataset_backup_timeout_ms=5_400_000,
         complete_dataset_restore_timeout_ms=10_800_000,
     )

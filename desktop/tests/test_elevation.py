@@ -52,6 +52,7 @@ def _release() -> WindowsReleaseConfig:
         dataset_backup_helper_timeout_ms=1_800_000,
         dataset_restore_helper_timeout_ms=3_600_000,
         dataset_payload_verification_timeout_ms=1_800_000,
+        complete_dataset_cleanup_reserve_ms=3_600_000,
         complete_dataset_backup_timeout_ms=5_400_000,
         complete_dataset_restore_timeout_ms=10_800_000,
     )
@@ -268,6 +269,60 @@ def test_superseded_restore_retires_stale_attempt_before_requiring_new_confirmat
     attempts_root = tmp_path / "local" / "Ticketbox" / "restore-attempts"
     assert not list(attempts_root.glob("*.json"))
     assert len(observed_attempts) == 1
+
+
+def test_confirmed_restore_reports_cleanup_pending_without_second_helper_attempt(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    generation = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
+    helper = tmp_path / "program" / "manager" / "ticketbox-manager.exe"
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes(b"MZ")
+    launches = 0
+    real_unlink = Path.unlink
+
+    @contextmanager
+    def channels(action: str):
+        assert action == "restore"
+
+        class Channel:
+            path = tmp_path / "result.json"
+            root = tmp_path
+            nonce = "n" * 43
+            owner_sid = "S-1-5-21-1000"
+            file_identity = "1:2"
+
+            @staticmethod
+            def read(actual_exit_code: int) -> HelperResult:
+                assert actual_exit_code == 0
+                return HelperResult(exit_code=0, diagnostic="ok", payload=None)
+
+        yield Channel()
+
+    def launch(_command) -> int:
+        nonlocal launches
+        launches += 1
+        return 0
+
+    def fail_tombstone_cleanup(path: Path, *args, **kwargs) -> None:
+        if path.suffix == ".retired":
+            raise OSError("scanner retained tombstone")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(windows_user_security, "local_app_data", lambda: tmp_path / "local")
+    monkeypatch.setattr(Path, "unlink", fail_tombstone_cleanup)
+    runner = ElevatedServiceActionRunner(
+        _release(),
+        helper,
+        launcher=launch,
+        channel_factory=channels,
+    )
+
+    outcome = runner.restore(generation)
+
+    assert outcome.cleanup_pending is True
+    assert launches == 1
 
 
 def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_path: Path, monkeypatch) -> None:

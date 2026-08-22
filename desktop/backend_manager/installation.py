@@ -89,6 +89,7 @@ class WindowsReleaseConfig:
     dataset_backup_helper_timeout_ms: int
     dataset_restore_helper_timeout_ms: int
     dataset_payload_verification_timeout_ms: int
+    complete_dataset_cleanup_reserve_ms: int
     complete_dataset_backup_timeout_ms: int
     complete_dataset_restore_timeout_ms: int
 
@@ -136,7 +137,11 @@ class WindowsReleaseConfig:
         raise InstallationConfigError(f"操作没有完整数据集预算：{action}")
 
     def powershell_action_timeout_seconds(self, action: str) -> float:
-        return self.complete_dataset_action_timeout_seconds(action) + self.service_validation_timeout_seconds
+        process_deadline = (
+            self.complete_dataset_action_timeout_seconds(action)
+            + self.complete_dataset_cleanup_reserve_ms / 1000.0
+        )
+        return process_deadline + self.process_boundary_margin_seconds
 
     def helper_action_phase_budget_seconds(self, action: str) -> dict[str, float]:
         service = self.service_state_timeout_seconds
@@ -253,6 +258,7 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
     backup_helper_timeout = _config_integer(config, "dataset_backup_helper_timeout_ms", 10000, 3600000)
     restore_helper_timeout = _config_integer(config, "dataset_restore_helper_timeout_ms", 10000, 3600000)
     payload_timeout = _config_integer(config, "dataset_payload_verification_timeout_ms", 10000, 3600000)
+    cleanup_reserve = _config_integer(config, "complete_dataset_cleanup_reserve_ms", 10000, 3600000)
     backup_timeout = _config_integer(config, "complete_dataset_backup_timeout_ms", 10000, 21600000)
     restore_timeout = _config_integer(config, "complete_dataset_restore_timeout_ms", 10000, 21600000)
     if service_poll > service_timeout or backend_poll > backend_timeout or health_timeout > backend_timeout:
@@ -261,6 +267,7 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
         database_tool_timeout < backup_helper_timeout < backup_timeout
         and database_tool_timeout < restore_helper_timeout < restore_timeout
         and database_tool_timeout < payload_timeout < backup_timeout
+        and payload_timeout <= cleanup_reserve
         and payload_timeout < restore_timeout
     ):
         raise InstallationConfigError("Windows release config 的完整数据集 child/action 超时顺序无效。")
@@ -277,6 +284,7 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
         dataset_backup_helper_timeout_ms=backup_helper_timeout,
         dataset_restore_helper_timeout_ms=restore_helper_timeout,
         dataset_payload_verification_timeout_ms=payload_timeout,
+        complete_dataset_cleanup_reserve_ms=cleanup_reserve,
         complete_dataset_backup_timeout_ms=backup_timeout,
         complete_dataset_restore_timeout_ms=restore_timeout,
     )

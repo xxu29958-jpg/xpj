@@ -123,7 +123,8 @@ function Assert-TicketboxInstalledDatasetSubject {{
         Release = [pscustomobject]@{{
             secret_byte_count = 32
             dataset_payload_verification_timeout_ms = 10000
-            complete_dataset_restore_timeout_ms = 60000
+            complete_dataset_cleanup_reserve_ms = 10000
+            complete_dataset_restore_timeout_ms = 120000
         }}
         Manifest = [pscustomobject]@{{
             Sha256 = ('7' * 64)
@@ -306,7 +307,8 @@ function Assert-TicketboxInstalledDatasetSubject {{
             database_tool_timeout_ms = 10000
             dataset_restore_helper_timeout_ms = 10000
             dataset_payload_verification_timeout_ms = 10000
-            complete_dataset_restore_timeout_ms = 60000
+            complete_dataset_cleanup_reserve_ms = 10000
+            complete_dataset_restore_timeout_ms = 120000
         }}
         Manifest = [pscustomobject]@{{ Sha256 = ('7' * 64) }}
     }}

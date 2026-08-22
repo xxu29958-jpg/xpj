@@ -121,13 +121,18 @@ if ([int]$script:capturedTimeoutMilliseconds -ne 2000) {{
 def test_restore_helper_uses_its_complete_composite_timeout_budget() -> None:
     restore_database = PACKAGING / "windows_dataset_restore_database.ps1"
     restore_owner = (PACKAGING / "windows_dataset_restore.ps1").read_text(encoding="utf-8-sig")
+    restore_policy = (PACKAGING / "windows_dataset_restore_reducer.ps1").read_text(encoding="utf-8-sig")
     helper = powershell_function(
         restore_database.read_text(encoding="utf-8-sig"),
         "Invoke-TicketboxInstalledDatasetRestoreHelper",
     )
 
     assert "-TimeoutMilliseconds $TimeoutMilliseconds" in helper
-    assert "RequiredMilliseconds ([int]$subject.Release.dataset_restore_helper_timeout_ms" in restore_owner
+    assert "dataset_restore_helper_timeout_ms" in powershell_function(
+        restore_policy,
+        "Get-TicketboxInstalledDatasetRestoreActionBudgetMilliseconds",
+    )
+    assert "$phaseRequirement = Get-TicketboxInstalledDatasetRestoreActionBudgetMilliseconds" in restore_owner
     assert "-TimeoutMilliseconds $restoreHelperTimeout" in restore_owner
 
 
@@ -153,14 +158,40 @@ def test_complete_dataset_phase_cannot_start_without_its_full_remaining_budget(t
     script = "\n".join(
         (
             "$ErrorActionPreference = 'Stop'",
-            powershell_function(deadline_source, "New-TicketboxProcessDeadlineBudget"),
-            powershell_function(deadline_source, "Get-TicketboxProcessDeadlinePhaseTimeout"),
-            "$budget = New-TicketboxProcessDeadlineBudget -TimeoutMilliseconds 2000",
+            powershell_function(deadline_source, "Assert-TicketboxProcessDeadlinePhaseBudget"),
+            "$clock = [pscustomobject]@{ IsRunning = $true; ElapsedMilliseconds = 1000 }",
+            "$budget = [pscustomobject]@{ TimeoutMilliseconds = 4000; Stopwatch = $clock }",
             "try {",
-            "  Get-TicketboxProcessDeadlinePhaseTimeout -Budget $budget -RequiredMilliseconds 3000 -Label 'probe'",
+            "  Assert-TicketboxProcessDeadlinePhaseBudget -Budget $budget "
+            "-RequiredMilliseconds 2000 -CleanupReserveMilliseconds 1500 -Label 'probe'",
             "  throw 'expired phase was admitted'",
             "} catch { if ($_.Exception.Message -notlike '*cannot start*') { throw } }",
         )
     )
 
     run_powershell_contract_script(script, tmp_path, filename="dataset-deadline-budget.ps1")
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_restore_action_budgets_fit_the_complete_deadline_with_cleanup_reserved(tmp_path: Path) -> None:
+    policy_source = (PACKAGING / "windows_dataset_restore_reducer.ps1").read_text(encoding="utf-8-sig")
+    release = json.loads((PACKAGING / "windows-release-config.json").read_text(encoding="utf-8"))
+    fields = "; ".join(f"{name} = {value}" for name, value in release.items() if isinstance(value, int))
+    script = "\n".join(
+        (
+            "$ErrorActionPreference = 'Stop'",
+            powershell_function(policy_source, "Get-TicketboxInstalledDatasetRestoreActionBudgetMilliseconds"),
+            f"$release = [pscustomobject]@{{ {fields} }}",
+            "$total = [int64]$release.dataset_payload_verification_timeout_ms",
+            "foreach ($action in @('build_candidate','restore_candidate','promote_candidate',"
+            "'publish_current','verify_runtime','retire_rollback','done')) {",
+            "  $total += Get-TicketboxInstalledDatasetRestoreActionBudgetMilliseconds $action $release",
+            "}",
+            "$required = $total + [int64]$release.complete_dataset_cleanup_reserve_ms",
+            "$available = [int64]$release.complete_dataset_restore_timeout_ms + "
+            "[int64]$release.complete_dataset_cleanup_reserve_ms",
+            "if ($required -gt $available) { throw \"restore path budget $required exceeds $available\" }",
+        )
+    )
+
+    run_powershell_contract_script(script, tmp_path, filename="dataset-restore-action-budget.ps1")

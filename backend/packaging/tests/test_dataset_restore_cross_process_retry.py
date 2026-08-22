@@ -70,6 +70,10 @@ def test_cross_process_retry_republishes_verified_candidate_without_new_bootstra
         reducer_source,
         "Resolve-TicketboxInstalledDatasetRestoreNextAction",
     )
+    action_budget = powershell_function(
+        reducer_source,
+        "Get-TicketboxInstalledDatasetRestoreActionBudgetMilliseconds",
+    )
     stubs = f"""
 $successor = '22222222-2222-4222-8222-222222222222'
 $attempt = '11111111-1111-4111-8111-111111111111'
@@ -140,12 +144,17 @@ function Assert-TicketboxInstalledDatasetSubject {{
             PgServiceName = 'ticketbox-pg'; BackendServiceName = 'ticketbox-backend'
             BackendPort = 8123; BackendVersionFloor = '1.0.0'
         }}
-        Release = [pscustomobject]@{{
-            secret_byte_count = 32
-            database_tool_timeout_ms = 10000
+            Release = [pscustomobject]@{{
+                secret_byte_count = 32
+                service_state_timeout_ms = 1000
+                postgres_ready_timeout_ms = 1000
+                backend_ready_timeout_ms = 1000
+                backend_health_request_timeout_ms = 1000
+                database_tool_timeout_ms = 10000
             dataset_restore_helper_timeout_ms = 10000
             dataset_payload_verification_timeout_ms = 10000
-            complete_dataset_restore_timeout_ms = 60000
+            complete_dataset_cleanup_reserve_ms = 10000
+            complete_dataset_restore_timeout_ms = 120000
         }}
         Manifest = [pscustomobject]@{{ Sha256 = ('f' * 64) }}
     }}
@@ -237,6 +246,7 @@ function Throw-TicketboxOperationFailure {{
 }}
 {assert_operation}
 {classifier}
+{action_budget}
 {reducer}
 """
     (tmp_path / "windows_dataset_restore_runtime.ps1").write_text(

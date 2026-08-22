@@ -38,6 +38,7 @@ def _release() -> WindowsReleaseConfig:
         dataset_backup_helper_timeout_ms=15_000,
         dataset_restore_helper_timeout_ms=30_000,
         dataset_payload_verification_timeout_ms=15_000,
+        complete_dataset_cleanup_reserve_ms=30_000,
         complete_dataset_backup_timeout_ms=45_000,
         complete_dataset_restore_timeout_ms=90_000,
     )

@@ -34,6 +34,7 @@ def _release_config() -> WindowsReleaseConfig:
         dataset_backup_helper_timeout_ms=1_800_000,
         dataset_restore_helper_timeout_ms=3_600_000,
         dataset_payload_verification_timeout_ms=1_800_000,
+        complete_dataset_cleanup_reserve_ms=3_600_000,
         complete_dataset_backup_timeout_ms=5_400_000,
         complete_dataset_restore_timeout_ms=10_800_000,
     )
@@ -55,6 +56,7 @@ def _release_config_document(**overrides: object) -> dict[str, object]:
         "dataset_backup_helper_timeout_ms": 1_800_000,
         "dataset_restore_helper_timeout_ms": 3_600_000,
         "dataset_payload_verification_timeout_ms": 1_800_000,
+        "complete_dataset_cleanup_reserve_ms": 3_600_000,
         "complete_dataset_backup_timeout_ms": 5_400_000,
         "complete_dataset_restore_timeout_ms": 10_800_000,
     }
@@ -170,10 +172,10 @@ def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> Non
     assert start["postgres_start"] == 23
     assert start["backend_readiness"] == 32.75
     assert stop["post_stop_runtime_validation"] == 18.75
-    assert backup["complete_dataset_backup_owner"] == 5418.75
-    assert restore["complete_dataset_restore_owner"] == 10818.75
-    assert release.powershell_action_timeout_seconds("backup") == 5418.75
-    assert release.powershell_action_timeout_seconds("restore") == 10818.75
+    assert backup["complete_dataset_backup_owner"] == 9001.75
+    assert restore["complete_dataset_restore_owner"] == 14401.75
+    assert release.powershell_action_timeout_seconds("backup") == 9001.75
+    assert release.powershell_action_timeout_seconds("restore") == 14401.75
     assert release.service_validation_timeout_seconds == 18.75
     for action, phases in (
         ("start", start),

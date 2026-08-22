@@ -81,9 +81,13 @@ def test_confirmed_retirement_cleanup_failure_cannot_reclassify_restore_success(
 
     monkeypatch.setattr(Path, "unlink", fail_tombstone_cleanup)
 
-    assert store.retire_confirmed(GENERATION, attempt) is False
+    assert store.retire_confirmed(GENERATION, attempt) == "cleanup_pending"
     assert not canonical.exists()
     assert tuple(tmp_path.glob("*.retired"))
+
+    monkeypatch.setattr(Path, "unlink", real_unlink)
+    assert store.cleanup_retired() == "clean"
+    assert not tuple(tmp_path.glob("*.retired"))
 
 
 def test_restore_attempt_rejects_tampered_binding(tmp_path: Path) -> None:

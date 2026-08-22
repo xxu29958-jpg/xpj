@@ -2,6 +2,43 @@
 
 # Closed, IO-free next-action policy for installed dataset restore.
 
+function Get-TicketboxInstalledDatasetRestoreActionBudgetMilliseconds {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet(
+            "build_candidate", "restore_candidate", "verify_candidate",
+            "promote_candidate", "publish_current", "verify_runtime",
+            "retire_rollback", "done"
+        )][string]$Action,
+        [Parameter(Mandatory = $true)][object]$Release
+    )
+    $service = [int64]$Release.service_state_timeout_ms
+    $database = [int64]$Release.database_tool_timeout_ms
+    $postgres = [int64]$Release.postgres_ready_timeout_ms
+    switch ($Action) {
+        "build_candidate" { return (4 * $service) + (2 * $database) + $postgres }
+        "restore_candidate" {
+            return (4 * $service) + (2 * $database) + $postgres +
+                [int64]$Release.dataset_restore_helper_timeout_ms
+        }
+        "verify_candidate" {
+            return (2 * $service) + $database + $postgres +
+                [int64]$Release.dataset_restore_helper_timeout_ms
+        }
+        "promote_candidate" { return 2 * $service }
+        # The delegated H1 owner has twelve closed reducer actions. Fifteen
+        # database-tool windows cover one per action plus retry observation.
+        "publish_current" { return (6 * $service) + (15 * $database) + (2 * $postgres) }
+        "verify_runtime" {
+            return (2 * $service) + [int64]$Release.backend_ready_timeout_ms +
+                [int64]$Release.backend_health_request_timeout_ms +
+                [int64]$Release.dataset_payload_verification_timeout_ms
+        }
+        "retire_rollback" { return $database }
+        "done" { return 1000 }
+    }
+}
+
 function Resolve-TicketboxInstalledDatasetRestoreNextAction {
     param(
         [Parameter(Mandatory = $true)]

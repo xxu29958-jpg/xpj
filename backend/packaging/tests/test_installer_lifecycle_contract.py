@@ -1566,6 +1566,7 @@ def test_mutable_windows_runtime_policy_is_read_from_release_config() -> None:
         "dataset_backup_helper_timeout_ms",
         "dataset_restore_helper_timeout_ms",
         "dataset_payload_verification_timeout_ms",
+        "complete_dataset_cleanup_reserve_ms",
         "complete_dataset_backup_timeout_ms",
         "complete_dataset_restore_timeout_ms",
     ):
