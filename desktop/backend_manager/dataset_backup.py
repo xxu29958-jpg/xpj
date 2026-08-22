@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import uuid
-from pathlib import Path
 
 from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
 from backend_manager.runtime import RuntimeControlError
-from backend_manager.windows_user_security import require_local_fixed_regular_file
+from backend_manager.windows_user_security import (
+    require_local_fixed_regular_file,
+    trusted_windows_command_environment,
+    windows_system_directory,
+)
 
 _RESULT_FIELDS = {
     "schema",
@@ -35,22 +37,16 @@ def run_installed_dataset_backup(
     layout: InstalledLayout,
     release: WindowsReleaseConfig,
 ) -> None:
-    system_root = os.environ.get("SYSTEMROOT")
-    if not system_root:
-        raise RuntimeControlError("Windows 系统目录不可用，未执行备份。")
+    system_directory = windows_system_directory()
     powershell = require_local_fixed_regular_file(
-        Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe",
+        system_directory / "WindowsPowerShell" / "v1.0" / "powershell.exe",
         label="Windows PowerShell 5.1",
     )
     script = require_local_fixed_regular_file(
         layout.install_dir / "installer" / "windows_dataset_backup.ps1",
         label="完整数据集备份 owner",
     )
-    environment = {
-        name: os.environ[name]
-        for name in ("SystemRoot", "WINDIR", "ComSpec", "TEMP", "TMP", "PATH", "PATHEXT")
-        if name in os.environ
-    }
+    environment = trusted_windows_command_environment(system_directory)
     try:
         completed = subprocess.run(  # noqa: S603 - exact system executable and installed script
             [

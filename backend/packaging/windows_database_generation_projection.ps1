@@ -20,6 +20,60 @@ function New-TicketboxDatabaseGenerationRuntimeDatabaseUrl {
     }
 }
 
+function Write-TicketboxDatabaseGenerationRuntimeSettingsProjection {
+    param([Parameter(Mandatory = $true)][object]$ProjectionContract)
+
+    $backendService = "NT SERVICE\$([string]$ProjectionContract.backend_service_name)"
+    $settingsPath = Join-Path `
+        (Split-Path -Parent ([string]$ProjectionContract.env_path)) `
+        "runtime-settings\runtime-settings.json"
+    Assert-NoTicketboxAncestorReparsePoints $settingsPath
+    $settingsKind = Get-TicketboxPathEntryKindNoFollow $settingsPath
+    $ownerConfirmed = $false
+    if ($settingsKind -cne "Missing") {
+        if ($settingsKind -cne "File") {
+            throw "installed runtime settings projection is not a regular file."
+        }
+        $artifact = Read-TicketboxProtectedUtf8Artifact `
+            -Path $settingsPath `
+            -FullControlAccounts @(
+                "SYSTEM", "BUILTIN\Administrators", $backendService
+            ) `
+            -OwnerAccount $backendService `
+            -MaximumBytes 4096
+        try { $existing = $artifact.Text | ConvertFrom-Json }
+        catch { throw "installed runtime settings projection is not valid JSON." }
+        Assert-TicketboxDatabaseGenerationExactProperties `
+            -Value $existing `
+            -ExpectedNames @(
+                "schema", "public_base_url", "budget_advisor_owner_confirmed"
+            ) `
+            -Label "installed runtime settings projection"
+        if (
+            [string]$existing.schema -cne "ticketbox-runtime-settings-v1" -or
+            $existing.public_base_url -isnot [string] -or
+            $existing.budget_advisor_owner_confirmed -isnot [bool]
+        ) {
+            throw "installed runtime settings projection is not closed."
+        }
+        $ownerConfirmed = [bool]$existing.budget_advisor_owner_confirmed
+    }
+    $payload = [ordered]@{
+        budget_advisor_owner_confirmed = $ownerConfirmed
+        public_base_url = [string]$ProjectionContract.public_base_url
+        schema = "ticketbox-runtime-settings-v1"
+    }
+    $encoded = ($payload | ConvertTo-Json -Depth 4 -Compress) + "`n"
+    Write-TicketboxProtectedUtf8FileDurable `
+        -Path $settingsPath `
+        -Text $encoded `
+        -FullControlAccounts @(
+            "SYSTEM", "BUILTIN\Administrators", $backendService
+        ) `
+        -OwnerAccount $backendService `
+        -ReplaceExisting
+}
+
 function Write-TicketboxDatabaseGenerationRuntimeEnvironment {
     param(
         [Parameter(Mandatory = $true)][string]$DatabaseUrl,
@@ -37,9 +91,6 @@ function Write-TicketboxDatabaseGenerationRuntimeEnvironment {
         "PG_RESTORE_PATH=$(Join-Path ([string]$ProjectionContract.pg_bin) 'pg_restore.exe')",
         "OCR_DEFAULT_TIMEZONE=$([string]$ProjectionContract.timezone)"
     )
-    if (-not [string]::IsNullOrWhiteSpace([string]$ProjectionContract.public_base_url)) {
-        $lines += "PUBLIC_BASE_URL=$([string]$ProjectionContract.public_base_url)"
-    }
     $lines += @(
         "ENABLE_HTTP_BOOTSTRAP=true",
         "HTTP_BOOTSTRAP_SECRET=$HttpBootstrapSecret"
@@ -48,6 +99,7 @@ function Write-TicketboxDatabaseGenerationRuntimeEnvironment {
         -Path ([string]$ProjectionContract.env_path) `
         -Lines $lines `
         -BackendServiceName ([string]$ProjectionContract.backend_service_name)
+    Write-TicketboxDatabaseGenerationRuntimeSettingsProjection $ProjectionContract
 }
 
 function Read-TicketboxDatabaseGenerationRuntimeProjection {

@@ -84,7 +84,9 @@ def test_bootstrap_superuser_owner_is_physically_retired_and_shipped() -> None:
     ).count("Close-TicketboxDatabaseGenerationMaintenanceAuthority `") == 2
     assert "[object]$BootstrapRecoveryState" not in owner
     assert "$databaseGenerationBootstrapState = Read-PostgresBootstrapRecoveryState" not in installer
-    assert installer.count("-BootstrapRecoveryPath (Get-PostgresBootstrapRecoveryPath)") == 1
+    assert installer.count(
+        "-BootstrapRecoveryPath (Get-PostgresBootstrapRecoveryPath -AppData $AppData)"
+    ) == 1
     assert '"runtime-credentials"' in artifacts
     operation_reader = powershell_function(
         artifacts,

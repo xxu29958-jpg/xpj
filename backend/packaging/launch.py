@@ -23,9 +23,6 @@ its handlers at ``sys.stdout`` — see :func:`_build_log_config`.
 
 from __future__ import annotations
 
-import importlib
-import importlib.machinery
-import importlib.util
 import json
 import ntpath
 import os
@@ -33,13 +30,30 @@ import re
 import stat
 import sys
 from argparse import ArgumentParser, Namespace
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from json import dumps
 from pathlib import Path
 from types import ModuleType
 from typing import BinaryIO, TextIO
+
+if not getattr(sys, "frozen", False):
+    source_backend_root = str(Path(__file__).resolve().parents[1])
+    if source_backend_root not in sys.path:
+        sys.path.insert(0, source_backend_root)
+
+from app.database_maintenance_runtime import (
+    assert_maintenance_libpq_environment as _assert_maintenance_libpq_environment,
+)
+from app.database_maintenance_runtime import (
+    load_standalone_database_module as _load_standalone_database_module,
+)
+from app.database_maintenance_runtime import (
+    resolve_generation_program as _resolve_generation_program,
+)
+from app.dataset_maintenance_cli import (
+    DATASET_MAINTENANCE_SWITCHES,
+    run_dataset_maintenance,
+)
 
 _VOLUME_IDENTITY_PATTERN = re.compile(
     r"^\\\\\?\\Volume\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
@@ -63,16 +77,9 @@ _BOOTSTRAP_RECOVERY_GUARD_NAME = "bootstrap-exposure-recovery-pending"
 _MANAGED_SCHEMA_UPGRADE_SWITCH = "--managed-schema-upgrade"
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
-_COMPLETE_DATASET_BACKUP_SWITCH = "--complete-dataset-backup"
-_INSPECT_DATASET_BACKUP_SWITCH = "--inspect-dataset-backup"
-_ISOLATED_DATASET_RESTORE_SWITCH = "--isolated-dataset-restore"
-_VERIFY_RESTORED_ORIGINALS_SWITCH = "--verify-restored-originals"
-_GENERATION_PROGRAM_FILENAME = "DATABASE_GENERATION_PROGRAM.json"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
 _MANAGED_SCHEMA_MODULE_NAME = "_ticketbox_managed_schema_upgrade"
 _DATABASE_GENERATION_TARGET_MODULE_NAME = "_ticketbox_database_generation_target"
-_COMPLETE_DATASET_BACKUP_MODULE_NAME = "_ticketbox_complete_dataset_backup"
-_ISOLATED_DATASET_RESTORE_MODULE_NAME = "_ticketbox_isolated_dataset_restore"
 _GENERATION_PROGRAM_VALIDATION_FIELDS = (
     "schema",
     "source_revision",
@@ -110,12 +117,6 @@ def _is_database_generation_helper() -> bool:
 def _add_generation_program_arguments(parser: ArgumentParser) -> None:
     parser.add_argument("--generation-program-path", type=Path, required=True)
     parser.add_argument("--expected-generation-program-sha256", required=True)
-
-
-def _resolve_generation_program(path: Path) -> Path:
-    if path != Path(_GENERATION_PROGRAM_FILENAME):
-        raise RuntimeError("generation program must be the payload-root artifact")
-    return (_bundle_dir() / path).resolve(strict=True)
 
 
 def _parse_generation_program_validation_args(argv: list[str]) -> Namespace:
@@ -174,185 +175,6 @@ def _parse_database_generation_target_args(argv: list[str]) -> Namespace:
     return parser.parse_args(argv)
 
 
-def _parse_complete_dataset_backup_args(argv: list[str]) -> Namespace:
-    parser = ArgumentParser(
-        prog="ticketbox-database-maintenance",
-        add_help=False,
-        allow_abbrev=False,
-    )
-    parser.add_argument(
-        _COMPLETE_DATASET_BACKUP_SWITCH,
-        action="store_true",
-        required=True,
-    )
-    parser.add_argument("--backup-root", type=Path, required=True)
-    parser.add_argument("--inventory-path", type=Path, required=True)
-    parser.add_argument("--upload-root", type=Path, required=True)
-    parser.add_argument("--database-url", required=True)
-    parser.add_argument("--pgpassfile", type=Path, required=True)
-    parser.add_argument("--pg-dump-path", type=Path, required=True)
-    parser.add_argument("--pg-restore-path", type=Path, required=True)
-    parser.add_argument("--operation-id", required=True)
-    parser.add_argument("--backup-id", required=True)
-    parser.add_argument("--release-id", required=True)
-    parser.add_argument(
-        "--backup-kind",
-        choices=("manual",),
-        required=True,
-    )
-    parser.add_argument("--writer-fence-sha256", required=True)
-    parser.add_argument("--expected-current-sha256", required=True)
-    parser.add_argument("--expected-dataset-id", required=True)
-    parser.add_argument("--expected-restore-epoch", type=int, required=True)
-    parser.add_argument("--expected-schema-revision", required=True)
-    return parser.parse_args(argv)
-
-
-def _parse_dataset_backup_inspection_args(argv: list[str]) -> Namespace:
-    parser = ArgumentParser(
-        prog="ticketbox-database-maintenance",
-        add_help=False,
-        allow_abbrev=False,
-    )
-    parser.add_argument(_INSPECT_DATASET_BACKUP_SWITCH, action="store_true", required=True)
-    parser.add_argument("--backup-generation", type=Path, required=True)
-    return parser.parse_args(argv)
-
-
-def _parse_isolated_dataset_restore_args(argv: list[str]) -> Namespace:
-    parser = ArgumentParser(
-        prog="ticketbox-database-maintenance",
-        add_help=False,
-        allow_abbrev=False,
-    )
-    parser.add_argument(
-        _ISOLATED_DATASET_RESTORE_SWITCH,
-        action="store_true",
-        required=True,
-    )
-    parser.add_argument("--backup-generation", type=Path, required=True)
-    parser.add_argument("--target-upload-root", type=Path, required=True)
-    parser.add_argument("--database-url", required=True)
-    parser.add_argument("--pgpassfile", type=Path, required=True)
-    parser.add_argument("--pg-restore-path", type=Path, required=True)
-    parser.add_argument("--active-dataset-id", required=True)
-    parser.add_argument("--active-restore-epoch", type=int, required=True)
-    parser.add_argument("--target-schema-revision", required=True)
-    parser.add_argument("--restore-role", required=True)
-    _add_generation_program_arguments(parser)
-    parser.add_argument("--operation-id", required=True)
-    return parser.parse_args(argv)
-
-
-def _parse_restored_originals_verification_args(argv: list[str]) -> Namespace:
-    parser = ArgumentParser(
-        prog="ticketbox-database-maintenance",
-        add_help=False,
-        allow_abbrev=False,
-    )
-    parser.add_argument(
-        _VERIFY_RESTORED_ORIGINALS_SWITCH,
-        action="store_true",
-        required=True,
-    )
-    parser.add_argument("--backup-generation", type=Path, required=True)
-    parser.add_argument("--restored-upload-root", type=Path, required=True)
-    return parser.parse_args(argv)
-
-
-def _maintenance_standalone_source_path(filename: str) -> Path:
-    if getattr(sys, "frozen", False):
-        bundle_root = getattr(sys, "_MEIPASS", None)
-        if not isinstance(bundle_root, str) or not bundle_root:
-            raise RuntimeError("frozen database maintenance source root is unavailable")
-        backend_root = Path(bundle_root)
-    else:
-        backend_root = Path(__file__).resolve().parents[1]
-    return backend_root / "app" / "database" / filename
-
-
-@contextmanager
-def _temporary_database_package(source_path: Path) -> Iterator[None]:
-    """Expose one physical helper package without importing the runtime facade."""
-
-    database_module_name = "app.database"
-    if database_module_name in sys.modules:
-        raise RuntimeError("standalone database maintenance process already loaded app.database")
-    app_package = importlib.import_module("app")
-    if hasattr(app_package, "database"):
-        raise RuntimeError("standalone database maintenance process has an unexpected database facade")
-
-    package = ModuleType(database_module_name)
-    package.__package__ = database_module_name
-    package.__path__ = [str(source_path.parent)]
-    package.__spec__ = importlib.machinery.ModuleSpec(
-        database_module_name,
-        loader=None,
-        is_package=True,
-    )
-    sys.modules[database_module_name] = package
-    app_package.database = package
-    try:
-        yield
-        if sys.modules.get(database_module_name) is not package:
-            raise RuntimeError("standalone database maintenance package identity changed")
-    finally:
-        for name in tuple(sys.modules):
-            if name == database_module_name or name.startswith(f"{database_module_name}."):
-                sys.modules.pop(name, None)
-        if hasattr(app_package, "database"):
-            delattr(app_package, "database")
-
-
-def _load_standalone_database_module(
-    *,
-    module_name: str,
-    filename: str,
-    database_package_seam: bool = False,
-) -> ModuleType:
-    """Load one maintenance action without executing ``app.database.__init__``.
-
-    The package facade creates the ordinary runtime engine from global settings.
-    That is forbidden in this maintenance process, so the attested source file
-    is shipped as a PyInstaller data file and loaded under a standalone name.
-    """
-
-    source_path = _maintenance_standalone_source_path(filename).resolve()
-    if not source_path.is_file():
-        raise RuntimeError("standalone database maintenance source is unavailable")
-    backend_root = source_path.parents[2]
-    backend_root_text = str(backend_root)
-    if backend_root_text not in sys.path:
-        # A source invocation starts with backend/packaging on sys.path, while a
-        # frozen invocation starts from the bootloader's extraction directory.
-        # Add only the root that physically contains the attested action so its
-        # narrow app.money_contract / secure_file imports resolve.
-        sys.path.insert(0, backend_root_text)
-    existing = sys.modules.get(module_name)
-    if isinstance(existing, ModuleType):
-        if Path(str(existing.__file__)).resolve() != source_path.resolve():
-            raise RuntimeError("standalone database maintenance module identity changed")
-        return existing
-    spec = importlib.util.spec_from_file_location(
-        module_name,
-        source_path,
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("standalone database maintenance module is unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    try:
-        if database_package_seam:
-            with _temporary_database_package(source_path):
-                spec.loader.exec_module(module)
-        else:
-            spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop(module_name, None)
-        raise
-    return module
-
-
 def _load_managed_schema_upgrade_module() -> ModuleType:
     return _load_standalone_database_module(
         module_name=_MANAGED_SCHEMA_MODULE_NAME,
@@ -367,37 +189,6 @@ def _load_database_generation_target_module() -> ModuleType:
         filename="_database_generation_target_verification.py",
         database_package_seam=True,
     )
-
-
-def _load_complete_dataset_backup_module() -> ModuleType:
-    return _load_standalone_database_module(
-        module_name=_COMPLETE_DATASET_BACKUP_MODULE_NAME,
-        filename="_dataset_backup_action.py",
-        database_package_seam=True,
-    )
-
-
-def _load_isolated_dataset_restore_module() -> ModuleType:
-    return _load_standalone_database_module(
-        module_name=_ISOLATED_DATASET_RESTORE_MODULE_NAME,
-        filename="_dataset_restore_action.py",
-        database_package_seam=True,
-    )
-
-
-def _assert_maintenance_libpq_environment(pgpassfile: Path) -> None:
-    """Fail closed unless libpq sees only the attested one-shot passfile."""
-
-    pg_entries = [(name, value) for name, value in os.environ.items() if name.upper().startswith("PG")]
-    if len(pg_entries) != 1 or pg_entries[0][0].upper() != "PGPASSFILE":
-        raise RuntimeError("database maintenance helper libpq environment is not sealed")
-    try:
-        expected = os.path.normcase(os.path.abspath(os.fspath(pgpassfile)))
-        actual = os.path.normcase(os.path.abspath(pg_entries[0][1]))
-    except (OSError, TypeError, ValueError) as exc:
-        raise RuntimeError("database maintenance helper libpq environment is not sealed") from exc
-    if actual != expected:
-        raise RuntimeError("database maintenance helper libpq environment is not sealed")
 
 
 def _run_generation_program_validation(
@@ -490,145 +281,6 @@ def _run_database_generation_target_verification(
         restore_attempt_id=args.restore_attempt_id,
         target_revision=args.target_revision,
     )
-    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
-    output_stream.flush()
-    return 0
-
-
-def _run_complete_dataset_backup(
-    argv: list[str],
-    *,
-    input_stream: BinaryIO | None = None,
-    output_stream: TextIO | None = None,
-) -> int:
-    args = _parse_complete_dataset_backup_args(argv)
-    if input_stream is None:
-        input_stream = sys.stdin.buffer
-    if output_stream is None:
-        output_stream = sys.stdout
-    if input_stream is None or output_stream is None:
-        raise RuntimeError("complete dataset backup requires redirected IO")
-    if input_stream.read(1) != b"":
-        raise RuntimeError("complete dataset backup requires empty stdin")
-    _assert_maintenance_libpq_environment(args.pgpassfile)
-    module = _load_complete_dataset_backup_module()
-    from app.services.backup_service import CompleteBackupRequest
-
-    result = module.run_complete_dataset_backup_action(
-        CompleteBackupRequest(
-            backup_root=args.backup_root,
-            inventory_path=args.inventory_path,
-            upload_root=args.upload_root,
-            database_url=args.database_url,
-            passfile=args.pgpassfile,
-            pg_dump_binary=args.pg_dump_path,
-            pg_restore_binary=args.pg_restore_path,
-            operation_id=args.operation_id,
-            backup_id=args.backup_id,
-            release_id=args.release_id,
-            backup_kind=args.backup_kind,
-            writer_fence_sha256=args.writer_fence_sha256,
-            expected_current_sha256=args.expected_current_sha256,
-            expected_dataset_id=args.expected_dataset_id,
-            expected_restore_epoch=args.expected_restore_epoch,
-            expected_schema_revision=args.expected_schema_revision,
-        )
-    )
-    if tuple(result) != module.RESULT_FIELDS:
-        raise RuntimeError("complete dataset backup returned an unsupported shape")
-    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
-    output_stream.flush()
-    return 0
-
-
-def _run_dataset_backup_inspection(
-    argv: list[str],
-    *,
-    input_stream: BinaryIO | None = None,
-    output_stream: TextIO | None = None,
-) -> int:
-    args = _parse_dataset_backup_inspection_args(argv)
-    if input_stream is None:
-        input_stream = sys.stdin.buffer
-    if output_stream is None:
-        output_stream = sys.stdout
-    if input_stream is None or output_stream is None:
-        raise RuntimeError("dataset backup inspection requires redirected IO")
-    if input_stream.read(1) != b"":
-        raise RuntimeError("dataset backup inspection requires empty stdin")
-    module = _load_complete_dataset_backup_module()
-    result = module.inspect_complete_dataset_backup_action(args.backup_generation)
-    if tuple(result) != module.INSPECTION_FIELDS:
-        raise RuntimeError("dataset backup inspection returned an unsupported shape")
-    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
-    output_stream.flush()
-    return 0
-
-
-def _run_isolated_dataset_restore(
-    argv: list[str],
-    *,
-    input_stream: BinaryIO | None = None,
-    output_stream: TextIO | None = None,
-) -> int:
-    args = _parse_isolated_dataset_restore_args(argv)
-    if input_stream is None:
-        input_stream = sys.stdin.buffer
-    if output_stream is None:
-        output_stream = sys.stdout
-    if input_stream is None or output_stream is None:
-        raise RuntimeError("isolated dataset restore requires redirected IO")
-    if input_stream.read(1) != b"":
-        raise RuntimeError("isolated dataset restore requires empty stdin")
-    _assert_maintenance_libpq_environment(args.pgpassfile)
-    module = _load_isolated_dataset_restore_module()
-    from app.services.dataset_restore_service import CompleteRestoreRequest
-
-    result = module.run_verified_isolated_dataset_restore_action(
-        request=CompleteRestoreRequest(
-            backup_generation=args.backup_generation,
-            target_upload_root=args.target_upload_root,
-            database_url=args.database_url,
-            passfile=args.pgpassfile,
-            pg_restore_binary=args.pg_restore_path,
-            active_dataset_id=args.active_dataset_id,
-            active_restore_epoch=args.active_restore_epoch,
-            target_schema_revision=args.target_schema_revision,
-            restore_role=args.restore_role,
-        ),
-        generation_program_path=_resolve_generation_program(args.generation_program_path),
-        expected_generation_program_sha256=args.expected_generation_program_sha256,
-        operation_id=args.operation_id,
-    )
-    if tuple(result) != module.RESULT_FIELDS:
-        raise RuntimeError("isolated dataset restore returned an unsupported shape")
-    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
-    output_stream.flush()
-    return 0
-
-
-def _run_restored_originals_verification(
-    argv: list[str],
-    *,
-    input_stream: BinaryIO | None = None,
-    output_stream: TextIO | None = None,
-) -> int:
-    args = _parse_restored_originals_verification_args(argv)
-    if input_stream is None:
-        input_stream = sys.stdin.buffer
-    if output_stream is None:
-        output_stream = sys.stdout
-    if input_stream is None or output_stream is None:
-        raise RuntimeError("restored originals verification requires redirected IO")
-    if input_stream.read(1) != b"":
-        raise RuntimeError("restored originals verification requires empty stdin")
-    module = _load_isolated_dataset_restore_module()
-    result = module.verify_restored_originals_action(
-        args.backup_generation,
-        args.restored_upload_root,
-    )
-    if tuple(result) != module.RUNTIME_VERIFICATION_FIELDS:
-        raise RuntimeError("restored originals verification returned an unsupported shape")
     output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
@@ -1201,36 +853,27 @@ def _build_log_config(log_dir: Path, *, console: bool | None = None) -> dict:
 
 def main() -> int | None:
     arguments = sys.argv[1:]
-    generation_switches = [
+    maintenance_switches = [
         switch
         for switch in (
             _MANAGED_SCHEMA_UPGRADE_SWITCH,
             _DATABASE_GENERATION_TARGET_VERIFY_SWITCH,
             _GENERATION_PROGRAM_VALIDATE_SWITCH,
-            _COMPLETE_DATASET_BACKUP_SWITCH,
-            _INSPECT_DATASET_BACKUP_SWITCH,
-            _ISOLATED_DATASET_RESTORE_SWITCH,
-            _VERIFY_RESTORED_ORIGINALS_SWITCH,
+            *DATASET_MAINTENANCE_SWITCHES,
         )
         if switch in arguments
     ]
-    if len(generation_switches) > 1:
+    if len(maintenance_switches) > 1:
         raise RuntimeError("database generation helper accepts exactly one mode")
-    if generation_switches:
+    if maintenance_switches:
         if getattr(sys, "frozen", False) and not _is_database_generation_helper():
             raise RuntimeError("database generation requires the dedicated frozen helper")
-        if generation_switches[0] == _MANAGED_SCHEMA_UPGRADE_SWITCH:
+        if maintenance_switches[0] == _MANAGED_SCHEMA_UPGRADE_SWITCH:
             return _run_managed_schema_upgrade(arguments)
-        if generation_switches[0] == _DATABASE_GENERATION_TARGET_VERIFY_SWITCH:
+        if maintenance_switches[0] == _DATABASE_GENERATION_TARGET_VERIFY_SWITCH:
             return _run_database_generation_target_verification(arguments)
-        if generation_switches[0] == _COMPLETE_DATASET_BACKUP_SWITCH:
-            return _run_complete_dataset_backup(arguments)
-        if generation_switches[0] == _INSPECT_DATASET_BACKUP_SWITCH:
-            return _run_dataset_backup_inspection(arguments)
-        if generation_switches[0] == _ISOLATED_DATASET_RESTORE_SWITCH:
-            return _run_isolated_dataset_restore(arguments)
-        if generation_switches[0] == _VERIFY_RESTORED_ORIGINALS_SWITCH:
-            return _run_restored_originals_verification(arguments)
+        if maintenance_switches[0] in DATASET_MAINTENANCE_SWITCHES:
+            return run_dataset_maintenance(arguments)
         return _run_generation_program_validation(arguments)
     if _is_database_generation_helper():
         raise RuntimeError("the dedicated database generation helper requires an explicit mode")

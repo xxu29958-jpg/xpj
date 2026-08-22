@@ -1386,6 +1386,7 @@ def test_retired_portable_installer_cannot_return() -> None:
             assert promise not in contract
     active_contracts = (
         _read("launch.py"),
+        (ROOT / "backend" / "app" / "dataset_maintenance_cli.py").read_text(encoding="utf-8"),
         (ROOT / "backend" / "README.md").read_text(encoding="utf-8"),
         (ROOT / "backend" / "app" / "config.py").read_text(encoding="utf-8"),
         (ROOT / "backend" / "app" / "services" / "backup_service.py").read_text(encoding="utf-8"),

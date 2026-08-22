@@ -92,9 +92,8 @@ function Write-EnvNoBom {
     Write-TicketboxProtectedUtf8FileDurable `
         -Path $Path `
         -Text $text `
-        -FullControlAccounts @(
-            "SYSTEM", "BUILTIN\Administrators", "NT SERVICE\$BackendServiceName"
-        ) `
+        -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
+        -ReadExecuteAccounts @("NT SERVICE\$BackendServiceName") `
         -OwnerAccount "SYSTEM" `
         -ReplaceExisting
 }
@@ -273,6 +272,7 @@ function Remove-TicketboxSensitiveFile([string]$Path) {
 }
 
 function Get-PostgresBootstrapRecoveryPath {
+    param([Parameter(Mandatory = $true)][string]$AppData)
     return Join-Path $AppData $script:PostgresBootstrapRecoveryFileName
 }
 
@@ -411,7 +411,7 @@ function Assert-PostgresBootstrapRecoveryFileSecurity {
 
 function Read-PostgresBootstrapRecoveryState {
     param([Parameter(Mandatory = $true)][string]$Path)
-    $pwfile = Get-PostgresBootstrapRecoveryPath
+    $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     if (-not (Test-TicketboxPathEquals $Path $pwfile)) {
         throw "PostgreSQL bootstrap 恢复文件路径不匹配当前 DataRoot。"
     }
@@ -427,7 +427,7 @@ function Read-PostgresBootstrapRecoveryState {
 
 function Remove-PostgresBootstrapRecoveryState {
     param([Parameter(Mandatory = $true)][string]$Path)
-    $pwfile = Get-PostgresBootstrapRecoveryPath
+    $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     if (-not (Test-TicketboxPathEquals $Path $pwfile)) {
         throw "PostgreSQL bootstrap 恢复文件路径不匹配当前 DataRoot。"
     }
@@ -445,7 +445,7 @@ function Remove-PostgresBootstrapRecoveryState {
 }
 
 function Repair-PostgresBootstrapRecoveryFileAcl {
-    $pwfile = Get-PostgresBootstrapRecoveryPath
+    $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     if ((Get-TicketboxPathEntryKindNoFollow $pwfile) -cne "File") {
         throw "PostgreSQL bootstrap 恢复文件不是普通文件，拒绝 ACL 恢复。"
     }
@@ -517,7 +517,7 @@ function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
         [Parameter(Mandatory = $true)][string[]]$ParentFullControlAccounts
     )
 
-    $pwfile = Get-PostgresBootstrapRecoveryPath
+    $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     $pathKind = Get-TicketboxPathEntryKindNoFollow $pwfile
     if ($pathKind -ceq "Missing") {
         return $false
@@ -573,7 +573,7 @@ function Protect-PostgresBootstrapRecoveryFileAfterAclNormalization {
 }
 
 function Remove-PostgresBootstrapRecoveryTempIfPresent {
-    $tempPath = (Get-PostgresBootstrapRecoveryPath) + ".tmp"
+    $tempPath = (Get-PostgresBootstrapRecoveryPath -AppData $AppData) + ".tmp"
     if (-not (Test-Path -LiteralPath $tempPath)) {
         return
     }
@@ -581,7 +581,7 @@ function Remove-PostgresBootstrapRecoveryTempIfPresent {
 }
 
 function Write-PostgresBootstrapRecoveryState([object]$State) {
-    $pwfile = Get-PostgresBootstrapRecoveryPath
+    $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     $tempPath = "$pwfile.tmp"
     if (Test-Path -LiteralPath $pwfile) {
         throw "PostgreSQL bootstrap 恢复文件已存在，拒绝覆盖。"
@@ -640,8 +640,19 @@ function Write-PostgresBootstrapRecoveryState([object]$State) {
 }
 
 function Get-OrCreatePostgresBootstrapRecoveryState {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataRoot,
+        [Parameter(Mandatory = $true)][string]$AppData,
+        [Parameter(Mandatory = $true)][int]$SecretByteCount
+    )
+    if (
+        -not (Test-TicketboxPathEquals $AppData (Join-Path $DataRoot "app")) -or
+        $SecretByteCount -lt 32
+    ) {
+        throw "PostgreSQL bootstrap recovery binding is invalid."
+    }
     Remove-PostgresBootstrapRecoveryTempIfPresent
-    $pwfile = Get-PostgresBootstrapRecoveryPath
+    $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     if (Test-Path -LiteralPath $pwfile) {
         [void](Repair-PostgresBootstrapRecoveryFileAcl)
         return Read-PostgresBootstrapRecoveryState -Path $pwfile
@@ -787,7 +798,7 @@ function Initialize-PgClusterIfNeeded {
         $CompensationAuthority
 
     $pgVersionPath = Join-Path $PgData "PG_VERSION"
-    $pwfile = Get-PostgresBootstrapRecoveryPath
+    $pwfile = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     if ((Test-Path -LiteralPath $pgVersionPath) -and
         -not (Test-Path -LiteralPath $pgVersionPath -PathType Leaf)) {
         throw "PostgreSQL PG_VERSION 不是普通文件，拒绝继续。"
@@ -899,7 +910,10 @@ function Initialize-PgClusterIfNeeded {
     if ((Get-TicketboxPathEntryKindNoFollow $PgData) -cne "Missing") {
         throw "PostgreSQL 初始化前无法证明 PGDATA 不存在。"
     }
-    $bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState
+    $bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState `
+        -DataRoot $DataRoot `
+        -AppData $AppData `
+        -SecretByteCount $SecretByteCount
     $initResult = Invoke-TicketboxServiceOwnedInitdb `
         -BootstrapState $bootstrapState `
         -CompensationAuthority $CompensationAuthority

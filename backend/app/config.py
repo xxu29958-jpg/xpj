@@ -39,7 +39,7 @@ def _resolve_data_root(backend_root: Path) -> Path:
 DATA_ROOT = _resolve_data_root(BACKEND_ROOT)
 load_dotenv(DATA_ROOT / ".env", encoding="utf-8-sig")
 RUNTIME_SETTINGS_PATH = DATA_ROOT / "runtime-settings" / "runtime-settings.json"
-_RUNTIME_SETTINGS_SERVICE_OWNED = DATA_ROOT != BACKEND_ROOT
+_RUNTIME_SETTINGS_SERVICE_OWNED = bool(os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip())
 _INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
 
 
@@ -310,6 +310,8 @@ def get_settings() -> Settings:
         RUNTIME_SETTINGS_PATH,
         service_owned=_RUNTIME_SETTINGS_SERVICE_OWNED,
     )
+    if _RUNTIME_SETTINGS_SERVICE_OWNED and runtime_settings is None:
+        raise RuntimeError("installed runtime settings projection is missing")
     upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
     if not upload_dir.is_absolute():
         upload_dir = DATA_ROOT / upload_dir

@@ -1098,7 +1098,7 @@ def test_complete_dataset_backup_owner_rejects_noncanonical_result_identity() ->
 def test_complete_dataset_backup_persists_request_before_stopping_writers() -> None:
     backup = _read("windows_dataset_backup.ps1")
     request_contract = _read("windows_installed_dataset_operation.ps1")
-    launcher = _read("launch.py")
+    maintenance_cli = (PACKAGING.parent / "app" / "dataset_maintenance_cli.py").read_text(encoding="utf-8")
 
     request = backup.index("Start-TicketboxInstalledDatasetBackupOperation")
     stop = backup.index("Stop-TicketboxOwnedServiceIfExists", request)
@@ -1108,7 +1108,7 @@ def test_complete_dataset_backup_persists_request_before_stopping_writers() -> N
     assert "Remove-TicketboxInstalledDatasetOperation" in backup
     assert '[ValidateSet("manual")]' in request_contract
     assert 'ValidateSet("manual", "scheduled")' not in request_contract
-    assert 'choices=("manual",)' in launcher
+    assert 'choices=("manual",)' in maintenance_cli
 
 
 def test_complete_dataset_backup_request_is_write_once_and_retriable_cross_engine(
@@ -2308,7 +2308,7 @@ function Remove-TicketboxInitdbPasswordFileIfPresent {
     $script:passwordRemoves += 1
 }
 function Repair-PostgresBootstrapRecoveryFileAcl { return $false }
-function Get-PostgresBootstrapRecoveryPath { return $script:InitdbPasswordPath }
+function Get-PostgresBootstrapRecoveryPath { param($AppData); return $script:InitdbPasswordPath }
 function Read-PostgresBootstrapRecoveryState { param($Path) return $null }
 function Disable-TicketboxInitdbServiceIfPresent {
     param($Receipt)
@@ -2748,7 +2748,7 @@ function Assert-TicketboxInitdbServiceConfiguration { param($Receipt,$StartMode)
 function Assert-TicketboxFreshPgClusterComplete {}
 function Get-TicketboxPathEntryKindNoFollow { param($Path) return 'Missing' }
 function Repair-PostgresBootstrapRecoveryFileAcl { return $false }
-function Get-PostgresBootstrapRecoveryPath { return $script:InitdbPasswordPath }
+function Get-PostgresBootstrapRecoveryPath { param($AppData); return $script:InitdbPasswordPath }
 function Read-PostgresBootstrapRecoveryState { param($Path) return $null }
 function Invoke-ScChecked { param([string[]]$ScArgs) return 0 }
 function Assert-TicketboxServiceOwnership { param($Name,$ExpectedExecutable) return $true }

@@ -201,8 +201,7 @@ foreach ($path in @($partial.stable_pgdata, $partial.stable_uploads, $partial.ro
 $partialState = Resolve-TicketboxInstalledDatasetRestorePhysicalState $partial
 if ($partialState -cne 'rollback_retiring') {{ throw "partial delete was not classified: $partialState" }}
 $partialAction = Resolve-TicketboxInstalledDatasetRestoreNextAction `
-    $partialState ([pscustomobject]@{{}}) ([pscustomobject]@{{}}) `
-    ([pscustomobject]@{{}}) ([pscustomobject]@{{}})
+    $partialState $true $true $true $true
 if ($partialAction -cne 'retire_rollback') {{ throw "partial delete was not retried: $partialAction" }}
 
 $containers = New-Paths 'empty-containers'
@@ -215,15 +214,13 @@ foreach ($path in @(
 $containerState = Resolve-TicketboxInstalledDatasetRestorePhysicalState $containers
 if ($containerState -cne 'cleanup_pending') {{ throw "empty cleanup roots were ignored: $containerState" }}
 $containerAction = Resolve-TicketboxInstalledDatasetRestoreNextAction `
-    $containerState ([pscustomobject]@{{}}) ([pscustomobject]@{{}}) `
-    ([pscustomobject]@{{}}) ([pscustomobject]@{{}})
+    $containerState $true $true $true $true
 if ($containerAction -cne 'retire_rollback') {{ throw "container cleanup was not retried: $containerAction" }}
 
 $rejected = $false
 try {{
     Resolve-TicketboxInstalledDatasetRestoreNextAction `
-        'rollback_retiring' ([pscustomobject]@{{}}) ([pscustomobject]@{{}}) `
-        ([pscustomobject]@{{}}) $null | Out-Null
+        'rollback_retiring' $true $true $true $false | Out-Null
 }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'rollback retirement proceeded without runtime verification' }}
 """

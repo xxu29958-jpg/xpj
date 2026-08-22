@@ -183,6 +183,26 @@ function Assert-TicketboxInstalledCompleteBackupResult {
     return $Result
 }
 
+function Protect-TicketboxInstalledBackupInventory {
+    param([Parameter(Mandatory = $true)][object]$Subject)
+
+    $identity = $Subject.Identity
+    $path = Join-Path ([string]$identity.DataRoot) "app\backup-inventory.json"
+    $privileged = @("SYSTEM", "BUILTIN\Administrators")
+    $backendService = "NT SERVICE\$([string]$identity.BackendServiceName)"
+    Set-TicketboxExactFileAcl `
+        -Path $path `
+        -Accounts $privileged `
+        -ReadExecuteAccounts @($backendService) `
+        -OwnerAccount "SYSTEM"
+    [void](Read-TicketboxProtectedUtf8Artifact `
+        -Path $path `
+        -FullControlAccounts $privileged `
+        -ReadExecuteAccounts @($backendService) `
+        -OwnerAccount "SYSTEM" `
+        -MaximumBytes 65536)
+}
+
 function Invoke-TicketboxInstalledCompleteBackupHelper {
     param(
         [Parameter(Mandatory = $true)][object]$Subject,
@@ -371,6 +391,7 @@ try {
     $barrier = Get-TicketboxInstalledBackupBarrier $subject $authority
     $backupResult = Invoke-TicketboxInstalledCompleteBackupHelper `
         $subject $authority $request $barrier
+    Protect-TicketboxInstalledBackupInventory $subject
     $generation = [string]$backupResult.generation
     if ($generation -cnotmatch `
         '^ticketbox-backup-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {

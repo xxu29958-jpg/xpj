@@ -517,7 +517,7 @@ try {{
     $script:PostgresBootstrapAclOwnerAccount = 'SYSTEM'
     $script:SecretByteCount = 32
     $bootstrapState = New-PostgresBootstrapRecoveryState
-    $bootstrapPath = Get-PostgresBootstrapRecoveryPath
+    $bootstrapPath = Get-PostgresBootstrapRecoveryPath -AppData $AppData
     Write-TicketboxProtectedUtf8FileDurable `
         -Path $bootstrapPath `
         -Text (ConvertTo-PostgresBootstrapRecoveryPayload $bootstrapState) `

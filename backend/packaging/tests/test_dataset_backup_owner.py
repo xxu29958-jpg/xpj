@@ -13,9 +13,32 @@ from _powershell_contract import (
 )
 
 PACKAGING = Path(__file__).resolve().parents[1]
+APP = PACKAGING.parent / "app"
 BACKUP = PACKAGING / "windows_dataset_backup.ps1"
 GENERATION_CONTRACT = PACKAGING / "windows_database_generation_contract.ps1"
 INSTALLED_READER = PACKAGING / "windows_installed_dataset_reader.ps1"
+
+
+def test_dataset_maintenance_cli_is_not_owned_by_backend_launch_host() -> None:
+    launch = (PACKAGING / "launch.py").read_text(encoding="utf-8")
+    cli_path = APP / "dataset_maintenance_cli.py"
+    assert cli_path.is_file()
+    cli = cli_path.read_text(encoding="utf-8")
+
+    for function in (
+        "_parse_complete_dataset_backup_args",
+        "_parse_dataset_backup_inspection_args",
+        "_parse_isolated_dataset_restore_args",
+        "_parse_restored_originals_verification_args",
+        "_run_complete_dataset_backup",
+        "_run_dataset_backup_inspection",
+        "_run_isolated_dataset_restore",
+        "_run_restored_originals_verification",
+    ):
+        assert f"def {function}" in cli
+        assert f"def {function}" not in launch
+    assert "from app.dataset_maintenance_cli import" in launch
+    assert launch.count("run_dataset_maintenance(arguments)") == 1
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
@@ -84,7 +107,7 @@ if (($script:events -join '|') -cne ($expected -join '|')) {{
 
 def test_backup_owner_passes_structured_barrier_and_inspects_before_request_retirement() -> None:
     backup = BACKUP.read_text(encoding="utf-8-sig")
-    launch = (PACKAGING / "launch.py").read_text(encoding="utf-8")
+    cli = (APP / "dataset_maintenance_cli.py").read_text(encoding="utf-8")
 
     for field in (
         "--expected-current-sha256",
@@ -93,7 +116,7 @@ def test_backup_owner_passes_structured_barrier_and_inspects_before_request_reti
         "--expected-schema-revision",
     ):
         assert field in backup
-        assert field in launch
+        assert field in cli
     assert "PayloadSha256" in powershell_function(
         backup,
         "Get-TicketboxInstalledBackupBarrier",
@@ -126,6 +149,57 @@ def test_backup_owner_reasserts_privileged_payload_acl_before_and_after_write() 
     assert "Get-ChildItem -LiteralPath $generationPath -Force -Recurse" in after_write
     assert "Set-TicketboxExactFileAcl" in after_write
     assert "BackendServiceName" not in before_write + after_write
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_backup_owner_publishes_exact_read_only_inventory_acl(
+    tmp_path: Path,
+) -> None:
+    protector = powershell_function(
+        BACKUP.read_text(encoding="utf-8-sig"),
+        "Protect-TicketboxInstalledBackupInventory",
+    )
+    root = str(tmp_path).replace("'", "''")
+    script = rf"""
+$ErrorActionPreference = 'Stop'
+$script:events = @()
+function Set-TicketboxExactFileAcl {{
+    param($Path, $Accounts, $ReadExecuteAccounts, $OwnerAccount)
+    $script:events += "set:${{Path}}:$($Accounts -join ','):$($ReadExecuteAccounts -join ','):${{OwnerAccount}}"
+}}
+function Read-TicketboxProtectedUtf8Artifact {{
+    param($Path, $FullControlAccounts, $ReadExecuteAccounts, $OwnerAccount, $MaximumBytes)
+    $script:events += "read:${{Path}}:$($FullControlAccounts -join ','):$($ReadExecuteAccounts -join ','):${{OwnerAccount}}:$MaximumBytes"
+    return [pscustomobject]@{{ Text = '{{"schema":"ticketbox-complete-backup-inventory-v1","generations":[]}}' }}
+}}
+{protector}
+$subject = [pscustomobject]@{{
+    Identity = [pscustomobject]@{{
+        DataRoot = (Join-Path '{root}' 'data')
+        BackendServiceName = 'ticketbox-backend'
+    }}
+}}
+[void](Protect-TicketboxInstalledBackupInventory $subject)
+$path = Join-Path $subject.Identity.DataRoot 'app\backup-inventory.json'
+$expected = @(
+    "set:${{path}}:SYSTEM,BUILTIN\Administrators:NT SERVICE\ticketbox-backend:SYSTEM",
+    "read:${{path}}:SYSTEM,BUILTIN\Administrators:NT SERVICE\ticketbox-backend:SYSTEM:65536"
+)
+if (($script:events -join '|') -cne ($expected -join '|')) {{
+    throw "inventory ACL publication drifted: $($script:events -join '|')"
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="dataset-backup-inventory-acl.ps1",
+    )
+
+    backup = BACKUP.read_text(encoding="utf-8-sig")
+    helper = backup.rindex("Invoke-TicketboxInstalledCompleteBackupHelper")
+    protection = backup.rindex("Protect-TicketboxInstalledBackupInventory")
+    inspection = backup.rindex("Invoke-TicketboxInstalledDatasetBackupInspection")
+    assert helper < protection < inspection
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
@@ -282,7 +356,7 @@ $barrier = [pscustomobject]@{{
         filename="dataset-backup-real-cli-argv.ps1",
     )
     argv = json.loads(argv_path.read_text(encoding="utf-8"))
-    parser = runpy.run_path(str(PACKAGING / "launch.py"))["_parse_complete_dataset_backup_args"]
+    parser = runpy.run_path(str(APP / "dataset_maintenance_cli.py"))["_parse_complete_dataset_backup_args"]
     parsed = parser(argv)
     assert parsed.pg_dump_path == Path(r"C:\pg\pg_dump.exe")
     assert parsed.pg_restore_path == Path(r"C:\pg\pg_restore.exe")

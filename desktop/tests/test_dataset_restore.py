@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,15 @@ from backend_manager.runtime import RuntimeControlError
 
 GENERATION = "ticketbox-backup-11111111-1111-4111-8111-111111111111"
 ATTEMPT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+
+
+@pytest.fixture(autouse=True)
+def _trusted_system_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        dataset_restore,
+        "windows_system_directory",
+        lambda: Path(os.environ["SYSTEMROOT"]) / "System32",
+    )
 
 
 def _subject(tmp_path: Path) -> tuple[InstalledLayout, WindowsReleaseConfig, Path, Path]:
@@ -99,6 +109,38 @@ def test_installed_restore_invokes_exact_owner_with_explicit_generation(
     assert outcome == "current_published"
 
 
+def test_installed_restore_ignores_ambient_executable_and_command_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    layout, release, powershell, _script = _subject(tmp_path)
+    poison = tmp_path / "poison"
+    monkeypatch.setenv("SYSTEMROOT", str(poison))
+    monkeypatch.setenv("WINDIR", str(poison))
+    monkeypatch.setenv("ComSpec", str(poison / "cmd.exe"))
+    monkeypatch.setenv("PATH", str(poison))
+    monkeypatch.setattr(dataset_restore, "windows_system_directory", lambda: powershell.parents[2])
+    monkeypatch.setattr(dataset_restore, "require_local_fixed_regular_file", lambda path, *, label: path)
+    captured: dict[str, object] = {}
+
+    def run(command, **kwargs):
+        captured.update(command=command, **kwargs)
+        return SimpleNamespace(returncode=0, stdout=_result(), stderr="")
+
+    monkeypatch.setattr(dataset_restore.subprocess, "run", run)
+    run_installed_dataset_restore(layout, release, GENERATION, ATTEMPT_ID)
+
+    assert captured["command"][0] == str(powershell)
+    assert str(poison) not in "\n".join(captured["env"].values())
+
+
+def test_restore_ui_preserves_unknown_result_truth() -> None:
+    ui = (Path(__file__).resolve().parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
+
+    assert "完整恢复未完成；原数据仍被保留" not in ui
+    assert "完整恢复结果未知；请刷新服务和数据状态后，重试同一 generation。" in ui
+
+
 def test_installed_restore_reports_superseded_terminal_without_claiming_current_success(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -116,12 +158,15 @@ def test_installed_restore_reports_superseded_terminal_without_claiming_current_
         ),
     )
 
-    assert run_installed_dataset_restore(
-        layout,
-        release,
-        GENERATION,
-        ATTEMPT_ID,
-    ) == "superseded"
+    assert (
+        run_installed_dataset_restore(
+            layout,
+            release,
+            GENERATION,
+            ATTEMPT_ID,
+        )
+        == "superseded"
+    )
 
 
 def test_installed_restore_rejects_result_for_another_backup(

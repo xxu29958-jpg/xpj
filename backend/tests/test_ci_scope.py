@@ -39,9 +39,7 @@ def _assert_path_scopes(paths: tuple[str, ...], *enabled: str) -> None:
 
 
 def test_backend_and_packaging_changes_compose_scopes() -> None:
-    assert classify_ci_paths(
-        ["backend/app/services/report_service.py", "backend/packaging/ticketbox.iss"]
-    ) == {
+    assert classify_ci_paths(["backend/app/services/report_service.py", "backend/packaging/ticketbox.iss"]) == {
         "postgres": True,
         "backend_frozen": True,
         "desktop": False,
@@ -72,8 +70,17 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
     _assert_path_scopes(("backend/app/main.py",), "postgres", "backend_frozen")
     _assert_path_scopes(
         (
-            "backend/migrations/versions/20260720_0001_example.py",
+            "backend/app/services/runtime_settings_store.py",
+            "backend/app/services/secure_file.py",
+            "backend/app/services/secure_file_windows.py",
+            "backend/app/services/secure_file_windows_acl.py",
         ),
+        "postgres",
+        "backend_frozen",
+        "windows",
+    )
+    _assert_path_scopes(
+        ("backend/migrations/versions/20260720_0001_example.py",),
         "postgres",
         "backend_frozen",
     )
@@ -103,9 +110,7 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
         "desktop",
         "windows",
     )
-    assert classify_ci_paths(
-        ["backend/tests/test_new_feature.py", "backend/audit/test_count_baseline.txt"]
-    ) == {
+    assert classify_ci_paths(["backend/tests/test_new_feature.py", "backend/audit/test_count_baseline.txt"]) == {
         "postgres": True,
         "backend_frozen": False,
         "desktop": False,
@@ -185,13 +190,8 @@ def test_scope_output_derives_postgres_matrix_from_release_policy(tmp_path) -> N
 
     ci_scope.write_outputs(output, all_ci_scopes())
 
-    values = dict(
-        line.split("=", 1)
-        for line in output.read_text(encoding="utf-8").splitlines()
-    )
-    assert json.loads(values["postgres_matrix"]) == json.loads(
-        POSTGRES_RELEASE_POLICY.matrix_json()
-    )
+    values = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
+    assert json.loads(values["postgres_matrix"]) == json.loads(POSTGRES_RELEASE_POLICY.matrix_json())
 
 
 def test_changed_paths_is_rename_and_newline_safe(monkeypatch) -> None:

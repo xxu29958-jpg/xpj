@@ -77,6 +77,7 @@ $cleanup = @()
 $result = $null
 $restartBackend = $false
 $publicBaseUrl = $null
+$appData = $null
 try {
     $lock = Enter-TicketboxLifecycleLock
     Assert-TicketboxLifecycleOperationLease $lock
@@ -85,10 +86,7 @@ try {
     )
     $subject = Assert-TicketboxInstalledDatasetSubject $DataRoot
     Assert-TicketboxInstalledDatasetServiceAuthority $subject
-    $script:AppData = Join-Path ([string]$subject.Identity.DataRoot) "app"
-    $script:PgData = Join-Path ([string]$subject.Identity.DataRoot) "pgdata"
-    $script:PgPort = [int]$subject.Identity.PgPort
-    $script:SecretByteCount = [int]$subject.Release.secret_byte_count
+    $appData = Join-Path ([string]$subject.Identity.DataRoot) "app"
     $active = Read-TicketboxDatabaseGenerationActiveIntent $stateRoot
     $current = Read-TicketboxDatabaseGenerationCurrent
     $request = Read-TicketboxInstalledDatasetOperation `
@@ -271,15 +269,18 @@ try {
         $physical = Resolve-TicketboxInstalledDatasetRestorePhysicalState $paths
         $next = Resolve-TicketboxInstalledDatasetRestoreNextAction `
             -PhysicalState $physical `
-            -RestoredSource $source `
-            -CandidateVerification $candidateVerification `
-            -PublishedCurrent $published `
-            -RuntimeVerification $runtimeVerification
+            -RestoredSourcePresent ($null -ne $source) `
+            -CandidateVerificationPresent ($null -ne $candidateVerification) `
+            -PublishedCurrentPresent ($null -ne $published) `
+            -RuntimeVerificationPresent ($null -ne $runtimeVerification)
         if (
             $next -in @("build_candidate", "restore_candidate", "verify_candidate") -and
             $null -eq $credentials
         ) {
-            $bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState
+            $bootstrapState = Get-OrCreatePostgresBootstrapRecoveryState `
+                -DataRoot ([string]$subject.Identity.DataRoot) `
+                -AppData $appData `
+                -SecretByteCount ([int]$subject.Release.secret_byte_count)
             $credentials = New-TicketboxDatabaseGenerationCredentials `
                 -StateRoot $stateRoot `
                 -Intent $active `
@@ -369,7 +370,9 @@ try {
                     -LifecycleLock $lock `
                     -HostContract $contracts.Host `
                     -ProjectionContract $contracts.Projection `
-                    -BootstrapRecoveryPath (Get-PostgresBootstrapRecoveryPath))
+                    -BootstrapRecoveryPath (
+                        Get-PostgresBootstrapRecoveryPath -AppData $appData
+                    ))
             }
             "verify_runtime" {
                 Assert-TicketboxInstalledDatasetServiceAuthority $subject

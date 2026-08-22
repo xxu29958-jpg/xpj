@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import uuid
-from pathlib import Path
 from typing import Literal
 
 from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
 from backend_manager.restore_attempt import canonical_restore_attempt_id
 from backend_manager.runtime import RuntimeControlError
-from backend_manager.windows_user_security import require_local_fixed_regular_file
+from backend_manager.windows_user_security import (
+    require_local_fixed_regular_file,
+    trusted_windows_command_environment,
+    windows_system_directory,
+)
 
 _GENERATION = re.compile(
     r"ticketbox-backup-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
@@ -56,22 +58,16 @@ def run_installed_dataset_restore(
 ) -> RestoreDisposition:
     generation = canonical_backup_generation(backup_generation)
     attempt_id = canonical_restore_attempt_id(restore_attempt_id)
-    system_root = os.environ.get("SYSTEMROOT")
-    if not system_root:
-        raise RuntimeControlError("Windows 系统目录不可用，未执行恢复。")
+    system_directory = windows_system_directory()
     powershell = require_local_fixed_regular_file(
-        Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe",
+        system_directory / "WindowsPowerShell" / "v1.0" / "powershell.exe",
         label="Windows PowerShell 5.1",
     )
     script = require_local_fixed_regular_file(
         layout.install_dir / "installer" / "windows_dataset_restore.ps1",
         label="完整数据集恢复 owner",
     )
-    environment = {
-        name: os.environ[name]
-        for name in ("SystemRoot", "WINDIR", "ComSpec", "TEMP", "TMP", "PATH", "PATHEXT")
-        if name in os.environ
-    }
+    environment = trusted_windows_command_environment(system_directory)
     try:
         completed = subprocess.run(  # noqa: S603 - exact system executable and installed script
             [

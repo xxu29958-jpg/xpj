@@ -69,6 +69,10 @@ def test_runtime_environment_acl_contract_is_exact_and_writer_owned() -> None:
         PROJECTION.read_text(encoding="utf-8-sig"),
         "Write-TicketboxDatabaseGenerationRuntimeEnvironment",
     )
+    settings_writer = powershell_function(
+        PROJECTION.read_text(encoding="utf-8-sig"),
+        "Write-TicketboxDatabaseGenerationRuntimeSettingsProjection",
+    )
     reader = powershell_function(
         INSTALLED_READER.read_text(encoding="utf-8-sig"),
         "Read-TicketboxInstalledDatasetPublicBaseUrl",
@@ -76,16 +80,49 @@ def test_runtime_environment_acl_contract_is_exact_and_writer_owned() -> None:
 
     assert "[Parameter(Mandatory = $true)][string]$BackendServiceName" in writer
     assert "Write-TicketboxProtectedUtf8FileDurable" in writer
-    assert '"NT SERVICE\\$BackendServiceName"' in writer
+    assert '-FullControlAccounts @("SYSTEM", "BUILTIN\\Administrators")' in writer
+    assert '-ReadExecuteAccounts @("NT SERVICE\\$BackendServiceName")' in writer
     assert '-OwnerAccount "SYSTEM"' in writer
     assert "-ReplaceExisting" in writer
     assert "Write-TicketboxFileAtomically" not in writer
     assert "-BackendServiceName ([string]$ProjectionContract.backend_service_name)" in (projection_writer)
-    assert "Assert-TicketboxExactFileAcl" in reader
+    assert "Write-TicketboxDatabaseGenerationRuntimeSettingsProjection" in projection_writer
+    assert "-FullControlAccounts @(" in settings_writer
+    assert '"SYSTEM", "BUILTIN\\Administrators", $backendService' in settings_writer
+    assert "-OwnerAccount $backendService" in settings_writer
+    assert "-ReplaceExisting" in settings_writer
+    assert "Read-TicketboxProtectedUtf8Artifact" in reader
     assert '"NT SERVICE\\$([string]$identity.BackendServiceName)"' in reader
+    assert '"SYSTEM", "BUILTIN\\Administrators", $backendService' in reader
+    assert "-OwnerAccount $backendService" in reader
     assert "Assert-TicketboxLegacyProtectedFileAcl" not in reader
     assert '"app\\runtime-settings\\runtime-settings.json"' in reader
-    assert reader.index('"app\\runtime-settings\\runtime-settings.json"') < reader.index('"app\\.env"')
+    assert '"app\\.env"' not in reader
+    assert "installed runtime settings projection is missing" in reader
+
+
+def test_restore_bootstrap_binding_is_explicit_and_does_not_seed_script_globals() -> None:
+    restore = RESTORE.read_text(encoding="utf-8-sig")
+    database = BUNDLED_DATABASE.read_text(encoding="utf-8-sig")
+    bootstrap_owner = powershell_function(
+        database,
+        "Get-OrCreatePostgresBootstrapRecoveryState",
+    )
+    path_resolver = powershell_function(
+        database,
+        "Get-PostgresBootstrapRecoveryPath",
+    )
+
+    for name in ("AppData", "PgData", "PgPort", "SecretByteCount"):
+        assert f"$script:{name}" not in restore
+    assert "-DataRoot ([string]$subject.Identity.DataRoot)" in restore
+    assert "-AppData $appData" in restore
+    assert "-SecretByteCount ([int]$subject.Release.secret_byte_count)" in restore
+    assert "-AppData $appData" in restore.split("-BootstrapRecoveryPath", maxsplit=1)[1]
+    assert "[Parameter(Mandatory = $true)][string]$DataRoot" in bootstrap_owner
+    assert "[Parameter(Mandatory = $true)][string]$AppData" in bootstrap_owner
+    assert "[Parameter(Mandatory = $true)][int]$SecretByteCount" in bootstrap_owner
+    assert "[Parameter(Mandatory = $true)][string]$AppData" in path_resolver
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
@@ -172,6 +209,8 @@ function ConvertTo-TicketboxTimeoutSeconds {{ param($Milliseconds); return 60 }}
 $dataRoot = Join-Path '{root}' 'data'
 $appRoot = Join-Path $dataRoot 'app'
 New-Item -ItemType Directory -Force -Path $appRoot | Out-Null
+$runtimeSettingsRoot = Join-Path $appRoot 'runtime-settings'
+New-Item -ItemType Directory -Force -Path $runtimeSettingsRoot | Out-Null
 $envPath = Join-Path $appRoot '.env'
 Set-Content -LiteralPath $envPath -Value 'stale=broad' -Encoding UTF8
 Invoke-TicketboxIcaclsChecked $envPath @('/inheritance:e')
@@ -195,8 +234,9 @@ Write-TicketboxDatabaseGenerationRuntimeEnvironment `
     -HttpBootstrapSecret 'bootstrap'
 $resolved = Read-TicketboxInstalledDatasetPublicBaseUrl -Subject $subject
 if ($resolved -cne 'https://public.example') {{ throw 'exact writer-reader round trip failed' }}
+$settingsPath = Join-Path $runtimeSettingsRoot 'runtime-settings.json'
 $extraSid = ConvertTo-TicketboxAccountSid 'NT SERVICE\wuauserv'
-Invoke-TicketboxIcaclsChecked $envPath @('/grant', "*${{extraSid}}:F")
+Invoke-TicketboxIcaclsChecked $settingsPath @('/grant', "*${{extraSid}}:F")
 $rejected = $false
 try {{ Read-TicketboxInstalledDatasetPublicBaseUrl -Subject $subject | Out-Null }}
 catch {{ if ($_.Exception.Message -match '未授权账户') {{ $rejected = $true }} else {{ throw }} }}

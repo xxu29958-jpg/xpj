@@ -32,11 +32,11 @@ def _restore_authority_contract() -> str:
 
 
 def test_restore_does_not_ship_unowned_clone_identity_producer() -> None:
-    launch = (PACKAGING / "launch.py").read_text(encoding="utf-8")
+    maintenance_cli = (PACKAGING.parent / "app" / "dataset_maintenance_cli.py").read_text(encoding="utf-8")
     restore_service = (PACKAGING.parent / "app" / "services" / "dataset_restore_service.py").read_text(encoding="utf-8")
     restore_action = (PACKAGING.parent / "app" / "database" / "_dataset_restore_action.py").read_text(encoding="utf-8")
 
-    assert "--clone-dataset-id" not in launch
+    assert "--clone-dataset-id" not in maintenance_cli
     assert "clone_dataset_id" not in restore_service
     assert "clone_dataset_id" not in restore_action
 
@@ -131,38 +131,35 @@ def test_restore_next_action_reducer_is_closed_and_io_free(tmp_path: Path) -> No
         _restore_authority_contract(),
         "Resolve-TicketboxInstalledDatasetRestoreNextAction",
     )
-    assert reducer.count("[AllowNull()][object]") == 4
-    assert '[ValidateSet("absent", "present")]' not in reducer
-    assert "-RuntimeVerification $runtimeVerification" in restore
+    assert reducer.count("[Parameter(Mandatory = $true)][bool]") == 4
+    assert "[AllowNull()][object]" not in reducer
+    assert "-RestoredSourcePresent ($null -ne $source)" in restore
+    assert "-RuntimeVerificationPresent ($null -ne $runtimeVerification)" in restore
     script = f"""
 $ErrorActionPreference = 'Stop'
 {reducer}
 $cases = @(
-    @('complete', 'absent', 'absent', 'absent', 'absent', 'build_candidate'),
-    @('candidate_building', 'absent', 'absent', 'absent', 'absent', 'restore_candidate'),
-    @('candidate_ready', 'present', 'absent', 'absent', 'absent', 'verify_candidate'),
-    @('candidate_ready', 'present', 'present', 'absent', 'absent', 'promote_candidate'),
-    @('old_pg_staged', 'present', 'present', 'absent', 'absent', 'promote_candidate'),
-    @('old_staged', 'present', 'present', 'absent', 'absent', 'promote_candidate'),
-    @('candidate_pg_published', 'present', 'present', 'absent', 'absent', 'promote_candidate'),
-    @('candidate_published', 'present', 'present', 'absent', 'absent', 'publish_current'),
-    @('candidate_published', 'present', 'present', 'present', 'absent', 'verify_runtime'),
-    @('candidate_published', 'present', 'present', 'present', 'present', 'retire_rollback'),
-    @('complete', 'present', 'present', 'present', 'present', 'done')
+    @('complete', $false, $false, $false, $false, 'build_candidate'),
+    @('candidate_building', $false, $false, $false, $false, 'restore_candidate'),
+    @('candidate_ready', $true, $false, $false, $false, 'verify_candidate'),
+    @('candidate_ready', $true, $true, $false, $false, 'promote_candidate'),
+    @('old_pg_staged', $true, $true, $false, $false, 'promote_candidate'),
+    @('old_staged', $true, $true, $false, $false, 'promote_candidate'),
+    @('candidate_pg_published', $true, $true, $false, $false, 'promote_candidate'),
+    @('candidate_published', $true, $true, $false, $false, 'publish_current'),
+    @('candidate_published', $true, $true, $true, $false, 'verify_runtime'),
+    @('candidate_published', $true, $true, $true, $true, 'retire_rollback'),
+    @('complete', $true, $true, $true, $true, 'done')
 )
 foreach ($case in $cases) {{
-    $source = if ($case[1] -ceq 'present') {{ [pscustomobject]@{{}} }} else {{ $null }}
-    $candidate = if ($case[2] -ceq 'present') {{ [pscustomobject]@{{}} }} else {{ $null }}
-    $current = if ($case[3] -ceq 'present') {{ [pscustomobject]@{{}} }} else {{ $null }}
-    $runtime = if ($case[4] -ceq 'present') {{ [pscustomobject]@{{}} }} else {{ $null }}
     $actual = Resolve-TicketboxInstalledDatasetRestoreNextAction `
-        $case[0] $source $candidate $current $runtime
+        $case[0] $case[1] $case[2] $case[3] $case[4]
     if ($actual -cne $case[5]) {{ throw "unexpected next action: $actual" }}
 }}
 $rejected = $false
 try {{
     Resolve-TicketboxInstalledDatasetRestoreNextAction `
-        'candidate_published' $null $null $null $null | Out-Null
+        'candidate_published' $false $false $false $false | Out-Null
 }} catch {{ $rejected = $true }}
 if (-not $rejected) {{ throw 'authority-free publication state was accepted' }}
 """
@@ -297,9 +294,14 @@ def test_installed_projection_preserves_valid_public_base_url(
         PROJECTION.read_text(encoding="utf-8-sig"),
         "Write-TicketboxDatabaseGenerationRuntimeEnvironment",
     )
+    settings_writer = powershell_function(
+        PROJECTION.read_text(encoding="utf-8-sig"),
+        "Write-TicketboxDatabaseGenerationRuntimeSettingsProjection",
+    )
     script = f"""
 $ErrorActionPreference = 'Stop'
 $script:writtenLines = @()
+$script:settingsText = $null
 function Read-TicketboxDatabaseGenerationProgramContract {{
     param($Path, $ExpectedSha256)
     return [pscustomobject]@{{ RelativePath = 'DATABASE_GENERATION_PROGRAM.json'; Size = 1; Sha256 = ('a' * 64) }}
@@ -311,8 +313,15 @@ function New-TicketboxDatabaseGenerationProjectionContract {{
 }}
 function ConvertTo-TicketboxTimeoutSeconds {{ param($Milliseconds); return 60 }}
 function Write-EnvNoBom {{ param($Path, $Lines, $BackendServiceName); $script:writtenLines = @($Lines) }}
+function Assert-NoTicketboxAncestorReparsePoints {{ param($Path) }}
+function Get-TicketboxPathEntryKindNoFollow {{ param($Path); return 'Missing' }}
+function Write-TicketboxProtectedUtf8FileDurable {{
+    param($Path, $Text, $FullControlAccounts, $OwnerAccount, [switch]$ReplaceExisting)
+    $script:settingsText = $Text
+}}
 {public_base_url}
 {contracts}
+{settings_writer}
 {environment_writer}
 $subject = [pscustomobject]@{{
     Identity = [pscustomobject]@{{
@@ -337,8 +346,12 @@ if ([string]$resolved.Projection.public_base_url -cne 'https://public.example') 
 Write-TicketboxDatabaseGenerationRuntimeEnvironment `
     -DatabaseUrl 'postgresql://runtime' -ProjectionContract $resolved.Projection `
     -HttpBootstrapSecret 'bootstrap'
-if ('PUBLIC_BASE_URL=https://public.example' -cnotin $script:writtenLines) {{
-    throw 'runtime projection did not preserve PUBLIC_BASE_URL'
+if (@($script:writtenLines | Where-Object {{ $_ -like 'PUBLIC_BASE_URL=*' }}).Count -ne 0) {{
+    throw '.env retained a second PUBLIC_BASE_URL authority'
+}}
+$settings = $script:settingsText | ConvertFrom-Json
+if ([string]$settings.public_base_url -cne 'https://public.example') {{
+    throw 'runtime settings projection did not preserve PUBLIC_BASE_URL'
 }}
 $rejected = $false
 try {{

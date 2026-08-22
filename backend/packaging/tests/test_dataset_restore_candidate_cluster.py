@@ -48,11 +48,11 @@ def test_restore_candidate_uses_official_frozen_restore_and_exact_role_owner() -
     cluster = CLUSTER.read_text(encoding="utf-8-sig")
     initdb = INITDB.read_text(encoding="utf-8-sig")
     candidate_runtime = CANDIDATE_RUNTIME.read_text(encoding="utf-8-sig")
-    launch = (PACKAGING / "launch.py").read_text(encoding="utf-8")
+    maintenance_cli = (PACKAGING.parent / "app" / "dataset_maintenance_cli.py").read_text(encoding="utf-8")
 
     assert '"--isolated-dataset-restore"' in contract
-    assert "--verify-restored-dataset-candidate" not in restore + launch
-    assert "run_verified_isolated_dataset_restore_action" in launch
+    assert "--verify-restored-dataset-candidate" not in restore + maintenance_cli
+    assert "run_verified_isolated_dataset_restore_action" in maintenance_cli
     helper = powershell_function(contract, "Invoke-TicketboxInstalledDatasetRestoreHelper")
     for argument in (
         "--generation-program-path",
@@ -213,6 +213,7 @@ function New-Observation {{
 $cases = @(
     @('absent', 'missing', 'missing', 'stopped', 0, 'prepare_initdb'),
     @('absent', 'partial', 'missing', 'stopped', 0, 'reset_stale_attempt'),
+    @('owned_initdb', 'missing', 'missing', 'stopped', 0, 'reset_stale_attempt'),
     @('owned_initdb', 'missing', 'file', 'stopped', 0, 'run_prepared_initdb'),
     @('owned_initdb', 'complete', 'file', 'stopped', 0, 'retire_initdb_capability'),
     @('owned_initdb', 'missing', 'file', 'running', 0, 'wait_initdb_terminal'),

@@ -759,7 +759,7 @@
       } catch (error) {
         setMessage(
           "controlError",
-          error.message === "busy" ? "另一项操作正在进行，请等待完成。" : "完整恢复未完成；原数据仍被保留，请重试同一 generation。"
+          error.message === "busy" ? "另一项操作正在进行，请等待完成。" : "完整恢复结果未知；请刷新服务和数据状态后，重试同一 generation。"
         );
       } finally {
         button.innerHTML = original;

@@ -1351,7 +1351,7 @@ function Invoke-TicketboxServiceOwnedInitdb {
             '--auth-host=scram-sha-256',
             '--encoding=UTF8',
             '--no-locale',
-            "--pwfile=$(Get-PostgresBootstrapRecoveryPath)"
+            "--pwfile=$(Get-PostgresBootstrapRecoveryPath -AppData $AppData)"
         ) `
         -TimeoutMilliseconds $DatabaseToolTimeoutMs `
         -Label 'test initdb mechanism'
@@ -1369,7 +1369,7 @@ catch {
     }
 }
 if (-not $partialFailed) { throw 'partial initdb failure was accepted' }
-$recoveryPath = Get-PostgresBootstrapRecoveryPath
+$recoveryPath = Get-PostgresBootstrapRecoveryPath -AppData $AppData
 if (-not (Test-Path -LiteralPath $recoveryPath -PathType Leaf) -or
     -not (Test-Path -LiteralPath (Join-Path $PgData 'partial-init.tmp') -PathType Leaf) -or
     (Test-Path -LiteralPath (Join-Path $PgData 'PG_VERSION'))) {
@@ -1858,8 +1858,9 @@ catch {
 }
 if (-not $paddedSecretRejected) { throw 'padded HTTP bootstrap secret was accepted' }
 
-$state = Get-OrCreatePostgresBootstrapRecoveryState
-$recoveryPath = Get-PostgresBootstrapRecoveryPath
+$state = Get-OrCreatePostgresBootstrapRecoveryState `
+    -DataRoot $DataRoot -AppData $AppData -SecretByteCount $SecretByteCount
+$recoveryPath = Get-PostgresBootstrapRecoveryPath -AppData $AppData
 [System.IO.File]::WriteAllText(
     $recoveryPath,
     'malformed-secret-sentinel',

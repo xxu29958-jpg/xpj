@@ -84,6 +84,12 @@ _CROSS_RUNTIME_RELEASE_CONFIG = "backend/packaging/windows-release-config.json"
 _BACKEND_RELEASE_FILES = {
     "backend/requirements.txt",
 }
+_WINDOWS_SECURITY_BACKEND_FILES = {
+    "backend/app/services/runtime_settings_store.py",
+    "backend/app/services/secure_file.py",
+    "backend/app/services/secure_file_windows.py",
+    "backend/app/services/secure_file_windows_acl.py",
+}
 _FROZEN_DESKTOP_PREFIXES = (
     "desktop/backend_manager/",
     "desktop/packaging/",
@@ -101,6 +107,10 @@ _EXACT_SCOPE_RULES = {
     **dict.fromkeys(_POSTGRES_WINDOWS_BACKEND_FILES, ("postgres", "windows")),
     **dict.fromkeys(
         _BACKEND_RELEASE_FILES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
+    **dict.fromkeys(
+        _WINDOWS_SECURITY_BACKEND_FILES,
         ("postgres", "backend_frozen", "windows"),
     ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
@@ -144,11 +154,7 @@ def classify_ci_paths(paths: Iterable[str]) -> dict[str, bool]:
     for path in sorted(normalized):
         if path != path.strip():
             return all_ci_scopes()
-        if (
-            path in _FULL_PATHS
-            or path.startswith(_FULL_PREFIXES)
-            or path.startswith(_CI_POLICY_PREFIXES)
-        ):
+        if path in _FULL_PATHS or path.startswith(_FULL_PREFIXES) or path.startswith(_CI_POLICY_PREFIXES):
             return all_ci_scopes()
         scopes = _scopes_for_path(path)
         if scopes is None:
@@ -171,15 +177,10 @@ def workflow_action_requires_prior_success(value: object) -> bool:
         return True
     if status_functions != {"success"} or "||" in expression:
         return False
-    return any(
-        re.fullmatch(r"\(*\s*success\(\)\s*\)*", term, re.IGNORECASE)
-        for term in expression.split("&&")
-    )
+    return any(re.fullmatch(r"\(*\s*success\(\)\s*\)*", term, re.IGNORECASE) for term in expression.split("&&"))
 
 
-def _event_configuration(
-    workflow: dict[object, object], event_name: str
-) -> dict[object, object] | None:
+def _event_configuration(workflow: dict[object, object], event_name: str) -> dict[object, object] | None:
     trigger = workflow.get("on")
     if isinstance(trigger, str):
         return {} if trigger == event_name else None
@@ -218,10 +219,7 @@ def _event_covers_main_branch(configuration: dict[object, object]) -> bool:
     ignored = _string_patterns(configuration.get("branches-ignore"))
     if branches is None or ignored is None:
         return False
-    tag_filtered = (
-        configuration.get("tags") is not None
-        or configuration.get("tags-ignore") is not None
-    )
+    tag_filtered = configuration.get("tags") is not None or configuration.get("tags-ignore") is not None
     if tag_filtered and not branches:
         return False
     if branches and not _ordered_pattern_match("main", branches):
@@ -262,10 +260,6 @@ def protected_workflow_scope(
     event_name: str,
 ) -> str | None:
     configuration = _event_configuration(workflow, event_name)
-    if (
-        configuration is None
-        or configuration.get("types") is not None
-        or not _event_covers_main_branch(configuration)
-    ):
+    if configuration is None or configuration.get("types") is not None or not _event_covers_main_branch(configuration):
         return None
     return _protected_path_scope(path, configuration)

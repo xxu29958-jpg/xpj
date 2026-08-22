@@ -68,6 +68,16 @@ def test_recovery_drill_can_execute_the_exact_frozen_restore_helper() -> None:
     assert "subprocess.run" in frozen
 
 
+def test_gitea_recovery_drill_qualifies_the_exact_frozen_restore_helper() -> None:
+    workflow = (Path(__file__).resolve().parents[2] / ".gitea" / "workflows" / "windows-ci.yml").read_text(
+        encoding="utf-8"
+    )
+    drill = workflow.split("scripts\\postgres_backup_drill.py", maxsplit=1)[1].split("if ($LASTEXITCODE", maxsplit=1)[0]
+
+    assert "--frozen-restore-helper" in drill
+    assert "dist\\ticketbox-backend\\ticketbox-database-maintenance.exe" in drill
+
+
 def test_recovery_drill_hands_sqlalchemy_the_real_leased_driver_connection(monkeypatch) -> None:
     observed: dict[str, object] = {}
 

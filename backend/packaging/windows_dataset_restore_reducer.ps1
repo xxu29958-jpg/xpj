@@ -10,15 +10,11 @@ function Resolve-TicketboxInstalledDatasetRestoreNextAction {
             "old_pg_staged", "old_staged", "candidate_pg_published",
             "candidate_published", "rollback_retiring", "cleanup_pending"
         )][string]$PhysicalState,
-        [Parameter(Mandatory = $true)][AllowNull()][object]$RestoredSource,
-        [Parameter(Mandatory = $true)][AllowNull()][object]$CandidateVerification,
-        [Parameter(Mandatory = $true)][AllowNull()][object]$PublishedCurrent,
-        [Parameter(Mandatory = $true)][AllowNull()][object]$RuntimeVerification
+        [Parameter(Mandatory = $true)][bool]$RestoredSourcePresent,
+        [Parameter(Mandatory = $true)][bool]$CandidateVerificationPresent,
+        [Parameter(Mandatory = $true)][bool]$PublishedCurrentPresent,
+        [Parameter(Mandatory = $true)][bool]$RuntimeVerificationPresent
     )
-    $restoredSourcePresent = $null -ne $RestoredSource
-    $candidateVerificationPresent = $null -ne $CandidateVerification
-    $publishedCurrentPresent = $null -ne $PublishedCurrent
-    $runtimeVerificationPresent = $null -ne $RuntimeVerification
     if (
         $candidateVerificationPresent -and
         -not $restoredSourcePresent

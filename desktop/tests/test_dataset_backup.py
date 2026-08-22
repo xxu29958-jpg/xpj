@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +13,15 @@ from backend_manager import dataset_backup
 from backend_manager.dataset_backup import run_installed_dataset_backup
 from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
 from backend_manager.runtime import RuntimeControlError
+
+
+@pytest.fixture(autouse=True)
+def _trusted_system_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        dataset_backup,
+        "windows_system_directory",
+        lambda: Path(os.environ["SYSTEMROOT"]) / "System32",
+    )
 
 
 def _subject(tmp_path: Path) -> tuple[InstalledLayout, WindowsReleaseConfig, Path, Path]:
@@ -93,6 +103,31 @@ def test_installed_backup_invokes_exact_owner_with_closed_environment(
     assert captured["cwd"] == script.parent
     assert captured["timeout"] == release.helper_watchdog_seconds("backup")
     assert "DATABASE_URL" not in captured["env"]
+
+
+def test_installed_backup_ignores_ambient_executable_and_command_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    layout, release, powershell, _script = _subject(tmp_path)
+    poison = tmp_path / "poison"
+    monkeypatch.setenv("SYSTEMROOT", str(poison))
+    monkeypatch.setenv("WINDIR", str(poison))
+    monkeypatch.setenv("ComSpec", str(poison / "cmd.exe"))
+    monkeypatch.setenv("PATH", str(poison))
+    monkeypatch.setattr(dataset_backup, "windows_system_directory", lambda: powershell.parents[2])
+    monkeypatch.setattr(dataset_backup, "require_local_fixed_regular_file", lambda path, *, label: path)
+    captured: dict[str, object] = {}
+
+    def run(command, **kwargs):
+        captured.update(command=command, **kwargs)
+        return SimpleNamespace(returncode=0, stdout=_result(), stderr="")
+
+    monkeypatch.setattr(dataset_backup.subprocess, "run", run)
+    run_installed_dataset_backup(layout, release)
+
+    assert captured["command"][0] == str(powershell)
+    assert str(poison) not in "\n".join(captured["env"].values())
 
 
 @pytest.mark.parametrize(

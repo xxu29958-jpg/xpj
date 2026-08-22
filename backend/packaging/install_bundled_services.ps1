@@ -1195,7 +1195,9 @@ function Invoke-TicketboxServiceOwnedInitdb {
         Assert-TicketboxFreshPgClusterComplete
         Remove-TicketboxInitdbPasswordFileIfPresent $receipt
         [void](Repair-PostgresBootstrapRecoveryFileAcl)
-        [void](Read-PostgresBootstrapRecoveryState -Path (Get-PostgresBootstrapRecoveryPath))
+        [void](Read-PostgresBootstrapRecoveryState -Path (
+            Get-PostgresBootstrapRecoveryPath -AppData $AppData
+        ))
         $receipt = Set-TicketboxCurrentInitdbServiceReceiptPhase `
             -Receipt $receipt `
             -Phase "initdb_succeeded"
@@ -1214,7 +1216,9 @@ function Invoke-TicketboxServiceOwnedInitdb {
             }
             Remove-TicketboxInitdbPasswordFileIfPresent $receipt
             [void](Repair-PostgresBootstrapRecoveryFileAcl)
-            [void](Read-PostgresBootstrapRecoveryState -Path (Get-PostgresBootstrapRecoveryPath))
+            [void](Read-PostgresBootstrapRecoveryState -Path (
+                Get-PostgresBootstrapRecoveryPath -AppData $AppData
+            ))
             if (
                 -not $createdByThisInvocation -and
                 (Get-TicketboxPathEntryKindNoFollow $InitdbServiceReceiptPath) -ceq "File"
@@ -1277,7 +1281,9 @@ function Register-PgService {
                 throw "initdb 临时密码文件尚未退役，拒绝提交正式服务。"
             }
             [void](Repair-PostgresBootstrapRecoveryFileAcl)
-            [void](Read-PostgresBootstrapRecoveryState -Path (Get-PostgresBootstrapRecoveryPath))
+            [void](Read-PostgresBootstrapRecoveryState -Path (
+                Get-PostgresBootstrapRecoveryPath -AppData $AppData
+            ))
             Invoke-ScChecked @(
                 "config", $PgServiceName,
                 "start=", "disabled",
@@ -1658,7 +1664,9 @@ function Invoke-TicketboxInstallFailureCompensation {
                 Disable-TicketboxInitdbServiceIfPresent $initdbReceipt
                 Remove-TicketboxInitdbPasswordFileIfPresent $initdbReceipt
                 [void](Repair-PostgresBootstrapRecoveryFileAcl)
-                [void](Read-PostgresBootstrapRecoveryState -Path (Get-PostgresBootstrapRecoveryPath))
+                [void](Read-PostgresBootstrapRecoveryState -Path (
+                    Get-PostgresBootstrapRecoveryPath -AppData $AppData
+                ))
             }
             else {
                 throw "拒绝补偿 executable 不匹配的同名 PostgreSQL 服务。"
@@ -2276,7 +2284,7 @@ try {
         -LifecycleLock $operationLock `
         -HostContract $databaseGenerationHostContract `
         -ProjectionContract $databaseGenerationProjectionContract `
-        -BootstrapRecoveryPath (Get-PostgresBootstrapRecoveryPath)
+        -BootstrapRecoveryPath (Get-PostgresBootstrapRecoveryPath -AppData $AppData)
     $databaseUrl = [string]$databaseGeneration.DatabaseUrl
     Write-Ok "release schema exact head: $($databaseGeneration.CommittedRevision)"
     Set-TicketboxLifecycleReceiptDatabaseGenerationEvidence `

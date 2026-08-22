@@ -183,6 +183,25 @@ def test_settings_snapshot_prefers_closed_runtime_projection(
         config.reset_settings_cache()
 
 
+def test_installed_settings_snapshot_rejects_missing_runtime_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import config
+
+    target = (tmp_path / "missing-runtime-settings.json").resolve()
+    monkeypatch.setattr(config, "RUNTIME_SETTINGS_PATH", target)
+    monkeypatch.setattr(config, "_RUNTIME_SETTINGS_SERVICE_OWNED", True)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://stale-environment.example")
+    monkeypatch.setenv("UPLOAD_DIR", str((tmp_path / "uploads").resolve()))
+    config.reset_settings_cache()
+    try:
+        with pytest.raises(RuntimeError, match="installed runtime settings projection is missing"):
+            config.get_settings()
+    finally:
+        config.reset_settings_cache()
+
+
 def test_service_projection_authority_requires_owner_capable_service_sid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
