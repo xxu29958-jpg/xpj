@@ -2682,12 +2682,21 @@ def test_manager_maintenance_gate_spans_setup_and_uninstall_payload_mutation() -
             "function LifecycleLockActive"
         )
     ]
-    lifecycle_timeout = lifecycle_release_body.index("if WaitResult <> WaitObject0 then")
+    lifecycle_release_wait = lifecycle_release_body.index(
+        "WaitResult := WaitForSingleObject(LifecycleLockHolderProcessHandle, 10000);"
+    )
+    lifecycle_timeout = lifecycle_release_body.index(
+        "else if WaitResult = WaitTimeout then", lifecycle_release_wait
+    )
+    lifecycle_unknown = lifecycle_release_body.index(
+        "holder release wait returned unknown result", lifecycle_timeout
+    )
     lifecycle_identity_clear = lifecycle_release_body.index(
         "LifecycleLockHolderProcessHandle := InvalidHandleValue"
     )
     assert "Result := False;" in lifecycle_release_body[:lifecycle_timeout]
     assert lifecycle_release_body.index("exit;", lifecycle_timeout) < lifecycle_identity_clear
+    assert lifecycle_release_body.index("exit;", lifecycle_unknown) < lifecycle_identity_clear
     assert "keeping holder identity fail closed" in lifecycle_release_body
     data_root_release_body = windows[windows.index("function ReleaseDataRootMutationGuard(): Boolean;") :]
     assert "Result := False;" in data_root_release_body
@@ -2723,6 +2732,8 @@ def test_manager_maintenance_gate_spans_setup_and_uninstall_payload_mutation() -
 
 def test_lifecycle_holder_release_keeps_unknown_wait_state_fail_closed() -> None:
     windows = _read("ticketbox-installer-windows.isph")
+    assert "WaitObject0 = 0;" in windows
+    assert "WaitTimeout = 258;" in windows
     release = windows[
         windows.index("function ReleaseLifecycleLock(): Boolean;") : windows.index(
             "function LifecycleLockActive"
@@ -2735,11 +2746,21 @@ def test_lifecycle_holder_release_keeps_unknown_wait_state_fail_closed() -> None
     stopped = release.index("if WaitResult = WaitObject0 then", initial_wait)
     running = release.index("else if WaitResult = WaitTimeout then", stopped)
     unknown = release.index("holder wait state is unknown", running)
+    release_wait = release.index(
+        "WaitResult := WaitForSingleObject(LifecycleLockHolderProcessHandle, 10000);",
+        running,
+    )
+    release_stopped = release.index("if WaitResult = WaitObject0 then", release_wait)
+    release_timeout = release.index("else if WaitResult = WaitTimeout then", release_stopped)
+    release_unknown = release.index("holder release wait returned unknown result", release_timeout)
     identity_clear = release.index("LifecycleLockHolderProcessHandle := InvalidHandleValue")
 
     assert "IsProcessHandleRunning(" not in release
     assert initial_wait < stopped < running < unknown < identity_clear
     assert release.index("exit;", unknown) < identity_clear
+    assert release_wait < release_stopped < release_timeout < release_unknown < identity_clear
+    assert release.index("exit;", release_timeout) < identity_clear
+    assert "IntToStr(WaitResult)" in release[release_unknown:identity_clear]
 
 
 def test_finished_handoff_advances_monotonically_before_holder_release_retry() -> None:

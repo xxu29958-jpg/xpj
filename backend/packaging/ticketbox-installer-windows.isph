@@ -1560,9 +1560,20 @@ begin
       end;
     end;
     WaitResult := WaitForSingleObject(LifecycleLockHolderProcessHandle, 10000);
-    if WaitResult <> WaitObject0 then
+    if WaitResult = WaitObject0 then
+    begin
+      Log('Lifecycle lock holder exited after release.');
+    end
+    else if WaitResult = WaitTimeout then
     begin
       Log('Lifecycle lock holder did not exit before timeout; keeping holder identity fail closed.');
+      exit;
+    end
+    else
+    begin
+      Log(
+        'Lifecycle lock holder release wait returned unknown result ' +
+        IntToStr(WaitResult) + '; keeping holder identity fail closed.');
       exit;
     end;
   end
