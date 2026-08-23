@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from _inno_toolchain import pinned_inno_compiler
 from _pg_recovery_contract import assert_pg_recovery_toolset_behavior
 from _powershell_contract import powershell_contract_engines
 
@@ -63,17 +64,6 @@ def _windows_process_creation_filetime_parts(process_id: int) -> tuple[int, int]
 
 def _read(name: str) -> str:
     return (PACKAGING / name).read_text(encoding="utf-8-sig")
-
-
-def _inno_compiler() -> Path:
-    candidates = (
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Inno Setup 6/ISCC.exe",
-        Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Inno Setup 6/ISCC.exe",
-        Path(os.environ.get("PROGRAMFILES", "")) / "Inno Setup 6/ISCC.exe",
-    )
-    compiler = next((candidate for candidate in candidates if candidate.is_file()), None)
-    assert compiler is not None, "Inno Setup 6 compiler is required"
-    return compiler
 
 
 def _read_windows_published_text(path: Path, *, encoding: str) -> str:
@@ -2873,7 +2863,7 @@ def test_installer_source_lease_stays_owned_until_setup_deinitializes() -> None:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Inno compiler contract")
 def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Path) -> None:
-    iscc = _inno_compiler()
+    iscc = pinned_inno_compiler()
 
     digest = "a" * 64
     defines = {
@@ -3286,7 +3276,7 @@ def test_inno_quote_roundtrips_command_line_to_argvw_and_rejects_unsafe_text(
 
     windows = _read("ticketbox-installer-windows.isph")
     quote_function = windows[windows.index("function Quote") : windows.index("function WindowsPowerShellExecutable")]
-    iscc = _inno_compiler()
+    iscc = pinned_inno_compiler()
 
     output_path = tmp_path / "quoted-arguments.txt"
     source = tmp_path / "quote-contract.iss"

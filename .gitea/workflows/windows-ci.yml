@@ -94,6 +94,12 @@ jobs:
         working-directory: backend
         run: .\.ci-venv\Scripts\ruff.exe check app scripts tests packaging/tests
 
+      - name: Prepare pinned Inno Setup compiler
+        working-directory: backend
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_build_toolchain.ps1 -Component Inno -Force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Windows installer safety behavior
         working-directory: backend
         env:
@@ -143,8 +149,6 @@ jobs:
         working-directory: backend
         run: |
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_build_toolchain.ps1 -Component Inno -Force
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile authoritative Inno installer

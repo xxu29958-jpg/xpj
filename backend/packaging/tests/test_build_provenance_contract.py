@@ -1487,6 +1487,11 @@ def test_installer_build_probes_and_records_local_vendor_provenance(
     assert "steps.compile_installer.outputs.installer_sha256" in gitea_ci
     assert "actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a" in gitea_ci
     assert "-VerifyPublishDirectory" in gitea_ci
+    inno_prepare = "prepare_windows_build_toolchain.ps1 -Component Inno -Force"
+    installer_tests = "- name: Windows installer safety behavior"
+    for workflow in (github_ci, gitea_ci):
+        assert workflow.count(inno_prepare) == 1
+        assert workflow.index(inno_prepare) < workflow.index(installer_tests)
     assert not re.search(r"uses:\s+[^\s]+@(?:v\d+|main|master)(?:\s|$)", github_ci)
 
     config = json.loads((PACKAGING / "windows-release-config.json").read_text(encoding="utf-8"))

@@ -339,6 +339,12 @@ jobs:
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Prepare pinned Inno Setup compiler
+        shell: powershell
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_build_toolchain.ps1 -Component Inno -Force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Windows installer safety behavior
         env:
           PYTEST_ADDOPTS: ""
@@ -460,12 +466,6 @@ jobs:
       - name: Frozen Desktop Manager locked release build
         shell: powershell
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ..\desktop\scripts\build_manager_exe.ps1 -Clean
-
-      - name: Prepare pinned Inno Setup compiler
-        shell: powershell
-        run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_build_toolchain.ps1 -Component Inno -Force
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile authoritative Inno installer
         id: compile_installer

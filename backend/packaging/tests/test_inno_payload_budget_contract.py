@@ -1,24 +1,18 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from _inno_toolchain import pinned_inno_compiler
 
 PACKAGING = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Inno arithmetic contract")
 def test_installed_payload_allocation_budget_executes_checked_in_inno(tmp_path: Path) -> None:
-    candidates = (
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Inno Setup 6/ISCC.exe",
-        Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Inno Setup 6/ISCC.exe",
-        Path(os.environ.get("PROGRAMFILES", "")) / "Inno Setup 6/ISCC.exe",
-    )
-    compiler = next((candidate for candidate in candidates if candidate.is_file()), None)
-    assert compiler is not None, "Inno Setup 6 compiler is required"
+    compiler = pinned_inno_compiler()
 
     flow = (PACKAGING / "ticketbox-installer-flow.isph").read_text(encoding="utf-8-sig")
     budget_function = flow[
