@@ -70,7 +70,11 @@ def test_visual_cpp_runtime_is_an_official_pinned_central_prerequisite() -> None
         )
     ]
     prerequisite_call = prepare.index("'Ticketbox Windows prerequisite installation'")
-    assert prerequisite_call < prepare.index("if not StartManagerMaintenanceGate()")
+    normal_install_gate = prepare.index(
+        "if not StartManagerMaintenanceGate()", prerequisite_call
+    )
+    assert prerequisite_call < prepare.index("AuthoritativePayloadSpaceError()")
+    assert prerequisite_call < normal_install_gate
     assert prepare.index("CheckBackendVersionFloorForDataRoot") < prerequisite_call
     assert prepare.index("Result := FreshInstallPortError();") < prerequisite_call
     assert "vc_redist" not in uninstall.lower()

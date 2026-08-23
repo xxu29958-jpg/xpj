@@ -101,11 +101,11 @@ if (-not (Test-Path -LiteralPath $BackendHealthScript -PathType Leaf)) {
     throw "缺少 Windows 后端健康检查机制：$BackendHealthScript"
 }
 . $BackendHealthScript
-$BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
-if (-not (Test-Path -LiteralPath $BackendBootstrapScript -PathType Leaf)) {
-    throw "缺少 Windows owner handoff 脚本：$BackendBootstrapScript"
+$OwnerHandoffScript = Join-Path $ScriptDir "windows_owner_handoff.ps1"
+if (-not (Test-Path -LiteralPath $OwnerHandoffScript -PathType Leaf)) {
+    throw "缺少 Windows owner handoff adapter：$OwnerHandoffScript"
 }
-. $BackendBootstrapScript
+. $OwnerHandoffScript
 
 $regPath = "HKLM:\Software\Ticketbox"
 $ExplicitDataRootProvided = -not [string]::IsNullOrWhiteSpace($DataRoot)
@@ -941,7 +941,7 @@ function Assert-TicketboxInstallerStateForDataDeletion {
         $script:DeleteDataIntentValidated = $true
     }
     if ($snapshot.Kinds[$OwnerHandoffPath] -ceq "File") {
-        Read-TicketboxOwnerHandoffRecord | Out-Null
+        Read-TicketboxOwnerHandoffRecord -Path $OwnerHandoffPath | Out-Null
     }
     return $snapshot
 }

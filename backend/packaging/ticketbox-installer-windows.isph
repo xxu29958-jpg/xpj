@@ -17,7 +17,7 @@
   InstallPublicFailureSchema = 'ticketbox-install-public-failure-v3';
   InstallPublicFailureFileName = 'installer-public-failure-v3.txt';
   InstallPublicFailureMaximumBytes = 4096;
-  ExistingOperationCompletedExitCode = 10;
+  ExistingOperationRequiresResumeExitCode = 10;
   LifecycleCoordinationReadAttempts = 40;
   LifecycleCoordinationReadDelayMilliseconds = 50;
   LifecycleSafetyScriptSha256 = '{#LifecycleSafetyScriptSha256}';
@@ -37,6 +37,7 @@
   LifecycleHolderScriptSha256 = '{#LifecycleHolderScriptSha256}';
   DataRootGuardScriptSha256 = '{#DataRootGuardScriptSha256}';
   PrepareScriptSha256 = '{#PrepareScriptSha256}';
+  OwnerHandoffScriptSha256 = '{#OwnerHandoffScriptSha256}';
   ServiceContractScriptSha256 = '{#ServiceContractScriptSha256}';
   ServiceIdentityScriptSha256 = '{#ServiceIdentityScriptSha256}';
   ServiceLifecycleScriptSha256 = '{#ServiceLifecycleScriptSha256}';
@@ -125,7 +126,7 @@ var
   LastPowerShellChildSucceeded: Boolean;
   LastPowerShellFailureMessage: String;
   LastPowerShellRestartRequired: Boolean;
-  LastPowerShellExistingOperationCompleted: Boolean;
+  LastPowerShellExistingOperationRequiresResume: Boolean;
   OwnerHandoffExpected: Boolean;
   OwnerHandoffMemo: TNewMemo;
   InstallationFailureMemo: TNewMemo;
@@ -762,6 +763,8 @@ begin
     ValidateLifecycleLockBootstrapFile(
       'prepare_bundled_upgrade.ps1', PrepareScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
+      'windows_owner_handoff.ps1', OwnerHandoffScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
       'windows_service_contract.ps1', ServiceContractScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
       'windows_service_identity.ps1', ServiceIdentityScriptSha256) and
@@ -911,6 +914,9 @@ begin
      not StageLifecycleLockBootstrapFile(
     'prepare_bundled_upgrade.ps1',
     PrepareScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_owner_handoff.ps1',
+    OwnerHandoffScriptSha256) or
      not StageLifecycleLockBootstrapFile(
     'windows_service_contract.ps1',
     ServiceContractScriptSha256) or
@@ -2262,7 +2268,7 @@ begin
   ManagerMaintenanceOwnerRecord := '';
   InstallerLogSequence := 0;
   LastPowerShellFailureMessage := '';
-  LastPowerShellExistingOperationCompleted := False;
+  LastPowerShellExistingOperationRequiresResume := False;
   DataRootGuardProcessId := 0;
   DataRootGuardProcessHandle := InvalidHandleValue;
   DataRootGuardProcessStartedFileTimeHigh := '';
@@ -3054,7 +3060,7 @@ begin
   LastPowerShellChildSucceeded := False;
   LastPowerShellFailureMessage := '';
   LastPowerShellRestartRequired := False;
-  LastPowerShellExistingOperationCompleted := False;
+  LastPowerShellExistingOperationRequiresResume := False;
   IsPrerequisiteStep :=
     CompareText(Context, 'Ticketbox Windows prerequisite installation') = 0;
   IsServiceInstallationStep :=
@@ -3127,11 +3133,11 @@ begin
     exit;
   end;
 
-  LastPowerShellExistingOperationCompleted :=
+  LastPowerShellExistingOperationRequiresResume :=
     IsGenerationIntentStep and
-    (ResultCode = ExistingOperationCompletedExitCode);
+    (ResultCode = ExistingOperationRequiresResumeExitCode);
   LastPowerShellChildSucceeded :=
-    (ResultCode = 0) or LastPowerShellExistingOperationCompleted;
+    (ResultCode = 0) or LastPowerShellExistingOperationRequiresResume;
   LastPowerShellRestartRequired :=
     IsPrerequisiteStep and ((ResultCode = 1641) or (ResultCode = 3010));
 
@@ -3153,7 +3159,7 @@ begin
   end;
 
   if (ResultCode <> 0) and
-     (not LastPowerShellExistingOperationCompleted) then
+     (not LastPowerShellExistingOperationRequiresResume) then
   begin
     if IsPrerequisiteStep then
     begin

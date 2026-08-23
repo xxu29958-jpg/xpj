@@ -61,6 +61,12 @@
 #ifndef PrepareScriptSha256
 #error PrepareScriptSha256 must be injected by build_inno_installer.ps1
 #endif
+#ifndef OwnerHandoffScriptSha256
+#error OwnerHandoffScriptSha256 must be injected by build_inno_installer.ps1
+#endif
+#ifndef InstalledPayloadRequiredBytes
+#error InstalledPayloadRequiredBytes must be injected by build_inno_installer.ps1
+#endif
 #ifndef ServiceContractScriptSha256
 #error ServiceContractScriptSha256 must be injected by build_inno_installer.ps1
 #endif
@@ -199,6 +205,7 @@ Source: "..\scripts\windows_build_provenance.ps1"; DestName: "windows_build_prov
 Source: "..\scripts\windows_backend_build_provenance.ps1"; DestName: "windows_backend_build_provenance.ps1"; Flags: dontcopy noencryption
 Source: "hold_data_root_mutation_guard.ps1"; Flags: dontcopy noencryption
 Source: "prepare_bundled_upgrade.ps1"; Flags: dontcopy noencryption
+Source: "windows_owner_handoff.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_contract.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_identity.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_lifecycle.ps1"; Flags: dontcopy noencryption
@@ -323,6 +330,7 @@ Source: "windows_postgresql_candidate_initdb.ps1"; DestDir: "{app}\installer"; F
 Source: "windows_postgresql_candidate_runtime.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
 Source: "windows_backend_health.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
 Source: "windows_backend_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_owner_handoff.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
 Source: "windows_bootstrap_exposure_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
 Source: "windows-release-config.json"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
 Source: "..\scripts\windows_build_provenance.ps1"; DestDir: "{app}\installer"; DestName: "windows_build_provenance.ps1"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
@@ -332,18 +340,18 @@ Source: "install_bundled_services.ps1"; DestDir: "{app}\installer"; Flags: ignor
 Source: "uninstall_bundled_services.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
 
 [Registry]
-Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "DataRoot"; ValueData: "{code:GetDataRoot}"
-Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "BackendPort"; ValueData: "{code:GetBackendPort}"
-Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "PgPort"; ValueData: "{code:GetPgPort}"
-Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "BackendServiceName"; ValueData: "{#BackendServiceName}"
-Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "PgServiceName"; ValueData: "{#PgServiceName}"
+Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletevalue uninsdeletekeyifempty; Check: AuthoritativeProjectionReconciliationPrepared
+Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "DataRoot"; ValueData: "{code:GetDataRoot}"; Check: AuthoritativeProjectionReconciliationPrepared
+Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "BackendPort"; ValueData: "{code:GetBackendPort}"; Check: AuthoritativeProjectionReconciliationPrepared
+Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "PgPort"; ValueData: "{code:GetPgPort}"; Check: AuthoritativeProjectionReconciliationPrepared
+Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "BackendServiceName"; ValueData: "{#BackendServiceName}"; Check: AuthoritativeProjectionReconciliationPrepared
+Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "PgServiceName"; ValueData: "{#PgServiceName}"; Check: AuthoritativeProjectionReconciliationPrepared
 
 [Icons]
-Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\manager\ticketbox-manager.exe"; WorkingDir: "{app}\manager"; IconFilename: "{app}\ticketbox.ico"
-Name: "{autoprograms}\小票夹\打开小票夹 Web"; Filename: "http://127.0.0.1:{code:GetBackendPort}/web"; IconFilename: "{app}\ticketbox.ico"
-Name: "{autoprograms}\小票夹\小票夹连接与恢复"; Filename: "http://127.0.0.1:{code:GetBackendPort}/owner"; IconFilename: "{app}\ticketbox.ico"
-Name: "{autoprograms}\小票夹\数据目录"; Filename: "{code:GetDataRoot}"; IconFilename: "{app}\ticketbox.ico"
+Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\manager\ticketbox-manager.exe"; WorkingDir: "{app}\manager"; IconFilename: "{app}\ticketbox.ico"; Check: AuthoritativeProjectionReconciliationPrepared
+Name: "{autoprograms}\小票夹\打开小票夹 Web"; Filename: "http://127.0.0.1:{code:GetBackendPort}/web"; IconFilename: "{app}\ticketbox.ico"; Check: AuthoritativeProjectionReconciliationPrepared
+Name: "{autoprograms}\小票夹\小票夹连接与恢复"; Filename: "http://127.0.0.1:{code:GetBackendPort}/owner"; IconFilename: "{app}\ticketbox.ico"; Check: AuthoritativeProjectionReconciliationPrepared
+Name: "{autoprograms}\小票夹\数据目录"; Filename: "{code:GetDataRoot}"; IconFilename: "{app}\ticketbox.ico"; Check: AuthoritativeProjectionReconciliationPrepared
 
 [Code]
 #include "ticketbox-installer-windows.isph"

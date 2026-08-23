@@ -220,6 +220,11 @@ if (-not (Test-Path -LiteralPath $LockScript -PathType Leaf)) {
     throw "缺少 Windows 生命周期锁脚本：$LockScript"
 }
 . $LockScript
+$OwnerHandoffScript = Join-Path $ScriptDir "windows_owner_handoff.ps1"
+if (-not (Test-Path -LiteralPath $OwnerHandoffScript -PathType Leaf)) {
+    throw "缺少 Windows owner handoff adapter：$OwnerHandoffScript"
+}
+. $OwnerHandoffScript
 $DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
 if (-not (Test-Path -LiteralPath $DatabaseSafetyScript -PathType Leaf)) {
     throw "缺少 Windows 数据库安全脚本：$DatabaseSafetyScript"
@@ -240,6 +245,7 @@ $PgBin = Join-Path $InstallDir "pg\bin"
 $PgData = Join-Path $DataRoot "pgdata"
 $AppData = Join-Path $DataRoot "app"
 $InstallerState = Get-TicketboxInstallerStateDirectory
+$OwnerHandoffPath = Join-Path $InstallerState "installation-owner-handoff-v2.txt"
 $EnvPath = Join-Path $AppData ".env"
 $BackupDir = Join-Path $DataRoot "installer-backups"
 $LogDir = Join-Path $AppData "logs"
@@ -1499,33 +1505,7 @@ try {
             ) {
                 throw "database generation classifier 未绑定 cleanup-pending receipt。"
             }
-            Set-TicketboxLifecycleReceiptInstallerOwner `
-                -Path $LifecycleReceiptPath `
-                -Receipt $observedLifecycleReceipt `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-            $PreparedServiceIdentityLifecycleReceipt = $observedLifecycleReceipt
-            Set-TicketboxPreparedRuntimeServiceContract
-            Set-TicketboxInstalledReleaseConfiguration `
-                -Config $observedLifecycleReceipt.installed_release_config `
-                -Persisted $true
-            Remove-TicketboxRecoveryPgServiceIfExists
-            Assert-TicketboxPreparedServiceContracts `
-                -AllowTargetPolicyFallback `
-                -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
-            Complete-TicketboxInstalledLifecycleTransaction `
-                -Path $LifecycleReceiptPath `
-                -InstallDir $InstallDir `
-                -DataRoot $DataRoot `
-                -PgPort $PgPort `
-                -BackendPort $BackendPort `
-                -TargetReleaseConfig $TargetReleaseConfig `
-                -TargetBackendVersion $TargetBackendVersion `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-                -BuildManifestPath $InstalledBuildManifestPath `
-                -RecoveryRequiredPath $RecoveryRequiredPath `
-                -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
-                -LifecycleLock $operationLock
-            Write-Host "已补完同一安装 operation 的 durable cleanup。" -ForegroundColor Green
+            Write-Host "同一安装 operation 需要在 mutation gates 后续跑。" -ForegroundColor Yellow
             exit 10
         }
         if ([string]$intentContext.Action -ceq "acknowledge_completed_install") {
@@ -1611,12 +1591,11 @@ try {
     ) {
         $receipt = $preMutationLifecycleReceipt
         if (
-            [string]$receipt.mode -cne "fresh_install" -or
             [bool]$receipt.backup_required -or
             [bool]$receipt.backup_completed -or
             -not [string]::IsNullOrEmpty([string]$receipt.backup_path)
         ) {
-            throw "当前安装恢复只接受 fresh install 回执；既有数据必须走隔离 restore。"
+            throw "install cleanup recovery 不接受 backup authority；既有数据必须走隔离 restore。"
         }
         if (-not $FilesReplaced) {
             throw "已提交安装 operation 的恢复必须声明程序文件已经替换。"
@@ -1624,36 +1603,47 @@ try {
         $PreparedServiceIdentityLifecycleReceipt = $receipt
         if ([string]$receipt.preparation_stage -ceq "install_completed") {
             Assert-TicketboxCompletedLifecycleReceipt $receipt
-            return
         }
-        Set-TicketboxLifecycleReceiptInstallerOwner `
-            -Path $LifecycleReceiptPath `
-            -Receipt $receipt `
-            -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-        Set-TicketboxPreparedRuntimeServiceContract
-        Invoke-TicketboxInterruptedInitdbServiceRecovery
-        Assert-TicketboxTargetPgMajor
-        Set-TicketboxInstalledReleaseConfiguration `
-            -Config $receipt.installed_release_config `
-            -Persisted $true
-        Remove-TicketboxRecoveryPgServiceIfExists
-        Assert-TicketboxPreparedServiceContracts `
-            -AllowTargetPolicyFallback `
-            -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
-        Complete-TicketboxInstalledLifecycleTransaction `
-            -Path $LifecycleReceiptPath `
-            -InstallDir $InstallDir `
-            -DataRoot $DataRoot `
-            -PgPort $PgPort `
-            -BackendPort $BackendPort `
-            -TargetReleaseConfig $TargetReleaseConfig `
-            -TargetBackendVersion $TargetBackendVersion `
+        else {
+            Set-TicketboxLifecycleReceiptInstallerOwner `
+                -Path $LifecycleReceiptPath `
+                -Receipt $receipt `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+            Set-TicketboxPreparedRuntimeServiceContract
+            Invoke-TicketboxInterruptedInitdbServiceRecovery
+            Assert-TicketboxTargetPgMajor
+            Set-TicketboxInstalledReleaseConfiguration `
+                -Config $receipt.installed_release_config `
+                -Persisted $true
+            Remove-TicketboxRecoveryPgServiceIfExists
+            Assert-TicketboxPreparedServiceContracts `
+                -AllowTargetPolicyFallback `
+                -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+            Complete-TicketboxInstalledLifecycleTransaction `
+                -Path $LifecycleReceiptPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -TargetReleaseConfig $TargetReleaseConfig `
+                -TargetBackendVersion $TargetBackendVersion `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+                -BuildManifestPath $InstalledBuildManifestPath `
+                -RecoveryRequiredPath $RecoveryRequiredPath `
+                -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
+                -LifecycleLock $operationLock
+            Write-Host "已补完同一安装 operation 的 durable cleanup。" -ForegroundColor Green
+        }
+        $installationIdentity =
+            Read-TicketboxPersistentInstallationIdentity -DataRoot $DataRoot
+        $handoffDisposition = Adopt-TicketboxOwnerBootstrapHandoff `
+            -Path $OwnerHandoffPath `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-            -BuildManifestPath $InstalledBuildManifestPath `
-            -RecoveryRequiredPath $RecoveryRequiredPath `
-            -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
-            -LifecycleLock $operationLock
-        Write-Host "失败退出前已补完 durable install cleanup；本次仍保留失败结果。" -ForegroundColor Yellow
+            -ExpectedOperationId ([string]$installationIdentity.OperationId) `
+            -ExpectedInstallationId ([string]$installationIdentity.InstallationId)
+        if ($handoffDisposition -notin @("absent", "pending")) {
+            throw "installation owner handoff adapter 返回了未知状态。"
+        }
         return
     }
     Set-TicketboxPreparedRuntimeServiceContract

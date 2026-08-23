@@ -798,7 +798,7 @@ def test_runtime_recovery_projection_blocks_traffic_until_commit() -> None:
     assert invoke_projection_cleanup < remove_service
 
 
-def test_committed_install_resumes_before_payload_replacement() -> None:
+def test_committed_install_classifies_then_resumes_behind_both_mutation_gates() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
     flow = _read("ticketbox-installer-flow.isph")
     windows = _read("ticketbox-installer-windows.isph")
@@ -811,31 +811,17 @@ def test_committed_install_resumes_before_payload_replacement() -> None:
     ]
     classify = intent_owner.index("Start-TicketboxDatabaseGenerationIntent")
     resume = intent_owner.index('Action -ceq "resume_install_cleanup"')
-    owner_rebind = intent_owner.index(
-        "Set-TicketboxLifecycleReceiptInstallerOwner",
-        resume,
-    )
-    runtime_binding = intent_owner.index(
-        "Set-TicketboxPreparedRuntimeServiceContract",
-        resume,
-    )
-    service_projection_cleanup = intent_owner.index(
-        "Remove-TicketboxRecoveryPgServiceIfExists",
-        runtime_binding,
-    )
-    complete = intent_owner.index("Complete-TicketboxInstalledLifecycleTransaction")
     acknowledge = intent_owner.index('Action -ceq "acknowledge_completed_install"')
     persist = intent_owner.index('Action -cne "persist_intent"')
-    assert (
-        classify
-        < resume
-        < owner_rebind
-        < runtime_binding
-        < service_projection_cleanup
-        < complete
-        < acknowledge
-        < persist
-    )
+    assert classify < resume < acknowledge < persist
+    intent_resume_branch = intent_owner[resume:acknowledge]
+    for forbidden_mutation in (
+        "Set-TicketboxLifecycleReceiptInstallerOwner",
+        "Set-TicketboxPreparedRuntimeServiceContract",
+        "Remove-TicketboxRecoveryPgServiceIfExists",
+        "Complete-TicketboxInstalledLifecycleTransaction",
+    ):
+        assert forbidden_mutation not in intent_resume_branch
     assert intent_owner.count("exit 10") == 2
 
     stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
@@ -857,13 +843,29 @@ def test_committed_install_resumes_before_payload_replacement() -> None:
     ]
     intent_call = prepare_to_install.index("Ticketbox database generation intent")
     committed_outcome = prepare_to_install.index(
-        "if LastPowerShellExistingOperationCompleted then"
+        "if LastPowerShellExistingOperationRequiresResume then"
     )
+    manager_gate = prepare_to_install.index("StartManagerMaintenanceGate()", committed_outcome)
+    data_root_guard = prepare_to_install.index("StartDataRootMutationGuard(", manager_gate)
+    resume_owner = prepare_to_install.index("ResumeExistingGenerationOperation()", data_root_guard)
     prerequisites = prepare_to_install.index(
         "Ticketbox Windows prerequisite installation"
     )
-    assert intent_call < committed_outcome < prerequisites
+    assert intent_call < committed_outcome < manager_gate < data_root_guard < resume_owner < prerequisites
+    assert "AssertManagerMaintenanceGateActive()" in prepare_to_install[manager_gate:resume_owner]
+    assert "AssertDataRootMutationGuardActive()" in prepare_to_install[data_root_guard:resume_owner]
     assert "LifecycleInstallCompleted := True" in prepare_to_install
+
+    terminal_resume = prepare[
+        prepare.index("    if (\n        $RecoverPreparedInstall -and") : prepare.index(
+            "\n    Set-TicketboxPreparedRuntimeServiceContract",
+            prepare.index("    if (\n        $RecoverPreparedInstall -and"),
+        )
+    ]
+    assert "receipt.mode" not in terminal_resume
+    assert "fresh_install" not in terminal_resume
+    assert "Adopt-TicketboxOwnerBootstrapHandoff" in terminal_resume
+    assert '$handoffDisposition -notin @("absent", "pending")' in terminal_resume
 
     payload_predicate = flow[
         flow.index("function AuthoritativePayloadReplacementPrepared") : flow.index(
@@ -871,16 +873,27 @@ def test_committed_install_resumes_before_payload_replacement() -> None:
         )
     ]
     assert "not LifecycleExistingOperationCompleted" in payload_predicate
+    assert "function AuthoritativeProjectionReconciliationPrepared" in payload_predicate
+    projection_predicate = payload_predicate[
+        payload_predicate.index("function AuthoritativeProjectionReconciliationPrepared") :
+    ]
+    assert "Result := LifecyclePrepared" in projection_predicate
+    assert "LifecycleExistingOperationCompleted" not in projection_predicate
 
     runner = windows[
         windows.index("function RunPowerShellChecked") : windows.index(
             "procedure ResetDataRootMutationGuardState"
         )
     ]
-    assert "ExistingOperationCompletedExitCode = 10" in windows
-    assert "IsGenerationIntentStep and" in runner
-    assert "LastPowerShellExistingOperationCompleted" in runner
-    assert "not LastPowerShellExistingOperationCompleted" in runner
+    assert "ExistingOperationRequiresResumeExitCode = 10" in windows
+    exact_resume_result = (
+        "LastPowerShellExistingOperationRequiresResume :=\n"
+        "    IsGenerationIntentStep and\n"
+        "    (ResultCode = ExistingOperationRequiresResumeExitCode);"
+    )
+    assert exact_resume_result in runner
+    assert "not LastPowerShellExistingOperationRequiresResume" in runner
+    assert "'exit $exitCode'" in windows
 
     installed_files = [
         line
@@ -894,6 +907,55 @@ def test_committed_install_resumes_before_payload_replacement() -> None:
         line.endswith("Check: AuthoritativePayloadReplacementPrepared")
         for line in installed_files
     )
+
+    for section_name, next_section_name in (("[Registry]", "[Icons]"), ("[Icons]", "[Code]")):
+        section = installer[
+            installer.index(section_name) : installer.index(next_section_name)
+        ]
+        entries = [
+            line
+            for line in section.splitlines()
+            if line.startswith(("Root:", "Name:"))
+        ]
+        assert entries
+        assert all(
+            line.endswith("Check: AuthoritativeProjectionReconciliationPrepared")
+            for line in entries
+        )
+
+
+def test_copy_action_has_build_bound_fail_closed_disk_space_precondition() -> None:
+    build = _read("build_inno_installer.ps1")
+    installer = _read("ticketbox-installer.iss")
+    flow = _read("ticketbox-installer-flow.isph")
+
+    assert "/DInstalledPayloadRequiredBytes=$installedPayloadRequiredBytes" in build
+    assert "#ifndef InstalledPayloadRequiredBytes" in installer
+    assert "ExtraDiskSpaceRequired=" not in installer
+    assert "DefaultDirName={autopf}\\Ticketbox" in installer
+    assert "DisableDirPage=yes" in installer
+
+    precondition = flow[
+        flow.index("function AuthoritativePayloadSpaceError") : flow.index(
+            "function PrepareAuthoritativePayloadReplacement"
+        )
+    ]
+    assert "GetSpaceOnDisk64(ExpandConstant('{autopf}')" in precondition
+    assert "StrToInt64Def('{#InstalledPayloadRequiredBytes}', -1)" in precondition
+    assert "FreeBytes < RequiredBytes" in precondition
+    assert "无法验证程序文件目标卷的可用空间" in precondition
+
+    prepare_to_install = flow[
+        flow.index("function PrepareToInstall") : flow.index(
+            "function AuthoritativePayloadReplacementPrepared"
+        )
+    ]
+    intent = prepare_to_install.index("Ticketbox database generation intent")
+    resume = prepare_to_install.index("LastPowerShellExistingOperationRequiresResume")
+    prerequisites = prepare_to_install.index("Ticketbox Windows prerequisite installation")
+    space_check = prepare_to_install.index("AuthoritativePayloadSpaceError()", prerequisites)
+    manager_gate = prepare_to_install.rindex("StartManagerMaintenanceGate()")
+    assert intent < resume < prerequisites < space_check < manager_gate
 
 
 def test_install_cleanup_has_durable_authorization_and_terminal_commit() -> None:
@@ -1927,7 +1989,7 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         < committed_projection_cleanup
         < committed_resume
     )
-    assert "失败退出前已补完 durable install cleanup" in committed_recovery_branch
+    assert "durable cleanup" in committed_recovery_branch
 
     recover_start = main_execution.index("if ($RecoverPreparedInstall)", mark_branch)
     recover_end = main_execution.index("if ($CommitCompletedInstall)", recover_start)

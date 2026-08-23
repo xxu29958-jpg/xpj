@@ -255,6 +255,7 @@ $InstalledDatasetLifecycleScripts = @(
 ) | ForEach-Object { Join-Path $ScriptDir $_ }
 $BackendHealthScript = Join-Path $ScriptDir "windows_backend_health.ps1"
 $BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
+$OwnerHandoffScript = Join-Path $ScriptDir "windows_owner_handoff.ps1"
 $BootstrapExposureRecoveryScript = Join-Path $ScriptDir "windows_bootstrap_exposure_recovery.ps1"
 $InstallScript = Join-Path $ScriptDir "install_bundled_services.ps1"
 $UninstallScript = Join-Path $ScriptDir "uninstall_bundled_services.ps1"
@@ -663,6 +664,69 @@ function Assert-TicketboxExactJsonProperties(
     if (($actualNames -join "`n") -cne ($expected -join "`n")) {
         throw "$Label 字段集合不精确：actual=$($actualNames -join ',')"
     }
+}
+
+function Get-TicketboxCheckedByteSum {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Records,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    [decimal]$sum = 0
+    foreach ($record in $Records) {
+        if ($null -eq $record -or $null -eq $record.size) {
+            throw "$Label 含有缺少 size 的 build evidence。"
+        }
+        [decimal]$size = [int64]$record.size
+        if ($size -lt 0) {
+            throw "$Label 含有负数 size。"
+        }
+        $sum += $size
+        if ($sum -gt [int64]::MaxValue) {
+            throw "$Label 的字节总和溢出 Int64。"
+        }
+    }
+    return [int64]$sum
+}
+
+function Get-TicketboxInstalledPayloadRequiredBytes {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$BackendPayloadFiles,
+        [Parameter(Mandatory = $true)][object]$BackendManifestEvidence,
+        [Parameter(Mandatory = $true)][object[]]$ManagerPayloadFiles,
+        [Parameter(Mandatory = $true)][object]$ManagerManifestEvidence,
+        [Parameter(Mandatory = $true)][object[]]$PostgresPayloadFiles,
+        [Parameter(Mandatory = $true)][object[]]$ShawlPayloadFiles,
+        [Parameter(Mandatory = $true)][object]$RecipeSnapshot
+    )
+
+    $buildOnlyRecipePaths = @(
+        "requirements-build.lock",
+        "packaging/windows-build-toolchain.json",
+        "packaging/prepare_windows_build_toolchain.ps1",
+        "packaging/prepare_windows_installer_vendor.ps1",
+        "packaging/build_pg_bundle.ps1",
+        "packaging/build_inno_installer.ps1",
+        "packaging/ticketbox-installer.iss",
+        "packaging/ticketbox-installer-windows.isph",
+        "packaging/ticketbox-installer-flow.isph",
+        "packaging/languages/ChineseSimplified.isl",
+        "packaging/install_windows_prerequisites.ps1"
+    )
+    $installedRecipeFiles = @($RecipeSnapshot.files | Where-Object {
+        [string]$_.path -cnotin $buildOnlyRecipePaths
+    })
+    $installedEvidence = @()
+    $installedEvidence += @($BackendPayloadFiles)
+    $installedEvidence += @($BackendManifestEvidence)
+    $installedEvidence += @($ManagerPayloadFiles)
+    $installedEvidence += @($ManagerManifestEvidence)
+    $installedEvidence += @($PostgresPayloadFiles)
+    $installedEvidence += @($ShawlPayloadFiles)
+    $installedEvidence += @($installedRecipeFiles)
+    return Get-TicketboxCheckedByteSum `
+        -Records $installedEvidence `
+        -Label "installed payload"
 }
 
 function Assert-TicketboxInstallerCompilerContentManifest {
@@ -1290,6 +1354,7 @@ foreach ($installedDatasetScript in $InstalledDatasetLifecycleScripts) {
 }
 Assert-File $BackendHealthScript "Windows backend health adapter"
 Assert-File $BackendBootstrapScript "Windows 后端就绪/bootstrap 脚本"
+Assert-File $OwnerHandoffScript "Windows owner handoff adapter"
 Assert-File $BootstrapExposureRecoveryScript "Windows bootstrap 暴露恢复脚本"
 Assert-File $InstallScript "install_bundled_services.ps1"
 Assert-File $UninstallScript "uninstall_bundled_services.ps1"
@@ -1385,6 +1450,27 @@ $pgRestoreBuildEvidence = @($postgresProvenance.critical_files | Where-Object {
 if ($pgDumpBuildEvidence.Count -ne 1 -or $pgRestoreBuildEvidence.Count -ne 1) {
     throw "PostgreSQL build provenance 未唯一绑定 pg_dump/pg_restore。"
 }
+$verifiedBuildInputs = Get-InstallerBuildInputEvidence `
+    $backendManifest `
+    $managerManifest `
+    $postgresProvenance `
+    $shawlProvenance `
+    $visualCppRuntimeProvenance
+$installedPayloadRequiredBytes = Get-TicketboxInstalledPayloadRequiredBytes `
+    -BackendPayloadFiles @($backendManifest.payload.files) `
+    -BackendManifestEvidence $verifiedBuildInputs.backend.manifest `
+    -ManagerPayloadFiles @($managerManifest.payload.files) `
+    -ManagerManifestEvidence $verifiedBuildInputs.manager.manifest `
+    -PostgresPayloadFiles @($postgresProvenance.bundle_snapshot.files) `
+    -ShawlPayloadFiles @(
+        $verifiedBuildInputs.shawl.executable,
+        $verifiedBuildInputs.shawl.legal_notice
+    ) `
+    -RecipeSnapshot $recipeSnapshot
+$verifiedBuildInputs["installed_payload_budget"] = [ordered]@{
+    "InstalledPayloadRequiredBytes" = $installedPayloadRequiredBytes
+    derivation = "sum_of_verified_installed_file_sizes"
+}
 $defines = @(
     "/DAppVersion=$resolvedVersion",
     "/DAppVersionInfo=$resolvedVersionInfo",
@@ -1410,6 +1496,8 @@ $defines = @(
     "/DVisualCppRuntimeVersion=$($visualCppRuntimeProvenance.version)",
     "/DVisualCppRuntimeSha256=$($visualCppRuntimeProvenance.executable.sha256)",
     "/DPrepareScriptSha256=$(Get-TicketboxFileSha256 $PrepareScript)",
+    "/DOwnerHandoffScriptSha256=$(Get-TicketboxFileSha256 $OwnerHandoffScript)",
+    "/DInstalledPayloadRequiredBytes=$installedPayloadRequiredBytes",
     "/DServiceContractScriptSha256=$(Get-TicketboxFileSha256 $ServiceContractScript)",
     "/DServiceIdentityScriptSha256=$(Get-TicketboxFileSha256 $ServiceIdentityScript)",
     "/DServiceLifecycleScriptSha256=$(Get-TicketboxFileSha256 $LifecycleScript)",
@@ -1437,12 +1525,6 @@ $defines = @(
     "/DDatabaseGenerationPgRestoreSize=$([int64]$pgRestoreBuildEvidence[0].size)",
     "/DDatabaseGenerationPgRestoreSha256=$([string]$pgRestoreBuildEvidence[0].sha256)"
 )
-$verifiedBuildInputs = Get-InstallerBuildInputEvidence `
-    $backendManifest `
-    $managerManifest `
-    $postgresProvenance `
-    $shawlProvenance `
-    $visualCppRuntimeProvenance
 if ($VerifyOnly) {
     if ($ExpectedInstallerSha256 -notmatch '^[0-9A-Fa-f]{64}$') {
         throw "VerifyOnly 必须提供由本轮编译步骤外部保存的 ExpectedInstallerSha256。"

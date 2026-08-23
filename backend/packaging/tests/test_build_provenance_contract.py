@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 import zipfile
 from pathlib import Path
@@ -42,6 +43,79 @@ def _run_powershell(command: str, executable: str = "powershell") -> subprocess.
         errors="replace",
         timeout=30,
     )
+
+
+def test_installed_payload_space_budget_is_derived_from_bound_build_inputs() -> None:
+    build = (PACKAGING / "build_inno_installer.ps1").read_text(encoding="utf-8-sig")
+    provenance = PROVENANCE_HELPER.read_text(encoding="utf-8-sig")
+
+    budget = build[
+        build.index("function Get-TicketboxInstalledPayloadRequiredBytes") : build.index(
+            "function Assert-TicketboxInstallerCompilerContentManifest"
+        )
+    ]
+    for evidence in (
+        "$BackendPayloadFiles",
+        "$BackendManifestEvidence",
+        "$ManagerPayloadFiles",
+        "$ManagerManifestEvidence",
+        "$PostgresPayloadFiles",
+        "$ShawlPayloadFiles",
+        "$RecipeSnapshot.files",
+    ):
+        assert evidence in budget
+    assert "Get-TicketboxCheckedByteSum" in budget
+    assert "payload_files =" not in build
+    assert "sum_of_verified_installed_file_sizes" in build
+    assert '"InstalledPayloadRequiredBytes"' in build
+    assert '"packaging\\windows_owner_handoff.ps1"' in provenance
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell payload budget contract")
+def test_installed_payload_space_budget_is_exact_and_fail_closed(tmp_path: Path) -> None:
+    build = (PACKAGING / "build_inno_installer.ps1").read_text(encoding="utf-8-sig")
+    functions = build[
+        build.index("function Get-TicketboxCheckedByteSum") : build.index(
+            "function Assert-TicketboxInstallerCompilerContentManifest"
+        )
+    ]
+    harness = tmp_path / "installed-payload-budget.ps1"
+    harness.write_text(
+        functions
+        + r"""
+$arguments = @{
+    BackendPayloadFiles = @([pscustomobject]@{ size = 1 }, [pscustomobject]@{ size = 2 })
+    BackendManifestEvidence = [pscustomobject]@{ size = 3 }
+    ManagerPayloadFiles = @([pscustomobject]@{ size = 4 })
+    ManagerManifestEvidence = [pscustomobject]@{ size = 5 }
+    PostgresPayloadFiles = @([pscustomobject]@{ size = 6 })
+    ShawlPayloadFiles = @([pscustomobject]@{ size = 7 }, [pscustomobject]@{ size = 8 })
+    RecipeSnapshot = [pscustomobject]@{ files = @(
+        [pscustomobject]@{ path = 'packaging/windows_owner_handoff.ps1'; size = 9 },
+        [pscustomobject]@{ path = 'packaging/build_inno_installer.ps1'; size = 100 }
+    ) }
+}
+$actual = Get-TicketboxInstalledPayloadRequiredBytes @arguments
+if ($actual -ne 45) { throw "installed payload budget drifted: $actual" }
+$arguments.BackendPayloadFiles = @([pscustomobject]@{ path = 'missing-size' })
+$rejected = $false
+try { Get-TicketboxInstalledPayloadRequiredBytes @arguments | Out-Null }
+catch { $rejected = $true }
+if (-not $rejected) { throw 'missing size did not fail closed' }
+""",
+        encoding="utf-8-sig",
+    )
+    for engine in powershell_contract_engines():
+        result = subprocess.run(
+            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
 
 
 def _lock_input_fingerprint(root: Path) -> str:
@@ -287,6 +361,7 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_postgresql_candidate_runtime.ps1",
     "packaging/windows_backend_health.ps1",
     "packaging/windows_backend_bootstrap.ps1",
+    "packaging/windows_owner_handoff.ps1",
     "packaging/windows_bootstrap_exposure_recovery.ps1",
     "packaging/install_bundled_services.ps1",
     "packaging/uninstall_bundled_services.ps1",
@@ -1826,25 +1901,29 @@ def _assert_windows_build_reparse_guard_rejects_ancestor_and_tree_junctions(
         errors="replace",
     )
     assert created.returncode == 0, created.stderr
-    command = (
-        f". '{_ps_literal(PROVENANCE_HELPER)}'; "
-        f"Assert-TicketboxNoReparsePath -Path '{_ps_literal(root)}' "
-        f"-AllowedRoot '{_ps_literal(root)}' -AllowRoot -InspectTree"
-    )
+    try:
+        command = (
+            f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+            f"Assert-TicketboxNoReparsePath -Path '{_ps_literal(root)}' "
+            f"-AllowedRoot '{_ps_literal(root)}' -AllowRoot -InspectTree"
+        )
 
-    rejected = _run_powershell(command)
+        rejected = _run_powershell(command)
 
-    assert rejected.returncode != 0
-    assert "reparse" in (rejected.stdout + rejected.stderr).lower()
-    ancestor_rejected = _run_powershell(
-        f". '{_ps_literal(PROVENANCE_HELPER)}'; "
-        f"Assert-TicketboxNoReparsePath -Path "
-        f"'{_ps_literal(junction / 'payload.txt')}' "
-        f"-AllowedRoot '{_ps_literal(root)}'"
-    )
-    assert ancestor_rejected.returncode != 0
-    assert "reparse" in (ancestor_rejected.stdout + ancestor_rejected.stderr).lower()
-    assert (outside / "payload.txt").read_text(encoding="utf-8") == "outside"
+        assert rejected.returncode != 0
+        assert "reparse" in (rejected.stdout + rejected.stderr).lower()
+        ancestor_rejected = _run_powershell(
+            f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+            f"Assert-TicketboxNoReparsePath -Path "
+            f"'{_ps_literal(junction / 'payload.txt')}' "
+            f"-AllowedRoot '{_ps_literal(root)}'"
+        )
+        assert ancestor_rejected.returncode != 0
+        assert "reparse" in (ancestor_rejected.stdout + ancestor_rejected.stderr).lower()
+        assert (outside / "payload.txt").read_text(encoding="utf-8") == "outside"
+    finally:
+        if os.path.lexists(junction):
+            os.rmdir(junction)
 
 
 def _assert_windows_build_lock_serializes_and_execution_tree_detects_drift(

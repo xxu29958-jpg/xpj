@@ -527,6 +527,11 @@ if (-not (Test-Path -LiteralPath $BackendHealthScript -PathType Leaf)) {
     throw "缺少 Windows 后端健康检查机制：$BackendHealthScript"
 }
 . $BackendHealthScript
+$OwnerHandoffScript = Join-Path $ScriptDir "windows_owner_handoff.ps1"
+if (-not (Test-Path -LiteralPath $OwnerHandoffScript -PathType Leaf)) {
+    throw "缺少 Windows owner handoff adapter：$OwnerHandoffScript"
+}
+. $OwnerHandoffScript
 $BackendBootstrapScript = Join-Path $ScriptDir "windows_backend_bootstrap.ps1"
 if (-not (Test-Path -LiteralPath $BackendBootstrapScript -PathType Leaf)) {
     throw "缺少 Windows 后端就绪/bootstrap 脚本：$BackendBootstrapScript"
@@ -1566,7 +1571,6 @@ function Initialize-TicketboxInstallerStateArtifacts {
         -LegacyPath $LegacyRecoveryRequiredPath `
         -CurrentPath $RecoveryRequiredPath
     Inspect-TicketboxRetiredOwnerHandoffArtifacts `
-        -InstallerStatePath $InstallerState `
         -LegacyOwnerBootstrapPath $LegacyOwnerBootstrapPath `
         -LegacyOwnerHandoffPendingPath $LegacyOwnerHandoffPendingPath `
         -RetiredOwnerBootstrapPath $RetiredOwnerBootstrapPath `
@@ -1892,6 +1896,8 @@ if ($CompleteOwnerHandoffOnly) {
         $handoffInstallationIdentity =
             Read-TicketboxPersistentInstallationIdentity -DataRoot $DataRoot
         Complete-TicketboxOwnerBootstrapHandoff `
+            -Path $OwnerHandoffPath `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -ExpectedOperationId ([string]$handoffInstallationIdentity.OperationId) `
             -ExpectedInstallationId ([string]$handoffInstallationIdentity.InstallationId)
         Write-Host "Installation owner pairing handoff artifacts removed OK。" -ForegroundColor Green
@@ -2227,13 +2233,15 @@ try {
     $installLifecycleStage = "owner_handoff_adoption"
     try {
         $handoffDisposition = Adopt-TicketboxOwnerBootstrapHandoff `
+            -Path $OwnerHandoffPath `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -ExpectedOperationId ([string]$installationIdentity.OperationId) `
             -ExpectedInstallationId ([string]$installationIdentity.InstallationId)
         if ($handoffDisposition -ceq "pending") {
             Write-Ok "已接管上次中断的 installation owner 短期配对交付。"
         }
-        elseif ($handoffDisposition -ceq "cleaned_confirmed") {
-            Write-Ok "已清理上次确认完成的 installation owner 配对交付残留。"
+        elseif ($handoffDisposition -cne "absent") {
+            throw "installation owner handoff adapter 返回了未知状态。"
         }
     }
     catch {

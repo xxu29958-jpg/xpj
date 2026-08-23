@@ -1,6 +1,5 @@
 ﻿#Requires -Version 5.1
 
-$script:InstallationOwnerContract = "ticketbox-installation-owner-pairing-v1"
 $script:InstallationOwnerPairingCodeContext =
     "ticketbox/installation-owner/v1/pairing-code"
 $script:BootstrapSecretMinimumBytes = 32
@@ -204,7 +203,7 @@ function Assert-TicketboxInstallationOwnerBootstrapResponse {
     $claimGeneration = 0
     [DateTimeOffset]$pairingExpiresAt = [DateTimeOffset]::MinValue
     if (
-        [string]$Response.contract -cne $script:InstallationOwnerContract -or
+        [string]$Response.contract -cne $script:TicketboxInstallationOwnerContract -or
         [string]$Response.operation_id -cne $ExpectedOperationId -or
         [string]$Response.installation_id -cne $ExpectedInstallationId -or
         [string]::IsNullOrWhiteSpace([string]$Response.account_name) -or
@@ -244,398 +243,6 @@ function Assert-TicketboxInstallationOwnerBootstrapResponse {
     }
 }
 
-function Get-TicketboxOwnerHandoffProcessId {
-    if ($InstallerLockOwnerProcessId -gt 0) { return $InstallerLockOwnerProcessId }
-    return $PID
-}
-
-function Get-TicketboxOwnerHandoffLifecycleIdentity {
-    $ownerProcessId = Get-TicketboxOwnerHandoffProcessId
-    if ($InstallerLockOwnerProcessId -gt 0) {
-        if (-not (Get-Command Get-TicketboxValidatedExternalLifecycleOwnerIdentity -ErrorAction SilentlyContinue)) {
-            throw "owner handoff 缺少已验证的安装器生命周期身份 provider。"
-        }
-        $identity = Get-TicketboxValidatedExternalLifecycleOwnerIdentity $ownerProcessId
-        return [pscustomobject]@{
-            ProcessId = [int]$identity.ProcessId
-            StartedUtc = [string]$identity.StartedUtc
-        }
-    }
-    $process = Get-Process -Id $ownerProcessId -ErrorAction Stop
-    return [pscustomobject]@{
-        ProcessId = $ownerProcessId
-        StartedUtc = $process.StartTime.ToUniversalTime().ToString(
-            "yyyy-MM-ddTHH:mm:ss.fffffffZ",
-            [System.Globalization.CultureInfo]::InvariantCulture
-        )
-    }
-}
-
-function Write-TicketboxOwnerHandoffRecord {
-    param(
-        [Parameter(Mandatory = $true)][string]$OperationId,
-        [Parameter(Mandatory = $true)][string]$InstallationId,
-        [Parameter(Mandatory = $true)][ValidateRange(1, 2147483647)][int]$ClaimGeneration,
-        [Parameter(Mandatory = $true)][ValidateRange(0, 63)][int]$PairingDerivationIndex,
-        [Parameter(Mandatory = $true)][string]$PairingCode,
-        [Parameter(Mandatory = $true)][string]$PairingExpiresAt,
-        [switch]$ReplaceExisting
-    )
-    [DateTimeOffset]$parsedPairingExpiresAt = [DateTimeOffset]::MinValue
-    if (
-        $OperationId -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' -or
-        $InstallationId -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' -or
-        $PairingCode -cnotmatch '^[0-9]{8}$' -or
-        -not [DateTimeOffset]::TryParse(
-            $PairingExpiresAt,
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            [System.Globalization.DateTimeStyles]::AssumeUniversal,
-            [ref]$parsedPairingExpiresAt
-        )
-    ) {
-        throw "installation owner handoff 身份参数无效。"
-    }
-    Assert-TicketboxProtectedDirectoryAcl (Split-Path -Parent $OwnerHandoffPath)
-    $ownerIdentity = Get-TicketboxOwnerHandoffLifecycleIdentity
-    $text = [string]::Join([Environment]::NewLine, @(
-        "SCHEMA=ticketbox-installation-owner-handoff-v2",
-        "STATE=pending",
-        "CONTRACT=$script:InstallationOwnerContract",
-        "OPERATION_ID=$OperationId",
-        "INSTALLATION_ID=$InstallationId",
-        "CLAIM_GENERATION=$ClaimGeneration",
-        "PAIRING_DERIVATION_INDEX=$PairingDerivationIndex",
-        "PAIRING_CODE=$PairingCode",
-        "PAIRING_EXPIRES_AT=$PairingExpiresAt",
-        "INSTALLER_OWNER_PID=$($ownerIdentity.ProcessId)",
-        "INSTALLER_OWNER_STARTED_UTC=$($ownerIdentity.StartedUtc)"
-    )) + [Environment]::NewLine
-    Write-TicketboxProtectedUtf8FileDurable `
-        -Path $OwnerHandoffPath `
-        -Text $text `
-        -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
-        -OwnerAccount "SYSTEM" `
-        -ReplaceExisting:$ReplaceExisting
-    $persisted = Read-TicketboxProtectedUtf8Artifact `
-        -Path $OwnerHandoffPath `
-        -MaximumBytes 16384
-    if ($persisted.Text -cne $text) {
-        throw "owner 短期配对交付记录持久化校验失败。"
-    }
-}
-
-function Write-TicketboxOwnerHandoffFromResponse {
-    param(
-        [Parameter(Mandatory = $true)][object]$Response,
-        [Parameter(Mandatory = $true)][string]$OperationId,
-        [Parameter(Mandatory = $true)][string]$InstallationId
-    )
-    Write-TicketboxOwnerHandoffRecord `
-        -OperationId $OperationId `
-        -InstallationId $InstallationId `
-        -ClaimGeneration ([int]$Response.claim_generation) `
-        -PairingDerivationIndex ([int]$Response.pairing_derivation_index) `
-        -PairingCode ([string]$Response.pairing_code) `
-        -PairingExpiresAt ([string]$Response.pairing_expires_at)
-}
-
-function Read-TicketboxOwnerHandoffArtifact([string]$Path) {
-    Assert-TicketboxProtectedDirectoryAcl (Split-Path -Parent $Path)
-    return Read-TicketboxProtectedUtf8Artifact `
-        -Path $Path `
-        -FullControlAccounts @("SYSTEM", "BUILTIN\Administrators") `
-        -OwnerAccount "SYSTEM" `
-        -MaximumBytes 16384
-}
-
-function Assert-TicketboxOwnerHandoffArtifact([string]$Path) {
-    Read-TicketboxOwnerHandoffArtifact $Path | Out-Null
-}
-
-function Inspect-TicketboxRetiredOwnerHandoffArtifacts {
-    param(
-        [Parameter(Mandatory = $true)][string]$InstallerStatePath,
-        [Parameter(Mandatory = $true)][string]$LegacyOwnerBootstrapPath,
-        [Parameter(Mandatory = $true)][string]$LegacyOwnerHandoffPendingPath,
-        [Parameter(Mandatory = $true)][string]$RetiredOwnerBootstrapPath,
-        [Parameter(Mandatory = $true)][string]$RetiredOwnerHandoffPendingPath
-    )
-
-    Initialize-TicketboxInstallerStateDirectory $InstallerStatePath | Out-Null
-    $retiredPaths = @(
-        $LegacyOwnerBootstrapPath,
-        $LegacyOwnerHandoffPendingPath,
-        $RetiredOwnerBootstrapPath,
-        $RetiredOwnerHandoffPendingPath
-    )
-    $observed = @()
-    foreach ($path in $retiredPaths) {
-        $kind = "Unclassifiable"
-        try {
-            $kind = Get-TicketboxPathEntryKindNoFollow $path
-        }
-        catch {
-            # A retired protocol is not a current authority or trust input.
-            # Record only that its shape could not be classified; never open,
-            # repair, migrate, delete, or let it block the current protocol.
-        }
-        if ($kind -cne "Missing") {
-            $observed += "${path} [$kind]"
-        }
-    }
-    if ($observed.Count -gt 0) {
-        Write-Warn2 (
-            "发现旧 owner handoff 协议文件；它们仅作为受保护审计对象保留，" +
-            "不会读取内容、迁移、删除、展示、阻断安装或成为当前 pairing handoff 权威：" +
-            ($observed -join ";")
-        )
-    }
-}
-
-function Read-TicketboxOwnerHandoffRecord {
-    $artifact = Read-TicketboxOwnerHandoffArtifact $OwnerHandoffPath
-    $newLine = [Environment]::NewLine
-    if (-not $artifact.Text.EndsWith($newLine, [System.StringComparison]::Ordinal)) {
-        throw "owner 绑定交付标记必须以平台换行结尾。"
-    }
-    $body = $artifact.Text.Substring(0, $artifact.Text.Length - $newLine.Length)
-    $lines = @($body.Split(
-        [string[]]@($newLine),
-        [System.StringSplitOptions]::None
-    ))
-    if (
-        $lines.Count -ne 11 -or
-        $lines[0] -cne "SCHEMA=ticketbox-installation-owner-handoff-v2" -or
-        $lines[1] -cne "STATE=pending" -or
-        $lines[2] -cne "CONTRACT=$script:InstallationOwnerContract" -or
-        -not $lines[3].StartsWith("OPERATION_ID=", [System.StringComparison]::Ordinal) -or
-        -not $lines[4].StartsWith("INSTALLATION_ID=", [System.StringComparison]::Ordinal) -or
-        -not $lines[5].StartsWith("CLAIM_GENERATION=", [System.StringComparison]::Ordinal) -or
-        -not $lines[6].StartsWith("PAIRING_DERIVATION_INDEX=", [System.StringComparison]::Ordinal) -or
-        -not $lines[7].StartsWith("PAIRING_CODE=", [System.StringComparison]::Ordinal) -or
-        -not $lines[8].StartsWith("PAIRING_EXPIRES_AT=", [System.StringComparison]::Ordinal) -or
-        -not $lines[9].StartsWith("INSTALLER_OWNER_PID=", [System.StringComparison]::Ordinal) -or
-        -not $lines[10].StartsWith("INSTALLER_OWNER_STARTED_UTC=", [System.StringComparison]::Ordinal)
-    ) {
-        throw "owner 绑定交付标记格式无效。"
-    }
-    $operationId = $lines[3].Substring("OPERATION_ID=".Length)
-    $installationId = $lines[4].Substring("INSTALLATION_ID=".Length)
-    $claimGenerationText = $lines[5].Substring("CLAIM_GENERATION=".Length)
-    $claimGeneration = 0
-    $pairingDerivationIndexText =
-        $lines[6].Substring("PAIRING_DERIVATION_INDEX=".Length)
-    $pairingDerivationIndex = -1
-    $pairingCode = $lines[7].Substring("PAIRING_CODE=".Length)
-    $pairingExpiresAtText = $lines[8].Substring("PAIRING_EXPIRES_AT=".Length)
-    [DateTimeOffset]$pairingExpiresAt = [DateTimeOffset]::MinValue
-    if (
-        $operationId -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' -or
-        $installationId -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' -or
-        -not [int]::TryParse(
-            $claimGenerationText,
-            [System.Globalization.NumberStyles]::None,
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            [ref]$claimGeneration
-        ) -or
-        $claimGeneration -lt 1 -or
-        -not [int]::TryParse(
-            $pairingDerivationIndexText,
-            [System.Globalization.NumberStyles]::None,
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            [ref]$pairingDerivationIndex
-        ) -or
-        $pairingDerivationIndex -lt 0 -or
-        $pairingDerivationIndex -gt 63 -or
-        $pairingCode -cnotmatch '^[0-9]{8}$' -or
-        -not [DateTimeOffset]::TryParse(
-            $pairingExpiresAtText,
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            [System.Globalization.DateTimeStyles]::AssumeUniversal,
-            [ref]$pairingExpiresAt
-        )
-    ) {
-        throw "owner 绑定交付标记事务身份无效。"
-    }
-    $ownerProcessText = $lines[9].Substring("INSTALLER_OWNER_PID=".Length)
-    $ownerProcessId = 0
-    if (
-        $ownerProcessText -cnotmatch '^[1-9][0-9]*$' -or
-        -not [int]::TryParse(
-            $ownerProcessText,
-            [System.Globalization.NumberStyles]::None,
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            [ref]$ownerProcessId
-        ) -or $ownerProcessId -le 0
-    ) {
-        throw "owner 绑定交付标记 owner PID 无效。"
-    }
-    [DateTimeOffset]$ownerStartedAt = [DateTimeOffset]::MinValue
-    $ownerStartedText = $lines[10].Substring("INSTALLER_OWNER_STARTED_UTC=".Length)
-    $timestampFormat = "yyyy-MM-ddTHH:mm:ss.fffffffZ"
-    $timestampStyles =
-        [System.Globalization.DateTimeStyles]::AssumeUniversal -bor
-        [System.Globalization.DateTimeStyles]::AdjustToUniversal
-    if (
-        -not [DateTimeOffset]::TryParseExact(
-            $ownerStartedText,
-            $timestampFormat,
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            $timestampStyles,
-            [ref]$ownerStartedAt
-        ) -or
-        $ownerStartedAt.ToUniversalTime().ToString(
-            $timestampFormat,
-            [System.Globalization.CultureInfo]::InvariantCulture
-        ) -cne $ownerStartedText
-    ) {
-        throw "owner 绑定交付标记 owner 启动时间无效。"
-    }
-    return [pscustomobject]@{
-        State = "pending"
-        OperationId = $operationId
-        InstallationId = $installationId
-        ClaimGeneration = $claimGeneration
-        PairingDerivationIndex = $pairingDerivationIndex
-        PairingCode = $pairingCode
-        PairingExpiresAt = $pairingExpiresAtText
-        OwnerProcessId = $ownerProcessId
-        OwnerStartedUtc = $ownerStartedAt.ToUniversalTime().ToString(
-            "yyyy-MM-ddTHH:mm:ss.fffffffZ",
-            [System.Globalization.CultureInfo]::InvariantCulture
-        )
-    }
-}
-
-function Test-TicketboxOwnerHandoffProcessIsAlive {
-    param(
-        [Parameter(Mandatory = $true)][object]$Record,
-        [scriptblock]$ProcessReader = {
-            param($ProcessId)
-            Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-        },
-        [scriptblock]$HasExitedReader = {
-            param($Process)
-            $Process.Refresh()
-            $Process.HasExited
-        },
-        [scriptblock]$StartedUtcReader = {
-            param($Process)
-            $Process.StartTime.ToUniversalTime().ToString(
-                "yyyy-MM-ddTHH:mm:ss.fffffffZ",
-                [System.Globalization.CultureInfo]::InvariantCulture
-            )
-        }
-    )
-
-    try { $process = & $ProcessReader $Record.OwnerProcessId }
-    catch { return $false }
-    if ($null -eq $process) { return $false }
-    try {
-        if ([bool](& $HasExitedReader $process)) { return $false }
-        $started = & $StartedUtcReader $process
-        if ($started -cne $Record.OwnerStartedUtc) { return $false }
-        return -not [bool](& $HasExitedReader $process)
-    }
-    catch {
-        # The current installer already owns the exclusive machine lifecycle lock.
-        # An unverifiable reused PID cannot retain authority from an older owner record.
-        return $false
-    }
-}
-
-function Assert-TicketboxOwnerHandoffIdentity {
-    param(
-        [Parameter(Mandatory = $true)][object]$Record,
-        [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
-        [Parameter(Mandatory = $true)][string]$ExpectedInstallationId
-    )
-    if (
-        [string]$Record.OperationId -cne $ExpectedOperationId -or
-        [string]$Record.InstallationId -cne $ExpectedInstallationId
-    ) {
-        throw "owner 绑定交付标记不属于当前 installation operation。"
-    }
-}
-
-function Read-TicketboxOwnerHandoffState {
-    param(
-        [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
-        [Parameter(Mandatory = $true)][string]$ExpectedInstallationId
-    )
-    $record = Read-TicketboxOwnerHandoffRecord
-    Assert-TicketboxOwnerHandoffIdentity `
-        -Record $record `
-        -ExpectedOperationId $ExpectedOperationId `
-        -ExpectedInstallationId $ExpectedInstallationId
-    $currentOwner = Get-TicketboxOwnerHandoffLifecycleIdentity
-    if (
-        $record.OwnerProcessId -ne $currentOwner.ProcessId -or
-        $record.OwnerStartedUtc -cne $currentOwner.StartedUtc
-    ) {
-        throw "owner 绑定交付标记不属于当前安装器生命周期。"
-    }
-    return $record.State
-}
-
-function Adopt-TicketboxOwnerBootstrapHandoff {
-    param(
-        [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
-        [Parameter(Mandatory = $true)][string]$ExpectedInstallationId
-    )
-    if (-not (Test-Path -LiteralPath $OwnerHandoffPath)) {
-        return "absent"
-    }
-    $record = Read-TicketboxOwnerHandoffRecord
-    Assert-TicketboxOwnerHandoffIdentity `
-        -Record $record `
-        -ExpectedOperationId $ExpectedOperationId `
-        -ExpectedInstallationId $ExpectedInstallationId
-    $currentOwner = Get-TicketboxOwnerHandoffLifecycleIdentity
-    if (
-        $record.OwnerProcessId -eq $currentOwner.ProcessId -and
-        $record.OwnerStartedUtc -ceq $currentOwner.StartedUtc
-    ) {
-        return "pending"
-    }
-    if (Test-TicketboxOwnerHandoffProcessIsAlive $record) {
-        throw "上一个安装器仍持有 owner 绑定交付，拒绝接管。"
-    }
-    Write-TicketboxOwnerHandoffRecord `
-        -OperationId $record.OperationId `
-        -InstallationId $record.InstallationId `
-        -ClaimGeneration $record.ClaimGeneration `
-        -PairingDerivationIndex $record.PairingDerivationIndex `
-        -PairingCode $record.PairingCode `
-        -PairingExpiresAt $record.PairingExpiresAt `
-        -ReplaceExisting
-    return "pending"
-}
-
-function Complete-TicketboxOwnerBootstrapHandoff {
-    param(
-        [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
-        [Parameter(Mandatory = $true)][string]$ExpectedInstallationId
-    )
-    if (-not (Test-Path -LiteralPath $OwnerHandoffPath)) {
-        return "already_absent"
-    }
-    $record = Read-TicketboxOwnerHandoffRecord
-    Assert-TicketboxOwnerHandoffIdentity `
-        -Record $record `
-        -ExpectedOperationId $ExpectedOperationId `
-        -ExpectedInstallationId $ExpectedInstallationId
-    if ((Read-TicketboxOwnerHandoffState `
-        -ExpectedOperationId $ExpectedOperationId `
-        -ExpectedInstallationId $ExpectedInstallationId) -cne "pending") {
-        throw "owner 短期配对交付记录不允许清理。"
-    }
-    Remove-TicketboxSensitiveFile $OwnerHandoffPath
-    if (Test-Path -LiteralPath $OwnerHandoffPath) {
-        throw "owner 短期配对交付记录删除后仍然存在。"
-    }
-    return "removed"
-}
 
 function Complete-FirstOwnerBootstrapIfEnabled {
     param(
@@ -652,18 +259,16 @@ function Complete-FirstOwnerBootstrapIfEnabled {
     if ($secret.Trim().Length -eq 0) {
         return
     }
-    if (
-        (Test-Path -LiteralPath $OwnerHandoffPath)
-    ) {
-        if (-not (Test-Path -LiteralPath $OwnerHandoffPath -PathType Leaf)) {
-            throw "owner bootstrap handoff 不是普通文件。"
-        }
-        $record = Read-TicketboxOwnerHandoffRecord
+    $ownerHandoffKind = Get-TicketboxPathEntryKindNoFollow $OwnerHandoffPath
+    if ($ownerHandoffKind -ceq "File") {
+        $record = Read-TicketboxOwnerHandoffRecord -Path $OwnerHandoffPath
         Assert-TicketboxOwnerHandoffIdentity `
             -Record $record `
             -ExpectedOperationId $InstallationOperationId `
             -ExpectedInstallationId $InstallationId
         if ((Read-TicketboxOwnerHandoffState `
+            -Path $OwnerHandoffPath `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -ExpectedOperationId $InstallationOperationId `
             -ExpectedInstallationId $InstallationId) -cne "pending") {
             throw "只能为已持久化的 pending owner handoff 退役 bootstrap secret。"
@@ -691,6 +296,9 @@ function Complete-FirstOwnerBootstrapIfEnabled {
             -MaximumResponseBytes $script:BootstrapMaximumResponseBytes
         Write-Ok "已从持久化 owner handoff 续跑并退役 bootstrap secret。"
         return
+    }
+    if ($ownerHandoffKind -cne "Missing") {
+        throw "owner bootstrap handoff 不是可信普通文件。"
     }
     Assert-TicketboxBootstrapSecret $secret
     $listenerExposureRecovered = $false
@@ -756,10 +364,16 @@ function Complete-FirstOwnerBootstrapIfEnabled {
         throw "owner 初始化未在超时内完成可验证重试：$lastError"
     }
 
-    Write-TicketboxOwnerHandoffFromResponse `
-        -Response $response `
+    Write-TicketboxOwnerHandoffRecord `
+        -Path $OwnerHandoffPath `
+        -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
         -OperationId $InstallationOperationId `
-        -InstallationId $InstallationId
+        -InstallationId $InstallationId `
+        -ClaimGeneration ([int]$response.claim_generation) `
+        -PairingDerivationIndex ([int]$response.pairing_derivation_index) `
+        -PairingCode ([string]$response.pairing_code) `
+        -PairingExpiresAt ([string]$response.pairing_expires_at) `
+        -ReplaceExisting $false
     Write-Ok "installation owner 短期配对交付记录已写入：$OwnerHandoffPath"
     Write-EnvNoBom `
         -Path $EnvPath `

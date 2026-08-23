@@ -807,6 +807,85 @@ begin
   end;
 end;
 
+function ResumeExistingGenerationOperation(): String;
+var
+  Args: String;
+begin
+  AssertLifecycleLockActive();
+  AssertManagerMaintenanceGateActive();
+  AssertDataRootMutationGuardActive();
+  if not ValidateLifecycleLockBootstrapFiles() then
+  begin
+    Result := '受保护 lifecycle bootstrap bundle 在续跑前复核失败。';
+    exit;
+  end;
+  Args :=
+    '-InstallDir ' + Quote(ExpandConstant('{app}')) +
+    ' -DataRoot ' + Quote(SelectedDataRoot()) +
+    ' -PgPort ' + SelectedPgPort() +
+    ' -BackendPort ' + SelectedBackendPort() +
+    ' -TargetPgMajor {#TargetPgMajor}' +
+    ' -TargetBackendVersion {#AppVersion}' +
+    ' -ReleaseConfigPath ' +
+      Quote(LifecycleBootstrapFilePath('windows-release-config.json')) +
+    ' -InstalledReleaseConfigPath ' +
+      Quote(ExpandConstant('{app}\installer\windows-release-config.json')) +
+    ' -LifecycleReceiptPath ' +
+      Quote(ExpandConstant('{commoncf64}\Ticketbox\installer-lifecycle-receipt.json')) +
+    ' -InstallerLockOwnerProcessId ' + IntToStr(LifecycleLockOwnerProcessId) +
+    ' -RecoverPreparedInstall -FilesReplaced';
+  if not RunPowerShellChecked(
+    LifecycleBootstrapFilePath('prepare_bundled_upgrade.ps1'),
+    Args,
+    'Ticketbox generation operation resume') then
+  begin
+    if LastPowerShellFailureMessage <> '' then
+    begin
+      Result := LastPowerShellFailureMessage;
+    end
+    else
+    begin
+      Result :=
+        '同一安装操作未能在受保护 mutation gates 后完成续跑。' +
+        '支持代码：TBX-GENERATION-RESUME';
+    end;
+    exit;
+  end;
+  AssertLifecycleLockActive();
+  AssertManagerMaintenanceGateActive();
+  AssertDataRootMutationGuardActive();
+  Result := '';
+end;
+
+function AuthoritativePayloadSpaceError(): String;
+var
+  FreeBytes: Int64;
+  TotalBytes: Int64;
+  RequiredBytes: Int64;
+begin
+  RequiredBytes := StrToInt64Def('{#InstalledPayloadRequiredBytes}', -1);
+  if RequiredBytes < 1 then
+  begin
+    Result := '安装包缺少有效的程序文件空间预算；拒绝进入复制阶段。';
+    exit;
+  end;
+  if not GetSpaceOnDisk64(ExpandConstant('{autopf}'),
+    FreeBytes,
+    TotalBytes) then
+  begin
+    Result := '无法验证程序文件目标卷的可用空间；拒绝进入复制阶段。';
+    exit;
+  end;
+  if FreeBytes < RequiredBytes then
+  begin
+    Result :=
+      '程序文件目标卷可用空间不足；至少还需要 ' +
+      Int64ToStr(RequiredBytes) + ' 字节。';
+    exit;
+  end;
+  Result := '';
+end;
+
 function PrepareAuthoritativePayloadReplacement(): String;
 var
   Args: String;
@@ -952,8 +1031,29 @@ begin
     exit;
   end;
   AssertLifecycleLockActive();
-  if LastPowerShellExistingOperationCompleted then
+  if LastPowerShellExistingOperationRequiresResume then
   begin
+    if not StartManagerMaintenanceGate() then
+    begin
+      Result :=
+        '无法建立小票夹管理器维护门；同一安装操作尚未续跑。请关闭其他安装器后重试。';
+      exit;
+    end;
+    AssertManagerMaintenanceGateActive();
+    if not StartDataRootMutationGuard(
+      LifecycleBootstrapFilePath('hold_data_root_mutation_guard.ps1'),
+      ExpandConstant('{app}'),
+      SelectedDataRoot()) then
+    begin
+      Result := '无法持续锁定 DataRoot 目录链；同一安装操作尚未续跑。';
+      exit;
+    end;
+    AssertDataRootMutationGuardActive();
+    Result := ResumeExistingGenerationOperation();
+    if Result <> '' then
+    begin
+      exit;
+    end;
     LifecycleExistingOperationCompleted := True;
     LifecyclePrepared := True;
     LifecycleFilesMayBeReplaced := True;
@@ -993,6 +1093,11 @@ begin
     end;
     exit;
   end;
+  Result := AuthoritativePayloadSpaceError();
+  if Result <> '' then
+  begin
+    exit;
+  end;
   if not StartManagerMaintenanceGate() then
   begin
     Result :=
@@ -1007,6 +1112,11 @@ function AuthoritativePayloadReplacementPrepared(): Boolean;
 begin
   Result := LifecyclePrepared and
     (not LifecycleExistingOperationCompleted);
+end;
+
+function AuthoritativeProjectionReconciliationPrepared(): Boolean;
+begin
+  Result := LifecyclePrepared;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

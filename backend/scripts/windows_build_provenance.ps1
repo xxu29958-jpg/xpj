@@ -103,6 +103,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "packaging\windows_postgresql_candidate_runtime.ps1",
     "packaging\windows_backend_health.ps1",
     "packaging\windows_backend_bootstrap.ps1",
+    "packaging\windows_owner_handoff.ps1",
     "packaging\windows_bootstrap_exposure_recovery.ps1",
     "packaging\install_bundled_services.ps1",
     "packaging\uninstall_bundled_services.ps1"

@@ -234,6 +234,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
 
     pre_copy_dependencies = (
         "prepare_bundled_upgrade.ps1",
+        "windows_owner_handoff.ps1",
         "windows_service_contract.ps1",
         "windows_service_lifecycle.ps1",
         "windows_installation_safety.ps1",
@@ -335,8 +336,9 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "windows_postgresql_candidate_cluster.ps1",
         "windows_postgresql_candidate_initdb.ps1",
         "windows_postgresql_candidate_runtime.ps1",
-        "windows_backend_health.ps1",
-        "windows_backend_bootstrap.ps1",
+            "windows_backend_health.ps1",
+            "windows_backend_bootstrap.ps1",
+            "windows_owner_handoff.ps1",
         "windows_bootstrap_exposure_recovery.ps1",
         "install_bundled_services.ps1",
         "uninstall_bundled_services.ps1",
@@ -596,10 +598,12 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert finish_click.index("ReleaseManagerMaintenanceGate") < finish_click.index("ExecAsOriginalUser")
     assert finish_click.index("ReleaseLifecycleLock") < finish_click.index("ExecAsOriginalUser")
     bootstrap = _read("windows_backend_bootstrap.ps1")
-    assert "-PairingCode ([string]$Response.pairing_code)" in bootstrap
-    assert "-PairingExpiresAt ([string]$Response.pairing_expires_at)" in bootstrap
-    assert "admin_token" not in bootstrap
-    assert "upload_key" not in bootstrap
+    handoff = _read("windows_owner_handoff.ps1")
+    assert "-PairingCode ([string]$response.pairing_code)" in bootstrap
+    assert "-PairingExpiresAt ([string]$response.pairing_expires_at)" in bootstrap
+    assert "Write-TicketboxOwnerHandoffFromResponse" not in bootstrap + handoff
+    assert "admin_token" not in bootstrap + handoff
+    assert "upload_key" not in bootstrap + handoff
     assert '"http://127.0.0.1:$BackendPort/api/bootstrap/installation-owner"' in bootstrap
     assert "$InstallerState = Get-TicketboxInstallerStateDirectory" in install
     assert "$InstallerState = Get-TicketboxInstallerStateDirectory" in prepare
@@ -629,8 +633,8 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     preserve = recovery_compensation.index("Read-TicketboxInstallerRecoveryMarker", reconcile)
     create = recovery_compensation.index("Write-TicketboxInstallerRecoveryMarker", preserve)
     assert reconcile < preserve < create
-    owner_inspection = bootstrap[
-        bootstrap.index("function Inspect-TicketboxRetiredOwnerHandoffArtifacts") : bootstrap.index(
+    owner_inspection = handoff[
+        handoff.index("function Inspect-TicketboxRetiredOwnerHandoffArtifacts") : handoff.index(
             "function Read-TicketboxOwnerHandoffRecord"
         )
     ]
@@ -669,7 +673,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
             flow,
         )
     )
-    assert len(prepare_calls) == 5
+    assert len(prepare_calls) == 6
     for call in prepare_calls:
         args_start = flow.rfind("Args :=\n", 0, call.start())
         assert args_start >= 0
@@ -855,7 +859,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "installer-lifecycle.owner" in installer
     assert "GetCurrentProcessId@kernel32.dll" in installer
     assert "SaveStringToFile(" in installer
-    assert installer.count(" -InstallerLockOwnerProcessId ") == 10
+    assert installer.count(" -InstallerLockOwnerProcessId ") == 11
     assert "InstallerLockHeld" not in installer
     assert "Pos(#0, Value)" in installer
     assert '"prepare_bundled_upgrade.ps1" = @(' in installer
@@ -2439,22 +2443,31 @@ Remove-Item -LiteralPath $regPath -Recurse -Force
 """,
         encoding="utf-8-sig",
     )
+
+    def remove_receipt_fixture_without_following() -> None:
+        if not os.path.lexists(receipt_path):
+            return
+        try:
+            os.rmdir(receipt_path)
+        except NotADirectoryError:
+            receipt_path.unlink()
+
     for engine in powershell_contract_engines():
-        if receipt_path.is_dir():
-            receipt_path.rmdir()
-        else:
-            receipt_path.unlink(missing_ok=True)
+        remove_receipt_fixture_without_following()
         shutil.rmtree(installer_state, ignore_errors=True)
-        result = subprocess.run(
-            [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=20,
-        )
-        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+        try:
+            result = subprocess.run(
+                [engine, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", harness],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=20,
+            )
+            assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+        finally:
+            remove_receipt_fixture_without_following()
 
 
 def test_inno_acl_and_post_child_failure_compensation_mutations() -> None:
@@ -2472,7 +2485,7 @@ def test_inno_acl_and_post_child_failure_compensation_mutations() -> None:
     runner = windows[
         windows.index("function RunPowerShellChecked") : windows.index("function StartDataRootMutationGuard")
     ]
-    committed_outcome = runner.index("LastPowerShellExistingOperationCompleted :=")
+    committed_outcome = runner.index("LastPowerShellExistingOperationRequiresResume :=")
     child_success = runner.index("LastPowerShellChildSucceeded :=", committed_outcome)
     post_child_hardening = runner.index("if not HardenLifecycleLockPath(LogPath, False)")
     result_failure = runner.index("if (ResultCode <> 0) and")
@@ -2608,7 +2621,11 @@ def test_manager_maintenance_gate_spans_setup_and_uninstall_payload_mutation() -
 
     prepare = flow[flow.index("function PrepareToInstall") : flow.index("procedure CurStepChanged")]
     assert "StartManagerMaintenanceGate()" in prepare
-    assert "StartDataRootMutationGuard" not in prepare
+    resume_outcome = prepare.index("LastPowerShellExistingOperationRequiresResume")
+    manager_gate = prepare.index("StartManagerMaintenanceGate()", resume_outcome)
+    data_root_guard = prepare.index("StartDataRootMutationGuard", manager_gate)
+    resume_owner = prepare.index("ResumeExistingGenerationOperation()", data_root_guard)
+    assert resume_outcome < manager_gate < data_root_guard < resume_owner
     assert "'Ticketbox fresh installation preparation'" not in prepare
 
     install = flow[flow.index("procedure CurStepChanged") : flow.index("procedure DeinitializeSetup")]
@@ -2770,7 +2787,9 @@ def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Pa
         "LifecycleLockScriptSha256": digest,
         "LifecycleHolderScriptSha256": digest,
         "DataRootGuardScriptSha256": digest,
-        "PrepareScriptSha256": digest,
+            "PrepareScriptSha256": digest,
+            "OwnerHandoffScriptSha256": digest,
+            "InstalledPayloadRequiredBytes": "1",
         "ServiceContractScriptSha256": digest,
         "ServiceIdentityScriptSha256": digest,
         "ServiceLifecycleScriptSha256": digest,
@@ -4890,6 +4909,7 @@ def test_windows_safety_helpers_execute_in_available_powershells(tmp_path: Path)
     safety = PACKAGING / "windows_installation_safety.ps1"
     lifecycle_lock = PACKAGING / "windows_lifecycle_lock.ps1"
     lifecycle_receipt = PACKAGING / "windows_lifecycle_receipt.ps1"
+    owner_handoff = PACKAGING / "windows_owner_handoff.ps1"
     backend_bootstrap = PACKAGING / "windows_backend_bootstrap.ps1"
     database_safety = PACKAGING / "windows_database_safety.ps1"
     release_config_script = PACKAGING / "windows_release_config.ps1"
@@ -4956,6 +4976,7 @@ $ErrorActionPreference = 'Stop'
 . '{literal(safety)}'
 . '{literal(lifecycle_lock)}'
 . '{literal(lifecycle_receipt)}'
+. '{literal(owner_handoff)}'
 . '{literal(backend_bootstrap)}'
 . '{literal(database_safety)}'
 . '{literal(release_config_script)}'

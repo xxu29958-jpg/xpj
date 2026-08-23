@@ -178,7 +178,8 @@ backend\
     windows_installation_safety.ps1  # 数据根 owner/ACL、持久 version floor/身份与防误删边界
     windows_database_safety.ps1      # loopback libpq、口令隔离、数据根身份与 dump 防护
     windows_bundled_database.ps1     # PG 初始化、身份校验与升级备份
-    windows_backend_bootstrap.ps1    # 后端 deadline 就绪探测与首次 owner bootstrap
+    windows_backend_bootstrap.ps1    # 后端 deadline 就绪探测与首次 owner bootstrap HTTP
+    windows_owner_handoff.ps1        # pairing handoff 的受保护读写、接管与退役
     windows_bootstrap_exposure_recovery.ps1 # 监听器暴露后的停服凭据轮换
     install_bundled_services.ps1     # 正式安装 / 升级后置配置
     uninstall_bundled_services.ps1   # 归属安全的服务卸载，默认保留数据
