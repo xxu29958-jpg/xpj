@@ -802,6 +802,7 @@ def test_completed_stale_receipt_is_retired_before_fresh_preflight() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
     install = _read("install_bundled_services.ps1")
     flow = _read("ticketbox-installer-flow.isph")
+    receipt = _read("windows_lifecycle_receipt.ps1")
 
     stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
     completed_check = prepare.index("if ([bool]$staleReceipt.install_completed)", stale_start)
@@ -837,6 +838,41 @@ def test_completed_stale_receipt_is_retired_before_fresh_preflight() -> None:
     assert service_install < durable_commit < final_data_root_lease_check < host_commit
     assert "-CommitCompletedInstall" in flow[service_install:host_commit]
 
+    finalizer = receipt[
+        receipt.index("function Complete-TicketboxInstalledLifecycleTransaction") : receipt.index(
+            "function Set-TicketboxLifecycleReceiptInstallerOwner"
+        )
+    ]
+    current_gate = finalizer.index("Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent")
+    manifest_read = finalizer.index("$installedBuildManifest = Read-TicketboxInstalledBuildManifest")
+    recipe_binding = finalizer.index(
+        '"packaging/windows_database_generation_recovery_archive.ps1"',
+        manifest_read,
+    )
+    adapter_path = finalizer.index("$recoveryArchiveAdapterPath = Join-Path")
+    adapter_sha = finalizer.index(
+        "Get-TicketboxFileSha256 $recoveryArchiveAdapterPath",
+        adapter_path,
+    )
+    adapter_load = finalizer.index(". $recoveryArchiveAdapterPath", adapter_path)
+    identity_promotion = finalizer.index("Promote-TicketboxPendingInstallationIdentity", adapter_load)
+    archive_retirement = finalizer.index(
+        "Remove-TicketboxDatabaseGenerationTargetRecoveryArchive",
+        identity_promotion,
+    )
+    assert (
+        current_gate
+        < manifest_read
+        < recipe_binding
+        < adapter_path
+        < adapter_sha
+        < adapter_load
+        < identity_promotion
+        < archive_retirement
+    )
+    assert '"installer\\windows_database_generation_recovery_archive.ps1"' in finalizer
+    assert "Assert-NoTicketboxAncestorReparsePoints $recoveryArchiveAdapterPath" in finalizer
+
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows lifecycle commit contract")
 def test_install_commit_retires_recovery_latch_only_after_durable_authorities(
@@ -852,12 +888,30 @@ def test_install_commit_retires_recovery_latch_only_after_durable_authorities(
     ]
     authority_loader = tmp_path / "windows_database_generation.ps1"
     authority_loader.write_text("", encoding="utf-8-sig")
+    install_dir = tmp_path / "program"
+    installed_adapter = install_dir / "installer" / "windows_database_generation_recovery_archive.ps1"
+    installed_adapter.parent.mkdir(parents=True)
+    installed_adapter.write_text(
+        """
+function Remove-TicketboxDatabaseGenerationTargetRecoveryArchive {
+    param($StateRoot, $OperationId, $LifecycleLock)
+    [void]$script:events.Add('archive-read')
+    if (-not $script:archivePresent) { return }
+    [void]$script:events.Add('archive-assert')
+    [void]$script:events.Add('archive-clean')
+    $script:archivePresent = $false
+}
+""",
+        encoding="utf-8-sig",
+    )
+    adapter_size = installed_adapter.stat().st_size
+    adapter_sha256 = hashlib.sha256(installed_adapter.read_bytes()).hexdigest()
+    installed_manifest = installed_adapter.parent / "BUILD_PROVENANCE.json"
     harness = tmp_path / "install-commit-order.ps1"
     harness.write_text(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{_literal(PACKAGING / "windows_lifecycle_receipt.ps1")}'
-. '{_literal(PACKAGING / "windows_database_generation_recovery_archive.ps1")}'
 . '{_literal(PACKAGING / "windows_database_generation_recovery_evidence.ps1")}'
 $runtimeState = Get-TicketboxInstallerRuntimeStateDirectory '{_literal(tmp_path)}'
 if ($runtimeState -cne '{_literal(tmp_path / "TicketboxRuntimeState")}') {{
@@ -871,6 +925,7 @@ $script:expectedCurrentOperation = '11111111-1111-1111-1111-111111111111'
 $script:expectedCurrentSha256 = ('a' * 64)
 $script:receiptOperation = $script:expectedCurrentOperation
 $script:receiptCurrentSha256 = $script:expectedCurrentSha256
+$script:adapterSha256 = '{adapter_sha256}'
 function Assert-TicketboxLifecycleOperationLease {{ param($LifecycleLock) }}
 function Read-TicketboxLifecycleReceipt {{
     param($Path, $InstallDir, $DataRoot, $PgPort, $BackendPort, $TargetReleaseConfig, $CurrentTargetBackendVersion, $InstallerOwnerProcessId)
@@ -924,8 +979,37 @@ function Assert-TicketboxDatabaseGenerationRecoveryArchive {{
 }}
 function Get-TicketboxPathEntryKindNoFollow {{
     param($Path)
+    if ([IO.Path]::GetFullPath($Path) -ieq [IO.Path]::GetFullPath('{_literal(installed_adapter)}')) {{
+        return 'File'
+    }}
     if ($script:archivePresent) {{ return 'File' }}
     return 'Missing'
+}}
+function Assert-NoTicketboxAncestorReparsePoints {{ param($Path) }}
+function Test-TicketboxPathEquals {{
+    param($Left, $Right)
+    return [IO.Path]::GetFullPath($Left) -ieq [IO.Path]::GetFullPath($Right)
+}}
+function Read-TicketboxInstalledBuildManifest {{
+    param($Path)
+    if ([IO.Path]::GetFullPath($Path) -ine [IO.Path]::GetFullPath('{_literal(installed_manifest)}')) {{
+        throw 'unexpected installed build manifest path'
+    }}
+    return [pscustomobject]@{{ Manifest = [pscustomobject]@{{ recipe = [pscustomobject]@{{
+        algorithm = 'SHA-256'
+        files = @([pscustomobject]@{{
+            path = 'packaging/windows_database_generation_recovery_archive.ps1'
+            size = [int64]{adapter_size}
+            sha256 = '{adapter_sha256}'
+        }})
+    }} }} }}
+}}
+function Get-TicketboxFileSha256 {{
+    param($Path)
+    if ([IO.Path]::GetFullPath($Path) -ine [IO.Path]::GetFullPath('{_literal(installed_adapter)}')) {{
+        throw 'unexpected adapter hash path'
+    }}
+    return $script:adapterSha256
 }}
 function Remove-TicketboxDatabaseGenerationRecoveryFile {{
     param($StateRoot, $Path, $LifecycleLock)
@@ -972,7 +1056,7 @@ function Remove-TicketboxInstallerRuntimeRecoveryGuard {{
 }}
 $config = [pscustomobject]@{{ pg_service_name = 'TicketboxPg'; backend_service_name = 'TicketboxBackend' }}
 $LifecycleReceiptPath = 'receipt.json'
-$InstallDir = 'program'
+$InstallDir = '{_literal(install_dir)}'
 $DataRoot = 'data'
 $PgPort = 5432
 $BackendPort = 8000
@@ -989,8 +1073,9 @@ function Invoke-TestPrepareMutationDispatch {{
 {prepare_dispatch}
 }}
 $arguments = @{{
-    Path = 'receipt.json'; InstallDir = 'program'; DataRoot = 'data'; PgPort = 5432; BackendPort = 8000
-    TargetReleaseConfig = $config; TargetBackendVersion = '1.3.0'; InstallerOwnerProcessId = $PID; BuildManifestPath = 'manifest.json'
+    Path = 'receipt.json'; InstallDir = '{_literal(install_dir)}'; DataRoot = 'data'; PgPort = 5432; BackendPort = 8000
+    TargetReleaseConfig = $config; TargetBackendVersion = '1.3.0'; InstallerOwnerProcessId = $PID
+    BuildManifestPath = '{_literal(installed_manifest)}'
     RecoveryRequiredPath = 'installer-recovery-required.json'
     RuntimeRecoveryGuardPath = 'installer-runtime-recovery-pending'
     LifecycleLock = @{{}}
@@ -1113,6 +1198,15 @@ if ($script:events.Count -ne 0) {{
 $script:expectedCurrentOperation = '11111111-1111-1111-1111-111111111111'
 $script:expectedCurrentSha256 = ('a' * 64)
 $script:failReady = $false
+$script:adapterSha256 = ('0' * 64)
+$adapterDriftRejected = $false
+try {{ Complete-TicketboxInstalledLifecycleTransaction @arguments }}
+catch {{ $adapterDriftRejected = $true }}
+if (-not $adapterDriftRejected -or ($script:events -contains 'identity')) {{
+    throw 'commit promoted identity after installed adapter provenance drift'
+}}
+$script:events.Clear()
+$script:adapterSha256 = '{adapter_sha256}'
 Complete-TicketboxInstalledLifecycleTransaction @arguments
 if (($script:events -join ',') -cne 'read,current,archive-read,archive-assert,identity,receipt,read,assert,archive-read,archive-assert,archive-clean,tools,autostart,latch,runtime') {{
     throw "first commit order was $($script:events -join ',')"
@@ -1189,8 +1283,6 @@ def test_post_copy_recovery_has_no_database_only_backup_guard() -> None:
         assert retired not in prepare
     assert "Invoke-TicketboxPgDumpCustom" not in prepare
     assert "Get-TicketboxLifecycleBackupEvidence" in receipt
-
-
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows recovery compensation contract")

@@ -2137,6 +2137,59 @@ function Complete-TicketboxInstalledLifecycleTransaction {
         [void](Assert-TicketboxDatabaseGenerationRecoveryArchive `
             $generationStateRoot $recoveryArchive)
     }
+    $expectedBuildManifestPath = Join-Path `
+        $InstallDir `
+        "installer\BUILD_PROVENANCE.json"
+    if (-not (Test-TicketboxPathEquals `
+        $BuildManifestPath `
+        $expectedBuildManifestPath)) {
+        throw "installed recovery archive adapter 只接受安装目录内 build provenance。"
+    }
+    $installedBuildManifest = Read-TicketboxInstalledBuildManifest `
+        -Path $expectedBuildManifestPath
+    $adapterRecipePath =
+        "packaging/windows_database_generation_recovery_archive.ps1"
+    $adapterRecords = @($installedBuildManifest.Manifest.recipe.files | Where-Object {
+        [string]$_.path -ceq $adapterRecipePath
+    })
+    if (
+        [string]$installedBuildManifest.Manifest.recipe.algorithm -cne
+            "SHA-256" -or
+        $adapterRecords.Count -ne 1
+    ) {
+        throw "installed build provenance 未唯一绑定 recovery archive adapter。"
+    }
+    $adapterRecord = $adapterRecords[0]
+    $adapterRecordProperties = @($adapterRecord.PSObject.Properties.Name)
+    if (
+        $adapterRecordProperties.Count -ne 3 -or
+        "path" -notin $adapterRecordProperties -or
+        "size" -notin $adapterRecordProperties -or
+        "sha256" -notin $adapterRecordProperties -or
+        [int64]$adapterRecord.size -lt 1 -or
+        [string]$adapterRecord.sha256 -cnotmatch "^[0-9a-f]{64}$"
+    ) {
+        throw "installed recovery archive adapter provenance shape 无效。"
+    }
+    $recoveryArchiveAdapterPath = Join-Path `
+        $InstallDir `
+        "installer\windows_database_generation_recovery_archive.ps1"
+    if (
+        (Get-TicketboxPathEntryKindNoFollow $recoveryArchiveAdapterPath) -cne
+            "File"
+    ) {
+        throw "installed database generation recovery archive adapter 不是可信普通文件。"
+    }
+    Assert-NoTicketboxAncestorReparsePoints $recoveryArchiveAdapterPath
+    $adapterItem = Get-Item -LiteralPath $recoveryArchiveAdapterPath
+    if (
+        [int64]$adapterItem.Length -ne [int64]$adapterRecord.size -or
+        (Get-TicketboxFileSha256 $recoveryArchiveAdapterPath) -cne
+            [string]$adapterRecord.sha256
+    ) {
+        throw "installed recovery archive adapter 与 build provenance 不一致。"
+    }
+    . $recoveryArchiveAdapterPath
     Promote-TicketboxPendingInstallationIdentity `
         -DataRoot $DataRoot `
         -InstallDir $InstallDir `
