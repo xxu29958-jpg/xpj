@@ -37,13 +37,14 @@ Python、uv、PyInstaller 的精确版本只从
 1. 已生成 frozen backend:`backend\dist\ticketbox-backend\ticketbox-backend.exe`。
 2. 已裁出捆绑 PG:`backend\packaging\vendor\pg\bin\pg_ctl.exe`。
 3. 已放好 Shawl:`backend\packaging\vendor\shawl\shawl.exe`。
-4. 构建机安装 Inno Setup 6,或用 `-InnoCompiler` 指定 `ISCC.exe`。
+4. 运行 `packaging\prepare_windows_build_toolchain.ps1 -Component Inno` 准备 `windows-build-toolchain.json` 锁定的 Inno Setup 6.7.1；默认只使用 `backend\build\windows-toolchain\inno\ISCC.exe`。显式 `-InnoCompiler` 也必须与合同中的 engine version 和 SHA-256 完全一致，不接受 PATH、`LOCALAPPDATA` 或 Program Files 中的 ambient compiler。
 5. 仓库内置 Inno 简体中文语言文件:`backend\packaging\languages\ChineseSimplified.isl`；它显式使用 `Microsoft YaHei UI`，确保 en-US UI 的干净 Windows 不会把简中向导绑定到无中文字形的 `Segoe UI`。
 
 命令:
 
 ```
 cd backend
+packaging\prepare_windows_build_toolchain.ps1 -Component Inno
 packaging\build_inno_installer.ps1 -CheckInputsOnly   # 无 Inno 时只校验输入
 packaging\build_inno_installer.ps1                    # 原子发布完整版本目录
 ```
