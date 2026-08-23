@@ -19,6 +19,74 @@ PREPARE = PACKAGING / "prepare_bundled_upgrade.ps1"
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_first_intent_state_root_creates_owned_parent_before_child(tmp_path: Path) -> None:
+    artifacts_source = ARTIFACTS.read_text(encoding="utf-8-sig")
+    get_state_root = _function(
+        artifacts_source,
+        "Get-TicketboxDatabaseGenerationStateRoot",
+    )
+    initialize_state_root = _function(
+        artifacts_source,
+        "Initialize-TicketboxDatabaseGenerationStateRoot",
+    )
+    machine_root = tmp_path / "machine-root"
+    machine_root.mkdir()
+    installer_state = machine_root / "installer-state"
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$script:TicketboxDatabaseGenerationRootName = 'database-generation'
+$script:leaseChecks = 0
+$script:initialized = New-Object System.Collections.Generic.List[string]
+function Assert-TicketboxLifecycleOperationLease {{
+    param($Lock)
+    if ($null -eq $Lock) {{ throw 'missing lifecycle operation lease' }}
+    $script:leaseChecks += 1
+}}
+function Initialize-TicketboxInstallerStateDirectory {{
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $parent = [IO.Path]::GetDirectoryName($fullPath)
+    if (-not [IO.Directory]::Exists($parent)) {{
+        throw "installer-state parent missing: $parent"
+    }}
+    [void]$script:initialized.Add($fullPath)
+    [IO.Directory]::CreateDirectory($fullPath) | Out-Null
+    return $fullPath
+}}
+{get_state_root}
+{initialize_state_root}
+$lock = [pscustomobject]@{{ operation = 'held' }}
+$first = Initialize-TicketboxDatabaseGenerationStateRoot `
+    -InstallerState '{installer_state}' `
+    -LifecycleLock $lock
+$second = Initialize-TicketboxDatabaseGenerationStateRoot `
+    -InstallerState '{installer_state}' `
+    -LifecycleLock $lock
+$expectedState = [IO.Path]::GetFullPath('{installer_state}')
+$expectedChild = Join-Path $expectedState 'database-generation'
+if (
+    $script:leaseChecks -ne 2 -or
+    $script:initialized.Count -ne 4 -or
+    $script:initialized[0] -cne $expectedState -or
+    $script:initialized[1] -cne $expectedChild -or
+    $script:initialized[2] -cne $expectedState -or
+    $script:initialized[3] -cne $expectedChild -or
+    $first -cne $expectedChild -or
+    $second -cne $expectedChild -or
+    -not [IO.Directory]::Exists($expectedState) -or
+    -not [IO.Directory]::Exists($expectedChild)
+) {{
+    throw 'Generation Owner did not establish its protected root before its child'
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="database-generation-first-intent-state-root.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_path: Path) -> None:
     owner_source = OWNER.read_text(encoding="utf-8-sig")
     artifacts_source = ARTIFACTS.read_text(encoding="utf-8-sig")
