@@ -241,6 +241,15 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     assert (
         owner_source.count("foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `") == 1
     )
+    execution_dependencies = _function(
+        owner_source,
+        "Get-TicketboxDatabaseGenerationExecutionDependencyPaths",
+    )
+    assert RECOVERY_ARCHIVE.name in execution_dependencies
+    owner_bootstrap = owner_source[
+        : owner_source.index("function Get-TicketboxDatabaseGenerationExecutionDependencyPaths")
+    ]
+    assert RECOVERY_ARCHIVE.name not in owner_bootstrap
     owner_consumer = _function(
         owner_source,
         "Invoke-TicketboxInstalledDatabaseGeneration",
@@ -272,17 +281,17 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
             "DatabaseGenerationEvidenceVerifierScriptSha256",
             "$DatabaseGenerationEvidenceVerifierScript",
         ),
-        (
-            RECOVERY_ARCHIVE.name,
-            "DatabaseGenerationRecoveryArchiveScriptSha256",
-            "$DatabaseGenerationRecoveryArchiveScript",
-        ),
     ):
         assert f'Source: "{dependency}"; Flags: dontcopy noencryption' in installer_source
         assert installer_source.count(f'Source: "{dependency}"') == 2
         assert windows_host_source.count(f"'{dependency}'") == 3
         assert windows_host_source.count(macro) == 4
         assert f"/D{macro}=$(Get-TicketboxFileSha256 {variable})" in build_source
+    assert f'Source: "{RECOVERY_ARCHIVE.name}"; Flags: dontcopy noencryption' not in installer_source
+    assert installer_source.count(f'Source: "{RECOVERY_ARCHIVE.name}"') == 1
+    assert RECOVERY_ARCHIVE.name not in windows_host_source
+    assert "#ifndef DatabaseGenerationRecoveryArchiveScriptSha256" not in installer_source
+    assert "DatabaseGenerationRecoveryArchiveScriptSha256" not in build_source
     for bootstrap_file in (
         OWNER.name,
         CONTRACT.name,
@@ -292,7 +301,6 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
         COMMIT_VERIFIER.name,
         DATABASE_CONTRACT.name,
         EVIDENCE_VERIFIER.name,
-        RECOVERY_ARCHIVE.name,
         POLICY.name,
     ):
         assert windows_host_source.count(f"'{bootstrap_file}'") == 3
@@ -313,7 +321,6 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
         POLICY,
         DATABASE_CONTRACT,
         EVIDENCE_VERIFIER,
-        RECOVERY_ARCHIVE,
     ):
         (bootstrap / source.name).write_bytes(source.read_bytes())
     owner_path = bootstrap / OWNER.name
@@ -378,8 +385,11 @@ if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_ticketbox_dat
 if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_evidence_verifier.ps1'))) {{
     throw 'bootstrap is missing the immutable evidence verifier'
 }}
-if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_recovery_archive.ps1'))) {{
-    throw 'bootstrap is missing the bounded recovery archive cleanup adapter'
+if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_recovery_archive.ps1')) {{
+    throw 'bootstrap unexpectedly contains the recovery archive cleanup mutator'
+}}
+if ($null -ne (Get-Command Remove-TicketboxDatabaseGenerationRecoveryFile -ErrorAction SilentlyContinue)) {{
+    throw 'bootstrap unexpectedly exposes recovery archive deletion capability'
 }}
 if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_retirement.ps1')) {{
     throw 'bootstrap unexpectedly contains bootstrap retirement execution dependencies'
@@ -500,6 +510,7 @@ if (
             'windows_database_generation_source_binding.ps1',
             'windows_database_generation_program_adapter.ps1',
             'windows_database_generation_program_execution.ps1',
+            'windows_database_generation_recovery_archive.ps1',
             'windows_database_generation_recovery_evidence.ps1',
             'windows_database_generation_target_recovery.ps1',
             'windows_database_generation_target_authorization.ps1',

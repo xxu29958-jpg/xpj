@@ -2776,7 +2776,6 @@ def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Pa
         "DatabaseGenerationCommitVerifierScriptSha256": digest,
         "TicketboxDatabaseContractScriptSha256": digest,
         "DatabaseGenerationEvidenceVerifierScriptSha256": digest,
-        "DatabaseGenerationRecoveryArchiveScriptSha256": digest,
         "DatabaseGenerationPolicyScriptSha256": digest,
         "DatabaseGenerationProgramSha256": digest,
         "DatabaseMaintenanceHelperSize": "1",

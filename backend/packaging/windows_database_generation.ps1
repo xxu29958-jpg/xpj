@@ -6,7 +6,6 @@ $operationFailurePath = Join-Path $PSScriptRoot "windows_operation_failure.ps1"
 $artifactsPath = Join-Path $PSScriptRoot "windows_database_generation_artifacts.ps1"
 $databaseContractPath = Join-Path $PSScriptRoot "windows_ticketbox_database_contract.ps1"
 $evidenceVerifierPath = Join-Path $PSScriptRoot "windows_database_generation_evidence_verifier.ps1"
-$recoveryArchivePath = Join-Path $PSScriptRoot "windows_database_generation_recovery_archive.ps1"
 $commitVerifierPath = Join-Path $PSScriptRoot "windows_database_generation_commit_verifier.ps1"
 $policyPath = Join-Path $PSScriptRoot "windows_database_generation_policy.ps1"
 foreach ($dependency in @(
@@ -16,7 +15,6 @@ foreach ($dependency in @(
     $artifactsPath,
     $databaseContractPath,
     $evidenceVerifierPath,
-    $recoveryArchivePath,
     $commitVerifierPath,
     $policyPath
 )) {
@@ -54,6 +52,7 @@ function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {
         "windows_database_generation_source_binding.ps1",
         "windows_database_generation_program_adapter.ps1",
         "windows_database_generation_program_execution.ps1",
+        "windows_database_generation_recovery_archive.ps1",
         "windows_database_generation_recovery_evidence.ps1",
         "windows_database_generation_target_recovery.ps1",
         "windows_database_generation_target_authorization.ps1",

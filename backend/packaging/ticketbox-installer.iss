@@ -115,9 +115,6 @@
 #ifndef DatabaseGenerationEvidenceVerifierScriptSha256
 #error DatabaseGenerationEvidenceVerifierScriptSha256 must be injected by build_inno_installer.ps1
 #endif
-#ifndef DatabaseGenerationRecoveryArchiveScriptSha256
-#error DatabaseGenerationRecoveryArchiveScriptSha256 must be injected by build_inno_installer.ps1
-#endif
 #ifndef DatabaseGenerationProgramSha256
 #error DatabaseGenerationProgramSha256 must be injected by build_inno_installer.ps1
 #endif
@@ -230,7 +227,6 @@ Source: "windows_database_generation_artifacts.ps1"; Flags: dontcopy noencryptio
 Source: "windows_database_generation_commit_verifier.ps1"; Flags: dontcopy noencryption
 Source: "windows_ticketbox_database_contract.ps1"; Flags: dontcopy noencryption
 Source: "windows_database_generation_evidence_verifier.ps1"; Flags: dontcopy noencryption
-Source: "windows_database_generation_recovery_archive.ps1"; Flags: dontcopy noencryption
 Source: "windows_database_generation_policy.ps1"; Flags: dontcopy noencryption
 Source: "..\dist\ticketbox-backend\DATABASE_GENERATION_PROGRAM.json"; DestName: "DATABASE_GENERATION_PROGRAM.json"; Flags: dontcopy noencryption
 Source: "ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion

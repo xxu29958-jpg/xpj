@@ -1428,7 +1428,6 @@ $defines = @(
     "/DDatabaseGenerationCommitVerifierScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationCommitVerifierScript)",
     "/DTicketboxDatabaseContractScriptSha256=$(Get-TicketboxFileSha256 $TicketboxDatabaseContractScript)",
     "/DDatabaseGenerationEvidenceVerifierScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationEvidenceVerifierScript)",
-    "/DDatabaseGenerationRecoveryArchiveScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationRecoveryArchiveScript)",
     "/DDatabaseGenerationPolicyScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationPolicyScript)",
     "/DDatabaseGenerationProgramSha256=$([string]$backendManifest.payload.database_generation_program.sha256)",
     "/DDatabaseMaintenanceHelperSize=$([int64]$backendManifest.payload.database_maintenance_helper.size)",
