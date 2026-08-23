@@ -1514,13 +1514,30 @@ try {
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -AllowPreviousInstallerOwnerProcessId
+        $receiptAuthorityFailure = $null
+        [Exception[]]$receiptGuardCloseFailures = @()
         try {
             . (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)
             Assert-TicketboxPrepareLifecycleReceiptMutationAuthority `
                 $preMutationLifecycleReceipt
         }
-        finally {
+        catch {
+            $receiptAuthorityFailure = $_.Exception
+        }
+        try {
             Close-TicketboxLifecycleBackupGuard $preMutationLifecycleReceipt
+        }
+        catch {
+            $receiptGuardCloseFailures += $_.Exception
+        }
+        if ($receiptGuardCloseFailures.Count -gt 0) {
+            throw (New-TicketboxPrepareAggregateFailure `
+                -OperationFailure $receiptAuthorityFailure `
+                -SecondaryFailures $receiptGuardCloseFailures `
+                -FailureKind "finalization")
+        }
+        if ($null -ne $receiptAuthorityFailure) {
+            throw $receiptAuthorityFailure
         }
     }
     elseif ($preMutationLifecycleReceiptKind -cne "Missing") {

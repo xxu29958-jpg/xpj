@@ -14,8 +14,13 @@ FAILURE = PACKAGING / "windows_operation_failure.ps1"
 ARTIFACTS = PACKAGING / "windows_database_generation_artifacts.ps1"
 COMMIT_VERIFIER = PACKAGING / "windows_database_generation_commit_verifier.ps1"
 POLICY = PACKAGING / "windows_database_generation_policy.ps1"
+SOURCE_BINDING = PACKAGING / "windows_database_generation_source_binding.ps1"
+RECOVERY_EVIDENCE = PACKAGING / "windows_database_generation_recovery_evidence.ps1"
 LIFECYCLE_LOCK = PACKAGING / "windows_lifecycle_lock.ps1"
 PREPARE = PACKAGING / "prepare_bundled_upgrade.ps1"
+INSTALLER = PACKAGING / "ticketbox-installer.iss"
+WINDOWS_HOST = PACKAGING / "ticketbox-installer-windows.isph"
+BUILD = PACKAGING / "build_inno_installer.ps1"
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
@@ -95,6 +100,10 @@ def test_pre_copy_receipt_mutation_uses_bootstrap_authority_without_installed_pa
         prepare_source,
         "Get-TicketboxBootstrapDatabaseGenerationAuthorityPath",
     )
+    aggregate_failure = _function(
+        prepare_source,
+        "New-TicketboxPrepareAggregateFailure",
+    )
     block_start = prepare_source.index("    $preMutationLifecycleReceipt = $null")
     block_end = prepare_source.index(
         "    Set-TicketboxPreparedRuntimeServiceContract",
@@ -115,6 +124,11 @@ function Assert-TicketboxPrepareLifecycleReceiptMutationAuthority {
     param($Receipt)
     if ([string]$Receipt.marker -cne 'receipt') { throw 'wrong receipt' }
     $script:mutationAuthorityCalls += 1
+    if ($script:authorityFails) {
+        $failure = [InvalidOperationException]::new('authority drift')
+        $failure.Data['TicketboxFailureCode'] = 'authority_drift'
+        throw $failure
+    }
 }
 """,
         encoding="utf-8-sig",
@@ -124,6 +138,8 @@ $ErrorActionPreference = 'Stop'
 $script:bootstrapAuthorityLoaded = $false
 $script:mutationAuthorityCalls = 0
 $script:closedGuards = 0
+$script:authorityFails = $false
+$script:guardCloseFails = $false
 $ScriptDir = '{str(bootstrap).replace("'", "''")}'
 $InstallDir = '{str(install_dir).replace("'", "''")}'
 $DataRoot = 'C:\\TicketboxData'
@@ -160,15 +176,37 @@ function Read-TicketboxLifecycleReceipt {{
 function Close-TicketboxLifecycleBackupGuard {{
     param($Receipt)
     $script:closedGuards += 1
+    if ($script:guardCloseFails) {{
+        throw [InvalidOperationException]::new('guard close failed')
+    }}
 }}
+{aggregate_failure}
 {bootstrap_path}
+function Invoke-TestPreCopyReceiptMutation {{
 {pre_copy_receipt_mutation}
+}}
+Invoke-TestPreCopyReceiptMutation
 if (
     -not $script:bootstrapAuthorityLoaded -or
     $script:mutationAuthorityCalls -ne 1 -or
     $script:closedGuards -ne 1
 ) {{
     throw 'bootstrap owner did not exclusively authorize the pre-copy mutation'
+}}
+$script:authorityFails = $true
+$script:guardCloseFails = $true
+$aggregate = $null
+try {{ Invoke-TestPreCopyReceiptMutation }} catch {{ $aggregate = $_.Exception }}
+if (
+    $aggregate -isnot [AggregateException] -or
+    $aggregate.InnerExceptions.Count -ne 2 -or
+    $aggregate.InnerExceptions[0].Message -cne 'authority drift' -or
+    $aggregate.InnerExceptions[1].Message -cne 'guard close failed' -or
+    [string]$aggregate.Data['TicketboxFailureCode'] -cne 'authority_drift' -or
+    $script:mutationAuthorityCalls -ne 2 -or
+    $script:closedGuards -ne 2
+) {{
+    throw 'receipt mutation did not preserve authority and cleanup failures'
 }}
 """
     run_powershell_contract_script(
@@ -184,6 +222,9 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     artifacts_source = ARTIFACTS.read_text(encoding="utf-8-sig")
     commit_verifier_source = COMMIT_VERIFIER.read_text(encoding="utf-8-sig")
     prepare_source = PREPARE.read_text(encoding="utf-8-sig")
+    installer_source = INSTALLER.read_text(encoding="utf-8-sig")
+    windows_host_source = WINDOWS_HOST.read_text(encoding="utf-8-sig")
+    build_source = BUILD.read_text(encoding="utf-8-sig")
     assert "function Import-TicketboxDatabaseGenerationExecutionDependencies" not in owner_source
     assert "function Import-TicketboxInstalledDatabaseGenerationAuthority" not in prepare_source
     assert "function Import-TicketboxBootstrapDatabaseGenerationAuthority" not in prepare_source
@@ -207,6 +248,35 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     assert "Get-TicketboxDatabaseGenerationExecutionDependencyPaths" not in (commit_ready_consumer)
     assert "windows_database_generation_recovery_evidence.ps1" in (commit_verifier_source)
     assert "Assert-TicketboxDatabaseGenerationCommitReadyArtifact" not in (artifacts_source)
+    for dependency, macro, variable in (
+        (
+            SOURCE_BINDING.name,
+            "DatabaseGenerationSourceBindingScriptSha256",
+            "$DatabaseGenerationSourceBindingScript",
+        ),
+        (
+            RECOVERY_EVIDENCE.name,
+            "DatabaseGenerationRecoveryEvidenceScriptSha256",
+            "$DatabaseGenerationRecoveryEvidenceScript",
+        ),
+    ):
+        assert f'Source: "{dependency}"; Flags: dontcopy noencryption' in installer_source
+        assert installer_source.count(f'Source: "{dependency}"') == 2
+        assert windows_host_source.count(f"'{dependency}'") == 3
+        assert windows_host_source.count(macro) == 4
+        assert f"/D{macro}=$(Get-TicketboxFileSha256 {variable})" in build_source
+    for bootstrap_file in (
+        OWNER.name,
+        CONTRACT.name,
+        RELEASE.name,
+        FAILURE.name,
+        ARTIFACTS.name,
+        COMMIT_VERIFIER.name,
+        SOURCE_BINDING.name,
+        RECOVERY_EVIDENCE.name,
+        POLICY.name,
+    ):
+        assert windows_host_source.count(f"'{bootstrap_file}'") == 3
     bootstrap_path = _function(
         prepare_source,
         "Get-TicketboxBootstrapDatabaseGenerationAuthorityPath",
@@ -222,6 +292,8 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
         ARTIFACTS,
         COMMIT_VERIFIER,
         POLICY,
+        SOURCE_BINDING,
+        RECOVERY_EVIDENCE,
     ):
         (bootstrap / source.name).write_bytes(source.read_bytes())
     owner_path = bootstrap / OWNER.name
@@ -274,8 +346,11 @@ if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_atomic_artifacts.ps
 if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_target_recovery.ps1')) {{
     throw 'bootstrap unexpectedly contains target recovery execution dependencies'
 }}
-if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_recovery_evidence.ps1')) {{
-    throw 'bootstrap unexpectedly contains recovery evidence execution dependencies'
+if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_source_binding.ps1'))) {{
+    throw 'bootstrap is missing the CURRENT source-binding verifier'
+}}
+if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_recovery_evidence.ps1'))) {{
+    throw 'bootstrap is missing the CURRENT recovery-evidence verifier'
 }}
 if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_retirement.ps1')) {{
     throw 'bootstrap unexpectedly contains bootstrap retirement execution dependencies'
@@ -391,13 +466,11 @@ if (
             'windows_database_generation_host_authority.ps1',
             'windows_database_generation_role_bootstrap.ps1',
             'windows_database_generation_source.ps1',
-            'windows_database_generation_source_binding.ps1',
             'windows_database_generation_program_adapter.ps1',
             'windows_database_generation_program_execution.ps1',
-            'windows_database_generation_recovery_evidence.ps1',
-                'windows_database_generation_target_recovery.ps1',
-                'windows_database_generation_target_authorization.ps1',
-                'windows_database_generation_database_binding.ps1',
+            'windows_database_generation_target_recovery.ps1',
+            'windows_database_generation_target_authorization.ps1',
+            'windows_database_generation_database_binding.ps1',
             'windows_database_generation_current.ps1',
             'windows_database_generation_retirement.ps1',
             'windows_database_generation_projection.ps1'

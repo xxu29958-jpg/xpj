@@ -56,6 +56,10 @@
     '{#DatabaseGenerationArtifactsScriptSha256}';
   DatabaseGenerationCommitVerifierScriptSha256 =
     '{#DatabaseGenerationCommitVerifierScriptSha256}';
+  DatabaseGenerationSourceBindingScriptSha256 =
+    '{#DatabaseGenerationSourceBindingScriptSha256}';
+  DatabaseGenerationRecoveryEvidenceScriptSha256 =
+    '{#DatabaseGenerationRecoveryEvidenceScriptSha256}';
   DatabaseGenerationPolicyScriptSha256 =
     '{#DatabaseGenerationPolicyScriptSha256}';
   DatabaseGenerationProgramSha256 = '{#DatabaseGenerationProgramSha256}';
@@ -587,8 +591,12 @@ begin
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_backend_build_provenance.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_contract.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_release.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_operation_failure.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_artifacts.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_commit_verifier.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_source_binding.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_recovery_evidence.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_policy.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'DATABASE_GENERATION_PROGRAM.json');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'ticketbox-run-installer-child-logged.ps1');
@@ -787,6 +795,12 @@ begin
       'windows_database_generation_commit_verifier.ps1',
       DatabaseGenerationCommitVerifierScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
+      'windows_database_generation_source_binding.ps1',
+      DatabaseGenerationSourceBindingScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_database_generation_recovery_evidence.ps1',
+      DatabaseGenerationRecoveryEvidenceScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
       'windows_database_generation_policy.ps1',
       DatabaseGenerationPolicyScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
@@ -942,6 +956,12 @@ begin
      not StageLifecycleLockBootstrapFile(
     'windows_database_generation_commit_verifier.ps1',
     DatabaseGenerationCommitVerifierScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_generation_source_binding.ps1',
+    DatabaseGenerationSourceBindingScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_generation_recovery_evidence.ps1',
+    DatabaseGenerationRecoveryEvidenceScriptSha256) or
      not StageLifecycleLockBootstrapFile(
     'windows_database_generation_policy.ps1',
     DatabaseGenerationPolicyScriptSha256) or
