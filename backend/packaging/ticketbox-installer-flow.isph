@@ -875,10 +875,36 @@ begin
   Result := '';
 end;
 
+function TryGetInstalledPayloadAllocationBudget(
+  LogicalBytes: Int64;
+  FileCount: Int64;
+  AllocationUnitBytes: Int64;
+  var RequiredBytes: Int64): Boolean;
+var
+  AllocationSlackPerFile: Int64;
+begin
+  Result := False;
+  RequiredBytes := 0;
+  if (LogicalBytes < 1) or
+     (FileCount < 1) or
+     (AllocationUnitBytes < 1) then
+    exit;
+  AllocationSlackPerFile := AllocationUnitBytes - 1;
+  if (AllocationSlackPerFile > 0) and
+     (FileCount >
+       (9223372036854775807 - LogicalBytes) div
+         AllocationSlackPerFile) then
+    exit;
+  RequiredBytes := LogicalBytes +
+    FileCount * AllocationSlackPerFile;
+  Result := True;
+end;
+
 function AuthoritativePayloadSpaceError(): String;
 var
   FreeBytes: Int64;
   TotalBytes: Int64;
+  LogicalBytes: Int64;
   RequiredBytes: Int64;
   FileCount: Int64;
   AllocationUnitBytes: Int64;
@@ -888,9 +914,9 @@ var
   TotalNumberOfClusters: LongWord;
   VolumeRoot: String;
 begin
-  RequiredBytes := StrToInt64Def('{#InstalledPayloadRequiredBytes}', -1);
+  LogicalBytes := StrToInt64Def('{#InstalledPayloadRequiredBytes}', -1);
   FileCount := StrToInt64Def('{#InstalledPayloadFileCount}', -1);
-  if (RequiredBytes < 1) or (FileCount < 1) then
+  if (LogicalBytes < 1) or (FileCount < 1) then
   begin
     Result := '安装包缺少有效的程序文件空间预算；拒绝进入复制阶段。';
     exit;
@@ -913,16 +939,15 @@ begin
   end;
   AllocationUnitBytes :=
     Int64(SectorsPerCluster) * Int64(BytesPerSector);
-  if (AllocationUnitBytes > 1) and
-     (FileCount >
-       (9223372036854775807 - RequiredBytes) div
-         (AllocationUnitBytes - 1)) then
+  if not TryGetInstalledPayloadAllocationBudget(
+    LogicalBytes,
+    FileCount,
+    AllocationUnitBytes,
+    RequiredBytes) then
   begin
     Result := '程序文件空间预算发生整数溢出；拒绝进入复制阶段。';
     exit;
   end;
-  RequiredBytes := RequiredBytes +
-    FileCount * (AllocationUnitBytes - 1);
   if not GetSpaceOnDisk64(ExpandConstant('{autopf}'),
     FreeBytes,
     TotalBytes) then

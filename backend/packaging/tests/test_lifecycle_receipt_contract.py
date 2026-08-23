@@ -968,11 +968,17 @@ def test_copy_action_has_build_bound_fail_closed_disk_space_precondition() -> No
             "function PrepareAuthoritativePayloadReplacement"
         )
     ]
+    allocation_budget = flow[
+        flow.index("function TryGetInstalledPayloadAllocationBudget") : flow.index(
+            "function AuthoritativePayloadSpaceError"
+        )
+    ]
     assert "GetSpaceOnDisk64(ExpandConstant('{autopf}')" in precondition
     assert "GetDiskFreeSpaceW(" in precondition
     assert "StrToInt64Def('{#InstalledPayloadRequiredBytes}', -1)" in precondition
     assert "StrToInt64Def('{#InstalledPayloadFileCount}', -1)" in precondition
-    assert "FileCount * (AllocationUnitBytes - 1)" in precondition
+    assert "TryGetInstalledPayloadAllocationBudget(" in precondition
+    assert "FileCount * AllocationSlackPerFile" in allocation_budget
     assert "FreeBytes < RequiredBytes" in precondition
     assert "无法验证程序文件目标卷的可用空间" in precondition
 
