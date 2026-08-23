@@ -305,7 +305,8 @@ $statefulFileChecks = @(
         Action = {
             $stream = New-TicketboxProtectedFileStream `
                 -Path $invalidFileAlias `
-                -Security $fileSecurity
+                -Security $fileSecurity `
+                -Access ([IO.FileAccess]::Write)
             if ($null -ne $stream) { $stream.Dispose() }
         }
     },

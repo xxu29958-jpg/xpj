@@ -1746,7 +1746,10 @@ function New-TicketboxProtectedPgPassFile {
         -FullControlAccounts $directory.FullControlAccounts `
         -OwnerAccount $directory.OwnerAccount
     try {
-        $stream = New-TicketboxProtectedFileStream -Path $passfile -Security $security
+        $stream = New-TicketboxProtectedFileStream `
+            -Path $passfile `
+            -Security $security `
+            -Access ([System.IO.FileAccess]::Write)
         try {
             $stream.Write($bytes, 0, $bytes.Length)
             $stream.Flush($true)

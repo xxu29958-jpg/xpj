@@ -542,7 +542,8 @@ def test_bootstrap_recovery_static_contract(tmp_path: Path) -> None:
             "function Invoke-TicketboxWithPgPassFile"
         )
     ]
-    assert "New-TicketboxProtectedFileStream -Path $passfile" in passfile_writer
+    assert "New-TicketboxProtectedFileStream `" in passfile_writer
+    assert "-Access ([System.IO.FileAccess]::Write)" in passfile_writer
     assert "Write-TicketboxProtectedUtf8FileDurable" not in passfile_writer
 
     protected_action = database_safety[
@@ -737,7 +738,10 @@ $security.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
     [Security.AccessControl.FileSystemRights]::Read,
     [Security.AccessControl.AccessControlType]::Allow
 )))
-$stream = New-TicketboxProtectedFileStream -Path $target -Security $security
+$stream = New-TicketboxProtectedFileStream `
+    -Path $target `
+    -Security $security `
+    -Access ([IO.FileAccess]::Write)
 try {{
     $stream.WriteByte(1)
     $stream.Flush($true)

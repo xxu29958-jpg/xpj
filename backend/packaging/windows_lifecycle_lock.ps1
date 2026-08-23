@@ -484,7 +484,8 @@ function Enter-TicketboxProtectedExclusiveFileLock {
     try {
         $stream = New-TicketboxProtectedFileStream `
             -Path $fullPath `
-            -Security $security
+            -Security $security `
+            -Access ([System.IO.FileAccess]::ReadWrite)
     }
     catch [System.IO.IOException] {
         $entryKind = Get-TicketboxPathEntryKindNoFollow $fullPath

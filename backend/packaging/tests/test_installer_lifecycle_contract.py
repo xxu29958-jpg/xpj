@@ -3347,6 +3347,226 @@ $value = Read-TicketboxLifecycleCoordinationArtifact `
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows lifecycle lock holder contract")
+def test_first_created_protected_exclusive_lease_is_read_write(
+    tmp_path: Path,
+) -> None:
+    safety = PACKAGING / "windows_installation_safety.ps1"
+    lifecycle = PACKAGING / "windows_lifecycle_lock.ps1"
+    for engine_index, engine in enumerate(powershell_contract_engines()):
+        protected_root = tmp_path / f"first-created-lease-{engine_index}"
+        lock_path = protected_root / "installer-operation.lock"
+        harness = tmp_path / f"first-created-lease-{engine_index}.ps1"
+        harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(safety)}'
+. '{_ps_literal(lifecycle)}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{_ps_literal(protected_root)}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+$lockPath = '{_ps_literal(lock_path)}'
+if (Test-Path -LiteralPath $lockPath) {{
+    throw 'first-create lease precondition was not clean'
+}}
+$lease = Enter-TicketboxProtectedExclusiveFileLock `
+    -Path $lockPath `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+try {{
+    if ($lease -isnot [IO.FileStream]) {{ throw 'protected lease was not a FileStream' }}
+    if (-not $lease.CanRead -or -not $lease.CanWrite) {{
+        throw "first-created protected lease was not read-write: CanRead=$($lease.CanRead) CanWrite=$($lease.CanWrite)"
+    }}
+}}
+finally {{ $lease.Dispose() }}
+""",
+            encoding="utf-8-sig",
+        )
+        result = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                harness,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows protected stream contract")
+def test_protected_creation_rejects_read_and_preserves_privilege_cleanup_failures(
+    tmp_path: Path,
+) -> None:
+    safety = PACKAGING / "windows_installation_safety.ps1"
+    for engine_index, engine in enumerate(powershell_contract_engines()):
+        harness = tmp_path / f"protected-stream-failures-{engine_index}.ps1"
+        root = tmp_path / f"protected-stream-failures-{engine_index}"
+        harness.write_text(
+            f"""
+$ErrorActionPreference = 'Stop'
+. '{_ps_literal(safety)}'
+$currentAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+Initialize-TicketboxProtectedDirectoryAtomically `
+    -Path '{_ps_literal(root)}' `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount | Out-Null
+$security = New-TicketboxProtectedFileSecurity `
+    -FullControlAccounts @($currentAccount) `
+    -OwnerAccount $currentAccount
+function Test-ExceptionChainContains([Exception]$Failure, [string]$Message) {{
+    while ($null -ne $Failure) {{
+        if ($Failure.Message -ceq $Message) {{ return $true }}
+        $Failure = $Failure.InnerException
+    }}
+    return $false
+}}
+
+$readPath = Join-Path '{_ps_literal(root)}' 'read-only.lock'
+try {{
+    $unexpected = New-TicketboxProtectedFileStream `
+        -Path $readPath `
+        -Security $security `
+        -Access ([IO.FileAccess]::Read)
+    if ($null -ne $unexpected) {{ $unexpected.Dispose() }}
+    throw 'pure Read access was accepted for CreateNew'
+}}
+catch {{
+    if ($_.Exception.Message -notlike '*只允许 Write 或 ReadWrite*') {{ throw }}
+}}
+if (Test-Path -LiteralPath $readPath) {{ throw 'rejected Read access created a file' }}
+
+Add-Type -TypeDefinition @'
+public sealed class TicketboxFailingPrivilegeScope : System.IDisposable
+{{
+    public void Dispose() {{ throw new System.Exception("privilege restore failure"); }}
+}}
+'@
+$script:directoryCollisionPath = $null
+function Enter-TicketboxRestorePrivilegeForSecurityDescriptor($Security) {{
+    if (-not [string]::IsNullOrWhiteSpace($script:directoryCollisionPath)) {{
+        [IO.File]::WriteAllText($script:directoryCollisionPath, 'collision')
+    }}
+    return [TicketboxFailingPrivilegeScope]::new()
+}}
+
+$existingPath = Join-Path '{_ps_literal(root)}' 'existing.lock'
+[IO.File]::WriteAllText($existingPath, 'occupied')
+try {{
+    New-TicketboxProtectedFileStream `
+        -Path $existingPath `
+        -Security $security `
+        -Access ([IO.FileAccess]::ReadWrite) | Out-Null
+    throw 'combined create and privilege cleanup failure was not raised'
+}}
+catch {{
+    $failure = $_.Exception
+    $createFailure = if ($failure -is [AggregateException]) {{
+        $failure.InnerExceptions[0]
+    }} else {{ $null }}
+    $createWasIo =
+        $createFailure -is [IO.IOException] -or
+        $createFailure.InnerException -is [IO.IOException]
+    if (
+        $failure -isnot [AggregateException] -or
+        $failure.InnerExceptions.Count -ne 2 -or
+        -not $createWasIo -or
+        -not (Test-ExceptionChainContains `
+            $failure.InnerExceptions[1] `
+            'privilege restore failure')
+    ) {{
+        throw (
+            'create and privilege cleanup failures were not both preserved: ' +
+            "type=$($failure.GetType().FullName); " +
+            "count=$(@($failure.InnerExceptions).Count); " +
+            "inner0=$($createFailure.GetType().FullName); " +
+            "nested=$($createFailure.InnerException.GetType().FullName); " +
+            "inner1=$($failure.InnerExceptions[1].Message)"
+        )
+    }}
+}}
+
+$createdPath = Join-Path '{_ps_literal(root)}' 'created.lock'
+try {{
+    New-TicketboxProtectedFileStream `
+        -Path $createdPath `
+        -Security $security `
+        -Access ([IO.FileAccess]::ReadWrite) | Out-Null
+    throw 'privilege cleanup failure was not raised after create'
+}}
+catch {{
+    if (-not (Test-ExceptionChainContains $_.Exception 'privilege restore failure')) {{
+        throw
+    }}
+}}
+$probe = [IO.File]::Open(
+    $createdPath,
+    [IO.FileMode]::Open,
+    [IO.FileAccess]::ReadWrite,
+    [IO.FileShare]::None
+)
+$probe.Dispose()
+
+$directoryPath = Join-Path '{_ps_literal(root)}' 'directory-collision'
+$script:directoryCollisionPath = $directoryPath
+try {{
+    Initialize-TicketboxProtectedDirectoryAtomically `
+        -Path $directoryPath `
+        -FullControlAccounts @($currentAccount) `
+        -OwnerAccount $currentAccount | Out-Null
+    throw 'combined directory create and privilege cleanup failure was not raised'
+}}
+catch {{
+    $failure = $_.Exception
+    $directoryFailure = if ($failure -is [AggregateException]) {{
+        $failure.InnerExceptions[0]
+    }} else {{ $null }}
+    $directoryCreateWasIo =
+        $directoryFailure -is [IO.IOException] -or
+        $directoryFailure.InnerException -is [IO.IOException]
+    if (
+        $failure -isnot [AggregateException] -or
+        $failure.InnerExceptions.Count -ne 2 -or
+        -not $directoryCreateWasIo -or
+        -not (Test-ExceptionChainContains `
+            $failure.InnerExceptions[1] `
+            'privilege restore failure')
+    ) {{ throw 'directory create and privilege cleanup failures were not both preserved' }}
+}}
+""",
+            encoding="utf-8-sig",
+        )
+        result = subprocess.run(
+            [
+                engine,
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                harness,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        assert result.returncode == 0, f"{engine}:\n{result.stdout}\n{result.stderr}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows lifecycle lock holder contract")
 def test_external_lifecycle_lock_holder_keeps_authority_until_release(
     tmp_path: Path,
 ) -> None:
