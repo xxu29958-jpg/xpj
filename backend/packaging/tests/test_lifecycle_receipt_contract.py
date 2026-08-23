@@ -857,6 +857,7 @@ def test_install_commit_retires_recovery_latch_only_after_durable_authorities(
         f"""
 $ErrorActionPreference = 'Stop'
 . '{_literal(PACKAGING / "windows_lifecycle_receipt.ps1")}'
+. '{_literal(PACKAGING / "windows_database_generation_recovery_archive.ps1")}'
 . '{_literal(PACKAGING / "windows_database_generation_recovery_evidence.ps1")}'
 $runtimeState = Get-TicketboxInstallerRuntimeStateDirectory '{_literal(tmp_path)}'
 if ($runtimeState -cne '{_literal(tmp_path / "TicketboxRuntimeState")}') {{

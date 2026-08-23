@@ -5,18 +5,6 @@ function Assert-TicketboxDatabaseGenerationCommitReadyArtifact {
         [Parameter(Mandatory = $true)][string]$ExpectedOperationId,
         [Parameter(Mandatory = $true)][string]$ExpectedCurrentSha256
     )
-    foreach ($dependencyName in @(
-        "windows_database_generation_source_binding.ps1",
-        "windows_database_generation_recovery_evidence.ps1"
-    )) {
-        $dependencyPath = Join-Path $PSScriptRoot $dependencyName
-        if ((Get-TicketboxPathEntryKindNoFollow $dependencyPath) -cne "File") {
-            throw "database generation commit verifier dependency 不是可信普通文件：$dependencyPath"
-        }
-        Assert-NoTicketboxAncestorReparsePoints $dependencyPath
-        . $dependencyPath
-    }
-
     $operationId = ([guid]$ExpectedOperationId).ToString("D")
     Assert-TicketboxDatabaseGenerationLowerSha256 $ExpectedCurrentSha256 "commit CURRENT"
     $stateRoot = Get-TicketboxDatabaseGenerationStateRoot (

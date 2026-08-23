@@ -10,6 +10,8 @@ import pytest
 from _powershell_contract import powershell_contract_engines
 
 PACKAGING = Path(__file__).resolve().parents[1]
+EVIDENCE_VERIFIER = PACKAGING / "windows_database_generation_evidence_verifier.ps1"
+RECOVERY_ARCHIVE = PACKAGING / "windows_database_generation_recovery_archive.ps1"
 RECOVERY_EVIDENCE = PACKAGING / "windows_database_generation_recovery_evidence.ps1"
 TARGET_RECOVERY = PACKAGING / "windows_database_generation_target_recovery.ps1"
 LAUNCH = PACKAGING / "launch.py"
@@ -65,6 +67,8 @@ def _load_launch_module():
 def test_target_recovery_owns_only_exact_random_restore_database(tmp_path: Path) -> None:
     recovery = "\n".join(
         (
+            EVIDENCE_VERIFIER.read_text(encoding="utf-8-sig"),
+            RECOVERY_ARCHIVE.read_text(encoding="utf-8-sig"),
             RECOVERY_EVIDENCE.read_text(encoding="utf-8-sig"),
             TARGET_RECOVERY.read_text(encoding="utf-8-sig"),
         )

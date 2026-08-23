@@ -56,10 +56,12 @@
     '{#DatabaseGenerationArtifactsScriptSha256}';
   DatabaseGenerationCommitVerifierScriptSha256 =
     '{#DatabaseGenerationCommitVerifierScriptSha256}';
-  DatabaseGenerationSourceBindingScriptSha256 =
-    '{#DatabaseGenerationSourceBindingScriptSha256}';
-  DatabaseGenerationRecoveryEvidenceScriptSha256 =
-    '{#DatabaseGenerationRecoveryEvidenceScriptSha256}';
+  TicketboxDatabaseContractScriptSha256 =
+    '{#TicketboxDatabaseContractScriptSha256}';
+  DatabaseGenerationEvidenceVerifierScriptSha256 =
+    '{#DatabaseGenerationEvidenceVerifierScriptSha256}';
+  DatabaseGenerationRecoveryArchiveScriptSha256 =
+    '{#DatabaseGenerationRecoveryArchiveScriptSha256}';
   DatabaseGenerationPolicyScriptSha256 =
     '{#DatabaseGenerationPolicyScriptSha256}';
   DatabaseGenerationProgramSha256 = '{#DatabaseGenerationProgramSha256}';
@@ -595,8 +597,9 @@ begin
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_operation_failure.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_artifacts.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_commit_verifier.ps1');
-  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_source_binding.ps1');
-  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_recovery_evidence.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_ticketbox_database_contract.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_evidence_verifier.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_recovery_archive.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_database_generation_policy.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'DATABASE_GENERATION_PROGRAM.json');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'ticketbox-run-installer-child-logged.ps1');
@@ -795,11 +798,14 @@ begin
       'windows_database_generation_commit_verifier.ps1',
       DatabaseGenerationCommitVerifierScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
-      'windows_database_generation_source_binding.ps1',
-      DatabaseGenerationSourceBindingScriptSha256) and
+      'windows_ticketbox_database_contract.ps1',
+      TicketboxDatabaseContractScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
-      'windows_database_generation_recovery_evidence.ps1',
-      DatabaseGenerationRecoveryEvidenceScriptSha256) and
+      'windows_database_generation_evidence_verifier.ps1',
+      DatabaseGenerationEvidenceVerifierScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
+      'windows_database_generation_recovery_archive.ps1',
+      DatabaseGenerationRecoveryArchiveScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
       'windows_database_generation_policy.ps1',
       DatabaseGenerationPolicyScriptSha256) and
@@ -957,11 +963,14 @@ begin
     'windows_database_generation_commit_verifier.ps1',
     DatabaseGenerationCommitVerifierScriptSha256) or
      not StageLifecycleLockBootstrapFile(
-    'windows_database_generation_source_binding.ps1',
-    DatabaseGenerationSourceBindingScriptSha256) or
+    'windows_ticketbox_database_contract.ps1',
+    TicketboxDatabaseContractScriptSha256) or
      not StageLifecycleLockBootstrapFile(
-    'windows_database_generation_recovery_evidence.ps1',
-    DatabaseGenerationRecoveryEvidenceScriptSha256) or
+    'windows_database_generation_evidence_verifier.ps1',
+    DatabaseGenerationEvidenceVerifierScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_database_generation_recovery_archive.ps1',
+    DatabaseGenerationRecoveryArchiveScriptSha256) or
      not StageLifecycleLockBootstrapFile(
     'windows_database_generation_policy.ps1',
     DatabaseGenerationPolicyScriptSha256) or

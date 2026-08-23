@@ -8,6 +8,7 @@ from _powershell_contract import powershell_contract_engines, run_powershell_con
 PACKAGING = Path(__file__).resolve().parents[1]
 SOURCE = PACKAGING / "windows_database_generation_source.ps1"
 SOURCE_BINDING = PACKAGING / "windows_database_generation_source_binding.ps1"
+EVIDENCE_VERIFIER = PACKAGING / "windows_database_generation_evidence_verifier.ps1"
 ROLE_BOOTSTRAP = PACKAGING / "windows_database_generation_role_bootstrap.ps1"
 CONTRACT = PACKAGING / "windows_database_generation_contract.ps1"
 POLICY = PACKAGING / "windows_database_generation_policy.ps1"
@@ -30,7 +31,7 @@ def _function(source: str, name: str) -> str:
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_source_binding_boundary_rejects_mode_request_mismatch(tmp_path: Path) -> None:
     validator = _function(
-        SOURCE_BINDING.read_text(encoding="utf-8-sig"),
+        EVIDENCE_VERIFIER.read_text(encoding="utf-8-sig"),
         "Assert-TicketboxDatabaseGenerationSourceBinding",
     )
     script = f"""
@@ -94,7 +95,7 @@ $binding.Payload.source_revision = '20260821_0001'
 def test_source_binding_chain_rejects_missing_or_corrupt_backing_evidence(
     tmp_path: Path,
 ) -> None:
-    source = SOURCE_BINDING.read_text(encoding="utf-8-sig")
+    source = EVIDENCE_VERIFIER.read_text(encoding="utf-8-sig")
     validator = _function(
         source,
         "Assert-TicketboxDatabaseGenerationSourceBinding",

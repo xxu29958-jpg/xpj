@@ -14,6 +14,9 @@ FAILURE = PACKAGING / "windows_operation_failure.ps1"
 ARTIFACTS = PACKAGING / "windows_database_generation_artifacts.ps1"
 COMMIT_VERIFIER = PACKAGING / "windows_database_generation_commit_verifier.ps1"
 POLICY = PACKAGING / "windows_database_generation_policy.ps1"
+DATABASE_CONTRACT = PACKAGING / "windows_ticketbox_database_contract.ps1"
+EVIDENCE_VERIFIER = PACKAGING / "windows_database_generation_evidence_verifier.ps1"
+RECOVERY_ARCHIVE = PACKAGING / "windows_database_generation_recovery_archive.ps1"
 SOURCE_BINDING = PACKAGING / "windows_database_generation_source_binding.ps1"
 RECOVERY_EVIDENCE = PACKAGING / "windows_database_generation_recovery_evidence.ps1"
 LIFECYCLE_LOCK = PACKAGING / "windows_lifecycle_lock.ps1"
@@ -21,6 +24,7 @@ PREPARE = PACKAGING / "prepare_bundled_upgrade.ps1"
 INSTALLER = PACKAGING / "ticketbox-installer.iss"
 WINDOWS_HOST = PACKAGING / "ticketbox-installer-windows.isph"
 BUILD = PACKAGING / "build_inno_installer.ps1"
+COMMIT_FIXTURE = PACKAGING / "tests" / "powershell_fixtures" / "database_generation_bootstrap_commit.ps1"
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
@@ -225,6 +229,10 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     installer_source = INSTALLER.read_text(encoding="utf-8-sig")
     windows_host_source = WINDOWS_HOST.read_text(encoding="utf-8-sig")
     build_source = BUILD.read_text(encoding="utf-8-sig")
+    evidence_verifier_source = EVIDENCE_VERIFIER.read_text(encoding="utf-8-sig")
+    source_binding_source = SOURCE_BINDING.read_text(encoding="utf-8-sig")
+    recovery_evidence_source = RECOVERY_EVIDENCE.read_text(encoding="utf-8-sig")
+    commit_fixture = COMMIT_FIXTURE.read_text(encoding="utf-8-sig")
     assert "function Import-TicketboxDatabaseGenerationExecutionDependencies" not in owner_source
     assert "function Import-TicketboxInstalledDatabaseGenerationAuthority" not in prepare_source
     assert "function Import-TicketboxBootstrapDatabaseGenerationAuthority" not in prepare_source
@@ -246,18 +254,28 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     )
     assert "-Root $PSScriptRoot" in owner_consumer
     assert "Get-TicketboxDatabaseGenerationExecutionDependencyPaths" not in (commit_ready_consumer)
-    assert "windows_database_generation_recovery_evidence.ps1" in (commit_verifier_source)
+    assert "windows_database_generation_source_binding.ps1" not in commit_verifier_source
+    assert "windows_database_generation_recovery_evidence.ps1" not in commit_verifier_source
+    assert "Assert-TicketboxDatabaseGenerationSourceBindingChain" in evidence_verifier_source
+    assert "Assert-TicketboxDatabaseGenerationRecoveryChain" in evidence_verifier_source
+    assert "function Assert-TicketboxDatabaseGenerationSourceBindingChain" not in source_binding_source
+    assert "function Assert-TicketboxDatabaseGenerationRecoveryChain" not in recovery_evidence_source
     assert "Assert-TicketboxDatabaseGenerationCommitReadyArtifact" not in (artifacts_source)
     for dependency, macro, variable in (
         (
-            SOURCE_BINDING.name,
-            "DatabaseGenerationSourceBindingScriptSha256",
-            "$DatabaseGenerationSourceBindingScript",
+            DATABASE_CONTRACT.name,
+            "TicketboxDatabaseContractScriptSha256",
+            "$TicketboxDatabaseContractScript",
         ),
         (
-            RECOVERY_EVIDENCE.name,
-            "DatabaseGenerationRecoveryEvidenceScriptSha256",
-            "$DatabaseGenerationRecoveryEvidenceScript",
+            EVIDENCE_VERIFIER.name,
+            "DatabaseGenerationEvidenceVerifierScriptSha256",
+            "$DatabaseGenerationEvidenceVerifierScript",
+        ),
+        (
+            RECOVERY_ARCHIVE.name,
+            "DatabaseGenerationRecoveryArchiveScriptSha256",
+            "$DatabaseGenerationRecoveryArchiveScript",
         ),
     ):
         assert f'Source: "{dependency}"; Flags: dontcopy noencryption' in installer_source
@@ -272,8 +290,9 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
         FAILURE.name,
         ARTIFACTS.name,
         COMMIT_VERIFIER.name,
-        SOURCE_BINDING.name,
-        RECOVERY_EVIDENCE.name,
+        DATABASE_CONTRACT.name,
+        EVIDENCE_VERIFIER.name,
+        RECOVERY_ARCHIVE.name,
         POLICY.name,
     ):
         assert windows_host_source.count(f"'{bootstrap_file}'") == 3
@@ -292,8 +311,9 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
         ARTIFACTS,
         COMMIT_VERIFIER,
         POLICY,
-        SOURCE_BINDING,
-        RECOVERY_EVIDENCE,
+        DATABASE_CONTRACT,
+        EVIDENCE_VERIFIER,
+        RECOVERY_ARCHIVE,
     ):
         (bootstrap / source.name).write_bytes(source.read_bytes())
     owner_path = bootstrap / OWNER.name
@@ -346,11 +366,20 @@ if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_atomic_artifacts.ps
 if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_target_recovery.ps1')) {{
     throw 'bootstrap unexpectedly contains target recovery execution dependencies'
 }}
-if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_source_binding.ps1'))) {{
-    throw 'bootstrap is missing the CURRENT source-binding verifier'
+if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_source_binding.ps1')) {{
+    throw 'bootstrap unexpectedly contains source-binding mutation execution'
 }}
-if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_recovery_evidence.ps1'))) {{
-    throw 'bootstrap is missing the CURRENT recovery-evidence verifier'
+if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_recovery_evidence.ps1')) {{
+    throw 'bootstrap unexpectedly contains recovery-evidence mutation execution'
+}}
+if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_ticketbox_database_contract.ps1'))) {{
+    throw 'bootstrap is missing the database authorization contract'
+}}
+if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_evidence_verifier.ps1'))) {{
+    throw 'bootstrap is missing the immutable evidence verifier'
+}}
+if (-not (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_recovery_archive.ps1'))) {{
+    throw 'bootstrap is missing the bounded recovery archive cleanup adapter'
 }}
 if (Test-Path -LiteralPath (Join-Path '{bootstrap}' 'windows_database_generation_retirement.ps1')) {{
     throw 'bootstrap unexpectedly contains bootstrap retirement execution dependencies'
@@ -437,6 +466,9 @@ $hostContract.pg_major = 17
 $projectionContract.backend_port = 9876
 try {{ Start-TicketboxDatabaseGenerationIntent @start | Out-Null }} catch {{ $driftRejected += 1 }}
 $projectionContract.backend_port = 8765
+$script:CommitFixtureIntent = $first.Artifact
+$script:CommitFixtureStateRoot = '{state_root}'
+{commit_fixture}
 $operationStream.Dispose()
 if (
     $first.Artifact.PayloadSha256 -cne $second.Artifact.PayloadSha256 -or
@@ -454,7 +486,6 @@ if (
             'windows_postgresql_database_catalog.ps1',
             'windows_postgresql_single_user.ps1',
             'windows_postgresql_writer_fence.ps1',
-            'windows_ticketbox_database_contract.ps1',
             'windows_ticketbox_database_acl.ps1',
             'windows_ticketbox_database_acl_observation.ps1',
             'windows_ticketbox_database_roles.ps1',
@@ -466,8 +497,10 @@ if (
             'windows_database_generation_host_authority.ps1',
             'windows_database_generation_role_bootstrap.ps1',
             'windows_database_generation_source.ps1',
+            'windows_database_generation_source_binding.ps1',
             'windows_database_generation_program_adapter.ps1',
             'windows_database_generation_program_execution.ps1',
+            'windows_database_generation_recovery_evidence.ps1',
             'windows_database_generation_target_recovery.ps1',
             'windows_database_generation_target_authorization.ps1',
             'windows_database_generation_database_binding.ps1',

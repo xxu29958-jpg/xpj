@@ -186,6 +186,12 @@ $DatabaseGenerationArtifactsScript = Join-Path `
 $DatabaseGenerationCommitVerifierScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_commit_verifier.ps1"
+$DatabaseGenerationEvidenceVerifierScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_evidence_verifier.ps1"
+$DatabaseGenerationRecoveryArchiveScript = Join-Path `
+    $ScriptDir `
+    "windows_database_generation_recovery_archive.ps1"
 $DatabaseGenerationPolicyScript = Join-Path `
     $ScriptDir `
     "windows_database_generation_policy.ps1"
@@ -1241,6 +1247,12 @@ Assert-File $DatabaseGenerationArtifactsScript "Windows database generation arti
 Assert-File `
     $DatabaseGenerationCommitVerifierScript `
     "Windows database generation commit verifier"
+Assert-File `
+    $DatabaseGenerationEvidenceVerifierScript `
+    "Windows database generation evidence verifier"
+Assert-File `
+    $DatabaseGenerationRecoveryArchiveScript `
+    "Windows database generation recovery archive adapter"
 Assert-File $DatabaseGenerationPolicyScript "Windows database generation policy"
 Assert-File $DatabaseGenerationCredentialsScript "Windows database generation credentials"
 Assert-File $DatabaseGenerationRoleFenceScript "Windows database generation role fence"
@@ -1414,8 +1426,9 @@ $defines = @(
     "/DOperationFailureScriptSha256=$(Get-TicketboxFileSha256 $OperationFailureScript)",
     "/DDatabaseGenerationArtifactsScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationArtifactsScript)",
     "/DDatabaseGenerationCommitVerifierScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationCommitVerifierScript)",
-    "/DDatabaseGenerationSourceBindingScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationSourceBindingScript)",
-    "/DDatabaseGenerationRecoveryEvidenceScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationRecoveryEvidenceScript)",
+    "/DTicketboxDatabaseContractScriptSha256=$(Get-TicketboxFileSha256 $TicketboxDatabaseContractScript)",
+    "/DDatabaseGenerationEvidenceVerifierScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationEvidenceVerifierScript)",
+    "/DDatabaseGenerationRecoveryArchiveScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationRecoveryArchiveScript)",
     "/DDatabaseGenerationPolicyScriptSha256=$(Get-TicketboxFileSha256 $DatabaseGenerationPolicyScript)",
     "/DDatabaseGenerationProgramSha256=$([string]$backendManifest.payload.database_generation_program.sha256)",
     "/DDatabaseMaintenanceHelperSize=$([int64]$backendManifest.payload.database_maintenance_helper.size)",

@@ -2,7 +2,6 @@
 
 #Requires -Version 5.1
 
-$script:TicketboxDatabaseGenerationRestorePrefix = "ticketbox_generation_restore_"
 $script:TicketboxDatabaseGenerationRecoveryTimeoutMs = 1200000
 
 function Assert-TicketboxDatabaseGenerationToolIdentity {
@@ -35,19 +34,6 @@ function Assert-TicketboxDatabaseGenerationToolIdentity {
     return $path
 }
 
-function Get-TicketboxDatabaseGenerationRestoreDatabaseName {
-    param([Parameter(Mandatory = $true)][string]$AttemptId)
-    $attempt = [Guid]::Empty
-    if (
-        -not [Guid]::TryParseExact($AttemptId, "D", [ref]$attempt) -or
-        $attempt -eq [Guid]::Empty -or
-        $attempt.ToString("D") -cne $AttemptId
-    ) {
-        throw "database generation restore attempt ID 无效。"
-    }
-    return $script:TicketboxDatabaseGenerationRestorePrefix + $attempt.ToString("N")
-}
-
 function Get-TicketboxDatabaseGenerationRestoreMarker {
     param(
         [Parameter(Mandatory = $true)][object]$Attempt,
@@ -63,73 +49,6 @@ function Get-TicketboxDatabaseGenerationRestoreMarker {
     ) -join "|"
 }
 
-function Get-TicketboxDatabaseGenerationRecoveryArchivePaths {
-    param(
-        [Parameter(Mandatory = $true)][string]$StateRoot,
-        [Parameter(Mandatory = $true)][string]$OperationId
-    )
-    $name = "operation-$OperationId-target-recovery.dump"
-    return [pscustomobject]@{
-        Name = $name
-        Path = Join-Path $StateRoot $name
-        PartialPath = Join-Path $StateRoot ".$name.partial"
-    }
-}
-
-function Remove-TicketboxDatabaseGenerationRecoveryFile {
-    param(
-        [Parameter(Mandatory = $true)][string]$StateRoot,
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
-    )
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    if (-not (Test-TicketboxPathWithin $Path $StateRoot)) {
-        throw "database generation recovery file 越出 state root。"
-    }
-    $kind = Get-TicketboxPathEntryKindNoFollow $Path
-    if ($kind -ceq "Missing") { return }
-    if ($kind -cne "File") {
-        throw "database generation recovery residue 不是普通文件。"
-    }
-    Assert-NoTicketboxAncestorReparsePoints $Path
-    [IO.File]::Delete($Path)
-    if ((Get-TicketboxPathEntryKindNoFollow $Path) -cne "Missing") {
-        throw "database generation recovery residue 删除失败。"
-    }
-}
-
-function Remove-TicketboxDatabaseGenerationTargetRecoveryArchive {
-    param(
-        [Parameter(Mandatory = $true)][string]$StateRoot,
-        [Parameter(Mandatory = $true)][string]$OperationId,
-        [Parameter(Mandatory = $true)][object]$LifecycleLock
-    )
-    Assert-TicketboxLifecycleOperationLease $LifecycleLock
-    $operation = [Guid]::Empty
-    if (
-        -not [Guid]::TryParseExact($OperationId, "D", [ref]$operation) -or
-        $operation -eq [Guid]::Empty -or
-        $operation.ToString("D") -cne $OperationId
-    ) {
-        throw "database generation recovery cleanup operation ID 无效。"
-    }
-    $archive = Read-TicketboxDatabaseGenerationOperationArtifact `
-        $StateRoot $OperationId "target-recovery-archive"
-    $paths = Get-TicketboxDatabaseGenerationRecoveryArchivePaths `
-        $StateRoot $OperationId
-    if ([string]$archive.Payload.archive_file_name -cne $paths.Name) {
-        throw "database generation recovery archive 路径身份漂移。"
-    }
-    $kind = Get-TicketboxPathEntryKindNoFollow $paths.Path
-    if ($kind -ceq "Missing") { return }
-    if ($kind -cne "File") {
-        throw "database generation recovery archive 不是普通文件。"
-    }
-    [void](Assert-TicketboxDatabaseGenerationRecoveryArchive $StateRoot $archive)
-    Remove-TicketboxDatabaseGenerationRecoveryFile `
-        $StateRoot $paths.Path $LifecycleLock
-}
-
 function New-TicketboxDatabaseGenerationRecoveryArtifact {
     param(
         [Parameter(Mandatory = $true)][string]$StateRoot,
@@ -140,103 +59,6 @@ function New-TicketboxDatabaseGenerationRecoveryArtifact {
     )
     return New-TicketboxDatabaseGenerationChainedArtifact `
         $StateRoot $OperationId $Kind $Payload $LifecycleLock
-}
-
-function Assert-TicketboxDatabaseGenerationRecoveryChain {
-    param(
-        [AllowNull()][object]$Intent,
-        [AllowNull()][object]$SourceBinding,
-        [AllowNull()][object]$Attempt,
-        [AllowNull()][object]$Archive,
-        [AllowNull()][object]$Binding,
-        [AllowNull()][object]$Verification,
-        [AllowNull()][object]$Proof
-    )
-    if ($null -eq $Attempt) { throw "recovery chain 缺少 attempt。" }
-    $operationId = ([Guid][string]$Attempt.Payload.operation_id).ToString("D")
-    if (
-        [string]$Attempt.Payload.restore_database -cne
-            (Get-TicketboxDatabaseGenerationRestoreDatabaseName (
-                [string]$Attempt.Payload.create_attempt_id
-            ))
-    ) {
-        throw "recovery attempt restore identity 漂移。"
-    }
-    if ($null -ne $Intent -and (
-        [string]$Attempt.Payload.operation_id -cne
-            [string]$Intent.Payload.operation_id -or
-        [string]$Attempt.Payload.intent_sha256 -cne
-            [string]$Intent.PayloadSha256 -or
-        [string]$Attempt.Payload.target_revision -cne
-            [string]$Intent.Payload.target_revision -or
-        [string]$Attempt.Payload.generation_program_sha256 -cne
-            [string]$Intent.Payload.generation_program_sha256
-    )) { throw "recovery attempt 未绑定 exact intent。" }
-    if ($null -ne $SourceBinding -and (
-        [string]$Attempt.Payload.source_binding_sha256 -cne
-            [string]$SourceBinding.PayloadSha256 -or
-        [string]$Attempt.Payload.source_cluster_system_identifier -cne
-            [string]$SourceBinding.Payload.cluster_system_identifier -or
-        [string]$Attempt.Payload.source_database_oid -cne
-            [string]$SourceBinding.Payload.database_oid
-    )) { throw "recovery attempt 未绑定 exact source。" }
-    if ($null -ne $Archive -and (
-        [string]$Archive.Payload.operation_id -cne $operationId -or
-        [string]$Archive.Payload.attempt_sha256 -cne
-            [string]$Attempt.PayloadSha256
-    )) { throw "recovery archive 未绑定 exact attempt。" }
-    if ($null -ne $Binding -and (
-        [string]$Binding.Payload.operation_id -cne $operationId -or
-        [string]$Binding.Payload.attempt_sha256 -cne
-            [string]$Attempt.PayloadSha256 -or
-        [string]$Binding.Payload.restore_database -cne
-            [string]$Attempt.Payload.restore_database
-    )) { throw "recovery binding 未绑定 exact attempt。" }
-    if ($null -ne $Verification) {
-        if ($null -eq $Archive -or $null -eq $Binding) {
-            throw "recovery verification 缺少 archive/binding。"
-        }
-        if (
-            [string]$Verification.Payload.operation_id -cne $operationId -or
-            [string]$Verification.Payload.attempt_sha256 -cne
-                [string]$Attempt.PayloadSha256 -or
-            [string]$Verification.Payload.binding_sha256 -cne
-                [string]$Binding.PayloadSha256 -or
-            [string]$Verification.Payload.archive_sha256 -cne
-                [string]$Archive.Payload.archive_sha256 -or
-            [string]$Verification.Payload.target_revision -cne
-                [string]$Attempt.Payload.target_revision -or
-            [string]$Verification.Payload.generation_program_sha256 -cne
-                [string]$Attempt.Payload.generation_program_sha256
-        ) { throw "recovery verification authority chain 漂移。" }
-    }
-    if ($null -ne $Proof) {
-        if (
-            $null -eq $Intent -or $null -eq $SourceBinding -or
-            $null -eq $Archive -or $null -eq $Binding -or
-            $null -eq $Verification
-        ) { throw "recovery proof 缺少完整 authority chain。" }
-        if (
-            [string]$Proof.Payload.operation_id -cne $operationId -or
-            [string]$Proof.Payload.intent_sha256 -cne
-                [string]$Intent.PayloadSha256 -or
-            [string]$Proof.Payload.source_binding_sha256 -cne
-                [string]$SourceBinding.PayloadSha256 -or
-            [string]$Proof.Payload.target_revision -cne
-                [string]$Intent.Payload.target_revision -or
-            [string]$Proof.Payload.generation_program_sha256 -cne
-                [string]$Intent.Payload.generation_program_sha256 -or
-            [string]$Proof.Payload.attempt_sha256 -cne
-                [string]$Attempt.PayloadSha256 -or
-            [string]$Proof.Payload.archive_sha256 -cne
-                [string]$Archive.Payload.archive_sha256 -or
-            [string]$Proof.Payload.verification_sha256 -cne
-                [string]$Verification.PayloadSha256 -or
-            [string]$Proof.Payload.restore_database_oid -cne
-                [string]$Binding.Payload.restore_database_oid
-        ) { throw "recovery proof authority chain 漂移。" }
-    }
-    return $true
 }
 
 function Get-TicketboxDatabaseGenerationRecoveryAttempt {
@@ -270,30 +92,6 @@ function Get-TicketboxDatabaseGenerationRecoveryAttempt {
     }
     return New-TicketboxDatabaseGenerationRecoveryArtifact `
         $StateRoot $operationId "target-recovery-attempt" $payload $LifecycleLock
-}
-
-function Assert-TicketboxDatabaseGenerationRecoveryArchive {
-    param(
-        [Parameter(Mandatory = $true)][string]$StateRoot,
-        [Parameter(Mandatory = $true)][object]$Archive
-    )
-    $path = Join-Path $StateRoot ([string]$Archive.Payload.archive_file_name)
-    if (
-        -not (Test-TicketboxPathWithin $path $StateRoot) -or
-        (Get-TicketboxPathEntryKindNoFollow $path) -cne "File"
-    ) {
-        throw "database generation recovery archive 缺失或越界。"
-    }
-    Assert-NoTicketboxAncestorReparsePoints $path
-    $item = Get-Item -LiteralPath $path -Force
-    $sha256 = (Get-TicketboxPortableFileSha256 $path).ToLowerInvariant()
-    if (
-        [int64]$item.Length -ne [int64]$Archive.Payload.archive_size -or
-        $sha256 -cne [string]$Archive.Payload.archive_sha256
-    ) {
-        throw "database generation recovery archive bytes 漂移。"
-    }
-    return $path
 }
 
 function Get-TicketboxDatabaseGenerationRecoveryArchive {

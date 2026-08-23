@@ -16,7 +16,7 @@ OLD_C07_DATABASE = PACKAGING / "windows_c07_database.ps1"
 OWNER = PACKAGING / "windows_database_generation.ps1"
 SOURCE = PACKAGING / "windows_database_generation_source.ps1"
 RECOVERY = PACKAGING / "windows_database_generation_target_recovery.ps1"
-RECOVERY_EVIDENCE = PACKAGING / "windows_database_generation_recovery_evidence.ps1"
+EVIDENCE_VERIFIER = PACKAGING / "windows_database_generation_evidence_verifier.ps1"
 CREDENTIALS = PACKAGING / "windows_postgresql_credentials.ps1"
 INNO = PACKAGING / "ticketbox-installer.iss"
 BUILD = PACKAGING / "build_inno_installer.ps1"
@@ -82,9 +82,12 @@ def test_database_host_cutover_has_real_consumers_shipment_and_retirement() -> N
     provenance = PROVENANCE.read_text(encoding="utf-8-sig")
     for path in owners:
         assert owner.count(f'"{path.name}"') == 1
-        assert inno.count(f'Source: "{path.name}";') == 1
+        expected_inno_shipments = 2 if path == CONTRACT else 1
+        assert inno.count(f'Source: "{path.name}";') == expected_inno_shipments
         assert build.count(path.name) >= 1
         assert provenance.count(f"packaging\\{path.name}") == 1
+    assert f'Source: "{CONTRACT.name}"; Flags: dontcopy noencryption' in inno
+    assert f'Source: "{CONTRACT.name}"; DestDir: "{{app}}\\installer";' in inno
     for retired in (
         "Assert-TicketboxC07DatabaseRequiredProperties",
         "Assert-TicketboxC07DatabaseSha256",
@@ -412,7 +415,7 @@ $ErrorActionPreference = 'Stop'
 . '{_ps_literal(ACL)}'
 . '{_ps_literal(ACL_OBSERVATION)}'
 . '{_ps_literal(ROLES)}'
-. '{_ps_literal(RECOVERY_EVIDENCE)}'
+. '{_ps_literal(EVIDENCE_VERIFIER)}'
 . '{_ps_literal(RECOVERY)}'
 function ConvertFrom-TicketboxPostgresqlHostEvidenceRow {{
     param([string]$Output, [int]$FieldCount, [string]$Label)

@@ -4,6 +4,9 @@ $contractPath = Join-Path $PSScriptRoot "windows_database_generation_contract.ps
 $releasePath = Join-Path $PSScriptRoot "windows_database_generation_release.ps1"
 $operationFailurePath = Join-Path $PSScriptRoot "windows_operation_failure.ps1"
 $artifactsPath = Join-Path $PSScriptRoot "windows_database_generation_artifacts.ps1"
+$databaseContractPath = Join-Path $PSScriptRoot "windows_ticketbox_database_contract.ps1"
+$evidenceVerifierPath = Join-Path $PSScriptRoot "windows_database_generation_evidence_verifier.ps1"
+$recoveryArchivePath = Join-Path $PSScriptRoot "windows_database_generation_recovery_archive.ps1"
 $commitVerifierPath = Join-Path $PSScriptRoot "windows_database_generation_commit_verifier.ps1"
 $policyPath = Join-Path $PSScriptRoot "windows_database_generation_policy.ps1"
 foreach ($dependency in @(
@@ -11,6 +14,9 @@ foreach ($dependency in @(
     $releasePath,
     $operationFailurePath,
     $artifactsPath,
+    $databaseContractPath,
+    $evidenceVerifierPath,
+    $recoveryArchivePath,
     $commitVerifierPath,
     $policyPath
 )) {
@@ -33,7 +39,6 @@ function Get-TicketboxDatabaseGenerationExecutionDependencyPaths {
         "windows_postgresql_database_command.ps1",
         "windows_postgresql_database_catalog.ps1",
         "windows_postgresql_writer_fence.ps1",
-        "windows_ticketbox_database_contract.ps1",
         "windows_ticketbox_database_acl.ps1",
         "windows_ticketbox_database_acl_observation.ps1",
         "windows_ticketbox_database_roles.ps1",

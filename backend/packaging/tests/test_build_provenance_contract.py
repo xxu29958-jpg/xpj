@@ -250,6 +250,8 @@ _INSTALLER_RECIPE_PATHS = (
     "packaging/windows_operation_failure.ps1",
     "packaging/windows_database_generation_artifacts.ps1",
     "packaging/windows_database_generation_commit_verifier.ps1",
+    "packaging/windows_database_generation_evidence_verifier.ps1",
+    "packaging/windows_database_generation_recovery_archive.ps1",
     "packaging/windows_database_generation_policy.ps1",
     "packaging/windows_database_generation_credentials.ps1",
     "packaging/windows_database_generation_role_fence.ps1",

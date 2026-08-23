@@ -327,6 +327,8 @@ def test_generation_owner_is_one_real_shipped_consumer_and_retires_old_authoriti
         "windows_operation_failure.ps1",
         "windows_database_generation_artifacts.ps1",
         "windows_database_generation_commit_verifier.ps1",
+        "windows_database_generation_evidence_verifier.ps1",
+        "windows_database_generation_recovery_archive.ps1",
         "windows_database_generation_policy.ps1",
         "windows_database_generation_credentials.ps1",
         "windows_database_generation_role_fence.ps1",
