@@ -1533,7 +1533,12 @@ begin
     Log('Lifecycle lock holder identity is unavailable; keeping release state fail closed.');
     exit;
   end;
-  if IsProcessHandleRunning(LifecycleLockHolderProcessHandle) then
+  WaitResult := WaitForSingleObject(LifecycleLockHolderProcessHandle, 0);
+  if WaitResult = WaitObject0 then
+  begin
+    Log('Lifecycle lock holder already exited before release.');
+  end
+  else if WaitResult = WaitTimeout then
   begin
     ReleaseTempPath := LifecycleLockHolderReleasePath + '.tmp';
     ReleaseText :=
@@ -1560,6 +1565,11 @@ begin
       Log('Lifecycle lock holder did not exit before timeout; keeping holder identity fail closed.');
       exit;
     end;
+  end
+  else
+  begin
+    Log('Lifecycle lock holder wait state is unknown; keeping holder identity fail closed.');
+    exit;
   end;
   if (LifecycleLockHolderProcessHandle <> 0) and
      (LifecycleLockHolderProcessHandle <> InvalidHandleValue) then

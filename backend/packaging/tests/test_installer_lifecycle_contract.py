@@ -2721,6 +2721,40 @@ def test_manager_maintenance_gate_spans_setup_and_uninstall_payload_mutation() -
     )
 
 
+def test_lifecycle_holder_release_keeps_unknown_wait_state_fail_closed() -> None:
+    windows = _read("ticketbox-installer-windows.isph")
+    release = windows[
+        windows.index("function ReleaseLifecycleLock(): Boolean;") : windows.index(
+            "function LifecycleLockActive"
+        )
+    ]
+
+    initial_wait = release.index(
+        "WaitResult := WaitForSingleObject(LifecycleLockHolderProcessHandle, 0);"
+    )
+    stopped = release.index("if WaitResult = WaitObject0 then", initial_wait)
+    running = release.index("else if WaitResult = WaitTimeout then", stopped)
+    unknown = release.index("holder wait state is unknown", running)
+    identity_clear = release.index("LifecycleLockHolderProcessHandle := InvalidHandleValue")
+
+    assert "IsProcessHandleRunning(" not in release
+    assert initial_wait < stopped < running < unknown < identity_clear
+    assert release.index("exit;", unknown) < identity_clear
+
+
+def test_finished_handoff_advances_monotonically_before_holder_release_retry() -> None:
+    flow = _read("ticketbox-installer-flow.isph")
+    finish = flow[flow.index("function NextButtonClick") : flow.index("function PrepareToInstall")]
+
+    residual_check = finish.index("if FileExists(HandoffPath) then")
+    handoff_complete = finish.index("OwnerHandoffExpected := False;", residual_check)
+    memo_clear = finish.index("OwnerHandoffMemo.Text := '';", handoff_complete)
+    memo_hide = finish.index("OwnerHandoffMemo.Visible := False;", memo_clear)
+    data_root_release = finish.index("if not ReleaseDataRootMutationGuard() then")
+
+    assert residual_check < handoff_complete < memo_clear < memo_hide < data_root_release
+
+
 def test_uninstaller_preserves_data_by_default_and_requires_two_explicit_delete_choices() -> None:
     windows = _read("ticketbox-installer-windows.isph")
     flow = _read("ticketbox-installer-flow.isph")

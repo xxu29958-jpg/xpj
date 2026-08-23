@@ -696,7 +696,9 @@ begin
       Result := False;
       exit;
     end;
+    OwnerHandoffExpected := False;
     OwnerHandoffMemo.Text := '';
+    OwnerHandoffMemo.Visible := False;
   end;
 
   if (CurPageID = wpFinished) and LifecycleInstallCompleted then
