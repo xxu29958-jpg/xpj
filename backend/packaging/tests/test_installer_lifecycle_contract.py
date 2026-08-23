@@ -1189,7 +1189,7 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     cleanup_authority = transaction.index("Set-TicketboxLifecycleReceiptInstallCleanupPending")
     commit_receipt = transaction.index("Set-TicketboxLifecycleReceiptInstallCompleted")
     retire_latch = transaction.index("Remove-TicketboxInstallerRecoveryMarker")
-    assert ready_artifact_guard < persist_identity < cleanup_authority < retire_latch < commit_receipt
+    assert ready_artifact_guard < cleanup_authority < persist_identity < retire_latch < commit_receipt
     lifecycle_current_guard = receipt[
         receipt.index("function Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent") : receipt.index(
             "function Read-TicketboxUninstallLifecycleReceipt"
@@ -2898,6 +2898,7 @@ def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Pa
         "OwnerHandoffScriptSha256": digest,
         "BackendHealthScriptSha256": digest,
         "InstalledPayloadRequiredBytes": "1",
+        "InstalledPayloadFileCount": "1",
         "ServiceContractScriptSha256": digest,
         "ServiceIdentityScriptSha256": digest,
         "ServiceLifecycleScriptSha256": digest,
@@ -5353,7 +5354,7 @@ function Read-TicketboxOwnerHandoffArtifact([string]$Path) {{
         -Path $Path `
         -FullControlAccounts @($currentAccount) `
         -OwnerAccount $currentAccount `
-        -MaximumBytes 16384
+        -MaximumBytes $script:TicketboxOwnerHandoffMaximumBytes
 }}
 $ownerStarted = (Get-Process -Id $PID).StartTime.ToUniversalTime().ToString(
     'yyyy-MM-ddTHH:mm:ss.fffffffZ',
@@ -5379,7 +5380,11 @@ Write-TicketboxProtectedUtf8FileDurable `
     -OwnerAccount $currentAccount
 [System.IO.File]::WriteAllBytes($OwnerHandoffPath, [byte[]](0xC3, 0x28))
 $invalidOwnerMarkerRejected = $false
-try {{ Read-TicketboxOwnerHandoffRecord | Out-Null }} catch {{ $invalidOwnerMarkerRejected = $true }}
+try {{ Read-TicketboxOwnerHandoffRecord -Path $OwnerHandoffPath | Out-Null }}
+catch {{
+    if ($_.Exception.Message -notlike '*不是严格 UTF-8*') {{ throw }}
+    $invalidOwnerMarkerRejected = $true
+}}
 if (-not $invalidOwnerMarkerRejected -or
     -not (Test-Path -LiteralPath $OwnerHandoffPath -PathType Leaf)) {{
     throw 'invalid UTF-8 owner handoff was accepted or destroyed'
@@ -5398,9 +5403,12 @@ Write-TicketboxProtectedUtf8FileDurable `
     -ReplaceExisting
 $oversizedHandoffRejected = $false
 try {{
-    Read-TicketboxOwnerHandoffRecord | Out-Null
+    Read-TicketboxOwnerHandoffRecord -Path $OwnerHandoffPath | Out-Null
 }}
-catch {{ $oversizedHandoffRejected = $true }}
+catch {{
+    if ($_.Exception.Message -notlike '*不是有效的受保护普通文件*') {{ throw }}
+    $oversizedHandoffRejected = $true
+}}
 if (-not $oversizedHandoffRejected -or
     -not (Test-Path -LiteralPath $OwnerHandoffPath -PathType Leaf)) {{
     throw 'oversized owner handoff was accepted or destroyed'

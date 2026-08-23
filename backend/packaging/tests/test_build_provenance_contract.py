@@ -48,9 +48,10 @@ def _run_powershell(command: str, executable: str = "powershell") -> subprocess.
 def test_installed_payload_space_budget_is_derived_from_bound_build_inputs() -> None:
     build = (PACKAGING / "build_inno_installer.ps1").read_text(encoding="utf-8-sig")
     provenance = PROVENANCE_HELPER.read_text(encoding="utf-8-sig")
+    safety = INSTALLATION_SAFETY.read_text(encoding="utf-8-sig")
 
     budget = build[
-        build.index("function Get-TicketboxInstalledPayloadRequiredBytes") : build.index(
+        build.index("function Get-TicketboxInstalledPayloadBudget") : build.index(
             "function Assert-TicketboxInstallerCompilerContentManifest"
         )
     ]
@@ -62,12 +63,17 @@ def test_installed_payload_space_budget_is_derived_from_bound_build_inputs() -> 
         "$PostgresPayloadFiles",
         "$ShawlPayloadFiles",
         "$RecipeSnapshot.files",
+        "$InstallerManifestMaximumBytes",
     ):
         assert evidence in budget
     assert "Get-TicketboxCheckedByteSum" in budget
     assert "payload_files =" not in build
-    assert "sum_of_verified_installed_file_sizes" in build
+    assert "verified_installed_file_sizes_plus_bounded_generated_manifest" in build
     assert '"InstalledPayloadRequiredBytes"' in build
+    assert '"InstalledPayloadFileCount"' in build
+    assert "installed_payload_budget = $BuildInputs.installed_payload_budget" in build
+    assert "$InstallerBuildManifestMaximumBytes = [int64]16777216" in build
+    assert "::ReadExactFileBytes(\n        $Path,\n        16777216\n    )" in safety
     assert '"packaging\\windows_owner_handoff.ps1"' in provenance
 
 
@@ -90,16 +96,19 @@ $arguments = @{
     ManagerManifestEvidence = [pscustomobject]@{ size = 5 }
     PostgresPayloadFiles = @([pscustomobject]@{ size = 6 })
     ShawlPayloadFiles = @([pscustomobject]@{ size = 7 }, [pscustomobject]@{ size = 8 })
+    InstallerManifestMaximumBytes = 10
     RecipeSnapshot = [pscustomobject]@{ files = @(
         [pscustomobject]@{ path = 'packaging/windows_owner_handoff.ps1'; size = 9 },
         [pscustomobject]@{ path = 'packaging/build_inno_installer.ps1'; size = 100 }
     ) }
 }
-$actual = Get-TicketboxInstalledPayloadRequiredBytes @arguments
-if ($actual -ne 45) { throw "installed payload budget drifted: $actual" }
+$actual = Get-TicketboxInstalledPayloadBudget @arguments
+if ($actual.LogicalBytes -ne 55 -or $actual.FileCount -ne 10) {
+    throw "installed payload budget drifted: $($actual | ConvertTo-Json -Compress)"
+}
 $arguments.BackendPayloadFiles = @([pscustomobject]@{ path = 'missing-size' })
 $rejected = $false
-try { Get-TicketboxInstalledPayloadRequiredBytes @arguments | Out-Null }
+try { Get-TicketboxInstalledPayloadBudget @arguments | Out-Null }
 catch { $rejected = $true }
 if (-not $rejected) { throw 'missing size did not fail closed' }
 """,

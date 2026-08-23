@@ -49,6 +49,7 @@ $ShawlLegalNotice = ""
 $VisualCppRuntimeExe = Join-Path $ScriptDir "vendor\vc-runtime\vc_redist.x64.exe"
 $InstallerInputDir = Join-Path $BackendRoot "dist\installer-input"
 $InstallerBuildManifest = Join-Path $InstallerInputDir "BUILD_PROVENANCE.json"
+$InstallerBuildManifestMaximumBytes = [int64]16777216
 $ToolchainConfigPath = Join-Path $ScriptDir "windows-build-toolchain.json"
 $BuildToolchainPrepScript = Join-Path $ScriptDir "prepare_windows_build_toolchain.ps1"
 $ReleaseConfigPath = Join-Path $ScriptDir "windows-release-config.json"
@@ -689,7 +690,7 @@ function Get-TicketboxCheckedByteSum {
     return [int64]$sum
 }
 
-function Get-TicketboxInstalledPayloadRequiredBytes {
+function Get-TicketboxInstalledPayloadBudget {
     param(
         [Parameter(Mandatory = $true)][object[]]$BackendPayloadFiles,
         [Parameter(Mandatory = $true)][object]$BackendManifestEvidence,
@@ -697,8 +698,13 @@ function Get-TicketboxInstalledPayloadRequiredBytes {
         [Parameter(Mandatory = $true)][object]$ManagerManifestEvidence,
         [Parameter(Mandatory = $true)][object[]]$PostgresPayloadFiles,
         [Parameter(Mandatory = $true)][object[]]$ShawlPayloadFiles,
-        [Parameter(Mandatory = $true)][object]$RecipeSnapshot
+        [Parameter(Mandatory = $true)][object]$RecipeSnapshot,
+        [Parameter(Mandatory = $true)][int64]$InstallerManifestMaximumBytes
     )
+
+    if ($InstallerManifestMaximumBytes -lt 1) {
+        throw "installed payload 的 generated manifest 上界无效。"
+    }
 
     $buildOnlyRecipePaths = @(
         "requirements-build.lock",
@@ -724,9 +730,16 @@ function Get-TicketboxInstalledPayloadRequiredBytes {
     $installedEvidence += @($PostgresPayloadFiles)
     $installedEvidence += @($ShawlPayloadFiles)
     $installedEvidence += @($installedRecipeFiles)
-    return Get-TicketboxCheckedByteSum `
+    $installedEvidence += [pscustomobject]@{
+        size = $InstallerManifestMaximumBytes
+    }
+    $logicalBytes = Get-TicketboxCheckedByteSum `
         -Records $installedEvidence `
         -Label "installed payload"
+    return [pscustomobject][ordered]@{
+        LogicalBytes = [int64]$logicalBytes
+        FileCount = [int64]$installedEvidence.Count
+    }
 }
 
 function Assert-TicketboxInstallerCompilerContentManifest {
@@ -959,6 +972,7 @@ function Write-InstallerBuildProvenance(
             executable = $CompilerProvenance.executable
         }
         compiler_defines = @(Get-TicketboxNormalizedCompilerDefines $CompilerDefines)
+        installed_payload_budget = $BuildInputs.installed_payload_budget
         backend = $BuildInputs.backend
         manager = $BuildInputs.manager
         postgresql = $BuildInputs.postgresql
@@ -1456,7 +1470,7 @@ $verifiedBuildInputs = Get-InstallerBuildInputEvidence `
     $postgresProvenance `
     $shawlProvenance `
     $visualCppRuntimeProvenance
-$installedPayloadRequiredBytes = Get-TicketboxInstalledPayloadRequiredBytes `
+$installedPayloadBudget = Get-TicketboxInstalledPayloadBudget `
     -BackendPayloadFiles @($backendManifest.payload.files) `
     -BackendManifestEvidence $verifiedBuildInputs.backend.manifest `
     -ManagerPayloadFiles @($managerManifest.payload.files) `
@@ -1466,10 +1480,13 @@ $installedPayloadRequiredBytes = Get-TicketboxInstalledPayloadRequiredBytes `
         $verifiedBuildInputs.shawl.executable,
         $verifiedBuildInputs.shawl.legal_notice
     ) `
-    -RecipeSnapshot $recipeSnapshot
+    -RecipeSnapshot $recipeSnapshot `
+    -InstallerManifestMaximumBytes $InstallerBuildManifestMaximumBytes
 $verifiedBuildInputs["installed_payload_budget"] = [ordered]@{
-    "InstalledPayloadRequiredBytes" = $installedPayloadRequiredBytes
-    derivation = "sum_of_verified_installed_file_sizes"
+    "InstalledPayloadRequiredBytes" = $installedPayloadBudget.LogicalBytes
+    "InstalledPayloadFileCount" = $installedPayloadBudget.FileCount
+    generated_manifest_max_bytes = $InstallerBuildManifestMaximumBytes
+    derivation = "verified_installed_file_sizes_plus_bounded_generated_manifest"
 }
 $defines = @(
     "/DAppVersion=$resolvedVersion",
@@ -1498,7 +1515,8 @@ $defines = @(
     "/DPrepareScriptSha256=$(Get-TicketboxFileSha256 $PrepareScript)",
     "/DOwnerHandoffScriptSha256=$(Get-TicketboxFileSha256 $OwnerHandoffScript)",
     "/DBackendHealthScriptSha256=$(Get-TicketboxFileSha256 $BackendHealthScript)",
-    "/DInstalledPayloadRequiredBytes=$installedPayloadRequiredBytes",
+    "/DInstalledPayloadRequiredBytes=$($installedPayloadBudget.LogicalBytes)",
+    "/DInstalledPayloadFileCount=$($installedPayloadBudget.FileCount)",
     "/DServiceContractScriptSha256=$(Get-TicketboxFileSha256 $ServiceContractScript)",
     "/DServiceIdentityScriptSha256=$(Get-TicketboxFileSha256 $ServiceIdentityScript)",
     "/DServiceLifecycleScriptSha256=$(Get-TicketboxFileSha256 $LifecycleScript)",
@@ -1626,6 +1644,13 @@ try {
         $isccProvenance `
         $defines `
         -ManifestPath $stagedInstallerManifest
+    $installerManifestItem = Get-Item -LiteralPath $stagedInstallerManifest
+    if (
+        [int64]$installerManifestItem.Length -lt 1 -or
+        [int64]$installerManifestItem.Length -gt $InstallerBuildManifestMaximumBytes
+    ) {
+        throw "安装器输入 provenance 超过 installed manifest 的闭合字节上界。"
+    }
     Assert-TicketboxInstallerBuildProvenance $BackendRoot $installerBuild.Path $isccProvenance $buildInputs $defines | Out-Null
     Write-Ok "安装器输入 provenance：$($installerBuild.Path)"
 

@@ -955,8 +955,10 @@ def test_copy_action_has_build_bound_fail_closed_disk_space_precondition() -> No
     installer = _read("ticketbox-installer.iss")
     flow = _read("ticketbox-installer-flow.isph")
 
-    assert "/DInstalledPayloadRequiredBytes=$installedPayloadRequiredBytes" in build
+    assert "/DInstalledPayloadRequiredBytes=$($installedPayloadBudget.LogicalBytes)" in build
+    assert "/DInstalledPayloadFileCount=$($installedPayloadBudget.FileCount)" in build
     assert "#ifndef InstalledPayloadRequiredBytes" in installer
+    assert "#ifndef InstalledPayloadFileCount" in installer
     assert "ExtraDiskSpaceRequired=" not in installer
     assert "DefaultDirName={autopf}\\Ticketbox" in installer
     assert "DisableDirPage=yes" in installer
@@ -967,7 +969,10 @@ def test_copy_action_has_build_bound_fail_closed_disk_space_precondition() -> No
         )
     ]
     assert "GetSpaceOnDisk64(ExpandConstant('{autopf}')" in precondition
+    assert "GetDiskFreeSpaceW(" in precondition
     assert "StrToInt64Def('{#InstalledPayloadRequiredBytes}', -1)" in precondition
+    assert "StrToInt64Def('{#InstalledPayloadFileCount}', -1)" in precondition
+    assert "FileCount * (AllocationUnitBytes - 1)" in precondition
     assert "FreeBytes < RequiredBytes" in precondition
     assert "无法验证程序文件目标卷的可用空间" in precondition
 
@@ -1169,6 +1174,7 @@ function Promote-TicketboxPendingInstallationIdentity {{
         throw "unexpected installation operation id $ExpectedOperationId"
     }}
     [void]$script:events.Add('identity')
+    if ($script:failIdentityAfterPromotion) {{ throw 'injected crash after identity promotion' }}
 }}
 function Set-TicketboxLifecycleReceiptInstallCleanupPending {{
     param($Path, $Receipt, $InstallerOwnerProcessId)
@@ -1368,6 +1374,24 @@ if (-not $readyDriftRejected -or ($script:events -contains 'identity')) {{
 }}
 $script:events.Clear()
 $script:failReady = $false
+$script:failIdentityAfterPromotion = $true
+$identityCrashRejected = $false
+try {{ Complete-TicketboxInstalledLifecycleTransaction @arguments }}
+catch {{ $identityCrashRejected = $true }}
+if (-not $identityCrashRejected -or
+    $script:stage -cne 'install_cleanup_pending' -or
+    -not $script:archivePresent) {{
+    throw 'identity crash was not preceded by durable cleanup authority'
+}}
+$script:events.Clear()
+$script:failIdentityAfterPromotion = $false
+Complete-TicketboxInstalledLifecycleTransaction @arguments
+if ($script:stage -cne 'install_completed' -or $script:archivePresent) {{
+    throw 'cleanup-pending retry did not converge after identity crash'
+}}
+$script:stage = 'files_may_have_been_replaced'
+$script:archivePresent = $true
+$script:events.Clear()
 $script:failToolCleanup = $true
 $toolCleanupRejected = $false
 try {{ Complete-TicketboxInstalledLifecycleTransaction @arguments }}

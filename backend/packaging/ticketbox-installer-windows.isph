@@ -152,6 +152,14 @@ function CloseHandle(Handle: LongWord): Boolean;
   external 'CloseHandle@kernel32.dll stdcall';
 function GetCurrentProcessId(): LongWord;
   external 'GetCurrentProcessId@kernel32.dll stdcall';
+function GetDiskFreeSpaceW(
+  RootPathName: String;
+  var SectorsPerCluster: LongWord;
+  var BytesPerSector: LongWord;
+  var NumberOfFreeClusters: LongWord;
+  var TotalNumberOfClusters: LongWord
+): Boolean;
+  external 'GetDiskFreeSpaceW@kernel32.dll stdcall';
 function GetLastError(): LongWord;
   external 'GetLastError@kernel32.dll stdcall';
 procedure SetLastError(ErrorCode: LongWord);

@@ -70,6 +70,9 @@
 #ifndef InstalledPayloadRequiredBytes
 #error InstalledPayloadRequiredBytes must be injected by build_inno_installer.ps1
 #endif
+#ifndef InstalledPayloadFileCount
+#error InstalledPayloadFileCount must be injected by build_inno_installer.ps1
+#endif
 #ifndef ServiceContractScriptSha256
 #error ServiceContractScriptSha256 must be injected by build_inno_installer.ps1
 #endif

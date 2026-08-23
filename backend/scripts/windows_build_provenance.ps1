@@ -1495,6 +1495,10 @@ function Assert-TicketboxInstallerBuildProvenance(
         throw "安装器 provenance schema/artifact_type 不受支持。"
     }
     Assert-TicketboxStructuredEvidence "安装器 ISCC defines" @($manifest.compiler_defines) @(Get-TicketboxNormalizedCompilerDefines $ExpectedCompilerDefines)
+    Assert-TicketboxStructuredEvidence `
+        "安装器 installed payload budget" `
+        $manifest.installed_payload_budget `
+        $ExpectedBuildInputs.installed_payload_budget
     Assert-TicketboxFileSetSnapshot `
         "Windows 安装器 recipe" `
         $manifest.recipe `

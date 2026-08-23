@@ -2253,17 +2253,6 @@ function Complete-TicketboxInstalledLifecycleTransaction {
         throw "installed recovery archive adapter 与 build provenance 不一致。"
     }
     . $recoveryArchiveAdapterPath
-    Promote-TicketboxPendingInstallationIdentity `
-        -DataRoot $DataRoot `
-        -InstallDir $InstallDir `
-        -PgPort $PgPort `
-        -BackendPort $BackendPort `
-        -PgServiceName ([string]$TargetReleaseConfig.pg_service_name) `
-        -BackendServiceName ([string]$TargetReleaseConfig.backend_service_name) `
-        -BuildManifestPath $BuildManifestPath `
-        -ExpectedOperationId (
-            [string]$receipt.database_generation_operation_id
-        ) | Out-Null
     if ([string]$receipt.preparation_stage -eq "files_may_have_been_replaced") {
         Set-TicketboxLifecycleReceiptInstallCleanupPending `
             -Path $Path `
@@ -2282,6 +2271,17 @@ function Complete-TicketboxInstalledLifecycleTransaction {
     if ([string]$receipt.preparation_stage -ne "install_cleanup_pending") {
         throw "安装清理只能由 durable cleanup-pending 阶段授权。"
     }
+    Promote-TicketboxPendingInstallationIdentity `
+        -DataRoot $DataRoot `
+        -InstallDir $InstallDir `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -PgServiceName ([string]$TargetReleaseConfig.pg_service_name) `
+        -BackendServiceName ([string]$TargetReleaseConfig.backend_service_name) `
+        -BuildManifestPath $BuildManifestPath `
+        -ExpectedOperationId (
+            [string]$receipt.database_generation_operation_id
+        ) | Out-Null
     Remove-TicketboxDatabaseGenerationTargetRecoveryArchive `
         -StateRoot (Get-TicketboxDatabaseGenerationStateRoot (
             Get-TicketboxInstallerStateDirectory
