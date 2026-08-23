@@ -792,26 +792,42 @@ function Initialize-TicketboxProtectedDirectoryAtomically {
         -InheritableReadExecuteAccounts $InheritableReadExecuteAccounts `
         -OwnerAccount $OwnerAccount
     $restorePrivilege = Enter-TicketboxRestorePrivilegeForSecurityDescriptor $security
+
+    $directoryFailures = New-Object System.Collections.Generic.List[System.Exception]
     try {
-        try {
-            if ($PSVersionTable.PSEdition -eq "Core") {
-                [System.IO.FileSystemAclExtensions]::CreateDirectory($security, $fullPath) | Out-Null
-            }
-            else {
-                (New-Object System.IO.DirectoryInfo($fullPath)).Create($security)
-            }
+        if ($PSVersionTable.PSEdition -eq "Core") {
+            [System.IO.FileSystemAclExtensions]::CreateDirectory($security, $fullPath) | Out-Null
         }
-        catch {
-            $creationFailure = $_.Exception
-            if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
-                throw $creationFailure
-            }
+        else {
+            (New-Object System.IO.DirectoryInfo($fullPath)).Create($security)
         }
     }
-    finally {
-        if ($null -ne $restorePrivilege) {
-            $restorePrivilege.Dispose()
+    catch {
+        $creationFailure = $_.Exception
+        $directoryExists = $false
+        try {
+            $directoryExists = Test-Path -LiteralPath $fullPath -PathType Container
         }
+        catch {
+            $directoryFailures.Add($creationFailure)
+            $directoryFailures.Add($_.Exception)
+        }
+        if ($directoryFailures.Count -eq 0 -and -not $directoryExists) {
+            $directoryFailures.Add($creationFailure)
+        }
+    }
+    if ($null -ne $restorePrivilege) {
+        try { $restorePrivilege.Dispose() }
+        catch { $directoryFailures.Add($_.Exception) }
+    }
+    if ($directoryFailures.Count -eq 1) {
+        throw $directoryFailures[0]
+    }
+    if ($directoryFailures.Count -gt 1) {
+        throw [AggregateException]::new(
+            "受保护目录创建事务存在多个失败。",
+            $directoryFailures.ToArray()
+        )
     }
     Assert-NoTicketboxAncestorReparsePoints $fullPath
     Assert-TicketboxProtectedDirectoryAcl `
@@ -826,38 +842,82 @@ function Initialize-TicketboxProtectedDirectoryAtomically {
 function New-TicketboxProtectedFileStream {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][System.Security.AccessControl.FileSecurity]$Security
+        [Parameter(Mandatory = $true)][System.Security.AccessControl.FileSecurity]$Security,
+        [Parameter(Mandatory = $true)][System.IO.FileAccess]$Access
     )
 
     $Path = ConvertTo-TicketboxWin32CanonicalPath $Path
+    if ($Access -eq [System.IO.FileAccess]::Write) {
+        $fileSystemRights = [System.Security.AccessControl.FileSystemRights]::Write
+    }
+    elseif ($Access -eq [System.IO.FileAccess]::ReadWrite) {
+        $fileSystemRights =
+            [System.Security.AccessControl.FileSystemRights]::Read -bor
+            [System.Security.AccessControl.FileSystemRights]::Write
+    }
+    else {
+        throw "受保护文件流 access 只允许 Write 或 ReadWrite。"
+    }
     $restorePrivilege = Enter-TicketboxRestorePrivilegeForSecurityDescriptor $Security
+
+    $stream = $null
+    $createFailure = $null
     try {
         if ($PSVersionTable.PSEdition -eq "Core") {
-            return [System.IO.FileSystemAclExtensions]::Create(
+            $stream = [System.IO.FileSystemAclExtensions]::Create(
                 (New-Object System.IO.FileInfo($Path)),
                 [System.IO.FileMode]::CreateNew,
-                [System.Security.AccessControl.FileSystemRights]::Write,
+                $fileSystemRights,
                 [System.IO.FileShare]::None,
                 4096,
                 [System.IO.FileOptions]::WriteThrough,
                 $Security
             )
         }
-        return New-Object System.IO.FileStream(
-            $Path,
-            [System.IO.FileMode]::CreateNew,
-            [System.Security.AccessControl.FileSystemRights]::Write,
-            [System.IO.FileShare]::None,
-            4096,
-            [System.IO.FileOptions]::WriteThrough,
-            $Security
-        )
-    }
-    finally {
-        if ($null -ne $restorePrivilege) {
-            $restorePrivilege.Dispose()
+        else {
+            $stream = New-Object System.IO.FileStream(
+                $Path,
+                [System.IO.FileMode]::CreateNew,
+                $fileSystemRights,
+                [System.IO.FileShare]::None,
+                4096,
+                [System.IO.FileOptions]::WriteThrough,
+                $Security
+            )
         }
     }
+    catch {
+        $createFailure = $_.Exception
+    }
+
+    $privilegeFailure = $null
+    if ($null -ne $restorePrivilege) {
+        try { $restorePrivilege.Dispose() }
+        catch { $privilegeFailure = $_.Exception }
+    }
+    if ($null -ne $privilegeFailure) {
+        $streamCleanupFailure = $null
+        if ($null -ne $stream) {
+            try { $stream.Dispose() }
+            catch { $streamCleanupFailure = $_.Exception }
+            $stream = $null
+        }
+        $failures = New-Object System.Collections.Generic.List[System.Exception]
+        if ($null -ne $createFailure) { $failures.Add($createFailure) }
+        $failures.Add($privilegeFailure)
+        if ($null -ne $streamCleanupFailure) {
+            $failures.Add($streamCleanupFailure)
+        }
+        if ($failures.Count -eq 1) {
+            throw $failures[0]
+        }
+        throw [AggregateException]::new(
+            "受保护文件创建及权限恢复存在多个失败。",
+            $failures.ToArray()
+        )
+    }
+    if ($null -ne $createFailure) { throw $createFailure }
+    return $stream
 }
 
 function Write-TicketboxProtectedUtf8FileDurable {
@@ -883,7 +943,10 @@ function Write-TicketboxProtectedUtf8FileDurable {
         -ReadExecuteAccounts $ReadExecuteAccounts `
         -OwnerAccount $OwnerAccount
     try {
-        $stream = New-TicketboxProtectedFileStream -Path $temporaryPath -Security $security
+        $stream = New-TicketboxProtectedFileStream `
+            -Path $temporaryPath `
+            -Security $security `
+            -Access ([System.IO.FileAccess]::Write)
         try {
             $stream.Write($bytes, 0, $bytes.Length)
             $stream.Flush($true)
@@ -3878,7 +3941,8 @@ function Write-TicketboxInitdbPasswordFileAtomically {
     $security = New-TicketboxInitdbPasswordFileSecurity $ServiceName
     $stream = New-TicketboxProtectedFileStream `
         -Path $canonicalPath `
-        -Security $security
+        -Security $security `
+        -Access ([System.IO.FileAccess]::Write)
     try {
         $stream.Write($bytes, 0, $bytes.Length)
         $stream.Flush($true)
