@@ -87,6 +87,98 @@ if (
 
 
 @pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
+def test_pre_copy_receipt_mutation_uses_bootstrap_authority_without_installed_payload(
+    tmp_path: Path,
+) -> None:
+    prepare_source = PREPARE.read_text(encoding="utf-8-sig")
+    bootstrap_path = _function(
+        prepare_source,
+        "Get-TicketboxBootstrapDatabaseGenerationAuthorityPath",
+    )
+    block_start = prepare_source.index("    $preMutationLifecycleReceipt = $null")
+    block_end = prepare_source.index(
+        "    Set-TicketboxPreparedRuntimeServiceContract",
+        block_start,
+    )
+    pre_copy_receipt_mutation = prepare_source[block_start:block_end]
+    bootstrap = tmp_path / "bootstrap"
+    install_dir = tmp_path / "program-files"
+    bootstrap.mkdir()
+    install_dir.mkdir()
+    receipt_path = tmp_path / "lifecycle-receipt.json"
+    receipt_path.write_text("{}", encoding="utf-8")
+    authority_path = bootstrap / "windows_database_generation.ps1"
+    authority_path.write_text(
+        """
+$script:bootstrapAuthorityLoaded = $true
+function Assert-TicketboxPrepareLifecycleReceiptMutationAuthority {
+    param($Receipt)
+    if ([string]$Receipt.marker -cne 'receipt') { throw 'wrong receipt' }
+    $script:mutationAuthorityCalls += 1
+}
+""",
+        encoding="utf-8-sig",
+    )
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$script:bootstrapAuthorityLoaded = $false
+$script:mutationAuthorityCalls = 0
+$script:closedGuards = 0
+$ScriptDir = '{str(bootstrap).replace("'", "''")}'
+$InstallDir = '{str(install_dir).replace("'", "''")}'
+$DataRoot = 'C:\\TicketboxData'
+$PgPort = 5432
+$BackendPort = 8765
+$TargetReleaseConfig = [pscustomobject]@{{}}
+$TargetBackendVersion = '1.2.0'
+$InstallerLockOwnerProcessId = 1234
+$LifecycleReceiptPath = '{str(receipt_path).replace("'", "''")}'
+function Get-TicketboxPathEntryKindNoFollow {{
+    param([string]$Path)
+    if ([IO.File]::Exists($Path)) {{ return 'File' }}
+    return 'Missing'
+}}
+function Assert-NoTicketboxAncestorReparsePoints {{ param([string]$Path) }}
+function Get-TicketboxInstalledDatabaseGenerationAuthorityPath {{
+    throw 'pre-copy mutation consulted the unpublished installed payload'
+}}
+function Read-TicketboxLifecycleReceipt {{
+    [CmdletBinding()]
+    param(
+        [string]$Path,
+        [string]$InstallDir,
+        [string]$DataRoot,
+        [int]$PgPort,
+        [int]$BackendPort,
+        $TargetReleaseConfig,
+        [string]$CurrentTargetBackendVersion,
+        [int]$InstallerOwnerProcessId,
+        [switch]$AllowPreviousInstallerOwnerProcessId
+    )
+    return [pscustomobject]@{{ marker = 'receipt' }}
+}}
+function Close-TicketboxLifecycleBackupGuard {{
+    param($Receipt)
+    $script:closedGuards += 1
+}}
+{bootstrap_path}
+{pre_copy_receipt_mutation}
+if (
+    -not $script:bootstrapAuthorityLoaded -or
+    $script:mutationAuthorityCalls -ne 1 -or
+    $script:closedGuards -ne 1
+) {{
+    throw 'bootstrap owner did not exclusively authorize the pre-copy mutation'
+}}
+"""
+    run_powershell_contract_script(
+        script,
+        tmp_path,
+        filename="database-generation-pre-copy-bootstrap-owner.ps1",
+    )
+
+
+@pytest.mark.skipif(not powershell_contract_engines(), reason="PowerShell required")
 def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_path: Path) -> None:
     owner_source = OWNER.read_text(encoding="utf-8-sig")
     artifacts_source = ARTIFACTS.read_text(encoding="utf-8-sig")
@@ -95,8 +187,8 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     assert "function Import-TicketboxDatabaseGenerationExecutionDependencies" not in owner_source
     assert "function Import-TicketboxInstalledDatabaseGenerationAuthority" not in prepare_source
     assert "function Import-TicketboxBootstrapDatabaseGenerationAuthority" not in prepare_source
-    assert prepare_source.count(". (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)") == 1
-    assert prepare_source.count(". (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)") == 2
+    assert "Get-TicketboxInstalledDatabaseGenerationAuthorityPath" not in prepare_source
+    assert prepare_source.count(". (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)") == 3
     assert (
         owner_source.count("foreach ($dependency in @(Get-TicketboxDatabaseGenerationExecutionDependencyPaths `") == 1
     )
@@ -115,15 +207,10 @@ def test_generation_intent_bootstrap_loads_without_execution_dependencies(tmp_pa
     assert "Get-TicketboxDatabaseGenerationExecutionDependencyPaths" not in (commit_ready_consumer)
     assert "windows_database_generation_recovery_evidence.ps1" in (commit_verifier_source)
     assert "Assert-TicketboxDatabaseGenerationCommitReadyArtifact" not in (artifacts_source)
-    installed_path = _function(
-        prepare_source,
-        "Get-TicketboxInstalledDatabaseGenerationAuthorityPath",
-    )
     bootstrap_path = _function(
         prepare_source,
         "Get-TicketboxBootstrapDatabaseGenerationAuthorityPath",
     )
-    assert 'Join-Path $InstallDir "installer\\windows_database_generation.ps1"' in installed_path
     assert 'Join-Path $ScriptDir "windows_database_generation.ps1"' in bootstrap_path
     bootstrap = tmp_path / "bootstrap"
     bootstrap.mkdir()

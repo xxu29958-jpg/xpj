@@ -269,15 +269,6 @@ $ServiceDataVolumeIdentity = ""
 $AllowMissingRuntimeDataAuthority = $true
 $RuntimeDataBindingPresent = $false
 
-function Get-TicketboxInstalledDatabaseGenerationAuthorityPath {
-    $path = Join-Path $InstallDir "installer\windows_database_generation.ps1"
-    if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "File") {
-        throw "installed database generation authority 不是可信普通文件：$path"
-    }
-    Assert-NoTicketboxAncestorReparsePoints $path
-    return $path
-}
-
 function Get-TicketboxBootstrapDatabaseGenerationAuthorityPath {
     $path = Join-Path $ScriptDir "windows_database_generation.ps1"
     if ((Get-TicketboxPathEntryKindNoFollow $path) -cne "File") {
@@ -1524,7 +1515,7 @@ try {
             -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
             -AllowPreviousInstallerOwnerProcessId
         try {
-            . (Get-TicketboxInstalledDatabaseGenerationAuthorityPath)
+            . (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)
             Assert-TicketboxPrepareLifecycleReceiptMutationAuthority `
                 $preMutationLifecycleReceipt
         }

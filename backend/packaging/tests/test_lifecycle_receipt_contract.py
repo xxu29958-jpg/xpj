@@ -978,7 +978,7 @@ $BackendPort = 8000
 $TargetReleaseConfig = $config
 $TargetBackendVersion = '1.3.0'
 $InstallerLockOwnerProcessId = $PID
-function Get-TicketboxInstalledDatabaseGenerationAuthorityPath {{
+function Get-TicketboxBootstrapDatabaseGenerationAuthorityPath {{
     return '{_literal(authority_loader)}'
 }}
 function Set-TicketboxPreparedRuntimeServiceContract {{ [void]$script:events.Add('runtime') }}
