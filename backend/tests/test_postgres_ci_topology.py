@@ -368,7 +368,7 @@ def _assert_windows_lifecycle_matrix(
         ),
         (
             "Database generation authority",
-            "test_database_generation_owner or test_database_generation_bootstrap_retirement or test_database_generation_target_authorization",
+            "test_database_generation_owner or test_database_generation_intent_bootstrap or test_database_generation_bootstrap_retirement or test_database_generation_target_authorization",
             20,
         ),
         ("Service lifecycle remainder", "test_service_lifecycle_contract and not heartbeat", 20),

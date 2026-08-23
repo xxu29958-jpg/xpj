@@ -11,6 +11,7 @@ function Initialize-TicketboxDatabaseGenerationStateRoot {
         [Parameter(Mandatory = $true)][object]$LifecycleLock
     )
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
+    Initialize-TicketboxInstallerStateDirectory -Path $InstallerState | Out-Null
     $root = Get-TicketboxDatabaseGenerationStateRoot $InstallerState
     return Initialize-TicketboxInstallerStateDirectory -Path $root
 }
