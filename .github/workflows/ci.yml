@@ -240,7 +240,7 @@ jobs:
             selector: test_database_generation_writer_fence
             timeout_minutes: 20
           - label: Database generation authority
-            selector: test_database_generation_owner or test_database_generation_bootstrap_retirement or test_database_generation_target_authorization
+            selector: test_database_generation_owner or test_database_generation_intent_bootstrap or test_database_generation_bootstrap_retirement or test_database_generation_target_authorization
             timeout_minutes: 20
           - label: Service lifecycle remainder
             selector: test_service_lifecycle_contract and not heartbeat
