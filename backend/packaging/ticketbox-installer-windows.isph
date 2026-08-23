@@ -38,6 +38,7 @@
   DataRootGuardScriptSha256 = '{#DataRootGuardScriptSha256}';
   PrepareScriptSha256 = '{#PrepareScriptSha256}';
   OwnerHandoffScriptSha256 = '{#OwnerHandoffScriptSha256}';
+  BackendHealthScriptSha256 = '{#BackendHealthScriptSha256}';
   ServiceContractScriptSha256 = '{#ServiceContractScriptSha256}';
   ServiceIdentityScriptSha256 = '{#ServiceIdentityScriptSha256}';
   ServiceLifecycleScriptSha256 = '{#ServiceLifecycleScriptSha256}';
@@ -583,6 +584,8 @@ begin
   RemoveDir(AddBackslash(LifecycleLockBootstrapDirectory) + 'security_primitives');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'hold_data_root_mutation_guard.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'prepare_bundled_upgrade.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_owner_handoff.ps1');
+  DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_backend_health.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_service_contract.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_service_identity.ps1');
   DeleteFile(AddBackslash(LifecycleLockBootstrapDirectory) + 'windows_service_lifecycle.ps1');
@@ -765,6 +768,8 @@ begin
     ValidateLifecycleLockBootstrapFile(
       'windows_owner_handoff.ps1', OwnerHandoffScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
+      'windows_backend_health.ps1', BackendHealthScriptSha256) and
+    ValidateLifecycleLockBootstrapFile(
       'windows_service_contract.ps1', ServiceContractScriptSha256) and
     ValidateLifecycleLockBootstrapFile(
       'windows_service_identity.ps1', ServiceIdentityScriptSha256) and
@@ -917,6 +922,9 @@ begin
      not StageLifecycleLockBootstrapFile(
     'windows_owner_handoff.ps1',
     OwnerHandoffScriptSha256) or
+     not StageLifecycleLockBootstrapFile(
+    'windows_backend_health.ps1',
+    BackendHealthScriptSha256) or
      not StageLifecycleLockBootstrapFile(
     'windows_service_contract.ps1',
     ServiceContractScriptSha256) or
@@ -1506,15 +1514,23 @@ begin
   end;
 end;
 
-procedure ReleaseLifecycleLock();
+function ReleaseLifecycleLock(): Boolean;
 var
   ReleaseTempPath: String;
   ReleaseText: String;
   WaitResult: LongWord;
 begin
+  Result := False;
   if not LifecycleLockHolderStarted then
   begin
     CleanupLifecycleLockBootstrapDirectory();
+    Result := True;
+    exit;
+  end;
+  if (LifecycleLockHolderProcessHandle = 0) or
+     (LifecycleLockHolderProcessHandle = InvalidHandleValue) then
+  begin
+    Log('Lifecycle lock holder identity is unavailable; keeping release state fail closed.');
     exit;
   end;
   if IsProcessHandleRunning(LifecycleLockHolderProcessHandle) then
@@ -1524,20 +1540,25 @@ begin
       'STATE=release' + #13#10 +
       'OWNER_PID=' + IntToStr(LifecycleLockOwnerProcessId) + #13#10 +
       'NONCE=' + LifecycleLockReleaseNonce + #13#10;
-    DeleteFile(ReleaseTempPath);
-    if SaveStringToFile(ReleaseTempPath, ReleaseText, False) and
-       HardenLifecycleLockPath(ReleaseTempPath, False) and
-       RenameFile(ReleaseTempPath, LifecycleLockHolderReleasePath) then
+    if not FileExists(LifecycleLockHolderReleasePath) then
     begin
-      WaitResult := WaitForSingleObject(LifecycleLockHolderProcessHandle, 10000);
-      if WaitResult <> WaitObject0 then
+      DeleteFile(ReleaseTempPath);
+      if not (SaveStringToFile(ReleaseTempPath, ReleaseText, False) and
+              HardenLifecycleLockPath(ReleaseTempPath, False) and
+              RenameFile(ReleaseTempPath, LifecycleLockHolderReleasePath)) then
       begin
-        Log('Lifecycle lock holder did not exit before timeout; parent exit remains the fail-safe release.');
+        if WaitForSingleObject(LifecycleLockHolderProcessHandle, 0) <> WaitObject0 then
+        begin
+          Log('Could not persist lifecycle lock release IPC; keeping holder identity fail closed.');
+          exit;
+        end;
       end;
-    end
-    else
+    end;
+    WaitResult := WaitForSingleObject(LifecycleLockHolderProcessHandle, 10000);
+    if WaitResult <> WaitObject0 then
     begin
-      Log('Could not persist lifecycle lock release IPC; parent exit remains the fail-safe release.');
+      Log('Lifecycle lock holder did not exit before timeout; keeping holder identity fail closed.');
+      exit;
     end;
   end;
   if (LifecycleLockHolderProcessHandle <> 0) and
@@ -1563,6 +1584,7 @@ begin
   LifecycleLockOwnerPath := '';
   LifecycleLockOwnerProcessId := 0;
   CleanupLifecycleLockBootstrapDirectory();
+  Result := True;
 end;
 
 function LifecycleLockActive(): Boolean;
@@ -2305,14 +2327,20 @@ begin
   if not Result then
   begin
     MsgBox(LifecycleLockError, mbError, MB_OK);
-    ReleaseLifecycleLock();
+    if not ReleaseLifecycleLock() then
+    begin
+      Log('Setup initialization could not prove lifecycle holder release; process exit remains fail closed.');
+    end;
     CloseInstallerSourceLease();
     exit;
   end;
   if not CheckBackendVersionFloor(VersionFailureReason) then
   begin
     MsgBox(VersionFailureReason, mbError, MB_OK);
-    ReleaseLifecycleLock();
+    if not ReleaseLifecycleLock() then
+    begin
+      Log('Version-floor rejection could not prove lifecycle holder release; process exit remains fail closed.');
+    end;
     CloseInstallerSourceLease();
     Result := False;
     exit;
@@ -2378,7 +2406,10 @@ begin
   begin
     Log('Uninstall lifecycle lock acquisition failed; public code TBX-UNINSTALL-LOCK.');
     MsgBox(TicketboxUninstallLockPublicMessage(), mbError, MB_OK);
-    ReleaseLifecycleLock();
+    if not ReleaseLifecycleLock() then
+    begin
+      Log('Uninstall initialization could not prove lifecycle holder release; process exit remains fail closed.');
+    end;
     exit;
   end;
   if not StartManagerMaintenanceGate() then
@@ -2388,8 +2419,14 @@ begin
       '请关闭其他小票夹安装器或管理器后重试。支持代码：TBX-UNINSTALL-LOCK',
       mbError,
       MB_OK);
-    CloseManagerMaintenanceGate();
-    ReleaseLifecycleLock();
+    if ReleaseLifecycleLock() then
+    begin
+      CloseManagerMaintenanceGate();
+    end
+    else
+    begin
+      Log('Uninstall Manager gate remains fail closed because lifecycle holder release was not proven.');
+    end;
     exit;
   end;
   Result := True;
@@ -2397,8 +2434,14 @@ end;
 
 procedure DeinitializeUninstall();
 begin
-  ReleaseLifecycleLock();
-  CloseManagerMaintenanceGate();
+  if ReleaseLifecycleLock() then
+  begin
+    CloseManagerMaintenanceGate();
+  end
+  else
+  begin
+    Log('Uninstall deinitialization retained the Manager maintenance gate because lifecycle holder release was not proven.');
+  end;
 end;
 
 function IsSupportedPowerShell7Host(PowerShellPath: String): Boolean;
@@ -3632,15 +3675,16 @@ begin
   end;
 end;
 
-procedure ReleaseDataRootMutationGuard();
+function ReleaseDataRootMutationGuard(): Boolean;
 begin
+  Result := True;
   if not DataRootGuardProcessStarted then
   begin
     exit;
   end;
   if not DataRootGuardActive then
   begin
-    AbortDataRootMutationGuardStartup();
+    Result := AbortDataRootMutationGuardStartup();
     exit;
   end;
   if DataRootGuardStoppedAcknowledged() then
@@ -3657,6 +3701,7 @@ begin
       exit;
     end;
     Log('Could not persist the DataRoot guard release artifact; keeping local state fail closed.');
+    Result := False;
     exit;
   end;
   if WaitForDataRootGuardStoppedAcknowledgement() then
@@ -3670,4 +3715,5 @@ begin
     exit;
   end;
   Log('DataRoot guard release was not acknowledged and stopped authority could not be proven; keeping local state fail closed.');
+  Result := False;
 end;

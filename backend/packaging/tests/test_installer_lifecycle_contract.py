@@ -223,6 +223,7 @@ def test_inno_simplified_chinese_language_pins_cjk_ui_font() -> None:
 
 def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> None:
     installer = _read_installer()
+    windows = _read("ticketbox-installer-windows.isph")
     installer_lines = installer.splitlines()
     files_section = installer[installer.index("[Files]") : installer.index("[Registry]")]
     assert not any(line.lstrip().startswith("#") for line in files_section.splitlines()), (
@@ -279,6 +280,35 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
             for line in active_installer_lines
         ), f"prepare sibling is missing from protected pre-copy sources: {name}"
         assert f"'{name}'," in installer, f"prepare sibling is not staged into the protected bootstrap bundle: {name}"
+
+    setup_staging = windows[
+        windows.index("function PrepareSetupLifecycleLockHolderScripts") : windows.index(
+            "function PrepareUninstallLifecycleLockHolderScript"
+        )
+    ]
+    setup_cleanup = windows[
+        windows.index("procedure CleanupLifecycleLockBootstrapDirectory") : windows.index(
+            "function StageLifecycleLockBootstrapFileAs"
+        )
+    ]
+    staged_bootstrap_files = set(
+        re.findall(r"StageLifecycleLockBootstrapFile\(\s*'([^']+)'", setup_staging)
+    ) | set(
+        re.findall(
+            r"StageLifecycleLockBootstrapFileAs\(\s*'[^']+',\s*'([^']+)'",
+            setup_staging,
+        )
+    )
+    cleaned_bootstrap_files = set(
+        re.findall(
+            r"DeleteFile\(AddBackslash\(LifecycleLockBootstrapDirectory\) \+ '([^']+)'\);",
+            setup_cleanup,
+        )
+    )
+    assert staged_bootstrap_files <= cleaned_bootstrap_files, (
+        "protected bootstrap files missing from exact cleanup: "
+        f"{sorted(staged_bootstrap_files - cleaned_bootstrap_files)}"
+    )
     for name in (
         "windows_backend_build_provenance.ps1",
         "windows_build_provenance.ps1",
@@ -484,7 +514,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "'installer-state\\' + FileName" not in windows
     assert '"INSTALLER_STATE=$(Join-Path $lockRoot $script:TicketboxInstallerStateDirectoryName)' in lifecycle_lock
     acquire_lock = windows[
-        windows.index("function AcquireLifecycleLock") : windows.index("procedure ReleaseLifecycleLock")
+        windows.index("function AcquireLifecycleLock") : windows.index("function ReleaseLifecycleLock")
     ]
     assert "FileExists(LifecycleLockHolderReadyPath)" not in acquire_lock[: acquire_lock.index("Params :=")]
     holder_launch = acquire_lock.index("if not Exec(")
@@ -529,7 +559,7 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
     assert "Enter-TicketboxDirectoryMutationGuard" in lock_initializer
     assert "Set-TicketboxExactDirectoryAcl" not in lock_initializer
     acquire_lock = windows[
-        windows.index("function AcquireLifecycleLock") : windows.index("procedure ReleaseLifecycleLock")
+        windows.index("function AcquireLifecycleLock") : windows.index("function ReleaseLifecycleLock")
     ]
     assert "-InstallerOwnerProcessId " in acquire_lock
     assert "-ExpectedLockDirectory " in acquire_lock
@@ -1342,7 +1372,7 @@ def test_data_root_guard_hands_off_operation_lock_only_after_durable_ready() -> 
             )
         ]
     )
-    release_guard = windows[windows.index("procedure ReleaseDataRootMutationGuard") :]
+    release_guard = windows[windows.index("function ReleaseDataRootMutationGuard") :]
     assert "if DataRootGuardStoppedAcknowledged() then" in release_guard
     assert "if WaitForDataRootGuardStoppedAcknowledgement() then" in release_guard
     assert "if ConfirmDataRootGuardStoppedAfterControlFailure() then" in release_guard
@@ -1353,7 +1383,7 @@ def test_data_root_guard_hands_off_operation_lock_only_after_durable_ready() -> 
     prepare_end = flow.index("function PrepareToInstall", prepare_start)
     prepare = flow[prepare_start:prepare_end]
     preflight_start = prepare.index("if not RunPowerShellChecked(")
-    guard_release = prepare.index("ReleaseDataRootMutationGuard();", preflight_start)
+    guard_release = prepare.index("if not ReleaseDataRootMutationGuard() then", preflight_start)
     failure_exit = prepare.index("    exit;", guard_release)
     assert preflight_start < guard_release < failure_exit
 
@@ -2640,7 +2670,28 @@ def test_manager_maintenance_gate_spans_setup_and_uninstall_payload_mutation() -
         after_close_applications.index("'Ticketbox fresh installation preparation'")
     )
     finish = flow[flow.index("function NextButtonClick") : flow.index("function PrepareToInstall")]
-    assert "ReleaseManagerMaintenanceGate()" in finish
+    data_root_release = finish.index("if not ReleaseDataRootMutationGuard() then")
+    lifecycle_release = finish.index("if not ReleaseLifecycleLock() then")
+    manager_release = finish.index("if not ReleaseManagerMaintenanceGate() then")
+    manager_launch = finish.index("ExecAsOriginalUser(")
+    assert data_root_release < lifecycle_release < manager_release < manager_launch
+    assert "function ReleaseDataRootMutationGuard(): Boolean;" in windows
+    assert "function ReleaseLifecycleLock(): Boolean;" in windows
+    lifecycle_release_body = windows[
+        windows.index("function ReleaseLifecycleLock(): Boolean;") : windows.index(
+            "function LifecycleLockActive"
+        )
+    ]
+    lifecycle_timeout = lifecycle_release_body.index("if WaitResult <> WaitObject0 then")
+    lifecycle_identity_clear = lifecycle_release_body.index(
+        "LifecycleLockHolderProcessHandle := InvalidHandleValue"
+    )
+    assert "Result := False;" in lifecycle_release_body[:lifecycle_timeout]
+    assert lifecycle_release_body.index("exit;", lifecycle_timeout) < lifecycle_identity_clear
+    assert "keeping holder identity fail closed" in lifecycle_release_body
+    data_root_release_body = windows[windows.index("function ReleaseDataRootMutationGuard(): Boolean;") :]
+    assert "Result := False;" in data_root_release_body
+    assert "keeping local state fail closed" in data_root_release_body
 
     setup_deinitialize = flow[
         flow.index("procedure DeinitializeSetup") : flow.index("procedure CurUninstallStepChanged")
@@ -2652,6 +2703,7 @@ def test_manager_maintenance_gate_spans_setup_and_uninstall_payload_mutation() -
     assert setup_deinitialize.index("CloseInstallerSourceLease()") < (
         setup_deinitialize.index("CloseManagerMaintenanceGate()")
     )
+    assert "if DataRootGuardReleased and LifecycleLockReleased then" in setup_deinitialize
     uninstall_initialize = windows[
         windows.index("function InitializeUninstall") : windows.index("procedure DeinitializeUninstall")
     ]
@@ -2787,9 +2839,10 @@ def test_manager_maintenance_gate_compiles_with_full_installer_code(tmp_path: Pa
         "LifecycleLockScriptSha256": digest,
         "LifecycleHolderScriptSha256": digest,
         "DataRootGuardScriptSha256": digest,
-            "PrepareScriptSha256": digest,
-            "OwnerHandoffScriptSha256": digest,
-            "InstalledPayloadRequiredBytes": "1",
+        "PrepareScriptSha256": digest,
+        "OwnerHandoffScriptSha256": digest,
+        "BackendHealthScriptSha256": digest,
+        "InstalledPayloadRequiredBytes": "1",
         "ServiceContractScriptSha256": digest,
         "ServiceIdentityScriptSha256": digest,
         "ServiceLifecycleScriptSha256": digest,

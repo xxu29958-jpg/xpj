@@ -701,6 +701,24 @@ begin
 
   if (CurPageID = wpFinished) and LifecycleInstallCompleted then
   begin
+    if not ReleaseDataRootMutationGuard() then
+    begin
+      MsgBox(
+        '安装已完成，但 DataRoot guard 尚未证明停止。管理器维护门仍保持；请重试“完成”，或关闭安装器后再从开始菜单打开管理器。',
+        mbError,
+        MB_OK);
+      Result := False;
+      exit;
+    end;
+    if not ReleaseLifecycleLock() then
+    begin
+      MsgBox(
+        '安装已完成，但机器级生命周期锁 holder 尚未证明停止。管理器维护门仍保持；请重试“完成”，或关闭安装器后再从开始菜单打开管理器。',
+        mbError,
+        MB_OK);
+      Result := False;
+      exit;
+    end;
     if not ReleaseManagerMaintenanceGate() then
     begin
       MsgBox(
@@ -710,8 +728,6 @@ begin
       Result := False;
       exit;
     end;
-    ReleaseDataRootMutationGuard();
-    ReleaseLifecycleLock();
     CloseInstallerSourceLease();
     if LaunchManagerAfterFinish.Checked and (not ManagerLaunchAttempted) then
     begin
@@ -933,7 +949,10 @@ begin
     begin
       LifecyclePrepared := True;
     end;
-    ReleaseDataRootMutationGuard();
+    if not ReleaseDataRootMutationGuard() then
+    begin
+      Log('Fresh-install preparation failed and the DataRoot guard release could not be proven; the maintenance gate remains fail closed.');
+    end;
     if LastPowerShellFailureMessage <> '' then
     begin
       Result := LastPowerShellFailureMessage;
@@ -1296,6 +1315,8 @@ end;
 procedure DeinitializeSetup();
 var
   Args: String;
+  DataRootGuardReleased: Boolean;
+  LifecycleLockReleased: Boolean;
 begin
   if LifecyclePrepared and (not LifecycleInstallCompleted) then
   begin
@@ -1325,10 +1346,21 @@ begin
         MB_OK);
     end;
   end;
-  ReleaseDataRootMutationGuard();
-  ReleaseLifecycleLock();
+  DataRootGuardReleased := ReleaseDataRootMutationGuard();
+  LifecycleLockReleased := False;
+  if DataRootGuardReleased then
+  begin
+    LifecycleLockReleased := ReleaseLifecycleLock();
+  end;
   CloseInstallerSourceLease();
-  CloseManagerMaintenanceGate();
+  if DataRootGuardReleased and LifecycleLockReleased then
+  begin
+    CloseManagerMaintenanceGate();
+  end
+  else
+  begin
+    Log('Setup deinitialization retained the Manager maintenance gate because an inner holder stop was not proven.');
+  end;
 end;
 
 function GetTicketboxRegisteredUninstallDataRoot(var DataRoot: String): Boolean;

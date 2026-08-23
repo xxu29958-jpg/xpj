@@ -64,6 +64,9 @@
 #ifndef OwnerHandoffScriptSha256
 #error OwnerHandoffScriptSha256 must be injected by build_inno_installer.ps1
 #endif
+#ifndef BackendHealthScriptSha256
+#error BackendHealthScriptSha256 must be injected by build_inno_installer.ps1
+#endif
 #ifndef InstalledPayloadRequiredBytes
 #error InstalledPayloadRequiredBytes must be injected by build_inno_installer.ps1
 #endif
@@ -206,6 +209,7 @@ Source: "..\scripts\windows_backend_build_provenance.ps1"; DestName: "windows_ba
 Source: "hold_data_root_mutation_guard.ps1"; Flags: dontcopy noencryption
 Source: "prepare_bundled_upgrade.ps1"; Flags: dontcopy noencryption
 Source: "windows_owner_handoff.ps1"; Flags: dontcopy noencryption
+Source: "windows_backend_health.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_contract.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_identity.ps1"; Flags: dontcopy noencryption
 Source: "windows_service_lifecycle.ps1"; Flags: dontcopy noencryption

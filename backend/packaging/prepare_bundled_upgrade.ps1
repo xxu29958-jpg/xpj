@@ -240,10 +240,16 @@ if (-not (Test-Path -LiteralPath $PgRecoveryToolsScript -PathType Leaf)) {
     throw "缺少 Windows PostgreSQL 恢复工具脚本：$PgRecoveryToolsScript"
 }
 . $PgRecoveryToolsScript
+$BackendHealthScript = Join-Path $ScriptDir "windows_backend_health.ps1"
+if (-not (Test-Path -LiteralPath $BackendHealthScript -PathType Leaf)) {
+    throw "缺少 Windows backend health adapter：$BackendHealthScript"
+}
+. $BackendHealthScript
 
 $PgBin = Join-Path $InstallDir "pg\bin"
 $PgData = Join-Path $DataRoot "pgdata"
 $AppData = Join-Path $DataRoot "app"
+$ProgramDir = Join-Path $InstallDir "program\ticketbox-backend"
 $InstallerState = Get-TicketboxInstallerStateDirectory
 $OwnerHandoffPath = Join-Path $InstallerState "installation-owner-handoff-v2.txt"
 $EnvPath = Join-Path $AppData ".env"
@@ -274,6 +280,10 @@ $ServiceBootstrapExposureRecoveryGuardPath = $BootstrapExposureRecoveryGuardPath
 $ServiceDataVolumeIdentity = ""
 $AllowMissingRuntimeDataAuthority = $true
 $RuntimeDataBindingPresent = $false
+$BackendReadyTimeoutMs = [int]$TargetReleaseConfig.backend_ready_timeout_ms
+$BackendReadyPollIntervalMs = [int]$TargetReleaseConfig.backend_ready_poll_interval_ms
+$BackendHealthRequestTimeoutMs = [int]$TargetReleaseConfig.backend_health_request_timeout_ms
+$BackendHealthMaximumResponseBytes = 1048576
 
 function Get-TicketboxBootstrapDatabaseGenerationAuthorityPath {
     $path = Join-Path $ScriptDir "windows_database_generation.ps1"
@@ -1619,6 +1629,26 @@ try {
             Assert-TicketboxPreparedServiceContracts `
                 -AllowTargetPolicyFallback `
                 -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+            Start-TicketboxOwnedServiceIfExists `
+                -Name $PgServiceName `
+                -ExpectedExecutable $PgCtl `
+                @ServiceWaitArguments | Out-Null
+            Wait-PgReady
+            Start-TicketboxOwnedServiceIfExists `
+                -Name $BackendServiceName `
+                -ExpectedExecutable $ShawlExe `
+                @ServiceWaitArguments | Out-Null
+            Wait-TicketboxInstalledBackendHealth `
+                -BackendPort $BackendPort `
+                -BackendServiceName $BackendServiceName `
+                -ShawlExe $ShawlExe `
+                -BackendExe $BackendExe `
+                -ProgramDir $ProgramDir `
+                -AppData $AppData `
+                -ReadyTimeoutMilliseconds $BackendReadyTimeoutMs `
+                -RequestTimeoutMilliseconds $BackendHealthRequestTimeoutMs `
+                -PollMilliseconds $BackendReadyPollIntervalMs `
+                -MaximumResponseBytes $BackendHealthMaximumResponseBytes
             Complete-TicketboxInstalledLifecycleTransaction `
                 -Path $LifecycleReceiptPath `
                 -InstallDir $InstallDir `

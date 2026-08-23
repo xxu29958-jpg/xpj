@@ -866,6 +866,32 @@ def test_committed_install_classifies_then_resumes_behind_both_mutation_gates() 
     assert "fresh_install" not in terminal_resume
     assert "Adopt-TicketboxOwnerBootstrapHandoff" in terminal_resume
     assert '$handoffDisposition -notin @("absent", "pending")' in terminal_resume
+    pending_owner = terminal_resume.index("Set-TicketboxLifecycleReceiptInstallerOwner")
+    runtime_contract = terminal_resume.index(
+        "Set-TicketboxPreparedRuntimeServiceContract", pending_owner
+    )
+    postgres_start = terminal_resume.index(
+        "Start-TicketboxOwnedServiceIfExists", runtime_contract
+    )
+    postgres_ready = terminal_resume.index("Wait-PgReady", postgres_start)
+    backend_start = terminal_resume.index(
+        "Start-TicketboxOwnedServiceIfExists", postgres_ready
+    )
+    backend_health = terminal_resume.index(
+        "Wait-TicketboxInstalledBackendHealth", backend_start
+    )
+    terminal_commit = terminal_resume.index(
+        "Complete-TicketboxInstalledLifecycleTransaction", backend_health
+    )
+    assert (
+        pending_owner
+        < runtime_contract
+        < postgres_start
+        < postgres_ready
+        < backend_start
+        < backend_health
+        < terminal_commit
+    )
 
     payload_predicate = flow[
         flow.index("function AuthoritativePayloadReplacementPrepared") : flow.index(

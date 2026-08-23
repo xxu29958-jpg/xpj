@@ -1497,6 +1497,7 @@ $defines = @(
     "/DVisualCppRuntimeSha256=$($visualCppRuntimeProvenance.executable.sha256)",
     "/DPrepareScriptSha256=$(Get-TicketboxFileSha256 $PrepareScript)",
     "/DOwnerHandoffScriptSha256=$(Get-TicketboxFileSha256 $OwnerHandoffScript)",
+    "/DBackendHealthScriptSha256=$(Get-TicketboxFileSha256 $BackendHealthScript)",
     "/DInstalledPayloadRequiredBytes=$installedPayloadRequiredBytes",
     "/DServiceContractScriptSha256=$(Get-TicketboxFileSha256 $ServiceContractScript)",
     "/DServiceIdentityScriptSha256=$(Get-TicketboxFileSha256 $ServiceIdentityScript)",
