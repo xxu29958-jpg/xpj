@@ -17,6 +17,7 @@
   InstallPublicFailureSchema = 'ticketbox-install-public-failure-v3';
   InstallPublicFailureFileName = 'installer-public-failure-v3.txt';
   InstallPublicFailureMaximumBytes = 4096;
+  ExistingOperationCompletedExitCode = 10;
   LifecycleCoordinationReadAttempts = 40;
   LifecycleCoordinationReadDelayMilliseconds = 50;
   LifecycleSafetyScriptSha256 = '{#LifecycleSafetyScriptSha256}';
@@ -117,12 +118,14 @@ var
   LifecyclePrepared: Boolean;
   LifecycleFilesMayBeReplaced: Boolean;
   LifecycleInstallCompleted: Boolean;
+  LifecycleExistingOperationCompleted: Boolean;
   LifecycleInstallFailed: Boolean;
   LifecycleFailureMessage: String;
   InstallerLogSequence: Integer;
   LastPowerShellChildSucceeded: Boolean;
   LastPowerShellFailureMessage: String;
   LastPowerShellRestartRequired: Boolean;
+  LastPowerShellExistingOperationCompleted: Boolean;
   OwnerHandoffExpected: Boolean;
   OwnerHandoffMemo: TNewMemo;
   InstallationFailureMemo: TNewMemo;
@@ -2253,11 +2256,13 @@ begin
   LifecyclePrepared := False;
   LifecycleFilesMayBeReplaced := False;
   LifecycleInstallCompleted := False;
+  LifecycleExistingOperationCompleted := False;
   LifecycleInstallFailed := False;
   LifecycleFailureMessage := '';
   ManagerMaintenanceOwnerRecord := '';
   InstallerLogSequence := 0;
   LastPowerShellFailureMessage := '';
+  LastPowerShellExistingOperationCompleted := False;
   DataRootGuardProcessId := 0;
   DataRootGuardProcessHandle := InvalidHandleValue;
   DataRootGuardProcessStartedFileTimeHigh := '';
@@ -3043,15 +3048,19 @@ var
   PrerequisiteLogPath: String;
   IsPrerequisiteStep: Boolean;
   IsServiceInstallationStep: Boolean;
+  IsGenerationIntentStep: Boolean;
 begin
   ChineseContext := PowerShellContextChinese(Context);
   LastPowerShellChildSucceeded := False;
   LastPowerShellFailureMessage := '';
   LastPowerShellRestartRequired := False;
+  LastPowerShellExistingOperationCompleted := False;
   IsPrerequisiteStep :=
     CompareText(Context, 'Ticketbox Windows prerequisite installation') = 0;
   IsServiceInstallationStep :=
     CompareText(Context, 'Ticketbox service installation') = 0;
+  IsGenerationIntentStep :=
+    CompareText(Context, 'Ticketbox database generation intent') = 0;
   PrerequisiteLogPath := '';
   if not PrepareProtectedInstallerLog(Context, LogPath) then
   begin
@@ -3118,7 +3127,11 @@ begin
     exit;
   end;
 
-  LastPowerShellChildSucceeded := ResultCode = 0;
+  LastPowerShellExistingOperationCompleted :=
+    IsGenerationIntentStep and
+    (ResultCode = ExistingOperationCompletedExitCode);
+  LastPowerShellChildSucceeded :=
+    (ResultCode = 0) or LastPowerShellExistingOperationCompleted;
   LastPowerShellRestartRequired :=
     IsPrerequisiteStep and ((ResultCode = 1641) or (ResultCode = 3010));
 
@@ -3139,7 +3152,8 @@ begin
     exit;
   end;
 
-  if ResultCode <> 0 then
+  if (ResultCode <> 0) and
+     (not LastPowerShellExistingOperationCompleted) then
   begin
     if IsPrerequisiteStep then
     begin

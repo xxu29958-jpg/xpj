@@ -229,107 +229,107 @@ Source: "windows_ticketbox_database_contract.ps1"; Flags: dontcopy noencryption
 Source: "windows_database_generation_evidence_verifier.ps1"; Flags: dontcopy noencryption
 Source: "windows_database_generation_policy.ps1"; Flags: dontcopy noencryption
 Source: "..\dist\ticketbox-backend\DATABASE_GENERATION_PROGRAM.json"; DestName: "DATABASE_GENERATION_PROGRAM.json"; Flags: dontcopy noencryption
-Source: "ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\ticketbox-backend\DATABASE_GENERATION_PROGRAM.json"; DestDir: "{app}\program\ticketbox-backend"; Flags: ignoreversion
-Source: "..\dist\ticketbox-backend\*"; DestDir: "{app}\program\ticketbox-backend"; Excludes: "ticketbox-data\*,DATABASE_GENERATION_PROGRAM.json"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "vendor\pg\*"; DestDir: "{app}\pg"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "vendor\shawl\shawl.exe"; DestDir: "{app}\shawl"; Flags: ignoreversion
-Source: "vendor\shawl\shawl-v1.9.0-legal.txt"; DestDir: "{app}\shawl"; Flags: ignoreversion
-Source: "hold_data_root_mutation_guard.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "prepare_bundled_upgrade.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_service_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_service_identity.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_service_lifecycle.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_installation_safety.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_lifecycle_receipt.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_lifecycle_lock.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "hold_installer_lifecycle_lock.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_safety.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_pg_recovery_tools.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_postgresql_database_catalog.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "postgresql_database_catalog\primitives.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
-Source: "postgresql_database_catalog\query.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
-Source: "postgresql_database_catalog\codec.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
-Source: "postgresql_database_catalog\observation.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion
-Source: "windows_postgresql_writer_fence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "postgresql_writer_fence\primitives.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
-Source: "postgresql_writer_fence\observation_query.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
-Source: "postgresql_writer_fence\observation_codec.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
-Source: "postgresql_writer_fence\observation.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
-Source: "postgresql_writer_fence\reconcile_policy.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
-Source: "postgresql_writer_fence\precondition_guard.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
-Source: "postgresql_writer_fence\session_drain.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
-Source: "postgresql_writer_fence\reconciler.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion
-Source: "windows_release_config.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_bundled_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_postgresql_database_command.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_ticketbox_database_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_ticketbox_database_acl.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_ticketbox_database_acl_observation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_ticketbox_database_roles.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_security_primitives.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "security_primitives\byte_array.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
-Source: "security_primitives\token_privilege_native.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
-Source: "security_primitives\token_privilege.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
-Source: "security_primitives\descriptor_comparison.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
-Source: "security_primitives\descriptor_diagnostic.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
-Source: "security_primitives\file_security.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion
-Source: "windows_postgresql_credentials.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_postgresql_single_user.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_deadline_budget.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_atomic_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "atomic_artifacts\native.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion
-Source: "atomic_artifacts\file.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion
-Source: "atomic_artifacts\directory.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion
-Source: "windows_database_generation_program_adapter.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_program_execution.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_release.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_operation_failure.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_commit_verifier.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_evidence_verifier.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_recovery_archive.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_policy.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_credentials.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_role_fence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_database_binding.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_host_authority.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_role_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_source.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_source_binding.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_current.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_recovery_evidence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_target_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_target_authorization.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_retirement.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_single_user.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_database_generation_projection.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_dataset_backup.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_dataset_inventory.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_dataset_restore.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_installed_dataset_reader.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_installed_dataset_operation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_installed_dataset_restore_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_installed_dataset_restore_verification.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_dataset_restore_filesystem.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_dataset_restore_reducer.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_dataset_restore_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_dataset_restore_runtime.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_postgresql_candidate_cluster.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_postgresql_candidate_initdb.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_postgresql_candidate_runtime.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_backend_health.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_backend_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows_bootstrap_exposure_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "windows-release-config.json"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "..\scripts\windows_build_provenance.ps1"; DestDir: "{app}\installer"; DestName: "windows_build_provenance.ps1"; Flags: ignoreversion
-Source: "..\scripts\windows_backend_build_provenance.ps1"; DestDir: "{app}\installer"; DestName: "windows_backend_build_provenance.ps1"; Flags: ignoreversion
-Source: "..\dist\installer-input\BUILD_PROVENANCE.json"; DestDir: "{app}\installer"; DestName: "BUILD_PROVENANCE.json"; Flags: ignoreversion
-Source: "install_bundled_services.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
-Source: "uninstall_bundled_services.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "..\dist\ticketbox-backend\DATABASE_GENERATION_PROGRAM.json"; DestDir: "{app}\program\ticketbox-backend"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "..\dist\ticketbox-backend\*"; DestDir: "{app}\program\ticketbox-backend"; Excludes: "ticketbox-data\*,DATABASE_GENERATION_PROGRAM.json"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: AuthoritativePayloadReplacementPrepared
+Source: "..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: AuthoritativePayloadReplacementPrepared
+Source: "vendor\pg\*"; DestDir: "{app}\pg"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: AuthoritativePayloadReplacementPrepared
+Source: "vendor\shawl\shawl.exe"; DestDir: "{app}\shawl"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "vendor\shawl\shawl-v1.9.0-legal.txt"; DestDir: "{app}\shawl"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "hold_data_root_mutation_guard.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "prepare_bundled_upgrade.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_service_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_service_identity.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_service_lifecycle.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_installation_safety.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_lifecycle_receipt.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_lifecycle_lock.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "hold_installer_lifecycle_lock.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_safety.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_pg_recovery_tools.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_postgresql_database_catalog.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_database_catalog\primitives.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_database_catalog\query.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_database_catalog\codec.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_database_catalog\observation.ps1"; DestDir: "{app}\installer\postgresql_database_catalog"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_postgresql_writer_fence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_writer_fence\primitives.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_writer_fence\observation_query.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_writer_fence\observation_codec.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_writer_fence\observation.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_writer_fence\reconcile_policy.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_writer_fence\precondition_guard.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_writer_fence\session_drain.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "postgresql_writer_fence\reconciler.ps1"; DestDir: "{app}\installer\postgresql_writer_fence"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_release_config.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_bundled_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_postgresql_database_command.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_ticketbox_database_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_ticketbox_database_acl.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_ticketbox_database_acl_observation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_ticketbox_database_roles.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_security_primitives.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "security_primitives\byte_array.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "security_primitives\token_privilege_native.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "security_primitives\token_privilege.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "security_primitives\descriptor_comparison.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "security_primitives\descriptor_diagnostic.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "security_primitives\file_security.ps1"; DestDir: "{app}\installer\security_primitives"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_postgresql_credentials.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_postgresql_single_user.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_deadline_budget.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_atomic_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "atomic_artifacts\native.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "atomic_artifacts\file.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "atomic_artifacts\directory.ps1"; DestDir: "{app}\installer\atomic_artifacts"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_program_adapter.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_program_execution.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_contract.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_release.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_operation_failure.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_commit_verifier.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_evidence_verifier.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_recovery_archive.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_policy.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_credentials.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_role_fence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_database_binding.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_host_authority.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_role_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_source.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_source_binding.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_current.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_recovery_evidence.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_target_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_target_authorization.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_retirement.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_single_user.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_database_generation_projection.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_dataset_backup.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_dataset_inventory.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_dataset_restore.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_installed_dataset_reader.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_installed_dataset_operation.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_installed_dataset_restore_artifacts.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_installed_dataset_restore_verification.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_dataset_restore_filesystem.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_dataset_restore_reducer.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_dataset_restore_database.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_dataset_restore_runtime.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_postgresql_candidate_cluster.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_postgresql_candidate_initdb.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_postgresql_candidate_runtime.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_backend_health.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_backend_bootstrap.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows_bootstrap_exposure_recovery.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "windows-release-config.json"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "..\scripts\windows_build_provenance.ps1"; DestDir: "{app}\installer"; DestName: "windows_build_provenance.ps1"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "..\scripts\windows_backend_build_provenance.ps1"; DestDir: "{app}\installer"; DestName: "windows_backend_build_provenance.ps1"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "..\dist\installer-input\BUILD_PROVENANCE.json"; DestDir: "{app}\installer"; DestName: "BUILD_PROVENANCE.json"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "install_bundled_services.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
+Source: "uninstall_bundled_services.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared
 
 [Registry]
 Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletevalue uninsdeletekeyifempty

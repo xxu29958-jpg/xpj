@@ -207,7 +207,7 @@ def test_writer_fence_is_actively_shipped_and_provenance_bound() -> None:
     for source, destination, variable, recipe_path in SHIPMENT:
         assert (
             f'Source: "{source}"; DestDir: "{destination}"; '
-            "Flags: ignoreversion"
+            "Flags: ignoreversion; Check: AuthoritativePayloadReplacementPrepared"
         ) in active_inno_lines
         assert re.search(
             rf'Assert-File\s+`\s*\${variable}\s+`\s*"[^"]+"',

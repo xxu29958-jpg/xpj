@@ -110,7 +110,7 @@ def test_pre_copy_receipt_mutation_uses_bootstrap_authority_without_installed_pa
     )
     block_start = prepare_source.index("    $preMutationLifecycleReceipt = $null")
     block_end = prepare_source.index(
-        "    Set-TicketboxPreparedRuntimeServiceContract",
+        "    if (\n        $RecoverPreparedInstall -and",
         block_start,
     )
     pre_copy_receipt_mutation = prepare_source[block_start:block_end]
@@ -421,10 +421,10 @@ $preinstallFacts = [pscustomobject][ordered]@{{
     HasPersistedInstalledReleaseConfig = $false
     LifecycleEvidence = [pscustomobject][ordered]@{{
         current_sha256 = ''
-        install_completed = $false
+        phase = 'absent'
         operation_id = ''
         receipt_present = $false
-        schema = 'ticketbox-database-generation-lifecycle-evidence-v1'
+        schema = 'ticketbox-database-generation-lifecycle-evidence-v2'
     }}
     PgServiceName = 'postgres'
     StateRoot = '{state_root}'
@@ -479,14 +479,42 @@ $projectionContract.backend_port = 8765
 $script:CommitFixtureIntent = $first.Artifact
 $script:CommitFixtureStateRoot = '{state_root}'
 {commit_fixture}
+$preinstallFacts.HasPersistedInstalledReleaseConfig = $true
+$preinstallFacts.LifecycleEvidence = [pscustomobject][ordered]@{{
+    current_sha256 = [string]$commitCurrent.PayloadSha256
+    phase = 'active_precommit'
+    operation_id = [string]$first.Artifact.Payload.operation_id
+    receipt_present = $true
+    schema = 'ticketbox-database-generation-lifecycle-evidence-v2'
+}}
+$start.PreinstallFacts = $preinstallFacts
+$postCurrentRetry = Start-TicketboxDatabaseGenerationIntent @start
+$postCurrentBytes = [IO.File]::ReadAllBytes($postCurrentRetry.Artifact.Path)
+$preinstallFacts.LifecycleEvidence.phase = 'install_cleanup_pending'
+$cleanupRetry = Start-TicketboxDatabaseGenerationIntent @start
+$cleanupBytes = [IO.File]::ReadAllBytes($cleanupRetry.Artifact.Path)
+$preinstallFacts.LifecycleEvidence.phase = 'install_completed'
+$completedRetry = Start-TicketboxDatabaseGenerationIntent @start
+$completedBytes = [IO.File]::ReadAllBytes($completedRetry.Artifact.Path)
 $operationStream.Dispose()
 if (
+    $first.Action -cne 'persist_intent' -or
+    $second.Action -cne 'persist_intent' -or
+    $postCurrentRetry.Action -cne 'persist_intent' -or
+    $cleanupRetry.Action -cne 'resume_install_cleanup' -or
+    $completedRetry.Action -cne 'acknowledge_completed_install' -or
     $first.Artifact.PayloadSha256 -cne $second.Artifact.PayloadSha256 -or
     $first.Artifact.PayloadSha256 -cne $readback.Artifact.PayloadSha256 -or
+    $first.Artifact.PayloadSha256 -cne $postCurrentRetry.Artifact.PayloadSha256 -or
+    $first.Artifact.PayloadSha256 -cne $cleanupRetry.Artifact.PayloadSha256 -or
+    $first.Artifact.PayloadSha256 -cne $completedRetry.Artifact.PayloadSha256 -or
     ([Convert]::ToBase64String($before) -cne [Convert]::ToBase64String($after)) -or
+    ([Convert]::ToBase64String($before) -cne [Convert]::ToBase64String($postCurrentBytes)) -or
+    ([Convert]::ToBase64String($before) -cne [Convert]::ToBase64String($cleanupBytes)) -or
+    ([Convert]::ToBase64String($before) -cne [Convert]::ToBase64String($completedBytes)) -or
     $driftRejected -ne 5
 ) {{
-    throw 'intent retry did not preserve exact immutable release binding'
+    throw 'intent retry did not preserve exact immutable release binding across CURRENT publication'
 }}
         $dependencyNames = @(
             'windows_atomic_artifacts.ps1',

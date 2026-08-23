@@ -798,80 +798,139 @@ def test_runtime_recovery_projection_blocks_traffic_until_commit() -> None:
     assert invoke_projection_cleanup < remove_service
 
 
-def test_completed_stale_receipt_is_retired_before_fresh_preflight() -> None:
+def test_committed_install_resumes_before_payload_replacement() -> None:
     prepare = _read("prepare_bundled_upgrade.ps1")
-    install = _read("install_bundled_services.ps1")
     flow = _read("ticketbox-installer-flow.isph")
-    receipt = _read("windows_lifecycle_receipt.ps1")
+    windows = _read("ticketbox-installer-windows.isph")
+    installer = _read("ticketbox-installer.iss")
+
+    intent_owner = prepare[
+        prepare.index("    if ($PersistDatabaseGenerationIntentOnly) {") : prepare.index(
+            "    # A trusted older installer",
+        )
+    ]
+    classify = intent_owner.index("Start-TicketboxDatabaseGenerationIntent")
+    resume = intent_owner.index('Action -ceq "resume_install_cleanup"')
+    owner_rebind = intent_owner.index(
+        "Set-TicketboxLifecycleReceiptInstallerOwner",
+        resume,
+    )
+    runtime_binding = intent_owner.index(
+        "Set-TicketboxPreparedRuntimeServiceContract",
+        resume,
+    )
+    service_projection_cleanup = intent_owner.index(
+        "Remove-TicketboxRecoveryPgServiceIfExists",
+        runtime_binding,
+    )
+    complete = intent_owner.index("Complete-TicketboxInstalledLifecycleTransaction")
+    acknowledge = intent_owner.index('Action -ceq "acknowledge_completed_install"')
+    persist = intent_owner.index('Action -cne "persist_intent"')
+    assert (
+        classify
+        < resume
+        < owner_rebind
+        < runtime_binding
+        < service_projection_cleanup
+        < complete
+        < acknowledge
+        < persist
+    )
+    assert intent_owner.count("exit 10") == 2
 
     stale_start = prepare.index("$staleReceipt = Read-TicketboxLifecycleReceipt")
     completed_check = prepare.index("if ([bool]$staleReceipt.install_completed)", stale_start)
-    resume_commit = prepare.index("Complete-TicketboxInstalledLifecycleTransaction", completed_check)
-    invalidate = prepare.index("Remove-TicketboxCompletedLifecycleReceipt", resume_commit)
-    initialize_current = prepare.index("\n    Initialize-TicketboxInstalledReleaseConfiguration\n")
-    write_new_receipt = prepare.index("Write-TicketboxLifecycleReceipt", invalidate)
     completed_branch = prepare[
         completed_check : prepare.index(
-            'elseif ([string]$staleReceipt.preparation_stage -eq "captured")',
+            'elseif (\n            [string]$staleReceipt.preparation_stage -ceq',
             completed_check,
         )
     ]
+    assert "Complete-TicketboxInstalledLifecycleTransaction" not in completed_branch
+    assert "Remove-TicketboxCompletedLifecycleReceipt" not in completed_branch
+    assert "禁止重新进入 fresh preflight" in completed_branch
 
-    assert initialize_current < completed_check < resume_commit < invalidate < write_new_receipt
-    assert "Set-TicketboxLifecycleReceiptInstallerOwner" in completed_branch
-    assert "Complete-TicketboxInstalledLifecycleTransaction" in completed_branch
-    assert "ConvertTo-TicketboxCurrentLifecycleReceipt" not in completed_branch
-    assert "backup_completed" not in completed_branch
-    assert "return" not in completed_branch
-    assert "Set-TicketboxLifecycleReceiptInstallCompleted" not in install
-    receipt_read = install.index("Read-TicketboxLifecycleReceipt")
-    prepared_transition = install.index('if ([string]$lifecycleReceipt.preparation_stage -eq "prepared")')
-    repair_resume = install.index(
-        'elseif ([string]$lifecycleReceipt.preparation_stage -ne "files_may_have_been_replaced")'
+    prepare_to_install = flow[
+        flow.index("function PrepareToInstall") : flow.index(
+            "function AuthoritativePayloadReplacementPrepared"
+        )
+    ]
+    intent_call = prepare_to_install.index("Ticketbox database generation intent")
+    committed_outcome = prepare_to_install.index(
+        "if LastPowerShellExistingOperationCompleted then"
     )
-    assert receipt_read < prepared_transition < repair_resume
-    post_install = flow.index("if CurStep = ssPostInstall")
-    service_install = flow.index("if not RunPowerShellChecked", post_install)
-    durable_commit = flow.index("Ticketbox installer lifecycle commit", service_install)
-    final_data_root_lease_check = flow.index("AssertDataRootMutationGuardActive();", durable_commit)
-    host_commit = flow.index("LifecycleInstallCompleted := True", durable_commit)
-    assert service_install < durable_commit < final_data_root_lease_check < host_commit
-    assert "-CommitCompletedInstall" in flow[service_install:host_commit]
+    prerequisites = prepare_to_install.index(
+        "Ticketbox Windows prerequisite installation"
+    )
+    assert intent_call < committed_outcome < prerequisites
+    assert "LifecycleInstallCompleted := True" in prepare_to_install
 
+    payload_predicate = flow[
+        flow.index("function AuthoritativePayloadReplacementPrepared") : flow.index(
+            "procedure CurStepChanged"
+        )
+    ]
+    assert "not LifecycleExistingOperationCompleted" in payload_predicate
+
+    runner = windows[
+        windows.index("function RunPowerShellChecked") : windows.index(
+            "procedure ResetDataRootMutationGuardState"
+        )
+    ]
+    assert "ExistingOperationCompletedExitCode = 10" in windows
+    assert "IsGenerationIntentStep and" in runner
+    assert "LastPowerShellExistingOperationCompleted" in runner
+    assert "not LastPowerShellExistingOperationCompleted" in runner
+
+    installed_files = [
+        line
+        for line in installer[
+            installer.index('Source: "ticketbox.ico"') : installer.index("[Registry]")
+        ].splitlines()
+        if line.startswith("Source:")
+    ]
+    assert installed_files
+    assert all(
+        line.endswith("Check: AuthoritativePayloadReplacementPrepared")
+        for line in installed_files
+    )
+
+
+def test_install_cleanup_has_durable_authorization_and_terminal_commit() -> None:
+    receipt = _read("windows_lifecycle_receipt.ps1")
     finalizer = receipt[
         receipt.index("function Complete-TicketboxInstalledLifecycleTransaction") : receipt.index(
             "function Set-TicketboxLifecycleReceiptInstallerOwner"
         )
     ]
-    current_gate = finalizer.index("Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent")
-    manifest_read = finalizer.index("$installedBuildManifest = Read-TicketboxInstalledBuildManifest")
-    recipe_binding = finalizer.index(
-        '"packaging/windows_database_generation_recovery_archive.ps1"',
-        manifest_read,
-    )
-    adapter_path = finalizer.index("$recoveryArchiveAdapterPath = Join-Path")
-    adapter_sha = finalizer.index(
-        "Get-TicketboxFileSha256 $recoveryArchiveAdapterPath",
-        adapter_path,
-    )
-    adapter_load = finalizer.index(". $recoveryArchiveAdapterPath", adapter_path)
-    identity_promotion = finalizer.index("Promote-TicketboxPendingInstallationIdentity", adapter_load)
+
     archive_retirement = finalizer.index(
-        "Remove-TicketboxDatabaseGenerationTargetRecoveryArchive",
-        identity_promotion,
+        "Remove-TicketboxDatabaseGenerationTargetRecoveryArchive"
+    )
+    cleanup_authorization = finalizer.index(
+        "Set-TicketboxLifecycleReceiptInstallCleanupPending"
+    )
+    recovery_tool_retirement = finalizer.index("Remove-TicketboxPgRecoveryToolset")
+    service_promotion = finalizer.index("Enable-TicketboxInstalledServicesAutoStart")
+    machine_guard_retirement = finalizer.index("Remove-TicketboxInstallerRecoveryMarker")
+    runtime_guard_retirement = finalizer.index(
+        "Remove-TicketboxInstallerRuntimeRecoveryGuard"
+    )
+    terminal_commit = finalizer.index("Set-TicketboxLifecycleReceiptInstallCompleted")
+
+    assert (
+        cleanup_authorization
+        < archive_retirement
+        < recovery_tool_retirement
+        < service_promotion
+        < machine_guard_retirement
+        < runtime_guard_retirement
+        < terminal_commit
     )
     assert (
-        current_gate
-        < manifest_read
-        < recipe_binding
-        < adapter_path
-        < adapter_sha
-        < adapter_load
-        < identity_promotion
-        < archive_retirement
-    )
-    assert '"installer\\windows_database_generation_recovery_archive.ps1"' in finalizer
-    assert "Assert-NoTicketboxAncestorReparsePoints $recoveryArchiveAdapterPath" in finalizer
+        '"files_may_have_been_replaced",\n        "install_cleanup_pending",\n'
+        '        "install_completed"'
+    ) in finalizer
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows lifecycle commit contract")
@@ -1023,9 +1082,14 @@ function Promote-TicketboxPendingInstallationIdentity {{
     }}
     [void]$script:events.Add('identity')
 }}
+function Set-TicketboxLifecycleReceiptInstallCleanupPending {{
+    param($Path, $Receipt, $InstallerOwnerProcessId)
+    [void]$script:events.Add('cleanup-authority')
+    $script:stage = 'install_cleanup_pending'
+}}
 function Set-TicketboxLifecycleReceiptInstallCompleted {{
     param($Path, $Receipt, $InstallerOwnerProcessId)
-    [void]$script:events.Add('receipt')
+    [void]$script:events.Add('terminal')
     $script:stage = 'install_completed'
 }}
 function Assert-TicketboxCompletedLifecycleReceipt {{
@@ -1207,16 +1271,6 @@ if (-not $adapterDriftRejected -or ($script:events -contains 'identity')) {{
 }}
 $script:events.Clear()
 $script:adapterSha256 = '{adapter_sha256}'
-Complete-TicketboxInstalledLifecycleTransaction @arguments
-if (($script:events -join ',') -cne 'read,current,archive-read,archive-assert,identity,receipt,read,assert,archive-read,archive-assert,archive-clean,tools,autostart,latch,runtime') {{
-    throw "first commit order was $($script:events -join ',')"
-}}
-$script:events.Clear()
-Complete-TicketboxInstalledLifecycleTransaction @arguments
-if (($script:events -join ',') -cne 'read,current,identity,assert,archive-read,tools,autostart,latch,runtime') {{
-    throw "retry commit was not idempotent: $($script:events -join ',')"
-}}
-$script:events.Clear()
 $script:failReady = $true
 $readyDriftRejected = $false
 try {{ Complete-TicketboxInstalledLifecycleTransaction @arguments }}
@@ -1231,6 +1285,8 @@ $toolCleanupRejected = $false
 try {{ Complete-TicketboxInstalledLifecycleTransaction @arguments }}
 catch {{ $toolCleanupRejected = $true }}
 if (-not $toolCleanupRejected -or
+    $script:stage -cne 'install_cleanup_pending' -or
+    $script:archivePresent -or
     ($script:events -contains 'autostart') -or
     ($script:events -contains 'latch') -or
     ($script:events -contains 'runtime')) {{
@@ -1243,6 +1299,7 @@ $promotionRejected = $false
 try {{ Complete-TicketboxInstalledLifecycleTransaction @arguments }}
 catch {{ $promotionRejected = $true }}
 if (-not $promotionRejected -or
+    $script:stage -cne 'install_cleanup_pending' -or
     ($script:events -contains 'latch') -or
     ($script:events -contains 'runtime')) {{
     throw 'recovery latch retired after service promotion failure'
@@ -1250,8 +1307,14 @@ if (-not $promotionRejected -or
 $script:events.Clear()
 $script:failPromotion = $false
 Complete-TicketboxInstalledLifecycleTransaction @arguments
-if (($script:events -join ',') -cne 'read,current,identity,assert,archive-read,tools,autostart,latch,runtime') {{
+if (($script:events -join ',') -cne 'read,current,identity,archive-read,tools,autostart,latch,runtime,terminal,read,assert' -or
+    $script:stage -cne 'install_completed') {{
     throw "promotion retry did not converge: $($script:events -join ',')"
+}}
+$script:events.Clear()
+Complete-TicketboxInstalledLifecycleTransaction @arguments
+if (($script:events -join ',') -cne 'read,current,assert') {{
+    throw "terminal retry was not idempotent: $($script:events -join ',')"
 }}
 """,
         encoding="utf-8-sig",
@@ -1722,7 +1785,14 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     intent_branch = main_execution.index("if ($PersistDatabaseGenerationIntentOnly)", owner_gate)
     preinstall_receipt_read = main_execution.index("Read-TicketboxLifecycleReceipt `", intent_branch)
     early_marker_repair = main_execution.index("Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded `", owner_gate)
-    runtime_binding_read = main_execution.index("Set-TicketboxPreparedRuntimeServiceContract", early_marker_repair)
+    committed_recovery_gate = main_execution.index(
+        "$RecoverPreparedInstall -and",
+        early_marker_repair,
+    )
+    runtime_binding_read = main_execution.index(
+        "Set-TicketboxPreparedRuntimeServiceContract",
+        committed_recovery_gate,
+    )
     mark_branch = main_execution.index("if ($MarkProgramFilesInstalled)", runtime_binding_read)
     recover_branch_start = main_execution.index("if ($RecoverPreparedInstall)", mark_branch)
     commit_branch = main_execution.index("if ($CommitCompletedInstall)", recover_branch_start)
@@ -1736,6 +1806,7 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
         < intent_branch
         < preinstall_receipt_read
         < early_marker_repair
+        < committed_recovery_gate
         < runtime_binding_read
         < mark_branch
         < recover_branch_start
@@ -1751,12 +1822,10 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     )
     preinstall_projection = main_execution[intent_branch:early_marker_repair]
     for field in (
-        "install_completed",
         "database_generation_operation_id",
         "database_generation_current_sha256",
     ):
         expected_target = {
-            "install_completed": "install_completed",
             "database_generation_operation_id": "operation_id",
             "database_generation_current_sha256": "current_sha256",
         }[field]
@@ -1765,6 +1834,10 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
             rf"(?:\[(?:bool|string)\])?\$observedLifecycleReceipt\.{field}",
             preinstall_projection,
         )
+    assert 'schema = "ticketbox-database-generation-lifecycle-evidence-v2"' in preinstall_projection
+    assert '$lifecycleEvidence.phase = switch (' in preinstall_projection
+    assert '"install_cleanup_pending" { "install_cleanup_pending" }' in preinstall_projection
+    assert '"install_completed" { "install_completed" }' in preinstall_projection
     captured_intent = main_execution.index(
         "$capturedGenerationIntent = Read-TicketboxDatabaseGenerationActiveIntent `",
         early_marker_repair,
@@ -1833,17 +1906,52 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
     assert "Assert-TicketboxPgServiceCommand" in exact_contract
     assert "Assert-TicketboxShawlServiceCommand" in exact_contract
 
-    recover_start = prepare.index("if ($RecoverPreparedInstall)")
-    recover_end = prepare.index("return", recover_start)
-    recover_branch = prepare[recover_start:recover_end]
+    committed_recovery_branch = main_execution[
+        committed_recovery_gate:mark_branch
+    ]
+    committed_owner_rebind = committed_recovery_branch.index(
+        "Set-TicketboxLifecycleReceiptInstallerOwner"
+    )
+    committed_runtime_binding = committed_recovery_branch.index(
+        "Set-TicketboxPreparedRuntimeServiceContract"
+    )
+    committed_projection_cleanup = committed_recovery_branch.index(
+        "Remove-TicketboxRecoveryPgServiceIfExists"
+    )
+    committed_resume = committed_recovery_branch.index(
+        "Complete-TicketboxInstalledLifecycleTransaction"
+    )
+    assert (
+        committed_owner_rebind
+        < committed_runtime_binding
+        < committed_projection_cleanup
+        < committed_resume
+    )
+    assert "失败退出前已补完 durable install cleanup" in committed_recovery_branch
+
+    recover_start = main_execution.index("if ($RecoverPreparedInstall)", mark_branch)
+    recover_end = main_execution.index("if ($CommitCompletedInstall)", recover_start)
+    recover_branch = main_execution[recover_start:recover_end]
+    precommit_mutation = recover_branch.index("Invoke-TicketboxPreparedInstallRecovery")
+    precommit_guard = recover_branch.rindex(
+        "Assert-TicketboxPreparedServiceContracts",
+        0,
+        precommit_mutation,
+    )
+    assert precommit_guard < precommit_mutation
+    assert "Complete-TicketboxInstalledLifecycleTransaction" not in recover_branch
+    assert "install_cleanup_pending" not in recover_branch
+    assert "install_completed" not in recover_branch
+
     stale_start = prepare.index("if ([bool]$staleReceipt.install_completed)")
-    stale_end = prepare.index("return", stale_start)
+    stale_end = prepare.index("    $hasPgService =", stale_start)
     stale_branch = prepare[stale_start:stale_end]
-    for recovery in (recover_branch, stale_branch):
-        guard = recovery.index("Assert-TicketboxPreparedServiceContracts")
-        mutation = recovery.index("Invoke-TicketboxPreparedInstallRecovery")
-        assert guard < mutation
-        assert "-AllowRepairableAccount" not in recovery
+    guard = stale_branch.index("Assert-TicketboxPreparedServiceContracts")
+    mutation = stale_branch.index("Invoke-TicketboxPreparedInstallRecovery")
+    assert guard < mutation
+    assert "禁止重新进入 fresh preflight" in stale_branch
+    assert "-AllowRepairableAccount" not in recover_branch
+    assert "-AllowRepairableAccount" not in stale_branch
 
     early_repair = prepare[
         prepare.index("function Repair-TicketboxInterruptedInstallerMarkerAclIfNeeded") : prepare.index(
@@ -1934,9 +2042,9 @@ def test_stale_recovery_validates_exact_service_contract_before_mutation() -> No
             "function Assert-TicketboxLifecycleReceiptStage"
         )
     ]
-    assert 'if ($PreparationStage -ceq "install_completed")' in receipt_writer
+    assert '$PreparationStage -in @("install_cleanup_pending", "install_completed")' in receipt_writer
     assert "([string]$InstalledReleaseConfig.backend_service_name)" in receipt_writer
-    assert '[string]$receipt.preparation_stage -ceq "install_completed"' in receipt_reader
+    assert '"install_cleanup_pending",\n            "install_completed"' in receipt_reader
     assert "([string]$TargetReleaseConfig.backend_service_name)" in receipt_reader
     final_binding = receipt[
         receipt.index("function Enable-TicketboxInstalledServicesAutoStart") : receipt.index(
@@ -3589,7 +3697,7 @@ catch {{ $oldOwnerRejected = $true }}
 if (-not $oldOwnerRejected) {{ throw 'receipt accepted a different installer owner without recovery mode' }}
 $invalidTransitionRejected = $false
 try {{
-    Set-TicketboxLifecycleReceiptInstallCompleted `
+    Set-TicketboxLifecycleReceiptInstallCleanupPending `
         -Path '{_literal(receipt_path)}' `
         -Receipt $receipt `
         -InstallerOwnerProcessId $PID
@@ -3686,7 +3794,7 @@ Set-TicketboxExactFileAcl `
 $missingGenerationBytes = [System.IO.File]::ReadAllBytes('{_literal(receipt_path)}')
 $missingGenerationRejected = $false
 try {{
-    Set-TicketboxLifecycleReceiptInstallCompleted `
+    Set-TicketboxLifecycleReceiptInstallCleanupPending `
         -Path '{_literal(receipt_path)}' `
         -Receipt $repairReceipt `
         -InstallerOwnerProcessId ($PID + 2)
@@ -3763,6 +3871,23 @@ $repairReceipt = Read-TicketboxLifecycleReceipt `
     -TargetReleaseConfig $config `
     -CurrentTargetBackendVersion 1.3.0 `
     -InstallerOwnerProcessId ($PID + 2)
+Set-TicketboxLifecycleReceiptInstallCleanupPending `
+    -Path '{_literal(receipt_path)}' `
+    -Receipt $repairReceipt `
+    -InstallerOwnerProcessId ($PID + 2)
+$repairReceipt = Read-TicketboxLifecycleReceipt `
+    -Path '{_literal(receipt_path)}' `
+    -InstallDir '{_literal(install_dir)}' `
+    -DataRoot '{_literal(data_root)}' `
+    -PgPort 5544 `
+    -BackendPort 8765 `
+    -TargetReleaseConfig $config `
+    -CurrentTargetBackendVersion 1.3.0 `
+    -InstallerOwnerProcessId ($PID + 2)
+if ($repairReceipt.install_completed -or
+    $repairReceipt.preparation_stage -cne 'install_cleanup_pending') {{
+    throw 'cleanup authorization did not remain nonterminal'
+}}
 Set-TicketboxLifecycleReceiptInstallCompleted `
     -Path '{_literal(receipt_path)}' `
     -Receipt $repairReceipt `

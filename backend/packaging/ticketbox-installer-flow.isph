@@ -890,6 +890,7 @@ begin
     exit;
   end;
   OwnerHandoffExpected := False;
+  LifecycleExistingOperationCompleted := False;
   if not CheckBackendVersionFloorForDataRoot(
     SelectedDataRoot(),
     VersionFailureReason) then
@@ -951,6 +952,19 @@ begin
     exit;
   end;
   AssertLifecycleLockActive();
+  if LastPowerShellExistingOperationCompleted then
+  begin
+    LifecycleExistingOperationCompleted := True;
+    LifecyclePrepared := True;
+    LifecycleFilesMayBeReplaced := True;
+    LifecycleInstallCompleted := True;
+    OwnerHandoffExpected := HasCurrentOwnerHandoffPendingArtifact();
+    SetInstallerStage(
+      '安装已完成',
+      '已验证并收敛同一安装操作；不会重新复制程序文件。');
+    Result := '';
+    exit;
+  end;
   SetInstallerStage(
     '正在检查 Windows 运行环境…',
     '已安装的共享运行库满足要求时会直接跳过。');
@@ -991,7 +1005,8 @@ end;
 
 function AuthoritativePayloadReplacementPrepared(): Boolean;
 begin
-  Result := LifecyclePrepared;
+  Result := LifecyclePrepared and
+    (not LifecycleExistingOperationCompleted);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -1003,6 +1018,10 @@ var
 begin
   if CurStep = ssInstall then
   begin
+    if LifecycleExistingOperationCompleted then
+    begin
+      exit;
+    end;
     SetInstallerStage(
       '正在准备安装…',
       '正在验证安装包、服务和数据状态。');
@@ -1054,6 +1073,13 @@ begin
   end;
   if CurStep = ssPostInstall then
   begin
+    if LifecycleExistingOperationCompleted then
+    begin
+      SetInstallerStage(
+        '安装完成',
+        '同一安装操作已经完整提交。');
+      exit;
+    end;
     try
       AssertLifecycleLockActive();
       AssertManagerMaintenanceGateActive();

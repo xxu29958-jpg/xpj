@@ -1394,12 +1394,13 @@ try {
         . (Get-TicketboxBootstrapDatabaseGenerationAuthorityPath)
         $generationStateRoot = Get-TicketboxDatabaseGenerationStateRoot $InstallerState
         $lifecycleEvidence = [pscustomobject][ordered]@{
-            schema = "ticketbox-database-generation-lifecycle-evidence-v1"
+            schema = "ticketbox-database-generation-lifecycle-evidence-v2"
             receipt_present = $false
-            install_completed = $false
+            phase = "absent"
             operation_id = ""
             current_sha256 = ""
         }
+        $observedLifecycleReceipt = $null
         $lifecycleReceiptKind = Get-TicketboxPathEntryKindNoFollow $LifecycleReceiptPath
         if ($lifecycleReceiptKind -ceq "File") {
             $observedLifecycleReceipt = Read-TicketboxLifecycleReceipt `
@@ -1414,8 +1415,13 @@ try {
                 -AllowPreviousInstallerOwnerProcessId
             try {
                 $lifecycleEvidence.receipt_present = $true
-                $lifecycleEvidence.install_completed =
-                    [bool]$observedLifecycleReceipt.install_completed
+                $lifecycleEvidence.phase = switch (
+                    [string]$observedLifecycleReceipt.preparation_stage
+                ) {
+                    "install_cleanup_pending" { "install_cleanup_pending" }
+                    "install_completed" { "install_completed" }
+                    default { "active_precommit" }
+                }
                 $lifecycleEvidence.operation_id =
                     [string]$observedLifecycleReceipt.database_generation_operation_id
                 $lifecycleEvidence.current_sha256 =
@@ -1485,6 +1491,58 @@ try {
             -ProgramContract $programContract `
             -HostContract $hostContract `
             -ProjectionContract $projectionContract
+        if ([string]$intentContext.Action -ceq "resume_install_cleanup") {
+            if (
+                $null -eq $observedLifecycleReceipt -or
+                [string]$observedLifecycleReceipt.preparation_stage -cne
+                    "install_cleanup_pending"
+            ) {
+                throw "database generation classifier 未绑定 cleanup-pending receipt。"
+            }
+            Set-TicketboxLifecycleReceiptInstallerOwner `
+                -Path $LifecycleReceiptPath `
+                -Receipt $observedLifecycleReceipt `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+            $PreparedServiceIdentityLifecycleReceipt = $observedLifecycleReceipt
+            Set-TicketboxPreparedRuntimeServiceContract
+            Set-TicketboxInstalledReleaseConfiguration `
+                -Config $observedLifecycleReceipt.installed_release_config `
+                -Persisted $true
+            Remove-TicketboxRecoveryPgServiceIfExists
+            Assert-TicketboxPreparedServiceContracts `
+                -AllowTargetPolicyFallback `
+                -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+            Complete-TicketboxInstalledLifecycleTransaction `
+                -Path $LifecycleReceiptPath `
+                -InstallDir $InstallDir `
+                -DataRoot $DataRoot `
+                -PgPort $PgPort `
+                -BackendPort $BackendPort `
+                -TargetReleaseConfig $TargetReleaseConfig `
+                -TargetBackendVersion $TargetBackendVersion `
+                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+                -BuildManifestPath $InstalledBuildManifestPath `
+                -RecoveryRequiredPath $RecoveryRequiredPath `
+                -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
+                -LifecycleLock $operationLock
+            Write-Host "已补完同一安装 operation 的 durable cleanup。" -ForegroundColor Green
+            exit 10
+        }
+        if ([string]$intentContext.Action -ceq "acknowledge_completed_install") {
+            if (
+                $null -eq $observedLifecycleReceipt -or
+                [string]$observedLifecycleReceipt.preparation_stage -cne
+                    "install_completed"
+            ) {
+                throw "database generation classifier 未绑定 completed receipt。"
+            }
+            Assert-TicketboxCompletedLifecycleReceipt $observedLifecycleReceipt
+            Write-Host "同一安装 operation 已完整提交。" -ForegroundColor Green
+            exit 10
+        }
+        if ([string]$intentContext.Action -cne "persist_intent") {
+            throw "database generation preinstall action 不受支持。"
+        }
         Write-Host (
             "database generation intent persisted: operation={0} installation={1}" -f `
                 [string]$intentContext.Artifact.Payload.operation_id,
@@ -1542,6 +1600,61 @@ try {
     }
     elseif ($preMutationLifecycleReceiptKind -cne "Missing") {
         throw "安装生命周期回执不是普通文件或缺失路径。"
+    }
+    if (
+        $RecoverPreparedInstall -and
+        $null -ne $preMutationLifecycleReceipt -and
+        [string]$preMutationLifecycleReceipt.preparation_stage -in @(
+            "install_cleanup_pending",
+            "install_completed"
+        )
+    ) {
+        $receipt = $preMutationLifecycleReceipt
+        if (
+            [string]$receipt.mode -cne "fresh_install" -or
+            [bool]$receipt.backup_required -or
+            [bool]$receipt.backup_completed -or
+            -not [string]::IsNullOrEmpty([string]$receipt.backup_path)
+        ) {
+            throw "当前安装恢复只接受 fresh install 回执；既有数据必须走隔离 restore。"
+        }
+        if (-not $FilesReplaced) {
+            throw "已提交安装 operation 的恢复必须声明程序文件已经替换。"
+        }
+        $PreparedServiceIdentityLifecycleReceipt = $receipt
+        if ([string]$receipt.preparation_stage -ceq "install_completed") {
+            Assert-TicketboxCompletedLifecycleReceipt $receipt
+            return
+        }
+        Set-TicketboxLifecycleReceiptInstallerOwner `
+            -Path $LifecycleReceiptPath `
+            -Receipt $receipt `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId
+        Set-TicketboxPreparedRuntimeServiceContract
+        Invoke-TicketboxInterruptedInitdbServiceRecovery
+        Assert-TicketboxTargetPgMajor
+        Set-TicketboxInstalledReleaseConfiguration `
+            -Config $receipt.installed_release_config `
+            -Persisted $true
+        Remove-TicketboxRecoveryPgServiceIfExists
+        Assert-TicketboxPreparedServiceContracts `
+            -AllowTargetPolicyFallback `
+            -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
+        Complete-TicketboxInstalledLifecycleTransaction `
+            -Path $LifecycleReceiptPath `
+            -InstallDir $InstallDir `
+            -DataRoot $DataRoot `
+            -PgPort $PgPort `
+            -BackendPort $BackendPort `
+            -TargetReleaseConfig $TargetReleaseConfig `
+            -TargetBackendVersion $TargetBackendVersion `
+            -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
+            -BuildManifestPath $InstalledBuildManifestPath `
+            -RecoveryRequiredPath $RecoveryRequiredPath `
+            -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
+            -LifecycleLock $operationLock
+        Write-Host "失败退出前已补完 durable install cleanup；本次仍保留失败结果。" -ForegroundColor Yellow
+        return
     }
     Set-TicketboxPreparedRuntimeServiceContract
     Invoke-TicketboxInterruptedInitdbServiceRecovery
@@ -1700,45 +1813,15 @@ try {
         }
         $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
         if ([bool]$staleReceipt.install_completed) {
-            Set-TicketboxInstalledReleaseConfiguration `
-                -Config $staleReceipt.installed_release_config `
-                -Persisted $true
-            Remove-TicketboxRecoveryPgServiceIfExists
-            Assert-TicketboxPreparedServiceContracts `
-                -AllowTargetPolicyFallback `
-                -AllowLegacyRuntimeDataContract:$RuntimeDataBindingPresent
             Close-TicketboxLifecycleBackupGuard $staleReceipt
-            Set-TicketboxLifecycleReceiptInstallerOwner `
-                -Path $LifecycleReceiptPath `
-                -Receipt $staleReceipt `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-            Complete-TicketboxInstalledLifecycleTransaction `
-                -Path $LifecycleReceiptPath `
-                -InstallDir $InstallDir `
-                -DataRoot $DataRoot `
-                -PgPort $PgPort `
-                -BackendPort $BackendPort `
-                -TargetReleaseConfig $TargetReleaseConfig `
-                -TargetBackendVersion $TargetBackendVersion `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId `
-                -BuildManifestPath $InstalledBuildManifestPath `
-                -RecoveryRequiredPath $RecoveryRequiredPath `
-                -RuntimeRecoveryGuardPath $InstallerRuntimeRecoveryGuardPath `
-                -LifecycleLock $operationLock
-            $staleReceipt = Read-TicketboxLifecycleReceipt `
-                -Path $LifecycleReceiptPath `
-                -InstallDir $InstallDir `
-                -DataRoot $DataRoot `
-                -PgPort $PgPort `
-                -BackendPort $BackendPort `
-                -TargetReleaseConfig $TargetReleaseConfig `
-                -CurrentTargetBackendVersion $TargetBackendVersion `
-                -InstallerOwnerProcessId $InstallerLockOwnerProcessId
-            $PreparedServiceIdentityLifecycleReceipt = $staleReceipt
-            Remove-TicketboxCompletedLifecycleReceipt `
-                -Path $LifecycleReceiptPath `
-                -Receipt $staleReceipt
-            Write-Host "已补完上次中断的安装提交并退役旧回执；本次将重新执行 fresh preflight。" -ForegroundColor Yellow
+            throw "completed install 必须由 preinstall owner 确认；禁止重新进入 fresh preflight。"
+        }
+        elseif (
+            [string]$staleReceipt.preparation_stage -ceq
+                "install_cleanup_pending"
+        ) {
+            Close-TicketboxLifecycleBackupGuard $staleReceipt
+            throw "cleanup-pending install 必须由 preinstall owner 恢复；禁止重新进入 fresh preflight。"
         }
         elseif ([string]$staleReceipt.preparation_stage -eq "captured") {
             Set-TicketboxInstalledReleaseConfiguration `

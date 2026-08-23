@@ -118,27 +118,33 @@ def test_catalog_and_command_are_actively_packaged_and_provenance_bound() -> Non
     expected = {
         "windows_postgresql_database_command.ps1": (
             'Source: "windows_postgresql_database_command.ps1"; '
-            'DestDir: "{app}\\installer"; Flags: ignoreversion'
+            'DestDir: "{app}\\installer"; Flags: ignoreversion; '
+            'Check: AuthoritativePayloadReplacementPrepared'
         ),
         "windows_postgresql_database_catalog.ps1": (
             'Source: "windows_postgresql_database_catalog.ps1"; '
-            'DestDir: "{app}\\installer"; Flags: ignoreversion'
+            'DestDir: "{app}\\installer"; Flags: ignoreversion; '
+            'Check: AuthoritativePayloadReplacementPrepared'
         ),
         "postgresql_database_catalog\\primitives.ps1": (
             'Source: "postgresql_database_catalog\\primitives.ps1"; '
-            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion'
+            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion; '
+            'Check: AuthoritativePayloadReplacementPrepared'
         ),
         "postgresql_database_catalog\\query.ps1": (
             'Source: "postgresql_database_catalog\\query.ps1"; '
-            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion'
+            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion; '
+            'Check: AuthoritativePayloadReplacementPrepared'
         ),
         "postgresql_database_catalog\\codec.ps1": (
             'Source: "postgresql_database_catalog\\codec.ps1"; '
-            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion'
+            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion; '
+            'Check: AuthoritativePayloadReplacementPrepared'
         ),
         "postgresql_database_catalog\\observation.ps1": (
             'Source: "postgresql_database_catalog\\observation.ps1"; '
-            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion'
+            'DestDir: "{app}\\installer\\postgresql_database_catalog"; Flags: ignoreversion; '
+            'Check: AuthoritativePayloadReplacementPrepared'
         ),
     }
     for item, exact_source in expected.items():

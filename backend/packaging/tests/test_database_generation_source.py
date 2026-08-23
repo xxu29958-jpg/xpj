@@ -255,9 +255,9 @@ if (-not (Get-Command Assert-TicketboxDatabaseGenerationPreinstallEligibility).P
 $lock = [pscustomobject]@{{ Identity = 'held' }}
 $facts = @([pscustomobject][ordered]@{{ Path = 'pgdata\\PG_VERSION'; Label = 'PG_VERSION' }})
 $lifecycle = [pscustomobject][ordered]@{{
-    schema = 'ticketbox-database-generation-lifecycle-evidence-v1'
+    schema = 'ticketbox-database-generation-lifecycle-evidence-v2'
     receipt_present = $false
-    install_completed = $false
+    phase = 'absent'
     operation_id = ''
     current_sha256 = ''
 }}
@@ -281,6 +281,7 @@ $operation = '11111111-1111-4111-8111-111111111111'
 $script:active = [pscustomobject]@{{ PayloadSha256 = ('a' * 64); Payload = [pscustomobject]@{{ operation_id = $operation }} }}
 $script:current = [pscustomobject]@{{ PayloadSha256 = ('b' * 64); Payload = [pscustomobject]@{{ operation_id = $operation; intent_sha256 = ('a' * 64) }} }}
 $lifecycle.receipt_present = $true
+$lifecycle.phase = 'active_precommit'
 $lifecycle.operation_id = $operation
 Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts
 if ($script:writes -ne 0) {{ throw 'exact retry mutated state' }}
@@ -310,14 +311,20 @@ try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg
 if (-not $rejected -or $script:writes -ne 0) {{ throw 'foreign lifecycle CURRENT crossed eligibility gate' }}
 $lifecycle.current_sha256 = ('b' * 64)
 
-$lifecycle.install_completed = $true
-$beforeCompleted = ConvertTo-Json @($script:active, $script:current) -Compress -Depth 8
-$rejected = $false
-try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts }} catch {{ $rejected = $true }}
-$afterCompleted = ConvertTo-Json @($script:active, $script:current) -Compress -Depth 8
-if (-not $rejected -or $beforeCompleted -cne $afterCompleted -or $script:writes -ne 0) {{ throw 'completed install crossed fresh-only eligibility gate' }}
+$beforeCommitted = ConvertTo-Json @($script:active, $script:current) -Compress -Depth 8
+$lifecycle.phase = 'install_cleanup_pending'
+$pendingAction = Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts
+$lifecycle.phase = 'install_completed'
+$completedAction = Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts
+$afterCommitted = ConvertTo-Json @($script:active, $script:current) -Compress -Depth 8
+if (
+    $pendingAction -cne 'resume_install_cleanup' -or
+    $completedAction -cne 'acknowledge_completed_install' -or
+    $beforeCommitted -cne $afterCommitted -or
+    $script:writes -ne 0
+) {{ throw 'committed install was not classified without mutation' }}
 
-$lifecycle.install_completed = $false
+$lifecycle.phase = 'active_precommit'
 $script:current.Payload.operation_id = '22222222-2222-4222-8222-222222222222'
 $rejected = $false
 try {{ Assert-TicketboxDatabaseGenerationPreinstallEligibility 'state' $lock 'pg' 'backend' $true $lifecycle $facts }} catch {{ $rejected = $true }}

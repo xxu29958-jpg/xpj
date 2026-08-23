@@ -15,17 +15,22 @@ function Assert-TicketboxDatabaseGenerationPreinstallEligibility {
     Assert-TicketboxLifecycleOperationLease $LifecycleLock
     Assert-TicketboxDatabaseGenerationExactProperties `
         $LifecycleEvidence `
-        @("current_sha256", "install_completed", "operation_id", "receipt_present", "schema") `
+        @("current_sha256", "operation_id", "phase", "receipt_present", "schema") `
         "database generation lifecycle evidence"
     if (
         [string]$LifecycleEvidence.schema -cne
-            "ticketbox-database-generation-lifecycle-evidence-v1" -or
+            "ticketbox-database-generation-lifecycle-evidence-v2" -or
         $LifecycleEvidence.receipt_present -isnot [bool] -or
-        $LifecycleEvidence.install_completed -isnot [bool] -or
+        [string]$LifecycleEvidence.phase -notin @(
+            "absent",
+            "active_precommit",
+            "install_cleanup_pending",
+            "install_completed"
+        ) -or
         (
             -not [bool]$LifecycleEvidence.receipt_present -and
             (
-                [bool]$LifecycleEvidence.install_completed -or
+                [string]$LifecycleEvidence.phase -cne "absent" -or
                 -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.operation_id) -or
                 -not [string]::IsNullOrEmpty([string]$LifecycleEvidence.current_sha256)
             )
@@ -33,6 +38,7 @@ function Assert-TicketboxDatabaseGenerationPreinstallEligibility {
         (
             [bool]$LifecycleEvidence.receipt_present -and
             (
+                [string]$LifecycleEvidence.phase -ceq "absent" -or
                 ([guid][string]$LifecycleEvidence.operation_id).ToString("D") -cne
                     [string]$LifecycleEvidence.operation_id -or
                 (
@@ -43,9 +49,6 @@ function Assert-TicketboxDatabaseGenerationPreinstallEligibility {
         )
     ) {
         throw "database generation lifecycle evidence 不是闭合合同。"
-    }
-    if ([bool]$LifecycleEvidence.install_completed) {
-        throw "尚未实现 repair/reinstall；completed install 不得进入 fresh-only generation。"
     }
     $activeIntent = Read-TicketboxDatabaseGenerationActiveIntent `
         $StateRoot -AllowAbsent
@@ -75,7 +78,7 @@ function Assert-TicketboxDatabaseGenerationPreinstallEligibility {
                 ($existingFacts -join ", ")
             )
         }
-        return
+        return "persist_intent"
     }
     if (
         [bool]$LifecycleEvidence.receipt_present -and
@@ -107,6 +110,24 @@ function Assert-TicketboxDatabaseGenerationPreinstallEligibility {
     elseif (-not [string]::IsNullOrEmpty([string]$LifecycleEvidence.current_sha256)) {
         throw "lifecycle receipt 声明了缺失的 database generation CURRENT。"
     }
+    if ([string]$LifecycleEvidence.phase -in @(
+        "install_cleanup_pending",
+        "install_completed"
+    )) {
+        if (
+            $null -eq $activeIntent -or
+            $null -eq $current -or
+            [string]$LifecycleEvidence.current_sha256 -cne
+                [string]$current.PayloadSha256
+        ) {
+            throw "committed lifecycle receipt 缺少 exact active intent/CURRENT。"
+        }
+        if ([string]$LifecycleEvidence.phase -ceq "install_cleanup_pending") {
+            return "resume_install_cleanup"
+        }
+        return "acknowledge_completed_install"
+    }
+    return "persist_intent"
 }
 
 function New-TicketboxDatabaseGenerationIntent {
@@ -166,7 +187,15 @@ function New-TicketboxDatabaseGenerationIntent {
         }
     }
     elseif ($null -ne $current) {
-        throw "fresh database generation 拒绝既有 CURRENT。"
+        if (
+            $null -eq $existing -or
+            [string]$current.Payload.intent_sha256 -cne
+                [string]$existing.PayloadSha256 -or
+            [string]$current.Payload.operation_id -cne
+                [string]$existing.Payload.operation_id
+        ) {
+            throw "fresh database generation 拒绝其他 operation 的 CURRENT。"
+        }
     }
 
     if (
@@ -273,7 +302,7 @@ function Start-TicketboxDatabaseGenerationIntent {
             "StateRoot"
         ) `
         "database generation preinstall facts"
-    Assert-TicketboxDatabaseGenerationPreinstallEligibility `
+    $preinstallAction = Assert-TicketboxDatabaseGenerationPreinstallEligibility `
         -StateRoot ([string]$PreinstallFacts.StateRoot) `
         -LifecycleLock $LifecycleLock `
         -PgServiceName ([string]$PreinstallFacts.PgServiceName) `
@@ -282,7 +311,7 @@ function Start-TicketboxDatabaseGenerationIntent {
             ([bool]$PreinstallFacts.HasPersistedInstalledReleaseConfig) `
         -LifecycleEvidence $PreinstallFacts.LifecycleEvidence `
         -ExistingPathFacts @($PreinstallFacts.ExistingPathFacts)
-    return New-TicketboxDatabaseGenerationIntent `
+    $intentContext = New-TicketboxDatabaseGenerationIntent `
         -InstallerState $InstallerState `
         -LifecycleLock $LifecycleLock `
         -ExpectedPredecessorSha256 "" `
@@ -293,6 +322,11 @@ function Start-TicketboxDatabaseGenerationIntent {
         -ProgramContract $ProgramContract `
         -HostContract $HostContract `
         -ProjectionContract $ProjectionContract
+    return [pscustomobject][ordered]@{
+        Action = $preinstallAction
+        Artifact = $intentContext.Artifact
+        StateRoot = $intentContext.StateRoot
+    }
 }
 
 function Read-TicketboxDatabaseGenerationIntentContext {

@@ -22,6 +22,7 @@ $script:TicketboxLifecycleReceiptPreparationStages = @(
     "program_files_installed_backup_pending",
     "prepared",
     "files_may_have_been_replaced",
+    "install_cleanup_pending",
     "install_completed"
 )
 $script:TicketboxLifecycleReceiptFields = @(
@@ -902,6 +903,7 @@ function Write-TicketboxLifecycleReceipt {
             "program_files_installed_backup_pending",
             "prepared",
             "files_may_have_been_replaced",
+            "install_cleanup_pending",
             "install_completed"
         )][string]$PreparationStage,
         [string]$BackupPath = "",
@@ -929,13 +931,17 @@ function Write-TicketboxLifecycleReceipt {
         (
             [string]::IsNullOrEmpty($DatabaseGenerationOperationId) -or
             $DatabaseGenerationCurrentSha256 -cnotmatch '^[0-9a-f]{64}$' -or
-            $PreparationStage -notin @("files_may_have_been_replaced", "install_completed")
+            $PreparationStage -notin @(
+                "files_may_have_been_replaced",
+                "install_cleanup_pending",
+                "install_completed"
+            )
         )
     ) {
         throw "安装生命周期回执 database generation current 未绑定规范 operation/SHA-256。"
     }
     if (
-        $PreparationStage -ceq "install_completed" -and
+        $PreparationStage -in @("install_cleanup_pending", "install_completed") -and
         (
             -not (Test-TicketboxLifecycleCanonicalOperationId $DatabaseGenerationOperationId) -or
             $DatabaseGenerationCurrentSha256 -cnotmatch '^[0-9a-f]{64}$'
@@ -946,7 +952,9 @@ function Write-TicketboxLifecycleReceipt {
     $targetVersionFloor = ConvertTo-TicketboxLifecycleVersion `
         $TargetBackendVersionFloor `
         "生命周期回执目标版本下限"
-    $dataRootMarkerAclPhase = if ($PreparationStage -ceq "install_completed") {
+    $dataRootMarkerAclPhase = if (
+        $PreparationStage -in @("install_cleanup_pending", "install_completed")
+    ) {
         "backend_read_required"
     }
     else {
@@ -990,6 +998,7 @@ function Write-TicketboxLifecycleReceipt {
     $expectedFilesReplaced = $PreparationStage -in @(
         "program_files_installed_backup_pending",
         "files_may_have_been_replaced",
+        "install_cleanup_pending",
         "install_completed"
     )
     $expectedInstallCompleted = $PreparationStage -eq "install_completed"
@@ -1220,14 +1229,21 @@ function Read-TicketboxLifecycleReceipt {
         (
             [string]$receipt.database_generation_current_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
             [string]::IsNullOrEmpty($databaseGenerationOperationId) -or
-            [string]$receipt.preparation_stage -notin @("files_may_have_been_replaced", "install_completed")
+            [string]$receipt.preparation_stage -notin @(
+                "files_may_have_been_replaced",
+                "install_cleanup_pending",
+                "install_completed"
+            )
         )
     ) {
         throw "安装生命周期回执 database generation evidence 无效。"
     }
     if (
         -not $isLegacyV7 -and
-        [string]$receipt.preparation_stage -ceq "install_completed" -and
+        [string]$receipt.preparation_stage -in @(
+            "install_cleanup_pending",
+            "install_completed"
+        ) -and
         (
             -not (Test-TicketboxLifecycleCanonicalOperationId `
                 $databaseGenerationOperationId) -or
@@ -1278,7 +1294,10 @@ function Read-TicketboxLifecycleReceipt {
         throw "安装生命周期回执的 Windows volume identity 无效。"
     }
     $dataRootMarkerAclPhase = if (
-        [string]$receipt.preparation_stage -ceq "install_completed"
+        [string]$receipt.preparation_stage -in @(
+            "install_cleanup_pending",
+            "install_completed"
+        )
     ) {
         "backend_read_required"
     }
@@ -1324,6 +1343,7 @@ function Read-TicketboxLifecycleReceipt {
     $expectedFilesReplaced = [string]$receipt.preparation_stage -in @(
         "program_files_installed_backup_pending",
         "files_may_have_been_replaced",
+        "install_cleanup_pending",
         "install_completed"
     )
     $expectedInstallCompleted = [string]$receipt.preparation_stage -eq "install_completed"
@@ -1527,7 +1547,9 @@ function Set-TicketboxLifecycleReceiptDatabaseGenerationEvidence {
         [string]$Receipt.database_generation_operation_id -cne $canonicalOperationId -or
         $CurrentSha256 -cnotmatch '^[0-9a-f]{64}$' -or
         [string]$Receipt.preparation_stage -cnotin @(
-            "files_may_have_been_replaced", "install_completed"
+            "files_may_have_been_replaced",
+            "install_cleanup_pending",
+            "install_completed"
         )
     ) {
         throw "安装事务只能绑定唯一 database generation CURRENT；拒绝双 READY authority。"
@@ -1751,7 +1773,7 @@ function Set-TicketboxLifecycleReceiptFilesMayHaveBeenReplaced {
     Close-TicketboxLifecycleBackupGuard $Receipt
 }
 
-function Set-TicketboxLifecycleReceiptInstallCompleted {
+function Set-TicketboxLifecycleReceiptInstallCleanupPending {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][object]$Receipt,
@@ -1759,6 +1781,42 @@ function Set-TicketboxLifecycleReceiptInstallCompleted {
     )
 
     Assert-TicketboxLifecycleReceiptStage $Receipt "files_may_have_been_replaced"
+    Write-TicketboxLifecycleReceipt `
+        -Path $Path `
+        -Mode ([string]$Receipt.mode) `
+        -InstallDir ([string]$Receipt.install_dir) `
+        -DataRoot ([string]$Receipt.data_root) `
+        -PgPort ([int]$Receipt.pg_port) `
+        -BackendPort ([int]$Receipt.backend_port) `
+        -InstalledReleaseConfig $Receipt.installed_release_config `
+        -TargetBackendVersionFloor ([string]$Receipt.target_backend_version_floor) `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId `
+        -PreviousPgState ([string]$Receipt.previous_pg_state) `
+        -PreviousBackendState ([string]$Receipt.previous_backend_state) `
+        -PreviousPgStartPolicy ([string]$Receipt.previous_pg_start_policy) `
+        -PreviousBackendStartPolicy ([string]$Receipt.previous_backend_start_policy) `
+        -BackupRequired ([bool]$Receipt.backup_required) `
+        -BackupCompleted ([bool]$Receipt.backup_completed) `
+        -PreparationStage "install_cleanup_pending" `
+        -BackupPath ([string]$Receipt.backup_path) `
+        -BackupSha256 ([string]$Receipt.backup_sha256) `
+        -BackupByteLength ([long]$Receipt.backup_byte_length) `
+        -FilesMayHaveBeenReplaced ([bool]$Receipt.files_may_have_been_replaced) `
+        -InstallCompleted $false `
+        -DatabaseGenerationOperationId ([string]$Receipt.database_generation_operation_id) `
+        -DatabaseGenerationCurrentSha256 ([string]$Receipt.database_generation_current_sha256) `
+        -ReplaceProtectedReceipt
+    Close-TicketboxLifecycleBackupGuard $Receipt
+}
+
+function Set-TicketboxLifecycleReceiptInstallCompleted {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Receipt,
+        [Parameter(Mandatory = $true)][int]$InstallerOwnerProcessId
+    )
+
+    Assert-TicketboxLifecycleReceiptStage $Receipt "install_cleanup_pending"
     Write-TicketboxLifecycleReceipt `
         -Path $Path `
         -Mode ([string]$Receipt.mode) `
@@ -2121,11 +2179,16 @@ function Complete-TicketboxInstalledLifecycleTransaction {
         -InstallerOwnerProcessId $InstallerOwnerProcessId
     if ([string]$receipt.preparation_stage -notin @(
         "files_may_have_been_replaced",
+        "install_cleanup_pending",
         "install_completed"
     )) {
         throw "安装提交阶段不允许从当前回执继续：$($receipt.preparation_stage)。"
     }
     Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent $receipt
+    if ([string]$receipt.preparation_stage -eq "install_completed") {
+        Assert-TicketboxCompletedLifecycleReceipt $receipt
+        return
+    }
     if ([string]$receipt.preparation_stage -eq "files_may_have_been_replaced") {
         $generationStateRoot = Get-TicketboxDatabaseGenerationStateRoot (
             Get-TicketboxInstallerStateDirectory
@@ -2202,7 +2265,7 @@ function Complete-TicketboxInstalledLifecycleTransaction {
             [string]$receipt.database_generation_operation_id
         ) | Out-Null
     if ([string]$receipt.preparation_stage -eq "files_may_have_been_replaced") {
-        Set-TicketboxLifecycleReceiptInstallCompleted `
+        Set-TicketboxLifecycleReceiptInstallCleanupPending `
             -Path $Path `
             -Receipt $receipt `
             -InstallerOwnerProcessId $InstallerOwnerProcessId
@@ -2216,7 +2279,9 @@ function Complete-TicketboxInstalledLifecycleTransaction {
             -CurrentTargetBackendVersion $TargetBackendVersion `
             -InstallerOwnerProcessId $InstallerOwnerProcessId
     }
-    Assert-TicketboxCompletedLifecycleReceipt $receipt
+    if ([string]$receipt.preparation_stage -ne "install_cleanup_pending") {
+        throw "安装清理只能由 durable cleanup-pending 阶段授权。"
+    }
     Remove-TicketboxDatabaseGenerationTargetRecoveryArchive `
         -StateRoot (Get-TicketboxDatabaseGenerationStateRoot (
             Get-TicketboxInstallerStateDirectory
@@ -2239,6 +2304,21 @@ function Complete-TicketboxInstalledLifecycleTransaction {
         -InstallDir $InstallDir `
         -DataRoot $DataRoot `
         -BackendServiceName ([string]$TargetReleaseConfig.backend_service_name)
+    Set-TicketboxLifecycleReceiptInstallCompleted `
+        -Path $Path `
+        -Receipt $receipt `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId
+    $receipt = Read-TicketboxLifecycleReceipt `
+        -Path $Path `
+        -InstallDir $InstallDir `
+        -DataRoot $DataRoot `
+        -PgPort $PgPort `
+        -BackendPort $BackendPort `
+        -TargetReleaseConfig $TargetReleaseConfig `
+        -CurrentTargetBackendVersion $TargetBackendVersion `
+        -InstallerOwnerProcessId $InstallerOwnerProcessId
+    Assert-TicketboxCompletedLifecycleReceipt $receipt
+    Close-TicketboxLifecycleBackupGuard $receipt
 }
 
 function Set-TicketboxLifecycleReceiptInstallerOwner {
@@ -2253,6 +2333,7 @@ function Set-TicketboxLifecycleReceiptInstallerOwner {
         "program_files_installed_backup_pending",
         "prepared",
         "files_may_have_been_replaced",
+        "install_cleanup_pending",
         "install_completed"
     )) {
         throw "只能为可恢复安装阶段重绑当前安装器进程。"

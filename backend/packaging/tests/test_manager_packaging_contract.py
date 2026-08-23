@@ -93,7 +93,10 @@ def test_inno_replaces_each_immutable_payload_directory_before_copy() -> None:
             "Check: AuthoritativePayloadReplacementPrepared"
         ) in installer
     assert "function AuthoritativePayloadReplacementPrepared(): Boolean;" in flow
-    assert "Result := LifecyclePrepared;" in flow
+    assert (
+        "Result := LifecyclePrepared and\n"
+        "    (not LifecycleExistingOperationCompleted);"
+    ) in flow
 
 
 def test_windows_release_lanes_build_manager_before_inno() -> None:

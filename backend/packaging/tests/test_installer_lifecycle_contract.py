@@ -341,12 +341,17 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         "install_bundled_services.ps1",
         "uninstall_bundled_services.ps1",
     )
+    payload_check = "; Check: AuthoritativePayloadReplacementPrepared"
     for name in installed_dependencies:
-        assert f'Source: "{name}"; DestDir: "{{app}}\\installer"; Flags: ignoreversion' in active_installer_lines
+        assert (
+            f'Source: "{name}"; DestDir: "{{app}}\\installer"; '
+            f'Flags: ignoreversion{payload_check}'
+        ) in active_installer_lines
     for name in security_components:
         assert (
             f'Source: "security_primitives\\{name}"; '
-            'DestDir: "{app}\\installer\\security_primitives"; Flags: ignoreversion' in active_installer_lines
+            'DestDir: "{app}\\installer\\security_primitives"; '
+            f'Flags: ignoreversion{payload_check}' in active_installer_lines
         )
     for source_path in (
         r"atomic_artifacts\native.ps1",
@@ -354,14 +359,16 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         r"atomic_artifacts\directory.ps1",
     ):
         assert (
-            f'Source: "{source_path}"; DestDir: "{{app}}\\installer\\atomic_artifacts"; Flags: ignoreversion'
+            f'Source: "{source_path}"; DestDir: "{{app}}\\installer\\atomic_artifacts"; '
+            f'Flags: ignoreversion{payload_check}'
         ) in active_installer_lines
     assert (
         'Source: "..\\scripts\\windows_build_provenance.ps1"; DestName: "windows_build_provenance.ps1"; Flags: dontcopy noencryption'
         in active_installer_lines
     )
     assert (
-        'Source: "..\\scripts\\windows_build_provenance.ps1"; DestDir: "{app}\\installer"; DestName: "windows_build_provenance.ps1"; Flags: ignoreversion'
+        'Source: "..\\scripts\\windows_build_provenance.ps1"; DestDir: "{app}\\installer"; '
+        f'DestName: "windows_build_provenance.ps1"; Flags: ignoreversion{payload_check}'
         in active_installer_lines
     )
     assert (
@@ -369,7 +376,8 @@ def test_inno_runs_preflight_before_copy_and_skips_late_duplicate_backup() -> No
         in active_installer_lines
     )
     assert (
-        'Source: "..\\scripts\\windows_backend_build_provenance.ps1"; DestDir: "{app}\\installer"; DestName: "windows_backend_build_provenance.ps1"; Flags: ignoreversion'
+        'Source: "..\\scripts\\windows_backend_build_provenance.ps1"; DestDir: "{app}\\installer"; '
+        f'DestName: "windows_backend_build_provenance.ps1"; Flags: ignoreversion{payload_check}'
         in active_installer_lines
     )
     assert installer.index("'windows_build_provenance.ps1',") < installer.index(
@@ -1144,9 +1152,10 @@ def test_programdata_identity_is_the_locked_fail_closed_version_floor() -> None:
     ]
     ready_artifact_guard = transaction.index("Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent")
     persist_identity = transaction.index("Promote-TicketboxPendingInstallationIdentity")
+    cleanup_authority = transaction.index("Set-TicketboxLifecycleReceiptInstallCleanupPending")
     commit_receipt = transaction.index("Set-TicketboxLifecycleReceiptInstallCompleted")
     retire_latch = transaction.index("Remove-TicketboxInstallerRecoveryMarker")
-    assert ready_artifact_guard < persist_identity < commit_receipt < retire_latch
+    assert ready_artifact_guard < persist_identity < cleanup_authority < retire_latch < commit_receipt
     lifecycle_current_guard = receipt[
         receipt.index("function Assert-TicketboxLifecycleReceiptBoundDatabaseGenerationCurrent") : receipt.index(
             "function Read-TicketboxUninstallLifecycleReceipt"
@@ -1356,11 +1365,13 @@ def test_installer_never_bundles_local_runtime_data() -> None:
         'Source: "..\\dist\\ticketbox-backend\\DATABASE_GENERATION_PROGRAM.json"; '
         'DestName: "DATABASE_GENERATION_PROGRAM.json"; Flags: dontcopy noencryption',
         'Source: "..\\dist\\ticketbox-backend\\DATABASE_GENERATION_PROGRAM.json"; '
-        'DestDir: "{app}\\program\\ticketbox-backend"; Flags: ignoreversion',
+        'DestDir: "{app}\\program\\ticketbox-backend"; Flags: ignoreversion; '
+        'Check: AuthoritativePayloadReplacementPrepared',
         'Source: "..\\dist\\ticketbox-backend\\*"; '
         'DestDir: "{app}\\program\\ticketbox-backend"; '
         'Excludes: "ticketbox-data\\*,DATABASE_GENERATION_PROGRAM.json"; '
-        "Flags: ignoreversion recursesubdirs createallsubdirs",
+        "Flags: ignoreversion recursesubdirs createallsubdirs; "
+        "Check: AuthoritativePayloadReplacementPrepared",
     )
 
 
@@ -2461,12 +2472,14 @@ def test_inno_acl_and_post_child_failure_compensation_mutations() -> None:
     runner = windows[
         windows.index("function RunPowerShellChecked") : windows.index("function StartDataRootMutationGuard")
     ]
-    child_success = runner.index("LastPowerShellChildSucceeded := ResultCode = 0")
+    committed_outcome = runner.index("LastPowerShellExistingOperationCompleted :=")
+    child_success = runner.index("LastPowerShellChildSucceeded :=", committed_outcome)
     post_child_hardening = runner.index("if not HardenLifecycleLockPath(LogPath, False)")
-    result_failure = runner.index("if ResultCode <> 0")
+    result_failure = runner.index("if (ResultCode <> 0) and")
     commit_branch = runner.index("if CompareText(Context, 'Ticketbox installer lifecycle commit') = 0")
     service_success = runner.rindex("if CompareText(Context, 'Ticketbox service installation') = 0")
-    assert child_success < post_child_hardening < result_failure < commit_branch < service_success
+    assert committed_outcome < child_success < post_child_hardening < result_failure < commit_branch < service_success
+    assert "IsGenerationIntentStep and" in runner[committed_outcome:child_success]
     assert "Result := False;" in runner[post_child_hardening:result_failure]
     assert "Result := True;" in runner[service_success:]
 

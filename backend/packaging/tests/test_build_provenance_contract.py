@@ -79,7 +79,11 @@ def _assert_shawl_legal_evidence_chain(
         legal["notice_sha256"],
     ):
         assert isinstance(value, str) and value
-    expected_entry = f'Source: "vendor\\shawl\\{legal["notice_name"]}"; DestDir: "{{app}}\\shawl"; Flags: ignoreversion'
+    expected_entry = (
+        f'Source: "vendor\\shawl\\{legal["notice_name"]}"; '
+        'DestDir: "{app}\\shawl"; Flags: ignoreversion; '
+        'Check: AuthoritativePayloadReplacementPrepared'
+    )
     assert [line.strip() for line in installer.splitlines() if str(legal["notice_name"]) in line] == [expected_entry]
 
 
