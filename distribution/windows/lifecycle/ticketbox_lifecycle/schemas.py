@@ -62,6 +62,9 @@ class HostObservation:
     active_phase: DurablePhase | None
     program_files_present: bool
     data_root_present: bool
+    pgdata_present: bool = False
+    pg_service_present: bool = False
+    backend_service_present: bool = False
 
 
 @dataclass(frozen=True)

@@ -30,6 +30,22 @@ _OWNER_RECOVERY_CHANNEL_PATTERN = re.compile(r"managed_host\Z")
 _RELEASE_CONFIG_SCHEMA = "ticketbox-windows-release-v2"
 _MAX_RELEASE_CONFIG_BYTES = 64 * 1024
 _INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
+_INSTALLATION_BINDING_SCHEMA = "ticketbox-installed-instance-v1"
+_VNEXT_RELEASE_DEFAULTS = {
+    "service_state_timeout_ms": 60_000,
+    "service_poll_interval_ms": 250,
+    "postgres_ready_timeout_ms": 90_000,
+    "backend_ready_timeout_ms": 120_000,
+    "backend_ready_poll_interval_ms": 1_000,
+    "backend_health_request_timeout_ms": 2_000,
+    "database_tool_timeout_ms": 600_000,
+    "dataset_backup_helper_timeout_ms": 1_800_000,
+    "dataset_restore_helper_timeout_ms": 3_600_000,
+    "dataset_payload_verification_timeout_ms": 1_800_000,
+    "complete_dataset_cleanup_reserve_ms": 3_600_000,
+    "complete_dataset_backup_timeout_ms": 5_400_000,
+    "complete_dataset_restore_timeout_ms": 57_600_000,
+}
 
 
 class InstallationConfigError(RuntimeError):
@@ -57,6 +73,7 @@ class InstalledLayout:
     backend_service_name: str
     pg_service_name: str
     backend_version: str
+    authority: str = "registry"
 
     @property
     def app_data_dir(self) -> Path:
@@ -294,7 +311,15 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
 
 def load_installed_release_config(layout: InstalledLayout) -> WindowsReleaseConfig:
     try:
-        return _load_installed_release_config(layout)
+        if layout.release_config_path.is_file():
+            return _load_installed_release_config(layout)
+        if layout.authority == "binding":
+            return WindowsReleaseConfig(
+                backend_service_name=layout.backend_service_name,
+                pg_service_name=layout.pg_service_name,
+                **_VNEXT_RELEASE_DEFAULTS,
+            )
+        raise InstallationConfigError(f"缺少或拒绝过大的 Windows release config：{layout.release_config_path}")
     except InstallationConfigError as exc:
         raise InstallationConfigError(str(exc), code="release_contract_invalid") from exc
 
@@ -361,13 +386,70 @@ def _read_registry_values() -> dict[str, str] | None:
     return values
 
 
+def parse_installed_binding(
+    payload: Mapping[str, object],
+    registry_values: Mapping[str, str],
+) -> InstalledLayout:
+    install_dir = str(registry_values.get("InstallDir") or "").strip()
+    if not install_dir:
+        raise InstallationConfigError("installation.json 存在，但缺少 InstallDir 定位。")
+    required = (
+        "data_root",
+        "active_release_id",
+        "pg_service_name",
+        "backend_service_name",
+        "pg_port",
+        "backend_port",
+    )
+    missing = [name for name in required if payload.get(name) in (None, "")]
+    if missing:
+        raise InstallationConfigError(f"installation.json 不完整，缺少：{', '.join(missing)}")
+    if payload.get("schema") != _INSTALLATION_BINDING_SCHEMA:
+        raise InstallationConfigError("installation.json schema 不是 ticketbox-installed-instance-v1")
+    return InstalledLayout(
+        install_dir=Path(install_dir).resolve(),
+        data_root=Path(str(payload["data_root"])).resolve(),
+        backend_port=_parse_port(str(payload["backend_port"]), "backend_port"),
+        pg_port=_parse_port(str(payload["pg_port"]), "pg_port"),
+        backend_service_name=_parse_service_name(str(payload["backend_service_name"]), "backend_service_name"),
+        pg_service_name=_parse_service_name(str(payload["pg_service_name"]), "pg_service_name"),
+        backend_version=_parse_backend_version(str(payload["active_release_id"])),
+        authority="binding",
+    )
+
+
+def _installation_binding_path() -> Path:
+    program_data = Path(os.environ.get("PROGRAMDATA") or r"C:\ProgramData")
+    return program_data / "Ticketbox" / "machine" / "installation.json"
+
+
+def _read_installation_binding() -> dict[str, object] | None:
+    path = _installation_binding_path()
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise InstallationConfigError(f"无法读取 installation.json：{path}") from exc
+    if not isinstance(payload, dict):
+        raise InstallationConfigError("installation.json 顶层必须是 JSON object。")
+    return payload
+
+
 def discover_installed_layout() -> InstalledLayout | None:
     """Return the installed layout, or ``None`` when Ticketbox is not installed."""
     try:
-        values = _read_registry_values()
-        return parse_installed_layout(values) if values is not None else None
+        binding = _read_installation_binding()
     except InstallationConfigError as exc:
-        raise InstallationConfigError(str(exc), code="registry_contract_invalid") from exc
+        raise InstallationConfigError(str(exc), code="installed_binding_invalid") from exc
+    try:
+        registry = _read_registry_values()
+        if binding is not None:
+            return parse_installed_binding(binding, registry or {})
+        return parse_installed_layout(registry) if registry is not None else None
+    except InstallationConfigError as exc:
+        code = "installed_binding_invalid" if binding is not None else "registry_contract_invalid"
+        raise InstallationConfigError(str(exc), code=code) from exc
 
 
 def _windows_powershell_path() -> Path:

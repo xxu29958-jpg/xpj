@@ -4,6 +4,11 @@ import os
 from pathlib import Path
 
 from ticketbox_lifecycle.errors import LifecycleError
+from ticketbox_lifecycle.policy.postgres_roles import (
+    expected_membership_probe,
+    expected_roles_probe,
+    verify_alembic_version_sql,
+)
 from ticketbox_lifecycle.runtime.command import CompletedCommand
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
@@ -15,6 +20,7 @@ class RecordingRunner:
         self.envs: list[dict[str, str] | None] = []
         self.inputs: list[str | None] = []
         self.services: set[str] = set()
+        self.image_paths: dict[str, str] = {}
 
     def run(
         self,
@@ -36,16 +42,39 @@ class RecordingRunner:
             (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
             return CompletedCommand(recorded, 0, "ok", "")
         if name == "pg_ctl.exe" and "register" in recorded:
-            self.services.add(recorded[recorded.index("-N") + 1])
+            service = recorded[recorded.index("-N") + 1]
+            self.services.add(service)
+            self.image_paths[service] = recorded[0]
             return CompletedCommand(recorded, 0, "", "")
         if name == "shawl.exe" and "add" in recorded:
-            self.services.add(recorded[recorded.index("--name") + 1])
+            service = recorded[recorded.index("--name") + 1]
+            self.services.add(service)
+            self.image_paths[service] = recorded[-1]
             return CompletedCommand(recorded, 0, "", "")
         if name == "sc.exe" and recorded[1] == "query":
             service = recorded[2]
             if service in self.services:
                 return CompletedCommand(recorded, 0, "STATE              : 4  RUNNING", "")
             return CompletedCommand(recorded, 1060, "specified service does not exist", "")
+        if name == "sc.exe" and recorded[1] == "qc":
+            service = recorded[2]
+            if service not in self.services:
+                return CompletedCommand(recorded, 1060, "specified service does not exist", "")
+            return CompletedCommand(
+                recorded,
+                0,
+                f"BINARY_PATH_NAME   : {self.image_paths.get(service, 'unknown')}",
+                "",
+            )
+        if name == "psql.exe" and "datname = 'ticketbox'" in recorded[-1]:
+            created = any("CREATE DATABASE ticketbox OWNER ticketbox_owner" in " ".join(call) for call in self.calls)
+            return CompletedCommand(recorded, 0, "1\n" if created else "", "")
+        if name == "psql.exe" and "dataset_id FROM dataset_authority" in recorded[-1]:
+            return CompletedCommand(recorded, 0, "22222222-2222-4222-8222-222222222222", "")
+        if name == "psql.exe" and "pg_auth_members" in recorded[-1]:
+            return CompletedCommand(recorded, 0, expected_membership_probe() + "\n", "")
+        if name == "psql.exe" and "rolname || ':'" in recorded[-1]:
+            return CompletedCommand(recorded, 0, expected_roles_probe() + "\n", "")
         if name == "psql.exe" and "pg_roles" in recorded[-1]:
             return CompletedCommand(recorded, 0, "1", "")
         if name == "psql.exe" and "pg_database" in recorded[-1]:
@@ -81,7 +110,21 @@ class RecordingRunner:
                 for call in self.calls
             )
             if protected:
-                return CompletedCommand(recorded, 0, f"{recorded[1]} *S-1-5-21-1-2-3-1001:(F)\n*S-1-5-18:(F)\n*S-1-5-32-544:(F)\n", "")
+                backend_grant = any(
+                    call
+                    and call[0].lower() == "icacls"
+                    and "/grant" in call
+                    and any("TicketboxBackend:(R)" in part for part in call)
+                    and any(os.path.normcase(os.path.abspath(part)) == target for part in call[1:])
+                    for call in self.calls
+                )
+                extra = " NT SERVICE\\TicketboxBackend:(R)\n" if backend_grant else ""
+                return CompletedCommand(
+                    recorded,
+                    0,
+                    f"{recorded[1]} *S-1-5-21-1-2-3-1001:(F)\n*S-1-5-18:(F)\n*S-1-5-32-544:(F)\n{extra}",
+                    "",
+                )
             return CompletedCommand(
                 recorded,
                 0,
@@ -190,6 +233,9 @@ def test_register_uses_pg_ctl_local_service_sid_and_stable_launcher(tmp_path: Pa
     register = next(call for call in runner.calls if call[0].endswith("pg_ctl.exe") and "register" in call)
     assert "-o" not in register
     assert "shawl.exe" in text and "add" in text
+    shawl_add = next(call for call in runner.calls if call[0].endswith("shawl.exe") and "add" in call)
+    cwd = shawl_add[shawl_add.index("--cwd") + 1]
+    assert not cwd.startswith("\\\\?\\")
     assert any(
         call[:3] == ("sc.exe", "config", "TicketboxBackend") and "start=" in call and "auto" in call
         for call in runner.calls
@@ -204,6 +250,8 @@ def test_register_uses_pg_ctl_local_service_sid_and_stable_launcher(tmp_path: Pa
         call[0] == "icacls" and "/remove:g" in call and "NT SERVICE\\TicketboxBackend" in call
         for call in runner.calls
     )
+    assert "NT SERVICE\\TicketboxBackend:(R)" in text
+    assert "backend.env" in text
     bundle.scm.verify(request, "scm")
     assert "TicketboxBackendLauncher.exe" in text
     assert "ticketbox-backend.exe" not in text.lower()
@@ -232,12 +280,17 @@ def test_alembic_helper_uses_fresh_switch_without_password_or_generation_program
     assert "--generation-program-path" not in helper
     assert "--managed-schema-upgrade" not in helper
     url = helper[helper.index("--database-url") + 1]
+    assert "ticketbox_migrator@" in url
     assert "ticketbox:" not in url.split("@", 1)[0]
     assert runner.inputs[-1] == ""
     env = runner.envs[-1]
     assert env is not None
     assert env["PGPASSFILE"].endswith("pgpass")
     assert not any(key.upper().startswith("PG") and key.upper() != "PGPASSFILE" for key in env)
+    bundle.alembic.verify(request, "alembic")
+    probe = next(call for call in runner.calls if call[0].endswith("psql.exe") and "alembic_version" in call[-1])
+    assert probe[-1] == verify_alembic_version_sql()
+    assert "SET ROLE ticketbox_owner" in probe[-1]
 
 
 def test_binding_read_acl_grants_backend_service(tmp_path: Path) -> None:
@@ -265,4 +318,27 @@ def test_files_adapter_materializes_secrets_without_platform_commands(tmp_path: 
     secrets = Path(request.program_data_root) / "machine" / "secrets"
     assert (secrets / "postgres.pwfile").is_file()
     assert (secrets / "pgpass").is_file()
-    assert (Path(request.data_root) / "app" / ".env").is_file()
+    assert (secrets / "backend.env").is_file()
+    assert (secrets / "ticketbox_runtime.password").is_file()
+    assert (secrets / "ticketbox_migrator.password").is_file()
+    assert not (Path(request.data_root) / "app" / ".env").is_file()
+    env_text = (secrets / "backend.env").read_text(encoding="utf-8")
+    assert "ticketbox_runtime" in env_text
+    assert "ticketbox_migrator" not in env_text.split("DATABASE_URL", 1)[1].splitlines()[0]
+
+
+def test_roles_adapter_creates_owner_migrator_runtime(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.postgres.apply(request, "roles_database")
+    bundle.postgres.verify(request, "roles_database")
+    text = _argv_text(runner.calls)
+    assert "CREATE ROLE ticketbox_owner NOLOGIN" in text
+    assert "CREATE ROLE ticketbox_migrator LOGIN" in text
+    assert "CREATE ROLE ticketbox_runtime LOGIN" in text
+    assert "GRANT ticketbox_owner TO ticketbox_migrator WITH INHERIT FALSE, SET TRUE" in text
+    assert "CREATE DATABASE ticketbox OWNER ticketbox_owner" in text
+    assert "ticketbox_runtime" in text
+    assert "ALTER DEFAULT PRIVILEGES FOR ROLE ticketbox_owner" in text

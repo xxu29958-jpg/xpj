@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
-from ticketbox_lifecycle.domain.install import LifecycleStores, inspect_machine, install_or_resume
+from ticketbox_lifecycle.domain.install import inspect_machine, install_or_resume
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, RESULT_SCHEMA, CommandResult, InstallRequest
@@ -17,12 +19,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--request", required=True)
     parser.add_argument("--result", required=True)
     args = parser.parse_args(argv)
-    request_path = Path(args.request)
     result_path = Path(args.result)
-    payload = json.loads(request_path.read_text(encoding="utf-8"))
-    request = _parse_request(payload, command=args.command)
-    stores = FilesystemStores.from_request(request)
+    operation_id = "unknown"
     try:
+        payload = json.loads(Path(args.request).read_text(encoding="utf-8"))
+        operation_id = str(payload.get("operation_id") or "unknown")
+        _write_result(
+            result_path,
+            CommandResult(
+                schema=RESULT_SCHEMA,
+                ok=False,
+                command=args.command,
+                operation_id=operation_id,
+                phase="prepared",
+                code="running",
+                message="lifecycle started",
+                installation_published=False,
+            ),
+        )
+        request = _parse_request(payload, command=args.command)
+        operation_id = request.operation_id
+        stores = FilesystemStores.from_request(request)
         if args.command == "inspect":
             result = inspect_machine(stores.as_lifecycle_stores(), request)
         else:
@@ -32,15 +49,41 @@ def main(argv: list[str] | None = None) -> int:
             schema=RESULT_SCHEMA,
             ok=False,
             command=args.command,
-            operation_id=request.operation_id,
+            operation_id=operation_id,
             phase="failed_recoverable",
             code=exc.code,
             message=exc.message,
             installation_published=False,
         )
-    result_path.parent.mkdir(parents=True, exist_ok=True)
-    result_path.write_text(json.dumps(asdict(result), indent=2) + "\n", encoding="utf-8")
+    except Exception as exc:
+        result = CommandResult(
+            schema=RESULT_SCHEMA,
+            ok=False,
+            command=args.command,
+            operation_id=operation_id,
+            phase="failed_recoverable",
+            code="unhandled",
+            message=str(exc),
+            installation_published=False,
+        )
+    _write_result(result_path, result)
     return 0 if result.ok else 2
+
+
+def _write_result(path: Path, result: CommandResult) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(asdict(result), indent=2) + "\n"
+    fd, tmp_name = tempfile.mkstemp(prefix=path.name, suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
 
 
 def _parse_request(payload: dict[str, object], *, command: str) -> InstallRequest:

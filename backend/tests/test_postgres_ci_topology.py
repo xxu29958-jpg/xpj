@@ -353,10 +353,11 @@ def _assert_smoke_test_process_boundary() -> None:
 
 def _assert_windows_lifecycle_matrix(
     jobs: dict[str, object],
-    windows_jobs: tuple[str, str, str],
+    windows_jobs: tuple[str, ...],
 ) -> None:
     assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [
         "${{ matrix.suite.timeout_minutes }}",
+        15,
         30,
         5,
     ]
@@ -381,9 +382,10 @@ def _assert_windows_lifecycle_matrix(
         "fail-fast": False,
         "matrix": {"suite": expected_windows_suites},
     }
-    assert jobs["windows_packaging"]["needs"] == ["scope", *windows_jobs[:2]]
+    assert jobs["windows_packaging"]["needs"] == ["scope", *windows_jobs[:3]]
     windows_environment = _steps(jobs["windows_packaging"])["Enforce Windows release lane results"]["env"]
     assert windows_environment["LIFECYCLE_RESULT"] == "${{ needs.windows_packaging_lifecycle.result }}"
+    assert windows_environment["VNEXT_RESULT"] == "${{ needs.windows_vnext_lifecycle.result }}"
     assert windows_environment["BUILD_RESULT"] == "${{ needs.windows_packaging_build.result }}"
     maintenance = _steps(jobs["windows_packaging_build"])["Windows database maintenance contract"]["run"]
     assert "tests/test_dataset_originals_file_identity.py" in maintenance
@@ -401,7 +403,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
         _steps(scope)["Verify qualification SHA"],
         resolves_audit_base=True,
     )
-    windows_jobs = ("windows_packaging_lifecycle", "windows_packaging_build", "windows_packaging")
+    windows_jobs = ("windows_packaging_lifecycle", "windows_vnext_lifecycle", "windows_packaging_build", "windows_packaging")
     for name in ("backend_contracts", "backend_frozen", *windows_jobs):
         job = jobs[name]
         assert job["outputs"]["qualification_sha"] == "${{ steps.qualification.outputs.sha }}"

@@ -68,11 +68,15 @@ def launch_backend(
         raise RuntimeError(f"active backend is missing: {target}")
     data_dir = Path(str(binding["data_root"])) / "app"
     data_dir.mkdir(parents=True, exist_ok=True)
-    env_file = data_dir / ".env"
-    secret_env = program_data / "Ticketbox" / "machine" / "secrets" / "backend.env"
-    if not env_file.is_file() and secret_env.is_file():
-        env_file.write_bytes(secret_env.read_bytes())
     child_env = dict(environ)
+    secret_env = program_data / "Ticketbox" / "machine" / "secrets" / "backend.env"
+    if secret_env.is_file():
+        for line in secret_env.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            child_env[key] = value
     child_env["TICKETBOX_DATA_DIR"] = str(data_dir)
     child_env.setdefault("TICKETBOX_OWNER_RECOVERY_CHANNEL", "managed_host")
     child_env["TICKETBOX_PORT"] = str(int(binding.get("backend_port") or 8000))

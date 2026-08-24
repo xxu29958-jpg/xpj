@@ -25,7 +25,8 @@ foreach ($token in @(
     if ($text.Contains($token)) { throw "ISS still names retired owner $token" }
 }
 if ($text -notmatch 'PrepareToInstall') { throw 'ISS missing PrepareToInstall' }
-if ($text -notmatch 'TicketboxLifecycle.exe') { throw 'ISS must [Run] TicketboxLifecycle.exe' }
+if ($text -notmatch 'TicketboxLifecycle.exe') { throw 'ISS must invoke TicketboxLifecycle.exe' }
+if ($text -match '(?m)^\s*\[Run\]\s*$') { throw 'ISS must not use [Run]; AfterInstall Exec must own Setup failure' }
 if ($text -notmatch 'TicketboxBackendLauncher.exe') { throw 'ISS must ship TicketboxBackendLauncher.exe' }
 if ($text -notmatch 'PrivilegesRequired=admin') { throw 'ISS must require UAC' }
 

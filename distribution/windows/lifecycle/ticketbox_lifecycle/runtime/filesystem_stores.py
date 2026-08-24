@@ -10,7 +10,7 @@ from ticketbox_lifecycle.adapters.ports import AdapterBundle
 from ticketbox_lifecycle.domain.install import LifecycleStores
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.mutex import os_mutex
-from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
+from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle, service_registered
 from ticketbox_lifecycle.schemas import (
     INSTALLATION_SCHEMA,
     OPERATION_SCHEMA,
@@ -50,6 +50,7 @@ class FilesystemStores:
     def observe(self, request: InstallRequest) -> HostObservation:
         active = self.read_active()
         binding = self.read()
+        pgdata = Path(request.data_root) / "pgdata" / "PG_VERSION"
         return HostObservation(
             installation_present=binding is not None,
             active_operation_present=active is not None,
@@ -57,6 +58,9 @@ class FilesystemStores:
             active_phase=None if active is None else active.phase,
             program_files_present=Path(request.app_dir).exists(),
             data_root_present=Path(request.data_root).exists(),
+            pgdata_present=pgdata.is_file(),
+            pg_service_present=service_registered(request.pg_service_name),
+            backend_service_present=service_registered(request.backend_service_name),
         )
 
     def read_active(self) -> ActiveOperation | None:

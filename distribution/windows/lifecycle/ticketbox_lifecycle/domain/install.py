@@ -72,21 +72,23 @@ def install_or_resume(stores: LifecycleStores, request: InstallRequest) -> Comma
 
 
 def _install_locked(stores: LifecycleStores, request: InstallRequest) -> CommandResult:
-    if stores.binding_read.read() is not None and request.command == "install":
+    if stores.binding_read.read() is not None:
         raise LifecycleViolation(
             "already_installed",
             "installation.json already exists; refusing a second dataset identity",
         )
+    request = _bind_release_manifest_hash(request)
     observation = stores.observer.observe(request)
     plan = plan_fresh_install(request, observation)
     existing = stores.operations_read.read_active()
+    request_hash = hash_install_identity(request)
     if existing is None:
         schema_revision = request.schema_revision or _schema_revision_from_release(request)
         active = ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=request.operation_id,
             kind="install",
-            request_hash=request.request_hash,
+            request_hash=request_hash,
             target_release_id=request.target_release_id,
             phase="prepared",
             no_return_point=False,
@@ -97,10 +99,20 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
         )
         stores.operations_write.publish_active(active)
     else:
-        if existing.request_hash != request.request_hash:
+        if existing.operation_id != request.operation_id:
+            raise LifecycleViolation(
+                "operation_mismatch",
+                "resume requires the same operation_id",
+            )
+        if existing.request_hash != request_hash:
             raise LifecycleViolation(
                 "request_mismatch",
                 "resume requires the same immutable request hash",
+            )
+        if existing.target_release_id != request.target_release_id:
+            raise LifecycleViolation(
+                "release_mismatch",
+                "resume requires the same target release",
             )
         active = existing
         if active.phase == "committed":
@@ -218,13 +230,48 @@ def hash_request_payload(payload: dict[str, object]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _read_release_manifest(request: InstallRequest) -> dict[str, object]:
-    path = (
+def hash_install_identity(request: InstallRequest) -> str:
+    return hash_request_payload(
+        {
+            "target_release_id": request.target_release_id,
+            "release_manifest_sha256": request.release_manifest_sha256,
+            "app_dir": request.app_dir,
+            "data_root": request.data_root,
+            "program_data_root": request.program_data_root,
+            "pg_service_name": request.pg_service_name,
+            "backend_service_name": request.backend_service_name,
+            "pg_port": request.pg_port,
+            "backend_port": request.backend_port,
+            "postgres_major": request.postgres_major,
+        }
+    )
+
+
+def _release_manifest_path(request: InstallRequest) -> Path:
+    return (
         Path(request.app_dir)
         / "releases"
         / request.target_release_id
         / "release-manifest.json"
     )
+
+
+def _bind_release_manifest_hash(request: InstallRequest) -> InstallRequest:
+    path = _release_manifest_path(request)
+    if not path.is_file() or path.is_symlink():
+        raise LifecycleViolation("missing_release_manifest", "installed release-manifest.json is absent")
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    declared = request.release_manifest_sha256.strip().lower()
+    if declared in {"", "pending"} or declared != actual:
+        raise LifecycleViolation(
+            "release_hash_mismatch",
+            "installed release-manifest.json does not match the request hash",
+        )
+    return replace(request, release_manifest_sha256=actual)
+
+
+def _read_release_manifest(request: InstallRequest) -> dict[str, object]:
+    path = _release_manifest_path(request)
     if not path.is_file():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))

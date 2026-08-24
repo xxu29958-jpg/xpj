@@ -53,3 +53,35 @@ def test_planner_refuses_when_installation_already_exists() -> None:
         raise AssertionError("planner must refuse")
     except LifecycleViolation as exc:
         assert exc.code == "already_installed"
+
+
+def test_planner_refuses_foreign_pgdata_and_scm() -> None:
+    request = _request()
+    pgdata = HostObservation(
+        installation_present=False,
+        active_operation_present=False,
+        active_operation_id=None,
+        active_phase=None,
+        program_files_present=True,
+        data_root_present=True,
+        pgdata_present=True,
+    )
+    try:
+        plan_fresh_install(request, pgdata)
+        raise AssertionError("foreign pgdata must not be adopted")
+    except LifecycleViolation as exc:
+        assert exc.code == "unknown_existing_data"
+    scm = HostObservation(
+        installation_present=False,
+        active_operation_present=False,
+        active_operation_id=None,
+        active_phase=None,
+        program_files_present=True,
+        data_root_present=False,
+        pg_service_present=True,
+    )
+    try:
+        plan_fresh_install(request, scm)
+        raise AssertionError("foreign SCM must not be adopted")
+    except LifecycleViolation as exc:
+        assert exc.code == "scm_collision"

@@ -1,6 +1,6 @@
 # -*- mode: python -*-
 # PyInstaller onefile spec：TicketboxLifecycle coordinator CLI。
-# 这是 vNext 安装器 [Run] 唯一入口（install / resume / inspect）。
+# 这是 vNext 安装器 AfterInstall Exec 唯一入口（install / resume / inspect）。
 import os
 
 spec_dir = os.path.dirname(os.path.abspath(SPEC))

@@ -284,6 +284,44 @@ jobs:
           --strict-markers -p no:cacheprovider -o addopts=
           -n 0 --dist loadfile --max-worker-restart 0
 
+  windows_vnext_lifecycle:
+    name: Windows vNext coordinator contracts
+    needs: scope
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Verify qualification SHA
+        id: qualification
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements-dev.txt
+
+      - name: vNext coordinator contracts
+        run: >-
+          python -m pytest -q distribution/windows/tests
+          --strict-markers -p no:cacheprovider -o addopts=
+
   windows_packaging_build:
     name: Windows installer build
     needs: scope
@@ -540,6 +578,7 @@ jobs:
     needs:
       - scope
       - windows_packaging_lifecycle
+      - windows_vnext_lifecycle
       - windows_packaging_build
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -578,6 +617,9 @@ jobs:
           LIFECYCLE_RESULT: ${{ needs.windows_packaging_lifecycle.result }}
           LIFECYCLE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_sha }}
           LIFECYCLE_SOURCE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_source_sha }}
+          VNEXT_RESULT: ${{ needs.windows_vnext_lifecycle.result }}
+          VNEXT_SHA: ${{ needs.windows_vnext_lifecycle.outputs.qualification_sha }}
+          VNEXT_SOURCE_SHA: ${{ needs.windows_vnext_lifecycle.outputs.qualification_source_sha }}
           BUILD_RESULT: ${{ needs.windows_packaging_build.result }}
           BUILD_SHA: ${{ needs.windows_packaging_build.outputs.qualification_sha }}
           BUILD_SOURCE_SHA: ${{ needs.windows_packaging_build.outputs.qualification_source_sha }}
@@ -586,6 +628,7 @@ jobs:
           --label "Windows release packaging"
           --scope-key WINDOWS_SCOPE
           --lane LIFECYCLE
+          --lane VNEXT
           --lane BUILD
 
   backend:

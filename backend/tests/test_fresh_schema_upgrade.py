@@ -31,7 +31,7 @@ def test_fresh_schema_upgrade_rejects_non_canonical_dataset_id(tmp_path: Path) -
     pgpass.write_text("x\n", encoding="utf-8")
     with pytest.raises(FreshSchemaUpgradeError, match="dataset_id"):
         run_fresh_schema_upgrade_action(
-            database_url="postgresql+psycopg://ticketbox@127.0.0.1:5432/ticketbox?require_auth=scram-sha-256",
+            database_url="postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/ticketbox?require_auth=scram-sha-256",
             pgpassfile=pgpass.resolve(),
             target_revision="20260821_0001",
             dataset_id="AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",

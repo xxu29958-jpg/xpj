@@ -47,25 +47,38 @@ def test_new_tree_does_not_import_old_packaging_owners() -> None:
             assert token not in text, f"{path} still names {token}"
 
 
-def test_iss_prepare_is_readonly_and_run_only_calls_lifecycle() -> None:
+def test_iss_prepare_is_readonly_and_provision_fails_setup_without_committed_result() -> None:
     text = ISS.read_text(encoding="utf-8-sig")
     assert "[Setup]" in text
     assert "PrivilegesRequired=admin" in text
     assert "PrepareToInstall" in text
     assert "TicketboxLifecycle.exe" in text
-    assert "[Run]" in text
-    run_section = text.split("[Run]", 1)[1].split("[", 1)[0]
-    assert "TicketboxLifecycle.exe" in run_section
-    assert "install_bundled_services.ps1" not in run_section
-    assert "powershell" not in run_section.lower()
-    assert "CoCreateGuid@ole32.dll" in text
+    assert not any(line.strip() == "[Run]" for line in text.splitlines())
+    assert "AfterInstall: TicketboxProvision" in text
+    assert "ewWaitUntilTerminated" in text
+    assert "GetCustomSetupExitCode" in text
+    assert "TicketboxResultIsCommitted" in text
+    assert "ResultCode <> 0" in text
+    assert "Observed <> OperationId" in text
+    assert '"ok": false' in text
+    assert "active.json" in text
+    assert "resume" in text
+    assert '"ok": true' in text
+    assert '"phase": "committed"' in text
+    assert "last-result.json" in text
+    assert "topic_runsection" in text
+    assert "topic_scriptevents" in text
+    assert "NotifyAfterInstallEntry" in text
     files_section = text.split("[Files]", 1)[1].split("[", 1)[0]
     assert "TicketboxBackendLauncher.exe" in files_section
     assert "vc_redist.x64.exe" in files_section
     assert "dontcopy" in files_section.lower()
     assert "ExtractTemporaryFile" in text
     assert "VCRUNTIME140.dll" in text
-    assert "vc_redist" not in run_section.lower()
+    assert "install_bundled_services.ps1" not in text
+    assert "powershell" not in text.lower()
+    assert "GetSHA256OfFile" in text
+    assert "release_manifest_sha256" in text
     for token in FORBIDDEN_TOKENS:
         assert token not in text
 

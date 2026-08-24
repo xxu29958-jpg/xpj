@@ -37,6 +37,18 @@ def postgres_pwfile(request: InstallRequest) -> Path:
     return secrets_dir(request) / "postgres.pwfile"
 
 
+def postgres_password_file(request: InstallRequest) -> Path:
+    return secrets_dir(request) / "postgres.password"
+
+
+def migrator_password_file(request: InstallRequest) -> Path:
+    return secrets_dir(request) / "ticketbox_migrator.password"
+
+
+def runtime_password_file(request: InstallRequest) -> Path:
+    return secrets_dir(request) / "ticketbox_runtime.password"
+
+
 def backend_env_file(request: InstallRequest) -> Path:
     return secrets_dir(request) / "backend.env"
 

@@ -12,6 +12,21 @@ def plan_fresh_install(request: InstallRequest, observation: HostObservation) ->
             "already_installed",
             "installation.json already exists; fresh install refuses to overwrite identity",
         )
+    owned = (
+        observation.active_operation_present
+        and observation.active_operation_id == request.operation_id
+    )
+    if not owned:
+        if observation.pgdata_present:
+            raise LifecycleViolation(
+                "unknown_existing_data",
+                "pgdata exists without this operation; refusing to adopt foreign cluster state",
+            )
+        if observation.pg_service_present or observation.backend_service_present:
+            raise LifecycleViolation(
+                "scm_collision",
+                "Ticketbox SCM records exist without this operation",
+            )
     if observation.active_operation_present:
         if observation.active_operation_id != request.operation_id:
             raise LifecycleViolation(

@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from ticketbox_lifecycle.domain.install import hash_request_payload, inspect_machine, install_or_resume
+from ticketbox_lifecycle.domain.install import hash_install_identity, hash_request_payload, inspect_machine, install_or_resume
 from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.schemas import APPLY_SEQUENCE, REQUEST_SCHEMA, InstallRequest
 
@@ -13,11 +13,15 @@ from fakes import MemoryStores, RecordingAdapterBundle
 
 def _request(tmp_path: Path, operation_id: str = "11111111-1111-4111-8111-111111111111") -> InstallRequest:
     app_dir = tmp_path / "app"
-    app_dir.mkdir()
+    release_id = "1.2.0+deadbeef"
+    manifest = app_dir / "releases" / release_id / "release-manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    body = b'{"max_schema_revision":"20260821_0001"}\n'
+    manifest.write_bytes(body)
     payload = {
         "schema": REQUEST_SCHEMA,
         "operation_id": operation_id,
-        "target_release_id": "1.2.0+deadbeef",
+        "target_release_id": release_id,
         "app_dir": str(app_dir),
         "data_root": str(tmp_path / "data"),
         "program_data_root": str(tmp_path / "programdata"),
@@ -26,7 +30,7 @@ def _request(tmp_path: Path, operation_id: str = "11111111-1111-4111-8111-111111
         "pg_port": 5432,
         "backend_port": 8000,
         "postgres_major": 17,
-        "release_manifest_sha256": "a" * 64,
+        "release_manifest_sha256": hashlib.sha256(body).hexdigest(),
     }
     return InstallRequest(
         schema=REQUEST_SCHEMA,
@@ -75,6 +79,8 @@ def test_fresh_install_publishes_active_before_first_adapter_and_binding_last(tm
     assert binding is not None
     assert binding.install_id
     assert binding.dataset_id
+    assert binding.release_manifest_sha256 == request.release_manifest_sha256
+    assert binding.release_manifest_sha256 != "pending"
 
 
 def test_health_failure_does_not_publish_installation(tmp_path: Path) -> None:
@@ -117,6 +123,52 @@ def test_resume_replays_from_postcondition_not_from_memory(tmp_path: Path) -> No
     assert adapters.security.apply_calls == 1
     assert adapters.postgres.applied == ["postgres_initdb", "start_postgres", "roles_database"]
     assert adapters.postgres.apply_calls == 4
+
+
+def test_resume_rejects_different_operation_or_data_root(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.postgres.fail_on = "postgres_initdb"
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    assert install_or_resume(stores.as_lifecycle_stores(), request).ok is False
+    other_op = InstallRequest(**{**request.__dict__, "operation_id": "22222222-2222-4222-8222-222222222222"})
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), other_op)
+        raise AssertionError("different operation_id must not take over")
+    except LifecycleViolation as exc:
+        assert exc.code == "operation_conflict"
+    other_root = InstallRequest(**{**request.__dict__, "data_root": str(tmp_path / "other-data")})
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), other_root)
+        raise AssertionError("different data_root must not resume")
+    except LifecycleViolation as exc:
+        assert exc.code == "request_mismatch"
+
+
+def test_install_identity_hash_ignores_operation_id(tmp_path: Path) -> None:
+    first = _request(tmp_path, "11111111-1111-4111-8111-111111111111")
+    second = _request(tmp_path, "22222222-2222-4222-8222-222222222222")
+    assert hash_install_identity(first) == hash_install_identity(second)
+    moved = InstallRequest(**{**first.__dict__, "data_root": str(tmp_path / "moved")})
+    assert hash_install_identity(first) != hash_install_identity(moved)
+
+
+def test_release_hash_mismatch_refuses_install(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    tampered = InstallRequest(**{**request.__dict__, "release_manifest_sha256": "c" * 64})
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), tampered)
+        raise AssertionError("wrong manifest hash must not install")
+    except LifecycleViolation as exc:
+        assert exc.code == "release_hash_mismatch"
+    pending = InstallRequest(**{**request.__dict__, "release_manifest_sha256": "pending"})
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), pending)
+        raise AssertionError("pending manifest hash must not install")
+    except LifecycleViolation as exc:
+        assert exc.code == "release_hash_mismatch"
 
 
 def test_inspect_does_not_mutate(tmp_path: Path) -> None:

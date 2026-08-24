@@ -24,7 +24,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine, make_url
 from sqlalchemy.pool import NullPool
 
+from app.database._managed_postgres_contract import DATABASE_NAME, MIGRATOR_ROLE, SCHEMA_OWNER_ROLE
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
+from app.database._managed_postgres_role_authority import (
+    ManagedPostgresRoleAuthorityError,
+    assume_managed_postgres_schema_owner,
+)
 from app.database._managed_postgres_url import ManagedPostgresUrlError, validated_local_role_url
 from app.database._postgres_operation_failures import (
     close_postgres_owner_resources,
@@ -41,6 +46,12 @@ _TRANSACTION_TIMEOUT_MS = 20 * 60 * 1000
 
 class FreshSchemaUpgradeError(RuntimeError):
     """The fresh-install schema upgrade could not be proven."""
+
+
+class _FreshRoleContract:
+    database_name = DATABASE_NAME
+    migrator_role = MIGRATOR_ROLE
+    schema_owner_role = SCHEMA_OWNER_ROLE
 
 
 def _backend_root() -> Path:
@@ -196,6 +207,13 @@ def _run_on_connection(
 ) -> str:
     if not connection.in_transaction():
         raise FreshSchemaUpgradeError("fresh schema upgrade requires an active caller transaction")
+    try:
+        assume_managed_postgres_schema_owner(
+            connection,
+            contract=_FreshRoleContract(),
+        )
+    except ManagedPostgresRoleAuthorityError as exc:
+        raise FreshSchemaUpgradeError(str(exc)) from exc
     current = _current_revision(connection)
     if current != target_revision:
         try:
@@ -222,8 +240,8 @@ def _validated_fresh_url(database_url: str):
     try:
         parsed_url = validated_local_role_url(
             database_url,
-            database_name="ticketbox",
-            role="ticketbox",
+            database_name=DATABASE_NAME,
+            role=MIGRATOR_ROLE,
             purpose="fresh schema upgrade",
         )
     except ManagedPostgresUrlError as exc:

@@ -17,6 +17,11 @@ def test_launcher_starts_active_release_with_data_dir(tmp_path: Path) -> None:
     backend.write_text("fake-backend", encoding="utf-8")
     machine = program_data / "Ticketbox" / "machine"
     machine.mkdir(parents=True)
+    (machine / "secrets").mkdir()
+    (machine / "secrets" / "backend.env").write_text(
+        "DATABASE_URL=postgresql+psycopg://ticketbox_runtime:secret@127.0.0.1:5432/ticketbox\n",
+        encoding="utf-8",
+    )
     (machine / "installation.json").write_text(
         json.dumps(
             {
@@ -51,6 +56,8 @@ def test_launcher_starts_active_release_with_data_dir(tmp_path: Path) -> None:
     assert env["TICKETBOX_DATA_DIR"] == str(data_root / "app")
     assert env["TICKETBOX_OWNER_RECOVERY_CHANNEL"] == "managed_host"
     assert env["TICKETBOX_PORT"] == "8000"
+    assert env["DATABASE_URL"].startswith("postgresql+psycopg://ticketbox_runtime:")
+    assert not (data_root / "app" / ".env").exists()
 
 
 def test_launcher_uses_unique_release_before_installation_json(tmp_path: Path) -> None:

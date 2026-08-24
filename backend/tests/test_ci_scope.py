@@ -109,6 +109,10 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
         "windows",
     )
     _assert_path_scopes(
+        ("distribution/windows/installer/ticketbox.iss", "distribution/windows/tests/test_cli.py"),
+        "windows",
+    )
+    _assert_path_scopes(
         ("backend/packaging/windows-release-config.json",),
         "postgres",
         "desktop",

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import secrets
 import tempfile
@@ -7,6 +9,21 @@ import time
 from pathlib import Path
 
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
+from ticketbox_lifecycle.policy.postgres_roles import (
+    DATABASE_NAME,
+    MIGRATOR_ROLE,
+    RUNTIME_ROLE,
+    create_database_sql,
+    database_connect_statements,
+    database_exists_sql,
+    expected_membership_probe,
+    expected_roles_probe,
+    provision_statements,
+    verify_alembic_version_sql,
+    schema_privilege_statements,
+    verify_membership_sql,
+    verify_roles_sql,
+)
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import (
     CommandRunner,
@@ -17,6 +34,17 @@ from ticketbox_lifecycle.runtime.command import (
 )
 from ticketbox_lifecycle.schemas import InstallRequest
 
+_INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
+_CLUSTER_SECRET_NAMES = frozenset(
+    {
+        "postgres.password",
+        "postgres.pwfile",
+        "pgpass",
+        "ticketbox_migrator.password",
+        "ticketbox_runtime.password",
+    }
+)
+_BACKEND_SECRET_NAMES = frozenset({"backend.env"})
 _PG_HBA = """\
 # Ticketbox fresh-install localhost SCRAM only.
 host    all             all             127.0.0.1/32            scram-sha-256
@@ -117,6 +145,9 @@ class _SecurityAdapter:
             code="binding_acl_failed",
         )
 
+    def grant_backend_env_read(self, request: InstallRequest) -> None:
+        _grant_backend_env_read(self._runner, request)
+
     def verify(self, request: InstallRequest, step: str) -> None:
         if step != "acl":
             raise LifecycleViolation("wrong_adapter", "security adapter only owns acl")
@@ -131,11 +162,20 @@ class _SecurityAdapter:
         for secret in secret_files:
             observed = self._runner.run(["icacls", str(secret)])
             text = f"{observed.stdout}\n{observed.stderr}"
-            if observed.returncode != 0 or "(I)" in text.upper():
+            upper = text.upper()
+            if observed.returncode != 0 or "(I)" in upper:
                 raise LifecycleError(
                     "postcondition_missing",
                     "secret ACL is still inherited",
                 )
+            if "BUILTIN\\USERS" in upper or "NT AUTHORITY\\AUTHENTICATED USERS" in upper:
+                raise LifecycleError("secret_acl_too_broad", "secret is readable by ordinary users")
+            backend = f"NT SERVICE\\{request.backend_service_name}".upper()
+            if secret.name in _CLUSTER_SECRET_NAMES and backend in upper:
+                raise LifecycleError("secret_acl_leaked_backend", f"{secret.name} grants TicketboxBackend")
+            if secret.name in _BACKEND_SECRET_NAMES and backend not in upper:
+                # Bearer grant happens after SCM creates the service SID.
+                continue
 
 
 class _PostgresAdapter:
@@ -162,13 +202,15 @@ class _PostgresAdapter:
             self._require_ready(request)
             return
         if step == "roles_database":
-            completed = self._psql(
-                request,
-                "SELECT 1 FROM pg_roles WHERE rolname = 'ticketbox'",
-                database="postgres",
-            )
-            if completed.returncode != 0 or "1" not in completed.stdout:
-                raise LifecycleError("postcondition_missing", "ticketbox role is missing")
+            completed = self._psql(request, verify_roles_sql(), database="postgres")
+            if completed.returncode != 0 or expected_roles_probe() not in completed.stdout.replace("\r\n", "\n"):
+                raise LifecycleError("postcondition_missing", "PostgreSQL three-role probe failed")
+            membership = self._psql(request, verify_membership_sql(), database="postgres")
+            if (
+                membership.returncode != 0
+                or expected_membership_probe() not in membership.stdout.replace("\r\n", "\n")
+            ):
+                raise LifecycleError("postcondition_missing", "ticketbox_migrator cannot SET ROLE owner")
             return
         raise LifecycleViolation("wrong_adapter", f"postgres adapter does not own {step}")
 
@@ -216,34 +258,49 @@ class _PostgresAdapter:
         raise LifecycleError("postgres_not_ready", _postgres_not_ready_message(request, stopped=False))
 
     def _roles(self, request: InstallRequest) -> str:
-        password = layout.secrets_dir(request).joinpath("ticketbox.password").read_text(encoding="utf-8").strip()
-        escaped = password.replace("'", "''")
+        migrator_password = layout.migrator_password_file(request).read_text(encoding="utf-8").strip()
+        runtime_password = layout.runtime_password_file(request).read_text(encoding="utf-8").strip()
+        for sql in provision_statements(
+            migrator_password=migrator_password,
+            runtime_password=runtime_password,
+        ):
+            require_ok(
+                self._psql(request, sql, database="postgres"),
+                code="create_role_failed",
+            )
+        probe = self._psql(request, database_exists_sql(), database="postgres")
+        if probe.returncode != 0 or "1" not in probe.stdout:
+            require_ok(
+                self._psql(request, create_database_sql(), database="postgres"),
+                code="create_database_failed",
+            )
+        for sql in database_connect_statements():
+            require_ok(
+                self._psql(request, sql, database="postgres"),
+                code="database_privilege_failed",
+            )
+        for sql in schema_privilege_statements():
+            require_ok(
+                self._psql(request, sql, database=DATABASE_NAME),
+                code="schema_privilege_failed",
+            )
         require_ok(
             self._psql(
                 request,
-                "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ticketbox') "
-                f"THEN CREATE ROLE ticketbox LOGIN PASSWORD '{escaped}'; END IF; END $$;",
-                database="postgres",
+                "SELECT current_user",
+                database=DATABASE_NAME,
+                user=MIGRATOR_ROLE,
             ),
-            code="create_role_failed",
+            code="migrator_role_connect_failed",
         )
-        probe = self._psql(
-            request,
-            "SELECT 1 FROM pg_database WHERE datname = 'ticketbox'",
-            database="postgres",
-        )
-        if probe.returncode != 0 or "1" not in probe.stdout:
-            require_ok(
-                self._psql(
-                    request,
-                    "CREATE DATABASE ticketbox OWNER ticketbox ENCODING 'UTF8';",
-                    database="postgres",
-                ),
-                code="create_database_failed",
-            )
         require_ok(
-            self._psql(request, "SELECT current_user", database="ticketbox", user="ticketbox"),
-            code="app_role_connect_failed",
+            self._psql(
+                request,
+                "SELECT current_user",
+                database=DATABASE_NAME,
+                user=RUNTIME_ROLE,
+            ),
+            code="runtime_role_connect_failed",
         )
         return "roles-ready"
 
@@ -352,12 +409,12 @@ class _AlembicAdapter:
                 "-p",
                 str(request.pg_port),
                 "-U",
-                "ticketbox",
+                MIGRATOR_ROLE,
                 "-d",
-                "ticketbox",
+                DATABASE_NAME,
                 "-tA",
                 "-c",
-                "SELECT version_num FROM alembic_version",
+                verify_alembic_version_sql(),
             ],
             env=sealed_pg_env(str(layout.pg_passfile(request))),
         )
@@ -383,6 +440,7 @@ class _ScmAdapter:
             self._require_service(request.pg_service_name)
             self._require_service(request.backend_service_name)
             _require_pgdata_exclusive_acl(self._runner, request)
+            _require_backend_env_bearer(self._runner, request)
             return
         if step == "start_services":
             self._require_running(request.backend_service_name)
@@ -393,6 +451,7 @@ class _ScmAdapter:
         pg_ctl = layout.tool(request, "pg_ctl.exe")
         if not pg_ctl.is_file():
             raise LifecycleError("missing_platform_binary", "postgresql/bin/pg_ctl.exe is not installed")
+        self._refuse_foreign_service(request.pg_service_name, str(pg_ctl))
         if not self._service_exists(request.pg_service_name):
             require_ok(
                 self._runner.run(
@@ -416,6 +475,7 @@ class _ScmAdapter:
         launcher = layout.launcher_exe(request)
         if not shawl.is_file() or not launcher.is_file():
             raise LifecycleError("missing_platform_binary", "shawl.exe or TicketboxBackendLauncher.exe is missing")
+        self._refuse_foreign_service(request.backend_service_name, str(launcher))
         if not self._service_exists(request.backend_service_name):
             require_ok(
                 self._runner.run(
@@ -425,9 +485,9 @@ class _ScmAdapter:
                         "--name",
                         request.backend_service_name,
                         "--cwd",
-                        str(launcher.parent),
+                        _win32_service_path(launcher.parent),
                         "--",
-                        str(launcher),
+                        _win32_service_path(launcher),
                     ]
                 ),
                 code="backend_register_failed",
@@ -459,6 +519,7 @@ class _ScmAdapter:
             code="data_root_backend_acl_failed",
         )
         _seal_pgdata_acl(self._runner, request)
+        _grant_backend_env_read(self._runner, request)
         return "registered"
 
     def _start_backend(self, request: InstallRequest) -> str:
@@ -469,6 +530,17 @@ class _ScmAdapter:
                 return "started"
             time.sleep(1)
         raise LifecycleError("backend_not_running", "TicketboxBackend did not reach RUNNING")
+
+    def _refuse_foreign_service(self, name: str, expected_fragment: str) -> None:
+        if not self._service_exists(name):
+            return
+        completed = self._runner.run(["sc.exe", "qc", name])
+        text = f"{completed.stdout}\n{completed.stderr}"
+        if completed.returncode != 0 or expected_fragment.lower() not in text.lower():
+            raise LifecycleViolation(
+                "scm_collision",
+                f"service {name} exists with a foreign ImagePath",
+            )
 
     def _set_identity(self, name: str) -> None:
         require_ok(
@@ -520,6 +592,9 @@ class _ScmAdapter:
 class _DatasetAdapter:
     name = "dataset"
 
+    def __init__(self, runner: CommandRunner) -> None:
+        self._runner = runner
+
     def apply(self, request: InstallRequest, step: str) -> str:
         if step != "health":
             raise LifecycleViolation("wrong_adapter", "dataset adapter only owns health")
@@ -549,9 +624,51 @@ class _DatasetAdapter:
             with urllib.request.urlopen(url, timeout=5) as response:
                 if response.status != 200:
                     raise LifecycleError("health_failed", f"installation health returned {response.status}")
+                payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.URLError as exc:
             raise LifecycleError("health_unreachable", f"installation health is unreachable: {exc}") from exc
+        except (UnicodeError, json.JSONDecodeError, TypeError) as exc:
+            raise LifecycleError("health_identity_mismatch", "installation health is not JSON") from exc
+        if payload.get("contract") != "ticketbox-installation-health-v2" or payload.get("status") != "ok":
+            raise LifecycleError("health_identity_mismatch", "installation health contract is not v2")
+        expected_id = _installation_id_for_app_data(Path(request.data_root) / "app")
+        if payload.get("installation_id") != expected_id:
+            raise LifecycleError(
+                "health_identity_mismatch",
+                "installation health identity does not match this DataRoot",
+            )
+        dataset = self._live_dataset_id(request)
+        if request.dataset_id and dataset != request.dataset_id:
+            raise LifecycleError(
+                "health_identity_mismatch",
+                "live dataset_id does not match this operation",
+            )
         return "healthy"
+
+    def _live_dataset_id(self, request: InstallRequest) -> str:
+        psql = layout.tool(request, "psql.exe")
+        completed = self._runner.run(
+            [
+                str(psql),
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-h",
+                "127.0.0.1",
+                "-p",
+                str(request.pg_port),
+                "-U",
+                RUNTIME_ROLE,
+                "-d",
+                DATABASE_NAME,
+                "-tA",
+                "-c",
+                "SELECT dataset_id FROM dataset_authority WHERE singleton_id = 1",
+            ],
+            env=sealed_pg_env(str(layout.pg_passfile(request))),
+        )
+        if completed.returncode != 0:
+            raise LifecycleError("health_identity_mismatch", "dataset_authority is unreadable")
+        return completed.stdout.strip().splitlines()[0].strip() if completed.stdout.strip() else ""
 
 
 class WindowsAdapterBundle:
@@ -562,12 +679,18 @@ class WindowsAdapterBundle:
         self.postgres = _PostgresAdapter(command_runner)
         self.alembic = _AlembicAdapter(command_runner)
         self.scm = _ScmAdapter(command_runner)
-        self.dataset = _DatasetAdapter()
+        self.dataset = _DatasetAdapter(command_runner)
 
 
 def _require_windows() -> None:
     if os.name != "nt":
         raise LifecycleError("not_windows", "TicketboxLifecycle.exe only mutates a Windows host")
+
+
+def _installation_id_for_app_data(app_data: Path) -> str:
+    canonical = os.path.normcase(str(app_data.resolve())).encode("utf-8")
+    digest = hashlib.sha256(_INSTALLATION_ID_NAMESPACE + canonical).hexdigest()
+    return f"ticketbox-{digest[:32]}"
 
 
 def _current_user_sid(runner: CommandRunner) -> str:
@@ -600,24 +723,61 @@ def _protect_lifecycle_secret(runner: CommandRunner, path: Path) -> None:
     )
 
 
+def _grant_backend_env_read(runner: CommandRunner, request: InstallRequest) -> None:
+    require_ok(
+        runner.run(
+            [
+                "icacls",
+                str(layout.backend_env_file(request)),
+                "/grant",
+                f"NT SERVICE\\{request.backend_service_name}:(R)",
+            ]
+        ),
+        code="backend_env_acl_failed",
+    )
+
+
+def _require_backend_env_bearer(runner: CommandRunner, request: InstallRequest) -> None:
+    env_path = layout.backend_env_file(request)
+    completed = runner.run(["icacls", str(env_path)])
+    text = f"{completed.stdout}\n{completed.stderr}".upper()
+    if completed.returncode != 0:
+        raise LifecycleError("backend_env_acl_verify_failed", "icacls could not read backend.env")
+    if f"NT SERVICE\\{request.backend_service_name}".upper() not in text:
+        raise LifecycleError("backend_env_acl_missing_backend", "backend.env is not readable by TicketboxBackend")
+    for name in _CLUSTER_SECRET_NAMES:
+        secret = layout.secrets_dir(request) / name
+        if not secret.is_file():
+            continue
+        observed = runner.run(["icacls", str(secret)])
+        observed_text = f"{observed.stdout}\n{observed.stderr}".upper()
+        if f"NT SERVICE\\{request.backend_service_name}".upper() in observed_text:
+            raise LifecycleError("secret_acl_leaked_backend", f"{name} grants TicketboxBackend")
+
+
 def _ensure_credentials(request: InstallRequest) -> None:
     secrets_root = layout.secrets_dir(request)
     secrets_root.mkdir(parents=True, exist_ok=True)
-    postgres_password = _read_or_create_secret(secrets_root / "postgres.password")
-    app_password = _read_or_create_secret(secrets_root / "ticketbox.password")
+    postgres_password = _read_or_create_secret(layout.postgres_password_file(request))
+    migrator_password = _read_or_create_secret(layout.migrator_password_file(request))
+    runtime_password = _read_or_create_secret(layout.runtime_password_file(request))
     layout.postgres_pwfile(request).write_text(postgres_password + "\n", encoding="utf-8")
     pass_lines = [
         f"127.0.0.1:{request.pg_port}:*:postgres:{postgres_password}",
-        f"127.0.0.1:{request.pg_port}:ticketbox:ticketbox:{app_password}",
+        f"127.0.0.1:{request.pg_port}:{DATABASE_NAME}:{MIGRATOR_ROLE}:{migrator_password}",
+        f"127.0.0.1:{request.pg_port}:{DATABASE_NAME}:{RUNTIME_ROLE}:{runtime_password}",
         f"localhost:{request.pg_port}:*:postgres:{postgres_password}",
-        f"localhost:{request.pg_port}:ticketbox:ticketbox:{app_password}",
+        f"localhost:{request.pg_port}:{DATABASE_NAME}:{MIGRATOR_ROLE}:{migrator_password}",
+        f"localhost:{request.pg_port}:{DATABASE_NAME}:{RUNTIME_ROLE}:{runtime_password}",
     ]
     layout.pg_passfile(request).write_text("\n".join(pass_lines) + "\n", encoding="utf-8")
     env_path = layout.backend_env_file(request)
+    app_dir = Path(request.data_root) / "app"
+    app_dir.mkdir(parents=True, exist_ok=True)
     env_text = "\n".join(
         [
             f"DATABASE_URL={_app_database_url(request)}",
-            f"TICKETBOX_DATA_DIR={Path(request.data_root) / 'app'}",
+            f"TICKETBOX_DATA_DIR={app_dir}",
             f"HTTP_BOOTSTRAP_SECRET={secrets.token_urlsafe(32)}",
             f"UPLOAD_TOKEN={secrets.token_urlsafe(32)}",
             f"APP_TOKEN={secrets.token_urlsafe(32)}",
@@ -626,11 +786,6 @@ def _ensure_credentials(request: InstallRequest) -> None:
     ) + "\n"
     if not env_path.is_file():
         env_path.write_text(env_text, encoding="utf-8")
-    app_dir = Path(request.data_root) / "app"
-    app_dir.mkdir(parents=True, exist_ok=True)
-    app_env = app_dir / ".env"
-    if not app_env.is_file():
-        app_env.write_text(env_path.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _read_or_create_secret(path: Path) -> str:
@@ -642,18 +797,27 @@ def _read_or_create_secret(path: Path) -> str:
 
 
 def _app_database_url(request: InstallRequest) -> str:
-    password = layout.secrets_dir(request).joinpath("ticketbox.password").read_text(encoding="utf-8").strip()
+    password = layout.runtime_password_file(request).read_text(encoding="utf-8").strip()
     return (
-        f"postgresql+psycopg://ticketbox:{password}@127.0.0.1:{request.pg_port}/ticketbox"
+        f"postgresql+psycopg://{RUNTIME_ROLE}:{password}@127.0.0.1:{request.pg_port}/{DATABASE_NAME}"
         "?require_auth=scram-sha-256"
     )
 
 
 def _maintenance_database_url(request: InstallRequest) -> str:
     return (
-        f"postgresql+psycopg://ticketbox@127.0.0.1:{request.pg_port}/ticketbox"
+        f"postgresql+psycopg://{MIGRATOR_ROLE}@127.0.0.1:{request.pg_port}/{DATABASE_NAME}"
         "?require_auth=scram-sha-256"
     )
+
+
+def _win32_service_path(path: Path) -> str:
+    # CreateProcess lpCurrentDirectory rejects the \\?\ prefix (Win32).
+    text = os.path.abspath(os.fspath(path))
+    prefix = "\\\\?\\"
+    if text.startswith(prefix):
+        return text[len(prefix) :]
+    return text
 
 
 def _start_service(runner: CommandRunner, name: str, *, code: str) -> None:
@@ -662,6 +826,13 @@ def _start_service(runner: CommandRunner, name: str, *, code: str) -> None:
     if completed.returncode == 0 or "1056" in combined or "already been started" in combined.lower():
         return
     require_ok(completed, code=code)
+
+
+def service_registered(name: str) -> bool:
+    if os.name != "nt":
+        return False
+    completed = SubprocessCommandRunner().run(["sc.exe", "query", name])
+    return completed.returncode == 0
 
 
 def _scm_query_state(runner: CommandRunner, name: str) -> str:

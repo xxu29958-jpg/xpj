@@ -87,12 +87,14 @@ _WINDOWS_TERMINAL = GithubTerminalContract(
         "Windows release packaging",
         "WINDOWS_SCOPE",
         "LIFECYCLE",
+        "VNEXT",
         "BUILD",
     ),
     shell=None,
     scope_bindings=(("WINDOWS_SCOPE", "windows"),),
     lane_bindings=(
         ("windows_packaging_lifecycle", "LIFECYCLE"),
+        ("windows_vnext_lifecycle", "VNEXT"),
         ("windows_packaging_build", "BUILD"),
     ),
 )

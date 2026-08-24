@@ -14,6 +14,7 @@ from backend_manager.installation import (
     InstalledLayout,
     WindowsReleaseConfig,
     load_installed_release_config,
+    parse_installed_binding,
     parse_installed_layout,
     validate_installed_backend_stopped,
     validate_installed_service_contract,
@@ -213,7 +214,7 @@ def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> Non
 def test_helper_phase_budget_rejects_unknown_action() -> None:
     release = _release_config()
 
-    with pytest.raises(InstallationConfigError, match="不支持的服务操作"):
+    with pytest.raises(InstallationConfigError, match="????????"):
         release.helper_action_phase_budget_seconds("pause")
 
 
@@ -295,3 +296,59 @@ def test_service_contract_validator_uses_installed_script_and_dynamic_identity(
     assert command[-1] == "-ValidateInstalledServicesOnly"
     assert captured[1][-1] == "-ValidateBackendRuntimeStoppedOnly"
     assert timeouts == [18.75, 18.75]
+
+
+def test_parse_installed_binding_uses_installation_json_not_registry_dataroot(tmp_path: Path) -> None:
+    layout = parse_installed_binding(
+        {
+            "schema": "ticketbox-installed-instance-v1",
+            "data_root": str(tmp_path / "data"),
+            "active_release_id": "1.2.0",
+            "pg_service_name": "TicketboxPg",
+            "backend_service_name": "TicketboxBackend",
+            "pg_port": 5432,
+            "backend_port": 8000,
+        },
+        {"InstallDir": str(tmp_path / "program")},
+    )
+    assert layout.authority == "binding"
+    assert layout.data_root == (tmp_path / "data").resolve()
+    assert layout.backend_version == "1.2.0"
+    release = load_installed_release_config(layout)
+    assert release.backend_service_name == "TicketboxBackend"
+    assert release.pg_service_name == "TicketboxPg"
+    assert release.backend_health_request_timeout_ms == 2000
+
+
+def test_discover_installed_layout_prefers_binding(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        installation,
+        "_read_installation_binding",
+        lambda: {
+            "schema": "ticketbox-installed-instance-v1",
+            "data_root": str(tmp_path / "bound-data"),
+            "active_release_id": "1.2.0",
+            "pg_service_name": "TicketboxPg",
+            "backend_service_name": "TicketboxBackend",
+            "pg_port": 5432,
+            "backend_port": 8000,
+        },
+    )
+    monkeypatch.setattr(
+        installation,
+        "_read_registry_values",
+        lambda: {
+            "InstallDir": str(tmp_path / "program"),
+            "DataRoot": str(tmp_path / "stale-registry-data"),
+            "BackendPort": "1",
+            "PgPort": "1",
+            "BackendServiceName": "StaleBackend",
+            "PgServiceName": "StalePg",
+            "BackendVersion": "0.0.1",
+        },
+    )
+    layout = installation.discover_installed_layout()
+    assert layout is not None
+    assert layout.authority == "binding"
+    assert layout.data_root == (tmp_path / "bound-data").resolve()
+    assert layout.backend_service_name == "TicketboxBackend"

@@ -226,6 +226,7 @@ _PREFIX_SCOPE_RULES = (
     ),
     (_POSTGRES_WINDOWS_BACKEND_PREFIXES, ("postgres", "backend_frozen")),
     (_WINDOWS_ONLY_BACKEND_PREFIXES, ("windows",)),
+    (("distribution/",), ("windows",)),
     (_POSTGRES_BACKEND_PREFIXES, ("postgres",)),
 )
 _STATUS_FUNCTION = re.compile(r"(?i)\b(success|always|failure|cancelled)\s*\(")
