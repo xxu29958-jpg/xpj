@@ -6,7 +6,7 @@ from pathlib import Path
 _COMPILE_STEP = """
       - id: compile_installer
         run: |
-          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -InstallerHashOutputFile "$env:GITHUB_OUTPUT"
+          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -InstallerHashOutputFile "$env:GITHUB_OUTPUT"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 """
 
@@ -14,7 +14,7 @@ _VERIFY_STEP = """
       - env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
         run: |
-          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"
+          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 """
 
@@ -24,7 +24,7 @@ _POST_UPLOAD_VERIFY_STEP = """
       - env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
         run: |
-          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
+          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 """
 _RESOLVE_PUBLISH_PATH_STEP = r"""
@@ -162,14 +162,14 @@ def _mutate_round_trip_parts(parts: _RoundTripParts, variant: str) -> None:
         )
     if variant == "verify_inline_hash_override":
         parts.run_steps = parts.run_steps.replace(
-            "          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly",
-            "          $env:installer_expected_sha256 = ('b' * 64)\n          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly",
+            "          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly",
+            "          $env:installer_expected_sha256 = ('b' * 64)\n          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly",
             1,
         )
     if variant == "post_verify_inline_hash_override":
         parts.post_verify = parts.post_verify.replace(
-            "          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly",
-            "          $env:installer_expected_sha256 = ('b' * 64)\n          powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly",
+            "          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly",
+            "          $env:installer_expected_sha256 = ('b' * 64)\n          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly",
             1,
         )
     _mutate_round_trip_environments(parts, variant)

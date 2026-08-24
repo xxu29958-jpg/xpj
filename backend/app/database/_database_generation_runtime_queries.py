@@ -237,3 +237,12 @@ RUNTIME_ACL_EVIDENCE_QUERY = text(
     ORDER BY kind, object_name, grantee, privilege_type, is_grantable
     """
 )
+
+FRESH_DATASET_AUTHORITY_QUERY = text(
+    """
+    SELECT dataset_id, restore_epoch, schema_revision, schema_min_compatible,
+           semantic_revision
+    FROM public.dataset_authority
+    WHERE singleton_id = 1
+    """
+)

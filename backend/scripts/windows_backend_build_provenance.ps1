@@ -649,6 +649,44 @@ print(json.dumps({'executable': sys.executable, 'roots': roots}))
     return Get-TicketboxExecutionTreeEvidence ([string]$layout.executable) @($collapsed)
 }
 
+function Get-TicketboxOptionalNoteProperty([object]$Object, [string]$Name) {
+    if ($null -eq $Object -or [string]$Name -eq "") {
+        return $null
+    }
+    if ($Object -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Object.Keys)) {
+            if ([string]$key -ceq $Name) {
+                return $Object[$key]
+            }
+        }
+        return $null
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+    return $property.Value
+}
+
+function Get-TicketboxExecutionTreeComponentSummary([object]$Component) {
+    $snapshot = Get-TicketboxOptionalNoteProperty $Component "snapshot"
+    if ($null -ne $snapshot) {
+        $files = Get-TicketboxOptionalNoteProperty $snapshot "files"
+        return [ordered]@{
+            label = [string](Get-TicketboxOptionalNoteProperty $Component "label")
+            algorithm = [string](Get-TicketboxOptionalNoteProperty $snapshot "algorithm")
+            fingerprint = [string](Get-TicketboxOptionalNoteProperty $snapshot "fingerprint")
+            file_count = @($files).Count
+        }
+    }
+    return [ordered]@{
+        label = [string](Get-TicketboxOptionalNoteProperty $Component "label")
+        algorithm = [string](Get-TicketboxOptionalNoteProperty $Component "algorithm")
+        fingerprint = [string](Get-TicketboxOptionalNoteProperty $Component "fingerprint")
+        file_count = [int64](Get-TicketboxOptionalNoteProperty $Component "file_count")
+    }
+}
+
 function Assert-TicketboxExecutionTreeEvidence([object]$Evidence) {
     if (
         $null -eq $Evidence -or
@@ -661,23 +699,7 @@ function Assert-TicketboxExecutionTreeEvidence([object]$Evidence) {
     }
     $summaryComponents = @(
         $Evidence.components | ForEach-Object {
-            $snapshot = $_.snapshot
-            if ($null -ne $snapshot) {
-                [ordered]@{
-                    label = [string]$_.label
-                    algorithm = [string]$snapshot.algorithm
-                    fingerprint = [string]$snapshot.fingerprint
-                    file_count = @($snapshot.files).Count
-                }
-            }
-            else {
-                [ordered]@{
-                    label = [string]$_.label
-                    algorithm = [string]$_.algorithm
-                    fingerprint = [string]$_.fingerprint
-                    file_count = [int64]$_.file_count
-                }
-            }
+            Get-TicketboxExecutionTreeComponentSummary $_
         }
     )
     $core = [ordered]@{ interpreter = $Evidence.interpreter; components = $summaryComponents }
@@ -686,13 +708,10 @@ function Assert-TicketboxExecutionTreeEvidence([object]$Evidence) {
         throw "Frozen backend Python execution-tree evidence fingerprint is inconsistent."
     }
     foreach ($component in @($Evidence.components)) {
-        $componentFingerprint = if ($null -ne $component.snapshot) {
-            [string]$component.snapshot.fingerprint
-        }
-        else { [string]$component.fingerprint }
+        $summary = Get-TicketboxExecutionTreeComponentSummary $component
         if (
-            [string]$component.label -eq "" -or
-            $componentFingerprint -notmatch '^[0-9a-f]{64}$'
+            [string]$summary.label -eq "" -or
+            [string]$summary.fingerprint -notmatch '^[0-9a-f]{64}$'
         ) {
             throw "Frozen backend Python execution-tree component evidence is malformed."
         }
@@ -703,12 +722,7 @@ function Get-TicketboxCompactExecutionTreeEvidence([object]$Evidence) {
     Assert-TicketboxExecutionTreeEvidence $Evidence
     $components = @(
         $Evidence.components | ForEach-Object {
-            [ordered]@{
-                label = [string]$_.label
-                algorithm = [string]$_.snapshot.algorithm
-                fingerprint = [string]$_.snapshot.fingerprint
-                file_count = @($_.snapshot.files).Count
-            }
+            Get-TicketboxExecutionTreeComponentSummary $_
         }
     )
     return [ordered]@{

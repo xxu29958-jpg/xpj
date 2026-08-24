@@ -48,6 +48,7 @@ app_hiddenimports = [
     if module
     not in {
         "app.database._managed_schema_upgrade",
+        "app.database._fresh_schema_upgrade",
         "app.database._database_generation_target_verification",
     }
 ]
@@ -112,6 +113,15 @@ datas = [
             "app",
             "database",
             "_managed_schema_upgrade.py",
+        ),
+        "app/database",
+    ),
+    (
+        os.path.join(
+            BACKEND,
+            "app",
+            "database",
+            "_fresh_schema_upgrade.py",
         ),
         "app/database",
     ),

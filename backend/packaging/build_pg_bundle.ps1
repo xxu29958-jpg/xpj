@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
   ADR-0047 Slice 2-C：从 EDB「binaries without installer」zip 裁出最小 PostgreSQL

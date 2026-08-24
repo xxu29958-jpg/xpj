@@ -1,0 +1,769 @@
+from __future__ import annotations
+
+import os
+import secrets
+import tempfile
+import time
+from pathlib import Path
+
+from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
+from ticketbox_lifecycle.runtime import layout
+from ticketbox_lifecycle.runtime.command import (
+    CommandRunner,
+    CompletedCommand,
+    SubprocessCommandRunner,
+    require_ok,
+    sealed_pg_env,
+)
+from ticketbox_lifecycle.schemas import InstallRequest
+
+_PG_HBA = """\
+# Ticketbox fresh-install localhost SCRAM only.
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             all             ::1/128                 scram-sha-256
+"""
+
+
+class _FilesAdapter:
+    name = "files"
+
+    def apply(self, request: InstallRequest, step: str) -> str:
+        if step != "programdata_root":
+            raise LifecycleViolation("wrong_adapter", "files adapter only owns programdata_root")
+        for path in (
+            Path(request.program_data_root),
+            Path(request.data_root),
+            layout.machine_root(request),
+            Path(request.program_data_root) / "logs",
+            layout.secrets_dir(request),
+            layout.originals(request),
+        ):
+            path.mkdir(parents=True, exist_ok=True)
+        _ensure_credentials(request)
+        return "created"
+
+    def verify(self, request: InstallRequest, step: str) -> None:
+        if step != "programdata_root":
+            raise LifecycleViolation("wrong_adapter", "files adapter only owns programdata_root")
+        required = (
+            Path(request.program_data_root),
+            Path(request.data_root),
+            layout.machine_root(request),
+            layout.secrets_dir(request),
+            layout.postgres_pwfile(request),
+            layout.pg_passfile(request),
+            layout.backend_env_file(request),
+        )
+        missing = [str(path) for path in required if not path.exists()]
+        if missing:
+            raise LifecycleError("postcondition_missing", "ProgramData layout is incomplete")
+
+
+class _SecurityAdapter:
+    name = "security"
+
+    def __init__(self, runner: CommandRunner) -> None:
+        self._runner = runner
+
+    def apply(self, request: InstallRequest, step: str) -> str:
+        if step != "acl":
+            raise LifecycleViolation("wrong_adapter", "security adapter only owns acl")
+        _require_windows()
+        user_sid = _current_user_sid(self._runner)
+        for path in (request.program_data_root, request.data_root):
+            require_ok(
+                self._runner.run(
+                    [
+                        "icacls",
+                        path,
+                        "/inheritance:r",
+                        "/grant:r",
+                        f"*{user_sid}:(OI)(CI)F",
+                        "*S-1-5-18:(OI)(CI)F",
+                        "*S-1-5-32-544:(OI)(CI)F",
+                    ]
+                ),
+                code="acl_apply_failed",
+            )
+        secrets_root = layout.secrets_dir(request)
+        if secrets_root.is_dir():
+            for secret in sorted(path for path in secrets_root.iterdir() if path.is_file()):
+                _protect_lifecycle_secret(self._runner, secret)
+        return "acl-applied"
+
+    def grant_backend_binding_read(self, binding_path: Path, service_name: str) -> None:
+        _require_windows()
+        machine = binding_path.parent
+        require_ok(
+            self._runner.run(
+                [
+                    "icacls",
+                    str(machine),
+                    "/grant",
+                    f"NT SERVICE\\{service_name}:(RX)",
+                ]
+            ),
+            code="binding_dir_acl_failed",
+        )
+        require_ok(
+            self._runner.run(
+                [
+                    "icacls",
+                    str(binding_path),
+                    "/grant",
+                    f"NT SERVICE\\{service_name}:(R)",
+                ]
+            ),
+            code="binding_acl_failed",
+        )
+
+    def verify(self, request: InstallRequest, step: str) -> None:
+        if step != "acl":
+            raise LifecycleViolation("wrong_adapter", "security adapter only owns acl")
+        _require_windows()
+        completed = self._runner.run(["icacls", request.data_root])
+        if completed.returncode != 0:
+            raise LifecycleError("acl_verify_failed", "icacls could not read DataRoot")
+        secrets_root = layout.secrets_dir(request)
+        secret_files = sorted(path for path in secrets_root.iterdir() if path.is_file()) if secrets_root.is_dir() else []
+        if not secret_files:
+            raise LifecycleError("postcondition_missing", "lifecycle secrets are absent")
+        for secret in secret_files:
+            observed = self._runner.run(["icacls", str(secret)])
+            text = f"{observed.stdout}\n{observed.stderr}"
+            if observed.returncode != 0 or "(I)" in text.upper():
+                raise LifecycleError(
+                    "postcondition_missing",
+                    "secret ACL is still inherited",
+                )
+
+
+class _PostgresAdapter:
+    name = "postgres"
+
+    def __init__(self, runner: CommandRunner) -> None:
+        self._runner = runner
+
+    def apply(self, request: InstallRequest, step: str) -> str:
+        if step == "postgres_initdb":
+            return self._initdb(request)
+        if step == "start_postgres":
+            return self._start(request)
+        if step == "roles_database":
+            return self._roles(request)
+        raise LifecycleViolation("wrong_adapter", f"postgres adapter does not own {step}")
+
+    def verify(self, request: InstallRequest, step: str) -> None:
+        if step == "postgres_initdb":
+            if not (layout.pgdata(request) / "PG_VERSION").is_file():
+                raise LifecycleError("postcondition_missing", "pgdata has no PG_VERSION")
+            return
+        if step == "start_postgres":
+            self._require_ready(request)
+            return
+        if step == "roles_database":
+            completed = self._psql(
+                request,
+                "SELECT 1 FROM pg_roles WHERE rolname = 'ticketbox'",
+                database="postgres",
+            )
+            if completed.returncode != 0 or "1" not in completed.stdout:
+                raise LifecycleError("postcondition_missing", "ticketbox role is missing")
+            return
+        raise LifecycleViolation("wrong_adapter", f"postgres adapter does not own {step}")
+
+    def _initdb(self, request: InstallRequest) -> str:
+        data = layout.pgdata(request)
+        if (data / "PG_VERSION").is_file():
+            return "already-present"
+        initdb = layout.tool(request, "initdb.exe")
+        if not initdb.is_file():
+            raise LifecycleError("missing_platform_binary", "postgresql/bin/initdb.exe is not installed")
+        argv = [
+            str(initdb),
+            "-D",
+            str(data),
+            "-U",
+            "postgres",
+            "--pwfile",
+            str(layout.postgres_pwfile(request)),
+            "--auth=scram-sha-256",
+            "--data-checksums",
+            "-E",
+            "UTF8",
+            "--locale=C",
+        ]
+        if "--no-sync" in argv:
+            raise LifecycleViolation("unsafe_initdb", "initdb --no-sync is forbidden")
+        require_ok(self._runner.run(argv, timeout_s=180), code="initdb_failed")
+        _write_cluster_config(request)
+        return "initialized"
+
+    def _start(self, request: InstallRequest) -> str:
+        _start_service(self._runner, request.pg_service_name, code="pg_start_failed")
+        deadline = time.time() + 90
+        while time.time() < deadline:
+            try:
+                self._require_ready(request)
+                return "started"
+            except LifecycleError:
+                if _scm_query_state(self._runner, request.pg_service_name) == "STOPPED":
+                    raise LifecycleError(
+                        "postgres_not_ready",
+                        _postgres_not_ready_message(request, stopped=True),
+                    ) from None
+                time.sleep(1)
+        raise LifecycleError("postgres_not_ready", _postgres_not_ready_message(request, stopped=False))
+
+    def _roles(self, request: InstallRequest) -> str:
+        password = layout.secrets_dir(request).joinpath("ticketbox.password").read_text(encoding="utf-8").strip()
+        escaped = password.replace("'", "''")
+        require_ok(
+            self._psql(
+                request,
+                "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ticketbox') "
+                f"THEN CREATE ROLE ticketbox LOGIN PASSWORD '{escaped}'; END IF; END $$;",
+                database="postgres",
+            ),
+            code="create_role_failed",
+        )
+        probe = self._psql(
+            request,
+            "SELECT 1 FROM pg_database WHERE datname = 'ticketbox'",
+            database="postgres",
+        )
+        if probe.returncode != 0 or "1" not in probe.stdout:
+            require_ok(
+                self._psql(
+                    request,
+                    "CREATE DATABASE ticketbox OWNER ticketbox ENCODING 'UTF8';",
+                    database="postgres",
+                ),
+                code="create_database_failed",
+            )
+        require_ok(
+            self._psql(request, "SELECT current_user", database="ticketbox", user="ticketbox"),
+            code="app_role_connect_failed",
+        )
+        return "roles-ready"
+
+    def _require_ready(self, request: InstallRequest) -> None:
+        ready = layout.tool(request, "pg_isready.exe")
+        require_ok(
+            self._runner.run(
+                [str(ready), "-h", "127.0.0.1", "-p", str(request.pg_port), "-d", "postgres"],
+                env=sealed_pg_env(str(layout.pg_passfile(request))),
+            ),
+            code="postgres_not_ready",
+        )
+
+    def _psql(
+        self,
+        request: InstallRequest,
+        sql: str,
+        *,
+        database: str,
+        user: str = "postgres",
+    ) -> CompletedCommand:
+        psql = layout.tool(request, "psql.exe")
+        return self._runner.run(
+            [
+                str(psql),
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-h",
+                "127.0.0.1",
+                "-p",
+                str(request.pg_port),
+                "-U",
+                user,
+                "-d",
+                database,
+                "-tA",
+                "-c",
+                sql,
+            ],
+            env=sealed_pg_env(str(layout.pg_passfile(request))),
+        )
+
+
+class _AlembicAdapter:
+    name = "alembic"
+
+    def __init__(self, runner: CommandRunner) -> None:
+        self._runner = runner
+
+    def apply(self, request: InstallRequest, step: str) -> str:
+        if step != "alembic":
+            raise LifecycleViolation("wrong_adapter", "alembic adapter only owns alembic")
+        helper = layout.maintenance_helper(request)
+        if not helper.is_file():
+            raise LifecycleError("missing_platform_binary", "ticketbox-database-maintenance.exe is not installed")
+        if not request.schema_revision or request.schema_revision == "99991231_9999":
+            raise LifecycleError(
+                "missing_schema_revision",
+                "release-manifest max_schema_revision is not a real Alembic revision",
+            )
+        url = _maintenance_database_url(request)
+        argv = [
+            str(helper),
+            "--fresh-schema-upgrade",
+            "--database-url",
+            url,
+            "--pgpassfile",
+            str(layout.pg_passfile(request)),
+            "--target-revision",
+            request.schema_revision,
+            "--dataset-id",
+            request.dataset_id,
+            "--client-generation",
+            request.install_id,
+            "--schema-min-compatible",
+            request.schema_min_compatible or request.target_release_id,
+            "--semantic-revision",
+            request.semantic_revision or "ticketbox-dataset-semantics-v1",
+            "--operation-id",
+            request.operation_id,
+        ]
+        require_ok(
+            self._runner.run(
+                argv,
+                env=sealed_pg_env(str(layout.pg_passfile(request))),
+                timeout_s=600,
+                input_text="",
+            ),
+            code="alembic_failed",
+        )
+        return "upgraded"
+
+    def verify(self, request: InstallRequest, step: str) -> None:
+        if step != "alembic":
+            raise LifecycleViolation("wrong_adapter", "alembic adapter only owns alembic")
+        if not request.schema_revision:
+            raise LifecycleError("postcondition_missing", "schema revision is unbound")
+        psql = layout.tool(request, "psql.exe")
+        completed = self._runner.run(
+            [
+                str(psql),
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-h",
+                "127.0.0.1",
+                "-p",
+                str(request.pg_port),
+                "-U",
+                "ticketbox",
+                "-d",
+                "ticketbox",
+                "-tA",
+                "-c",
+                "SELECT version_num FROM alembic_version",
+            ],
+            env=sealed_pg_env(str(layout.pg_passfile(request))),
+        )
+        if completed.returncode != 0 or request.schema_revision not in completed.stdout:
+            raise LifecycleError("postcondition_missing", "alembic_version is not the exact release target")
+
+
+class _ScmAdapter:
+    name = "scm"
+
+    def __init__(self, runner: CommandRunner) -> None:
+        self._runner = runner
+
+    def apply(self, request: InstallRequest, step: str) -> str:
+        if step == "scm":
+            return self._register(request)
+        if step == "start_services":
+            return self._start_backend(request)
+        raise LifecycleViolation("wrong_adapter", f"scm adapter does not own {step}")
+
+    def verify(self, request: InstallRequest, step: str) -> None:
+        if step == "scm":
+            self._require_service(request.pg_service_name)
+            self._require_service(request.backend_service_name)
+            _require_pgdata_exclusive_acl(self._runner, request)
+            return
+        if step == "start_services":
+            self._require_running(request.backend_service_name)
+            return
+        raise LifecycleViolation("wrong_adapter", f"scm adapter does not own {step}")
+
+    def _register(self, request: InstallRequest) -> str:
+        pg_ctl = layout.tool(request, "pg_ctl.exe")
+        if not pg_ctl.is_file():
+            raise LifecycleError("missing_platform_binary", "postgresql/bin/pg_ctl.exe is not installed")
+        if not self._service_exists(request.pg_service_name):
+            require_ok(
+                self._runner.run(
+                    [
+                        str(pg_ctl),
+                        "register",
+                        "-N",
+                        request.pg_service_name,
+                        "-U",
+                        "NT AUTHORITY\\LocalService",
+                        "-D",
+                        str(layout.pgdata(request)),
+                        "-S",
+                        "auto",
+                    ]
+                ),
+                code="pg_register_failed",
+            )
+        self._set_identity(request.pg_service_name)
+        shawl = layout.shawl_exe(request)
+        launcher = layout.launcher_exe(request)
+        if not shawl.is_file() or not launcher.is_file():
+            raise LifecycleError("missing_platform_binary", "shawl.exe or TicketboxBackendLauncher.exe is missing")
+        if not self._service_exists(request.backend_service_name):
+            require_ok(
+                self._runner.run(
+                    [
+                        str(shawl),
+                        "add",
+                        "--name",
+                        request.backend_service_name,
+                        "--cwd",
+                        str(launcher.parent),
+                        "--",
+                        str(launcher),
+                    ]
+                ),
+                code="backend_register_failed",
+            )
+        self._set_identity(request.backend_service_name)
+        require_ok(
+            self._runner.run(
+                [
+                    "sc.exe",
+                    "config",
+                    request.backend_service_name,
+                    "depend=",
+                    request.pg_service_name,
+                ]
+            ),
+            code="backend_depend_failed",
+        )
+        _require_windows()
+        require_ok(
+            self._runner.run(
+                [
+                    "icacls",
+                    request.data_root,
+                    "/T",
+                    "/grant",
+                    f"NT SERVICE\\{request.backend_service_name}:(OI)(CI)M",
+                ]
+            ),
+            code="data_root_backend_acl_failed",
+        )
+        _seal_pgdata_acl(self._runner, request)
+        return "registered"
+
+    def _start_backend(self, request: InstallRequest) -> str:
+        _start_service(self._runner, request.backend_service_name, code="backend_start_failed")
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            if self._is_running(request.backend_service_name):
+                return "started"
+            time.sleep(1)
+        raise LifecycleError("backend_not_running", "TicketboxBackend did not reach RUNNING")
+
+    def _set_identity(self, name: str) -> None:
+        require_ok(
+            self._runner.run(
+                ["sc.exe", "config", name, "obj=", "NT AUTHORITY\\LocalService", "password=", ""]
+            ),
+            code="service_logon_failed",
+        )
+        require_ok(
+            self._runner.run(["sc.exe", "sidtype", name, "unrestricted"]),
+            code="service_sid_failed",
+        )
+        require_ok(
+            self._runner.run(["sc.exe", "config", name, "start=", "auto"]),
+            code="service_start_type_failed",
+        )
+        require_ok(
+            self._runner.run(
+                [
+                    "sc.exe",
+                    "failure",
+                    name,
+                    "reset=",
+                    "3600",
+                    "actions=",
+                    "restart/5000/restart/10000/restart/60000",
+                ]
+            ),
+            code="service_recovery_failed",
+        )
+
+    def _service_exists(self, name: str) -> bool:
+        completed = self._runner.run(["sc.exe", "query", name])
+        return completed.returncode == 0
+
+    def _require_service(self, name: str) -> None:
+        if not self._service_exists(name):
+            raise LifecycleError("postcondition_missing", f"service {name} is not registered")
+
+    def _is_running(self, name: str) -> bool:
+        completed = self._runner.run(["sc.exe", "query", name])
+        return completed.returncode == 0 and "RUNNING" in completed.stdout.upper()
+
+    def _require_running(self, name: str) -> None:
+        if not self._is_running(name):
+            raise LifecycleError("postcondition_missing", f"service {name} is not RUNNING")
+
+
+class _DatasetAdapter:
+    name = "dataset"
+
+    def apply(self, request: InstallRequest, step: str) -> str:
+        if step != "health":
+            raise LifecycleViolation("wrong_adapter", "dataset adapter only owns health")
+        deadline = time.time() + 60
+        last: LifecycleError | None = None
+        while time.time() < deadline:
+            try:
+                return self._probe(request)
+            except LifecycleError as exc:
+                last = exc
+                time.sleep(1)
+        if last is None:
+            raise LifecycleError("health_unreachable", "installation health is unreachable")
+        raise last
+
+    def verify(self, request: InstallRequest, step: str) -> None:
+        if step != "health":
+            raise LifecycleViolation("wrong_adapter", "dataset adapter only owns health")
+        self._probe(request)
+
+    def _probe(self, request: InstallRequest) -> str:
+        import urllib.error
+        import urllib.request
+
+        url = f"http://127.0.0.1:{request.backend_port}/api/health/installation"
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:
+                if response.status != 200:
+                    raise LifecycleError("health_failed", f"installation health returned {response.status}")
+        except urllib.error.URLError as exc:
+            raise LifecycleError("health_unreachable", f"installation health is unreachable: {exc}") from exc
+        return "healthy"
+
+
+class WindowsAdapterBundle:
+    def __init__(self, runner: CommandRunner | None = None) -> None:
+        command_runner = runner or SubprocessCommandRunner()
+        self.files = _FilesAdapter()
+        self.security = _SecurityAdapter(command_runner)
+        self.postgres = _PostgresAdapter(command_runner)
+        self.alembic = _AlembicAdapter(command_runner)
+        self.scm = _ScmAdapter(command_runner)
+        self.dataset = _DatasetAdapter()
+
+
+def _require_windows() -> None:
+    if os.name != "nt":
+        raise LifecycleError("not_windows", "TicketboxLifecycle.exe only mutates a Windows host")
+
+
+def _current_user_sid(runner: CommandRunner) -> str:
+    completed = runner.run(["whoami", "/user"])
+    require_ok(completed, code="whoami_failed")
+    for token in completed.stdout.replace(",", " ").replace('"', " ").split():
+        if token.startswith("S-1-") and token.count("-") >= 3:
+            return token
+    raise LifecycleError("whoami_failed", "whoami /user did not return a SID")
+
+
+def _protect_lifecycle_secret(runner: CommandRunner, path: Path) -> None:
+    # Elevated CreateFile owners are often Administrators; the frozen helper
+    # requires owner == current process SID and an exact protected DACL.
+    require_ok(runner.run(["takeown", "/F", str(path)]), code="secret_owner_failed")
+    user_sid = _current_user_sid(runner)
+    require_ok(
+        runner.run(
+            [
+                "icacls",
+                str(path),
+                "/inheritance:r",
+                "/grant:r",
+                f"*{user_sid}:(F)",
+                "*S-1-5-18:(F)",
+                "*S-1-5-32-544:(F)",
+            ]
+        ),
+        code="secret_acl_failed",
+    )
+
+
+def _ensure_credentials(request: InstallRequest) -> None:
+    secrets_root = layout.secrets_dir(request)
+    secrets_root.mkdir(parents=True, exist_ok=True)
+    postgres_password = _read_or_create_secret(secrets_root / "postgres.password")
+    app_password = _read_or_create_secret(secrets_root / "ticketbox.password")
+    layout.postgres_pwfile(request).write_text(postgres_password + "\n", encoding="utf-8")
+    pass_lines = [
+        f"127.0.0.1:{request.pg_port}:*:postgres:{postgres_password}",
+        f"127.0.0.1:{request.pg_port}:ticketbox:ticketbox:{app_password}",
+        f"localhost:{request.pg_port}:*:postgres:{postgres_password}",
+        f"localhost:{request.pg_port}:ticketbox:ticketbox:{app_password}",
+    ]
+    layout.pg_passfile(request).write_text("\n".join(pass_lines) + "\n", encoding="utf-8")
+    env_path = layout.backend_env_file(request)
+    env_text = "\n".join(
+        [
+            f"DATABASE_URL={_app_database_url(request)}",
+            f"TICKETBOX_DATA_DIR={Path(request.data_root) / 'app'}",
+            f"HTTP_BOOTSTRAP_SECRET={secrets.token_urlsafe(32)}",
+            f"UPLOAD_TOKEN={secrets.token_urlsafe(32)}",
+            f"APP_TOKEN={secrets.token_urlsafe(32)}",
+            f"ADMIN_TOKEN={secrets.token_urlsafe(32)}",
+        ]
+    ) + "\n"
+    if not env_path.is_file():
+        env_path.write_text(env_text, encoding="utf-8")
+    app_dir = Path(request.data_root) / "app"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    app_env = app_dir / ".env"
+    if not app_env.is_file():
+        app_env.write_text(env_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _read_or_create_secret(path: Path) -> str:
+    if path.is_file():
+        return path.read_text(encoding="utf-8").strip()
+    value = secrets.token_urlsafe(32)
+    path.write_text(value, encoding="utf-8")
+    return value
+
+
+def _app_database_url(request: InstallRequest) -> str:
+    password = layout.secrets_dir(request).joinpath("ticketbox.password").read_text(encoding="utf-8").strip()
+    return (
+        f"postgresql+psycopg://ticketbox:{password}@127.0.0.1:{request.pg_port}/ticketbox"
+        "?require_auth=scram-sha-256"
+    )
+
+
+def _maintenance_database_url(request: InstallRequest) -> str:
+    return (
+        f"postgresql+psycopg://ticketbox@127.0.0.1:{request.pg_port}/ticketbox"
+        "?require_auth=scram-sha-256"
+    )
+
+
+def _start_service(runner: CommandRunner, name: str, *, code: str) -> None:
+    completed = runner.run(["sc.exe", "start", name])
+    combined = f"{completed.stdout}\n{completed.stderr}"
+    if completed.returncode == 0 or "1056" in combined or "already been started" in combined.lower():
+        return
+    require_ok(completed, code=code)
+
+
+def _scm_query_state(runner: CommandRunner, name: str) -> str:
+    completed = runner.run(["sc.exe", "query", name])
+    text = f"{completed.stdout}\n{completed.stderr}".upper()
+    for token in ("START_PENDING", "STOP_PENDING", "RUNNING", "STOPPED"):
+        if token in text:
+            return token
+    return "UNKNOWN"
+
+
+def _postgres_log_excerpt(request: InstallRequest) -> str:
+    log_dir = layout.pgdata(request) / "log"
+    if not log_dir.is_dir():
+        return ""
+    files = sorted(log_dir.glob("postgresql*.log"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not files:
+        return ""
+    lines = [line for line in files[0].read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+    return "\n".join(lines[-20:])
+
+
+def _postgres_not_ready_message(request: InstallRequest, *, stopped: bool) -> str:
+    prefix = (
+        "PostgreSQL service reached STOPPED before ready"
+        if stopped
+        else "PostgreSQL did not become ready"
+    )
+    excerpt = _postgres_log_excerpt(request)
+    if excerpt:
+        return f"{prefix}: {excerpt}"
+    return prefix
+
+
+def _durable_write_text(path: Path, text: str) -> None:
+    fd, tmp_name = tempfile.mkstemp(prefix=path.name, suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
+
+
+def _seal_pgdata_acl(runner: CommandRunner, request: InstallRequest) -> None:
+    pgdata = str(layout.pgdata(request))
+    require_ok(
+        runner.run(
+            [
+                "icacls",
+                pgdata,
+                "/T",
+                "/C",
+                "/remove:g",
+                f"NT SERVICE\\{request.backend_service_name}",
+            ]
+        ),
+        code="pgdata_acl_remove_backend_failed",
+    )
+    require_ok(
+        runner.run(
+            [
+                "icacls",
+                pgdata,
+                "/inheritance:r",
+                "/grant:r",
+                "SYSTEM:(OI)(CI)F",
+                "Administrators:(OI)(CI)F",
+                f"NT SERVICE\\{request.pg_service_name}:(OI)(CI)F",
+            ]
+        ),
+        code="pgdata_acl_failed",
+    )
+
+
+def _require_pgdata_exclusive_acl(runner: CommandRunner, request: InstallRequest) -> None:
+    completed = runner.run(["icacls", str(layout.pgdata(request))])
+    text = f"{completed.stdout}\n{completed.stderr}".upper()
+    if completed.returncode != 0:
+        raise LifecycleError("pgdata_acl_verify_failed", "icacls could not read pgdata")
+    backend = f"NT SERVICE\\{request.backend_service_name}".upper()
+    pg_service = f"NT SERVICE\\{request.pg_service_name}".upper()
+    if backend in text:
+        raise LifecycleError("pgdata_acl_leaked_backend", "pgdata grants TicketboxBackend")
+    if pg_service not in text:
+        raise LifecycleError("pgdata_acl_missing_pg", "pgdata missing TicketboxPg")
+
+
+def _write_cluster_config(request: InstallRequest) -> None:
+    conf = layout.pgdata(request) / "postgresql.conf"
+    extra = (
+        f"\nlisten_addresses = '127.0.0.1'\n"
+        f"port = {request.pg_port}\n"
+        "password_encryption = scram-sha-256\n"
+        "logging_collector = on\n"
+    )
+    current = conf.read_text(encoding="utf-8") if conf.is_file() else ""
+    if "listen_addresses = '127.0.0.1'" not in current:
+        current = current + extra
+    _durable_write_text(conf, current)
+    _durable_write_text(layout.pgdata(request) / "pg_hba.conf", _PG_HBA)

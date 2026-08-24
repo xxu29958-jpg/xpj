@@ -76,10 +76,12 @@ _FROZEN_HOST_AUTHORITY_KEYS = (
 _OWNER_RECOVERY_CHANNELS = frozenset({"development", "managed_host", "operator"})
 _BOOTSTRAP_RECOVERY_GUARD_NAME = "bootstrap-exposure-recovery-pending"
 _MANAGED_SCHEMA_UPGRADE_SWITCH = "--managed-schema-upgrade"
+_FRESH_SCHEMA_UPGRADE_SWITCH = "--fresh-schema-upgrade"
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
 _MANAGED_SCHEMA_MODULE_NAME = "_ticketbox_managed_schema_upgrade"
+_FRESH_SCHEMA_MODULE_NAME = "_ticketbox_fresh_schema_upgrade"
 _DATABASE_GENERATION_TARGET_MODULE_NAME = "_ticketbox_database_generation_target"
 _GENERATION_PROGRAM_VALIDATION_FIELDS = (
     "schema",
@@ -87,6 +89,14 @@ _GENERATION_PROGRAM_VALIDATION_FIELDS = (
     "target_revision",
     "revision_count",
     "generation_program_sha256",
+)
+_FRESH_SCHEMA_RESULT_FIELDS = (
+    "schema",
+    "target_revision",
+    "alembic_revision",
+    "dataset_id",
+    "client_generation",
+    "result",
 )
 _MANAGED_SCHEMA_RESULT_FIELDS = (
     "schema",
@@ -155,6 +165,28 @@ def _parse_managed_schema_upgrade_args(argv: list[str]) -> Namespace:
     return parser.parse_args(argv)
 
 
+def _parse_fresh_schema_upgrade_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-database-maintenance",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _FRESH_SCHEMA_UPGRADE_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--target-revision", required=True)
+    parser.add_argument("--dataset-id", required=True)
+    parser.add_argument("--client-generation", required=True)
+    parser.add_argument("--schema-min-compatible", required=True)
+    parser.add_argument("--semantic-revision", required=True)
+    parser.add_argument("--operation-id", required=True)
+    return parser.parse_args(argv)
+
+
 def _parse_database_generation_target_args(argv: list[str]) -> Namespace:
     parser = ArgumentParser(
         prog="ticketbox-database-maintenance",
@@ -180,6 +212,14 @@ def _load_managed_schema_upgrade_module() -> ModuleType:
     return _load_standalone_database_module(
         module_name=_MANAGED_SCHEMA_MODULE_NAME,
         filename="_managed_schema_upgrade.py",
+        database_package_seam=True,
+    )
+
+
+def _load_fresh_schema_upgrade_module() -> ModuleType:
+    return _load_standalone_database_module(
+        module_name=_FRESH_SCHEMA_MODULE_NAME,
+        filename="_fresh_schema_upgrade.py",
         database_package_seam=True,
     )
 
@@ -250,6 +290,41 @@ def _run_managed_schema_upgrade(
     )
     if tuple(result) != _MANAGED_SCHEMA_RESULT_FIELDS:
         raise RuntimeError("managed schema upgrade returned an unsupported result shape")
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
+    output_stream.flush()
+    return 0
+
+
+def _run_fresh_schema_upgrade(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    args = _parse_fresh_schema_upgrade_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("fresh schema upgrade requires redirected stdin/stdout")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("fresh schema upgrade requires empty stdin")
+
+    _assert_maintenance_libpq_environment(args.pgpassfile)
+    module = _load_fresh_schema_upgrade_module()
+    result = module.run_fresh_schema_upgrade_action(
+        database_url=args.database_url,
+        pgpassfile=args.pgpassfile,
+        target_revision=args.target_revision,
+        dataset_id=args.dataset_id,
+        client_generation=args.client_generation,
+        schema_min_compatible=args.schema_min_compatible,
+        semantic_revision=args.semantic_revision,
+        operation_id=args.operation_id,
+    )
+    if tuple(result) != _FRESH_SCHEMA_RESULT_FIELDS:
+        raise RuntimeError("fresh schema upgrade returned an unsupported result shape")
     output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
@@ -444,6 +519,16 @@ def _expected_frozen_install_dir() -> Path:
 
 def _assert_frozen_host_authority(host_authority: dict[str, str | None]) -> None:
     if not getattr(sys, "frozen", False):
+        return
+    marker = (host_authority.get("TICKETBOX_DATA_ROOT_MARKER_PATH") or "").strip()
+    volume = (host_authority.get("TICKETBOX_DATA_VOLUME_IDENTITY") or "").strip()
+    if not marker and not volume:
+        data_dir = os.environ.get("TICKETBOX_DATA_DIR", "").strip()
+        if not data_dir:
+            raise RuntimeError("frozen backend requires TICKETBOX_DATA_DIR")
+        owner_recovery_channel = (os.environ.get("TICKETBOX_OWNER_RECOVERY_CHANNEL") or "").strip()
+        if owner_recovery_channel and owner_recovery_channel not in _OWNER_RECOVERY_CHANNELS:
+            raise RuntimeError("frozen backend owner recovery capability is invalid")
         return
     missing = [key for key in _FROZEN_HOST_AUTHORITY_KEYS if not (host_authority.get(key) or "").strip()]
     if missing:
@@ -896,6 +981,7 @@ def main() -> int | None:
         switch
         for switch in (
             _MANAGED_SCHEMA_UPGRADE_SWITCH,
+            _FRESH_SCHEMA_UPGRADE_SWITCH,
             _DATABASE_GENERATION_TARGET_VERIFY_SWITCH,
             _GENERATION_PROGRAM_VALIDATE_SWITCH,
             *DATASET_MAINTENANCE_SWITCHES,
@@ -909,6 +995,8 @@ def main() -> int | None:
             raise RuntimeError("database generation requires the dedicated frozen helper")
         if maintenance_switches[0] == _MANAGED_SCHEMA_UPGRADE_SWITCH:
             return _run_managed_schema_upgrade(arguments)
+        if maintenance_switches[0] == _FRESH_SCHEMA_UPGRADE_SWITCH:
+            return _run_fresh_schema_upgrade(arguments)
         if maintenance_switches[0] == _DATABASE_GENERATION_TARGET_VERIFY_SWITCH:
             return _run_database_generation_target_verification(arguments)
         if maintenance_switches[0] in DATASET_MAINTENANCE_SWITCHES:

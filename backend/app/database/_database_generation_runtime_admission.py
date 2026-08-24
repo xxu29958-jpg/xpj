@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database._database_generation_runtime_queries import (
+    FRESH_DATASET_AUTHORITY_QUERY,
     LIVE_DATABASE_QUERY,
     RUNTIME_ACL_EVIDENCE_QUERY,
 )
@@ -396,11 +397,54 @@ def assert_database_generation_runtime_admission(
     )
 
 
+def _current_projection_present() -> bool:
+    try:
+        return database_generation_runtime_current_path().is_file()
+    except DatabaseGenerationAdmissionError:
+        return False
+
+
+def assert_dataset_authority_fresh_runtime_admission(engine: object, program: object) -> None:
+    """Admit first-install runtime from live dataset_authority, not CURRENT."""
+
+    target = getattr(program, "target_revision", None)
+    if not isinstance(target, str) or _REVISION.fullmatch(target) is None:
+        raise DatabaseGenerationAdmissionError("installed program target_revision is invalid")
+    try:
+        with engine.connect() as connection:  # type: ignore[union-attr]
+            revisions = tuple(
+                str(value)
+                for value in connection.scalars(text("SELECT version_num FROM public.alembic_version"))
+            )
+            row = connection.execute(FRESH_DATASET_AUTHORITY_QUERY).first()
+    except (OSError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as exc:
+        raise DatabaseGenerationAdmissionError("live dataset_authority is unavailable") from exc
+    if row is None:
+        raise DatabaseGenerationAdmissionError("live dataset_authority is unavailable")
+    dataset_id, restore_epoch, schema_revision, schema_min_compatible, semantic_revision = row
+    _canonical_uuid(dataset_id, "dataset_id")
+    if restore_epoch != 0:
+        raise DatabaseGenerationAdmissionError("fresh dataset_authority restore_epoch is not 0")
+    if schema_revision != target or revisions != (target,):
+        raise DatabaseGenerationAdmissionError("live schema is not the installed program target")
+    if (
+        not isinstance(schema_min_compatible, str)
+        or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", schema_min_compatible) is None
+        or _REVISION.fullmatch(schema_min_compatible) is not None
+    ):
+        raise DatabaseGenerationAdmissionError("schema_min_compatible is not a product version")
+    if semantic_revision != "ticketbox-dataset-semantics-v1":
+        raise DatabaseGenerationAdmissionError("semantic_revision is not the closed dataset semantics")
+
+
 def assert_database_generation_startup_ready(engine: object, program: object) -> None:
-    """Translate the installed CURRENT admission contract into startup refusal."""
+    """Admit installed runtime from CURRENT when present, else dataset_authority."""
 
     try:
-        assert_database_generation_runtime_admission(engine, program)
+        if _current_projection_present():
+            assert_database_generation_runtime_admission(engine, program)
+            return
+        assert_dataset_authority_fresh_runtime_admission(engine, program)
     except DatabaseGenerationAdmissionError as exc:
         raise DatabaseMigrationPreflightError(
             f"拒绝开放数据库 writer:Generation CURRENT 或 live binding 未完成({exc})。"
@@ -411,5 +455,6 @@ __all__ = [
     "DatabaseGenerationAdmissionError",
     "assert_database_generation_runtime_admission",
     "assert_database_generation_startup_ready",
+    "assert_dataset_authority_fresh_runtime_admission",
     "database_generation_runtime_current_path",
 ]

@@ -27,8 +27,8 @@ jobs:
       - env: {PYTEST_ADDOPTS: ""}
         run: python -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -m "not xdist_group" -n 2 --dist loadfile --max-worker-restart 0
       - {env: {PYTEST_ADDOPTS: ""}, run: "python -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -m xdist_group -n 0 --dist loadfile --max-worker-restart 0"}
-      - run: powershell -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
-      - run: pwsh -NoProfile -File packaging/build_inno_installer.ps1 -CheckSourceInputsOnly
+      - run: powershell -NoProfile -File distribution/windows/build/check_source_inputs.ps1
+      - run: pwsh -NoProfile -File distribution/windows/build/check_source_inputs.ps1
       - run: powershell -NoProfile -File scripts/build_backend_exe.ps1 -Clean
       - run: python scripts/postgres_backup_drill.py
       - run: python scripts/check_api_contract.py
@@ -135,7 +135,7 @@ def test_authoritative_inno_matcher_rejects_powershell_wrapper_mutations(
     matcher = mod.REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform][0]
     base = (
         "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass "
-        "-File packaging\\build_inno_installer.ps1"
+        "-File distribution\\windows\\build\\build_installer.ps1"
     )
     real = f'{base} -InstallerHashOutputFile "$env:GITHUB_OUTPUT"'
 
@@ -169,12 +169,12 @@ def test_authoritative_inno_matcher_rejects_powershell_wrapper_mutations(
 def _write_masked_installer_workflow(workflows: Path) -> None:
     compile_command = (
         "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass "
-        "-File packaging\\build_inno_installer.ps1 "
+        "-File distribution\\windows\\build\\build_installer.ps1 "
         '-InstallerHashOutputFile "$env:GITHUB_OUTPUT"'
     )
     verify_command = (
         "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass "
-        "-File packaging\\build_inno_installer.ps1 "
+        "-File distribution\\windows\\build\\build_installer.ps1 "
         '-VerifyOnly -ExpectedInstallerSha256 '
         '"$env:INSTALLER_EXPECTED_SHA256"'
     )

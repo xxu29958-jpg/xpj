@@ -113,9 +113,14 @@ class _LiveDatabase:
 
 @dataclass(frozen=True)
 class _OneRow:
-    row: tuple[object, ...]
+    row: tuple[object, ...] | None = None
 
     def one(self) -> tuple[object, ...]:
+        if self.row is None:
+            raise AssertionError("authority row is missing")
+        return self.row
+
+    def first(self) -> tuple[object, ...] | None:
         return self.row
 
 
@@ -136,6 +141,16 @@ class _Connection:
 
     def execute(self, statement: object, **_kwargs: object) -> _OneRow:
         sql = str(statement)
+        if sql == str(runtime_queries.FRESH_DATASET_AUTHORITY_QUERY):
+            return _OneRow(
+                (
+                    self.live.dataset_id,
+                    self.live.restore_epoch,
+                    self.live.schema_revision,
+                    self.live.schema_min_compatible,
+                    self.live.semantic_revision,
+                )
+            )
         assert sql == str(runtime_queries.LIVE_DATABASE_QUERY)
         for required_token in (
             "current_database()::text",
@@ -371,3 +386,38 @@ def test_installed_runtime_admission_binds_current_program_and_live_database(
         current_updates={"generation_program_sha256": "4" * 64},
     )
     reject(bind_current_payload_digest=False)
+
+
+def test_fresh_install_startup_admits_dataset_authority_without_current(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    missing = tmp_path / "database-generation-runtime" / "current-generation.json"
+    monkeypatch.setattr(admission, "database_generation_runtime_current_path", lambda: missing)
+    live = _LiveDatabase()
+    program = SimpleNamespace(target_revision=TARGET_REVISION, payload_sha256="a" * 64)
+    admission.assert_database_generation_startup_ready(_Engine(live), program)
+
+
+def test_fresh_install_startup_refuses_mismatched_dataset_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    missing = tmp_path / "database-generation-runtime" / "current-generation.json"
+    monkeypatch.setattr(admission, "database_generation_runtime_current_path", lambda: missing)
+    program = SimpleNamespace(target_revision=TARGET_REVISION, payload_sha256="a" * 64)
+    with pytest.raises(admission.DatabaseMigrationPreflightError):
+        admission.assert_database_generation_startup_ready(
+            _Engine(_LiveDatabase(schema_revision="20260808_0001")),
+            program,
+        )
+    with pytest.raises(admission.DatabaseMigrationPreflightError):
+        admission.assert_database_generation_startup_ready(
+            _Engine(_LiveDatabase(schema_min_compatible="20260821_0001")),
+            program,
+        )
+    with pytest.raises(admission.DatabaseMigrationPreflightError):
+        admission.assert_database_generation_startup_ready(
+            _Engine(_LiveDatabase(restore_epoch=1)),
+            program,
+        )
