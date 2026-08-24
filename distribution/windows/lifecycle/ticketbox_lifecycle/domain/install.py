@@ -72,11 +72,7 @@ def install_or_resume(stores: LifecycleStores, request: InstallRequest) -> Comma
 
 
 def _install_locked(stores: LifecycleStores, request: InstallRequest) -> CommandResult:
-    if stores.binding_read.read() is not None:
-        raise LifecycleViolation(
-            "already_installed",
-            "installation.json already exists; refusing a second dataset identity",
-        )
+    _refuse_second_identity(stores, request)
     request = _bind_release_manifest_hash(request)
     observation = stores.observer.observe(request)
     plan = plan_fresh_install(request, observation)
@@ -129,6 +125,14 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             semantic_revision=request.semantic_revision or "ticketbox-dataset-semantics-v1",
         )
         for step in plan.steps:
+            # Architecture 5.4: the stable launcher reads installation.json
+            # before exec. Health therefore cannot precede the runtime selector.
+            # Architecture 9.4/9.5 still own commit: last-result stays
+            # failed_recoverable until health verifies, and a second identity
+            # is refused. The published binding is this operation's selector,
+            # not a finished generation.
+            if step.name == "start_services":
+                _ensure_runtime_binding(stores, bound)
             adapter = adapter_for_step(stores.adapters, step.name)
             try:
                 adapter.verify(bound, step.name)
@@ -152,8 +156,6 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             )
             stores.operations_write.publish_active(active)
 
-        binding = _binding_from_request(bound)
-        stores.binding_write.publish(binding)
         committed = ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=active.operation_id,
@@ -202,6 +204,43 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             code=exc.code,
             message=exc.message,
             installation_published=stores.binding_read.read() is not None,
+        )
+
+
+def _refuse_second_identity(stores: LifecycleStores, request: InstallRequest) -> None:
+    binding = stores.binding_read.read()
+    if binding is None:
+        return
+    active = stores.operations_read.read_active()
+    same_operation = (
+        active is not None
+        and active.operation_id == request.operation_id
+        and binding.install_id == active.install_id
+        and binding.dataset_id == active.dataset_id
+    )
+    if not same_operation:
+        raise LifecycleViolation(
+            "already_installed",
+            "installation.json already exists; refusing a second dataset identity",
+        )
+
+
+def _ensure_runtime_binding(stores: LifecycleStores, request: InstallRequest) -> None:
+    expected = _binding_from_request(request)
+    current = stores.binding_read.read()
+    if current is None:
+        stores.binding_write.publish(expected)
+        return
+    if (
+        current.install_id != expected.install_id
+        or current.dataset_id != expected.dataset_id
+        or current.data_root != expected.data_root
+        or current.active_release_id != expected.active_release_id
+        or current.release_manifest_sha256 != expected.release_manifest_sha256
+    ):
+        raise LifecycleViolation(
+            "identity_conflict",
+            "installation.json does not match this operation's runtime selector",
         )
 
 

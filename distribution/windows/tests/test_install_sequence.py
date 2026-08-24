@@ -50,26 +50,36 @@ def _request(tmp_path: Path, operation_id: str = "11111111-1111-4111-8111-111111
     )
 
 
-def test_fresh_install_publishes_active_before_first_adapter_and_binding_last(tmp_path: Path) -> None:
+def test_fresh_install_publishes_binding_before_start_services(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     request = _request(tmp_path)
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     seen_active_before_apply = {"value": False}
+    seen_binding_before_start = {"value": False}
 
-    original_apply = adapters.files.apply
+    original_files_apply = adapters.files.apply
+    original_scm_apply = adapters.scm.apply
 
-    def wrapped_apply(req: InstallRequest, step: str) -> str:
+    def wrapped_files_apply(req: InstallRequest, step: str) -> str:
         assert stores.read_active() is not None
         assert stores.read_active().phase == "prepared"
         assert stores.read() is None
         seen_active_before_apply["value"] = True
-        return original_apply(req, step)
+        return original_files_apply(req, step)
 
-    adapters.files.apply = wrapped_apply  # type: ignore[method-assign]
+    def wrapped_scm_apply(req: InstallRequest, step: str) -> str:
+        if step == "start_services":
+            assert stores.read() is not None
+            seen_binding_before_start["value"] = True
+        return original_scm_apply(req, step)
+
+    adapters.files.apply = wrapped_files_apply  # type: ignore[method-assign]
+    adapters.scm.apply = wrapped_scm_apply  # type: ignore[method-assign]
     result = install_or_resume(stores.as_lifecycle_stores(), request)
     assert result.ok
     assert result.phase == "committed"
     assert seen_active_before_apply["value"] is True
+    assert seen_binding_before_start["value"] is True
     assert stores.read() is not None
     assert stores.read_active() is None
     assert stores.history[0].phase == "committed"
@@ -83,17 +93,37 @@ def test_fresh_install_publishes_active_before_first_adapter_and_binding_last(tm
     assert binding.release_manifest_sha256 != "pending"
 
 
-def test_health_failure_does_not_publish_installation(tmp_path: Path) -> None:
+def test_health_failure_publishes_binding_but_does_not_commit(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     adapters.dataset.fail_on = "health"
     request = _request(tmp_path)
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     result = install_or_resume(stores.as_lifecycle_stores(), request)
     assert result.ok is False
-    assert result.installation_published is False
-    assert stores.read() is None
+    assert result.installation_published is True
+    assert stores.read() is not None
     assert stores.read_active() is not None
     assert stores.read_active().phase == "failed_recoverable"
+    assert stores.history == []
+
+
+def test_resume_after_health_failure_reuses_the_same_binding(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.dataset.fail_on = "health"
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert first.ok is False
+    first_binding = stores.read()
+    assert first_binding is not None
+    adapters.dataset.fail_on = None
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+    second = install_or_resume(stores.as_lifecycle_stores(), resume)
+    assert second.ok
+    assert second.phase == "committed"
+    assert stores.binding_publish_count == 1
+    assert stores.read() is first_binding
+    assert stores.read_active() is None
 
 
 def test_second_install_refuses_new_identity(tmp_path: Path) -> None:
