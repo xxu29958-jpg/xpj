@@ -41,17 +41,11 @@ def backend_exe(app_dir: Path, release_id: str) -> Path:
 
 
 def resolve_launch_plan(app_dir: Path, program_data: Path) -> dict[str, object]:
+    del app_dir
     path = binding_path(program_data)
-    if path.is_file():
-        return load_binding(path)
-    releases = sorted(item for item in (app_dir / "releases").iterdir() if item.is_dir())
-    if len(releases) != 1:
-        raise RuntimeError("installation.json is absent and the installed release set is not unique")
-    return {
-        "active_release_id": releases[0].name,
-        "data_root": str(program_data / "Ticketbox" / "data"),
-        "backend_port": 8000,
-    }
+    if not path.is_file() or path.is_symlink():
+        raise RuntimeError("frozen backend requires installation.json binding")
+    return load_binding(path)
 
 
 def launch_backend(

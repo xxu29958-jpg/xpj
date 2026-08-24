@@ -110,7 +110,7 @@ def test_frozen_runtime_requires_complete_host_authority_before_write(
         "TICKETBOX_DATA_VOLUME_IDENTITY": _RUNTIME_VOLUME_IDENTITY,
         "TICKETBOX_OWNER_RECOVERY_CHANNEL": "managed_host",
     }
-    missing_cases = [tuple(values), *((key,) for key in values)]
+    missing_cases = [(key,) for key in values]
     monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
 
     for index, missing_keys in enumerate(missing_cases):
@@ -391,3 +391,71 @@ def test_frozen_runtime_preserves_explicit_deployment_recovery_capability(
     launch.configure_environment()
 
     assert os.environ["TICKETBOX_OWNER_RECOVERY_CHANNEL"] == "operator"
+
+
+def test_frozen_vnext_without_marker_requires_installation_binding(monkeypatch, tmp_path):
+    launch = _load_launch_module()
+    program_data = tmp_path / "ProgramData"
+    data_root = tmp_path / "data"
+    preset = data_root / "app"
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.setenv("TICKETBOX_DATA_DIR", str(preset))
+    for key in (
+        "TICKETBOX_DATA_ROOT_MARKER_PATH",
+        "TICKETBOX_DATA_VOLUME_IDENTITY",
+        "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH",
+        "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH",
+        "TICKETBOX_OWNER_RECOVERY_CHANNEL",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        launch.sys,
+        "executable",
+        str(tmp_path / "Ticketbox" / "releases" / "1.2.0" / "backend" / "ticketbox-backend.exe"),
+        raising=False,
+    )
+
+    with pytest.raises(RuntimeError, match="installation.json binding"):
+        launch.configure_environment()
+
+    assert not (preset / "uploads").exists()
+
+
+def test_frozen_vnext_admits_matching_installation_binding(monkeypatch, tmp_path):
+    launch = _load_launch_module()
+    program_data = tmp_path / "ProgramData"
+    binding_dir = program_data / "Ticketbox" / "machine"
+    binding_dir.mkdir(parents=True)
+    data_root = tmp_path / "data"
+    preset = data_root / "app"
+    executable = (
+        tmp_path / "Ticketbox" / "releases" / "1.2.0" / "backend" / "ticketbox-backend.exe"
+    )
+    executable.parent.mkdir(parents=True)
+    executable.write_text("x", encoding="utf-8")
+    (binding_dir / "installation.json").write_text(
+        json.dumps(
+            {
+                "schema": "ticketbox-installed-instance-v1",
+                "data_root": str(data_root),
+                "active_release_id": "1.2.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.setenv("TICKETBOX_DATA_DIR", str(preset))
+    for key in (
+        "TICKETBOX_DATA_ROOT_MARKER_PATH",
+        "TICKETBOX_DATA_VOLUME_IDENTITY",
+        "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH",
+        "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH",
+        "TICKETBOX_OWNER_RECOVERY_CHANNEL",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(launch.sys, "executable", str(executable), raising=False)
+
+    assert launch.configure_environment() == Path(os.path.abspath(preset))
+    assert (preset / "uploads").is_dir()

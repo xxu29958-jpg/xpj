@@ -26,7 +26,10 @@ foreach ($token in @(
 }
 if ($text -notmatch 'PrepareToInstall') { throw 'ISS missing PrepareToInstall' }
 if ($text -notmatch 'TicketboxLifecycle.exe') { throw 'ISS must invoke TicketboxLifecycle.exe' }
-if ($text -match '(?m)^\s*\[Run\]\s*$') { throw 'ISS must not use [Run]; AfterInstall Exec must own Setup failure' }
+if ($text -notmatch '(?m)^\s*\[Run\]\s*$') { throw 'ISS must call the installed coordinator from [Run] after complete [Files]' }
+if ($text -match 'AfterInstall:\s*TicketboxProvision') { throw 'ISS must not mutate from a [Files] AfterInstall callback' }
+if ($text -notmatch 'GetCustomSetupExitCode') { throw 'ISS must overlay Setup exit from last-result' }
+if ($text -notmatch 'topic_installorder') { throw 'ISS must cite jrsoftware topic_installorder' }
 if ($text -notmatch 'TicketboxBackendLauncher.exe') { throw 'ISS must ship TicketboxBackendLauncher.exe' }
 if ($text -notmatch 'PrivilegesRequired=admin') { throw 'ISS must require UAC' }
 

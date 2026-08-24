@@ -60,32 +60,26 @@ def test_launcher_starts_active_release_with_data_dir(tmp_path: Path) -> None:
     assert not (data_root / "app" / ".env").exists()
 
 
-def test_launcher_uses_unique_release_before_installation_json(tmp_path: Path) -> None:
+def test_launcher_requires_installation_json(tmp_path: Path) -> None:
     app_dir = tmp_path / "Ticketbox"
     program_data = tmp_path / "ProgramData"
     backend_dir = app_dir / "releases" / "1.2.0" / "backend"
     backend_dir.mkdir(parents=True)
-    backend = backend_dir / "ticketbox-backend.exe"
-    backend.write_text("fake-backend", encoding="utf-8")
-    seen: dict[str, object] = {}
-
-    def runner(argv, env, check):
-        del check
-        seen["argv"] = list(argv)
-        seen["env"] = dict(env)
-        return SimpleNamespace(returncode=0)
-
+    (backend_dir / "ticketbox-backend.exe").write_text("fake-backend", encoding="utf-8")
     executable = app_dir / "bin" / "TicketboxBackendLauncher.exe"
     executable.parent.mkdir(parents=True)
     executable.write_text("launcher", encoding="utf-8")
-    code = launch_backend(
-        executable=executable,
-        program_data=program_data,
-        environ={"PATH": "C:\\Windows"},
-        runner=runner,
-    )
-    assert code == 0
-    assert seen["argv"] == [str(backend)]
-    env = seen["env"]
-    assert env["TICKETBOX_DATA_DIR"] == str(program_data / "Ticketbox" / "data" / "app")
-    assert env["TICKETBOX_PORT"] == "8000"
+
+    def runner(*_args, **_kwargs):
+        raise AssertionError("must not start")
+
+    try:
+        launch_backend(
+            executable=executable,
+            program_data=program_data,
+            environ={"PATH": "C:\\Windows"},
+            runner=runner,
+        )
+        raise AssertionError("unique release must not substitute for installation.json")
+    except RuntimeError as exc:
+        assert "installation.json" in str(exc)

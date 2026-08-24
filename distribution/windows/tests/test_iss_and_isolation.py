@@ -53,8 +53,11 @@ def test_iss_prepare_is_readonly_and_provision_fails_setup_without_committed_res
     assert "PrivilegesRequired=admin" in text
     assert "PrepareToInstall" in text
     assert "TicketboxLifecycle.exe" in text
-    assert not any(line.strip() == "[Run]" for line in text.splitlines())
-    assert "AfterInstall: TicketboxProvision" in text
+    assert any(line.strip() == "[Run]" for line in text.splitlines())
+    assert "AfterInstall: TicketboxProvision" not in text
+    assert "TicketboxLifecycleParams" in text
+    assert "topic_installorder" in text
+    assert "waituntilterminated" in text.lower()
     assert "ewWaitUntilTerminated" in text
     assert "GetCustomSetupExitCode" in text
     assert "TicketboxResultIsCommitted" in text

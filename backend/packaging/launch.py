@@ -517,15 +517,44 @@ def _expected_frozen_install_dir() -> Path:
     return executable.parents[2]
 
 
+def _assert_vnext_installation_binding(data_dir: Path) -> None:
+    program_data = Path(os.environ.get("PROGRAMDATA") or r"C:\ProgramData")
+    binding_path = program_data / "Ticketbox" / "machine" / "installation.json"
+    if not binding_path.is_file() or binding_path.is_symlink():
+        raise RuntimeError("frozen backend requires installation.json binding")
+    try:
+        payload = json.loads(binding_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("installation.json is unreadable") from exc
+    if not isinstance(payload, dict) or payload.get("schema") != "ticketbox-installed-instance-v1":
+        raise RuntimeError("installation.json schema is not ticketbox-installed-instance-v1")
+    data_root = payload.get("data_root")
+    if not isinstance(data_root, str) or not data_root:
+        raise RuntimeError("installation.json is missing data_root")
+    expected_app = Path(data_root) / "app"
+    if os.path.normcase(os.path.abspath(str(data_dir))) != os.path.normcase(
+        os.path.abspath(str(expected_app))
+    ):
+        raise RuntimeError("TICKETBOX_DATA_DIR does not match installation.json data_root")
+    active_release = payload.get("active_release_id")
+    if not isinstance(active_release, str) or not active_release:
+        raise RuntimeError("installation.json is missing active_release_id")
+    if getattr(sys, "frozen", False):
+        executable = Path(os.path.abspath(sys.executable))
+        try:
+            release_id = executable.parents[1].name
+        except IndexError as exc:
+            raise RuntimeError("frozen backend path does not match the installer layout") from exc
+        if os.path.normcase(release_id) != os.path.normcase(active_release):
+            raise RuntimeError("frozen backend release does not match installation.json")
+
+
 def _assert_frozen_host_authority(host_authority: dict[str, str | None]) -> None:
     if not getattr(sys, "frozen", False):
         return
     marker = (host_authority.get("TICKETBOX_DATA_ROOT_MARKER_PATH") or "").strip()
     volume = (host_authority.get("TICKETBOX_DATA_VOLUME_IDENTITY") or "").strip()
     if not marker and not volume:
-        data_dir = os.environ.get("TICKETBOX_DATA_DIR", "").strip()
-        if not data_dir:
-            raise RuntimeError("frozen backend requires TICKETBOX_DATA_DIR")
         owner_recovery_channel = (os.environ.get("TICKETBOX_OWNER_RECOVERY_CHANNEL") or "").strip()
         if owner_recovery_channel and owner_recovery_channel not in _OWNER_RECOVERY_CHANNELS:
             raise RuntimeError("frozen backend owner recovery capability is invalid")
@@ -554,6 +583,8 @@ def _assert_runtime_data_root_authority(
     marker_value = os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip()
     volume_value = os.environ.get("TICKETBOX_DATA_VOLUME_IDENTITY", "").strip()
     if not marker_value and not volume_value:
+        if getattr(sys, "frozen", False):
+            _assert_vnext_installation_binding(data_dir)
         return None
     if not marker_value or not volume_value:
         raise RuntimeError("runtime DataRoot authority is incomplete")

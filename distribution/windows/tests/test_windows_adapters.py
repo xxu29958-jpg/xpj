@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from ticketbox_lifecycle.errors import LifecycleError
+from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import (
     expected_membership_probe,
     expected_roles_probe,
@@ -35,12 +35,40 @@ class RecordingRunner:
         self.calls.append(recorded)
         self.envs.append(None if env is None else dict(env))
         self.inputs.append(input_text)
+        return self._complete(recorded, self._sql_text(recorded, input_text))
+
+    def _sql_text(self, recorded: tuple[str, ...], input_text: str | None) -> str:
+        if input_text:
+            return input_text
+        if len(recorded) >= 2 and recorded[-2] == "-c":
+            return recorded[-1]
+        return ""
+
+    def _complete(self, recorded: tuple[str, ...], sql_text: str) -> CompletedCommand:
         name = Path(recorded[0]).name.lower()
         if name == "initdb.exe":
             data = Path(recorded[recorded.index("-D") + 1])
             data.mkdir(parents=True, exist_ok=True)
             (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
             return CompletedCommand(recorded, 0, "ok", "")
+        if name in {"pg_ctl.exe", "shawl.exe", "sc.exe"}:
+            return self._complete_scm(name, recorded)
+        if name == "psql.exe":
+            return self._complete_psql(recorded, sql_text)
+        if name == "ticketbox-database-maintenance.exe":
+            return CompletedCommand(recorded, 0, '{"result":"upgraded"}', "")
+        if name == "whoami":
+            return CompletedCommand(
+                recorded,
+                0,
+                "User Name SID\n============= ===\nTBX-QUAL-01\\tbxqual S-1-5-21-1-2-3-1001\n",
+                "",
+            )
+        if name == "icacls" and len(recorded) == 2:
+            return self._complete_icacls(recorded)
+        return CompletedCommand(recorded, 0, "ok", "")
+
+    def _complete_scm(self, name: str, recorded: tuple[str, ...]) -> CompletedCommand:
         if name == "pg_ctl.exe" and "register" in recorded:
             service = recorded[recorded.index("-N") + 1]
             self.services.add(service)
@@ -66,72 +94,69 @@ class RecordingRunner:
                 f"BINARY_PATH_NAME   : {self.image_paths.get(service, 'unknown')}",
                 "",
             )
-        if name == "psql.exe" and "datname = 'ticketbox'" in recorded[-1]:
-            created = any("CREATE DATABASE ticketbox OWNER ticketbox_owner" in " ".join(call) for call in self.calls)
+        return CompletedCommand(recorded, 0, "ok", "")
+
+    def _complete_psql(self, recorded: tuple[str, ...], sql_text: str) -> CompletedCommand:
+        if "datname = 'ticketbox'" in sql_text:
+            created = any(
+                (inp or "") and "CREATE DATABASE ticketbox OWNER ticketbox_owner" in inp
+                for inp in self.inputs
+            )
             return CompletedCommand(recorded, 0, "1\n" if created else "", "")
-        if name == "psql.exe" and "dataset_id FROM dataset_authority" in recorded[-1]:
-            return CompletedCommand(recorded, 0, "22222222-2222-4222-8222-222222222222", "")
-        if name == "psql.exe" and "pg_auth_members" in recorded[-1]:
-            return CompletedCommand(recorded, 0, expected_membership_probe() + "\n", "")
-        if name == "psql.exe" and "rolname || ':'" in recorded[-1]:
-            return CompletedCommand(recorded, 0, expected_roles_probe() + "\n", "")
-        if name == "psql.exe" and "pg_roles" in recorded[-1]:
-            return CompletedCommand(recorded, 0, "1", "")
-        if name == "psql.exe" and "pg_database" in recorded[-1]:
-            return CompletedCommand(recorded, 0, "1", "")
-        if name == "psql.exe" and "alembic_version" in recorded[-1]:
-            return CompletedCommand(recorded, 0, "20260821_0001", "")
-        if name == "ticketbox-database-maintenance.exe":
-            return CompletedCommand(recorded, 0, '{"result":"upgraded"}', "")
-        if name == "whoami":
+        probes = (
+            ("dataset_id FROM dataset_authority", "22222222-2222-4222-8222-222222222222"),
+            ("pg_auth_members", expected_membership_probe() + "\n"),
+            ("rolname || ':'", expected_roles_probe() + "\n"),
+            ("pg_roles", "1"),
+            ("pg_database", "1"),
+            ("alembic_version", "20260821_0001"),
+        )
+        for needle, stdout in probes:
+            if needle in sql_text:
+                return CompletedCommand(recorded, 0, stdout, "")
+        return CompletedCommand(recorded, 0, "ok", "")
+
+    def _complete_icacls(self, recorded: tuple[str, ...]) -> CompletedCommand:
+        target = os.path.normcase(os.path.abspath(recorded[1]))
+        if target.endswith(os.path.normcase(os.sep + "pgdata")):
             return CompletedCommand(
                 recorded,
                 0,
-                "User Name SID\n============= ===\nTBX-QUAL-01\\tbxqual S-1-5-21-1-2-3-1001\n",
+                (
+                    f"{recorded[1]} NT SERVICE\\TicketboxPg:(OI)(CI)(F)\n"
+                    "*S-1-5-18:(OI)(CI)(F)\n"
+                    "*S-1-5-32-544:(OI)(CI)(F)\n"
+                ),
                 "",
             )
-        if name == "icacls" and len(recorded) == 2:
-            target = os.path.normcase(os.path.abspath(recorded[1]))
-            if target.endswith(os.path.normcase(os.sep + "pgdata")):
-                return CompletedCommand(
-                    recorded,
-                    0,
-                    (
-                        f"{recorded[1]} NT SERVICE\\TicketboxPg:(OI)(CI)(F)\n"
-                        "*S-1-5-18:(OI)(CI)(F)\n"
-                        "*S-1-5-32-544:(OI)(CI)(F)\n"
-                    ),
-                    "",
-                )
-            protected = any(
-                call
-                and call[0].lower() == "takeown"
-                and any(os.path.normcase(os.path.abspath(part)) == target for part in call[1:])
-                for call in self.calls
-            )
-            if protected:
-                backend_grant = any(
-                    call
-                    and call[0].lower() == "icacls"
-                    and "/grant" in call
-                    and any("TicketboxBackend:(R)" in part for part in call)
-                    and any(os.path.normcase(os.path.abspath(part)) == target for part in call[1:])
-                    for call in self.calls
-                )
-                extra = " NT SERVICE\\TicketboxBackend:(R)\n" if backend_grant else ""
-                return CompletedCommand(
-                    recorded,
-                    0,
-                    f"{recorded[1]} *S-1-5-21-1-2-3-1001:(F)\n*S-1-5-18:(F)\n*S-1-5-32-544:(F)\n{extra}",
-                    "",
-                )
+        protected = any(
+            call
+            and call[0].lower() == "takeown"
+            and any(os.path.normcase(os.path.abspath(part)) == target for part in call[1:])
+            for call in self.calls
+        )
+        if not protected:
             return CompletedCommand(
                 recorded,
                 0,
                 f"{recorded[1]} NT AUTHORITY\\SYSTEM:(I)(F)\nBUILTIN\\Users:(I)(RX)\n",
                 "",
             )
-        return CompletedCommand(recorded, 0, "ok", "")
+        backend_grant = any(
+            call
+            and call[0].lower() == "icacls"
+            and "/grant" in call
+            and any("TicketboxBackend:(R)" in part for part in call)
+            and any(os.path.normcase(os.path.abspath(part)) == target for part in call[1:])
+            for call in self.calls
+        )
+        extra = " NT SERVICE\\TicketboxBackend:(R)\n" if backend_grant else ""
+        return CompletedCommand(
+            recorded,
+            0,
+            f"{recorded[1]} *S-1-5-21-1-2-3-1001:(F)\n*S-1-5-18:(F)\n*S-1-5-32-544:(F)\n{extra}",
+            "",
+        )
 
 
 def _request(tmp_path: Path) -> InstallRequest:
@@ -325,6 +350,10 @@ def test_files_adapter_materializes_secrets_without_platform_commands(tmp_path: 
     env_text = (secrets / "backend.env").read_text(encoding="utf-8")
     assert "ticketbox_runtime" in env_text
     assert "ticketbox_migrator" not in env_text.split("DATABASE_URL", 1)[1].splitlines()[0]
+    assert "HTTP_BOOTSTRAP_SECRET=" in env_text
+    assert "UPLOAD_TOKEN=" not in env_text
+    assert "APP_TOKEN=" not in env_text
+    assert "ADMIN_TOKEN=" not in env_text
 
 
 def test_roles_adapter_creates_owner_migrator_runtime(tmp_path: Path) -> None:
@@ -334,11 +363,59 @@ def test_roles_adapter_creates_owner_migrator_runtime(tmp_path: Path) -> None:
     bundle.files.apply(request, "programdata_root")
     bundle.postgres.apply(request, "roles_database")
     bundle.postgres.verify(request, "roles_database")
+    argv_text = _argv_text(runner.calls)
+    sql_text = "\n".join(item or "" for item in runner.inputs)
+    psql_calls = [call for call in runner.calls if Path(call[0]).name.lower() == "psql.exe"]
+    assert psql_calls
+    assert all("-c" not in call for call in psql_calls)
+    assert all("-f" in call and call[call.index("-f") + 1] == "-" for call in psql_calls)
+    assert "PASSWORD" not in argv_text
+    migrator_secret = (Path(request.program_data_root) / "machine" / "secrets" / "ticketbox_migrator.password").read_text(encoding="utf-8").strip()
+    runtime_secret = (Path(request.program_data_root) / "machine" / "secrets" / "ticketbox_runtime.password").read_text(encoding="utf-8").strip()
+    assert migrator_secret not in argv_text
+    assert runtime_secret not in argv_text
+    assert "CREATE ROLE ticketbox_owner NOLOGIN" in sql_text
+    assert "CREATE ROLE ticketbox_migrator LOGIN" in sql_text
+    assert "CREATE ROLE ticketbox_runtime LOGIN" in sql_text
+    assert "GRANT ticketbox_owner TO ticketbox_migrator WITH INHERIT FALSE, SET TRUE" in sql_text
+    assert "CREATE DATABASE ticketbox OWNER ticketbox_owner" in sql_text
+    assert "ALTER DEFAULT PRIVILEGES FOR ROLE ticketbox_owner" in sql_text
+    assert f"PASSWORD '{migrator_secret}'" in sql_text
+
+
+def test_scm_refuses_foreign_same_name_service(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    runner.services.add("TicketboxPg")
+    runner.image_paths["TicketboxPg"] = r"C:\Windows\System32\notepad.exe"
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    try:
+        bundle.scm.apply(request, "scm")
+        raise AssertionError("foreign SCM must fail closed")
+    except LifecycleViolation as exc:
+        assert exc.code == "scm_collision"
     text = _argv_text(runner.calls)
-    assert "CREATE ROLE ticketbox_owner NOLOGIN" in text
-    assert "CREATE ROLE ticketbox_migrator LOGIN" in text
-    assert "CREATE ROLE ticketbox_runtime LOGIN" in text
-    assert "GRANT ticketbox_owner TO ticketbox_migrator WITH INHERIT FALSE, SET TRUE" in text
-    assert "CREATE DATABASE ticketbox OWNER ticketbox_owner" in text
-    assert "ticketbox_runtime" in text
-    assert "ALTER DEFAULT PRIVILEGES FOR ROLE ticketbox_owner" in text
+    assert "obj=" not in text
+    assert "sidtype" not in text
+    assert not any(call[0].endswith("pg_ctl.exe") and "register" in call for call in runner.calls)
+    assert not any(call[0].endswith("shawl.exe") and "add" in call for call in runner.calls)
+
+
+def test_scm_refuses_foreign_backend_service(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    runner.services.add("TicketboxBackend")
+    runner.image_paths["TicketboxBackend"] = r"C:\Windows\System32\notepad.exe"
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    try:
+        bundle.scm.apply(request, "scm")
+        raise AssertionError("foreign backend SCM must fail closed")
+    except LifecycleViolation as exc:
+        assert exc.code == "scm_collision"
+    assert not any(
+        call[:3] == ("sc.exe", "config", "TicketboxBackend") and "obj=" in call
+        for call in runner.calls
+    )
+    assert not any(call[0].endswith("shawl.exe") and "add" in call for call in runner.calls)

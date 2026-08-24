@@ -97,7 +97,15 @@ class _SecurityAdapter:
         if step != "acl":
             raise LifecycleViolation("wrong_adapter", "security adapter only owns acl")
         _require_windows()
-        user_sid = _current_user_sid(self._runner)
+        elevated_sid = _current_user_sid(self._runner)
+        grants = [
+            f"*{elevated_sid}:(OI)(CI)F",
+            "*S-1-5-18:(OI)(CI)F",
+            "*S-1-5-32-544:(OI)(CI)F",
+        ]
+        interactive_sid = _shell_user_sid()
+        if interactive_sid and interactive_sid != elevated_sid:
+            grants.append(f"*{interactive_sid}:(OI)(CI)RX")
         for path in (request.program_data_root, request.data_root):
             require_ok(
                 self._runner.run(
@@ -106,9 +114,7 @@ class _SecurityAdapter:
                         path,
                         "/inheritance:r",
                         "/grant:r",
-                        f"*{user_sid}:(OI)(CI)F",
-                        "*S-1-5-18:(OI)(CI)F",
-                        "*S-1-5-32-544:(OI)(CI)F",
+                        *grants,
                     ]
                 ),
                 code="acl_apply_failed",
@@ -144,6 +150,30 @@ class _SecurityAdapter:
             ),
             code="binding_acl_failed",
         )
+        interactive_sid = _shell_user_sid()
+        if interactive_sid:
+            require_ok(
+                self._runner.run(
+                    [
+                        "icacls",
+                        str(machine),
+                        "/grant",
+                        f"*{interactive_sid}:(RX)",
+                    ]
+                ),
+                code="binding_dir_acl_failed",
+            )
+            require_ok(
+                self._runner.run(
+                    [
+                        "icacls",
+                        str(binding_path),
+                        "/grant",
+                        f"*{interactive_sid}:(R)",
+                    ]
+                ),
+                code="binding_acl_failed",
+            )
 
     def grant_backend_env_read(self, request: InstallRequest) -> None:
         _grant_backend_env_read(self._runner, request)
@@ -337,10 +367,11 @@ class _PostgresAdapter:
                 "-d",
                 database,
                 "-tA",
-                "-c",
-                sql,
+                "-f",
+                "-",
             ],
             env=sealed_pg_env(str(layout.pg_passfile(request))),
+            input_text=sql,
         )
 
 
@@ -451,7 +482,11 @@ class _ScmAdapter:
         pg_ctl = layout.tool(request, "pg_ctl.exe")
         if not pg_ctl.is_file():
             raise LifecycleError("missing_platform_binary", "postgresql/bin/pg_ctl.exe is not installed")
-        self._refuse_foreign_service(request.pg_service_name, str(pg_ctl))
+        self._refuse_foreign_service(
+            request.pg_service_name,
+            _path_fragment(pg_ctl),
+            _path_fragment(layout.pgdata(request)),
+        )
         if not self._service_exists(request.pg_service_name):
             require_ok(
                 self._runner.run(
@@ -475,7 +510,11 @@ class _ScmAdapter:
         launcher = layout.launcher_exe(request)
         if not shawl.is_file() or not launcher.is_file():
             raise LifecycleError("missing_platform_binary", "shawl.exe or TicketboxBackendLauncher.exe is missing")
-        self._refuse_foreign_service(request.backend_service_name, str(launcher))
+        self._refuse_foreign_service(
+            request.backend_service_name,
+            _path_fragment(launcher),
+            request.backend_service_name.lower(),
+        )
         if not self._service_exists(request.backend_service_name):
             require_ok(
                 self._runner.run(
@@ -531,12 +570,17 @@ class _ScmAdapter:
             time.sleep(1)
         raise LifecycleError("backend_not_running", "TicketboxBackend did not reach RUNNING")
 
-    def _refuse_foreign_service(self, name: str, expected_fragment: str) -> None:
+    def _refuse_foreign_service(self, name: str, *expected_fragments: str) -> None:
         if not self._service_exists(name):
             return
         completed = self._runner.run(["sc.exe", "qc", name])
-        text = f"{completed.stdout}\n{completed.stderr}"
-        if completed.returncode != 0 or expected_fragment.lower() not in text.lower():
+        text = f"{completed.stdout}\n{completed.stderr}".lower()
+        missing = [
+            fragment
+            for fragment in expected_fragments
+            if fragment and fragment.lower() not in text
+        ]
+        if completed.returncode != 0 or missing:
             raise LifecycleViolation(
                 "scm_collision",
                 f"service {name} exists with a foreign ImagePath",
@@ -779,9 +823,6 @@ def _ensure_credentials(request: InstallRequest) -> None:
             f"DATABASE_URL={_app_database_url(request)}",
             f"TICKETBOX_DATA_DIR={app_dir}",
             f"HTTP_BOOTSTRAP_SECRET={secrets.token_urlsafe(32)}",
-            f"UPLOAD_TOKEN={secrets.token_urlsafe(32)}",
-            f"APP_TOKEN={secrets.token_urlsafe(32)}",
-            f"ADMIN_TOKEN={secrets.token_urlsafe(32)}",
         ]
     ) + "\n"
     if not env_path.is_file():
@@ -818,6 +859,112 @@ def _win32_service_path(path: Path) -> str:
     if text.startswith(prefix):
         return text[len(prefix) :]
     return text
+
+
+def _path_fragment(path: Path) -> str:
+    return _win32_service_path(path).replace("/", "\\").lower()
+
+
+def _sid_string(advapi, kernel, token) -> str | None:
+    import ctypes
+    from ctypes import wintypes
+
+    class TokenUser(ctypes.Structure):
+        _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
+
+    get_info = advapi.GetTokenInformation
+    get_info.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    get_info.restype = wintypes.BOOL
+    convert = advapi.ConvertSidToStringSidW
+    convert.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.LPWSTR)]
+    convert.restype = wintypes.BOOL
+    size = wintypes.DWORD()
+    get_info(token, 1, None, 0, ctypes.byref(size))
+    if size.value < ctypes.sizeof(TokenUser):
+        return None
+    buf = ctypes.create_string_buffer(size.value)
+    if not get_info(token, 1, buf, size.value, ctypes.byref(size)):
+        return None
+    sid = TokenUser.from_buffer(buf).Sid
+    string_sid = wintypes.LPWSTR()
+    if not convert(sid, ctypes.byref(string_sid)):
+        return None
+    result = string_sid.value
+    kernel.LocalFree(string_sid)
+    return result
+
+
+def _linked_token_user_sid() -> str | None:
+    # Official UAC split token: TokenLinkedToken on an elevated token is the
+    # interactive filtered user (Win32 TOKEN_INFORMATION_CLASS).
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    token = wintypes.HANDLE()
+    if not advapi.OpenProcessToken(kernel.GetCurrentProcess(), 0x0008, ctypes.byref(token)):
+        return None
+    try:
+        size = wintypes.DWORD()
+        advapi.GetTokenInformation(token, 19, None, 0, ctypes.byref(size))
+        if size.value == 0:
+            return None
+        buf = ctypes.create_string_buffer(size.value)
+        if not advapi.GetTokenInformation(token, 19, buf, size.value, ctypes.byref(size)):
+            return None
+        linked = wintypes.HANDLE.from_buffer(buf).value
+        if not linked:
+            return None
+        try:
+            return _sid_string(advapi, kernel, linked)
+        finally:
+            kernel.CloseHandle(linked)
+    finally:
+        kernel.CloseHandle(token)
+
+
+def _explorer_shell_user_sid() -> str | None:
+    # Fallback: the shell window still belongs to the interactive session.
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    hwnd = user32.GetShellWindow()
+    if not hwnd:
+        return None
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    handle = kernel.OpenProcess(0x1000, False, pid.value)
+    if not handle:
+        return None
+    try:
+        token = wintypes.HANDLE()
+        if not advapi.OpenProcessToken(handle, 0x0008, ctypes.byref(token)):
+            return None
+        try:
+            return _sid_string(advapi, kernel, token)
+        finally:
+            kernel.CloseHandle(token)
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def _shell_user_sid() -> str | None:
+    if os.name != "nt":
+        return None
+    try:
+        return _linked_token_user_sid() or _explorer_shell_user_sid()
+    except Exception:
+        return None
 
 
 def _start_service(runner: CommandRunner, name: str, *, code: str) -> None:
