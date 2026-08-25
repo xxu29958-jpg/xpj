@@ -545,6 +545,24 @@ def test_installer_compiles_only_from_locked_snapshot_and_clean_git() -> None:
         REPO_ROOT / "distribution" / "windows" / "build" / "build_installer.ps1"
     ).read_text(encoding="utf-8-sig")
     provenance = PROVENANCE_HELPER.read_text(encoding="utf-8-sig")
+    toolchain = json.loads(
+        (REPO_ROOT / "backend" / "packaging" / "windows-build-toolchain.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert toolchain["python_version"] == "3.11.16"
+    assert toolchain["build_tool_sources"]["python"] == {
+        "version": "3.11.16",
+        "archive_name": "cpython-3.11.16+20260825-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.11.16%2B20260825-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+        "sha256": "f91242b07e318d2540f9da71162b92d494c39745abde9b994d7d906756453fc9",
+        "archive_payload_root": "python",
+        "executable_relative_path": "python.exe",
+        "executable_sha256": "f2bb6d49cdd2fb49d0ce63c2a0143da37d9a4d52694803c2f92fd31db7fcb88b",
+        "runtime_relative_path": "python311.dll",
+        "runtime_sha256": "d736a23d96e127fb01c0508efadeb08a47363c7b17d54a03de7ec6e881549d0d",
+    }
 
     assert "$BuildLock = Enter-TicketboxWindowsBuildLock $BackendRoot" in build
     assert "$RecipeLocks = Enter-TicketboxFileSetReadLocks" in build
