@@ -63,9 +63,12 @@ def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> No
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     seen_active_before_apply = {"value": False}
     seen_unpublished_through_health = {"value": False}
+    operation_store_order: list[str] = []
 
     original_files_apply = adapters.files.apply
     original_health_verify = adapters.dataset.verify
+    original_prepare = stores.prepare
+    original_require_fresh_inputs = stores.require_fresh_inputs
 
     def wrapped_files_apply(req: InstallRequest, step: str) -> str:
         assert stores.read_active() is not None
@@ -79,8 +82,18 @@ def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> No
         seen_unpublished_through_health["value"] = True
         original_health_verify(req, step)
 
+    def wrapped_prepare(req: InstallRequest) -> None:
+        operation_store_order.append("prepare")
+        original_prepare(req)
+
+    def wrapped_require_fresh_inputs(req: InstallRequest) -> None:
+        operation_store_order.append("fresh-preflight")
+        original_require_fresh_inputs(req)
+
     adapters.files.apply = wrapped_files_apply  # type: ignore[method-assign]
     adapters.dataset.verify = wrapped_health_verify  # type: ignore[method-assign]
+    stores.prepare = wrapped_prepare  # type: ignore[method-assign]
+    stores.require_fresh_inputs = wrapped_require_fresh_inputs  # type: ignore[method-assign]
     result = install_or_resume(stores.as_lifecycle_stores(), request)
     assert result.ok
     assert result.phase == "committed"
@@ -94,6 +107,7 @@ def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> No
     assert stores.read_active().phase == "committed"
     assert stores.history == []
     assert adapters.apply_order() == list(APPLY_SEQUENCE)
+    assert operation_store_order == ["fresh-preflight", "prepare"]
     assert stores.binding_publish_count == 1
     assert stores.fresh_inputs_check_count == 1
     binding = stores.read()

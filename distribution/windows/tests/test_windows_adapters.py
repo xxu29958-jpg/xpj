@@ -81,6 +81,30 @@ def _trusted_unit_file_owner(monkeypatch):
     monkeypatch.setattr(windows_security_native, "file_owner_sid", lambda _path: "S-1-5-32-544")
     monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: "S-1-5-21-9-9-9-1002")
 
+    def create_unit_directory(path: Path, *, code: str) -> None:
+        del code
+        path.mkdir()
+
+    def require_unit_directory(path: Path, *, code: str) -> None:
+        windows_security_native.require_trusted_owner(
+            path,
+            code=code,
+            message=f"untrusted lifecycle directory: {path}",
+        )
+
+    monkeypatch.setattr(
+        windows_security_native,
+        "create_protected_directory",
+        create_unit_directory,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        windows_security_native,
+        "require_protected_directory",
+        require_unit_directory,
+        raising=False,
+    )
+
 
 class RecordingRunner:
     def __init__(self) -> None:
@@ -786,7 +810,9 @@ def test_acl_refuses_untrusted_existing_credential_before_reading_it(
     monkeypatch.setattr(
         windows_security_native,
         "file_owner_sid",
-        lambda _path: "S-1-5-21-9-9-9-1002",
+        lambda path: (
+            "S-1-5-21-9-9-9-1002" if Path(path) == secret else "S-1-5-32-544"
+        ),
         raising=False,
     )
 
@@ -824,21 +850,24 @@ def test_exact_retry_reuses_only_already_protected_credentials(
     assert after == before
 
 
-def test_root_acl_does_not_grant_the_ordinary_shell_user(tmp_path: Path, monkeypatch) -> None:
+def test_operation_root_creation_does_not_grant_the_ordinary_shell_user(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: "S-1-5-21-9-9-9-1002")
+    shell_sid = "S-1-5-21-9-9-9-1002"
+    monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: shell_sid)
     bundle = WindowsAdapterBundle(runner)
     bundle.files.apply(request, "programdata_root")
 
     bundle.security.apply(request, "acl")
 
-    root_acl = next(
-        call
-        for call in runner.calls
-        if call[0] == "icacls" and os.path.normcase(os.path.abspath(call[1])) == os.path.normcase(os.path.abspath(request.program_data_root))
-    )
-    assert not any("S-1-5-21-9-9-9-1002" in part for part in root_acl)
+    assert shell_sid not in windows_security_native._LIFECYCLE_DIRECTORY_SDDL
+    assert windows_security_native._LIFECYCLE_DIRECTORY_SDDL.startswith("O:BA")
+    assert ";;;SY)" in windows_security_native._LIFECYCLE_DIRECTORY_SDDL
+    assert ";;;BA)" in windows_security_native._LIFECYCLE_DIRECTORY_SDDL
+    assert shell_sid not in _argv_text(runner.calls)
 
 
 def test_reparse_component_is_rejected_before_credentials(tmp_path: Path, monkeypatch) -> None:

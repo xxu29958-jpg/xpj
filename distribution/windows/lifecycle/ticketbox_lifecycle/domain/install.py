@@ -96,9 +96,10 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
 
     observation = stores.observer.observe(request)
     plan = plan_fresh_install(request, observation)
-    stores.operations_write.prepare(request)
     if existing is None:
         stores.operations_write.require_fresh_inputs(request)
+    stores.operations_write.prepare(request)
+    if existing is None:
         schema_revision = request.schema_revision
         active = ActiveOperation(
             schema=OPERATION_SCHEMA,

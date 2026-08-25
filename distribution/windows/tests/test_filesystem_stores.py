@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from ticketbox_lifecycle.errors import LifecycleViolation
+from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
 from ticketbox_lifecycle.schemas import (
     INSTALLATION_SCHEMA,
@@ -110,7 +111,7 @@ def test_active_publication_protects_and_verifies_exact_file(tmp_path: Path) -> 
     path = tmp_path / "machine" / "operations" / "active.json"
     temp_path = security.calls[0][1]
     assert temp_path.parent == path.parent
-    assert temp_path.name.startswith("active.json") and temp_path.name.endswith(".tmp")
+    assert temp_path.name == layout.ACTIVE_OPERATION_TEMP_NAME
     assert security.calls == [
         ("protect", temp_path, "TicketboxBackend"),
         ("verify", temp_path, "TicketboxBackend"),

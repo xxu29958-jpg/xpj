@@ -4,6 +4,8 @@ from pathlib import Path
 
 from ticketbox_lifecycle.schemas import InstallRequest
 
+ACTIVE_OPERATION_TEMP_NAME = "active.json.pending.tmp"
+
 
 def release_dir(request: InstallRequest) -> Path:
     return Path(request.app_dir) / "releases" / request.target_release_id

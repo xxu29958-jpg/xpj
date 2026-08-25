@@ -20,29 +20,56 @@ class WindowsSecurityAdapter:
     def prepare_operation_store(self, request: InstallRequest) -> None:
         native.require_windows()
         require_closed_data_root(request)
-        root = Path(request.program_data_root)
-        native.reject_reparse_components(root)
-        root.mkdir(parents=True, exist_ok=True)
-        native.protect_directory(self._runner, root, code="operation_store_acl_failed")
-        for path in (layout.machine_root(request), layout.active_operation(request).parent):
+        paths = (
+            Path(request.program_data_root),
+            layout.machine_root(request),
+            layout.active_operation(request).parent,
+        )
+        for path in paths:
             native.reject_reparse_components(path)
-            path.mkdir(parents=True, exist_ok=True)
-            native.protect_directory(self._runner, path, code="operation_store_acl_failed")
+            if os.path.lexists(path):
+                native.require_protected_directory(path, code="operation_store_untrusted")
+            else:
+                native.create_protected_directory(path, code="operation_store_create_failed")
+        pending = paths[-1] / layout.ACTIVE_OPERATION_TEMP_NAME
+        if os.path.lexists(pending):
+            _require_active_temp(pending, code="operation_store_orphan_untrusted")
+            try:
+                pending.unlink()
+            except OSError as exc:
+                raise LifecycleError(
+                    "operation_store_orphan_cleanup_failed",
+                    "cannot discard the incomplete active publication",
+                ) from exc
 
     def require_fresh_inputs(self, request: InstallRequest) -> None:
+        native.require_windows()
+        require_closed_data_root(request)
+        root = Path(request.program_data_root)
         machine = layout.machine_root(request)
         operations = layout.active_operation(request).parent
         data_root = Path(request.data_root)
-        native.reject_reparse_components(machine)
-        native.reject_reparse_components(operations)
         native.reject_reparse_components(data_root)
-        unexpected_machine = [path for path in machine.iterdir() if path != operations]
-        unexpected_operations = list(operations.iterdir())
-        if unexpected_machine or unexpected_operations or os.path.lexists(data_root):
-            raise LifecycleViolation(
-                "preexisting_mutable_state",
-                "fresh install refuses unbound mutable state",
-            )
+        if os.path.lexists(data_root):
+            _raise_preexisting_mutable_state()
+        expected_children = ((root, machine), (machine, operations))
+        for parent, expected_child in expected_children:
+            if not os.path.lexists(parent):
+                return
+            native.require_protected_directory(parent, code="operation_store_untrusted")
+            entries = list(parent.iterdir())
+            if any(entry != expected_child for entry in entries):
+                _raise_preexisting_mutable_state()
+            if not os.path.lexists(expected_child):
+                return
+        native.require_protected_directory(operations, code="operation_store_untrusted")
+        entries = list(operations.iterdir())
+        pending = operations / layout.ACTIVE_OPERATION_TEMP_NAME
+        if not entries:
+            return
+        if entries != [pending]:
+            _raise_preexisting_mutable_state()
+        _require_active_temp(pending, code="preexisting_mutable_state")
 
     def protect_machine_json(self, path: Path, reader_service: str) -> None:
         native.require_windows()
@@ -286,6 +313,19 @@ class WindowsSecurityAdapter:
 
     def owner_bootstrap_secret(self, request: InstallRequest) -> str:
         return credentials.owner_bootstrap_secret(request)
+
+
+def _require_active_temp(path: Path, *, code: str) -> None:
+    native.reject_reparse_components(path)
+    if not path.is_file():
+        raise LifecycleViolation(code, "active publication orphan must be a regular file")
+
+
+def _raise_preexisting_mutable_state() -> None:
+    raise LifecycleViolation(
+        "preexisting_mutable_state",
+        "fresh install refuses unbound mutable state",
+    )
 
 
 def require_closed_data_root(request: InstallRequest) -> None:

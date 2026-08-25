@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import stat
+from functools import lru_cache
 from pathlib import Path
 
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
@@ -10,6 +11,8 @@ from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
 ADMINISTRATORS_SID = "S-1-5-32-544"
 SYSTEM_SID = "S-1-5-18"
 _TRUSTED_OWNER_SIDS = frozenset({ADMINISTRATORS_SID, SYSTEM_SID})
+_LIFECYCLE_DIRECTORY_SDDL = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+_DACL_INFORMATION = 0x00000004
 _BROAD_READER_MARKERS = (
     "BUILTIN\\USERS",
     "NT AUTHORITY\\AUTHENTICATED USERS",
@@ -48,6 +51,162 @@ def reject_reparse_components(path: Path) -> None:
         if parent == cursor:
             return
         cursor = parent
+
+
+def create_protected_directory(path: Path, *, code: str) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    require_windows()
+    reject_reparse_components(path)
+
+    class SecurityAttributes(ctypes.Structure):
+        _fields_ = [
+            ("nLength", wintypes.DWORD),
+            ("lpSecurityDescriptor", ctypes.c_void_p),
+            ("bInheritHandle", wintypes.BOOL),
+        ]
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    convert = advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW
+    convert.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    convert.restype = wintypes.BOOL
+    create = kernel.CreateDirectoryW
+    create.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(SecurityAttributes)]
+    create.restype = wintypes.BOOL
+    descriptor = ctypes.c_void_p()
+    if not convert(_LIFECYCLE_DIRECTORY_SDDL, 1, ctypes.byref(descriptor), None):
+        raise LifecycleError(code, "cannot build the lifecycle directory security descriptor")
+    attributes = SecurityAttributes(
+        ctypes.sizeof(SecurityAttributes),
+        descriptor,
+        False,
+    )
+    try:
+        if create(str(path), ctypes.byref(attributes)):
+            require_protected_directory(path, code=code)
+            return
+        error = ctypes.get_last_error()
+        if error == 183:
+            require_protected_directory(path, code=code)
+            return
+        raise LifecycleError(code, f"CreateDirectoryW failed for {path.name}: {error}")
+    finally:
+        kernel.LocalFree(descriptor)
+
+
+def require_protected_directory(path: Path, *, code: str) -> None:
+    reject_reparse_components(path)
+    if not path.is_dir():
+        raise LifecycleViolation(code, f"lifecycle path is not a directory: {path}")
+    require_trusted_owner(
+        path,
+        code=code,
+        message=f"untrusted lifecycle directory: {path}",
+    )
+    try:
+        observed = _directory_security_sddl(path)
+    except OSError as exc:
+        raise LifecycleViolation(code, f"cannot inspect lifecycle directory: {path}") from exc
+    if observed != _canonical_lifecycle_directory_sddl():
+        raise LifecycleViolation(code, f"untrusted lifecycle directory: {path}")
+
+
+@lru_cache(maxsize=1)
+def _canonical_lifecycle_directory_sddl() -> str:
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    convert = advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW
+    convert.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    convert.restype = wintypes.BOOL
+    descriptor = ctypes.c_void_p()
+    if not convert(_LIFECYCLE_DIRECTORY_SDDL, 1, ctypes.byref(descriptor), None):
+        raise OSError(ctypes.get_last_error(), "cannot canonicalize lifecycle directory SDDL")
+    try:
+        return _security_descriptor_sddl(descriptor)
+    finally:
+        kernel.LocalFree(descriptor)
+
+
+def _directory_security_sddl(path: Path) -> str:
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    get_security = advapi.GetNamedSecurityInfoW
+    get_security.argtypes = [
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    get_security.restype = wintypes.DWORD
+    descriptor = ctypes.c_void_p()
+    result = get_security(
+        str(path),
+        1,
+        _DACL_INFORMATION,
+        None,
+        None,
+        None,
+        None,
+        ctypes.byref(descriptor),
+    )
+    if result != 0:
+        raise OSError(result, f"GetNamedSecurityInfoW failed for {path}")
+    try:
+        return _security_descriptor_sddl(descriptor)
+    finally:
+        kernel.LocalFree(descriptor)
+
+
+def _security_descriptor_sddl(descriptor) -> str:
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    convert = advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW
+    convert.argtypes = [
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.LPWSTR),
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    convert.restype = wintypes.BOOL
+    text = wintypes.LPWSTR()
+    if not convert(
+        descriptor,
+        1,
+        _DACL_INFORMATION,
+        ctypes.byref(text),
+        None,
+    ):
+        raise OSError(ctypes.get_last_error(), "cannot convert Windows security descriptor")
+    try:
+        return str(text.value)
+    finally:
+        kernel.LocalFree(text)
 
 
 def protect_directory(runner: CommandRunner, path: Path, *, code: str) -> None:

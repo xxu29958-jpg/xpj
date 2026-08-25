@@ -4,12 +4,14 @@ import json
 import os
 import re
 import tempfile
+from contextlib import suppress
 from dataclasses import asdict
 from pathlib import Path
 
 from ticketbox_lifecycle.adapters.ports import AdapterBundle
 from ticketbox_lifecycle.domain.install import LifecycleStores
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
+from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.mutex import os_mutex
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
 from ticketbox_lifecycle.runtime.windows_security_native import (
@@ -38,6 +40,7 @@ class FilesystemStores:
         self._operations_dir = machine_root / "operations"
         self._history_dir = self._operations_dir / "history"
         self._active_path = self._operations_dir / "active.json"
+        self._active_temp_path = self._operations_dir / layout.ACTIVE_OPERATION_TEMP_NAME
         self._binding_path = machine_root / "installation.json"
         self._backend_service_name = backend_service_name
         self._adapters = adapters
@@ -130,8 +133,9 @@ class FilesystemStores:
 
     def publish_active(self, operation: ActiveOperation) -> None:
         reject_reparse_components(self._active_path)
+        reject_reparse_components(self._active_temp_path)
         self._operations_dir.mkdir(parents=True, exist_ok=True)
-        tmp_path = _write_temp_json(self._active_path, asdict(operation))
+        tmp_path = _write_exact_temp_json(self._active_temp_path, asdict(operation))
         try:
             self._adapters.security.protect_machine_json(
                 tmp_path,
@@ -243,13 +247,32 @@ def _write_temp_json(path: Path, payload: dict[str, object]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=path.name, suffix=".tmp", dir=str(path.parent))
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(payload, handle, indent=2, sort_keys=True)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
+        _write_json_fd(fd, payload)
         return Path(tmp_name)
-    except Exception:
+    except BaseException:
         if os.path.exists(tmp_name):
             os.unlink(tmp_name)
         raise
+
+
+def _write_exact_temp_json(path: Path, payload: dict[str, object]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    fd = os.open(path, flags, 0o600)
+    try:
+        _write_json_fd(fd, payload)
+        return path
+    except BaseException:
+        with suppress(OSError):
+            os.close(fd)
+        if os.path.exists(path):
+            os.unlink(path)
+        raise
+
+
+def _write_json_fd(fd: int, payload: dict[str, object]) -> None:
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
