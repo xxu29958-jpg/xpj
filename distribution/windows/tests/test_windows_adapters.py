@@ -502,9 +502,15 @@ def test_initdb_failure_always_removes_password_input(tmp_path: Path) -> None:
     assert not pwfile.exists()
 
 
+@pytest.mark.parametrize(
+    ("raw_primary", "expected_code"),
+    [(False, "initdb_failed"), (True, "initdb_platform_failure")],
+)
 def test_initdb_cleanup_failure_cannot_replace_the_primary_failure(
     tmp_path: Path,
     monkeypatch,
+    raw_primary: bool,
+    expected_code: str,
 ) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
@@ -512,6 +518,12 @@ def test_initdb_cleanup_failure_cannot_replace_the_primary_failure(
     bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
+
+    if raw_primary:
+        def fail_materialization(_request: InstallRequest) -> Path:
+            raise PermissionError("injected primary I/O failure")
+
+        monkeypatch.setattr(bundle.security, "materialize_initdb_password_file", fail_materialization)
 
     def fail_cleanup(_request: InstallRequest) -> None:
         raise LifecycleError("secret_cleanup_failed", "injected cleanup failure")
@@ -521,8 +533,10 @@ def test_initdb_cleanup_failure_cannot_replace_the_primary_failure(
     with pytest.raises(LifecycleError) as caught:
         bundle.postgres.apply(request, "postgres_initdb")
 
-    assert caught.value.code == "initdb_failed"
+    assert caught.value.code == expected_code
     assert "secret_cleanup_failed" in caught.value.message
+    if raw_primary:
+        assert "injected primary I/O failure" in caught.value.message
 
 
 def test_roles_refuse_ready_foreign_cluster_before_any_ddl(tmp_path: Path) -> None:

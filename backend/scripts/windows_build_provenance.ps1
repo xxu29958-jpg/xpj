@@ -36,6 +36,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\lifecycle\ticketbox_lifecycle\policy\postgres_roles.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\__init__.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\command.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_process.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\durable_files.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\postgres_connection.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\layout.py",

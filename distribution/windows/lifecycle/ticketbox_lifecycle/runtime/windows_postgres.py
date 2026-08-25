@@ -132,9 +132,15 @@ class WindowsPostgresAdapter:
                 self._runner.run(argv, env=sealed_postgres_env(), timeout_s=180),
                 code="initdb_failed",
             )
-        except LifecycleError as exc:
-            primary_failure = exc
-            raise
+        except Exception as exc:
+            if isinstance(exc, LifecycleError):
+                primary_failure = exc
+                raise
+            primary_failure = LifecycleError(
+                "initdb_platform_failure",
+                f"initdb platform boundary failed: {exc}",
+            )
+            raise primary_failure from exc
         finally:
             try:
                 self._security.discard_initdb_password_file(request)

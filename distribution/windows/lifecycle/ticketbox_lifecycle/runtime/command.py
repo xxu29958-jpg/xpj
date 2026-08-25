@@ -41,14 +41,11 @@ class SubprocessCommandRunner:
             raise LifecycleError("empty_command", "adapter refused an empty platform command")
         program = os.path.basename(str(argv[0])) or "platform command"
         try:
-            completed = subprocess.run(
-                list(argv),
-                check=False,
-                capture_output=True,
-                text=True,
-                env=dict(env) if env is not None else None,
-                timeout=timeout_s,
-                input=input_text,
+            completed = _run_process(
+                argv,
+                env=env,
+                timeout_s=timeout_s,
+                input_text=input_text,
             )
         except subprocess.TimeoutExpired as exc:
             raise LifecycleError(
@@ -66,6 +63,23 @@ class SubprocessCommandRunner:
             stdout=completed.stdout or "",
             stderr=completed.stderr or "",
         )
+
+
+def _run_process(
+    argv: Sequence[str],
+    *,
+    env: Mapping[str, str] | None,
+    timeout_s: int,
+    input_text: str | None,
+) -> subprocess.CompletedProcess[str]:
+    from ticketbox_lifecycle.runtime.windows_process import run_windows_process
+
+    return run_windows_process(
+        argv,
+        env=env,
+        timeout_s=timeout_s,
+        input_text=input_text,
+    )
 
 
 def sealed_postgres_env() -> dict[str, str]:

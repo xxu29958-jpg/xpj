@@ -14,7 +14,7 @@ from ticketbox_lifecycle.domain.install import (
     inspect_machine,
     install_or_resume,
 )
-from ticketbox_lifecycle.errors import LifecycleViolation
+from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.schemas import APPLY_SEQUENCE, REQUEST_SCHEMA, InstallRequest
 
 
@@ -150,6 +150,24 @@ def test_resume_after_health_failure_publishes_binding_once_after_success(tmp_pa
     assert stores.read_active() is not None
     assert stores.read_active().phase == "committed"
     assert stores.fresh_inputs_check_count == 1
+
+
+@pytest.mark.parametrize("code", ["command_outcome_unknown", "command_start_failed"])
+def test_unknown_verification_never_authorizes_apply(tmp_path: Path, code: str) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+
+    def fail_verification(_request: InstallRequest, _step: str) -> None:
+        raise LifecycleError(code, "injected command boundary failure")
+
+    adapters.files.verify = fail_verification  # type: ignore[method-assign]
+
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    assert result.ok is False
+    assert result.code == code
+    assert adapters.files.apply_calls == 0
 
 
 def test_committed_result_is_durable_before_active_operation_is_archived(tmp_path: Path) -> None:

@@ -134,7 +134,9 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
                 try:
                     adapter.verify(bound, step.name)
                     result = "already-verified"
-                except LifecycleError:
+                except LifecycleError as exc:
+                    if exc.code in {"command_outcome_unknown", "command_start_failed"}:
+                        raise
                     result = adapter.apply(bound, step.name)
                     adapter.verify(bound, step.name)
             last_phase = phase_after(step.name)
