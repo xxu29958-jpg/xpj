@@ -57,18 +57,15 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
     windows_safety = windows_steps["Windows installer safety behavior"]["run"]
     assert '-m "not xdist_group"' in windows_safety
     assert "-n 4 --dist loadfile --max-worker-restart 0" in windows_safety
-    local_postgres = windows_steps["Windows local PostgreSQL lifecycle"]
-    assert local_postgres["run"] == (
-        "python -m pytest -q "
-        "packaging/tests/test_local_test_postgres_lifecycle.py "
-        "--strict-markers -p no:cacheprovider -o addopts= "
-        "-n 0 --max-worker-restart 0"
-    )
+    resource_serial = windows_steps["Windows installer resource-serial behavior"]["run"]
+    assert "packaging/tests -m xdist_group" in resource_serial
+    assert "-n 0 --dist loadfile --max-worker-restart 0" in resource_serial
+    assert "Windows local PostgreSQL lifecycle" not in windows_steps
     assert "Database generation projection real PostgreSQL contract" not in windows_steps
     step_names = list(windows_steps)
     prepared = step_names.index("Prepare pinned PostgreSQL and Shawl inputs")
     assert prepared < step_names.index("Windows installer safety behavior")
-    assert prepared < step_names.index("Windows local PostgreSQL lifecycle")
+    assert prepared < step_names.index("Windows installer resource-serial behavior")
     assert prepared < step_names.index("Compile authoritative Inno installer")
     source = (_ROOT / "backend" / "packaging" / "tests" / "test_local_test_postgres_lifecycle.py").read_text(
         encoding="utf-8-sig"

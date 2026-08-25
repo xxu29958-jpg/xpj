@@ -386,9 +386,7 @@ jobs:
             # glob as pg_dump (not on the runner's PATH).
             Write-Host "--- PostgreSQL backup/restore drill ---"
             .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py `
-              --upload-root (Join-Path $PWD "uploads") `
-              --frozen-restore-helper `
-                (Join-Path $PWD "dist\ticketbox-backend\ticketbox-database-maintenance.exe")
+              --upload-root (Join-Path $PWD "uploads")
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL backup/restore drill failed" }
 
             # Keep the offline single-runner mirror serial. Source-local real_db

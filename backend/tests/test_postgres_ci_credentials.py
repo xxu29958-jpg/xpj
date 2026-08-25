@@ -96,27 +96,17 @@ def _assert_passfile_routes_are_complete(passfile: Path, hostaddr: str) -> None:
     )
 
 
-def _assert_frozen_restore_seals_postgres_environment() -> None:
+def _assert_windows_packaging_keeps_frozen_restore_on_hold() -> None:
     workflow = (Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"
     )
-    frozen_restore = workflow[
-        workflow.index("      - name: Exact frozen dataset restore") : workflow.index(
-            "      - name: Frozen Desktop Manager"
-        )
-    ]
-    clean_environment = "$savedPgEnvironment = Enter-XpjCleanPostgresEnvironment"
-    sealed_environment = "python -m scripts.write_test_postgres_env"
-    assert ". .\\scripts\\test_pg_auth_contract.ps1" in frozen_restore
-    assert ". .\\packaging\\windows_operation_failure.ps1" in frozen_restore
-    assert clean_environment in frozen_restore
-    assert frozen_restore.index(clean_environment) < frozen_restore.index(sealed_environment)
-    assert "$pgEnvironmentKeys.Count -ne 1" in frozen_restore
-    assert "$pgEnvironmentKeys[0] -cne 'PGPASSFILE'" in frozen_restore
-    assert "catch { $primaryFailure = $_ }" in frozen_restore
-    assert frozen_restore.count("catch { $cleanupFailures += $_ }") == 3
-    assert "Exit-XpjCleanPostgresEnvironment -Saved $savedPgEnvironment" in frozen_restore
-    assert "Throw-TicketboxOperationFailure $primaryFailure $cleanupFailures" in frozen_restore
+    packaging_job = workflow.split("  windows_packaging_build:", maxsplit=1)[1].split(
+        "  windows_packaging:", maxsplit=1
+    )[0]
+
+    assert "Exact frozen dataset restore" not in packaging_job
+    assert "--frozen-restore-helper" not in packaging_job
+    assert "scripts\\postgres_backup_drill.py" not in packaging_job
 
 
 def test_lane_runner_scrubs_ambient_libpq_routes_but_keeps_passfile() -> None:
@@ -263,7 +253,7 @@ def test_ci_environment_uses_passwordless_scram_urls_and_private_passfile(tmp_pa
             cluster_identity=_CLUSTER_IDENTITY,
         )
 
-    _assert_frozen_restore_seals_postgres_environment()
+    _assert_windows_packaging_keeps_frozen_restore_on_hold()
     unsafe_url = values["XPJ_TEST_DATABASE_URL"].replace(
         f":{TEST_POSTGRES_CONTRACT.ports.local}/",
         f":{forbidden_port}/",

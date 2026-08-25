@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
 import app.database._database_generation_executor as generation_executor
-from app.database import _database_generation_target_verification as target_verification
+import app.database._database_generation_target_verification as target_verification
 from app.database._database_generation_executor import (
     DatabaseGenerationExecutionError,
 )

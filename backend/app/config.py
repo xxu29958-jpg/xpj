@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import hashlib
 import os
-import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -41,29 +39,12 @@ DATA_ROOT = _resolve_data_root(BACKEND_ROOT)
 load_dotenv(DATA_ROOT / ".env", encoding="utf-8-sig")
 RUNTIME_SETTINGS_PATH = DATA_ROOT / "runtime-settings" / "runtime-settings.json"
 _RUNTIME_SETTINGS_SERVICE_OWNED = bool(os.environ.get("TICKETBOX_INSTALLATION_ID", "").strip())
-_INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
 
 
 def runtime_settings_service_owned() -> bool:
     """Return whether the installer granted the service-owned projection contract."""
 
     return _RUNTIME_SETTINGS_SERVICE_OWNED
-
-
-def installation_identity(data_root: Path = DATA_ROOT) -> str:
-    """Return the installed binding identity, or a source-mode path identity."""
-    explicit = os.environ.get("TICKETBOX_INSTALLATION_ID", "").strip().lower()
-    if explicit:
-        try:
-            parsed = str(uuid.UUID(explicit))
-        except ValueError as exc:
-            raise ValueError("TICKETBOX_INSTALLATION_ID must be a canonical UUID") from exc
-        if parsed != explicit:
-            raise ValueError("TICKETBOX_INSTALLATION_ID must be a canonical UUID")
-        return explicit
-    canonical = os.path.normcase(str(data_root.resolve())).encode("utf-8")
-    digest = hashlib.sha256(_INSTALLATION_ID_NAMESPACE + canonical).hexdigest()
-    return f"ticketbox-{digest[:32]}"
 
 
 # Hosts considered loopback for outbound calls from the backend (e.g. local

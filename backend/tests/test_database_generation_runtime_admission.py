@@ -9,6 +9,7 @@ import pytest
 from app.database._database_generation_runtime_admission import (
     assert_database_generation_startup_ready,
 )
+from app.database._database_generation_runtime_queries import DATASET_AUTHORITY_QUERY
 from app.database._lifecycle import DatabaseMigrationPreflightError
 
 INSTALL_ID = "11111111-1111-4111-8111-111111111111"
@@ -35,22 +36,24 @@ class _Result:
 class _Connection:
     def __init__(self, row: tuple[object, ...] | None) -> None:
         self._row = row
+        self.executed_statement: object | None = None
 
     def scalars(self, _statement: object) -> _Rows:
         return _Rows((TARGET_REVISION,))
 
-    def execute(self, _statement: object) -> _Result:
+    def execute(self, statement: object) -> _Result:
+        self.executed_statement = statement
         return _Result(self._row)
 
 
 class _Engine:
     def __init__(self, row: tuple[object, ...] | None) -> None:
-        self._connection = _Connection(row)
+        self.connection = _Connection(row)
         self.connect_count = 0
 
     def connect(self):
         self.connect_count += 1
-        return nullcontext(self._connection)
+        return nullcontext(self.connection)
 
 
 def _row(**changes: object) -> tuple[object, ...]:
@@ -89,8 +92,11 @@ def test_installed_runtime_admits_exact_live_dataset_authority(
 ) -> None:
     monkeypatch.setenv("TICKETBOX_INSTALLATION_ID", INSTALL_ID)
     monkeypatch.setenv("TICKETBOX_DATASET_ID", DATASET_ID)
+    engine = _Engine(_row())
 
-    assert_database_generation_startup_ready(_Engine(_row()), _program())
+    assert_database_generation_startup_ready(engine, _program())
+
+    assert engine.connection.executed_statement is DATASET_AUTHORITY_QUERY
 
 
 @pytest.mark.parametrize(
@@ -117,7 +123,7 @@ def test_installed_runtime_rejects_non_exact_live_authority(
 
 
 def test_runtime_admission_source_has_no_generation_current_fallback() -> None:
-    from app.database import _database_generation_runtime_admission as admission
+    import app.database._database_generation_runtime_admission as admission
 
     source = Path(admission.__file__).read_text(encoding="utf-8")
     assert "current-generation.json" not in source

@@ -12,9 +12,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context
-from app.config import get_settings, installation_identity
+from app.config import DATA_ROOT, get_settings
 from app.database import get_db, init_db, wait_for_db
 from app.errors import AppError, Utf8JSONResponse, add_exception_handlers
+from app.installation_identity import installation_identity
 from app.middleware.cloudflare_access import cloudflare_access_guard
 from app.middleware.csrf import csrf_loopback_form_guard
 from app.middleware.logging import SanitizedLoggingMiddleware
@@ -436,7 +437,7 @@ def installation_health(
     mobile = installation_mobile_capabilities(settings.public_base_url)
     return InstallationHealthResponse(
         backend_version=BACKEND_VERSION,
-        installation_id=installation_identity(),
+        installation_id=installation_identity(DATA_ROOT),
         runtime_access_state=installation_runtime_access_state(request.scope),
         owner_state=owner_state,
         owner_recovery_channel=settings.owner_recovery_channel,

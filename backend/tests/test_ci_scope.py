@@ -49,6 +49,9 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
         "android": False,
         "windows": True,
     }
+
+
+def test_windows_build_inputs_select_windows_scope() -> None:
     _assert_path_scopes(
         (
             "backend/requirements-build.txt",
@@ -66,6 +69,9 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
         ),
         "windows",
     )
+
+
+def test_backend_runtime_inputs_select_execution_scopes() -> None:
     _assert_path_scopes(
         ("backend/audit/test_count_baseline.txt",),
         "postgres",
@@ -93,6 +99,9 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
         "backend_frozen",
         "windows",
     )
+
+
+def test_backend_tooling_and_packaging_inputs_select_execution_scopes() -> None:
     _assert_path_scopes(
         (
             "backend/alembic.ini",

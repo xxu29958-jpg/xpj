@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.config import installation_identity
+from app.installation_identity import installation_identity
 
 
 def test_installed_identity_uses_explicit_binding_not_data_path(monkeypatch, tmp_path: Path) -> None:

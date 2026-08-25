@@ -41,7 +41,7 @@ def test_managed_schema_public_action_preserves_operation_failure_graph(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from app.database import _managed_schema_upgrade as managed
+    import app.database._managed_schema_upgrade as managed
 
     aggregate = _aggregate()
 
@@ -71,7 +71,7 @@ def test_target_verification_public_action_preserves_operation_failure_graph(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from app.database import _database_generation_target_verification as target
+    import app.database._database_generation_target_verification as target
 
     aggregate = _aggregate()
     monkeypatch.setattr(target, "load_database_generation_program", lambda **_kwargs: _program())
@@ -95,7 +95,7 @@ def test_target_verification_public_action_preserves_operation_failure_graph(
 
 
 def test_prearmed_transaction_rolls_back_baseexception_before_cleanup(monkeypatch) -> None:
-    from app.database import _managed_postgres_migration_runtime as runtime
+    import app.database._managed_postgres_migration_runtime as runtime
 
     observed_exit: list[tuple[type[BaseException] | None, BaseException | None]] = []
     interrupted = KeyboardInterrupt("transaction interrupted")
@@ -152,7 +152,7 @@ def test_prearmed_transaction_rolls_back_baseexception_before_cleanup(monkeypatc
 
 
 def test_migration_owner_preserves_interrupt_and_engine_cleanup(tmp_path: Path, monkeypatch) -> None:
-    from app.database import _managed_postgres_migration_runtime as runtime
+    import app.database._managed_postgres_migration_runtime as runtime
 
     interrupted = KeyboardInterrupt("migration interrupted")
     connection_cleanup = KeyboardInterrupt("migration connection cleanup failed")
@@ -229,7 +229,7 @@ def test_migration_owner_preserves_interrupt_and_engine_cleanup(tmp_path: Path, 
 
 
 def test_target_owner_preserves_interrupt_and_engine_cleanup(tmp_path: Path, monkeypatch) -> None:
-    from app.database import _database_generation_target_verification as target
+    import app.database._database_generation_target_verification as target
 
     interrupted = KeyboardInterrupt("target read interrupted")
     connection_cleanup = SystemExit("target connection cleanup failed")
@@ -309,7 +309,7 @@ def test_timeout_boundaries_preserve_interrupt_and_autocommit_cleanup(
     cleanup_is_interrupt: bool,
     monkeypatch,
 ) -> None:
-    from app.database import _managed_postgres_migration_runtime as runtime
+    import app.database._managed_postgres_migration_runtime as runtime
 
     if cleanup_is_interrupt:
         primary = RuntimeError(f"timeout {boundary} failed")
