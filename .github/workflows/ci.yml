@@ -279,6 +279,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -294,7 +296,7 @@ jobs:
         id: qualification
         shell: bash
         env:
-          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
@@ -385,8 +387,9 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve verified Windows installer publish path
@@ -439,8 +442,9 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   windows_packaging:
@@ -495,6 +499,7 @@ jobs:
           --scope-key WINDOWS_SCOPE
           --lane VNEXT
           --lane BUILD
+          --source-lane BUILD
 
   backend:
     name: Backend

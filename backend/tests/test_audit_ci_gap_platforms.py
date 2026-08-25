@@ -52,7 +52,6 @@ jobs:
     )
 
     commands = mod._iter_workflow_run_commands([github, gitea])
-
     assert mod._missing_ci_invocations(commands) == []
     platform_missing = mod._missing_ci_invocations_by_platform(commands)
     assert "GitHub: end-to-end smoke" in platform_missing
@@ -79,7 +78,6 @@ def test_gitea_platform_requires_connected_android_lane() -> None:
         ":app:kspGrayDebugKotlin --rerun-tasks",
         shell="powershell",
     )
-
     assert "Gitea: :app:connectedGrayDebugAndroidTest" in (
         mod._missing_gradle_tasks_by_platform([command])
     )
@@ -105,16 +103,13 @@ jobs:
 """,
         encoding="utf-8",
     )
-
     missing = mod._missing_ci_invocations(mod._iter_workflow_run_commands(workflows))
-
     assert "release audit aggregator" in missing
     assert "end-to-end smoke" in missing
     assert "backup/restore drill" in missing
     assert "API contract check" in missing
     assert "backend ruff lint" in missing
     assert "backend compileall" in missing
-
     business = "python -m pytest tests -q -ra --tb=short -p no:cacheprovider"
     for masked in (
         f"{business} || true",
@@ -138,7 +133,6 @@ def test_authoritative_inno_matcher_rejects_powershell_wrapper_mutations(
         "-File distribution\\windows\\build\\build_installer.ps1"
     )
     real = f'{base} -InstallerHashOutputFile "$env:GITHUB_OUTPUT"'
-
     assert matcher.matches(real)
     for wrapper in (
         "-Command Write-Host",
@@ -157,9 +151,11 @@ def test_authoritative_inno_matcher_rejects_powershell_wrapper_mutations(
         "-VersionPolicyContractProbe postgres|17.10",
     ):
         assert not matcher.matches(f"{real} {probe}"), probe
-
     verifier = mod.REQUIRED_CI_INVOCATIONS_BY_PLATFORM[platform][1]
-    verify = f'{base} -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"'
+    verify = (
+        f'{base} -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" '
+        '-ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256"'
+    )
     assert verifier.matches(verify)
     assert not verifier.matches(base)
     assert not verifier.matches(base.replace("-File", "-Command Write-Host -File") + " -VerifyOnly")
@@ -176,7 +172,8 @@ def _write_masked_installer_workflow(workflows: Path) -> None:
         "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass "
         "-File distribution\\windows\\build\\build_installer.ps1 "
         '-VerifyOnly -ExpectedInstallerSha256 '
-        '"$env:INSTALLER_EXPECTED_SHA256"'
+        '"$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 '
+        '"$env:BUILD_PROVENANCE_EXPECTED_SHA256"'
     )
     mutations = {
         "comment": f"# {compile_command}\n# {verify_command}",
@@ -433,7 +430,6 @@ def test_installer_hash_output_dataflow_rejects_detached_mutations(
     platform = "GitHub" if platform_dir == ".github" else "Gitea"
     label = f"{platform}: installer hash output dataflow"
     valid = workflow_path.read_text(encoding="utf-8")
-
     assert label not in mod._missing_installer_hash_dataflow_by_platform(
         mod._iter_workflow_run_commands(workflows)
     )
@@ -457,11 +453,11 @@ def test_installer_hash_output_dataflow_rejects_detached_mutations(
     assert label not in mod._missing_installer_hash_dataflow_by_platform(
         mod._iter_workflow_run_commands(workflows)
     )
-
     hash_environment = (
         "      - env:\n"
         "          INSTALLER_EXPECTED_SHA256: "
         "${{ steps.compile_installer.outputs.installer_sha256 }}\n"
+        "          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}\n"
     )
     compile_output = ' -InstallerHashOutputFile "$env:GITHUB_OUTPUT"'
     failure_guard = "          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
@@ -477,6 +473,9 @@ def test_installer_hash_output_dataflow_rejects_detached_mutations(
             "${{ steps.compile_installer.outputs.installer_sha256 }}",
             "a" * 64,
             1,
+        ),
+        "literal provenance hash": valid.replace(
+            "${{ steps.compile_installer.outputs.build_provenance_sha256 }}", "b" * 64, 1
         ),
         "compile omits locked output": valid.replace(compile_output, "", 1),
         "compile rereads mutable completion": valid.replace(

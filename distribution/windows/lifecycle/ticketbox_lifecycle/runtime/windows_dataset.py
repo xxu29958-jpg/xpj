@@ -107,7 +107,8 @@ class WindowsDatasetAdapter:
 
         url = f"http://127.0.0.1:{request.backend_port}/api/health/installation"
         try:
-            with urllib.request.urlopen(url, timeout=5) as response:
+            direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with direct.open(url, timeout=5) as response:
                 if response.status != 200:
                     raise LifecycleError("health_failed", f"installation health returned {response.status}")
                 payload = json.loads(response.read().decode("utf-8"))

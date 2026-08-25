@@ -16,9 +16,12 @@ from ci_gap_workflow_parser import WorkflowAction, WorkflowCommand
 
 CommandSegmentReader = Callable[[list[WorkflowCommand]], list[str]]
 _HASH_OUTPUT_REFERENCE = re.compile(
-    r"^\$\{\{\s*steps\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.installer_sha256\s*\}\}$"
+    r"^\$\{\{\s*steps\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.([a-z0-9_]+)\s*\}\}$"
 )
-_EXPECTED_HASH_ENV = "installer_expected_sha256"
+_EXPECTED_HASH_OUTPUTS = {
+    "installer_expected_sha256": "installer_sha256",
+    "build_provenance_expected_sha256": "build_provenance_sha256",
+}
 _PUBLISH_PATH_ENV = "installer_publish_path"
 _VERIFY_DOWNLOAD_PATH_ENV = "installer_verify_download_path"
 _EPHEMERAL_ENV_SUFFIX = "te" + "mp"
@@ -120,12 +123,17 @@ def _hash_dataflow_is_valid(
             or not _verify_step_has_exact_contract(verify_command, requirement)
         ):
             return False
-        hash_reference = _windows_environment(verify_command.environment).get(
-            _EXPECTED_HASH_ENV, ""
-        )
-        match = _HASH_OUTPUT_REFERENCE.fullmatch(hash_reference.strip())
-        if match is None or match.group(1) != compile_command.step_id:
-            return False
+        environment = _windows_environment(verify_command.environment)
+        for variable, output in _EXPECTED_HASH_OUTPUTS.items():
+            match = _HASH_OUTPUT_REFERENCE.fullmatch(
+                environment.get(variable, "").strip()
+            )
+            if (
+                match is None
+                or match.group(1) != compile_command.step_id
+                or match.group(2) != output
+            ):
+                return False
     return True
 
 

@@ -4,10 +4,11 @@ import importlib.util
 import json
 import os
 import stat
+import sys
 from dataclasses import dataclass
 from io import BytesIO, StringIO
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -105,6 +106,65 @@ def test_source_runtime_uses_explicit_data_dir_without_installed_authority(
 
     assert launch.configure_environment() == preset.resolve()
     assert (preset / "uploads").is_dir()
+
+
+def test_frozen_service_initializes_runtime_settings_before_app_import(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    events: list[str] = []
+
+    class AppMain(ModuleType):
+        def __getattribute__(self, name: str):
+            if name == "app":
+                events.append("app-import")
+                return object()
+            return super().__getattribute__(name)
+
+    uvicorn = ModuleType("uvicorn")
+    uvicorn.run = lambda *_args, **_kwargs: events.append("serve")  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "uvicorn", uvicorn)
+    monkeypatch.setitem(sys.modules, "app.main", AppMain("app.main"))
+    monkeypatch.setattr("logging.config.dictConfig", lambda _config: None)
+    monkeypatch.setattr(launch, "configure_environment", lambda: tmp_path)
+    monkeypatch.setattr(
+        launch,
+        "_initialize_installed_runtime_settings",
+        lambda _data_dir: events.append("initialize"),
+        raising=False,
+    )
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(launch.sys, "executable", str(tmp_path / "ticketbox-backend.exe"), raising=False)
+
+    assert launch.main() is None
+    assert events == ["initialize", "app-import", "serve"]
+
+
+def test_installed_runtime_settings_initializer_uses_existing_create_only_owner(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from app.services import runtime_settings_store as store
+
+    launch = _load_launch_module()
+    observed: list[tuple[Path, object, bool]] = []
+
+    def initialize(path: Path, projection: object, *, service_owned: bool) -> object:
+        observed.append((path, projection, service_owned))
+        return projection
+
+    monkeypatch.setattr(store, "initialize_runtime_settings", initialize)
+    launch._initialize_installed_runtime_settings(tmp_path)
+
+    assert observed == [
+        (
+            tmp_path / "runtime-settings" / "runtime-settings.json",
+            store.RuntimeSettingsProjection("", False),
+            True,
+        )
+    ]
+    assert (tmp_path / "runtime-settings").is_dir()
 
 
 def test_frozen_runtime_requires_complete_explicit_service_authority_before_write(

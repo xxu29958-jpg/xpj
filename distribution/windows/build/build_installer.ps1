@@ -4,8 +4,8 @@ vNext Windows 安装器构建脚本（唯一授权入口）。
 
 模式：
   （默认）        构建 TicketboxLifecycle.exe + 编译 ticketbox.iss + 发布 publish unit
-  -VerifyOnly     校验已发布 publish unit 的字节身份（-ExpectedInstallerSha256 必填，
-                  可用 -VerifyPublishDirectory 指向下载副本）
+  -VerifyOnly     校验已发布 publish unit 的安装器与 provenance 字节身份；两个 expected
+                  SHA-256 都必填，可用 -VerifyPublishDirectory 指向下载副本
 
 前置：frozen backend（scripts\build_backend_exe.ps1）、frozen manager
 （desktop\scripts\build_manager_exe.ps1）、PG bundle 与 shawl vendor
@@ -16,6 +16,7 @@ param(
     [string]$InstallerHashOutputFile = "",
     [switch]$VerifyOnly,
     [string]$ExpectedInstallerSha256 = "",
+    [string]$ExpectedProvenanceSha256 = "",
     [string]$VerifyPublishDirectory = ""
 )
 
@@ -74,9 +75,16 @@ function Write-InstallerBuildProvenance {
     return $manifest
 }
 
-function Assert-InstallerPublishUnitBytes([string]$PublishDirectory, [string]$ExpectedSha256) {
-    if ($ExpectedSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+function Assert-InstallerPublishUnitBytes(
+    [string]$PublishDirectory,
+    [string]$ExpectedInstallerSha256,
+    [string]$ExpectedProvenanceSha256
+) {
+    if ($ExpectedInstallerSha256 -notmatch '^[0-9a-fA-F]{64}$') {
         throw "VerifyOnly 需要 64 位十六进制 -ExpectedInstallerSha256。"
+    }
+    if ($ExpectedProvenanceSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "VerifyOnly 需要 64 位十六进制 -ExpectedProvenanceSha256。"
     }
     if (-not (Test-Path -LiteralPath $PublishDirectory -PathType Container)) {
         throw "安装器 publish unit 目录缺失：$PublishDirectory"
@@ -89,15 +97,22 @@ function Assert-InstallerPublishUnitBytes([string]$PublishDirectory, [string]$Ex
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         throw "安装器 publish unit 缺少 BUILD_PROVENANCE.json：$PublishDirectory"
     }
+    $actualProvenance = Get-TicketboxFileSha256 $manifestPath
+    if ($actualProvenance -cne $ExpectedProvenanceSha256.ToLowerInvariant()) {
+        throw "provenance 字节身份不一致：expected=$($ExpectedProvenanceSha256.ToLowerInvariant()) actual=$actualProvenance"
+    }
     $manifest = Get-Content -LiteralPath $manifestPath -Encoding UTF8 -Raw | ConvertFrom-Json
     if ($manifest.schema_version -ne 3 -or $manifest.artifact_type -cne "ticketbox-windows-installer-inputs") {
         throw "安装器 publish unit 的 provenance schema/artifact_type 不受支持。"
     }
-    $actual = Get-TicketboxFileSha256 $exePath
-    if ($actual -cne $ExpectedSha256.ToLowerInvariant()) {
-        throw "安装器字节身份不一致：expected=$($ExpectedSha256.ToLowerInvariant()) actual=$actual"
+    $actualInstaller = Get-TicketboxFileSha256 $exePath
+    if ($actualInstaller -cne $ExpectedInstallerSha256.ToLowerInvariant()) {
+        throw "安装器字节身份不一致：expected=$($ExpectedInstallerSha256.ToLowerInvariant()) actual=$actualInstaller"
     }
-    return $actual
+    return [pscustomobject]@{
+        installer_sha256 = $actualInstaller
+        build_provenance_sha256 = $actualProvenance
+    }
 }
 
 function Get-TicketboxInstallerShipmentPaths([string]$Root) {
@@ -131,8 +146,11 @@ if ($VerifyOnly) {
     else {
         Join-Path $PublishRoot $PublishDirName
     }
-    $verified = Assert-InstallerPublishUnitBytes $verifyDirectory $ExpectedInstallerSha256
-    Write-Host "安装器 publish unit 字节身份校验通过：$verified"
+    $verified = Assert-InstallerPublishUnitBytes `
+        $verifyDirectory `
+        $ExpectedInstallerSha256 `
+        $ExpectedProvenanceSha256
+    Write-Host "安装器 publish unit 字节身份校验通过：installer=$($verified.installer_sha256) provenance=$($verified.build_provenance_sha256)"
     exit 0
 }
 
@@ -376,12 +394,17 @@ try {
     Assert-TicketboxInstallerBuildProvenance $BackendRoot $manifestPath $compiler $BuildInputs $defines | Out-Null
 
     $installerSha = Get-TicketboxFileSha256 (Join-Path $publishDirectory $InstallerFileName)
+    $provenanceSha = Get-TicketboxFileSha256 $manifestPath
     Write-Host "安装器已发布：$publishDirectory"
     Write-Host "installer_sha256=$installerSha"
+    Write-Host "build_provenance_sha256=$provenanceSha"
     if ($InstallerHashOutputFile) {
         [System.IO.File]::AppendAllText(
             $InstallerHashOutputFile,
-            "installer_sha256=$installerSha" + [Environment]::NewLine,
+            (
+                "installer_sha256=$installerSha" + [Environment]::NewLine +
+                "build_provenance_sha256=$provenanceSha" + [Environment]::NewLine
+            ),
             (New-Object System.Text.UTF8Encoding($false))
         )
     }

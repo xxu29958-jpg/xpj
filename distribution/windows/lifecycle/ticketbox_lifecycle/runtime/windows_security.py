@@ -38,8 +38,7 @@ class WindowsSecurityAdapter:
         native.reject_reparse_components(data_root)
         unexpected_machine = [path for path in machine.iterdir() if path != operations]
         unexpected_operations = list(operations.iterdir())
-        unexpected_data = list(data_root.iterdir()) if data_root.is_dir() else []
-        if unexpected_machine or unexpected_operations or unexpected_data or data_root.is_file():
+        if unexpected_machine or unexpected_operations or os.path.lexists(data_root):
             raise LifecycleViolation(
                 "preexisting_mutable_state",
                 "fresh install refuses unbound mutable state",

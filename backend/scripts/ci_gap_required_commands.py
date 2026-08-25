@@ -8,6 +8,8 @@ from dataclasses import dataclass
 
 from ci_gap_shell import shell_tokens
 
+_PROVENANCE_HASH_ARGUMENTS = ("-expectedprovenancesha256", "$env:build_provenance_expected_sha256")
+
 
 @dataclass(frozen=True)
 class RequiredCommand:
@@ -20,7 +22,6 @@ class RequiredCommand:
         if self.matcher is not None:
             return self.matcher(command)
         return self.pattern.search(command) is not None
-
     def matches_environment(self, environment: tuple[tuple[str, str], ...]) -> bool:
         return (
             self.environment_matcher is None
@@ -310,6 +311,7 @@ def _matches_installer_publish_verification(command: str) -> bool:
         "-verifyonly",
         "-expectedinstallersha256",
         "$env:installer_expected_sha256",
+        *_PROVENANCE_HASH_ARGUMENTS,
     )
 
 
@@ -325,6 +327,7 @@ def _matches_uploaded_installer_verification(command: str) -> bool:
         "-verifyonly",
         "-expectedinstallersha256",
         "$env:installer_expected_sha256",
+        *_PROVENANCE_HASH_ARGUMENTS,
         "-verifypublishdirectory",
         "$env:installer_verify_download_path",
     )

@@ -9,6 +9,8 @@ from pathlib import Path
 
 from _powershell_contract import powershell_contract_engines
 
+from app.version import BACKEND_VERSION
+
 ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parent
 PACKAGING = ROOT / "packaging"
@@ -38,6 +40,43 @@ def _run_powershell(command: str, executable: str = "powershell") -> subprocess.
         errors="replace",
         timeout=30,
     )
+
+
+def test_installer_publish_verification_rejects_provenance_byte_mutation(tmp_path: Path) -> None:
+    publish = tmp_path / "publish"
+    publish.mkdir()
+    installer = publish / f"Ticketbox-Setup-{BACKEND_VERSION}.exe"
+    provenance = publish / "BUILD_PROVENANCE.json"
+    installer.write_bytes(b"exact-setup-bytes")
+    provenance.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "artifact_type": "ticketbox-windows-installer-inputs",
+                "git": {"commit": "a" * 40},
+            }
+        ),
+        encoding="utf-8",
+    )
+    script = REPO_ROOT / "distribution" / "windows" / "build" / "build_installer.ps1"
+    installer_sha = hashlib.sha256(installer.read_bytes()).hexdigest()
+    provenance_sha = hashlib.sha256(provenance.read_bytes()).hexdigest()
+    command = (
+        f"& '{_ps_literal(script)}' -VerifyOnly "
+        f"-ExpectedInstallerSha256 '{installer_sha}' "
+        f"-ExpectedProvenanceSha256 '{provenance_sha}' "
+        f"-VerifyPublishDirectory '{_ps_literal(publish)}'"
+    )
+
+    accepted = _run_powershell(command)
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    provenance.write_text(
+        provenance.read_text(encoding="utf-8").replace("a" * 40, "b" * 40, 1),
+        encoding="utf-8",
+    )
+    rejected = _run_powershell(command)
+    assert rejected.returncode != 0
+    assert "provenance" in (rejected.stdout + rejected.stderr).lower()
 
 
 def _lock_input_fingerprint(root: Path) -> str:

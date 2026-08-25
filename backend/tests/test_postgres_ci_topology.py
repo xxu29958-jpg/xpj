@@ -35,9 +35,10 @@ def _assert_qualification_step(
     step: dict[str, object],
     *,
     resolves_audit_base: bool = False,
+    expected_sha: str = "${{ github.sha }}",
 ) -> None:
     assert step["id"] == "qualification"
-    assert step["env"]["EXPECTED_SHA"] == "${{ github.sha }}"
+    assert step["env"]["EXPECTED_SHA"] == expected_sha
     assert step["env"]["SOURCE_SHA"] == ("${{ github.event.pull_request.head.sha || github.sha }}")
     tokens = shlex.split(step["run"], posix=True)
     assert tokens[:3] == ["python", "-E", "-S"]
@@ -387,7 +388,14 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
         job = jobs[name]
         assert job["outputs"]["qualification_sha"] == "${{ steps.qualification.outputs.sha }}"
         assert job["outputs"]["qualification_source_sha"] == ("${{ steps.qualification.outputs.source_sha }}")
-        _assert_qualification_step(job, _steps(job)["Verify qualification SHA"])
+        expected_sha = (
+            "${{ github.event.pull_request.head.sha || github.sha }}"
+            if name == "windows_packaging_build"
+            else "${{ github.sha }}"
+        )
+        _assert_qualification_step(
+            job, _steps(job)["Verify qualification SHA"], expected_sha=expected_sha
+        )
     assert jobs["backend_contracts"]["needs"] == "scope"
     audit_environment = _steps(jobs["backend_contracts"])["Audit (release lanes)"]["env"]
     assert audit_environment["XPJ_AUDIT_BASE_REF"] == ("${{ needs.scope.outputs.audit_base_sha }}")

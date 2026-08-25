@@ -738,6 +738,23 @@ def _build_log_config(log_dir: Path, *, console: bool | None = None) -> dict:
     }
 
 
+def _initialize_installed_runtime_settings(data_dir: Path) -> None:
+    """Create the service-owned initial projection before importing the app."""
+
+    from app.services.runtime_settings_store import (
+        RuntimeSettingsProjection,
+        initialize_runtime_settings,
+    )
+
+    settings_dir = data_dir / "runtime-settings"
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    initialize_runtime_settings(
+        settings_dir / "runtime-settings.json",
+        RuntimeSettingsProjection("", False),
+        service_owned=True,
+    )
+
+
 def main() -> int | None:
     arguments = sys.argv[1:]
     maintenance_switches = [
@@ -776,6 +793,8 @@ def main() -> int | None:
     # through to logging's lastResort stderr handler, and startup/import-time
     # diagnostics are captured. See _build_log_config + ADR-0047 §8.
     logging.config.dictConfig(_build_log_config(data_dir / "logs"))
+    if getattr(sys, "frozen", False):
+        _initialize_installed_runtime_settings(data_dir)
     host = os.getenv("TICKETBOX_HOST", "127.0.0.1")
     port = int(os.getenv("TICKETBOX_PORT", "8000"))
 

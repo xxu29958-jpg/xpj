@@ -51,9 +51,15 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
     assert _steps(windows_aggregator)["Enforce Windows release lane results"]["run"] == (
         "python -E -S backend/scripts/verify_scoped_ci_results.py "
         '--label "Windows release packaging" --scope-key WINDOWS_SCOPE '
-        "--lane VNEXT --lane BUILD"
+        "--lane VNEXT --lane BUILD --source-lane BUILD"
     )
     windows_steps = _steps(jobs["windows_packaging_build"])
+    exact_source = "${{ github.event.pull_request.head.sha || github.sha }}"
+    assert windows_steps["Checkout"]["with"]["ref"] == exact_source
+    assert windows_steps["Verify qualification SHA"]["env"] == {
+        "EXPECTED_SHA": exact_source,
+        "SOURCE_SHA": exact_source,
+    }
     windows_safety = windows_steps["Windows installer safety behavior"]["run"]
     assert '-m "not xdist_group"' in windows_safety
     assert "-n 4 --dist loadfile --max-worker-restart 0" in windows_safety

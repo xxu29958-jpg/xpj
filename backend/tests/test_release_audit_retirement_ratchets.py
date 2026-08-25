@@ -102,8 +102,8 @@ def test_pr_delta_allows_only_exact_installer_test_retirements(
         ),
         (
             "6557125826d7c76a06568164814b4e5cb9e08f88",
-            (369, 66),
-            ((368, 66), (369, 67), (369, 65), (370, 66), (66, 65)),
+            (369, 69),
+            ((368, 69), (369, 70), (369, 68), (370, 69), (69, 68)),
         ),
     )
     for base_commit, accepted_hop, neighboring_hops in hops:
@@ -114,7 +114,7 @@ def test_pr_delta_allows_only_exact_installer_test_retirements(
             accepted_hop=accepted_hop,
             neighboring_hops=neighboring_hops,
         )
-    for base_count, current_count in ((369, 66), (283, 260), (379, 282), (387, 379)):
+    for base_count, current_count in ((369, 69), (283, 260), (379, 282), (387, 379)):
         base_commit = next(commit for commit, hop, _ in hops if hop == (base_count, current_count))
         violations = _violations_for(
             mod,

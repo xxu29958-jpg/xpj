@@ -162,8 +162,9 @@ jobs:
       - name: Verify atomic Windows installer publish unit
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve verified Windows installer publish path
@@ -214,8 +215,9 @@ jobs:
       - name: Verify uploaded Windows installer bytes
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # The business pytest suite AND the end-to-end smoke run on PostgreSQL in the

@@ -13,8 +13,9 @@ _COMPILE_STEP = """
 _VERIFY_STEP = """
       - env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"
+          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 """
 
@@ -23,8 +24,9 @@ _VERIFY_FIRST_STEPS = _VERIFY_STEP + _COMPILE_STEP
 _POST_UPLOAD_VERIFY_STEP = """
       - env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
+          powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 """
 _RESOLVE_PUBLISH_PATH_STEP = r"""

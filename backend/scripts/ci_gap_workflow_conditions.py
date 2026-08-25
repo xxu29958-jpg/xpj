@@ -12,12 +12,15 @@ def _scoped_verifier_command(
     label: str,
     scope_key: str,
     *lanes: str,
+    source_lanes: tuple[str, ...] = (),
     executable: str = "python",
     script: str = _SCOPED_VERIFIER,
 ) -> tuple[str, ...]:
     command = [executable, "-E", "-S", script, "--label", label, "--scope-key", scope_key]
     for lane in lanes:
         command.extend(("--lane", lane))
+    for lane in source_lanes:
+        command.extend(("--source-lane", lane))
     return tuple(command)
 
 
@@ -88,6 +91,7 @@ _WINDOWS_TERMINAL = GithubTerminalContract(
         "WINDOWS_SCOPE",
         "VNEXT",
         "BUILD",
+        source_lanes=("BUILD",),
     ),
     shell=None,
     scope_bindings=(("WINDOWS_SCOPE", "windows"),),
