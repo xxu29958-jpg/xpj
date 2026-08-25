@@ -237,8 +237,8 @@ def _bind_operation_identity(
         install_id=active.install_id,
         dataset_id=active.dataset_id,
         schema_revision=active.schema_revision or request.schema_revision,
-        schema_min_compatible=request.schema_min_compatible or request.target_release_id,
-        semantic_revision=request.semantic_revision or "ticketbox-dataset-semantics-v1",
+        schema_min_compatible=request.schema_min_compatible,
+        semantic_revision=request.semantic_revision,
     )
 
 

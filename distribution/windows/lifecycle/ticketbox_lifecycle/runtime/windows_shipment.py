@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
@@ -23,6 +24,7 @@ _MANIFEST_KEYS = {
     "immutable_payload",
 }
 _FILE_KEYS = {"path", "size", "sha256"}
+_PRODUCT_VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
 
 
 class WindowsShipmentVerifier:
@@ -76,7 +78,7 @@ class WindowsShipmentVerifier:
             request,
             release_manifest_sha256=actual_manifest_sha,
             schema_revision=str(manifest["max_schema_revision"]),
-            schema_min_compatible=str(manifest["min_schema_revision"]),
+            schema_min_compatible=str(manifest["product_version"]),
             semantic_revision=str(manifest["min_semantic_revision"]),
         )
 
@@ -91,6 +93,8 @@ def _parse_manifest(payload: bytes, request: InstallRequest) -> dict[str, object
     if (
         manifest["schema"] != "ticketbox-release-manifest-v1"
         or manifest["release_id"] != request.target_release_id
+        or not isinstance(manifest["product_version"], str)
+        or _PRODUCT_VERSION.fullmatch(manifest["product_version"]) is None
         or manifest["product_version"] != request.target_release_id
         or manifest["lifecycle_compatibility"] != [REQUEST_SCHEMA]
         or manifest["signing_state"] != "release-bound"

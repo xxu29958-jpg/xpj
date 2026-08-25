@@ -86,7 +86,7 @@ def test_bundle_contains_only_allowlisted_runtime_evidence_and_never_overwrites(
         "owner_state": "recovery_required",
         "owner_recovery_channel": "managed_host",
         "version": "1.2.0.7",
-        "startup_failure_code": "registry_contract_invalid",
+        "startup_failure_code": "installed_binding_invalid",
         "startup_failure_stage": "runtime_discovery",
         "control_error": None,
         "lan": "192.168.1.8:8000",
@@ -111,7 +111,7 @@ def test_bundle_contains_only_allowlisted_runtime_evidence_and_never_overwrites(
     assert payload["runtime"]["version"] == "1.2.0.7"
     assert payload["runtime"]["runtime_access_state"] == "repair_required"
     assert payload["runtime"]["owner_state"] == "recovery_required"
-    assert payload["runtime"]["startup_failure_code"] == "registry_contract_invalid"
+    assert payload["runtime"]["startup_failure_code"] == "installed_binding_invalid"
     assert payload["runtime"]["control_error_present"] is False
     assert payload["privacy"]["contains_tokens"] is False
     assert b"secret.example" not in raw

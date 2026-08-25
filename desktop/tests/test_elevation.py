@@ -426,6 +426,7 @@ def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path:
         "TicketboxBackend",
         "TicketboxPg",
         "9.8.7",
+        "11111111-1111-4111-8111-111111111111",
     )
     release = _release()
     config = ManagerConfig(
@@ -517,6 +518,7 @@ def test_elevated_backup_delegates_to_installed_owner_without_python_lock(
         "TicketboxBackend",
         "TicketboxPg",
         "9.8.7",
+        "11111111-1111-4111-8111-111111111111",
     )
     release = _release()
     config = ManagerConfig(
@@ -643,9 +645,8 @@ def test_cut_b_installed_ui_runtime_is_observation_only(monkeypatch, tmp_path: P
         "TicketboxBackend",
         "TicketboxPg",
         "9.8.7",
+        "11111111-1111-4111-8111-111111111111",
     )
-    layout.manager_executable_path.parent.mkdir(parents=True)
-    layout.manager_executable_path.write_bytes(b"MZ")
     release = _release()
     config = ManagerConfig(
         runtime=InstalledRuntimeConfig(layout, release),

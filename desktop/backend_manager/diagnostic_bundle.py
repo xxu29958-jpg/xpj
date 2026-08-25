@@ -42,10 +42,9 @@ _BACKEND_MANIFEST_KEYS = frozenset(
 _STARTUP_FAILURE_CODES = frozenset(
     {
         "installation_missing",
+        "installed_binding_invalid",
         "manager_identity_mismatch",
         "manager_config_invalid",
-        "registry_contract_invalid",
-        "release_contract_invalid",
         "runtime_config_invalid",
         "service_contract_invalid",
     },

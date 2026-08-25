@@ -154,7 +154,7 @@ class MemoryStores:
             **{
                 **request.__dict__,
                 "schema_revision": str(manifest.get("max_schema_revision") or ""),
-                "schema_min_compatible": str(manifest.get("min_schema_revision") or ""),
+                "schema_min_compatible": str(manifest.get("product_version") or ""),
                 "semantic_revision": str(manifest.get("min_semantic_revision") or ""),
             }
         )

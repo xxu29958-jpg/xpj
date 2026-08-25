@@ -363,7 +363,7 @@ def test_frozen_manager_starts_restricted_maintenance_shell_when_install_config_
     monkeypatch.setattr(
         "backend_manager.__main__.load_config",
         lambda: (_ for _ in ()).throw(
-            ConfigError("registry broken", code="registry_contract_invalid"),
+            ConfigError("installation binding broken", code="installed_binding_invalid"),
         ),
     )
     monkeypatch.setattr(
@@ -390,7 +390,7 @@ def test_frozen_manager_starts_restricted_maintenance_shell_when_install_config_
             "127.0.0.1",
             8799,
             "1.2.0.7",
-            startup_failure_code="registry_contract_invalid",
+            startup_failure_code="installed_binding_invalid",
             startup_failure_stage="runtime_discovery",
         ),
     ]

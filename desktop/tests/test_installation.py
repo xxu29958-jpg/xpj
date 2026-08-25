@@ -1,8 +1,7 @@
-"""Installer registry parsing contracts."""
+"""Installed-instance binding and runtime-layout contracts."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,10 +14,11 @@ from backend_manager.installation import (
     WindowsReleaseConfig,
     load_installed_release_config,
     parse_installed_binding,
-    parse_installed_layout,
     validate_installed_backend_stopped,
     validate_installed_service_contract,
 )
+
+_INSTALL_ID = "11111111-1111-4111-8111-111111111111"
 
 
 def _release_config() -> WindowsReleaseConfig:
@@ -41,39 +41,17 @@ def _release_config() -> WindowsReleaseConfig:
     )
 
 
-def _release_config_document(**overrides: object) -> dict[str, object]:
-    document: dict[str, object] = {
-        "schema": "ticketbox-windows-release-v2",
-        "backend_service_name": "TicketboxBackendCustom",
-        "pg_service_name": "TicketboxPgCustom",
-        "owner_recovery_channel": "managed_host",
-        "service_state_timeout_ms": 17_000,
-        "service_poll_interval_ms": 125,
-        "postgres_ready_timeout_ms": 23_000,
-        "backend_ready_timeout_ms": 31_000,
-        "backend_ready_poll_interval_ms": 375,
-        "backend_health_request_timeout_ms": 1_750,
-        "database_tool_timeout_ms": 600_000,
-        "dataset_backup_helper_timeout_ms": 1_800_000,
-        "dataset_restore_helper_timeout_ms": 3_600_000,
-        "dataset_payload_verification_timeout_ms": 1_800_000,
-        "complete_dataset_cleanup_reserve_ms": 3_600_000,
-        "complete_dataset_backup_timeout_ms": 5_400_000,
-        "complete_dataset_restore_timeout_ms": 10_800_000,
-    }
-    document.update(overrides)
-    return document
+def test_legacy_registry_without_binding_is_not_an_installed_instance(monkeypatch) -> None:
+    monkeypatch.setattr(installation, "_read_installation_binding", lambda: None)
+    monkeypatch.setattr(
+        installation,
+        "_read_install_dir",
+        lambda: (_ for _ in ()).throw(AssertionError("registry is not authority")),
+    )
+    assert installation.discover_installed_layout() is None
 
 
-def test_registry_and_release_failures_keep_sanitized_failure_codes(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setattr(installation, "_read_registry_values", lambda: {})
-    with pytest.raises(InstallationConfigError) as registry_failure:
-        installation.discover_installed_layout()
-    assert registry_failure.value.code == "registry_contract_invalid"
-
+def test_installed_release_config_comes_only_from_binding_layout(tmp_path: Path) -> None:
     layout = InstalledLayout(
         install_dir=tmp_path / "program",
         data_root=tmp_path / "data",
@@ -81,75 +59,17 @@ def test_registry_and_release_failures_keep_sanitized_failure_codes(
         pg_port=5432,
         backend_service_name="TicketboxBackend",
         pg_service_name="TicketboxPg",
-        backend_version="1.2.0.7",
+        backend_version="1.2.0",
+        install_id=_INSTALL_ID,
     )
-    with pytest.raises(InstallationConfigError) as release_failure:
-        load_installed_release_config(layout)
-    assert release_failure.value.code == "release_contract_invalid"
-
-
-def test_parse_installed_layout_builds_program_data_paths(tmp_path: Path) -> None:
-    layout = parse_installed_layout(
-        {
-            "InstallDir": str(tmp_path / "program"),
-            "DataRoot": str(tmp_path / "data"),
-            "BackendPort": "8001",
-            "PgPort": "5440",
-            "BackendServiceName": "TicketboxBackendCustom",
-            "PgServiceName": "TicketboxPgCustom",
-            "BackendVersion": "9.8.7",
-        },
-    )
-    layout.release_config_path.parent.mkdir(parents=True)
-    layout.release_config_path.write_text(
-        json.dumps(_release_config_document()),
-        encoding="utf-8",
-    )
+    retired_config = layout.install_dir / "installer" / "windows-release-config.json"
+    retired_config.parent.mkdir(parents=True)
+    retired_config.write_text('{"backend_service_name":"RetiredBackendOwner"}', encoding="utf-8")
     release = load_installed_release_config(layout)
 
-    assert layout.install_dir == (tmp_path / "program").resolve()
-    assert layout.app_data_dir == (tmp_path / "data" / "app").resolve()
-    assert layout.release_config_path == layout.install_dir / "installer" / "windows-release-config.json"
-    assert layout.backend_port == 8001
-    assert layout.pg_port == 5440
-    assert layout.backend_service_name == "TicketboxBackendCustom"
-    assert layout.pg_service_name == "TicketboxPgCustom"
-    assert layout.backend_version == "9.8.7"
-    assert layout.installation_id.startswith("ticketbox-")
-    assert release.service_state_timeout_seconds == 17
-    assert release.backend_ready_poll_seconds == 0.375
-
-
-@pytest.mark.parametrize("owner_recovery_channel", [None, "operator"])
-def test_release_config_requires_managed_host_owner_recovery_contract(
-    owner_recovery_channel: str | None,
-) -> None:
-    document = _release_config_document(owner_recovery_channel=owner_recovery_channel)
-    if owner_recovery_channel is None:
-        document.pop("owner_recovery_channel")
-
-    with pytest.raises(InstallationConfigError, match="owner_recovery_channel"):
-        installation.parse_windows_release_config(document)
-
-
-def test_release_config_closes_cleanup_and_total_deadline_ranges() -> None:
-    accepted = _release_config_document(
-        complete_dataset_cleanup_reserve_ms=3_600_000,
-        complete_dataset_restore_timeout_ms=57_600_000,
-    )
-    parsed = installation.parse_windows_release_config(accepted)
-    assert parsed.complete_dataset_cleanup_reserve_ms == 3_600_000
-    assert parsed.complete_dataset_restore_timeout_ms == 57_600_000
-
-    for document in (
-        {**accepted, "complete_dataset_cleanup_reserve_ms": 3_600_001},
-        {
-            **accepted,
-            "complete_dataset_restore_timeout_ms": 57_600_001,
-        },
-    ):
-        with pytest.raises(InstallationConfigError):
-            installation.parse_windows_release_config(document)
+    assert release.backend_service_name == "TicketboxBackend"
+    assert release.pg_service_name == "TicketboxPg"
+    assert release.backend_health_request_timeout_ms == 2_000
 
 
 def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> None:
@@ -218,32 +138,6 @@ def test_helper_phase_budget_rejects_unknown_action() -> None:
         release.helper_action_phase_budget_seconds("pause")
 
 
-@pytest.mark.parametrize(
-    ("overrides", "message"),
-    [
-        ({"DataRoot": ""}, "DataRoot"),
-        ({"BackendPort": "abc"}, "BackendPort"),
-        ({"PgPort": "70000"}, "PgPort"),
-        ({"BackendServiceName": "bad/service"}, "BackendServiceName"),
-        ({"BackendVersion": f"{'9' * 5000}.2.3"}, "BackendVersion"),
-    ],
-)
-def test_parse_installed_layout_rejects_incomplete_or_invalid_values(overrides, message: str) -> None:
-    values = {
-        "InstallDir": r"C:\Program Files\Ticketbox",
-        "DataRoot": r"C:\ProgramData\Ticketbox",
-        "BackendPort": "8000",
-        "PgPort": "5432",
-        "BackendServiceName": "TicketboxBackend",
-        "PgServiceName": "TicketboxPg",
-        "BackendVersion": "1.2.0",
-    }
-    values.update(overrides)
-
-    with pytest.raises(InstallationConfigError, match=message):
-        parse_installed_layout(values)
-
-
 def test_service_contract_validator_uses_installed_script_and_dynamic_identity(
     monkeypatch,
     tmp_path: Path,
@@ -262,6 +156,7 @@ def test_service_contract_validator_uses_installed_script_and_dynamic_identity(
         backend_service_name="TicketboxBackendDynamic",
         pg_service_name="TicketboxPgDynamic",
         backend_version="9.8.7",
+        install_id=_INSTALL_ID,
     )
     release = _release_config()
     release = WindowsReleaseConfig(
@@ -310,30 +205,21 @@ def test_parse_installed_binding_uses_installation_json_not_registry_dataroot(tm
             "pg_port": 5432,
             "backend_port": 8000,
         },
-        {"InstallDir": str(tmp_path / "program")},
+        str(tmp_path / "program"),
     )
-    assert layout.authority == "binding"
     assert layout.data_root == (tmp_path / "data").resolve()
     assert layout.backend_version == "1.2.0"
-    assert layout.installation_id == "11111111-1111-4111-8111-111111111111"
-    layout.release_config_path.parent.mkdir(parents=True)
-    layout.release_config_path.write_text(
-        json.dumps(
-            {
-                **_release_config_document(),
-                "backend_service_name": "RetiredBackendOwner",
-                "pg_service_name": "RetiredPgOwner",
-            }
-        ),
-        encoding="utf-8",
-    )
+    assert layout.installation_id == _INSTALL_ID
     release = load_installed_release_config(layout)
     assert release.backend_service_name == "TicketboxBackend"
     assert release.pg_service_name == "TicketboxPg"
     assert release.backend_health_request_timeout_ms == 2000
 
 
-def test_discover_installed_layout_prefers_binding(monkeypatch, tmp_path: Path) -> None:
+def test_discover_installed_layout_requires_binding_and_uses_registry_only_as_locator(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     monkeypatch.setattr(
         installation,
         "_read_installation_binding",
@@ -350,19 +236,11 @@ def test_discover_installed_layout_prefers_binding(monkeypatch, tmp_path: Path) 
     )
     monkeypatch.setattr(
         installation,
-        "_read_registry_values",
-        lambda: {
-            "InstallDir": str(tmp_path / "program"),
-            "DataRoot": str(tmp_path / "stale-registry-data"),
-            "BackendPort": "1",
-            "PgPort": "1",
-            "BackendServiceName": "StaleBackend",
-            "PgServiceName": "StalePg",
-            "BackendVersion": "0.0.1",
-        },
+        "_read_install_dir",
+        lambda: str(tmp_path / "program"),
     )
     layout = installation.discover_installed_layout()
     assert layout is not None
-    assert layout.authority == "binding"
+    assert layout.install_dir == (tmp_path / "program").resolve()
     assert layout.data_root == (tmp_path / "bound-data").resolve()
     assert layout.backend_service_name == "TicketboxBackend"

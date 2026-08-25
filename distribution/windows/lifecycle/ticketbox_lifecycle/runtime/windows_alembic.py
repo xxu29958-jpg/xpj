@@ -44,9 +44,9 @@ class WindowsAlembicAdapter:
             "--client-generation",
             request.install_id,
             "--schema-min-compatible",
-            request.schema_min_compatible or request.target_release_id,
+            request.schema_min_compatible,
             "--semantic-revision",
-            request.semantic_revision or "ticketbox-dataset-semantics-v1",
+            request.semantic_revision,
             "--operation-id",
             request.operation_id,
         ]

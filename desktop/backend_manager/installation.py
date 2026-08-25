@@ -1,4 +1,4 @@
-"""Discovery of an installed Ticketbox instance from the installer registry key."""
+"""Discover the one installed Ticketbox instance from ``installation.json``."""
 
 from __future__ import annotations
 
@@ -17,19 +17,7 @@ from pathlib import Path
 from backend_manager.version_contract import is_managed_release_version
 
 _REGISTRY_PATH = r"Software\Ticketbox"
-_REGISTRY_VALUE_NAMES = (
-    "InstallDir",
-    "DataRoot",
-    "BackendPort",
-    "PgPort",
-    "BackendServiceName",
-    "PgServiceName",
-    "BackendVersion",
-)
 _SERVICE_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
-_OWNER_RECOVERY_CHANNEL_PATTERN = re.compile(r"managed_host\Z")
-_RELEASE_CONFIG_SCHEMA = "ticketbox-windows-release-v2"
-_MAX_RELEASE_CONFIG_BYTES = 64 * 1024
 _INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
 _INSTALLATION_BINDING_SCHEMA = "ticketbox-installed-instance-v1"
 _VNEXT_RELEASE_DEFAULTS = {
@@ -50,7 +38,7 @@ _VNEXT_RELEASE_DEFAULTS = {
 
 
 class InstallationConfigError(RuntimeError):
-    """Raised when the installer registry key exists but is incomplete or invalid."""
+    """Raised when the installed-instance binding is incomplete or invalid."""
 
     def __init__(self, message: str, *, code: str = "installation_config_invalid") -> None:
         super().__init__(message)
@@ -65,7 +53,7 @@ def installation_id_for_app_data(app_data_dir: Path) -> str:
 
 @dataclass(frozen=True)
 class InstalledLayout:
-    """Paths and ports written by ``ticketbox-installer.iss``."""
+    """Runtime layout bound by ``installation.json`` and its InstallDir locator."""
 
     install_dir: Path
     data_root: Path
@@ -74,24 +62,15 @@ class InstalledLayout:
     backend_service_name: str
     pg_service_name: str
     backend_version: str
-    install_id: str | None = None
-    authority: str = "registry"
+    install_id: str
 
     @property
     def app_data_dir(self) -> Path:
         return self.data_root / "app"
 
     @property
-    def release_config_path(self) -> Path:
-        return self.install_dir / "installer" / "windows-release-config.json"
-
-    @property
-    def manager_executable_path(self) -> Path:
-        return self.install_dir / "manager" / "ticketbox-manager.exe"
-
-    @property
     def installation_id(self) -> str:
-        return self.install_id or installation_id_for_app_data(self.app_data_dir)
+        return self.install_id
 
 
 @dataclass(frozen=True)
@@ -239,130 +218,15 @@ def _parse_backend_version(raw: str) -> str:
     return value
 
 
-def _config_text(config: Mapping[str, object], name: str, pattern: re.Pattern[str]) -> str:
-    value = config.get(name)
-    if not isinstance(value, str) or not pattern.fullmatch(value):
-        raise InstallationConfigError(f"Windows release config 的 {name} 格式无效。")
-    return value
-
-
-def _config_integer(
-    config: Mapping[str, object],
-    name: str,
-    minimum: int,
-    maximum: int,
-) -> int:
-    value = config.get(name)
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
-        raise InstallationConfigError(
-            f"Windows release config 的 {name} 必须是 {minimum}..{maximum} 整数。",
-        )
-    return value
-
-
-def parse_windows_release_config(config: Mapping[str, object]) -> WindowsReleaseConfig:
-    if config.get("schema") != _RELEASE_CONFIG_SCHEMA:
-        raise InstallationConfigError(f"Windows release config schema 不受支持：{config.get('schema')}")
-    service_pattern = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
-    backend_service_name = _config_text(config, "backend_service_name", service_pattern)
-    pg_service_name = _config_text(config, "pg_service_name", service_pattern)
-    _config_text(config, "owner_recovery_channel", _OWNER_RECOVERY_CHANNEL_PATTERN)
-    service_timeout = _config_integer(config, "service_state_timeout_ms", 1000, 300000)
-    service_poll = _config_integer(config, "service_poll_interval_ms", 10, 10000)
-    postgres_timeout = _config_integer(config, "postgres_ready_timeout_ms", 1000, 300000)
-    backend_timeout = _config_integer(config, "backend_ready_timeout_ms", 1000, 300000)
-    backend_poll = _config_integer(config, "backend_ready_poll_interval_ms", 10, 10000)
-    health_timeout = _config_integer(config, "backend_health_request_timeout_ms", 1000, 300000)
-    database_tool_timeout = _config_integer(config, "database_tool_timeout_ms", 10000, 3600000)
-    backup_helper_timeout = _config_integer(config, "dataset_backup_helper_timeout_ms", 10000, 3600000)
-    restore_helper_timeout = _config_integer(config, "dataset_restore_helper_timeout_ms", 10000, 3600000)
-    payload_timeout = _config_integer(config, "dataset_payload_verification_timeout_ms", 10000, 3600000)
-    cleanup_reserve = _config_integer(config, "complete_dataset_cleanup_reserve_ms", 10000, 3600000)
-    backup_timeout = _config_integer(config, "complete_dataset_backup_timeout_ms", 10000, 21600000)
-    restore_timeout = _config_integer(config, "complete_dataset_restore_timeout_ms", 10000, 57600000)
-    if service_poll > service_timeout or backend_poll > backend_timeout or health_timeout > backend_timeout:
-        raise InstallationConfigError("Windows release config 的轮询或请求超时不能大于对应就绪超时。")
-    if not (
-        database_tool_timeout < backup_helper_timeout < backup_timeout
-        and database_tool_timeout < restore_helper_timeout < restore_timeout
-        and database_tool_timeout < payload_timeout < backup_timeout
-        and payload_timeout <= cleanup_reserve
-        and payload_timeout < restore_timeout
-        and backup_timeout + cleanup_reserve <= 61_200_000
-        and restore_timeout + cleanup_reserve <= 61_200_000
-    ):
-        raise InstallationConfigError("Windows release config 的完整数据集 child/action 超时顺序无效。")
-    return WindowsReleaseConfig(
-        backend_service_name=backend_service_name,
-        pg_service_name=pg_service_name,
-        service_state_timeout_ms=service_timeout,
-        service_poll_interval_ms=service_poll,
-        postgres_ready_timeout_ms=postgres_timeout,
-        backend_ready_timeout_ms=backend_timeout,
-        backend_ready_poll_interval_ms=backend_poll,
-        backend_health_request_timeout_ms=health_timeout,
-        database_tool_timeout_ms=database_tool_timeout,
-        dataset_backup_helper_timeout_ms=backup_helper_timeout,
-        dataset_restore_helper_timeout_ms=restore_helper_timeout,
-        dataset_payload_verification_timeout_ms=payload_timeout,
-        complete_dataset_cleanup_reserve_ms=cleanup_reserve,
-        complete_dataset_backup_timeout_ms=backup_timeout,
-        complete_dataset_restore_timeout_ms=restore_timeout,
-    )
-
-
 def load_installed_release_config(layout: InstalledLayout) -> WindowsReleaseConfig:
-    try:
-        if layout.authority == "binding":
-            return WindowsReleaseConfig(
-                backend_service_name=layout.backend_service_name,
-                pg_service_name=layout.pg_service_name,
-                **_VNEXT_RELEASE_DEFAULTS,
-            )
-        if layout.release_config_path.is_file():
-            return _load_installed_release_config(layout)
-        raise InstallationConfigError(f"缺少或拒绝过大的 Windows release config：{layout.release_config_path}")
-    except InstallationConfigError as exc:
-        raise InstallationConfigError(str(exc), code="release_contract_invalid") from exc
-
-
-def _load_installed_release_config(layout: InstalledLayout) -> WindowsReleaseConfig:
-    path = layout.release_config_path
-    try:
-        if not path.is_file() or path.stat().st_size > _MAX_RELEASE_CONFIG_BYTES:
-            raise InstallationConfigError(f"缺少或拒绝过大的 Windows release config：{path}")
-        decoded = json.loads(path.read_text(encoding="utf-8-sig"))
-    except InstallationConfigError:
-        raise
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise InstallationConfigError(f"无法读取 Windows release config：{path}") from exc
-    if not isinstance(decoded, dict):
-        raise InstallationConfigError("Windows release config 顶层必须是 JSON object。")
-    release = parse_windows_release_config(decoded)
-    if release.backend_service_name.casefold() != layout.backend_service_name.casefold():
-        raise InstallationConfigError("安装注册表与 Windows release config 的后端服务身份不一致。")
-    if release.pg_service_name.casefold() != layout.pg_service_name.casefold():
-        raise InstallationConfigError("安装注册表与 Windows release config 的 PostgreSQL 服务身份不一致。")
-    return release
-
-
-def parse_installed_layout(values: Mapping[str, str]) -> InstalledLayout:
-    """Validate registry values before they become runtime configuration."""
-    missing = [name for name in _REGISTRY_VALUE_NAMES if not values.get(name, "").strip()]
-    if missing:
-        raise InstallationConfigError(f"安装信息不完整，缺少：{', '.join(missing)}")
-    return InstalledLayout(
-        install_dir=Path(values["InstallDir"]).resolve(),
-        data_root=Path(values["DataRoot"]).resolve(),
-        backend_port=_parse_port(values["BackendPort"], "BackendPort"),
-        pg_port=_parse_port(values["PgPort"], "PgPort"),
-        backend_service_name=_parse_service_name(values["BackendServiceName"], "BackendServiceName"),
-        pg_service_name=_parse_service_name(values["PgServiceName"], "PgServiceName"),
-        backend_version=_parse_backend_version(values["BackendVersion"]),
+    return WindowsReleaseConfig(
+        backend_service_name=layout.backend_service_name,
+        pg_service_name=layout.pg_service_name,
+        **_VNEXT_RELEASE_DEFAULTS,
     )
 
 
-def _read_registry_values() -> dict[str, str] | None:
+def _read_install_dir() -> str | None:
     if os.name != "nt":
         return None
 
@@ -376,23 +240,20 @@ def _read_registry_values() -> dict[str, str] | None:
     except OSError as exc:
         raise InstallationConfigError(f"无法读取 Windows 安装信息：{exc}") from exc
 
-    values: dict[str, str] = {}
     with key:
-        for name in _REGISTRY_VALUE_NAMES:
-            try:
-                values[name] = str(winreg.QueryValueEx(key, name)[0])
-            except FileNotFoundError:
-                values[name] = ""
-            except OSError as exc:
-                raise InstallationConfigError(f"无法读取 Windows 安装信息 {name}：{exc}") from exc
-    return values
+        try:
+            value = str(winreg.QueryValueEx(key, "InstallDir")[0]).strip()
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise InstallationConfigError(f"无法读取 Windows 安装位置：{exc}") from exc
+    return value or None
 
 
 def parse_installed_binding(
     payload: Mapping[str, object],
-    registry_values: Mapping[str, str],
+    install_dir: str | None,
 ) -> InstalledLayout:
-    install_dir = str(registry_values.get("InstallDir") or "").strip()
     if not install_dir:
         raise InstallationConfigError("installation.json 存在，但缺少 InstallDir 定位。")
     required = (
@@ -425,7 +286,6 @@ def parse_installed_binding(
         pg_service_name=_parse_service_name(str(payload["pg_service_name"]), "pg_service_name"),
         backend_version=_parse_backend_version(str(payload["active_release_id"])),
         install_id=install_id,
-        authority="binding",
     )
 
 
@@ -451,16 +311,11 @@ def discover_installed_layout() -> InstalledLayout | None:
     """Return the installed layout, or ``None`` when Ticketbox is not installed."""
     try:
         binding = _read_installation_binding()
+        if binding is None:
+            return None
+        return parse_installed_binding(binding, _read_install_dir())
     except InstallationConfigError as exc:
         raise InstallationConfigError(str(exc), code="installed_binding_invalid") from exc
-    try:
-        registry = _read_registry_values()
-        if binding is not None:
-            return parse_installed_binding(binding, registry or {})
-        return parse_installed_layout(registry) if registry is not None else None
-    except InstallationConfigError as exc:
-        code = "installed_binding_invalid" if binding is not None else "registry_contract_invalid"
-        raise InstallationConfigError(str(exc), code=code) from exc
 
 
 def _windows_powershell_path() -> Path:
