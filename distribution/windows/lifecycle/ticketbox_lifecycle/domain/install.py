@@ -4,7 +4,6 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass, replace
-from pathlib import Path
 
 from ticketbox_lifecycle.adapters.ports import (
     AdapterBundle,
@@ -14,6 +13,7 @@ from ticketbox_lifecycle.adapters.ports import (
     Mutex,
     OperationPublisher,
     OperationReader,
+    ShipmentVerifier,
     adapter_for_step,
     phase_after,
 )
@@ -34,6 +34,7 @@ from ticketbox_lifecycle.schemas import (
 @dataclass(frozen=True)
 class LifecycleStores:
     mutex: Mutex
+    shipment: ShipmentVerifier
     observer: HostObserver
     operations_read: OperationReader
     operations_write: OperationPublisher
@@ -72,23 +73,33 @@ def install_or_resume(stores: LifecycleStores, request: InstallRequest) -> Comma
 
 
 def _install_locked(stores: LifecycleStores, request: InstallRequest) -> CommandResult:
-    _refuse_second_identity(stores, request)
-    request = _bind_release_manifest_hash(request)
-    observation = stores.observer.observe(request)
+    request = stores.shipment.bind_and_verify(request)
     existing = stores.operations_read.read_active()
+    committed = (
+        stores.operations_read.read_committed(request.operation_id)
+        if existing is None
+        else None
+    )
     request_hash = hash_install_identity(request)
+    _refuse_second_identity(stores, request, existing, committed)
     if existing is not None:
         _require_matching_operation(existing, request, request_hash)
         if existing.phase == "committed":
             if request.command != "resume":
                 raise LifecycleViolation("already_installed", "committed delivery requires resume")
             return _replay_committed_result(stores, request, existing)
+    elif committed is not None:
+        _require_matching_operation(committed, request, request_hash)
+        if request.command != "resume":
+            raise LifecycleViolation("already_installed", "committed delivery requires resume")
+        return _replay_committed_result(stores, request, committed)
 
+    observation = stores.observer.observe(request)
     plan = plan_fresh_install(request, observation)
     stores.operations_write.prepare(request)
     if existing is None:
         stores.operations_write.require_fresh_inputs(request)
-        schema_revision = request.schema_revision or _schema_revision_from_release(request)
+        schema_revision = request.schema_revision
         active = ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=request.operation_id,
@@ -269,16 +280,23 @@ def _committed_result(request: InstallRequest, pairing: OwnerPairing) -> Command
     )
 
 
-def _refuse_second_identity(stores: LifecycleStores, request: InstallRequest) -> None:
+def _refuse_second_identity(
+    stores: LifecycleStores,
+    request: InstallRequest,
+    active: ActiveOperation | None,
+    committed: ActiveOperation | None,
+) -> None:
     binding = stores.binding_read.read()
     if binding is None:
         return
-    active = stores.operations_read.read_active()
+    operation = active or committed
     same_operation = (
-        active is not None
-        and active.operation_id == request.operation_id
-        and binding.install_id == active.install_id
-        and binding.dataset_id == active.dataset_id
+        operation is not None
+        and operation.operation_id == request.operation_id
+        and binding.install_id == operation.install_id
+        and binding.dataset_id == operation.dataset_id
+        and binding.active_release_id == operation.target_release_id
+        and binding.release_manifest_sha256 == operation.release_manifest_sha256
     )
     if not same_operation:
         raise LifecycleViolation(
@@ -307,40 +325,3 @@ def hash_install_identity(request: InstallRequest) -> str:
             "postgres_major": request.postgres_major,
         }
     )
-
-
-def _release_manifest_path(request: InstallRequest) -> Path:
-    return (
-        Path(request.app_dir)
-        / "releases"
-        / request.target_release_id
-        / "release-manifest.json"
-    )
-
-
-def _bind_release_manifest_hash(request: InstallRequest) -> InstallRequest:
-    path = _release_manifest_path(request)
-    if not path.is_file() or path.is_symlink():
-        raise LifecycleViolation("missing_release_manifest", "installed release-manifest.json is absent")
-    actual = hashlib.sha256(path.read_bytes()).hexdigest()
-    declared = request.release_manifest_sha256.strip().lower()
-    if declared in {"", "pending"} or declared != actual:
-        raise LifecycleViolation(
-            "release_hash_mismatch",
-            "installed release-manifest.json does not match the request hash",
-        )
-    return replace(request, release_manifest_sha256=actual)
-
-
-def _read_release_manifest(request: InstallRequest) -> dict[str, object]:
-    path = _release_manifest_path(request)
-    if not path.is_file():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _schema_revision_from_release(request: InstallRequest) -> str:
-    if request.schema_revision:
-        return request.schema_revision
-    manifest = _read_release_manifest(request)
-    return str(manifest.get("max_schema_revision") or "")

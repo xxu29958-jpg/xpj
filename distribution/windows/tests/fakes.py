@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
 from pathlib import Path
 
@@ -108,6 +110,7 @@ class MemoryStores:
     def as_lifecycle_stores(self) -> LifecycleStores:
         return LifecycleStores(
             mutex=self.mutex,
+            shipment=self,
             observer=self,
             operations_read=self,
             operations_write=self,
@@ -128,6 +131,33 @@ class MemoryStores:
 
     def read_active(self) -> ActiveOperation | None:
         return self._active
+
+    def read_committed(self, operation_id: str) -> ActiveOperation | None:
+        matches = [item for item in self._history if item.operation_id == operation_id]
+        return matches[-1] if matches else None
+
+    def bind_and_verify(self, request: InstallRequest) -> InstallRequest:
+        manifest_path = (
+            Path(request.app_dir)
+            / "releases"
+            / request.target_release_id
+            / "release-manifest.json"
+        )
+        manifest_bytes = manifest_path.read_bytes()
+        if hashlib.sha256(manifest_bytes).hexdigest() != request.release_manifest_sha256:
+            raise LifecycleViolation(
+                "release_hash_mismatch",
+                "installed release manifest does not match this Setup request",
+            )
+        manifest = json.loads(manifest_bytes)
+        return InstallRequest(
+            **{
+                **request.__dict__,
+                "schema_revision": str(manifest.get("max_schema_revision") or ""),
+                "schema_min_compatible": str(manifest.get("min_schema_revision") or ""),
+                "semantic_revision": str(manifest.get("min_semantic_revision") or ""),
+            }
+        )
 
     def prepare(self, request: InstallRequest) -> None:
         del request

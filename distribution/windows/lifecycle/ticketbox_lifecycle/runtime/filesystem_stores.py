@@ -2,19 +2,21 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
 from ticketbox_lifecycle.adapters.ports import AdapterBundle
 from ticketbox_lifecycle.domain.install import LifecycleStores
-from ticketbox_lifecycle.errors import LifecycleError
+from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime.mutex import os_mutex
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
 from ticketbox_lifecycle.runtime.windows_security_native import (
     reject_reparse_components,
 )
 from ticketbox_lifecycle.runtime.windows_services import service_registered
+from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 from ticketbox_lifecycle.schemas import (
     INSTALLATION_SCHEMA,
     OPERATION_SCHEMA,
@@ -49,6 +51,7 @@ class FilesystemStores:
     def as_lifecycle_stores(self) -> LifecycleStores:
         return LifecycleStores(
             mutex=self._mutex,
+            shipment=WindowsShipmentVerifier(),
             observer=self,
             operations_read=self,
             operations_write=self,
@@ -78,8 +81,30 @@ class FilesystemStores:
         if not self._active_path.is_file():
             return None
         payload = self._read_verified_json(self._active_path)
+        return self._operation_from_payload(payload)
+
+    def read_committed(self, operation_id: str) -> ActiveOperation | None:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", operation_id):
+            raise LifecycleViolation(
+                "operation_id_invalid",
+                "operation id is not a safe history key",
+            )
+        path = self._history_dir / f"{operation_id}.json"
+        reject_reparse_components(path)
+        if not path.is_file():
+            return None
+        operation = self._operation_from_payload(self._read_verified_json(path))
+        if operation.phase != "committed" or operation.operation_id != operation_id:
+            raise LifecycleError(
+                "committed_history_invalid",
+                "history is not the exact committed operation",
+            )
+        return operation
+
+    @staticmethod
+    def _operation_from_payload(payload: dict[str, object]) -> ActiveOperation:
         if payload.get("schema") != OPERATION_SCHEMA:
-            raise LifecycleError("bad_operation_schema", "active.json schema is not v2")
+            raise LifecycleError("bad_operation_schema", "operation schema is not v2")
         return ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=str(payload["operation_id"]),
@@ -127,9 +152,31 @@ class FilesystemStores:
 
     def archive_committed(self, operation: ActiveOperation) -> None:
         if operation.phase != "committed":
-            raise LifecycleError("archive_requires_commit", "refusing to archive a non-committed operation")
+            raise LifecycleError(
+                "archive_requires_commit",
+                "refusing to archive a non-committed operation",
+            )
+        history_path = self._history_dir / f"{operation.operation_id}.json"
+        reject_reparse_components(history_path)
         self._history_dir.mkdir(parents=True, exist_ok=True)
-        _atomic_write(self._history_dir / f"{operation.operation_id}.json", asdict(operation))
+        tmp_path = _write_temp_json(history_path, asdict(operation))
+        try:
+            self._adapters.security.protect_machine_json(
+                tmp_path,
+                self._backend_service_name,
+            )
+            self._adapters.security.verify_machine_json(
+                tmp_path,
+                self._backend_service_name,
+            )
+            os.replace(tmp_path, history_path)
+            self._adapters.security.verify_machine_json(
+                history_path,
+                self._backend_service_name,
+            )
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
         if self._active_path.exists():
             self._active_path.unlink()
 
@@ -190,15 +237,6 @@ class FilesystemStores:
         if not isinstance(payload, dict):
             raise LifecycleError("machine_state_invalid", f"{path.name} must contain a JSON object")
         return payload
-
-
-def _atomic_write(path: Path, payload: dict[str, object]) -> None:
-    tmp_path = _write_temp_json(path, payload)
-    try:
-        os.replace(tmp_path, path)
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink()
 
 
 def _write_temp_json(path: Path, payload: dict[str, object]) -> Path:

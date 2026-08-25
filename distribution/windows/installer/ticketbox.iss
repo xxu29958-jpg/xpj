@@ -4,6 +4,9 @@
 #ifndef ReleaseId
 #define ReleaseId AppVersion
 #endif
+#ifndef ReleaseManifestSha256
+#define ReleaseManifestSha256 "pending"
+#endif
 #ifndef PgServiceName
 #define PgServiceName "TicketboxPg"
 #endif
@@ -35,7 +38,7 @@ SolidCompression=yes
 WizardStyle=modern
 OutputBaseFilename=Ticketbox-Setup-{#AppVersion}
 SetupLogging=yes
-CloseApplications=yes
+CloseApplications=no
 RestartApplications=no
 Uninstallable=no
 
@@ -44,10 +47,14 @@ Name: "chinesesimp"; MessagesFile: "..\..\..\backend\packaging\languages\Chinese
 
 [Files]
 Source: "{#TicketboxMsvcRedistSource}"; DestDir: "{app}\bin"; DestName: "vc_redist.x64.exe"; Flags: ignoreversion
-Source: "..\..\..\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#ReleaseId}\backend"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\..\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion
+Source: "..\..\..\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#ReleaseId}\backend"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
+Source: "..\..\..\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#ReleaseId}\backend"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
+Source: "..\..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
+Source: "..\..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
+Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
+Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
+Source: "..\..\..\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion; Check: TicketboxFreshMaterialization
+Source: "..\..\..\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion onlyifdoesntexist; Check: TicketboxExactResumeMaterialization
 Source: "..\payload\TicketboxLifecycle.exe"; DestDir: "{app}\bin"; DestName: "TicketboxLifecycle.exe"; Flags: ignoreversion
 Source: "..\payload\release-manifest.json"; DestDir: "{app}\releases\{#ReleaseId}"; Flags: ignoreversion
 Source: "..\..\..\backend\packaging\ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
@@ -65,14 +72,7 @@ Filename: "{app}\bin\TicketboxLifecycle.exe"; Parameters: "{code:TicketboxLifecy
 [Code]
 const
   TicketboxRequiredMsvcRuntimeVersion = '{#TicketboxRequiredMsvcRuntimeVersion}';
-
-type
-  TTicketboxGuid = record
-    D1: LongWord;
-    D2: Word;
-    D3: Word;
-    D4: array[0..7] of Byte;
-  end;
+  TicketboxExpectedReleaseManifestSha256 = '{#ReleaseManifestSha256}';
 
 var
   TicketboxProvisionOperationId: String;
@@ -80,43 +80,6 @@ var
   TicketboxPairingExpiresAt: String;
   TicketboxInstallFailed: Boolean;
   TicketboxInstallFailureReason: String;
-
-function CoCreateGuid(var Guid: TTicketboxGuid): Integer;
-external 'CoCreateGuid@ole32.dll stdcall';
-
-function TicketboxHexDigit(Value: Integer): String;
-begin
-  Result := Copy('0123456789abcdef', (Value and $F) + 1, 1);
-end;
-
-function TicketboxToHex(Value: LongWord; Digits: Integer): String;
-var
-  I: Integer;
-begin
-  Result := '';
-  for I := 1 to Digits do
-  begin
-    Result := TicketboxHexDigit(Value) + Result;
-    Value := Value shr 4;
-  end;
-end;
-
-function TicketboxNewUuid: String;
-var
-  Guid: TTicketboxGuid;
-begin
-  Result := '';
-  if CoCreateGuid(Guid) <> 0 then
-    Exit;
-  Result :=
-    TicketboxToHex(Guid.D1, 8) + '-' +
-    TicketboxToHex(Guid.D2, 4) + '-' +
-    TicketboxToHex(Guid.D3, 4) + '-' +
-    TicketboxToHex(Guid.D4[0], 2) + TicketboxToHex(Guid.D4[1], 2) + '-' +
-    TicketboxToHex(Guid.D4[2], 2) + TicketboxToHex(Guid.D4[3], 2) +
-    TicketboxToHex(Guid.D4[4], 2) + TicketboxToHex(Guid.D4[5], 2) +
-    TicketboxToHex(Guid.D4[6], 2) + TicketboxToHex(Guid.D4[7], 2);
-end;
 
 function InitializeSetup: Boolean;
 begin
@@ -155,18 +118,71 @@ begin
     Result := Copy(Rest, 1, Q - 1);
 end;
 
-function TicketboxActiveOperationCanContinue: Boolean;
+function TicketboxOperationId: String;
+begin
+  Result := 'fresh-{#ReleaseManifestSha256}';
+end;
+
+function TicketboxActivePath: String;
+begin
+  Result := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\active.json');
+end;
+
+function TicketboxCommittedHistoryPath: String;
+begin
+  Result := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\history\') +
+    TicketboxOperationId + '.json';
+end;
+
+function TicketboxOperationMatches(const Path, RequiredPhase: String): Boolean;
 var
-  ActivePath: String;
   Text: AnsiString;
-  OperationId: String;
+  Body: String;
 begin
   Result := False;
-  ActivePath := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\active.json');
-  if not LoadStringFromFile(ActivePath, Text) then
+  if not LoadStringFromFile(Path, Text) then
     Exit;
-  OperationId := TicketboxJsonString(String(Text), 'operation_id');
-  Result := OperationId <> '';
+  Body := String(Text);
+  Result :=
+    (TicketboxJsonString(Body, 'operation_id') = TicketboxOperationId) and
+    (TicketboxJsonString(Body, 'target_release_id') = '{#ReleaseId}') and
+    (TicketboxJsonString(Body, 'release_manifest_sha256') =
+      TicketboxExpectedReleaseManifestSha256);
+  if Result and (RequiredPhase <> '') then
+    Result := TicketboxJsonString(Body, 'phase') = RequiredPhase;
+end;
+
+function TicketboxExactActiveCanContinue: Boolean;
+begin
+  Result := TicketboxOperationMatches(TicketboxActivePath, '');
+end;
+
+function TicketboxCommittedReplayCanContinue: Boolean;
+var
+  BindingPath: String;
+  BindingText: AnsiString;
+  Body: String;
+begin
+  Result := False;
+  BindingPath := ExpandConstant('{commonappdata}\Ticketbox\machine\installation.json');
+  if not LoadStringFromFile(BindingPath, BindingText) then
+    Exit;
+  Body := String(BindingText);
+  Result :=
+    (TicketboxJsonString(Body, 'active_release_id') = '{#ReleaseId}') and
+    (TicketboxJsonString(Body, 'release_manifest_sha256') =
+      TicketboxExpectedReleaseManifestSha256) and
+    TicketboxOperationMatches(TicketboxCommittedHistoryPath, 'committed');
+end;
+
+function TicketboxExactResumeMaterialization: Boolean;
+begin
+  Result := TicketboxExactActiveCanContinue or TicketboxCommittedReplayCanContinue;
+end;
+
+function TicketboxFreshMaterialization: Boolean;
+begin
+  Result := not TicketboxExactResumeMaterialization;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -181,8 +197,19 @@ begin
     Result := '小票夹需要 64 位 Windows。';
     Exit;
   end;
+  if Length(TicketboxExpectedReleaseManifestSha256) <> 64 then
+  begin
+    Result := '安装包缺少 immutable release manifest 身份。';
+    Exit;
+  end;
+  if FileExists(TicketboxActivePath) and (not TicketboxExactActiveCanContinue()) then
+  begin
+    Result := '检测到另一个或损坏的首次安装操作；拒绝接管。';
+    Exit;
+  end;
   BindingPath := ExpandConstant('{commonappdata}\Ticketbox\machine\installation.json');
-  if FileExists(BindingPath) and (not TicketboxActiveOperationCanContinue()) then
+  if FileExists(BindingPath) and (not TicketboxCommittedReplayCanContinue()) and
+     (not TicketboxExactActiveCanContinue()) then
   begin
     Result := '这台电脑已经安装小票夹。首次安装不会覆盖现有数据。';
     Exit;
@@ -296,8 +323,7 @@ end;
 
 function TicketboxLifecycleParams(Param: String): String;
 var
-  Command, OperationId, ActivePath, Existing, ManifestPath, ManifestSha: String;
-  ActiveText: AnsiString;
+  Command, OperationId, ManifestPath, ManifestSha: String;
 begin
   Result := '';
   if FileExists(TicketboxResultPath) and (not DeleteFile(TicketboxResultPath)) then
@@ -306,25 +332,13 @@ begin
     Exit;
   end;
   Command := 'install';
-  OperationId := TicketboxNewUuid;
-  if OperationId = '' then
-  begin
-    TicketboxMarkInstallFailed('无法生成首次安装操作标识');
-    Exit;
-  end;
-  ActivePath := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\active.json');
-  if LoadStringFromFile(ActivePath, ActiveText) then
-  begin
-    Existing := TicketboxJsonString(String(ActiveText), 'operation_id');
-    if Existing <> '' then
-    begin
-      OperationId := Existing;
-      Command := 'resume';
-    end;
-  end;
+  OperationId := TicketboxOperationId;
+  if TicketboxExactResumeMaterialization then
+    Command := 'resume';
   ManifestPath := ExpandConstant('{app}\releases\{#ReleaseId}\release-manifest.json');
-  ManifestSha := GetSHA256OfFile(ManifestPath);
-  if ManifestSha = '' then
+  ManifestSha := LowerCase(GetSHA256OfFile(ManifestPath));
+  if (ManifestSha = '') or
+     (ManifestSha <> LowerCase(TicketboxExpectedReleaseManifestSha256)) then
   begin
     TicketboxMarkInstallFailed('无法验证已发布的 release-manifest.json');
     Exit;

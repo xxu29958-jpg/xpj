@@ -20,6 +20,7 @@ class Mutex(Protocol):
 
 class OperationReader(Protocol):
     def read_active(self) -> ActiveOperation | None: ...
+    def read_committed(self, operation_id: str) -> ActiveOperation | None: ...
 
 
 class OperationPublisher(Protocol):
@@ -35,6 +36,10 @@ class BindingReader(Protocol):
 
 class BindingPublisher(Protocol):
     def publish(self, binding: InstallationBinding) -> None: ...
+
+
+class ShipmentVerifier(Protocol):
+    def bind_and_verify(self, request: InstallRequest) -> InstallRequest: ...
 
 
 class HostObserver(Protocol):

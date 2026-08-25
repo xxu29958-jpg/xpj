@@ -10,7 +10,13 @@ from pathlib import Path
 from ticketbox_lifecycle.domain.install import LifecycleStores, inspect_machine, install_or_resume
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
-from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, RESULT_SCHEMA, CommandResult, InstallRequest
+from ticketbox_lifecycle.schemas import (
+    REQUEST_SCHEMA,
+    RESULT_SCHEMA,
+    ActiveOperation,
+    CommandResult,
+    InstallRequest,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -83,11 +89,17 @@ def _deliver_install_result(
     if not result.ok:
         return 2
     active = stores.operations_read.read_active()
+    committed = (
+        stores.operations_read.read_committed(result.operation_id)
+        if active is None
+        else None
+    )
     if (
         result.phase != "committed"
-        or active is None
-        or active.phase != "committed"
-        or active.operation_id != result.operation_id
+        or (
+            not _is_exact_commit(active, result.operation_id)
+            and not _is_exact_commit(committed, result.operation_id)
+        )
     ):
         failure = CommandResult(
             schema=RESULT_SCHEMA,
@@ -101,22 +113,31 @@ def _deliver_install_result(
         )
         _write_result(path, failure)
         return 2
-    try:
-        stores.operations_write.archive_committed(active)
-    except Exception as exc:
-        failure = CommandResult(
-            schema=RESULT_SCHEMA,
-            ok=False,
-            command=result.command,
-            operation_id=result.operation_id,
-            phase="committed",
-            code="operation_archive_failed",
-            message=str(exc),
-            installation_published=result.installation_published,
-        )
-        _write_result(path, failure)
-        return 2
+    if _is_exact_commit(active, result.operation_id):
+        try:
+            stores.operations_write.archive_committed(active)
+        except Exception as exc:
+            failure = CommandResult(
+                schema=RESULT_SCHEMA,
+                ok=False,
+                command=result.command,
+                operation_id=result.operation_id,
+                phase="committed",
+                code="operation_archive_failed",
+                message=str(exc),
+                installation_published=result.installation_published,
+            )
+            _write_result(path, failure)
+            return 2
     return 0
+
+
+def _is_exact_commit(operation: ActiveOperation | None, operation_id: str) -> bool:
+    return (
+        operation is not None
+        and operation.phase == "committed"
+        and operation.operation_id == operation_id
+    )
 
 
 def _write_result(path: Path, result: CommandResult) -> None:

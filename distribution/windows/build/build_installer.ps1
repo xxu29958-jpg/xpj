@@ -30,6 +30,7 @@ $DesktopRoot = Join-Path $RepoRoot "desktop"
 
 . (Join-Path $BackendRoot "scripts\windows_build_provenance.ps1")
 . (Join-Path $DesktopRoot "scripts\windows_manager_build_provenance.ps1")
+. (Join-Path $ScriptDir "installed_payload_manifest.ps1")
 
 $IssPath = Join-Path $WindowsRoot "installer\ticketbox.iss"
 $PayloadDir = Join-Path $WindowsRoot "payload"
@@ -67,6 +68,7 @@ function Write-InstallerBuildProvenance {
         manager = $BuildInputs.manager
         postgresql = $BuildInputs.postgresql
         shawl = $BuildInputs.shawl
+        shipment = $BuildInputs.shipment
     }
     Write-TicketboxJsonFile $Path $manifest
     return $manifest
@@ -289,11 +291,27 @@ if (
     [string]$manifestTemplate.signing_state -cne "release-bound" -or
     [string]::IsNullOrWhiteSpace([string]$manifestTemplate.min_schema_revision) -or
     [string]::IsNullOrWhiteSpace([string]$manifestTemplate.min_semantic_revision) -or
-    -not (@($manifestTemplate.lifecycle_compatibility) -ccontains "ticketbox-lifecycle-request-v1")
+    -not (@($manifestTemplate.lifecycle_compatibility) -ccontains "ticketbox-lifecycle-request-v1") -or
+    [string]$manifestTemplate.immutable_payload.algorithm -cne "SHA-256" -or
+    @($manifestTemplate.immutable_payload.files).Count -ne 0
 ) {
     throw "release-manifest.json 未与 exact release/generation program 预先冻结。"
 }
-Write-Host "release-manifest validated max_schema_revision=$schemaHead"
+$manifestTemplate.immutable_payload = New-TicketboxInstalledPayloadManifest `
+    -Version $Version `
+    -StagedBackendRoot $StagedBackendRoot `
+    -StagedDesktopRoot $StagedDesktopRoot `
+    -StagedPayloadDir $StagedPayloadDir
+Write-TicketboxJsonFile $manifestTemplatePath $manifestTemplate
+$releaseManifestSha256 = Get-TicketboxFileSha256 $manifestTemplatePath
+$BuildInputs["shipment"] = [ordered]@{
+    release_manifest_sha256 = $releaseManifestSha256
+    immutable_file_count = @($manifestTemplate.immutable_payload.files).Count
+}
+Write-Host (
+    "release-manifest validated max_schema_revision=$schemaHead " +
+    "files=$(@($manifestTemplate.immutable_payload.files).Count) sha256=$releaseManifestSha256"
+)
 
 # ===== pinned ISCC 编译 =====
 $innoSource = $toolchainConfig.build_tool_sources.inno_setup
@@ -317,7 +335,8 @@ $compiler = [pscustomobject]@{
 
 $defines = @(
     "/DAppVersion=$Version",
-    "/DReleaseId=$Version"
+    "/DReleaseId=$Version",
+    "/DReleaseManifestSha256=$releaseManifestSha256"
 )
 $stagingDir = Join-Path $BackendRoot ("build\.ticketbox-installer-staging-{0}" -f $PID)
 try {

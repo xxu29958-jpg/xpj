@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -116,6 +116,37 @@ def test_active_publication_protects_and_verifies_exact_file(tmp_path: Path) -> 
         ("verify", temp_path, "TicketboxBackend"),
         ("verify", path, "TicketboxBackend"),
     ]
+
+
+def test_committed_history_is_protected_and_verified_before_replay(tmp_path: Path) -> None:
+    security = RecordingSecurity()
+    stores = _stores(tmp_path, security)
+    committed = replace(_active(), phase="committed", no_return_point=True)
+    stores.publish_active(committed)
+    security.calls.clear()
+
+    stores.archive_committed(committed)
+
+    history = tmp_path / "machine" / "operations" / "history" / f"{committed.operation_id}.json"
+    temp_path = security.calls[0][1]
+    assert security.calls == [
+        ("protect", temp_path, "TicketboxBackend"),
+        ("verify", temp_path, "TicketboxBackend"),
+        ("verify", history, "TicketboxBackend"),
+    ]
+    security.calls.clear()
+    assert stores.read_committed(committed.operation_id) == committed
+    assert security.calls == [
+        ("verify", history, "TicketboxBackend"),
+        ("verify", history, "TicketboxBackend"),
+    ]
+
+
+def test_committed_history_rejects_an_unsafe_operation_key(tmp_path: Path) -> None:
+    stores = _stores(tmp_path, RecordingSecurity())
+
+    with pytest.raises(LifecycleViolation, match="safe history key"):
+        stores.read_committed("../foreign")
 
 
 def test_binding_publication_protects_before_grant_and_reverifies(tmp_path: Path) -> None:

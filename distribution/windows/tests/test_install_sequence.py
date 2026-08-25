@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -150,6 +151,58 @@ def test_committed_result_is_durable_before_active_operation_is_archived(tmp_pat
     assert delivered["pairing_code"] == "12345678"
     assert stores.read_active() is None
     assert [operation.phase for operation in stores.history] == ["committed"]
+
+
+def test_archived_commit_replays_pairing_after_setup_crashes_before_consuming_result(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path, operation_id="fresh-" + "a" * 64)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    first_result = tmp_path / "first-setup" / "result.json"
+
+    assert cli._deliver_install_result(first_result, first, stores.as_lifecycle_stores()) == 0
+    assert stores.read_active() is None
+    assert stores.read_committed(request.operation_id) is not None
+
+    replay_request = InstallRequest(**{**request.__dict__, "command": "resume"})
+    replay = install_or_resume(stores.as_lifecycle_stores(), replay_request)
+    second_result = tmp_path / "second-setup" / "result.json"
+
+    assert replay.ok is True
+    assert replay.operation_id == request.operation_id
+    assert replay.pairing_code == first.pairing_code
+    assert cli._deliver_install_result(second_result, replay, stores.as_lifecycle_stores()) == 0
+    assert json.loads(second_result.read_text(encoding="utf-8"))["pairing_code"] == "12345678"
+
+
+def test_archived_result_replay_does_not_take_over_another_active_operation(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path, operation_id="fresh-" + "a" * 64)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert cli._deliver_install_result(
+        tmp_path / "first.json",
+        first,
+        stores.as_lifecycle_stores(),
+    ) == 0
+    replay_request = InstallRequest(**{**request.__dict__, "command": "resume"})
+    replay = install_or_resume(stores.as_lifecycle_stores(), replay_request)
+    committed = stores.read_committed(request.operation_id)
+    assert committed is not None
+    foreign = replace(committed, operation_id="foreign-operation")
+    stores.prepare(request)
+    stores.publish_active(foreign)
+
+    assert cli._deliver_install_result(
+        tmp_path / "replay.json",
+        replay,
+        stores.as_lifecycle_stores(),
+    ) == 2
+    assert stores.read_active() == foreign
 
 
 def test_result_write_failure_keeps_committed_operation_for_exact_retry(

@@ -29,8 +29,16 @@ foreach ($token in @(
     if ($text.Contains($token)) { throw "ISS still names retired path $token" }
 }
 if ($text -notmatch 'PrepareToInstall') { throw 'ISS missing read-only PrepareToInstall' }
-if ($text -notmatch 'TicketboxActiveOperationCanContinue') {
-    throw 'ISS must allow exact active-operation result delivery or resume'
+if ($text -notmatch 'TicketboxExactActiveCanContinue' -or
+    $text -notmatch 'TicketboxCommittedReplayCanContinue') {
+    throw 'ISS must allow only exact active or committed result replay'
+}
+if ($text -notmatch 'CloseApplications=no' -or $text -match 'CloseApplications=yes') {
+    throw 'ISS must not let Restart Manager own pre-copy lifecycle mutation'
+}
+if ($text -notmatch 'onlyifdoesntexist' -or
+    $text -notmatch 'TicketboxExpectedReleaseManifestSha256') {
+    throw 'ISS exact resume requires immutable materialization and manifest binding'
 }
 if ($text -notmatch 'Utf8Encode\(Payload\)') {
     throw 'ISS must write the lifecycle request as UTF-8'

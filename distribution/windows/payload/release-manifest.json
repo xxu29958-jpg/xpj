@@ -8,5 +8,9 @@
     "min_schema_revision":  "20260722_0001",
     "max_schema_revision":  "20260821_0001",
     "min_semantic_revision":  "ticketbox-dataset-semantics-v1",
-    "signing_state":  "release-bound"
+    "signing_state":  "release-bound",
+    "immutable_payload":  {
+        "algorithm":  "SHA-256",
+        "files":  []
+    }
 }

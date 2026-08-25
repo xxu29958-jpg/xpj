@@ -51,9 +51,12 @@ def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> 
     text = ISS.read_text(encoding="utf-8-sig")
     assert "[Setup]" in text
     assert "PrivilegesRequired=admin" in text
+    assert "CloseApplications=no" in text
+    assert "CloseApplications=yes" not in text
     assert "PrepareToInstall" in text
-    assert "TicketboxActiveOperationCanContinue" in text
-    assert "FileExists(BindingPath) and (not TicketboxActiveOperationCanContinue())" in text
+    assert "TicketboxExactActiveCanContinue" in text
+    assert "TicketboxCommittedReplayCanContinue" in text
+    assert "FileExists(BindingPath) and (not TicketboxCommittedReplayCanContinue())" in text
     assert "Utf8Encode(Payload)" in text
     assert "AnsiString(Payload)" not in text
     assert "Command := 'resume'" in text
@@ -86,6 +89,8 @@ def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> 
     assert "Observed <> OperationId" in text
     assert '"ok": false' in text
     assert "active.json" in text
+    assert "operations\\history" in text
+    assert "fresh-{#ReleaseManifestSha256}" in text
     assert "resume" in text
     assert '"ok": true' in text
     assert '"phase": "committed"' in text
@@ -95,11 +100,17 @@ def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> 
     assert "TicketboxBackendLauncher.exe" not in files_section
     assert "vc_redist.x64.exe" in files_section
     assert "dontcopy" not in files_section.lower()
+    assert "onlyifdoesntexist" in files_section.lower()
+    assert "Check: TicketboxExactResumeMaterialization" in files_section
+    assert "Check: TicketboxFreshMaterialization" in files_section
     assert "ExtractTemporaryFile" not in text
     assert "VCRUNTIME140.dll" in text
     assert "install_bundled_services.ps1" not in text
     assert "powershell" not in text.lower()
     assert "GetSHA256OfFile" in text
+    assert "TicketboxExpectedReleaseManifestSha256" in text
+    assert "LowerCase(GetSHA256OfFile(ManifestPath))" in text
+    assert "ManifestSha <> LowerCase(TicketboxExpectedReleaseManifestSha256)" in text
     assert "release_manifest_sha256" in text
     prepare = text.split("function PrepareToInstall", 1)[1].split("end;", 1)[0]
     assert "TicketboxEnsureMsvcRuntime" not in prepare

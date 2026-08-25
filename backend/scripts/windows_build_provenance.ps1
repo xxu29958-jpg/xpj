@@ -17,6 +17,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\installer\ticketbox.iss",
     "distribution\windows\build\build_installer.ps1",
     "distribution\windows\build\check_source_inputs.ps1",
+    "distribution\windows\build\installed_payload_manifest.ps1",
     "distribution\windows\build\ticketbox-lifecycle.spec",
     "distribution\windows\payload\release-manifest.json",
     "distribution\windows\lifecycle\ticketbox_lifecycle\__init__.py",
@@ -49,6 +50,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_scm.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_security.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_security_native.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_shipment.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_services.py"
 )
 
@@ -562,6 +564,10 @@ function Assert-TicketboxInstallerBuildProvenance(
         "安装器 Shawl provenance" `
         $manifest.shawl `
         $ExpectedBuildInputs.shawl
+    Assert-TicketboxStructuredEvidence `
+        "安装器 immutable shipment provenance" `
+        $manifest.shipment `
+        $ExpectedBuildInputs.shipment
     return $manifest
 }
 

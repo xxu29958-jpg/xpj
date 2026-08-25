@@ -59,7 +59,8 @@ def test_inno_installs_manager_under_release_without_postinstall_launch() -> Non
         'Filename: "{app}\\releases\\{#ReleaseId}\\manager\\ticketbox-manager.exe"'
         in installer
     )
-    assert "CloseApplications=yes" in installer
+    assert "CloseApplications=no" in installer
+    assert "CloseApplications=yes" not in installer
     assert "RestartApplications=no" in installer
     assert "postinstall" not in installer
     assert "AfterInstall: TicketboxProvision" not in installer
@@ -78,6 +79,10 @@ def test_inno_installs_manager_under_release_without_postinstall_launch() -> Non
     assert '"安装器 Desktop Manager provenance"' in shared_provenance
     assert "$manifest.manager" in shared_provenance
     assert "$ExpectedBuildInputs.manager" in shared_provenance
+    assert "New-TicketboxInstalledPayloadManifest" in build
+    assert "/DReleaseManifestSha256=$releaseManifestSha256" in build
+    assert "shipment = $BuildInputs.shipment" in build
+    assert "$ExpectedBuildInputs.shipment" in shared_provenance
 
 
 def test_inno_keeps_release_payloads_side_by_side_without_c07_precopy_delete() -> None:
@@ -171,7 +176,9 @@ def test_installer_provenance_binds_manager_evidence_and_rejects_tampering(
         "backend = [ordered]@{ version = '1.2.0'; fingerprint = ('b' * 64) }; "
         "manager = [ordered]@{ version = '1.2.0'; fingerprint = ('c' * 64) }; "
         "postgresql = [ordered]@{ version = '17.10-1'; fingerprint = ('d' * 64) }; "
-        "shawl = [ordered]@{ version = '1.9.0'; fingerprint = ('e' * 64) } }; "
+        "shawl = [ordered]@{ version = '1.9.0'; fingerprint = ('e' * 64) }; "
+        "shipment = [ordered]@{ release_manifest_sha256 = ('f' * 64); "
+        "immutable_file_count = 42 } }; "
         "$defines = @('/DAppVersion=1.2.0'); "
         "Write-InstallerBuildProvenance $inputs $recipe $git $compiler $defines $manifestPath | Out-Null; "
         "Assert-TicketboxInstallerBuildProvenance $root $manifestPath $compiler $inputs $defines | Out-Null; "
