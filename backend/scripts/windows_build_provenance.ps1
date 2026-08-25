@@ -6,6 +6,7 @@
 $script:TicketboxInstallerRecipeRelativePaths = @(
     "backend\scripts\windows_build_provenance.ps1",
     "backend\scripts\windows_backend_build_provenance.ps1",
+    "backend\scripts\windows_python_build_environment.ps1",
     "backend\requirements-build.lock",
     "backend\packaging\windows-build-toolchain.json",
     "backend\packaging\prepare_windows_build_toolchain.ps1",

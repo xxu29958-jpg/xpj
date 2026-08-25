@@ -15,6 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parent
 PACKAGING = ROOT / "packaging"
 PROVENANCE_HELPER = ROOT / "scripts" / "windows_build_provenance.ps1"
+PYTHON_BUILD_ENVIRONMENT_HELPER = (
+    ROOT / "scripts" / "windows_python_build_environment.ps1"
+)
 INSTALLATION_SAFETY = PACKAGING / "windows_installation_safety.ps1"
 
 
@@ -40,6 +43,79 @@ def _run_powershell(command: str, executable: str = "powershell") -> subprocess.
         errors="replace",
         timeout=30,
     )
+
+
+def test_sealed_python_build_environment_removes_and_restores_ambient_inputs(
+    tmp_path: Path,
+) -> None:
+    for index, engine in enumerate(powershell_contract_engines()):
+        private_config = tmp_path / f"pyinstaller-{index}"
+        command = (
+            f". '{_ps_literal(PYTHON_BUILD_ENVIRONMENT_HELPER)}'; "
+            "$env:UV_CONFIG_FILE='ambient-uv.toml'; "
+            "$env:UV_NO_BINARY='1'; "
+            "$env:PYTHONPATH='ambient-python-path'; "
+            "$env:PYTHONWARNINGS='error'; "
+            "$env:PYTHONNOUSERSITE='ambient-no-user-site'; "
+            "$env:PYTHONDONTWRITEBYTECODE='ambient-bytecode'; "
+            "$env:PYINSTALLER_CONFIG_DIR='ambient-pyinstaller'; "
+            f"$sealed = Enter-TicketboxSealedPythonBuildEnvironment "
+            f"-PyInstallerConfigDirectory '{_ps_literal(private_config)}'; "
+            "try { "
+            "$uv = @(Get-ChildItem Env: | Where-Object { $_.Name -like 'UV_*' }); "
+            "if ($uv.Count -ne 0) { throw 'ambient UV input survived sealing' }; "
+            "$unexpectedPython = @(Get-ChildItem Env: | Where-Object { "
+            "$_.Name -like 'PYTHON*' -and $_.Name -notin "
+            "@('PYTHONNOUSERSITE','PYTHONDONTWRITEBYTECODE') }); "
+            "if ($unexpectedPython.Count -ne 0) { throw 'ambient Python input survived sealing' }; "
+            "if ($env:PYTHONNOUSERSITE -cne '1' -or "
+            "$env:PYTHONDONTWRITEBYTECODE -cne '1') { "
+            "throw 'approved Python policy is missing' }; "
+            f"if ($env:PYINSTALLER_CONFIG_DIR -cne '{_ps_literal(private_config)}') {{ "
+            "throw 'private PyInstaller config is missing' } "
+            "} finally { Exit-TicketboxSealedPythonBuildEnvironment $sealed }; "
+            "if ($env:UV_CONFIG_FILE -cne 'ambient-uv.toml' -or "
+            "$env:UV_NO_BINARY -cne '1' -or "
+            "$env:PYTHONPATH -cne 'ambient-python-path' -or "
+            "$env:PYTHONWARNINGS -cne 'error' -or "
+            "$env:PYTHONNOUSERSITE -cne 'ambient-no-user-site' -or "
+            "$env:PYTHONDONTWRITEBYTECODE -cne 'ambient-bytecode' -or "
+            "$env:PYINSTALLER_CONFIG_DIR -cne 'ambient-pyinstaller') { "
+            "throw 'ambient build environment was not restored exactly' }"
+        )
+        result = _run_powershell(command, executable=engine)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_all_frozen_builds_share_sealed_binary_only_uv_policy() -> None:
+    scripts = (
+        ROOT / "scripts" / "build_backend_exe.ps1",
+        REPO_ROOT / "desktop" / "scripts" / "build_manager_exe.ps1",
+        REPO_ROOT / "distribution" / "windows" / "build" / "build_installer.ps1",
+    )
+    for script in scripts:
+        text = script.read_text(encoding="utf-8-sig")
+        assert "Enter-TicketboxSealedPythonBuildEnvironment" in text
+        assert "Exit-TicketboxSealedPythonBuildEnvironment" in text
+        for flag in ("--no-config", "--no-cache", "--no-python-downloads"):
+            assert flag in text
+        assert "--only-binary" in text
+        assert '":all:"' in text
+        assert "--link-mode" in text
+        assert '"copy"' in text
+        uv_calls = [line for line in text.splitlines() if "& $UvPath" in line]
+        assert uv_calls
+        assert all("@UvIsolationArguments" in line for line in uv_calls)
+        assert text.count("& $UvPath @UvIsolationArguments pip sync") == 1
+        assert text.count("--only-binary") == 1
+        assert text.count('--link-mode "copy"') == 2
+        assert "$env:UV_" not in text
+        assert "[Environment]::SetEnvironmentVariable" not in text
+
+    backend = scripts[0].read_text(encoding="utf-8-sig")
+    manager = scripts[1].read_text(encoding="utf-8-sig")
+    assert '@("-I", "-B", "-c", "import platform;' in backend
+    assert '@("-I", "-B", "-c", "import platform;' in manager
 
 
 def test_installer_publish_verification_rejects_provenance_byte_mutation(tmp_path: Path) -> None:
@@ -140,6 +216,7 @@ def _write_minimal_backend(root: Path) -> Path:
         "scripts/build_backend_exe.ps1",
         "scripts/windows_build_provenance.ps1",
         "scripts/windows_backend_build_provenance.ps1",
+        "scripts/windows_python_build_environment.ps1",
     ):
         (root / relative).write_text(f"# {relative}\n", encoding="utf-8")
     python_source_payload = b"tool:python-source.exe"
@@ -220,6 +297,7 @@ def _write_minimal_backend(root: Path) -> Path:
 _INSTALLER_RECIPE_PATHS = (
     "backend/scripts/windows_build_provenance.ps1",
     "backend/scripts/windows_backend_build_provenance.ps1",
+    "backend/scripts/windows_python_build_environment.ps1",
     "backend/requirements-build.lock",
     "backend/packaging/windows-build-toolchain.json",
     "backend/packaging/prepare_windows_build_toolchain.ps1",
@@ -354,6 +432,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert "scripts/build_backend_exe.ps1" in source_paths
     assert "scripts/windows_build_provenance.ps1" in source_paths
     assert "scripts/windows_backend_build_provenance.ps1" in source_paths
+    assert "scripts/windows_python_build_environment.ps1" in source_paths
     assert "packaging/windows-build-toolchain.json" in source_paths
     assert "packaging/prepare_windows_build_toolchain.ps1" in source_paths
     assert "requirements-build.lock" in source_paths

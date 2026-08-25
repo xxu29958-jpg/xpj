@@ -18,6 +18,7 @@ $PyBuild = Join-Path $BuildVenv "Scripts\python.exe"
 $PyInstaller = Join-Path $BuildVenv "Scripts\pyinstaller.exe"
 $PyInstallerArchiveViewer = Join-Path $BuildVenv "Scripts\pyi-archive_viewer.exe"
 $ProvenanceScript = Join-Path $PSScriptRoot "windows_build_provenance.ps1"
+$PythonBuildEnvironmentScript = Join-Path $PSScriptRoot "windows_python_build_environment.ps1"
 $ToolchainPrepScript = Join-Path $BackendRoot "packaging\prepare_windows_build_toolchain.ps1"
 $ToolchainRoot = Join-Path $BackendRoot "build\windows-toolchain"
 $DistRoot = Join-Path $BackendRoot "dist"
@@ -28,6 +29,7 @@ $StagingRoot = Join-Path $DistRoot (".ticketbox-backend-staging-{0}" -f $BuildNo
 $StagingDir = Join-Path $StagingRoot "ticketbox-backend"
 $WorkRoot = Join-Path $BuildRoot (".ticketbox-backend-work-{0}" -f $BuildNonce)
 $InputSnapshotRoot = Join-Path $BuildRoot (".ticketbox-backend-inputs-{0}" -f $BuildNonce)
+$BuildPyInstallerConfig = Join-Path $BuildRoot (".ticketbox-backend-pyinstaller-{0}" -f $BuildNonce)
 $LockSnapshotPath = Join-Path $InputSnapshotRoot "requirements-build.lock"
 $DatabaseGenerationProgramName = "DATABASE_GENERATION_PROGRAM.json"
 $DatabaseGenerationProgramWorkPath = Join-Path `
@@ -39,11 +41,10 @@ $DatabaseMaintenanceSmokePayloadLocks = $null
 $ToolchainSnapshot = $null
 $ToolchainPaths = @()
 $BuildLock = $null
+$BuildEnvironment = $null
 $PrimaryFailure = $null
 $CleanupFailures = New-Object System.Collections.Generic.List[string]
-$PreviousUvPythonDownloads = [Environment]::GetEnvironmentVariable("UV_PYTHON_DOWNLOADS", "Process")
-$PreviousPythonNoUserSite = [Environment]::GetEnvironmentVariable("PYTHONNOUSERSITE", "Process")
-$PreviousPythonDontWriteBytecode = [Environment]::GetEnvironmentVariable("PYTHONDONTWRITEBYTECODE", "Process")
+$UvIsolationArguments = @("--no-config", "--no-cache", "--no-python-downloads")
 
 function Remove-TicketboxBuildDirectory([string]$Path, [string]$AllowedRoot) {
     $canonicalPath = Assert-TicketboxNoReparsePath `
@@ -74,6 +75,10 @@ if (-not (Test-Path -LiteralPath $ProvenanceScript -PathType Leaf)) {
     throw "Missing build provenance helper: $ProvenanceScript"
 }
 . $ProvenanceScript
+if (-not (Test-Path -LiteralPath $PythonBuildEnvironmentScript -PathType Leaf)) {
+    throw "Missing sealed Python build environment helper: $PythonBuildEnvironmentScript"
+}
+. $PythonBuildEnvironmentScript
 if (-not (Test-Path -LiteralPath $ToolchainPrepScript -PathType Leaf)) {
     throw "Missing pinned Windows build toolchain preparer: $ToolchainPrepScript"
 }
@@ -92,6 +97,7 @@ try {
     Remove-TicketboxBuildDirectory $WorkRoot $BuildRoot
     Remove-TicketboxBuildDirectory $InputSnapshotRoot $BuildRoot
     Remove-TicketboxBuildDirectory $BuildVenv $BuildRoot
+    Remove-TicketboxBuildDirectory $BuildPyInstallerConfig $BuildRoot
     $toolchain = Read-TicketboxWindowsBuildToolchain $BackendRoot
     & $ToolchainPrepScript -Component Backend -ToolchainRoot $ToolchainRoot -Force
     $UvPath = Join-Path $ToolchainRoot ("uv\{0}" -f [string]$toolchain.uv_source.executable_relative_path)
@@ -114,10 +120,13 @@ try {
     $ToolchainLocks = @(Enter-TicketboxFileSetReadLocks `
         -Root $ToolchainRoot `
         -Snapshot $ToolchainSnapshot)
-    $env:UV_PYTHON_DOWNLOADS = "never"
-    $env:PYTHONNOUSERSITE = "1"
-    $env:PYTHONDONTWRITEBYTECODE = "1"
-    $uvVersion = Invoke-TicketboxVersionProbe $UvPath @("--version") '^uv\s+(\d+\.\d+\.\d+)\b' "uv"
+    Assert-TicketboxNoReparsePath -Path $BuildPyInstallerConfig -AllowedRoot $BuildRoot | Out-Null
+    New-Item -ItemType Directory -Path $BuildPyInstallerConfig | Out-Null
+    $BuildEnvironment = Enter-TicketboxSealedPythonBuildEnvironment `
+        -PyInstallerConfigDirectory $BuildPyInstallerConfig
+    $uvVersion = Invoke-TicketboxVersionProbe `
+        $UvPath (@($UvIsolationArguments) + @("--version")) `
+        '^uv\s+(\d+\.\d+\.\d+)\b' "uv"
     if ($uvVersion -cne $toolchain.uv_version) {
         throw "uv version mismatch: actual=$uvVersion expected=$($toolchain.uv_version)"
     }
@@ -126,10 +135,13 @@ try {
         Remove-TicketboxBuildDirectory $LegacyBuildVenv $BackendRoot
     }
     Write-Host "Creating process-private exact build venv ($BuildVenv) ..."
-    & $UvPath venv $BuildVenv --python $SourcePython
+    & $UvPath @UvIsolationArguments venv $BuildVenv `
+        --python $SourcePython --link-mode "copy"
     if ($LASTEXITCODE -ne 0) { throw "uv venv failed (exit=$LASTEXITCODE)" }
 
-    $pythonVersion = Invoke-TicketboxVersionProbe $PyBuild @("-c", "import platform; print(platform.python_version())") '^(\d+\.\d+\.\d+)$' "Python"
+    $pythonVersion = Invoke-TicketboxVersionProbe `
+        $PyBuild @("-I", "-B", "-c", "import platform; print(platform.python_version())") `
+        '^(\d+\.\d+\.\d+)$' "Python"
     if ($pythonVersion -cne $toolchain.python_version) {
         throw "Build venv Python mismatch: actual=$pythonVersion expected=$($toolchain.python_version). Re-run with -Clean."
     }
@@ -154,7 +166,8 @@ try {
     }
 
     Write-Host "Synchronizing runtime dependencies and contracted PyInstaller from immutable lock snapshot ..."
-    & $UvPath pip sync --strict --require-hashes --python $PyBuild $LockSnapshotPath
+    & $UvPath @UvIsolationArguments pip sync --strict --require-hashes `
+        --only-binary ":all:" --link-mode "copy" --python $PyBuild $LockSnapshotPath
     if ($LASTEXITCODE -ne 0) { throw "uv pip sync failed (exit=$LASTEXITCODE)" }
     $postSyncSnapshotLockHash = Get-TicketboxFileSha256 $LockSnapshotPath
     if ($postSyncSnapshotLockHash -cne $sourceLockHash) {
@@ -186,7 +199,7 @@ try {
     if ($pyInstallerVersion -cne $toolchain.pyinstaller_version) {
         throw "PyInstaller mismatch: actual=$pyInstallerVersion expected=$($toolchain.pyinstaller_version)"
     }
-    $installedDistributions = @(& $UvPath pip freeze --python $PyBuild)
+    $installedDistributions = @(& $UvPath @UvIsolationArguments pip freeze --python $PyBuild)
     if ($LASTEXITCODE -ne 0) { throw "uv pip freeze failed (exit=$LASTEXITCODE)" }
     New-Item -ItemType Directory -Force -Path $WorkRoot | Out-Null
     & $PyBuild -I -B `
@@ -282,10 +295,14 @@ try {
         -DatabaseGenerationProgramPath $stagedDatabaseGenerationProgram `
         -PayloadSnapshot $databaseMaintenanceSmokePayloadSnapshot
     Assert-TicketboxFileSetSnapshot "Frozen backend source during build" $sourceBeforeFreeze (Get-TicketboxBackendSourceSnapshot $BackendRoot)
-    $currentPythonVersion = Invoke-TicketboxVersionProbe $PyBuild @("-c", "import platform; print(platform.python_version())") '^(\d+\.\d+\.\d+)$' "Python"
-    $currentUvVersion = Invoke-TicketboxVersionProbe $UvPath @("--version") '^uv\s+(\d+\.\d+\.\d+)\b' "uv"
+    $currentPythonVersion = Invoke-TicketboxVersionProbe `
+        $PyBuild @("-I", "-B", "-c", "import platform; print(platform.python_version())") `
+        '^(\d+\.\d+\.\d+)$' "Python"
+    $currentUvVersion = Invoke-TicketboxVersionProbe `
+        $UvPath (@($UvIsolationArguments) + @("--version")) `
+        '^uv\s+(\d+\.\d+\.\d+)\b' "uv"
     $currentPyInstallerVersion = Invoke-TicketboxVersionProbe $PyBuild @("-I", "-B", "-m", "PyInstaller", "--version") '^(\d+\.\d+\.\d+)$' "PyInstaller"
-    $currentDistributions = @(& $UvPath pip freeze --python $PyBuild)
+    $currentDistributions = @(& $UvPath @UvIsolationArguments pip freeze --python $PyBuild)
     if ($LASTEXITCODE -ne 0) { throw "post-build uv pip freeze failed (exit=$LASTEXITCODE)" }
     $currentToolchainProvenance = New-TicketboxBackendBuildToolchainProvenance -BackendRoot $BackendRoot -Config $toolchain -PythonPath $PyBuild -PythonSourcePath $SourcePython -PythonVersion $currentPythonVersion -UvPath $UvPath -UvVersion $currentUvVersion -PyInstallerPath $PyInstaller -PyInstallerVersion $currentPyInstallerVersion -InstalledDistributions $currentDistributions -PythonExecutionTree $executionTreeAfterFreeze
     Assert-TicketboxStructuredEvidence "Frozen backend toolchain during build" $toolchainProvenance $currentToolchainProvenance
@@ -327,20 +344,10 @@ finally {
             [pscustomobject]@{ Label = "database maintenance smoke payload read locks"; Action = { Exit-TicketboxFileSetReadLocks $DatabaseMaintenanceSmokePayloadLocks } },
             [pscustomobject]@{ Label = "input read locks"; Action = { Exit-TicketboxFileSetReadLocks $InputLocks } },
             [pscustomobject]@{ Label = "toolchain read locks"; Action = { Exit-TicketboxFileSetReadLocks $ToolchainLocks } },
-            [pscustomobject]@{ Label = "UV_PYTHON_DOWNLOADS"; Action = {
-                if ($null -eq $PreviousUvPythonDownloads) { Remove-Item Env:UV_PYTHON_DOWNLOADS -ErrorAction SilentlyContinue }
-                else { $env:UV_PYTHON_DOWNLOADS = $PreviousUvPythonDownloads }
-            } },
-            [pscustomobject]@{ Label = "PYTHONNOUSERSITE"; Action = {
-                if ($null -eq $PreviousPythonNoUserSite) { Remove-Item Env:PYTHONNOUSERSITE -ErrorAction SilentlyContinue }
-                else { $env:PYTHONNOUSERSITE = $PreviousPythonNoUserSite }
-            } },
-            [pscustomobject]@{ Label = "PYTHONDONTWRITEBYTECODE"; Action = {
-                if ($null -eq $PreviousPythonDontWriteBytecode) { Remove-Item Env:PYTHONDONTWRITEBYTECODE -ErrorAction SilentlyContinue }
-                else { $env:PYTHONDONTWRITEBYTECODE = $PreviousPythonDontWriteBytecode }
-            } },
+            [pscustomobject]@{ Label = "sealed Python build environment"; Action = { Exit-TicketboxSealedPythonBuildEnvironment $BuildEnvironment } },
             [pscustomobject]@{ Label = "dist staging"; Action = { Remove-TicketboxBuildDirectory $StagingRoot $DistRoot } },
             [pscustomobject]@{ Label = "PyInstaller work"; Action = { Remove-TicketboxBuildDirectory $WorkRoot $BuildRoot } },
+            [pscustomobject]@{ Label = "PyInstaller config"; Action = { Remove-TicketboxBuildDirectory $BuildPyInstallerConfig $BuildRoot } },
             [pscustomobject]@{ Label = "input snapshot"; Action = { Remove-TicketboxBuildDirectory $InputSnapshotRoot $BuildRoot } },
             [pscustomobject]@{ Label = "build venv"; Action = { Remove-TicketboxBuildDirectory $BuildVenv $BuildRoot } }
         )) {

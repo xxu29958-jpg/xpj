@@ -66,6 +66,7 @@ function Get-TicketboxManagerSourcePaths([string]$RepoRoot) {
         "backend\packaging\prepare_windows_build_toolchain.ps1",
         "backend\scripts\windows_build_provenance.ps1",
         "backend\scripts\windows_backend_build_provenance.ps1",
+        "backend\scripts\windows_python_build_environment.ps1",
         "desktop\pyproject.toml",
         "desktop\requirements.txt",
         "desktop\requirements-build.txt",

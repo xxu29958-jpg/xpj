@@ -1108,7 +1108,8 @@ function Get-TicketboxBackendSourcePaths([string]$BackendRoot) {
         "scripts\build_database_generation_program.py",
         "scripts\build_backend_exe.ps1",
         "scripts\windows_build_provenance.ps1",
-        "scripts\windows_backend_build_provenance.ps1"
+        "scripts\windows_backend_build_provenance.ps1",
+        "scripts\windows_python_build_environment.ps1"
     )
     $paths = @()
     foreach ($relativePath in $requiredFiles) {

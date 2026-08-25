@@ -72,6 +72,7 @@ _WINDOWS_ONLY_BACKEND_FILES = {
     "backend/scripts/test_pg_storage_contract.ps1",
     "backend/scripts/windows_build_provenance.ps1",
     "backend/scripts/windows_backend_build_provenance.ps1",
+    "backend/scripts/windows_python_build_environment.ps1",
     "backend/tests/_infra/windows_tree.py",
 }
 _POSTGRES_BACKEND_PREFIXES = ("backend/tests/", "backend/audit/")

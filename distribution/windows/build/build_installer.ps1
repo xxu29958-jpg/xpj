@@ -31,6 +31,7 @@ $DesktopRoot = Join-Path $RepoRoot "desktop"
 
 . (Join-Path $BackendRoot "scripts\windows_build_provenance.ps1")
 . (Join-Path $BackendRoot "scripts\windows_backend_build_provenance.ps1")
+. (Join-Path $BackendRoot "scripts\windows_python_build_environment.ps1")
 . (Join-Path $DesktopRoot "scripts\windows_manager_build_provenance.ps1")
 . (Join-Path $ScriptDir "installed_payload_manifest.ps1")
 
@@ -165,19 +166,8 @@ $InputSnapshotRoot = Join-Path $BackendRoot ("build\.ticketbox-installer-inputs-
 $ToolchainRoot = Join-Path $BackendRoot "build\windows-toolchain"
 $ToolchainPrepScript = Join-Path $BackendRoot "packaging\prepare_windows_build_toolchain.ps1"
 $LifecyclePyInstallerConfig = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-pyinstaller-{0}" -f $PID)
-$BuildEnvironmentNames = @(
-    "PYINSTALLER_CONFIG_DIR",
-    "PYTHONHOME",
-    "PYTHONNOUSERSITE",
-    "PYTHONPATH",
-    "PYTHONSTARTUP",
-    "PYTHONDONTWRITEBYTECODE",
-    "UV_PYTHON_DOWNLOADS"
-)
-$PreviousBuildEnvironment = @{}
-foreach ($name in $BuildEnvironmentNames) {
-    $PreviousBuildEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
-}
+$BuildEnvironment = $null
+$UvIsolationArguments = @("--no-config", "--no-cache", "--no-python-downloads")
 $PrimaryFailure = $null
 $CleanupFailures = @()
 try {
@@ -290,14 +280,6 @@ $toolchainPaths = @(
 $toolchainSnapshot = Get-TicketboxFileSetSnapshot $ToolchainRoot $toolchainPaths
 $ToolchainLocks = @(Enter-TicketboxFileSetReadLocks -Root $ToolchainRoot -Snapshot $toolchainSnapshot)
 
-foreach ($name in @("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP")) {
-    [Environment]::SetEnvironmentVariable($name, $null, "Process")
-}
-[Environment]::SetEnvironmentVariable("UV_PYTHON_DOWNLOADS", "never", "Process")
-[Environment]::SetEnvironmentVariable("PYTHONNOUSERSITE", "1", "Process")
-[Environment]::SetEnvironmentVariable("PYTHONDONTWRITEBYTECODE", "1", "Process")
-[Environment]::SetEnvironmentVariable("PYINSTALLER_CONFIG_DIR", $LifecyclePyInstallerConfig, "Process")
-
 $lifecycleVenv = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-venv-{0}-{1}" -f $PID, [Guid]::NewGuid().ToString("N"))
 $lifecycleWork = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-work-{0}" -f $PID)
 $lifecyclePayloadDir = Join-Path $StagedPayloadDir "TicketboxLifecycle"
@@ -305,16 +287,21 @@ $lifecycleExe = Join-Path $lifecyclePayloadDir "TicketboxLifecycle.exe"
 try {
     Assert-TicketboxNoReparsePath -Path $LifecyclePyInstallerConfig -AllowedRoot $BackendRoot | Out-Null
     New-Item -ItemType Directory -Path $LifecyclePyInstallerConfig | Out-Null
-    & $UvPath venv $lifecycleVenv --python $SourcePython
+    $BuildEnvironment = Enter-TicketboxSealedPythonBuildEnvironment `
+        -PyInstallerConfigDirectory $LifecyclePyInstallerConfig
+    & $UvPath @UvIsolationArguments venv $lifecycleVenv `
+        --python $SourcePython --link-mode "copy"
     if ($LASTEXITCODE -ne 0) { throw "lifecycle venv 创建失败（exit=$LASTEXITCODE）。" }
     $venvPython = Join-Path $lifecycleVenv "Scripts\python.exe"
-    & $UvPath pip sync --strict --require-hashes --python $venvPython (Join-Path $StagedBackendRoot "requirements-build.lock")
+    & $UvPath @UvIsolationArguments pip sync --strict --require-hashes `
+        --only-binary ":all:" --link-mode "copy" `
+        --python $venvPython (Join-Path $StagedBackendRoot "requirements-build.lock")
     if ($LASTEXITCODE -ne 0) { throw "lifecycle 构建依赖同步失败（exit=$LASTEXITCODE）。" }
 
     $pythonVersionText = (& $venvPython -I -B -c "import platform; print(platform.python_version())" 2>&1) -join " "
     if ($LASTEXITCODE -ne 0) { throw "lifecycle Python 版本探测失败：$pythonVersionText" }
     $pythonVersion = $pythonVersionText.Trim()
-    $uvVersionText = (& $UvPath --version 2>&1) -join " "
+    $uvVersionText = (& $UvPath @UvIsolationArguments --version 2>&1) -join " "
     if ($LASTEXITCODE -ne 0 -or $uvVersionText -notmatch '^uv\s+(\d+\.\d+\.\d+)\b') {
         throw "lifecycle uv 版本探测失败：$uvVersionText"
     }
@@ -324,7 +311,7 @@ try {
         throw "lifecycle PyInstaller 版本探测失败：$pyInstallerVersionText"
     }
     $pyInstallerVersion = $Matches[1]
-    $installedDistributions = @(& $UvPath pip freeze --python $venvPython)
+    $installedDistributions = @(& $UvPath @UvIsolationArguments pip freeze --python $venvPython)
     if ($LASTEXITCODE -ne 0) { throw "lifecycle distribution snapshot 失败（exit=$LASTEXITCODE）。" }
     $executionTreeBeforeFreeze = Get-TicketboxPythonExecutionTreeSnapshot $venvPython
     $lifecycleToolchain = New-TicketboxBackendBuildToolchainProvenance `
@@ -512,18 +499,14 @@ finally {
         }
     }
     catch { $CleanupFailures += "installer input snapshot: $($_.Exception.Message)" }
+    try { Exit-TicketboxSealedPythonBuildEnvironment $BuildEnvironment }
+    catch { $CleanupFailures += "sealed Python build environment: $($_.Exception.Message)" }
     try {
         if (Test-Path -LiteralPath $LifecyclePyInstallerConfig) {
             Remove-Item -LiteralPath $LifecyclePyInstallerConfig -Recurse -Force
         }
     }
     catch { $CleanupFailures += "lifecycle PyInstaller config: $($_.Exception.Message)" }
-    foreach ($name in $BuildEnvironmentNames) {
-        try {
-            [Environment]::SetEnvironmentVariable($name, $PreviousBuildEnvironment[$name], "Process")
-        }
-        catch { $CleanupFailures += "restore environment $name`: $($_.Exception.Message)" }
-    }
     try { Exit-TicketboxWindowsBuildLock $BuildLock }
     catch { $CleanupFailures += "Windows build lock: $($_.Exception.Message)" }
 }

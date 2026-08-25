@@ -198,6 +198,14 @@ begin
   Result := CompareText(ActualPath, ExpectedPath) = 0;
 end;
 
+function TicketboxPrepareFailure(const Reason: String): String;
+begin
+  Log('Ticketbox preflight failed: ' + Reason);
+  Result := Reason + '。' + #13#10 +
+    '请关闭安装程序，处理上述问题后重新运行同一个安装包。' + #13#10 +
+    '安装日志：' + ExpandConstant('{log}');
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   BindingPath: String;
@@ -207,29 +215,29 @@ begin
   Result := '';
   if not IsWin64 then
   begin
-    Result := '小票夹需要 64 位 Windows。';
+    Result := TicketboxPrepareFailure('小票夹需要 64 位 Windows');
     Exit;
   end;
   if not TicketboxInstallRootIsExact then
   begin
-    Result := '安装目录必须是受保护的 Program Files\Ticketbox。';
+    Result := TicketboxPrepareFailure('安装目录必须是受保护的 Program Files\Ticketbox');
     Exit;
   end;
   if Length(TicketboxExpectedReleaseManifestSha256) <> 64 then
   begin
-    Result := '安装包缺少 immutable release manifest 身份。';
+    Result := TicketboxPrepareFailure('安装包缺少 immutable release manifest 身份');
     Exit;
   end;
   if FileExists(TicketboxActivePath) and (not TicketboxExactActiveCanContinue()) then
   begin
-    Result := '检测到另一个或损坏的首次安装操作；拒绝接管。';
+    Result := TicketboxPrepareFailure('检测到另一个或损坏的首次安装操作；拒绝接管');
     Exit;
   end;
   BindingPath := ExpandConstant('{commonappdata}\Ticketbox\machine\installation.json');
   if FileExists(BindingPath) and (not TicketboxCommittedReplayCanContinue()) and
      (not TicketboxExactActiveCanContinue()) then
   begin
-    Result := '这台电脑已经安装小票夹。首次安装不会覆盖现有数据。';
+    Result := TicketboxPrepareFailure('这台电脑已经安装小票夹；首次安装不会覆盖现有数据');
     Exit;
   end;
 end;

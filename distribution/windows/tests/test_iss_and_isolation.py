@@ -144,6 +144,27 @@ def test_setup_failure_surfaces_include_the_actual_log_path() -> None:
     assert "Log('Ticketbox install failed: ' + Reason)" in text
 
 
+def test_prepare_to_install_failures_surface_reason_retry_and_log() -> None:
+    text = ISS.read_text(encoding="utf-8-sig")
+    helper = text.split("function TicketboxPrepareFailure", 1)[1].split(
+        "function PrepareToInstall", 1
+    )[0]
+    prepare = text.split("function PrepareToInstall", 1)[1].split(
+        "function TicketboxMsvcRuntimeIsCurrent", 1
+    )[0]
+
+    assert "Log('Ticketbox preflight failed: ' + Reason)" in helper
+    assert "重新运行同一个安装包" in helper
+    assert "ExpandConstant('{log}')" in helper
+    assert prepare.count("Result := TicketboxPrepareFailure(") == 5
+    literal_assignments = [
+        line.strip()
+        for line in prepare.splitlines()
+        if line.strip().startswith("Result := '")
+    ]
+    assert literal_assignments == ["Result := '';"]
+
+
 def test_elevated_lifecycle_is_an_installed_onedir_payload() -> None:
     spec = LIFECYCLE_SPEC.read_text(encoding="utf-8")
     installer = ISS.read_text(encoding="utf-8-sig")
@@ -174,9 +195,9 @@ def test_lifecycle_freeze_uses_only_the_exact_pinned_python() -> None:
     assert '$BuildInputs["lifecycle"]' in build
     assert "& $venvPython -I -B -m PyInstaller" in build
     assert "--clean" in build
-    assert "PYINSTALLER_CONFIG_DIR" in build
-    for name in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP"):
-        assert name in build
+    assert "Enter-TicketboxSealedPythonBuildEnvironment" in build
+    assert "-PyInstallerConfigDirectory $LifecyclePyInstallerConfig" in build
+    assert "[Environment]::SetEnvironmentVariable" not in build
     assert "& $lifecyclePython -m venv" not in build
     assert "Get-Command python" not in build
     assert "expectedPythonPrefix" not in build
