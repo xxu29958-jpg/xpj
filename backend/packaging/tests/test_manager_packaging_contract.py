@@ -42,58 +42,45 @@ def test_manager_frozen_payload_is_a_separate_windowed_adapter() -> None:
     assert "Assert-TicketboxManagerToolchainEvidence" in provenance
 
 
-def test_inno_installs_manager_and_launches_only_as_the_original_user() -> None:
-    installer = _read(PACKAGING / "ticketbox-installer.iss")
-    flow = _read(PACKAGING / "ticketbox-installer-flow.isph")
-    build = _read(PACKAGING / "build_inno_installer.ps1", sig=True)
+def test_inno_installs_manager_under_release_without_postinstall_launch() -> None:
+    installer = _read(REPO_ROOT / "distribution" / "windows" / "installer" / "ticketbox.iss")
+    build = _read(
+        REPO_ROOT / "distribution" / "windows" / "build" / "build_installer.ps1",
+        sig=True,
+    )
     shared_provenance = _read(
         BACKEND_ROOT / "scripts" / "windows_build_provenance.ps1",
         sig=True,
     )
 
-    assert (
-        'Source: "..\\..\\desktop\\dist\\ticketbox-manager\\*"; '
-        'DestDir: "{app}\\manager"; Flags: ignoreversion recursesubdirs createallsubdirs'
-    ) in installer
+    assert 'DestDir: "{app}\\releases\\{#ReleaseId}\\manager"' in installer
     assert 'Name: "{autoprograms}\\小票夹\\管理小票夹"' in installer
-    assert 'Filename: "{app}\\manager\\ticketbox-manager.exe"' in installer
+    assert (
+        'Filename: "{app}\\releases\\{#ReleaseId}\\manager\\ticketbox-manager.exe"'
+        in installer
+    )
     assert "CloseApplications=yes" in installer
     assert "RestartApplications=no" in installer
     assert "postinstall" not in installer
-    assert "ExecAsOriginalUser(" in flow
-    assert "Exec(" not in flow[flow.index("ManagerLaunchAttempted := True") :]
-    assert "完成后打开小票夹管理器（推荐）" in flow
-    assert flow.index("ReleaseLifecycleLock") < flow.index("ExecAsOriginalUser(")
-    assert "$managerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $ManagerDist" in build
+    assert "AfterInstall: TicketboxProvision" not in installer
+    assert 'Filename: "{app}\\bin\\TicketboxLifecycle.exe"' in installer
+    assert "$managerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $managerDist" in build
     assert "manager = [ordered]@{" in build
     assert "manager = $BuildInputs.manager" in build
     assert '"安装器 Desktop Manager provenance"' in shared_provenance
     assert "$manifest.manager" in shared_provenance
     assert "$ExpectedBuildInputs.manager" in shared_provenance
-    assert "Copy-Item -Path (Join-Path $ManagerDist \"*\")" in build
-    assert "Get-ChildItem -LiteralPath $stagedRepoRoot -Recurse -File" in build
 
 
-def test_inno_replaces_each_immutable_payload_directory_before_copy() -> None:
-    installer = _read(PACKAGING / "ticketbox-installer.iss")
-    flow = _read(PACKAGING / "ticketbox-installer-flow.isph")
-    install_delete = installer.index("[InstallDelete]")
-    files = installer.index("[Files]")
+def test_inno_keeps_release_payloads_side_by_side_without_c07_precopy_delete() -> None:
+    installer = _read(REPO_ROOT / "distribution" / "windows" / "installer" / "ticketbox.iss")
 
-    assert install_delete < files
-    for destination in (
-        r"{app}\program\ticketbox-backend\*",
-        r"{app}\manager\*",
-        r"{app}\pg\*",
-        r"{app}\shawl\*",
-        r"{app}\installer\*",
-    ):
-        assert (
-            f'Type: filesandordirs; Name: "{destination}"; '
-            "Check: AuthoritativePayloadReplacementPrepared"
-        ) in installer
-    assert "function AuthoritativePayloadReplacementPrepared(): Boolean;" in flow
-    assert "Result := LifecyclePrepared;" in flow
+    assert "[InstallDelete]" not in installer
+    assert "AuthoritativePayloadReplacementPrepared" not in installer
+    assert 'DestDir: "{app}\\releases\\{#ReleaseId}\\backend"' in installer
+    assert 'DestDir: "{app}\\releases\\{#ReleaseId}\\manager"' in installer
+    assert 'DestDir: "{app}\\postgresql"' in installer
+    assert 'DestDir: "{app}\\bin"' in installer
 
 
 def test_windows_release_lanes_build_manager_before_inno() -> None:
@@ -149,7 +136,7 @@ def test_installer_provenance_binds_manager_evidence_and_rejects_tampering(
     executable: str,
     tmp_path: Path,
 ) -> None:
-    build_path = PACKAGING / "build_inno_installer.ps1"
+    build_path = REPO_ROOT / "distribution" / "windows" / "build" / "build_installer.ps1"
     manifest_path = tmp_path / "BUILD_PROVENANCE.json"
     command = (
         f". '{_ps_literal(BACKEND_ROOT / 'scripts' / 'windows_build_provenance.ps1')}'; "

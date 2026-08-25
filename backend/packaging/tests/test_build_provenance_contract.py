@@ -180,110 +180,42 @@ def _write_minimal_backend(root: Path) -> Path:
     return dist
 
 
+# Must match $script:TicketboxInstallerRecipeRelativePaths in
+# backend/scripts/windows_build_provenance.ps1 (repo-root relative).
 _INSTALLER_RECIPE_PATHS = (
-    "scripts/windows_build_provenance.ps1",
-    "scripts/windows_backend_build_provenance.ps1",
-    "requirements-build.lock",
-    "packaging/windows-build-toolchain.json",
-    "packaging/prepare_windows_build_toolchain.ps1",
-    "packaging/prepare_windows_installer_vendor.ps1",
-    "packaging/build_pg_bundle.ps1",
-    "packaging/build_inno_installer.ps1",
-    "packaging/ticketbox-installer.iss",
-    "packaging/ticketbox-installer-windows.isph",
-    "packaging/ticketbox-installer-flow.isph",
-    "packaging/languages/ChineseSimplified.isl",
-    "packaging/ticketbox.ico",
-    "packaging/windows-release-config.json",
-    "packaging/windows_release_config.ps1",
-    "packaging/prepare_bundled_upgrade.ps1",
-    "packaging/windows_service_contract.ps1",
-    "packaging/windows_service_identity.ps1",
-    "packaging/windows_service_lifecycle.ps1",
-    "packaging/windows_installation_safety.ps1",
-    "packaging/windows_lifecycle_receipt.ps1",
-    "packaging/windows_lifecycle_lock.ps1",
-    "packaging/hold_installer_lifecycle_lock.ps1",
-    "packaging/hold_data_root_mutation_guard.ps1",
-    "packaging/install_windows_prerequisites.ps1",
-    "packaging/windows_database_safety.ps1",
-    "packaging/windows_pg_recovery_tools.ps1",
-    "packaging/windows_postgresql_database_catalog.ps1",
-    "packaging/postgresql_database_catalog/primitives.ps1",
-    "packaging/postgresql_database_catalog/query.ps1",
-    "packaging/postgresql_database_catalog/codec.ps1",
-    "packaging/postgresql_database_catalog/observation.ps1",
-    "packaging/windows_postgresql_writer_fence.ps1",
-    "packaging/postgresql_writer_fence/primitives.ps1",
-    "packaging/postgresql_writer_fence/observation_query.ps1",
-    "packaging/postgresql_writer_fence/observation_codec.ps1",
-    "packaging/postgresql_writer_fence/observation.ps1",
-    "packaging/postgresql_writer_fence/reconcile_policy.ps1",
-    "packaging/postgresql_writer_fence/precondition_guard.ps1",
-    "packaging/postgresql_writer_fence/session_drain.ps1",
-    "packaging/postgresql_writer_fence/reconciler.ps1",
-    "packaging/windows_bundled_database.ps1",
-    "packaging/windows_postgresql_database_command.ps1",
-    "packaging/windows_ticketbox_database_contract.ps1",
-    "packaging/windows_ticketbox_database_acl.ps1",
-    "packaging/windows_ticketbox_database_acl_observation.ps1",
-    "packaging/windows_ticketbox_database_roles.ps1",
-    "packaging/windows_security_primitives.ps1",
-    "packaging/security_primitives/byte_array.ps1",
-    "packaging/security_primitives/token_privilege_native.ps1",
-    "packaging/security_primitives/token_privilege.ps1",
-    "packaging/security_primitives/descriptor_comparison.ps1",
-    "packaging/security_primitives/descriptor_diagnostic.ps1",
-    "packaging/security_primitives/file_security.ps1",
-    "packaging/windows_postgresql_credentials.ps1",
-    "packaging/windows_postgresql_single_user.ps1",
-    "packaging/windows_deadline_budget.ps1",
-    "packaging/windows_atomic_artifacts.ps1",
-    "packaging/atomic_artifacts/native.ps1",
-    "packaging/atomic_artifacts/file.ps1",
-    "packaging/atomic_artifacts/directory.ps1",
-    "packaging/windows_database_generation_program_adapter.ps1",
-    "packaging/windows_database_generation_program_execution.ps1",
-    "packaging/windows_database_generation.ps1",
-    "packaging/windows_database_generation_contract.ps1",
-    "packaging/windows_database_generation_release.ps1",
-    "packaging/windows_operation_failure.ps1",
-    "packaging/windows_database_generation_artifacts.ps1",
-    "packaging/windows_database_generation_commit_verifier.ps1",
-    "packaging/windows_database_generation_policy.ps1",
-    "packaging/windows_database_generation_credentials.ps1",
-    "packaging/windows_database_generation_role_fence.ps1",
-    "packaging/windows_database_generation_database_binding.ps1",
-    "packaging/windows_database_generation_current.ps1",
-    "packaging/windows_database_generation_host_authority.ps1",
-    "packaging/windows_database_generation_role_bootstrap.ps1",
-    "packaging/windows_database_generation_source.ps1",
-    "packaging/windows_database_generation_source_binding.ps1",
-    "packaging/windows_database_generation_recovery_evidence.ps1",
-    "packaging/windows_database_generation_target_recovery.ps1",
-    "packaging/windows_database_generation_target_authorization.ps1",
-    "packaging/windows_database_generation_retirement.ps1",
-    "packaging/windows_database_generation_single_user.ps1",
-    "packaging/windows_database_generation_projection.ps1",
-    "packaging/windows_dataset_backup.ps1",
-    "packaging/windows_dataset_inventory.ps1",
-    "packaging/windows_dataset_restore.ps1",
-    "packaging/windows_installed_dataset_reader.ps1",
-    "packaging/windows_installed_dataset_operation.ps1",
-    "packaging/windows_installed_dataset_restore_artifacts.ps1",
-    "packaging/windows_installed_dataset_restore_verification.ps1",
-    "packaging/windows_dataset_restore_filesystem.ps1",
-    "packaging/windows_dataset_restore_reducer.ps1",
-    "packaging/windows_dataset_restore_database.ps1",
-    "packaging/windows_dataset_restore_runtime.ps1",
-    "packaging/windows_postgresql_candidate_cluster.ps1",
-    "packaging/windows_postgresql_candidate_initdb.ps1",
-    "packaging/windows_postgresql_candidate_runtime.ps1",
-    "packaging/windows_backend_health.ps1",
-    "packaging/windows_backend_bootstrap.ps1",
-    "packaging/windows_bootstrap_exposure_recovery.ps1",
-    "packaging/install_bundled_services.ps1",
-    "packaging/uninstall_bundled_services.ps1",
+    "backend/scripts/windows_build_provenance.ps1",
+    "backend/scripts/windows_backend_build_provenance.ps1",
+    "backend/requirements-build.lock",
+    "backend/packaging/windows-build-toolchain.json",
+    "backend/packaging/prepare_windows_build_toolchain.ps1",
+    "backend/packaging/prepare_windows_installer_vendor.ps1",
+    "backend/packaging/build_pg_bundle.ps1",
+    "backend/packaging/languages/ChineseSimplified.isl",
+    "backend/packaging/ticketbox.ico",
+    "backend/packaging/windows-release-config.json",
+    "distribution/windows/installer/ticketbox.iss",
+    "distribution/windows/build/build_installer.ps1",
+    "distribution/windows/build/check_source_inputs.ps1",
+    "distribution/windows/build/ticketbox-lifecycle.spec",
+    "distribution/windows/build/ticketbox-backend-launcher.spec",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/__init__.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/__main__.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/cli.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/errors.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/schemas.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/__init__.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/ports.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/domain/__init__.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/domain/install.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/domain/planner.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/__init__.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/command.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/layout.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/mutex.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/filesystem_stores.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_adapters.py",
+    "distribution/windows/lifecycle/ticketbox_backend_launcher/__init__.py",
+    "distribution/windows/lifecycle/ticketbox_backend_launcher/__main__.py",
 )
 
 
@@ -445,8 +377,9 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
 
     assert "payload" in (stale_exe.stdout + stale_exe.stderr).lower()
 
-    recipe_backend = tmp_path / "recipe-backend"
-    _write_minimal_installer_recipe(recipe_backend)
+    recipe_repo = tmp_path / "recipe-repo"
+    _write_minimal_installer_recipe(recipe_repo)
+    recipe_backend = recipe_repo / "backend"
     snapshot_path = tmp_path / "recipe.json"
     snapshot_command = (
         f". '{_ps_literal(PROVENANCE_HELPER)}'; "
@@ -459,7 +392,9 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
     assert {record["path"] for record in original_snapshot["files"]} == set(_INSTALLER_RECIPE_PATHS)
     snapshot_path.write_text(json.dumps(original_snapshot), encoding="utf-8")
 
-    changed_recipe = recipe_backend / "packaging" / "ticketbox-installer-flow.isph"
+    changed_recipe = (
+        recipe_repo / "distribution" / "windows" / "installer" / "ticketbox.iss"
+    )
     changed_recipe.write_text("recipe mutation\n", encoding="utf-8")
     changed = _run_powershell(snapshot_command)
     assert changed.returncode == 0, changed.stderr
@@ -939,5 +874,15 @@ def test_windows_ci_names_source_preflight_without_claiming_a_build() -> None:
         assert "Installer source preflight (PowerShell 7)" in text
         assert "shell: pwsh" in text
         assert "run: pwsh " in text
-        assert "build_inno_installer.ps1 -CheckSourceInputsOnly" in text
-        assert "build_inno_installer.ps1 -CheckInputsOnly" not in text
+        assert "distribution\\windows\\build\\check_source_inputs.ps1" in text
+        assert (
+            "distribution\\windows\\build\\build_installer.ps1 "
+            "-InstallerHashOutputFile"
+        ) in text
+        assert (
+            "distribution\\windows\\build\\build_installer.ps1 "
+            "-VerifyOnly"
+        ) in text
+        assert "build_inno_installer.ps1" not in text
+        assert "CheckSourceInputsOnly" not in text
+        assert "CheckInputsOnly" not in text
