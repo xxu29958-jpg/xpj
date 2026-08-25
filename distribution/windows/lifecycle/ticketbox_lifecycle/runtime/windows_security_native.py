@@ -137,7 +137,7 @@ def require_protected_directory(
         message=f"untrusted lifecycle directory: {path}",
     )
     try:
-        observed = _directory_security_sddl(path)
+        observed = _object_dacl_sddl(path)
     except OSError as exc:
         raise LifecycleViolation(code, f"cannot inspect lifecycle directory: {path}") from exc
     if observed != _canonical_lifecycle_directory_sddl(
@@ -164,6 +164,13 @@ def _canonical_lifecycle_directory_sddl(
     backend_reader_sid: str,
     interactive_reader_sid: str,
 ) -> str:
+    return _canonical_dacl_sddl(
+        _lifecycle_directory_sddl(backend_reader_sid, interactive_reader_sid)
+    )
+
+
+@lru_cache(maxsize=16)
+def _canonical_dacl_sddl(policy_sddl: str) -> str:
     import ctypes
     from ctypes import wintypes
 
@@ -178,16 +185,15 @@ def _canonical_lifecycle_directory_sddl(
     ]
     convert.restype = wintypes.BOOL
     descriptor = ctypes.c_void_p()
-    policy_sddl = _lifecycle_directory_sddl(backend_reader_sid, interactive_reader_sid)
     if not convert(policy_sddl, 1, ctypes.byref(descriptor), None):
-        raise OSError(ctypes.get_last_error(), "cannot canonicalize lifecycle directory SDDL")
+        raise OSError(ctypes.get_last_error(), "cannot canonicalize DACL SDDL")
     try:
         return _security_descriptor_sddl(descriptor)
     finally:
         kernel.LocalFree(descriptor)
 
 
-def _directory_security_sddl(path: Path) -> str:
+def _object_dacl_sddl(path: Path) -> str:
     import ctypes
     from ctypes import wintypes
 
@@ -298,7 +304,20 @@ def require_protected_file_acl(
     code: str,
     required_reader_markers: tuple[str, ...] = (),
     forbidden_markers: tuple[str, ...] = (),
+    expected_dacl_sddl: str | None = None,
 ) -> None:
+    if expected_dacl_sddl is not None and os.name == "nt":
+        reject_reparse_components(path)
+        if not path.is_file():
+            raise LifecycleViolation(code, f"{path.name} must be a regular file")
+        try:
+            observed = _object_dacl_sddl(path)
+            expected = _canonical_dacl_sddl(expected_dacl_sddl)
+        except OSError as exc:
+            raise LifecycleViolation(code, f"cannot inspect {path.name} DACL") from exc
+        if observed != expected:
+            raise LifecycleViolation(code, f"{path.name} does not have its exact protected DACL")
+        return
     completed = runner.run(["icacls", str(path)])
     text = f"{completed.stdout}\n{completed.stderr}".upper()
     if completed.returncode != 0 or "(I)" in text:
@@ -374,6 +393,33 @@ def shell_user_sid() -> str | None:
     if os.name != "nt":
         return None
     return _explorer_shell_user_sid() or _linked_token_user_sid()
+
+
+def current_process_user_sid() -> str | None:
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.argtypes = []
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    advapi.OpenProcessToken.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    advapi.OpenProcessToken.restype = wintypes.BOOL
+    token = wintypes.HANDLE()
+    if not advapi.OpenProcessToken(kernel.GetCurrentProcess(), 0x0008, ctypes.byref(token)):
+        return None
+    try:
+        return _sid_string(advapi, kernel, token)
+    finally:
+        kernel.CloseHandle(token)
 
 
 def _sid_string(advapi, kernel, token) -> str | None:

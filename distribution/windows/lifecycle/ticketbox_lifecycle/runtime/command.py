@@ -56,12 +56,16 @@ class SubprocessCommandRunner:
         )
 
 
-def sealed_pg_env(passfile: str) -> dict[str, str]:
-    env = {
+def sealed_postgres_env() -> dict[str, str]:
+    return {
         key: value
         for key, value in os.environ.items()
         if not key.upper().startswith("PG")
     }
+
+
+def sealed_pg_env(passfile: str) -> dict[str, str]:
+    env = sealed_postgres_env()
     env["PGPASSFILE"] = passfile
     return env
 

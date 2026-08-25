@@ -15,12 +15,18 @@ from ticketbox_lifecycle.policy.postgres_roles import (
     expected_roles_probe,
     verify_alembic_version_sql,
 )
-from ticketbox_lifecycle.runtime import windows_postgres, windows_security_native
+from ticketbox_lifecycle.runtime import (
+    windows_file_security,
+    windows_postgres,
+    windows_security_native,
+)
 from ticketbox_lifecycle.runtime.command import CompletedCommand
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
 _BACKEND_SERVICE_SID = "S-1-5-80-111-222-333-444-555"
+_SHELL_USER_SID = "S-1-5-21-9-9-9-1002"
+_PROCESS_USER_SID = "S-1-5-21-9-9-9-1003"
 
 
 class _HealthResponse:
@@ -80,7 +86,13 @@ def test_windows_adapters_is_only_the_explicit_composition_root() -> None:
 @pytest.fixture(autouse=True)
 def _trusted_unit_file_owner(monkeypatch):
     monkeypatch.setattr(windows_security_native, "file_owner_sid", lambda _path: "S-1-5-32-544")
-    monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: "S-1-5-21-9-9-9-1002")
+    monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: _SHELL_USER_SID)
+    monkeypatch.setattr(
+        windows_security_native,
+        "current_process_user_sid",
+        lambda: _PROCESS_USER_SID,
+        raising=False,
+    )
 
     def create_unit_directory(path: Path, **_kwargs) -> None:
         path.mkdir()
@@ -310,6 +322,8 @@ class RecordingFileSecurity:
     ) -> None:
         del code
         assert isinstance(runner, RecordingRunner)
+        if os.name == "nt" and path.name == "postgres.pwfile":
+            windows_file_security._apply_file_dacl(path, reader_sids, code="unit_file_acl")
         runner.run(["takeown", "/A", "/F", str(path)])
         runner.run(
             [
@@ -383,7 +397,12 @@ def _write_complete_cluster(data: Path, *, major: int = 17) -> None:
     (data / "pg_wal").mkdir(exist_ok=True)
 
 
-def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(tmp_path: Path) -> None:
+def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("PG_RESTRICT_EXEC", "1")
+    monkeypatch.setenv("PGDATA", "C:\\attacker-controlled-pgdata")
     request = _request(tmp_path)
     runner = RecordingRunner()
     bundle = _bundle(runner)
@@ -413,7 +432,58 @@ def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(tmp_path: Path) -> Non
     assert hba_path.read_text(encoding="utf-8").startswith("# Ticketbox fresh-install")
     assert not pwfile.exists()
     assert runner.initdb_pwfile_seen is True
+    pwfile_acl = next(
+        call
+        for call in runner.calls
+        if call[0].lower() == "icacls"
+        and os.path.normcase(os.path.abspath(call[1]))
+        == os.path.normcase(os.path.abspath(pwfile))
+        and "/grant:r" in call
+    )
+    assert f"*{_PROCESS_USER_SID}:(R)" in pwfile_acl
+    assert f"*{_SHELL_USER_SID}:(R)" not in pwfile_acl
+    initdb_env = runner.envs[runner.calls.index(initdb)]
+    assert initdb_env is not None
+    assert not any(key.upper().startswith("PG") for key in initdb_env)
     assert any(Path(call[0]).name.lower() == "pg_controldata.exe" for call in runner.calls)
+
+
+def test_initdb_refuses_to_create_pwfile_without_process_user_sid(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = _bundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+    monkeypatch.setattr(windows_security_native, "current_process_user_sid", lambda: None)
+
+    with pytest.raises(LifecycleError) as caught:
+        bundle.postgres.apply(request, "postgres_initdb")
+
+    assert caught.value.code == "initdb_reader_unavailable"
+    assert not (Path(request.program_data_root) / "machine" / "secrets" / "postgres.pwfile").exists()
+    assert not any(Path(call[0]).name.lower() == "initdb.exe" for call in runner.calls)
+
+
+def test_initdb_rejects_pwfile_when_exact_reader_acl_did_not_land(tmp_path: Path) -> None:
+    class ReaderDroppingFileSecurity(RecordingFileSecurity):
+        def protect_file(self, runner, path: Path, *, reader_sids: tuple[str, ...], code: str) -> None:
+            super().protect_file(runner, path, reader_sids=(), code=code)
+
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner, ReaderDroppingFileSecurity())
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+
+    with pytest.raises(LifecycleViolation) as caught:
+        bundle.postgres.apply(request, "postgres_initdb")
+
+    assert caught.value.code == "credential_acl_untrusted"
+    assert not (Path(request.program_data_root) / "machine" / "secrets" / "postgres.pwfile").exists()
+    assert not any(Path(call[0]).name.lower() == "initdb.exe" for call in runner.calls)
 
 
 def test_initdb_failure_always_removes_password_input(tmp_path: Path) -> None:

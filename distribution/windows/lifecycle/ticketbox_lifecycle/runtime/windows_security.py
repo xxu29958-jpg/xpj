@@ -180,10 +180,17 @@ class WindowsSecurityAdapter:
         )
 
     def materialize_initdb_password_file(self, request: InstallRequest) -> Path:
+        reader_sid = native.current_process_user_sid()
+        if not reader_sid:
+            raise LifecycleError(
+                "initdb_reader_unavailable",
+                "cannot identify the Windows user that will run initdb",
+            )
         return credentials.materialize_initdb_password_file(
             self._runner,
             self._file_security,
             request,
+            reader_sid=reader_sid,
         )
 
     def discard_initdb_password_file(self, request: InstallRequest) -> None:

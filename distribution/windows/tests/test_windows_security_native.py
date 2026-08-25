@@ -15,13 +15,13 @@ def test_file_dacl_policy_accepts_only_reader_sids() -> None:
     service_sid = "S-1-5-80-111-222-333-444-555"
     interactive_sid = "S-1-5-21-9-9-9-1002"
 
-    assert file_security._file_dacl_sddl((service_sid, interactive_sid)) == (
-        "D:P(A;;FA;;;SY)(A;;FA;;;BA)"
+    assert file_security.file_dacl_sddl((service_sid, interactive_sid)) == (
+        "D:PAI(A;;FA;;;SY)(A;;FA;;;BA)"
         f"(A;;FR;;;{service_sid})(A;;FR;;;{interactive_sid})"
     )
 
     with pytest.raises(LifecycleViolation, match="file reader SID is not canonical"):
-        file_security._file_dacl_sddl((f"*{service_sid}:(F)",))
+        file_security.file_dacl_sddl((f"*{service_sid}:(F)",))
 
 
 def test_file_security_has_no_icacls_grant_or_fallback(
@@ -57,7 +57,12 @@ def test_file_security_has_no_icacls_grant_or_fallback(
     assert applied == [(path, (reader,), "machine_state_acl_failed")]
 
 
-def _restricted_token_create_error(path: Path) -> int:
+def _restricted_token_file_error(
+    path: Path,
+    *,
+    desired_access: int,
+    creation_disposition: int,
+) -> int:
     from ctypes import wintypes
 
     class SidAndAttributes(ctypes.Structure):
@@ -134,10 +139,10 @@ def _restricted_token_create_error(path: Path) -> int:
             ctypes.set_last_error(0)
             handle = create_file(
                 str(path),
-                0x40000000,
+                desired_access,
                 0x00000007,
                 None,
-                1,
+                creation_disposition,
                 0x00000080,
                 None,
             )
@@ -169,7 +174,7 @@ def test_protected_directory_rejects_untrusted_owner_before_acl_admission(
         acl_read["called"] = True
         return "trusted"
 
-    monkeypatch.setattr(native, "_directory_security_sddl", read_acl)
+    monkeypatch.setattr(native, "_object_dacl_sddl", read_acl)
 
     with pytest.raises(LifecycleViolation, match="untrusted lifecycle directory") as caught:
         native.require_protected_directory(
@@ -192,7 +197,7 @@ def test_protected_directory_requires_the_exact_lifecycle_dacl(
     expected = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
     monkeypatch.setattr(native, "file_owner_sid", lambda _path: native.ADMINISTRATORS_SID)
     monkeypatch.setattr(native, "_canonical_lifecycle_directory_sddl", lambda *_sids: expected)
-    monkeypatch.setattr(native, "_directory_security_sddl", lambda _path: expected)
+    monkeypatch.setattr(native, "_object_dacl_sddl", lambda _path: expected)
 
     native.require_protected_directory(
         path,
@@ -203,7 +208,7 @@ def test_protected_directory_requires_the_exact_lifecycle_dacl(
 
     monkeypatch.setattr(
         native,
-        "_directory_security_sddl",
+        "_object_dacl_sddl",
         lambda _path: expected + "(A;OICI;FA;;;S-1-5-21-9-9-9-1002)",
     )
     with pytest.raises(LifecycleViolation, match="untrusted lifecycle directory"):
@@ -223,6 +228,47 @@ def test_lifecycle_directory_sddl_is_valid_and_canonical() -> None:
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
         f"(A;;WPLO;;;{backend_sid})(A;;WP;;;{interactive_sid})"
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows restricted-token contract")
+def test_exact_process_user_reader_survives_postgres_style_restricted_token(
+    tmp_path: Path,
+) -> None:
+    if not ctypes.windll.shell32.IsUserAnAdmin():
+        if os.environ.get("CI"):
+            pytest.fail("Windows restricted-token lane must run as an administrator")
+        pytest.skip("restricted-token contract requires an administrator token")
+    process_user_sid = native.current_process_user_sid()
+    assert process_user_sid is not None
+    path = tmp_path / "postgres.pwfile"
+    path.write_text("not-a-real-secret\n", encoding="utf-8")
+    file_security._apply_file_dacl(path, (), code="secret_acl_failed")
+    assert _restricted_token_file_error(
+        path,
+        desired_access=0x80000000,
+        creation_disposition=3,
+    ) == 5
+
+    file_security._apply_file_dacl(
+        path,
+        (process_user_sid,),
+        code="secret_acl_failed",
+    )
+    expected_dacl = file_security.file_dacl_sddl((process_user_sid,))
+    assert expected_dacl == (
+        "D:PAI(A;;FA;;;SY)(A;;FA;;;BA)" f"(A;;FR;;;{process_user_sid})"
+    )
+    native.require_protected_file_acl(
+        None,
+        path,
+        code="credential_acl_untrusted",
+        expected_dacl_sddl=expected_dacl,
+    )
+    assert _restricted_token_file_error(
+        path,
+        desired_access=0x80000000,
+        creation_disposition=3,
+    ) == 0
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows directory security contract")
@@ -253,5 +299,9 @@ def test_create_protected_directory_applies_the_exact_reader_policy(tmp_path: Pa
         native.ADMINISTRATORS_SID,
         native.SYSTEM_SID,
     }
-    assert _restricted_token_create_error(path / "ordinary-user-write.txt") == 5
+    assert _restricted_token_file_error(
+        path / "ordinary-user-write.txt",
+        desired_access=0x40000000,
+        creation_disposition=1,
+    ) == 5
     assert not (path / "ordinary-user-write.txt").exists()

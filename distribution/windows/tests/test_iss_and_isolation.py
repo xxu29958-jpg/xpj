@@ -144,6 +144,17 @@ def test_setup_failure_surfaces_include_the_actual_log_path() -> None:
     assert "Log('Ticketbox install failed: ' + Reason)" in text
 
 
+def test_setup_failure_uses_stable_code_not_unescaped_json_message() -> None:
+    text = ISS.read_text(encoding="utf-8-sig")
+    failure = text.split("function TicketboxResultFailure", 1)[1].split(
+        "function WriteFreshInstallRequest", 1
+    )[0]
+
+    assert "TicketboxJsonString(String(Text), 'message')" not in failure
+    assert "生命周期控制器报告失败" in failure
+    assert "错误代码：" in failure
+
+
 def test_prepare_to_install_failures_surface_reason_retry_and_log() -> None:
     text = ISS.read_text(encoding="utf-8-sig")
     helper = text.split("function TicketboxPrepareFailure", 1)[1].split(

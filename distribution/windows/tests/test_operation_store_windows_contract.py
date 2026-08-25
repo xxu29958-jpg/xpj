@@ -48,7 +48,7 @@ def test_active_publication_before_scm_preserves_the_single_directory_policy(tmp
     security.prepare_operation_store(request)
     root = Path(request.program_data_root)
     paths = (root, root / "machine", root / "machine" / "operations")
-    before = tuple(native._directory_security_sddl(path) for path in paths)
+    before = tuple(native._object_dacl_sddl(path) for path in paths)
     active = root / "machine" / "operations" / "active.json.pending.tmp"
     active.write_text("{}\n", encoding="utf-8")
 
@@ -56,6 +56,6 @@ def test_active_publication_before_scm_preserves_the_single_directory_policy(tmp
     security.verify_machine_json(active, request.backend_service_name)
     security.prepare_operation_store(request)
 
-    assert tuple(native._directory_security_sddl(path) for path in paths) == before
+    assert tuple(native._object_dacl_sddl(path) for path in paths) == before
     assert all("S-1-5-80-" in descriptor for descriptor in before)
     assert all("(A;;WP;" in descriptor for descriptor in before)

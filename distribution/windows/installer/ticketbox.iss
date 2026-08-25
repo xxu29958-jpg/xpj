@@ -310,17 +310,14 @@ end;
 function TicketboxResultFailure: String;
 var
   Text: AnsiString;
-  Code, MessageText: String;
+  Code: String;
 begin
   Result := '生命周期控制器没有返回可验证结果';
   if not LoadStringFromFile(TicketboxResultPath, Text) then
     Exit;
   Code := TicketboxJsonString(String(Text), 'code');
-  MessageText := TicketboxJsonString(String(Text), 'message');
-  if MessageText <> '' then
-    Result := MessageText;
   if Code <> '' then
-    Result := Result + '（' + Code + '）';
+    Result := '生命周期控制器报告失败（错误代码：' + Code + '）';
 end;
 
 function WriteFreshInstallRequest(const Command, OperationId, ManifestSha: String): Boolean;

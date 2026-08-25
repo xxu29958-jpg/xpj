@@ -7,7 +7,7 @@ from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
 
-_FILE_DACL_BASE_SDDL = "D:P(A;;FA;;;SY)(A;;FA;;;BA)"
+_FILE_DACL_BASE_SDDL = "D:PAI(A;;FA;;;SY)(A;;FA;;;BA)"
 _DACL_INFORMATION = 0x00000004
 _PROTECTED_DACL_INFORMATION = 0x80000000
 _SE_FILE_OBJECT = 1
@@ -41,7 +41,7 @@ class WindowsFileSecurity:
         _apply_file_dacl(path, reader_sids, code=code)
 
 
-def _file_dacl_sddl(reader_sids: tuple[str, ...]) -> str:
+def file_dacl_sddl(reader_sids: tuple[str, ...]) -> str:
     if any(native._SID_PATTERN.fullmatch(sid) is None for sid in reader_sids):
         raise LifecycleViolation("file_reader_sid_invalid", "file reader SID is not canonical")
     return _FILE_DACL_BASE_SDDL + "".join(f"(A;;FR;;;{sid})" for sid in reader_sids)
@@ -85,7 +85,7 @@ def _apply_file_dacl(path: Path, reader_sids: tuple[str, ...], *, code: str) -> 
     set_named.restype = wintypes.DWORD
     descriptor = ctypes.c_void_p()
     if not convert(
-        _file_dacl_sddl(reader_sids),
+        file_dacl_sddl(reader_sids),
         _SDDL_REVISION_1,
         ctypes.byref(descriptor),
         None,

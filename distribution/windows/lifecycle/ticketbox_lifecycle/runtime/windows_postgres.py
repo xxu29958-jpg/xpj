@@ -25,6 +25,7 @@ from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import (
     CommandRunner,
     require_ok,
+    sealed_postgres_env,
 )
 from ticketbox_lifecycle.runtime.durable_files import durable_write_text
 from ticketbox_lifecycle.runtime.postgres_connection import run_psql
@@ -126,7 +127,10 @@ class WindowsPostgresAdapter:
             ]
             if "--no-sync" in argv:
                 raise LifecycleViolation("unsafe_initdb", "initdb --no-sync is forbidden")
-            require_ok(self._runner.run(argv, timeout_s=180), code="initdb_failed")
+            require_ok(
+                self._runner.run(argv, env=sealed_postgres_env(), timeout_s=180),
+                code="initdb_failed",
+            )
         finally:
             self._security.discard_initdb_password_file(request)
         _require_complete_pgdata(data, request.postgres_major)
