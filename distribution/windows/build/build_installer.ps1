@@ -30,6 +30,7 @@ $BackendRoot = Join-Path $RepoRoot "backend"
 $DesktopRoot = Join-Path $RepoRoot "desktop"
 
 . (Join-Path $BackendRoot "scripts\windows_build_provenance.ps1")
+. (Join-Path $BackendRoot "scripts\windows_backend_build_provenance.ps1")
 . (Join-Path $DesktopRoot "scripts\windows_manager_build_provenance.ps1")
 . (Join-Path $ScriptDir "installed_payload_manifest.ps1")
 
@@ -59,12 +60,13 @@ function Write-InstallerBuildProvenance {
         $compilerRecord.executable = $Compiler.executable
     }
     $manifest = [ordered]@{
-        schema_version = 3
+        schema_version = 4
         artifact_type = "ticketbox-windows-installer-inputs"
         compiler_defines = @(Get-TicketboxNormalizedCompilerDefines $CompilerDefines)
         recipe = $Recipe
         git = $Git
         compiler = $compilerRecord
+        lifecycle = $BuildInputs.lifecycle
         backend = $BuildInputs.backend
         manager = $BuildInputs.manager
         postgresql = $BuildInputs.postgresql
@@ -102,7 +104,7 @@ function Assert-InstallerPublishUnitBytes(
         throw "provenance 字节身份不一致：expected=$($ExpectedProvenanceSha256.ToLowerInvariant()) actual=$actualProvenance"
     }
     $manifest = Get-Content -LiteralPath $manifestPath -Encoding UTF8 -Raw | ConvertFrom-Json
-    if ($manifest.schema_version -ne 3 -or $manifest.artifact_type -cne "ticketbox-windows-installer-inputs") {
+    if ($manifest.schema_version -ne 4 -or $manifest.artifact_type -cne "ticketbox-windows-installer-inputs") {
         throw "安装器 publish unit 的 provenance schema/artifact_type 不受支持。"
     }
     $actualInstaller = Get-TicketboxFileSha256 $exePath
@@ -158,7 +160,24 @@ $BuildLock = $null
 $RecipeLocks = $null
 $ShipmentLocks = $null
 $CompilerLocks = $null
+$ToolchainLocks = $null
 $InputSnapshotRoot = Join-Path $BackendRoot ("build\.ticketbox-installer-inputs-{0}" -f $PID)
+$ToolchainRoot = Join-Path $BackendRoot "build\windows-toolchain"
+$ToolchainPrepScript = Join-Path $BackendRoot "packaging\prepare_windows_build_toolchain.ps1"
+$LifecyclePyInstallerConfig = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-pyinstaller-{0}" -f $PID)
+$BuildEnvironmentNames = @(
+    "PYINSTALLER_CONFIG_DIR",
+    "PYTHONHOME",
+    "PYTHONNOUSERSITE",
+    "PYTHONPATH",
+    "PYTHONSTARTUP",
+    "PYTHONDONTWRITEBYTECODE",
+    "UV_PYTHON_DOWNLOADS"
+)
+$PreviousBuildEnvironment = @{}
+foreach ($name in $BuildEnvironmentNames) {
+    $PreviousBuildEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+}
 $PrimaryFailure = $null
 $CleanupFailures = @()
 try {
@@ -178,17 +197,11 @@ try {
 
 # ===== 锁定并复制唯一构建输入快照 =====
 $recipe = Get-TicketboxInstallerRecipeSnapshot $BackendRoot
-try {
-    $RecipeLocks = Enter-TicketboxFileSetReadLocks -Root $RepoRoot -Snapshot $recipe
-    Copy-TicketboxFileSetSnapshot `
-        -SourceRoot $RepoRoot `
-        -DestinationRoot $InputSnapshotRoot `
-        -Snapshot $recipe | Out-Null
-}
-finally {
-    Exit-TicketboxFileSetReadLocks $RecipeLocks
-    $RecipeLocks = $null
-}
+$RecipeLocks = Enter-TicketboxFileSetReadLocks -Root $RepoRoot -Snapshot $recipe
+Copy-TicketboxFileSetSnapshot `
+    -SourceRoot $RepoRoot `
+    -DestinationRoot $InputSnapshotRoot `
+    -Snapshot $recipe | Out-Null
 
 $shipmentPaths = Get-TicketboxInstallerShipmentPaths $RepoRoot
 $shipment = Get-TicketboxFileSetSnapshot $RepoRoot $shipmentPaths
@@ -256,46 +269,82 @@ $BuildInputs = [ordered]@{
 }
 
 # ===== TicketboxLifecycle onedir（elevated code only runs from installed Program Files）=====
-$pythonSource = $toolchainConfig.build_tool_sources.python
-$lifecyclePythonRoot = Join-Path $BackendRoot "build\windows-toolchain\python"
-$lifecyclePython = Join-Path $lifecyclePythonRoot ([string]$pythonSource.executable_relative_path)
-$lifecyclePythonRuntime = Join-Path $lifecyclePythonRoot ([string]$pythonSource.runtime_relative_path)
+$buildToolchain = Read-TicketboxWindowsBuildToolchain $BackendRoot
+& $ToolchainPrepScript -Component Backend -ToolchainRoot $ToolchainRoot -Force
+$UvPath = Join-Path $ToolchainRoot ("uv\{0}" -f [string]$buildToolchain.uv_source.executable_relative_path)
+$SourcePython = Join-Path $ToolchainRoot ("python\{0}" -f [string]$buildToolchain.python_source.executable_relative_path)
+$SourcePythonRuntime = Join-Path $ToolchainRoot ("python\{0}" -f [string]$buildToolchain.python_source.runtime_relative_path)
 if (
-    -not (Test-Path -LiteralPath $lifecyclePython -PathType Leaf) -or
-    -not (Test-Path -LiteralPath $lifecyclePythonRuntime -PathType Leaf)
+    (Get-TicketboxFileSha256 $UvPath) -cne ([string]$buildToolchain.uv_source.executable_sha256).ToLowerInvariant() -or
+    (Get-TicketboxFileSha256 $SourcePython) -cne ([string]$buildToolchain.python_source.executable_sha256).ToLowerInvariant() -or
+    (Get-TicketboxFileSha256 $SourcePythonRuntime) -cne ([string]$buildToolchain.python_source.runtime_sha256).ToLowerInvariant()
 ) {
-    throw "缺少 pinned lifecycle Python；先运行 prepare_windows_build_toolchain.ps1 -Component Backend。"
+    throw "重物化后的 lifecycle build toolchain 与 pinned archive payload 不一致。"
 }
-Assert-TicketboxNoReparsePath -Path $lifecyclePythonRoot -AllowedRoot $BackendRoot -InspectTree | Out-Null
-if (
-    (Get-TicketboxFileSha256 $lifecyclePython) -cne ([string]$pythonSource.executable_sha256).ToLowerInvariant() -or
-    (Get-TicketboxFileSha256 $lifecyclePythonRuntime) -cne ([string]$pythonSource.runtime_sha256).ToLowerInvariant()
-) {
-    throw "pinned lifecycle Python 与 windows-build-toolchain.json 不一致。"
+$toolchainPaths = @(
+    Get-ChildItem -LiteralPath (Join-Path $ToolchainRoot "uv") -Recurse -File -Force |
+        ForEach-Object { $_.FullName }
+    Get-ChildItem -LiteralPath (Join-Path $ToolchainRoot "python") -Recurse -File -Force |
+        ForEach-Object { $_.FullName }
+)
+$toolchainSnapshot = Get-TicketboxFileSetSnapshot $ToolchainRoot $toolchainPaths
+$ToolchainLocks = @(Enter-TicketboxFileSetReadLocks -Root $ToolchainRoot -Snapshot $toolchainSnapshot)
+
+foreach ($name in @("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP")) {
+    [Environment]::SetEnvironmentVariable($name, $null, "Process")
 }
-$pythonVersionText = (& $lifecyclePython -I -B -c "import platform; print(platform.python_version())" 2>&1) -join " "
-if ($LASTEXITCODE -ne 0) {
-    throw "pinned lifecycle Python 版本探测失败（exit=$LASTEXITCODE）：$pythonVersionText"
-}
-$pythonVersion = $pythonVersionText.Trim()
-if ($pythonVersion -cne [string]$toolchainConfig.python_version) {
-    throw "lifecycle Python 版本不一致：expected=$($toolchainConfig.python_version) actual=$pythonVersion"
-}
+[Environment]::SetEnvironmentVariable("UV_PYTHON_DOWNLOADS", "never", "Process")
+[Environment]::SetEnvironmentVariable("PYTHONNOUSERSITE", "1", "Process")
+[Environment]::SetEnvironmentVariable("PYTHONDONTWRITEBYTECODE", "1", "Process")
+[Environment]::SetEnvironmentVariable("PYINSTALLER_CONFIG_DIR", $LifecyclePyInstallerConfig, "Process")
+
 $lifecycleVenv = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-venv-{0}-{1}" -f $PID, [Guid]::NewGuid().ToString("N"))
 $lifecycleWork = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-work-{0}" -f $PID)
 $lifecyclePayloadDir = Join-Path $StagedPayloadDir "TicketboxLifecycle"
 $lifecycleExe = Join-Path $lifecyclePayloadDir "TicketboxLifecycle.exe"
 try {
-    & $lifecyclePython -m venv $lifecycleVenv
+    Assert-TicketboxNoReparsePath -Path $LifecyclePyInstallerConfig -AllowedRoot $BackendRoot | Out-Null
+    New-Item -ItemType Directory -Path $LifecyclePyInstallerConfig | Out-Null
+    & $UvPath venv $lifecycleVenv --python $SourcePython
     if ($LASTEXITCODE -ne 0) { throw "lifecycle venv 创建失败（exit=$LASTEXITCODE）。" }
     $venvPython = Join-Path $lifecycleVenv "Scripts\python.exe"
-    & $venvPython -m pip install --quiet --require-hashes -r (Join-Path $StagedBackendRoot "requirements-build.lock")
-    if ($LASTEXITCODE -ne 0) { throw "lifecycle 构建依赖安装失败（exit=$LASTEXITCODE）。" }
+    & $UvPath pip sync --strict --require-hashes --python $venvPython (Join-Path $StagedBackendRoot "requirements-build.lock")
+    if ($LASTEXITCODE -ne 0) { throw "lifecycle 构建依赖同步失败（exit=$LASTEXITCODE）。" }
+
+    $pythonVersionText = (& $venvPython -I -B -c "import platform; print(platform.python_version())" 2>&1) -join " "
+    if ($LASTEXITCODE -ne 0) { throw "lifecycle Python 版本探测失败：$pythonVersionText" }
+    $pythonVersion = $pythonVersionText.Trim()
+    $uvVersionText = (& $UvPath --version 2>&1) -join " "
+    if ($LASTEXITCODE -ne 0 -or $uvVersionText -notmatch '^uv\s+(\d+\.\d+\.\d+)\b') {
+        throw "lifecycle uv 版本探测失败：$uvVersionText"
+    }
+    $uvVersion = $Matches[1]
+    $pyInstallerVersionText = (& $venvPython -I -B -m PyInstaller --version 2>&1) -join " "
+    if ($LASTEXITCODE -ne 0 -or $pyInstallerVersionText.Trim() -notmatch '^(\d+\.\d+\.\d+)$') {
+        throw "lifecycle PyInstaller 版本探测失败：$pyInstallerVersionText"
+    }
+    $pyInstallerVersion = $Matches[1]
+    $installedDistributions = @(& $UvPath pip freeze --python $venvPython)
+    if ($LASTEXITCODE -ne 0) { throw "lifecycle distribution snapshot 失败（exit=$LASTEXITCODE）。" }
+    $executionTreeBeforeFreeze = Get-TicketboxPythonExecutionTreeSnapshot $venvPython
+    $lifecycleToolchain = New-TicketboxBackendBuildToolchainProvenance `
+        -BackendRoot $BackendRoot `
+        -Config $buildToolchain `
+        -PythonPath $venvPython `
+        -PythonSourcePath $SourcePython `
+        -PythonVersion $pythonVersion `
+        -UvPath $UvPath `
+        -UvVersion $uvVersion `
+        -PyInstallerPath (Join-Path $lifecycleVenv "Scripts\pyinstaller.exe") `
+        -PyInstallerVersion $pyInstallerVersion `
+        -InstalledDistributions $installedDistributions `
+        -PythonExecutionTree $executionTreeBeforeFreeze
     if (Test-Path -LiteralPath $lifecyclePayloadDir) {
         Remove-Item -LiteralPath $lifecyclePayloadDir -Recurse -Force
     }
-    & (Join-Path $lifecycleVenv "Scripts\pyinstaller.exe") `
+    & $venvPython -I -B -m PyInstaller `
         --noconfirm `
+        --clean `
         --distpath $StagedPayloadDir `
         --workpath $lifecycleWork `
         (Join-Path $StagedScriptDir "ticketbox-lifecycle.spec")
@@ -303,10 +352,21 @@ try {
     if (-not (Test-Path -LiteralPath $lifecycleExe -PathType Leaf)) {
         throw "PyInstaller 未产出 $lifecycleExe。"
     }
+    $executionTreeAfterFreeze = Get-TicketboxPythonExecutionTreeSnapshot $venvPython
+    Assert-TicketboxStructuredEvidence `
+        "Lifecycle PyInstaller execution tree" `
+        $executionTreeBeforeFreeze `
+        $executionTreeAfterFreeze
+    Assert-TicketboxFileSetSnapshot `
+        "Pinned lifecycle build toolchain" `
+        $toolchainSnapshot `
+        (Get-TicketboxFileSetSnapshot $ToolchainRoot $toolchainPaths)
+    $BuildInputs["lifecycle"] = $lifecycleToolchain
 }
 finally {
     Remove-Item -LiteralPath $lifecycleVenv -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $lifecycleWork -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $LifecyclePyInstallerConfig -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ===== validate release-manifest against frozen generation program head =====
@@ -439,6 +499,7 @@ catch {
 finally {
     foreach ($entry in @(
         [pscustomobject]@{ Name = "compiler input locks"; Value = $CompilerLocks },
+        [pscustomobject]@{ Name = "lifecycle toolchain locks"; Value = $ToolchainLocks },
         [pscustomobject]@{ Name = "shipment input locks"; Value = $ShipmentLocks },
         [pscustomobject]@{ Name = "recipe input locks"; Value = $RecipeLocks }
     )) {
@@ -451,6 +512,18 @@ finally {
         }
     }
     catch { $CleanupFailures += "installer input snapshot: $($_.Exception.Message)" }
+    try {
+        if (Test-Path -LiteralPath $LifecyclePyInstallerConfig) {
+            Remove-Item -LiteralPath $LifecyclePyInstallerConfig -Recurse -Force
+        }
+    }
+    catch { $CleanupFailures += "lifecycle PyInstaller config: $($_.Exception.Message)" }
+    foreach ($name in $BuildEnvironmentNames) {
+        try {
+            [Environment]::SetEnvironmentVariable($name, $PreviousBuildEnvironment[$name], "Process")
+        }
+        catch { $CleanupFailures += "restore environment $name`: $($_.Exception.Message)" }
+    }
     try { Exit-TicketboxWindowsBuildLock $BuildLock }
     catch { $CleanupFailures += "Windows build lock: $($_.Exception.Message)" }
 }

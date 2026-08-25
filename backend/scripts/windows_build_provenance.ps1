@@ -45,6 +45,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_alembic.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_dataset.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_files.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_known_folders.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_postgres.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_postgres_identity.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_scm.py",
@@ -509,7 +510,7 @@ function Assert-TicketboxInstallerBuildProvenance(
     catch {
         throw "安装器 provenance 不是有效 JSON：$Path。$($_.Exception.Message)"
     }
-    if ($manifest.schema_version -ne 3 -or $manifest.artifact_type -cne "ticketbox-windows-installer-inputs") {
+    if ($manifest.schema_version -ne 4 -or $manifest.artifact_type -cne "ticketbox-windows-installer-inputs") {
         throw "安装器 provenance schema/artifact_type 不受支持。"
     }
     Assert-TicketboxStructuredEvidence "安装器 ISCC defines" @($manifest.compiler_defines) @(Get-TicketboxNormalizedCompilerDefines $ExpectedCompilerDefines)
@@ -548,6 +549,10 @@ function Assert-TicketboxInstallerBuildProvenance(
             throw "安装器 provenance 的 ISCC identity 与选定编译器不一致。"
         }
     }
+    Assert-TicketboxStructuredEvidence `
+        "安装器 Lifecycle build provenance" `
+        $manifest.lifecycle `
+        $ExpectedBuildInputs.lifecycle
     Assert-TicketboxStructuredEvidence `
         "安装器 backend provenance" `
         $manifest.backend `

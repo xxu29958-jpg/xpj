@@ -145,7 +145,7 @@ def test_manager_source_contract_is_identical_across_powershell_engines(
 
 
 @pytest.mark.parametrize("executable", powershell_contract_engines())
-def test_installer_provenance_binds_manager_evidence_and_rejects_tampering(
+def test_installer_provenance_binds_manager_and_lifecycle_evidence_and_rejects_tampering(
     executable: str,
     tmp_path: Path,
 ) -> None:
@@ -177,6 +177,7 @@ def test_installer_provenance_binds_manager_evidence_and_rejects_tampering(
         "manager = [ordered]@{ version = '1.2.0'; fingerprint = ('c' * 64) }; "
         "postgresql = [ordered]@{ version = '17.10-1'; fingerprint = ('d' * 64) }; "
         "shawl = [ordered]@{ version = '1.9.0'; fingerprint = ('e' * 64) }; "
+        "lifecycle = [ordered]@{ fingerprint = ('1' * 64) }; "
         "shipment = [ordered]@{ release_manifest_sha256 = ('f' * 64); "
         "immutable_file_count = 42 } }; "
         "$defines = @('/DAppVersion=1.2.0'); "
@@ -185,6 +186,15 @@ def test_installer_provenance_binds_manager_evidence_and_rejects_tampering(
         "$recorded = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json; "
         "if ($null -eq $recorded.manager -or $recorded.manager.fingerprint -cne ('c' * 64)) { "
         "throw 'manager evidence was not persisted' }; "
+        "if ($null -eq $recorded.lifecycle -or $recorded.lifecycle.fingerprint -cne ('1' * 64)) { "
+        "throw 'lifecycle evidence was not persisted' }; "
+        "$recorded.lifecycle.fingerprint = ('2' * 64); "
+        "Write-TicketboxJsonFile $manifestPath $recorded; "
+        "$rejected = $false; try { "
+        "Assert-TicketboxInstallerBuildProvenance $root $manifestPath $compiler $inputs $defines | Out-Null "
+        "} catch { $rejected = $true }; "
+        "if (-not $rejected) { throw 'tampered lifecycle evidence was accepted' }; "
+        "$recorded.lifecycle.fingerprint = ('1' * 64); "
         "$recorded.manager.fingerprint = ('f' * 64); "
         "Write-TicketboxJsonFile $manifestPath $recorded; "
         "$rejected = $false; try { "

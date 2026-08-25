@@ -17,6 +17,7 @@ from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
 from ticketbox_lifecycle.runtime.windows_security_native import (
     reject_reparse_components,
 )
+from ticketbox_lifecycle.runtime.windows_known_folders import ticketbox_install_root
 from ticketbox_lifecycle.runtime.windows_services import service_registered
 from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 from ticketbox_lifecycle.schemas import (
@@ -54,7 +55,7 @@ class FilesystemStores:
     def as_lifecycle_stores(self) -> LifecycleStores:
         return LifecycleStores(
             mutex=self._mutex,
-            shipment=WindowsShipmentVerifier(),
+            shipment=WindowsShipmentVerifier(ticketbox_install_root()),
             observer=self,
             operations_read=self,
             operations_write=self,

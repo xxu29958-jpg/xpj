@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.runtime.command import CompletedCommand
 from ticketbox_lifecycle.runtime.windows_alembic import WindowsAlembicAdapter
 from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
+from ticketbox_lifecycle.runtime.windows_known_folders import ticketbox_install_root
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
 
@@ -77,12 +79,16 @@ def _request(tmp_path: Path, *, release_id: str = "1.2.0") -> tuple[InstallReque
     return request, manifest_path
 
 
+def _verifier(request: InstallRequest) -> WindowsShipmentVerifier:
+    return WindowsShipmentVerifier(Path(request.app_dir))
+
+
 def test_verifier_binds_release_semantics_and_accepts_only_the_closed_file_set(
     tmp_path: Path,
 ) -> None:
     request, _manifest = _request(tmp_path)
 
-    bound = WindowsShipmentVerifier().bind_and_verify(request)
+    bound = _verifier(request).bind_and_verify(request)
 
     assert bound.release_manifest_sha256 == request.release_manifest_sha256
     assert bound.schema_revision == "20260821_0001"
@@ -96,7 +102,7 @@ def test_release_product_version_must_be_semver_even_when_manifest_identity_matc
     request, _manifest = _request(tmp_path, release_id="release-1")
 
     with pytest.raises(LifecycleViolation, match="identity"):
-        WindowsShipmentVerifier().bind_and_verify(request)
+        _verifier(request).bind_and_verify(request)
 
 
 def test_shipment_product_version_reaches_alembic_and_backend_runtime_admission(
@@ -105,7 +111,7 @@ def test_shipment_product_version_reaches_alembic_and_backend_runtime_admission(
 ) -> None:
     request, _manifest = _request(tmp_path)
     bound = replace(
-        WindowsShipmentVerifier().bind_and_verify(request),
+        _verifier(request).bind_and_verify(request),
         install_id="11111111-1111-4111-8111-111111111111",
         dataset_id="22222222-2222-4222-8222-222222222222",
     )
@@ -165,7 +171,7 @@ def test_verifier_rejects_missing_changed_or_extra_installed_bytes(
         (Path(request.app_dir) / "unexpected.dll").write_bytes(b"foreign")
 
     with pytest.raises(LifecycleViolation, match="immutable shipment"):
-        WindowsShipmentVerifier().bind_and_verify(request)
+        _verifier(request).bind_and_verify(request)
 
 
 def test_verifier_rejects_a_manifest_not_bound_by_the_setup_request(tmp_path: Path) -> None:
@@ -173,4 +179,20 @@ def test_verifier_rejects_a_manifest_not_bound_by_the_setup_request(tmp_path: Pa
     manifest.write_text(manifest.read_text(encoding="utf-8") + " ", encoding="utf-8")
 
     with pytest.raises(LifecycleViolation, match="manifest"):
-        WindowsShipmentVerifier().bind_and_verify(replace(request))
+        _verifier(request).bind_and_verify(replace(request))
+
+
+def test_verifier_rejects_a_request_outside_the_bound_program_files_root(tmp_path: Path) -> None:
+    request, _manifest = _request(tmp_path)
+    expected = tmp_path / "Program Files" / "Ticketbox"
+
+    with pytest.raises(LifecycleViolation, match="Program Files"):
+        WindowsShipmentVerifier(expected).bind_and_verify(request)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows known-folder contract")
+def test_native_program_files_binding_is_absolute_and_product_scoped() -> None:
+    root = ticketbox_install_root()
+
+    assert root.is_absolute()
+    assert root.name == "Ticketbox"

@@ -408,6 +408,34 @@ jobs:
             (New-Object System.Text.UTF8Encoding($false))
           )
 
+      - name: Reject writable installer root before materialization
+        shell: powershell
+        working-directory: ${{ github.workspace }}
+        run: |
+          $publishPath = Join-Path $env:GITHUB_WORKSPACE ($env:INSTALLER_PUBLISH_PATH -replace '/', '\')
+          $installer = @(Get-ChildItem -LiteralPath $publishPath -Filter 'Ticketbox-Setup-*.exe' -File)
+          if ($installer.Count -ne 1) { throw "Expected one verified Setup.exe publish artifact." }
+          $nonce = [Guid]::NewGuid().ToString("N")
+          $rejectedRoot = Join-Path $env:RUNNER_TEMP ("ticketbox-rejected-root-" + $nonce)
+          $logPath = Join-Path $env:RUNNER_TEMP ("ticketbox-rejected-root-" + $nonce + ".log")
+          $arguments = @(
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/NORESTART',
+            ("/DIR=" + $rejectedRoot),
+            ("/LOG=" + $logPath)
+          )
+          $process = Start-Process -FilePath $installer[0].FullName -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 7) {
+            throw "Writable /DIR was not rejected by PrepareToInstall: exit=$($process.ExitCode)"
+          }
+          if (Test-Path -LiteralPath $rejectedRoot) {
+            throw "Rejected writable /DIR was materialized before Setup failed."
+          }
+          if (-not (Test-Path -LiteralPath $logPath -PathType Leaf)) {
+            throw "Rejected Setup run did not produce its promised diagnostic log."
+          }
+
       - name: Upload atomic Windows installer publish unit
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

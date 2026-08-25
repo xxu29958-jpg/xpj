@@ -28,8 +28,16 @@ _PRODUCT_VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
 
 
 class WindowsShipmentVerifier:
+    def __init__(self, expected_app_dir: Path) -> None:
+        self._expected_app_dir = expected_app_dir
+
     def bind_and_verify(self, request: InstallRequest) -> InstallRequest:
         app_dir = Path(request.app_dir)
+        if _absolute_path_key(app_dir) != _absolute_path_key(self._expected_app_dir):
+            raise LifecycleViolation(
+                "untrusted_install_root",
+                "installed application root must be the exact Ticketbox Program Files directory",
+            )
         manifest_path = (
             app_dir
             / "releases"
@@ -81,6 +89,13 @@ class WindowsShipmentVerifier:
             schema_min_compatible=str(manifest["product_version"]),
             semantic_revision=str(manifest["min_semantic_revision"]),
         )
+
+
+def _absolute_path_key(path: Path) -> str:
+    value = os.fspath(path)
+    if not os.path.isabs(value):
+        raise LifecycleViolation("untrusted_install_root", "installed application root must be absolute")
+    return os.path.normcase(os.path.normpath(value))
 
 
 def _parse_manifest(payload: bytes, request: InstallRequest) -> dict[str, object]:

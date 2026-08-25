@@ -121,6 +121,29 @@ def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> 
         assert token not in text
 
 
+def test_setup_refuses_every_install_root_except_exact_program_files() -> None:
+    text = ISS.read_text(encoding="utf-8-sig")
+    prepare = text.split("function PrepareToInstall", 1)[1].split(
+        "function TicketboxMsvcRuntimeIsCurrent", 1
+    )[0]
+
+    assert "DefaultDirName={autopf}\\Ticketbox" in text
+    assert "DisableDirPage=yes" in text
+    assert "UsePreviousAppDir=no" in text
+    assert "TicketboxInstallRootIsExact" in prepare
+    assert "{autopf}\\Ticketbox" in text
+    assert "安装目录必须是受保护的 Program Files" in prepare
+
+
+def test_setup_failure_surfaces_include_the_actual_log_path() -> None:
+    text = ISS.read_text(encoding="utf-8-sig")
+    postinstall = text.split("procedure CurStepChanged", 1)[1]
+
+    assert "ExpandConstant('{log}')" in postinstall
+    assert "安装日志：" in postinstall
+    assert "Log('Ticketbox install failed: ' + Reason)" in text
+
+
 def test_elevated_lifecycle_is_an_installed_onedir_payload() -> None:
     spec = LIFECYCLE_SPEC.read_text(encoding="utf-8")
     installer = ISS.read_text(encoding="utf-8-sig")
@@ -140,14 +163,21 @@ def test_elevated_lifecycle_is_an_installed_onedir_payload() -> None:
 def test_lifecycle_freeze_uses_only_the_exact_pinned_python() -> None:
     build = BUILD_INSTALLER.read_text(encoding="utf-8-sig")
 
-    assert r'build\windows-toolchain\python' in build
-    assert "build_tool_sources.python" in build
-    assert "pythonSource.executable_relative_path" in build
-    assert "pythonSource.executable_sha256" in build
-    assert "pythonSource.runtime_relative_path" in build
-    assert "pythonSource.runtime_sha256" in build
-    assert "$pythonVersion -cne [string]$toolchainConfig.python_version" in build
-    assert "& $lifecyclePython -m venv" in build
+    assert r'build\windows-toolchain' in build
+    assert '("python\\{0}"' in build
+    assert "prepare_windows_build_toolchain.ps1" in build
+    assert "-Component Backend" in build
+    assert "Get-TicketboxFileSetSnapshot $ToolchainRoot $toolchainPaths" in build
+    assert "Enter-TicketboxFileSetReadLocks" in build
+    assert "Pinned lifecycle build toolchain" in build
+    assert "New-TicketboxBackendBuildToolchainProvenance" in build
+    assert '$BuildInputs["lifecycle"]' in build
+    assert "& $venvPython -I -B -m PyInstaller" in build
+    assert "--clean" in build
+    assert "PYINSTALLER_CONFIG_DIR" in build
+    for name in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP"):
+        assert name in build
+    assert "& $lifecyclePython -m venv" not in build
     assert "Get-Command python" not in build
     assert "expectedPythonPrefix" not in build
     assert ".StartsWith($expectedPython" not in build

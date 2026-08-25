@@ -51,7 +51,7 @@ def test_installer_publish_verification_rejects_provenance_byte_mutation(tmp_pat
     provenance.write_text(
         json.dumps(
             {
-                "schema_version": 3,
+                "schema_version": 4,
                 "artifact_type": "ticketbox-windows-installer-inputs",
                 "git": {"commit": "a" * 40},
             }

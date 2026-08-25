@@ -28,6 +28,8 @@ AppName=小票夹
 AppVersion={#AppVersion}
 AppPublisher=Ticketbox
 DefaultDirName={autopf}\Ticketbox
+DisableDirPage=yes
+UsePreviousAppDir=no
 DefaultGroupName=小票夹
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
@@ -95,6 +97,7 @@ procedure TicketboxMarkInstallFailed(const Reason: String);
 begin
   TicketboxInstallFailed := True;
   TicketboxInstallFailureReason := Reason;
+  Log('Ticketbox install failed: ' + Reason);
 end;
 
 function TicketboxJsonString(const Text, Key: String): String;
@@ -185,6 +188,16 @@ begin
   Result := not TicketboxExactResumeMaterialization;
 end;
 
+function TicketboxInstallRootIsExact: Boolean;
+var
+  ActualPath, ExpectedPath: String;
+begin
+  ActualPath := RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{app}')));
+  ExpectedPath := RemoveBackslashUnlessRoot(
+    ExpandFileName(ExpandConstant('{autopf}\Ticketbox')));
+  Result := CompareText(ActualPath, ExpectedPath) = 0;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   BindingPath: String;
@@ -195,6 +208,11 @@ begin
   if not IsWin64 then
   begin
     Result := '小票夹需要 64 位 Windows。';
+    Exit;
+  end;
+  if not TicketboxInstallRootIsExact then
+  begin
+    Result := '安装目录必须是受保护的 Program Files\Ticketbox。';
     Exit;
   end;
   if Length(TicketboxExpectedReleaseManifestSha256) <> 64 then
@@ -369,7 +387,8 @@ begin
       TicketboxMarkInstallFailed(TicketboxResultFailure);
     if TicketboxInstallFailed then
       MsgBox('小票夹安装未完成：' + TicketboxInstallFailureReason + '。' + #13#10 +
-        '请重新运行同一个安装包继续。', mbError, MB_OK)
+        '请重新运行同一个安装包继续。' + #13#10 +
+        '安装日志：' + ExpandConstant('{log}'), mbError, MB_OK)
     else
       MsgBox('小票夹安装完成。' + #13#10 + #13#10 +
         '首次配对码：' + TicketboxPairingCode + #13#10 +
@@ -384,7 +403,8 @@ begin
   begin
     WizardForm.FinishedHeadingLabel.Caption := '小票夹安装未完成';
     WizardForm.FinishedLabel.Caption := TicketboxInstallFailureReason + '。' + #13#10 +
-      '请关闭安装程序，然后重新运行同一个安装包继续。';
+      '请关闭安装程序，然后重新运行同一个安装包继续。' + #13#10 +
+      '安装日志：' + ExpandConstant('{log}');
   end;
 end;
 
