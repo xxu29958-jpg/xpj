@@ -55,7 +55,7 @@ Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; F
 Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
 Source: "..\..\..\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion; Check: TicketboxFreshMaterialization
 Source: "..\..\..\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion onlyifdoesntexist; Check: TicketboxExactResumeMaterialization
-Source: "..\payload\TicketboxLifecycle.exe"; DestDir: "{app}\bin"; DestName: "TicketboxLifecycle.exe"; Flags: ignoreversion
+Source: "..\payload\TicketboxLifecycle\*"; DestDir: "{app}\bin\lifecycle"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\payload\release-manifest.json"; DestDir: "{app}\releases\{#ReleaseId}"; Flags: ignoreversion
 Source: "..\..\..\backend\packaging\ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -67,7 +67,7 @@ Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "Install
 
 [Run]
 Filename: "{app}\bin\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; WorkingDir: "{app}\bin"; StatusMsg: "正在安装 Visual C++ 运行库..."; Flags: runhidden waituntilterminated
-Filename: "{app}\bin\TicketboxLifecycle.exe"; Parameters: "{code:TicketboxLifecycleParams}"; WorkingDir: "{app}\bin"; StatusMsg: "正在完成小票夹首次安装..."; Flags: runhidden waituntilterminated
+Filename: "{app}\bin\lifecycle\TicketboxLifecycle.exe"; Parameters: "{code:TicketboxLifecycleParams}"; WorkingDir: "{app}\bin\lifecycle"; StatusMsg: "正在完成小票夹首次安装..."; Flags: runhidden waituntilterminated
 
 [Code]
 const

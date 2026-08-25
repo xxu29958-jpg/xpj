@@ -81,11 +81,10 @@ def _trusted_unit_file_owner(monkeypatch):
     monkeypatch.setattr(windows_security_native, "file_owner_sid", lambda _path: "S-1-5-32-544")
     monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: "S-1-5-21-9-9-9-1002")
 
-    def create_unit_directory(path: Path, *, code: str) -> None:
-        del code
+    def create_unit_directory(path: Path, **_kwargs) -> None:
         path.mkdir()
 
-    def require_unit_directory(path: Path, *, code: str) -> None:
+    def require_unit_directory(path: Path, *, code: str, **_kwargs) -> None:
         windows_security_native.require_trusted_owner(
             path,
             code=code,
@@ -614,7 +613,12 @@ def test_register_uses_pg_ctl_and_direct_immutable_backend(tmp_path: Path) -> No
         call[0] == "icacls" and "/remove:g" in call and "NT SERVICE\\TicketboxBackend" in call
         for call in runner.calls
     )
-    assert "NT SERVICE\\TicketboxBackend:(R)" in text
+    assert any(
+        call[0] == "icacls"
+        and call[1] == str(active)
+        and f"*{_BACKEND_SERVICE_SID}:(R)" in call
+        for call in runner.calls
+    )
     runtime_env = str(Path(request.data_root) / "app" / ".env")
     assert any(
         call[0] == "icacls"
@@ -624,10 +628,10 @@ def test_register_uses_pg_ctl_and_direct_immutable_backend(tmp_path: Path) -> No
         for call in runner.calls
     )
     assert "operations" in text and "active.json" in text
-    assert any(
+    assert not any(
         call[0] == "icacls"
         and call[1].endswith("operations")
-        and "NT SERVICE\\TicketboxBackend:(OI)(CI)RX" in call
+        and any(part.lower().startswith("/grant") for part in call[2:])
         for call in runner.calls
     )
     bundle.scm.verify(request, "scm")
@@ -710,7 +714,7 @@ def test_owner_claim_uses_database_helper_and_keeps_secret_off_argv(tmp_path: Pa
     }
 
 
-def test_binding_read_acl_grants_backend_service(tmp_path: Path) -> None:
+def test_binding_read_acl_grants_only_the_exact_file_readers(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
     bundle = WindowsAdapterBundle(runner)
@@ -719,10 +723,37 @@ def test_binding_read_acl_grants_backend_service(tmp_path: Path) -> None:
     binding.write_text("{}\n", encoding="utf-8")
     bundle.security.grant_backend_binding_read(binding, request.backend_service_name)
     text = _argv_text(runner.calls)
-    assert str(binding.parent) in text
     assert str(binding) in text
-    assert "NT SERVICE\\TicketboxBackend:(RX)" in text
-    assert "NT SERVICE\\TicketboxBackend:(R)" in text
+    assert str(binding.parent) not in [call[1] for call in runner.calls if len(call) > 1]
+    assert f"*{_BACKEND_SERVICE_SID}:(R)" in text
+    assert "*S-1-5-21-9-9-9-1002:(R)" in text
+
+
+def test_runtime_authority_readers_never_mutate_operation_store_directories(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    machine = Path(request.program_data_root) / "machine"
+    operations = machine / "operations"
+    binding = machine / "installation.json.pending.tmp"
+    active = operations / "active.json"
+    operations.mkdir(parents=True)
+    binding.write_text("{}\n", encoding="utf-8")
+    active.write_text("{}\n", encoding="utf-8")
+
+    assert not hasattr(bundle.security, "grant_backend_runtime_authority_read")
+    bundle.security.grant_backend_binding_read(binding, request.backend_service_name)
+
+    directory_grants = [
+        call
+        for call in runner.calls
+        if call[0].lower() == "icacls"
+        and call[1] in {str(machine), str(operations)}
+        and any(part.lower().startswith("/grant") for part in call[2:])
+    ]
+    assert directory_grants == []
 
 
 def test_credentials_are_created_only_after_root_acl(tmp_path: Path) -> None:
@@ -850,7 +881,7 @@ def test_exact_retry_reuses_only_already_protected_credentials(
     assert after == before
 
 
-def test_operation_root_creation_does_not_grant_the_ordinary_shell_user(
+def test_operation_root_policy_grants_the_shell_only_non_inheriting_traverse(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -863,10 +894,13 @@ def test_operation_root_creation_does_not_grant_the_ordinary_shell_user(
 
     bundle.security.apply(request, "acl")
 
-    assert shell_sid not in windows_security_native._LIFECYCLE_DIRECTORY_SDDL
-    assert windows_security_native._LIFECYCLE_DIRECTORY_SDDL.startswith("O:BA")
-    assert ";;;SY)" in windows_security_native._LIFECYCLE_DIRECTORY_SDDL
-    assert ";;;BA)" in windows_security_native._LIFECYCLE_DIRECTORY_SDDL
+    policy = windows_security_native._lifecycle_directory_sddl(_BACKEND_SERVICE_SID, shell_sid)
+    assert policy.startswith("O:BA")
+    assert ";;;SY)" in policy
+    assert ";;;BA)" in policy
+    assert f"(A;;0x00000020;;;{shell_sid})" in policy
+    assert f"(A;;0x000000a0;;;{_BACKEND_SERVICE_SID})" in policy
+    assert f"OICI;0x00000020;;;{shell_sid}" not in policy
     assert shell_sid not in _argv_text(runner.calls)
 
 

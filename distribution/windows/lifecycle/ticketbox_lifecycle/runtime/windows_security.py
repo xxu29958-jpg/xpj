@@ -20,6 +20,7 @@ class WindowsSecurityAdapter:
     def prepare_operation_store(self, request: InstallRequest) -> None:
         native.require_windows()
         require_closed_data_root(request)
+        backend_reader_sid, interactive_reader_sid = self._operation_store_reader_sids(request)
         paths = (
             Path(request.program_data_root),
             layout.machine_root(request),
@@ -28,9 +29,19 @@ class WindowsSecurityAdapter:
         for path in paths:
             native.reject_reparse_components(path)
             if os.path.lexists(path):
-                native.require_protected_directory(path, code="operation_store_untrusted")
+                native.require_protected_directory(
+                    path,
+                    backend_reader_sid=backend_reader_sid,
+                    interactive_reader_sid=interactive_reader_sid,
+                    code="operation_store_untrusted",
+                )
             else:
-                native.create_protected_directory(path, code="operation_store_create_failed")
+                native.create_protected_directory(
+                    path,
+                    backend_reader_sid=backend_reader_sid,
+                    interactive_reader_sid=interactive_reader_sid,
+                    code="operation_store_create_failed",
+                )
         pending = paths[-1] / layout.ACTIVE_OPERATION_TEMP_NAME
         if os.path.lexists(pending):
             _require_active_temp(pending, code="operation_store_orphan_untrusted")
@@ -45,6 +56,7 @@ class WindowsSecurityAdapter:
     def require_fresh_inputs(self, request: InstallRequest) -> None:
         native.require_windows()
         require_closed_data_root(request)
+        backend_reader_sid, interactive_reader_sid = self._operation_store_reader_sids(request)
         root = Path(request.program_data_root)
         machine = layout.machine_root(request)
         operations = layout.active_operation(request).parent
@@ -56,13 +68,23 @@ class WindowsSecurityAdapter:
         for parent, expected_child in expected_children:
             if not os.path.lexists(parent):
                 return
-            native.require_protected_directory(parent, code="operation_store_untrusted")
+            native.require_protected_directory(
+                parent,
+                backend_reader_sid=backend_reader_sid,
+                interactive_reader_sid=interactive_reader_sid,
+                code="operation_store_untrusted",
+            )
             entries = list(parent.iterdir())
             if any(entry != expected_child for entry in entries):
                 _raise_preexisting_mutable_state()
             if not os.path.lexists(expected_child):
                 return
-        native.require_protected_directory(operations, code="operation_store_untrusted")
+        native.require_protected_directory(
+            operations,
+            backend_reader_sid=backend_reader_sid,
+            interactive_reader_sid=interactive_reader_sid,
+            code="operation_store_untrusted",
+        )
         entries = list(operations.iterdir())
         pending = operations / layout.ACTIVE_OPERATION_TEMP_NAME
         if not entries:
@@ -134,29 +156,21 @@ class WindowsSecurityAdapter:
 
     def grant_backend_binding_read(self, binding_path: Path, service_name: str) -> None:
         native.require_windows()
-        machine = binding_path.parent
-        for path, grant, code in (
-            (machine, f"NT SERVICE\\{service_name}:(RX)", "binding_dir_acl_failed"),
-            (binding_path, f"NT SERVICE\\{service_name}:(R)", "binding_acl_failed"),
-        ):
-            require_ok(
-                self._runner.run(["icacls", str(path), "/grant", grant]),
-                code=code,
-            )
         interactive_sid = native.shell_user_sid()
         if not interactive_sid:
             raise LifecycleError(
                 "binding_reader_unavailable",
                 "cannot identify the interactive Windows user for installation.json",
             )
-        for path, grant, code in (
-            (machine, f"*{interactive_sid}:(RX)", "binding_dir_acl_failed"),
-            (binding_path, f"*{interactive_sid}:(R)", "binding_acl_failed"),
-        ):
-            require_ok(
-                self._runner.run(["icacls", str(path), "/grant", grant]),
-                code=code,
-            )
+        native.protect_file(
+            self._runner,
+            binding_path,
+            extra_grants=(
+                f"*{native.service_sid(self._runner, service_name)}:(R)",
+                f"*{interactive_sid}:(R)",
+            ),
+            code="binding_acl_failed",
+        )
 
     def materialize_initdb_password_file(self, request: InstallRequest) -> Path:
         return credentials.materialize_initdb_password_file(self._runner, request)
@@ -170,25 +184,6 @@ class WindowsSecurityAdapter:
             Path(request.data_root) / "app" / ".env",
             extra_grants=(f"*{native.service_sid(self._runner, request.backend_service_name)}:(R)",),
             code="runtime_env_acl_failed",
-        )
-
-    def grant_backend_runtime_authority_read(self, request: InstallRequest) -> None:
-        active = layout.active_operation(request)
-        for path, access in (
-            (layout.machine_root(request), "(RX)"),
-            (active.parent, "(OI)(CI)RX"),
-        ):
-            require_ok(
-                self._runner.run(
-                    ["icacls", str(path), "/grant", f"NT SERVICE\\{request.backend_service_name}:{access}"]
-                ),
-                code="runtime_authority_dir_acl_failed",
-            )
-        require_ok(
-            self._runner.run(
-                ["icacls", str(active), "/grant", f"NT SERVICE\\{request.backend_service_name}:(R)"]
-            ),
-            code="runtime_authority_acl_failed",
         )
 
     def configure_backend_runtime_acl(self, request: InstallRequest) -> None:
@@ -240,7 +235,13 @@ class WindowsSecurityAdapter:
         text = f"{completed.stdout}\n{completed.stderr}".upper()
         if completed.returncode != 0:
             raise LifecycleError("runtime_authority_acl_verify_failed", "icacls could not read active.json")
-        if f"NT SERVICE\\{request.backend_service_name}".upper() not in text:
+        if not any(
+            marker in text
+            for marker in (
+                service_sid.upper(),
+                f"NT SERVICE\\{request.backend_service_name}".upper(),
+            )
+        ):
             raise LifecycleError(
                 "runtime_authority_acl_missing_backend",
                 "active.json is not readable by TicketboxBackend",
@@ -313,6 +314,16 @@ class WindowsSecurityAdapter:
 
     def owner_bootstrap_secret(self, request: InstallRequest) -> str:
         return credentials.owner_bootstrap_secret(request)
+
+    def _operation_store_reader_sids(self, request: InstallRequest) -> tuple[str, str]:
+        backend_reader_sid = native.service_sid(self._runner, request.backend_service_name)
+        interactive_reader_sid = native.shell_user_sid()
+        if not interactive_reader_sid:
+            raise LifecycleError(
+                "operation_store_reader_unavailable",
+                "cannot identify the interactive Windows user for the operation store",
+            )
+        return backend_reader_sid, interactive_reader_sid
 
 
 def _require_active_temp(path: Path, *, code: str) -> None:

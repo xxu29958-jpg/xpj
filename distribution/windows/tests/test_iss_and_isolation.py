@@ -6,6 +6,8 @@ WINDOWS = Path(__file__).resolve().parents[1]
 REPO = Path(__file__).resolve().parents[3]
 ISS = WINDOWS / "installer" / "ticketbox.iss"
 LIFECYCLE = WINDOWS / "lifecycle"
+LIFECYCLE_SPEC = WINDOWS / "build" / "ticketbox-lifecycle.spec"
+INSTALLED_MANIFEST = WINDOWS / "build" / "installed_payload_manifest.ps1"
 
 
 FORBIDDEN_TOKENS = (
@@ -116,6 +118,22 @@ def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> 
     assert "TicketboxEnsureMsvcRuntime" not in prepare
     for token in FORBIDDEN_TOKENS:
         assert token not in text
+
+
+def test_elevated_lifecycle_is_an_installed_onedir_payload() -> None:
+    spec = LIFECYCLE_SPEC.read_text(encoding="utf-8")
+    installer = ISS.read_text(encoding="utf-8-sig")
+    manifest = INSTALLED_MANIFEST.read_text(encoding="utf-8-sig")
+
+    assert "exclude_binaries=True" in spec
+    assert "COLLECT(" in spec
+    assert "PyInstaller onefile" not in spec
+    assert 'Source: "..\\payload\\TicketboxLifecycle\\*"' in installer
+    assert "recursesubdirs createallsubdirs" in installer
+    assert 'Filename: "{app}\\bin\\lifecycle\\TicketboxLifecycle.exe"' in installer
+    assert 'WorkingDir: "{app}\\bin\\lifecycle"' in installer
+    assert '"bin/lifecycle"' in manifest
+    assert 'Source = Join-Path $StagedPayloadDir "TicketboxLifecycle.exe"' not in manifest
 
 
 def test_old_fresh_iss_is_not_the_shipped_installer() -> None:

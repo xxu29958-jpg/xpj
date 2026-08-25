@@ -1,5 +1,5 @@
 # -*- mode: python -*-
-# PyInstaller onefile spec：TicketboxLifecycle coordinator CLI。
+# PyInstaller onedir spec：elevated coordinator never extracts code into a writable temp root。
 # 这是 vNext 安装器 [Run] 调用的已安装 coordinator 入口（install / resume / inspect）。
 import os
 
@@ -24,9 +24,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="TicketboxLifecycle",
     debug=False,
     bootloader_ignore_signals=False,
@@ -35,4 +34,12 @@ exe = EXE(
     runtime_tmpdir=None,
     console=True,
     icon=icon_path,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="TicketboxLifecycle",
 )

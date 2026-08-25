@@ -29,7 +29,7 @@ def _request(tmp_path: Path, *, release_id: str = "1.2.0") -> tuple[InstallReque
     backend = release / "backend" / "ticketbox-backend.exe"
     manager = release / "manager" / "ticketbox-manager.exe"
     postgres = app / "postgresql" / "bin" / "postgres.exe"
-    lifecycle = app / "bin" / "TicketboxLifecycle.exe"
+    lifecycle = app / "bin" / "lifecycle" / "TicketboxLifecycle.exe"
     for path, payload in (
         (backend, b"backend"),
         (manager, b"manager"),
@@ -42,7 +42,7 @@ def _request(tmp_path: Path, *, release_id: str = "1.2.0") -> tuple[InstallReque
         _record(app, f"releases/{release_id}/backend/ticketbox-backend.exe"),
         _record(app, f"releases/{release_id}/manager/ticketbox-manager.exe"),
         _record(app, "postgresql/bin/postgres.exe"),
-        _record(app, "bin/TicketboxLifecycle.exe"),
+        _record(app, "bin/lifecycle/TicketboxLifecycle.exe"),
     ]
     manifest = {
         "schema": "ticketbox-release-manifest-v1",

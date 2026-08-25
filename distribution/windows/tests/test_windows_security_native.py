@@ -1,11 +1,111 @@
 from __future__ import annotations
 
+import ctypes
 import os
 from pathlib import Path
 
 import pytest
 from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.runtime import windows_security_native as native
+
+
+def _restricted_token_create_error(path: Path) -> int:
+    from ctypes import wintypes
+
+    class SidAndAttributes(ctypes.Structure):
+        _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    kernel.LocalFree.argtypes = [wintypes.HLOCAL]
+    kernel.LocalFree.restype = wintypes.HLOCAL
+    create_file = kernel.CreateFileW
+    create_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    create_file.restype = wintypes.HANDLE
+    open_process_token = advapi.OpenProcessToken
+    open_process_token.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    open_process_token.restype = wintypes.BOOL
+    advapi.ImpersonateLoggedOnUser.argtypes = [wintypes.HANDLE]
+    advapi.ImpersonateLoggedOnUser.restype = wintypes.BOOL
+    advapi.RevertToSelf.restype = wintypes.BOOL
+    token = wintypes.HANDLE()
+    restricted = wintypes.HANDLE()
+    administrators = ctypes.c_void_p()
+    convert_sid = advapi.ConvertStringSidToSidW
+    convert_sid.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p)]
+    convert_sid.restype = wintypes.BOOL
+    create_restricted = advapi.CreateRestrictedToken
+    create_restricted.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(SidAndAttributes),
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    create_restricted.restype = wintypes.BOOL
+    if not open_process_token(kernel.GetCurrentProcess(), 0x000E, ctypes.byref(token)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if not convert_sid(native.ADMINISTRATORS_SID, ctypes.byref(administrators)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        disabled = SidAndAttributes(administrators, 0)
+        if not create_restricted(
+            token,
+            0x00000001,
+            1,
+            ctypes.byref(disabled),
+            0,
+            None,
+            0,
+            None,
+            ctypes.byref(restricted),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if not advapi.ImpersonateLoggedOnUser(restricted):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            ctypes.set_last_error(0)
+            handle = create_file(
+                str(path),
+                0x40000000,
+                0x00000007,
+                None,
+                1,
+                0x00000080,
+                None,
+            )
+            if handle != wintypes.HANDLE(-1).value:
+                kernel.CloseHandle(handle)
+                return 0
+            return ctypes.get_last_error()
+        finally:
+            if not advapi.RevertToSelf():
+                raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        if restricted:
+            kernel.CloseHandle(restricted)
+        if administrators:
+            kernel.LocalFree(administrators)
+        kernel.CloseHandle(token)
 
 
 def test_protected_directory_rejects_untrusted_owner_before_acl_admission(
@@ -24,7 +124,12 @@ def test_protected_directory_rejects_untrusted_owner_before_acl_admission(
     monkeypatch.setattr(native, "_directory_security_sddl", read_acl)
 
     with pytest.raises(LifecycleViolation, match="untrusted lifecycle directory") as caught:
-        native.require_protected_directory(path, code="operation_store_untrusted")
+        native.require_protected_directory(
+            path,
+            backend_reader_sid="S-1-5-80-111-222-333-444-555",
+            interactive_reader_sid="S-1-5-21-9-9-9-1002",
+            code="operation_store_untrusted",
+        )
 
     assert caught.value.code == "operation_store_untrusted"
     assert acl_read["called"] is False
@@ -38,10 +143,15 @@ def test_protected_directory_requires_the_exact_lifecycle_dacl(
     path.mkdir()
     expected = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
     monkeypatch.setattr(native, "file_owner_sid", lambda _path: native.ADMINISTRATORS_SID)
-    monkeypatch.setattr(native, "_canonical_lifecycle_directory_sddl", lambda: expected)
+    monkeypatch.setattr(native, "_canonical_lifecycle_directory_sddl", lambda *_sids: expected)
     monkeypatch.setattr(native, "_directory_security_sddl", lambda _path: expected)
 
-    native.require_protected_directory(path, code="operation_store_untrusted")
+    native.require_protected_directory(
+        path,
+        backend_reader_sid="S-1-5-80-111-222-333-444-555",
+        interactive_reader_sid="S-1-5-21-9-9-9-1002",
+        code="operation_store_untrusted",
+    )
 
     monkeypatch.setattr(
         native,
@@ -49,12 +159,52 @@ def test_protected_directory_requires_the_exact_lifecycle_dacl(
         lambda _path: expected + "(A;OICI;FA;;;S-1-5-21-9-9-9-1002)",
     )
     with pytest.raises(LifecycleViolation, match="untrusted lifecycle directory"):
-        native.require_protected_directory(path, code="operation_store_untrusted")
+        native.require_protected_directory(
+            path,
+            backend_reader_sid="S-1-5-80-111-222-333-444-555",
+            interactive_reader_sid="S-1-5-21-9-9-9-1002",
+            code="operation_store_untrusted",
+        )
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows SDDL conversion")
 def test_lifecycle_directory_sddl_is_valid_and_canonical() -> None:
-    assert native._LIFECYCLE_DIRECTORY_SDDL.startswith("O:BA")
-    assert native._canonical_lifecycle_directory_sddl() == (
+    backend_sid = "S-1-5-80-2773621439-1206139620-3556766058-292034643-3006528458"
+    interactive_sid = native.shell_user_sid()
+    assert interactive_sid is not None
+    assert native._canonical_lifecycle_directory_sddl(backend_sid, interactive_sid) == (
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+        f"(A;;WPLO;;;{backend_sid})(A;;WP;;;{interactive_sid})"
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows directory security contract")
+def test_create_protected_directory_applies_the_exact_reader_policy(tmp_path: Path) -> None:
+    if not ctypes.windll.shell32.IsUserAnAdmin():
+        if os.environ.get("CI"):
+            pytest.fail("Windows native security lane must run elevated")
+        pytest.skip("production CreateDirectoryW contract requires an elevated token")
+    backend_sid = "S-1-5-80-2773621439-1206139620-3556766058-292034643-3006528458"
+    interactive_sid = native.shell_user_sid()
+    assert interactive_sid is not None
+    path = tmp_path / "protected-operation-root"
+
+    native.create_protected_directory(
+        path,
+        backend_reader_sid=backend_sid,
+        interactive_reader_sid=interactive_sid,
+        code="operation_store_create_failed",
+    )
+    native.require_protected_directory(
+        path,
+        backend_reader_sid=backend_sid,
+        interactive_reader_sid=interactive_sid,
+        code="operation_store_untrusted",
+    )
+
+    assert native.file_owner_sid(path) in {
+        native.ADMINISTRATORS_SID,
+        native.SYSTEM_SID,
+    }
+    assert _restricted_token_create_error(path / "ordinary-user-write.txt") == 5
+    assert not (path / "ordinary-user-write.txt").exists()

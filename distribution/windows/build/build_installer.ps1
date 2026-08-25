@@ -255,7 +255,7 @@ $BuildInputs = [ordered]@{
     }
 }
 
-# ===== TicketboxLifecycle.exe（pinned lock 的 PyInstaller onefile）=====
+# ===== TicketboxLifecycle onedir（elevated code only runs from installed Program Files）=====
 $pythonCommand = Get-Command python -ErrorAction Stop
 $pythonVersionText = (& $pythonCommand.Source --version 2>&1) -join " "
 $expectedPythonPrefix = "Python " + (([string]$toolchainConfig.python_version) -replace '^(\d+\.\d+)\..*$', '$1')
@@ -264,15 +264,16 @@ if (-not $pythonVersionText.StartsWith($expectedPythonPrefix)) {
 }
 $lifecycleVenv = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-venv-{0}-{1}" -f $PID, [Guid]::NewGuid().ToString("N"))
 $lifecycleWork = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-work-{0}" -f $PID)
-$lifecycleExe = Join-Path $StagedPayloadDir "TicketboxLifecycle.exe"
+$lifecyclePayloadDir = Join-Path $StagedPayloadDir "TicketboxLifecycle"
+$lifecycleExe = Join-Path $lifecyclePayloadDir "TicketboxLifecycle.exe"
 try {
     & $pythonCommand.Source -m venv $lifecycleVenv
     if ($LASTEXITCODE -ne 0) { throw "lifecycle venv 创建失败（exit=$LASTEXITCODE）。" }
     $venvPython = Join-Path $lifecycleVenv "Scripts\python.exe"
     & $venvPython -m pip install --quiet --require-hashes -r (Join-Path $StagedBackendRoot "requirements-build.lock")
     if ($LASTEXITCODE -ne 0) { throw "lifecycle 构建依赖安装失败（exit=$LASTEXITCODE）。" }
-    if (Test-Path -LiteralPath $lifecycleExe) {
-        Remove-Item -LiteralPath $lifecycleExe -Force
+    if (Test-Path -LiteralPath $lifecyclePayloadDir) {
+        Remove-Item -LiteralPath $lifecyclePayloadDir -Recurse -Force
     }
     & (Join-Path $lifecycleVenv "Scripts\pyinstaller.exe") `
         --noconfirm `

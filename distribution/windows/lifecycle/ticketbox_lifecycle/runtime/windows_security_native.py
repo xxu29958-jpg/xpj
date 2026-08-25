@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 from functools import lru_cache
 from pathlib import Path
@@ -11,7 +12,9 @@ from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
 ADMINISTRATORS_SID = "S-1-5-32-544"
 SYSTEM_SID = "S-1-5-18"
 _TRUSTED_OWNER_SIDS = frozenset({ADMINISTRATORS_SID, SYSTEM_SID})
-_LIFECYCLE_DIRECTORY_SDDL = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+_LIFECYCLE_DIRECTORY_BASE_SDDL = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+_SERVICE_SID_PATTERN = re.compile(r"S-1-5-80-(?:[0-9]+-){4}[0-9]+\Z")
+_SID_PATTERN = re.compile(r"S-[0-9]+(?:-[0-9]+)+\Z")
 _DACL_INFORMATION = 0x00000004
 _BROAD_READER_MARKERS = (
     "BUILTIN\\USERS",
@@ -53,7 +56,13 @@ def reject_reparse_components(path: Path) -> None:
         cursor = parent
 
 
-def create_protected_directory(path: Path, *, code: str) -> None:
+def create_protected_directory(
+    path: Path,
+    *,
+    backend_reader_sid: str,
+    interactive_reader_sid: str,
+    code: str,
+) -> None:
     import ctypes
     from ctypes import wintypes
 
@@ -81,7 +90,8 @@ def create_protected_directory(path: Path, *, code: str) -> None:
     create.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(SecurityAttributes)]
     create.restype = wintypes.BOOL
     descriptor = ctypes.c_void_p()
-    if not convert(_LIFECYCLE_DIRECTORY_SDDL, 1, ctypes.byref(descriptor), None):
+    policy_sddl = _lifecycle_directory_sddl(backend_reader_sid, interactive_reader_sid)
+    if not convert(policy_sddl, 1, ctypes.byref(descriptor), None):
         raise LifecycleError(code, "cannot build the lifecycle directory security descriptor")
     attributes = SecurityAttributes(
         ctypes.sizeof(SecurityAttributes),
@@ -90,18 +100,34 @@ def create_protected_directory(path: Path, *, code: str) -> None:
     )
     try:
         if create(str(path), ctypes.byref(attributes)):
-            require_protected_directory(path, code=code)
+            require_protected_directory(
+                path,
+                backend_reader_sid=backend_reader_sid,
+                interactive_reader_sid=interactive_reader_sid,
+                code=code,
+            )
             return
         error = ctypes.get_last_error()
         if error == 183:
-            require_protected_directory(path, code=code)
+            require_protected_directory(
+                path,
+                backend_reader_sid=backend_reader_sid,
+                interactive_reader_sid=interactive_reader_sid,
+                code=code,
+            )
             return
         raise LifecycleError(code, f"CreateDirectoryW failed for {path.name}: {error}")
     finally:
         kernel.LocalFree(descriptor)
 
 
-def require_protected_directory(path: Path, *, code: str) -> None:
+def require_protected_directory(
+    path: Path,
+    *,
+    backend_reader_sid: str,
+    interactive_reader_sid: str,
+    code: str,
+) -> None:
     reject_reparse_components(path)
     if not path.is_dir():
         raise LifecycleViolation(code, f"lifecycle path is not a directory: {path}")
@@ -114,12 +140,30 @@ def require_protected_directory(path: Path, *, code: str) -> None:
         observed = _directory_security_sddl(path)
     except OSError as exc:
         raise LifecycleViolation(code, f"cannot inspect lifecycle directory: {path}") from exc
-    if observed != _canonical_lifecycle_directory_sddl():
+    if observed != _canonical_lifecycle_directory_sddl(
+        backend_reader_sid,
+        interactive_reader_sid,
+    ):
         raise LifecycleViolation(code, f"untrusted lifecycle directory: {path}")
 
 
-@lru_cache(maxsize=1)
-def _canonical_lifecycle_directory_sddl() -> str:
+def _lifecycle_directory_sddl(backend_reader_sid: str, interactive_reader_sid: str) -> str:
+    if _SERVICE_SID_PATTERN.fullmatch(backend_reader_sid) is None:
+        raise LifecycleViolation("service_sid_invalid", "backend service SID is not canonical")
+    if _SID_PATTERN.fullmatch(interactive_reader_sid) is None:
+        raise LifecycleViolation("interactive_sid_invalid", "interactive user SID is not canonical")
+    return (
+        _LIFECYCLE_DIRECTORY_BASE_SDDL
+        + f"(A;;0x000000a0;;;{backend_reader_sid})"
+        + f"(A;;0x00000020;;;{interactive_reader_sid})"
+    )
+
+
+@lru_cache(maxsize=8)
+def _canonical_lifecycle_directory_sddl(
+    backend_reader_sid: str,
+    interactive_reader_sid: str,
+) -> str:
     import ctypes
     from ctypes import wintypes
 
@@ -134,7 +178,8 @@ def _canonical_lifecycle_directory_sddl() -> str:
     ]
     convert.restype = wintypes.BOOL
     descriptor = ctypes.c_void_p()
-    if not convert(_LIFECYCLE_DIRECTORY_SDDL, 1, ctypes.byref(descriptor), None):
+    policy_sddl = _lifecycle_directory_sddl(backend_reader_sid, interactive_reader_sid)
+    if not convert(policy_sddl, 1, ctypes.byref(descriptor), None):
         raise OSError(ctypes.get_last_error(), "cannot canonicalize lifecycle directory SDDL")
     try:
         return _security_descriptor_sddl(descriptor)

@@ -212,10 +212,6 @@ class FilesystemStores:
         self._machine_root.mkdir(parents=True, exist_ok=True)
         tmp_path = _write_temp_json(self._binding_path, asdict(binding))
         try:
-            self._adapters.security.protect_machine_json(
-                tmp_path,
-                binding.backend_service_name,
-            )
             self._adapters.security.grant_backend_binding_read(
                 tmp_path,
                 binding.backend_service_name,

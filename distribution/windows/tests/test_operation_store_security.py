@@ -38,12 +38,13 @@ class RecordingRunner:
 @pytest.fixture(autouse=True)
 def _unit_directory_security(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(native, "file_owner_sid", lambda _path: native.ADMINISTRATORS_SID)
+    monkeypatch.setattr(native, "service_sid", lambda _runner, _name: "S-1-5-80-111-222-333-444-555")
+    monkeypatch.setattr(native, "shell_user_sid", lambda: "S-1-5-21-9-9-9-1002")
 
-    def create_directory(path: Path, *, code: str) -> None:
-        del code
+    def create_directory(path: Path, **_kwargs) -> None:
         path.mkdir()
 
-    def require_directory(path: Path, *, code: str) -> None:
+    def require_directory(path: Path, *, code: str, **_kwargs) -> None:
         native.require_trusted_owner(
             path,
             code=code,

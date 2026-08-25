@@ -128,7 +128,6 @@ class WindowsScmAdapter:
             code="backend_depend_failed",
         )
         self._security.seal_pgdata_acl(request)
-        self._security.grant_backend_runtime_authority_read(request)
         self._security.protect_runtime_env(request)
         return "registered"
 

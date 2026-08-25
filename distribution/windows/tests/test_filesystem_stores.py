@@ -150,7 +150,7 @@ def test_committed_history_rejects_an_unsafe_operation_key(tmp_path: Path) -> No
         stores.read_committed("../foreign")
 
 
-def test_binding_publication_protects_before_grant_and_reverifies(tmp_path: Path) -> None:
+def test_binding_publication_sets_exact_readers_before_replace_and_reverifies(tmp_path: Path) -> None:
     security = RecordingSecurity()
     stores = _stores(tmp_path, security)
 
@@ -161,7 +161,6 @@ def test_binding_publication_protects_before_grant_and_reverifies(tmp_path: Path
     assert temp_path.parent == path.parent
     assert temp_path.name.startswith("installation.json") and temp_path.name.endswith(".tmp")
     assert security.calls == [
-        ("protect", temp_path, "TicketboxBackend"),
         ("grant-binding", temp_path, "TicketboxBackend"),
         ("verify", temp_path, "TicketboxBackend"),
         ("verify", path, "TicketboxBackend"),

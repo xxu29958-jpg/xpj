@@ -62,6 +62,9 @@ function New-TicketboxInstalledPayloadManifest {
     Add-TicketboxInstalledPayloadTree $records `
         (Join-Path $StagedBackendRoot "packaging\vendor\pg") `
         "postgresql"
+    Add-TicketboxInstalledPayloadTree $records `
+        (Join-Path $StagedPayloadDir "TicketboxLifecycle") `
+        "bin/lifecycle"
     foreach ($file in @(
         @{
             Source = Join-Path $StagedBackendRoot "packaging\vendor\vc-runtime\vc_redist.x64.exe"
@@ -70,10 +73,6 @@ function New-TicketboxInstalledPayloadManifest {
         @{
             Source = Join-Path $StagedBackendRoot "packaging\vendor\shawl\shawl.exe"
             Destination = "bin/shawl.exe"
-        },
-        @{
-            Source = Join-Path $StagedPayloadDir "TicketboxLifecycle.exe"
-            Destination = "bin/TicketboxLifecycle.exe"
         },
         @{
             Source = Join-Path $StagedBackendRoot "packaging\ticketbox.ico"
