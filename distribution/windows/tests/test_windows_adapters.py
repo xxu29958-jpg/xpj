@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import (
     expected_membership_probe,
@@ -50,6 +52,9 @@ class RecordingRunner:
             data = Path(recorded[recorded.index("-D") + 1])
             data.mkdir(parents=True, exist_ok=True)
             (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
+            (data / "postgresql.conf").write_text("# initdb\n", encoding="utf-8")
+            (data / "pg_hba.conf").write_text("# initdb\n", encoding="utf-8")
+            (data / "base").mkdir(exist_ok=True)
             return CompletedCommand(recorded, 0, "ok", "")
         if name in {"pg_ctl.exe", "shawl.exe", "sc.exe"}:
             return self._complete_scm(name, recorded)
@@ -228,6 +233,53 @@ def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(tmp_path: Path) -> Non
     assert b"\x00" not in conf_path.read_bytes()
     assert b"\x00" not in hba_path.read_bytes()
     assert hba_path.read_text(encoding="utf-8").startswith("# Ticketbox fresh-install")
+
+
+def test_initdb_verify_rejects_pg_version_only_directory(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle.files.apply(request, "programdata_root")
+    data = Path(request.data_root) / "pgdata"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
+    with pytest.raises(LifecycleError, match="complete PostgreSQL cluster"):
+        bundle.postgres.verify(request, "postgres_initdb")
+
+
+def test_initdb_retries_incomplete_cluster_instead_of_starting_it(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    data = Path(request.data_root) / "pgdata"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
+    marker = data / "half-written"
+    marker.write_text("crash", encoding="utf-8")
+    assert bundle.postgres.apply(request, "postgres_initdb") == "initialized"
+    assert not marker.exists()
+    bundle.postgres.verify(request, "postgres_initdb")
+    assert len([call for call in runner.calls if call[0].endswith("initdb.exe")]) == 1
+    assert (data / "base").is_dir()
+    assert (data / "postgresql.conf").is_file()
+
+
+def test_initdb_skips_complete_cluster_and_still_writes_listen_config(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    data = Path(request.data_root) / "pgdata"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
+    (data / "postgresql.conf").write_text("# leftover\n", encoding="utf-8")
+    (data / "pg_hba.conf").write_text("# leftover\n", encoding="utf-8")
+    (data / "base").mkdir()
+    assert bundle.postgres.apply(request, "postgres_initdb") == "already-present"
+    assert not any(call[0].endswith("initdb.exe") for call in runner.calls)
+    conf = (data / "postgresql.conf").read_text(encoding="utf-8")
+    assert "listen_addresses = '127.0.0.1'" in conf
+    bundle.postgres.verify(request, "postgres_initdb")
 
 
 def test_register_uses_pg_ctl_local_service_sid_and_stable_launcher(tmp_path: Path) -> None:

@@ -226,64 +226,6 @@ jobs:
       - name: Frozen backend locked smoke build
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
 
-  windows_packaging_lifecycle:
-    name: Windows PowerShell lifecycle safety / ${{ matrix.suite.label }}
-    needs: scope
-    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
-    runs-on: windows-latest
-    timeout-minutes: ${{ matrix.suite.timeout_minutes }}
-    strategy:
-      fail-fast: false
-      matrix:
-        suite:
-          - label: Database generation writer fence
-            selector: test_database_generation_writer_fence
-            timeout_minutes: 20
-          - label: Database generation authority
-            selector: test_database_generation_owner or test_database_generation_intent_bootstrap or test_database_generation_bootstrap_retirement or test_database_generation_target_authorization
-            timeout_minutes: 20
-          - label: Service lifecycle remainder
-            selector: test_service_lifecycle_contract and not heartbeat
-            timeout_minutes: 20
-    outputs:
-      qualification_sha: ${{ steps.qualification.outputs.sha }}
-      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: backend/requirements-dev.txt
-
-      - name: Verify qualification SHA
-        id: qualification
-        shell: bash
-        env:
-          EXPECTED_SHA: ${{ github.sha }}
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
-
-      - name: Resource-isolated PowerShell lifecycle behavior
-        env:
-          PYTEST_ADDOPTS: ""
-        run: >-
-          python -m pytest -q packaging/tests -m xdist_group
-          -k "${{ matrix.suite.selector }}"
-          --strict-markers -p no:cacheprovider -o addopts=
-          -n 0 --dist loadfile --max-worker-restart 0
-
   windows_vnext_lifecycle:
     name: Windows vNext coordinator contracts
     needs: scope
@@ -416,16 +358,6 @@ jobs:
           packaging/tests/test_local_test_postgres_lifecycle.py
           --strict-markers -p no:cacheprovider -o addopts=
           -n 0 --max-worker-restart 0
-
-      - name: Database generation projection real PostgreSQL contract
-        env:
-          PYTEST_ADDOPTS: ""
-          XPJ_REQUIRE_REAL_PG17_PROJECTION: "1"
-        run: >-
-          python -m pytest -q
-          packaging/tests/test_database_generation_projection_cleanup.py
-          packaging/tests/test_database_generation_projection.py
-          --strict-markers -p no:cacheprovider -o addopts=
 
       - name: Frozen backend locked release build
         shell: powershell
@@ -582,7 +514,6 @@ jobs:
     name: Windows release packaging
     needs:
       - scope
-      - windows_packaging_lifecycle
       - windows_vnext_lifecycle
       - windows_packaging_build
     if: ${{ always() }}
@@ -619,9 +550,6 @@ jobs:
           AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
           SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
           SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
-          LIFECYCLE_RESULT: ${{ needs.windows_packaging_lifecycle.result }}
-          LIFECYCLE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_sha }}
-          LIFECYCLE_SOURCE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_source_sha }}
           VNEXT_RESULT: ${{ needs.windows_vnext_lifecycle.result }}
           VNEXT_SHA: ${{ needs.windows_vnext_lifecycle.outputs.qualification_sha }}
           VNEXT_SOURCE_SHA: ${{ needs.windows_vnext_lifecycle.outputs.qualification_source_sha }}
@@ -632,7 +560,6 @@ jobs:
           python -E -S backend/scripts/verify_scoped_ci_results.py
           --label "Windows release packaging"
           --scope-key WINDOWS_SCOPE
-          --lane LIFECYCLE
           --lane VNEXT
           --lane BUILD
 

@@ -214,7 +214,7 @@ def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> Non
 def test_helper_phase_budget_rejects_unknown_action() -> None:
     release = _release_config()
 
-    with pytest.raises(InstallationConfigError, match="????????"):
+    with pytest.raises(InstallationConfigError, match="不支持的服务操作：pause"):
         release.helper_action_phase_budget_seconds("pause")
 
 

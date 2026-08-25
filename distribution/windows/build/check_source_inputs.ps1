@@ -25,6 +25,9 @@ foreach ($token in @(
     if ($text.Contains($token)) { throw "ISS still names retired owner $token" }
 }
 if ($text -notmatch 'PrepareToInstall') { throw 'ISS missing PrepareToInstall' }
+if ($text -notmatch 'TicketboxActiveOperationIsResumable') { throw 'ISS must allow same-operation retry when active.json is resumable' }
+if ($text -notmatch 'Utf8Encode\(Payload\)') { throw 'ISS must write the lifecycle request as UTF-8' }
+if ($text.Contains('AnsiString(Payload)')) { throw 'ISS must not ANSI-narrow the lifecycle request JSON' }
 if ($text -notmatch 'TicketboxLifecycle.exe') { throw 'ISS must invoke TicketboxLifecycle.exe' }
 if ($text -notmatch '(?m)^\s*\[Run\]\s*$') { throw 'ISS must call the installed coordinator from [Run] after complete [Files]' }
 if ($text -match 'AfterInstall:\s*TicketboxProvision') { throw 'ISS must not mutate from a [Files] AfterInstall callback' }

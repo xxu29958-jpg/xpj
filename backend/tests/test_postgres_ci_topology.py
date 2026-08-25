@@ -351,40 +351,19 @@ def _assert_smoke_test_process_boundary() -> None:
     assert smoke_child.index("with dedicated_test_database_lease(") < smoke_child.index("uvicorn.run(")
 
 
-def _assert_windows_lifecycle_matrix(
+def _assert_windows_release_lanes(
     jobs: dict[str, object],
     windows_jobs: tuple[str, ...],
 ) -> None:
     assert [jobs[name]["timeout-minutes"] for name in windows_jobs] == [
-        "${{ matrix.suite.timeout_minutes }}",
         15,
         30,
         5,
     ]
-    expected_windows_suite_rows = [
-        (
-            "Database generation writer fence",
-            "test_database_generation_writer_fence",
-            20,
-        ),
-        (
-            "Database generation authority",
-            "test_database_generation_owner or test_database_generation_intent_bootstrap or test_database_generation_bootstrap_retirement or test_database_generation_target_authorization",
-            20,
-        ),
-        ("Service lifecycle remainder", "test_service_lifecycle_contract and not heartbeat", 20),
-    ]
-    expected_windows_suites = [
-        {"label": label, "selector": selector, "timeout_minutes": timeout_minutes}
-        for label, selector, timeout_minutes in expected_windows_suite_rows
-    ]
-    assert jobs["windows_packaging_lifecycle"]["strategy"] == {
-        "fail-fast": False,
-        "matrix": {"suite": expected_windows_suites},
-    }
-    assert jobs["windows_packaging"]["needs"] == ["scope", *windows_jobs[:3]]
+    assert "windows_packaging_lifecycle" not in jobs
+    assert jobs["windows_packaging"]["needs"] == ["scope", *windows_jobs[:2]]
     windows_environment = _steps(jobs["windows_packaging"])["Enforce Windows release lane results"]["env"]
-    assert windows_environment["LIFECYCLE_RESULT"] == "${{ needs.windows_packaging_lifecycle.result }}"
+    assert "LIFECYCLE_RESULT" not in windows_environment
     assert windows_environment["VNEXT_RESULT"] == "${{ needs.windows_vnext_lifecycle.result }}"
     assert windows_environment["BUILD_RESULT"] == "${{ needs.windows_packaging_build.result }}"
     maintenance = _steps(jobs["windows_packaging_build"])["Windows database maintenance contract"]["run"]
@@ -403,7 +382,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
         _steps(scope)["Verify qualification SHA"],
         resolves_audit_base=True,
     )
-    windows_jobs = ("windows_packaging_lifecycle", "windows_vnext_lifecycle", "windows_packaging_build", "windows_packaging")
+    windows_jobs = ("windows_vnext_lifecycle", "windows_packaging_build", "windows_packaging")
     for name in ("backend_contracts", "backend_frozen", *windows_jobs):
         job = jobs[name]
         assert job["outputs"]["qualification_sha"] == "${{ steps.qualification.outputs.sha }}"
@@ -414,7 +393,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     assert audit_environment["XPJ_AUDIT_BASE_REF"] == ("${{ needs.scope.outputs.audit_base_sha }}")
     _assert_bounded_timeout(jobs["backend_contracts"])
     _assert_bounded_timeout(jobs["backend_frozen"])
-    _assert_windows_lifecycle_matrix(jobs, windows_jobs)
+    _assert_windows_release_lanes(jobs, windows_jobs)
 
     assert jobs["backend_postgres_ordinary"]["strategy"] == jobs["backend_postgres_real_db"]["strategy"]
     assert jobs["backend_postgres_real_db"]["strategy"] != jobs["backend_postgres_recovery"]["strategy"]

@@ -55,6 +55,24 @@ def test_planner_refuses_when_installation_already_exists() -> None:
         assert exc.code == "already_installed"
 
 
+def test_planner_allows_resume_when_binding_exists_for_the_same_operation() -> None:
+    request = _request()
+    request = InstallRequest(**{**request.__dict__, "command": "resume"})
+    observation = HostObservation(
+        installation_present=True,
+        active_operation_present=True,
+        active_operation_id=request.operation_id,
+        active_phase="release_activated",
+        program_files_present=True,
+        data_root_present=True,
+        pgdata_present=True,
+        pg_service_present=True,
+        backend_service_present=True,
+    )
+    plan = plan_fresh_install(request, observation)
+    assert tuple(step.name for step in plan.steps) == APPLY_SEQUENCE
+
+
 def test_planner_refuses_foreign_pgdata_and_scm() -> None:
     request = _request()
     pgdata = HostObservation(

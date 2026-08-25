@@ -162,26 +162,6 @@ begin
     Result := 'Visual C++ 运行库安装后仍检测不到 VCRUNTIME140.dll。';
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  BindingPath: String;
-begin
-  NeedsRestart := False;
-  Result := '';
-  if not IsWin64 then
-  begin
-    Result := '小票夹需要 64 位 Windows。';
-    exit;
-  end;
-  BindingPath := ExpandConstant('{commonappdata}\Ticketbox\machine\installation.json');
-  if FileExists(BindingPath) then
-  begin
-    Result := '此计算机已有 Ticketbox installation.json。首次安装不会覆盖数据身份。';
-    exit;
-  end;
-  Result := TicketboxEnsureMsvcRuntime(NeedsRestart);
-end;
-
 function TicketboxJsonString(const Text, Key: String): String;
 var
   Needle, Rest: String;
@@ -201,6 +181,51 @@ begin
   Q := Pos('"', Rest);
   if Q > 1 then
     Result := Copy(Rest, 1, Q - 1);
+end;
+
+function TicketboxActiveOperationIsResumable: Boolean;
+var
+  ActivePath: String;
+  Text: AnsiString;
+  Observed: String;
+  Phase: String;
+begin
+  { Architecture 10.1: same-operation retry. Binding may already exist because
+    the coordinator publishes installation.json before health (launcher 图 1).
+    Official PrepareToInstall: empty Result continues; non-empty stops with
+    exit 7 (jrsoftware topic_scriptevents / topic_setupexitcodes).
+    [Run] TicketboxLifecycleParams reuses active.json operation_id as resume. }
+  Result := False;
+  ActivePath := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\active.json');
+  if not LoadStringFromFile(ActivePath, Text) then
+    Exit;
+  Observed := TicketboxJsonString(String(Text), 'operation_id');
+  if Observed = '' then
+    Exit;
+  Phase := TicketboxJsonString(String(Text), 'phase');
+  if Phase = 'committed' then
+    Exit;
+  Result := True;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  BindingPath: String;
+begin
+  NeedsRestart := False;
+  Result := '';
+  if not IsWin64 then
+  begin
+    Result := '小票夹需要 64 位 Windows。';
+    exit;
+  end;
+  BindingPath := ExpandConstant('{commonappdata}\Ticketbox\machine\installation.json');
+  if FileExists(BindingPath) and (not TicketboxActiveOperationIsResumable()) then
+  begin
+    Result := '此计算机已有 Ticketbox installation.json。首次安装不会覆盖数据身份。';
+    exit;
+  end;
+  Result := TicketboxEnsureMsvcRuntime(NeedsRestart);
 end;
 
 function TicketboxResultIsCommitted(const OperationId: String): Boolean;
@@ -257,7 +282,7 @@ begin
     '"postgres_major":17,' +
     '"release_manifest_sha256":"' + ManifestSha + '"}';
   StringChangeEx(Payload, '\', '/', True);
-  Result := SaveStringToFile(RequestPath, AnsiString(Payload), False);
+  Result := SaveStringToFile(RequestPath, Utf8Encode(Payload), False);
 end;
 
 function TicketboxLifecycleParams(Param: String): String;

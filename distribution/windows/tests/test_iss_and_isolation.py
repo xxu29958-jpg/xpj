@@ -52,6 +52,11 @@ def test_iss_prepare_is_readonly_and_provision_fails_setup_without_committed_res
     assert "[Setup]" in text
     assert "PrivilegesRequired=admin" in text
     assert "PrepareToInstall" in text
+    assert "TicketboxActiveOperationIsResumable" in text
+    assert "FileExists(BindingPath) and (not TicketboxActiveOperationIsResumable())" in text
+    assert "Utf8Encode(Payload)" in text
+    assert "AnsiString(Payload)" not in text
+    assert "Command := 'resume'" in text
     assert "TicketboxLifecycle.exe" in text
     assert any(line.strip() == "[Run]" for line in text.splitlines())
     assert "AfterInstall: TicketboxProvision" not in text

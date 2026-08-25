@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -225,8 +226,7 @@ class _PostgresAdapter:
 
     def verify(self, request: InstallRequest, step: str) -> None:
         if step == "postgres_initdb":
-            if not (layout.pgdata(request) / "PG_VERSION").is_file():
-                raise LifecycleError("postcondition_missing", "pgdata has no PG_VERSION")
+            _require_complete_pgdata(layout.pgdata(request))
             return
         if step == "start_postgres":
             self._require_ready(request)
@@ -246,8 +246,10 @@ class _PostgresAdapter:
 
     def _initdb(self, request: InstallRequest) -> str:
         data = layout.pgdata(request)
-        if (data / "PG_VERSION").is_file():
+        if _postgresql_cluster_complete(data):
+            _write_cluster_config(request)
             return "already-present"
+        _discard_incomplete_pgdata(data)
         initdb = layout.tool(request, "initdb.exe")
         if not initdb.is_file():
             raise LifecycleError("missing_platform_binary", "postgresql/bin/initdb.exe is not installed")
@@ -1070,6 +1072,38 @@ def _require_pgdata_exclusive_acl(runner: CommandRunner, request: InstallRequest
         raise LifecycleError("pgdata_acl_leaked_backend", "pgdata grants TicketboxBackend")
     if pg_service not in text:
         raise LifecycleError("pgdata_acl_missing_pg", "pgdata missing TicketboxPg")
+
+
+def _postgresql_cluster_complete(data: Path) -> bool:
+    # Official initdb produces PG_VERSION, postgresql.conf, pg_hba.conf and base/.
+    # PG_VERSION alone can appear before that set is durable.
+    return (
+        (data / "PG_VERSION").is_file()
+        and (data / "postgresql.conf").is_file()
+        and (data / "pg_hba.conf").is_file()
+        and (data / "base").is_dir()
+    )
+
+
+def _require_complete_pgdata(data: Path) -> None:
+    if not _postgresql_cluster_complete(data):
+        raise LifecycleError("postcondition_missing", "pgdata is not a complete PostgreSQL cluster")
+
+
+def _discard_incomplete_pgdata(data: Path) -> None:
+    if not data.exists() or _postgresql_cluster_complete(data):
+        return
+    try:
+        if data.is_dir():
+            if any(data.iterdir()):
+                shutil.rmtree(data)
+            return
+        data.unlink()
+    except OSError as exc:
+        raise LifecycleError(
+            "incomplete_pgdata",
+            "incomplete PostgreSQL cluster could not be discarded for initdb retry",
+        ) from exc
 
 
 def _write_cluster_config(request: InstallRequest) -> None:

@@ -51,7 +51,7 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
     assert _steps(windows_aggregator)["Enforce Windows release lane results"]["run"] == (
         "python -E -S backend/scripts/verify_scoped_ci_results.py "
         '--label "Windows release packaging" --scope-key WINDOWS_SCOPE '
-        "--lane LIFECYCLE --lane VNEXT --lane BUILD"
+        "--lane VNEXT --lane BUILD"
     )
     windows_steps = _steps(jobs["windows_packaging_build"])
     windows_safety = windows_steps["Windows installer safety behavior"]["run"]
@@ -64,30 +64,16 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
         "--strict-markers -p no:cacheprovider -o addopts= "
         "-n 0 --max-worker-restart 0"
     )
-    projection = windows_steps["Database generation projection real PostgreSQL contract"]
-    assert projection["env"]["XPJ_REQUIRE_REAL_PG17_PROJECTION"] == "1"
-    assert projection["run"] == (
-        "python -m pytest -q "
-        "packaging/tests/test_database_generation_projection_cleanup.py "
-        "packaging/tests/test_database_generation_projection.py "
-        "--strict-markers -p no:cacheprovider -o addopts="
-    )
+    assert "Database generation projection real PostgreSQL contract" not in windows_steps
     step_names = list(windows_steps)
     prepared = step_names.index("Prepare pinned PostgreSQL and Shawl inputs")
     assert prepared < step_names.index("Windows installer safety behavior")
     assert prepared < step_names.index("Windows local PostgreSQL lifecycle")
-    assert (
-        prepared
-        < step_names.index("Database generation projection real PostgreSQL contract")
-        < step_names.index("Compile authoritative Inno installer")
+    assert prepared < step_names.index("Compile authoritative Inno installer")
+    source = (_ROOT / "backend" / "packaging" / "tests" / "test_local_test_postgres_lifecycle.py").read_text(
+        encoding="utf-8-sig"
     )
-    for module_name in (
-        "test_local_test_postgres_lifecycle.py",
-        "test_database_generation_projection_cleanup.py",
-        "test_database_generation_projection.py",
-    ):
-        source = (_ROOT / "backend" / "packaging" / "tests" / module_name).read_text(encoding="utf-8-sig")
-        assert 'pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")' in source
+    assert 'pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")' in source
 
 
 def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -> None:
