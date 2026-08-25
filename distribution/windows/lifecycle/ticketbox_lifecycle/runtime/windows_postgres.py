@@ -36,7 +36,11 @@ from ticketbox_lifecycle.runtime.windows_postgres_identity import (
 from ticketbox_lifecycle.runtime.windows_security_native import (
     reject_reparse_components,
 )
-from ticketbox_lifecycle.runtime.windows_services import scm_query_state, start_service
+from ticketbox_lifecycle.runtime.windows_services import (
+    scm_query_state,
+    service_running,
+    start_service,
+)
 from ticketbox_lifecycle.schemas import InstallRequest
 
 _PG_HBA = """\
@@ -67,7 +71,10 @@ class WindowsPostgresAdapter:
             data = layout.pgdata(request)
             _require_complete_pgdata(data, request.postgres_major)
             _require_ticketbox_cluster_config(request)
-            read_system_identifier(self._runner, request)
+            if service_running(self._runner, request.pg_service_name):
+                require_running_ticketbox_cluster(self._runner, request)
+            else:
+                read_system_identifier(self._runner, request)
             return
         if step == "start_postgres":
             self._require_ready(request)
@@ -101,11 +108,18 @@ class WindowsPostgresAdapter:
         data = layout.pgdata(request)
         reject_reparse_components(data)
         if _postgresql_cluster_complete(data, request.postgres_major):
+            if service_running(self._runner, request.pg_service_name):
+                _require_complete_pgdata(data, request.postgres_major)
+                _require_ticketbox_cluster_config(request)
+                require_running_ticketbox_cluster(self._runner, request)
+                return "already-present"
+            self._security.prepare_initdb_directory(request)
             _require_complete_pgdata(data, request.postgres_major)
             self._security.discard_initdb_password_file(request)
             _write_cluster_config(request)
             return "already-present"
         _discard_incomplete_pgdata(data, request.postgres_major)
+        self._security.prepare_initdb_directory(request)
         initdb = layout.tool(request, "initdb.exe")
         if not initdb.is_file():
             raise LifecycleError("missing_platform_binary", "postgresql/bin/initdb.exe is not installed")
@@ -187,10 +201,12 @@ class WindowsPostgresAdapter:
             migrator_password=migrator_password,
             runtime_password=runtime_password,
         ):
-            require_ok(
-                run_psql(self._runner, request, sql, database="postgres"),
-                code="create_role_failed",
-            )
+            completed = run_psql(self._runner, request, sql, database="postgres")
+            if completed.returncode != 0:
+                raise LifecycleError(
+                    "create_role_failed",
+                    "PostgreSQL role provisioning failed",
+                )
         probe = run_psql(self._runner, request, database_exists_sql(), database="postgres")
         if probe.returncode != 0 or "1" not in probe.stdout:
             require_ok(

@@ -5,6 +5,7 @@ from pathlib import Path
 WINDOWS = Path(__file__).resolve().parents[1]
 REPO = Path(__file__).resolve().parents[3]
 ISS = WINDOWS / "installer" / "ticketbox.iss"
+SETUP_LEASE = WINDOWS / "installer" / "setup_lease.iss"
 LIFECYCLE = WINDOWS / "lifecycle"
 LIFECYCLE_SPEC = WINDOWS / "build" / "ticketbox-lifecycle.spec"
 INSTALLED_MANIFEST = WINDOWS / "build" / "installed_payload_manifest.ps1"
@@ -52,6 +53,7 @@ def test_new_tree_does_not_import_old_packaging_owners() -> None:
 
 def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> None:
     text = ISS.read_text(encoding="utf-8-sig")
+    lease = SETUP_LEASE.read_text(encoding="utf-8-sig")
     assert "[Setup]" in text
     assert "PrivilegesRequired=admin" in text
     assert "CloseApplications=no" in text
@@ -115,7 +117,19 @@ def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> 
     assert "LowerCase(GetSHA256OfFile(ManifestPath))" in text
     assert "ManifestSha <> LowerCase(TicketboxExpectedReleaseManifestSha256)" in text
     assert "release_manifest_sha256" in text
-    prepare = text.split("function PrepareToInstall", 1)[1].split("end;", 1)[0]
+    assert "TicketboxAcquireSetupLease" in text
+    assert "TicketboxSetupLeaseHandle" in text
+    assert "#include \"setup_lease.iss\"" in text
+    assert "CreateFileW" in lease
+    assert "SetKernelObjectSecurity" in lease
+    assert "FILE_FLAG_OPEN_REPARSE_POINT" in text + lease
+    prepare = text.split("function PrepareToInstall", 1)[1].split(
+        "function TicketboxMsvcRuntimeIsCurrent", 1
+    )[0]
+    assert "TicketboxAcquireSetupLease" in prepare
+    assert "TicketboxCloseHandle(TicketboxSetupLeaseHandle)" in lease
+    assert "CreateMutexW" not in text + lease
+    assert "SetupMutex=" not in text
     assert "TicketboxEnsureMsvcRuntime" not in prepare
     for token in FORBIDDEN_TOKENS:
         assert token not in text
@@ -138,10 +152,14 @@ def test_setup_refuses_every_install_root_except_exact_program_files() -> None:
 def test_setup_failure_surfaces_include_the_actual_log_path() -> None:
     text = ISS.read_text(encoding="utf-8-sig")
     postinstall = text.split("procedure CurStepChanged", 1)[1]
+    lifecycle_run = next(
+        line for line in text.splitlines() if line.startswith('Filename: "{app}\\bin\\lifecycle')
+    )
 
     assert "ExpandConstant('{log}')" in postinstall
     assert "安装日志：" in postinstall
     assert "Log('Ticketbox install failed: ' + Reason)" in text
+    assert "logoutput" in lifecycle_run.lower()
 
 
 def test_setup_failure_uses_stable_code_not_unescaped_json_message() -> None:
@@ -178,7 +196,7 @@ def test_prepare_to_install_failures_surface_reason_retry_and_log() -> None:
     assert "Log('Ticketbox preflight failed: ' + Reason)" in helper
     assert "重新运行同一个安装包" in helper
     assert "ExpandConstant('{log}')" in helper
-    assert prepare.count("Result := TicketboxPrepareFailure(") == 5
+    assert prepare.count("Result := TicketboxPrepareFailure(") == 6
     literal_assignments = [
         line.strip()
         for line in prepare.splitlines()

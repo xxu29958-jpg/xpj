@@ -5,10 +5,15 @@ import os
 from pathlib import Path
 
 import pytest
-from ticketbox_lifecycle.errors import LifecycleViolation
+from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import windows_file_security as file_security
+from ticketbox_lifecycle.runtime import windows_pgdata_security as pgdata_security
 from ticketbox_lifecycle.runtime import windows_security_native as native
-from ticketbox_lifecycle.runtime.command import CompletedCommand
+from ticketbox_lifecycle.runtime.command import (
+    CompletedCommand,
+    SubprocessCommandRunner,
+    require_ok,
+)
 
 
 def test_file_dacl_policy_accepts_only_reader_sids() -> None:
@@ -22,6 +27,46 @@ def test_file_dacl_policy_accepts_only_reader_sids() -> None:
 
     with pytest.raises(LifecycleViolation, match="file reader SID is not canonical"):
         file_security.file_dacl_sddl((f"*{service_sid}:(F)",))
+
+
+def test_pgdata_dacl_accepts_windows_canonical_system_and_admin_aliases() -> None:
+    service_sid = "S-1-5-80-111-222-333-444-555"
+    pgdata_security._require_policy_dacl(
+        "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+        f"(A;OICI;FA;;;{service_sid})(A;OICI;RC;;;OW)",
+        service_sid=service_sid,
+        name="pgdata",
+        directory=True,
+        protected=True,
+    )
+
+
+@pytest.mark.parametrize(
+    "dacl",
+    [
+        (
+            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+            "(A;OICI;FA;;;S-1-5-80-111-222-333-444-555)"
+        ),
+        (
+            "D:P(A;;FA;;;SY)(A;;FA;;;BA)"
+            "(A;;FA;;;S-1-5-80-111-222-333-444-555)(A;;RC;;;OW)"
+        ),
+        (
+            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+            "(A;OICI;FA;;;S-1-5-80-111-222-333-444-555)(A;OICIIO;RC;;;OW)"
+        ),
+    ],
+)
+def test_pgdata_root_rejects_missing_or_non_propagating_owner_policy(dacl: str) -> None:
+    with pytest.raises(LifecycleError, match="non-service ACL"):
+        pgdata_security._require_policy_dacl(
+            dacl,
+            service_sid="S-1-5-80-111-222-333-444-555",
+            name="pgdata",
+            directory=True,
+            protected=True,
+        )
 
 
 def test_file_security_has_no_icacls_grant_or_fallback(
@@ -230,6 +275,18 @@ def test_lifecycle_directory_sddl_is_valid_and_canonical() -> None:
     )
 
 
+def test_lifecycle_directory_sddl_omits_interactive_ace_when_no_shell_exists() -> None:
+    backend_sid = "S-1-5-80-111-222-333-444-555"
+
+    policy = native._lifecycle_directory_sddl(backend_sid, None)
+
+    assert policy == (
+        "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+        f"(A;;0x000000a0;;;{backend_sid})"
+    )
+    assert "S-1-5-32-545" not in policy
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows restricted-token contract")
 def test_exact_process_user_reader_survives_postgres_style_restricted_token(
     tmp_path: Path,
@@ -269,6 +326,61 @@ def test_exact_process_user_reader_survives_postgres_style_restricted_token(
         desired_access=0x80000000,
         creation_disposition=3,
     ) == 0
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows PostgreSQL directory security")
+def test_pgdata_bootstrap_is_restricted_token_writable_and_then_fully_retired(
+    tmp_path: Path,
+) -> None:
+    if not ctypes.windll.shell32.IsUserAnAdmin():
+        if os.environ.get("CI"):
+            pytest.fail("Windows pgdata security lane must run as an administrator")
+        pytest.skip("pgdata security contract requires an administrator token")
+    runner = SubprocessCommandRunner()
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    native.protect_directory(runner, data_root, code="test_data_root_acl_failed")
+    bootstrap_sid = native.current_process_user_sid()
+    assert bootstrap_sid is not None
+    pgdata = data_root / "pgdata"
+
+    pgdata_security.prepare_initdb_directory(
+        runner,
+        pgdata,
+        bootstrap_sid=bootstrap_sid,
+    )
+    probe = pgdata / "restricted-token-probe"
+    assert _restricted_token_file_error(
+        probe,
+        desired_access=0x40000000,
+        creation_disposition=1,
+    ) == 0
+    assert probe.is_file()
+
+    service_sid = native.service_sid(runner, "EventLog")
+    pgdata_security.seal_for_service(runner, pgdata, service_sid=service_sid)
+
+    assert _restricted_token_file_error(
+        pgdata / "must-not-be-created",
+        desired_access=0x40000000,
+        creation_disposition=1,
+    ) == 5
+    assert native.file_owner_sid(probe) in {
+        native.ADMINISTRATORS_SID,
+        native.SYSTEM_SID,
+    }
+    bootstrap_sid = native.current_process_user_sid()
+    assert bootstrap_sid is not None
+    require_ok(
+        runner.run(["icacls", str(probe), "/setowner", f"*{bootstrap_sid}", "/L"]),
+        code="test_owner_change_failed",
+    )
+    assert native.file_owner_sid(probe) == bootstrap_sid
+    assert _restricted_token_file_error(
+        probe,
+        desired_access=0x00040000,
+        creation_disposition=3,
+    ) == 5
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows directory security contract")

@@ -9,6 +9,7 @@ import pytest
 from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
+from ticketbox_lifecycle.runtime.mutex import ThreadMutex
 from ticketbox_lifecycle.schemas import (
     INSTALLATION_SCHEMA,
     OPERATION_SCHEMA,
@@ -39,6 +40,7 @@ def _stores(tmp_path: Path, security: RecordingSecurity) -> FilesystemStores:
         tmp_path / "machine",
         "TicketboxBackend",
         SimpleNamespace(security=security),
+        ThreadMutex(),
     )
 
 

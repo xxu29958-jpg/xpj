@@ -69,12 +69,13 @@ Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "Install
 
 [Run]
 Filename: "{app}\bin\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; WorkingDir: "{app}\bin"; StatusMsg: "正在安装 Visual C++ 运行库..."; Flags: runhidden waituntilterminated
-Filename: "{app}\bin\lifecycle\TicketboxLifecycle.exe"; Parameters: "{code:TicketboxLifecycleParams}"; WorkingDir: "{app}\bin\lifecycle"; StatusMsg: "正在完成小票夹首次安装..."; Flags: runhidden waituntilterminated
+Filename: "{app}\bin\lifecycle\TicketboxLifecycle.exe"; Parameters: "{code:TicketboxLifecycleParams}"; WorkingDir: "{app}\bin\lifecycle"; StatusMsg: "正在完成小票夹首次安装..."; Flags: runhidden waituntilterminated logoutput
 
 [Code]
 const
   TicketboxRequiredMsvcRuntimeVersion = '{#TicketboxRequiredMsvcRuntimeVersion}';
   TicketboxExpectedReleaseManifestSha256 = '{#ReleaseManifestSha256}';
+  TicketboxFileFlagOpenReparsePoint = $00200000; { FILE_FLAG_OPEN_REPARSE_POINT }
 
 var
   TicketboxProvisionOperationId: String;
@@ -82,6 +83,9 @@ var
   TicketboxPairingExpiresAt: String;
   TicketboxInstallFailed: Boolean;
   TicketboxInstallFailureReason: String;
+  TicketboxSetupLeaseHandle: LongWord;
+
+#include "setup_lease.iss"
 
 function InitializeSetup: Boolean;
 begin
@@ -90,6 +94,7 @@ begin
   TicketboxPairingExpiresAt := '';
   TicketboxInstallFailed := False;
   TicketboxInstallFailureReason := '';
+  TicketboxSetupLeaseHandle := 0;
   Result := True;
 end;
 
@@ -208,9 +213,9 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  BindingPath: String;
+  BindingPath, LeaseFailure: String;
 begin
-  { Read-only preflight. All mutation happens after complete [Files]. }
+  { The outer lease is coordination only; product preflight remains read-only. }
   NeedsRestart := False;
   Result := '';
   if not IsWin64 then
@@ -221,6 +226,11 @@ begin
   if not TicketboxInstallRootIsExact then
   begin
     Result := TicketboxPrepareFailure('安装目录必须是受保护的 Program Files\Ticketbox');
+    Exit;
+  end;
+  if not TicketboxAcquireSetupLease(LeaseFailure) then
+  begin
+    Result := TicketboxPrepareFailure(LeaseFailure);
     Exit;
   end;
   if Length(TicketboxExpectedReleaseManifestSha256) <> 64 then
@@ -240,6 +250,11 @@ begin
     Result := TicketboxPrepareFailure('这台电脑已经安装小票夹；首次安装不会覆盖现有数据');
     Exit;
   end;
+end;
+
+procedure DeinitializeSetup;
+begin
+  TicketboxReleaseSetupLease;
 end;
 
 function TicketboxMsvcRuntimeIsCurrent(var Reason: String): Boolean;

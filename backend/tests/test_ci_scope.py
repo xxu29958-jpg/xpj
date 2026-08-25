@@ -163,6 +163,18 @@ def test_dataset_maintenance_transitive_app_dependencies_select_windows() -> Non
         assert classify_ci_paths([dependency])["windows"], dependency
 
 
+def test_fresh_install_helper_transitive_dependencies_select_windows() -> None:
+    dependencies = ci_gap_trigger_scope.fresh_install_python_dependencies()
+    assert "backend/app/database/_fresh_schema_upgrade.py" in dependencies
+    assert "backend/app/services/identity_service/__init__.py" in dependencies
+    assert "backend/app/services/identity_service/_bootstrap.py" in dependencies
+    for dependency in dependencies:
+        scopes = classify_ci_paths([dependency])
+        assert scopes["postgres"], dependency
+        assert scopes["backend_frozen"], dependency
+        assert scopes["windows"], dependency
+
+
 def test_desktop_build_contract_runs_tests_and_packaging() -> None:
     for path in (
         "desktop/backend_manager/__main__.py",

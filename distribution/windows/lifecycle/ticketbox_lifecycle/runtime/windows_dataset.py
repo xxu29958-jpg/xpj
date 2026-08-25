@@ -6,8 +6,11 @@ import time
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import DATABASE_NAME, RUNTIME_ROLE
 from ticketbox_lifecycle.runtime import layout
-from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok, sealed_pg_env
-from ticketbox_lifecycle.runtime.postgres_connection import maintenance_database_url, run_psql
+from ticketbox_lifecycle.runtime.command import CommandRunner, sealed_pg_env
+from ticketbox_lifecycle.runtime.postgres_connection import (
+    maintenance_database_url,
+    run_psql,
+)
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.schemas import InstallRequest, OwnerPairing
 
@@ -46,7 +49,8 @@ class WindowsDatasetAdapter:
             timeout_s=120,
             input_text=secret + "\n",
         )
-        require_ok(completed, code="owner_claim_failed")
+        if completed.returncode != 0:
+            raise LifecycleError("owner_claim_failed", "owner claim helper failed")
         try:
             payload = json.loads(completed.stdout)
         except (TypeError, json.JSONDecodeError) as exc:

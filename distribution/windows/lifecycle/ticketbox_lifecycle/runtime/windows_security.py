@@ -6,6 +6,7 @@ from pathlib import Path
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime import windows_credentials as credentials
+from ticketbox_lifecycle.runtime import windows_pgdata_security as pgdata_security
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
 from ticketbox_lifecycle.runtime.windows_file_security import FileSecurity
@@ -164,18 +165,12 @@ class WindowsSecurityAdapter:
     def grant_backend_binding_read(self, binding_path: Path, service_name: str) -> None:
         native.require_windows()
         interactive_sid = native.shell_user_sid()
-        if not interactive_sid:
-            raise LifecycleError(
-                "binding_reader_unavailable",
-                "cannot identify the interactive Windows user for installation.json",
-            )
+        backend_sid = native.service_sid(self._runner, service_name)
+        reader_sids = (backend_sid,) + ((interactive_sid,) if interactive_sid else ())
         self._file_security.protect_file(
             self._runner,
             binding_path,
-            reader_sids=(
-                native.service_sid(self._runner, service_name),
-                interactive_sid,
-            ),
+            reader_sids=reader_sids,
             code="binding_acl_failed",
         )
 
@@ -191,6 +186,19 @@ class WindowsSecurityAdapter:
             self._file_security,
             request,
             reader_sid=reader_sid,
+        )
+
+    def prepare_initdb_directory(self, request: InstallRequest) -> None:
+        reader_sid = native.current_process_user_sid()
+        if not reader_sid:
+            raise LifecycleError(
+                "initdb_reader_unavailable",
+                "cannot identify the Windows user that will run initdb",
+            )
+        pgdata_security.prepare_initdb_directory(
+            self._runner,
+            layout.pgdata(request),
+            bootstrap_sid=reader_sid,
         )
 
     def discard_initdb_password_file(self, request: InstallRequest) -> None:
@@ -289,59 +297,32 @@ class WindowsSecurityAdapter:
         )
 
     def seal_pgdata_acl(self, request: InstallRequest) -> None:
-        pgdata = str(layout.pgdata(request))
-        require_ok(
-            self._runner.run(
-                [
-                    "icacls",
-                    pgdata,
-                    "/T",
-                    "/C",
-                    "/remove:g",
-                    f"NT SERVICE\\{request.backend_service_name}",
-                ]
-            ),
-            code="pgdata_acl_remove_backend_failed",
-        )
-        require_ok(
-            self._runner.run(
-                [
-                    "icacls",
-                    pgdata,
-                    "/inheritance:r",
-                    "/grant:r",
-                    "SYSTEM:(OI)(CI)F",
-                    "Administrators:(OI)(CI)F",
-                    f"NT SERVICE\\{request.pg_service_name}:(OI)(CI)F",
-                ]
-            ),
-            code="pgdata_acl_failed",
+        pgdata_security.seal_for_service(
+            self._runner,
+            layout.pgdata(request),
+            service_sid=native.service_sid(self._runner, request.pg_service_name),
         )
 
-    def verify_pgdata_service_acl(self, request: InstallRequest) -> None:
-        completed = self._runner.run(["icacls", str(layout.pgdata(request))])
-        text = f"{completed.stdout}\n{completed.stderr}".upper()
-        if completed.returncode != 0:
-            raise LifecycleError("pgdata_acl_verify_failed", "icacls could not read pgdata")
-        backend = f"NT SERVICE\\{request.backend_service_name}".upper()
-        pg_service = f"NT SERVICE\\{request.pg_service_name}".upper()
-        if backend in text:
-            raise LifecycleError("pgdata_acl_leaked_backend", "pgdata grants TicketboxBackend")
-        if pg_service not in text:
-            raise LifecycleError("pgdata_acl_missing_pg", "pgdata missing TicketboxPg")
+    def verify_pgdata_service_acl(
+        self,
+        request: InstallRequest,
+        *,
+        verify_tree: bool,
+    ) -> None:
+        pgdata_security.require_service_policy(
+            layout.pgdata(request),
+            service_sid=native.service_sid(self._runner, request.pg_service_name),
+            verify_tree=verify_tree,
+        )
 
     def owner_bootstrap_secret(self, request: InstallRequest) -> str:
         return credentials.owner_bootstrap_secret(request)
 
-    def _operation_store_reader_sids(self, request: InstallRequest) -> tuple[str, str]:
-        backend_reader_sid = native.service_sid(self._runner, request.backend_service_name)
-        interactive_reader_sid = native.shell_user_sid()
-        if not interactive_reader_sid:
-            raise LifecycleError(
-                "operation_store_reader_unavailable",
-                "cannot identify the interactive Windows user for the operation store",
-            )
-        return backend_reader_sid, interactive_reader_sid
+    def _operation_store_reader_sids(self, request: InstallRequest) -> tuple[str, str | None]:
+        return (
+            native.service_sid(self._runner, request.backend_service_name),
+            native.shell_user_sid(),
+        )
 
 
 def _require_active_temp(path: Path, *, code: str) -> None:

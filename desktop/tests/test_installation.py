@@ -14,6 +14,7 @@ from backend_manager.installation import (
     load_installed_release_config,
     parse_installed_binding,
 )
+from backend_manager.windows_machine_state import _require_exact_binding_security
 
 _INSTALL_ID = "11111111-1111-4111-8111-111111111111"
 
@@ -185,3 +186,77 @@ def test_discover_installed_layout_requires_binding_and_uses_registry_only_as_lo
     assert layout.install_dir == (tmp_path / "program").resolve()
     assert layout.data_root == (tmp_path / "bound-data").resolve()
     assert layout.backend_service_name == "TicketboxBackend"
+
+
+def test_binding_path_ignores_poisoned_programdata_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    trusted = tmp_path / "official-programdata"
+    monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "attacker"))
+    monkeypatch.setattr(installation, "machine_binding_path", lambda: trusted / "binding.json")
+
+    assert installation._installation_binding_path() == trusted / "binding.json"
+
+
+def test_binding_json_is_loaded_only_through_protected_retained_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        installation,
+        "read_protected_binding_bytes",
+        lambda: calls.append("protected-read") or b'{"schema":"ticketbox-installed-instance-v1"}',
+    )
+
+    assert installation._read_installation_binding() == {
+        "schema": "ticketbox-installed-instance-v1"
+    }
+    assert calls == ["protected-read"]
+
+
+@pytest.mark.parametrize(
+    ("owner", "sddl"),
+    [
+        (
+            "S-1-5-21-9-9-9-1002",
+            "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;S-1-5-80-1-2-3-4-5)"
+            "(A;;FR;;;S-1-5-21-9-9-9-1001)",
+        ),
+        (
+            "S-1-5-32-544",
+            "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;S-1-5-80-1-2-3-4-5)"
+            "(A;;FR;;;S-1-5-21-9-9-9-1001)(A;;FR;;;WD)",
+        ),
+        (
+            "S-1-5-32-544",
+            "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-5-80-1-2-3-4-5)"
+            "(A;;FR;;;S-1-5-21-9-9-9-1001)",
+        ),
+        (
+            "S-1-5-32-544",
+            "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;S-1-5-80-1-2-3-4-5)",
+        ),
+    ],
+)
+def test_binding_security_rejects_untrusted_owner_broad_or_inexact_acl(
+    owner: str,
+    sddl: str,
+) -> None:
+    with pytest.raises(RuntimeError):
+        _require_exact_binding_security(
+            owner,
+            sddl,
+            current_user_sid="S-1-5-21-9-9-9-1001",
+            backend_service_sid="S-1-5-80-1-2-3-4-5",
+        )
+
+
+def test_binding_security_accepts_only_system_admin_backend_and_current_user() -> None:
+    _require_exact_binding_security(
+        "S-1-5-32-544",
+        "D:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;S-1-5-80-1-2-3-4-5)"
+        "(A;;FR;;;S-1-5-21-9-9-9-1001)",
+        current_user_sid="S-1-5-21-9-9-9-1001",
+        backend_service_sid="S-1-5-80-1-2-3-4-5",
+    )

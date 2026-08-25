@@ -14,6 +14,7 @@ from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import CompletedCommand
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
+from ticketbox_lifecycle.runtime.mutex import ThreadMutex
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.schemas import (
     OPERATION_SCHEMA,
@@ -113,6 +114,7 @@ def _crash_before_active_replace(machine_root: str, operation: ActiveOperation) 
         Path(machine_root),
         "TicketboxBackend",
         SimpleNamespace(security=_CrashPublicationSecurity()),
+        ThreadMutex(),
     )
     filesystem_stores.os.replace = lambda _source, _target: os._exit(73)
     stores.publish_active(operation)
@@ -237,6 +239,7 @@ def test_first_active_hard_crash_discards_only_the_bounded_orphan_on_retry(
         operations.parent,
         request.backend_service_name,
         SimpleNamespace(security=_CrashPublicationSecurity()),
+        ThreadMutex(),
     )
     stores.publish_active(_prepared_operation(request))
     assert stores.read_active() == _prepared_operation(request)

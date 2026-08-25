@@ -8,7 +8,7 @@ from contextlib import suppress
 from dataclasses import asdict
 from pathlib import Path
 
-from ticketbox_lifecycle.adapters.ports import AdapterBundle
+from ticketbox_lifecycle.adapters.ports import AdapterBundle, Mutex
 from ticketbox_lifecycle.domain.install import LifecycleStores
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import layout
@@ -16,7 +16,11 @@ from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner
 from ticketbox_lifecycle.runtime.mutex import os_mutex
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
 from ticketbox_lifecycle.runtime.windows_file_security import WindowsFileSecurity
-from ticketbox_lifecycle.runtime.windows_known_folders import ticketbox_install_root
+from ticketbox_lifecycle.runtime.windows_known_folders import (
+    ticketbox_control_root,
+    ticketbox_install_root,
+)
+from ticketbox_lifecycle.runtime.windows_scm_observation import NativeWindowsScmObserver
 from ticketbox_lifecycle.runtime.windows_security_native import (
     reject_reparse_components,
 )
@@ -38,6 +42,7 @@ class FilesystemStores:
         machine_root: Path,
         backend_service_name: str,
         adapters: AdapterBundle,
+        mutex: Mutex,
     ) -> None:
         self._machine_root = machine_root
         self._operations_dir = machine_root / "operations"
@@ -47,15 +52,16 @@ class FilesystemStores:
         self._binding_path = machine_root / "installation.json"
         self._backend_service_name = backend_service_name
         self._adapters = adapters
-        self._mutex = os_mutex()
+        self._mutex = mutex
 
     @classmethod
     def from_request(cls, request: InstallRequest) -> FilesystemStores:
         machine_root = Path(request.program_data_root) / "machine"
         runner = SubprocessCommandRunner()
         file_security = WindowsFileSecurity()
-        adapters = WindowsAdapterBundle(runner, file_security)
-        return cls(machine_root, request.backend_service_name, adapters)
+        adapters = WindowsAdapterBundle(runner, file_security, NativeWindowsScmObserver())
+        mutex = os_mutex(ticketbox_control_root() / "lifecycle.lock")
+        return cls(machine_root, request.backend_service_name, adapters, mutex)
 
     def as_lifecycle_stores(self) -> LifecycleStores:
         return LifecycleStores(

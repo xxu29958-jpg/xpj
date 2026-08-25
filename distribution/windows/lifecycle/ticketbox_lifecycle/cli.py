@@ -3,11 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import sys
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
-from ticketbox_lifecycle.domain.install import LifecycleStores, inspect_machine, install_or_resume
+from ticketbox_lifecycle.domain.install import (
+    LifecycleStores,
+    inspect_machine,
+    install_or_resume,
+)
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
 from ticketbox_lifecycle.schemas import (
@@ -63,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
             message=exc.message,
             installation_published=False,
         )
-    except Exception as exc:
+    except Exception:
         result = CommandResult(
             schema=RESULT_SCHEMA,
             ok=False,
@@ -71,12 +77,14 @@ def main(argv: list[str] | None = None) -> int:
             operation_id=operation_id,
             phase="failed_recoverable",
             code="unhandled",
-            message=str(exc),
+            message="unexpected lifecycle failure",
             installation_published=False,
         )
     if args.command in {"install", "resume"} and lifecycle_stores is not None:
         return _deliver_install_result(result_path, result, lifecycle_stores)
     _write_result(result_path, result)
+    if not result.ok:
+        _emit_failure(result)
     return 0 if result.ok else 2
 
 
@@ -87,6 +95,7 @@ def _deliver_install_result(
 ) -> int:
     _write_result(path, result)
     if not result.ok:
+        _emit_failure(result)
         return 2
     active = stores.operations_read.read_active()
     committed = (
@@ -112,6 +121,7 @@ def _deliver_install_result(
             installation_published=result.installation_published,
         )
         _write_result(path, failure)
+        _emit_failure(failure)
         return 2
     if _is_exact_commit(active, result.operation_id):
         try:
@@ -128,8 +138,26 @@ def _deliver_install_result(
                 installation_published=result.installation_published,
             )
             _write_result(path, failure)
+            _emit_failure(failure)
             return 2
     return 0
+
+
+def _emit_failure(result: CommandResult) -> None:
+    message = " ".join(result.message.split())
+    message = re.sub(r"(?<!\d)\d{8}(?!\d)", "[redacted]", message)
+    message = re.sub(
+        r"(?i)(PASSWORD\s+')[^']*(')",
+        r"\1[redacted]\2",
+        message,
+    )
+    if len(message) > 800:
+        message = message[:797] + "..."
+    print(
+        f"TicketboxLifecycle failed [{result.code}]: {message}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def _is_exact_commit(operation: ActiveOperation | None, operation_id: str) -> bool:

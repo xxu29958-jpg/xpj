@@ -70,13 +70,27 @@ class _StatefulAdapter:
         )
 
 
+class _RecordingScmAdapter(_StatefulAdapter):
+    def __init__(self) -> None:
+        super().__init__("scm", ("scm", "start_services"))
+        self.autostart_enabled = False
+        self.fail_autostart = False
+
+    def enable_autostart(self, request: InstallRequest) -> None:
+        if not request.install_id or not request.dataset_id:
+            raise LifecycleViolation("identity_missing", "autostart requires bound identity")
+        if self.fail_autostart:
+            raise LifecycleError("injected_autostart_failure", "forced autostart failure")
+        self.autostart_enabled = True
+
+
 class RecordingAdapterBundle:
     def __init__(self) -> None:
         self.files = _StatefulAdapter("files", ("programdata_root",))
         self.security = _StatefulAdapter("security", ("acl",))
         self.postgres = _StatefulAdapter("postgres", ("postgres_initdb", "start_postgres", "roles_database"))
         self.alembic = _StatefulAdapter("alembic", ("alembic",))
-        self.scm = _StatefulAdapter("scm", ("scm", "start_services"))
+        self.scm = _RecordingScmAdapter()
         self.dataset = _StatefulAdapter("dataset", ("owner_claim", "health"))
 
     def apply_order(self) -> list[str]:

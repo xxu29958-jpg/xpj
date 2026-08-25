@@ -60,7 +60,7 @@ def create_protected_directory(
     path: Path,
     *,
     backend_reader_sid: str,
-    interactive_reader_sid: str,
+    interactive_reader_sid: str | None,
     code: str,
 ) -> None:
     import ctypes
@@ -125,7 +125,7 @@ def require_protected_directory(
     path: Path,
     *,
     backend_reader_sid: str,
-    interactive_reader_sid: str,
+    interactive_reader_sid: str | None,
     code: str,
 ) -> None:
     reject_reparse_components(path)
@@ -147,22 +147,27 @@ def require_protected_directory(
         raise LifecycleViolation(code, f"untrusted lifecycle directory: {path}")
 
 
-def _lifecycle_directory_sddl(backend_reader_sid: str, interactive_reader_sid: str) -> str:
+def _lifecycle_directory_sddl(
+    backend_reader_sid: str,
+    interactive_reader_sid: str | None,
+) -> str:
     if _SERVICE_SID_PATTERN.fullmatch(backend_reader_sid) is None:
         raise LifecycleViolation("service_sid_invalid", "backend service SID is not canonical")
-    if _SID_PATTERN.fullmatch(interactive_reader_sid) is None:
+    if interactive_reader_sid is not None and _SID_PATTERN.fullmatch(interactive_reader_sid) is None:
         raise LifecycleViolation("interactive_sid_invalid", "interactive user SID is not canonical")
-    return (
+    policy = (
         _LIFECYCLE_DIRECTORY_BASE_SDDL
         + f"(A;;0x000000a0;;;{backend_reader_sid})"
-        + f"(A;;0x00000020;;;{interactive_reader_sid})"
     )
+    if interactive_reader_sid is not None:
+        policy += f"(A;;0x00000020;;;{interactive_reader_sid})"
+    return policy
 
 
 @lru_cache(maxsize=8)
 def _canonical_lifecycle_directory_sddl(
     backend_reader_sid: str,
-    interactive_reader_sid: str,
+    interactive_reader_sid: str | None,
 ) -> str:
     return _canonical_dacl_sddl(
         _lifecycle_directory_sddl(backend_reader_sid, interactive_reader_sid)

@@ -17,7 +17,10 @@ from ticketbox_lifecycle.adapters.ports import (
     adapter_for_step,
     phase_after,
 )
-from ticketbox_lifecycle.domain.binding import ensure_runtime_binding, require_runtime_binding
+from ticketbox_lifecycle.domain.binding import (
+    ensure_runtime_binding,
+    require_runtime_binding,
+)
 from ticketbox_lifecycle.domain.planner import plan_fresh_install
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.schemas import (
@@ -161,6 +164,7 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
         if owner_pairing is None:
             raise LifecycleViolation("owner_pairing_missing", "owner claim returned no pairing")
         ensure_runtime_binding(stores.binding_read, stores.binding_write, bound)
+        stores.adapters.scm.enable_autostart(bound)
         committed = ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=active.operation_id,

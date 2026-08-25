@@ -9,6 +9,7 @@ from uuid import UUID
 from ticketbox_lifecycle.errors import LifecycleViolation
 
 _FOLDERID_PROGRAM_FILES = UUID("905e63b6-c1bf-494e-b29c-65b732d3d21a")
+_FOLDERID_PROGRAM_FILES_COMMON_X64 = UUID("6365d5a7-0f0d-45e5-87f6-0da56b6a4f7d")
 
 
 class _GUID(ctypes.Structure):
@@ -27,9 +28,25 @@ class _GUID(ctypes.Structure):
 
 
 def ticketbox_install_root() -> Path:
+    return _known_folder(
+        _FOLDERID_PROGRAM_FILES,
+        code="program_files_unavailable",
+        label="Program Files",
+    ) / "Ticketbox"
+
+
+def ticketbox_control_root() -> Path:
+    return _known_folder(
+        _FOLDERID_PROGRAM_FILES_COMMON_X64,
+        code="common_files_unavailable",
+        label="Common Files x64",
+    ) / "Ticketbox"
+
+
+def _known_folder(folder_uuid: UUID, *, code: str, label: str) -> Path:
     if os.name != "nt":
-        raise LifecycleViolation("windows_required", "Program Files requires Windows")
-    folder_id = _GUID.from_uuid(_FOLDERID_PROGRAM_FILES)
+        raise LifecycleViolation("windows_required", f"{label} requires Windows")
+    folder_id = _GUID.from_uuid(folder_uuid)
     path = ctypes.c_wchar_p()
     shell32 = ctypes.WinDLL("shell32", use_last_error=True)
     ole32 = ctypes.WinDLL("ole32", use_last_error=True)
@@ -47,10 +64,11 @@ def ticketbox_install_root() -> Path:
         )
         if result != 0 or not path.value:
             raise LifecycleViolation(
-                "program_files_unavailable",
-                f"cannot resolve the Windows Program Files known folder (HRESULT=0x{result & 0xFFFFFFFF:08x})",
+                code,
+                f"cannot resolve the Windows {label} known folder "
+                f"(HRESULT=0x{result & 0xFFFFFFFF:08x})",
             )
-        return Path(path.value) / "Ticketbox"
+        return Path(path.value)
     finally:
         if path:
             ole32.CoTaskMemFree(ctypes.cast(path, ctypes.c_void_p))

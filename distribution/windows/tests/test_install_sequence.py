@@ -118,6 +118,66 @@ def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> No
     assert binding.release_manifest_sha256 != "pending"
 
 
+def test_binding_precedes_backend_autostart_and_commit_follows_it(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    order: list[str] = []
+    original_publish = stores.publish
+    original_enable = adapters.scm.enable_autostart
+    original_publish_active = stores.publish_active
+
+    def publish(binding) -> None:
+        order.append("binding")
+        original_publish(binding)
+
+    def enable_autostart(bound: InstallRequest) -> None:
+        assert stores.read() is not None
+        assert stores.read_active() is not None
+        assert stores.read_active().phase != "committed"
+        order.append("autostart")
+        original_enable(bound)
+
+    def publish_active(operation) -> None:
+        if operation.phase == "committed":
+            order.append("commit")
+        original_publish_active(operation)
+
+    stores.publish = publish  # type: ignore[method-assign]
+    adapters.scm.enable_autostart = enable_autostart  # type: ignore[method-assign]
+    stores.publish_active = publish_active  # type: ignore[method-assign]
+
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    assert result.ok is True
+    assert order == ["binding", "autostart", "commit"]
+    assert adapters.scm.autostart_enabled is True
+
+
+def test_autostart_failure_is_retryable_without_republishing_binding(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.scm.fail_autostart = True
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    assert first.ok is False
+    assert first.code == "injected_autostart_failure"
+    assert first.installation_published is True
+    assert stores.binding_publish_count == 1
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "failed_recoverable"
+
+    adapters.scm.fail_autostart = False
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+    second = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert second.ok is True
+    assert stores.binding_publish_count == 1
+    assert adapters.scm.autostart_enabled is True
+
+
 def test_health_failure_keeps_binding_unpublished(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     adapters.dataset.fail_on = "health"

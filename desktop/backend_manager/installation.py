@@ -12,7 +12,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from backend_manager.runtime import RuntimeControlError
 from backend_manager.version_contract import is_managed_release_version
+from backend_manager.windows_machine_state import (
+    machine_binding_path,
+    read_protected_binding_bytes,
+)
 
 _REGISTRY_PATH = r"Software\Ticketbox"
 _SERVICE_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
@@ -284,17 +289,17 @@ def parse_installed_binding(
 
 
 def _installation_binding_path() -> Path:
-    program_data = Path(os.environ.get("PROGRAMDATA") or r"C:\ProgramData")
-    return program_data / "Ticketbox" / "machine" / "installation.json"
+    return machine_binding_path()
 
 
 def _read_installation_binding() -> dict[str, object] | None:
     path = _installation_binding_path()
-    if not path.is_file():
-        return None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        content = read_protected_binding_bytes()
+        if content is None:
+            return None
+        payload = json.loads(content.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, RuntimeControlError) as exc:
         raise InstallationConfigError(f"无法读取 installation.json：{path}") from exc
     if not isinstance(payload, dict):
         raise InstallationConfigError("installation.json 顶层必须是 JSON object。")

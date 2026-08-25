@@ -102,6 +102,10 @@ _DATASET_MAINTENANCE_ROOT_MODULES = (
     "app.database._dataset_restore_authority",
     "app.database._dataset_restore_security",
 )
+_FRESH_INSTALL_ROOT_MODULES = (
+    "app.database._fresh_schema_upgrade",
+    "app.services.identity_service",
+)
 
 
 def _app_module_source(module_name: str) -> pathlib.Path | None:
@@ -157,10 +161,10 @@ def _app_imports(path: pathlib.Path) -> set[str]:
     return imported
 
 
-def dataset_maintenance_python_dependencies() -> frozenset[str]:
+def _app_python_dependencies(root_modules: tuple[str, ...]) -> frozenset[str]:
     pending = [
         source
-        for module_name in _DATASET_MAINTENANCE_ROOT_MODULES
+        for module_name in root_modules
         if (source := _app_module_source(module_name)) is not None
     ]
     visited: set[pathlib.Path] = set()
@@ -179,7 +183,16 @@ def dataset_maintenance_python_dependencies() -> frozenset[str]:
     )
 
 
+def dataset_maintenance_python_dependencies() -> frozenset[str]:
+    return _app_python_dependencies(_DATASET_MAINTENANCE_ROOT_MODULES)
+
+
+def fresh_install_python_dependencies() -> frozenset[str]:
+    return _app_python_dependencies(_FRESH_INSTALL_ROOT_MODULES)
+
+
 _WINDOWS_DATASET_MAINTENANCE_FILES = dataset_maintenance_python_dependencies()
+_WINDOWS_FRESH_INSTALL_FILES = fresh_install_python_dependencies()
 _WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
     "backend/app/database/_dataset_",
 )
@@ -208,6 +221,10 @@ _EXACT_SCOPE_RULES = {
     ),
     **dict.fromkeys(
         _WINDOWS_DATASET_MAINTENANCE_FILES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
+    **dict.fromkeys(
+        _WINDOWS_FRESH_INSTALL_FILES,
         ("postgres", "backend_frozen", "windows"),
     ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
