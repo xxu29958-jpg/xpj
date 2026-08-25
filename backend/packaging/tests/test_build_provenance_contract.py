@@ -336,6 +336,7 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_credentials.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_alembic.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_dataset.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_file_security.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_files.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_postgres.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_postgres_identity.py",
@@ -353,6 +354,35 @@ def _write_minimal_installer_recipe(root: Path) -> None:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"recipe:{relative}\n", encoding="utf-8")
+
+
+def _assert_installer_recipe_closes_the_lifecycle_source_set_and_bytes() -> None:
+    lifecycle_prefix = "distribution/windows/lifecycle/ticketbox_lifecycle/"
+    lifecycle_root = REPO_ROOT / "distribution" / "windows" / "lifecycle" / "ticketbox_lifecycle"
+    source_paths = {
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in lifecycle_root.rglob("*.py")
+    }
+    listed_paths = {
+        path for path in _INSTALLER_RECIPE_PATHS if path.startswith(lifecycle_prefix)
+    }
+    assert listed_paths == source_paths
+
+    completed = _run_powershell(
+        f". '{_ps_literal(PROVENANCE_HELPER)}'; "
+        f"Get-TicketboxInstallerRecipeSnapshot '{_ps_literal(REPO_ROOT / 'backend')}' | "
+        "ConvertTo-Json -Depth 8"
+    )
+    assert completed.returncode == 0, completed.stderr
+    snapshot = json.loads(completed.stdout)
+    records = {record["path"]: record for record in snapshot["files"]}
+    for relative in source_paths:
+        source = REPO_ROOT / relative
+        assert records[relative] == {
+            "path": relative,
+            "size": source.stat().st_size,
+            "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        }
 
 
 def _database_maintenance_smoke_evidence_command(dist: Path) -> str:
@@ -541,6 +571,7 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
 
 
 def test_installer_compiles_only_from_locked_snapshot_and_clean_git() -> None:
+    _assert_installer_recipe_closes_the_lifecycle_source_set_and_bytes()
     build = (
         REPO_ROOT / "distribution" / "windows" / "build" / "build_installer.ps1"
     ).read_text(encoding="utf-8-sig")
@@ -575,6 +606,8 @@ def test_installer_compiles_only_from_locked_snapshot_and_clean_git() -> None:
     assert "$manifestTemplatePath = Join-Path $StagedPayloadDir" in build
     assert "--distpath $StagedPayloadDir" in build
     assert "--distpath $PayloadDir" not in build
+    assert "$startupProbeOutput = @(& $lifecycleExe --help 2>&1)" in build
+    assert '$lifecycleToolchain["startup_probe"] = [ordered]@{' in build
     assert "tree =" in provenance
     assert "$manifest.git.tree -cne $currentGit.tree" in provenance
 

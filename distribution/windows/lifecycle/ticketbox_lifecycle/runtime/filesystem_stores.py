@@ -16,10 +16,10 @@ from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner
 from ticketbox_lifecycle.runtime.mutex import os_mutex
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
 from ticketbox_lifecycle.runtime.windows_file_security import WindowsFileSecurity
+from ticketbox_lifecycle.runtime.windows_known_folders import ticketbox_install_root
 from ticketbox_lifecycle.runtime.windows_security_native import (
     reject_reparse_components,
 )
-from ticketbox_lifecycle.runtime.windows_known_folders import ticketbox_install_root
 from ticketbox_lifecycle.runtime.windows_services import service_registered
 from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 from ticketbox_lifecycle.schemas import (

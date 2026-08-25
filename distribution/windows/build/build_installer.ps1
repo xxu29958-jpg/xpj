@@ -348,6 +348,25 @@ try {
         "Pinned lifecycle build toolchain" `
         $toolchainSnapshot `
         (Get-TicketboxFileSetSnapshot $ToolchainRoot $toolchainPaths)
+    $startupProbeOutput = @(& $lifecycleExe --help 2>&1)
+    $startupProbeExitCode = $LASTEXITCODE
+    $startupProbeText = ($startupProbeOutput | ForEach-Object { [string]$_ }) -join "`n"
+    if (
+        $startupProbeExitCode -ne 0 -or
+        -not $startupProbeText.Contains("usage: TicketboxLifecycle") -or
+        -not $startupProbeText.Contains("{install,resume,inspect}")
+    ) {
+        throw "Frozen TicketboxLifecycle startup probe failed (exit=$startupProbeExitCode)."
+    }
+    $lifecycleToolchain["startup_probe"] = [ordered]@{
+        contract = "ticketbox-lifecycle-cli-help-v1"
+        argv = @("--help")
+        exit_code = $startupProbeExitCode
+        required_markers = @(
+            "usage: TicketboxLifecycle",
+            "{install,resume,inspect}"
+        )
+    }
     $BuildInputs["lifecycle"] = $lifecycleToolchain
 }
 finally {
