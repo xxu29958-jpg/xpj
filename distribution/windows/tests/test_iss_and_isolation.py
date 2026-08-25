@@ -155,6 +155,17 @@ def test_setup_failure_uses_stable_code_not_unescaped_json_message() -> None:
     assert "错误代码：" in failure
 
 
+def test_postinstall_messages_honor_silent_suppression() -> None:
+    text = ISS.read_text(encoding="utf-8-sig")
+    postinstall = text.split("procedure CurStepChanged", 1)[1].split(
+        "procedure CurPageChanged", 1
+    )[0]
+
+    assert not any(line.lstrip().startswith("MsgBox(") for line in postinstall.splitlines())
+    assert postinstall.count("SuppressibleMsgBox(") == 2
+    assert postinstall.count("MB_OK, IDOK") == 2
+
+
 def test_prepare_to_install_failures_surface_reason_retry_and_log() -> None:
     text = ISS.read_text(encoding="utf-8-sig")
     helper = text.split("function TicketboxPrepareFailure", 1)[1].split(

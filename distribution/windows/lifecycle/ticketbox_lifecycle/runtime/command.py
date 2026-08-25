@@ -39,15 +39,27 @@ class SubprocessCommandRunner:
     ) -> CompletedCommand:
         if not argv:
             raise LifecycleError("empty_command", "adapter refused an empty platform command")
-        completed = subprocess.run(
-            list(argv),
-            check=False,
-            capture_output=True,
-            text=True,
-            env=dict(env) if env is not None else None,
-            timeout=timeout_s,
-            input=input_text,
-        )
+        program = os.path.basename(str(argv[0])) or "platform command"
+        try:
+            completed = subprocess.run(
+                list(argv),
+                check=False,
+                capture_output=True,
+                text=True,
+                env=dict(env) if env is not None else None,
+                timeout=timeout_s,
+                input=input_text,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise LifecycleError(
+                "command_outcome_unknown",
+                f"{program} did not finish within {timeout_s}s; its external outcome must be re-observed",
+            ) from exc
+        except OSError as exc:
+            raise LifecycleError(
+                "command_start_failed",
+                f"{program} could not be started",
+            ) from exc
         return CompletedCommand(
             argv=tuple(str(part) for part in argv),
             returncode=int(completed.returncode),

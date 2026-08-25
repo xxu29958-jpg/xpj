@@ -391,14 +391,14 @@ begin
        (not TicketboxResultIsCommitted(TicketboxProvisionOperationId)) then
       TicketboxMarkInstallFailed(TicketboxResultFailure);
     if TicketboxInstallFailed then
-      MsgBox('小票夹安装未完成：' + TicketboxInstallFailureReason + '。' + #13#10 +
+      SuppressibleMsgBox('小票夹安装未完成：' + TicketboxInstallFailureReason + '。' + #13#10 +
         '请重新运行同一个安装包继续。' + #13#10 +
-        '安装日志：' + ExpandConstant('{log}'), mbError, MB_OK)
+        '安装日志：' + ExpandConstant('{log}'), mbError, MB_OK, IDOK)
     else
-      MsgBox('小票夹安装完成。' + #13#10 + #13#10 +
+      SuppressibleMsgBox('小票夹安装完成。' + #13#10 + #13#10 +
         '首次配对码：' + TicketboxPairingCode + #13#10 +
         '有效期至：' + TicketboxPairingExpiresAt + #13#10 + #13#10 +
-        '请打开“管理小票夹”完成设备绑定。', mbInformation, MB_OK);
+        '请打开“管理小票夹”完成设备绑定。', mbInformation, MB_OK, IDOK);
   end;
 end;
 

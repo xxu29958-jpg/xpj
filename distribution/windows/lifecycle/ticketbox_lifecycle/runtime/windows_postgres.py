@@ -109,6 +109,7 @@ class WindowsPostgresAdapter:
         initdb = layout.tool(request, "initdb.exe")
         if not initdb.is_file():
             raise LifecycleError("missing_platform_binary", "postgresql/bin/initdb.exe is not installed")
+        primary_failure: LifecycleError | None = None
         try:
             pwfile = self._security.materialize_initdb_password_file(request)
             argv = [
@@ -131,8 +132,20 @@ class WindowsPostgresAdapter:
                 self._runner.run(argv, env=sealed_postgres_env(), timeout_s=180),
                 code="initdb_failed",
             )
+        except LifecycleError as exc:
+            primary_failure = exc
+            raise
         finally:
-            self._security.discard_initdb_password_file(request)
+            try:
+                self._security.discard_initdb_password_file(request)
+            except LifecycleError as cleanup_failure:
+                if primary_failure is None:
+                    raise
+                raise LifecycleError(
+                    primary_failure.code,
+                    f"{primary_failure.message}; cleanup failed "
+                    f"({cleanup_failure.code}): {cleanup_failure.message}",
+                ) from cleanup_failure
         _require_complete_pgdata(data, request.postgres_major)
         _write_cluster_config(request)
         return "initialized"

@@ -502,6 +502,29 @@ def test_initdb_failure_always_removes_password_input(tmp_path: Path) -> None:
     assert not pwfile.exists()
 
 
+def test_initdb_cleanup_failure_cannot_replace_the_primary_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    runner.initdb_returncode = 1
+    bundle = _bundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+
+    def fail_cleanup(_request: InstallRequest) -> None:
+        raise LifecycleError("secret_cleanup_failed", "injected cleanup failure")
+
+    monkeypatch.setattr(bundle.security, "discard_initdb_password_file", fail_cleanup)
+
+    with pytest.raises(LifecycleError) as caught:
+        bundle.postgres.apply(request, "postgres_initdb")
+
+    assert caught.value.code == "initdb_failed"
+    assert "secret_cleanup_failed" in caught.value.message
+
+
 def test_roles_refuse_ready_foreign_cluster_before_any_ddl(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
