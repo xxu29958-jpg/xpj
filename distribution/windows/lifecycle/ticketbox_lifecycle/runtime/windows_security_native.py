@@ -273,34 +273,6 @@ def protect_directory(runner: CommandRunner, path: Path, *, code: str) -> None:
     )
 
 
-def protect_file(
-    runner: CommandRunner,
-    path: Path,
-    *,
-    extra_grants: tuple[str, ...],
-    code: str,
-) -> None:
-    reject_reparse_components(path)
-    if not path.is_file():
-        raise LifecycleViolation("credential_invalid", f"not a regular file: {path.name}")
-    require_ok(runner.run(["takeown", "/A", "/F", str(path)]), code=f"{code}_owner")
-    require_ok(runner.run(["icacls", str(path), "/reset"]), code=code)
-    require_ok(
-        runner.run(
-            [
-                "icacls",
-                str(path),
-                "/inheritance:r",
-                "/grant:r",
-                f"*{SYSTEM_SID}:(F)",
-                f"*{ADMINISTRATORS_SID}:(F)",
-                *extra_grants,
-            ]
-        ),
-        code=code,
-    )
-
-
 def service_sid(runner: CommandRunner, service_name: str) -> str:
     completed = runner.run(["sc.exe", "showsid", service_name])
     require_ok(completed, code="service_sid_lookup_failed")

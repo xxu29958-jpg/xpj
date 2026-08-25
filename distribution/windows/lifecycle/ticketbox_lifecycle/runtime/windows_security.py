@@ -8,14 +8,16 @@ from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime import windows_credentials as credentials
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
+from ticketbox_lifecycle.runtime.windows_file_security import FileSecurity
 from ticketbox_lifecycle.schemas import InstallRequest
 
 
 class WindowsSecurityAdapter:
     name = "security"
 
-    def __init__(self, runner: CommandRunner) -> None:
+    def __init__(self, runner: CommandRunner, file_security: FileSecurity) -> None:
         self._runner = runner
+        self._file_security = file_security
 
     def prepare_operation_store(self, request: InstallRequest) -> None:
         native.require_windows()
@@ -98,10 +100,10 @@ class WindowsSecurityAdapter:
         native.reject_reparse_components(path)
         if not path.is_file():
             raise LifecycleViolation("machine_state_invalid", "machine JSON is not a regular file")
-        native.protect_file(
+        self._file_security.protect_file(
             self._runner,
             path,
-            extra_grants=(f"*{native.service_sid(self._runner, reader_service)}:(R)",),
+            reader_sids=(native.service_sid(self._runner, reader_service),),
             code="machine_state_acl_failed",
         )
 
@@ -138,7 +140,12 @@ class WindowsSecurityAdapter:
         credentials.verify_existing_credentials(self._runner, request, allow_missing=True)
         credentials.ensure_credentials(request)
         for secret in sorted(path for path in secrets_root.iterdir() if path.is_file()):
-            native.protect_file(self._runner, secret, extra_grants=(), code="secret_acl_failed")
+            self._file_security.protect_file(
+                self._runner,
+                secret,
+                reader_sids=(),
+                code="secret_acl_failed",
+            )
         self.protect_runtime_env(request)
         return "acl-applied"
 
@@ -162,27 +169,31 @@ class WindowsSecurityAdapter:
                 "binding_reader_unavailable",
                 "cannot identify the interactive Windows user for installation.json",
             )
-        native.protect_file(
+        self._file_security.protect_file(
             self._runner,
             binding_path,
-            extra_grants=(
-                f"*{native.service_sid(self._runner, service_name)}:(R)",
-                f"*{interactive_sid}:(R)",
+            reader_sids=(
+                native.service_sid(self._runner, service_name),
+                interactive_sid,
             ),
             code="binding_acl_failed",
         )
 
     def materialize_initdb_password_file(self, request: InstallRequest) -> Path:
-        return credentials.materialize_initdb_password_file(self._runner, request)
+        return credentials.materialize_initdb_password_file(
+            self._runner,
+            self._file_security,
+            request,
+        )
 
     def discard_initdb_password_file(self, request: InstallRequest) -> None:
         credentials.discard_initdb_password_file(request)
 
     def protect_runtime_env(self, request: InstallRequest) -> None:
-        native.protect_file(
+        self._file_security.protect_file(
             self._runner,
             Path(request.data_root) / "app" / ".env",
-            extra_grants=(f"*{native.service_sid(self._runner, request.backend_service_name)}:(R)",),
+            reader_sids=(native.service_sid(self._runner, request.backend_service_name),),
             code="runtime_env_acl_failed",
         )
 

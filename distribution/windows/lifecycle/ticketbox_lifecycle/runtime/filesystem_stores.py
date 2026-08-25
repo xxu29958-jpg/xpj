@@ -12,8 +12,10 @@ from ticketbox_lifecycle.adapters.ports import AdapterBundle
 from ticketbox_lifecycle.domain.install import LifecycleStores
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import layout
+from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner
 from ticketbox_lifecycle.runtime.mutex import os_mutex
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
+from ticketbox_lifecycle.runtime.windows_file_security import WindowsFileSecurity
 from ticketbox_lifecycle.runtime.windows_security_native import (
     reject_reparse_components,
 )
@@ -50,7 +52,10 @@ class FilesystemStores:
     @classmethod
     def from_request(cls, request: InstallRequest) -> FilesystemStores:
         machine_root = Path(request.program_data_root) / "machine"
-        return cls(machine_root, request.backend_service_name, WindowsAdapterBundle())
+        runner = SubprocessCommandRunner()
+        file_security = WindowsFileSecurity()
+        adapters = WindowsAdapterBundle(runner, file_security)
+        return cls(machine_root, request.backend_service_name, adapters)
 
     def as_lifecycle_stores(self) -> LifecycleStores:
         return LifecycleStores(

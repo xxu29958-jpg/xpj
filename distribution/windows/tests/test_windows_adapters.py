@@ -68,6 +68,7 @@ def test_windows_adapters_is_only_the_explicit_composition_root() -> None:
     for responsibility in (
         "windows_alembic",
         "windows_dataset",
+        "windows_file_security",
         "windows_files",
         "windows_postgres",
         "windows_scm",
@@ -298,6 +299,35 @@ class RecordingRunner:
         return CompletedCommand(recorded, 0, f"{recorded[1]} {rendered}\n", "")
 
 
+class RecordingFileSecurity:
+    def protect_file(
+        self,
+        runner,
+        path: Path,
+        *,
+        reader_sids: tuple[str, ...],
+        code: str,
+    ) -> None:
+        del code
+        assert isinstance(runner, RecordingRunner)
+        runner.run(["takeown", "/A", "/F", str(path)])
+        runner.run(
+            [
+                "icacls",
+                str(path),
+                "/inheritance:r",
+                "/grant:r",
+                f"*{windows_security_native.SYSTEM_SID}:(F)",
+                f"*{windows_security_native.ADMINISTRATORS_SID}:(F)",
+                *(f"*{sid}:(R)" for sid in reader_sids),
+            ]
+        )
+
+
+def _bundle(runner: RecordingRunner) -> WindowsAdapterBundle:
+    return WindowsAdapterBundle(runner, RecordingFileSecurity())
+
+
 def _request(tmp_path: Path) -> InstallRequest:
     app_dir = tmp_path / "app"
     pg_bin = app_dir / "postgresql" / "bin"
@@ -356,7 +386,7 @@ def _write_complete_cluster(data: Path, *, major: int = 17) -> None:
 def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     pwfile = Path(request.program_data_root) / "machine" / "secrets" / "postgres.pwfile"
@@ -390,7 +420,7 @@ def test_initdb_failure_always_removes_password_input(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
     runner.initdb_returncode = 1
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     pwfile = Path(request.program_data_root) / "machine" / "secrets" / "postgres.pwfile"
@@ -405,7 +435,7 @@ def test_initdb_failure_always_removes_password_input(tmp_path: Path) -> None:
 def test_roles_refuse_ready_foreign_cluster_before_any_ddl(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     bundle.postgres.apply(request, "postgres_initdb")
@@ -421,7 +451,7 @@ def test_roles_refuse_ready_foreign_cluster_before_any_ddl(tmp_path: Path) -> No
 def test_running_cluster_requires_data_checksums(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     bundle.postgres.apply(request, "postgres_initdb")
@@ -435,7 +465,7 @@ def test_running_cluster_requires_data_checksums(tmp_path: Path) -> None:
 def test_pg_isready_cannot_substitute_for_ticketbox_service_state(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     bundle.postgres.apply(request, "postgres_initdb")
@@ -446,7 +476,7 @@ def test_pg_isready_cannot_substitute_for_ticketbox_service_state(tmp_path: Path
 
 def test_initdb_verify_rejects_pg_version_only_directory(tmp_path: Path) -> None:
     request = _request(tmp_path)
-    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle = _bundle(RecordingRunner())
     bundle.files.apply(request, "programdata_root")
     data = Path(request.data_root) / "pgdata"
     data.mkdir(parents=True, exist_ok=True)
@@ -457,7 +487,7 @@ def test_initdb_verify_rejects_pg_version_only_directory(tmp_path: Path) -> None
 
 def test_initdb_verify_rejects_complete_but_unconfigured_cluster(tmp_path: Path) -> None:
     request = _request(tmp_path)
-    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle = _bundle(RecordingRunner())
     bundle.files.apply(request, "programdata_root")
     data = Path(request.data_root) / "pgdata"
     _write_complete_cluster(data)
@@ -469,7 +499,7 @@ def test_initdb_verify_rejects_complete_but_unconfigured_cluster(tmp_path: Path)
 def test_initdb_retries_incomplete_cluster_instead_of_starting_it(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     data = Path(request.data_root) / "pgdata"
@@ -488,7 +518,7 @@ def test_initdb_retries_incomplete_cluster_instead_of_starting_it(tmp_path: Path
 def test_initdb_skips_complete_cluster_and_still_writes_listen_config(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     data = Path(request.data_root) / "pgdata"
     _write_complete_cluster(data)
@@ -502,7 +532,7 @@ def test_initdb_skips_complete_cluster_and_still_writes_listen_config(tmp_path: 
 def test_initdb_verify_rejects_wrong_major_or_missing_control_file(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     bundle.postgres.apply(request, "postgres_initdb")
@@ -523,7 +553,7 @@ def test_initdb_refuses_reparse_before_discarding_incomplete_cluster(
     monkeypatch,
 ) -> None:
     request = _request(tmp_path)
-    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle = _bundle(RecordingRunner())
     bundle.files.apply(request, "programdata_root")
     data = Path(request.data_root) / "pgdata"
     data.mkdir(parents=True)
@@ -545,7 +575,7 @@ def test_initdb_refuses_reparse_before_discarding_incomplete_cluster(
 def test_register_uses_pg_ctl_and_direct_immutable_backend(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     try:
         bundle.security.verify(request, "acl")
@@ -651,7 +681,7 @@ def test_alembic_helper_uses_fresh_switch_without_password_or_generation_program
 ) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.alembic.apply(request, "alembic")
     helper = next(
@@ -687,7 +717,7 @@ def test_alembic_helper_uses_fresh_switch_without_password_or_generation_program
 def test_owner_claim_uses_database_helper_and_keeps_secret_off_argv(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
 
@@ -717,7 +747,7 @@ def test_owner_claim_uses_database_helper_and_keeps_secret_off_argv(tmp_path: Pa
 def test_binding_read_acl_grants_only_the_exact_file_readers(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     binding = tmp_path / "programdata" / "machine" / "installation.json"
     binding.parent.mkdir(parents=True)
     binding.write_text("{}\n", encoding="utf-8")
@@ -734,7 +764,7 @@ def test_runtime_authority_readers_never_mutate_operation_store_directories(
 ) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     machine = Path(request.program_data_root) / "machine"
     operations = machine / "operations"
     binding = machine / "installation.json.pending.tmp"
@@ -759,7 +789,7 @@ def test_runtime_authority_readers_never_mutate_operation_store_directories(
 def test_credentials_are_created_only_after_root_acl(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.files.verify(request, "programdata_root")
     assert runner.calls == []
@@ -787,7 +817,7 @@ def test_credentials_are_created_only_after_root_acl(tmp_path: Path) -> None:
 def test_acl_retry_does_not_recreate_consumed_initdb_password_input(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     bundle.postgres.apply(request, "postgres_initdb")
@@ -802,7 +832,7 @@ def test_acl_retry_does_not_recreate_consumed_initdb_password_input(tmp_path: Pa
 
 def test_fresh_inputs_reject_preplanted_secret_or_data(tmp_path: Path) -> None:
     request = _request(tmp_path)
-    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle = _bundle(RecordingRunner())
     bundle.security.prepare_operation_store(request)
     secret = Path(request.program_data_root) / "machine" / "secrets" / "postgres.password"
     secret.parent.mkdir(parents=True)
@@ -819,7 +849,7 @@ def test_fresh_inputs_reject_precreated_empty_data_root(tmp_path: Path) -> None:
     request = _request(tmp_path)
     data_root = Path(request.data_root)
     data_root.mkdir(parents=True)
-    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle = _bundle(RecordingRunner())
     bundle.security.prepare_operation_store(request)
 
     with pytest.raises(LifecycleViolation, match="unbound mutable state") as caught:
@@ -834,7 +864,7 @@ def test_acl_refuses_untrusted_existing_credential_before_reading_it(
     monkeypatch,
 ) -> None:
     request = _request(tmp_path)
-    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle = _bundle(RecordingRunner())
     bundle.files.apply(request, "programdata_root")
     secret = Path(request.program_data_root) / "machine" / "secrets" / "postgres.password"
     secret.write_text("attacker-controlled-secret-value-123456\n", encoding="utf-8")
@@ -860,7 +890,7 @@ def test_exact_retry_reuses_only_already_protected_credentials(
 ) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     monkeypatch.setattr(
         windows_security_native,
@@ -889,7 +919,7 @@ def test_operation_root_policy_grants_the_shell_only_non_inheriting_traverse(
     runner = RecordingRunner()
     shell_sid = "S-1-5-21-9-9-9-1002"
     monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: shell_sid)
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
 
     bundle.security.apply(request, "acl")
@@ -918,7 +948,7 @@ def test_reparse_component_is_rejected_before_credentials(tmp_path: Path, monkey
         return real_lstat(path)
 
     monkeypatch.setattr(Path, "lstat", fake_lstat)
-    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle = _bundle(RecordingRunner())
 
     with pytest.raises(LifecycleViolation, match="reparse"):
         bundle.files.apply(request, "programdata_root")
@@ -928,7 +958,7 @@ def test_reparse_component_is_rejected_before_credentials(tmp_path: Path, monkey
 def test_roles_adapter_creates_owner_migrator_runtime(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     bundle.postgres.apply(request, "postgres_initdb")
@@ -964,7 +994,7 @@ def test_scm_refuses_foreign_same_name_service(tmp_path: Path) -> None:
     runner = RecordingRunner()
     runner.services.add("TicketboxPg")
     runner.image_paths["TicketboxPg"] = r"C:\Windows\System32\notepad.exe"
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     try:
         bundle.scm.apply(request, "scm")
@@ -983,7 +1013,7 @@ def test_scm_refuses_foreign_backend_service(tmp_path: Path) -> None:
     runner = RecordingRunner()
     runner.services.add("TicketboxBackend")
     runner.image_paths["TicketboxBackend"] = r"C:\Windows\System32\notepad.exe"
-    bundle = WindowsAdapterBundle(runner)
+    bundle = _bundle(runner)
     bundle.files.apply(request, "programdata_root")
     try:
         bundle.scm.apply(request, "scm")
@@ -1013,7 +1043,7 @@ def test_health_requires_exact_release_identity_and_usable_owner(
     value: str,
 ) -> None:
     request = _request(tmp_path)
-    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle = _bundle(RecordingRunner())
     payload = {
         "contract": "ticketbox-installation-health-v2",
         "status": "ok",
@@ -1033,7 +1063,7 @@ def test_health_requires_exact_release_identity_and_usable_owner(
 
 def test_health_ignores_ambient_proxy_and_accepts_exact_identity(tmp_path: Path, monkeypatch) -> None:
     request = _request(tmp_path)
-    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle = _bundle(RecordingRunner())
     payload = {
         "contract": "ticketbox-installation-health-v2",
         "status": "ok",

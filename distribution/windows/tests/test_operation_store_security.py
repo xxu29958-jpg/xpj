@@ -35,6 +35,14 @@ class RecordingRunner:
         return CompletedCommand(recorded, 0, "ok", "")
 
 
+class ForbiddenFileSecurity:
+    def protect_file(self, *_args, **_kwargs) -> None:
+        raise AssertionError("directory-policy tests must not mutate file ACLs")
+
+
+_FORBIDDEN_FILE_SECURITY = ForbiddenFileSecurity()
+
+
 @pytest.fixture(autouse=True)
 def _unit_directory_security(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(native, "file_owner_sid", lambda _path: native.ADMINISTRATORS_SID)
@@ -170,7 +178,9 @@ def test_precreated_root_with_retained_handle_is_rejected_before_acl_mutation(
     with _retained_directory_handle(root) as retained:
         assert retained
         with pytest.raises(LifecycleViolation, match="untrusted lifecycle directory") as caught:
-            WindowsSecurityAdapter(runner).prepare_operation_store(request)
+            WindowsSecurityAdapter(runner, _FORBIDDEN_FILE_SECURITY).prepare_operation_store(
+                request
+            )
 
     assert caught.value.code == "operation_store_untrusted"
     assert not any(
@@ -189,7 +199,7 @@ def test_exact_protected_partial_root_is_an_admissible_fresh_retry(
     request = _request(tmp_path)
     root = Path(request.program_data_root)
     (root / relative).mkdir(parents=True)
-    security = WindowsSecurityAdapter(RecordingRunner())
+    security = WindowsSecurityAdapter(RecordingRunner(), _FORBIDDEN_FILE_SECURITY)
 
     security.require_fresh_inputs(request)
     security.prepare_operation_store(request)
@@ -201,7 +211,7 @@ def test_first_active_hard_crash_discards_only_the_bounded_orphan_on_retry(
     tmp_path: Path,
 ) -> None:
     request = _request(tmp_path)
-    security = WindowsSecurityAdapter(RecordingRunner())
+    security = WindowsSecurityAdapter(RecordingRunner(), _FORBIDDEN_FILE_SECURITY)
     security.prepare_operation_store(request)
     operations = Path(request.program_data_root) / "machine" / "operations"
     process = multiprocessing.get_context("spawn").Process(
@@ -241,7 +251,7 @@ def test_fresh_inputs_reject_every_unrecognized_operation_root_entry(
     relative: str,
 ) -> None:
     request = _request(tmp_path)
-    security = WindowsSecurityAdapter(RecordingRunner())
+    security = WindowsSecurityAdapter(RecordingRunner(), _FORBIDDEN_FILE_SECURITY)
     security.prepare_operation_store(request)
     unknown = Path(request.program_data_root) / relative
     unknown.parent.mkdir(parents=True, exist_ok=True)
@@ -258,7 +268,7 @@ def test_exact_pending_name_is_not_cleaned_when_it_is_not_a_regular_file(
     tmp_path: Path,
 ) -> None:
     request = _request(tmp_path)
-    security = WindowsSecurityAdapter(RecordingRunner())
+    security = WindowsSecurityAdapter(RecordingRunner(), _FORBIDDEN_FILE_SECURITY)
     security.prepare_operation_store(request)
     pending = (
         Path(request.program_data_root)
@@ -280,7 +290,7 @@ def test_orphan_cleanup_failure_keeps_its_exact_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request(tmp_path)
-    security = WindowsSecurityAdapter(RecordingRunner())
+    security = WindowsSecurityAdapter(RecordingRunner(), _FORBIDDEN_FILE_SECURITY)
     security.prepare_operation_store(request)
     pending = (
         Path(request.program_data_root)

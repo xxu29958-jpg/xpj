@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner
+from ticketbox_lifecycle.runtime.windows_file_security import WindowsFileSecurity
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
@@ -24,7 +25,7 @@ def _request(tmp_path: Path) -> InstallRequest:
         data_root=str(tmp_path / "programdata" / "data"),
         program_data_root=str(tmp_path / "programdata"),
         pg_service_name="TicketboxPg",
-        backend_service_name="TicketboxBackend",
+        backend_service_name="TicketboxAclContractUnregistered",
         pg_port=5432,
         backend_port=8000,
         postgres_major=17,
@@ -35,21 +36,24 @@ def _request(tmp_path: Path) -> InstallRequest:
     )
 
 
-def test_binding_reader_publication_preserves_the_single_directory_policy(tmp_path: Path) -> None:
+def test_active_publication_before_scm_preserves_the_single_directory_policy(tmp_path: Path) -> None:
     if not ctypes.windll.shell32.IsUserAnAdmin():
         if os.environ.get("CI"):
             pytest.fail("Windows operation-store contract lane must run elevated")
         pytest.skip("production operation-store contract requires an elevated token")
     request = _request(tmp_path)
-    security = WindowsSecurityAdapter(SubprocessCommandRunner())
+    runner = SubprocessCommandRunner()
+    assert runner.run(["sc.exe", "query", request.backend_service_name]).returncode != 0
+    security = WindowsSecurityAdapter(runner, WindowsFileSecurity())
     security.prepare_operation_store(request)
     root = Path(request.program_data_root)
     paths = (root, root / "machine", root / "machine" / "operations")
     before = tuple(native._directory_security_sddl(path) for path in paths)
-    binding = root / "machine" / "installation.json.pending.tmp"
-    binding.write_text("{}\n", encoding="utf-8")
+    active = root / "machine" / "operations" / "active.json.pending.tmp"
+    active.write_text("{}\n", encoding="utf-8")
 
-    security.grant_backend_binding_read(binding, request.backend_service_name)
+    security.protect_machine_json(active, request.backend_service_name)
+    security.verify_machine_json(active, request.backend_service_name)
     security.prepare_operation_store(request)
 
     assert tuple(native._directory_security_sddl(path) for path in paths) == before

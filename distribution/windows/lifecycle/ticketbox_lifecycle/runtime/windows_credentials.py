@@ -15,6 +15,7 @@ from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import CommandRunner
 from ticketbox_lifecycle.runtime.durable_files import durable_write_text
+from ticketbox_lifecycle.runtime.windows_file_security import FileSecurity
 from ticketbox_lifecycle.schemas import InstallRequest
 
 DURABLE_SECRET_NAMES = frozenset(
@@ -30,13 +31,14 @@ KNOWN_SECRET_NAMES = DURABLE_SECRET_NAMES | {"postgres.pwfile"}
 
 def materialize_initdb_password_file(
     runner: CommandRunner,
+    file_security: FileSecurity,
     request: InstallRequest,
 ) -> Path:
     path = layout.postgres_pwfile(request)
     discard_initdb_password_file(request)
     password = _read_secret(layout.postgres_password_file(request))
     durable_write_text(path, password + "\n")
-    native.protect_file(runner, path, extra_grants=(), code="secret_acl_failed")
+    file_security.protect_file(runner, path, reader_sids=(), code="secret_acl_failed")
     native.require_trusted_owner(
         path,
         code="credential_owner_untrusted",

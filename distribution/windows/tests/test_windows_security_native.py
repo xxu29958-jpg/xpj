@@ -6,7 +6,55 @@ from pathlib import Path
 
 import pytest
 from ticketbox_lifecycle.errors import LifecycleViolation
+from ticketbox_lifecycle.runtime import windows_file_security as file_security
 from ticketbox_lifecycle.runtime import windows_security_native as native
+from ticketbox_lifecycle.runtime.command import CompletedCommand
+
+
+def test_file_dacl_policy_accepts_only_reader_sids() -> None:
+    service_sid = "S-1-5-80-111-222-333-444-555"
+    interactive_sid = "S-1-5-21-9-9-9-1002"
+
+    assert file_security._file_dacl_sddl((service_sid, interactive_sid)) == (
+        "D:P(A;;FA;;;SY)(A;;FA;;;BA)"
+        f"(A;;FR;;;{service_sid})(A;;FR;;;{interactive_sid})"
+    )
+
+    with pytest.raises(LifecycleViolation, match="file reader SID is not canonical"):
+        file_security._file_dacl_sddl((f"*{service_sid}:(F)",))
+
+
+def test_file_security_has_no_icacls_grant_or_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "active.json.pending.tmp"
+    path.write_text("{}\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+    applied: list[tuple[Path, tuple[str, ...], str]] = []
+
+    class Runner:
+        def run(self, argv, **_kwargs) -> CompletedCommand:
+            recorded = tuple(str(part) for part in argv)
+            calls.append(recorded)
+            return CompletedCommand(recorded, 0, "", "")
+
+    monkeypatch.setattr(
+        file_security,
+        "_apply_file_dacl",
+        lambda target, readers, *, code: applied.append((target, readers, code)),
+    )
+    reader = "S-1-5-80-111-222-333-444-555"
+
+    file_security.WindowsFileSecurity().protect_file(
+        Runner(),
+        path,
+        reader_sids=(reader,),
+        code="machine_state_acl_failed",
+    )
+
+    assert calls == [("takeown", "/A", "/F", str(path))]
+    assert applied == [(path, (reader,), "machine_state_acl_failed")]
 
 
 def _restricted_token_create_error(path: Path) -> int:
@@ -170,8 +218,7 @@ def test_protected_directory_requires_the_exact_lifecycle_dacl(
 @pytest.mark.skipif(os.name != "nt", reason="Windows SDDL conversion")
 def test_lifecycle_directory_sddl_is_valid_and_canonical() -> None:
     backend_sid = "S-1-5-80-2773621439-1206139620-3556766058-292034643-3006528458"
-    interactive_sid = native.shell_user_sid()
-    assert interactive_sid is not None
+    interactive_sid = "S-1-5-21-9-9-9-1002"
     assert native._canonical_lifecycle_directory_sddl(backend_sid, interactive_sid) == (
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
         f"(A;;WPLO;;;{backend_sid})(A;;WP;;;{interactive_sid})"
