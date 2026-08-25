@@ -30,6 +30,11 @@ if ($text -notmatch 'Utf8Encode\(Payload\)') { throw 'ISS must write the lifecyc
 if ($text.Contains('AnsiString(Payload)')) { throw 'ISS must not ANSI-narrow the lifecycle request JSON' }
 if ($text -notmatch 'TicketboxLifecycle.exe') { throw 'ISS must invoke TicketboxLifecycle.exe' }
 if ($text -notmatch '(?m)^\s*\[Run\]\s*$') { throw 'ISS must call the installed coordinator from [Run] after complete [Files]' }
+foreach ($line in $text -split "`n") {
+    if ($line -match '^\s*\[Run\]' -and $line.Trim() -cne '[Run]') {
+        throw 'ISS [Run] must be a section tag on its own line; Pascal comments cannot contain [Run]'
+    }
+}
 if ($text -match 'AfterInstall:\s*TicketboxProvision') { throw 'ISS must not mutate from a [Files] AfterInstall callback' }
 if ($text -notmatch 'GetCustomSetupExitCode') { throw 'ISS must overlay Setup exit from last-result' }
 if ($text -notmatch 'topic_installorder') { throw 'ISS must cite jrsoftware topic_installorder' }

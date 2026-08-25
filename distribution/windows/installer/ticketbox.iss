@@ -191,10 +191,10 @@ var
   Phase: String;
 begin
   { Architecture 10.1: same-operation retry. Binding may already exist because
-    the coordinator publishes installation.json before health (launcher 图 1).
+    the coordinator publishes installation.json before health (launcher fig 1).
     Official PrepareToInstall: empty Result continues; non-empty stops with
     exit 7 (jrsoftware topic_scriptevents / topic_setupexitcodes).
-    [Run] TicketboxLifecycleParams reuses active.json operation_id as resume. }
+    The post-Files coordinator invocation reuses active.json as resume. }
   Result := False;
   ActivePath := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\active.json');
   if not LoadStringFromFile(ActivePath, Text) then

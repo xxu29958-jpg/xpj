@@ -59,6 +59,10 @@ def test_iss_prepare_is_readonly_and_provision_fails_setup_without_committed_res
     assert "Command := 'resume'" in text
     assert "TicketboxLifecycle.exe" in text
     assert any(line.strip() == "[Run]" for line in text.splitlines())
+    assert all(
+        not line.strip().startswith("[Run]") or line.strip() == "[Run]"
+        for line in text.splitlines()
+    )
     assert "AfterInstall: TicketboxProvision" not in text
     assert "TicketboxLifecycleParams" in text
     assert "topic_installorder" in text
