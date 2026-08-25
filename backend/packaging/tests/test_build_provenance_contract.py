@@ -264,6 +264,7 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_scm.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_security.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_security_native.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_known_folders.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_shipment.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_services.py",
 )
