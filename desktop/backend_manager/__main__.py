@@ -94,6 +94,7 @@ def _execute_validated_installed_action(
     runtime = build_direct_service_runtime(
         config,
         runtime_config,
+        control_actions_allowed=True,
         backend_stopped_validator=partial(
             validate_installed_backend_stopped,
             runtime_config.layout,

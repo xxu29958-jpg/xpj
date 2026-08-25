@@ -200,6 +200,7 @@ class WindowsServiceRuntime:
         poll_seconds: float,
         backend_ready_timeout_seconds: float,
         backend_ready_poll_seconds: float,
+        control_actions_allowed: bool,
         clock=time.monotonic,
         sleep=time.sleep,
         backend_stopped_validator: Callable[[], None] | None = None,
@@ -213,6 +214,7 @@ class WindowsServiceRuntime:
         self._poll_seconds = poll_seconds
         self._backend_ready_timeout_seconds = backend_ready_timeout_seconds
         self._backend_ready_poll_seconds = backend_ready_poll_seconds
+        self._control_actions_allowed = control_actions_allowed
         self._clock = clock
         self._sleep = sleep
         self._backend_stopped_validator = backend_stopped_validator or (lambda: None)
@@ -262,9 +264,11 @@ class WindowsServiceRuntime:
             runtime_access_state=health.runtime_access_state,
             owner_state=health.owner_state,
             owner_recovery_channel=health.owner_recovery_channel,
+            service_controls_available=self._control_actions_allowed,
         )
 
     def start(self) -> None:
+        self._require_control_actions()
         with self._lock:
             self._run_control(self._start_services)
 
@@ -274,6 +278,7 @@ class WindowsServiceRuntime:
         self._wait_for_backend_health()
 
     def stop(self) -> None:
+        self._require_control_actions()
         with self._lock:
             self._run_control(self._stop_backend)
 
@@ -282,11 +287,15 @@ class WindowsServiceRuntime:
         self._backend_stopped_validator()
 
     def restart(self) -> None:
+        self._require_control_actions()
         with self._lock:
             self._run_control(self._restart_services)
 
     def backup(self) -> None:
         raise RuntimeControlError("完整备份必须通过短时提权维护 owner 执行。")
+
+    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
+        raise RuntimeControlError("Cut B 不提供备份 inventory；该能力保持 HOLD。")
 
     def restore(self, backup_generation: str) -> RestoreOutcome:
         del backup_generation
@@ -297,6 +306,7 @@ class WindowsServiceRuntime:
         self._start_services()
 
     def toggle_auto_restart(self) -> bool:
+        self._require_control_actions()
         return True
 
     def run_monitor(self, stop_event: threading.Event) -> None:
@@ -304,6 +314,10 @@ class WindowsServiceRuntime:
 
     def shutdown(self) -> None:
         return
+
+    def _require_control_actions(self) -> None:
+        if not self._control_actions_allowed:
+            raise RuntimeControlError("Cut B 管理器只观察已安装服务；生命周期控制保持 HOLD。")
 
     @staticmethod
     def _service_diagnostic(label: str, snapshot: ServiceSnapshot) -> str:

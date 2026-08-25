@@ -63,7 +63,12 @@ def test_inno_installs_manager_under_release_without_postinstall_launch() -> Non
     assert "RestartApplications=no" in installer
     assert "postinstall" not in installer
     assert "AfterInstall: TicketboxProvision" not in installer
-    assert 'Filename: "{app}\\bin\\TicketboxLifecycle.exe"' in installer
+    assert "[Run]" not in installer
+    assert "if CurStep = ssPostInstall then" in installer
+    assert "if not Exec(Coordinator, Params" in installer
+    assert "ewWaitUntilTerminated, ResultCode" in installer
+    assert "(ResultCode <> 0) or" in installer
+    assert "RaiseException('小票夹首次安装没有完成：'" in installer
     assert "$managerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $managerDist" in build
     assert "manager = [ordered]@{" in build
     assert "manager = $BuildInputs.manager" in build

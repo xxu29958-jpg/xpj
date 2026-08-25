@@ -107,6 +107,7 @@ def _runtime(
         poll_seconds=0,
         backend_ready_timeout_seconds=120,
         backend_ready_poll_seconds=1,
+        control_actions_allowed=True,
         backend_stopped_validator=backend_stopped_validator,
     )
 
@@ -316,6 +317,7 @@ def test_start_timeout_reports_service_and_current_state(tmp_path: Path) -> None
         poll_seconds=0.25,
         backend_ready_timeout_seconds=1,
         backend_ready_poll_seconds=0.25,
+        control_actions_allowed=True,
         clock=clock,
         sleep=clock.sleep,
     )
@@ -362,6 +364,7 @@ def test_postgres_progress_can_continue_for_more_than_45_seconds(tmp_path: Path)
         poll_seconds=1,
         backend_ready_timeout_seconds=120,
         backend_ready_poll_seconds=1,
+        control_actions_allowed=True,
         clock=clock,
         sleep=clock.sleep,
     )
@@ -457,6 +460,7 @@ def test_phase_budget_outlasts_full_reachable_restart_state_machine(tmp_path: Pa
         poll_seconds=release.service_poll_seconds,
         backend_ready_timeout_seconds=release.backend_ready_timeout_seconds,
         backend_ready_poll_seconds=release.backend_ready_poll_seconds,
+        control_actions_allowed=True,
         clock=clock,
         sleep=clock.sleep,
         backend_stopped_validator=validate_stopped,
@@ -500,6 +504,7 @@ def test_blocked_health_probe_does_not_block_service_stop(tmp_path: Path) -> Non
         poll_seconds=0,
         backend_ready_timeout_seconds=120,
         backend_ready_poll_seconds=1,
+        control_actions_allowed=True,
     )
     status_thread = threading.Thread(target=runtime.status)
     status_thread.start()

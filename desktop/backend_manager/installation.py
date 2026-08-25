@@ -9,6 +9,7 @@ import math
 import os
 import re
 import subprocess
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -73,6 +74,7 @@ class InstalledLayout:
     backend_service_name: str
     pg_service_name: str
     backend_version: str
+    install_id: str | None = None
     authority: str = "registry"
 
     @property
@@ -89,7 +91,7 @@ class InstalledLayout:
 
     @property
     def installation_id(self) -> str:
-        return installation_id_for_app_data(self.app_data_dir)
+        return self.install_id or installation_id_for_app_data(self.app_data_dir)
 
 
 @dataclass(frozen=True)
@@ -311,14 +313,14 @@ def parse_windows_release_config(config: Mapping[str, object]) -> WindowsRelease
 
 def load_installed_release_config(layout: InstalledLayout) -> WindowsReleaseConfig:
     try:
-        if layout.release_config_path.is_file():
-            return _load_installed_release_config(layout)
         if layout.authority == "binding":
             return WindowsReleaseConfig(
                 backend_service_name=layout.backend_service_name,
                 pg_service_name=layout.pg_service_name,
                 **_VNEXT_RELEASE_DEFAULTS,
             )
+        if layout.release_config_path.is_file():
+            return _load_installed_release_config(layout)
         raise InstallationConfigError(f"缺少或拒绝过大的 Windows release config：{layout.release_config_path}")
     except InstallationConfigError as exc:
         raise InstallationConfigError(str(exc), code="release_contract_invalid") from exc
@@ -394,6 +396,7 @@ def parse_installed_binding(
     if not install_dir:
         raise InstallationConfigError("installation.json 存在，但缺少 InstallDir 定位。")
     required = (
+        "install_id",
         "data_root",
         "active_release_id",
         "pg_service_name",
@@ -406,6 +409,13 @@ def parse_installed_binding(
         raise InstallationConfigError(f"installation.json 不完整，缺少：{', '.join(missing)}")
     if payload.get("schema") != _INSTALLATION_BINDING_SCHEMA:
         raise InstallationConfigError("installation.json schema 不是 ticketbox-installed-instance-v1")
+    raw_install_id = str(payload["install_id"]).strip().lower()
+    try:
+        install_id = str(uuid.UUID(raw_install_id))
+    except ValueError as exc:
+        raise InstallationConfigError("installation.json install_id 不是 canonical UUID。") from exc
+    if install_id != raw_install_id:
+        raise InstallationConfigError("installation.json install_id 不是 canonical UUID。")
     return InstalledLayout(
         install_dir=Path(install_dir).resolve(),
         data_root=Path(str(payload["data_root"])).resolve(),
@@ -414,6 +424,7 @@ def parse_installed_binding(
         backend_service_name=_parse_service_name(str(payload["backend_service_name"]), "backend_service_name"),
         pg_service_name=_parse_service_name(str(payload["pg_service_name"]), "pg_service_name"),
         backend_version=_parse_backend_version(str(payload["active_release_id"])),
+        install_id=install_id,
         authority="binding",
     )
 

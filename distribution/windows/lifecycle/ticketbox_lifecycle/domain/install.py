@@ -76,9 +76,11 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
     request = _bind_release_manifest_hash(request)
     observation = stores.observer.observe(request)
     plan = plan_fresh_install(request, observation)
+    stores.operations_write.prepare(request)
     existing = stores.operations_read.read_active()
     request_hash = hash_install_identity(request)
     if existing is None:
+        stores.operations_write.require_fresh_inputs(request)
         schema_revision = request.schema_revision or _schema_revision_from_release(request)
         active = ActiveOperation(
             schema=OPERATION_SCHEMA,
@@ -86,6 +88,9 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             kind="install",
             request_hash=request_hash,
             target_release_id=request.target_release_id,
+            data_root=request.data_root,
+            release_manifest_sha256=request.release_manifest_sha256,
+            backend_port=request.backend_port,
             phase="prepared",
             no_return_point=False,
             last_adapter_result=None,
@@ -124,22 +129,19 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             schema_min_compatible=request.schema_min_compatible or request.target_release_id,
             semantic_revision=request.semantic_revision or "ticketbox-dataset-semantics-v1",
         )
+        owner_pairing = None
         for step in plan.steps:
-            # Architecture 5.4: the stable launcher reads installation.json
-            # before exec. Health therefore cannot precede the runtime selector.
-            # Architecture 9.4/9.5 still own commit: last-result stays
-            # failed_recoverable until health verifies, and a second identity
-            # is refused. The published binding is this operation's selector,
-            # not a finished generation.
-            if step.name == "start_services":
-                _ensure_runtime_binding(stores, bound)
-            adapter = adapter_for_step(stores.adapters, step.name)
-            try:
-                adapter.verify(bound, step.name)
-                result = "already-verified"
-            except LifecycleError:
-                result = adapter.apply(bound, step.name)
-                adapter.verify(bound, step.name)
+            if step.name == "owner_claim":
+                owner_pairing = stores.adapters.dataset.claim_owner(bound)
+                result = "claimed"
+            else:
+                adapter = adapter_for_step(stores.adapters, step.name)
+                try:
+                    adapter.verify(bound, step.name)
+                    result = "already-verified"
+                except LifecycleError:
+                    result = adapter.apply(bound, step.name)
+                    adapter.verify(bound, step.name)
             last_phase = phase_after(step.name)
             active = ActiveOperation(
                 schema=OPERATION_SCHEMA,
@@ -147,6 +149,9 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
                 kind=active.kind,
                 request_hash=active.request_hash,
                 target_release_id=active.target_release_id,
+                data_root=active.data_root,
+                release_manifest_sha256=active.release_manifest_sha256,
+                backend_port=active.backend_port,
                 phase=last_phase,
                 no_return_point=last_phase in {"data_ready", "release_activated"},
                 last_adapter_result=f"{step.name}:{result}",
@@ -156,12 +161,16 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             )
             stores.operations_write.publish_active(active)
 
+        _ensure_runtime_binding(stores, bound)
         committed = ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=active.operation_id,
             kind=active.kind,
             request_hash=active.request_hash,
             target_release_id=active.target_release_id,
+            data_root=active.data_root,
+            release_manifest_sha256=active.release_manifest_sha256,
+            backend_port=active.backend_port,
             phase="committed",
             no_return_point=True,
             last_adapter_result=active.last_adapter_result,
@@ -179,6 +188,10 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             code="committed",
             message="fresh install committed",
             installation_published=True,
+            pairing_code=owner_pairing.pairing_code if owner_pairing is not None else "",
+            pairing_expires_at=(
+                owner_pairing.pairing_expires_at if owner_pairing is not None else ""
+            ),
         )
     except LifecycleError as exc:
         failed = ActiveOperation(
@@ -187,6 +200,9 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             kind=active.kind,
             request_hash=active.request_hash,
             target_release_id=active.target_release_id,
+            data_root=active.data_root,
+            release_manifest_sha256=active.release_manifest_sha256,
+            backend_port=active.backend_port,
             phase="failed_recoverable",
             no_return_point=active.no_return_point,
             last_adapter_result=active.last_adapter_result,

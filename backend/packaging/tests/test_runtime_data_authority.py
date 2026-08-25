@@ -2,460 +2,317 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import ntpath
 import os
 import stat
-import subprocess
+from dataclasses import dataclass
+from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-_RUNTIME_VOLUME_IDENTITY = "\\\\?\\Volume{11111111-2222-3333-4444-555555555555}\\"
-_OTHER_VOLUME_IDENTITY = "\\\\?\\Volume{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}\\"
+INSTALL_ID = "11111111-1111-4111-8111-111111111111"
+DATASET_ID = "22222222-2222-4222-8222-222222222222"
+OPERATION_ID = "33333333-3333-4333-8333-333333333333"
+RELEASE_ID = "1.2.0"
+MANIFEST_SHA = "a" * 64
 
 
 def _load_launch_module():
     launch_path = Path(__file__).resolve().parents[1] / "launch.py"
-    spec = importlib.util.spec_from_file_location("ticketbox_authority_launch", launch_path)
+    spec = importlib.util.spec_from_file_location("ticketbox_runtime_authority", launch_path)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def _write_runtime_data_root_marker(
-    runtime_root: Path,
-    *,
-    data_root: Path,
-    install_dir: Path,
-    volume_identity: str = _RUNTIME_VOLUME_IDENTITY,
-) -> Path:
-    runtime_root.mkdir(parents=True, exist_ok=True)
-    marker_path = runtime_root / ".ticketbox-data-root.json"
-    marker_path.write_text(
-        json.dumps(
-            {
-                "schema": "ticketbox-data-root-v2",
-                "data_root": str(data_root),
-                "install_dir": str(install_dir),
-                "data_volume_identity": volume_identity,
-            },
-            ensure_ascii=True,
-        ),
-        encoding="utf-8",
-    )
-    return marker_path
+def _binding(data_root: Path) -> dict[str, object]:
+    return {
+        "schema": "ticketbox-installed-instance-v1",
+        "install_id": INSTALL_ID,
+        "dataset_id": DATASET_ID,
+        "expected_restore_epoch": 0,
+        "data_root": str(data_root),
+        "active_release_id": RELEASE_ID,
+        "previous_release_id": None,
+        "release_manifest_sha256": MANIFEST_SHA,
+        "postgres_major": 17,
+        "pg_service_name": "TicketboxPg",
+        "backend_service_name": "TicketboxBackend",
+        "pg_port": 5432,
+        "backend_port": 8000,
+    }
 
 
-def _volume_bound_path(path: Path, volume_identity: str) -> str:
-    _drive, tail = ntpath.splitdrive(str(path.resolve()))
-    return volume_identity.upper() + tail.lstrip("\\")
+def _active(data_root: Path) -> dict[str, object]:
+    return {
+        "schema": "ticketbox-lifecycle-operation-v2",
+        "operation_id": OPERATION_ID,
+        "kind": "install",
+        "request_hash": "b" * 64,
+        "target_release_id": RELEASE_ID,
+        "data_root": str(data_root),
+        "release_manifest_sha256": MANIFEST_SHA,
+        "backend_port": 8000,
+        "phase": "data_ready",
+        "no_return_point": True,
+        "last_adapter_result": "owner_claim:claimed",
+        "install_id": INSTALL_ID,
+        "dataset_id": DATASET_ID,
+        "schema_revision": "20260821_0001",
+    }
 
 
-def _configure_installed_runtime(monkeypatch, launch, tmp_path):
-    runtime_root = tmp_path / "runtime-binding"
-    data_root = tmp_path / "authoritative-data"
-    install_dir = tmp_path / "install"
-    executable = install_dir / "program" / "ticketbox-backend" / "ticketbox-backend.exe"
+def _configure_frozen(
+    monkeypatch: pytest.MonkeyPatch,
+    launch,
+    tmp_path: Path,
+) -> tuple[Path, Path, Path]:
+    program_data = tmp_path / "ProgramData"
+    data_root = program_data / "Ticketbox" / "data"
+    data_dir = data_root / "app"
+    executable = tmp_path / "Ticketbox" / "releases" / RELEASE_ID / "backend" / "ticketbox-backend.exe"
     executable.parent.mkdir(parents=True)
-    data_root.mkdir()
-    marker_path = _write_runtime_data_root_marker(
-        runtime_root,
-        data_root=data_root,
-        install_dir=install_dir,
-    )
-    monkeypatch.setenv("TICKETBOX_DATA_DIR", str(runtime_root / "app"))
-    monkeypatch.setenv(
-        "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH",
-        str(runtime_root / "bootstrap-exposure-recovery-pending"),
-    )
-    monkeypatch.setenv(
-        "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH", str(tmp_path / "installer-guard")
-    )
-    monkeypatch.setenv("TICKETBOX_DATA_ROOT_MARKER_PATH", str(marker_path))
-    monkeypatch.setenv("TICKETBOX_DATA_VOLUME_IDENTITY", _RUNTIME_VOLUME_IDENTITY)
+    executable.write_text("frozen", encoding="utf-8")
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.setenv("TICKETBOX_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("TICKETBOX_INSTALLATION_ID", INSTALL_ID)
+    monkeypatch.setenv("TICKETBOX_DATASET_ID", DATASET_ID)
+    monkeypatch.setenv("TICKETBOX_RELEASE_ID", RELEASE_ID)
     monkeypatch.setenv("TICKETBOX_OWNER_RECOVERY_CHANNEL", "managed_host")
-    monkeypatch.setattr(launch, "_assert_runtime_marker_no_follow", lambda _path: None)
-    monkeypatch.setattr(
-        launch,
-        "_windows_final_volume_path",
-        lambda _path: _volume_bound_path(data_root, _RUNTIME_VOLUME_IDENTITY),
-    )
+    monkeypatch.setenv("TICKETBOX_PORT", "8000")
     monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(launch.sys, "executable", str(executable))
-    return runtime_root, data_root, install_dir, marker_path
+    monkeypatch.setattr(launch.sys, "executable", str(executable), raising=False)
+    return program_data, data_root, data_dir
 
 
-def test_source_runtime_does_not_require_installer_volume_authority(
-    monkeypatch, tmp_path
-):
+def _write_authority(program_data: Path, relative: str, payload: dict[str, object]) -> Path:
+    path = program_data / "Ticketbox" / "machine" / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_source_runtime_uses_explicit_data_dir_without_installed_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     launch = _load_launch_module()
     preset = tmp_path / "source-data"
     monkeypatch.setenv("TICKETBOX_DATA_DIR", str(preset))
-    monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH", raising=False)
-    monkeypatch.delenv("TICKETBOX_DATA_VOLUME_IDENTITY", raising=False)
+    monkeypatch.setattr(launch.sys, "frozen", False, raising=False)
 
-    assert launch.configure_environment() == Path(os.path.abspath(preset))
+    assert launch.configure_environment() == preset.resolve()
     assert (preset / "uploads").is_dir()
 
 
-def test_frozen_runtime_requires_complete_host_authority_before_write(
-    monkeypatch, tmp_path
-):
+def test_frozen_runtime_requires_complete_explicit_service_authority_before_write(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     launch = _load_launch_module()
-    values = {
-        "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH": str(tmp_path / "bootstrap-guard"),
-        "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH": str(tmp_path / "installer-guard"),
-        "TICKETBOX_DATA_ROOT_MARKER_PATH": str(tmp_path / "data-root-marker"),
-        "TICKETBOX_DATA_VOLUME_IDENTITY": _RUNTIME_VOLUME_IDENTITY,
-        "TICKETBOX_OWNER_RECOVERY_CHANNEL": "managed_host",
-    }
-    missing_cases = [(key,) for key in values]
-    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    _program_data, _data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    monkeypatch.delenv("TICKETBOX_INSTALLATION_ID")
 
-    for index, missing_keys in enumerate(missing_cases):
-        preset = tmp_path / f"frozen-case-{index}" / "app"
-        monkeypatch.setenv("TICKETBOX_DATA_DIR", str(preset))
-        for key, value in values.items():
-            monkeypatch.setenv(key, value)
-        for key in missing_keys:
-            monkeypatch.delenv(key, raising=False)
-
-        with pytest.raises(RuntimeError, match="frozen backend host authority is incomplete") as error:
-            launch.configure_environment()
-
-        for key in missing_keys:
-            assert key in str(error.value)
-        assert not (preset / "uploads").exists()
-
-
-@pytest.mark.parametrize(
-    ("present_key", "missing_key"),
-    [
-        ("TICKETBOX_DATA_ROOT_MARKER_PATH", "TICKETBOX_DATA_VOLUME_IDENTITY"),
-        ("TICKETBOX_DATA_VOLUME_IDENTITY", "TICKETBOX_DATA_ROOT_MARKER_PATH"),
-    ],
-)
-def test_partial_runtime_authority_fails_before_write(
-    monkeypatch, tmp_path, present_key, missing_key
-):
-    launch = _load_launch_module()
-    runtime_root = tmp_path / "runtime-binding"
-    preset = runtime_root / "app"
-    values = {
-        "TICKETBOX_DATA_ROOT_MARKER_PATH": str(
-            runtime_root / ".ticketbox-data-root.json"
-        ),
-        "TICKETBOX_DATA_VOLUME_IDENTITY": _RUNTIME_VOLUME_IDENTITY,
-    }
-    monkeypatch.setenv("TICKETBOX_DATA_DIR", str(preset))
-    monkeypatch.setenv(present_key, values[present_key])
-    monkeypatch.delenv(missing_key, raising=False)
-
-    with pytest.raises(RuntimeError, match="authority is incomplete"):
+    with pytest.raises(RuntimeError, match="TICKETBOX_INSTALLATION_ID"):
         launch.configure_environment()
 
-    assert not (preset / "uploads").exists()
+    assert not (data_dir / "uploads").exists()
 
 
-def test_volume_bound_runtime_authority_allows_writes(monkeypatch, tmp_path):
+def test_frozen_runtime_requires_binding_or_active_operation_before_write(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     launch = _load_launch_module()
-    runtime_root, _data_root, _install_dir, _marker_path = _configure_installed_runtime(
-        monkeypatch,
-        launch,
-        tmp_path,
-    )
-    preset = runtime_root / "app"
+    _program_data, _data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
 
-    assert launch.configure_environment() == Path(os.path.abspath(preset))
-    assert (preset / "uploads").is_dir()
-
-
-def test_frozen_runtime_rejects_unknown_recovery_capability_before_write(
-    monkeypatch,
-    tmp_path,
-):
-    launch = _load_launch_module()
-    runtime_root, _data_root, _install_dir, _marker_path = _configure_installed_runtime(
-        monkeypatch,
-        launch,
-        tmp_path,
-    )
-    monkeypatch.setenv("TICKETBOX_OWNER_RECOVERY_CHANNEL", "frozen_windows")
-
-    with pytest.raises(RuntimeError, match="owner recovery capability is invalid"):
+    with pytest.raises(RuntimeError, match="runtime authority"):
         launch.configure_environment()
 
-    assert not (runtime_root / "app" / "uploads").exists()
+    assert not (data_dir / "uploads").exists()
 
 
-def test_bootstrap_guard_must_share_runtime_projection_before_write(
-    monkeypatch, tmp_path
-):
+def test_frozen_runtime_admits_exact_installation_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     launch = _load_launch_module()
-    runtime_root, _data_root, _install_dir, _marker_path = _configure_installed_runtime(
-        monkeypatch,
-        launch,
-        tmp_path,
-    )
-    preset = runtime_root / "app"
-    monkeypatch.setenv(
-        "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH",
-        str(tmp_path / "drive-letter-reused" / "bootstrap-exposure-recovery-pending"),
-    )
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "installation.json", _binding(data_root))
 
-    with pytest.raises(RuntimeError, match="not bound to the runtime DataRoot projection"):
+    assert launch.configure_environment() == data_dir.resolve()
+    assert (data_dir / "uploads").is_dir()
+
+
+def test_frozen_runtime_admits_active_fresh_install_before_binding_publication(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "operations/active.json", _active(data_root))
+
+    assert launch.configure_environment() == data_dir.resolve()
+
+
+def test_frozen_runtime_rejects_disagreeing_temporal_authorities(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "installation.json", _binding(data_root))
+    active = _active(data_root)
+    active["release_manifest_sha256"] = "c" * 64
+    _write_authority(program_data, "operations/active.json", active)
+
+    with pytest.raises(RuntimeError, match="authorities disagree"):
         launch.configure_environment()
 
-    assert not (preset / "uploads").exists()
+    assert not (data_dir / "uploads").exists()
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Windows Volume GUID contract")
-def test_windows_volume_identity_follows_runtime_junction(monkeypatch, tmp_path):
+def test_frozen_runtime_rejects_reparse_ancestor_before_write(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     launch = _load_launch_module()
-    target = tmp_path / "target"
-    junction = tmp_path / "runtime-data-root"
-    target.mkdir()
-    result = subprocess.run(
-        ["cmd.exe", "/d", "/c", "mklink", "/J", str(junction), str(target)],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    try:
-        assert launch._windows_final_volume_identity(
-            junction
-        ) == launch._windows_final_volume_identity(target)
-        guard = junction / "bootstrap-exposure-recovery-pending"
-        monkeypatch.setenv("TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH", str(guard))
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "installation.json", _binding(data_root))
+    original_lstat = Path.lstat
 
-        assert (
-            launch._host_guard_is_present_or_malformed(
-                guard,
-                allowed_reparse_ancestor=junction,
-            )
-            is False
-        )
-        assert launch._host_guard_is_present_or_malformed(guard) is True
-        launch._assert_bootstrap_recovery_not_pending(junction)
-    finally:
-        os.rmdir(junction)
-    assert target.is_dir()
-
-
-@pytest.mark.parametrize(
-    ("marker_volume", "resolved_volume", "delete_marker", "message"),
-    [
-        (
-            _OTHER_VOLUME_IDENTITY,
-            _RUNTIME_VOLUME_IDENTITY,
-            False,
-            "marker Volume GUID does not match",
-        ),
-        (
-            _RUNTIME_VOLUME_IDENTITY,
-            _OTHER_VOLUME_IDENTITY,
-            False,
-            "junction resolved to another volume",
-        ),
-        (
-            _RUNTIME_VOLUME_IDENTITY,
-            _RUNTIME_VOLUME_IDENTITY,
-            True,
-            "marker is unavailable",
-        ),
-    ],
-)
-def test_broken_runtime_authority_fails_before_write(
-    monkeypatch,
-    tmp_path,
-    marker_volume,
-    resolved_volume,
-    delete_marker,
-    message,
-):
-    launch = _load_launch_module()
-    runtime_root, data_root, install_dir, marker_path = _configure_installed_runtime(
-        monkeypatch,
-        launch,
-        tmp_path,
-    )
-    preset = runtime_root / "app"
-    marker_path = _write_runtime_data_root_marker(
-        runtime_root,
-        data_root=data_root,
-        install_dir=install_dir,
-        volume_identity=marker_volume,
-    )
-    if delete_marker:
-        marker_path.unlink()
-    monkeypatch.setattr(
-        launch,
-        "_windows_final_volume_path",
-        lambda _path: _volume_bound_path(data_root, resolved_volume),
-    )
-
-    with pytest.raises(RuntimeError, match=message):
-        launch.configure_environment()
-
-    assert not (preset / "uploads").exists()
-
-
-@pytest.mark.parametrize("mismatch", ["data_root", "install_dir"])
-def test_marker_path_binding_mismatch_fails_before_write(monkeypatch, tmp_path, mismatch):
-    launch = _load_launch_module()
-    runtime_root, data_root, install_dir, marker_path = _configure_installed_runtime(
-        monkeypatch,
-        launch,
-        tmp_path,
-    )
-    marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    marker[mismatch] = str(tmp_path / f"wrong-{mismatch}")
-    marker_path.write_text(json.dumps(marker), encoding="utf-8")
-
-    message = (
-        "junction does not match the marker data_root"
-        if mismatch == "data_root"
-        else "marker does not match the frozen install directory"
-    )
-    with pytest.raises(RuntimeError, match=message):
-        launch.configure_environment()
-
-    assert not (runtime_root / "app" / "uploads").exists()
-
-
-def test_runtime_marker_reparse_is_rejected_before_read():
-    launch = _load_launch_module()
-
-    class ReparseMarker:
-        def lstat(self):
+    def marked_lstat(path: Path):
+        if path.name == "machine":
             return SimpleNamespace(
                 st_mode=stat.S_IFLNK,
                 st_file_attributes=getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400),
             )
+        return original_lstat(path)
 
-    with pytest.raises(RuntimeError, match="regular non-reparse file"):
-        launch._assert_runtime_marker_no_follow(ReparseMarker())
+    monkeypatch.setattr(Path, "lstat", marked_lstat)
+    with pytest.raises(RuntimeError, match="reparse point"):
+        launch.configure_environment()
+
+    assert not (data_dir / "uploads").exists()
 
 
-def test_dotenv_cannot_replace_host_runtime_authority(monkeypatch, tmp_path):
+def test_dotenv_cannot_replace_frozen_service_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     launch = _load_launch_module()
-    runtime_root, _data_root, _install_dir, marker_path = _configure_installed_runtime(
-        monkeypatch,
-        launch,
-        tmp_path,
-    )
-    preset = runtime_root / "app"
-    preset.mkdir(parents=True)
-    installer_guard = tmp_path / "trusted-installer-guard"
-    bootstrap_guard = runtime_root / "bootstrap-exposure-recovery-pending"
-    monkeypatch.setenv("TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH", str(installer_guard))
-    monkeypatch.setenv("TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH", str(bootstrap_guard))
-    (preset / ".env").write_text(
-        "TICKETBOX_DATA_DIR=C:\\attacker-data\n"
-        "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH=\n"
-        "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH=C:\\attacker-guard\n"
-        "TICKETBOX_DATA_ROOT_MARKER_PATH=C:\\attacker-marker\n"
-        "TICKETBOX_DATA_VOLUME_IDENTITY=\\\\?\\Volume{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}\\\n"
-        "TICKETBOX_OWNER_RECOVERY_CHANNEL=development\n",
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "installation.json", _binding(data_root))
+    data_dir.mkdir(parents=True)
+    (data_dir / ".env").write_text(
+        "TICKETBOX_DATA_DIR=C:\\attacker\n"
+        "TICKETBOX_INSTALLATION_ID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\n"
+        "TICKETBOX_DATASET_ID=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\n"
+        "TICKETBOX_RELEASE_ID=attacker\n"
+        "TICKETBOX_OWNER_RECOVERY_CHANNEL=operator\n"
+        "TICKETBOX_PORT=9999\n",
         encoding="utf-8",
     )
-
-    returned = launch.configure_environment()
-
-    assert returned == preset.resolve()
-    assert os.environ["TICKETBOX_DATA_DIR"] == str(preset.resolve())
-    assert os.environ["TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH"] == str(installer_guard)
-    assert os.environ["TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH"] == str(bootstrap_guard)
-    assert os.environ["TICKETBOX_DATA_ROOT_MARKER_PATH"] == str(marker_path)
-    assert os.environ["TICKETBOX_DATA_VOLUME_IDENTITY"] == _RUNTIME_VOLUME_IDENTITY
-    assert os.environ["TICKETBOX_OWNER_RECOVERY_CHANNEL"] == "managed_host"
-
-
-def test_frozen_runtime_preserves_explicit_deployment_recovery_capability(
-    monkeypatch,
-    tmp_path,
-):
-    launch = _load_launch_module()
-    runtime_root, _data_root, _install_dir, _marker_path = _configure_installed_runtime(
-        monkeypatch,
-        launch,
-        tmp_path,
-    )
-    (runtime_root / "app").mkdir(parents=True)
-    monkeypatch.setenv("TICKETBOX_OWNER_RECOVERY_CHANNEL", "operator")
 
     launch.configure_environment()
 
-    assert os.environ["TICKETBOX_OWNER_RECOVERY_CHANNEL"] == "operator"
+    assert os.environ["TICKETBOX_DATA_DIR"] == str(data_dir.resolve())
+    assert os.environ["TICKETBOX_INSTALLATION_ID"] == INSTALL_ID
+    assert os.environ["TICKETBOX_DATASET_ID"] == DATASET_ID
+    assert os.environ["TICKETBOX_RELEASE_ID"] == RELEASE_ID
+    assert os.environ["TICKETBOX_OWNER_RECOVERY_CHANNEL"] == "managed_host"
+    assert os.environ["TICKETBOX_PORT"] == "8000"
 
 
-def test_frozen_vnext_without_marker_requires_installation_binding(monkeypatch, tmp_path):
+def test_runtime_entrypoint_contains_no_retired_marker_or_recovery_fallback() -> None:
     launch = _load_launch_module()
-    program_data = tmp_path / "ProgramData"
-    data_root = tmp_path / "data"
-    preset = data_root / "app"
-    monkeypatch.setenv("PROGRAMDATA", str(program_data))
-    monkeypatch.setenv("TICKETBOX_DATA_DIR", str(preset))
-    for key in (
+    source = Path(launch.__file__).read_text(encoding="utf-8")
+    for token in (
         "TICKETBOX_DATA_ROOT_MARKER_PATH",
         "TICKETBOX_DATA_VOLUME_IDENTITY",
         "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH",
         "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH",
-        "TICKETBOX_OWNER_RECOVERY_CHANNEL",
+        "_InstallerRuntimeRecoveryGuard",
     ):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(
-        launch.sys,
-        "executable",
-        str(tmp_path / "Ticketbox" / "releases" / "1.2.0" / "backend" / "ticketbox-backend.exe"),
-        raising=False,
-    )
-
-    with pytest.raises(RuntimeError, match="installation.json binding"):
-        launch.configure_environment()
-
-    assert not (preset / "uploads").exists()
+        assert token not in source
 
 
-def test_frozen_vnext_admits_matching_installation_binding(monkeypatch, tmp_path):
+def test_fresh_owner_helper_consumes_secret_on_stdin_and_returns_pairing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     launch = _load_launch_module()
-    program_data = tmp_path / "ProgramData"
-    binding_dir = program_data / "Ticketbox" / "machine"
-    binding_dir.mkdir(parents=True)
-    data_root = tmp_path / "data"
-    preset = data_root / "app"
-    executable = (
-        tmp_path / "Ticketbox" / "releases" / "1.2.0" / "backend" / "ticketbox-backend.exe"
-    )
-    executable.parent.mkdir(parents=True)
-    executable.write_text("x", encoding="utf-8")
-    (binding_dir / "installation.json").write_text(
-        json.dumps(
-            {
-                "schema": "ticketbox-installed-instance-v1",
-                "data_root": str(data_root),
-                "active_release_id": "1.2.0",
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("PROGRAMDATA", str(program_data))
-    monkeypatch.setenv("TICKETBOX_DATA_DIR", str(preset))
-    for key in (
-        "TICKETBOX_DATA_ROOT_MARKER_PATH",
-        "TICKETBOX_DATA_VOLUME_IDENTITY",
-        "TICKETBOX_BOOTSTRAP_RECOVERY_GUARD_PATH",
-        "TICKETBOX_INSTALLER_RECOVERY_GUARD_PATH",
-        "TICKETBOX_OWNER_RECOVERY_CHANNEL",
-    ):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(launch.sys, "executable", str(executable), raising=False)
+    passfile = tmp_path / "pgpass"
+    passfile.write_text("sealed", encoding="utf-8")
+    for key in tuple(os.environ):
+        if key.upper().startswith("PG"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("PGPASSFILE", str(passfile))
+    observed: dict[str, object] = {}
 
-    assert launch.configure_environment() == Path(os.path.abspath(preset))
-    assert (preset / "uploads").is_dir()
+    class FakeEngine:
+        def dispose(self):
+            observed["disposed"] = True
+
+    class FakeSession:
+        def __init__(self, engine, *, expire_on_commit):
+            observed["engine"] = engine
+            observed["expire_on_commit"] = expire_on_commit
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, statement):
+            observed["statement"] = str(statement)
+
+        def commit(self):
+            observed["committed"] = True
+
+    @dataclass(frozen=True)
+    class Result:
+        contract: str = "ticketbox-installation-owner-pairing-v1"
+        operation_id: str = "op-1"
+        installation_id: str = "install-1"
+        account_name: str = "我"
+        ledger_id: str = "default"
+        ledger_name: str = "我的小票夹"
+        device_name: str = "Windows 安装来源"
+        pairing_code: str = "12345678"
+        pairing_expires_at: str = "2026-08-25T12:00:00Z"
+        pairing_derivation_index: int = 0
+        claim_generation: int = 1
+
+    import sqlalchemy
+    import sqlalchemy.orm
+
+    from app.services import identity_service
+
+    engine = FakeEngine()
+    monkeypatch.setattr(sqlalchemy, "create_engine", lambda *_args, **_kwargs: engine)
+    monkeypatch.setattr(sqlalchemy.orm, "Session", FakeSession)
+    monkeypatch.setattr(identity_service, "bootstrap_installation_owner", lambda _db, **_kwargs: Result())
+    output = StringIO()
+
+    assert launch._run_fresh_owner_claim(
+        [
+            "--fresh-owner-claim",
+            "--database-url",
+            "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/ticketbox?require_auth=scram-sha-256",
+            "--pgpassfile",
+            str(passfile),
+            "--operation-id",
+            "op-1",
+            "--installation-id",
+            "install-1",
+        ],
+        input_stream=BytesIO(b"a" * 64 + b"\n"),
+        output_stream=output,
+    ) == 0
+    assert observed["committed"] is True
+    assert observed["disposed"] is True
+    assert json.loads(output.getvalue())["pairing_code"] == "12345678"

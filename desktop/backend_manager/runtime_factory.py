@@ -5,7 +5,6 @@ from __future__ import annotations
 from functools import partial
 
 from backend_manager.config import ConfigError, InstalledRuntimeConfig, ManagerConfig, SourceRuntimeConfig, load_config
-from backend_manager.elevation import ElevatedServiceActionRunner
 from backend_manager.process import (
     TicketboxHealthExpectation,
     health_ok,
@@ -20,7 +19,7 @@ from backend_manager.projection import (
 )
 from backend_manager.runtime import BackendRuntime, SourceBackendRuntime
 from backend_manager.supervisor import BackendSupervisor
-from backend_manager.windows_service import BrokeredWindowsServiceRuntime, WindowsServiceGateway, WindowsServiceRuntime
+from backend_manager.windows_service import WindowsServiceGateway, WindowsServiceRuntime
 
 
 def build_source_supervisor(config: ManagerConfig, runtime: SourceRuntimeConfig) -> BackendSupervisor:
@@ -51,6 +50,7 @@ def build_direct_service_runtime(
     config: ManagerConfig,
     runtime: InstalledRuntimeConfig,
     *,
+    control_actions_allowed: bool,
     backend_stopped_validator=None,
 ) -> WindowsServiceRuntime:
     expectation = TicketboxHealthExpectation(
@@ -76,6 +76,7 @@ def build_direct_service_runtime(
         poll_seconds=release.service_poll_seconds,
         backend_ready_timeout_seconds=release.backend_ready_timeout_seconds,
         backend_ready_poll_seconds=release.backend_ready_poll_seconds,
+        control_actions_allowed=control_actions_allowed,
         backend_stopped_validator=backend_stopped_validator,
     )
 
@@ -97,12 +98,10 @@ def build_runtime(config: ManagerConfig) -> BackendRuntime:
             ),
         )
     if isinstance(runtime, InstalledRuntimeConfig):
-        return BrokeredWindowsServiceRuntime(
-            status_runtime=build_direct_service_runtime(config, runtime),
-            action_runner=ElevatedServiceActionRunner(
-                runtime.release,
-                runtime.layout.manager_executable_path,
-            ),
+        return build_direct_service_runtime(
+            config,
+            runtime,
+            control_actions_allowed=False,
         )
     raise ConfigError(f"unsupported runtime: {type(runtime).__name__}")
 

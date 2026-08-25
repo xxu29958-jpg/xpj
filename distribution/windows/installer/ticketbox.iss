@@ -16,6 +16,8 @@
 #ifndef DefaultBackendPort
 #define DefaultBackendPort "8000"
 #endif
+#define TicketboxMsvcRedistSource "..\..\..\backend\packaging\vendor\vc-runtime\vc_redist.x64.exe"
+#define TicketboxRequiredMsvcRuntimeVersion GetVersionNumbersString(TicketboxMsvcRedistSource)
 
 [Setup]
 AppId={{A9E0C4D2-7B11-4F20-9C6A-2D8F1B0A4E77}}
@@ -31,23 +33,22 @@ DisableProgramGroupPage=yes
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayName=小票夹
 OutputBaseFilename=Ticketbox-Setup-{#AppVersion}
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no
+Uninstallable=no
 
 [Languages]
 Name: "chinesesimp"; MessagesFile: "..\..\..\backend\packaging\languages\ChineseSimplified.isl"
 
 [Files]
-Source: "..\..\..\backend\packaging\vendor\vc-runtime\vc_redist.x64.exe"; DestName: "vc_redist.x64.exe"; Flags: dontcopy noencryption
+Source: "{#TicketboxMsvcRedistSource}"; DestDir: "{app}\bin"; DestName: "vc_redist.x64.exe"; Flags: ignoreversion
 Source: "..\..\..\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#ReleaseId}\backend"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\..\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion
 Source: "..\payload\TicketboxLifecycle.exe"; DestDir: "{app}\bin"; DestName: "TicketboxLifecycle.exe"; Flags: ignoreversion
-Source: "..\payload\TicketboxBackendLauncher.exe"; DestDir: "{app}\bin"; DestName: "TicketboxBackendLauncher.exe"; Flags: ignoreversion
 Source: "..\payload\release-manifest.json"; DestDir: "{app}\releases\{#ReleaseId}"; Flags: ignoreversion
 Source: "..\..\..\backend\packaging\ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -55,26 +56,12 @@ Source: "..\..\..\backend\packaging\ticketbox.ico"; DestDir: "{app}"; Flags: ign
 Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\releases\{#ReleaseId}\manager\ticketbox-manager.exe"; WorkingDir: "{app}\releases\{#ReleaseId}\manager"; IconFilename: "{app}\ticketbox.ico"
 
 [Registry]
-Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallIdPending"; ValueData: "projection-only"; Flags: uninsdeletevalue
-
-[Run]
-Filename: "{app}\bin\TicketboxLifecycle.exe"; Parameters: "{code:TicketboxLifecycleParams}"; WorkingDir: "{app}\bin"; Flags: runhidden waituntilterminated
-
-; Official install order (jrsoftware ishelp topic_installorder): [Files], then
-; [Icons]/[Registry], then uninstaller finalize, then [Run]. Architecture 3.1
-; therefore calls the installed coordinator from [Run], not from a [Files]
-; AfterInstall (that event fires mid-copy; issrc NotifyAfterInstallEntry also
-; swallows exceptions). Official [Run] waits but does not check exit codes
-; (topic_runsection). GetCustomSetupExitCode (topic_scriptevents) overlays a
-; non-zero exit when last-result is not this operation's committed success.
-; Files may remain; that is staged material, not a committed installation.
-
-[UninstallDelete]
-Type: filesandordirs; Name: "{app}\releases"
-Type: filesandordirs; Name: "{app}\bin"
+Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"
 
 [Code]
+const
+  TicketboxRequiredMsvcRuntimeVersion = '{#TicketboxRequiredMsvcRuntimeVersion}';
+
 type
   TTicketboxGuid = record
     D1: LongWord;
@@ -85,6 +72,9 @@ type
 
 var
   TicketboxProvisionOperationId: String;
+  TicketboxPairingCode: String;
+  TicketboxPairingExpiresAt: String;
+  TicketboxRuntimeNeedsRestart: Boolean;
 
 function CoCreateGuid(var Guid: TTicketboxGuid): Integer;
 external 'CoCreateGuid@ole32.dll stdcall';
@@ -126,40 +116,15 @@ end;
 function InitializeSetup: Boolean;
 begin
   TicketboxProvisionOperationId := '';
+  TicketboxPairingCode := '';
+  TicketboxPairingExpiresAt := '';
+  TicketboxRuntimeNeedsRestart := False;
   Result := True;
 end;
 
-function TicketboxMsvcRuntimePresent: Boolean;
+function NeedRestart: Boolean;
 begin
-  Result := FileExists(ExpandConstant('{sys}\VCRUNTIME140.dll'));
-end;
-
-function TicketboxEnsureMsvcRuntime(var NeedsRestart: Boolean): String;
-var
-  ResultCode: Integer;
-  Redist: String;
-begin
-  Result := '';
-  if TicketboxMsvcRuntimePresent then
-    exit;
-  ExtractTemporaryFile('vc_redist.x64.exe');
-  Redist := ExpandConstant('{tmp}\vc_redist.x64.exe');
-  if not Exec(Redist, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    Result := '无法启动 Visual C++ 运行库安装。';
-    exit;
-  end;
-  if TicketboxMsvcRuntimePresent then
-    exit;
-  if ResultCode = 3010 then
-  begin
-    NeedsRestart := True;
-    exit;
-  end;
-  if (ResultCode <> 0) and (ResultCode <> 1638) then
-    Result := 'Visual C++ 运行库安装失败（exit=' + IntToStr(ResultCode) + '）。'
-  else
-    Result := 'Visual C++ 运行库安装后仍检测不到 VCRUNTIME140.dll。';
+  Result := TicketboxRuntimeNeedsRestart;
 end;
 
 function TicketboxJsonString(const Text, Key: String): String;
@@ -177,7 +142,7 @@ begin
   end;
   if P = 0 then
     Exit;
-  Rest := Copy(Text, P + Length(Needle), 500);
+  Rest := Copy(Text, P + Length(Needle), 1000);
   Q := Pos('"', Rest);
   if Q > 1 then
     Result := Copy(Rest, 1, Q - 1);
@@ -187,84 +152,122 @@ function TicketboxActiveOperationIsResumable: Boolean;
 var
   ActivePath: String;
   Text: AnsiString;
-  Observed: String;
-  Phase: String;
+  OperationId, Phase: String;
 begin
-  { Architecture 10.1: same-operation retry. Binding may already exist because
-    the coordinator publishes installation.json before health (launcher fig 1).
-    Official PrepareToInstall: empty Result continues; non-empty stops with
-    exit 7 (jrsoftware topic_scriptevents / topic_setupexitcodes).
-    The post-Files coordinator invocation reuses active.json as resume. }
   Result := False;
   ActivePath := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\active.json');
   if not LoadStringFromFile(ActivePath, Text) then
     Exit;
-  Observed := TicketboxJsonString(String(Text), 'operation_id');
-  if Observed = '' then
-    Exit;
+  OperationId := TicketboxJsonString(String(Text), 'operation_id');
   Phase := TicketboxJsonString(String(Text), 'phase');
-  if Phase = 'committed' then
-    Exit;
-  Result := True;
+  Result := (OperationId <> '') and (Phase <> 'committed');
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   BindingPath: String;
 begin
+  { Read-only preflight. All mutation happens after complete [Files]. }
   NeedsRestart := False;
   Result := '';
   if not IsWin64 then
   begin
     Result := '小票夹需要 64 位 Windows。';
-    exit;
+    Exit;
   end;
   BindingPath := ExpandConstant('{commonappdata}\Ticketbox\machine\installation.json');
   if FileExists(BindingPath) and (not TicketboxActiveOperationIsResumable()) then
   begin
-    Result := '此计算机已有 Ticketbox installation.json。首次安装不会覆盖数据身份。';
-    exit;
+    Result := '这台电脑已经安装小票夹。首次安装不会覆盖现有数据。';
+    Exit;
   end;
-  Result := TicketboxEnsureMsvcRuntime(NeedsRestart);
+end;
+
+procedure TicketboxInstallMsvcRuntime;
+var
+  Redist, RuntimePath: String;
+  ResultCode: Integer;
+  InstalledVersion, RequiredVersion: Int64;
+begin
+  Redist := ExpandConstant('{app}\bin\vc_redist.x64.exe');
+  if not FileExists(Redist) then
+    RaiseException('小票夹安装失败：安装包缺少 Visual C++ 运行库。');
+  if not Exec(Redist, '/install /quiet /norestart', '', SW_HIDE,
+      ewWaitUntilTerminated, ResultCode) then
+    RaiseException('小票夹安装失败：无法启动 Visual C++ 运行库安装。');
+  if ResultCode = 3010 then
+    TicketboxRuntimeNeedsRestart := True
+  else if (ResultCode <> 0) and (ResultCode <> 1638) then
+    RaiseException('小票夹安装失败：Visual C++ 运行库返回 ' +
+      IntToStr(ResultCode) + '。');
+  RuntimePath := ExpandConstant('{sys}\VCRUNTIME140.dll');
+  if not GetPackedVersion(RuntimePath, InstalledVersion) then
+    RaiseException('小票夹安装失败：无法读取 Visual C++ 运行库版本。');
+  if not StrToVersion(TicketboxRequiredMsvcRuntimeVersion, RequiredVersion) then
+    RaiseException('小票夹安装失败：安装包内 Visual C++ 运行库版本无效。');
+  if ComparePackedVersion(InstalledVersion, RequiredVersion) < 0 then
+    RaiseException('小票夹安装失败：Visual C++ 运行库版本过旧（实际 ' +
+      VersionToStr(InstalledVersion) + '，需要 ' +
+      TicketboxRequiredMsvcRuntimeVersion + ' 或更高版本）。');
+end;
+
+function TicketboxResultPath: String;
+begin
+  Result := ExpandConstant('{tmp}\ticketbox-install-result.json');
 end;
 
 function TicketboxResultIsCommitted(const OperationId: String): Boolean;
 var
-  ResultPath, Observed: String;
   Text: AnsiString;
+  Body, Observed: String;
 begin
   Result := False;
-  ResultPath := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\last-result.json');
-  if not LoadStringFromFile(ResultPath, Text) then
+  TicketboxPairingCode := '';
+  TicketboxPairingExpiresAt := '';
+  if not LoadStringFromFile(TicketboxResultPath, Text) then
     Exit;
-  Observed := TicketboxJsonString(String(Text), 'operation_id');
+  Body := String(Text);
+  Observed := TicketboxJsonString(Body, 'operation_id');
   if (OperationId = '') or (Observed <> OperationId) then
     Exit;
-  if (Pos('"ok": false', String(Text)) > 0) or (Pos('"ok":false', String(Text)) > 0) then
+  if (Pos('"schema": "ticketbox-lifecycle-result-v2"', Body) = 0) and
+     (Pos('"schema":"ticketbox-lifecycle-result-v2"', Body) = 0) then
     Exit;
-  if (Pos('"ok": true', String(Text)) = 0) and (Pos('"ok":true', String(Text)) = 0) then
+  if (Pos('"ok": false', Body) > 0) or (Pos('"ok":false', Body) > 0) then
     Exit;
-  if (Pos('"phase": "committed"', String(Text)) = 0) and (Pos('"phase":"committed"', String(Text)) = 0) then
+  if (Pos('"ok": true', Body) = 0) and (Pos('"ok":true', Body) = 0) then
     Exit;
-  Result := True;
+  if (Pos('"phase": "committed"', Body) = 0) and
+     (Pos('"phase":"committed"', Body) = 0) then
+    Exit;
+  if (Pos('"installation_published": true', Body) = 0) and
+     (Pos('"installation_published":true', Body) = 0) then
+    Exit;
+  TicketboxPairingCode := TicketboxJsonString(Body, 'pairing_code');
+  TicketboxPairingExpiresAt := TicketboxJsonString(Body, 'pairing_expires_at');
+  Result := (TicketboxPairingCode <> '') and (TicketboxPairingExpiresAt <> '');
 end;
 
-function GetCustomSetupExitCode: Integer;
+function TicketboxResultFailure: String;
+var
+  Text: AnsiString;
+  Code, MessageText: String;
 begin
-  { Official [Run] does not inspect the coordinator exit code. This overlay is
-    the documented success-path custom exit. }
-  if TicketboxResultIsCommitted(TicketboxProvisionOperationId) then
-    Result := 0
-  else
-    Result := 1;
+  Result := '生命周期控制器没有返回可验证结果';
+  if not LoadStringFromFile(TicketboxResultPath, Text) then
+    Exit;
+  Code := TicketboxJsonString(String(Text), 'code');
+  MessageText := TicketboxJsonString(String(Text), 'message');
+  if MessageText <> '' then
+    Result := MessageText;
+  if Code <> '' then
+    Result := Result + '（' + Code + '）';
 end;
 
 function WriteFreshInstallRequest(const Command, OperationId, ManifestSha: String): Boolean;
 var
-  RequestPath: String;
-  Payload: String;
+  RequestPath, Payload: String;
 begin
-  Result := False;
   RequestPath := ExpandConstant('{tmp}\ticketbox-install-request.json');
   Payload :=
     '{"schema":"ticketbox-lifecycle-request-v1",' +
@@ -287,22 +290,14 @@ end;
 
 function TicketboxLifecycleParams(Param: String): String;
 var
-  Command: String;
-  OperationId: String;
-  ActivePath: String;
+  Command, OperationId, ActivePath, Existing, ManifestPath, ManifestSha: String;
   ActiveText: AnsiString;
-  Existing: String;
-  ManifestPath: String;
-  ManifestSha: String;
 begin
   Result := '';
   Command := 'install';
   OperationId := TicketboxNewUuid;
   if OperationId = '' then
-  begin
-    Log('Ticketbox provision: could not allocate operation_id');
     Exit;
-  end;
   ActivePath := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\active.json');
   if LoadStringFromFile(ActivePath, ActiveText) then
   begin
@@ -313,20 +308,49 @@ begin
       Command := 'resume';
     end;
   end;
-  TicketboxProvisionOperationId := OperationId;
   ManifestPath := ExpandConstant('{app}\releases\{#ReleaseId}\release-manifest.json');
   ManifestSha := GetSHA256OfFile(ManifestPath);
   if ManifestSha = '' then
-  begin
-    Log('Ticketbox provision: release-manifest SHA-256 is empty');
     Exit;
-  end;
   if not WriteFreshInstallRequest(Command, OperationId, ManifestSha) then
-  begin
-    Log('Ticketbox provision: could not write install request');
     Exit;
-  end;
-  Result :=
-    Command + ' --request "' + ExpandConstant('{tmp}\ticketbox-install-request.json') +
-    '" --result "' + ExpandConstant('{commonappdata}\Ticketbox\machine\operations\last-result.json') + '"';
+  TicketboxProvisionOperationId := OperationId;
+  Result := Command + ' --request "' +
+    ExpandConstant('{tmp}\ticketbox-install-request.json') + '" --result "' +
+    TicketboxResultPath + '"';
+end;
+
+procedure TicketboxProvision;
+var
+  Params, Coordinator: String;
+  ResultCode: Integer;
+begin
+  TicketboxInstallMsvcRuntime;
+  Params := TicketboxLifecycleParams('');
+  if Params = '' then
+    RaiseException('小票夹安装失败：无法生成首次安装请求。');
+  if FileExists(TicketboxResultPath) and (not DeleteFile(TicketboxResultPath)) then
+    RaiseException('小票夹安装失败：无法清理上一次临时结果。');
+  Coordinator := ExpandConstant('{app}\bin\TicketboxLifecycle.exe');
+  if not Exec(Coordinator, Params, ExpandConstant('{app}\bin'), SW_HIDE,
+      ewWaitUntilTerminated, ResultCode) then
+    RaiseException('小票夹安装失败：无法启动生命周期控制器。');
+  if (ResultCode <> 0) or
+     (not TicketboxResultIsCommitted(TicketboxProvisionOperationId)) then
+    RaiseException('小票夹首次安装没有完成：' + TicketboxResultFailure +
+      '。请重新运行同一个安装包继续。');
+  MsgBox('小票夹安装完成。' + #13#10 + #13#10 +
+    '首次配对码：' + TicketboxPairingCode + #13#10 +
+    '有效期至：' + TicketboxPairingExpiresAt + #13#10 + #13#10 +
+    '请打开“管理小票夹”完成设备绑定。', mbInformation, MB_OK);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  { Official topic_installorder and topic_scriptevents define ssPostInstall
+    after complete
+    materialization. We do not use a [Files] AfterInstall callback because
+    NotifyAfterInstallEntry does not propagate its exception as this owner. }
+  if CurStep = ssPostInstall then
+    TicketboxProvision;
 end;

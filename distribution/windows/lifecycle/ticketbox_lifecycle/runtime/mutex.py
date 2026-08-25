@@ -32,7 +32,9 @@ class WindowsNamedMutex:
         if not handle:
             raise LifecycleError("mutex_create_failed", "CreateMutexW failed for TicketboxLifecycle")
         wait = kernel32.WaitForSingleObject(handle, 30_000)
-        if wait != 0:
+        # WAIT_OBJECT_0 and WAIT_ABANDONED both transfer mutex ownership.  The
+        # latter is the normal crash-retry path after the previous owner dies.
+        if wait not in {0, 0x80}:
             kernel32.CloseHandle(handle)
             raise LifecycleError("mutex_timeout", "could not acquire Global\\TicketboxLifecycle")
         self._handle = handle

@@ -98,6 +98,30 @@ function Assert-InstallerPublishUnitBytes([string]$PublishDirectory, [string]$Ex
     return $actual
 }
 
+function Get-TicketboxInstallerShipmentPaths([string]$Root) {
+    $directories = @(
+        (Join-Path $Root "backend\dist\ticketbox-backend"),
+        (Join-Path $Root "desktop\dist\ticketbox-manager"),
+        (Join-Path $Root "backend\packaging\vendor\pg")
+    )
+    $paths = @()
+    foreach ($directory in $directories) {
+        if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            throw "安装器 shipment 输入目录缺失：$directory"
+        }
+        Assert-TicketboxNoReparsePath -Path $directory -AllowedRoot $Root -InspectTree | Out-Null
+        $paths += @(
+            Get-ChildItem -LiteralPath $directory -Recurse -File -Force |
+                ForEach-Object { $_.FullName }
+        )
+    }
+    $paths += @(
+        (Join-Path $Root "backend\packaging\vendor\vc-runtime\vc_redist.x64.exe"),
+        (Join-Path $Root "backend\packaging\vendor\shawl\shawl.exe")
+    )
+    return @(Get-TicketboxOrdinalSortedPaths $paths)
+}
+
 if ($VerifyOnly) {
     $verifyDirectory = if ($VerifyPublishDirectory) {
         $VerifyPublishDirectory
@@ -110,22 +134,80 @@ if ($VerifyOnly) {
     exit 0
 }
 
+$BuildLock = $null
+$RecipeLocks = $null
+$ShipmentLocks = $null
+$CompilerLocks = $null
+$InputSnapshotRoot = Join-Path $BackendRoot ("build\.ticketbox-installer-inputs-{0}" -f $PID)
+$PrimaryFailure = $null
+$CleanupFailures = @()
+try {
+    $BuildLock = Enter-TicketboxWindowsBuildLock $BackendRoot
+    $git = Get-TicketboxGitProvenance $BackendRoot
+    if ([bool]$git.dirty) {
+        throw "immutable Setup.exe 只能从 clean exact HEAD 构建。"
+    }
+    Assert-TicketboxNoReparsePath -Path $InputSnapshotRoot -AllowedRoot $BackendRoot | Out-Null
+    if (Test-Path -LiteralPath $InputSnapshotRoot) {
+        Remove-Item -LiteralPath $InputSnapshotRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $InputSnapshotRoot | Out-Null
+
 # ===== 只读源预检 =====
 & (Join-Path $ScriptDir "check_source_inputs.ps1") | Out-Null
 
+# ===== 锁定并复制唯一构建输入快照 =====
+$recipe = Get-TicketboxInstallerRecipeSnapshot $BackendRoot
+try {
+    $RecipeLocks = Enter-TicketboxFileSetReadLocks -Root $RepoRoot -Snapshot $recipe
+    Copy-TicketboxFileSetSnapshot `
+        -SourceRoot $RepoRoot `
+        -DestinationRoot $InputSnapshotRoot `
+        -Snapshot $recipe | Out-Null
+}
+finally {
+    Exit-TicketboxFileSetReadLocks $RecipeLocks
+    $RecipeLocks = $null
+}
+
+$shipmentPaths = Get-TicketboxInstallerShipmentPaths $RepoRoot
+$shipment = Get-TicketboxFileSetSnapshot $RepoRoot $shipmentPaths
+try {
+    $ShipmentLocks = Enter-TicketboxFileSetReadLocks -Root $RepoRoot -Snapshot $shipment
+    Assert-TicketboxFileSetSnapshot `
+        "已锁定 installer shipment" `
+        $shipment `
+        (Get-TicketboxFileSetSnapshot $RepoRoot (Get-TicketboxInstallerShipmentPaths $RepoRoot))
+    Copy-TicketboxFileSetSnapshot `
+        -SourceRoot $RepoRoot `
+        -DestinationRoot $InputSnapshotRoot `
+        -Snapshot $shipment | Out-Null
+}
+finally {
+    Exit-TicketboxFileSetReadLocks $ShipmentLocks
+    $ShipmentLocks = $null
+}
+
+$StagedBackendRoot = Join-Path $InputSnapshotRoot "backend"
+$StagedDesktopRoot = Join-Path $InputSnapshotRoot "desktop"
+$StagedWindowsRoot = Join-Path $InputSnapshotRoot "distribution\windows"
+$StagedScriptDir = Join-Path $StagedWindowsRoot "build"
+$StagedPayloadDir = Join-Path $StagedWindowsRoot "payload"
+$StagedIssPath = Join-Path $StagedWindowsRoot "installer\ticketbox.iss"
+
 # ===== 输入 provenance（fail-closed）=====
-$backendDist = Join-Path $BackendRoot "dist\ticketbox-backend"
+$backendDist = Join-Path $StagedBackendRoot "dist\ticketbox-backend"
 $backendManifest = Assert-TicketboxBackendBuildManifest $BackendRoot $backendDist
-$managerDist = Join-Path $DesktopRoot "dist\ticketbox-manager"
+$managerDist = Join-Path $StagedDesktopRoot "dist\ticketbox-manager"
 $managerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $managerDist
 
-$pgDir = Join-Path $BackendRoot "packaging\vendor\pg"
+$pgDir = Join-Path $StagedBackendRoot "packaging\vendor\pg"
 $pgManifest = Read-TicketboxPgBundleManifest (Join-Path $pgDir "BUNDLE_MANIFEST.txt")
 
-$toolchainConfigPath = Join-Path $BackendRoot "packaging\windows-build-toolchain.json"
+$toolchainConfigPath = Join-Path $StagedBackendRoot "packaging\windows-build-toolchain.json"
 $toolchainConfig = Get-Content -LiteralPath $toolchainConfigPath -Encoding UTF8 -Raw | ConvertFrom-Json
 $shawlSource = $toolchainConfig.installer_vendor_sources.shawl
-$shawlExe = Join-Path $BackendRoot "packaging\vendor\shawl\shawl.exe"
+$shawlExe = Join-Path $StagedBackendRoot "packaging\vendor\shawl\shawl.exe"
 if (-not (Test-Path -LiteralPath $shawlExe -PathType Leaf)) {
     throw "缺少 shawl vendor 载荷：$shawlExe（先运行 prepare_windows_installer_vendor.ps1）"
 }
@@ -162,12 +244,12 @@ if (-not $pythonVersionText.StartsWith($expectedPythonPrefix)) {
 }
 $lifecycleVenv = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-venv-{0}-{1}" -f $PID, [Guid]::NewGuid().ToString("N"))
 $lifecycleWork = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-work-{0}" -f $PID)
-$lifecycleExe = Join-Path $PayloadDir "TicketboxLifecycle.exe"
+$lifecycleExe = Join-Path $StagedPayloadDir "TicketboxLifecycle.exe"
 try {
     & $pythonCommand.Source -m venv $lifecycleVenv
     if ($LASTEXITCODE -ne 0) { throw "lifecycle venv 创建失败（exit=$LASTEXITCODE）。" }
     $venvPython = Join-Path $lifecycleVenv "Scripts\python.exe"
-    & $venvPython -m pip install --quiet --require-hashes -r (Join-Path $BackendRoot "requirements-build.lock")
+    & $venvPython -m pip install --quiet --require-hashes -r (Join-Path $StagedBackendRoot "requirements-build.lock")
     if ($LASTEXITCODE -ne 0) { throw "lifecycle 构建依赖安装失败（exit=$LASTEXITCODE）。" }
     if (Test-Path -LiteralPath $lifecycleExe) {
         Remove-Item -LiteralPath $lifecycleExe -Force
@@ -176,23 +258,10 @@ try {
         --noconfirm `
         --distpath $PayloadDir `
         --workpath $lifecycleWork `
-        (Join-Path $ScriptDir "ticketbox-lifecycle.spec")
+        (Join-Path $StagedScriptDir "ticketbox-lifecycle.spec")
     if ($LASTEXITCODE -ne 0) { throw "TicketboxLifecycle.exe 冻结失败（exit=$LASTEXITCODE）。" }
     if (-not (Test-Path -LiteralPath $lifecycleExe -PathType Leaf)) {
         throw "PyInstaller 未产出 $lifecycleExe。"
-    }
-    $launcherExe = Join-Path $PayloadDir "TicketboxBackendLauncher.exe"
-    if (Test-Path -LiteralPath $launcherExe) {
-        Remove-Item -LiteralPath $launcherExe -Force
-    }
-    & (Join-Path $lifecycleVenv "Scripts\pyinstaller.exe") `
-        --noconfirm `
-        --distpath $PayloadDir `
-        --workpath $lifecycleWork `
-        (Join-Path $ScriptDir "ticketbox-backend-launcher.spec")
-    if ($LASTEXITCODE -ne 0) { throw "TicketboxBackendLauncher.exe 冻结失败（exit=$LASTEXITCODE）。" }
-    if (-not (Test-Path -LiteralPath $launcherExe -PathType Leaf)) {
-        throw "PyInstaller 未产出 $launcherExe。"
     }
 }
 finally {
@@ -200,7 +269,7 @@ finally {
     Remove-Item -LiteralPath $lifecycleWork -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# ===== stamp release-manifest from frozen generation program head =====
+# ===== validate release-manifest against frozen generation program head =====
 $generationProgramPath = Join-Path $backendDist "DATABASE_GENERATION_PROGRAM.json"
 if (-not (Test-Path -LiteralPath $generationProgramPath -PathType Leaf)) {
     throw "frozen backend lacks DATABASE_GENERATION_PROGRAM.json"
@@ -210,20 +279,21 @@ $schemaHead = [string]$generationProgram.target_revision
 if ([string]::IsNullOrWhiteSpace($schemaHead) -or $schemaHead -eq "99991231_9999") {
     throw "frozen generation program target_revision is unbound"
 }
-$manifestTemplatePath = Join-Path $PayloadDir "release-manifest.json"
+$manifestTemplatePath = Join-Path $StagedPayloadDir "release-manifest.json"
 $manifestTemplate = Get-Content -LiteralPath $manifestTemplatePath -Encoding UTF8 -Raw | ConvertFrom-Json
-$stampedReleaseManifest = [ordered]@{
-    schema = [string]$manifestTemplate.schema
-    release_id = $Version
-    product_version = $Version
-    lifecycle_compatibility = @($manifestTemplate.lifecycle_compatibility)
-    min_schema_revision = [string]$manifestTemplate.min_schema_revision
-    max_schema_revision = $schemaHead
-    min_semantic_revision = [string]$manifestTemplate.min_semantic_revision
-    signing_state = "release-bound"
+if (
+    [string]$manifestTemplate.schema -cne "ticketbox-release-manifest-v1" -or
+    [string]$manifestTemplate.release_id -cne $Version -or
+    [string]$manifestTemplate.product_version -cne $Version -or
+    [string]$manifestTemplate.max_schema_revision -cne $schemaHead -or
+    [string]$manifestTemplate.signing_state -cne "release-bound" -or
+    [string]::IsNullOrWhiteSpace([string]$manifestTemplate.min_schema_revision) -or
+    [string]::IsNullOrWhiteSpace([string]$manifestTemplate.min_semantic_revision) -or
+    -not (@($manifestTemplate.lifecycle_compatibility) -ccontains "ticketbox-lifecycle-request-v1")
+) {
+    throw "release-manifest.json 未与 exact release/generation program 预先冻结。"
 }
-Write-TicketboxJsonFile $manifestTemplatePath $stampedReleaseManifest
-Write-Host "release-manifest stamped max_schema_revision=$schemaHead"
+Write-Host "release-manifest validated max_schema_revision=$schemaHead"
 
 # ===== pinned ISCC 编译 =====
 $innoSource = $toolchainConfig.build_tool_sources.inno_setup
@@ -233,7 +303,7 @@ if ($isccActualSha -cne ([string]$innoSource.compiler_sha256).ToLowerInvariant()
     throw "ISCC identity 与固定官方归档合同不一致：$IsccPath"
 }
 $isccProvenance = Get-TicketboxIsccProvenance $IsccPath
-$releaseConfigPath = Join-Path $BackendRoot "packaging\windows-release-config.json"
+$releaseConfigPath = Join-Path $StagedBackendRoot "packaging\windows-release-config.json"
 $releaseConfig = Get-Content -LiteralPath $releaseConfigPath -Encoding UTF8 -Raw | ConvertFrom-Json
 $isccPolicy = Assert-TicketboxVendorVersionAllowed $releaseConfig "iscc" $isccProvenance.engine_version
 $compiler = [pscustomobject]@{
@@ -256,8 +326,19 @@ try {
     }
     New-Item -ItemType Directory -Path $stagingDir | Out-Null
 
-    & $IsccPath "/O$stagingDir" "/FTicketbox-Setup-$Version" @defines $IssPath
-    if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败（exit=$LASTEXITCODE）。" }
+    $compilerRoot = Split-Path -Parent $IsccPath
+    $compilerSnapshot = Get-TicketboxFileSetSnapshot $compilerRoot @($IsccPath)
+    try {
+        $CompilerLocks = Enter-TicketboxFileSetReadLocks `
+            -Root $compilerRoot `
+            -Snapshot $compilerSnapshot
+        & $IsccPath "/O$stagingDir" "/FTicketbox-Setup-$Version" @defines $StagedIssPath
+        if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败（exit=$LASTEXITCODE）。" }
+    }
+    finally {
+        Exit-TicketboxFileSetReadLocks $CompilerLocks
+        $CompilerLocks = $null
+    }
     $stagedInstaller = Join-Path $stagingDir $InstallerFileName
     if (-not (Test-Path -LiteralPath $stagedInstaller -PathType Leaf)) {
         throw "本轮 ISCC staging 安装包输出缺失：$stagedInstaller"
@@ -271,8 +352,6 @@ try {
     New-Item -ItemType Directory -Force -Path $publishDirectory | Out-Null
     Copy-Item -LiteralPath $stagedInstaller -Destination (Join-Path $publishDirectory $InstallerFileName)
 
-    $recipe = Get-TicketboxInstallerRecipeSnapshot $BackendRoot
-    $git = Get-TicketboxGitProvenance $BackendRoot
     $manifestPath = Join-Path $publishDirectory "BUILD_PROVENANCE.json"
     Write-InstallerBuildProvenance $BuildInputs $recipe $git $compiler $defines $manifestPath | Out-Null
     Assert-TicketboxInstallerBuildProvenance $BackendRoot $manifestPath $compiler $BuildInputs $defines | Out-Null
@@ -290,4 +369,34 @@ try {
 }
 finally {
     Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+}
+catch {
+    $PrimaryFailure = $_
+}
+finally {
+    foreach ($entry in @(
+        [pscustomobject]@{ Name = "compiler input locks"; Value = $CompilerLocks },
+        [pscustomobject]@{ Name = "shipment input locks"; Value = $ShipmentLocks },
+        [pscustomobject]@{ Name = "recipe input locks"; Value = $RecipeLocks }
+    )) {
+        try { Exit-TicketboxFileSetReadLocks $entry.Value }
+        catch { $CleanupFailures += "$($entry.Name): $($_.Exception.Message)" }
+    }
+    try {
+        if (Test-Path -LiteralPath $InputSnapshotRoot) {
+            Remove-Item -LiteralPath $InputSnapshotRoot -Recurse -Force
+        }
+    }
+    catch { $CleanupFailures += "installer input snapshot: $($_.Exception.Message)" }
+    try { Exit-TicketboxWindowsBuildLock $BuildLock }
+    catch { $CleanupFailures += "Windows build lock: $($_.Exception.Message)" }
+}
+
+if ($null -ne $PrimaryFailure) {
+    foreach ($failure in $CleanupFailures) { Write-Warning "cleanup failure after primary failure: $failure" }
+    throw $PrimaryFailure
+}
+if ($CleanupFailures.Count -gt 0) {
+    throw "安装器构建完成路径存在 cleanup failure：$($CleanupFailures -join '; ')"
 }

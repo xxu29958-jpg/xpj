@@ -86,7 +86,6 @@ _BACKEND_RELEASE_FILES = {
     "backend/requirements.txt",
 }
 _WINDOWS_SECURITY_BACKEND_FILES = {
-    "backend/app/services/installer_runtime_guard.py",
     "backend/app/services/runtime_settings_store.py",
     "backend/app/services/secure_file.py",
     "backend/app/services/secure_file_windows.py",

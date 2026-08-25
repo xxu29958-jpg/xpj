@@ -24,15 +24,21 @@ def provision_statements(*, migrator_password: str, runtime_password: str) -> tu
     migrator = _escape_literal(migrator_password)
     runtime = _escape_literal(runtime_password)
     return (
-        "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = "
-        f"'{OWNER_ROLE}') THEN CREATE ROLE {OWNER_ROLE} NOLOGIN {_ROLE_FLAGS}; "
-        "END IF; END $$;",
-        "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = "
-        f"'{MIGRATOR_ROLE}') THEN CREATE ROLE {MIGRATOR_ROLE} LOGIN {_ROLE_FLAGS} "
-        f"CONNECTION LIMIT 1 PASSWORD '{migrator}'; END IF; END $$;",
-        "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = "
-        f"'{RUNTIME_ROLE}') THEN CREATE ROLE {RUNTIME_ROLE} LOGIN {_ROLE_FLAGS} "
-        f"PASSWORD '{runtime}'; END IF; END $$;",
+        (
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = "
+            f"'{OWNER_ROLE}') THEN CREATE ROLE {OWNER_ROLE} NOLOGIN {_ROLE_FLAGS}; "
+            "END IF; END $$;"
+        ),
+        (
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = "
+            f"'{MIGRATOR_ROLE}') THEN CREATE ROLE {MIGRATOR_ROLE} LOGIN {_ROLE_FLAGS} "
+            f"CONNECTION LIMIT 1 PASSWORD '{migrator}'; END IF; END $$;"
+        ),
+        (
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = "
+            f"'{RUNTIME_ROLE}') THEN CREATE ROLE {RUNTIME_ROLE} LOGIN {_ROLE_FLAGS} "
+            f"PASSWORD '{runtime}'; END IF; END $$;"
+        ),
         f"ALTER ROLE {MIGRATOR_ROLE} LOGIN {_ROLE_FLAGS} CONNECTION LIMIT 1 PASSWORD '{migrator}';",
         f"ALTER ROLE {RUNTIME_ROLE} LOGIN {_ROLE_FLAGS} PASSWORD '{runtime}';",
         f"GRANT {OWNER_ROLE} TO {MIGRATOR_ROLE} WITH INHERIT FALSE, SET TRUE;",
@@ -61,15 +67,28 @@ def schema_privilege_statements() -> tuple[str, ...]:
         "REVOKE ALL ON SCHEMA public FROM PUBLIC;",
         f"GRANT USAGE ON SCHEMA public TO {MIGRATOR_ROLE};",
         f"GRANT USAGE ON SCHEMA public TO {RUNTIME_ROLE};",
+        # PostgreSQL grants PUBLIC EXECUTE on newly-created functions by
+        # default. This must be revoked globally; an IN SCHEMA revoke cannot
+        # undo a global default grant.
+        (
+            f"ALTER DEFAULT PRIVILEGES FOR ROLE {OWNER_ROLE} "
+            "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;"
+        ),
         # DEFAULT PRIVILEGES apply to objects created by owner after this point
         # (Alembic). They grant runtime DML, not migrator SELECT. Migrator reads
         # owner tables only via SET ROLE (INHERIT FALSE, SET TRUE).
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE {OWNER_ROLE} IN SCHEMA public "
-        f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {RUNTIME_ROLE};",
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE {OWNER_ROLE} IN SCHEMA public "
-        f"GRANT USAGE, SELECT ON SEQUENCES TO {RUNTIME_ROLE};",
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE {OWNER_ROLE} IN SCHEMA public "
-        f"GRANT EXECUTE ON FUNCTIONS TO {RUNTIME_ROLE};",
+        (
+            f"ALTER DEFAULT PRIVILEGES FOR ROLE {OWNER_ROLE} IN SCHEMA public "
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {RUNTIME_ROLE};"
+        ),
+        (
+            f"ALTER DEFAULT PRIVILEGES FOR ROLE {OWNER_ROLE} IN SCHEMA public "
+            f"GRANT USAGE, SELECT ON SEQUENCES TO {RUNTIME_ROLE};"
+        ),
+        (
+            f"ALTER DEFAULT PRIVILEGES FOR ROLE {OWNER_ROLE} IN SCHEMA public "
+            f"GRANT EXECUTE ON FUNCTIONS TO {RUNTIME_ROLE};"
+        ),
     )
 
 
@@ -90,6 +109,89 @@ def verify_membership_sql() -> str:
         "JOIN pg_roles AS member ON member.oid = membership.member "
         f"WHERE granted.rolname = '{OWNER_ROLE}' AND member.rolname = '{MIGRATOR_ROLE}'"
     )
+
+
+def verify_database_privileges_sql() -> str:
+    return f"""
+WITH roles AS (
+  SELECT
+    (SELECT oid FROM pg_roles WHERE rolname = '{OWNER_ROLE}') AS owner_oid,
+    (SELECT oid FROM pg_roles WHERE rolname = '{RUNTIME_ROLE}') AS runtime_oid,
+    (SELECT oid FROM pg_roles WHERE rolname = '{MIGRATOR_ROLE}') AS migrator_oid
+), public_schema AS (
+  SELECT oid, nspowner FROM pg_namespace WHERE nspname = 'public'
+)
+SELECT (
+  (SELECT datdba = roles.owner_oid FROM pg_database, roles WHERE datname = '{DATABASE_NAME}')
+  AND NOT has_database_privilege('public', '{DATABASE_NAME}', 'CONNECT')
+  AND NOT has_database_privilege('public', '{DATABASE_NAME}', 'CREATE')
+  AND NOT has_database_privilege('public', '{DATABASE_NAME}', 'TEMPORARY')
+  AND has_database_privilege('{MIGRATOR_ROLE}', '{DATABASE_NAME}', 'CONNECT')
+  AND NOT has_database_privilege('{MIGRATOR_ROLE}', '{DATABASE_NAME}', 'CREATE')
+  AND NOT has_database_privilege('{MIGRATOR_ROLE}', '{DATABASE_NAME}', 'TEMPORARY')
+  AND has_database_privilege('{RUNTIME_ROLE}', '{DATABASE_NAME}', 'CONNECT')
+  AND NOT has_database_privilege('{RUNTIME_ROLE}', '{DATABASE_NAME}', 'CREATE')
+  AND NOT has_database_privilege('{RUNTIME_ROLE}', '{DATABASE_NAME}', 'TEMPORARY')
+  AND (SELECT nspowner = roles.owner_oid FROM public_schema, roles)
+  AND NOT has_schema_privilege('public', 'public', 'USAGE')
+  AND NOT has_schema_privilege('public', 'public', 'CREATE')
+  AND has_schema_privilege('{MIGRATOR_ROLE}', 'public', 'USAGE')
+  AND NOT has_schema_privilege('{MIGRATOR_ROLE}', 'public', 'CREATE')
+  AND has_schema_privilege('{RUNTIME_ROLE}', 'public', 'USAGE')
+  AND NOT has_schema_privilege('{RUNTIME_ROLE}', 'public', 'CREATE')
+  AND EXISTS (
+    SELECT 1
+    FROM pg_default_acl AS defaults, roles
+    WHERE defaults.defaclrole = roles.owner_oid
+      AND defaults.defaclnamespace = 0
+      AND defaults.defaclobjtype = 'f'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM aclexplode(defaults.defaclacl) AS acl
+        WHERE acl.grantee = 0
+          AND acl.privilege_type = 'EXECUTE'
+      )
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM pg_default_acl AS defaults, roles, public_schema,
+         LATERAL aclexplode(defaults.defaclacl) AS acl
+    WHERE defaults.defaclrole = roles.owner_oid
+      AND defaults.defaclnamespace = public_schema.oid
+      AND acl.grantee = 0
+  )
+  AND 4 = (
+    SELECT count(*)
+    FROM pg_default_acl AS defaults, roles, public_schema,
+         LATERAL aclexplode(defaults.defaclacl) AS acl
+    WHERE defaults.defaclrole = roles.owner_oid
+      AND defaults.defaclnamespace = public_schema.oid
+      AND defaults.defaclobjtype = 'r'
+      AND acl.grantee = roles.runtime_oid
+      AND acl.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+  )
+  AND 2 = (
+    SELECT count(*)
+    FROM pg_default_acl AS defaults, roles, public_schema,
+         LATERAL aclexplode(defaults.defaclacl) AS acl
+    WHERE defaults.defaclrole = roles.owner_oid
+      AND defaults.defaclnamespace = public_schema.oid
+      AND defaults.defaclobjtype = 'S'
+      AND acl.grantee = roles.runtime_oid
+      AND acl.privilege_type IN ('USAGE', 'SELECT')
+  )
+  AND 1 = (
+    SELECT count(*)
+    FROM pg_default_acl AS defaults, roles, public_schema,
+         LATERAL aclexplode(defaults.defaclacl) AS acl
+    WHERE defaults.defaclrole = roles.owner_oid
+      AND defaults.defaclnamespace = public_schema.oid
+      AND defaults.defaclobjtype = 'f'
+      AND acl.grantee = roles.runtime_oid
+      AND acl.privilege_type = 'EXECUTE'
+  )
+)::text AS ticketbox_privileges_ready
+""".strip()
 
 
 def expected_roles_probe() -> str:

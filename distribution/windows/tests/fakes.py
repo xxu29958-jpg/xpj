@@ -13,6 +13,7 @@ from ticketbox_lifecycle.schemas import (
     HostObservation,
     InstallationBinding,
     InstallRequest,
+    OwnerPairing,
 )
 
 
@@ -59,6 +60,13 @@ class _StatefulAdapter:
         if step not in self._done:
             raise LifecycleError("postcondition_missing", f"{step} postcondition is absent")
 
+    def claim_owner(self, request: InstallRequest) -> OwnerPairing:
+        self.apply(request, "owner_claim")
+        return OwnerPairing(
+            pairing_code="12345678",
+            pairing_expires_at="2026-08-25T12:00:00Z",
+        )
+
 
 class RecordingAdapterBundle:
     def __init__(self) -> None:
@@ -67,7 +75,7 @@ class RecordingAdapterBundle:
         self.postgres = _StatefulAdapter("postgres", ("postgres_initdb", "start_postgres", "roles_database"))
         self.alembic = _StatefulAdapter("alembic", ("alembic",))
         self.scm = _StatefulAdapter("scm", ("scm", "start_services"))
-        self.dataset = _StatefulAdapter("dataset", ("health",))
+        self.dataset = _StatefulAdapter("dataset", ("owner_claim", "health"))
 
     def apply_order(self) -> list[str]:
         return [step for step in APPLY_SEQUENCE if any(
@@ -93,6 +101,9 @@ class MemoryStores:
         self._history: list[ActiveOperation] = []
         self._binding: InstallationBinding | None = None
         self.binding_publish_count = 0
+        self.operation_store_prepared = False
+        self.fresh_inputs_check_count = 0
+        self.reject_fresh_inputs = False
 
     def as_lifecycle_stores(self) -> LifecycleStores:
         return LifecycleStores(
@@ -118,7 +129,21 @@ class MemoryStores:
     def read_active(self) -> ActiveOperation | None:
         return self._active
 
+    def prepare(self, request: InstallRequest) -> None:
+        del request
+        self.operation_store_prepared = True
+
+    def require_fresh_inputs(self, request: InstallRequest) -> None:
+        del request
+        self.fresh_inputs_check_count += 1
+        if self.reject_fresh_inputs:
+            raise LifecycleViolation(
+                "preexisting_mutable_state",
+                "fresh install refuses unbound mutable state",
+            )
+
     def publish_active(self, operation: ActiveOperation) -> None:
+        assert self.operation_store_prepared
         if operation.schema != OPERATION_SCHEMA:
             raise LifecycleViolation("bad_operation_schema", "active operation schema")
         self._active = operation

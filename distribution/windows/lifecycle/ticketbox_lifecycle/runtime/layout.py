@@ -49,16 +49,8 @@ def runtime_password_file(request: InstallRequest) -> Path:
     return secrets_dir(request) / "ticketbox_runtime.password"
 
 
-def backend_env_file(request: InstallRequest) -> Path:
-    return secrets_dir(request) / "backend.env"
-
-
 def shawl_exe(request: InstallRequest) -> Path:
     return Path(request.app_dir) / "bin" / "shawl.exe"
-
-
-def launcher_exe(request: InstallRequest) -> Path:
-    return Path(request.app_dir) / "bin" / "TicketboxBackendLauncher.exe"
 
 
 def backend_exe(request: InstallRequest) -> Path:
@@ -67,6 +59,10 @@ def backend_exe(request: InstallRequest) -> Path:
 
 def maintenance_helper(request: InstallRequest) -> Path:
     return release_dir(request) / "backend" / "ticketbox-database-maintenance.exe"
+
+
+def active_operation(request: InstallRequest) -> Path:
+    return machine_root(request) / "operations" / "active.json"
 
 
 def tool(request: InstallRequest, name: str) -> Path:

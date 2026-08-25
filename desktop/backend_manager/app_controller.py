@@ -247,6 +247,7 @@ class AppController:
             config is not None
             and status_error is None
             and snapshot.control_error is None
+            and snapshot.service_controls_available
             and snapshot.backend_service_state not in {"missing", "unknown"}
             and snapshot.database_service_state not in {"missing", "unknown"}
         )
@@ -1017,6 +1018,7 @@ class AppController:
             control_error=None,
             health_state="pending",
             health_detail="无法读取 Ticketbox 运行状态。",
+            service_controls_available=False,
         )
 
     def _display_error(self, exc: Exception) -> str:

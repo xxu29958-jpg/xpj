@@ -4,11 +4,15 @@ import hashlib
 import json
 from pathlib import Path
 
-from ticketbox_lifecycle.domain.install import hash_install_identity, hash_request_payload, inspect_machine, install_or_resume
+from fakes import MemoryStores, RecordingAdapterBundle
+from ticketbox_lifecycle.domain.install import (
+    hash_install_identity,
+    hash_request_payload,
+    inspect_machine,
+    install_or_resume,
+)
 from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.schemas import APPLY_SEQUENCE, REQUEST_SCHEMA, InstallRequest
-
-from fakes import MemoryStores, RecordingAdapterBundle
 
 
 def _request(tmp_path: Path, operation_id: str = "11111111-1111-4111-8111-111111111111") -> InstallRequest:
@@ -23,7 +27,7 @@ def _request(tmp_path: Path, operation_id: str = "11111111-1111-4111-8111-111111
         "operation_id": operation_id,
         "target_release_id": release_id,
         "app_dir": str(app_dir),
-        "data_root": str(tmp_path / "data"),
+        "data_root": str(tmp_path / "programdata" / "data"),
         "program_data_root": str(tmp_path / "programdata"),
         "pg_service_name": "TicketboxPg",
         "backend_service_name": "TicketboxBackend",
@@ -50,15 +54,15 @@ def _request(tmp_path: Path, operation_id: str = "11111111-1111-4111-8111-111111
     )
 
 
-def test_fresh_install_publishes_binding_before_start_services(tmp_path: Path) -> None:
+def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     request = _request(tmp_path)
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     seen_active_before_apply = {"value": False}
-    seen_binding_before_start = {"value": False}
+    seen_unpublished_through_health = {"value": False}
 
     original_files_apply = adapters.files.apply
-    original_scm_apply = adapters.scm.apply
+    original_health_verify = adapters.dataset.verify
 
     def wrapped_files_apply(req: InstallRequest, step: str) -> str:
         assert stores.read_active() is not None
@@ -67,24 +71,27 @@ def test_fresh_install_publishes_binding_before_start_services(tmp_path: Path) -
         seen_active_before_apply["value"] = True
         return original_files_apply(req, step)
 
-    def wrapped_scm_apply(req: InstallRequest, step: str) -> str:
-        if step == "start_services":
-            assert stores.read() is not None
-            seen_binding_before_start["value"] = True
-        return original_scm_apply(req, step)
+    def wrapped_health_verify(req: InstallRequest, step: str) -> None:
+        assert stores.read() is None
+        seen_unpublished_through_health["value"] = True
+        original_health_verify(req, step)
 
     adapters.files.apply = wrapped_files_apply  # type: ignore[method-assign]
-    adapters.scm.apply = wrapped_scm_apply  # type: ignore[method-assign]
+    adapters.dataset.verify = wrapped_health_verify  # type: ignore[method-assign]
     result = install_or_resume(stores.as_lifecycle_stores(), request)
     assert result.ok
     assert result.phase == "committed"
+    assert result.pairing_code == "12345678"
+    assert result.pairing_expires_at == "2026-08-25T12:00:00Z"
     assert seen_active_before_apply["value"] is True
-    assert seen_binding_before_start["value"] is True
+    assert stores.operation_store_prepared is True
+    assert seen_unpublished_through_health["value"] is True
     assert stores.read() is not None
     assert stores.read_active() is None
     assert stores.history[0].phase == "committed"
     assert adapters.apply_order() == list(APPLY_SEQUENCE)
     assert stores.binding_publish_count == 1
+    assert stores.fresh_inputs_check_count == 1
     binding = stores.read()
     assert binding is not None
     assert binding.install_id
@@ -93,37 +100,55 @@ def test_fresh_install_publishes_binding_before_start_services(tmp_path: Path) -
     assert binding.release_manifest_sha256 != "pending"
 
 
-def test_health_failure_publishes_binding_but_does_not_commit(tmp_path: Path) -> None:
+def test_health_failure_keeps_binding_unpublished(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     adapters.dataset.fail_on = "health"
     request = _request(tmp_path)
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     result = install_or_resume(stores.as_lifecycle_stores(), request)
     assert result.ok is False
-    assert result.installation_published is True
-    assert stores.read() is not None
+    assert result.installation_published is False
+    assert stores.read() is None
     assert stores.read_active() is not None
     assert stores.read_active().phase == "failed_recoverable"
     assert stores.history == []
 
 
-def test_resume_after_health_failure_reuses_the_same_binding(tmp_path: Path) -> None:
+def test_resume_after_health_failure_publishes_binding_once_after_success(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     adapters.dataset.fail_on = "health"
     request = _request(tmp_path)
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     first = install_or_resume(stores.as_lifecycle_stores(), request)
     assert first.ok is False
-    first_binding = stores.read()
-    assert first_binding is not None
+    assert stores.read() is None
     adapters.dataset.fail_on = None
     resume = InstallRequest(**{**request.__dict__, "command": "resume"})
     second = install_or_resume(stores.as_lifecycle_stores(), resume)
     assert second.ok
     assert second.phase == "committed"
     assert stores.binding_publish_count == 1
-    assert stores.read() is first_binding
+    assert stores.read() is not None
     assert stores.read_active() is None
+    assert stores.fresh_inputs_check_count == 1
+
+
+def test_fresh_install_refuses_unbound_mutable_state_before_publishing_active(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    stores.reject_fresh_inputs = True
+
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), request)
+        raise AssertionError("fresh install must reject preexisting mutable state")
+    except LifecycleViolation as exc:
+        assert exc.code == "preexisting_mutable_state"
+
+    assert stores.read_active() is None
+    assert stores.fresh_inputs_check_count == 1
 
 
 def test_second_install_refuses_new_identity(tmp_path: Path) -> None:

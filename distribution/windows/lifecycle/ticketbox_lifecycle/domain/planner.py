@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from ticketbox_lifecycle.errors import LifecycleViolation
-from ticketbox_lifecycle.schemas import APPLY_SEQUENCE, ApplyStep, HostObservation, InstallPlan, InstallRequest
+from ticketbox_lifecycle.schemas import (
+    APPLY_SEQUENCE,
+    ApplyStep,
+    HostObservation,
+    InstallPlan,
+    InstallRequest,
+)
 
 
 def plan_fresh_install(request: InstallRequest, observation: HostObservation) -> InstallPlan:
@@ -50,6 +56,7 @@ def _adapter_name(step: str) -> str:
         "start_postgres": "postgres",
         "roles_database": "postgres",
         "alembic": "alembic",
+        "owner_claim": "dataset",
         "start_services": "scm",
         "health": "dataset",
     }[step]

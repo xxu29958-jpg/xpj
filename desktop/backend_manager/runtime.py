@@ -58,6 +58,7 @@ class RuntimeStatus:
     runtime_access_state: str = "unknown"
     owner_state: str = "unknown"
     owner_recovery_channel: str = "unknown"
+    service_controls_available: bool = True
 
 
 class BackendRuntime(Protocol):

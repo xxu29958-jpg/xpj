@@ -302,6 +302,7 @@ def test_parse_installed_binding_uses_installation_json_not_registry_dataroot(tm
     layout = parse_installed_binding(
         {
             "schema": "ticketbox-installed-instance-v1",
+            "install_id": "11111111-1111-4111-8111-111111111111",
             "data_root": str(tmp_path / "data"),
             "active_release_id": "1.2.0",
             "pg_service_name": "TicketboxPg",
@@ -314,6 +315,18 @@ def test_parse_installed_binding_uses_installation_json_not_registry_dataroot(tm
     assert layout.authority == "binding"
     assert layout.data_root == (tmp_path / "data").resolve()
     assert layout.backend_version == "1.2.0"
+    assert layout.installation_id == "11111111-1111-4111-8111-111111111111"
+    layout.release_config_path.parent.mkdir(parents=True)
+    layout.release_config_path.write_text(
+        json.dumps(
+            {
+                **_release_config_document(),
+                "backend_service_name": "RetiredBackendOwner",
+                "pg_service_name": "RetiredPgOwner",
+            }
+        ),
+        encoding="utf-8",
+    )
     release = load_installed_release_config(layout)
     assert release.backend_service_name == "TicketboxBackend"
     assert release.pg_service_name == "TicketboxPg"
@@ -326,6 +339,7 @@ def test_discover_installed_layout_prefers_binding(monkeypatch, tmp_path: Path) 
         "_read_installation_binding",
         lambda: {
             "schema": "ticketbox-installed-instance-v1",
+            "install_id": "11111111-1111-4111-8111-111111111111",
             "data_root": str(tmp_path / "bound-data"),
             "active_release_id": "1.2.0",
             "pg_service_name": "TicketboxPg",

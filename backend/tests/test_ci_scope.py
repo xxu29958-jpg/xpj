@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import app.services.installer_runtime_guard as installer_runtime_guard
 from scripts import ci_gap_trigger_scope, ci_scope
 from scripts.ci_gap_trigger_scope import all_ci_scopes, classify_ci_paths
 from scripts.postgres_release_policy import POSTGRES_RELEASE_POLICY
@@ -138,16 +137,6 @@ def test_dataset_maintenance_changes_select_all_required_execution_scopes() -> N
             "backend/app/database/_dataset_restore_authority.py",
             "backend/app/database/_dataset_restore_security.py",
         ),
-        "postgres",
-        "backend_frozen",
-        "windows",
-    )
-
-
-def test_installer_guard_adapter_changes_select_windows() -> None:
-    assert installer_runtime_guard.GUARD_FILENAME == "installer-runtime-recovery-pending"
-    _assert_path_scopes(
-        ("backend/app/services/installer_runtime_guard.py",),
         "postgres",
         "backend_frozen",
         "windows",

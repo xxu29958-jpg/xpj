@@ -35,7 +35,7 @@ from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
 from backend_manager.lifecycle_lock import hold_installer_lifecycle_lock
 from backend_manager.runtime import RuntimeControlError, ServiceMissingError
 from backend_manager.runtime_factory import build_runtime
-from backend_manager.windows_service import BrokeredWindowsServiceRuntime, ServiceSnapshot
+from backend_manager.windows_service import ServiceSnapshot, WindowsServiceRuntime
 
 
 def _release() -> WindowsReleaseConfig:
@@ -447,7 +447,12 @@ def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path:
     events: list[str] = []
     watchdog_timeouts: list[float] = []
 
-    def build_runtime(*_args, backend_stopped_validator=None):
+    def build_runtime(
+        *_args,
+        control_actions_allowed: bool,
+        backend_stopped_validator=None,
+    ):
+        assert control_actions_allowed is True
         assert callable(backend_stopped_validator)
         events.append("build")
         return BrokenRuntime()
@@ -618,7 +623,7 @@ def test_python_lifecycle_lock_interoperates_with_real_powershell_hosts(tmp_path
     assert acquired == [0] * len(hosts)
 
 
-def test_installed_ui_runtime_uses_uac_broker_not_direct_service_mutation(monkeypatch, tmp_path: Path) -> None:
+def test_cut_b_installed_ui_runtime_is_observation_only(monkeypatch, tmp_path: Path) -> None:
     class QueryOnlyGateway:
         def query(self, name: str) -> ServiceSnapshot:
             return ServiceSnapshot(name=name, state="stopped")
@@ -629,17 +634,7 @@ def test_installed_ui_runtime_uses_uac_broker_not_direct_service_mutation(monkey
         def stop(self, _name: str) -> None:
             raise AssertionError("unelevated UI must not mutate SCM directly")
 
-    actions: list[str] = []
-
-    class Runner:
-        def __init__(self, _release_config, helper_executable: Path) -> None:
-            assert helper_executable == layout.manager_executable_path
-
-        def run(self, action: str) -> None:
-            actions.append(action)
-
     monkeypatch.setattr(runtime_factory, "WindowsServiceGateway", QueryOnlyGateway)
-    monkeypatch.setattr(runtime_factory, "ElevatedServiceActionRunner", Runner)
     layout = InstalledLayout(
         tmp_path / "program",
         tmp_path / "data",
@@ -665,12 +660,12 @@ def test_installed_ui_runtime_uses_uac_broker_not_direct_service_mutation(monkey
     )
 
     runtime = build_runtime(config)
-    runtime.stop()
-
-    assert isinstance(runtime, BrokeredWindowsServiceRuntime)
-    assert runtime._status_runtime._wait_timeout_seconds == 17  # noqa: SLF001 - wiring contract
-    assert runtime._status_runtime._pg_wait_timeout_seconds == 23  # noqa: SLF001 - wiring contract
-    assert runtime._status_runtime._poll_seconds == 0.125  # noqa: SLF001 - wiring contract
-    assert runtime._status_runtime._backend_ready_timeout_seconds == 31  # noqa: SLF001 - wiring contract
-    assert runtime._status_runtime._backend_ready_poll_seconds == 0.375  # noqa: SLF001 - wiring contract
-    assert actions == ["stop"]
+    assert isinstance(runtime, WindowsServiceRuntime)
+    assert runtime.status().service_controls_available is False
+    with pytest.raises(RuntimeControlError, match="Cut B"):
+        runtime.stop()
+    assert runtime._wait_timeout_seconds == 17  # noqa: SLF001 - wiring contract
+    assert runtime._pg_wait_timeout_seconds == 23  # noqa: SLF001 - wiring contract
+    assert runtime._poll_seconds == 0.125  # noqa: SLF001 - wiring contract
+    assert runtime._backend_ready_timeout_seconds == 31  # noqa: SLF001 - wiring contract
+    assert runtime._backend_ready_poll_seconds == 0.375  # noqa: SLF001 - wiring contract

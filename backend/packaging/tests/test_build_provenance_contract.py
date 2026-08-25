@@ -2,15 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import re
 import shutil
 import subprocess
 import time
-import zipfile
 from pathlib import Path
 
-import pytest
 from _powershell_contract import powershell_contract_engines
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -197,7 +193,7 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/build/build_installer.ps1",
     "distribution/windows/build/check_source_inputs.ps1",
     "distribution/windows/build/ticketbox-lifecycle.spec",
-    "distribution/windows/build/ticketbox-backend-launcher.spec",
+    "distribution/windows/payload/release-manifest.json",
     "distribution/windows/lifecycle/ticketbox_lifecycle/__init__.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/__main__.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/cli.py",
@@ -208,14 +204,24 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/__init__.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/install.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/planner.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/policy/__init__.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/policy/postgres_roles.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/__init__.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/command.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/durable_files.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/postgres_connection.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/layout.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/mutex.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/filesystem_stores.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_adapters.py",
-    "distribution/windows/lifecycle/ticketbox_backend_launcher/__init__.py",
-    "distribution/windows/lifecycle/ticketbox_backend_launcher/__main__.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_alembic.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_dataset.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_files.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_postgres.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_scm.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_security.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_security_native.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_services.py",
 )
 
 
@@ -408,6 +414,25 @@ def test_backend_manifest_rejects_source_and_executable_mutation(tmp_path: Path)
         "Assert-TicketboxFileSetSnapshot 'installer recipe' $recorded $actual"
     )
     assert validate.returncode != 0
+
+
+def test_installer_compiles_only_from_locked_snapshot_and_clean_git() -> None:
+    build = (
+        REPO_ROOT / "distribution" / "windows" / "build" / "build_installer.ps1"
+    ).read_text(encoding="utf-8-sig")
+    provenance = PROVENANCE_HELPER.read_text(encoding="utf-8-sig")
+
+    assert "$BuildLock = Enter-TicketboxWindowsBuildLock $BackendRoot" in build
+    assert "$RecipeLocks = Enter-TicketboxFileSetReadLocks" in build
+    assert "$ShipmentLocks = Enter-TicketboxFileSetReadLocks" in build
+    assert build.count("Copy-TicketboxFileSetSnapshot") >= 2
+    assert "$StagedIssPath" in build
+    assert "@defines $StagedIssPath" in build
+    assert "@defines $IssPath" not in build
+    assert "if ([bool]$git.dirty)" in build
+    assert "$manifestTemplatePath = Join-Path $StagedPayloadDir" in build
+    assert "tree =" in provenance
+    assert "$manifest.git.tree -cne $currentGit.tree" in provenance
 
 
 def _assert_windows_build_reparse_guard_rejects_ancestor_and_tree_junctions(

@@ -320,7 +320,7 @@
         </div>
       </article>
 
-      <article class="task-card">
+      <article class="task-card" id="maintenanceCard">
         <div class="task-icon" aria-hidden="true">▣</div>
         <div class="task-title">备份</div>
         <div class="task-state" id="protectState">升级前请确认最近备份可用。</div>
@@ -397,6 +397,9 @@
         && s.runtime_access_state === "available"
         && s.owner_state === "configured";
       const serviceControls = hasStatus && Boolean(s.service_controls_available);
+      $("primaryAction").hidden = !serviceControls;
+      $("restartAction").hidden = !serviceControls;
+      $("maintenanceCard").hidden = !serviceControls;
       $("primaryAction").disabled = actionInFlight || !serviceControls;
       $("restartAction").disabled = actionInFlight || !serviceControls || !isRunning;
       document.querySelectorAll(".owner-action").forEach((button) => {
@@ -429,7 +432,10 @@
       const runtimeRepairRequired = backendReady && s.runtime_access_state === "repair_required";
       const ownerRecoveryRequired = backendReady && s.owner_state === "recovery_required";
       const productAvailable = backendReady && !runtimeRepairRequired && !ownerRecoveryRequired;
-      const serviceFault = s.runtime_mode === "installed" && !s.service_controls_available;
+      const serviceFault = s.runtime_mode === "installed" && (
+        ["missing", "unknown"].includes(s.backend_service_state)
+        || ["missing", "unknown"].includes(s.database_service_state)
+      );
       const androidConfigured = productAvailable && s.android_binding_state === "configured_unverified";
       const iphoneConfigured = productAvailable && s.iphone_upload_state === "configured_unverified";
 

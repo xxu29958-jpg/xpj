@@ -18,7 +18,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\build\build_installer.ps1",
     "distribution\windows\build\check_source_inputs.ps1",
     "distribution\windows\build\ticketbox-lifecycle.spec",
-    "distribution\windows\build\ticketbox-backend-launcher.spec",
+    "distribution\windows\payload\release-manifest.json",
     "distribution\windows\lifecycle\ticketbox_lifecycle\__init__.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\__main__.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\cli.py",
@@ -29,14 +29,24 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\lifecycle\ticketbox_lifecycle\domain\__init__.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\domain\install.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\domain\planner.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\policy\__init__.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\policy\postgres_roles.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\__init__.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\command.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\durable_files.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\postgres_connection.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\layout.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\mutex.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\filesystem_stores.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_adapters.py",
-    "distribution\windows\lifecycle\ticketbox_backend_launcher\__init__.py",
-    "distribution\windows\lifecycle\ticketbox_backend_launcher\__main__.py"
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_alembic.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_dataset.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_files.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_postgres.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_scm.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_security.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_security_native.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_services.py"
 )
 
 function Get-TicketboxSha256HexFromText([string]$Value) {
@@ -300,10 +310,15 @@ function Get-TicketboxGitProvenance([string]$Root) {
     if ($commit -notmatch '^[0-9a-fA-F]{40,64}$') {
         throw "git HEAD 不是支持的 commit id：$commit"
     }
+    $tree = Invoke-TicketboxGitText $Root @("show", "-s", "--format=%T", "HEAD")
+    if ($tree -notmatch '^[0-9a-fA-F]{40,64}$') {
+        throw "git HEAD tree 不是支持的 tree id：$tree"
+    }
     $status = Invoke-TicketboxGitText $Root @("status", "--porcelain=v1", "--untracked-files=all") -AllowEmpty
     $statusEntries = @($status -split "`n" | Where-Object { $_.Trim().Length -gt 0 })
     return [pscustomobject]@{
         commit = $commit.ToLowerInvariant()
+        tree = $tree.ToLowerInvariant()
         dirty = $statusEntries.Count -gt 0
         status_entry_count = $statusEntries.Count
         status_fingerprint = Get-TicketboxSha256HexFromText $status
@@ -500,6 +515,7 @@ function Assert-TicketboxInstallerBuildProvenance(
     $currentGit = Get-TicketboxGitProvenance $BackendRoot
     if (
         $manifest.git.commit -cne $currentGit.commit -or
+        $manifest.git.tree -cne $currentGit.tree -or
         [bool]$manifest.git.dirty -ne [bool]$currentGit.dirty -or
         [int]$manifest.git.status_entry_count -ne [int]$currentGit.status_entry_count -or
         $manifest.git.status_fingerprint -cne $currentGit.status_fingerprint

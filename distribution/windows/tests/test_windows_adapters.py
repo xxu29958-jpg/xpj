@@ -1,19 +1,59 @@
 from __future__ import annotations
 
+import ast
+import json
 import os
+import stat
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import (
     expected_membership_probe,
     expected_roles_probe,
     verify_alembic_version_sql,
 )
+from ticketbox_lifecycle.runtime import windows_postgres, windows_security_native
 from ticketbox_lifecycle.runtime.command import CompletedCommand
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
+
+_BACKEND_SERVICE_SID = "S-1-5-80-111-222-333-444-555"
+
+
+def test_windows_adapters_is_only_the_explicit_composition_root() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "lifecycle"
+        / "ticketbox_lifecycle"
+        / "runtime"
+        / "windows_adapters.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
+    assert [node.name for node in classes] == ["WindowsAdapterBundle"]
+    assert [node.name for node in classes[0].body if isinstance(node, ast.FunctionDef)] == [
+        "__init__"
+    ]
+    assert functions == []
+    for responsibility in (
+        "windows_alembic",
+        "windows_dataset",
+        "windows_files",
+        "windows_postgres",
+        "windows_scm",
+        "windows_security",
+    ):
+        assert f"ticketbox_lifecycle.runtime.{responsibility}" in source
+
+
+@pytest.fixture(autouse=True)
+def _trusted_unit_file_owner(monkeypatch):
+    monkeypatch.setattr(windows_security_native, "file_owner_sid", lambda _path: "S-1-5-32-544")
+    monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: "S-1-5-21-9-9-9-1002")
 
 
 class RecordingRunner:
@@ -50,17 +90,30 @@ class RecordingRunner:
         name = Path(recorded[0]).name.lower()
         if name == "initdb.exe":
             data = Path(recorded[recorded.index("-D") + 1])
-            data.mkdir(parents=True, exist_ok=True)
-            (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
-            (data / "postgresql.conf").write_text("# initdb\n", encoding="utf-8")
-            (data / "pg_hba.conf").write_text("# initdb\n", encoding="utf-8")
-            (data / "base").mkdir(exist_ok=True)
+            _write_complete_cluster(data)
             return CompletedCommand(recorded, 0, "ok", "")
+        if name == "pg_controldata.exe":
+            return CompletedCommand(recorded, 0, "Database cluster state: shut down", "")
         if name in {"pg_ctl.exe", "shawl.exe", "sc.exe"}:
             return self._complete_scm(name, recorded)
         if name == "psql.exe":
             return self._complete_psql(recorded, sql_text)
         if name == "ticketbox-database-maintenance.exe":
+            if "--fresh-owner-claim" in recorded:
+                return CompletedCommand(
+                    recorded,
+                    0,
+                    (
+                        '{"contract":"ticketbox-installation-owner-pairing-v1",'
+                        '"operation_id":"11111111-1111-4111-8111-111111111111",'
+                        '"installation_id":"11111111-1111-4111-8111-111111111111",'
+                        '"account_name":"我","ledger_id":"default","ledger_name":"我的小票夹",'
+                        '"device_name":"Windows 安装来源","pairing_code":"12345678",'
+                        '"pairing_expires_at":"2026-08-25T12:00:00Z",'
+                        '"pairing_derivation_index":0,"claim_generation":1}'
+                    ),
+                    "",
+                )
             return CompletedCommand(recorded, 0, '{"result":"upgraded"}', "")
         if name == "whoami":
             return CompletedCommand(
@@ -74,6 +127,13 @@ class RecordingRunner:
         return CompletedCommand(recorded, 0, "ok", "")
 
     def _complete_scm(self, name: str, recorded: tuple[str, ...]) -> CompletedCommand:
+        if name == "sc.exe" and recorded[1] == "showsid":
+            return CompletedCommand(
+                recorded,
+                0,
+                f"NAME: {recorded[2]}\nSERVICE SID: {_BACKEND_SERVICE_SID}\n",
+                "",
+            )
         if name == "pg_ctl.exe" and "register" in recorded:
             service = recorded[recorded.index("-N") + 1]
             self.services.add(service)
@@ -102,6 +162,8 @@ class RecordingRunner:
         return CompletedCommand(recorded, 0, "ok", "")
 
     def _complete_psql(self, recorded: tuple[str, ...], sql_text: str) -> CompletedCommand:
+        if "ticketbox_privileges_ready" in sql_text:
+            return CompletedCommand(recorded, 0, "true", "")
         if "datname = 'ticketbox'" in sql_text:
             created = any(
                 (inp or "") and "CREATE DATABASE ticketbox OWNER ticketbox_owner" in inp
@@ -136,7 +198,10 @@ class RecordingRunner:
             )
         protected = any(
             call
-            and call[0].lower() == "takeown"
+            and (
+                call[0].lower() == "takeown"
+                or (call[0].lower() == "icacls" and "/inheritance:r" in call)
+            )
             and any(os.path.normcase(os.path.abspath(part)) == target for part in call[1:])
             for call in self.calls
         )
@@ -147,21 +212,17 @@ class RecordingRunner:
                 f"{recorded[1]} NT AUTHORITY\\SYSTEM:(I)(F)\nBUILTIN\\Users:(I)(RX)\n",
                 "",
             )
-        backend_grant = any(
-            call
-            and call[0].lower() == "icacls"
-            and "/grant" in call
-            and any("TicketboxBackend:(R)" in part for part in call)
-            and any(os.path.normcase(os.path.abspath(part)) == target for part in call[1:])
-            for call in self.calls
-        )
-        extra = " NT SERVICE\\TicketboxBackend:(R)\n" if backend_grant else ""
-        return CompletedCommand(
-            recorded,
-            0,
-            f"{recorded[1]} *S-1-5-21-1-2-3-1001:(F)\n*S-1-5-18:(F)\n*S-1-5-32-544:(F)\n{extra}",
-            "",
-        )
+        grants: list[str] = []
+        for call in self.calls:
+            if not call or call[0].lower() != "icacls":
+                continue
+            if not any(os.path.normcase(os.path.abspath(part)) == target for part in call[1:]):
+                continue
+            for part in call:
+                if ":(" in part:
+                    grants.append(part)
+        rendered = "\n".join(grants) or "*S-1-5-18:(F)\n*S-1-5-32-544:(F)"
+        return CompletedCommand(recorded, 0, f"{recorded[1]} {rendered}\n", "")
 
 
 def _request(tmp_path: Path) -> InstallRequest:
@@ -172,11 +233,11 @@ def _request(tmp_path: Path) -> InstallRequest:
     pg_bin.mkdir(parents=True)
     backend.mkdir(parents=True)
     (app_dir / "bin").mkdir()
-    for name in ("initdb.exe", "pg_ctl.exe", "psql.exe", "pg_isready.exe"):
+    for name in ("initdb.exe", "pg_controldata.exe", "pg_ctl.exe", "psql.exe", "pg_isready.exe"):
         (pg_bin / name).write_text("fake", encoding="utf-8")
+    (backend / "ticketbox-backend.exe").write_text("fake", encoding="utf-8")
     (backend / "ticketbox-database-maintenance.exe").write_text("fake", encoding="utf-8")
     (app_dir / "bin" / "shawl.exe").write_text("fake", encoding="utf-8")
-    (app_dir / "bin" / "TicketboxBackendLauncher.exe").write_text("fake", encoding="utf-8")
     (release / "release-manifest.json").write_text(
         '{"max_schema_revision":"20260821_0001"}',
         encoding="utf-8",
@@ -188,7 +249,7 @@ def _request(tmp_path: Path) -> InstallRequest:
         request_hash="a" * 64,
         target_release_id="1.2.0",
         app_dir=str(app_dir),
-        data_root=str(tmp_path / "data"),
+        data_root=str(tmp_path / "programdata" / "data"),
         program_data_root=str(tmp_path / "programdata"),
         pg_service_name="TicketboxPg",
         backend_service_name="TicketboxBackend",
@@ -208,11 +269,25 @@ def _argv_text(calls: list[tuple[str, ...]]) -> str:
     return "\n".join(" ".join(call) for call in calls)
 
 
+def _write_complete_cluster(data: Path, *, major: int = 17) -> None:
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "PG_VERSION").write_text(f"{major}\n", encoding="utf-8")
+    (data / "postgresql.conf").write_text("# initdb\n", encoding="utf-8")
+    (data / "pg_hba.conf").write_text("# initdb\n", encoding="utf-8")
+    (data / "base").mkdir(exist_ok=True)
+    (data / "global").mkdir(exist_ok=True)
+    (data / "global" / "pg_control").write_bytes(b"control")
+    (data / "pg_wal").mkdir(exist_ok=True)
+
+
 def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
     bundle = WindowsAdapterBundle(runner)
     bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+    pwfile = Path(request.program_data_root) / "machine" / "secrets" / "postgres.pwfile"
+    assert pwfile.is_file()
     bundle.postgres.apply(request, "postgres_initdb")
     bundle.postgres.verify(request, "postgres_initdb")
     initdb = next(call for call in runner.calls if call[0].endswith("initdb.exe"))
@@ -233,6 +308,8 @@ def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(tmp_path: Path) -> Non
     assert b"\x00" not in conf_path.read_bytes()
     assert b"\x00" not in hba_path.read_bytes()
     assert hba_path.read_text(encoding="utf-8").startswith("# Ticketbox fresh-install")
+    assert not pwfile.exists()
+    assert any(Path(call[0]).name.lower() == "pg_controldata.exe" for call in runner.calls)
 
 
 def test_initdb_verify_rejects_pg_version_only_directory(tmp_path: Path) -> None:
@@ -243,6 +320,17 @@ def test_initdb_verify_rejects_pg_version_only_directory(tmp_path: Path) -> None
     data.mkdir(parents=True, exist_ok=True)
     (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
     with pytest.raises(LifecycleError, match="complete PostgreSQL cluster"):
+        bundle.postgres.verify(request, "postgres_initdb")
+
+
+def test_initdb_verify_rejects_complete_but_unconfigured_cluster(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle.files.apply(request, "programdata_root")
+    data = Path(request.data_root) / "pgdata"
+    _write_complete_cluster(data)
+
+    with pytest.raises(LifecycleError, match="Ticketbox PostgreSQL configuration"):
         bundle.postgres.verify(request, "postgres_initdb")
 
 
@@ -270,11 +358,7 @@ def test_initdb_skips_complete_cluster_and_still_writes_listen_config(tmp_path: 
     bundle = WindowsAdapterBundle(runner)
     bundle.files.apply(request, "programdata_root")
     data = Path(request.data_root) / "pgdata"
-    data.mkdir(parents=True, exist_ok=True)
-    (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
-    (data / "postgresql.conf").write_text("# leftover\n", encoding="utf-8")
-    (data / "pg_hba.conf").write_text("# leftover\n", encoding="utf-8")
-    (data / "base").mkdir()
+    _write_complete_cluster(data)
     assert bundle.postgres.apply(request, "postgres_initdb") == "already-present"
     assert not any(call[0].endswith("initdb.exe") for call in runner.calls)
     conf = (data / "postgresql.conf").read_text(encoding="utf-8")
@@ -282,7 +366,49 @@ def test_initdb_skips_complete_cluster_and_still_writes_listen_config(tmp_path: 
     bundle.postgres.verify(request, "postgres_initdb")
 
 
-def test_register_uses_pg_ctl_local_service_sid_and_stable_launcher(tmp_path: Path) -> None:
+def test_initdb_verify_rejects_wrong_major_or_missing_control_file(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.postgres.apply(request, "postgres_initdb")
+    data = Path(request.data_root) / "pgdata"
+
+    (data / "PG_VERSION").write_text("16\n", encoding="utf-8")
+    with pytest.raises(LifecycleError, match="complete PostgreSQL cluster"):
+        bundle.postgres.verify(request, "postgres_initdb")
+
+    (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
+    (data / "global" / "pg_control").unlink()
+    with pytest.raises(LifecycleError, match="complete PostgreSQL cluster"):
+        bundle.postgres.verify(request, "postgres_initdb")
+
+
+def test_initdb_refuses_reparse_before_discarding_incomplete_cluster(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    request = _request(tmp_path)
+    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle.files.apply(request, "programdata_root")
+    data = Path(request.data_root) / "pgdata"
+    data.mkdir(parents=True)
+    marker = data / "half-written"
+    marker.write_text("keep", encoding="utf-8")
+    original = windows_postgres.reject_reparse_components
+
+    def reject_pgdata(path: Path) -> None:
+        if path == data:
+            raise LifecycleViolation("reparse_path", "pgdata reparse")
+        original(path)
+
+    monkeypatch.setattr(windows_postgres, "reject_reparse_components", reject_pgdata)
+    with pytest.raises(LifecycleViolation, match="pgdata reparse"):
+        bundle.postgres.apply(request, "postgres_initdb")
+    assert marker.is_file()
+
+
+def test_register_uses_pg_ctl_and_direct_immutable_backend(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
     bundle = WindowsAdapterBundle(runner)
@@ -291,15 +417,19 @@ def test_register_uses_pg_ctl_local_service_sid_and_stable_launcher(tmp_path: Pa
         bundle.security.verify(request, "acl")
         raise AssertionError("inherited secret ACL must fail acl verify")
     except LifecycleError as exc:
-        assert exc.code == "postcondition_missing"
+        assert exc.code == "data_root_acl_too_broad"
     bundle.security.apply(request, "acl")
     bundle.security.verify(request, "acl")
+    active = Path(request.program_data_root) / "machine" / "operations" / "active.json"
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text("{}\n", encoding="utf-8")
+    bundle.security.protect_machine_json(active, request.backend_service_name)
     bundle.scm.apply(request, "scm")
     text = _argv_text(runner.calls)
     assert "takeown" in text
     assert "pgpass" in text
-    assert "*S-1-5-21-1-2-3-1001:(OI)(CI)F" in text
-    assert "*S-1-5-21-1-2-3-1001:(F)" in text
+    assert "*S-1-5-21-1-2-3-1001:(OI)(CI)F" not in text
+    assert "*S-1-5-21-1-2-3-1001:(F)" not in text
     assert "*S-1-5-18:(OI)(CI)F" in text
     assert "*S-1-5-18:(F)" in text
     assert "*S-1-5-32-544:(OI)(CI)F" in text
@@ -328,10 +458,29 @@ def test_register_uses_pg_ctl_local_service_sid_and_stable_launcher(tmp_path: Pa
         for call in runner.calls
     )
     assert "NT SERVICE\\TicketboxBackend:(R)" in text
-    assert "backend.env" in text
+    runtime_env = str(Path(request.data_root) / "app" / ".env")
+    assert any(
+        call[0] == "icacls"
+        and call[1] == runtime_env
+        and "/grant:r" in call
+        and f"*{_BACKEND_SERVICE_SID}:(R)" in call
+        for call in runner.calls
+    )
+    assert "operations" in text and "active.json" in text
+    assert any(
+        call[0] == "icacls"
+        and call[1].endswith("operations")
+        and "NT SERVICE\\TicketboxBackend:(OI)(CI)RX" in call
+        for call in runner.calls
+    )
     bundle.scm.verify(request, "scm")
-    assert "TicketboxBackendLauncher.exe" in text
-    assert "ticketbox-backend.exe" not in text.lower()
+    assert "TicketboxBackendLauncher.exe" not in text
+    assert "ticketbox-backend.exe" in text.lower()
+    assert "TICKETBOX_DATA_DIR=" in text
+    assert f"TICKETBOX_INSTALLATION_ID={request.install_id}" in text
+    assert f"TICKETBOX_DATASET_ID={request.dataset_id}" in text
+    assert f"TICKETBOX_RELEASE_ID={request.target_release_id}" in text
+    assert "DATABASE_URL=" not in text
     helper_calls = [call for call in runner.calls if call[0].endswith("ticketbox-database-maintenance.exe")]
     assert helper_calls == []
 
@@ -370,6 +519,36 @@ def test_alembic_helper_uses_fresh_switch_without_password_or_generation_program
     assert "SET ROLE ticketbox_owner" in probe[-1]
 
 
+def test_owner_claim_uses_database_helper_and_keeps_secret_off_argv(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+
+    pairing = bundle.dataset.claim_owner(request)
+
+    helper = next(
+        call
+        for call in runner.calls
+        if call[0].endswith("ticketbox-database-maintenance.exe") and "--fresh-owner-claim" in call
+    )
+    assert pairing.pairing_code == "12345678"
+    assert pairing.pairing_expires_at == "2026-08-25T12:00:00Z"
+    assert "--operation-id" in helper and request.operation_id in helper
+    assert "--installation-id" in helper and request.install_id in helper
+    assert runner.inputs[-1]
+    assert runner.inputs[-1].strip() not in " ".join(helper)
+    pg_env = {
+        key: value
+        for key, value in (runner.envs[-1] or {}).items()
+        if key.upper().startswith("PG")
+    }
+    assert pg_env == {
+        "PGPASSFILE": str(Path(request.program_data_root) / "machine" / "secrets" / "pgpass")
+    }
+
+
 def test_binding_read_acl_grants_backend_service(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
@@ -385,7 +564,7 @@ def test_binding_read_acl_grants_backend_service(tmp_path: Path) -> None:
     assert "NT SERVICE\\TicketboxBackend:(R)" in text
 
 
-def test_files_adapter_materializes_secrets_without_platform_commands(tmp_path: Path) -> None:
+def test_credentials_are_created_only_after_root_acl(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
     bundle = WindowsAdapterBundle(runner)
@@ -393,19 +572,127 @@ def test_files_adapter_materializes_secrets_without_platform_commands(tmp_path: 
     bundle.files.verify(request, "programdata_root")
     assert runner.calls == []
     secrets = Path(request.program_data_root) / "machine" / "secrets"
+    assert not (secrets / "postgres.pwfile").exists()
+    assert not (Path(request.data_root) / "app" / ".env").exists()
+
+    bundle.security.apply(request, "acl")
+    bundle.security.verify(request, "acl")
     assert (secrets / "postgres.pwfile").is_file()
     assert (secrets / "pgpass").is_file()
-    assert (secrets / "backend.env").is_file()
     assert (secrets / "ticketbox_runtime.password").is_file()
     assert (secrets / "ticketbox_migrator.password").is_file()
-    assert not (Path(request.data_root) / "app" / ".env").is_file()
-    env_text = (secrets / "backend.env").read_text(encoding="utf-8")
+    env_path = Path(request.data_root) / "app" / ".env"
+    assert env_path.is_file()
+    env_text = env_path.read_text(encoding="utf-8")
     assert "ticketbox_runtime" in env_text
     assert "ticketbox_migrator" not in env_text.split("DATABASE_URL", 1)[1].splitlines()[0]
-    assert "HTTP_BOOTSTRAP_SECRET=" in env_text
+    assert "HTTP_BOOTSTRAP_SECRET=" not in env_text
     assert "UPLOAD_TOKEN=" not in env_text
     assert "APP_TOKEN=" not in env_text
     assert "ADMIN_TOKEN=" not in env_text
+
+
+def test_fresh_inputs_reject_preplanted_secret_or_data(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle.security.prepare_operation_store(request)
+    secret = Path(request.program_data_root) / "machine" / "secrets" / "postgres.password"
+    secret.parent.mkdir(parents=True)
+    secret.write_text("attacker-controlled-secret-value-123456\n", encoding="utf-8")
+
+    with pytest.raises(LifecycleViolation, match="unbound mutable state") as caught:
+        bundle.security.require_fresh_inputs(request)
+
+    assert caught.value.code == "preexisting_mutable_state"
+    assert secret.is_file()
+
+
+def test_acl_refuses_untrusted_existing_credential_before_reading_it(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    request = _request(tmp_path)
+    bundle = WindowsAdapterBundle(RecordingRunner())
+    bundle.files.apply(request, "programdata_root")
+    secret = Path(request.program_data_root) / "machine" / "secrets" / "postgres.password"
+    secret.write_text("attacker-controlled-secret-value-123456\n", encoding="utf-8")
+    monkeypatch.setattr(
+        windows_security_native,
+        "file_owner_sid",
+        lambda _path: "S-1-5-21-9-9-9-1002",
+        raising=False,
+    )
+
+    with pytest.raises(LifecycleViolation, match="trusted owner") as caught:
+        bundle.security.apply(request, "acl")
+
+    assert caught.value.code == "credential_owner_untrusted"
+    assert secret.read_text(encoding="utf-8").startswith("attacker-controlled")
+
+
+def test_exact_retry_reuses_only_already_protected_credentials(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    monkeypatch.setattr(
+        windows_security_native,
+        "file_owner_sid",
+        lambda _path: "S-1-5-32-544",
+        raising=False,
+    )
+
+    bundle.security.apply(request, "acl")
+    before = (Path(request.program_data_root) / "machine" / "secrets" / "postgres.password").read_text(
+        encoding="utf-8"
+    )
+    bundle.security.apply(request, "acl")
+    after = (Path(request.program_data_root) / "machine" / "secrets" / "postgres.password").read_text(
+        encoding="utf-8"
+    )
+
+    assert after == before
+
+
+def test_root_acl_does_not_grant_the_ordinary_shell_user(tmp_path: Path, monkeypatch) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: "S-1-5-21-9-9-9-1002")
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+
+    bundle.security.apply(request, "acl")
+
+    root_acl = next(
+        call
+        for call in runner.calls
+        if call[0] == "icacls" and os.path.normcase(os.path.abspath(call[1])) == os.path.normcase(os.path.abspath(request.program_data_root))
+    )
+    assert not any("S-1-5-21-9-9-9-1002" in part for part in root_acl)
+
+
+def test_reparse_component_is_rejected_before_credentials(tmp_path: Path, monkeypatch) -> None:
+    request = _request(tmp_path)
+    reparse = Path(request.program_data_root)
+    real_lstat = Path.lstat
+
+    def fake_lstat(path: Path):
+        if path == reparse:
+            return SimpleNamespace(
+                st_mode=stat.S_IFDIR,
+                st_file_attributes=getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400),
+            )
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+    bundle = WindowsAdapterBundle(RecordingRunner())
+
+    with pytest.raises(LifecycleViolation, match="reparse"):
+        bundle.files.apply(request, "programdata_root")
+    assert not (Path(request.program_data_root) / "machine" / "secrets" / "postgres.password").exists()
 
 
 def test_roles_adapter_creates_owner_migrator_runtime(tmp_path: Path) -> None:
@@ -413,6 +700,7 @@ def test_roles_adapter_creates_owner_migrator_runtime(tmp_path: Path) -> None:
     runner = RecordingRunner()
     bundle = WindowsAdapterBundle(runner)
     bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
     bundle.postgres.apply(request, "roles_database")
     bundle.postgres.verify(request, "roles_database")
     argv_text = _argv_text(runner.calls)
@@ -433,6 +721,10 @@ def test_roles_adapter_creates_owner_migrator_runtime(tmp_path: Path) -> None:
     assert "CREATE DATABASE ticketbox OWNER ticketbox_owner" in sql_text
     assert "ALTER DEFAULT PRIVILEGES FOR ROLE ticketbox_owner" in sql_text
     assert f"PASSWORD '{migrator_secret}'" in sql_text
+    assert any(
+        "ticketbox_privileges_ready" in (item or "")
+        for item in runner.inputs
+    )
 
 
 def test_scm_refuses_foreign_same_name_service(tmp_path: Path) -> None:
@@ -471,3 +763,79 @@ def test_scm_refuses_foreign_backend_service(tmp_path: Path) -> None:
         for call in runner.calls
     )
     assert not any(call[0].endswith("shawl.exe") and "add" in call for call in runner.calls)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("backend_version", "9.9.9"),
+        ("installation_id", "22222222-2222-4222-8222-222222222222"),
+        ("runtime_access_state", "repair_required"),
+        ("owner_state", "recovery_required"),
+    ],
+)
+def test_health_requires_exact_release_identity_and_usable_owner(
+    tmp_path: Path,
+    monkeypatch,
+    field: str,
+    value: str,
+) -> None:
+    request = _request(tmp_path)
+    bundle = WindowsAdapterBundle(RecordingRunner())
+    payload = {
+        "contract": "ticketbox-installation-health-v2",
+        "status": "ok",
+        "backend_version": request.target_release_id,
+        "installation_id": request.install_id,
+        "runtime_access_state": "available",
+        "owner_state": "configured",
+    }
+    payload[field] = value
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(payload).encode("utf-8")
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *_args, **_kwargs: Response())
+    monkeypatch.setattr(bundle.dataset, "_live_dataset_id", lambda _request: request.dataset_id)
+
+    with pytest.raises(LifecycleError):
+        bundle.dataset.verify(request, "health")
+
+
+def test_health_accepts_exact_release_identity_and_usable_owner(tmp_path: Path, monkeypatch) -> None:
+    request = _request(tmp_path)
+    bundle = WindowsAdapterBundle(RecordingRunner())
+    payload = {
+        "contract": "ticketbox-installation-health-v2",
+        "status": "ok",
+        "backend_version": request.target_release_id,
+        "installation_id": request.install_id,
+        "runtime_access_state": "available",
+        "owner_state": "configured",
+    }
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(payload).encode("utf-8")
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *_args, **_kwargs: Response())
+    monkeypatch.setattr(bundle.dataset, "_live_dataset_id", lambda _request: request.dataset_id)
+
+    bundle.dataset.verify(request, "health")

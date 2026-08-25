@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol
 
 from ticketbox_lifecycle.schemas import (
@@ -8,6 +9,7 @@ from ticketbox_lifecycle.schemas import (
     HostObservation,
     InstallationBinding,
     InstallRequest,
+    OwnerPairing,
 )
 
 
@@ -21,6 +23,8 @@ class OperationReader(Protocol):
 
 
 class OperationPublisher(Protocol):
+    def prepare(self, request: InstallRequest) -> None: ...
+    def require_fresh_inputs(self, request: InstallRequest) -> None: ...
     def publish_active(self, operation: ActiveOperation) -> None: ...
     def archive_committed(self, operation: ActiveOperation) -> None: ...
 
@@ -44,13 +48,25 @@ class PlatformAdapter(Protocol):
     def verify(self, request: InstallRequest, step: str) -> None: ...
 
 
+class DatasetAdapter(PlatformAdapter, Protocol):
+    def claim_owner(self, request: InstallRequest) -> OwnerPairing: ...
+
+
+class SecurityAdapter(PlatformAdapter, Protocol):
+    def prepare_operation_store(self, request: InstallRequest) -> None: ...
+    def require_fresh_inputs(self, request: InstallRequest) -> None: ...
+    def protect_machine_json(self, path: Path, reader_service: str) -> None: ...
+    def verify_machine_json(self, path: Path, reader_service: str) -> None: ...
+    def grant_backend_binding_read(self, binding_path: Path, service_name: str) -> None: ...
+
+
 class AdapterBundle(Protocol):
     files: PlatformAdapter
-    security: PlatformAdapter
+    security: SecurityAdapter
     postgres: PlatformAdapter
     alembic: PlatformAdapter
     scm: PlatformAdapter
-    dataset: PlatformAdapter
+    dataset: DatasetAdapter
 
 
 def adapter_for_step(bundle: AdapterBundle, step: str) -> PlatformAdapter:
@@ -80,6 +96,7 @@ def phase_after(step: str) -> DurablePhase:
         "start_postgres",
         "roles_database",
         "alembic",
+        "owner_claim",
     }:
         return "data_ready"
     if step in {"start_services", "health"}:

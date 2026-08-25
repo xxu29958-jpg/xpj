@@ -58,17 +58,16 @@ def test_iss_prepare_is_readonly_and_provision_fails_setup_without_committed_res
     assert "AnsiString(Payload)" not in text
     assert "Command := 'resume'" in text
     assert "TicketboxLifecycle.exe" in text
-    assert any(line.strip() == "[Run]" for line in text.splitlines())
-    assert all(
-        not line.strip().startswith("[Run]") or line.strip() == "[Run]"
-        for line in text.splitlines()
-    )
+    assert not any(line.strip() == "[Run]" for line in text.splitlines())
     assert "AfterInstall: TicketboxProvision" not in text
     assert "TicketboxLifecycleParams" in text
     assert "topic_installorder" in text
     assert "waituntilterminated" in text.lower()
     assert "ewWaitUntilTerminated" in text
-    assert "GetCustomSetupExitCode" in text
+    assert "GetCustomSetupExitCode" not in text
+    assert "CurStepChanged" in text
+    assert "ssPostInstall" in text
+    assert "RaiseException" in text
     assert "TicketboxResultIsCommitted" in text
     assert "ResultCode <> 0" in text
     assert "Observed <> OperationId" in text
@@ -77,20 +76,22 @@ def test_iss_prepare_is_readonly_and_provision_fails_setup_without_committed_res
     assert "resume" in text
     assert '"ok": true' in text
     assert '"phase": "committed"' in text
-    assert "last-result.json" in text
-    assert "topic_runsection" in text
+    assert "last-result.json" not in text
+    assert "ticketbox-install-result.json" in text
     assert "topic_scriptevents" in text
     assert "NotifyAfterInstallEntry" in text
     files_section = text.split("[Files]", 1)[1].split("[", 1)[0]
-    assert "TicketboxBackendLauncher.exe" in files_section
+    assert "TicketboxBackendLauncher.exe" not in files_section
     assert "vc_redist.x64.exe" in files_section
-    assert "dontcopy" in files_section.lower()
-    assert "ExtractTemporaryFile" in text
+    assert "dontcopy" not in files_section.lower()
+    assert "ExtractTemporaryFile" not in text
     assert "VCRUNTIME140.dll" in text
     assert "install_bundled_services.ps1" not in text
     assert "powershell" not in text.lower()
     assert "GetSHA256OfFile" in text
     assert "release_manifest_sha256" in text
+    prepare = text.split("function PrepareToInstall", 1)[1].split("end;", 1)[0]
+    assert "TicketboxEnsureMsvcRuntime" not in prepare
     for token in FORBIDDEN_TOKENS:
         assert token not in text
 
@@ -98,3 +99,12 @@ def test_iss_prepare_is_readonly_and_provision_fails_setup_without_committed_res
 def test_old_fresh_iss_is_not_the_shipped_installer() -> None:
     old = REPO / "backend" / "packaging" / "ticketbox-installer.iss"
     assert not old.exists(), "old Inno recipe must be physically deleted from shipment"
+
+
+def test_installer_verifies_msvc_runtime_is_not_older_than_bundled_redist() -> None:
+    text = ISS.read_text(encoding="utf-8-sig")
+
+    assert "GetVersionNumbersString(TicketboxMsvcRedistSource)" in text
+    assert "GetPackedVersion(RuntimePath, InstalledVersion)" in text
+    assert "StrToVersion(TicketboxRequiredMsvcRuntimeVersion, RequiredVersion)" in text
+    assert "ComparePackedVersion(InstalledVersion, RequiredVersion) < 0" in text

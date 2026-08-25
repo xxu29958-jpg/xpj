@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from ticketbox_lifecycle.domain.planner import plan_fresh_install
 from ticketbox_lifecycle.errors import LifecycleViolation
-from ticketbox_lifecycle.schemas import APPLY_SEQUENCE, HostObservation, InstallRequest, REQUEST_SCHEMA
+from ticketbox_lifecycle.schemas import (
+    APPLY_SEQUENCE,
+    REQUEST_SCHEMA,
+    HostObservation,
+    InstallRequest,
+)
 
 
 def _request() -> InstallRequest:

@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from typing import Literal
 
 INSTALLATION_SCHEMA = "ticketbox-installed-instance-v1"
-OPERATION_SCHEMA = "ticketbox-lifecycle-operation-v1"
+OPERATION_SCHEMA = "ticketbox-lifecycle-operation-v2"
 REQUEST_SCHEMA = "ticketbox-lifecycle-request-v1"
-RESULT_SCHEMA = "ticketbox-lifecycle-result-v1"
+RESULT_SCHEMA = "ticketbox-lifecycle-result-v2"
 
 CommandName = Literal["install", "resume", "inspect"]
 OperationKind = Literal["install"]
@@ -26,6 +26,7 @@ APPLY_SEQUENCE: tuple[str, ...] = (
     "start_postgres",
     "roles_database",
     "alembic",
+    "owner_claim",
     "start_services",
     "health",
 )
@@ -86,6 +87,9 @@ class ActiveOperation:
     kind: OperationKind
     request_hash: str
     target_release_id: str
+    data_root: str
+    release_manifest_sha256: str
+    backend_port: int
     phase: DurablePhase
     no_return_point: bool
     last_adapter_result: str | None
@@ -112,6 +116,12 @@ class InstallationBinding:
 
 
 @dataclass(frozen=True)
+class OwnerPairing:
+    pairing_code: str
+    pairing_expires_at: str
+
+
+@dataclass(frozen=True)
 class CommandResult:
     schema: str
     ok: bool
@@ -121,3 +131,5 @@ class CommandResult:
     code: str
     message: str
     installation_published: bool
+    pairing_code: str = ""
+    pairing_expires_at: str = ""
