@@ -19,7 +19,6 @@ from backend_manager.control_server import (
 )
 from backend_manager.desktop_shell import open_app_window
 from backend_manager.instance_owner import ManagerInstance, claim_manager_instance
-from backend_manager.maintenance_gate import manager_maintenance_requested
 from backend_manager.projection import UnavailableInstalledRuntimeConfigProvider
 from backend_manager.runtime import RuntimeControlError
 from backend_manager.runtime_factory import build_provider
@@ -158,18 +157,11 @@ def _wait_for_shutdown(
     controller: AppController,
     stop_event: threading.Event,
     shutdown_request: threading.Event,
-    maintenance_requested,
     shutdown_grace_seconds: float,
     windows: ManagerWindowSession,
 ) -> None:
     shutdown_deadline: float | None = None
     while not stop_event.is_set():
-        if maintenance_requested():
-            if not shutdown_request.is_set():
-                controller.request_manager_shutdown()
-            if windows.close_all():
-                stop_event.set()
-                return
         if shutdown_request.is_set():
             if shutdown_deadline is None:
                 shutdown_deadline = time.monotonic() + shutdown_grace_seconds
@@ -192,8 +184,6 @@ def reopen_existing_manager(
 ) -> bool:
     deadline = time.monotonic() + startup_timeout
     while True:
-        if manager_maintenance_requested():
-            return True
         registration = instance.read_registration()
         if registration is not None and registration.port is not None:
             running_url = config.manager_url_for_port(registration.port)
@@ -212,13 +202,10 @@ def run_owned_manager(
     config: ManagerEndpointConfig,
     instance: ManagerInstance,
     *,
-    maintenance_requested=manager_maintenance_requested,
     shutdown_grace_seconds: float = 3.0,
 ) -> int:
     if instance.secret is None:
         raise ConfigError("无法建立小票夹管理器实例证明。")
-    if maintenance_requested():
-        return 0
     stop_event = threading.Event()
     shutdown_request = threading.Event()
     provider, maintenance_version, source_mode, startup_failure_code, startup_failure_stage = (
@@ -269,7 +256,6 @@ def run_owned_manager(
             controller=controller,
             stop_event=stop_event,
             shutdown_request=shutdown_request,
-            maintenance_requested=maintenance_requested,
             shutdown_grace_seconds=shutdown_grace_seconds,
             windows=windows,
         )
@@ -295,8 +281,6 @@ def run_owned_manager(
 
 
 def run_manager(config: ManagerEndpointConfig) -> int:
-    if manager_maintenance_requested():
-        return 0
     with claim_manager_instance() as instance:
         if not instance.is_owner:
             if reopen_existing_manager(config, instance):

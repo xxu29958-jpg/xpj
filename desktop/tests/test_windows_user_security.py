@@ -77,7 +77,7 @@ def test_helper_rejects_pending_json_with_extra_fields(monkeypatch, tmp_path: Pa
                 "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path),
                 "nonce": nonce,
-                "action": "start",
+                "action": "inventory",
                 "state": "pending",
                 "owner_sid": owner_sid,
                 "file_identity": file_identity,
@@ -90,7 +90,7 @@ def test_helper_rejects_pending_json_with_extra_fields(monkeypatch, tmp_path: Pa
     monkeypatch.setattr(elevation, "validate_exact_file_security", lambda *_args, **_kwargs: None)
 
     with pytest.raises(RuntimeControlError, match="精确契约"):
-        validate_helper_result_channel(path, tmp_path, nonce, "start", owner_sid, file_identity)
+        validate_helper_result_channel(path, tmp_path, nonce, "inventory", owner_sid, file_identity)
 
 
 def test_helper_binds_pending_payload_and_acl_to_exact_redirected_root(monkeypatch, tmp_path: Path) -> None:
@@ -108,7 +108,7 @@ def test_helper_binds_pending_payload_and_acl_to_exact_redirected_root(monkeypat
                 "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(root),
                 "nonce": nonce,
-                "action": "start",
+                "action": "inventory",
                 "state": "pending",
                 "owner_sid": owner_sid,
                 "file_identity": file_identity,
@@ -124,7 +124,7 @@ def test_helper_binds_pending_payload_and_acl_to_exact_redirected_root(monkeypat
         lambda candidate, _sid, *, directory=False: acl_checks.append((candidate, directory)),
     )
 
-    validate_helper_result_channel(path, root, nonce, "start", owner_sid, file_identity)
+    validate_helper_result_channel(path, root, nonce, "inventory", owner_sid, file_identity)
 
     assert acl_checks == [(root, True), (path, False)]
 
@@ -142,7 +142,7 @@ def test_helper_rejects_payload_bound_to_a_different_root(monkeypatch, tmp_path:
                 "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path / "attacker-selected-root"),
                 "nonce": nonce,
-                "action": "start",
+                "action": "inventory",
                 "state": "pending",
                 "owner_sid": owner_sid,
                 "file_identity": file_identity,
@@ -154,7 +154,7 @@ def test_helper_rejects_payload_bound_to_a_different_root(monkeypatch, tmp_path:
     monkeypatch.setattr(elevation, "validate_exact_file_security", lambda *_args, **_kwargs: None)
 
     with pytest.raises(RuntimeControlError, match="schema 或 action 不匹配"):
-        validate_helper_result_channel(path, tmp_path, nonce, "start", owner_sid, file_identity)
+        validate_helper_result_channel(path, tmp_path, nonce, "inventory", owner_sid, file_identity)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows hard-link semantics required")
@@ -171,7 +171,7 @@ def test_helper_rejects_hardlinked_result_file(monkeypatch, tmp_path: Path) -> N
                 "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path),
                 "nonce": nonce,
-                "action": "start",
+                "action": "inventory",
                 "state": "pending",
                 "owner_sid": owner_sid,
                 "file_identity": file_identity,
@@ -184,7 +184,7 @@ def test_helper_rejects_hardlinked_result_file(monkeypatch, tmp_path: Path) -> N
     monkeypatch.setattr(elevation, "validate_exact_file_security", lambda *_args, **_kwargs: None)
 
     with pytest.raises(RuntimeControlError, match="单链接"):
-        validate_helper_result_channel(path, tmp_path, nonce, "start", owner_sid, file_identity)
+        validate_helper_result_channel(path, tmp_path, nonce, "inventory", owner_sid, file_identity)
 
 
 def test_helper_rejects_replaced_file_even_with_same_nonce_action_and_acl(monkeypatch, tmp_path: Path) -> None:
@@ -201,7 +201,7 @@ def test_helper_rejects_replaced_file_even_with_same_nonce_action_and_acl(monkey
                 "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path),
                 "nonce": nonce,
-                "action": "start",
+                "action": "inventory",
                 "state": "pending",
                 "owner_sid": owner_sid,
                 "file_identity": original_identity,
@@ -215,10 +215,10 @@ def test_helper_rejects_replaced_file_even_with_same_nonce_action_and_acl(monkey
     monkeypatch.setattr(elevation, "validate_exact_file_security", lambda *_args, **_kwargs: None)
 
     with pytest.raises(RuntimeControlError, match="文件身份已变化"):
-        validate_helper_result_channel(path, tmp_path, nonce, "start", owner_sid, original_identity)
+        validate_helper_result_channel(path, tmp_path, nonce, "inventory", owner_sid, original_identity)
 
 
-def test_helper_rejects_owner_or_acl_failure_before_service_action(monkeypatch, tmp_path: Path) -> None:
+def test_helper_rejects_owner_or_acl_failure_before_maintenance_action(monkeypatch, tmp_path: Path) -> None:
     touched = False
 
     def reject(*_args) -> None:
@@ -236,7 +236,7 @@ def test_helper_rejects_owner_or_acl_failure_before_service_action(monkeypatch, 
     exit_code = main(
         [
             "--elevated-service-action",
-            "start",
+            "inventory",
             "--helper-result-path",
             str(tmp_path / "result.json"),
             "--helper-result-root",

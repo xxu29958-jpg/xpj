@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -14,8 +13,6 @@ from backend_manager.installation import (
     WindowsReleaseConfig,
     load_installed_release_config,
     parse_installed_binding,
-    validate_installed_backend_stopped,
-    validate_installed_service_contract,
 )
 
 _INSTALL_ID = "11111111-1111-4111-8111-111111111111"
@@ -117,7 +114,6 @@ def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> Non
     assert restore["complete_dataset_restore_owner"] == 14401.75
     assert release.powershell_action_timeout_seconds("backup") == 9001.75
     assert release.powershell_action_timeout_seconds("restore") == 14401.75
-    assert release.service_validation_timeout_seconds == 18.75
     for action, phases in (
         ("start", start),
         ("stop", stop),
@@ -136,61 +132,6 @@ def test_helper_phase_budget_rejects_unknown_action() -> None:
 
     with pytest.raises(InstallationConfigError, match="不支持的服务操作：pause"):
         release.helper_action_phase_budget_seconds("pause")
-
-
-def test_service_contract_validator_uses_installed_script_and_dynamic_identity(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    install_dir = tmp_path / "program"
-    script = install_dir / "installer" / "install_bundled_services.ps1"
-    script.parent.mkdir(parents=True)
-    script.write_text("# contract", encoding="utf-8")
-    powershell = tmp_path / "powershell.exe"
-    powershell.write_bytes(b"MZ")
-    layout = InstalledLayout(
-        install_dir=install_dir,
-        data_root=tmp_path / "data",
-        backend_port=8123,
-        pg_port=5544,
-        backend_service_name="TicketboxBackendDynamic",
-        pg_service_name="TicketboxPgDynamic",
-        backend_version="9.8.7",
-        install_id=_INSTALL_ID,
-    )
-    release = _release_config()
-    release = WindowsReleaseConfig(
-        **{
-            **release.__dict__,
-            "backend_service_name": "TicketboxBackendDynamic",
-            "pg_service_name": "TicketboxPgDynamic",
-        },
-    )
-    captured: list[list[str]] = []
-    timeouts: list[float] = []
-
-    monkeypatch.setattr(installation, "_windows_powershell_path", lambda: powershell)
-    monkeypatch.setattr(
-        installation.subprocess,
-        "run",
-        lambda command, **kwargs: (
-            captured.append(command),
-            timeouts.append(kwargs["timeout"]),
-            SimpleNamespace(returncode=0, stdout="", stderr=""),
-        )[-1],
-    )
-
-    validate_installed_service_contract(layout, release)
-    validate_installed_backend_stopped(layout, release)
-
-    command = captured[0]
-    assert command[0] == str(powershell)
-    assert command[command.index("-TargetBackendVersion") + 1] == "9.8.7"
-    assert command[command.index("-ExpectedBackendServiceName") + 1] == "TicketboxBackendDynamic"
-    assert command[command.index("-ExpectedPgServiceName") + 1] == "TicketboxPgDynamic"
-    assert command[-1] == "-ValidateInstalledServicesOnly"
-    assert captured[1][-1] == "-ValidateBackendRuntimeStoppedOnly"
-    assert timeouts == [18.75, 18.75]
 
 
 def test_parse_installed_binding_uses_installation_json_not_registry_dataroot(tmp_path: Path) -> None:

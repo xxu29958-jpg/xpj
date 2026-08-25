@@ -547,7 +547,7 @@ def test_elevated_helper_rejects_invalid_frozen_payload_before_service_access(
     exit_code = main(
         [
             "--elevated-service-action",
-            "start",
+            "inventory",
             "--helper-result-path",
             str(tmp_path / f"{nonce}.json"),
             "--helper-result-root",
@@ -577,32 +577,33 @@ def test_source_startup_error_does_not_forge_an_installed_maintenance_shell(monk
         main([])
 
 
-def test_signaled_installer_gate_blocks_manager_before_runtime_or_window(monkeypatch) -> None:
-    config = MaintenanceManagerConfig("127.0.0.1", 8799, "1.2.0")
-    monkeypatch.setattr(
-        "backend_manager.manager_startup.ControlServer",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not bind")),
-    )
-    monkeypatch.setattr(
-        "backend_manager.manager_startup.open_app_window",
-        lambda _url, *, profile: (_ for _ in ()).throw(AssertionError("must not open")),
-    )
+def test_retired_installer_marker_cannot_suppress_manager_startup(monkeypatch) -> None:
+    claims: list[bool] = []
+    starts: list[bool] = []
 
-    with _manager_instance(owner=True) as instance:
-        assert run_owned_manager(config, instance, maintenance_requested=lambda: True) == 0
+    @contextmanager
+    def claim():
+        claims.append(True)
+        with _manager_instance(owner=True) as instance:
+            yield instance
 
-
-def test_signaled_installer_gate_blocks_second_launch_before_claim(monkeypatch) -> None:
     monkeypatch.setattr(
         "backend_manager.manager_startup.manager_maintenance_requested",
         lambda: True,
+        raising=False,
     )
     monkeypatch.setattr(
         "backend_manager.manager_startup.claim_manager_instance",
-        lambda: (_ for _ in ()).throw(AssertionError("must not claim or reopen")),
+        claim,
+    )
+    monkeypatch.setattr(
+        "backend_manager.manager_startup.run_owned_manager",
+        lambda _config, _instance: (starts.append(True), 0)[-1],
     )
 
     assert run_manager(_config()) == 0
+    assert claims == [True]
+    assert starts == [True]
 
 
 def test_last_visible_window_closes_manager_host(monkeypatch) -> None:
@@ -640,55 +641,6 @@ def test_last_visible_window_closes_manager_host(monkeypatch) -> None:
 
     assert "server-shutdown" in events
     assert "server-close" in events
-
-
-def test_external_maintenance_closes_edge_before_manager_server(monkeypatch) -> None:
-    events: list[str] = []
-    checks = iter((False, True))
-    config = MaintenanceManagerConfig("127.0.0.1", 8799, "1.2.0")
-
-    class Window(FakeWindow):
-        def close(self, *, timeout: float = 5.0) -> bool:
-            events.append("edge-close")
-            return super().close(timeout=timeout)
-
-    class Server:
-        server_address = ("127.0.0.1", 8799)
-
-        def __init__(self, *_args, **_kwargs) -> None:
-            pass
-
-        def serve_forever(self) -> None:
-            events.append("serve")
-
-        def shutdown(self) -> None:
-            events.append("server-shutdown")
-
-        def server_close(self) -> None:
-            events.append("server-close")
-
-        def prepare_web_bootstrap(self, path: Path) -> str:
-            return _fake_bootstrap(path)
-
-        def cancel_web_bootstrap(self, path: Path) -> None:
-            path.unlink(missing_ok=True)
-
-    monkeypatch.setattr("backend_manager.manager_startup.ControlServer", Server)
-    monkeypatch.setattr(
-        "backend_manager.manager_startup.open_app_window",
-        lambda _url, *, profile: Window(),
-    )
-    with _manager_instance(owner=True) as instance:
-        assert (
-            run_owned_manager(
-                config,
-                instance,
-                maintenance_requested=lambda: next(checks),
-            )
-            == 0
-        )
-
-    assert events.index("edge-close") < events.index("server-shutdown")
 
 
 def test_foreign_user_port_squatter_falls_back_without_opening_attacker_ui(monkeypatch) -> None:

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import ctypes
 import hashlib
 import json
 import math
 import os
 import re
-import subprocess
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -122,10 +120,6 @@ class WindowsReleaseConfig:
             self.service_poll_seconds * 2,
             1.0,
         )
-
-    @property
-    def service_validation_timeout_seconds(self) -> float:
-        return self.service_state_timeout_seconds + self.process_boundary_margin_seconds
 
     def complete_dataset_action_timeout_seconds(self, action: str) -> float:
         if action == "backup":
@@ -316,86 +310,3 @@ def discover_installed_layout() -> InstalledLayout | None:
         return parse_installed_binding(binding, _read_install_dir())
     except InstallationConfigError as exc:
         raise InstallationConfigError(str(exc), code="installed_binding_invalid") from exc
-
-
-def _windows_powershell_path() -> Path:
-    if os.name != "nt":
-        raise InstallationConfigError("正式安装服务契约校验只支持 Windows。")
-    kernel32 = ctypes.WinDLL("Kernel32", use_last_error=True)
-    kernel32.GetWindowsDirectoryW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint]
-    kernel32.GetWindowsDirectoryW.restype = ctypes.c_uint
-    buffer = ctypes.create_unicode_buffer(32768)
-    length = kernel32.GetWindowsDirectoryW(buffer, len(buffer))
-    if length == 0 or length >= len(buffer):
-        raise InstallationConfigError("无法定位受信任的 Windows PowerShell。")
-    executable = Path(buffer.value) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-    if not executable.is_file():
-        raise InstallationConfigError(f"受信任的 Windows PowerShell 不存在：{executable}")
-    return executable
-
-
-def _run_installed_lifecycle_validation(
-    layout: InstalledLayout,
-    release: WindowsReleaseConfig,
-    mode_switch: str,
-) -> None:
-    script = layout.install_dir / "installer" / "install_bundled_services.ps1"
-    if not script.is_file():
-        raise InstallationConfigError(f"缺少安装服务契约脚本：{script}")
-    command = [
-        str(_windows_powershell_path()),
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        str(script),
-        "-InstallDir",
-        str(layout.install_dir),
-        "-DataRoot",
-        str(layout.data_root),
-        "-PgPort",
-        str(layout.pg_port),
-        "-BackendPort",
-        str(layout.backend_port),
-        "-TargetBackendVersion",
-        layout.backend_version,
-        "-ExpectedBackendServiceName",
-        layout.backend_service_name,
-        "-ExpectedPgServiceName",
-        layout.pg_service_name,
-        mode_switch,
-    ]
-    try:
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=release.service_validation_timeout_seconds,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise InstallationConfigError(
-            f"无法完成 Windows 服务归属校验：{exc}",
-            code="service_contract_invalid",
-        ) from exc
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "无诊断输出").strip()[-1200:]
-        raise InstallationConfigError(
-            f"Windows 服务归属校验失败：{detail}",
-            code="service_contract_invalid",
-        )
-
-
-def validate_installed_service_contract(layout: InstalledLayout, release: WindowsReleaseConfig) -> None:
-    """Ask the installed lifecycle owner to validate both SCM records exactly."""
-    _run_installed_lifecycle_validation(layout, release, "-ValidateInstalledServicesOnly")
-
-
-def validate_installed_backend_stopped(layout: InstalledLayout, release: WindowsReleaseConfig) -> None:
-    """Prove the installed backend listener and runtime processes are gone."""
-    _run_installed_lifecycle_validation(layout, release, "-ValidateBackendRuntimeStoppedOnly")

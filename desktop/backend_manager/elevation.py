@@ -27,7 +27,7 @@ from backend_manager.runtime import RestoreOutcome, RuntimeControlError
 if TYPE_CHECKING:
     from backend_manager.dataset_inventory import BackupInventoryItem
 
-ServiceAction = Literal["start", "stop", "restart", "backup", "restore", "inventory"]
+ServiceAction = Literal["backup", "restore", "inventory"]
 
 _SEE_MASK_NOCLOSEPROCESS = 0x00000040
 _SW_HIDE = 0
@@ -41,9 +41,6 @@ _FILE_ID_PATTERN = re.compile(r"[0-9a-f]+:[0-9a-f]+\Z")
 HELPER_EXIT_NOT_ELEVATED = 2
 HELPER_EXIT_CONFIG = 3
 HELPER_EXIT_TIMEOUT = 4
-HELPER_EXIT_MISSING_SERVICE = 5
-HELPER_EXIT_TRANSITION = 6
-HELPER_EXIT_ACCESS = 7
 HELPER_EXIT_OS = 8
 HELPER_EXIT_LIFECYCLE_BUSY = 9
 HELPER_EXIT_RESTORE_SUPERSEDED = 10
@@ -52,9 +49,6 @@ _HELPER_FAILURE_MESSAGES = {
     HELPER_EXIT_NOT_ELEVATED: "管理员授权未生效，服务没有变化。",
     HELPER_EXIT_CONFIG: "小票夹安装信息不可用，请修复或重新安装后重试。",
     HELPER_EXIT_TIMEOUT: "管理员服务助手已超时退出；Windows 服务可能仍在完成操作，请稍后刷新状态。",
-    HELPER_EXIT_MISSING_SERVICE: "未找到小票夹 Windows 服务，请修复或重新安装。",
-    HELPER_EXIT_TRANSITION: "Windows 服务未能进入目标状态，请刷新状态后重试。",
-    HELPER_EXIT_ACCESS: "Windows 拒绝服务操作，请修复安装或服务权限后重试。",
     HELPER_EXIT_OS: "Windows 服务操作失败，请刷新状态并查看 Windows 服务事件。",
     HELPER_EXIT_LIFECYCLE_BUSY: "小票夹正在安装、升级或卸载，请等待完成后再操作服务。",
     HELPER_EXIT_RESTORE_SUPERSEDED: "此前恢复已被后续数据 generation 取代，请重新确认后再发起恢复。",
