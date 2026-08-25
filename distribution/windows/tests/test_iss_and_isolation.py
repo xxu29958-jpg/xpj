@@ -47,29 +47,42 @@ def test_new_tree_does_not_import_old_packaging_owners() -> None:
             assert token not in text, f"{path} still names {token}"
 
 
-def test_iss_prepare_is_readonly_and_provision_fails_setup_without_committed_result() -> None:
+def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> None:
     text = ISS.read_text(encoding="utf-8-sig")
     assert "[Setup]" in text
     assert "PrivilegesRequired=admin" in text
     assert "PrepareToInstall" in text
-    assert "TicketboxActiveOperationIsResumable" in text
-    assert "FileExists(BindingPath) and (not TicketboxActiveOperationIsResumable())" in text
+    assert "TicketboxActiveOperationCanContinue" in text
+    assert "FileExists(BindingPath) and (not TicketboxActiveOperationCanContinue())" in text
     assert "Utf8Encode(Payload)" in text
     assert "AnsiString(Payload)" not in text
     assert "Command := 'resume'" in text
     assert "TicketboxLifecycle.exe" in text
-    assert not any(line.strip() == "[Run]" for line in text.splitlines())
+    assert any(line.strip() == "[Run]" for line in text.splitlines())
+    run_section = text.split("[Run]", 1)[1].split("[", 1)[0]
+    assert "vc_redist.x64.exe" in run_section
+    assert "TicketboxLifecycle.exe" in run_section
+    assert "{code:TicketboxLifecycleParams}" in run_section
+    assert "nowait" not in run_section.lower()
+    assert "shellexec" not in run_section.lower()
+    assert "ignoreerrors" not in run_section.lower()
+    assert "postinstall" not in run_section.lower()
     assert "AfterInstall: TicketboxProvision" not in text
     assert "TicketboxLifecycleParams" in text
-    assert "topic_installorder" in text
     assert "waituntilterminated" in text.lower()
-    assert "ewWaitUntilTerminated" in text
-    assert "GetCustomSetupExitCode" not in text
+    assert "GetCustomSetupExitCode" in text
     assert "CurStepChanged" in text
     assert "ssPostInstall" in text
-    assert "RaiseException" in text
+    postinstall = text.split("procedure CurStepChanged", 1)[1]
+    assert "Exec(" not in postinstall
+    assert "RaiseException" not in postinstall
+    code_section = text.split("[Code]", 1)[1]
+    assert "Exec(" not in code_section
+    assert "RaiseException" not in code_section
+    assert "TicketboxInstallFailed" in text
+    assert "安装未完成" in text
+    assert "FinishedHeadingLabel.Caption" in text
     assert "TicketboxResultIsCommitted" in text
-    assert "ResultCode <> 0" in text
     assert "Observed <> OperationId" in text
     assert '"ok": false' in text
     assert "active.json" in text
@@ -78,8 +91,6 @@ def test_iss_prepare_is_readonly_and_provision_fails_setup_without_committed_res
     assert '"phase": "committed"' in text
     assert "last-result.json" not in text
     assert "ticketbox-install-result.json" in text
-    assert "topic_scriptevents" in text
-    assert "NotifyAfterInstallEntry" in text
     files_section = text.split("[Files]", 1)[1].split("[", 1)[0]
     assert "TicketboxBackendLauncher.exe" not in files_section
     assert "vc_redist.x64.exe" in files_section

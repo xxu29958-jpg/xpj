@@ -17,17 +17,17 @@ from ticketbox_lifecycle.adapters.ports import (
     adapter_for_step,
     phase_after,
 )
+from ticketbox_lifecycle.domain.binding import ensure_runtime_binding, require_runtime_binding
 from ticketbox_lifecycle.domain.planner import plan_fresh_install
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.schemas import (
-    INSTALLATION_SCHEMA,
     OPERATION_SCHEMA,
     RESULT_SCHEMA,
     ActiveOperation,
     CommandResult,
     DurablePhase,
-    InstallationBinding,
     InstallRequest,
+    OwnerPairing,
 )
 
 
@@ -75,10 +75,17 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
     _refuse_second_identity(stores, request)
     request = _bind_release_manifest_hash(request)
     observation = stores.observer.observe(request)
-    plan = plan_fresh_install(request, observation)
-    stores.operations_write.prepare(request)
     existing = stores.operations_read.read_active()
     request_hash = hash_install_identity(request)
+    if existing is not None:
+        _require_matching_operation(existing, request, request_hash)
+        if existing.phase == "committed":
+            if request.command != "resume":
+                raise LifecycleViolation("already_installed", "committed delivery requires resume")
+            return _replay_committed_result(stores, request, existing)
+
+    plan = plan_fresh_install(request, observation)
+    stores.operations_write.prepare(request)
     if existing is None:
         stores.operations_write.require_fresh_inputs(request)
         schema_revision = request.schema_revision or _schema_revision_from_release(request)
@@ -100,36 +107,12 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
         )
         stores.operations_write.publish_active(active)
     else:
-        if existing.operation_id != request.operation_id:
-            raise LifecycleViolation(
-                "operation_mismatch",
-                "resume requires the same operation_id",
-            )
-        if existing.request_hash != request_hash:
-            raise LifecycleViolation(
-                "request_mismatch",
-                "resume requires the same immutable request hash",
-            )
-        if existing.target_release_id != request.target_release_id:
-            raise LifecycleViolation(
-                "release_mismatch",
-                "resume requires the same target release",
-            )
         active = existing
-        if active.phase == "committed":
-            raise LifecycleViolation("already_committed", "operation already committed")
 
     try:
         last_phase: DurablePhase = active.phase
-        bound = replace(
-            request,
-            install_id=active.install_id,
-            dataset_id=active.dataset_id,
-            schema_revision=active.schema_revision or request.schema_revision,
-            schema_min_compatible=request.schema_min_compatible or request.target_release_id,
-            semantic_revision=request.semantic_revision or "ticketbox-dataset-semantics-v1",
-        )
-        owner_pairing = None
+        bound = _bind_operation_identity(request, active)
+        owner_pairing: OwnerPairing | None = None
         for step in plan.steps:
             if step.name == "owner_claim":
                 owner_pairing = stores.adapters.dataset.claim_owner(bound)
@@ -161,7 +144,9 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             )
             stores.operations_write.publish_active(active)
 
-        _ensure_runtime_binding(stores, bound)
+        if owner_pairing is None:
+            raise LifecycleViolation("owner_pairing_missing", "owner claim returned no pairing")
+        ensure_runtime_binding(stores.binding_read, stores.binding_write, bound)
         committed = ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=active.operation_id,
@@ -178,21 +163,8 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             dataset_id=active.dataset_id,
             schema_revision=active.schema_revision,
         )
-        stores.operations_write.archive_committed(committed)
-        return CommandResult(
-            schema=RESULT_SCHEMA,
-            ok=True,
-            command=request.command,
-            operation_id=request.operation_id,
-            phase="committed",
-            code="committed",
-            message="fresh install committed",
-            installation_published=True,
-            pairing_code=owner_pairing.pairing_code if owner_pairing is not None else "",
-            pairing_expires_at=(
-                owner_pairing.pairing_expires_at if owner_pairing is not None else ""
-            ),
-        )
+        stores.operations_write.publish_active(committed)
+        return _committed_result(request, owner_pairing)
     except LifecycleError as exc:
         failed = ActiveOperation(
             schema=OPERATION_SCHEMA,
@@ -223,6 +195,80 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
         )
 
 
+def _require_matching_operation(
+    active: ActiveOperation,
+    request: InstallRequest,
+    request_hash: str,
+) -> None:
+    if active.operation_id != request.operation_id:
+        raise LifecycleViolation(
+            "operation_conflict",
+            "a different active operation owns the machine",
+        )
+    if active.request_hash != request_hash:
+        raise LifecycleViolation(
+            "request_mismatch",
+            "resume requires the same immutable request hash",
+        )
+    if active.target_release_id != request.target_release_id:
+        raise LifecycleViolation(
+            "release_mismatch",
+            "resume requires the same target release",
+        )
+
+
+def _bind_operation_identity(
+    request: InstallRequest,
+    active: ActiveOperation,
+) -> InstallRequest:
+    return replace(
+        request,
+        install_id=active.install_id,
+        dataset_id=active.dataset_id,
+        schema_revision=active.schema_revision or request.schema_revision,
+        schema_min_compatible=request.schema_min_compatible or request.target_release_id,
+        semantic_revision=request.semantic_revision or "ticketbox-dataset-semantics-v1",
+    )
+
+
+def _replay_committed_result(
+    stores: LifecycleStores,
+    request: InstallRequest,
+    active: ActiveOperation,
+) -> CommandResult:
+    bound = _bind_operation_identity(request, active)
+    require_runtime_binding(stores.binding_read, bound)
+    try:
+        pairing = stores.adapters.dataset.claim_owner(bound)
+    except LifecycleError as exc:
+        return CommandResult(
+            schema=RESULT_SCHEMA,
+            ok=False,
+            command=request.command,
+            operation_id=request.operation_id,
+            phase="committed",
+            code=exc.code,
+            message=exc.message,
+            installation_published=True,
+        )
+    return _committed_result(request, pairing)
+
+
+def _committed_result(request: InstallRequest, pairing: OwnerPairing) -> CommandResult:
+    return CommandResult(
+        schema=RESULT_SCHEMA,
+        ok=True,
+        command=request.command,
+        operation_id=request.operation_id,
+        phase="committed",
+        code="committed",
+        message="fresh install committed",
+        installation_published=True,
+        pairing_code=pairing.pairing_code,
+        pairing_expires_at=pairing.pairing_expires_at,
+    )
+
+
 def _refuse_second_identity(stores: LifecycleStores, request: InstallRequest) -> None:
     binding = stores.binding_read.read()
     if binding is None:
@@ -239,45 +285,6 @@ def _refuse_second_identity(stores: LifecycleStores, request: InstallRequest) ->
             "already_installed",
             "installation.json already exists; refusing a second dataset identity",
         )
-
-
-def _ensure_runtime_binding(stores: LifecycleStores, request: InstallRequest) -> None:
-    expected = _binding_from_request(request)
-    current = stores.binding_read.read()
-    if current is None:
-        stores.binding_write.publish(expected)
-        return
-    if (
-        current.install_id != expected.install_id
-        or current.dataset_id != expected.dataset_id
-        or current.data_root != expected.data_root
-        or current.active_release_id != expected.active_release_id
-        or current.release_manifest_sha256 != expected.release_manifest_sha256
-    ):
-        raise LifecycleViolation(
-            "identity_conflict",
-            "installation.json does not match this operation's runtime selector",
-        )
-
-
-def _binding_from_request(request: InstallRequest) -> InstallationBinding:
-    if not request.install_id or not request.dataset_id:
-        raise LifecycleViolation("missing_identity", "install_id and dataset_id must be bound before publication")
-    return InstallationBinding(
-        schema=INSTALLATION_SCHEMA,
-        install_id=request.install_id,
-        dataset_id=request.dataset_id,
-        expected_restore_epoch=0,
-        data_root=request.data_root,
-        active_release_id=request.target_release_id,
-        previous_release_id=None,
-        release_manifest_sha256=request.release_manifest_sha256,
-        postgres_major=request.postgres_major,
-        pg_service_name=request.pg_service_name,
-        backend_service_name=request.backend_service_name,
-        pg_port=request.pg_port,
-        backend_port=request.backend_port,
-    )
 
 
 def hash_request_payload(payload: dict[str, object]) -> str:
@@ -337,10 +344,3 @@ def _schema_revision_from_release(request: InstallRequest) -> str:
         return request.schema_revision
     manifest = _read_release_manifest(request)
     return str(manifest.get("max_schema_revision") or "")
-
-
-def _schema_min_from_release(request: InstallRequest) -> str:
-    if request.schema_min_compatible:
-        return request.schema_min_compatible
-    manifest = _read_release_manifest(request)
-    return str(manifest.get("min_schema_revision") or "")

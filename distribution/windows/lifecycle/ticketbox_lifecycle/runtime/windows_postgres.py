@@ -4,6 +4,7 @@ import shutil
 import time
 from pathlib import Path
 
+from ticketbox_lifecycle.adapters.ports import SecurityAdapter
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import (
     DATABASE_NAME,
@@ -23,11 +24,14 @@ from ticketbox_lifecycle.policy.postgres_roles import (
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import (
     CommandRunner,
-    CompletedCommand,
     require_ok,
-    sealed_pg_env,
 )
 from ticketbox_lifecycle.runtime.durable_files import durable_write_text
+from ticketbox_lifecycle.runtime.postgres_connection import run_psql
+from ticketbox_lifecycle.runtime.windows_postgres_identity import (
+    read_system_identifier,
+    require_running_ticketbox_cluster,
+)
 from ticketbox_lifecycle.runtime.windows_security_native import (
     reject_reparse_components,
 )
@@ -44,8 +48,9 @@ host    all             all             ::1/128                 scram-sha-256
 class WindowsPostgresAdapter:
     name = "postgres"
 
-    def __init__(self, runner: CommandRunner) -> None:
+    def __init__(self, runner: CommandRunner, security: SecurityAdapter) -> None:
         self._runner = runner
+        self._security = security
 
     def apply(self, request: InstallRequest, step: str) -> str:
         if step == "postgres_initdb":
@@ -61,31 +66,24 @@ class WindowsPostgresAdapter:
             data = layout.pgdata(request)
             _require_complete_pgdata(data, request.postgres_major)
             _require_ticketbox_cluster_config(request)
-            control = layout.tool(request, "pg_controldata.exe")
-            if not control.is_file():
-                raise LifecycleError(
-                    "missing_platform_binary",
-                    "postgresql/bin/pg_controldata.exe is not installed",
-                )
-            require_ok(
-                self._runner.run([str(control), "-D", str(data)], timeout_s=30),
-                code="pg_controldata_failed",
-            )
+            read_system_identifier(self._runner, request)
             return
         if step == "start_postgres":
             self._require_ready(request)
             return
         if step == "roles_database":
-            completed = self._psql(request, verify_roles_sql(), database="postgres")
+            self._require_ready(request)
+            completed = run_psql(self._runner, request, verify_roles_sql(), database="postgres")
             if completed.returncode != 0 or expected_roles_probe() not in completed.stdout.replace("\r\n", "\n"):
                 raise LifecycleError("postcondition_missing", "PostgreSQL three-role probe failed")
-            membership = self._psql(request, verify_membership_sql(), database="postgres")
+            membership = run_psql(self._runner, request, verify_membership_sql(), database="postgres")
             if (
                 membership.returncode != 0
                 or expected_membership_probe() not in membership.stdout.replace("\r\n", "\n")
             ):
                 raise LifecycleError("postcondition_missing", "ticketbox_migrator cannot SET ROLE owner")
-            privileges = self._psql(
+            privileges = run_psql(
+                self._runner,
                 request,
                 verify_database_privileges_sql(),
                 database=DATABASE_NAME,
@@ -103,32 +101,35 @@ class WindowsPostgresAdapter:
         reject_reparse_components(data)
         if _postgresql_cluster_complete(data, request.postgres_major):
             _require_complete_pgdata(data, request.postgres_major)
-            _remove_initdb_pwfile(request)
+            self._security.discard_initdb_password_file(request)
             _write_cluster_config(request)
             return "already-present"
         _discard_incomplete_pgdata(data, request.postgres_major)
         initdb = layout.tool(request, "initdb.exe")
         if not initdb.is_file():
             raise LifecycleError("missing_platform_binary", "postgresql/bin/initdb.exe is not installed")
-        argv = [
-            str(initdb),
-            "-D",
-            str(data),
-            "-U",
-            "postgres",
-            "--pwfile",
-            str(layout.postgres_pwfile(request)),
-            "--auth=scram-sha-256",
-            "--data-checksums",
-            "-E",
-            "UTF8",
-            "--locale=C",
-        ]
-        if "--no-sync" in argv:
-            raise LifecycleViolation("unsafe_initdb", "initdb --no-sync is forbidden")
-        require_ok(self._runner.run(argv, timeout_s=180), code="initdb_failed")
+        try:
+            pwfile = self._security.materialize_initdb_password_file(request)
+            argv = [
+                str(initdb),
+                "-D",
+                str(data),
+                "-U",
+                "postgres",
+                "--pwfile",
+                str(pwfile),
+                "--auth=scram-sha-256",
+                "--data-checksums",
+                "-E",
+                "UTF8",
+                "--locale=C",
+            ]
+            if "--no-sync" in argv:
+                raise LifecycleViolation("unsafe_initdb", "initdb --no-sync is forbidden")
+            require_ok(self._runner.run(argv, timeout_s=180), code="initdb_failed")
+        finally:
+            self._security.discard_initdb_password_file(request)
         _require_complete_pgdata(data, request.postgres_major)
-        _remove_initdb_pwfile(request)
         _write_cluster_config(request)
         return "initialized"
 
@@ -139,7 +140,14 @@ class WindowsPostgresAdapter:
             try:
                 self._require_ready(request)
                 return "started"
-            except LifecycleError:
+            except LifecycleError as exc:
+                if exc.code in {
+                    "postgres_cluster_mismatch",
+                    "postgres_checksums_disabled",
+                    "pg_controldata_failed",
+                    "missing_platform_binary",
+                }:
+                    raise
                 if scm_query_state(self._runner, request.pg_service_name) == "STOPPED":
                     raise LifecycleError(
                         "postgres_not_ready",
@@ -149,6 +157,7 @@ class WindowsPostgresAdapter:
         raise LifecycleError("postgres_not_ready", _postgres_not_ready_message(request, stopped=False))
 
     def _roles(self, request: InstallRequest) -> str:
+        self._require_ready(request)
         migrator_password = layout.migrator_password_file(request).read_text(encoding="utf-8").strip()
         runtime_password = layout.runtime_password_file(request).read_text(encoding="utf-8").strip()
         for sql in provision_statements(
@@ -156,27 +165,28 @@ class WindowsPostgresAdapter:
             runtime_password=runtime_password,
         ):
             require_ok(
-                self._psql(request, sql, database="postgres"),
+                run_psql(self._runner, request, sql, database="postgres"),
                 code="create_role_failed",
             )
-        probe = self._psql(request, database_exists_sql(), database="postgres")
+        probe = run_psql(self._runner, request, database_exists_sql(), database="postgres")
         if probe.returncode != 0 or "1" not in probe.stdout:
             require_ok(
-                self._psql(request, create_database_sql(), database="postgres"),
+                run_psql(self._runner, request, create_database_sql(), database="postgres"),
                 code="create_database_failed",
             )
         for sql in database_connect_statements():
             require_ok(
-                self._psql(request, sql, database="postgres"),
+                run_psql(self._runner, request, sql, database="postgres"),
                 code="database_privilege_failed",
             )
         for sql in schema_privilege_statements():
             require_ok(
-                self._psql(request, sql, database=DATABASE_NAME),
+                run_psql(self._runner, request, sql, database=DATABASE_NAME),
                 code="schema_privilege_failed",
             )
         require_ok(
-            self._psql(
+            run_psql(
+                self._runner,
                 request,
                 "SELECT current_user",
                 database=DATABASE_NAME,
@@ -185,7 +195,8 @@ class WindowsPostgresAdapter:
             code="migrator_role_connect_failed",
         )
         require_ok(
-            self._psql(
+            run_psql(
+                self._runner,
                 request,
                 "SELECT current_user",
                 database=DATABASE_NAME,
@@ -196,44 +207,7 @@ class WindowsPostgresAdapter:
         return "roles-ready"
 
     def _require_ready(self, request: InstallRequest) -> None:
-        ready = layout.tool(request, "pg_isready.exe")
-        require_ok(
-            self._runner.run(
-                [str(ready), "-h", "127.0.0.1", "-p", str(request.pg_port), "-d", "postgres"],
-                env=sealed_pg_env(str(layout.pg_passfile(request))),
-            ),
-            code="postgres_not_ready",
-        )
-
-    def _psql(
-        self,
-        request: InstallRequest,
-        sql: str,
-        *,
-        database: str,
-        user: str = "postgres",
-    ) -> CompletedCommand:
-        psql = layout.tool(request, "psql.exe")
-        return self._runner.run(
-            [
-                str(psql),
-                "-v",
-                "ON_ERROR_STOP=1",
-                "-h",
-                "127.0.0.1",
-                "-p",
-                str(request.pg_port),
-                "-U",
-                user,
-                "-d",
-                database,
-                "-tA",
-                "-f",
-                "-",
-            ],
-            env=sealed_pg_env(str(layout.pg_passfile(request))),
-            input_text=sql,
-        )
+        require_running_ticketbox_cluster(self._runner, request)
 
 
 
@@ -309,16 +283,6 @@ def _discard_incomplete_pgdata(data: Path, postgres_major: int) -> None:
         raise LifecycleError(
             "incomplete_pgdata",
             "incomplete PostgreSQL cluster could not be discarded for initdb retry",
-        ) from exc
-
-
-def _remove_initdb_pwfile(request: InstallRequest) -> None:
-    try:
-        layout.postgres_pwfile(request).unlink(missing_ok=True)
-    except OSError as exc:
-        raise LifecycleError(
-            "secret_cleanup_failed",
-            "initdb password input could not be removed",
         ) from exc
 
 

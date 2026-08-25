@@ -4,7 +4,9 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
 from fakes import MemoryStores, RecordingAdapterBundle
+from ticketbox_lifecycle import cli
 from ticketbox_lifecycle.domain.install import (
     hash_install_identity,
     hash_request_payload,
@@ -87,8 +89,9 @@ def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> No
     assert stores.operation_store_prepared is True
     assert seen_unpublished_through_health["value"] is True
     assert stores.read() is not None
-    assert stores.read_active() is None
-    assert stores.history[0].phase == "committed"
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "committed"
+    assert stores.history == []
     assert adapters.apply_order() == list(APPLY_SEQUENCE)
     assert stores.binding_publish_count == 1
     assert stores.fresh_inputs_check_count == 1
@@ -129,8 +132,51 @@ def test_resume_after_health_failure_publishes_binding_once_after_success(tmp_pa
     assert second.phase == "committed"
     assert stores.binding_publish_count == 1
     assert stores.read() is not None
-    assert stores.read_active() is None
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "committed"
     assert stores.fresh_inputs_check_count == 1
+
+
+def test_committed_result_is_durable_before_active_operation_is_archived(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+    result_path = tmp_path / "result.json"
+
+    assert cli._deliver_install_result(result_path, result, stores.as_lifecycle_stores()) == 0
+    delivered = json.loads(result_path.read_text(encoding="utf-8"))
+    assert delivered["ok"] is True
+    assert delivered["pairing_code"] == "12345678"
+    assert stores.read_active() is None
+    assert [operation.phase for operation in stores.history] == ["committed"]
+
+
+def test_result_write_failure_keeps_committed_operation_for_exact_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    def fail_result_write(path: Path, result: object) -> None:
+        del path, result
+        raise OSError("injected result write failure")
+
+    monkeypatch.setattr(cli, "_write_result", fail_result_write)
+    with pytest.raises(OSError, match="result write failure"):
+        cli._deliver_install_result(tmp_path / "result.json", first, stores.as_lifecycle_stores())
+
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "committed"
+    assert stores.history == []
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+    replay = install_or_resume(stores.as_lifecycle_stores(), resume)
+    assert replay.ok is True
+    assert replay.pairing_code == first.pairing_code
+    assert replay.pairing_expires_at == first.pairing_expires_at
 
 
 def test_fresh_install_refuses_unbound_mutable_state_before_publishing_active(

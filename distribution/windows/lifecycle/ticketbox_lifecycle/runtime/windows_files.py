@@ -23,6 +23,7 @@ class WindowsFilesAdapter:
             Path(request.data_root),
             layout.machine_root(request),
             Path(request.program_data_root) / "logs",
+            layout.backend_logs(request),
             layout.secrets_dir(request),
             layout.originals(request),
             Path(request.data_root) / "app",
@@ -38,6 +39,7 @@ class WindowsFilesAdapter:
             Path(request.program_data_root),
             Path(request.data_root),
             layout.machine_root(request),
+            layout.backend_logs(request),
             layout.secrets_dir(request),
             Path(request.data_root) / "app",
         )

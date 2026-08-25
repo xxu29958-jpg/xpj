@@ -63,6 +63,11 @@ class RecordingRunner:
         self.inputs: list[str | None] = []
         self.services: set[str] = set()
         self.image_paths: dict[str, str] = {}
+        self.pg_system_identifier = "7400000000000000001"
+        self.online_system_identifier = self.pg_system_identifier
+        self.data_checksums = "on"
+        self.initdb_pwfile_seen = False
+        self.initdb_returncode = 0
 
     def run(
         self,
@@ -89,11 +94,23 @@ class RecordingRunner:
     def _complete(self, recorded: tuple[str, ...], sql_text: str) -> CompletedCommand:
         name = Path(recorded[0]).name.lower()
         if name == "initdb.exe":
+            pwfile = Path(recorded[recorded.index("--pwfile") + 1])
+            self.initdb_pwfile_seen = pwfile.is_file()
+            if self.initdb_returncode != 0:
+                return CompletedCommand(recorded, self.initdb_returncode, "", "initdb failed")
             data = Path(recorded[recorded.index("-D") + 1])
             _write_complete_cluster(data)
             return CompletedCommand(recorded, 0, "ok", "")
         if name == "pg_controldata.exe":
-            return CompletedCommand(recorded, 0, "Database cluster state: shut down", "")
+            return CompletedCommand(
+                recorded,
+                0,
+                (
+                    f"Database system identifier:           {self.pg_system_identifier}\n"
+                    "Database cluster state:               shut down\n"
+                ),
+                "",
+            )
         if name in {"pg_ctl.exe", "shawl.exe", "sc.exe"}:
             return self._complete_scm(name, recorded)
         if name == "psql.exe":
@@ -142,7 +159,7 @@ class RecordingRunner:
         if name == "shawl.exe" and "add" in recorded:
             service = recorded[recorded.index("--name") + 1]
             self.services.add(service)
-            self.image_paths[service] = recorded[-1]
+            self.image_paths[service] = " ".join(recorded)
             return CompletedCommand(recorded, 0, "", "")
         if name == "sc.exe" and recorded[1] == "query":
             service = recorded[2]
@@ -162,6 +179,13 @@ class RecordingRunner:
         return CompletedCommand(recorded, 0, "ok", "")
 
     def _complete_psql(self, recorded: tuple[str, ...], sql_text: str) -> CompletedCommand:
+        if "pg_control_system()" in sql_text:
+            return CompletedCommand(
+                recorded,
+                0,
+                f"{self.online_system_identifier}|{self.data_checksums}\n",
+                "",
+            )
         if "ticketbox_privileges_ready" in sql_text:
             return CompletedCommand(recorded, 0, "true", "")
         if "datname = 'ticketbox'" in sql_text:
@@ -287,7 +311,7 @@ def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(tmp_path: Path) -> Non
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     pwfile = Path(request.program_data_root) / "machine" / "secrets" / "postgres.pwfile"
-    assert pwfile.is_file()
+    assert not pwfile.exists()
     bundle.postgres.apply(request, "postgres_initdb")
     bundle.postgres.verify(request, "postgres_initdb")
     initdb = next(call for call in runner.calls if call[0].endswith("initdb.exe"))
@@ -309,7 +333,66 @@ def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(tmp_path: Path) -> Non
     assert b"\x00" not in hba_path.read_bytes()
     assert hba_path.read_text(encoding="utf-8").startswith("# Ticketbox fresh-install")
     assert not pwfile.exists()
+    assert runner.initdb_pwfile_seen is True
     assert any(Path(call[0]).name.lower() == "pg_controldata.exe" for call in runner.calls)
+
+
+def test_initdb_failure_always_removes_password_input(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    runner.initdb_returncode = 1
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+    pwfile = Path(request.program_data_root) / "machine" / "secrets" / "postgres.pwfile"
+
+    with pytest.raises(LifecycleError, match="initdb failed"):
+        bundle.postgres.apply(request, "postgres_initdb")
+
+    assert runner.initdb_pwfile_seen is True
+    assert not pwfile.exists()
+
+
+def test_roles_refuse_ready_foreign_cluster_before_any_ddl(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+    bundle.postgres.apply(request, "postgres_initdb")
+    runner.services.add(request.pg_service_name)
+    runner.online_system_identifier = "7400000000000000999"
+
+    with pytest.raises(LifecycleError, match="system identifier"):
+        bundle.postgres.apply(request, "roles_database")
+
+    assert not any("CREATE ROLE" in (sql or "") for sql in runner.inputs)
+
+
+def test_running_cluster_requires_data_checksums(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+    bundle.postgres.apply(request, "postgres_initdb")
+    runner.services.add(request.pg_service_name)
+    runner.data_checksums = "off"
+
+    with pytest.raises(LifecycleError, match="data checksums"):
+        bundle.postgres.verify(request, "start_postgres")
+
+
+def test_pg_isready_cannot_substitute_for_ticketbox_service_state(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+    bundle.postgres.apply(request, "postgres_initdb")
+
+    with pytest.raises(LifecycleError, match="service is not RUNNING"):
+        bundle.postgres.verify(request, "start_postgres")
 
 
 def test_initdb_verify_rejects_pg_version_only_directory(tmp_path: Path) -> None:
@@ -339,6 +422,7 @@ def test_initdb_retries_incomplete_cluster_instead_of_starting_it(tmp_path: Path
     runner = RecordingRunner()
     bundle = WindowsAdapterBundle(runner)
     bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
     data = Path(request.data_root) / "pgdata"
     data.mkdir(parents=True, exist_ok=True)
     (data / "PG_VERSION").write_text("17\n", encoding="utf-8")
@@ -371,6 +455,7 @@ def test_initdb_verify_rejects_wrong_major_or_missing_control_file(tmp_path: Pat
     runner = RecordingRunner()
     bundle = WindowsAdapterBundle(runner)
     bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
     bundle.postgres.apply(request, "postgres_initdb")
     data = Path(request.data_root) / "pgdata"
 
@@ -443,6 +528,8 @@ def test_register_uses_pg_ctl_and_direct_immutable_backend(tmp_path: Path) -> No
     shawl_add = next(call for call in runner.calls if call[0].endswith("shawl.exe") and "add" in call)
     cwd = shawl_add[shawl_add.index("--cwd") + 1]
     assert not cwd.startswith("\\\\?\\")
+    log_dir = str(Path(request.program_data_root) / "logs" / "backend")
+    assert shawl_add[shawl_add.index("--log-dir") + 1] == log_dir
     assert any(
         call[:3] == ("sc.exe", "config", "TicketboxBackend") and "start=" in call and "auto" in call
         for call in runner.calls
@@ -452,6 +539,26 @@ def test_register_uses_pg_ctl_and_direct_immutable_backend(tmp_path: Path) -> No
         and "depend=" in call
         and "TicketboxPg" in call
         for call in runner.calls
+    )
+    backend_acl_calls = [
+        call
+        for call in runner.calls
+        if call[0] == "icacls" and any(_BACKEND_SERVICE_SID in part for part in call)
+    ]
+    data_root = str(Path(request.data_root))
+    app_data = str(Path(request.data_root) / "app")
+    assert any(call[1] == data_root and f"*{_BACKEND_SERVICE_SID}:(RX)" in call for call in backend_acl_calls)
+    assert not any(
+        call[1] == data_root and any("M" in part for part in call[2:] if _BACKEND_SERVICE_SID in part)
+        for call in backend_acl_calls
+    )
+    assert any(
+        call[1] == app_data and f"*{_BACKEND_SERVICE_SID}:(OI)(CI)M" in call
+        for call in backend_acl_calls
+    )
+    assert any(
+        call[1] == log_dir and f"*{_BACKEND_SERVICE_SID}:(OI)(CI)M" in call
+        for call in backend_acl_calls
     )
     assert any(
         call[0] == "icacls" and "/remove:g" in call and "NT SERVICE\\TicketboxBackend" in call
@@ -514,9 +621,13 @@ def test_alembic_helper_uses_fresh_switch_without_password_or_generation_program
     assert env["PGPASSFILE"].endswith("pgpass")
     assert not any(key.upper().startswith("PG") and key.upper() != "PGPASSFILE" for key in env)
     bundle.alembic.verify(request, "alembic")
-    probe = next(call for call in runner.calls if call[0].endswith("psql.exe") and "alembic_version" in call[-1])
-    assert probe[-1] == verify_alembic_version_sql()
-    assert "SET ROLE ticketbox_owner" in probe[-1]
+    probe_index = next(
+        index
+        for index, call in enumerate(runner.calls)
+        if call[0].endswith("psql.exe") and runner.inputs[index] == verify_alembic_version_sql()
+    )
+    assert runner.calls[probe_index][-2:] == ("-f", "-")
+    assert "SET ROLE ticketbox_owner" in (runner.inputs[probe_index] or "")
 
 
 def test_owner_claim_uses_database_helper_and_keeps_secret_off_argv(tmp_path: Path) -> None:
@@ -577,7 +688,7 @@ def test_credentials_are_created_only_after_root_acl(tmp_path: Path) -> None:
 
     bundle.security.apply(request, "acl")
     bundle.security.verify(request, "acl")
-    assert (secrets / "postgres.pwfile").is_file()
+    assert not (secrets / "postgres.pwfile").exists()
     assert (secrets / "pgpass").is_file()
     assert (secrets / "ticketbox_runtime.password").is_file()
     assert (secrets / "ticketbox_migrator.password").is_file()
@@ -590,6 +701,22 @@ def test_credentials_are_created_only_after_root_acl(tmp_path: Path) -> None:
     assert "UPLOAD_TOKEN=" not in env_text
     assert "APP_TOKEN=" not in env_text
     assert "ADMIN_TOKEN=" not in env_text
+
+
+def test_acl_retry_does_not_recreate_consumed_initdb_password_input(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = WindowsAdapterBundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+    bundle.postgres.apply(request, "postgres_initdb")
+    pwfile = Path(request.program_data_root) / "machine" / "secrets" / "postgres.pwfile"
+    assert not pwfile.exists()
+
+    bundle.security.apply(request, "acl")
+    assert not pwfile.exists()
+    assert bundle.postgres.apply(request, "postgres_initdb") == "already-present"
+    assert not pwfile.exists()
 
 
 def test_fresh_inputs_reject_preplanted_secret_or_data(tmp_path: Path) -> None:
@@ -701,6 +828,8 @@ def test_roles_adapter_creates_owner_migrator_runtime(tmp_path: Path) -> None:
     bundle = WindowsAdapterBundle(runner)
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
+    bundle.postgres.apply(request, "postgres_initdb")
+    runner.services.add(request.pg_service_name)
     bundle.postgres.apply(request, "roles_database")
     bundle.postgres.verify(request, "roles_database")
     argv_text = _argv_text(runner.calls)

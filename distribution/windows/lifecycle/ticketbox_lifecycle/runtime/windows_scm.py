@@ -8,7 +8,6 @@ from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
-from ticketbox_lifecycle.runtime.windows_security_native import require_windows
 from ticketbox_lifecycle.runtime.windows_services import (
     require_running_service,
     require_service,
@@ -79,8 +78,10 @@ class WindowsScmAdapter:
             raise LifecycleError("missing_platform_binary", "shawl.exe or immutable backend is missing")
         self._refuse_foreign_service(
             request.backend_service_name,
+            _path_fragment(shawl),
             _path_fragment(backend),
             request.target_release_id.lower(),
+            _path_fragment(layout.backend_logs(request)),
         )
         if not service_exists(self._runner, request.backend_service_name):
             require_ok(
@@ -92,6 +93,8 @@ class WindowsScmAdapter:
                         request.backend_service_name,
                         "--cwd",
                         _win32_service_path(backend.parent),
+                        "--log-dir",
+                        _win32_service_path(layout.backend_logs(request)),
                         "--env",
                         f"TICKETBOX_DATA_DIR={Path(request.data_root) / 'app'}",
                         "--env",
@@ -111,6 +114,7 @@ class WindowsScmAdapter:
                 code="backend_register_failed",
             )
         self._set_identity(request.backend_service_name)
+        self._security.configure_backend_runtime_acl(request)
         require_ok(
             self._runner.run(
                 [
@@ -122,19 +126,6 @@ class WindowsScmAdapter:
                 ]
             ),
             code="backend_depend_failed",
-        )
-        require_windows()
-        require_ok(
-            self._runner.run(
-                [
-                    "icacls",
-                    request.data_root,
-                    "/T",
-                    "/grant",
-                    f"NT SERVICE\\{request.backend_service_name}:(OI)(CI)M",
-                ]
-            ),
-            code="data_root_backend_acl_failed",
         )
         self._security.seal_pgdata_acl(request)
         self._security.grant_backend_runtime_authority_read(request)

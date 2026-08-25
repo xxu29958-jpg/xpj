@@ -21,6 +21,10 @@ def originals(request: InstallRequest) -> Path:
     return Path(request.data_root) / "attachments" / "originals"
 
 
+def backend_logs(request: InstallRequest) -> Path:
+    return Path(request.program_data_root) / "logs" / "backend"
+
+
 def machine_root(request: InstallRequest) -> Path:
     return Path(request.program_data_root) / "machine"
 

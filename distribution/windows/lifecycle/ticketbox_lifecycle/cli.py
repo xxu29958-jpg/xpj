@@ -7,7 +7,7 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
-from ticketbox_lifecycle.domain.install import inspect_machine, install_or_resume
+from ticketbox_lifecycle.domain.install import LifecycleStores, inspect_machine, install_or_resume
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, RESULT_SCHEMA, CommandResult, InstallRequest
@@ -21,6 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     result_path = Path(args.result)
     operation_id = "unknown"
+    lifecycle_stores: LifecycleStores | None = None
     try:
         payload = json.loads(Path(args.request).read_text(encoding="utf-8"))
         operation_id = str(payload.get("operation_id") or "unknown")
@@ -40,10 +41,11 @@ def main(argv: list[str] | None = None) -> int:
         request = _parse_request(payload, command=args.command)
         operation_id = request.operation_id
         stores = FilesystemStores.from_request(request)
+        lifecycle_stores = stores.as_lifecycle_stores()
         if args.command == "inspect":
-            result = inspect_machine(stores.as_lifecycle_stores(), request)
+            result = inspect_machine(lifecycle_stores, request)
         else:
-            result = install_or_resume(stores.as_lifecycle_stores(), request)
+            result = install_or_resume(lifecycle_stores, request)
     except LifecycleError as exc:
         result = CommandResult(
             schema=RESULT_SCHEMA,
@@ -66,8 +68,55 @@ def main(argv: list[str] | None = None) -> int:
             message=str(exc),
             installation_published=False,
         )
+    if args.command in {"install", "resume"} and lifecycle_stores is not None:
+        return _deliver_install_result(result_path, result, lifecycle_stores)
     _write_result(result_path, result)
     return 0 if result.ok else 2
+
+
+def _deliver_install_result(
+    path: Path,
+    result: CommandResult,
+    stores: LifecycleStores,
+) -> int:
+    _write_result(path, result)
+    if not result.ok:
+        return 2
+    active = stores.operations_read.read_active()
+    if (
+        result.phase != "committed"
+        or active is None
+        or active.phase != "committed"
+        or active.operation_id != result.operation_id
+    ):
+        failure = CommandResult(
+            schema=RESULT_SCHEMA,
+            ok=False,
+            command=result.command,
+            operation_id=result.operation_id,
+            phase="committed",
+            code="committed_operation_missing",
+            message="committed result has no exact active operation",
+            installation_published=result.installation_published,
+        )
+        _write_result(path, failure)
+        return 2
+    try:
+        stores.operations_write.archive_committed(active)
+    except Exception as exc:
+        failure = CommandResult(
+            schema=RESULT_SCHEMA,
+            ok=False,
+            command=result.command,
+            operation_id=result.operation_id,
+            phase="committed",
+            code="operation_archive_failed",
+            message=str(exc),
+            installation_published=result.installation_published,
+        )
+        _write_result(path, failure)
+        return 2
+    return 0
 
 
 def _write_result(path: Path, result: CommandResult) -> None:

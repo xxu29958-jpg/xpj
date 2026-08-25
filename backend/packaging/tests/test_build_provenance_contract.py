@@ -202,6 +202,7 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/__init__.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/ports.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/__init__.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/domain/binding.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/install.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/planner.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/policy/__init__.py",
@@ -214,10 +215,12 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/mutex.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/filesystem_stores.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_adapters.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_credentials.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_alembic.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_dataset.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_files.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_postgres.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_postgres_identity.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_scm.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_security.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_security_native.py",
@@ -431,6 +434,8 @@ def test_installer_compiles_only_from_locked_snapshot_and_clean_git() -> None:
     assert "@defines $IssPath" not in build
     assert "if ([bool]$git.dirty)" in build
     assert "$manifestTemplatePath = Join-Path $StagedPayloadDir" in build
+    assert "--distpath $StagedPayloadDir" in build
+    assert "--distpath $PayloadDir" not in build
     assert "tree =" in provenance
     assert "$manifest.git.tree -cne $currentGit.tree" in provenance
 

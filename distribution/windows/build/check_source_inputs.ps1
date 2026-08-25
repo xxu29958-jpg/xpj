@@ -24,14 +24,13 @@ foreach ($token in @(
         'prepare_bundled_upgrade.ps1',
         'DATABASE_GENERATION_PROGRAM.json',
         'TicketboxBackendLauncher.exe',
-        'GetCustomSetupExitCode',
         'ExtractTemporaryFile'
     )) {
     if ($text.Contains($token)) { throw "ISS still names retired path $token" }
 }
 if ($text -notmatch 'PrepareToInstall') { throw 'ISS missing read-only PrepareToInstall' }
-if ($text -notmatch 'TicketboxActiveOperationIsResumable') {
-    throw 'ISS must allow same-operation retry when active.json is resumable'
+if ($text -notmatch 'TicketboxActiveOperationCanContinue') {
+    throw 'ISS must allow exact active-operation result delivery or resume'
 }
 if ($text -notmatch 'Utf8Encode\(Payload\)') {
     throw 'ISS must write the lifecycle request as UTF-8'
@@ -42,14 +41,22 @@ if ($text.Contains('AnsiString(Payload)')) {
 if ($text -notmatch 'TicketboxLifecycle.exe') {
     throw 'ISS must invoke the installed TicketboxLifecycle.exe'
 }
-if ($text -match '(?m)^\s*\[Run\]\s*$') {
-    throw 'ISS must check coordinator exit from CurStepChanged, not [Run]'
+if ($text -notmatch '(?m)^\s*\[Run\]\s*$' -or $text -notmatch '\{code:TicketboxLifecycleParams\}') {
+    throw 'ISS must invoke the installed coordinator from normal [Run]'
 }
 if ($text -notmatch 'CurStepChanged' -or $text -notmatch 'ssPostInstall') {
-    throw 'ISS must invoke lifecycle after complete file materialization'
+    throw 'ISS must observe lifecycle result after [Run]'
 }
-if ($text -notmatch 'RaiseException' -or $text -notmatch 'ResultCode\s*<>\s*0') {
-    throw 'ISS must make lifecycle failure visible as Setup failure'
+if ($text -match 'Exec\(' -or $text -match 'RaiseException') {
+    throw 'ISS [Code] must not own lifecycle mutation or exception-based completion'
+}
+if ($text -notmatch 'GetCustomSetupExitCode' -or
+    $text -notmatch 'TicketboxInstallFailed' -or
+    $text -notmatch 'FinishedHeadingLabel\.Caption') {
+    throw 'ISS must expose failed postconditions in the final page and process exit code'
+}
+if ($text -match '(?i)Flags:[^\r\n]*(nowait|shellexec|ignoreerrors|postinstall)') {
+    throw 'ISS lifecycle [Run] entries must be elevated, waited, and terminal'
 }
 if ($text -match 'last-result\.json' -or $text -notmatch 'ticketbox-install-result\.json') {
     throw 'ISS must use an invocation-scoped temporary result'

@@ -7,7 +7,7 @@ from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import DATABASE_NAME, RUNTIME_ROLE
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok, sealed_pg_env
-from ticketbox_lifecycle.runtime.postgres_connection import maintenance_database_url
+from ticketbox_lifecycle.runtime.postgres_connection import maintenance_database_url, run_psql
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.schemas import InstallRequest, OwnerPairing
 
@@ -140,25 +140,12 @@ class WindowsDatasetAdapter:
         return "healthy"
 
     def _live_dataset_id(self, request: InstallRequest) -> str:
-        psql = layout.tool(request, "psql.exe")
-        completed = self._runner.run(
-            [
-                str(psql),
-                "-v",
-                "ON_ERROR_STOP=1",
-                "-h",
-                "127.0.0.1",
-                "-p",
-                str(request.pg_port),
-                "-U",
-                RUNTIME_ROLE,
-                "-d",
-                DATABASE_NAME,
-                "-tA",
-                "-c",
-                "SELECT dataset_id FROM dataset_authority WHERE singleton_id = 1",
-            ],
-            env=sealed_pg_env(str(layout.pg_passfile(request))),
+        completed = run_psql(
+            self._runner,
+            request,
+            "SELECT dataset_id FROM dataset_authority WHERE singleton_id = 1",
+            database=DATABASE_NAME,
+            user=RUNTIME_ROLE,
         )
         if completed.returncode != 0:
             raise LifecycleError("health_identity_mismatch", "dataset_authority is unreadable")

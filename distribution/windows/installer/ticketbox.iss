@@ -58,6 +58,10 @@ Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\releases\{#Re
 [Registry]
 Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"
 
+[Run]
+Filename: "{app}\bin\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; WorkingDir: "{app}\bin"; StatusMsg: "正在安装 Visual C++ 运行库..."; Flags: runhidden waituntilterminated
+Filename: "{app}\bin\TicketboxLifecycle.exe"; Parameters: "{code:TicketboxLifecycleParams}"; WorkingDir: "{app}\bin"; StatusMsg: "正在完成小票夹首次安装..."; Flags: runhidden waituntilterminated
+
 [Code]
 const
   TicketboxRequiredMsvcRuntimeVersion = '{#TicketboxRequiredMsvcRuntimeVersion}';
@@ -74,7 +78,8 @@ var
   TicketboxProvisionOperationId: String;
   TicketboxPairingCode: String;
   TicketboxPairingExpiresAt: String;
-  TicketboxRuntimeNeedsRestart: Boolean;
+  TicketboxInstallFailed: Boolean;
+  TicketboxInstallFailureReason: String;
 
 function CoCreateGuid(var Guid: TTicketboxGuid): Integer;
 external 'CoCreateGuid@ole32.dll stdcall';
@@ -118,13 +123,15 @@ begin
   TicketboxProvisionOperationId := '';
   TicketboxPairingCode := '';
   TicketboxPairingExpiresAt := '';
-  TicketboxRuntimeNeedsRestart := False;
+  TicketboxInstallFailed := False;
+  TicketboxInstallFailureReason := '';
   Result := True;
 end;
 
-function NeedRestart: Boolean;
+procedure TicketboxMarkInstallFailed(const Reason: String);
 begin
-  Result := TicketboxRuntimeNeedsRestart;
+  TicketboxInstallFailed := True;
+  TicketboxInstallFailureReason := Reason;
 end;
 
 function TicketboxJsonString(const Text, Key: String): String;
@@ -148,19 +155,18 @@ begin
     Result := Copy(Rest, 1, Q - 1);
 end;
 
-function TicketboxActiveOperationIsResumable: Boolean;
+function TicketboxActiveOperationCanContinue: Boolean;
 var
   ActivePath: String;
   Text: AnsiString;
-  OperationId, Phase: String;
+  OperationId: String;
 begin
   Result := False;
   ActivePath := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\active.json');
   if not LoadStringFromFile(ActivePath, Text) then
     Exit;
   OperationId := TicketboxJsonString(String(Text), 'operation_id');
-  Phase := TicketboxJsonString(String(Text), 'phase');
-  Result := (OperationId <> '') and (Phase <> 'committed');
+  Result := OperationId <> '';
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -176,39 +182,39 @@ begin
     Exit;
   end;
   BindingPath := ExpandConstant('{commonappdata}\Ticketbox\machine\installation.json');
-  if FileExists(BindingPath) and (not TicketboxActiveOperationIsResumable()) then
+  if FileExists(BindingPath) and (not TicketboxActiveOperationCanContinue()) then
   begin
     Result := '这台电脑已经安装小票夹。首次安装不会覆盖现有数据。';
     Exit;
   end;
 end;
 
-procedure TicketboxInstallMsvcRuntime;
+function TicketboxMsvcRuntimeIsCurrent(var Reason: String): Boolean;
 var
-  Redist, RuntimePath: String;
-  ResultCode: Integer;
+  RuntimePath: String;
   InstalledVersion, RequiredVersion: Int64;
 begin
-  Redist := ExpandConstant('{app}\bin\vc_redist.x64.exe');
-  if not FileExists(Redist) then
-    RaiseException('小票夹安装失败：安装包缺少 Visual C++ 运行库。');
-  if not Exec(Redist, '/install /quiet /norestart', '', SW_HIDE,
-      ewWaitUntilTerminated, ResultCode) then
-    RaiseException('小票夹安装失败：无法启动 Visual C++ 运行库安装。');
-  if ResultCode = 3010 then
-    TicketboxRuntimeNeedsRestart := True
-  else if (ResultCode <> 0) and (ResultCode <> 1638) then
-    RaiseException('小票夹安装失败：Visual C++ 运行库返回 ' +
-      IntToStr(ResultCode) + '。');
+  Result := False;
+  Reason := '';
   RuntimePath := ExpandConstant('{sys}\VCRUNTIME140.dll');
   if not GetPackedVersion(RuntimePath, InstalledVersion) then
-    RaiseException('小票夹安装失败：无法读取 Visual C++ 运行库版本。');
+  begin
+    Reason := '无法读取 Visual C++ 运行库版本';
+    Exit;
+  end;
   if not StrToVersion(TicketboxRequiredMsvcRuntimeVersion, RequiredVersion) then
-    RaiseException('小票夹安装失败：安装包内 Visual C++ 运行库版本无效。');
+  begin
+    Reason := '安装包内 Visual C++ 运行库版本无效';
+    Exit;
+  end;
   if ComparePackedVersion(InstalledVersion, RequiredVersion) < 0 then
-    RaiseException('小票夹安装失败：Visual C++ 运行库版本过旧（实际 ' +
+  begin
+    Reason := 'Visual C++ 运行库版本过旧（实际 ' +
       VersionToStr(InstalledVersion) + '，需要 ' +
-      TicketboxRequiredMsvcRuntimeVersion + ' 或更高版本）。');
+      TicketboxRequiredMsvcRuntimeVersion + ' 或更高版本）';
+    Exit;
+  end;
+  Result := True;
 end;
 
 function TicketboxResultPath: String;
@@ -294,10 +300,18 @@ var
   ActiveText: AnsiString;
 begin
   Result := '';
+  if FileExists(TicketboxResultPath) and (not DeleteFile(TicketboxResultPath)) then
+  begin
+    TicketboxMarkInstallFailed('无法清理上一次临时结果');
+    Exit;
+  end;
   Command := 'install';
   OperationId := TicketboxNewUuid;
   if OperationId = '' then
+  begin
+    TicketboxMarkInstallFailed('无法生成首次安装操作标识');
     Exit;
+  end;
   ActivePath := ExpandConstant('{commonappdata}\Ticketbox\machine\operations\active.json');
   if LoadStringFromFile(ActivePath, ActiveText) then
   begin
@@ -311,46 +325,59 @@ begin
   ManifestPath := ExpandConstant('{app}\releases\{#ReleaseId}\release-manifest.json');
   ManifestSha := GetSHA256OfFile(ManifestPath);
   if ManifestSha = '' then
+  begin
+    TicketboxMarkInstallFailed('无法验证已发布的 release-manifest.json');
     Exit;
+  end;
   if not WriteFreshInstallRequest(Command, OperationId, ManifestSha) then
+  begin
+    TicketboxMarkInstallFailed('无法生成首次安装请求');
     Exit;
+  end;
   TicketboxProvisionOperationId := OperationId;
   Result := Command + ' --request "' +
     ExpandConstant('{tmp}\ticketbox-install-request.json') + '" --result "' +
     TicketboxResultPath + '"';
 end;
 
-procedure TicketboxProvision;
+procedure CurStepChanged(CurStep: TSetupStep);
 var
-  Params, Coordinator: String;
-  ResultCode: Integer;
+  Reason: String;
 begin
-  TicketboxInstallMsvcRuntime;
-  Params := TicketboxLifecycleParams('');
-  if Params = '' then
-    RaiseException('小票夹安装失败：无法生成首次安装请求。');
-  if FileExists(TicketboxResultPath) and (not DeleteFile(TicketboxResultPath)) then
-    RaiseException('小票夹安装失败：无法清理上一次临时结果。');
-  Coordinator := ExpandConstant('{app}\bin\TicketboxLifecycle.exe');
-  if not Exec(Coordinator, Params, ExpandConstant('{app}\bin'), SW_HIDE,
-      ewWaitUntilTerminated, ResultCode) then
-    RaiseException('小票夹安装失败：无法启动生命周期控制器。');
-  if (ResultCode <> 0) or
-     (not TicketboxResultIsCommitted(TicketboxProvisionOperationId)) then
-    RaiseException('小票夹首次安装没有完成：' + TicketboxResultFailure +
-      '。请重新运行同一个安装包继续。');
-  MsgBox('小票夹安装完成。' + #13#10 + #13#10 +
-    '首次配对码：' + TicketboxPairingCode + #13#10 +
-    '有效期至：' + TicketboxPairingExpiresAt + #13#10 + #13#10 +
-    '请打开“管理小票夹”完成设备绑定。', mbInformation, MB_OK);
+  if CurStep = ssPostInstall then
+  begin
+    { ssPostInstall only observes the completed [Run] postconditions. }
+    if (not TicketboxInstallFailed) and
+       (not TicketboxMsvcRuntimeIsCurrent(Reason)) then
+      TicketboxMarkInstallFailed(Reason);
+    if (not TicketboxInstallFailed) and
+       (not TicketboxResultIsCommitted(TicketboxProvisionOperationId)) then
+      TicketboxMarkInstallFailed(TicketboxResultFailure);
+    if TicketboxInstallFailed then
+      MsgBox('小票夹安装未完成：' + TicketboxInstallFailureReason + '。' + #13#10 +
+        '请重新运行同一个安装包继续。', mbError, MB_OK)
+    else
+      MsgBox('小票夹安装完成。' + #13#10 + #13#10 +
+        '首次配对码：' + TicketboxPairingCode + #13#10 +
+        '有效期至：' + TicketboxPairingExpiresAt + #13#10 + #13#10 +
+        '请打开“管理小票夹”完成设备绑定。', mbInformation, MB_OK);
+  end;
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
+procedure CurPageChanged(CurPageID: Integer);
 begin
-  { Official topic_installorder and topic_scriptevents define ssPostInstall
-    after complete
-    materialization. We do not use a [Files] AfterInstall callback because
-    NotifyAfterInstallEntry does not propagate its exception as this owner. }
-  if CurStep = ssPostInstall then
-    TicketboxProvision;
+  if (CurPageID = wpFinished) and TicketboxInstallFailed then
+  begin
+    WizardForm.FinishedHeadingLabel.Caption := '小票夹安装未完成';
+    WizardForm.FinishedLabel.Caption := TicketboxInstallFailureReason + '。' + #13#10 +
+      '请关闭安装程序，然后重新运行同一个安装包继续。';
+  end;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  if TicketboxInstallFailed then
+    Result := 1
+  else
+    Result := 0;
 end;

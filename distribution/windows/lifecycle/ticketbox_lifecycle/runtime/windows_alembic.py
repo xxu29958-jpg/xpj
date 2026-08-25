@@ -8,7 +8,7 @@ from ticketbox_lifecycle.policy.postgres_roles import (
 )
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok, sealed_pg_env
-from ticketbox_lifecycle.runtime.postgres_connection import maintenance_database_url
+from ticketbox_lifecycle.runtime.postgres_connection import maintenance_database_url, run_psql
 from ticketbox_lifecycle.schemas import InstallRequest
 
 
@@ -66,25 +66,12 @@ class WindowsAlembicAdapter:
             raise LifecycleViolation("wrong_adapter", "alembic adapter only owns alembic")
         if not request.schema_revision:
             raise LifecycleError("postcondition_missing", "schema revision is unbound")
-        psql = layout.tool(request, "psql.exe")
-        completed = self._runner.run(
-            [
-                str(psql),
-                "-v",
-                "ON_ERROR_STOP=1",
-                "-h",
-                "127.0.0.1",
-                "-p",
-                str(request.pg_port),
-                "-U",
-                MIGRATOR_ROLE,
-                "-d",
-                DATABASE_NAME,
-                "-tA",
-                "-c",
-                verify_alembic_version_sql(),
-            ],
-            env=sealed_pg_env(str(layout.pg_passfile(request))),
+        completed = run_psql(
+            self._runner,
+            request,
+            verify_alembic_version_sql(),
+            database=DATABASE_NAME,
+            user=MIGRATOR_ROLE,
         )
         if completed.returncode != 0 or request.schema_revision not in completed.stdout:
             raise LifecycleError("postcondition_missing", "alembic_version is not the exact release target")

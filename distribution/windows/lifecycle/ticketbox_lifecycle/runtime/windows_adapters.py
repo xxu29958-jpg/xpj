@@ -14,7 +14,7 @@ class WindowsAdapterBundle:
         command_runner = runner or SubprocessCommandRunner()
         self.files = WindowsFilesAdapter()
         self.security = WindowsSecurityAdapter(command_runner)
-        self.postgres = WindowsPostgresAdapter(command_runner)
+        self.postgres = WindowsPostgresAdapter(command_runner, self.security)
         self.alembic = WindowsAlembicAdapter(command_runner)
         self.scm = WindowsScmAdapter(command_runner, self.security)
         self.dataset = WindowsDatasetAdapter(command_runner, self.security)

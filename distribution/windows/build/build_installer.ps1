@@ -256,7 +256,7 @@ try {
     }
     & (Join-Path $lifecycleVenv "Scripts\pyinstaller.exe") `
         --noconfirm `
-        --distpath $PayloadDir `
+        --distpath $StagedPayloadDir `
         --workpath $lifecycleWork `
         (Join-Path $StagedScriptDir "ticketbox-lifecycle.spec")
     if ($LASTEXITCODE -ne 0) { throw "TicketboxLifecycle.exe 冻结失败（exit=$LASTEXITCODE）。" }

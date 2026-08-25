@@ -1,32 +1,14 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import os
-import secrets
 from pathlib import Path
 
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
-from ticketbox_lifecycle.policy.postgres_roles import (
-    DATABASE_NAME,
-    MIGRATOR_ROLE,
-    RUNTIME_ROLE,
-)
 from ticketbox_lifecycle.runtime import layout
+from ticketbox_lifecycle.runtime import windows_credentials as credentials
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
-from ticketbox_lifecycle.runtime.durable_files import durable_write_text
 from ticketbox_lifecycle.schemas import InstallRequest
-
-_CLUSTER_SECRET_NAMES = frozenset(
-    {
-        "postgres.password",
-        "postgres.pwfile",
-        "pgpass",
-        "ticketbox_migrator.password",
-        "ticketbox_runtime.password",
-    }
-)
 
 
 class WindowsSecurityAdapter:
@@ -105,8 +87,8 @@ class WindowsSecurityAdapter:
             native.reject_reparse_components(path)
             path.mkdir(parents=True, exist_ok=True)
             native.protect_directory(self._runner, path, code="acl_apply_failed")
-        self._verify_existing_credentials(request, allow_missing=True)
-        self._ensure_credentials(request)
+        credentials.verify_existing_credentials(self._runner, request, allow_missing=True)
+        credentials.ensure_credentials(request)
         for secret in sorted(path for path in secrets_root.iterdir() if path.is_file()):
             native.protect_file(self._runner, secret, extra_grants=(), code="secret_acl_failed")
         self.protect_runtime_env(request)
@@ -122,7 +104,7 @@ class WindowsSecurityAdapter:
             raise LifecycleError("acl_verify_failed", "icacls could not read DataRoot")
         if native.has_broad_reader(root_acl):
             raise LifecycleError("data_root_acl_too_broad", "DataRoot is readable by ordinary users")
-        self._verify_existing_credentials(request, allow_missing=False)
+        credentials.verify_existing_credentials(self._runner, request, allow_missing=False)
 
     def grant_backend_binding_read(self, binding_path: Path, service_name: str) -> None:
         native.require_windows()
@@ -149,6 +131,12 @@ class WindowsSecurityAdapter:
                 self._runner.run(["icacls", str(path), "/grant", grant]),
                 code=code,
             )
+
+    def materialize_initdb_password_file(self, request: InstallRequest) -> Path:
+        return credentials.materialize_initdb_password_file(self._runner, request)
+
+    def discard_initdb_password_file(self, request: InstallRequest) -> None:
+        credentials.discard_initdb_password_file(request)
 
     def protect_runtime_env(self, request: InstallRequest) -> None:
         native.protect_file(
@@ -177,7 +165,50 @@ class WindowsSecurityAdapter:
             code="runtime_authority_acl_failed",
         )
 
+    def configure_backend_runtime_acl(self, request: InstallRequest) -> None:
+        native.require_windows()
+        app_data = Path(request.data_root) / "app"
+        log_dir = layout.backend_logs(request)
+        for path in (app_data, log_dir):
+            native.reject_reparse_components(path)
+            if not path.is_dir():
+                raise LifecycleError("backend_directory_missing", f"missing backend directory: {path}")
+            native.protect_directory(self._runner, path, code="backend_directory_acl_failed")
+        service_sid = native.service_sid(self._runner, request.backend_service_name)
+        for path, access in (
+            (Path(request.data_root), "(RX)"),
+            (app_data, "(OI)(CI)M"),
+            (log_dir, "(OI)(CI)M"),
+        ):
+            require_ok(
+                self._runner.run(
+                    ["icacls", str(path), "/grant:r", f"*{service_sid}:{access}"]
+                ),
+                code="backend_directory_acl_failed",
+            )
+
     def verify_backend_runtime_authority(self, request: InstallRequest) -> None:
+        service_sid = native.service_sid(self._runner, request.backend_service_name)
+        for path, writable in (
+            (Path(request.data_root), False),
+            (Path(request.data_root) / "app", True),
+            (layout.backend_logs(request), True),
+        ):
+            completed = self._runner.run(["icacls", str(path)])
+            text = f"{completed.stdout}\n{completed.stderr}".upper()
+            service_lines = [line for line in text.splitlines() if service_sid in line]
+            if completed.returncode != 0 or not service_lines or native.has_broad_reader(text):
+                raise LifecycleError(
+                    "backend_directory_acl_verify_failed",
+                    f"backend directory ACL is incomplete: {path}",
+                )
+            grants_modify = any("(M)" in line or ")M" in line for line in service_lines)
+            grants_too_much = any("(F)" in line or ")F" in line for line in service_lines)
+            if grants_too_much or grants_modify != writable:
+                raise LifecycleError(
+                    "backend_directory_acl_verify_failed",
+                    f"backend directory ACL has wrong rights: {path}",
+                )
         active = layout.active_operation(request)
         completed = self._runner.run(["icacls", str(active)])
         text = f"{completed.stdout}\n{completed.stderr}".upper()
@@ -188,7 +219,7 @@ class WindowsSecurityAdapter:
                 "runtime_authority_acl_missing_backend",
                 "active.json is not readable by TicketboxBackend",
             )
-        for name in _CLUSTER_SECRET_NAMES:
+        for name in credentials.KNOWN_SECRET_NAMES:
             secret = layout.secrets_dir(request) / name
             if not secret.is_file():
                 continue
@@ -255,106 +286,7 @@ class WindowsSecurityAdapter:
             raise LifecycleError("pgdata_acl_missing_pg", "pgdata missing TicketboxPg")
 
     def owner_bootstrap_secret(self, request: InstallRequest) -> str:
-        postgres_secret = self._read_or_create_secret(layout.postgres_password_file(request))
-        message = (
-            "ticketbox/fresh-owner/v1\0"
-            + request.operation_id
-            + "\0"
-            + request.install_id
-        ).encode("utf-8")
-        return hmac.new(postgres_secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
-
-    def _verify_existing_credentials(self, request: InstallRequest, *, allow_missing: bool) -> None:
-        secrets_root = layout.secrets_dir(request)
-        existing_names = {path.name for path in secrets_root.iterdir()} if secrets_root.is_dir() else set()
-        if existing_names - _CLUSTER_SECRET_NAMES:
-            raise LifecycleViolation("credential_invalid", "secrets directory contains an unknown object")
-        if not allow_missing and existing_names != _CLUSTER_SECRET_NAMES:
-            raise LifecycleError("postcondition_missing", "lifecycle secrets are incomplete")
-        for name in existing_names:
-            path = secrets_root / name
-            native.reject_reparse_components(path)
-            if not path.is_file():
-                raise LifecycleViolation("credential_invalid", f"credential is not a regular file: {name}")
-            native.require_trusted_owner(
-                path,
-                code="credential_owner_untrusted",
-                message="credential must have a trusted owner",
-            )
-            native.require_protected_file_acl(
-                self._runner,
-                path,
-                code="credential_acl_untrusted",
-                forbidden_markers=("NT SERVICE\\", "S-1-5-80-"),
-            )
-        runtime_env = Path(request.data_root) / "app" / ".env"
-        if not runtime_env.exists() and not runtime_env.is_symlink():
-            if allow_missing:
-                return
-            raise LifecycleError("postcondition_missing", "runtime .env is absent")
-        native.reject_reparse_components(runtime_env)
-        if not runtime_env.is_file():
-            raise LifecycleViolation("credential_invalid", "runtime .env is not a regular file")
-        native.require_trusted_owner(
-            runtime_env,
-            code="credential_owner_untrusted",
-            message="runtime .env must have a trusted owner",
-        )
-        native.require_protected_file_acl(
-            self._runner,
-            runtime_env,
-            code="credential_acl_untrusted",
-            required_reader_markers=(
-                native.service_sid(self._runner, request.backend_service_name),
-                f"NT SERVICE\\{request.backend_service_name}",
-            ),
-        )
-
-    def _ensure_credentials(self, request: InstallRequest) -> None:
-        secrets_root = layout.secrets_dir(request)
-        secrets_root.mkdir(parents=True, exist_ok=True)
-        postgres_password = self._read_or_create_secret(layout.postgres_password_file(request))
-        migrator_password = self._read_or_create_secret(layout.migrator_password_file(request))
-        runtime_password = self._read_or_create_secret(layout.runtime_password_file(request))
-        durable_write_text(layout.postgres_pwfile(request), postgres_password + "\n")
-        pass_lines = [
-            f"127.0.0.1:{request.pg_port}:*:postgres:{postgres_password}",
-            f"127.0.0.1:{request.pg_port}:{DATABASE_NAME}:{MIGRATOR_ROLE}:{migrator_password}",
-            f"127.0.0.1:{request.pg_port}:{DATABASE_NAME}:{RUNTIME_ROLE}:{runtime_password}",
-            f"localhost:{request.pg_port}:*:postgres:{postgres_password}",
-            f"localhost:{request.pg_port}:{DATABASE_NAME}:{MIGRATOR_ROLE}:{migrator_password}",
-            f"localhost:{request.pg_port}:{DATABASE_NAME}:{RUNTIME_ROLE}:{runtime_password}",
-        ]
-        durable_write_text(layout.pg_passfile(request), "\n".join(pass_lines) + "\n")
-        app_dir = Path(request.data_root) / "app"
-        app_dir.mkdir(parents=True, exist_ok=True)
-        env_text = f"DATABASE_URL={_app_database_url(request, runtime_password)}\n"
-        env_path = app_dir / ".env"
-        if env_path.is_file():
-            try:
-                current_env = env_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeError) as exc:
-                raise LifecycleViolation("credential_invalid", "runtime .env is unreadable") from exc
-            if current_env != env_text:
-                raise LifecycleViolation("credential_invalid", "runtime .env does not match this operation")
-        else:
-            durable_write_text(env_path, env_text)
-
-    @staticmethod
-    def _read_or_create_secret(path: Path) -> str:
-        if path.is_file():
-            try:
-                value = path.read_text(encoding="utf-8").strip()
-            except (OSError, UnicodeError) as exc:
-                raise LifecycleViolation("credential_invalid", f"credential is unreadable: {path.name}") from exc
-            if not 32 <= len(value) <= 200 or any(character.isspace() for character in value):
-                raise LifecycleViolation("credential_invalid", f"credential is malformed: {path.name}")
-            return value
-        if path.exists() or path.is_symlink():
-            raise LifecycleViolation("credential_invalid", f"credential is not a regular file: {path.name}")
-        value = secrets.token_urlsafe(32)
-        durable_write_text(path, value + "\n")
-        return value
+        return credentials.owner_bootstrap_secret(request)
 
 
 def require_closed_data_root(request: InstallRequest) -> None:
@@ -366,10 +298,3 @@ def require_closed_data_root(request: InstallRequest) -> None:
             "data_root_outside_programdata",
             "fresh install data_root must be the protected ProgramData/Ticketbox/data path",
         )
-
-
-def _app_database_url(request: InstallRequest, runtime_password: str) -> str:
-    return (
-        f"postgresql+psycopg://{RUNTIME_ROLE}:{runtime_password}@127.0.0.1:{request.pg_port}/{DATABASE_NAME}"
-        "?require_auth=scram-sha-256"
-    )
