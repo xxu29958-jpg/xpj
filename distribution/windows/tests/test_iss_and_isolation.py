@@ -8,6 +8,7 @@ ISS = WINDOWS / "installer" / "ticketbox.iss"
 LIFECYCLE = WINDOWS / "lifecycle"
 LIFECYCLE_SPEC = WINDOWS / "build" / "ticketbox-lifecycle.spec"
 INSTALLED_MANIFEST = WINDOWS / "build" / "installed_payload_manifest.ps1"
+BUILD_INSTALLER = WINDOWS / "build" / "build_installer.ps1"
 
 
 FORBIDDEN_TOKENS = (
@@ -134,6 +135,22 @@ def test_elevated_lifecycle_is_an_installed_onedir_payload() -> None:
     assert 'WorkingDir: "{app}\\bin\\lifecycle"' in installer
     assert '"bin/lifecycle"' in manifest
     assert 'Source = Join-Path $StagedPayloadDir "TicketboxLifecycle.exe"' not in manifest
+
+
+def test_lifecycle_freeze_uses_only_the_exact_pinned_python() -> None:
+    build = BUILD_INSTALLER.read_text(encoding="utf-8-sig")
+
+    assert r'build\windows-toolchain\python' in build
+    assert "build_tool_sources.python" in build
+    assert "pythonSource.executable_relative_path" in build
+    assert "pythonSource.executable_sha256" in build
+    assert "pythonSource.runtime_relative_path" in build
+    assert "pythonSource.runtime_sha256" in build
+    assert "$pythonVersion -cne [string]$toolchainConfig.python_version" in build
+    assert "& $lifecyclePython -m venv" in build
+    assert "Get-Command python" not in build
+    assert "expectedPythonPrefix" not in build
+    assert ".StartsWith($expectedPython" not in build
 
 
 def test_old_fresh_iss_is_not_the_shipped_installer() -> None:

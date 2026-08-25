@@ -256,18 +256,37 @@ $BuildInputs = [ordered]@{
 }
 
 # ===== TicketboxLifecycle onedir（elevated code only runs from installed Program Files）=====
-$pythonCommand = Get-Command python -ErrorAction Stop
-$pythonVersionText = (& $pythonCommand.Source --version 2>&1) -join " "
-$expectedPythonPrefix = "Python " + (([string]$toolchainConfig.python_version) -replace '^(\d+\.\d+)\..*$', '$1')
-if (-not $pythonVersionText.StartsWith($expectedPythonPrefix)) {
-    throw "lifecycle 构建需要 $expectedPythonPrefix.x，当前：$pythonVersionText"
+$pythonSource = $toolchainConfig.build_tool_sources.python
+$lifecyclePythonRoot = Join-Path $BackendRoot "build\windows-toolchain\python"
+$lifecyclePython = Join-Path $lifecyclePythonRoot ([string]$pythonSource.executable_relative_path)
+$lifecyclePythonRuntime = Join-Path $lifecyclePythonRoot ([string]$pythonSource.runtime_relative_path)
+if (
+    -not (Test-Path -LiteralPath $lifecyclePython -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $lifecyclePythonRuntime -PathType Leaf)
+) {
+    throw "缺少 pinned lifecycle Python；先运行 prepare_windows_build_toolchain.ps1 -Component Backend。"
+}
+Assert-TicketboxNoReparsePath -Path $lifecyclePythonRoot -AllowedRoot $BackendRoot -InspectTree | Out-Null
+if (
+    (Get-TicketboxFileSha256 $lifecyclePython) -cne ([string]$pythonSource.executable_sha256).ToLowerInvariant() -or
+    (Get-TicketboxFileSha256 $lifecyclePythonRuntime) -cne ([string]$pythonSource.runtime_sha256).ToLowerInvariant()
+) {
+    throw "pinned lifecycle Python 与 windows-build-toolchain.json 不一致。"
+}
+$pythonVersionText = (& $lifecyclePython -I -B -c "import platform; print(platform.python_version())" 2>&1) -join " "
+if ($LASTEXITCODE -ne 0) {
+    throw "pinned lifecycle Python 版本探测失败（exit=$LASTEXITCODE）：$pythonVersionText"
+}
+$pythonVersion = $pythonVersionText.Trim()
+if ($pythonVersion -cne [string]$toolchainConfig.python_version) {
+    throw "lifecycle Python 版本不一致：expected=$($toolchainConfig.python_version) actual=$pythonVersion"
 }
 $lifecycleVenv = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-venv-{0}-{1}" -f $PID, [Guid]::NewGuid().ToString("N"))
 $lifecycleWork = Join-Path $BackendRoot ("build\.ticketbox-lifecycle-work-{0}" -f $PID)
 $lifecyclePayloadDir = Join-Path $StagedPayloadDir "TicketboxLifecycle"
 $lifecycleExe = Join-Path $lifecyclePayloadDir "TicketboxLifecycle.exe"
 try {
-    & $pythonCommand.Source -m venv $lifecycleVenv
+    & $lifecyclePython -m venv $lifecycleVenv
     if ($LASTEXITCODE -ne 0) { throw "lifecycle venv 创建失败（exit=$LASTEXITCODE）。" }
     $venvPython = Join-Path $lifecycleVenv "Scripts\python.exe"
     & $venvPython -m pip install --quiet --require-hashes -r (Join-Path $StagedBackendRoot "requirements-build.lock")
