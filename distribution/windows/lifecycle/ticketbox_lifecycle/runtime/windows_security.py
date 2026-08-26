@@ -195,7 +195,6 @@ class WindowsSecurityAdapter:
                 "cannot identify the Windows user that will run initdb",
             )
         pgdata_security.prepare_initdb_directory(
-            self._runner,
             layout.pgdata(request),
             bootstrap_sid=reader_sid,
         )

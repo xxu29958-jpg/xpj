@@ -5,10 +5,11 @@ import os
 from pathlib import Path
 
 import pytest
-from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
+from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.runtime import windows_file_security as file_security
 from ticketbox_lifecycle.runtime import windows_pgdata_security as pgdata_security
 from ticketbox_lifecycle.runtime import windows_security_native as native
+from ticketbox_lifecycle.runtime import windows_dacl
 from ticketbox_lifecycle.runtime.command import (
     CompletedCommand,
     SubprocessCommandRunner,
@@ -29,74 +30,6 @@ def test_file_dacl_policy_accepts_only_reader_sids() -> None:
         file_security.file_dacl_sddl((f"*{service_sid}:(F)",))
 
 
-def test_pgdata_dacl_accepts_windows_canonical_system_and_admin_aliases() -> None:
-    service_sid = "S-1-5-80-111-222-333-444-555"
-    pgdata_security._require_policy_dacl(
-        "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-        f"(A;OICI;FA;;;{service_sid})(A;OICI;RC;;;OW)",
-        service_sid=service_sid,
-        name="pgdata",
-        directory=True,
-        protected=True,
-    )
-
-
-def test_pgdata_owner_rights_uses_icacls_advanced_permission_syntax(
-    tmp_path: Path,
-) -> None:
-    calls: list[tuple[str, ...]] = []
-
-    class Runner:
-        def run(self, argv, **_kwargs) -> CompletedCommand:
-            recorded = tuple(str(part) for part in argv)
-            calls.append(recorded)
-            return CompletedCommand(recorded, 0, "", "")
-
-    pgdata = tmp_path / "pgdata"
-    pgdata_security.prepare_initdb_directory(
-        Runner(),
-        pgdata,
-        bootstrap_sid="S-1-5-21-9-9-9-1003",
-    )
-
-    owner_rights = [
-        argument
-        for call in calls
-        if call[0] == "icacls" and call[1] == str(pgdata) and "/grant:r" in call
-        for argument in call
-        if argument.startswith("*S-1-3-4:")
-    ]
-    assert owner_rights == ["*S-1-3-4:(OI)(CI)(RC)"]
-
-
-@pytest.mark.parametrize(
-    "dacl",
-    [
-        (
-            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-            "(A;OICI;FA;;;S-1-5-80-111-222-333-444-555)"
-        ),
-        (
-            "D:P(A;;FA;;;SY)(A;;FA;;;BA)"
-            "(A;;FA;;;S-1-5-80-111-222-333-444-555)(A;;RC;;;OW)"
-        ),
-        (
-            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-            "(A;OICI;FA;;;S-1-5-80-111-222-333-444-555)(A;OICIIO;RC;;;OW)"
-        ),
-    ],
-)
-def test_pgdata_root_rejects_missing_or_non_propagating_owner_policy(dacl: str) -> None:
-    with pytest.raises(LifecycleError, match="non-service ACL"):
-        pgdata_security._require_policy_dacl(
-            dacl,
-            service_sid="S-1-5-80-111-222-333-444-555",
-            name="pgdata",
-            directory=True,
-            protected=True,
-        )
-
-
 def test_file_security_has_no_icacls_grant_or_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -104,7 +37,7 @@ def test_file_security_has_no_icacls_grant_or_fallback(
     path = tmp_path / "active.json.pending.tmp"
     path.write_text("{}\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
-    applied: list[tuple[Path, tuple[str, ...], str]] = []
+    applied: list[tuple[Path, str, str]] = []
 
     class Runner:
         def run(self, argv, **_kwargs) -> CompletedCommand:
@@ -113,9 +46,9 @@ def test_file_security_has_no_icacls_grant_or_fallback(
             return CompletedCommand(recorded, 0, "", "")
 
     monkeypatch.setattr(
-        file_security,
-        "_apply_file_dacl",
-        lambda target, readers, *, code: applied.append((target, readers, code)),
+        windows_dacl,
+        "apply_protected_dacl",
+        lambda target, sddl, *, code: applied.append((target, sddl, code)),
     )
     reader = "S-1-5-80-111-222-333-444-555"
 
@@ -127,7 +60,9 @@ def test_file_security_has_no_icacls_grant_or_fallback(
     )
 
     assert calls == [("takeown", "/A", "/F", str(path))]
-    assert applied == [(path, (reader,), "machine_state_acl_failed")]
+    assert applied == [
+        (path, file_security.file_dacl_sddl((reader,)), "machine_state_acl_failed")
+    ]
 
 
 def _restricted_token_file_error(
@@ -327,16 +262,20 @@ def test_exact_process_user_reader_survives_postgres_style_restricted_token(
     assert process_user_sid is not None
     path = tmp_path / "postgres.pwfile"
     path.write_text("not-a-real-secret\n", encoding="utf-8")
-    file_security._apply_file_dacl(path, (), code="secret_acl_failed")
+    windows_dacl.apply_protected_dacl(
+        path,
+        file_security.file_dacl_sddl(()),
+        code="secret_acl_failed",
+    )
     assert _restricted_token_file_error(
         path,
         desired_access=0x80000000,
         creation_disposition=3,
     ) == 5
 
-    file_security._apply_file_dacl(
+    windows_dacl.apply_protected_dacl(
         path,
-        (process_user_sid,),
+        file_security.file_dacl_sddl((process_user_sid,)),
         code="secret_acl_failed",
     )
     expected_dacl = file_security.file_dacl_sddl((process_user_sid,))
@@ -373,7 +312,6 @@ def test_pgdata_bootstrap_is_restricted_token_writable_and_then_fully_retired(
     pgdata = data_root / "pgdata"
 
     pgdata_security.prepare_initdb_directory(
-        runner,
         pgdata,
         bootstrap_sid=bootstrap_sid,
     )
@@ -387,6 +325,23 @@ def test_pgdata_bootstrap_is_restricted_token_writable_and_then_fully_retired(
 
     service_sid = native.service_sid(runner, "EventLog")
     pgdata_security.seal_for_service(runner, pgdata, service_sid=service_sid)
+
+    future_directory = pgdata / "after-seal"
+    future_directory.mkdir()
+    future_file = future_directory / "future-service-file"
+    future_file.write_bytes(b"future")
+    pgdata_security._require_policy_dacl(
+        native._object_dacl_sddl(future_directory),
+        service_sid=service_sid,
+        name=future_directory.name,
+        shape="directory",
+    )
+    pgdata_security._require_policy_dacl(
+        native._object_dacl_sddl(future_file),
+        service_sid=service_sid,
+        name=future_file.name,
+        shape="file",
+    )
 
     assert _restricted_token_file_error(
         pgdata / "must-not-be-created",

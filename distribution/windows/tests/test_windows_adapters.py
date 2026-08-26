@@ -22,6 +22,7 @@ from ticketbox_lifecycle.policy.windows_scm_contract import (
     expected_pg_service,
 )
 from ticketbox_lifecycle.runtime import (
+    windows_dacl,
     windows_file_security,
     windows_pgdata_security,
     windows_postgres,
@@ -126,6 +127,11 @@ def _trusted_unit_file_owner(monkeypatch):
         "require_protected_directory",
         require_unit_directory,
         raising=False,
+    )
+    monkeypatch.setattr(
+        windows_pgdata_security,
+        "apply_protected_dacl",
+        lambda *_args, **_kwargs: None,
     )
 
 
@@ -441,7 +447,11 @@ class RecordingFileSecurity:
         del code
         assert isinstance(runner, RecordingRunner)
         if os.name == "nt" and path.name == "postgres.pwfile":
-            windows_file_security._apply_file_dacl(path, reader_sids, code="unit_file_acl")
+            windows_dacl.apply_protected_dacl(
+                path,
+                windows_file_security.file_dacl_sddl(reader_sids),
+                code="unit_file_acl",
+            )
         runner.run(["takeown", "/A", "/F", str(path)])
         runner.run(
             [
@@ -469,6 +479,16 @@ class RecordingScmObserver:
 
 def _bundle(runner: RecordingRunner) -> WindowsAdapterBundle:
     return WindowsAdapterBundle(runner, RecordingFileSecurity(), RecordingScmObserver(runner))
+
+
+def _record_pgdata_dacl(runner: RecordingRunner):
+    def publish(_path: Path, sddl: str, *, code: str) -> None:
+        del code
+        service_policy = "S-1-5-80-" in sddl
+        runner.pgdata_bootstrap_access = not service_policy
+        runner.pgdata_acl_extra_sid = None if service_policy else _PROCESS_USER_SID
+
+    return publish
 
 
 def _recorded_service_configuration(
@@ -632,8 +652,9 @@ def test_pgdata_verification_rejects_a_residual_bootstrap_user(
         windows_security_native,
         "_object_dacl_sddl",
         lambda _path: (
-            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-            f"(A;OICI;FA;;;{_BACKEND_SERVICE_SID})(A;OICI;RC;;;OW)"
+            "D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+            f"(A;OICI;FA;;;{_BACKEND_SERVICE_SID})"
+            "(A;;RC;;;OW)(A;OICIIO;RC;;;OW)"
             f"(A;OICI;FA;;;{_PROCESS_USER_SID})"
         ),
     )
@@ -655,34 +676,12 @@ def test_pgdata_seal_removes_the_bootstrap_user_before_verification(
     pgdata = Path(request.data_root) / "pgdata"
     _write_complete_cluster(pgdata)
     monkeypatch.setattr(windows_pgdata_security, "_require_exact_tree", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(windows_pgdata_security, "apply_protected_dacl", _record_pgdata_dacl(runner))
 
     bundle.security.seal_pgdata_acl(request)
     bundle.security.verify_pgdata_service_acl(request, verify_tree=True)
 
     assert runner.pgdata_acl_extra_sid is None
-
-
-def test_pgdata_recursive_acl_commands_never_follow_reparse_targets(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    request = _request(tmp_path)
-    runner = RecordingRunner()
-    bundle = _bundle(runner)
-    pgdata = Path(request.data_root) / "pgdata"
-    _write_complete_cluster(pgdata)
-    monkeypatch.setattr(windows_pgdata_security, "_require_exact_tree", lambda *_args, **_kwargs: None)
-
-    bundle.security.prepare_initdb_directory(request)
-    bundle.security.seal_pgdata_acl(request)
-
-    recursive = [
-        call
-        for call in runner.calls
-        if call[0] == "icacls" and call[1] == str(pgdata) and "/T" in call
-    ]
-    assert recursive
-    assert all("/L" in call for call in recursive)
 
 
 def test_initdb_refuses_to_create_pwfile_without_process_user_sid(
@@ -867,17 +866,19 @@ def test_initdb_retries_incomplete_cluster_instead_of_starting_it(tmp_path: Path
 
 def test_stopped_complete_cluster_reopens_bootstrap_read_without_rerunning_initdb(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
     bundle = _bundle(runner)
+    monkeypatch.setattr(windows_pgdata_security, "apply_protected_dacl", _record_pgdata_dacl(runner))
     bundle.files.apply(request, "programdata_root")
     data = Path(request.data_root) / "pgdata"
     _write_complete_cluster(data)
     runner.calls.clear()
     assert bundle.postgres.apply(request, "postgres_initdb") == "already-present"
     assert not any(call[0].endswith("initdb.exe") for call in runner.calls)
-    assert any(call[0] == "icacls" and "/T" in call for call in runner.calls)
+    assert not any(call[0] == "icacls" and "/T" in call for call in runner.calls)
     assert runner.pgdata_bootstrap_access is True
     conf = (data / "postgresql.conf").read_text(encoding="utf-8")
     assert "listen_addresses = '127.0.0.1'" in conf
@@ -1034,13 +1035,22 @@ def test_register_uses_pg_ctl_and_direct_immutable_backend(
         call[1] == log_dir and f"*{_BACKEND_SERVICE_SID}:(OI)(CI)M" in call
         for call in backend_acl_calls
     )
-    assert any(
-        call[0] == "icacls"
-        and call[1] == str(Path(request.data_root) / "pgdata")
-        and "/reset" in call
-        and "/T" in call
+    pgdata_acl_calls = [
+        call
         for call in runner.calls
-    )
+        if call[0] == "icacls" and call[1] == str(Path(request.data_root) / "pgdata")
+    ]
+    assert pgdata_acl_calls == [
+        (
+            "icacls",
+            str(Path(request.data_root) / "pgdata"),
+            "/setowner",
+            "*S-1-5-32-544",
+            "/T",
+            "/C",
+            "/L",
+        )
+    ]
     assert not any(call[0] == "icacls" and "/remove:g" in call for call in runner.calls)
     assert any(
         call[0] == "icacls"
@@ -1083,6 +1093,7 @@ def test_sealed_stopped_cluster_reopens_only_for_offline_verify_then_reseals(
     runner = RecordingRunner()
     runner.pgcontroldata_requires_bootstrap_access = True
     bundle = _bundle(runner)
+    monkeypatch.setattr(windows_pgdata_security, "apply_protected_dacl", _record_pgdata_dacl(runner))
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     active = Path(request.program_data_root) / "machine" / "operations" / "active.json"
@@ -1119,6 +1130,7 @@ def test_running_sealed_cluster_uses_online_identity_without_offline_pgdata_read
     runner = RecordingRunner()
     runner.pgcontroldata_requires_bootstrap_access = True
     bundle = _bundle(runner)
+    monkeypatch.setattr(windows_pgdata_security, "apply_protected_dacl", _record_pgdata_dacl(runner))
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     active = Path(request.program_data_root) / "machine" / "operations" / "active.json"
