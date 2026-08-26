@@ -87,7 +87,7 @@ def _request(tmp_path: Path) -> InstallRequest:
     )
 
 
-def test_active_publication_before_scm_preserves_the_single_directory_policy(tmp_path: Path) -> None:
+def test_active_publication_before_scm_preserves_bounded_directory_policies(tmp_path: Path) -> None:
     if not ctypes.windll.shell32.IsUserAnAdmin():
         if os.environ.get("CI"):
             pytest.fail("Windows operation-store contract lane must run elevated")
@@ -109,8 +109,10 @@ def test_active_publication_before_scm_preserves_the_single_directory_policy(tmp
 
     assert tuple(native._object_dacl_sddl(path) for path in paths) == before
     backend_sid = native.service_sid(runner, request.backend_service_name)
-    expected = (
+    interactive_sid = security._installation_reader_sid()
+    backend_only = (
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
         f"(A;;0x1000a0;;;{backend_sid})"
     )
-    assert before == (expected,) * len(paths)
+    manager_ancestor = backend_only + f"(A;;0x1000a0;;;{interactive_sid})"
+    assert before == (manager_ancestor, manager_ancestor, backend_only)

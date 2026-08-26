@@ -1534,7 +1534,7 @@ def test_exact_retry_reuses_only_already_protected_credentials(
     assert after == before
 
 
-def test_operation_root_policy_grants_the_shell_only_non_inheriting_traverse(
+def test_machine_ancestor_policy_grants_shell_exact_metadata_read(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1551,9 +1551,9 @@ def test_operation_root_policy_grants_the_shell_only_non_inheriting_traverse(
     assert policy.startswith("O:BA")
     assert ";;;SY)" in policy
     assert ";;;BA)" in policy
-    assert f"(A;;0x00000020;;;{shell_sid})" in policy
+    assert f"(A;;0x001000a0;;;{shell_sid})" in policy
     assert f"(A;;0x001000a0;;;{_BACKEND_SERVICE_SID})" in policy
-    assert f"OICI;0x00000020;;;{shell_sid}" not in policy
+    assert f"OICI;0x001000a0;;;{shell_sid}" not in policy
     assert shell_sid not in _argv_text(runner.calls)
 
 

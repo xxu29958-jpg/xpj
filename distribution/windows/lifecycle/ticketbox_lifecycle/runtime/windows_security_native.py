@@ -160,7 +160,7 @@ def _lifecycle_directory_sddl(
         + f"(A;;0x001000a0;;;{backend_reader_sid})"
     )
     if interactive_reader_sid is not None:
-        policy += f"(A;;0x00000020;;;{interactive_reader_sid})"
+        policy += f"(A;;0x001000a0;;;{interactive_reader_sid})"
     return policy
 
 

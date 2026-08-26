@@ -25,27 +25,27 @@ class WindowsSecurityAdapter:
         require_closed_data_root(request)
         backend_reader_sid, interactive_reader_sid = self._operation_store_reader_sids(request)
         paths = (
-            Path(request.program_data_root),
-            layout.machine_root(request),
-            layout.active_operation(request).parent,
+            (Path(request.program_data_root), interactive_reader_sid),
+            (layout.machine_root(request), interactive_reader_sid),
+            (layout.active_operation(request).parent, None),
         )
-        for path in paths:
+        for path, path_interactive_reader_sid in paths:
             native.reject_reparse_components(path)
             if os.path.lexists(path):
                 native.require_protected_directory(
                     path,
                     backend_reader_sid=backend_reader_sid,
-                    interactive_reader_sid=interactive_reader_sid,
+                    interactive_reader_sid=path_interactive_reader_sid,
                     code="operation_store_untrusted",
                 )
             else:
                 native.create_protected_directory(
                     path,
                     backend_reader_sid=backend_reader_sid,
-                    interactive_reader_sid=interactive_reader_sid,
+                    interactive_reader_sid=path_interactive_reader_sid,
                     code="operation_store_create_failed",
                 )
-        pending = paths[-1] / layout.ACTIVE_OPERATION_TEMP_NAME
+        pending = paths[-1][0] / layout.ACTIVE_OPERATION_TEMP_NAME
         if os.path.lexists(pending):
             _require_active_temp(pending, code="operation_store_orphan_untrusted")
             try:
@@ -67,14 +67,17 @@ class WindowsSecurityAdapter:
         native.reject_reparse_components(data_root)
         if os.path.lexists(data_root):
             _raise_preexisting_mutable_state()
-        expected_children = ((root, machine), (machine, operations))
-        for parent, expected_child in expected_children:
+        expected_children = (
+            (root, machine, interactive_reader_sid),
+            (machine, operations, interactive_reader_sid),
+        )
+        for parent, expected_child, path_interactive_reader_sid in expected_children:
             if not os.path.lexists(parent):
                 return
             native.require_protected_directory(
                 parent,
                 backend_reader_sid=backend_reader_sid,
-                interactive_reader_sid=interactive_reader_sid,
+                interactive_reader_sid=path_interactive_reader_sid,
                 code="operation_store_untrusted",
             )
             entries = list(parent.iterdir())
@@ -85,7 +88,7 @@ class WindowsSecurityAdapter:
         native.require_protected_directory(
             operations,
             backend_reader_sid=backend_reader_sid,
-            interactive_reader_sid=interactive_reader_sid,
+            interactive_reader_sid=None,
             code="operation_store_untrusted",
         )
         entries = list(operations.iterdir())
@@ -306,7 +309,7 @@ class WindowsSecurityAdapter:
     def _operation_store_reader_sids(self, request: InstallRequest) -> tuple[str, str | None]:
         return (
             native.service_sid(self._runner, request.backend_service_name),
-            None,
+            self._installation_reader_sid(),
         )
 
     @staticmethod

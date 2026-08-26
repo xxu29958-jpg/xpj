@@ -234,7 +234,7 @@ def test_lifecycle_directory_sddl_is_valid_and_canonical() -> None:
     interactive_sid = "S-1-5-21-9-9-9-1002"
     assert native._canonical_lifecycle_directory_sddl(backend_sid, interactive_sid) == (
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-        f"(A;;0x1000a0;;;{backend_sid})(A;;WP;;;{interactive_sid})"
+        f"(A;;0x1000a0;;;{backend_sid})(A;;0x1000a0;;;{interactive_sid})"
     )
 
 
