@@ -57,5 +57,9 @@ def test_active_publication_before_scm_preserves_the_single_directory_policy(tmp
     security.prepare_operation_store(request)
 
     assert tuple(native._object_dacl_sddl(path) for path in paths) == before
-    assert all("S-1-5-80-" in descriptor for descriptor in before)
-    assert all("(A;;WP;" in descriptor for descriptor in before)
+    backend_sid = native.service_sid(runner, request.backend_service_name)
+    expected = (
+        "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+        f"(A;;WPLO;;;{backend_sid})"
+    )
+    assert before == (expected,) * len(paths)
