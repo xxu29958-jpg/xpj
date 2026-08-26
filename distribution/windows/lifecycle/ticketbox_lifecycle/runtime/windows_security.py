@@ -221,6 +221,10 @@ class WindowsSecurityAdapter:
 
     def verify_backend_runtime_authority(self, request: InstallRequest) -> None:
         service_sid = native.service_sid(self._runner, request.backend_service_name)
+        service_markers = (
+            f"{service_sid.upper()}:",
+            f"NT SERVICE\\{request.backend_service_name}".upper() + ":",
+        )
         for path, writable in (
             (Path(request.data_root), False),
             (Path(request.data_root) / "app", True),
@@ -228,7 +232,9 @@ class WindowsSecurityAdapter:
         ):
             completed = self._runner.run(["icacls", str(path)])
             text = f"{completed.stdout}\n{completed.stderr}".upper()
-            service_lines = [line for line in text.splitlines() if service_sid in line]
+            service_lines = [
+                line for line in text.splitlines() if any(marker in line for marker in service_markers)
+            ]
             if completed.returncode != 0 or not service_lines or native.has_broad_reader(text):
                 raise LifecycleError(
                     "backend_directory_acl_verify_failed",
@@ -246,13 +252,7 @@ class WindowsSecurityAdapter:
         text = f"{completed.stdout}\n{completed.stderr}".upper()
         if completed.returncode != 0:
             raise LifecycleError("runtime_authority_acl_verify_failed", "icacls could not read active.json")
-        if not any(
-            marker in text
-            for marker in (
-                service_sid.upper(),
-                f"NT SERVICE\\{request.backend_service_name}".upper(),
-            )
-        ):
+        if not any(marker in text for marker in service_markers):
             raise LifecycleError(
                 "runtime_authority_acl_missing_backend",
                 "active.json is not readable by TicketboxBackend",

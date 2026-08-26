@@ -166,6 +166,7 @@ class RecordingRunner:
         self.pgcontroldata_requires_bootstrap_access = False
         self.fail_password_sql = False
         self.owner_claim_failure_output: str | None = None
+        self.backend_acl_identity = "NT SERVICE\\TicketboxBackend"
 
     def run(
         self,
@@ -440,7 +441,9 @@ class RecordingRunner:
                 continue
             for part in call:
                 if ":(" in part:
-                    grants.append(part)
+                    grants.append(
+                        part.replace(f"*{_BACKEND_SERVICE_SID}", self.backend_acl_identity)
+                    )
         rendered = "\n".join(grants) or "*S-1-5-18:(F)\n*S-1-5-32-544:(F)"
         return CompletedCommand(recorded, 0, f"{recorded[1]} {rendered}\n", "")
 
@@ -1098,6 +1101,10 @@ def test_register_uses_pg_ctl_and_direct_immutable_backend(
     assert "DATABASE_URL=" not in text
     helper_calls = [call for call in runner.calls if call[0].endswith("ticketbox-database-maintenance.exe")]
     assert helper_calls == []
+    runner.backend_acl_identity = "NT SERVICE\\TicketboxBackendForeign"
+    with pytest.raises(LifecycleError) as raised:
+        bundle.security.verify_backend_runtime_authority(request)
+    assert raised.value.code == "backend_directory_acl_verify_failed"
 
 
 def test_sealed_stopped_cluster_reopens_only_for_offline_verify_then_reseals(
