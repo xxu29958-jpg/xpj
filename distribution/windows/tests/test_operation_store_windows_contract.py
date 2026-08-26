@@ -5,13 +5,64 @@ import os
 from pathlib import Path
 
 import pytest
+from ticketbox_lifecycle.runtime import windows_dacl
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner
-from ticketbox_lifecycle.runtime.windows_file_security import WindowsFileSecurity
+from ticketbox_lifecycle.runtime.windows_file_security import WindowsFileSecurity, file_dacl_sddl
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows operation-store ACL contract")
+
+
+def test_backend_reader_can_inspect_exact_authority_without_browse_or_write(
+    tmp_path: Path,
+) -> None:
+    reader_sid = native.current_process_user_sid()
+    assert reader_sid is not None
+    service_sid = "S-1-5-80-2773621439-1206139620-3556766058-292034643-3006528458"
+    root = tmp_path / "programdata"
+    machine = root / "machine"
+    operations = machine / "operations"
+    operations.mkdir(parents=True)
+    active = operations / "active.json"
+    active.write_bytes(b"{}\n")
+    windows_dacl.apply_protected_dacl(
+        active,
+        file_dacl_sddl((reader_sid,)),
+        code="test_active_acl_failed",
+    )
+    production_policy = native._lifecycle_directory_sddl(service_sid, None)
+    reader_policy = ("D:P" + production_policy[production_policy.rindex("(A;;") :]).replace(
+        service_sid,
+        reader_sid,
+    )
+    for path in (operations, machine, root):
+        windows_dacl.apply_protected_dacl(
+            path,
+            reader_policy,
+            code="test_operation_store_acl_failed",
+        )
+
+    try:
+        for path in (root, machine, operations, active):
+            path.lstat()
+        assert active.read_bytes() == b"{}\n"
+        with pytest.raises(PermissionError):
+            list(operations.iterdir())
+        with pytest.raises(PermissionError):
+            (operations / "forbidden.json").write_bytes(b"{}\n")
+    finally:
+        cleanup_policy = (
+            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+            f"(A;OICI;FA;;;{reader_sid})"
+        )
+        for path in (root, machine, operations):
+            windows_dacl.apply_protected_dacl(
+                path,
+                cleanup_policy,
+                code="test_operation_store_cleanup_failed",
+            )
 
 
 def _request(tmp_path: Path) -> InstallRequest:
@@ -60,6 +111,6 @@ def test_active_publication_before_scm_preserves_the_single_directory_policy(tmp
     backend_sid = native.service_sid(runner, request.backend_service_name)
     expected = (
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-        f"(A;;CCWPLO;;;{backend_sid})"
+        f"(A;;0x1000a0;;;{backend_sid})"
     )
     assert before == (expected,) * len(paths)

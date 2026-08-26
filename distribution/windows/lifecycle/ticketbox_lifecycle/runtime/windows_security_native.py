@@ -157,7 +157,7 @@ def _lifecycle_directory_sddl(
         raise LifecycleViolation("interactive_sid_invalid", "interactive user SID is not canonical")
     policy = (
         _LIFECYCLE_DIRECTORY_BASE_SDDL
-        + f"(A;;0x000000a1;;;{backend_reader_sid})"
+        + f"(A;;0x001000a0;;;{backend_reader_sid})"
     )
     if interactive_reader_sid is not None:
         policy += f"(A;;0x00000020;;;{interactive_reader_sid})"
