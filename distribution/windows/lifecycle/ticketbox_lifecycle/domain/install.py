@@ -86,22 +86,33 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
         else None
     )
     request_hash = hash_install_identity(request)
-    binding = stores.binding_read.read()
-    _refuse_second_identity(binding, request, existing, committed)
-    if existing is not None:
-        _require_matching_operation(existing, request, request_hash)
-        if existing.phase == "committed":
+    operation = existing or committed
+    if operation is not None:
+        _require_matching_operation(operation, request, request_hash)
+        if operation.phase == "committed":
+            binding = stores.binding_read.read()
+            _refuse_second_identity(binding, request, existing, committed)
             if request.command != "resume":
                 raise LifecycleViolation("already_installed", "committed delivery requires resume")
-            return _replay_committed_result(stores, request, existing)
-    elif committed is not None:
-        _require_matching_operation(committed, request, request_hash)
-        if request.command != "resume":
-            raise LifecycleViolation("already_installed", "committed delivery requires resume")
-        return _replay_committed_result(stores, request, committed)
+            return _replay_committed_result(stores, request, operation)
 
     active = existing
     bound = None if active is None else _bind_operation_identity(request, active)
+    if active is None:
+        binding = stores.binding_read.read()
+    else:
+        try:
+            binding = stores.binding_read.read()
+        except (LifecycleError, OSError) as exc:
+            return _failed_operation_result(
+                stores,
+                request,
+                active,
+                bound,
+                installation_published=False,
+                primary=exc,
+            )
+    _refuse_second_identity(binding, request, existing, committed)
     installation_published = binding is not None
     try:
         observation = stores.observer.observe(request)
