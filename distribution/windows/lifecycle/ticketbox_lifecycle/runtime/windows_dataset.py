@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from http.client import HTTPResponse
 
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import DATABASE_NAME, RUNTIME_ROLE
@@ -13,6 +14,37 @@ from ticketbox_lifecycle.runtime.postgres_connection import (
 )
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.schemas import InstallRequest, OwnerPairing
+
+_HEALTH_BODY_LIMIT_BYTES = 16 * 1024
+_HEALTH_READ_CHUNK_BYTES = 4 * 1024
+_HEALTH_READ_TIMEOUT_SECONDS = 1
+_HEALTH_TOTAL_TIMEOUT_SECONDS = 5
+
+
+def _read_health_body(response: HTTPResponse) -> bytes:
+    deadline = time.monotonic() + _HEALTH_TOTAL_TIMEOUT_SECONDS
+    body = bytearray()
+    while time.monotonic() < deadline:
+        remaining = _HEALTH_BODY_LIMIT_BYTES + 1 - len(body)
+        try:
+            chunk = response.read1(min(_HEALTH_READ_CHUNK_BYTES, remaining))
+        except OSError as exc:
+            raise LifecycleError(
+                "health_unreachable",
+                "installation health response read failed",
+            ) from exc
+        if not chunk:
+            return bytes(body)
+        body.extend(chunk)
+        if len(body) > _HEALTH_BODY_LIMIT_BYTES:
+            raise LifecycleError(
+                "health_identity_mismatch",
+                "installation health response is too large",
+            )
+    raise LifecycleError(
+        "health_unreachable",
+        "installation health response deadline elapsed",
+    )
 
 
 class WindowsDatasetAdapter:
@@ -112,14 +144,19 @@ class WindowsDatasetAdapter:
         url = f"http://127.0.0.1:{request.backend_port}/api/health/installation"
         try:
             direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            with direct.open(url, timeout=5) as response:
+            with direct.open(url, timeout=_HEALTH_READ_TIMEOUT_SECONDS) as response:
                 if response.status != 200:
                     raise LifecycleError("health_failed", f"installation health returned {response.status}")
-                payload = json.loads(response.read().decode("utf-8"))
+                payload = json.loads(_read_health_body(response).decode("utf-8"))
         except urllib.error.URLError as exc:
             raise LifecycleError("health_unreachable", f"installation health is unreachable: {exc}") from exc
         except (UnicodeError, json.JSONDecodeError, TypeError) as exc:
             raise LifecycleError("health_identity_mismatch", "installation health is not JSON") from exc
+        if not isinstance(payload, dict):
+            raise LifecycleError(
+                "health_identity_mismatch",
+                "installation health must be a JSON object",
+            )
         if payload.get("contract") != "ticketbox-installation-health-v2" or payload.get("status") != "ok":
             raise LifecycleError("health_identity_mismatch", "installation health contract is not v2")
         if payload.get("backend_version") != request.target_release_id:

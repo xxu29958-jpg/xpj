@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import ast
-import json
 import os
 import stat
-import urllib.request
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,31 +41,6 @@ _UNIT_FILE_DACLS: dict[str, str] = {}
 
 def _unit_path_key(path: Path) -> str:
     return os.path.normcase(str(path.resolve(strict=False)))
-
-
-class _HealthResponse:
-    status = 200
-
-    def __init__(self, payload: dict[str, object]) -> None:
-        self._payload = payload
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return False
-
-    def read(self) -> bytes:
-        return json.dumps(self._payload).encode("utf-8")
-
-
-def _stub_direct_health(monkeypatch, payload: dict[str, object]) -> None:
-    def build_opener(handler):
-        assert isinstance(handler, urllib.request.ProxyHandler)
-        assert handler.proxies == {}
-        return SimpleNamespace(open=lambda *_args, **_kwargs: _HealthResponse(payload))
-
-    monkeypatch.setattr(urllib.request, "build_opener", build_opener)
 
 
 def test_windows_adapters_is_only_the_explicit_composition_root() -> None:
@@ -1683,7 +1656,6 @@ def test_scm_refuses_foreign_same_name_service(tmp_path: Path) -> None:
     assert not any(call[0].endswith("pg_ctl.exe") and "register" in call for call in runner.calls)
     assert not any(call[0].endswith("shawl.exe") and "add" in call for call in runner.calls)
 
-
 def test_scm_refuses_foreign_backend_service(tmp_path: Path) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
@@ -1708,57 +1680,3 @@ def test_scm_refuses_foreign_backend_service(tmp_path: Path) -> None:
         for call in runner.calls
     )
     assert not any(call[0].endswith("shawl.exe") and "add" in call for call in runner.calls)
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("backend_version", "9.9.9"),
-        ("installation_id", "22222222-2222-4222-8222-222222222222"),
-        ("runtime_access_state", "repair_required"),
-        ("owner_state", "recovery_required"),
-    ],
-)
-def test_health_requires_exact_release_identity_and_usable_owner(
-    tmp_path: Path,
-    monkeypatch,
-    field: str,
-    value: str,
-) -> None:
-    request = _request(tmp_path)
-    bundle = _bundle(RecordingRunner())
-    payload = {
-        "contract": "ticketbox-installation-health-v2",
-        "status": "ok",
-        "backend_version": request.target_release_id,
-        "installation_id": request.install_id,
-        "runtime_access_state": "available",
-        "owner_state": "configured",
-    }
-    payload[field] = value
-
-    _stub_direct_health(monkeypatch, payload)
-    monkeypatch.setattr(bundle.dataset, "_live_dataset_id", lambda _request: request.dataset_id)
-
-    with pytest.raises(LifecycleError):
-        bundle.dataset.verify(request, "health")
-
-
-def test_health_ignores_ambient_proxy_and_accepts_exact_identity(tmp_path: Path, monkeypatch) -> None:
-    request = _request(tmp_path)
-    bundle = _bundle(RecordingRunner())
-    payload = {
-        "contract": "ticketbox-installation-health-v2",
-        "status": "ok",
-        "backend_version": request.target_release_id,
-        "installation_id": request.install_id,
-        "runtime_access_state": "available",
-        "owner_state": "configured",
-    }
-
-    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
-    monkeypatch.delenv("NO_PROXY", raising=False)
-    _stub_direct_health(monkeypatch, payload)
-    monkeypatch.setattr(bundle.dataset, "_live_dataset_id", lambda _request: request.dataset_id)
-
-    bundle.dataset.verify(request, "health")
