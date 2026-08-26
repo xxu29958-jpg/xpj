@@ -6,7 +6,7 @@ import re
 import tempfile
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from pathlib import Path
 from typing import cast
 
@@ -39,6 +39,9 @@ from ticketbox_lifecycle.schemas import (
     InstallationBinding,
     InstallRequest,
 )
+
+_ACTIVE_OPERATION_FIELDS = frozenset(field.name for field in fields(ActiveOperation))
+_INSTALLATION_BINDING_FIELDS = frozenset(field.name for field in fields(InstallationBinding))
 
 
 class FilesystemStores:
@@ -134,11 +137,16 @@ class FilesystemStores:
 
     @staticmethod
     def _operation_from_payload(payload: dict[str, object]) -> ActiveOperation:
+        if set(payload) != _ACTIVE_OPERATION_FIELDS:
+            raise LifecycleError("bad_operation_fields", "operation fields are not closed")
         if payload.get("schema") != OPERATION_SCHEMA:
             raise LifecycleError("bad_operation_schema", "operation schema is not v2")
         completed_step = payload.get("completed_step")
         if completed_step is not None and completed_step not in APPLY_SEQUENCE:
             raise LifecycleError("bad_operation_progress", "operation completed_step is invalid")
+        health_attestation_key = str(payload.get("health_attestation_key") or "")
+        if re.fullmatch(r"[0-9a-f]{64}", health_attestation_key) is None:
+            raise LifecycleError("bad_operation_attestation", "operation health attestation key is invalid")
         return ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=str(payload["operation_id"]),
@@ -154,6 +162,7 @@ class FilesystemStores:
             install_id=str(payload.get("install_id") or ""),
             dataset_id=str(payload.get("dataset_id") or ""),
             schema_revision=str(payload.get("schema_revision") or ""),
+            health_attestation_key=health_attestation_key,
         )
 
     def prepare(self, request: InstallRequest) -> None:
@@ -225,6 +234,14 @@ class FilesystemStores:
         )
         if payload.get("schema") != INSTALLATION_SCHEMA:
             raise LifecycleError("bad_binding_schema", "installation.json schema is not v1")
+        if set(payload) != _INSTALLATION_BINDING_FIELDS:
+            raise LifecycleError("bad_binding_fields", "installation.json fields are not closed")
+        health_attestation_key = str(payload["health_attestation_key"])
+        if re.fullmatch(r"[0-9a-f]{64}", health_attestation_key) is None:
+            raise LifecycleError(
+                "bad_binding_attestation",
+                "installation.json health attestation key is invalid",
+            )
         return InstallationBinding(
             schema=INSTALLATION_SCHEMA,
             install_id=str(payload["install_id"]),
@@ -239,6 +256,7 @@ class FilesystemStores:
             backend_service_name=str(payload["backend_service_name"]),
             pg_port=int(payload["pg_port"]),
             backend_port=int(payload["backend_port"]),
+            health_attestation_key=health_attestation_key,
         )
 
     def publish(self, binding: InstallationBinding) -> None:

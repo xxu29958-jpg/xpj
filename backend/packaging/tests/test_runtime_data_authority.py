@@ -18,6 +18,7 @@ DATASET_ID = "22222222-2222-4222-8222-222222222222"
 OPERATION_ID = "33333333-3333-4333-8333-333333333333"
 RELEASE_ID = "1.2.0"
 MANIFEST_SHA = "a" * 64
+HEALTH_ATTESTATION_KEY = "c" * 64
 
 
 def _load_launch_module():
@@ -44,6 +45,7 @@ def _binding(data_root: Path) -> dict[str, object]:
         "backend_service_name": "TicketboxBackend",
         "pg_port": 5432,
         "backend_port": 8000,
+        "health_attestation_key": HEALTH_ATTESTATION_KEY,
     }
 
 
@@ -63,6 +65,7 @@ def _active(data_root: Path) -> dict[str, object]:
         "install_id": INSTALL_ID,
         "dataset_id": DATASET_ID,
         "schema_revision": "20260821_0001",
+        "health_attestation_key": HEALTH_ATTESTATION_KEY,
     }
 
 
@@ -102,11 +105,13 @@ def test_source_runtime_uses_explicit_data_dir_without_installed_authority(
 ) -> None:
     launch = _load_launch_module()
     preset = tmp_path / "source-data"
+    monkeypatch.setenv("TICKETBOX_HEALTH_ATTESTATION_KEY", "ambient")
     monkeypatch.setenv("TICKETBOX_DATA_DIR", str(preset))
     monkeypatch.setattr(launch.sys, "frozen", False, raising=False)
 
     assert launch.configure_environment() == preset.resolve()
     assert (preset / "uploads").is_dir()
+    assert "TICKETBOX_HEALTH_ATTESTATION_KEY" not in os.environ
 
 
 def test_frozen_service_initializes_runtime_settings_before_app_import(
@@ -205,6 +210,7 @@ def test_frozen_runtime_admits_exact_installation_binding(
 
     assert launch.configure_environment() == data_dir.resolve()
     assert (data_dir / "uploads").is_dir()
+    assert os.environ["TICKETBOX_HEALTH_ATTESTATION_KEY"] == HEALTH_ATTESTATION_KEY
 
 
 def test_frozen_runtime_admits_active_fresh_install_before_binding_publication(
@@ -216,6 +222,7 @@ def test_frozen_runtime_admits_active_fresh_install_before_binding_publication(
     _write_authority(program_data, "operations/active.json", _active(data_root))
 
     assert launch.configure_environment() == data_dir.resolve()
+    assert os.environ["TICKETBOX_HEALTH_ATTESTATION_KEY"] == HEALTH_ATTESTATION_KEY
 
 
 def test_active_fresh_install_never_probes_unpublished_binding(
@@ -318,7 +325,7 @@ def test_frozen_runtime_rejects_disagreeing_temporal_authorities(
     active = _active(data_root)
     active["phase"] = "committed"
     active["completed_step"] = "health"
-    active["release_manifest_sha256"] = "c" * 64
+    active["health_attestation_key"] = "d" * 64
     _write_authority(program_data, "operations/active.json", active)
 
     with pytest.raises(RuntimeError, match="authorities disagree"):
@@ -365,7 +372,10 @@ def test_dotenv_cannot_replace_frozen_service_identity(
         "TICKETBOX_DATASET_ID=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\n"
         "TICKETBOX_RELEASE_ID=attacker\n"
         "TICKETBOX_OWNER_RECOVERY_CHANNEL=operator\n"
-        "TICKETBOX_PORT=9999\n",
+        "TICKETBOX_PORT=9999\n"
+        + "TICKETBOX_HEALTH_ATTESTATION_KEY="
+        + "d" * 64
+        + "\n",
         encoding="utf-8",
     )
 
@@ -377,6 +387,7 @@ def test_dotenv_cannot_replace_frozen_service_identity(
     assert os.environ["TICKETBOX_RELEASE_ID"] == RELEASE_ID
     assert os.environ["TICKETBOX_OWNER_RECOVERY_CHANNEL"] == "managed_host"
     assert os.environ["TICKETBOX_PORT"] == "8000"
+    assert os.environ["TICKETBOX_HEALTH_ATTESTATION_KEY"] == HEALTH_ATTESTATION_KEY
 
 
 def test_runtime_entrypoint_contains_no_retired_marker_or_recovery_fallback() -> None:

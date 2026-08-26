@@ -115,3 +115,32 @@ def test_active_publication_before_scm_preserves_bounded_directory_policies(tmp_
         backend_sid, interactive_sid
     )
     assert before == (manager_ancestor, manager_ancestor, backend_only)
+
+
+def test_empty_broad_programdata_namespace_is_replaced_with_exact_policy(tmp_path: Path) -> None:
+    if not ctypes.windll.shell32.IsUserAnAdmin():
+        if os.environ.get("CI"):
+            pytest.fail("Windows operation-store contract lane must run elevated")
+        pytest.skip("production operation-store contract requires an elevated token")
+    request = _request(tmp_path)
+    root = Path(request.program_data_root)
+    root.mkdir()
+    current_sid = native.current_process_user_sid()
+    assert current_sid is not None
+    windows_dacl.apply_protected_dacl(
+        root,
+        f"D:P(A;OICI;FA;;;{current_sid})",
+        code="test_untrusted_product_root_failed",
+    )
+    runner = SubprocessCommandRunner()
+    security = WindowsSecurityAdapter(runner, WindowsFileSecurity())
+
+    security.require_fresh_inputs(request)
+    security.prepare_operation_store(request)
+
+    backend_sid = native.service_sid(runner, request.backend_service_name)
+    expected = native._canonical_lifecycle_directory_sddl(
+        backend_sid,
+        security._installation_reader_sid(),
+    )
+    assert native._object_dacl_sddl(root) == expected

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from backend_manager.dataset_inventory import BackupInventoryItem
 
-from backend_manager.process import HealthProbeResult
+from backend_manager.health_probe import HealthProbeResult
 from backend_manager.runtime import (
     RestoreOutcome,
     RuntimeControlError,

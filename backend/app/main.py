@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import UTC
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
@@ -111,6 +112,7 @@ from app.services.budget_advisor_audit_cleanup_scheduler import (
 )
 from app.services.device_cleanup_scheduler import start_device_cleanup_scheduler
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
+from app.services.installation_health_attestation import sign_health_challenge
 from app.services.installation_health_service import (
     InstallationDatabaseIdentityError,
     assert_installation_database_ready,
@@ -422,6 +424,7 @@ def health() -> StatusResponse:
 @app.get("/api/health/installation", response_model=InstallationHealthResponse, tags=["health"])
 def installation_health(
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ) -> InstallationHealthResponse:
     require_owner_console_local(request)
@@ -435,6 +438,19 @@ def installation_health(
             detail="Ticketbox database is not ready for installed-service traffic.",
         ) from exc
     mobile = installation_mobile_capabilities(settings.public_base_url)
+    attestation_key = os.environ.get("TICKETBOX_HEALTH_ATTESTATION_KEY", "").strip()
+    if attestation_key:
+        challenge = request.headers.get("X-Ticketbox-Health-Challenge", "").strip()
+        try:
+            response.headers["X-Ticketbox-Health-Attestation"] = sign_health_challenge(
+                attestation_key,
+                challenge,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Ticketbox installed health challenge is invalid.",
+            ) from exc
     return InstallationHealthResponse(
         backend_version=BACKEND_VERSION,
         installation_id=installation_identity(DATA_ROOT),

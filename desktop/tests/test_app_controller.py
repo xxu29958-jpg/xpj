@@ -277,6 +277,7 @@ def _installed_config(tmp_path: Path, *, port: int, service_suffix: str) -> Mana
         pg_service_name=f"TicketboxPg{service_suffix}",
         backend_version=f"1.0.{port}",
         install_id="11111111-1111-4111-8111-111111111111",
+        health_attestation_key="a" * 64,
     )
     release = WindowsReleaseConfig(
         backend_service_name=layout.backend_service_name,

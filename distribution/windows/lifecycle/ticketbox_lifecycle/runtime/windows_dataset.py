@@ -4,6 +4,7 @@ import json
 import time
 
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
+from ticketbox_lifecycle.policy.health_attestation import new_challenge, verifies_challenge
 from ticketbox_lifecycle.policy.postgres_roles import DATABASE_NAME, RUNTIME_ROLE
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import CommandRunner, sealed_pg_env
@@ -109,17 +110,48 @@ class WindowsDatasetAdapter:
         self._probe(request)
 
     def _probe(self, request: InstallRequest) -> str:
-        status, body = fetch_installation_health(request.backend_port)
+        challenge = new_challenge()
+        status, body, attestation = fetch_installation_health(
+            request.backend_port,
+            challenge=challenge,
+        )
         if status != 200:
             raise LifecycleError("health_failed", f"installation health returned {status}")
         try:
             payload = json.loads(body.decode("utf-8"))
         except (UnicodeError, ValueError, RecursionError, TypeError) as exc:
             raise LifecycleError("health_identity_mismatch", "installation health is not JSON") from exc
-        if not isinstance(payload, dict):
+        expected_fields = {
+            "contract",
+            "status",
+            "product",
+            "backend_version",
+            "installation_id",
+            "runtime_access_state",
+            "owner_state",
+            "owner_recovery_channel",
+            "mobile_connectivity",
+        }
+        if not isinstance(payload, dict) or set(payload) != expected_fields:
             raise LifecycleError(
                 "health_identity_mismatch",
-                "installation health must be a JSON object",
+                "installation health fields are not closed",
+            )
+        try:
+            attested = verifies_challenge(
+                request.health_attestation_key,
+                challenge,
+                attestation,
+            )
+        except ValueError as exc:
+            raise LifecycleError(
+                "health_identity_mismatch",
+                "installation health attestation input is invalid",
+            ) from exc
+        if not attested:
+            raise LifecycleError(
+                "health_identity_mismatch",
+                "installation health responder is not the bound backend",
             )
         if payload.get("contract") != "ticketbox-installation-health-v2" or payload.get("status") != "ok":
             raise LifecycleError("health_identity_mismatch", "installation health contract is not v2")

@@ -5,10 +5,13 @@ from __future__ import annotations
 from functools import partial
 
 from backend_manager.config import ConfigError, InstalledRuntimeConfig, ManagerConfig, SourceRuntimeConfig, load_config
-from backend_manager.process import (
-    TicketboxHealthExpectation,
+from backend_manager.health_probe import (
+    InstalledHealthExpectation,
+    SourceHealthExpectation,
     health_ok,
     probe_ticketbox_health,
+)
+from backend_manager.process import (
     spawn_backend,
     tree_kill,
 )
@@ -23,7 +26,7 @@ from backend_manager.windows_service import WindowsServiceGateway, WindowsServic
 
 
 def build_source_supervisor(config: ManagerConfig, runtime: SourceRuntimeConfig) -> BackendSupervisor:
-    expectation = TicketboxHealthExpectation(
+    expectation = SourceHealthExpectation(
         backend_version=config.expected_backend_version,
         installation_id=config.expected_installation_id,
     )
@@ -53,9 +56,10 @@ def build_direct_service_runtime(
     control_actions_allowed: bool,
     backend_stopped_validator=None,
 ) -> WindowsServiceRuntime:
-    expectation = TicketboxHealthExpectation(
-        backend_version=config.expected_backend_version,
+    expectation = InstalledHealthExpectation(
+        backend_version=runtime.layout.backend_version,
         installation_id=config.expected_installation_id,
+        attestation_key=runtime.layout.health_attestation_key,
     )
     release = runtime.release
     return WindowsServiceRuntime(
@@ -84,7 +88,7 @@ def build_direct_service_runtime(
 def build_runtime(config: ManagerConfig) -> BackendRuntime:
     runtime = config.runtime
     if isinstance(runtime, SourceRuntimeConfig):
-        expectation = TicketboxHealthExpectation(
+        expectation = SourceHealthExpectation(
             backend_version=config.expected_backend_version,
             installation_id=config.expected_installation_id,
         )

@@ -66,6 +66,7 @@ class InstalledLayout:
     pg_service_name: str
     backend_version: str
     install_id: str
+    health_attestation_key: str
 
     @property
     def app_data_dir(self) -> Path:
@@ -263,6 +264,7 @@ def parse_installed_binding(
         "backend_service_name",
         "pg_port",
         "backend_port",
+        "health_attestation_key",
     )
     missing = [name for name in required if payload.get(name) in (None, "")]
     if missing:
@@ -276,6 +278,9 @@ def parse_installed_binding(
         raise InstallationConfigError("installation.json install_id 不是 canonical UUID。") from exc
     if install_id != raw_install_id:
         raise InstallationConfigError("installation.json install_id 不是 canonical UUID。")
+    health_attestation_key = str(payload["health_attestation_key"])
+    if re.fullmatch(r"[0-9a-f]{64}", health_attestation_key) is None:
+        raise InstallationConfigError("installation.json health_attestation_key 无效。")
     return InstalledLayout(
         install_dir=Path(install_dir).resolve(),
         data_root=Path(str(payload["data_root"])).resolve(),
@@ -285,6 +290,7 @@ def parse_installed_binding(
         pg_service_name=_parse_service_name(str(payload["pg_service_name"]), "pg_service_name"),
         backend_version=_parse_backend_version(str(payload["active_release_id"])),
         install_id=install_id,
+        health_attestation_key=health_attestation_key,
     )
 
 

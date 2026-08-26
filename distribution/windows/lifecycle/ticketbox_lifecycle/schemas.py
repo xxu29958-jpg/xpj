@@ -65,6 +65,7 @@ class InstallRequest:
     schema_revision: str = ""
     schema_min_compatible: str = ""
     semantic_revision: str = ""
+    health_attestation_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,7 @@ class ActiveOperation:
     install_id: str = ""
     dataset_id: str = ""
     schema_revision: str = ""
+    health_attestation_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -125,6 +127,7 @@ class InstallationBinding:
     backend_service_name: str
     pg_port: int
     backend_port: int
+    health_attestation_key: str
 
 
 @dataclass(frozen=True)

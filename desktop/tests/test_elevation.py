@@ -28,6 +28,7 @@ from backend_manager.elevation import (
     start_helper_watchdog,
     write_helper_result,
 )
+from backend_manager.health_probe import InstalledHealthExpectation
 from backend_manager.helper_channel import channel_file_identity, open_exclusive_channel
 from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
 from backend_manager.lifecycle_lock import hold_installer_lifecycle_lock
@@ -427,6 +428,7 @@ def test_elevated_backup_delegates_to_installed_owner_without_python_lock(
         "TicketboxPg",
         "9.8.7",
         "11111111-1111-4111-8111-111111111111",
+        "a" * 64,
     )
     release = _release()
     config = ManagerConfig(
@@ -549,6 +551,7 @@ def test_cut_b_installed_ui_runtime_is_observation_only(monkeypatch, tmp_path: P
         "TicketboxPg",
         "9.8.7",
         "11111111-1111-4111-8111-111111111111",
+        "a" * 64,
     )
     release = _release()
     config = ManagerConfig(
@@ -573,3 +576,9 @@ def test_cut_b_installed_ui_runtime_is_observation_only(monkeypatch, tmp_path: P
     assert runtime._poll_seconds == 0.125  # noqa: SLF001 - wiring contract
     assert runtime._backend_ready_timeout_seconds == 31  # noqa: SLF001 - wiring contract
     assert runtime._backend_ready_poll_seconds == 0.375  # noqa: SLF001 - wiring contract
+    expectation = runtime._health_probe.keywords["expectation"]  # noqa: SLF001 - wiring contract
+    assert expectation == InstalledHealthExpectation(
+        installation_id=layout.installation_id,
+        backend_version=layout.backend_version,
+        attestation_key=layout.health_attestation_key,
+    )

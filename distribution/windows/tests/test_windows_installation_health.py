@@ -74,10 +74,11 @@ def test_health_transport_reads_fixed_loopback_response(monkeypatch) -> None:
     monkeypatch.delenv("NO_PROXY", raising=False)
 
     with _health_server(body) as port:
-        status, observed = health.fetch_installation_health(port)
+        status, observed, attestation = health.fetch_installation_health(port, challenge="a" * 64)
 
     assert status == 200
     assert observed == body
+    assert attestation is None
 
 
 def test_health_transport_rejects_oversized_response() -> None:
@@ -113,9 +114,11 @@ def test_health_transport_deadline_includes_status_and_headers(monkeypatch) -> N
     monkeypatch.setattr(health, "_TOTAL_TIMEOUT_SECONDS", 0.15)
     started = time.monotonic()
 
-    with _health_server(body, header_delay_seconds=0.02) as port:
-        with pytest.raises(LifecycleError) as caught:
-            health.fetch_installation_health(port)
+    with (
+        _health_server(body, header_delay_seconds=0.02) as port,
+        pytest.raises(LifecycleError) as caught,
+    ):
+        health.fetch_installation_health(port, challenge="a" * 64)
 
     assert caught.value.code == "health_unreachable"
     assert caught.value.message == "installation health response deadline elapsed"

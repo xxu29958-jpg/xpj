@@ -37,6 +37,7 @@ def _subject(tmp_path: Path) -> tuple[InstalledLayout, WindowsReleaseConfig, Pat
         pg_service_name="TicketboxPg",
         backend_version="1.2.3",
         install_id="11111111-1111-4111-8111-111111111111",
+        health_attestation_key="a" * 64,
     )
     script = layout.install_dir / "installer" / "windows_dataset_restore.ps1"
     script.parent.mkdir(parents=True)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import uuid
 from dataclasses import dataclass, replace
 
@@ -138,6 +139,7 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
                 install_id=request.install_id or str(uuid.uuid4()),
                 dataset_id=request.dataset_id or str(uuid.uuid4()),
                 schema_revision=request.schema_revision,
+                health_attestation_key=secrets.token_hex(32),
             )
             stores.operations_write.publish_active(candidate)
             active = candidate
@@ -290,6 +292,7 @@ def _bind_operation_identity(
         schema_revision=active.schema_revision or request.schema_revision,
         schema_min_compatible=request.schema_min_compatible,
         semantic_revision=request.semantic_revision,
+        health_attestation_key=active.health_attestation_key,
     )
 
 

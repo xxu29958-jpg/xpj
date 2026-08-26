@@ -29,15 +29,25 @@ class WindowsSecurityAdapter:
             (layout.machine_root(request), interactive_reader_sid),
             (layout.active_operation(request).parent, None),
         )
+        root = paths[0][0]
         for path, path_interactive_reader_sid in paths:
             native.reject_reparse_components(path)
             if os.path.lexists(path):
-                native.require_protected_directory(
-                    path,
-                    backend_reader_sid=backend_reader_sid,
-                    interactive_reader_sid=path_interactive_reader_sid,
-                    code="operation_store_untrusted",
-                )
+                try:
+                    native.require_protected_directory(
+                        path,
+                        backend_reader_sid=backend_reader_sid,
+                        interactive_reader_sid=path_interactive_reader_sid,
+                        code="operation_store_untrusted",
+                    )
+                except LifecycleViolation:
+                    if path != root or not _is_empty_product_root(path):
+                        raise
+                    _rebuild_empty_product_root(
+                        path,
+                        backend_reader_sid=backend_reader_sid,
+                        interactive_reader_sid=path_interactive_reader_sid,
+                    )
             else:
                 native.create_protected_directory(
                     path,
@@ -74,12 +84,16 @@ class WindowsSecurityAdapter:
         for parent, expected_child, path_interactive_reader_sid in expected_children:
             if not os.path.lexists(parent):
                 return
-            native.require_protected_directory(
-                parent,
-                backend_reader_sid=backend_reader_sid,
-                interactive_reader_sid=path_interactive_reader_sid,
-                code="operation_store_untrusted",
-            )
+            try:
+                native.require_protected_directory(
+                    parent,
+                    backend_reader_sid=backend_reader_sid,
+                    interactive_reader_sid=path_interactive_reader_sid,
+                    code="operation_store_untrusted",
+                )
+            except LifecycleViolation:
+                if parent != root or not _is_empty_product_root(parent):
+                    raise
             entries = list(parent.iterdir())
             if any(entry != expected_child for entry in entries):
                 _raise_preexisting_mutable_state()
@@ -350,6 +364,37 @@ def _raise_preexisting_mutable_state() -> None:
     raise LifecycleViolation(
         "preexisting_mutable_state",
         "fresh install refuses unbound mutable state",
+    )
+
+
+def _is_empty_product_root(path: Path) -> bool:
+    native.reject_reparse_components(path)
+    if not path.is_dir():
+        return False
+    try:
+        return next(path.iterdir(), None) is None
+    except OSError:
+        return False
+
+
+def _rebuild_empty_product_root(
+    path: Path,
+    *,
+    backend_reader_sid: str,
+    interactive_reader_sid: str | None,
+) -> None:
+    try:
+        path.rmdir()
+    except OSError as exc:
+        raise LifecycleError(
+            "operation_store_claim_failed",
+            "cannot claim the empty Ticketbox ProgramData namespace",
+        ) from exc
+    native.create_protected_directory(
+        path,
+        backend_reader_sid=backend_reader_sid,
+        interactive_reader_sid=interactive_reader_sid,
+        code="operation_store_create_failed",
     )
 
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from ticketbox_lifecycle.adapters.ports import BindingPublisher, BindingReader
 from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.schemas import (
@@ -50,6 +52,11 @@ def binding_from_request(request: InstallRequest) -> InstallationBinding:
             "missing_identity",
             "install_id and dataset_id must be bound before publication",
         )
+    if re.fullmatch(r"[0-9a-f]{64}", request.health_attestation_key) is None:
+        raise LifecycleViolation(
+            "missing_health_attestation",
+            "health attestation key must be bound before publication",
+        )
     return InstallationBinding(
         schema=INSTALLATION_SCHEMA,
         install_id=request.install_id,
@@ -64,4 +71,5 @@ def binding_from_request(request: InstallRequest) -> InstallationBinding:
         backend_service_name=request.backend_service_name,
         pg_port=request.pg_port,
         backend_port=request.backend_port,
+        health_attestation_key=request.health_attestation_key,
     )

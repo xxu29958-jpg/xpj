@@ -163,7 +163,12 @@ def test_resume_conflicting_binding_is_rejected_without_fencing(tmp_path: Path) 
     assert install_or_resume(stores.as_lifecycle_stores(), request).ok is False
     active = stores.read_active()
     assert active is not None
-    bound = replace(request, install_id=active.install_id, dataset_id=active.dataset_id)
+    bound = replace(
+        request,
+        install_id=active.install_id,
+        dataset_id=active.dataset_id,
+        health_attestation_key=active.health_attestation_key,
+    )
     stores.publish(
         replace(
             binding_from_request(bound),

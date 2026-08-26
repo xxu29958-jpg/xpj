@@ -70,7 +70,7 @@ def _read_body(response: HTTPResponse, *, deadline: float) -> bytes:
             )
 
 
-def fetch_installation_health(backend_port: int) -> tuple[int, bytes]:
+def fetch_installation_health(backend_port: int, *, challenge: str) -> tuple[int, bytes, str | None]:
     deadline = time.monotonic() + _TOTAL_TIMEOUT_SECONDS
     connection = HTTPConnection("127.0.0.1", backend_port, timeout=_remaining_seconds(deadline))
     network_socket: socket.socket | None = None
@@ -84,13 +84,17 @@ def fetch_installation_health(backend_port: int) -> tuple[int, bytes]:
         connection.request(
             "GET",
             "/api/health/installation",
-            headers={"Accept": "application/json", "Connection": "close"},
+            headers={
+                "Accept": "application/json",
+                "Connection": "close",
+                "X-Ticketbox-Health-Challenge": challenge,
+            },
         )
         connection.sock = None
         response = HTTPResponse(_DeadlineSocket(network_socket, deadline), method="GET")
         response.begin()
         body = b"" if response.status != 200 else _read_body(response, deadline=deadline)
-        return response.status, body
+        return response.status, body, response.getheader("X-Ticketbox-Health-Attestation")
     except TimeoutError as exc:
         raise LifecycleError(
             "health_unreachable",

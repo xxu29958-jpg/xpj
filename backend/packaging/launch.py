@@ -56,6 +56,7 @@ _FROZEN_HOST_AUTHORITY_KEYS = (
     "TICKETBOX_OWNER_RECOVERY_CHANNEL",
     "TICKETBOX_PORT",
 )
+_HEALTH_ATTESTATION_ENV = "TICKETBOX_HEALTH_ATTESTATION_KEY"
 _MANAGED_SCHEMA_UPGRADE_SWITCH = "--managed-schema-upgrade"
 _FRESH_SCHEMA_UPGRADE_SWITCH = "--fresh-schema-upgrade"
 _FRESH_OWNER_CLAIM_SWITCH = "--fresh-owner-claim"
@@ -554,11 +555,13 @@ def _closed_authorities(
         "schema", "install_id", "dataset_id", "expected_restore_epoch", "data_root",
         "active_release_id", "previous_release_id", "release_manifest_sha256", "postgres_major",
         "pg_service_name", "backend_service_name", "pg_port", "backend_port",
+        "health_attestation_key",
     }
     active_fields = {
         "schema", "operation_id", "kind", "request_hash", "target_release_id", "data_root",
         "release_manifest_sha256", "backend_port", "phase", "no_return_point",
         "completed_step", "install_id", "dataset_id", "schema_revision",
+        "health_attestation_key",
     }
     if binding is not None:
         if set(binding) != binding_fields:
@@ -609,12 +612,13 @@ def _assert_authority_contract(
             and type(payload.get("backend_port")) is int
             and payload.get("backend_port") == port
             and re.fullmatch(r"[0-9a-f]{64}", str(payload.get("release_manifest_sha256", ""))) is not None
+            and re.fullmatch(r"[0-9a-f]{64}", str(payload.get("health_attestation_key", ""))) is not None
         )
         if not exact:
             raise RuntimeError("Ticketbox runtime authority does not match the service contract")
 
 
-def _assert_vnext_runtime_authority(data_dir: Path) -> None:
+def _assert_vnext_runtime_authority(data_dir: Path) -> str:
     install_id, dataset_id, release_id, port = _frozen_service_contract(data_dir)
     executable = Path(os.path.abspath(sys.executable))
     try:
@@ -634,15 +638,24 @@ def _assert_vnext_runtime_authority(data_dir: Path) -> None:
         port=port,
     )
     if binding is not None and active is not None:
-        for field in ("install_id", "dataset_id", "data_root", "release_manifest_sha256", "backend_port"):
+        for field in (
+            "install_id",
+            "dataset_id",
+            "data_root",
+            "release_manifest_sha256",
+            "backend_port",
+            "health_attestation_key",
+        ):
             if binding[field] != active[field]:
                 raise RuntimeError("published and active runtime authorities disagree")
+    return str(authorities[0]["health_attestation_key"])
 
 
 
-def _assert_runtime_data_root_authority(data_dir: Path) -> None:
+def _assert_runtime_data_root_authority(data_dir: Path) -> str | None:
     if getattr(sys, "frozen", False):
-        _assert_vnext_runtime_authority(data_dir)
+        return _assert_vnext_runtime_authority(data_dir)
+    return None
 
 
 def configure_environment() -> Path:
@@ -658,7 +671,8 @@ def configure_environment() -> Path:
     # These values are supplied by the host/service contract. The writable
     # app .env may configure business settings but cannot replace host identity.
     host_authority = {key: os.environ.get(key) for key in _FROZEN_HOST_AUTHORITY_KEYS}
-    _assert_runtime_data_root_authority(data_dir)
+    os.environ.pop(_HEALTH_ATTESTATION_ENV, None)
+    health_attestation_key = _assert_runtime_data_root_authority(data_dir)
     (data_dir / "uploads").mkdir(parents=True, exist_ok=True)
 
     # Anchor app.config.DATA_ROOT here so writable files the backend *creates*
@@ -682,6 +696,10 @@ def configure_environment() -> Path:
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
+    if health_attestation_key is None:
+        os.environ.pop(_HEALTH_ATTESTATION_ENV, None)
+    else:
+        os.environ[_HEALTH_ATTESTATION_ENV] = health_attestation_key
 
     # DATABASE_URL is intentionally not defaulted: the backend is PostgreSQL-only.
     # A user .env may set it; otherwise app.config supplies the local-PostgreSQL

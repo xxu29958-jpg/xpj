@@ -36,6 +36,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\lifecycle\ticketbox_lifecycle\domain\install.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\domain\planner.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\policy\__init__.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\policy\health_attestation.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\policy\postgres_roles.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\policy\windows_scm_contract.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\__init__.py",

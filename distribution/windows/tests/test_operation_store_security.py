@@ -158,6 +158,7 @@ def _prepared_operation(request: InstallRequest) -> ActiveOperation:
         install_id=request.install_id or "",
         dataset_id=request.dataset_id or "",
         schema_revision=request.schema_revision,
+        health_attestation_key="d" * 64,
     )
 
 
@@ -191,6 +192,34 @@ def test_precreated_root_with_retained_handle_is_rejected_before_acl_mutation(
         for call in runner.calls
     )
     assert not (root / "machine" / "operations" / "active.json").exists()
+
+
+def test_empty_untrusted_product_root_is_rebuilt_instead_of_adopted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    root = Path(request.program_data_root)
+    root.mkdir()
+    owners = {root: "S-1-5-21-9-9-9-1002"}
+    monkeypatch.setattr(
+        native,
+        "file_owner_sid",
+        lambda path: owners.get(Path(path), native.ADMINISTRATORS_SID),
+    )
+
+    def create_directory(path: Path, **_kwargs) -> None:
+        path.mkdir()
+        owners[path] = native.ADMINISTRATORS_SID
+
+    monkeypatch.setattr(native, "create_protected_directory", create_directory)
+    security = WindowsSecurityAdapter(RecordingRunner(), _FORBIDDEN_FILE_SECURITY)
+
+    security.require_fresh_inputs(request)
+    security.prepare_operation_store(request)
+
+    assert (root / "machine" / "operations").is_dir()
+    assert native.file_owner_sid(root) == native.ADMINISTRATORS_SID
 
 
 @pytest.mark.parametrize("relative", [".", "machine", "machine/operations"])

@@ -65,6 +65,7 @@ def _active() -> ActiveOperation:
         install_id="22222222-2222-4222-8222-222222222222",
         dataset_id="33333333-3333-4333-8333-333333333333",
         schema_revision="20260821_0001",
+        health_attestation_key="a" * 64,
     )
 
 
@@ -83,6 +84,7 @@ def _binding() -> InstallationBinding:
         backend_service_name="TicketboxBackend",
         pg_port=5432,
         backend_port=8000,
+        health_attestation_key="a" * 64,
     )
 
 
@@ -137,6 +139,20 @@ def test_active_reader_rejects_an_unknown_completed_step(tmp_path: Path) -> None
 
     with pytest.raises(LifecycleError, match="completed_step is invalid"):
         stores.read_active()
+
+
+@pytest.mark.parametrize("reader", ["active", "binding"])
+def test_machine_authority_readers_reject_an_extra_field(tmp_path: Path, reader: str) -> None:
+    stores = _stores(tmp_path, RecordingSecurity())
+    payload = asdict(_active() if reader == "active" else _binding())
+    payload["legacy_fallback"] = True
+    relative = "operations/active.json" if reader == "active" else "installation.json"
+    path = tmp_path / "machine" / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(LifecycleError, match="fields are not closed"):
+        stores.read_active() if reader == "active" else stores.read()
 
 
 def test_committed_history_is_protected_and_verified_before_replay(tmp_path: Path) -> None:

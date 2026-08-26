@@ -59,6 +59,7 @@ def test_installed_release_config_comes_only_from_binding_layout(tmp_path: Path)
         pg_service_name="TicketboxPg",
         backend_version="1.2.0",
         install_id=_INSTALL_ID,
+        health_attestation_key="a" * 64,
     )
     retired_config = layout.install_dir / "installer" / "windows-release-config.json"
     retired_config.parent.mkdir(parents=True)
@@ -146,6 +147,7 @@ def test_parse_installed_binding_uses_installation_json_not_registry_dataroot(tm
             "backend_service_name": "TicketboxBackend",
             "pg_port": 5432,
             "backend_port": 8000,
+            "health_attestation_key": "a" * 64,
         },
         str(tmp_path / "program"),
     )
@@ -174,6 +176,7 @@ def test_discover_installed_layout_requires_binding_and_uses_registry_only_as_lo
             "backend_service_name": "TicketboxBackend",
             "pg_port": 5432,
             "backend_port": 8000,
+            "health_attestation_key": "a" * 64,
         },
     )
     monkeypatch.setattr(
