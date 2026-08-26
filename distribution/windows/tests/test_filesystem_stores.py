@@ -28,6 +28,11 @@ class RecordingSecurity:
         if self.reject_reads:
             raise LifecycleViolation("machine_state_untrusted", "machine JSON has no trusted owner")
 
+    def verify_binding_json(self, path: Path, reader_service: str) -> None:
+        self.calls.append(("verify-binding", path, reader_service))
+        if self.reject_reads:
+            raise LifecycleViolation("machine_state_untrusted", "machine JSON has no trusted owner")
+
     def protect_machine_json(self, path: Path, reader_service: str) -> None:
         self.calls.append(("protect", path, reader_service))
 
@@ -101,7 +106,8 @@ def test_machine_json_is_verified_before_content_is_parsed(
     with pytest.raises(LifecycleViolation, match="trusted owner"):
         stores.read_active() if reader == "active" else stores.read()
 
-    assert security.calls == [("verify", path, "TicketboxBackend")]
+    expected_call = "verify" if reader == "active" else "verify-binding"
+    assert security.calls == [(expected_call, path, "TicketboxBackend")]
 
 
 def test_active_publication_protects_and_verifies_exact_file(tmp_path: Path) -> None:
@@ -164,6 +170,6 @@ def test_binding_publication_sets_exact_readers_before_replace_and_reverifies(tm
     assert temp_path.name.startswith("installation.json") and temp_path.name.endswith(".tmp")
     assert security.calls == [
         ("grant-binding", temp_path, "TicketboxBackend"),
-        ("verify", temp_path, "TicketboxBackend"),
-        ("verify", path, "TicketboxBackend"),
+        ("verify-binding", temp_path, "TicketboxBackend"),
+        ("verify-binding", path, "TicketboxBackend"),
     ]

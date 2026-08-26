@@ -193,6 +193,22 @@ def test_setup_failure_surfaces_include_the_actual_log_path() -> None:
     assert "logoutput" in lifecycle_run.lower()
 
 
+def test_setup_request_and_elevated_verifier_share_one_closed_machine_contract() -> None:
+    from ticketbox_lifecycle.runtime import windows_shipment
+
+    text = ISS.read_text(encoding="utf-8-sig")
+
+    assert f'#define PgServiceName "{windows_shipment.PG_SERVICE_NAME}"' in text
+    assert f'#define BackendServiceName "{windows_shipment.BACKEND_SERVICE_NAME}"' in text
+    assert f'#define DefaultPgPort "{windows_shipment.PG_PORT}"' in text
+    assert f'#define DefaultBackendPort "{windows_shipment.BACKEND_PORT}"' in text
+    assert f'"postgres_major":{windows_shipment.POSTGRES_MAJOR}' in text
+    assert '"program_data_root":"' in text
+    assert "ExpandConstant('{commonappdata}\\Ticketbox')" in text
+    assert '"data_root":"' in text
+    assert "ExpandConstant('{commonappdata}\\Ticketbox\\data')" in text
+
+
 def test_setup_failure_uses_stable_code_not_unescaped_json_message() -> None:
     text = ISS.read_text(encoding="utf-8-sig")
     failure = text.split("function TicketboxResultFailure", 1)[1].split(

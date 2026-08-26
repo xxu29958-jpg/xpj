@@ -12,6 +12,7 @@ from ticketbox_lifecycle.errors import LifecycleViolation
 
 _FOLDERID_PROGRAM_FILES = UUID("905e63b6-c1bf-494e-b29c-65b732d3d21a")
 _FOLDERID_PROGRAM_FILES_COMMON_X64 = UUID("6365d5a7-0f0d-45e5-87f6-0da56b6a4f7d")
+_FOLDERID_PROGRAM_DATA = UUID("62ab5d82-fdc1-4dc3-a9dd-070d1d495d97")
 _COINIT_APARTMENTTHREADED = 0x2
 _RPC_E_CHANGED_MODE = 0x80010106
 
@@ -44,6 +45,14 @@ def ticketbox_control_root() -> Path:
         _FOLDERID_PROGRAM_FILES_COMMON_X64,
         code="common_files_unavailable",
         label="Common Files x64",
+    ) / "Ticketbox"
+
+
+def ticketbox_program_data_root() -> Path:
+    return _known_folder(
+        _FOLDERID_PROGRAM_DATA,
+        code="program_data_unavailable",
+        label="ProgramData",
     ) / "Ticketbox"
 
 

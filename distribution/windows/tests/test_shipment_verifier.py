@@ -11,7 +11,10 @@ import pytest
 from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.runtime.command import CompletedCommand
 from ticketbox_lifecycle.runtime.windows_alembic import WindowsAlembicAdapter
-from ticketbox_lifecycle.runtime.windows_known_folders import ticketbox_install_root
+from ticketbox_lifecycle.runtime.windows_known_folders import (
+    ticketbox_install_root,
+    ticketbox_program_data_root,
+)
 from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
@@ -67,7 +70,7 @@ def _request(tmp_path: Path, *, release_id: str = "1.2.0") -> tuple[InstallReque
         request_hash="pending",
         target_release_id=release_id,
         app_dir=str(app),
-        data_root=str(tmp_path / "data"),
+        data_root=str(tmp_path / "programdata" / "data"),
         program_data_root=str(tmp_path / "programdata"),
         pg_service_name="TicketboxPg",
         backend_service_name="TicketboxBackend",
@@ -80,7 +83,10 @@ def _request(tmp_path: Path, *, release_id: str = "1.2.0") -> tuple[InstallReque
 
 
 def _verifier(request: InstallRequest) -> WindowsShipmentVerifier:
-    return WindowsShipmentVerifier(Path(request.app_dir))
+    return WindowsShipmentVerifier(
+        Path(request.app_dir),
+        Path(request.program_data_root),
+    )
 
 
 def test_verifier_binds_release_semantics_and_accepts_only_the_closed_file_set(
@@ -196,12 +202,42 @@ def test_verifier_rejects_a_request_outside_the_bound_program_files_root(tmp_pat
     expected = tmp_path / "Program Files" / "Ticketbox"
 
     with pytest.raises(LifecycleViolation, match="Program Files"):
-        WindowsShipmentVerifier(expected).bind_and_verify(request)
+        WindowsShipmentVerifier(expected, Path(request.program_data_root)).bind_and_verify(request)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"program_data_root": r"C:\Users\Public\Ticketbox"},
+        {"data_root": r"C:\Users\Public\Ticketbox\data"},
+        {"pg_service_name": "ForeignPg"},
+        {"backend_service_name": "ForeignBackend"},
+        {"pg_port": 55432},
+        {"backend_port": 58000},
+        {"postgres_major": 16},
+    ],
+)
+def test_verifier_rejects_user_writable_request_changes_before_privileged_io(
+    tmp_path: Path,
+    changes: dict[str, object],
+) -> None:
+    request, _manifest = _request(tmp_path)
+
+    with pytest.raises(LifecycleViolation, match="trusted Setup contract"):
+        _verifier(request).bind_and_verify(replace(request, **changes))
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows known-folder contract")
 def test_native_program_files_binding_is_absolute_and_product_scoped() -> None:
     root = ticketbox_install_root()
+
+    assert root.is_absolute()
+    assert root.name == "Ticketbox"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows known-folder contract")
+def test_native_program_data_binding_is_absolute_and_product_scoped() -> None:
+    root = ticketbox_program_data_root()
 
     assert root.is_absolute()
     assert root.name == "Ticketbox"

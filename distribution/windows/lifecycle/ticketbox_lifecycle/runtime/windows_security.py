@@ -9,7 +9,7 @@ from ticketbox_lifecycle.runtime import windows_credentials as credentials
 from ticketbox_lifecycle.runtime import windows_pgdata_security as pgdata_security
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
-from ticketbox_lifecycle.runtime.windows_file_security import FileSecurity
+from ticketbox_lifecycle.runtime.windows_file_security import FileSecurity, file_dacl_sddl
 from ticketbox_lifecycle.schemas import InstallRequest
 
 
@@ -112,6 +112,21 @@ class WindowsSecurityAdapter:
         )
 
     def verify_machine_json(self, path: Path, reader_service: str) -> None:
+        self._verify_machine_json_dacl(
+            path,
+            (native.service_sid(self._runner, reader_service),),
+        )
+
+    def verify_binding_json(self, path: Path, reader_service: str) -> None:
+        self._verify_machine_json_dacl(
+            path,
+            (
+                native.service_sid(self._runner, reader_service),
+                self._installation_reader_sid(),
+            ),
+        )
+
+    def _verify_machine_json_dacl(self, path: Path, reader_sids: tuple[str, ...]) -> None:
         native.require_windows()
         native.reject_reparse_components(path)
         if not path.is_file():
@@ -125,10 +140,7 @@ class WindowsSecurityAdapter:
             self._runner,
             path,
             code="machine_state_untrusted",
-            required_reader_markers=(
-                native.service_sid(self._runner, reader_service),
-                f"NT SERVICE\\{reader_service}",
-            ),
+            expected_dacl_sddl=file_dacl_sddl(reader_sids),
         )
 
     def apply(self, request: InstallRequest, step: str) -> str:

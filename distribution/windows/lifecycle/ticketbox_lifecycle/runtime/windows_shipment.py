@@ -25,11 +25,17 @@ _MANIFEST_KEYS = {
 }
 _FILE_KEYS = {"path", "size", "sha256"}
 _PRODUCT_VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
+PG_SERVICE_NAME = "TicketboxPg"
+BACKEND_SERVICE_NAME = "TicketboxBackend"
+PG_PORT = 5432
+BACKEND_PORT = 8000
+POSTGRES_MAJOR = 17
 
 
 class WindowsShipmentVerifier:
-    def __init__(self, expected_app_dir: Path) -> None:
+    def __init__(self, expected_app_dir: Path, expected_program_data_root: Path) -> None:
         self._expected_app_dir = expected_app_dir
+        self._expected_program_data_root = expected_program_data_root
 
     def bind_and_verify(self, request: InstallRequest) -> InstallRequest:
         app_dir = Path(request.app_dir)
@@ -38,6 +44,7 @@ class WindowsShipmentVerifier:
                 "untrusted_install_root",
                 "installed application root must be the exact Ticketbox Program Files directory",
             )
+        _require_trusted_setup_contract(request, self._expected_program_data_root)
         manifest_path = (
             app_dir
             / "releases"
@@ -88,6 +95,35 @@ class WindowsShipmentVerifier:
             schema_revision=str(manifest["max_schema_revision"]),
             schema_min_compatible=str(manifest["product_version"]),
             semantic_revision=str(manifest["min_semantic_revision"]),
+        )
+
+
+def _require_trusted_setup_contract(
+    request: InstallRequest,
+    expected_program_data_root: Path,
+) -> None:
+    trusted = (
+        _absolute_path_key(expected_program_data_root),
+        _absolute_path_key(expected_program_data_root / "data"),
+        PG_SERVICE_NAME,
+        BACKEND_SERVICE_NAME,
+        PG_PORT,
+        BACKEND_PORT,
+        POSTGRES_MAJOR,
+    )
+    supplied = (
+        _absolute_path_key(Path(request.program_data_root)),
+        _absolute_path_key(Path(request.data_root)),
+        request.pg_service_name,
+        request.backend_service_name,
+        request.pg_port,
+        request.backend_port,
+        request.postgres_major,
+    )
+    if supplied != trusted:
+        raise LifecycleViolation(
+            "untrusted_setup_request",
+            "privileged request does not match the trusted Setup contract",
         )
 
 

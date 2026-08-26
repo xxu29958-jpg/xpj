@@ -4,6 +4,7 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict
 from pathlib import Path
@@ -19,6 +20,7 @@ from ticketbox_lifecycle.runtime.windows_file_security import WindowsFileSecurit
 from ticketbox_lifecycle.runtime.windows_known_folders import (
     ticketbox_control_root,
     ticketbox_install_root,
+    ticketbox_program_data_root,
 )
 from ticketbox_lifecycle.runtime.windows_scm_observation import NativeWindowsScmObserver
 from ticketbox_lifecycle.runtime.windows_security_native import (
@@ -66,7 +68,10 @@ class FilesystemStores:
     def as_lifecycle_stores(self) -> LifecycleStores:
         return LifecycleStores(
             mutex=self._mutex,
-            shipment=WindowsShipmentVerifier(ticketbox_install_root()),
+            shipment=WindowsShipmentVerifier(
+                ticketbox_install_root(),
+                ticketbox_program_data_root(),
+            ),
             observer=self,
             operations_read=self,
             operations_write=self,
@@ -95,7 +100,10 @@ class FilesystemStores:
         reject_reparse_components(self._active_path)
         if not self._active_path.is_file():
             return None
-        payload = self._read_verified_json(self._active_path)
+        payload = self._read_verified_json(
+            self._active_path,
+            self._adapters.security.verify_machine_json,
+        )
         return self._operation_from_payload(payload)
 
     def read_committed(self, operation_id: str) -> ActiveOperation | None:
@@ -108,7 +116,12 @@ class FilesystemStores:
         reject_reparse_components(path)
         if not path.is_file():
             return None
-        operation = self._operation_from_payload(self._read_verified_json(path))
+        operation = self._operation_from_payload(
+            self._read_verified_json(
+                path,
+                self._adapters.security.verify_machine_json,
+            )
+        )
         if operation.phase != "committed" or operation.operation_id != operation_id:
             raise LifecycleError(
                 "committed_history_invalid",
@@ -200,7 +213,10 @@ class FilesystemStores:
         reject_reparse_components(self._binding_path)
         if not self._binding_path.is_file():
             return None
-        payload = self._read_verified_json(self._binding_path)
+        payload = self._read_verified_json(
+            self._binding_path,
+            self._adapters.security.verify_binding_json,
+        )
         if payload.get("schema") != INSTALLATION_SCHEMA:
             raise LifecycleError("bad_binding_schema", "installation.json schema is not v1")
         return InstallationBinding(
@@ -228,12 +244,12 @@ class FilesystemStores:
                 tmp_path,
                 binding.backend_service_name,
             )
-            self._adapters.security.verify_machine_json(
+            self._adapters.security.verify_binding_json(
                 tmp_path,
                 binding.backend_service_name,
             )
             os.replace(tmp_path, self._binding_path)
-            self._adapters.security.verify_machine_json(
+            self._adapters.security.verify_binding_json(
                 self._binding_path,
                 binding.backend_service_name,
             )
@@ -241,10 +257,14 @@ class FilesystemStores:
             if tmp_path.exists():
                 tmp_path.unlink()
 
-    def _read_verified_json(self, path: Path) -> dict[str, object]:
-        self._adapters.security.verify_machine_json(path, self._backend_service_name)
+    def _read_verified_json(
+        self,
+        path: Path,
+        verifier: Callable[[Path, str], None],
+    ) -> dict[str, object]:
+        verifier(path, self._backend_service_name)
         text = path.read_text(encoding="utf-8")
-        self._adapters.security.verify_machine_json(path, self._backend_service_name)
+        verifier(path, self._backend_service_name)
         payload = json.loads(text)
         if not isinstance(payload, dict):
             raise LifecycleError("machine_state_invalid", f"{path.name} must contain a JSON object")

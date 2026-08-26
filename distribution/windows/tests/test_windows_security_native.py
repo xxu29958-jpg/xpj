@@ -15,6 +15,7 @@ from ticketbox_lifecycle.runtime.command import (
     SubprocessCommandRunner,
     require_ok,
 )
+from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 
 
 def test_file_dacl_policy_accepts_only_reader_sids() -> None:
@@ -63,6 +64,44 @@ def test_file_security_has_no_icacls_grant_or_fallback(
     assert applied == [
         (path, file_security.file_dacl_sddl((reader,)), "machine_state_acl_failed")
     ]
+
+
+@pytest.mark.parametrize("binding", [False, True])
+def test_machine_state_readers_require_the_producers_exact_dacl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    binding: bool,
+) -> None:
+    path = tmp_path / ("installation.json" if binding else "active.json")
+    path.write_text("{}\n", encoding="utf-8")
+    service_sid = "S-1-5-80-111-222-333-444-555"
+    interactive_sid = "S-1-5-21-9-9-9-1002"
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(native, "require_windows", lambda: None)
+    monkeypatch.setattr(native, "reject_reparse_components", lambda _path: None)
+    monkeypatch.setattr(native, "require_trusted_owner", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(native, "service_sid", lambda *_args: service_sid)
+    monkeypatch.setattr(
+        WindowsSecurityAdapter,
+        "_installation_reader_sid",
+        staticmethod(lambda: interactive_sid),
+    )
+
+    def require_acl(_runner, actual: Path, **kwargs: object) -> None:
+        observed["path"] = actual
+        observed.update(kwargs)
+
+    monkeypatch.setattr(native, "require_protected_file_acl", require_acl)
+
+    adapter = WindowsSecurityAdapter(object(), file_security.WindowsFileSecurity())
+    verifier = adapter.verify_binding_json if binding else adapter.verify_machine_json
+    verifier(path, "TicketboxBackend")
+
+    assert observed["path"] == path
+    assert observed["expected_dacl_sddl"] == file_security.file_dacl_sddl(
+        (service_sid, interactive_sid) if binding else (service_sid,)
+    )
 
 
 def _restricted_token_file_error(
