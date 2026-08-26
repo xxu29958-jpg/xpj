@@ -30,6 +30,7 @@ from ticketbox_lifecycle.schemas import (
     ActiveOperation,
     CommandResult,
     DurablePhase,
+    InstallationBinding,
     InstallRequest,
     OwnerPairing,
 )
@@ -85,7 +86,8 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
         else None
     )
     request_hash = hash_install_identity(request)
-    _refuse_second_identity(stores, request, existing, committed)
+    binding = stores.binding_read.read()
+    _refuse_second_identity(binding, request, existing, committed)
     if existing is not None:
         _require_matching_operation(existing, request, request_hash)
         if existing.phase == "committed":
@@ -98,36 +100,36 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             raise LifecycleViolation("already_installed", "committed delivery requires resume")
         return _replay_committed_result(stores, request, committed)
 
-    observation = stores.observer.observe(request)
-    plan = plan_fresh_install(request, observation)
-    if existing is None:
-        stores.operations_write.require_fresh_inputs(request)
-    stores.operations_write.prepare(request)
-    if existing is None:
-        schema_revision = request.schema_revision
-        active = ActiveOperation(
-            schema=OPERATION_SCHEMA,
-            operation_id=request.operation_id,
-            kind="install",
-            request_hash=request_hash,
-            target_release_id=request.target_release_id,
-            data_root=request.data_root,
-            release_manifest_sha256=request.release_manifest_sha256,
-            backend_port=request.backend_port,
-            phase="prepared",
-            no_return_point=False,
-            last_adapter_result=None,
-            install_id=request.install_id or str(uuid.uuid4()),
-            dataset_id=request.dataset_id or str(uuid.uuid4()),
-            schema_revision=schema_revision,
-        )
-        stores.operations_write.publish_active(active)
-    else:
-        active = existing
-
+    active = existing
+    bound = None if active is None else _bind_operation_identity(request, active)
+    installation_published = binding is not None
     try:
-        last_phase: DurablePhase = active.phase
+        observation = stores.observer.observe(request)
+        plan = plan_fresh_install(request, observation)
+        if active is None:
+            stores.operations_write.require_fresh_inputs(request)
+        stores.operations_write.prepare(request)
+        if active is None:
+            candidate = ActiveOperation(
+                schema=OPERATION_SCHEMA,
+                operation_id=request.operation_id,
+                kind="install",
+                request_hash=request_hash,
+                target_release_id=request.target_release_id,
+                data_root=request.data_root,
+                release_manifest_sha256=request.release_manifest_sha256,
+                backend_port=request.backend_port,
+                phase="prepared",
+                no_return_point=False,
+                last_adapter_result=None,
+                install_id=request.install_id or str(uuid.uuid4()),
+                dataset_id=request.dataset_id or str(uuid.uuid4()),
+                schema_revision=request.schema_revision,
+            )
+            stores.operations_write.publish_active(candidate)
+            active = candidate
         bound = _bind_operation_identity(request, active)
+        last_phase: DurablePhase = active.phase
         owner_pairing: OwnerPairing | None = None
         for step in plan.steps:
             if step.name == "owner_claim":
@@ -137,79 +139,36 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
                 adapter = adapter_for_step(stores.adapters, step.name)
                 result = _ensure_postcondition(adapter, bound, step.name)
             last_phase = phase_after(step.name)
-            active = ActiveOperation(
-                schema=OPERATION_SCHEMA,
-                operation_id=active.operation_id,
-                kind=active.kind,
-                request_hash=active.request_hash,
-                target_release_id=active.target_release_id,
-                data_root=active.data_root,
-                release_manifest_sha256=active.release_manifest_sha256,
-                backend_port=active.backend_port,
+            candidate = replace(
+                active,
                 phase=last_phase,
                 no_return_point=last_phase in {"data_ready", "release_activated"},
                 last_adapter_result=f"{step.name}:{result}",
-                install_id=active.install_id,
-                dataset_id=active.dataset_id,
-                schema_revision=active.schema_revision,
             )
-            stores.operations_write.publish_active(active)
+            stores.operations_write.publish_active(candidate)
+            active = candidate
 
         if owner_pairing is None:
             raise LifecycleViolation("owner_pairing_missing", "owner claim returned no pairing")
         ensure_runtime_binding(stores.binding_read, stores.binding_write, bound)
-        committed = ActiveOperation(
-            schema=OPERATION_SCHEMA,
-            operation_id=active.operation_id,
-            kind=active.kind,
-            request_hash=active.request_hash,
-            target_release_id=active.target_release_id,
-            data_root=active.data_root,
-            release_manifest_sha256=active.release_manifest_sha256,
-            backend_port=active.backend_port,
+        installation_published = True
+        committed = replace(
+            active,
             phase="committed",
             no_return_point=True,
-            last_adapter_result=active.last_adapter_result,
-            install_id=active.install_id,
-            dataset_id=active.dataset_id,
-            schema_revision=active.schema_revision,
         )
         stores.operations_write.publish_active(committed)
-    except LifecycleError as exc:
-        failure_message = exc.message
-        try:
-            stores.adapters.scm.fence_backend(bound)
-        except LifecycleError as fence_failure:
-            failure_message = (
-                f"{failure_message}; backend fence failed "
-                f"({fence_failure.code}): {fence_failure.message}"
-            )
-        failed = ActiveOperation(
-            schema=OPERATION_SCHEMA,
-            operation_id=active.operation_id,
-            kind=active.kind,
-            request_hash=active.request_hash,
-            target_release_id=active.target_release_id,
-            data_root=active.data_root,
-            release_manifest_sha256=active.release_manifest_sha256,
-            backend_port=active.backend_port,
-            phase="failed_recoverable",
-            no_return_point=active.no_return_point,
-            last_adapter_result=active.last_adapter_result,
-            install_id=active.install_id,
-            dataset_id=active.dataset_id,
-            schema_revision=active.schema_revision,
-        )
-        stores.operations_write.publish_active(failed)
-        return CommandResult(
-            schema=RESULT_SCHEMA,
-            ok=False,
-            command=request.command,
-            operation_id=request.operation_id,
-            phase="failed_recoverable",
-            code=exc.code,
-            message=failure_message,
-            installation_published=stores.binding_read.read() is not None,
+        active = committed
+    except (LifecycleError, OSError) as exc:
+        if active is None or bound is None:
+            raise
+        return _failed_operation_result(
+            stores,
+            request,
+            active,
+            bound,
+            installation_published=installation_published,
+            primary=exc,
         )
     try:
         stores.adapters.scm.enable_autostart(bound)
@@ -225,6 +184,62 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             installation_published=True,
         )
     return _committed_result(request, owner_pairing)
+
+
+def _failed_operation_result(
+    stores: LifecycleStores,
+    request: InstallRequest,
+    active: ActiveOperation,
+    bound: InstallRequest,
+    *,
+    installation_published: bool,
+    primary: LifecycleError | OSError,
+) -> CommandResult:
+    code, message = _failure_identity(primary)
+    try:
+        stores.adapters.scm.fence_backend(bound)
+    except (LifecycleError, OSError) as failure:
+        message = _append_failure(message, "backend fence", failure)
+
+    failed = replace(active, phase="failed_recoverable")
+    try:
+        stores.operations_write.publish_active(failed)
+    except (LifecycleError, OSError) as failure:
+        message = _append_failure(message, "failed-state publication", failure)
+    else:
+        active = failed
+
+    if not installation_published:
+        try:
+            installation_published = stores.binding_read.read() is not None
+        except (LifecycleError, OSError) as failure:
+            message = _append_failure(message, "binding readback", failure)
+
+    return CommandResult(
+        schema=RESULT_SCHEMA,
+        ok=False,
+        command=request.command,
+        operation_id=request.operation_id,
+        phase=active.phase,
+        code=code,
+        message=message,
+        installation_published=installation_published,
+    )
+
+
+def _append_failure(
+    message: str,
+    subject: str,
+    failure: LifecycleError | OSError,
+) -> str:
+    code, detail = _failure_identity(failure)
+    return f"{message}; {subject} failed ({code}): {detail}"
+
+
+def _failure_identity(failure: LifecycleError | OSError) -> tuple[str, str]:
+    if isinstance(failure, LifecycleError):
+        return failure.code, failure.message
+    return "operation_io_failed", "lifecycle operation I/O failed"
 
 
 def _require_matching_operation(
@@ -321,12 +336,11 @@ def _committed_result(request: InstallRequest, pairing: OwnerPairing) -> Command
 
 
 def _refuse_second_identity(
-    stores: LifecycleStores,
+    binding: InstallationBinding | None,
     request: InstallRequest,
     active: ActiveOperation | None,
     committed: ActiveOperation | None,
 ) -> None:
-    binding = stores.binding_read.read()
     if binding is None:
         return
     operation = active or committed

@@ -17,7 +17,13 @@ def service_registered(name: str) -> bool:
 
 
 def service_exists(runner: CommandRunner, name: str) -> bool:
-    return runner.run(["sc.exe", "query", name]).returncode == 0
+    completed = runner.run(["sc.exe", "query", name])
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1060:
+        return False
+    require_ok(completed, code="service_query_failed")
+    raise AssertionError("require_ok must raise for a failed service query")
 
 
 def service_running(runner: CommandRunner, name: str) -> bool:

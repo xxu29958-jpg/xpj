@@ -359,3 +359,41 @@ def test_backend_fence_refuses_foreign_service_before_mutation(tmp_path: Path) -
         adapter.fence_backend(request)
 
     assert not any(call[:2] in {("sc.exe", "config"), ("sc.exe", "stop")} for call in runner.calls)
+
+
+def test_backend_fence_does_not_treat_access_denied_as_absent(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    observed = _expected(request, backend_start=2)
+
+    class _AccessDeniedRunner(_Runner):
+        def run(self, argv, **_kwargs) -> CompletedCommand:
+            call = tuple(str(part) for part in argv)
+            self.calls.append(call)
+            return CompletedCommand(call, 5, "", "[SC] OpenService FAILED 5")
+
+    runner = _AccessDeniedRunner(observed, backend_running=True)
+    adapter = WindowsScmAdapter(runner, _Security(), _Observer(observed))
+
+    with pytest.raises(LifecycleError) as raised:
+        adapter.fence_backend(request)
+
+    assert raised.value.code == "service_query_failed"
+    assert runner.calls == [("sc.exe", "query", request.backend_service_name)]
+
+
+def test_backend_fence_accepts_only_1060_as_absent(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    observed = _expected(request, backend_start=2)
+
+    class _AbsentRunner(_Runner):
+        def run(self, argv, **_kwargs) -> CompletedCommand:
+            call = tuple(str(part) for part in argv)
+            self.calls.append(call)
+            return CompletedCommand(call, 1060, "", "service does not exist")
+
+    runner = _AbsentRunner(observed)
+    adapter = WindowsScmAdapter(runner, _Security(), _Observer(observed))
+
+    adapter.fence_backend(request)
+
+    assert runner.calls == [("sc.exe", "query", request.backend_service_name)]
