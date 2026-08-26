@@ -59,7 +59,7 @@ def _active(data_root: Path) -> dict[str, object]:
         "backend_port": 8000,
         "phase": "data_ready",
         "no_return_point": True,
-        "last_adapter_result": "owner_claim:claimed",
+        "completed_step": "owner_claim",
         "install_id": INSTALL_ID,
         "dataset_id": DATASET_ID,
         "schema_revision": "20260821_0001",
@@ -226,6 +226,7 @@ def test_active_fresh_install_never_probes_unpublished_binding(
     program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
     active = _active(data_root)
     active["phase"] = "release_activated"
+    active["completed_step"] = "health"
     _write_authority(program_data, "operations/active.json", active)
     original_lstat = Path.lstat
     binding_probes = 0
@@ -259,6 +260,22 @@ def test_frozen_runtime_rejects_failed_recoverable_operation(
     assert not (data_dir / "uploads").exists()
 
 
+def test_frozen_runtime_rejects_active_before_owner_claim(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    active = _active(data_root)
+    active["completed_step"] = "alembic"
+    _write_authority(program_data, "operations/active.json", active)
+
+    with pytest.raises(RuntimeError, match="runtime progress is not closed"):
+        launch.configure_environment()
+
+    assert not (data_dir / "uploads").exists()
+
+
 def test_frozen_runtime_admits_committed_active_only_with_exact_binding(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -268,6 +285,7 @@ def test_frozen_runtime_admits_committed_active_only_with_exact_binding(
     _write_authority(program_data, "installation.json", _binding(data_root))
     active = _active(data_root)
     active["phase"] = "committed"
+    active["completed_step"] = "health"
     _write_authority(program_data, "operations/active.json", active)
 
     assert launch.configure_environment() == data_dir.resolve()
@@ -281,6 +299,7 @@ def test_frozen_runtime_rejects_committed_active_without_binding(
     program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
     active = _active(data_root)
     active["phase"] = "committed"
+    active["completed_step"] = "health"
     _write_authority(program_data, "operations/active.json", active)
 
     with pytest.raises(RuntimeError, match="committed active operation requires installation binding"):
@@ -298,6 +317,7 @@ def test_frozen_runtime_rejects_disagreeing_temporal_authorities(
     _write_authority(program_data, "installation.json", _binding(data_root))
     active = _active(data_root)
     active["phase"] = "committed"
+    active["completed_step"] = "health"
     active["release_manifest_sha256"] = "c" * 64
     _write_authority(program_data, "operations/active.json", active)
 

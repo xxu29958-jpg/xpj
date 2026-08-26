@@ -69,6 +69,11 @@ class WindowsShipmentVerifier:
                 "release_hash_mismatch",
                 "installed release manifest does not match this Setup request",
             )
+        if request.operation_id != f"fresh-{actual_manifest_sha}":
+            raise LifecycleViolation(
+                "untrusted_setup_request",
+                "privileged request does not match the trusted Setup contract",
+            )
         manifest = _parse_manifest(manifest_bytes, request)
         expected = _expected_files(manifest, app_dir, manifest_path)
         actual = _actual_files(app_dir, manifest_path)

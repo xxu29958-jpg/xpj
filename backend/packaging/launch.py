@@ -558,7 +558,7 @@ def _closed_authorities(
     active_fields = {
         "schema", "operation_id", "kind", "request_hash", "target_release_id", "data_root",
         "release_manifest_sha256", "backend_port", "phase", "no_return_point",
-        "last_adapter_result", "install_id", "dataset_id", "schema_revision",
+        "completed_step", "install_id", "dataset_id", "schema_revision",
     }
     if binding is not None:
         if set(binding) != binding_fields:
@@ -576,6 +576,13 @@ def _closed_authorities(
         phase = active.get("phase")
         if phase not in {"data_ready", "release_activated", "committed"}:
             raise RuntimeError("active.json is not in a runtime-capable install phase")
+        expected_step = {
+            "data_ready": "owner_claim",
+            "release_activated": "health",
+            "committed": "health",
+        }[phase]
+        if active.get("completed_step") != expected_step:
+            raise RuntimeError("active.json runtime progress is not closed")
         if phase == "committed" and binding is None:
             raise RuntimeError("committed active operation requires installation binding")
         authorities.append(active)

@@ -25,9 +25,11 @@ from ticketbox_lifecycle.domain.binding import (
 from ticketbox_lifecycle.domain.planner import plan_fresh_install
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.schemas import (
+    APPLY_SEQUENCE,
     OPERATION_SCHEMA,
     RESULT_SCHEMA,
     ActiveOperation,
+    ApplyStepName,
     CommandResult,
     DurablePhase,
     InstallationBinding,
@@ -132,7 +134,7 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
                 backend_port=request.backend_port,
                 phase="prepared",
                 no_return_point=False,
-                last_adapter_result=None,
+                completed_step=None,
                 install_id=request.install_id or str(uuid.uuid4()),
                 dataset_id=request.dataset_id or str(uuid.uuid4()),
                 schema_revision=request.schema_revision,
@@ -145,16 +147,17 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
         for step in plan.steps:
             if step.name == "owner_claim":
                 owner_pairing = stores.adapters.dataset.claim_owner(bound)
-                result = "claimed"
+            elif step.name == "postgres_initdb":
+                _run_initdb_step(stores.adapters.postgres, bound, active)
             else:
                 adapter = adapter_for_step(stores.adapters, step.name)
-                result = _ensure_postcondition(adapter, bound, step.name)
+                _ensure_postcondition(adapter, bound, step.name)
             last_phase = phase_after(step.name)
             candidate = replace(
                 active,
                 phase=last_phase,
                 no_return_point=last_phase in {"data_ready", "release_activated"},
-                last_adapter_result=f"{step.name}:{result}",
+                completed_step=_furthest_step(active.completed_step, step.name),
             )
             if step.name != "start_services":
                 stores.operations_write.publish_active(candidate)
@@ -320,16 +323,43 @@ def _ensure_postcondition(
     adapter: PlatformAdapter,
     request: InstallRequest,
     step: str,
-) -> str:
+) -> None:
     try:
         adapter.verify(request, step)
-        return "already-verified"
+        return
     except LifecycleError as exc:
         if exc.code in {"command_outcome_unknown", "command_start_failed"}:
             raise
-    result = adapter.apply(request, step)
+    adapter.apply(request, step)
     adapter.verify(request, step)
-    return result
+
+
+def _run_initdb_step(
+    adapter: PlatformAdapter,
+    request: InstallRequest,
+    active: ActiveOperation,
+) -> None:
+    if _completed_at_or_after(active.completed_step, "postgres_initdb"):
+        adapter.verify(request, "postgres_initdb")
+        return
+    adapter.apply(request, "postgres_initdb")
+    adapter.verify(request, "postgres_initdb")
+
+
+def _completed_at_or_after(
+    completed: ApplyStepName | None,
+    target: ApplyStepName,
+) -> bool:
+    return completed is not None and APPLY_SEQUENCE.index(completed) >= APPLY_SEQUENCE.index(target)
+
+
+def _furthest_step(
+    current: ApplyStepName | None,
+    observed: ApplyStepName,
+) -> ApplyStepName:
+    if current is None or APPLY_SEQUENCE.index(observed) > APPLY_SEQUENCE.index(current):
+        return observed
+    return current
 
 
 def _committed_result(request: InstallRequest, pairing: OwnerPairing) -> CommandResult:

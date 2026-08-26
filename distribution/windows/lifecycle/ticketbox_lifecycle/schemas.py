@@ -10,6 +10,18 @@ RESULT_SCHEMA = "ticketbox-lifecycle-result-v2"
 
 CommandName = Literal["install", "resume", "inspect"]
 OperationKind = Literal["install"]
+ApplyStepName = Literal[
+    "programdata_root",
+    "acl",
+    "postgres_initdb",
+    "scm",
+    "start_postgres",
+    "roles_database",
+    "alembic",
+    "owner_claim",
+    "start_services",
+    "health",
+]
 DurablePhase = Literal[
     "prepared",
     "data_ready",
@@ -18,7 +30,7 @@ DurablePhase = Literal[
     "failed_recoverable",
     "manual_intervention",
 ]
-APPLY_SEQUENCE: tuple[str, ...] = (
+APPLY_SEQUENCE: tuple[ApplyStepName, ...] = (
     "programdata_root",
     "acl",
     "postgres_initdb",
@@ -70,7 +82,7 @@ class HostObservation:
 
 @dataclass(frozen=True)
 class ApplyStep:
-    name: str
+    name: ApplyStepName
     adapter: str
 
 
@@ -92,7 +104,7 @@ class ActiveOperation:
     backend_port: int
     phase: DurablePhase
     no_return_point: bool
-    last_adapter_result: str | None
+    completed_step: ApplyStepName | None
     install_id: str = ""
     dataset_id: str = ""
     schema_revision: str = ""

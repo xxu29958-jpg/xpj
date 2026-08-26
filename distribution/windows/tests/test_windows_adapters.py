@@ -861,25 +861,37 @@ def test_initdb_retries_incomplete_cluster_instead_of_starting_it(tmp_path: Path
     assert (data / "postgresql.conf").is_file()
 
 
-def test_stopped_complete_cluster_reopens_bootstrap_read_without_rerunning_initdb(
+def test_initdb_retries_full_early_shape_left_before_initdb_success(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = RecordingRunner()
+    bundle = _bundle(runner)
+    bundle.files.apply(request, "programdata_root")
+    bundle.security.apply(request, "acl")
+    data = Path(request.data_root) / "pgdata"
+    _write_complete_cluster(data)
+
+    assert bundle.postgres.apply(request, "postgres_initdb") == "initialized"
+    assert len([call for call in runner.calls if call[0].endswith("initdb.exe")]) == 1
+
+
+def test_stopped_complete_cluster_verifies_without_rerunning_initdb(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
     bundle = _bundle(runner)
-    monkeypatch.setattr(windows_pgdata_security, "apply_protected_dacl", _record_pgdata_dacl(runner))
     bundle.files.apply(request, "programdata_root")
     data = Path(request.data_root) / "pgdata"
     _write_complete_cluster(data)
+    windows_postgres._write_cluster_config(request)
+    runner.pgdata_bootstrap_access = False
     runner.calls.clear()
-    assert bundle.postgres.apply(request, "postgres_initdb") == "already-present"
+    bundle.postgres.verify(request, "postgres_initdb")
     assert not any(call[0].endswith("initdb.exe") for call in runner.calls)
     assert not any(call[0] == "icacls" and "/T" in call for call in runner.calls)
-    assert runner.pgdata_bootstrap_access is True
+    assert runner.pgdata_bootstrap_access is False
     conf = (data / "postgresql.conf").read_text(encoding="utf-8")
     assert "listen_addresses = '127.0.0.1'" in conf
-    bundle.postgres.verify(request, "postgres_initdb")
 
 
 def test_pgdata_seal_rejects_nested_reparse_before_acl_mutation(
@@ -1088,13 +1100,12 @@ def test_register_uses_pg_ctl_and_direct_immutable_backend(
     assert raised.value.code == "backend_directory_acl_verify_failed"
 
 
-def test_sealed_stopped_cluster_reopens_only_for_offline_verify_then_reseals(
+def test_sealed_stopped_cluster_verifies_without_reopening_initdb_acl(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     request = _request(tmp_path)
     runner = RecordingRunner()
-    runner.pgcontroldata_requires_bootstrap_access = True
     bundle = _bundle(runner)
     monkeypatch.setattr(windows_pgdata_security, "apply_protected_dacl", _record_pgdata_dacl(runner))
     bundle.files.apply(request, "programdata_root")
@@ -1112,17 +1123,9 @@ def test_sealed_stopped_cluster_reopens_only_for_offline_verify_then_reseals(
     bundle.scm.apply(request, "scm")
     assert runner.pgdata_bootstrap_access is False
 
-    with pytest.raises(LifecycleError, match="PGDATA access denied"):
-        bundle.postgres.verify(request, "postgres_initdb")
-
-    assert bundle.postgres.apply(request, "postgres_initdb") == "already-present"
     bundle.postgres.verify(request, "postgres_initdb")
-    assert runner.pgdata_bootstrap_access is True
-
-    with pytest.raises(LifecycleError):
-        bundle.scm.verify(request, "scm")
-    bundle.scm.apply(request, "scm")
     assert runner.pgdata_bootstrap_access is False
+    bundle.scm.verify(request, "scm")
 
 
 def test_running_sealed_cluster_uses_online_identity_without_offline_pgdata_read(
@@ -1415,12 +1418,14 @@ def test_acl_retry_does_not_recreate_consumed_initdb_password_input(tmp_path: Pa
     bundle.files.apply(request, "programdata_root")
     bundle.security.apply(request, "acl")
     bundle.postgres.apply(request, "postgres_initdb")
+    initdb_calls = sum(Path(call[0]).name.lower() == "initdb.exe" for call in runner.calls)
     pwfile = Path(request.program_data_root) / "machine" / "secrets" / "postgres.pwfile"
     assert not pwfile.exists()
 
     bundle.security.apply(request, "acl")
     assert not pwfile.exists()
-    assert bundle.postgres.apply(request, "postgres_initdb") == "already-present"
+    bundle.postgres.verify(request, "postgres_initdb")
+    assert sum(Path(call[0]).name.lower() == "initdb.exe" for call in runner.calls) == initdb_calls
     assert not pwfile.exists()
 
 

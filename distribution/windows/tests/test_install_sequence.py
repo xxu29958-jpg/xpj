@@ -108,7 +108,7 @@ def test_backend_first_start_consumes_one_stable_active_publication(tmp_path: Pa
             active = stores.read_active()
             assert active is not None
             assert active.phase == "data_ready"
-            assert active.last_adapter_result == "owner_claim:claimed"
+            assert active.completed_step == "owner_claim"
             backend_reading = False
             observed_health = True
         original_health_verify(req, step)
@@ -116,7 +116,7 @@ def test_backend_first_start_consumes_one_stable_active_publication(tmp_path: Pa
     def publish_active(operation: ActiveOperation) -> None:
         if backend_reading:
             raise OSError("injected active.json sharing violation")
-        published.append((operation.phase, operation.last_adapter_result))
+        published.append((operation.phase, operation.completed_step))
         original_publish(operation)
 
     adapters.scm.apply = start_backend  # type: ignore[method-assign]
@@ -127,9 +127,9 @@ def test_backend_first_start_consumes_one_stable_active_publication(tmp_path: Pa
 
     assert result.ok is True
     assert observed_health is True
-    assert ("release_activated", "start_services:started") not in published
-    assert ("release_activated", "health:applied") in published
-    assert ("committed", "health:applied") in published
+    assert ("release_activated", "start_services") not in published
+    assert ("release_activated", "health") in published
+    assert ("committed", "health") in published
 
 
 def test_commit_precedes_rebuildable_backend_autostart_projection(tmp_path: Path) -> None:
@@ -458,7 +458,7 @@ def test_second_install_refuses_new_identity(tmp_path: Path) -> None:
         assert exc.code == "already_installed"
 
 
-def test_resume_replays_from_postcondition_not_from_memory(tmp_path: Path) -> None:
+def test_resume_replays_initdb_when_shape_precedes_durable_completion(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     adapters.postgres.fail_on = "postgres_initdb"
     request = _request(tmp_path)
@@ -466,6 +466,7 @@ def test_resume_replays_from_postcondition_not_from_memory(tmp_path: Path) -> No
     first = install_or_resume(stores.as_lifecycle_stores(), request)
     assert first.ok is False
     adapters.postgres.fail_on = None
+    adapters.postgres._done.add("postgres_initdb")
     resume = InstallRequest(**{**request.__dict__, "command": "resume"})
     second = install_or_resume(stores.as_lifecycle_stores(), resume)
     assert second.ok
@@ -473,6 +474,29 @@ def test_resume_replays_from_postcondition_not_from_memory(tmp_path: Path) -> No
     assert adapters.security.apply_calls == 1
     assert adapters.postgres.applied == ["postgres_initdb", "start_postgres", "roles_database"]
     assert adapters.postgres.apply_calls == 4
+
+
+def test_later_durable_progress_never_reinitializes_pgdata_when_verify_fails(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.dataset.fail_on = "health"
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert first.ok is False
+    active = stores.read_active()
+    assert active is not None
+    assert active.completed_step == "owner_claim"
+    apply_calls = adapters.postgres.apply_calls
+    adapters.postgres._done.remove("postgres_initdb")
+    adapters.dataset.fail_on = None
+
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+    second = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert second.ok is False
+    assert adapters.postgres.apply_calls == apply_calls
 
 
 def test_resume_rejects_different_operation_or_data_root(tmp_path: Path) -> None:

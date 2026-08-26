@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from ticketbox_lifecycle.errors import LifecycleViolation
+from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
 from ticketbox_lifecycle.runtime.mutex import ThreadMutex
@@ -61,7 +61,7 @@ def _active() -> ActiveOperation:
         backend_port=8000,
         phase="prepared",
         no_return_point=False,
-        last_adapter_result=None,
+        completed_step=None,
         install_id="22222222-2222-4222-8222-222222222222",
         dataset_id="33333333-3333-4333-8333-333333333333",
         schema_revision="20260821_0001",
@@ -125,6 +125,18 @@ def test_active_publication_protects_and_verifies_exact_file(tmp_path: Path) -> 
         ("verify", temp_path, "TicketboxBackend"),
         ("verify", path, "TicketboxBackend"),
     ]
+
+
+def test_active_reader_rejects_an_unknown_completed_step(tmp_path: Path) -> None:
+    stores = _stores(tmp_path, RecordingSecurity())
+    payload = asdict(_active())
+    payload["completed_step"] = "foreign_step"
+    path = tmp_path / "machine" / "operations" / "active.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(LifecycleError, match="completed_step is invalid"):
+        stores.read_active()
 
 
 def test_committed_history_is_protected_and_verified_before_replay(tmp_path: Path) -> None:

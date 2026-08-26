@@ -107,18 +107,7 @@ class WindowsPostgresAdapter:
     def _initdb(self, request: InstallRequest) -> str:
         data = layout.pgdata(request)
         reject_reparse_components(data)
-        if _postgresql_cluster_complete(data, request.postgres_major):
-            if service_running(self._runner, request.pg_service_name):
-                _require_complete_pgdata(data, request.postgres_major)
-                _require_ticketbox_cluster_config(request)
-                require_running_ticketbox_cluster(self._runner, request)
-                return "already-present"
-            self._security.prepare_initdb_directory(request)
-            _require_complete_pgdata(data, request.postgres_major)
-            self._security.discard_initdb_password_file(request)
-            _write_cluster_config(request)
-            return "already-present"
-        _discard_incomplete_pgdata(data, request.postgres_major)
+        _discard_uncommitted_pgdata(data)
         self._security.prepare_initdb_directory(request)
         initdb = layout.tool(request, "initdb.exe")
         if not initdb.is_file():
@@ -309,8 +298,8 @@ def _require_complete_pgdata(data: Path, postgres_major: int) -> None:
         raise LifecycleError("postcondition_missing", "pgdata is not a complete PostgreSQL cluster")
 
 
-def _discard_incomplete_pgdata(data: Path, postgres_major: int) -> None:
-    if not data.exists() or _postgresql_cluster_complete(data, postgres_major):
+def _discard_uncommitted_pgdata(data: Path) -> None:
+    if not data.exists():
         return
     try:
         if data.is_dir():
@@ -320,8 +309,8 @@ def _discard_incomplete_pgdata(data: Path, postgres_major: int) -> None:
         data.unlink()
     except OSError as exc:
         raise LifecycleError(
-            "incomplete_pgdata",
-            "incomplete PostgreSQL cluster could not be discarded for initdb retry",
+            "uncommitted_pgdata",
+            "uncommitted PostgreSQL data could not be discarded for initdb retry",
         ) from exc
 
 

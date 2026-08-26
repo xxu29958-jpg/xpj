@@ -8,6 +8,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict
 from pathlib import Path
+from typing import cast
 
 from ticketbox_lifecycle.adapters.ports import AdapterBundle, Mutex
 from ticketbox_lifecycle.domain.install import LifecycleStores
@@ -29,9 +30,11 @@ from ticketbox_lifecycle.runtime.windows_security_native import (
 from ticketbox_lifecycle.runtime.windows_services import service_registered
 from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 from ticketbox_lifecycle.schemas import (
+    APPLY_SEQUENCE,
     INSTALLATION_SCHEMA,
     OPERATION_SCHEMA,
     ActiveOperation,
+    ApplyStepName,
     HostObservation,
     InstallationBinding,
     InstallRequest,
@@ -133,6 +136,9 @@ class FilesystemStores:
     def _operation_from_payload(payload: dict[str, object]) -> ActiveOperation:
         if payload.get("schema") != OPERATION_SCHEMA:
             raise LifecycleError("bad_operation_schema", "operation schema is not v2")
+        completed_step = payload.get("completed_step")
+        if completed_step is not None and completed_step not in APPLY_SEQUENCE:
+            raise LifecycleError("bad_operation_progress", "operation completed_step is invalid")
         return ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=str(payload["operation_id"]),
@@ -144,7 +150,7 @@ class FilesystemStores:
             backend_port=int(payload["backend_port"]),
             phase=payload["phase"],  # type: ignore[arg-type]
             no_return_point=bool(payload["no_return_point"]),
-            last_adapter_result=payload.get("last_adapter_result"),
+            completed_step=cast(ApplyStepName | None, completed_step),
             install_id=str(payload.get("install_id") or ""),
             dataset_id=str(payload.get("dataset_id") or ""),
             schema_revision=str(payload.get("schema_revision") or ""),

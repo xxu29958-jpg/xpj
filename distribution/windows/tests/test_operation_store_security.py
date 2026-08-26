@@ -154,7 +154,7 @@ def _prepared_operation(request: InstallRequest) -> ActiveOperation:
         backend_port=request.backend_port,
         phase="prepared",
         no_return_point=False,
-        last_adapter_result=None,
+        completed_step=None,
         install_id=request.install_id or "",
         dataset_id=request.dataset_id or "",
         schema_revision=request.schema_revision,

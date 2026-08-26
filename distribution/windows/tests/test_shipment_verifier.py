@@ -208,6 +208,7 @@ def test_verifier_rejects_a_request_outside_the_bound_program_files_root(tmp_pat
 @pytest.mark.parametrize(
     "changes",
     [
+        {"operation_id": "foreign"},
         {"program_data_root": r"C:\Users\Public\Ticketbox"},
         {"data_root": r"C:\Users\Public\Ticketbox\data"},
         {"pg_service_name": "ForeignPg"},
