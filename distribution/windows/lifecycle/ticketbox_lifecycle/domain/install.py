@@ -156,7 +156,8 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
                 no_return_point=last_phase in {"data_ready", "release_activated"},
                 last_adapter_result=f"{step.name}:{result}",
             )
-            stores.operations_write.publish_active(candidate)
+            if step.name != "start_services":
+                stores.operations_write.publish_active(candidate)
             active = candidate
 
         if owner_pairing is None:

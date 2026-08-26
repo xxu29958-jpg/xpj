@@ -84,6 +84,54 @@ def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> No
     assert binding.release_manifest_sha256 != "pending"
 
 
+def test_backend_first_start_consumes_one_stable_active_publication(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    original_start = adapters.scm.apply
+    original_health_verify = adapters.dataset.verify
+    original_publish = stores.publish_active
+    backend_reading = False
+    observed_health = False
+    published: list[tuple[str, str | None]] = []
+
+    def start_backend(req: InstallRequest, step: str) -> str:
+        nonlocal backend_reading
+        result = original_start(req, step)
+        if step == "start_services":
+            backend_reading = True
+        return result
+
+    def verify_health(req: InstallRequest, step: str) -> None:
+        nonlocal backend_reading, observed_health
+        if step == "health":
+            active = stores.read_active()
+            assert active is not None
+            assert active.phase == "data_ready"
+            assert active.last_adapter_result == "owner_claim:claimed"
+            backend_reading = False
+            observed_health = True
+        original_health_verify(req, step)
+
+    def publish_active(operation: ActiveOperation) -> None:
+        if backend_reading:
+            raise OSError("injected active.json sharing violation")
+        published.append((operation.phase, operation.last_adapter_result))
+        original_publish(operation)
+
+    adapters.scm.apply = start_backend  # type: ignore[method-assign]
+    adapters.dataset.verify = verify_health  # type: ignore[method-assign]
+    stores.publish_active = publish_active  # type: ignore[method-assign]
+
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    assert result.ok is True
+    assert observed_health is True
+    assert ("release_activated", "start_services:started") not in published
+    assert ("release_activated", "health:applied") in published
+    assert ("committed", "health:applied") in published
+
+
 def test_commit_precedes_rebuildable_backend_autostart_projection(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     request = _request(tmp_path)

@@ -124,7 +124,7 @@ def test_failure_result_preserves_primary_when_cleanup_state_writes_also_fail(
     assert "active_publish_failed" in result.message
     assert "operation_io_failed" in result.message
     assert stores.read_active() is not None
-    assert stores.read_active().phase == "release_activated"
+    assert stores.read_active().phase == "data_ready"
 
 
 def test_resume_binding_read_failure_fences_existing_runtime(tmp_path: Path) -> None:
