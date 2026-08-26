@@ -258,6 +258,47 @@ def test_acl_retry_discards_each_pre_replace_pending(
     )
 
 
+def test_acl_retry_discards_initdb_pwfile_pre_replace_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    adapter, security = _recording_adapter(monkeypatch)
+    adapter.apply(request, "acl")
+    stable_paths = {
+        _credential_path(request, name) for name in _CREDENTIAL_REPLACE_TARGETS
+    }
+    preserved = {path: path.read_bytes() for path in stable_paths}
+    pwfile = layout.postgres_pwfile(request)
+    pending = durable_files.durable_pending_path(pwfile)
+    original_replace = durable_files.os.replace
+
+    def crash_before_replace(source: Path, target: Path) -> None:
+        if Path(target) == pwfile:
+            raise SystemExit("injected hard crash before initdb password replace")
+        original_replace(source, target)
+
+    monkeypatch.setattr(durable_files.os, "replace", crash_before_replace)
+    with pytest.raises(SystemExit, match="injected hard crash"):
+        credentials.materialize_initdb_password_file(
+            object(),
+            security,
+            request,
+            reader_sid="S-1-5-18",
+        )
+
+    assert pending.is_file()
+    assert not pwfile.exists()
+    monkeypatch.setattr(durable_files.os, "replace", original_replace)
+
+    adapter.apply(request, "acl")
+
+    assert not pending.exists()
+    assert not pwfile.exists()
+    for path, content in preserved.items():
+        assert path.read_bytes() == content
+
+
 def test_acl_retry_still_rejects_a_foreign_unknown_object(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

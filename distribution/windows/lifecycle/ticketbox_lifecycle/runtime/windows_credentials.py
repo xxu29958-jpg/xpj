@@ -68,6 +68,8 @@ def materialize_initdb_password_file(
 
 def discard_initdb_password_file(request: InstallRequest) -> None:
     path = layout.postgres_pwfile(request)
+    native.reject_reparse_components(durable_pending_path(path))
+    discard_durable_pending(path)
     native.reject_reparse_components(path)
     if path.exists() and not path.is_file():
         raise LifecycleViolation(
