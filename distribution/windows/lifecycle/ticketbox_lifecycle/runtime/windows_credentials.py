@@ -14,7 +14,11 @@ from ticketbox_lifecycle.policy.postgres_roles import (
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import CommandRunner
-from ticketbox_lifecycle.runtime.durable_files import durable_write_text
+from ticketbox_lifecycle.runtime.durable_files import (
+    discard_durable_pending,
+    durable_pending_path,
+    durable_write_text,
+)
 from ticketbox_lifecycle.runtime.windows_file_security import FileSecurity, file_dacl_sddl
 from ticketbox_lifecycle.schemas import InstallRequest
 
@@ -195,6 +199,13 @@ def reconcile_credentials(
     request: InstallRequest,
 ) -> None:
     discard_initdb_password_file(request)
+    complete_secrets = tuple(
+        layout.secrets_dir(request) / name for name in sorted(DURABLE_SECRET_NAMES)
+    )
+    runtime_env = Path(request.data_root) / "app" / ".env"
+    for destination in (*complete_secrets, runtime_env):
+        native.reject_reparse_components(durable_pending_path(destination))
+        discard_durable_pending(destination)
     existing_secrets, existing_env = _existing_credential_paths(
         request,
         allow_missing=True,
@@ -208,10 +219,6 @@ def reconcile_credentials(
         backend_sid=backend_sid,
     )
     _ensure_credentials(request)
-    complete_secrets = tuple(
-        layout.secrets_dir(request) / name for name in sorted(DURABLE_SECRET_NAMES)
-    )
-    runtime_env = Path(request.data_root) / "app" / ".env"
     _protect_credential_files(
         runner,
         file_security,

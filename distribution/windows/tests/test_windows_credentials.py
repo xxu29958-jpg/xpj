@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from ticketbox_lifecycle.errors import LifecycleError
-from ticketbox_lifecycle.runtime import layout
+from ticketbox_lifecycle.runtime import durable_files, layout
 from ticketbox_lifecycle.runtime import windows_credentials as credentials
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.windows_file_security import file_dacl_sddl
@@ -13,6 +13,13 @@ from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
 _SERVICE_SID = "S-1-5-80-100-200-300-400-500"
+_CREDENTIAL_REPLACE_TARGETS = (
+    "postgres.password",
+    "ticketbox_migrator.password",
+    "ticketbox_runtime.password",
+    "pgpass",
+    ".env",
+)
 
 
 def _request(tmp_path: Path) -> InstallRequest:
@@ -66,6 +73,40 @@ class _RecordingFileSecurity:
     ) -> None:
         del code
         self.dacls[path] = file_dacl_sddl(reader_sids)
+
+
+def _credential_path(request: InstallRequest, name: str) -> Path:
+    if name == ".env":
+        return Path(request.data_root) / "app" / name
+    return layout.secrets_dir(request) / name
+
+
+def _recording_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[WindowsSecurityAdapter, _RecordingFileSecurity]:
+    security = _RecordingFileSecurity()
+    _stub_native_inspection(monkeypatch)
+    monkeypatch.setattr(
+        WindowsSecurityAdapter,
+        "prepare_operation_store",
+        lambda _self, _request: None,
+    )
+    monkeypatch.setattr(native, "protect_directory", lambda *_args, **_kwargs: None)
+
+    def require_recorded_acl(
+        _runner: object,
+        path: Path,
+        **kwargs: object,
+    ) -> None:
+        expected = kwargs.get("expected_dacl_sddl")
+        if security.dacls.get(path) != expected:
+            raise LifecycleError(
+                "credential_acl_untrusted",
+                f"credential lacks its exact protected DACL: {path.name}",
+            )
+
+    monkeypatch.setattr(native, "require_protected_file_acl", require_recorded_acl)
+    return WindowsSecurityAdapter(object(), security), security
 
 
 def test_retry_requires_the_exact_dacl_for_every_credential(
@@ -134,13 +175,7 @@ def test_retry_rejects_an_extra_credential_ace(
 
 @pytest.mark.parametrize(
     "crash_target",
-    [
-        "postgres.password",
-        "ticketbox_migrator.password",
-        "ticketbox_runtime.password",
-        "pgpass",
-        ".env",
-    ],
+    _CREDENTIAL_REPLACE_TARGETS,
 )
 def test_acl_retry_reconciles_each_credential_replace_crash(
     tmp_path: Path,
@@ -148,28 +183,7 @@ def test_acl_retry_reconciles_each_credential_replace_crash(
     crash_target: str,
 ) -> None:
     request = _request(tmp_path)
-    security = _RecordingFileSecurity()
-    _stub_native_inspection(monkeypatch)
-    monkeypatch.setattr(
-        WindowsSecurityAdapter,
-        "prepare_operation_store",
-        lambda _self, _request: None,
-    )
-    monkeypatch.setattr(native, "protect_directory", lambda *_args, **_kwargs: None)
-
-    def require_recorded_acl(
-        _runner: object,
-        path: Path,
-        **kwargs: object,
-    ) -> None:
-        expected = kwargs.get("expected_dacl_sddl")
-        if security.dacls.get(path) != expected:
-            raise LifecycleError(
-                "credential_acl_untrusted",
-                f"credential lacks its exact protected DACL: {path.name}",
-            )
-
-    monkeypatch.setattr(native, "require_protected_file_acl", require_recorded_acl)
+    adapter, security = _recording_adapter(monkeypatch)
     original_write = credentials.durable_write_text
 
     def crash_after_replace(path: Path, text: str) -> None:
@@ -179,7 +193,7 @@ def test_acl_retry_reconciles_each_credential_replace_crash(
 
     monkeypatch.setattr(credentials, "durable_write_text", crash_after_replace)
     with pytest.raises(SystemExit, match="injected hard crash"):
-        WindowsSecurityAdapter(object(), security).apply(request, "acl")
+        adapter.apply(request, "acl")
 
     stable_paths = {
         layout.secrets_dir(request) / name for name in credentials.DURABLE_SECRET_NAMES
@@ -201,3 +215,74 @@ def test_acl_retry_reconciles_each_credential_replace_crash(
     assert security.dacls[Path(request.data_root) / "app" / ".env"] == file_dacl_sddl(
         (_SERVICE_SID,)
     )
+
+
+@pytest.mark.parametrize("crash_target", _CREDENTIAL_REPLACE_TARGETS)
+def test_acl_retry_discards_each_pre_replace_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    crash_target: str,
+) -> None:
+    request = _request(tmp_path)
+    adapter, security = _recording_adapter(monkeypatch)
+    destination = _credential_path(request, crash_target)
+    original_replace = durable_files.os.replace
+
+    def crash_before_replace(source: Path, target: Path) -> None:
+        if Path(target) == destination:
+            raise SystemExit("injected hard crash before durable replace")
+        original_replace(source, target)
+
+    monkeypatch.setattr(durable_files.os, "replace", crash_before_replace)
+    with pytest.raises(SystemExit, match="injected hard crash"):
+        adapter.apply(request, "acl")
+
+    expected_pending = destination.with_name(f".{destination.name}.pending")
+    assert expected_pending.is_file()
+    assert not destination.exists()
+    stable_paths = {
+        _credential_path(request, name) for name in _CREDENTIAL_REPLACE_TARGETS
+    }
+    preserved = {path: path.read_bytes() for path in stable_paths if path.is_file()}
+    monkeypatch.setattr(durable_files.os, "replace", original_replace)
+
+    WindowsSecurityAdapter(object(), security).apply(request, "acl")
+
+    assert not expected_pending.exists()
+    for path, content in preserved.items():
+        assert path.read_bytes() == content
+    for name in credentials.DURABLE_SECRET_NAMES:
+        assert security.dacls[layout.secrets_dir(request) / name] == file_dacl_sddl(())
+    assert security.dacls[Path(request.data_root) / "app" / ".env"] == file_dacl_sddl(
+        (_SERVICE_SID,)
+    )
+
+
+def test_acl_retry_still_rejects_a_foreign_unknown_object(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    adapter, _security = _recording_adapter(monkeypatch)
+    foreign = layout.secrets_dir(request) / ".foreign.pending"
+    foreign.parent.mkdir(parents=True)
+    foreign.write_text("foreign", encoding="utf-8")
+
+    with pytest.raises(LifecycleError, match="unknown object"):
+        adapter.apply(request, "acl")
+
+
+def test_acl_retry_refuses_a_non_file_exact_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    adapter, _security = _recording_adapter(monkeypatch)
+    destination = _credential_path(request, "postgres.password")
+    pending = durable_files.durable_pending_path(destination)
+    pending.mkdir(parents=True)
+
+    with pytest.raises(LifecycleError, match="not a regular file"):
+        adapter.apply(request, "acl")
+
+    assert pending.is_dir()
