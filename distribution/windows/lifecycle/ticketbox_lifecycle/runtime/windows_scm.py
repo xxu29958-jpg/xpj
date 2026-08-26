@@ -197,8 +197,8 @@ class WindowsScmAdapter:
 
     def _start_backend(self, request: InstallRequest) -> str:
         start_service(self._runner, request.backend_service_name, code="backend_start_failed")
-        deadline = time.time() + 60
-        while time.time() < deadline:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
             if service_running(self._runner, request.backend_service_name):
                 return "started"
             time.sleep(1)

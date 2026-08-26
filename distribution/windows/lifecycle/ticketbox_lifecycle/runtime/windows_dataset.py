@@ -92,9 +92,9 @@ class WindowsDatasetAdapter:
     def apply(self, request: InstallRequest, step: str) -> str:
         if step != "health":
             raise LifecycleViolation("wrong_adapter", "dataset adapter only owns health")
-        deadline = time.time() + 60
+        deadline = time.monotonic() + 60
         last: LifecycleError | None = None
-        while time.time() < deadline:
+        while time.monotonic() < deadline:
             try:
                 return self._probe(request)
             except LifecycleError as exc:

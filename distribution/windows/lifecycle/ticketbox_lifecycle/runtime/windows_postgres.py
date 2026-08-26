@@ -161,8 +161,8 @@ class WindowsPostgresAdapter:
 
     def _start(self, request: InstallRequest) -> str:
         start_service(self._runner, request.pg_service_name, code="pg_start_failed")
-        deadline = time.time() + 90
-        while time.time() < deadline:
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline:
             try:
                 self._require_ready(request)
                 return "started"
