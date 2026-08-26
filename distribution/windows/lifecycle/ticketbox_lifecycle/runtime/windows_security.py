@@ -138,17 +138,11 @@ class WindowsSecurityAdapter:
             native.reject_reparse_components(path)
             path.mkdir(parents=True, exist_ok=True)
             native.protect_directory(self._runner, path, code="acl_apply_failed")
-        credentials.discard_initdb_password_file(request)
-        credentials.verify_existing_credentials(self._runner, request, allow_missing=True)
-        credentials.ensure_credentials(request)
-        for secret in sorted(path for path in secrets_root.iterdir() if path.is_file()):
-            self._file_security.protect_file(
-                self._runner,
-                secret,
-                reader_sids=(),
-                code="secret_acl_failed",
-            )
-        self.protect_runtime_env(request)
+        credentials.reconcile_credentials(
+            self._runner,
+            self._file_security,
+            request,
+        )
         return "acl-applied"
 
     def verify(self, request: InstallRequest, step: str) -> None:
@@ -202,14 +196,6 @@ class WindowsSecurityAdapter:
 
     def discard_initdb_password_file(self, request: InstallRequest) -> None:
         credentials.discard_initdb_password_file(request)
-
-    def protect_runtime_env(self, request: InstallRequest) -> None:
-        self._file_security.protect_file(
-            self._runner,
-            Path(request.data_root) / "app" / ".env",
-            reader_sids=(native.service_sid(self._runner, request.backend_service_name),),
-            code="runtime_env_acl_failed",
-        )
 
     def configure_backend_runtime_acl(self, request: InstallRequest) -> None:
         native.require_windows()

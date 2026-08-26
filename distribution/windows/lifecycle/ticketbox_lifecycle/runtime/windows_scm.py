@@ -170,7 +170,6 @@ class WindowsScmAdapter:
             code="backend_depend_failed",
         )
         self._security.seal_pgdata_acl(request)
-        self._security.protect_runtime_env(request)
         self._set_start_type(request.pg_service_name, "auto")
         return "registered"
 

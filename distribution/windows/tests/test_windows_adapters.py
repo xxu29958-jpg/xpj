@@ -713,7 +713,13 @@ def test_initdb_refuses_to_create_pwfile_without_process_user_sid(
 def test_initdb_rejects_pwfile_when_exact_reader_acl_did_not_land(tmp_path: Path) -> None:
     class ReaderDroppingFileSecurity(RecordingFileSecurity):
         def protect_file(self, runner, path: Path, *, reader_sids: tuple[str, ...], code: str) -> None:
-            super().protect_file(runner, path, reader_sids=(), code=code)
+            effective_readers = () if path.name == "postgres.pwfile" else reader_sids
+            super().protect_file(
+                runner,
+                path,
+                reader_sids=effective_readers,
+                code=code,
+            )
 
     request = _request(tmp_path)
     runner = RecordingRunner()
@@ -1066,13 +1072,15 @@ def test_register_uses_pg_ctl_and_direct_immutable_backend(
         for call in runner.calls
     )
     runtime_env = str(Path(request.data_root) / "app" / ".env")
-    assert any(
-        call[0] == "icacls"
+    runtime_env_acl_calls = [
+        call
+        for call in runner.calls
+        if call[0] == "icacls"
         and call[1] == runtime_env
         and "/grant:r" in call
         and f"*{_BACKEND_SERVICE_SID}:(R)" in call
-        for call in runner.calls
-    )
+    ]
+    assert len(runtime_env_acl_calls) == 1
     assert "operations" in text and "active.json" in text
     assert not any(
         call[0] == "icacls"
@@ -1571,8 +1579,13 @@ def test_roles_adapter_creates_owner_migrator_runtime(tmp_path: Path) -> None:
     assert all("-c" not in call for call in psql_calls)
     assert all("-f" in call and call[call.index("-f") + 1] == "-" for call in psql_calls)
     assert "PASSWORD" not in argv_text
-    migrator_secret = (Path(request.program_data_root) / "machine" / "secrets" / "ticketbox_migrator.password").read_text(encoding="utf-8").strip()
-    runtime_secret = (Path(request.program_data_root) / "machine" / "secrets" / "ticketbox_runtime.password").read_text(encoding="utf-8").strip()
+    secrets = Path(request.program_data_root) / "machine" / "secrets"
+    migrator_secret = (secrets / "ticketbox_migrator.password").read_text(
+        encoding="utf-8"
+    ).strip()
+    runtime_secret = (secrets / "ticketbox_runtime.password").read_text(
+        encoding="utf-8"
+    ).strip()
     assert migrator_secret not in argv_text
     assert runtime_secret not in argv_text
     assert "CREATE ROLE ticketbox_owner NOLOGIN" in sql_text

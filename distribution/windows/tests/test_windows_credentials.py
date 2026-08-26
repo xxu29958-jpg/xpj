@@ -52,6 +52,22 @@ def _stub_native_inspection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(native, "service_sid", lambda _runner, _name: _SERVICE_SID)
 
 
+class _RecordingFileSecurity:
+    def __init__(self) -> None:
+        self.dacls: dict[Path, str] = {}
+
+    def protect_file(
+        self,
+        _runner: object,
+        path: Path,
+        *,
+        reader_sids: tuple[str, ...],
+        code: str,
+    ) -> None:
+        del code
+        self.dacls[path] = file_dacl_sddl(reader_sids)
+
+
 def test_retry_requires_the_exact_dacl_for_every_credential(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -116,28 +132,72 @@ def test_retry_rejects_an_extra_credential_ace(
         credentials.verify_existing_credentials(object(), request, allow_missing=False)
 
 
-def test_acl_retry_discards_pwfile_before_observing_stable_credentials(
+@pytest.mark.parametrize(
+    "crash_target",
+    [
+        "postgres.password",
+        "ticketbox_migrator.password",
+        "ticketbox_runtime.password",
+        "pgpass",
+        ".env",
+    ],
+)
+def test_acl_retry_reconciles_each_credential_replace_crash(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    crash_target: str,
 ) -> None:
     request = _request(tmp_path)
-    pwfile = layout.postgres_pwfile(request)
-    pwfile.parent.mkdir(parents=True)
-    pwfile.write_text("s" * 32 + "\n", encoding="utf-8")
-    events: list[str] = []
-    adapter = WindowsSecurityAdapter(object(), object())
-    monkeypatch.setattr(adapter, "prepare_operation_store", lambda _request: None)
-    monkeypatch.setattr(adapter, "protect_runtime_env", lambda _request: None)
-    monkeypatch.setattr(native, "reject_reparse_components", lambda _path: None)
+    security = _RecordingFileSecurity()
+    _stub_native_inspection(monkeypatch)
+    monkeypatch.setattr(
+        WindowsSecurityAdapter,
+        "prepare_operation_store",
+        lambda _self, _request: None,
+    )
     monkeypatch.setattr(native, "protect_directory", lambda *_args, **_kwargs: None)
-    def observe_stable_credentials(*_args, **_kwargs) -> None:
-        assert not pwfile.exists()
-        events.append("verify")
 
-    monkeypatch.setattr(credentials, "verify_existing_credentials", observe_stable_credentials)
-    monkeypatch.setattr(credentials, "ensure_credentials", lambda _request: None)
+    def require_recorded_acl(
+        _runner: object,
+        path: Path,
+        **kwargs: object,
+    ) -> None:
+        expected = kwargs.get("expected_dacl_sddl")
+        if security.dacls.get(path) != expected:
+            raise LifecycleError(
+                "credential_acl_untrusted",
+                f"credential lacks its exact protected DACL: {path.name}",
+            )
 
-    adapter.apply(request, "acl")
+    monkeypatch.setattr(native, "require_protected_file_acl", require_recorded_acl)
+    original_write = credentials.durable_write_text
 
-    assert events == ["verify"]
+    def crash_after_replace(path: Path, text: str) -> None:
+        original_write(path, text)
+        if path.name == crash_target:
+            raise SystemExit("injected hard crash after durable replace")
+
+    monkeypatch.setattr(credentials, "durable_write_text", crash_after_replace)
+    with pytest.raises(SystemExit, match="injected hard crash"):
+        WindowsSecurityAdapter(object(), security).apply(request, "acl")
+
+    stable_paths = {
+        layout.secrets_dir(request) / name for name in credentials.DURABLE_SECRET_NAMES
+    } | {Path(request.data_root) / "app" / ".env"}
+    preserved = {path: path.read_bytes() for path in stable_paths if path.is_file()}
+    assert any(path.name == crash_target for path in preserved)
+
+    pwfile = layout.postgres_pwfile(request)
+    pwfile.write_text("p" * 32 + "\n", encoding="utf-8")
+    monkeypatch.setattr(credentials, "durable_write_text", original_write)
+
+    WindowsSecurityAdapter(object(), security).apply(request, "acl")
+
+    for path, content in preserved.items():
+        assert path.read_bytes() == content
     assert not pwfile.exists()
+    for name in credentials.DURABLE_SECRET_NAMES:
+        assert security.dacls[layout.secrets_dir(request) / name] == file_dacl_sddl(())
+    assert security.dacls[Path(request.data_root) / "app" / ".env"] == file_dacl_sddl(
+        (_SERVICE_SID,)
+    )

@@ -87,12 +87,11 @@ def owner_bootstrap_secret(request: InstallRequest) -> str:
     return hmac.new(postgres_secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
-def verify_existing_credentials(
-    runner: CommandRunner,
+def _existing_credential_paths(
     request: InstallRequest,
     *,
     allow_missing: bool,
-) -> None:
+) -> tuple[tuple[Path, ...], Path | None]:
     secrets_root = layout.secrets_dir(request)
     existing_names = {path.name for path in secrets_root.iterdir()} if secrets_root.is_dir() else set()
     if existing_names - KNOWN_SECRET_NAMES:
@@ -104,11 +103,36 @@ def verify_existing_credentials(
         )
     if not allow_missing and not DURABLE_SECRET_NAMES.issubset(existing_names):
         raise LifecycleError("postcondition_missing", "lifecycle secrets are incomplete")
-    for name in sorted(existing_names):
-        path = secrets_root / name
+    secret_paths = tuple(secrets_root / name for name in sorted(existing_names))
+    for path in secret_paths:
         native.reject_reparse_components(path)
         if not path.is_file():
-            raise LifecycleViolation("credential_invalid", f"credential is not a regular file: {name}")
+            raise LifecycleViolation(
+                "credential_invalid",
+                f"credential is not a regular file: {path.name}",
+            )
+    runtime_env = Path(request.data_root) / "app" / ".env"
+    if not runtime_env.exists() and not runtime_env.is_symlink():
+        if allow_missing:
+            return secret_paths, None
+        raise LifecycleError("postcondition_missing", "runtime .env is absent")
+    native.reject_reparse_components(runtime_env)
+    if not runtime_env.is_file():
+        raise LifecycleViolation("credential_invalid", "runtime .env is not a regular file")
+    return secret_paths, runtime_env
+
+
+def verify_existing_credentials(
+    runner: CommandRunner,
+    request: InstallRequest,
+    *,
+    allow_missing: bool,
+) -> None:
+    secret_paths, runtime_env = _existing_credential_paths(
+        request,
+        allow_missing=allow_missing,
+    )
+    for path in secret_paths:
         native.require_trusted_owner(
             path,
             code="credential_owner_untrusted",
@@ -121,14 +145,8 @@ def verify_existing_credentials(
             forbidden_markers=("NT SERVICE\\", "S-1-5-80-"),
             expected_dacl_sddl=file_dacl_sddl(()),
         )
-    runtime_env = Path(request.data_root) / "app" / ".env"
-    if not runtime_env.exists() and not runtime_env.is_symlink():
-        if allow_missing:
-            return
-        raise LifecycleError("postcondition_missing", "runtime .env is absent")
-    native.reject_reparse_components(runtime_env)
-    if not runtime_env.is_file():
-        raise LifecycleViolation("credential_invalid", "runtime .env is not a regular file")
+    if runtime_env is None:
+        return
     native.require_trusted_owner(
         runtime_env,
         code="credential_owner_untrusted",
@@ -147,7 +165,64 @@ def verify_existing_credentials(
     )
 
 
-def ensure_credentials(request: InstallRequest) -> None:
+def _protect_credential_files(
+    runner: CommandRunner,
+    file_security: FileSecurity,
+    secret_paths: tuple[Path, ...],
+    runtime_env: Path | None,
+    *,
+    backend_sid: str,
+) -> None:
+    for path in secret_paths:
+        file_security.protect_file(
+            runner,
+            path,
+            reader_sids=(),
+            code="secret_acl_failed",
+        )
+    if runtime_env is not None:
+        file_security.protect_file(
+            runner,
+            runtime_env,
+            reader_sids=(backend_sid,),
+            code="runtime_env_acl_failed",
+        )
+
+
+def reconcile_credentials(
+    runner: CommandRunner,
+    file_security: FileSecurity,
+    request: InstallRequest,
+) -> None:
+    discard_initdb_password_file(request)
+    existing_secrets, existing_env = _existing_credential_paths(
+        request,
+        allow_missing=True,
+    )
+    backend_sid = native.service_sid(runner, request.backend_service_name)
+    _protect_credential_files(
+        runner,
+        file_security,
+        existing_secrets,
+        existing_env,
+        backend_sid=backend_sid,
+    )
+    _ensure_credentials(request)
+    complete_secrets = tuple(
+        layout.secrets_dir(request) / name for name in sorted(DURABLE_SECRET_NAMES)
+    )
+    runtime_env = Path(request.data_root) / "app" / ".env"
+    _protect_credential_files(
+        runner,
+        file_security,
+        complete_secrets,
+        runtime_env,
+        backend_sid=backend_sid,
+    )
+    verify_existing_credentials(runner, request, allow_missing=False)
+
+
+def _ensure_credentials(request: InstallRequest) -> None:
     secrets_root = layout.secrets_dir(request)
     secrets_root.mkdir(parents=True, exist_ok=True)
     postgres_password = _read_or_create_secret(layout.postgres_password_file(request))

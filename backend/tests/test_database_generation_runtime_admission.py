@@ -111,11 +111,14 @@ def test_installed_runtime_admits_exact_live_dataset_authority(
     assert engine.connection.executed_statement is RUNTIME_AUTHORITY_QUERY
 
 
-def test_runtime_authority_query_rejects_database_and_schema_ownership() -> None:
+def test_runtime_authority_query_rejects_ownership_and_all_role_memberships() -> None:
     statement = str(RUNTIME_AUTHORITY_QUERY)
 
     assert "database_record.datdba <> runtime_role.oid" in statement
     assert "namespace_record.nspowner <> runtime_role.oid" in statement
+    assert "pg_catalog.pg_auth_members AS membership" in statement
+    assert "membership.member = runtime_role.oid" in statement
+    assert "pg_has_role" not in statement
 
 
 @pytest.mark.parametrize(

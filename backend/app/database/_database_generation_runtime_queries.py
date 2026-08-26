@@ -2,11 +2,7 @@
 
 from sqlalchemy import text
 
-from app.database._managed_postgres_contract import (
-    MIGRATOR_ROLE,
-    RUNTIME_ROLE,
-    SCHEMA_OWNER_ROLE,
-)
+from app.database._managed_postgres_contract import RUNTIME_ROLE
 
 RUNTIME_AUTHORITY_FIELDS = (
     "session_user",
@@ -45,10 +41,14 @@ RUNTIME_AUTHORITY_QUERY = text(
                    AND NOT rolreplication AND NOT rolbypassrls
             FROM runtime_role
         ), FALSE) AS runtime_role_ready,
-        (
-            NOT pg_has_role(session_user, '{SCHEMA_OWNER_ROLE}', 'SET')
-            AND NOT pg_has_role(session_user, '{MIGRATOR_ROLE}', 'SET')
-        ) AS runtime_role_isolated,
+        COALESCE((
+            SELECT NOT EXISTS (
+                SELECT 1
+                FROM pg_catalog.pg_auth_members AS membership
+                WHERE membership.member = runtime_role.oid
+            )
+            FROM runtime_role
+        ), FALSE) AS runtime_role_isolated,
         (
             has_database_privilege(session_user, current_database(), 'CONNECT')
             AND NOT has_database_privilege(session_user, current_database(), 'CREATE')
