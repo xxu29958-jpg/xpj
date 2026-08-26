@@ -4,6 +4,7 @@ from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import (
     DATABASE_NAME,
     MIGRATOR_ROLE,
+    expected_alembic_probe,
     verify_alembic_version_sql,
 )
 from ticketbox_lifecycle.runtime import layout
@@ -69,9 +70,11 @@ class WindowsAlembicAdapter:
         completed = run_psql(
             self._runner,
             request,
-            verify_alembic_version_sql(),
+            verify_alembic_version_sql(request.schema_revision),
             database=DATABASE_NAME,
             user=MIGRATOR_ROLE,
         )
-        if completed.returncode != 0 or request.schema_revision not in completed.stdout:
+        observed = completed.stdout.replace("\r\n", "\n").strip()
+        expected = expected_alembic_probe()
+        if completed.returncode != 0 or observed not in {expected, f"SET\n{expected}"}:
             raise LifecycleError("postcondition_missing", "alembic_version is not the exact release target")

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import (
+    expected_alembic_probe,
     expected_membership_probe,
     expected_roles_probe,
     verify_alembic_version_sql,
@@ -364,7 +365,7 @@ class RecordingRunner:
             ("rolname || ':'", expected_roles_probe() + "\n"),
             ("pg_roles", "1"),
             ("pg_database", "1"),
-            ("alembic_version", "20260821_0001"),
+            ("alembic_version", expected_alembic_probe()),
         )
         for needle, stdout in probes:
             if needle in sql_text:
@@ -1243,7 +1244,8 @@ def test_alembic_helper_uses_fresh_switch_without_password_or_generation_program
     probe_index = next(
         index
         for index, call in enumerate(runner.calls)
-        if call[0].endswith("psql.exe") and runner.inputs[index] == verify_alembic_version_sql()
+        if call[0].endswith("psql.exe")
+        and runner.inputs[index] == verify_alembic_version_sql(request.schema_revision)
     )
     assert runner.calls[probe_index][-2:] == ("-f", "-")
     assert "SET ROLE ticketbox_owner" in (runner.inputs[probe_index] or "")

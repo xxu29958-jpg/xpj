@@ -202,7 +202,20 @@ def expected_membership_probe() -> str:
     return f"{OWNER_ROLE}:{MIGRATOR_ROLE}:false:true"
 
 
-def verify_alembic_version_sql() -> str:
+def verify_alembic_version_sql(target_revision: str) -> str:
     # PostgreSQL GRANT … WITH INHERIT FALSE, SET TRUE: migrator cannot SELECT
     # owner-created tables as itself. Official SET ROLE is the probe.
-    return f"SET ROLE {OWNER_ROLE}; SELECT version_num FROM alembic_version"
+    target = _escape_literal(target_revision)
+    return (
+        f"SET ROLE {OWNER_ROLE}; "
+        "SELECT CASE WHEN count(*) = 1 "
+        f"AND min(version_num) = '{target}' "
+        f"AND max(version_num) = '{target}' "
+        "THEN 'ticketbox-alembic-exact' "
+        "ELSE 'ticketbox-alembic-mismatch' END "
+        "FROM alembic_version"
+    )
+
+
+def expected_alembic_probe() -> str:
+    return "ticketbox-alembic-exact"
