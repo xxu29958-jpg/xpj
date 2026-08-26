@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -30,38 +29,6 @@ class _NoCommands:
         raise AssertionError("health contract test must not run a subprocess")
 
 
-class _HealthResponse:
-    status = 200
-
-    def __init__(self, body: bytes) -> None:
-        self._body = body
-        self._offset = 0
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return False
-
-    def read(self) -> bytes:
-        return self._body
-
-    def read1(self, size: int) -> bytes:
-        chunk = self._body[self._offset : self._offset + size]
-        self._offset += len(chunk)
-        return chunk
-
-
-class _DirectOpener:
-    def __init__(self, response: object) -> None:
-        self._response = response
-
-    def open(self, url: str, *, timeout: float):
-        assert url.startswith("http://127.0.0.1:")
-        assert timeout > 0
-        return self._response
-
-
 def _request(tmp_path: Path):
     return replace(
         make_install_request(tmp_path),
@@ -87,17 +54,16 @@ def _health_payload(request) -> dict[str, object]:
     }
 
 
-def _stub_direct_health(monkeypatch, response: object) -> None:
-    def build_opener(handler):
-        assert isinstance(handler, urllib.request.ProxyHandler)
-        assert handler.proxies == {}
-        return _DirectOpener(response)
-
-    monkeypatch.setattr(urllib.request, "build_opener", build_opener)
+def _stub_health_body(monkeypatch, body: bytes) -> None:
+    monkeypatch.setattr(
+        windows_dataset,
+        "fetch_installation_health",
+        lambda _port: (200, body),
+    )
 
 
 def _stub_json_health(monkeypatch, payload: object) -> None:
-    _stub_direct_health(monkeypatch, _HealthResponse(json.dumps(payload).encode("utf-8")))
+    _stub_health_body(monkeypatch, json.dumps(payload).encode("utf-8"))
 
 
 @pytest.mark.parametrize(
@@ -127,15 +93,10 @@ def test_health_requires_exact_release_identity_and_usable_owner(
         adapter.verify(request, "health")
 
 
-def test_health_ignores_ambient_proxy_and_accepts_exact_identity(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
+def test_health_accepts_exact_identity(tmp_path: Path, monkeypatch) -> None:
     request = _request(tmp_path)
     adapter = _adapter()
 
-    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
-    monkeypatch.delenv("NO_PROXY", raising=False)
     _stub_json_health(monkeypatch, _health_payload(request))
     monkeypatch.setattr(adapter, "_live_dataset_id", lambda _request: request.dataset_id)
 
@@ -153,46 +114,24 @@ def test_health_rejects_non_object_json(tmp_path: Path, monkeypatch) -> None:
     assert caught.value.code == "health_identity_mismatch"
 
 
-def test_health_rejects_oversized_response(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"1" * 5_000,
+        b"[" * 1_200 + b"]" * 1_200,
+    ],
+    ids=("long_integer", "deep_array"),
+)
+def test_health_normalizes_bounded_json_parser_failures(
+    tmp_path: Path,
+    monkeypatch,
+    body: bytes,
+) -> None:
     request = _request(tmp_path)
     adapter = _adapter()
-    payload = _health_payload(request)
-    payload["padding"] = "x" * windows_dataset._HEALTH_BODY_LIMIT_BYTES
-    _stub_json_health(monkeypatch, payload)
-    monkeypatch.setattr(adapter, "_live_dataset_id", lambda _request: request.dataset_id)
+    _stub_health_body(monkeypatch, body)
 
     with pytest.raises(LifecycleError) as caught:
         adapter.verify(request, "health")
 
     assert caught.value.code == "health_identity_mismatch"
-    assert caught.value.message == "installation health response is too large"
-
-
-def test_health_rejects_slow_drip_response(tmp_path: Path, monkeypatch) -> None:
-    request = _request(tmp_path)
-    adapter = _adapter()
-
-    class SlowResponse(_HealthResponse):
-        def read(self) -> bytes:
-            raise AssertionError("health must not use an unbounded read")
-
-        def read1(self, size: int) -> bytes:
-            del size
-            clock.value += windows_dataset._HEALTH_TOTAL_TIMEOUT_SECONDS + 1
-            return b"{"
-
-    class Clock:
-        value = 0.0
-
-        def monotonic(self) -> float:
-            return self.value
-
-    clock = Clock()
-    _stub_direct_health(monkeypatch, SlowResponse(b""))
-    monkeypatch.setattr(windows_dataset, "time", clock)
-
-    with pytest.raises(LifecycleError) as caught:
-        adapter.verify(request, "health")
-
-    assert caught.value.code == "health_unreachable"
-    assert caught.value.message == "installation health response deadline elapsed"
