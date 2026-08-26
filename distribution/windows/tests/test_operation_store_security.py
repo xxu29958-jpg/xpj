@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import ctypes
 import multiprocessing
 import os
 from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -62,41 +60,6 @@ def _unit_directory_security(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(native, "create_protected_directory", create_directory)
     monkeypatch.setattr(native, "require_protected_directory", require_directory)
-
-
-@contextmanager
-def _retained_directory_handle(path: Path) -> Iterator[int]:
-    from ctypes import wintypes
-
-    create_file = ctypes.WinDLL("kernel32", use_last_error=True).CreateFileW
-    create_file.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        ctypes.c_void_p,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.HANDLE,
-    ]
-    create_file.restype = wintypes.HANDLE
-    close_handle = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
-    close_handle.argtypes = [wintypes.HANDLE]
-    close_handle.restype = wintypes.BOOL
-    handle = create_file(
-        str(path),
-        0x0002 | 0x0004 | 0x0040,
-        0x0001 | 0x0002 | 0x0004,
-        None,
-        3,
-        0x02000000,
-        None,
-    )
-    if handle == wintypes.HANDLE(-1).value:
-        raise ctypes.WinError(ctypes.get_last_error())
-    try:
-        yield int(handle)
-    finally:
-        close_handle(handle)
 
 
 class _CrashPublicationSecurity:
@@ -162,7 +125,7 @@ def _prepared_operation(request: InstallRequest) -> ActiveOperation:
     )
 
 
-def test_precreated_root_with_retained_handle_is_rejected_before_acl_mutation(
+def test_nonempty_precreated_root_is_rejected_without_acl_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -178,19 +141,16 @@ def test_precreated_root_with_retained_handle_is_rejected_before_acl_mutation(
     )
     runner = RecordingRunner()
 
-    with _retained_directory_handle(root) as retained:
-        assert retained
-        with pytest.raises(LifecycleViolation, match="untrusted lifecycle directory") as caught:
-            WindowsSecurityAdapter(runner, _FORBIDDEN_FILE_SECURITY).prepare_operation_store(
-                request
-            )
+    with pytest.raises(LifecycleError, match="cannot claim") as caught:
+        WindowsSecurityAdapter(runner, _FORBIDDEN_FILE_SECURITY).prepare_operation_store(request)
 
-    assert caught.value.code == "operation_store_untrusted"
+    assert caught.value.code == "operation_store_claim_failed"
     assert not any(
         call[0].lower() == "takeown"
         or (call[0].lower() == "icacls" and len(call) > 2)
         for call in runner.calls
     )
+    assert (root / "machine" / "operations").is_dir()
     assert not (root / "machine" / "operations" / "active.json").exists()
 
 
@@ -212,9 +172,19 @@ def test_empty_untrusted_product_root_is_rebuilt_instead_of_adopted(
         path.mkdir()
         owners[path] = native.ADMINISTRATORS_SID
 
+    original_iterdir = Path.iterdir
+
+    def deny_root_enumeration(path: Path) -> Iterator[Path]:
+        if path == root:
+            raise PermissionError("injected FILE_LIST_DIRECTORY denial")
+        return original_iterdir(path)
+
     monkeypatch.setattr(native, "create_protected_directory", create_directory)
+    monkeypatch.setattr(Path, "iterdir", deny_root_enumeration)
     security = WindowsSecurityAdapter(RecordingRunner(), _FORBIDDEN_FILE_SECURITY)
 
+    with pytest.raises(PermissionError, match="FILE_LIST_DIRECTORY"):
+        list(root.iterdir())
     security.require_fresh_inputs(request)
     security.prepare_operation_store(request)
 

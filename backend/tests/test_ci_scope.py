@@ -184,6 +184,7 @@ def test_installation_health_transitive_dependencies_select_windows() -> None:
     dependencies = ci_gap_trigger_scope.installation_health_python_dependencies()
     assert "backend/app/database/_database_generation_runtime_admission.py" in dependencies
     assert "backend/app/database/_database_generation_runtime_queries.py" in dependencies
+    assert "backend/app/services/installation_health_attestation.py" in dependencies
     assert "backend/app/services/installation_health_service.py" in dependencies
     for dependency in dependencies:
         scopes = classify_ci_paths([dependency])

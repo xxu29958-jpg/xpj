@@ -117,7 +117,9 @@ def test_active_publication_before_scm_preserves_bounded_directory_policies(tmp_
     assert before == (manager_ancestor, manager_ancestor, backend_only)
 
 
-def test_empty_broad_programdata_namespace_is_replaced_with_exact_policy(tmp_path: Path) -> None:
+def test_empty_unreadable_programdata_namespace_is_replaced_with_exact_policy(
+    tmp_path: Path,
+) -> None:
     if not ctypes.windll.shell32.IsUserAnAdmin():
         if os.environ.get("CI"):
             pytest.fail("Windows operation-store contract lane must run elevated")
@@ -129,12 +131,14 @@ def test_empty_broad_programdata_namespace_is_replaced_with_exact_policy(tmp_pat
     assert current_sid is not None
     windows_dacl.apply_protected_dacl(
         root,
-        f"D:P(A;OICI;FA;;;{current_sid})",
+        f"D:P(D;;0x1;;;BA)(A;OICI;FA;;;{current_sid})",
         code="test_untrusted_product_root_failed",
     )
     runner = SubprocessCommandRunner()
     security = WindowsSecurityAdapter(runner, WindowsFileSecurity())
 
+    with pytest.raises(PermissionError):
+        list(root.iterdir())
     security.require_fresh_inputs(request)
     security.prepare_operation_store(request)
 

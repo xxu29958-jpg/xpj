@@ -108,6 +108,7 @@ _FRESH_INSTALL_ROOT_MODULES = (
 )
 _INSTALLATION_HEALTH_ROOT_MODULES = (
     "app.database._database_generation_runtime_admission",
+    "app.services.installation_health_attestation",
     "app.services.installation_health_service",
 )
 

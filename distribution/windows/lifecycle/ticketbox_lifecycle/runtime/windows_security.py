@@ -41,7 +41,7 @@ class WindowsSecurityAdapter:
                         code="operation_store_untrusted",
                     )
                 except LifecycleViolation:
-                    if path != root or not _is_empty_product_root(path):
+                    if path != root:
                         raise
                     _rebuild_empty_product_root(
                         path,
@@ -92,8 +92,9 @@ class WindowsSecurityAdapter:
                     code="operation_store_untrusted",
                 )
             except LifecycleViolation:
-                if parent != root or not _is_empty_product_root(parent):
+                if parent != root:
                     raise
+                return
             entries = list(parent.iterdir())
             if any(entry != expected_child for entry in entries):
                 _raise_preexisting_mutable_state()
@@ -365,16 +366,6 @@ def _raise_preexisting_mutable_state() -> None:
         "preexisting_mutable_state",
         "fresh install refuses unbound mutable state",
     )
-
-
-def _is_empty_product_root(path: Path) -> bool:
-    native.reject_reparse_components(path)
-    if not path.is_dir():
-        return False
-    try:
-        return next(path.iterdir(), None) is None
-    except OSError:
-        return False
 
 
 def _rebuild_empty_product_root(
