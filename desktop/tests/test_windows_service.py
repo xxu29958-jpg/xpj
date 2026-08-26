@@ -60,7 +60,7 @@ class FakeActionRunner:
 
 def _health_payload(
     *,
-    installation_id: str = "ticketbox-0123456789abcdef0123456789abcdef",
+    installation_id: str = "01234567-89ab-4def-8123-456789abcdef",
     runtime_access_state: str = "available",
     owner_state: str = "configured",
     owner_recovery_channel: str = "managed_host",
@@ -136,12 +136,12 @@ def test_status_reports_services_and_redacted_identity_health_without_raw_logs(t
 def test_health_json_requires_exact_product_version_and_installation_identity(tmp_path: Path) -> None:
     expectation = TicketboxHealthExpectation(
         backend_version="9.8.7",
-        installation_id="ticketbox-0123456789abcdef0123456789abcdef",
+        installation_id="01234567-89ab-4def-8123-456789abcdef",
     )
     random_200 = _parse_health_payload(b'{"status":"ok"}', expectation)
     valid = _parse_health_payload(_health_payload(), expectation)
     wrong_install = _parse_health_payload(
-        _health_payload(installation_id="ticketbox-ffffffffffffffffffffffffffffffff"),
+        _health_payload(installation_id="ffffffff-ffff-4fff-8fff-ffffffffffff"),
         expectation,
     )
     missing_owner = _parse_health_payload(

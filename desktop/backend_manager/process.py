@@ -11,7 +11,6 @@ import contextlib
 import ctypes
 import json
 import os
-import re
 import subprocess
 import threading
 import urllib.error
@@ -48,7 +47,6 @@ _MOBILE_TASK_STATES = frozenset({"setup_required", "configured_unverified"})
 _OWNER_STATES = frozenset({"configured", "recovery_required"})
 _OWNER_RECOVERY_CHANNELS = frozenset({"development", "managed_host", "operator"})
 _RUNTIME_ACCESS_STATES = frozenset({"available", "repair_required"})
-_INSTALLATION_ID_PATTERN = re.compile(r"ticketbox-[0-9a-f]{32}\Z")
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 
@@ -317,7 +315,7 @@ def _parse_health_payload(raw: bytes, expectation: TicketboxHealthExpectation) -
     installation_id = decoded.get("installation_id")
     if not is_managed_release_version(version):
         return HealthProbeResult("mismatch", "Ticketbox 后端版本身份无效。")
-    if not isinstance(installation_id, str) or not _INSTALLATION_ID_PATTERN.fullmatch(installation_id):
+    if not isinstance(installation_id, str):
         return HealthProbeResult("mismatch", "Ticketbox 安装身份无效。")
     if expectation.backend_version is not None and version != expectation.backend_version:
         return HealthProbeResult("mismatch", "运行中的 Ticketbox 版本与安装记录不一致。")
