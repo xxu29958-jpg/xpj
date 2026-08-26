@@ -234,7 +234,7 @@ def test_lifecycle_directory_sddl_is_valid_and_canonical() -> None:
     interactive_sid = "S-1-5-21-9-9-9-1002"
     assert native._canonical_lifecycle_directory_sddl(backend_sid, interactive_sid) == (
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-        f"(A;;WPLO;;;{backend_sid})(A;;WP;;;{interactive_sid})"
+        f"(A;;CCWPLO;;;{backend_sid})(A;;WP;;;{interactive_sid})"
     )
 
 
@@ -245,7 +245,7 @@ def test_lifecycle_directory_sddl_omits_interactive_ace_when_no_shell_exists() -
 
     assert policy == (
         "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-        f"(A;;0x000000a0;;;{backend_sid})"
+        f"(A;;0x000000a1;;;{backend_sid})"
     )
     assert "S-1-5-32-545" not in policy
 

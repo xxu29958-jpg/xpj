@@ -192,10 +192,10 @@ _SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER = (
 _WINDOWS_VNEXT_CONTROL_PLANE_TEST_RETIREMENT_GRANDFATHER = (
     "6557125826d7c76a06568164814b4e5cb9e08f88",
     369,
-    74,
+    75,
 )
 # Windows vNext physically replaces the old Generation/receipt/restore harness.
-# The retained 74 tests cover the shipped build, runtime authority, service
+# The retained 75 tests cover the shipped build, runtime authority, service
 # identity, atomic settings, and resource-serial PostgreSQL lifecycle behavior.
 # Exact base and hop binding make this exception self-extinguishing.
 

@@ -60,6 +60,6 @@ def test_active_publication_before_scm_preserves_the_single_directory_policy(tmp
     backend_sid = native.service_sid(runner, request.backend_service_name)
     expected = (
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-        f"(A;;WPLO;;;{backend_sid})"
+        f"(A;;CCWPLO;;;{backend_sid})"
     )
     assert before == (expected,) * len(paths)
