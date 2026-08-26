@@ -18,6 +18,7 @@ _SE_FILE_OBJECT = 1
 _SDDL_REVISION_1 = 1
 _GENERIC_READ = 0x80000000
 _GENERIC_READ_WRITE = 0xC0000000
+_FILE_SHARE_READ = 0x00000001
 _OPEN_EXISTING = 3
 _FILE_ATTRIBUTE_NORMAL = 0x00000080
 _FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
@@ -174,7 +175,7 @@ def open_exclusive_file(path: Path, *, writable: bool) -> Iterator[BinaryIO]:
     handle = kernel32.CreateFileW(
         str(path),
         _GENERIC_READ_WRITE if writable else _GENERIC_READ,
-        0,
+        0 if writable else _FILE_SHARE_READ,
         None,
         _OPEN_EXISTING,
         _FILE_ATTRIBUTE_NORMAL | _FILE_FLAG_OPEN_REPARSE_POINT,
