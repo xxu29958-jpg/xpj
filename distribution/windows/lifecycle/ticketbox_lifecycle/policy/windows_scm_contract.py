@@ -31,6 +31,7 @@ _IMMUTABLE_IDENTITY_FIELDS = (
     "tag_id",
     "display_name",
 )
+_SHAWL_CANONICAL_PATH_INDICES = frozenset({5, 7})
 
 
 def expected_pg_service(request: InstallRequest) -> ServiceConfiguration:
@@ -155,8 +156,16 @@ def _service_path(path: Path) -> str:
     return value.removeprefix("\\\\?\\")
 
 
-def _normalize_argv(argv: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(value.replace("/", "\\") for value in argv)
+def _argv_matches(actual: tuple[str, ...], expected: tuple[str, ...]) -> bool:
+    return len(actual) == len(expected) and all(
+        actual_value == expected_value
+        or (
+            expected[1:2] == ("run",)
+            and index in _SHAWL_CANONICAL_PATH_INDICES
+            and actual_value == "\\\\?\\" + expected_value
+        )
+        for index, (actual_value, expected_value) in enumerate(zip(actual, expected))
+    )
 
 
 def _field_matches(
@@ -167,7 +176,7 @@ def _field_matches(
     actual_value = getattr(observed, field)
     expected_value = getattr(expected, field)
     if field == "argv":
-        return _normalize_argv(actual_value) == _normalize_argv(expected_value)
+        return _argv_matches(actual_value, expected_value)
     if field == "dependencies":
         return tuple(value.casefold() for value in actual_value) == tuple(
             value.casefold() for value in expected_value

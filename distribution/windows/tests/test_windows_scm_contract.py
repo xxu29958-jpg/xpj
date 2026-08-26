@@ -155,6 +155,34 @@ def test_scm_verify_accepts_only_the_pinned_pg_ctl_and_shawl_contract(tmp_path: 
     adapter.verify(request, "scm")
 
 
+def test_scm_verify_accepts_paths_canonicalized_by_shawl_add(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    observed = _expected(request)
+    backend = observed[request.backend_service_name]
+    argv = list(backend.argv)
+    for option in ("--cwd", "--log-dir"):
+        path_index = argv.index(option) + 1
+        argv[path_index] = "\\\\?\\" + argv[path_index]
+    observed[request.backend_service_name] = replace(backend, argv=tuple(argv))
+    adapter = WindowsScmAdapter(_Runner(observed), _Security(), _Observer(observed))
+
+    adapter.verify(request, "scm")
+
+
+def test_scm_verify_rejects_extended_prefix_outside_shawl_path_options(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    observed = _expected(request)
+    backend = observed[request.backend_service_name]
+    observed[request.backend_service_name] = replace(
+        backend,
+        argv=(*backend.argv[:-1], "\\\\?\\" + backend.argv[-1]),
+    )
+    adapter = WindowsScmAdapter(_Runner(observed), _Security(), _Observer(observed))
+
+    with pytest.raises(LifecycleError, match="argv"):
+        adapter.verify(request, "scm")
+
+
 @pytest.mark.parametrize(
     ("service", "field", "value"),
     [
