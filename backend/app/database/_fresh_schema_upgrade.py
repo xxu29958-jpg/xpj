@@ -35,7 +35,7 @@ from app.database._postgres_operation_failures import (
     close_postgres_owner_resources,
     raise_postgres_operation_failures,
 )
-from app.services.secure_file import hold_protected_file_for_read
+from app.services.secure_file import hold_installer_machine_secret_for_read
 
 RESULT_SCHEMA = "ticketbox-fresh-schema-upgrade-result-v1"
 _MANAGED_JSON_PROTOCOL_ATTRIBUTE = "ticketbox_managed_migration_json_protocol_v1"
@@ -267,7 +267,7 @@ def _execute_fresh_upgrade(
     result: str | None = None
     entered_contexts: list[AbstractContextManager[Any]] = []
     try:
-        protected_context = hold_protected_file_for_read(pgpassfile)
+        protected_context = hold_installer_machine_secret_for_read(pgpassfile)
         protected_pgpass = protected_context.__enter__()
         entered_contexts.append(protected_context)
         environment_context = _temporary_pgpass_environment(protected_pgpass)

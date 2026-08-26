@@ -4,7 +4,7 @@ import os
 
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime import layout
-from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok, sealed_pg_env
+from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok, sealed_postgres_env
 from ticketbox_lifecycle.runtime.postgres_connection import run_psql
 from ticketbox_lifecycle.runtime.windows_security_native import (
     reject_reparse_components,
@@ -33,7 +33,7 @@ def require_running_ticketbox_cluster(
                 "-d",
                 "postgres",
             ],
-            env=sealed_pg_env(str(layout.pg_passfile(request))),
+            env=sealed_postgres_env(),
         ),
         code="postgres_not_ready",
     )
@@ -78,7 +78,7 @@ def read_system_identifier(runner: CommandRunner, request: InstallRequest) -> st
             "missing_platform_binary",
             "postgresql/bin/pg_controldata.exe is not installed",
         )
-    env = sealed_pg_env(str(layout.pg_passfile(request)))
+    env = sealed_postgres_env()
     env["LC_ALL"] = "C"
     completed = require_ok(
         runner.run(

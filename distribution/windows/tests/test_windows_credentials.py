@@ -10,7 +10,7 @@ from ticketbox_lifecycle.runtime import windows_credentials as credentials
 from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.windows_file_security import file_dacl_sddl
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
-from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
+from ticketbox_lifecycle.schemas import APPLY_SEQUENCE, REQUEST_SCHEMA, InstallRequest
 
 _SERVICE_SID = "S-1-5-80-100-200-300-400-500"
 _CREDENTIAL_REPLACE_TARGETS = (
@@ -20,6 +20,41 @@ _CREDENTIAL_REPLACE_TARGETS = (
     "pgpass",
     ".env",
 )
+
+
+def test_pgpass_consumer_topology_is_closed_and_follows_acl_verification() -> None:
+    runtime = Path(credentials.__file__).resolve().parent
+    pgpass_files = {
+        path.name
+        for path in runtime.glob("*.py")
+        if any(
+            marker in path.read_text(encoding="utf-8")
+            for marker in (
+                "sealed_pg_env(",
+                "PGPASSFILE",
+                "--pgpassfile",
+                "layout.pg_passfile(",
+            )
+        )
+    }
+
+    assert pgpass_files == {
+        "command.py",
+        "postgres_connection.py",
+        "windows_alembic.py",
+        "windows_credentials.py",
+        "windows_dataset.py",
+    }
+    acl_index = APPLY_SEQUENCE.index("acl")
+    for step in (
+        "postgres_initdb",
+        "start_postgres",
+        "roles_database",
+        "alembic",
+        "owner_claim",
+        "health",
+    ):
+        assert acl_index < APPLY_SEQUENCE.index(step)
 
 
 def _request(tmp_path: Path) -> InstallRequest:
@@ -56,6 +91,7 @@ def _write_existing_credentials(request: InstallRequest, *, include_pwfile: bool
 def _stub_native_inspection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(native, "reject_reparse_components", lambda _path: None)
     monkeypatch.setattr(native, "require_trusted_owner", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(native, "file_owner_sid", lambda _path: native.ADMINISTRATORS_SID)
     monkeypatch.setattr(native, "service_sid", lambda _runner, _name: _SERVICE_SID)
 
 

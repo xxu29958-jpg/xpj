@@ -633,7 +633,10 @@ def test_initdb_uses_pwfile_checksums_and_forbids_no_sync(
     initdb_env = runner.envs[runner.calls.index(initdb)]
     assert initdb_env is not None
     assert not any(key.upper().startswith("PG") for key in initdb_env)
-    assert any(Path(call[0]).name.lower() == "pg_controldata.exe" for call in runner.calls)
+    control = next(call for call in runner.calls if Path(call[0]).name.lower() == "pg_controldata.exe")
+    control_env = runner.envs[runner.calls.index(control)]
+    assert control_env is not None
+    assert not any(key.upper().startswith("PG") for key in control_env)
 
 
 def test_initdb_precreates_pgdata_for_its_restricted_child(tmp_path: Path) -> None:
@@ -825,6 +828,11 @@ def test_running_cluster_requires_data_checksums(tmp_path: Path) -> None:
 
     with pytest.raises(LifecycleError, match="data checksums"):
         bundle.postgres.verify(request, "start_postgres")
+
+    ready = next(call for call in runner.calls if Path(call[0]).name.lower() == "pg_isready.exe")
+    ready_env = runner.envs[runner.calls.index(ready)]
+    assert ready_env is not None
+    assert not any(key.upper().startswith("PG") for key in ready_env)
 
 
 def test_pg_isready_cannot_substitute_for_ticketbox_service_state(tmp_path: Path) -> None:
@@ -1472,7 +1480,7 @@ def test_fresh_inputs_reject_precreated_empty_data_root(tmp_path: Path) -> None:
     assert data_root.is_dir() and list(data_root.iterdir()) == []
 
 
-def test_acl_refuses_untrusted_existing_credential_before_reading_it(
+def test_acl_refuses_system_owned_existing_credential(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1485,12 +1493,14 @@ def test_acl_refuses_untrusted_existing_credential_before_reading_it(
         windows_security_native,
         "file_owner_sid",
         lambda path: (
-            "S-1-5-21-9-9-9-1002" if Path(path) == secret else "S-1-5-32-544"
+            windows_security_native.SYSTEM_SID
+            if Path(path) == secret
+            else windows_security_native.ADMINISTRATORS_SID
         ),
         raising=False,
     )
 
-    with pytest.raises(LifecycleViolation, match="trusted owner") as caught:
+    with pytest.raises(LifecycleViolation, match="Administrators owner") as caught:
         bundle.security.apply(request, "acl")
 
     assert caught.value.code == "credential_owner_untrusted"

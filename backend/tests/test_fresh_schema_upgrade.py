@@ -4,7 +4,35 @@ from pathlib import Path
 
 import pytest
 
+from app.database import _fresh_schema_upgrade as fresh_schema
 from app.database._fresh_schema_upgrade import FreshSchemaUpgradeError, run_fresh_schema_upgrade_action
+
+
+class _HolderSentinelError(Exception):
+    pass
+
+
+def test_fresh_schema_upgrade_enters_the_installer_machine_secret_holder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pgpass = (tmp_path / "pgpass").resolve()
+
+    def stop_at_holder(path: Path) -> None:
+        assert path == pgpass
+        raise _HolderSentinelError
+
+    monkeypatch.setattr(fresh_schema, "hold_installer_machine_secret_for_read", stop_at_holder)
+    with pytest.raises(_HolderSentinelError):
+        fresh_schema._execute_fresh_upgrade(
+            parsed_url=object(),
+            pgpassfile=pgpass,
+            target="20260821_0001",
+            dataset_id="11111111-1111-4111-8111-111111111111",
+            client_generation="11111111-1111-4111-8111-111111111111",
+            schema_min_compatible="20260722_0001",
+            semantic_revision="ticketbox-dataset-semantics-v1",
+        )
 
 
 def test_fresh_schema_upgrade_rejects_password_in_url(tmp_path: Path) -> None:

@@ -33,6 +33,15 @@ DURABLE_SECRET_NAMES = frozenset(
 KNOWN_SECRET_NAMES = DURABLE_SECRET_NAMES | {"postgres.pwfile"}
 
 
+def _require_installer_owner(path: Path, *, message: str) -> None:
+    try:
+        owner_sid = native.file_owner_sid(path)
+    except OSError as exc:
+        raise LifecycleViolation("credential_owner_untrusted", message) from exc
+    if owner_sid != native.ADMINISTRATORS_SID:
+        raise LifecycleViolation("credential_owner_untrusted", message)
+
+
 def materialize_initdb_password_file(
     runner: CommandRunner,
     file_security: FileSecurity,
@@ -50,10 +59,9 @@ def materialize_initdb_password_file(
         reader_sids=(reader_sid,),
         code="secret_acl_failed",
     )
-    native.require_trusted_owner(
+    _require_installer_owner(
         path,
-        code="credential_owner_untrusted",
-        message="initdb password input must have a trusted owner",
+        message="initdb password input must have the installer Administrators owner",
     )
     native.require_protected_file_acl(
         runner,
@@ -139,10 +147,9 @@ def verify_existing_credentials(
         allow_missing=allow_missing,
     )
     for path in secret_paths:
-        native.require_trusted_owner(
+        _require_installer_owner(
             path,
-            code="credential_owner_untrusted",
-            message="credential must have a trusted owner",
+            message="credential must have the installer Administrators owner",
         )
         native.require_protected_file_acl(
             runner,
@@ -153,10 +160,9 @@ def verify_existing_credentials(
         )
     if runtime_env is None:
         return
-    native.require_trusted_owner(
+    _require_installer_owner(
         runtime_env,
-        code="credential_owner_untrusted",
-        message="runtime .env must have a trusted owner",
+        message="runtime .env must have the installer Administrators owner",
     )
     backend_sid = native.service_sid(runner, request.backend_service_name)
     native.require_protected_file_acl(

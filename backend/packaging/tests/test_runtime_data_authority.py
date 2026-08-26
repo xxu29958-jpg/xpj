@@ -5,6 +5,7 @@ import json
 import os
 import stat
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -380,10 +381,26 @@ def test_fresh_owner_helper_consumes_secret_on_stdin_and_returns_pairing(
     import sqlalchemy
     import sqlalchemy.orm
 
-    from app.services import identity_service
+    from app.services import identity_service, secure_file
 
     engine = FakeEngine()
-    monkeypatch.setattr(sqlalchemy, "create_engine", lambda *_args, **_kwargs: engine)
+
+    @contextmanager
+    def hold_machine_secret(path: Path):
+        assert path == passfile
+        observed["machine_secret_held"] = True
+        try:
+            yield path
+        finally:
+            observed["machine_secret_held"] = False
+            observed["machine_secret_released"] = True
+
+    def create_engine(*_args, **_kwargs):
+        assert observed.get("machine_secret_held") is True
+        return engine
+
+    monkeypatch.setattr(secure_file, "hold_installer_machine_secret_for_read", hold_machine_secret)
+    monkeypatch.setattr(sqlalchemy, "create_engine", create_engine)
     monkeypatch.setattr(sqlalchemy.orm, "Session", FakeSession)
     monkeypatch.setattr(identity_service, "bootstrap_installation_owner", lambda _db, **_kwargs: Result())
     output = StringIO()
@@ -405,4 +422,5 @@ def test_fresh_owner_helper_consumes_secret_on_stdin_and_returns_pairing(
     ) == 0
     assert observed["committed"] is True
     assert observed["disposed"] is True
+    assert observed["machine_secret_released"] is True
     assert json.loads(output.getvalue())["pairing_code"] == "12345678"

@@ -367,29 +367,31 @@ def _run_fresh_owner_claim(
     from sqlalchemy.orm import Session
 
     from app.services.identity_service import bootstrap_installation_owner
+    from app.services.secure_file import hold_installer_machine_secret_for_read
 
-    engine = create_engine(
-        args.database_url,
-        connect_args={"connect_timeout": 10, "options": "-c timezone=utc"},
-        pool_pre_ping=True,
-        future=True,
-    )
-    try:
-        with Session(engine, expire_on_commit=False) as db:
-            db.execute(text("SET ROLE ticketbox_owner"))
-            result = bootstrap_installation_owner(
-                db,
-                operation_id=args.operation_id,
-                installation_id=args.installation_id,
-                bootstrap_secret=secret,
-                account_name="我",
-                ledger_name="我的小票夹",
-                device_name="Windows 安装来源",
-                commit=False,
-            )
-            db.commit()
-    finally:
-        engine.dispose()
+    with hold_installer_machine_secret_for_read(args.pgpassfile):
+        engine = create_engine(
+            args.database_url,
+            connect_args={"connect_timeout": 10, "options": "-c timezone=utc"},
+            pool_pre_ping=True,
+            future=True,
+        )
+        try:
+            with Session(engine, expire_on_commit=False) as db:
+                db.execute(text("SET ROLE ticketbox_owner"))
+                result = bootstrap_installation_owner(
+                    db,
+                    operation_id=args.operation_id,
+                    installation_id=args.installation_id,
+                    bootstrap_secret=secret,
+                    account_name="我",
+                    ledger_name="我的小票夹",
+                    device_name="Windows 安装来源",
+                    commit=False,
+                )
+                db.commit()
+        finally:
+            engine.dispose()
     payload = asdict(result)
     if tuple(payload) != _FRESH_OWNER_RESULT_FIELDS:
         raise RuntimeError("fresh owner claim returned an unsupported shape")

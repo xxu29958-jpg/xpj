@@ -153,6 +153,33 @@ def _assert_runtime_projection_acl(
         assert held == projection
 
 
+def test_machine_secret_uses_the_installer_owner_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    secret = (tmp_path / "pgpass").resolve()
+    monkeypatch.setattr(secure_file.os, "name", "nt")
+
+    @contextlib.contextmanager
+    def hold_exact_secret(
+        path: Path,
+        *,
+        owner_sids: frozenset[str],
+        access_rules: dict[str, int],
+    ) -> Iterator[Path]:
+        assert path == secret
+        assert owner_sids == frozenset({ADMINISTRATORS_SID})
+        assert access_rules == {
+            SYSTEM_SID: secure_file._FILE_ALL_ACCESS,
+            ADMINISTRATORS_SID: secure_file._FILE_ALL_ACCESS,
+        }
+        yield path
+
+    monkeypatch.setattr(secure_file, "_hold_windows_protected_file", hold_exact_secret)
+    with secure_file.hold_installer_machine_secret_for_read(secret) as held:
+        assert held == secret
+
+
 def test_protected_sddl_deduplicates_system_process_sid() -> None:
     sddl = _protected_sddl(SYSTEM_SID)
 
