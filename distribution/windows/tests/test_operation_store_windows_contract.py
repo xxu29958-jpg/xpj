@@ -110,9 +110,8 @@ def test_active_publication_before_scm_preserves_bounded_directory_policies(tmp_
     assert tuple(native._object_dacl_sddl(path) for path in paths) == before
     backend_sid = native.service_sid(runner, request.backend_service_name)
     interactive_sid = security._installation_reader_sid()
-    backend_only = (
-        "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-        f"(A;;0x1000a0;;;{backend_sid})"
+    backend_only = native._canonical_lifecycle_directory_sddl(backend_sid, None)
+    manager_ancestor = native._canonical_lifecycle_directory_sddl(
+        backend_sid, interactive_sid
     )
-    manager_ancestor = backend_only + f"(A;;0x1000a0;;;{interactive_sid})"
     assert before == (manager_ancestor, manager_ancestor, backend_only)
