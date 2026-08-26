@@ -528,14 +528,16 @@ def _read_temporal_authorities() -> tuple[dict[str, object] | None, dict[str, ob
     program_data = Path(os.environ.get("PROGRAMDATA") or r"C:\ProgramData")
     ticketbox_root = program_data / "Ticketbox"
     machine = ticketbox_root / "machine"
-    binding = _read_vnext_authority(
-        machine / "installation.json",
-        "ticketbox-installed-instance-v1",
-        root=ticketbox_root,
-    )
     active = _read_vnext_authority(
         machine / "operations" / "active.json",
         "ticketbox-lifecycle-operation-v2",
+        root=ticketbox_root,
+    )
+    if active is not None and active.get("phase") != "committed":
+        return None, active
+    binding = _read_vnext_authority(
+        machine / "installation.json",
+        "ticketbox-installed-instance-v1",
         root=ticketbox_root,
     )
     if binding is None and active is None:

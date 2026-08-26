@@ -218,6 +218,31 @@ def test_frozen_runtime_admits_active_fresh_install_before_binding_publication(
     assert launch.configure_environment() == data_dir.resolve()
 
 
+def test_active_fresh_install_never_probes_unpublished_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    active = _active(data_root)
+    active["phase"] = "release_activated"
+    _write_authority(program_data, "operations/active.json", active)
+    original_lstat = Path.lstat
+    binding_probes = 0
+
+    def lstat(path: Path):
+        nonlocal binding_probes
+        if path.name == "installation.json":
+            binding_probes += 1
+            raise PermissionError("Windows hides the unpublished binding behind its protected parent")
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+
+    assert launch.configure_environment() == data_dir.resolve()
+    assert binding_probes == 0
+
+
 def test_frozen_runtime_rejects_failed_recoverable_operation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -272,6 +297,7 @@ def test_frozen_runtime_rejects_disagreeing_temporal_authorities(
     program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
     _write_authority(program_data, "installation.json", _binding(data_root))
     active = _active(data_root)
+    active["phase"] = "committed"
     active["release_manifest_sha256"] = "c" * 64
     _write_authority(program_data, "operations/active.json", active)
 
