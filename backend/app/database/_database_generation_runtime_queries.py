@@ -2,7 +2,9 @@
 
 from sqlalchemy import text
 
-from app.database._managed_postgres_contract import RUNTIME_ROLE
+from app.database._managed_postgres_contract import RUNTIME_READ_ONLY_TABLES, RUNTIME_ROLE
+
+_READ_ONLY_TABLE_NAMES = ", ".join(f"'{name}'" for name in RUNTIME_READ_ONLY_TABLES)
 
 RUNTIME_AUTHORITY_FIELDS = (
     "session_user",
@@ -74,9 +76,20 @@ RUNTIME_AUTHORITY_QUERY = text(
             SELECT COALESCE(bool_and(
                 relation.relowner <> runtime_role.oid
                 AND has_table_privilege(session_user, relation.oid, 'SELECT')
-                AND has_table_privilege(session_user, relation.oid, 'INSERT')
-                AND has_table_privilege(session_user, relation.oid, 'UPDATE')
-                AND has_table_privilege(session_user, relation.oid, 'DELETE')
+                AND (
+                    (
+                        relation.relname IN ({_READ_ONLY_TABLE_NAMES})
+                        AND NOT has_table_privilege(session_user, relation.oid, 'INSERT')
+                        AND NOT has_table_privilege(session_user, relation.oid, 'UPDATE')
+                        AND NOT has_table_privilege(session_user, relation.oid, 'DELETE')
+                    )
+                    OR (
+                        relation.relname NOT IN ({_READ_ONLY_TABLE_NAMES})
+                        AND has_table_privilege(session_user, relation.oid, 'INSERT')
+                        AND has_table_privilege(session_user, relation.oid, 'UPDATE')
+                        AND has_table_privilege(session_user, relation.oid, 'DELETE')
+                    )
+                )
                 AND NOT has_table_privilege(session_user, relation.oid, 'TRUNCATE')
                 AND NOT has_table_privilege(session_user, relation.oid, 'REFERENCES')
                 AND NOT has_table_privilege(session_user, relation.oid, 'TRIGGER')

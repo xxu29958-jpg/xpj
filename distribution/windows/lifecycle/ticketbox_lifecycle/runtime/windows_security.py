@@ -306,7 +306,7 @@ class WindowsSecurityAdapter:
     def _operation_store_reader_sids(self, request: InstallRequest) -> tuple[str, str | None]:
         return (
             native.service_sid(self._runner, request.backend_service_name),
-            native.shell_user_sid(),
+            None,
         )
 
     @staticmethod

@@ -59,6 +59,7 @@ class DatasetAdapter(PlatformAdapter, Protocol):
 
 class ScmAdapter(PlatformAdapter, Protocol):
     def enable_autostart(self, request: InstallRequest) -> None: ...
+    def fence_backend(self, request: InstallRequest) -> None: ...
 
 
 class SecurityAdapter(PlatformAdapter, Protocol):

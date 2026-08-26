@@ -119,6 +119,10 @@ def test_runtime_authority_query_rejects_ownership_and_all_role_memberships() ->
     assert "pg_catalog.pg_auth_members AS membership" in statement
     assert "membership.member = runtime_role.oid" in statement
     assert "pg_has_role" not in statement
+    assert "relation.relname IN ('alembic_version', 'dataset_authority')" in statement
+    assert "NOT has_table_privilege(session_user, relation.oid, 'INSERT')" in statement
+    assert "NOT has_table_privilege(session_user, relation.oid, 'UPDATE')" in statement
+    assert "NOT has_table_privilege(session_user, relation.oid, 'DELETE')" in statement
 
 
 @pytest.mark.parametrize(

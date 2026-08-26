@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from fakes import MemoryStores, RecordingAdapterBundle
+from fakes import MemoryStores, RecordingAdapterBundle, make_install_request as _request
 from ticketbox_lifecycle import cli
 from ticketbox_lifecycle.domain.install import (
     hash_install_identity,
@@ -17,50 +17,10 @@ from ticketbox_lifecycle.domain.install import (
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.schemas import (
     APPLY_SEQUENCE,
-    REQUEST_SCHEMA,
     ActiveOperation,
     CommandResult,
     InstallRequest,
 )
-
-
-def _request(tmp_path: Path, operation_id: str = "11111111-1111-4111-8111-111111111111") -> InstallRequest:
-    app_dir = tmp_path / "app"
-    release_id = "1.2.0+deadbeef"
-    manifest = app_dir / "releases" / release_id / "release-manifest.json"
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    body = b'{"max_schema_revision":"20260821_0001"}\n'
-    manifest.write_bytes(body)
-    payload = {
-        "schema": REQUEST_SCHEMA,
-        "operation_id": operation_id,
-        "target_release_id": release_id,
-        "app_dir": str(app_dir),
-        "data_root": str(tmp_path / "programdata" / "data"),
-        "program_data_root": str(tmp_path / "programdata"),
-        "pg_service_name": "TicketboxPg",
-        "backend_service_name": "TicketboxBackend",
-        "pg_port": 5432,
-        "backend_port": 8000,
-        "postgres_major": 17,
-        "release_manifest_sha256": hashlib.sha256(body).hexdigest(),
-    }
-    return InstallRequest(
-        schema=REQUEST_SCHEMA,
-        command="install",
-        operation_id=operation_id,
-        request_hash=hash_request_payload(payload),
-        target_release_id=str(payload["target_release_id"]),
-        app_dir=str(payload["app_dir"]),
-        data_root=str(payload["data_root"]),
-        program_data_root=str(payload["program_data_root"]),
-        pg_service_name=str(payload["pg_service_name"]),
-        backend_service_name=str(payload["backend_service_name"]),
-        pg_port=int(payload["pg_port"]),
-        backend_port=int(payload["backend_port"]),
-        postgres_major=int(payload["postgres_major"]),
-        release_manifest_sha256=str(payload["release_manifest_sha256"]),
-    )
 
 
 def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> None:
@@ -124,7 +84,7 @@ def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> No
     assert binding.release_manifest_sha256 != "pending"
 
 
-def test_binding_precedes_backend_autostart_and_commit_follows_it(tmp_path: Path) -> None:
+def test_commit_precedes_rebuildable_backend_autostart_projection(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     request = _request(tmp_path)
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
@@ -140,7 +100,7 @@ def test_binding_precedes_backend_autostart_and_commit_follows_it(tmp_path: Path
     def enable_autostart(bound: InstallRequest) -> None:
         assert stores.read() is not None
         assert stores.read_active() is not None
-        assert stores.read_active().phase != "committed"
+        assert stores.read_active().phase == "committed"
         order.append("autostart")
         original_enable(bound)
 
@@ -156,7 +116,7 @@ def test_binding_precedes_backend_autostart_and_commit_follows_it(tmp_path: Path
     result = install_or_resume(stores.as_lifecycle_stores(), request)
 
     assert result.ok is True
-    assert order == ["binding", "autostart", "commit"]
+    assert order == ["binding", "commit", "autostart"]
     assert adapters.scm.autostart_enabled is True
 
 
@@ -173,7 +133,7 @@ def test_autostart_failure_is_retryable_without_republishing_binding(tmp_path: P
     assert first.installation_published is True
     assert stores.binding_publish_count == 1
     assert stores.read_active() is not None
-    assert stores.read_active().phase == "failed_recoverable"
+    assert stores.read_active().phase == "committed"
 
     adapters.scm.fail_autostart = False
     resume = InstallRequest(**{**request.__dict__, "command": "resume"})
@@ -196,6 +156,8 @@ def test_health_failure_keeps_binding_unpublished(tmp_path: Path) -> None:
     assert stores.read_active() is not None
     assert stores.read_active().phase == "failed_recoverable"
     assert stores.history == []
+    assert adapters.scm.fence_calls == 1
+    assert adapters.scm.backend_fenced is True
 
 
 def test_resume_after_health_failure_publishes_binding_once_after_success(tmp_path: Path) -> None:

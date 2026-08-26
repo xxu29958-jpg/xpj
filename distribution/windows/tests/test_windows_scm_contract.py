@@ -15,18 +15,36 @@ from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
 
 class _Runner:
-    def __init__(self, observed: dict[str, ServiceConfiguration]) -> None:
+    def __init__(
+        self,
+        observed: dict[str, ServiceConfiguration],
+        *,
+        backend_running: bool = False,
+    ) -> None:
         self.observed = observed
         self.calls: list[tuple[str, ...]] = []
+        self.backend_running = backend_running
 
     def run(self, argv, **_kwargs) -> CompletedCommand:
         call = tuple(str(part) for part in argv)
         self.calls.append(call)
         if call[:2] == ("sc.exe", "query"):
-            return CompletedCommand(call, 0, "STATE : 1 STOPPED", "")
+            state = (
+                "STATE : 4 RUNNING"
+                if call[2] == "TicketboxBackend" and self.backend_running
+                else "STATE : 1 STOPPED"
+            )
+            return CompletedCommand(call, 0, state, "")
+        if call[:3] == ("sc.exe", "stop", "TicketboxBackend"):
+            self.backend_running = False
+            return CompletedCommand(call, 0, "STOP_PENDING", "")
         if call[:3] == ("sc.exe", "config", "TicketboxBackend") and "start=" in call:
             current = self.observed["TicketboxBackend"]
-            self.observed["TicketboxBackend"] = replace(current, start_type=2)
+            start = call[call.index("start=") + 1]
+            self.observed["TicketboxBackend"] = replace(
+                current,
+                start_type={"auto": 2, "demand": 3}[start],
+            )
         return CompletedCommand(call, 0, "ok", "")
 
 
@@ -312,3 +330,32 @@ def test_final_promotion_fails_closed_when_scm_readback_stays_demand(tmp_path: P
 
     with pytest.raises(LifecycleError, match="start_type"):
         adapter.enable_autostart(request)
+
+
+def test_backend_fence_demotes_autostart_before_stopping_exact_service(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    observed = _expected(request, backend_start=2)
+    runner = _Runner(observed, backend_running=True)
+    adapter = WindowsScmAdapter(runner, _Security(), _Observer(observed))
+
+    adapter.fence_backend(request)
+
+    demand = ("sc.exe", "config", request.backend_service_name, "start=", "demand")
+    stop = ("sc.exe", "stop", request.backend_service_name)
+    assert observed[request.backend_service_name].start_type == 3
+    assert runner.backend_running is False
+    assert runner.calls.index(demand) < runner.calls.index(stop)
+
+
+def test_backend_fence_refuses_foreign_service_before_mutation(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    observed = _expected(request, backend_start=2)
+    backend = observed[request.backend_service_name]
+    observed[request.backend_service_name] = replace(backend, argv=(r"C:\foreign.exe",))
+    runner = _Runner(observed, backend_running=True)
+    adapter = WindowsScmAdapter(runner, _Security(), _Observer(observed))
+
+    with pytest.raises(LifecycleError, match="argv"):
+        adapter.fence_backend(request)
+
+    assert not any(call[:2] in {("sc.exe", "config"), ("sc.exe", "stop")} for call in runner.calls)

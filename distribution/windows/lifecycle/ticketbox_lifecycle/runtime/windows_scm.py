@@ -23,9 +23,11 @@ from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.runtime.windows_services import (
     require_running_service,
     require_service,
+    scm_query_state,
     service_exists,
     service_running,
     start_service,
+    stop_service,
 )
 from ticketbox_lifecycle.schemas import InstallRequest
 
@@ -81,6 +83,26 @@ class WindowsScmAdapter:
             request,
             backend_start_types=frozenset({SERVICE_AUTO_START}),
         )
+
+    def fence_backend(self, request: InstallRequest) -> None:
+        if not service_exists(self._runner, request.backend_service_name):
+            return
+        self._verify_backend_fence_target(request)
+        if self._observer.observe(request.backend_service_name).start_type != SERVICE_DEMAND_START:
+            self._set_start_type(request.backend_service_name, "demand")
+        if scm_query_state(self._runner, request.backend_service_name) != "STOPPED":
+            stop_service(
+                self._runner,
+                request.backend_service_name,
+                code="backend_fence_stop_failed",
+            )
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if scm_query_state(self._runner, request.backend_service_name) == "STOPPED":
+                self._verify_backend_fence_target(request, demand_only=True)
+                return
+            time.sleep(1)
+        raise LifecycleError("backend_fence_timeout", "TicketboxBackend did not reach STOPPED")
 
     def _register(self, request: InstallRequest) -> str:
         pg_ctl = layout.tool(request, "pg_ctl.exe")
@@ -241,6 +263,24 @@ class WindowsScmAdapter:
             self._observer.observe(request.backend_service_name),
             expected_backend_service(request, start_type=SERVICE_DEMAND_START),
             allowed_start_types=backend_start_types,
+        )
+
+    def _verify_backend_fence_target(
+        self,
+        request: InstallRequest,
+        *,
+        demand_only: bool = False,
+    ) -> None:
+        allowed = (
+            frozenset({SERVICE_DEMAND_START})
+            if demand_only
+            else frozenset({SERVICE_DEMAND_START, SERVICE_AUTO_START})
+        )
+        require_service_configuration(
+            request.backend_service_name,
+            self._observer.observe(request.backend_service_name),
+            expected_backend_service(request, start_type=SERVICE_DEMAND_START),
+            allowed_start_types=allowed,
         )
 
 

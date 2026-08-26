@@ -158,7 +158,6 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
         if owner_pairing is None:
             raise LifecycleViolation("owner_pairing_missing", "owner claim returned no pairing")
         ensure_runtime_binding(stores.binding_read, stores.binding_write, bound)
-        stores.adapters.scm.enable_autostart(bound)
         committed = ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=active.operation_id,
@@ -176,8 +175,15 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             schema_revision=active.schema_revision,
         )
         stores.operations_write.publish_active(committed)
-        return _committed_result(request, owner_pairing)
     except LifecycleError as exc:
+        failure_message = exc.message
+        try:
+            stores.adapters.scm.fence_backend(bound)
+        except LifecycleError as fence_failure:
+            failure_message = (
+                f"{failure_message}; backend fence failed "
+                f"({fence_failure.code}): {fence_failure.message}"
+            )
         failed = ActiveOperation(
             schema=OPERATION_SCHEMA,
             operation_id=active.operation_id,
@@ -202,9 +208,23 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             operation_id=request.operation_id,
             phase="failed_recoverable",
             code=exc.code,
-            message=exc.message,
+            message=failure_message,
             installation_published=stores.binding_read.read() is not None,
         )
+    try:
+        stores.adapters.scm.enable_autostart(bound)
+    except LifecycleError as exc:
+        return CommandResult(
+            schema=RESULT_SCHEMA,
+            ok=False,
+            command=request.command,
+            operation_id=request.operation_id,
+            phase="committed",
+            code=exc.code,
+            message=exc.message,
+            installation_published=True,
+        )
+    return _committed_result(request, owner_pairing)
 
 
 def _require_matching_operation(

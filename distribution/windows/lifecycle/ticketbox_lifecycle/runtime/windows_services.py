@@ -43,6 +43,14 @@ def start_service(runner: CommandRunner, name: str, *, code: str) -> None:
     require_ok(completed, code=code)
 
 
+def stop_service(runner: CommandRunner, name: str, *, code: str) -> None:
+    completed = runner.run(["sc.exe", "stop", name])
+    combined = f"{completed.stdout}\n{completed.stderr}"
+    if completed.returncode == 0 or "1062" in combined or "not been started" in combined.lower():
+        return
+    require_ok(completed, code=code)
+
+
 def scm_query_state(runner: CommandRunner, name: str) -> str:
     completed = runner.run(["sc.exe", "query", name])
     text = f"{completed.stdout}\n{completed.stderr}".upper()

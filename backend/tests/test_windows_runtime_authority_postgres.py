@@ -191,6 +191,13 @@ def _configure_runtime_database(target: psycopg.Connection) -> None:
             sql.Identifier(SCHEMA_OWNER_ROLE)
         )
     )
+    target.execute("CREATE TABLE public.alembic_version (version_num text NOT NULL)")
+    target.execute(
+        sql.SQL("ALTER TABLE public.alembic_version OWNER TO {}").format(
+            sql.Identifier(SCHEMA_OWNER_ROLE)
+        )
+    )
+    target.execute("INSERT INTO public.alembic_version VALUES ('20260821_0001')")
     target.execute(
         """
         INSERT INTO public.dataset_authority VALUES (
@@ -207,9 +214,9 @@ def _configure_runtime_database(target: psycopg.Connection) -> None:
     )
     target.execute(
         sql.SQL(
-            "REVOKE ALL ON TABLE public.dataset_authority FROM PUBLIC, {}; "
-            "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "
-            "public.dataset_authority TO {}"
+            "REVOKE ALL ON TABLE public.dataset_authority, public.alembic_version "
+            "FROM PUBLIC, {}; GRANT SELECT ON TABLE public.dataset_authority, "
+            "public.alembic_version TO {}"
         ).format(sql.Identifier(RUNTIME_ROLE), sql.Identifier(RUNTIME_ROLE))
     )
 
@@ -263,6 +270,13 @@ def test_product_query_rejects_any_runtime_role_membership() -> None:
         assert observation["runtime_tables_ready"] is True
         assert observation["runtime_sequences_ready"] is True
         assert observation["runtime_role_isolated"] is False
+        for statement in (
+            "UPDATE public.dataset_authority SET restore_epoch = 1 WHERE singleton_id = 1",
+            "DELETE FROM public.alembic_version",
+            "INSERT INTO public.alembic_version VALUES ('99991231_9999')",
+        ):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                runtime.execute(statement)
     finally:
         _close(runtime)
         _close(target)

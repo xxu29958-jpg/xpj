@@ -5,18 +5,61 @@ import json
 import threading
 from pathlib import Path
 
-from ticketbox_lifecycle.domain.install import LifecycleStores
+from ticketbox_lifecycle.domain.install import LifecycleStores, hash_request_payload
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.schemas import (
     APPLY_SEQUENCE,
     INSTALLATION_SCHEMA,
     OPERATION_SCHEMA,
+    REQUEST_SCHEMA,
     ActiveOperation,
     HostObservation,
     InstallationBinding,
     InstallRequest,
     OwnerPairing,
 )
+
+
+def make_install_request(
+    tmp_path: Path,
+    operation_id: str = "11111111-1111-4111-8111-111111111111",
+) -> InstallRequest:
+    app_dir = tmp_path / "app"
+    release_id = "1.2.0+deadbeef"
+    manifest = app_dir / "releases" / release_id / "release-manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    body = b'{"max_schema_revision":"20260821_0001"}\n'
+    manifest.write_bytes(body)
+    payload = {
+        "schema": REQUEST_SCHEMA,
+        "operation_id": operation_id,
+        "target_release_id": release_id,
+        "app_dir": str(app_dir),
+        "data_root": str(tmp_path / "programdata" / "data"),
+        "program_data_root": str(tmp_path / "programdata"),
+        "pg_service_name": "TicketboxPg",
+        "backend_service_name": "TicketboxBackend",
+        "pg_port": 5432,
+        "backend_port": 8000,
+        "postgres_major": 17,
+        "release_manifest_sha256": hashlib.sha256(body).hexdigest(),
+    }
+    return InstallRequest(
+        schema=REQUEST_SCHEMA,
+        command="install",
+        operation_id=operation_id,
+        request_hash=hash_request_payload(payload),
+        target_release_id=str(payload["target_release_id"]),
+        app_dir=str(payload["app_dir"]),
+        data_root=str(payload["data_root"]),
+        program_data_root=str(payload["program_data_root"]),
+        pg_service_name=str(payload["pg_service_name"]),
+        backend_service_name=str(payload["backend_service_name"]),
+        pg_port=int(payload["pg_port"]),
+        backend_port=int(payload["backend_port"]),
+        postgres_major=int(payload["postgres_major"]),
+        release_manifest_sha256=str(payload["release_manifest_sha256"]),
+    )
 
 
 class MemoryMutex:
@@ -76,6 +119,9 @@ class _RecordingScmAdapter(_StatefulAdapter):
         self.autostart_enabled = False
         self.autostart_calls = 0
         self.fail_autostart = False
+        self.fence_calls = 0
+        self.backend_fenced = False
+        self.fail_fence = False
 
     def enable_autostart(self, request: InstallRequest) -> None:
         self.autostart_calls += 1
@@ -84,6 +130,15 @@ class _RecordingScmAdapter(_StatefulAdapter):
         if self.fail_autostart:
             raise LifecycleError("injected_autostart_failure", "forced autostart failure")
         self.autostart_enabled = True
+
+    def fence_backend(self, request: InstallRequest) -> None:
+        self.fence_calls += 1
+        if not request.install_id or not request.dataset_id:
+            raise LifecycleViolation("identity_missing", "backend fence requires bound identity")
+        if self.fail_fence:
+            raise LifecycleError("injected_fence_failure", "forced backend fence failure")
+        self._done.discard("start_services")
+        self.backend_fenced = True
 
 
 class RecordingAdapterBundle:

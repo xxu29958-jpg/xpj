@@ -209,6 +209,43 @@ def test_exact_protected_partial_root_is_an_admissible_fresh_retry(
     assert (root / "machine" / "operations").is_dir()
 
 
+def test_first_install_retry_does_not_bind_machine_store_to_shell_user(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    observed_interactive_sids: list[str | None] = []
+
+    def record_create(
+        path: Path,
+        *,
+        interactive_reader_sid: str | None,
+        **_kwargs,
+    ) -> None:
+        observed_interactive_sids.append(interactive_reader_sid)
+        path.mkdir()
+
+    def record_require(
+        _path: Path,
+        *,
+        interactive_reader_sid: str | None,
+        **_kwargs,
+    ) -> None:
+        observed_interactive_sids.append(interactive_reader_sid)
+
+    monkeypatch.setattr(native, "create_protected_directory", record_create)
+    monkeypatch.setattr(native, "require_protected_directory", record_require)
+    security = WindowsSecurityAdapter(RecordingRunner(), _FORBIDDEN_FILE_SECURITY)
+
+    monkeypatch.setattr(native, "shell_user_sid", lambda: "S-1-5-21-9-9-9-1001")
+    security.prepare_operation_store(request)
+    monkeypatch.setattr(native, "shell_user_sid", lambda: "S-1-5-21-9-9-9-1002")
+    security.prepare_operation_store(request)
+
+    assert observed_interactive_sids
+    assert set(observed_interactive_sids) == {None}
+
+
 def test_first_active_hard_crash_discards_only_the_bounded_orphan_on_retry(
     tmp_path: Path,
 ) -> None:

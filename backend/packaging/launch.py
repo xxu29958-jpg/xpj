@@ -572,7 +572,7 @@ def _closed_authorities(
         if set(active) != active_fields or active.get("kind") != "install":
             raise RuntimeError("active.json runtime authority fields are not closed")
         phase = active.get("phase")
-        if phase not in {"data_ready", "release_activated", "committed", "failed_recoverable"}:
+        if phase not in {"data_ready", "release_activated", "committed"}:
             raise RuntimeError("active.json is not in a runtime-capable install phase")
         if phase == "committed" and binding is None:
             raise RuntimeError("committed active operation requires installation binding")
