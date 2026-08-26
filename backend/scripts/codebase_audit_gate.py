@@ -192,8 +192,12 @@ _SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER = (
 _WINDOWS_VNEXT_CONTROL_PLANE_TEST_RETIREMENT_GRANDFATHER = (
     "6557125826d7c76a06568164814b4e5cb9e08f88",
     369,
-    71,
-)  # Windows vNext physically replaces the old Generation/receipt/restore harness. The remaining suite covers shipped build, runtime authority, service identity, atomic settings, and resource-serial PostgreSQL lifecycle behavior; exact base and hop binding make this exception self-extinguishing.
+    73,
+)
+# Windows vNext physically replaces the old Generation/receipt/restore harness.
+# The retained 73 tests cover the shipped build, runtime authority, service
+# identity, atomic settings, and resource-serial PostgreSQL lifecycle behavior.
+# Exact base and hop binding make this exception self-extinguishing.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``

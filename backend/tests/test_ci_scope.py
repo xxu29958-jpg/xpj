@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts import ci_gap_trigger_scope, ci_scope
 from scripts.ci_gap_trigger_scope import all_ci_scopes, classify_ci_paths
 from scripts.postgres_release_policy import POSTGRES_RELEASE_POLICY
+
+from scripts import ci_gap_trigger_scope, ci_scope
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -77,7 +78,12 @@ def test_backend_runtime_inputs_select_execution_scopes() -> None:
         ("backend/audit/test_count_baseline.txt",),
         "postgres",
     )
-    _assert_path_scopes(("backend/app/main.py",), "postgres", "backend_frozen")
+    _assert_path_scopes(
+        ("backend/app/main.py",),
+        "postgres",
+        "backend_frozen",
+        "windows",
+    )
     _assert_path_scopes(
         (
             "backend/app/services/runtime_settings_store.py",
@@ -168,6 +174,16 @@ def test_fresh_install_helper_transitive_dependencies_select_windows() -> None:
     assert "backend/app/database/_fresh_schema_upgrade.py" in dependencies
     assert "backend/app/services/identity_service/__init__.py" in dependencies
     assert "backend/app/services/identity_service/_bootstrap.py" in dependencies
+    for dependency in dependencies:
+        scopes = classify_ci_paths([dependency])
+        assert scopes["postgres"], dependency
+        assert scopes["backend_frozen"], dependency
+        assert scopes["windows"], dependency
+
+
+def test_installation_health_transitive_dependencies_select_windows() -> None:
+    dependencies = ci_gap_trigger_scope.installation_health_python_dependencies()
+    assert "backend/app/services/installation_health_service.py" in dependencies
     for dependency in dependencies:
         scopes = classify_ci_paths([dependency])
         assert scopes["postgres"], dependency

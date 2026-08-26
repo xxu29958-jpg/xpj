@@ -97,9 +97,14 @@ def verify_existing_credentials(
     existing_names = {path.name for path in secrets_root.iterdir()} if secrets_root.is_dir() else set()
     if existing_names - KNOWN_SECRET_NAMES:
         raise LifecycleViolation("credential_invalid", "secrets directory contains an unknown object")
+    if "postgres.pwfile" in existing_names:
+        raise LifecycleViolation(
+            "credential_invalid",
+            "transient initdb password input must not persist",
+        )
     if not allow_missing and not DURABLE_SECRET_NAMES.issubset(existing_names):
         raise LifecycleError("postcondition_missing", "lifecycle secrets are incomplete")
-    for name in existing_names:
+    for name in sorted(existing_names):
         path = secrets_root / name
         native.reject_reparse_components(path)
         if not path.is_file():
@@ -114,6 +119,7 @@ def verify_existing_credentials(
             path,
             code="credential_acl_untrusted",
             forbidden_markers=("NT SERVICE\\", "S-1-5-80-"),
+            expected_dacl_sddl=file_dacl_sddl(()),
         )
     runtime_env = Path(request.data_root) / "app" / ".env"
     if not runtime_env.exists() and not runtime_env.is_symlink():
@@ -128,14 +134,16 @@ def verify_existing_credentials(
         code="credential_owner_untrusted",
         message="runtime .env must have a trusted owner",
     )
+    backend_sid = native.service_sid(runner, request.backend_service_name)
     native.require_protected_file_acl(
         runner,
         runtime_env,
         code="credential_acl_untrusted",
         required_reader_markers=(
-            native.service_sid(runner, request.backend_service_name),
+            backend_sid,
             f"NT SERVICE\\{request.backend_service_name}",
         ),
+        expected_dacl_sddl=file_dacl_sddl((backend_sid,)),
     )
 
 

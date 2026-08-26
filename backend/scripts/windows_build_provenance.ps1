@@ -51,6 +51,7 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_credentials.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_alembic.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_dataset.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_dacl.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_file_security.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_files.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_known_folders.py",

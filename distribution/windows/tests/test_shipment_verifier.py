@@ -11,8 +11,8 @@ import pytest
 from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.runtime.command import CompletedCommand
 from ticketbox_lifecycle.runtime.windows_alembic import WindowsAlembicAdapter
-from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 from ticketbox_lifecycle.runtime.windows_known_folders import ticketbox_install_root
+from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
 
@@ -140,15 +140,24 @@ def test_shipment_product_version_reaches_alembic_and_backend_runtime_admission(
     monkeypatch.syspath_prepend(str(repo_root / "backend"))
     admission = importlib.import_module("app.database._database_generation_runtime_admission")
     admission._assert_exact_authority(
-        (
-            bound.dataset_id,
-            bound.install_id,
-            0,
-            bound.schema_revision,
-            compatibility,
-            bound.semantic_revision,
-            None,
-        ),
+        {
+            "session_user": "ticketbox_runtime",
+            "current_user": "ticketbox_runtime",
+            "current_database": "ticketbox",
+            "runtime_role_ready": True,
+            "runtime_role_isolated": True,
+            "runtime_database_ready": True,
+            "runtime_schema_ready": True,
+            "runtime_tables_ready": True,
+            "runtime_sequences_ready": True,
+            "dataset_id": bound.dataset_id,
+            "client_generation": bound.install_id,
+            "restore_epoch": 0,
+            "schema_revision": bound.schema_revision,
+            "schema_min_compatible": compatibility,
+            "semantic_revision": bound.semantic_revision,
+            "restored_from_backup_id": None,
+        },
         installation_id=bound.install_id,
         dataset_id=bound.dataset_id,
         target_revision=bound.schema_revision,

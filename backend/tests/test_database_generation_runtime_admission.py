@@ -5,11 +5,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from app.database._database_generation_runtime_admission import (
     assert_database_generation_startup_ready,
 )
-from app.database._database_generation_runtime_queries import DATASET_AUTHORITY_QUERY
+from app.database._database_generation_runtime_queries import RUNTIME_AUTHORITY_QUERY
 from app.database._lifecycle import DatabaseMigrationPreflightError
 
 INSTALL_ID = "11111111-1111-4111-8111-111111111111"
@@ -26,15 +25,18 @@ class _Rows:
 
 
 class _Result:
-    def __init__(self, row: tuple[object, ...] | None) -> None:
+    def __init__(self, row: dict[str, object] | None) -> None:
         self._row = row
 
-    def first(self) -> tuple[object, ...] | None:
+    def mappings(self) -> _Result:
+        return self
+
+    def first(self) -> dict[str, object] | None:
         return self._row
 
 
 class _Connection:
-    def __init__(self, row: tuple[object, ...] | None) -> None:
+    def __init__(self, row: dict[str, object] | None) -> None:
         self._row = row
         self.executed_statement: object | None = None
 
@@ -47,7 +49,7 @@ class _Connection:
 
 
 class _Engine:
-    def __init__(self, row: tuple[object, ...] | None) -> None:
+    def __init__(self, row: dict[str, object] | None) -> None:
         self.connection = _Connection(row)
         self.connect_count = 0
 
@@ -56,8 +58,17 @@ class _Engine:
         return nullcontext(self.connection)
 
 
-def _row(**changes: object) -> tuple[object, ...]:
+def _row(**changes: object) -> dict[str, object]:
     values: dict[str, object] = {
+        "session_user": "ticketbox_runtime",
+        "current_user": "ticketbox_runtime",
+        "current_database": "ticketbox",
+        "runtime_role_ready": True,
+        "runtime_role_isolated": True,
+        "runtime_database_ready": True,
+        "runtime_schema_ready": True,
+        "runtime_tables_ready": True,
+        "runtime_sequences_ready": True,
         "dataset_id": DATASET_ID,
         "client_generation": INSTALL_ID,
         "restore_epoch": 0,
@@ -67,7 +78,7 @@ def _row(**changes: object) -> tuple[object, ...]:
         "restored_from_backup_id": None,
     }
     values.update(changes)
-    return tuple(values.values())
+    return values
 
 
 def _program() -> SimpleNamespace:
@@ -96,12 +107,21 @@ def test_installed_runtime_admits_exact_live_dataset_authority(
 
     assert_database_generation_startup_ready(engine, _program())
 
-    assert engine.connection.executed_statement is DATASET_AUTHORITY_QUERY
+    assert engine.connection.executed_statement is RUNTIME_AUTHORITY_QUERY
 
 
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
+        ({"session_user": "postgres"}, "runtime role"),
+        ({"current_user": "ticketbox_owner"}, "runtime role"),
+        ({"current_database": "postgres"}, "runtime database"),
+        ({"runtime_role_ready": False}, "runtime role policy"),
+        ({"runtime_role_isolated": False}, "runtime role isolation"),
+        ({"runtime_database_ready": False}, "runtime database privileges"),
+        ({"runtime_schema_ready": False}, "runtime schema privileges"),
+        ({"runtime_tables_ready": False}, "runtime table privileges"),
+        ({"runtime_sequences_ready": False}, "runtime sequence privileges"),
         ({"dataset_id": "33333333-3333-4333-8333-333333333333"}, "dataset_id"),
         ({"client_generation": "33333333-3333-4333-8333-333333333333"}, "installation_id"),
         ({"restore_epoch": 1}, "fresh dataset"),

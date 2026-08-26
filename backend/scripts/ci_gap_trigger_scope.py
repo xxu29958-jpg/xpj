@@ -106,6 +106,9 @@ _FRESH_INSTALL_ROOT_MODULES = (
     "app.database._fresh_schema_upgrade",
     "app.services.identity_service",
 )
+_INSTALLATION_HEALTH_ROOT_MODULES = (
+    "app.services.installation_health_service",
+)
 
 
 def _app_module_source(module_name: str) -> pathlib.Path | None:
@@ -191,8 +194,15 @@ def fresh_install_python_dependencies() -> frozenset[str]:
     return _app_python_dependencies(_FRESH_INSTALL_ROOT_MODULES)
 
 
+def installation_health_python_dependencies() -> frozenset[str]:
+    return _app_python_dependencies(_INSTALLATION_HEALTH_ROOT_MODULES)
+
+
 _WINDOWS_DATASET_MAINTENANCE_FILES = dataset_maintenance_python_dependencies()
 _WINDOWS_FRESH_INSTALL_FILES = fresh_install_python_dependencies()
+_WINDOWS_INSTALLATION_HEALTH_FILES = installation_health_python_dependencies() | {
+    "backend/app/main.py",
+}
 _WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
     "backend/app/database/_dataset_",
 )
@@ -225,6 +235,10 @@ _EXACT_SCOPE_RULES = {
     ),
     **dict.fromkeys(
         _WINDOWS_FRESH_INSTALL_FILES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
+    **dict.fromkeys(
+        _WINDOWS_INSTALLATION_HEALTH_FILES,
         ("postgres", "backend_frozen", "windows"),
     ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),

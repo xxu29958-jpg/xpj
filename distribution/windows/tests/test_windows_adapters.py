@@ -22,7 +22,6 @@ from ticketbox_lifecycle.policy.windows_scm_contract import (
     expected_pg_service,
 )
 from ticketbox_lifecycle.runtime import (
-    windows_dacl,
     windows_file_security,
     windows_pgdata_security,
     windows_postgres,
@@ -39,6 +38,11 @@ from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 _BACKEND_SERVICE_SID = "S-1-5-80-111-222-333-444-555"
 _SHELL_USER_SID = "S-1-5-21-9-9-9-1002"
 _PROCESS_USER_SID = "S-1-5-21-9-9-9-1003"
+_UNIT_FILE_DACLS: dict[str, str] = {}
+
+
+def _unit_path_key(path: Path) -> str:
+    return os.path.normcase(str(path.resolve(strict=False)))
 
 
 class _HealthResponse:
@@ -97,7 +101,13 @@ def test_windows_adapters_is_only_the_explicit_composition_root() -> None:
 
 @pytest.fixture(autouse=True)
 def _trusted_unit_file_owner(monkeypatch):
+    _UNIT_FILE_DACLS.clear()
     monkeypatch.setattr(windows_security_native, "file_owner_sid", lambda _path: "S-1-5-32-544")
+    monkeypatch.setattr(
+        windows_security_native,
+        "_object_dacl_sddl",
+        lambda path: _UNIT_FILE_DACLS[_unit_path_key(path)],
+    )
     monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: _SHELL_USER_SID)
     monkeypatch.setattr(
         windows_security_native,
@@ -446,12 +456,9 @@ class RecordingFileSecurity:
     ) -> None:
         del code
         assert isinstance(runner, RecordingRunner)
-        if os.name == "nt" and path.name == "postgres.pwfile":
-            windows_dacl.apply_protected_dacl(
-                path,
-                windows_file_security.file_dacl_sddl(reader_sids),
-                code="unit_file_acl",
-            )
+        _UNIT_FILE_DACLS[_unit_path_key(path)] = windows_file_security.file_dacl_sddl(
+            reader_sids
+        )
         runner.run(["takeown", "/A", "/F", str(path)])
         runner.run(
             [

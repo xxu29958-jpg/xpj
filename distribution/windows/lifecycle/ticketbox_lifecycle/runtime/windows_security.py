@@ -138,6 +138,7 @@ class WindowsSecurityAdapter:
             native.reject_reparse_components(path)
             path.mkdir(parents=True, exist_ok=True)
             native.protect_directory(self._runner, path, code="acl_apply_failed")
+        credentials.discard_initdb_password_file(request)
         credentials.verify_existing_credentials(self._runner, request, allow_missing=True)
         credentials.ensure_credentials(request)
         for secret in sorted(path for path in secrets_root.iterdir() if path.is_file()):

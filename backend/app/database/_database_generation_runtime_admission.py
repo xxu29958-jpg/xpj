@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.database._database_generation_runtime_queries import DATASET_AUTHORITY_QUERY
+from app.database._database_generation_runtime_queries import (
+    RUNTIME_AUTHORITY_FIELDS,
+    RUNTIME_AUTHORITY_QUERY,
+)
 from app.database._lifecycle import DatabaseMigrationPreflightError
+from app.database._managed_postgres_contract import DATABASE_NAME, RUNTIME_ROLE
 
 _REVISION = re.compile(r"[0-9]{8}_[0-9]{4}\Z")
 _PRODUCT_VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
@@ -51,7 +56,7 @@ def _target_revision(program: object) -> str:
     return target
 
 
-def _observe(engine: object) -> tuple[tuple[str, ...], tuple[object, ...]]:
+def _observe(engine: object) -> tuple[tuple[str, ...], dict[str, object]]:
     try:
         with engine.connect() as connection:  # type: ignore[union-attr]
             revisions = tuple(
@@ -60,34 +65,47 @@ def _observe(engine: object) -> tuple[tuple[str, ...], tuple[object, ...]]:
                     text("SELECT version_num FROM public.alembic_version ORDER BY version_num")
                 )
             )
-            row = connection.execute(DATASET_AUTHORITY_QUERY).first()
+            row = connection.execute(RUNTIME_AUTHORITY_QUERY).mappings().first()
     except (OSError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as exc:
         raise DatabaseGenerationAdmissionError("live dataset_authority is unavailable") from exc
     if row is None:
         raise DatabaseGenerationAdmissionError("live dataset_authority is unavailable")
-    values = tuple(row)
-    if len(values) != 7:
+    values = dict(row)
+    if set(values) != set(RUNTIME_AUTHORITY_FIELDS):
         raise DatabaseGenerationAdmissionError("live dataset_authority is incomplete")
     return revisions, values
 
 
 def _assert_exact_authority(
-    values: tuple[object, ...],
+    values: Mapping[str, object],
     *,
     installation_id: str,
     dataset_id: str,
     target_revision: str,
     revisions: tuple[str, ...],
 ) -> None:
-    (
-        live_dataset_id,
-        client_generation,
-        restore_epoch,
-        schema_revision,
-        schema_min_compatible,
-        semantic_revision,
-        restored_from_backup_id,
-    ) = values
+    if values["session_user"] != RUNTIME_ROLE or values["current_user"] != RUNTIME_ROLE:
+        raise DatabaseGenerationAdmissionError("live connection is not the exact runtime role")
+    if values["current_database"] != DATABASE_NAME:
+        raise DatabaseGenerationAdmissionError("live connection is not the runtime database")
+    capability_failures = (
+        ("runtime_role_ready", "runtime role policy"),
+        ("runtime_role_isolated", "runtime role isolation"),
+        ("runtime_database_ready", "runtime database privileges"),
+        ("runtime_schema_ready", "runtime schema privileges"),
+        ("runtime_tables_ready", "runtime table privileges"),
+        ("runtime_sequences_ready", "runtime sequence privileges"),
+    )
+    for field, label in capability_failures:
+        if values[field] is not True:
+            raise DatabaseGenerationAdmissionError(f"live {label} is not exact")
+    live_dataset_id = values["dataset_id"]
+    client_generation = values["client_generation"]
+    restore_epoch = values["restore_epoch"]
+    schema_revision = values["schema_revision"]
+    schema_min_compatible = values["schema_min_compatible"]
+    semantic_revision = values["semantic_revision"]
+    restored_from_backup_id = values["restored_from_backup_id"]
     if _canonical_uuid(live_dataset_id, "live dataset_id") != dataset_id:
         raise DatabaseGenerationAdmissionError("live dataset_id does not match the installed instance")
     if _canonical_uuid(client_generation, "live installation_id") != installation_id:
