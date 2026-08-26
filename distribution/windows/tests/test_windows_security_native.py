@@ -41,6 +41,34 @@ def test_pgdata_dacl_accepts_windows_canonical_system_and_admin_aliases() -> Non
     )
 
 
+def test_pgdata_owner_rights_uses_icacls_advanced_permission_syntax(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class Runner:
+        def run(self, argv, **_kwargs) -> CompletedCommand:
+            recorded = tuple(str(part) for part in argv)
+            calls.append(recorded)
+            return CompletedCommand(recorded, 0, "", "")
+
+    pgdata = tmp_path / "pgdata"
+    pgdata_security.prepare_initdb_directory(
+        Runner(),
+        pgdata,
+        bootstrap_sid="S-1-5-21-9-9-9-1003",
+    )
+
+    owner_rights = [
+        argument
+        for call in calls
+        if call[0] == "icacls" and call[1] == str(pgdata) and "/grant:r" in call
+        for argument in call
+        if argument.startswith("*S-1-3-4:")
+    ]
+    assert owner_rights == ["*S-1-3-4:(OI)(CI)(RC)"]
+
+
 @pytest.mark.parametrize(
     "dacl",
     [

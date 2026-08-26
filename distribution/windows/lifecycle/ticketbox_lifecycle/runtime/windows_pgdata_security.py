@@ -9,7 +9,7 @@ from ticketbox_lifecycle.runtime import windows_security_native as native
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
 
 _FULL_CONTROL = "(OI)(CI)F"
-_OWNER_READ_CONTROL = "(OI)(CI)RC"
+_OWNER_READ_CONTROL = "(OI)(CI)(RC)"
 _OWNER_RIGHTS_SID = "S-1-3-4"
 
 
