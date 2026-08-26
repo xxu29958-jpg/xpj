@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from _powershell_contract import powershell_contract_engines
+
 from app.version import BACKEND_VERSION
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts import ci_gap_trigger_scope, ci_scope
 from scripts.ci_gap_trigger_scope import all_ci_scopes, classify_ci_paths
 from scripts.postgres_release_policy import POSTGRES_RELEASE_POLICY
-
-from scripts import ci_gap_trigger_scope, ci_scope
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -183,6 +182,8 @@ def test_fresh_install_helper_transitive_dependencies_select_windows() -> None:
 
 def test_installation_health_transitive_dependencies_select_windows() -> None:
     dependencies = ci_gap_trigger_scope.installation_health_python_dependencies()
+    assert "backend/app/database/_database_generation_runtime_admission.py" in dependencies
+    assert "backend/app/database/_database_generation_runtime_queries.py" in dependencies
     assert "backend/app/services/installation_health_service.py" in dependencies
     for dependency in dependencies:
         scopes = classify_ci_paths([dependency])

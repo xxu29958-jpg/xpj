@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 from app.database._database_generation_runtime_admission import (
     assert_database_generation_startup_ready,
 )
@@ -108,6 +109,13 @@ def test_installed_runtime_admits_exact_live_dataset_authority(
     assert_database_generation_startup_ready(engine, _program())
 
     assert engine.connection.executed_statement is RUNTIME_AUTHORITY_QUERY
+
+
+def test_runtime_authority_query_rejects_database_and_schema_ownership() -> None:
+    statement = str(RUNTIME_AUTHORITY_QUERY)
+
+    assert "database_record.datdba <> runtime_role.oid" in statement
+    assert "namespace_record.nspowner <> runtime_role.oid" in statement
 
 
 @pytest.mark.parametrize(

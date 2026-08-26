@@ -53,10 +53,22 @@ RUNTIME_AUTHORITY_QUERY = text(
             has_database_privilege(session_user, current_database(), 'CONNECT')
             AND NOT has_database_privilege(session_user, current_database(), 'CREATE')
             AND NOT has_database_privilege(session_user, current_database(), 'TEMPORARY')
+            AND COALESCE((
+                SELECT database_record.datdba <> runtime_role.oid
+                FROM pg_catalog.pg_database AS database_record
+                CROSS JOIN runtime_role
+                WHERE database_record.datname = current_database()
+            ), FALSE)
         ) AS runtime_database_ready,
         (
             has_schema_privilege(session_user, 'public', 'USAGE')
             AND NOT has_schema_privilege(session_user, 'public', 'CREATE')
+            AND COALESCE((
+                SELECT namespace_record.nspowner <> runtime_role.oid
+                FROM pg_catalog.pg_namespace AS namespace_record
+                CROSS JOIN runtime_role
+                WHERE namespace_record.nspname = 'public'
+            ), FALSE)
         ) AS runtime_schema_ready,
         (
             SELECT COALESCE(bool_and(

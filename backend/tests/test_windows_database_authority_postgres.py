@@ -217,6 +217,77 @@ def test_pg17_transaction_timeout_must_be_armed_before_begin_and_rolls_back() ->
         admin.close()
 
 
+def test_pg17_owner_remains_authoritative_after_ordinary_privileges_are_revoked() -> None:
+    suffix = uuid4().hex[:12]
+    role = f"runtime_owner_probe_{suffix}"
+    database = f"runtime_owner_probe_{suffix}"
+    admin = psycopg.connect(_conninfo(database="postgres"), autocommit=True)
+    target: psycopg.Connection | None = None
+    try:
+        admin.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(role)))
+        admin.execute(
+            sql.SQL("CREATE DATABASE {} OWNER {}").format(
+                sql.Identifier(database),
+                sql.Identifier(role),
+            )
+        )
+        target = psycopg.connect(_conninfo(database=database), autocommit=True)
+        target.execute(
+            sql.SQL("ALTER SCHEMA public OWNER TO {}").format(sql.Identifier(role))
+        )
+        target.execute(
+            sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC, {}").format(
+                sql.Identifier(database),
+                sql.Identifier(role),
+            )
+        )
+        target.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                sql.Identifier(database),
+                sql.Identifier(role),
+            )
+        )
+        target.execute(
+            sql.SQL(
+                "REVOKE ALL ON SCHEMA public FROM PUBLIC, pg_database_owner, {}"
+            ).format(sql.Identifier(role))
+        )
+        target.execute(
+            sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role))
+        )
+        probe = target.execute(
+            sql.SQL(
+                """
+                SELECT
+                    has_database_privilege({role}, {database}, 'CONNECT'),
+                    NOT has_database_privilege({role}, {database}, 'CREATE'),
+                    NOT has_database_privilege({role}, {database}, 'TEMPORARY'),
+                    has_schema_privilege({role}, 'public', 'USAGE'),
+                    NOT has_schema_privilege({role}, 'public', 'CREATE'),
+                    (SELECT datdba = role.oid FROM pg_catalog.pg_database
+                     WHERE datname = {database}),
+                    (SELECT nspowner = role.oid FROM pg_catalog.pg_namespace
+                     WHERE nspname = 'public')
+                FROM pg_catalog.pg_roles AS role
+                WHERE role.rolname = {role}
+                """
+            ).format(role=sql.Literal(role), database=sql.Literal(database))
+        ).fetchone()
+
+        assert probe == (True, True, True, True, True, True, True)
+    finally:
+        _close(target)
+        with suppress(psycopg.Error):
+            admin.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                    sql.Identifier(database)
+                )
+            )
+        with suppress(psycopg.Error):
+            admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
+        admin.close()
+
+
 def test_pg17_no_owner_restore_requires_the_exact_object_owner_role(
     tmp_path: Path,
 ) -> None:
