@@ -241,7 +241,7 @@ begin
     TicketboxLocalFree(Descriptor);
   end;
   Handle := TicketboxOpenFile(
-    Path, $000E0000, 0, 0, 3,
+    Path, $000E0080, 0, 0, 3,
     TicketboxFileFlagBackupSemantics or TicketboxFileFlagOpenReparsePoint, 0);
   if Handle = $FFFFFFFF then
     Exit;

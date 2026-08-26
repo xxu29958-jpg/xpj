@@ -15,7 +15,13 @@ from ticketbox_lifecycle.domain.install import (
     install_or_resume,
 )
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
-from ticketbox_lifecycle.schemas import APPLY_SEQUENCE, REQUEST_SCHEMA, InstallRequest
+from ticketbox_lifecycle.schemas import (
+    APPLY_SEQUENCE,
+    REQUEST_SCHEMA,
+    ActiveOperation,
+    CommandResult,
+    InstallRequest,
+)
 
 
 def _request(tmp_path: Path, operation_id: str = "11111111-1111-4111-8111-111111111111") -> InstallRequest:
@@ -230,14 +236,32 @@ def test_unknown_verification_never_authorizes_apply(tmp_path: Path, code: str) 
     assert adapters.files.apply_calls == 0
 
 
-def test_committed_result_is_durable_before_active_operation_is_archived(tmp_path: Path) -> None:
+def test_active_operation_is_archived_before_committed_result_is_published(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     adapters = RecordingAdapterBundle()
     request = _request(tmp_path)
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     result = install_or_resume(stores.as_lifecycle_stores(), request)
     result_path = tmp_path / "result.json"
+    events: list[str] = []
+    archive_committed = stores.archive_committed
+    write_result = cli._write_result
+
+    def record_archive(operation: ActiveOperation) -> None:
+        events.append("archive")
+        archive_committed(operation)
+
+    def record_result(path: Path, command_result: CommandResult) -> None:
+        events.append("result")
+        write_result(path, command_result)
+
+    monkeypatch.setattr(stores, "archive_committed", record_archive)
+    monkeypatch.setattr(cli, "_write_result", record_result)
 
     assert cli._deliver_install_result(result_path, result, stores.as_lifecycle_stores()) == 0
+    assert events == ["archive", "result"]
     delivered = json.loads(result_path.read_text(encoding="utf-8"))
     assert delivered["ok"] is True
     assert delivered["pairing_code"] == "12345678"
@@ -297,7 +321,7 @@ def test_archived_result_replay_does_not_take_over_another_active_operation(
     assert stores.read_active() == foreign
 
 
-def test_result_write_failure_keeps_committed_operation_for_exact_retry(
+def test_result_write_failure_after_archive_replays_exact_committed_history(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -314,9 +338,8 @@ def test_result_write_failure_keeps_committed_operation_for_exact_retry(
     with pytest.raises(OSError, match="result write failure"):
         cli._deliver_install_result(tmp_path / "result.json", first, stores.as_lifecycle_stores())
 
-    assert stores.read_active() is not None
-    assert stores.read_active().phase == "committed"
-    assert stores.history == []
+    assert stores.read_active() is None
+    assert [operation.phase for operation in stores.history] == ["committed"]
     resume = InstallRequest(**{**request.__dict__, "command": "resume"})
     replay = install_or_resume(stores.as_lifecycle_stores(), resume)
     assert replay.ok is True
@@ -347,6 +370,32 @@ def test_committed_resume_restarts_backend_and_reverifies_health_after_cold_cras
     assert adapters.scm.autostart_calls == autostart_calls + 1
     assert adapters.scm.apply_calls == start_apply_calls + 1
     assert adapters.dataset.verify_calls == health_verify_calls + 1
+
+
+def test_committed_resume_starts_stopped_services_before_claiming_owner(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert first.ok is True
+
+    adapters.scm._done.discard("start_services")
+    claim_owner = adapters.dataset.claim_owner
+
+    def require_running_services(bound: InstallRequest):
+        if "start_services" not in adapters.scm._done:
+            raise LifecycleError("owner_claim_failed", "PostgreSQL is stopped")
+        return claim_owner(bound)
+
+    adapters.dataset.claim_owner = require_running_services  # type: ignore[method-assign]
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+
+    replay = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert replay.ok is True
+    assert "start_services" in adapters.scm._done
 
 
 def test_committed_resume_does_not_restart_an_already_running_backend(

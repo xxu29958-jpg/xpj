@@ -157,6 +157,15 @@ def test_pairing_result_never_enters_the_user_readable_inno_temp_tree() -> None:
     assert "TicketboxDeletePrivateResult" in text
 
 
+def test_protected_directory_handle_can_query_reparse_and_directory_attributes() -> None:
+    security = SETUP_SECURITY.read_text(encoding="utf-8-sig")
+    directory_open = security.split("Handle := TicketboxOpenFile(", 1)[1].split(
+        "if Handle = $FFFFFFFF", 1
+    )[0]
+
+    assert "Path, $000E0080" in directory_open
+
+
 def test_setup_refuses_every_install_root_except_exact_program_files() -> None:
     text = ISS.read_text(encoding="utf-8-sig")
     prepare = text.split("function PrepareToInstall", 1)[1].split(

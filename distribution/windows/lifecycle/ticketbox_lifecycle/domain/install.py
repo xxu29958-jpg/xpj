@@ -252,8 +252,8 @@ def _replay_committed_result(
     require_runtime_binding(stores.binding_read, bound)
     try:
         stores.adapters.scm.enable_autostart(bound)
-        pairing = stores.adapters.dataset.claim_owner(bound)
         _ensure_postcondition(stores.adapters.scm, bound, "start_services")
+        pairing = stores.adapters.dataset.claim_owner(bound)
         _ensure_postcondition(stores.adapters.dataset, bound, "health")
     except LifecycleError as exc:
         return CommandResult(

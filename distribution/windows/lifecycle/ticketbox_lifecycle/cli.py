@@ -93,8 +93,8 @@ def _deliver_install_result(
     result: CommandResult,
     stores: LifecycleStores,
 ) -> int:
-    _write_result(path, result)
     if not result.ok:
+        _write_result(path, result)
         _emit_failure(result)
         return 2
     active = stores.operations_read.read_active()
@@ -140,6 +140,7 @@ def _deliver_install_result(
             _write_result(path, failure)
             _emit_failure(failure)
             return 2
+    _write_result(path, result)
     return 0
 
 
