@@ -13,6 +13,7 @@ from ticketbox_lifecycle.adapters.ports import (
     Mutex,
     OperationPublisher,
     OperationReader,
+    PlatformAdapter,
     ShipmentVerifier,
     adapter_for_step,
     phase_after,
@@ -134,14 +135,7 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
                 result = "claimed"
             else:
                 adapter = adapter_for_step(stores.adapters, step.name)
-                try:
-                    adapter.verify(bound, step.name)
-                    result = "already-verified"
-                except LifecycleError as exc:
-                    if exc.code in {"command_outcome_unknown", "command_start_failed"}:
-                        raise
-                    result = adapter.apply(bound, step.name)
-                    adapter.verify(bound, step.name)
+                result = _ensure_postcondition(adapter, bound, step.name)
             last_phase = phase_after(step.name)
             active = ActiveOperation(
                 schema=OPERATION_SCHEMA,
@@ -257,7 +251,10 @@ def _replay_committed_result(
     bound = _bind_operation_identity(request, active)
     require_runtime_binding(stores.binding_read, bound)
     try:
+        stores.adapters.scm.enable_autostart(bound)
         pairing = stores.adapters.dataset.claim_owner(bound)
+        _ensure_postcondition(stores.adapters.scm, bound, "start_services")
+        _ensure_postcondition(stores.adapters.dataset, bound, "health")
     except LifecycleError as exc:
         return CommandResult(
             schema=RESULT_SCHEMA,
@@ -270,6 +267,22 @@ def _replay_committed_result(
             installation_published=True,
         )
     return _committed_result(request, pairing)
+
+
+def _ensure_postcondition(
+    adapter: PlatformAdapter,
+    request: InstallRequest,
+    step: str,
+) -> str:
+    try:
+        adapter.verify(request, step)
+        return "already-verified"
+    except LifecycleError as exc:
+        if exc.code in {"command_outcome_unknown", "command_start_failed"}:
+            raise
+    result = adapter.apply(request, step)
+    adapter.verify(request, step)
+    return result
 
 
 def _committed_result(request: InstallRequest, pairing: OwnerPairing) -> CommandResult:

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import ctypes
-import os
 import re
-from ctypes import wintypes
 from pathlib import Path
-from uuid import UUID
 
 from backend_manager.runtime import RuntimeControlError
+from backend_manager.windows_known_folders import (
+    PROGRAM_DATA_FOLDER_ID,
+    known_folder_path,
+)
 from backend_manager.windows_trusted_file import (
     file_security_descriptor,
     lookup_account_sid,
@@ -18,7 +18,6 @@ from backend_manager.windows_trusted_file import (
 )
 from backend_manager.windows_user_security import current_user_sid
 
-_FOLDERID_PROGRAM_DATA = UUID("62ab5d82-fdc1-4dc3-a9dd-070d1d495d97")
 _BACKEND_SERVICE_ACCOUNT = r"NT SERVICE\TicketboxBackend"
 _ADMINISTRATORS_SID = "S-1-5-32-544"
 _SYSTEM_SID = "S-1-5-18"
@@ -26,51 +25,8 @@ _MAX_BINDING_BYTES = 64 * 1024
 _ACE_PATTERN = re.compile(r"\(([^()]*)\)")
 
 
-class _GUID(ctypes.Structure):
-    _fields_ = (
-        ("data1", wintypes.DWORD),
-        ("data2", wintypes.WORD),
-        ("data3", wintypes.WORD),
-        ("data4", ctypes.c_ubyte * 8),
-    )
-
-    @classmethod
-    def from_uuid(cls, value: UUID) -> _GUID:
-        data1, data2, data3, data4_hi, data4_low, node = value.fields
-        tail = bytes((data4_hi, data4_low)) + node.to_bytes(6, "big")
-        return cls(data1, data2, data3, (ctypes.c_ubyte * 8)(*tail))
-
-
 def program_data_root() -> Path:
-    if os.name != "nt":
-        raise RuntimeControlError("Windows 安装绑定只支持 Windows。")
-    folder_id = _GUID.from_uuid(_FOLDERID_PROGRAM_DATA)
-    value = ctypes.c_wchar_p()
-    shell32 = ctypes.WinDLL("Shell32", use_last_error=True)
-    ole32 = ctypes.WinDLL("Ole32", use_last_error=True)
-    shell32.SHGetKnownFolderPath.argtypes = (
-        ctypes.POINTER(_GUID),
-        wintypes.DWORD,
-        wintypes.HANDLE,
-        ctypes.POINTER(ctypes.c_wchar_p),
-    )
-    shell32.SHGetKnownFolderPath.restype = ctypes.c_long
-    ole32.CoTaskMemFree.argtypes = (ctypes.c_void_p,)
-    try:
-        result = shell32.SHGetKnownFolderPath(
-            ctypes.byref(folder_id),
-            0,
-            None,
-            ctypes.byref(value),
-        )
-        if result != 0 or not value.value:
-            raise RuntimeControlError(
-                f"无法定位 Windows ProgramData（HRESULT=0x{result & 0xFFFFFFFF:08x}）。"
-            )
-        return Path(value.value)
-    finally:
-        if value:
-            ole32.CoTaskMemFree(ctypes.cast(value, ctypes.c_void_p))
+    return known_folder_path(PROGRAM_DATA_FOLDER_ID, label="ProgramData")
 
 
 def machine_binding_path() -> Path:

@@ -5,10 +5,14 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $windows = Join-Path $root 'distribution\windows'
 $iss = Join-Path $windows 'installer\ticketbox.iss'
+$setupSecurity = Join-Path $windows 'installer\setup_security.iss'
+$privateResult = Join-Path $windows 'installer\setup_private_result.iss'
 $lifecycle = Join-Path $windows 'lifecycle\ticketbox_lifecycle'
 $oldIss = Join-Path $root 'backend\packaging\ticketbox-installer.iss'
 
 if (-not (Test-Path -LiteralPath $iss -PathType Leaf)) { throw "missing $iss" }
+if (-not (Test-Path -LiteralPath $setupSecurity -PathType Leaf)) { throw "missing $setupSecurity" }
+if (-not (Test-Path -LiteralPath $privateResult -PathType Leaf)) { throw "missing $privateResult" }
 if (-not (Test-Path -LiteralPath (Join-Path $lifecycle 'cli.py') -PathType Leaf)) {
     throw 'missing lifecycle cli'
 }
@@ -17,6 +21,8 @@ if (Test-Path -LiteralPath $oldIss) {
 }
 
 $text = Get-Content -LiteralPath $iss -Raw
+$setupSecurityText = Get-Content -LiteralPath $setupSecurity -Raw
+$privateResultText = Get-Content -LiteralPath $privateResult -Raw
 foreach ($token in @(
         'windows_lifecycle_receipt.ps1',
         'windows_owner_handoff.ps1',
@@ -66,8 +72,17 @@ if ($text -notmatch 'GetCustomSetupExitCode' -or
 if ($text -match '(?i)Flags:[^\r\n]*(nowait|shellexec|ignoreerrors|postinstall)') {
     throw 'ISS lifecycle [Run] entries must be elevated, waited, and terminal'
 }
-if ($text -match 'last-result\.json' -or $text -notmatch 'ticketbox-install-result\.json') {
-    throw 'ISS must use an invocation-scoped temporary result'
+if ($text -match 'last-result\.json' -or
+    $text -notmatch '#include "setup_private_result\.iss"' -or
+    $privateResultText -notmatch 'ticketbox-install-result\.json' -or
+    $privateResultText -match '\{tmp\}') {
+    throw 'ISS must use the protected invocation result channel'
+}
+if ($setupSecurityText -notmatch 'SetSecurityInfo' -or
+    $setupSecurityText -notmatch 'GetSecurityInfo' -or
+    $setupSecurityText -match 'SetKernelObjectSecurity' -or
+    $privateResultText -notmatch 'TicketboxCreateProtectedDirectory') {
+    throw 'ISS setup coordination security is not closed and handle-verified'
 }
 if ($text -notmatch 'PrivilegesRequired=admin') { throw 'ISS must require UAC' }
 

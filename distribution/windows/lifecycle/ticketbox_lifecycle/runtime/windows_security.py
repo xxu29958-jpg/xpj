@@ -164,13 +164,12 @@ class WindowsSecurityAdapter:
 
     def grant_backend_binding_read(self, binding_path: Path, service_name: str) -> None:
         native.require_windows()
-        interactive_sid = native.shell_user_sid()
+        interactive_sid = self._installation_reader_sid()
         backend_sid = native.service_sid(self._runner, service_name)
-        reader_sids = (backend_sid,) + ((interactive_sid,) if interactive_sid else ())
         self._file_security.protect_file(
             self._runner,
             binding_path,
-            reader_sids=reader_sids,
+            reader_sids=(backend_sid, interactive_sid),
             code="binding_acl_failed",
         )
 
@@ -323,6 +322,21 @@ class WindowsSecurityAdapter:
             native.service_sid(self._runner, request.backend_service_name),
             native.shell_user_sid(),
         )
+
+    @staticmethod
+    def _installation_reader_sid() -> str:
+        reader_sid = native.shell_user_sid() or native.current_process_user_sid()
+        service_identities = {"s-1-5-18", "s-1-5-19", "s-1-5-20"}
+        if (
+            not reader_sid
+            or reader_sid.casefold() in service_identities
+            or reader_sid.casefold().startswith("s-1-5-80-")
+        ):
+            raise LifecycleError(
+                "installation_reader_unavailable",
+                "cannot identify the interactive Windows user that will run Ticketbox Manager",
+            )
+        return reader_sid
 
 
 def _require_active_temp(path: Path, *, code: str) -> None:

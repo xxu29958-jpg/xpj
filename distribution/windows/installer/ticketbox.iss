@@ -76,6 +76,24 @@ const
   TicketboxRequiredMsvcRuntimeVersion = '{#TicketboxRequiredMsvcRuntimeVersion}';
   TicketboxExpectedReleaseManifestSha256 = '{#ReleaseManifestSha256}';
   TicketboxFileFlagOpenReparsePoint = $00200000; { FILE_FLAG_OPEN_REPARSE_POINT }
+  TicketboxFileFlagBackupSemantics = $02000000; { FILE_FLAG_BACKUP_SEMANTICS }
+  TicketboxProtectedDaclSecurityInformation = $80000000;
+
+type
+  TTicketboxSecurityAttributes = record
+    nLength: LongWord;
+    lpSecurityDescriptor: LongWord;
+    bInheritHandle: LongWord;
+  end;
+  TTicketboxFileAttributeTagInfo = record
+    FileAttributes: LongWord;
+    ReparseTag: LongWord;
+  end;
+  TTicketboxAclSizeInformation = record
+    AceCount: LongWord;
+    AclBytesInUse: LongWord;
+    AclBytesFree: LongWord;
+  end;
 
 var
   TicketboxProvisionOperationId: String;
@@ -84,8 +102,11 @@ var
   TicketboxInstallFailed: Boolean;
   TicketboxInstallFailureReason: String;
   TicketboxSetupLeaseHandle: LongWord;
+  TicketboxResultDirectoryHandle: LongWord;
 
+#include "setup_security.iss"
 #include "setup_lease.iss"
+#include "setup_private_result.iss"
 
 function InitializeSetup: Boolean;
 begin
@@ -95,6 +116,7 @@ begin
   TicketboxInstallFailed := False;
   TicketboxInstallFailureReason := '';
   TicketboxSetupLeaseHandle := 0;
+  TicketboxResultDirectoryHandle := 0;
   Result := True;
 end;
 
@@ -213,7 +235,7 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  BindingPath, LeaseFailure: String;
+  BindingPath, LeaseFailure, ResultFailure: String;
 begin
   { The outer lease is coordination only; product preflight remains read-only. }
   NeedsRestart := False;
@@ -231,6 +253,11 @@ begin
   if not TicketboxAcquireSetupLease(LeaseFailure) then
   begin
     Result := TicketboxPrepareFailure(LeaseFailure);
+    Exit;
+  end;
+  if not TicketboxPreparePrivateResult(ResultFailure) then
+  begin
+    Result := TicketboxPrepareFailure(ResultFailure);
     Exit;
   end;
   if Length(TicketboxExpectedReleaseManifestSha256) <> 64 then
@@ -254,6 +281,7 @@ end;
 
 procedure DeinitializeSetup;
 begin
+  TicketboxReleasePrivateResult;
   TicketboxReleaseSetupLease;
 end;
 
@@ -283,11 +311,6 @@ begin
     Exit;
   end;
   Result := True;
-end;
-
-function TicketboxResultPath: String;
-begin
-  Result := ExpandConstant('{tmp}\ticketbox-install-result.json');
 end;
 
 function TicketboxResultIsCommitted(const OperationId: String): Boolean;
@@ -405,6 +428,7 @@ begin
     if (not TicketboxInstallFailed) and
        (not TicketboxResultIsCommitted(TicketboxProvisionOperationId)) then
       TicketboxMarkInstallFailed(TicketboxResultFailure);
+    TicketboxDeletePrivateResult;
     if TicketboxInstallFailed then
       SuppressibleMsgBox('小票夹安装未完成：' + TicketboxInstallFailureReason + '。' + #13#10 +
         '请重新运行同一个安装包继续。' + #13#10 +

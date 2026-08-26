@@ -70,7 +70,13 @@ class WindowsScmAdapter:
         raise LifecycleViolation("wrong_adapter", f"scm adapter does not own {step}")
 
     def enable_autostart(self, request: InstallRequest) -> None:
-        self._set_start_type(request.backend_service_name, "auto")
+        self._verify_service_configurations(
+            request,
+            backend_start_types=frozenset({SERVICE_DEMAND_START, SERVICE_AUTO_START}),
+        )
+        current = self._observer.observe(request.backend_service_name)
+        if current.start_type != SERVICE_AUTO_START:
+            self._set_start_type(request.backend_service_name, "auto")
         self._verify_service_configurations(
             request,
             backend_start_types=frozenset({SERVICE_AUTO_START}),

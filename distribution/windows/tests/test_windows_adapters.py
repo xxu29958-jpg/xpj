@@ -1276,7 +1276,7 @@ def test_binding_read_acl_grants_only_the_exact_file_readers(tmp_path: Path) -> 
     assert "*S-1-5-21-9-9-9-1002:(R)" in text
 
 
-def test_no_shell_install_keeps_only_backend_as_binding_reader(
+def test_no_shell_install_uses_the_elevated_process_user_as_binding_reader(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1296,8 +1296,33 @@ def test_no_shell_install_keeps_only_backend_as_binding_reader(
         if call[0] == "icacls" and call[1] == str(binding) and "/grant:r" in call
     )
     assert f"*{_BACKEND_SERVICE_SID}:(R)" in binding_grant
-    assert not any(_PROCESS_USER_SID in part for part in binding_grant)
+    assert f"*{_PROCESS_USER_SID}:(R)" in binding_grant
     assert not any("S-1-5-32-545" in part for part in binding_grant)
+
+
+@pytest.mark.parametrize(
+    "process_sid",
+    [None, "S-1-5-18", "S-1-5-19", "S-1-5-20", "S-1-5-80-1-2-3-4-5"],
+)
+def test_binding_publication_refuses_a_missing_or_service_process_reader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    process_sid: str | None,
+) -> None:
+    request = _request(tmp_path)
+    bundle = _bundle(RecordingRunner())
+    binding = tmp_path / "programdata" / "machine" / "installation.json"
+    binding.parent.mkdir(parents=True)
+    binding.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(windows_security_native, "shell_user_sid", lambda: None)
+    monkeypatch.setattr(
+        windows_security_native,
+        "current_process_user_sid",
+        lambda: process_sid,
+    )
+
+    with pytest.raises(LifecycleError, match="interactive Windows user"):
+        bundle.security.grant_backend_binding_read(binding, request.backend_service_name)
 
 
 def test_no_shell_install_can_prepare_the_operation_store(

@@ -255,6 +255,19 @@ def test_initial_verify_accepts_backend_demand_but_final_promotion_requires_auto
     ) in runner.calls
 
 
+def test_final_autostart_verification_does_not_reconfigure_an_exact_auto_service(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    observed = _expected(request, backend_start=2)
+    runner = _Runner(observed)
+    adapter = WindowsScmAdapter(runner, _Security(), _Observer(observed))
+
+    adapter.enable_autostart(request)
+
+    assert not any(call[:2] == ("sc.exe", "config") for call in runner.calls)
+
+
 def test_final_promotion_fails_closed_when_scm_readback_stays_demand(tmp_path: Path) -> None:
     request = _request(tmp_path)
     observed = _expected(request, backend_start=3)

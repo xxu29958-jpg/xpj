@@ -217,6 +217,36 @@ def test_frozen_runtime_admits_active_fresh_install_before_binding_publication(
     assert launch.configure_environment() == data_dir.resolve()
 
 
+def test_frozen_runtime_admits_committed_active_only_with_exact_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "installation.json", _binding(data_root))
+    active = _active(data_root)
+    active["phase"] = "committed"
+    _write_authority(program_data, "operations/active.json", active)
+
+    assert launch.configure_environment() == data_dir.resolve()
+
+
+def test_frozen_runtime_rejects_committed_active_without_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    active = _active(data_root)
+    active["phase"] = "committed"
+    _write_authority(program_data, "operations/active.json", active)
+
+    with pytest.raises(RuntimeError, match="committed active operation requires installation binding"):
+        launch.configure_environment()
+
+    assert not (data_dir / "uploads").exists()
+
+
 def test_frozen_runtime_rejects_disagreeing_temporal_authorities(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

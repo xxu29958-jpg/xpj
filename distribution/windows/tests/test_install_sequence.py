@@ -324,6 +324,51 @@ def test_result_write_failure_keeps_committed_operation_for_exact_retry(
     assert replay.pairing_expires_at == first.pairing_expires_at
 
 
+def test_committed_resume_restarts_backend_and_reverifies_health_after_cold_crash(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert first.ok is True
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "committed"
+
+    adapters.scm._done.discard("start_services")
+    start_apply_calls = adapters.scm.apply_calls
+    autostart_calls = adapters.scm.autostart_calls
+    health_verify_calls = adapters.dataset.verify_calls
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+
+    replay = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert replay.ok is True
+    assert adapters.scm.autostart_calls == autostart_calls + 1
+    assert adapters.scm.apply_calls == start_apply_calls + 1
+    assert adapters.dataset.verify_calls == health_verify_calls + 1
+
+
+def test_committed_resume_does_not_restart_an_already_running_backend(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    assert install_or_resume(stores.as_lifecycle_stores(), request).ok is True
+    start_apply_calls = adapters.scm.apply_calls
+    autostart_calls = adapters.scm.autostart_calls
+    health_verify_calls = adapters.dataset.verify_calls
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+
+    replay = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert replay.ok is True
+    assert adapters.scm.autostart_calls == autostart_calls + 1
+    assert adapters.scm.apply_calls == start_apply_calls
+    assert adapters.dataset.verify_calls == health_verify_calls + 1
+
+
 def test_fresh_install_refuses_unbound_mutable_state_before_publishing_active(
     tmp_path: Path,
 ) -> None:

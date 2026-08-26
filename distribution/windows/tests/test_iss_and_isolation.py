@@ -6,6 +6,7 @@ WINDOWS = Path(__file__).resolve().parents[1]
 REPO = Path(__file__).resolve().parents[3]
 ISS = WINDOWS / "installer" / "ticketbox.iss"
 SETUP_LEASE = WINDOWS / "installer" / "setup_lease.iss"
+SETUP_SECURITY = WINDOWS / "installer" / "setup_security.iss"
 LIFECYCLE = WINDOWS / "lifecycle"
 LIFECYCLE_SPEC = WINDOWS / "build" / "ticketbox-lifecycle.spec"
 INSTALLED_MANIFEST = WINDOWS / "build" / "installed_payload_manifest.ps1"
@@ -54,6 +55,9 @@ def test_new_tree_does_not_import_old_packaging_owners() -> None:
 def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> None:
     text = ISS.read_text(encoding="utf-8-sig")
     lease = SETUP_LEASE.read_text(encoding="utf-8-sig")
+    security = SETUP_SECURITY.read_text(encoding="utf-8-sig")
+    private_result = (ISS.parent / "setup_private_result.iss").read_text(encoding="utf-8-sig")
+    combined = text + security + lease + private_result
     assert "[Setup]" in text
     assert "PrivilegesRequired=admin" in text
     assert "CloseApplications=no" in text
@@ -100,7 +104,7 @@ def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> 
     assert '"ok": true' in text
     assert '"phase": "committed"' in text
     assert "last-result.json" not in text
-    assert "ticketbox-install-result.json" in text
+    assert "ticketbox-install-result.json" in combined
     files_section = text.split("[Files]", 1)[1].split("[", 1)[0]
     assert "TicketboxBackendLauncher.exe" not in files_section
     assert "vc_redist.x64.exe" in files_section
@@ -120,19 +124,37 @@ def test_iss_prepare_is_readonly_and_postinstall_only_observes_run_results() -> 
     assert "TicketboxAcquireSetupLease" in text
     assert "TicketboxSetupLeaseHandle" in text
     assert "#include \"setup_lease.iss\"" in text
-    assert "CreateFileW" in lease
-    assert "SetKernelObjectSecurity" in lease
-    assert "FILE_FLAG_OPEN_REPARSE_POINT" in text + lease
+    assert "CreateFileW" in security
+    assert "SetKernelObjectSecurity" not in combined
+    assert "SetSecurityInfo" in security
+    assert "GetSecurityInfo" in security
+    assert "ProtectedDaclSecurityInformation" in combined
+    assert "TicketboxVerifyProtectedObject" in security
+    assert "FILE_FLAG_OPEN_REPARSE_POINT" in combined
     prepare = text.split("function PrepareToInstall", 1)[1].split(
         "function TicketboxMsvcRuntimeIsCurrent", 1
     )[0]
     assert "TicketboxAcquireSetupLease" in prepare
     assert "TicketboxCloseHandle(TicketboxSetupLeaseHandle)" in lease
-    assert "CreateMutexW" not in text + lease
+    assert "CreateMutexW" not in combined
     assert "SetupMutex=" not in text
     assert "TicketboxEnsureMsvcRuntime" not in prepare
     for token in FORBIDDEN_TOKENS:
         assert token not in text
+
+
+def test_pairing_result_never_enters_the_user_readable_inno_temp_tree() -> None:
+    text = ISS.read_text(encoding="utf-8-sig")
+    security = SETUP_SECURITY.read_text(encoding="utf-8-sig")
+    private_result = (ISS.parent / "setup_private_result.iss").read_text(encoding="utf-8-sig")
+
+    assert "{tmp}\\ticketbox-install-result.json" not in text
+    assert '#include "setup_private_result.iss"' in text
+    assert "CreateDirectoryW" in security
+    assert "TicketboxCreateProtectedDirectory" in private_result
+    assert "TicketboxVerifyProtectedObject" in security
+    assert "TicketboxResultDirectoryHandle" in text + private_result
+    assert "TicketboxDeletePrivateResult" in text
 
 
 def test_setup_refuses_every_install_root_except_exact_program_files() -> None:
@@ -196,7 +218,11 @@ def test_prepare_to_install_failures_surface_reason_retry_and_log() -> None:
     assert "Log('Ticketbox preflight failed: ' + Reason)" in helper
     assert "重新运行同一个安装包" in helper
     assert "ExpandConstant('{log}')" in helper
-    assert prepare.count("Result := TicketboxPrepareFailure(") == 6
+    assert prepare.count("Result := TicketboxPrepareFailure(") == 7
+    assert "TicketboxPreparePrivateResult" in prepare
+    assert "受保护的首次配对结果" in (
+        ISS.parent / "setup_private_result.iss"
+    ).read_text(encoding="utf-8-sig")
     literal_assignments = [
         line.strip()
         for line in prepare.splitlines()

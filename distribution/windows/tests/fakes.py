@@ -74,9 +74,11 @@ class _RecordingScmAdapter(_StatefulAdapter):
     def __init__(self) -> None:
         super().__init__("scm", ("scm", "start_services"))
         self.autostart_enabled = False
+        self.autostart_calls = 0
         self.fail_autostart = False
 
     def enable_autostart(self, request: InstallRequest) -> None:
+        self.autostart_calls += 1
         if not request.install_id or not request.dataset_id:
             raise LifecycleViolation("identity_missing", "autostart requires bound identity")
         if self.fail_autostart:
