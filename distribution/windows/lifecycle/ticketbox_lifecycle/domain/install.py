@@ -158,7 +158,7 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
             )
             if step.name != "start_services":
                 stores.operations_write.publish_active(candidate)
-            active = candidate
+                active = candidate
 
         if owner_pairing is None:
             raise LifecycleViolation("owner_pairing_missing", "owner claim returned no pairing")

@@ -119,12 +119,12 @@ def test_failure_result_preserves_primary_when_cleanup_state_writes_also_fail(
 
     assert result.ok is False
     assert result.code == "injected_failure"
-    assert result.phase == "release_activated"
+    assert result.phase == "data_ready"
     assert "injected_fence_failure" in result.message
     assert "active_publish_failed" in result.message
     assert "operation_io_failed" in result.message
     assert stores.read_active() is not None
-    assert stores.read_active().phase == "data_ready"
+    assert result.phase == stores.read_active().phase
 
 
 def test_resume_binding_read_failure_fences_existing_runtime(tmp_path: Path) -> None:
