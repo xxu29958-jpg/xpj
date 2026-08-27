@@ -10,16 +10,18 @@ from pathlib import Path
 
 import pytest
 
+from backend_manager import runtime_factory
+from backend_manager.config import InstalledRuntimeConfig, ManagerConfig
 from backend_manager.health_probe import (
     HealthProbeResult,
     InstalledHealthExpectation,
     _parse_health_payload,
     _sign_challenge,
 )
-from backend_manager.installation import WindowsReleaseConfig
+from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
 from backend_manager.runtime import RuntimeControlError, ServiceAccessError
+from backend_manager.runtime_factory import build_runtime
 from backend_manager.windows_service import (
-    BrokeredWindowsServiceRuntime,
     ServiceSnapshot,
     WindowsServiceGateway,
     WindowsServiceRuntime,
@@ -57,14 +59,6 @@ class FakeClock:
 
     def sleep(self, seconds: float) -> None:
         self.now += seconds
-
-
-class FakeActionRunner:
-    def __init__(self) -> None:
-        self.actions: list[str] = []
-
-    def run(self, action: str) -> None:
-        self.actions.append(action)
 
 
 def _health_payload(
@@ -421,13 +415,6 @@ def test_phase_budget_outlasts_full_reachable_restart_state_machine(tmp_path: Pa
         backend_ready_timeout_ms=4_000,
         backend_ready_poll_interval_ms=100,
         backend_health_request_timeout_ms=500,
-        database_tool_timeout_ms=600_000,
-        dataset_backup_helper_timeout_ms=1_800_000,
-        dataset_restore_helper_timeout_ms=3_600_000,
-        dataset_payload_verification_timeout_ms=1_800_000,
-        complete_dataset_cleanup_reserve_ms=3_600_000,
-        complete_dataset_backup_timeout_ms=5_400_000,
-        complete_dataset_restore_timeout_ms=10_800_000,
     )
 
     class SlowTransitionGateway(FakeGateway):
@@ -503,19 +490,12 @@ def test_phase_budget_outlasts_full_reachable_restart_state_machine(tmp_path: Pa
 
     runtime.restart()
 
-    action_phases = release.helper_action_phase_budget_seconds("restart")
-    runtime_budget = sum(
-        seconds
-        for name, seconds in action_phases.items()
-        if name not in {"pre_action_contract_validation", "watchdog_scheduler_margin"}
-    )
     assert gateway.actions == [
         ("stop", "TicketboxBackend"),
         ("start", "TicketboxPg"),
         ("start", "TicketboxBackend"),
     ]
-    assert clock.now > 15
-    assert clock.now < runtime_budget < release.helper_watchdog_seconds("restart")
+    assert 15 < clock.now < 20
 
 
 def test_blocked_health_probe_does_not_block_service_stop(tmp_path: Path) -> None:
@@ -591,16 +571,54 @@ def test_real_gateway_reports_unknown_service_as_missing() -> None:
     assert snapshot.state == "missing"
 
 
-def test_brokered_runtime_delegates_mutations_without_direct_scm_write(tmp_path: Path) -> None:
-    gateway = FakeGateway(backend="running", database="running")
-    status_runtime = _runtime(tmp_path, gateway)
-    runner = FakeActionRunner()
-    runtime = BrokeredWindowsServiceRuntime(status_runtime, runner)
+def test_installed_manager_runtime_is_observation_only(monkeypatch, tmp_path: Path) -> None:
+    class QueryOnlyGateway:
+        def query(self, name: str) -> ServiceSnapshot:
+            return ServiceSnapshot(name=name, state="stopped")
 
-    runtime.stop()
-    runtime.start()
-    runtime.restart()
+        def start(self, _name: str) -> None:
+            raise AssertionError("unelevated UI must not mutate SCM directly")
 
-    assert runner.actions == ["stop", "start", "restart"]
-    assert gateway.actions == []
-    assert runtime.status().healthy is True
+        def stop(self, _name: str) -> None:
+            raise AssertionError("unelevated UI must not mutate SCM directly")
+
+    monkeypatch.setattr(runtime_factory, "WindowsServiceGateway", QueryOnlyGateway)
+    layout = InstalledLayout(
+        tmp_path / "program",
+        tmp_path / "data",
+        8000,
+        5432,
+        "TicketboxBackend",
+        "TicketboxPg",
+        "9.8.7",
+        "11111111-1111-4111-8111-111111111111",
+        "a" * 64,
+    )
+    release = WindowsReleaseConfig(
+        backend_service_name=layout.backend_service_name,
+        pg_service_name=layout.pg_service_name,
+        service_state_timeout_ms=17_000,
+        service_poll_interval_ms=125,
+        postgres_ready_timeout_ms=23_000,
+        backend_ready_timeout_ms=31_000,
+        backend_ready_poll_interval_ms=375,
+        backend_health_request_timeout_ms=1_750,
+    )
+    config = ManagerConfig(
+        runtime=InstalledRuntimeConfig(layout, release),
+        backend_host="127.0.0.1",
+        backend_port=8000,
+        manager_host="127.0.0.1",
+        manager_port=8799,
+        public_base_url=None,
+        expected_backend_version=layout.backend_version,
+        expected_installation_id=layout.installation_id,
+        health_request_timeout_seconds=release.backend_health_request_timeout_seconds,
+    )
+
+    runtime = build_runtime(config)
+
+    assert isinstance(runtime, WindowsServiceRuntime)
+    assert runtime.status().service_controls_available is False
+    with pytest.raises(RuntimeControlError, match="Cut B"):
+        runtime.stop()

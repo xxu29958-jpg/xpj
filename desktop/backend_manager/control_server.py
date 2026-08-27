@@ -41,7 +41,6 @@ from typing import Protocol
 
 from backend_manager.app_controller import ManagerShuttingDownError
 from backend_manager.product_data import ProductDataError
-from backend_manager.runtime import RuntimeControlError
 from backend_manager.web_bff import (
     ASSET_SESSION_COOKIE,
     MAX_REQUEST_BYTES,
@@ -60,7 +59,6 @@ _ACTIONS = (
     "start",
     "stop",
     "restart",
-    "backup",
     "auto_restart",
     "open_console",
     "open_pairing",
@@ -77,7 +75,6 @@ _IDENTITY_RESPONSE_LIMIT = 512
 _CHALLENGE_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}\Z")
 _SHA256_PROOF_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_PRODUCT_BODY_BYTES = 1024
-_MAX_RESTORE_BODY_BYTES = 256
 _MAX_BOOTSTRAP_FORM_BYTES = 1024
 _MAX_REJECTED_BODY_DRAIN_BYTES = 4096
 _REJECTED_BODY_DRAIN_CHUNK_BYTES = 1024
@@ -308,9 +305,6 @@ class Controller(Protocol):
     def start(self) -> None: ...
     def stop(self) -> None: ...
     def restart(self) -> None: ...
-    def backup(self) -> None: ...
-    def backup_inventory(self) -> list[dict[str, object]]: ...
-    def restore(self, backup_generation: str) -> None: ...
     def auto_restart(self) -> None: ...
     def open_console(self) -> None: ...
     def open_pairing(self) -> None: ...
@@ -922,51 +916,6 @@ class _Handler(BaseHTTPRequestHandler):
                 hashlib.sha256,
             ).hexdigest()
             self._send_json({**_IDENTITY, "challenge": challenge, "proof": proof})
-            return
-        if parsed_path.path == "/api/restore" and not parsed_path.query:
-            if not self._authorized():
-                self._send(403, b"forbidden", "text/plain; charset=utf-8")
-                return
-            payload = self._read_json_body(max_bytes=_MAX_RESTORE_BODY_BYTES)
-            if (
-                payload is None
-                or set(payload) != {"backup_generation"}
-                or not isinstance(payload.get("backup_generation"), str)
-            ):
-                self._send(400, b"invalid restore request", "text/plain; charset=utf-8")
-                return
-            if not srv.action_lock.acquire(blocking=False):
-                self._send_json({"error": "operation_in_progress"}, code=409)
-                return
-            try:
-                srv.controller.restore(payload["backup_generation"])
-                response_payload = srv.controller.status()
-            finally:
-                srv.action_lock.release()
-            self._send_json(response_payload)
-            return
-        if parsed_path.path == "/api/backups" and not parsed_path.query:
-            if not self._authorized():
-                self._send(403, b"forbidden", "text/plain; charset=utf-8")
-                return
-            body_state = self._read_empty_request_body_state()
-            if body_state is _EmptyRequestBodyState.INCOMPLETE:
-                return
-            if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
-                self._send(400, b"request body not allowed", "text/plain; charset=utf-8")
-                return
-            if not srv.action_lock.acquire(blocking=False):
-                self._send_json({"error": "operation_in_progress"}, code=409)
-                return
-            try:
-                try:
-                    generations = srv.controller.backup_inventory()
-                except RuntimeControlError:
-                    self._send_json({"error": "backup_inventory_unavailable"}, code=503)
-                    return
-            finally:
-                srv.action_lock.release()
-            self._send_json({"generations": generations})
             return
         action = _ACTION_PATHS.get(self.path)
         if action is None:

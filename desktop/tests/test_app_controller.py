@@ -15,13 +15,12 @@ from backend_manager.projection import (
     RefreshingInstalledRuntimeConfigProvider,
     UnavailableInstalledRuntimeConfigProvider,
 )
-from backend_manager.runtime import RestoreOutcome, RuntimeControlError, RuntimeStatus
+from backend_manager.runtime import RuntimeControlError, RuntimeStatus
 
 
 class FakeRuntime:
     def __init__(self) -> None:
         self.fail_start = False
-        self.restore_outcome = RestoreOutcome(cleanup_pending=False)
 
     def status(self) -> RuntimeStatus:
         return RuntimeStatus(
@@ -55,9 +54,6 @@ class FakeRuntime:
 
     def restart(self) -> None:
         pass
-
-    def restore(self, _backup_generation: str) -> RestoreOutcome:
-        return self.restore_outcome
 
     def toggle_auto_restart(self) -> bool:
         return True
@@ -127,19 +123,6 @@ def test_success_notice_expires_without_clearing_persistent_task_result() -> Non
     now[0] += 9.0
     status = controller.status()
     assert status["action_notice"] is None
-
-
-def test_restore_cleanup_pending_is_visible_without_reclassifying_success() -> None:
-    runtime = FakeRuntime()
-    runtime.restore_outcome = RestoreOutcome(cleanup_pending=True)
-    controller = AppController(runtime, _config())
-
-    controller.restore("ticketbox-backup-11111111-1111-4111-8111-111111111111")
-
-    status = controller.status()
-    assert status["control_error"] is None
-    assert "已从所选完整备份恢复" in status["action_notice"]
-    assert "清理待下次维护重试" in status["action_notice"]
 
 
 def test_task_links_open_exact_owner_authority_pages(monkeypatch) -> None:
@@ -288,13 +271,6 @@ def _installed_config(tmp_path: Path, *, port: int, service_suffix: str) -> Mana
         backend_ready_timeout_ms=30_000,
         backend_ready_poll_interval_ms=200,
         backend_health_request_timeout_ms=1_000,
-        database_tool_timeout_ms=600_000,
-        dataset_backup_helper_timeout_ms=1_800_000,
-        dataset_restore_helper_timeout_ms=3_600_000,
-        dataset_payload_verification_timeout_ms=1_800_000,
-        complete_dataset_cleanup_reserve_ms=3_600_000,
-        complete_dataset_backup_timeout_ms=5_400_000,
-        complete_dataset_restore_timeout_ms=10_800_000,
     )
     return ManagerConfig(
         runtime=InstalledRuntimeConfig(layout, release),

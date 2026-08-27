@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 import re
 import uuid
@@ -30,13 +29,6 @@ _VNEXT_RELEASE_DEFAULTS = {
     "backend_ready_timeout_ms": 120_000,
     "backend_ready_poll_interval_ms": 1_000,
     "backend_health_request_timeout_ms": 2_000,
-    "database_tool_timeout_ms": 600_000,
-    "dataset_backup_helper_timeout_ms": 1_800_000,
-    "dataset_restore_helper_timeout_ms": 3_600_000,
-    "dataset_payload_verification_timeout_ms": 1_800_000,
-    "complete_dataset_cleanup_reserve_ms": 3_600_000,
-    "complete_dataset_backup_timeout_ms": 5_400_000,
-    "complete_dataset_restore_timeout_ms": 57_600_000,
 }
 
 
@@ -87,13 +79,6 @@ class WindowsReleaseConfig:
     backend_ready_timeout_ms: int
     backend_ready_poll_interval_ms: int
     backend_health_request_timeout_ms: int
-    database_tool_timeout_ms: int
-    dataset_backup_helper_timeout_ms: int
-    dataset_restore_helper_timeout_ms: int
-    dataset_payload_verification_timeout_ms: int
-    complete_dataset_cleanup_reserve_ms: int
-    complete_dataset_backup_timeout_ms: int
-    complete_dataset_restore_timeout_ms: int
 
     @property
     def service_state_timeout_seconds(self) -> float:
@@ -118,81 +103,6 @@ class WindowsReleaseConfig:
     @property
     def backend_health_request_timeout_seconds(self) -> float:
         return self.backend_health_request_timeout_ms / 1000.0
-
-    @property
-    def process_boundary_margin_seconds(self) -> float:
-        return max(
-            self.backend_health_request_timeout_seconds,
-            self.service_poll_seconds * 2,
-            1.0,
-        )
-
-    def complete_dataset_action_timeout_seconds(self, action: str) -> float:
-        if action == "backup":
-            return self.complete_dataset_backup_timeout_ms / 1000.0
-        if action == "restore":
-            return self.complete_dataset_restore_timeout_ms / 1000.0
-        raise InstallationConfigError(f"操作没有完整数据集预算：{action}")
-
-    def powershell_action_timeout_seconds(self, action: str) -> float:
-        process_deadline = (
-            self.complete_dataset_action_timeout_seconds(action)
-            + self.complete_dataset_cleanup_reserve_ms / 1000.0
-        )
-        return process_deadline + self.process_boundary_margin_seconds
-
-    def helper_action_phase_budget_seconds(self, action: str) -> dict[str, float]:
-        service = self.service_state_timeout_seconds
-        postgres = max(service, self.postgres_ready_timeout_seconds)
-        process_margin = self.process_boundary_margin_seconds
-        if action not in {"start", "stop", "restart", "backup", "restore", "inventory"}:
-            raise InstallationConfigError(f"不支持的服务操作：{action}")
-
-        phases = {
-            "pre_action_contract_validation": service + process_margin,
-        }
-        if action in {"stop", "restart"}:
-            phases.update(
-                {
-                    "backend_settle_before_stop": service,
-                    "backend_stop": service,
-                    "post_stop_runtime_validation": service + process_margin,
-                },
-            )
-        if action == "backup":
-            phases.update(
-                {
-                    "complete_dataset_backup_owner": self.powershell_action_timeout_seconds(action),
-                },
-            )
-        if action == "restore":
-            phases.update(
-                {
-                    "complete_dataset_restore_owner": self.powershell_action_timeout_seconds(action),
-                },
-            )
-        if action in {"start", "restart"}:
-            phases.update(
-                {
-                    "postgres_settle_before_start": postgres,
-                    "postgres_start": postgres,
-                    "backend_settle_before_start": service,
-                    "backend_start": service,
-                    "backend_readiness": (
-                        self.backend_ready_timeout_seconds + self.backend_health_request_timeout_seconds
-                    ),
-                },
-            )
-        phases["watchdog_scheduler_margin"] = process_margin
-        return phases
-
-    def helper_watchdog_seconds(self, action: str) -> float:
-        return sum(self.helper_action_phase_budget_seconds(action).values())
-
-    def helper_parent_timeout_ms(self, action: str) -> int:
-        result_channel_flush = self.process_boundary_margin_seconds
-        return math.ceil((self.helper_watchdog_seconds(action) + result_channel_flush) * 1000)
-
 
 def _parse_port(raw: str, name: str) -> int:
     try:

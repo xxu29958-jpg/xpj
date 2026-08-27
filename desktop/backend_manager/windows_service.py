@@ -9,14 +9,10 @@ import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
-
-if TYPE_CHECKING:
-    from backend_manager.dataset_inventory import BackupInventoryItem
+from typing import Protocol
 
 from backend_manager.health_probe import HealthProbeResult
 from backend_manager.runtime import (
-    RestoreOutcome,
     RuntimeControlError,
     RuntimeStatus,
     ServiceAccessError,
@@ -84,12 +80,6 @@ class ServiceGateway(Protocol):
     def query(self, name: str) -> ServiceSnapshot: ...
     def start(self, name: str) -> None: ...
     def stop(self, name: str) -> None: ...
-
-
-class ServiceActionRunner(Protocol):
-    def run(self, action: str) -> None: ...
-    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]: ...
-    def restore(self, backup_generation: str) -> RestoreOutcome: ...
 
 
 class WindowsServiceGateway:
@@ -291,16 +281,6 @@ class WindowsServiceRuntime:
         with self._lock:
             self._run_control(self._restart_services)
 
-    def backup(self) -> None:
-        raise RuntimeControlError("完整备份必须通过短时提权维护 owner 执行。")
-
-    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
-        raise RuntimeControlError("Cut B 不提供备份 inventory；该能力保持 HOLD。")
-
-    def restore(self, backup_generation: str) -> RestoreOutcome:
-        del backup_generation
-        raise RuntimeControlError("完整恢复必须通过短时提权维护 owner 执行。")
-
     def _restart_services(self) -> None:
         self._stop_backend()
         self._start_services()
@@ -430,41 +410,3 @@ class WindowsServiceRuntime:
             return ServiceAccessError(f"{action}失败：Windows 拒绝访问，请修复安装或服务权限后重试。")
         detail = f"Windows error={error}" if error is not None else type(exc).__name__
         return RuntimeControlError(f"{action}失败（{detail}）；请刷新服务状态或修复安装后重试。")
-
-
-class BrokeredWindowsServiceRuntime:
-    """Read status unelevated and delegate each mutation to a short-lived UAC helper."""
-
-    def __init__(self, status_runtime: WindowsServiceRuntime, action_runner: ServiceActionRunner) -> None:
-        self._status_runtime = status_runtime
-        self._action_runner = action_runner
-
-    def status(self) -> RuntimeStatus:
-        return self._status_runtime.status()
-
-    def start(self) -> None:
-        self._action_runner.run("start")
-
-    def stop(self) -> None:
-        self._action_runner.run("stop")
-
-    def restart(self) -> None:
-        self._action_runner.run("restart")
-
-    def backup(self) -> None:
-        self._action_runner.run("backup")
-
-    def backup_inventory(self) -> tuple[BackupInventoryItem, ...]:
-        return self._action_runner.backup_inventory()
-
-    def restore(self, backup_generation: str) -> RestoreOutcome:
-        return self._action_runner.restore(backup_generation)
-
-    def toggle_auto_restart(self) -> bool:
-        return True
-
-    def run_monitor(self, stop_event: threading.Event) -> None:
-        stop_event.wait()
-
-    def shutdown(self) -> None:
-        return

@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from backend_manager import installation
 from backend_manager.installation import (
-    InstallationConfigError,
     InstalledLayout,
     WindowsReleaseConfig,
     load_installed_release_config,
     parse_installed_binding,
 )
+from backend_manager.lifecycle_lock import hold_installer_lifecycle_lock
 from backend_manager.windows_machine_state import _require_exact_binding_security
 
 _INSTALL_ID = "11111111-1111-4111-8111-111111111111"
@@ -29,13 +32,6 @@ def _release_config() -> WindowsReleaseConfig:
         backend_ready_timeout_ms=31_000,
         backend_ready_poll_interval_ms=375,
         backend_health_request_timeout_ms=1_750,
-        database_tool_timeout_ms=600_000,
-        dataset_backup_helper_timeout_ms=1_800_000,
-        dataset_restore_helper_timeout_ms=3_600_000,
-        dataset_payload_verification_timeout_ms=1_800_000,
-        complete_dataset_cleanup_reserve_ms=3_600_000,
-        complete_dataset_backup_timeout_ms=5_400_000,
-        complete_dataset_restore_timeout_ms=10_800_000,
     )
 
 
@@ -69,71 +65,6 @@ def test_installed_release_config_comes_only_from_binding_layout(tmp_path: Path)
     assert release.backend_service_name == "TicketboxBackend"
     assert release.pg_service_name == "TicketboxPg"
     assert release.backend_health_request_timeout_ms == 2_000
-
-
-def test_helper_timeouts_are_summed_from_reachable_state_machine_phases() -> None:
-    release = _release_config()
-
-    start = release.helper_action_phase_budget_seconds("start")
-    stop = release.helper_action_phase_budget_seconds("stop")
-    restart = release.helper_action_phase_budget_seconds("restart")
-    backup = release.helper_action_phase_budget_seconds("backup")
-    restore = release.helper_action_phase_budget_seconds("restore")
-
-    assert tuple(start) == (
-        "pre_action_contract_validation",
-        "postgres_settle_before_start",
-        "postgres_start",
-        "backend_settle_before_start",
-        "backend_start",
-        "backend_readiness",
-        "watchdog_scheduler_margin",
-    )
-    assert tuple(stop) == (
-        "pre_action_contract_validation",
-        "backend_settle_before_stop",
-        "backend_stop",
-        "post_stop_runtime_validation",
-        "watchdog_scheduler_margin",
-    )
-    assert tuple(restart) == (
-        "pre_action_contract_validation",
-        "backend_settle_before_stop",
-        "backend_stop",
-        "post_stop_runtime_validation",
-        "postgres_settle_before_start",
-        "postgres_start",
-        "backend_settle_before_start",
-        "backend_start",
-        "backend_readiness",
-        "watchdog_scheduler_margin",
-    )
-    assert start["postgres_settle_before_start"] == 23
-    assert start["postgres_start"] == 23
-    assert start["backend_readiness"] == 32.75
-    assert stop["post_stop_runtime_validation"] == 18.75
-    assert backup["complete_dataset_backup_owner"] == 9001.75
-    assert restore["complete_dataset_restore_owner"] == 14401.75
-    assert release.powershell_action_timeout_seconds("backup") == 9001.75
-    assert release.powershell_action_timeout_seconds("restore") == 14401.75
-    for action, phases in (
-        ("start", start),
-        ("stop", stop),
-        ("restart", restart),
-        ("backup", backup),
-        ("restore", restore),
-    ):
-        watchdog = release.helper_watchdog_seconds(action)
-        parent = release.helper_parent_timeout_ms(action) / 1000
-        assert watchdog == sum(phases.values())
-        assert parent > watchdog
-
-
-def test_helper_phase_budget_rejects_unknown_action() -> None:
-    release = _release_config()
-
-    with pytest.raises(InstallationConfigError, match="不支持的服务操作：pause"):
-        release.helper_action_phase_budget_seconds("pause")
 
 
 def test_parse_installed_binding_uses_installation_json_not_registry_dataroot(tmp_path: Path) -> None:
@@ -263,3 +194,28 @@ def test_binding_security_accepts_only_system_admin_backend_and_current_user() -
         current_user_sid="S-1-5-21-9-9-9-1001",
         backend_service_sid="S-1-5-80-1-2-3-4-5",
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows file-share semantics required")
+def test_python_lifecycle_lock_interoperates_with_real_powershell_hosts(tmp_path: Path) -> None:
+    lock_path = tmp_path / "installer-lifecycle.lock"
+    lock_script = Path(__file__).parents[2] / "backend" / "packaging" / "windows_lifecycle_lock.ps1"
+    harness = tmp_path / "lock-interoperability.ps1"
+    escaped_script = str(lock_script).replace("'", "''")
+    escaped_lock = str(lock_path).replace("'", "''")
+    harness.write_text(
+        "#Requires -Version 5.1\n"
+        f". '{escaped_script}'\n"
+        f"$lock = Enter-TicketboxExclusiveFileLock '{escaped_lock}'\n"
+        "try { exit 0 } finally { $lock.Dispose() }\n",
+        encoding="utf-8-sig",
+    )
+    hosts = [Path(found) for name in ("powershell", "pwsh") if (found := shutil.which(name))]
+    assert hosts, "no PowerShell host available"
+
+    with hold_installer_lifecycle_lock(path=lock_path):
+        blocked = [subprocess.run([host, "-NoProfile", "-File", harness], check=False).returncode for host in hosts]
+    acquired = [subprocess.run([host, "-NoProfile", "-File", harness], check=False).returncode for host in hosts]
+
+    assert blocked == [1] * len(hosts)
+    assert acquired == [0] * len(hosts)
