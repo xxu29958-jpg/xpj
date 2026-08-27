@@ -235,7 +235,7 @@ android\
 
 ## desktop
 
-Windows 桌面后端管理器。正式安装态通过 Windows SCM 管理后端/PG 服务，源码态保留进程监督；两者共用本机状态面板，不重造后端业务管理功能。
+Windows 桌面后端管理器。正式安装态只读观察 Windows SCM/安装身份，源码态保留进程监督；两者共用本机状态面板，不重造后端业务管理功能，也不承担正式安装的数据生命周期 mutation。
 CI 的 desktop-manager job 对它跑 compileall / ruff / pytest。详见 [desktop/README.md](../../desktop/README.md)。
 
 ```text
@@ -245,17 +245,16 @@ desktop\
     config.py            # 自动选择正式安装 / 源码运行态
     installation.py      # installation.json 安装身份与 Registry InstallDir locator
     runtime.py           # 两种运行态的共用状态/控制契约
-    elevation.py         # 固定数据维护动作的短命 UAC helper
-    helper_channel.py    # 提权 helper 的受保护单次结果通道
+    helper_channel.py    # 单实例/进程协作使用的受保护单次 IPC 结果通道
     lifecycle_lock.py    # 与安装/升级/卸载共用的机器级独占锁
     projection.py        # 普通用户可见的脱敏状态/诊断投影
-    windows_service.py   # Windows SCM 服务控制与服务/安装身份脱敏诊断
+    windows_service.py   # Windows SCM 与服务/安装身份脱敏只读诊断
     diagnostic_bundle.py # allowlist 脱敏诊断 ZIP 与构建摘要
     supervisor.py        # 源码后端进程监督（独占、崩溃重启、树 kill）
     manager_startup.py    # 单实例 owner、窗口进程集合与宿主退出状态机
     desktop_shell.py      # HKLM Edge 发现、独立 app profile 与窗口进程回收
     control_server.py     # 固定 Host/Origin 控制面、身份探针与 authenticated reopen
-    ui.html               # 服务、连接、备份升级与故障自救工作台
+    ui.html               # 服务、连接、数据保护与故障自救工作台
   packaging\
     ticketbox-manager.spec # 独立 windowed PyInstaller onedir
   scripts\
