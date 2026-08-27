@@ -84,7 +84,8 @@ def _probe_script(status: dict[str, object]) -> str:
       primaryDisabled: document.getElementById("primaryAction").disabled,
       primaryHidden: document.getElementById("primaryAction").hidden,
       restartHidden: document.getElementById("restartAction").hidden,
-      maintenanceHidden: document.getElementById("maintenanceCard").hidden,
+      dataProtectionHidden: document.getElementById("dataProtectionCard").hidden,
+      importExportDisabled: document.getElementById("importExportAction").disabled,
       primaryAction: document.getElementById("primaryAction").dataset.action,
       primaryText: document.getElementById("primaryAction").textContent.trim(),
       diagnosticsDisabled: document.getElementById("diagnosticExportAction").disabled,
@@ -169,7 +170,10 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
     assert probe["primaryDisabled"] is True
     assert probe["primaryHidden"] is True
     assert probe["restartHidden"] is True
-    assert probe["maintenanceHidden"] is True
+    # The data protection card no longer hides with service controls; its
+    # product entry is disabled exactly when the product is not ready.
+    assert probe["dataProtectionHidden"] is False
+    assert probe["importExportDisabled"] is degraded
     assert probe["primaryAction"] == ("start" if degraded else "stop")
     assert probe["primaryText"] == ("▶启动" if degraded else "■停止")
     assert probe["overallText"] == ("需要处理" if degraded else "运行正常")
@@ -519,7 +523,8 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
       const unpaired = {{
         link: displayOf("productHomeLink"),
         pair: displayOf("productPairGroup"),
-        manage: displayOf("productManageGroup")
+        manage: displayOf("productManageGroup"),
+        importExportDisabled: $("importExportAction").disabled
       }};
       window.fetch = async (url) => {{
         if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => pairedSession}};
@@ -532,6 +537,7 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
         link: displayOf("productHomeLink"),
         pair: displayOf("productPairGroup"),
         manage: displayOf("productManageGroup"),
+        importExportDisabled: $("importExportAction").disabled,
         options: [...$("ledgerSelect").options].map((option) => option.value)
       }};
       document.body.setAttribute("data-visibility-probe", JSON.stringify({{unpaired, paired}}));
@@ -547,12 +553,18 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     )
     assert isinstance(value, str)
     probe = json.loads(value)
-    assert probe["unpaired"] == {"link": "none", "pair": "flex", "manage": "none"}
+    assert probe["unpaired"] == {
+        "link": "none",
+        "pair": "flex",
+        "manage": "none",
+        "importExportDisabled": True,
+    }
     # Chromium reports inline-flex's used display as "flex"; the contract is
     # "link visible, pair form gone, manage group visible".
     assert probe["paired"]["link"] in ("inline-flex", "flex")
     assert probe["paired"]["pair"] == "none"
     assert probe["paired"]["manage"] == "flex"
+    assert probe["paired"]["importExportDisabled"] is False
     assert probe["paired"]["options"] == ["owner", "family"]
 
 
