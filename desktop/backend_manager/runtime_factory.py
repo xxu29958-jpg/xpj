@@ -52,16 +52,12 @@ def build_source_supervisor(config: ManagerConfig, runtime: SourceRuntimeConfig)
 def build_direct_service_runtime(
     config: ManagerConfig,
     runtime: InstalledRuntimeConfig,
-    *,
-    control_actions_allowed: bool,
-    backend_stopped_validator=None,
 ) -> WindowsServiceRuntime:
     expectation = InstalledHealthExpectation(
         backend_version=runtime.layout.backend_version,
         installation_id=config.expected_installation_id,
         attestation_key=runtime.layout.health_attestation_key,
     )
-    release = runtime.release
     return WindowsServiceRuntime(
         gateway=WindowsServiceGateway(),
         backend_service_name=runtime.backend_service_name,
@@ -72,16 +68,6 @@ def build_direct_service_runtime(
             expectation=expectation,
             timeout=config.health_request_timeout_seconds,
         ),
-        wait_timeout_seconds=release.service_state_timeout_seconds,
-        pg_wait_timeout_seconds=max(
-            release.service_state_timeout_seconds,
-            release.postgres_ready_timeout_seconds,
-        ),
-        poll_seconds=release.service_poll_seconds,
-        backend_ready_timeout_seconds=release.backend_ready_timeout_seconds,
-        backend_ready_poll_seconds=release.backend_ready_poll_seconds,
-        control_actions_allowed=control_actions_allowed,
-        backend_stopped_validator=backend_stopped_validator,
     )
 
 
@@ -102,11 +88,7 @@ def build_runtime(config: ManagerConfig) -> BackendRuntime:
             ),
         )
     if isinstance(runtime, InstalledRuntimeConfig):
-        return build_direct_service_runtime(
-            config,
-            runtime,
-            control_actions_allowed=False,
-        )
+        return build_direct_service_runtime(config, runtime)
     raise ConfigError(f"unsupported runtime: {type(runtime).__name__}")
 
 

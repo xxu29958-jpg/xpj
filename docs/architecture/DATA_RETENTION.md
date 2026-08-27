@@ -90,8 +90,7 @@ Authorization: Bearer <admin_token>
 
 ## Windows 维护脚本
 
-正式安装执行任何清理前，先从桌面管理器创建并验证一个完整 dataset generation。源码维护脚本
-不拥有正式安装备份 authority。
+以下维护脚本只用于源码/测试环境，不拥有正式安装数据或备份 authority。当前正式 Windows 完整备份/恢复保持 `HOLD`，不得对安装数据套用这些命令。
 
 检查孤儿文件但不删除：
 
@@ -111,20 +110,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbo
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -CleanupConfirmedImages -CleanupRejectedImages
 ```
 
-## 备份建议
+## 数据留存建议
 
-灰度前至少从桌面管理器创建一个完整备份，并在同一 exact-head 干净 Windows VM 验证恢复。
-不要把真实 Token、database archive、originals 或 manifest 提交到 Git。
+正式 Windows 当前可从产品内 `/web/import` 导出已确认流水 CSV；它不包含数据库、附件、身份或安装状态，不能称为完整备份。完整备份/恢复仍为 `HOLD`，Manager 不提供对应 mutation。
 
-完整 generation 目录：
-
-```text
-<DataRoot>/backups/ticketbox-backup-<UUID>/
-```
-
-正式 Windows 服务经 machine-owned `TicketboxRuntimeBinding/data-root/app` junction 访问安装器
-选择的物理 `<DataRoot>/app`，并由 v2 marker + Volume GUID 绑定。每个 generation 同时包含
-manifest、PostgreSQL custom archive 和数据库引用的 originals；该目录用于本机运维，不应提交。
+源码/测试 archive、originals、manifest 与任何真实 Token 都不得提交到 Git；backend 中的 generation 工具和历史目录只作演练/审计输入，不是当前出货能力。
 
 ## 数据清理底线
 

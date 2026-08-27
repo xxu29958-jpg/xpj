@@ -170,10 +170,10 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
     assert probe["primaryDisabled"] is True
     assert probe["primaryHidden"] is True
     assert probe["restartHidden"] is True
-    # The data protection card no longer hides with service controls; its
-    # product entry is disabled exactly when the product is not ready.
+    # Service readiness alone cannot authorize a product navigation: the
+    # session request has not returned in this probe, so the entry stays off.
     assert probe["dataProtectionHidden"] is False
-    assert probe["importExportDisabled"] is degraded
+    assert probe["importExportDisabled"] is True
     assert probe["primaryAction"] == ("start" if degraded else "stop")
     assert probe["primaryText"] == ("▶启动" if degraded else "■停止")
     assert probe["overallText"] == ("需要处理" if degraded else "运行正常")

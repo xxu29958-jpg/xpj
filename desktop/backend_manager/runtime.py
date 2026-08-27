@@ -16,16 +16,8 @@ class RuntimeControlError(RuntimeError):
     """A service/process control failure safe to show in the local manager UI."""
 
 
-class ServiceMissingError(RuntimeControlError):
-    """An installer-owned Windows service is absent."""
-
-
-class ServiceTransitionError(RuntimeControlError):
-    """A Windows service did not converge to the requested state."""
-
-
 class ServiceAccessError(RuntimeControlError):
-    """Windows rejected an SCM query or mutation."""
+    """Windows rejected an SCM status query."""
 
 
 @dataclass(frozen=True)

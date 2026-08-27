@@ -1,6 +1,6 @@
 # 本机 PostgreSQL 运维 Runbook
 
-小票夹后端运行在 home-server 本机 PostgreSQL 上（ADR-0041）。PG-only 瘦身后 PostgreSQL 是唯一数据库，SQLite 已彻底退役。本文是 home-server 上的 PostgreSQL **运维手册**：装库、备份、恢复。
+小票夹后端运行在本机 PostgreSQL 上（ADR-0041）。PG-only 瘦身后 PostgreSQL 是唯一数据库，SQLite 已彻底退役。本文只覆盖源码/home-server 与测试 scratch 的 PostgreSQL 运维；不是正式 Windows 产品的备份/恢复入口。
 
 > 决策背景见 [ADR-0041](../DECISIONS/0041-postgresql-engine-migration.md)。SQLite→PostgreSQL 的一次性迁移已于 2026-06-04 完成；迁移工具（`app.database.data_migration` + 对账 / 恢复演练脚本）已在 PG-only 瘦身中删除。本文只保留仍然适用的装库 / 备份 / 恢复步骤；历史迁移机制见 ADR-0041 与 [docs/current/CHANGELOG.md](../current/CHANGELOG.md)。
 
@@ -26,10 +26,8 @@
 
 ## 1. 备份
 
-- 正式 Windows 安装只通过桌面管理器创建完整 dataset generation；详见
-  [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。旧 DB-only 脚本和计划任务已经退役。
-- CI/source 的真实 PostgreSQL 演练运行 `python scripts/postgres_backup_drill.py --upload-root <absolute-root>`：
-  它调用同一 complete-generation backend owner，再通过 bounded adapter 恢复到专用 scratch 库。
+- 正式 Windows Manager 当前不创建完整 dataset generation；它只提供产品内 CSV 导入/已确认流水导出和只读备份记录。完整备份/恢复保持 `HOLD`，见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
+- CI/source 的真实 PostgreSQL 演练运行 `python scripts/postgres_backup_drill.py --upload-root <absolute-root>`，只证明 backend archive 可在专用 scratch 库中演练；不能把它称为已出货 Windows Owner。
 - PostgreSQL 工具只接收无内联口令的显式 URL 与受保护 passfile；不能从 ambient `PGPASSWORD`、
   cwd 或默认服务配置猜测凭据和目标。
 
@@ -37,8 +35,7 @@
 
 PostgreSQL 备份是 `pg_dump -Fc` 自定义格式归档（`.dump`）。本节只用于源码/测试环境把归档
 恢复到独立 scratch 库，**不得**对正式安装的 `ticketbox` 库执行 `DROP/CREATE/pg_restore`。
-正式 Windows 安装不得执行本节命令；它只能恢复管理器明确选择的完整 generation。整体资格仍需
-同一 exact-head EXE 在干净 Windows VM 上闭合，因此继续 `QUALIFIED_HOLD`。
+正式 Windows 安装不得执行本节命令；当前 Manager 没有恢复入口，完整恢复继续 `HOLD`。
 
 ```powershell
 cd E:\projects\xiaopiaojia

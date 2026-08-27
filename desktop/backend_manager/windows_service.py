@@ -1,11 +1,10 @@
-"""Windows SCM gateway and installed-service runtime."""
+"""Windows SCM read-only gateway and installed-service runtime."""
 
 from __future__ import annotations
 
 import ctypes
 import os
 import threading
-import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -16,19 +15,12 @@ from backend_manager.runtime import (
     RuntimeControlError,
     RuntimeStatus,
     ServiceAccessError,
-    ServiceMissingError,
-    ServiceTransitionError,
 )
 
 _SC_MANAGER_CONNECT = 0x0001
 _SERVICE_QUERY_STATUS = 0x0004
-_SERVICE_START = 0x0010
-_SERVICE_STOP = 0x0020
-_SERVICE_CONTROL_STOP = 0x00000001
 _SC_STATUS_PROCESS_INFO = 0
 _ERROR_SERVICE_DOES_NOT_EXIST = 1060
-_ERROR_SERVICE_ALREADY_RUNNING = 1056
-_ERROR_SERVICE_NOT_ACTIVE = 1062
 _STATE_NAMES = {
     1: "stopped",
     2: "start_pending",
@@ -54,18 +46,6 @@ class _ServiceStatusProcess(ctypes.Structure):
     ]
 
 
-class _ServiceStatus(ctypes.Structure):
-    _fields_ = [
-        ("service_type", ctypes.c_ulong),
-        ("current_state", ctypes.c_ulong),
-        ("controls_accepted", ctypes.c_ulong),
-        ("win32_exit_code", ctypes.c_ulong),
-        ("service_specific_exit_code", ctypes.c_ulong),
-        ("check_point", ctypes.c_ulong),
-        ("wait_hint", ctypes.c_ulong),
-    ]
-
-
 @dataclass(frozen=True)
 class ServiceSnapshot:
     name: str
@@ -78,12 +58,10 @@ class ServiceSnapshot:
 
 class ServiceGateway(Protocol):
     def query(self, name: str) -> ServiceSnapshot: ...
-    def start(self, name: str) -> None: ...
-    def stop(self, name: str) -> None: ...
 
 
 class WindowsServiceGateway:
-    """Small locale-independent wrapper around the Windows Service Control Manager API."""
+    """Locale-independent, query-only wrapper around the Windows SCM API."""
 
     def __init__(self) -> None:
         if os.name != "nt":
@@ -104,14 +82,6 @@ class WindowsServiceGateway:
             ctypes.POINTER(ctypes.c_ulong),
         ]
         self._advapi.QueryServiceStatusEx.restype = ctypes.c_int
-        self._advapi.StartServiceW.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p]
-        self._advapi.StartServiceW.restype = ctypes.c_int
-        self._advapi.ControlService.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_ulong,
-            ctypes.POINTER(_ServiceStatus),
-        ]
-        self._advapi.ControlService.restype = ctypes.c_int
         self._advapi.CloseServiceHandle.argtypes = [ctypes.c_void_p]
         self._advapi.CloseServiceHandle.restype = ctypes.c_int
 
@@ -159,24 +129,8 @@ class WindowsServiceGateway:
             win32_exit_code=status.win32_exit_code,
         )
 
-    def start(self, name: str) -> None:
-        with self._open_service(name, _SERVICE_START | _SERVICE_QUERY_STATUS) as service:
-            if not self._advapi.StartServiceW(service, 0, None):
-                error = ctypes.get_last_error()
-                if error != _ERROR_SERVICE_ALREADY_RUNNING:
-                    raise ctypes.WinError(error)
-
-    def stop(self, name: str) -> None:
-        with self._open_service(name, _SERVICE_STOP | _SERVICE_QUERY_STATUS) as service:
-            status = _ServiceStatus()
-            if not self._advapi.ControlService(service, _SERVICE_CONTROL_STOP, ctypes.byref(status)):
-                error = ctypes.get_last_error()
-                if error != _ERROR_SERVICE_NOT_ACTIVE:
-                    raise ctypes.WinError(error)
-
-
 class WindowsServiceRuntime:
-    """Control the installer-owned backend service while observing its PG dependency."""
+    """Observe installer-owned backend and PostgreSQL services without mutation authority."""
 
     def __init__(
         self,
@@ -185,30 +139,11 @@ class WindowsServiceRuntime:
         backend_service_name: str,
         pg_service_name: str,
         health_probe: Callable[[], HealthProbeResult],
-        wait_timeout_seconds: float,
-        pg_wait_timeout_seconds: float,
-        poll_seconds: float,
-        backend_ready_timeout_seconds: float,
-        backend_ready_poll_seconds: float,
-        control_actions_allowed: bool,
-        clock=time.monotonic,
-        sleep=time.sleep,
-        backend_stopped_validator: Callable[[], None] | None = None,
     ) -> None:
         self._gateway = gateway
         self._backend_service_name = backend_service_name
         self._pg_service_name = pg_service_name
         self._health_probe = health_probe
-        self._wait_timeout_seconds = wait_timeout_seconds
-        self._pg_wait_timeout_seconds = pg_wait_timeout_seconds
-        self._poll_seconds = poll_seconds
-        self._backend_ready_timeout_seconds = backend_ready_timeout_seconds
-        self._backend_ready_poll_seconds = backend_ready_poll_seconds
-        self._control_actions_allowed = control_actions_allowed
-        self._clock = clock
-        self._sleep = sleep
-        self._backend_stopped_validator = backend_stopped_validator or (lambda: None)
-        self._lock = threading.RLock()
 
     def status(self) -> RuntimeStatus:
         backend = self._query(self._backend_service_name)
@@ -254,40 +189,20 @@ class WindowsServiceRuntime:
             runtime_access_state=health.runtime_access_state,
             owner_state=health.owner_state,
             owner_recovery_channel=health.owner_recovery_channel,
-            service_controls_available=self._control_actions_allowed,
+            service_controls_available=False,
         )
 
     def start(self) -> None:
-        self._require_control_actions()
-        with self._lock:
-            self._run_control(self._start_services)
-
-    def _start_services(self) -> None:
-        self._ensure_started(self._pg_service_name, self._pg_wait_timeout_seconds)
-        self._ensure_started(self._backend_service_name, self._wait_timeout_seconds)
-        self._wait_for_backend_health()
+        self._raise_control_unavailable()
 
     def stop(self) -> None:
-        self._require_control_actions()
-        with self._lock:
-            self._run_control(self._stop_backend)
-
-    def _stop_backend(self) -> None:
-        self._ensure_stopped(self._backend_service_name, self._wait_timeout_seconds)
-        self._backend_stopped_validator()
+        self._raise_control_unavailable()
 
     def restart(self) -> None:
-        self._require_control_actions()
-        with self._lock:
-            self._run_control(self._restart_services)
-
-    def _restart_services(self) -> None:
-        self._stop_backend()
-        self._start_services()
+        self._raise_control_unavailable()
 
     def toggle_auto_restart(self) -> bool:
-        self._require_control_actions()
-        return True
+        self._raise_control_unavailable()
 
     def run_monitor(self, stop_event: threading.Event) -> None:
         stop_event.wait()
@@ -295,9 +210,9 @@ class WindowsServiceRuntime:
     def shutdown(self) -> None:
         return
 
-    def _require_control_actions(self) -> None:
-        if not self._control_actions_allowed:
-            raise RuntimeControlError("Cut B 管理器只观察已安装服务；生命周期控制保持 HOLD。")
+    @staticmethod
+    def _raise_control_unavailable() -> None:
+        raise RuntimeControlError("正式安装管理器只观察服务；生命周期控制保持 HOLD。")
 
     @staticmethod
     def _service_diagnostic(label: str, snapshot: ServiceSnapshot) -> str:
@@ -310,98 +225,6 @@ class WindowsServiceRuntime:
             return self._gateway.query(name)
         except OSError as exc:
             raise self._friendly_os_error("读取服务状态", exc) from exc
-
-    def _ensure_started(self, name: str, timeout_seconds: float) -> None:
-        snapshot = self._query(name)
-        self._require_present(snapshot)
-        if snapshot.state == "running":
-            return
-        if snapshot.state == "start_pending":
-            self._wait_for(name, "running", timeout_seconds)
-            return
-        if snapshot.state == "stop_pending":
-            self._wait_for(name, "stopped", timeout_seconds)
-        elif snapshot.state != "stopped":
-            raise ServiceTransitionError(f"服务 {name} 当前状态为 {snapshot.state}，无法启动。")
-        self._gateway.start(name)
-        self._wait_for(name, "running", timeout_seconds)
-
-    def _ensure_stopped(self, name: str, timeout_seconds: float) -> None:
-        snapshot = self._query(name)
-        self._require_present(snapshot)
-        if snapshot.state == "stopped":
-            return
-        if snapshot.state == "stop_pending":
-            self._wait_for(name, "stopped", timeout_seconds)
-            return
-        if snapshot.state == "start_pending":
-            snapshot = self._wait_for_any(name, {"running", "stopped"}, timeout_seconds)
-            if snapshot.state == "stopped":
-                return
-        elif snapshot.state != "running":
-            raise ServiceTransitionError(f"服务 {name} 当前状态为 {snapshot.state}，无法停止。")
-        self._gateway.stop(name)
-        self._wait_for(name, "stopped", timeout_seconds)
-
-    def _wait_for(self, name: str, target: str, timeout_seconds: float) -> ServiceSnapshot:
-        return self._wait_for_any(name, {target}, timeout_seconds)
-
-    def _wait_for_any(self, name: str, targets: set[str], timeout_seconds: float) -> ServiceSnapshot:
-        hard_deadline = self._clock() + timeout_seconds
-        checkpoint_deadline = hard_deadline
-        last_checkpoint = 0
-        while self._clock() < hard_deadline:
-            snapshot = self._query(name)
-            self._require_present(snapshot)
-            if snapshot.state in targets:
-                return snapshot
-            if targets == {"running"} and snapshot.state == "stopped" and snapshot.win32_exit_code:
-                raise ServiceTransitionError(
-                    f"服务 {name} 启动失败（Windows exit={snapshot.win32_exit_code}）。",
-                )
-            if snapshot.checkpoint > last_checkpoint:
-                last_checkpoint = snapshot.checkpoint
-                progress_window = max(snapshot.wait_hint_ms / 1000.0, self._poll_seconds * 2, 1.0)
-                checkpoint_deadline = min(hard_deadline, self._clock() + progress_window)
-            if last_checkpoint and self._clock() >= checkpoint_deadline:
-                break
-            remaining = hard_deadline - self._clock()
-            if remaining > 0:
-                self._sleep(min(self._poll_seconds, remaining))
-        state = self._query(name).state
-        target_text = "/".join(sorted(targets))
-        raise ServiceTransitionError(
-            f"服务 {name} 未在 {timeout_seconds:g} 秒内进入 {target_text}，当前状态：{state}，checkpoint={last_checkpoint}。",
-        )
-
-    def _wait_for_backend_health(self) -> None:
-        deadline = self._clock() + self._backend_ready_timeout_seconds
-        last = HealthProbeResult("pending", "Ticketbox 后端身份检查尚未开始。")
-        while self._clock() < deadline:
-            last = self._health_probe()
-            if last.healthy:
-                return
-            if last.state == "mismatch":
-                raise ServiceTransitionError(last.detail)
-            remaining = deadline - self._clock()
-            if remaining > 0:
-                self._sleep(min(self._backend_ready_poll_seconds, remaining))
-        raise ServiceTransitionError(
-            f"Ticketbox 后端未在 {self._backend_ready_timeout_seconds:g} 秒内通过身份就绪检查：{last.detail}",
-        )
-
-    @staticmethod
-    def _require_present(snapshot: ServiceSnapshot) -> None:
-        if snapshot.state == "missing":
-            raise ServiceMissingError(f"未找到 Windows 服务 {snapshot.name}，请修复或重新安装小票夹。")
-
-    def _run_control(self, action) -> None:
-        try:
-            action()
-        except RuntimeControlError:
-            raise
-        except OSError as exc:
-            raise self._friendly_os_error("控制 Windows 服务", exc) from exc
 
     @staticmethod
     def _friendly_os_error(action: str, exc: OSError) -> RuntimeControlError:

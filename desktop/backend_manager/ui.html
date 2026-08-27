@@ -395,6 +395,11 @@
       document.querySelectorAll(".owner-action").forEach((button) => {
         button.disabled = actionInFlight || !productAvailable;
       });
+      // Runtime health cannot authorize product navigation before the
+      // current user's WinCred-backed product session has been read.
+      $("importExportAction").disabled = actionInFlight
+        || !productAvailable
+        || !Boolean(productSession && productSession.configured);
       $("androidAction").disabled = actionInFlight || !productAvailable || s.android_binding_state !== "configured_unverified";
       $("iphoneAction").disabled = actionInFlight || !productAvailable || s.iphone_upload_state !== "configured_unverified";
       $("diagnosticExportAction").disabled = actionInFlight;
@@ -732,6 +737,7 @@
     }
 
     function openImportExport() {
+      if ($("importExportAction").disabled) return;
       window.location.assign("/web/import");
     }
 
