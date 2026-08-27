@@ -35,6 +35,7 @@
     call("initCategoryDonut");
     call("initDragReorder");
     call("initSplitLayout");
+    call("initInboxCapture");
   }
 
   app.boot = boot;

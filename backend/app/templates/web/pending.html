@@ -28,33 +28,32 @@
     </p>
   </div>
   <div class="product-page-actions">
+    {% if can_write %}
+    {# K3: 原生无 JS 上传表单 (上传走 /web/pending/upload, 真实 multipart);
+       timezone 由 core.js 的 initInboxCapture 渐进填充, 不自动提交。 #}
+    <form class="inbox-upload-form" method="post" action="/web/pending/upload" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="timezone" value="" data-inbox-timezone>
+      <input class="inbox-upload-file" type="file" name="file" accept="image/*" required aria-label="选择小票图片">
+      <button class="product-button product-button--primary" type="submit">上传小票</button>
+    </form>
+    {% endif %}
     <a class="product-button" href="/web/import{{ _q }}">导入与导出</a>
   </div>
 </header>
 
+{# K3: 三数字概况墙压平为一句队列小结; 可行动计数保留在下方筛选 pill 上。 #}
 <section class="inbox-summary" aria-label="收件处理概况">
   <div class="inbox-summary-main">
     <span class="product-eyebrow">当前队列</span>
-    <strong>{{ '可以开始确认' if ready_count else '先补齐关键信息' }}</strong>
-    <span class="text-muted">
+    <p class="inbox-queue-line">
       {% if pending_count %}
-        {{ ready_count }} 笔已经具备确认条件
+        共 {{ pending_count }} 笔待整理，其中 {{ ready_count }} 笔可直接确认，其余先补齐金额、商家、分类或核对重复。
       {% else %}
-        当前账本没有待处理记录
+        当前账本没有待处理记录。
       {% endif %}
-    </span>
-  </div>
-  <div class="inbox-summary-item">
-    <strong>{{ needs_amount_count }}</strong>
-    <span>缺金额</span>
-  </div>
-  <div class="inbox-summary-item">
-    <strong>{{ needs_merchant_count + needs_category_count }}</strong>
-    <span>待补信息</span>
-  </div>
-  <div class="inbox-summary-item">
-    <strong>{{ suspected_duplicate_count }}</strong>
-    <span>重复风险</span>
+    </p>
   </div>
 </section>
 
@@ -145,15 +144,33 @@
     <div aria-hidden="true">商家与来源</div>
     <div aria-hidden="true">分类</div>
     <div aria-hidden="true">时间</div>
-    <div aria-hidden="true">检查结果</div>
     <div aria-hidden="true" class="text-end">金额</div>
+    <div aria-hidden="true">状态与操作</div>
   </div>
   {% for e in expenses %}
   {# S4-R1 行结构: 勾选控件移出行链接 (HTML 禁止链接内嵌交互控件, JS 未载时
-     嵌套点击会穿透跳转) — 选择槽与整行链接是 .exp-row 容器内的兄弟节点
-     (#218 同构)；行链接子树内零交互控件，视觉布局由 inbox.css 的
-     .exp-row/.exp-row-detail 双 grid 保持。expense_snapshot 同时携带 id 与页面
-     row_version：原生表单可用，JS 增强后则与并行字段交叉核对。 #}
+     嵌套点击会穿透跳转) — 选择槽、整行链接与 .exp-flags 状态/操作槽是
+     .exp-row 容器内的三个兄弟节点；行链接子树内零交互控件，视觉布局由
+     inbox.css 的 .exp-row/.exp-row-detail/.exp-flags 嵌套 grid 保持。
+     expense_snapshot 同时携带 id 与页面 row_version：原生表单可用，JS 增强后
+     则与并行字段交叉核对。
+     K3: 每行只渲染一个优先级状态 (缺金额 > 疑似重复 > 缺商家 > 缺分类 >
+     待汇率 > 可确认)；writer 行在 .exp-flags 里给一个兄弟动作 — 可确认行走
+     与批量条同一 OCC 合同的 /web/review/bulk confirm_ready 单行表单，其余
+     链接到编辑页修复；viewer 只见状态不见写动作。 #}
+  {% if e.needs_amount %}
+    {% set _status_label, _status_tone, _repair_label = '缺金额', 'danger', '补全金额' %}
+  {% elif e.is_duplicate %}
+    {% set _status_label, _status_tone, _repair_label = '疑似重复', 'danger', '核对重复' %}
+  {% elif e.needs_merchant %}
+    {% set _status_label, _status_tone, _repair_label = '缺商家', 'warning', '补全商家' %}
+  {% elif e.needs_category %}
+    {% set _status_label, _status_tone, _repair_label = '缺分类', 'warning', '补全分类' %}
+  {% elif e.fx_pending %}
+    {% set _status_label, _status_tone, _repair_label = '待汇率', 'warning', '核对汇率' %}
+  {% else %}
+    {% set _status_label, _status_tone, _repair_label = '可确认', 'success', '' %}
+  {% endif %}
   <div class="exp-row" data-expense-id="{{ e.id }}">
     <div class="exp-row-selector"{% if not can_write %} aria-hidden="true"{% endif %}>
       {% if can_write %}
@@ -202,17 +219,6 @@
         <div class="exp-time">{{ e.expense_time or '时间待核对' }}</div>
         <div class="exp-time-meta">上传 {{ e.created_at }}</div>
       </div>
-      <div>
-        <div class="pill-row">
-          {% if e.needs_amount %}<span class="product-status product-status--danger">缺金额</span>{% endif %}
-          {% if e.needs_merchant %}<span class="product-status product-status--warning">缺商家</span>{% endif %}
-          {% if e.is_duplicate %}<span class="product-status product-status--danger">疑似重复</span>{% endif %}
-          {% if e.fx_pending %}<span class="product-status product-status--warning">待汇率</span>{% endif %}
-          {% if not e.needs_amount and not e.needs_merchant and not e.needs_category and not e.is_duplicate and not e.fx_pending %}
-          <span class="product-status product-status--success">可确认</span>
-          {% endif %}
-        </div>
-      </div>
       <div class="text-end">
         {% if e.amount_label %}
         <span class="exp-amt">{{ e.amount_label }}</span>
@@ -222,6 +228,22 @@
         {% endif %}
       </div>
     </a>
+    <div class="exp-flags">
+      <span class="product-status product-status--{{ _status_tone }}">{{ _status_label }}</span>
+      {% if can_write %}
+        {% if _status_label == '可确认' %}
+      <form class="exp-row-action" method="post" action="/web/review/bulk">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="filter" value="{{ filter }}">
+        <input type="hidden" name="expense_snapshot" value="{{ e.id }}:{{ e.row_version }}">
+        <button class="product-button product-button--primary" type="submit" name="action" value="confirm_ready">确认入账</button>
+      </form>
+        {% else %}
+      <a class="product-button" href="/web/expenses/{{ e.id }}/edit{{ _q }}">{{ _repair_label }}</a>
+        {% endif %}
+      {% endif %}
+    </div>
   </div>
   {% else %}
   <div class="product-state">

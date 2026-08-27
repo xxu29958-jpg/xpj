@@ -122,4 +122,15 @@
   app.readVar = function readVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   };
+
+  // K3: 收件页原生上传表单的渐进增强 — 仅填充 hidden timezone
+  // (无 JS 时留空, 服务端回落默认时区), 绝不自动提交。
+  app.initInboxCapture = function initInboxCapture() {
+    const field = document.querySelector("[data-inbox-timezone]");
+    if (!field) return;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (typeof tz === "string" && tz) field.value = tz;
+    } catch (_) {}
+  };
 })(window, document);

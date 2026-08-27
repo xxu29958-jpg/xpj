@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense
+from app.models import Expense, LedgerMember
 from app.version import STATIC_ASSET_VERSION
 from tests._infra.assets import PNG_BYTES
 
@@ -207,7 +207,8 @@ def test_inbox_pending_rows_keep_checkbox_outside_row_link(
     assert response.status_code == 200
     body = response.text
     row = re.search(
-        rf'<div class="exp-row" data-expense-id="{expense_id}">.*?</a>\s*</div>',
+        rf'<div class="exp-row" data-expense-id="{expense_id}">.*?</a>\s*'
+        r'<div class="exp-flags">.*?</div>\s*</div>',
         body,
         re.S,
     )
@@ -418,3 +419,135 @@ def test_inbox_drawer_surfaces_missing_category_and_blocks_confirm(
 
     payload = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     assert payload["status"] == "pending"
+
+
+def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
+    web_client: TestClient, *, identity
+) -> None:
+    """K3: 页头给 writer 原生无 JS 上传表单 (multipart → /web/pending/upload,
+    显式 csrf/ledger/hidden timezone, accept=image/* required, 主按钮上传小票),
+    导入与导出保留为次级入口; 三数字概况墙压平为一句队列小结, 可行动计数
+    只留在筛选 pill 上。"""
+    _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
+    response = web_client.get("/web/pending?ledger_id=owner")
+
+    assert response.status_code == 200
+    body = response.text
+    form = re.search(
+        r'<form class="inbox-upload-form" method="post" action="/web/pending/upload"'
+        r' enctype="multipart/form-data">.*?</form>',
+        body,
+        re.S,
+    )
+    assert form is not None
+    form_html = form.group(0)
+    assert 'name="csrf_token"' in form_html
+    assert 'name="ledger_id" value="owner"' in form_html
+    assert 'name="timezone"' in form_html
+    assert "data-inbox-timezone" in form_html
+    assert re.search(
+        r'<input class="inbox-upload-file" type="file" name="file"'
+        r' accept="image/\*" required',
+        form_html,
+    )
+    assert "上传小票" in form_html
+    assert "导入与导出" in body
+
+    # 概况压平: 不再渲染三格数字墙, 只留一句队列小结; pill 计数保留。
+    assert "inbox-summary-item" not in body
+    assert "inbox-queue-line" in body
+    assert "笔待整理" in body
+
+    # 渐进增强: 已加载的 core.js 提供 initInboxCapture 填充 timezone, boot 注册。
+    static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"
+    core_js = (static_root / "desktop" / "core.js").read_text(encoding="utf-8")
+    assert "initInboxCapture" in core_js
+    assert "data-inbox-timezone" in core_js
+    assert ".submit(" not in core_js
+    desktop_js = (static_root / "desktop.js").read_text(encoding="utf-8")
+    assert 'call("initInboxCapture");' in desktop_js
+
+
+def test_inbox_pending_row_single_priority_status_and_one_writer_action(
+    web_client: TestClient, *, identity
+) -> None:
+    """K3: 每行只渲染一个优先级状态 pill (缺金额 > 疑似重复 > 缺商家 > 缺分类 >
+    待汇率 > 可确认), 且状态/动作收在链接外的 .exp-flags 兄弟槽; ready 行给
+    与批量条同 OCC 合同的单行 confirm_ready 表单, 待修行给编辑页修复链接。"""
+    ready_id = _seed_pending_with_amount(web_client, "9.00", "盒马", identity=identity)
+    broken_id = _create_pending(web_client, identity=identity)
+    body = web_client.get("/web/pending?ledger_id=owner").text
+
+    ready_row = re.search(
+        rf'<div class="exp-row" data-expense-id="{ready_id}">.*?</a>\s*'
+        r'<div class="exp-flags">(.*?)</div>\s*</div>',
+        body,
+        re.S,
+    )
+    assert ready_row is not None
+    ready_flags = ready_row.group(1)
+    assert ready_flags.count("product-status") == 2  # class 名 + 修饰各一次 → 仅一个 pill
+    assert "可确认" in ready_flags
+    assert "缺金额" not in ready_flags
+    confirm = re.search(
+        r'<form class="exp-row-action" method="post" action="/web/review/bulk">.*?</form>',
+        ready_flags,
+        re.S,
+    )
+    assert confirm is not None
+    confirm_html = confirm.group(0)
+    assert 'name="csrf_token"' in confirm_html
+    assert 'name="ledger_id" value="owner"' in confirm_html
+    assert 'name="filter" value="all"' in confirm_html
+    assert re.search(rf'name="expense_snapshot" value="{ready_id}:[^"]+"', confirm_html)
+    assert 'name="action" value="confirm_ready"' in confirm_html
+
+    broken_row = re.search(
+        rf'<div class="exp-row" data-expense-id="{broken_id}">.*?</a>\s*'
+        r'<div class="exp-flags">(.*?)</div>\s*</div>',
+        body,
+        re.S,
+    )
+    assert broken_row is not None
+    broken_flags = broken_row.group(1)
+    assert "缺金额" in broken_flags
+    assert "缺商家" not in broken_flags
+    assert "疑似重复" not in broken_flags
+    assert "exp-row-action" not in broken_flags
+    repair = re.search(
+        rf'<a class="product-button" href="/web/expenses/{broken_id}/edit\?ledger_id=owner">'
+        r"(补全金额|核对重复|补全商家|补全分类|核对汇率)</a>",
+        broken_flags,
+    )
+    assert repair is not None
+    assert repair.group(1) == "补全金额"
+
+
+def test_inbox_pending_viewer_sees_status_without_write_action(
+    web_client: TestClient, *, identity
+) -> None:
+    """K3: viewer 行只见状态 pill — 无勾选、无行内确认表单、无修复链接、
+    页头也无上传表单; 批量条依旧不渲染。"""
+    expense_id = _create_pending(web_client, identity=identity)
+    with SessionLocal() as db:
+        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
+        assert member is not None
+        member.role = "viewer"
+        db.commit()
+
+    body = web_client.get("/web/pending?ledger_id=owner").text
+    assert "inbox-upload-form" not in body
+    assert 'id="bulk-form"' not in body
+
+    row = re.search(
+        rf'<div class="exp-row" data-expense-id="{expense_id}">.*?</a>\s*'
+        r'<div class="exp-flags">(.*?)</div>\s*</div>',
+        body,
+        re.S,
+    )
+    assert row is not None
+    flags = row.group(1)
+    assert "缺金额" in flags
+    assert "<form" not in flags
+    assert "<button" not in flags
+    assert "<a " not in flags
