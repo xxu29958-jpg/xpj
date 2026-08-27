@@ -3,7 +3,7 @@
 {# 五域 IA: 收件/流水/往来/计划/洞察为稳定产品域, 路由名只是传输契约。
    域归属由 base.html 集中判定(_domain), 本文件只补页级标志。
    与矿的差异(以 main 事实为准):
-   - 保留 main S1 的页级标签措辞(待确认/疑似重复/后台任务/还款捕获/AI 预算建议等,
+   - 保留 main S1 的页级标签措辞(待确认/疑似重复/还款捕获/AI 预算建议等,
      既有测试契约); 218-D S4 起 /web 根 303→/web/pending (矿 IA 收件首域),
      main 曾有的 inbox 域「今日」入口(指根仪表盘)随之取消——留着只会原地跳回待确认;
    - 资料库 (/web/library) 路由属后续片 C5c-1, 入口不挂——勿造死链;
@@ -15,7 +15,6 @@
 {% set _p = request.url.path %}
 {% set is_pending = '/pending' in _p or ('/expenses/' in _p and _edit_origin == 'pending') %}
 {% set is_duplicates = '/duplicates' in _p or ('/expenses/' in _p and _edit_origin == 'duplicates') %}
-{% set is_tasks = '/tasks' in _p %}
 {% set is_confirmed = '/confirmed' in _p or ('/expenses/' in _p and _edit_origin == 'confirmed') %}
 {% set is_search = '/search' in _p %}
 {% set is_categories = '/categories' in _p %}
@@ -76,7 +75,6 @@
     {% if _domain == 'inbox' %}
       <a class="{% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>待确认{% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}</a>
       <a class="{% if is_duplicates %}active{% endif %}" href="/web/duplicates{{ q }}"{% if is_duplicates %} aria-current="page"{% endif %}>疑似重复{% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}</a>
-      <a class="{% if is_tasks %}active{% endif %}" href="/web/tasks{{ q }}"{% if is_tasks %} aria-current="page"{% endif %}>后台任务</a>
     {% elif _domain == 'transactions' %}
       <a class="{% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>已确认</a>
       <a class="{% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>搜索</a>
@@ -125,7 +123,6 @@
         {% if _domain == 'inbox' %}
           <a class="{% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>待确认{% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}</a>
           <a class="{% if is_duplicates %}active{% endif %}" href="/web/duplicates{{ q }}"{% if is_duplicates %} aria-current="page"{% endif %}>疑似重复{% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}</a>
-          <a class="{% if is_tasks %}active{% endif %}" href="/web/tasks{{ q }}"{% if is_tasks %} aria-current="page"{% endif %}>后台任务</a>
         {% elif _domain == 'transactions' %}
           <a class="{% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>已确认</a>
           <a class="{% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>搜索</a>

@@ -93,7 +93,6 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/categories/uncategorized"): "local-only-rendering",
     ("POST", "/web/categories/uncategorized/bulk-set"): "writer-only",
     # Dashboard
-    ("GET", "/web/dashboard/data"): "local-only-rendering",
     ("GET", "/web/dashboard/cards"): "local-only-rendering",
     ("POST", "/web/dashboard/cards/save"): "writer-only",
     ("POST", "/web/dashboard/cards/reset"): "writer-only",
@@ -140,12 +139,6 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/expenses/{expense_id}/confirm"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/acknowledge-mismatch"): "writer-only",
-    # ADR-0030 background tasks UI
-    ("GET", "/web/tasks"): "local-only-rendering",
-    # Cancel sets cancellation_requested_at — a write. ADR-0043 review: gate on
-    # the session's ledger role (_require_selected_ledger_write) so a paired
-    # viewer is 403'd, not merely account-matched (ENGINEERING_RULES §14).
-    ("POST", "/web/tasks/{public_id}/cancel"): "writer-only",
     # ADR-0029 bill split UI
     ("POST", "/web/expenses/{expense_id}/split-invite"): "writer-only",
     ("GET", "/web/bill-splits/inbox"): "local-only-rendering",
@@ -193,6 +186,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/overview"): "local-only-rendering",
     # Pending
     ("GET", "/web/pending"): "local-only-rendering",
+    ("POST", "/web/pending/upload"): "writer-only",
     ("POST", "/web/pending/batch-reject"): "writer-only",
     ("POST", "/web/pending/batch-undo"): "writer-only",
     ("POST", "/web/review/bulk"): "writer-only",

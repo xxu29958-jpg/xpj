@@ -1,10 +1,6 @@
 /* 收件：高密度待办台，优先展示缺失信息与可执行动作。 */
 
 .inbox-summary {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) repeat(3, minmax(calc(var(--space-12) * 1.5), auto));
-    align-items: end;
-    gap: var(--space-4);
     margin-block-end: var(--space-6);
 }
 
@@ -13,21 +9,22 @@
     gap: var(--space-2);
 }
 
-.inbox-summary-item {
-    display: grid;
-    gap: var(--space-1);
-    padding-inline-start: var(--space-4);
-    border-inline-start: 1px solid var(--border-card);
-}
-
-.inbox-summary-item strong {
+.inbox-queue-line {
+    margin: 0;
     color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-headline-size);
-    line-height: var(--type-headline-line);
+    font-size: var(--type-body-size, 1rem);
 }
 
-.inbox-summary-item span {
+/* K3: 页头原生上传表单 (multipart, 无 JS 可用)。 */
+.inbox-upload-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.inbox-upload-file {
+    max-width: calc(var(--space-12) * 3);
     color: var(--text-meta);
     font-size: var(--type-caption-size);
 }
@@ -48,8 +45,8 @@
         minmax(calc(var(--space-12) * 2), 1.4fr)
         minmax(calc(var(--space-12) * 1.5), .8fr)
         minmax(calc(var(--space-12) * 1.6), .9fr)
-        minmax(calc(var(--space-12) * 1.4), 1fr)
-        minmax(calc(var(--space-12) * 1.4), auto);
+        minmax(calc(var(--space-12) * 1.4), auto)
+        auto;
     align-items: center;
     gap: var(--space-4);
 }
@@ -73,22 +70,35 @@
     transition: background var(--motion-fast) var(--ease-standard);
 }
 
-/* S4-R1: 勾选控件是容器内兄弟节点, 行链接只占后 6 列 (子树零交互控件);
-   链接自身的 6 格轨道 = 容器 7 轨去掉选择槽。 */
+/* S4-R1: 勾选控件是容器内兄弟节点, 行链接占凭证→金额 5 列 (子树零交互控件);
+   K3: 状态/操作收进 .exp-flags 兄弟槽 (末列), 与链接、选择槽三者并列。 */
 .exp-row-detail {
     display: grid;
-    grid-column: 2 / -1;
+    grid-column: 2 / 7;
     grid-template-columns:
         var(--space-10)
         minmax(calc(var(--space-12) * 2), 1.4fr)
         minmax(calc(var(--space-12) * 1.5), .8fr)
         minmax(calc(var(--space-12) * 1.6), .9fr)
-        minmax(calc(var(--space-12) * 1.4), 1fr)
         minmax(calc(var(--space-12) * 1.4), auto);
     align-items: center;
     gap: var(--space-4);
     color: inherit;
     text-decoration: none;
+}
+
+.exp-flags {
+    display: flex;
+    grid-column: 7;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3);
+}
+
+.exp-row-action {
+    display: inline-flex;
+    margin: 0;
 }
 
 .exp-row:last-of-type {
@@ -180,16 +190,20 @@
             var(--space-7)
             var(--space-10)
             minmax(calc(var(--space-12) * 2), 1.4fr)
-            minmax(calc(var(--space-12) * 1.4), .8fr)
-            minmax(calc(var(--space-12) * 1.4), auto);
+            minmax(calc(var(--space-12) * 1.4), auto)
+            auto;
     }
 
     .exp-row-detail {
+        grid-column: 2 / 5;
         grid-template-columns:
             var(--space-10)
             minmax(calc(var(--space-12) * 2), 1.4fr)
-            minmax(calc(var(--space-12) * 1.4), .8fr)
             minmax(calc(var(--space-12) * 1.4), auto);
+    }
+
+    .exp-flags {
+        grid-column: 5;
     }
 
     .exp-head > :nth-child(4),
@@ -201,10 +215,6 @@
 }
 
 @media (max-width: 48rem) {
-    .inbox-summary {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
     .inbox-summary-main {
         grid-column: 1 / -1;
     }
@@ -213,19 +223,31 @@
         display: none;
     }
 
+    /* K3 移动卡 (412px 起): 外层 = 选择槽 + 链接 + 状态/操作; 链接内只留
+       凭证 + 商家/来源 + 完整金额 (金额不裁切), 分类/时间让位; .exp-flags
+       变整宽 flex 行承接状态与动作, 全程无横向滚动。 */
     .exp-row {
         grid-template-columns: var(--space-7) minmax(0, 1fr);
         gap: var(--space-3);
     }
 
     .exp-row-detail {
+        grid-column: 2;
         grid-template-columns: var(--space-10) minmax(0, 1fr) auto;
     }
 
     .exp-row-detail > :nth-child(3),
-    .exp-row-detail > :nth-child(4),
-    .exp-row-detail > :nth-child(5) {
+    .exp-row-detail > :nth-child(4) {
         display: none;
+    }
+
+    .exp-amt {
+        white-space: nowrap;
+    }
+
+    .exp-flags {
+        grid-column: 2;
+        justify-content: flex-start;
     }
 }
 
@@ -328,88 +350,6 @@
         align-items: stretch;
         flex-direction: column;
     }
-}
-
-/* 处理中：把长任务作为收件队列的一部分，而不是系统管理页。 */
-
-.task-workspace {
-    display: grid;
-    gap: var(--space-6);
-}
-
-.task-overview {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border-block: 1px solid var(--border-card);
-}
-
-.task-overview > div {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: baseline;
-    gap: var(--space-2) var(--space-4);
-    padding: var(--space-5);
-    border-inline-end: 1px solid var(--border-card);
-}
-
-.task-overview > div:last-child {
-    border-inline-end: 0;
-}
-
-.task-overview .product-eyebrow {
-    grid-column: 1 / -1;
-}
-
-.task-overview strong {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-headline-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-headline-weight);
-}
-
-.task-overview span:last-child,
-.task-time,
-.task-message,
-.task-complete-mark,
-.task-progress span {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-    line-height: var(--type-caption-line);
-}
-
-.task-table td {
-    vertical-align: top;
-}
-
-.task-table td:first-child strong {
-    color: var(--text-default);
-    font-weight: var(--type-subtitle-weight);
-}
-
-.task-progress {
-    display: grid;
-    min-width: calc(var(--space-12) * 2);
-    gap: var(--space-2);
-}
-
-.task-progress .product-progress {
-    min-width: calc(var(--space-12) * 2);
-}
-
-.task-time {
-    display: grid;
-    min-width: calc(var(--space-12) * 2);
-    gap: var(--space-1);
-}
-
-.task-message {
-    max-width: calc(var(--space-12) * 3);
-    overflow-wrap: anywhere;
-}
-
-.task-message--error {
-    color: var(--state-danger-fg);
 }
 
 /* 待我处理抽屉：凭证与字段同屏，所有写入仍走原有 CSRF + OCC 合同。 */
@@ -604,19 +544,13 @@
 }
 
 @media (max-width: 48rem) {
-    .task-overview,
     .product-drawer-facts,
     .product-drawer-field-row {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .task-overview > div,
     .product-drawer-facts > div:nth-child(odd) {
         border-inline-end: 0;
-    }
-
-    .task-overview > div:first-child {
-        border-block-end: 1px solid var(--border-card);
     }
 
     .product-drawer-facts > div:nth-last-child(-n + 2) {

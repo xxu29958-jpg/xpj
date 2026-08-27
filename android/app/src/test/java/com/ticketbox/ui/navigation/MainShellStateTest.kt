@@ -155,29 +155,12 @@ class MainShellStateTest {
     }
 
     @Test
-    fun processingIsASecondaryInboxSurfaceWithRealBackStackOwnership() {
-        val state = MainShellState()
-        state.syncDestination(MainProductDestination.Domain(PrimaryDomain.Inbox))
-
-        state.openSecondaryPage(ProductSecondaryPage.InboxProcessing)
-        assertEquals(
-            MainNavigationRequest.OpenSecondary(ProductSecondaryPage.InboxProcessing),
-            state.consumeNavigationRequest(),
-        )
-        state.syncDestination(MainProductDestination.Secondary(ProductSecondaryPage.InboxProcessing))
-
-        assertEquals(ProductSecondaryPage.InboxProcessing, state.secondaryPage)
-        assertEquals(PrimaryDomain.Inbox, state.selectedDomain)
-        assertEquals(SurfaceRole.Pending, state.surfaceRole(currentRoute = MAIN_ROUTE))
-        assertEquals(
-            MainProductDestination.Secondary(ProductSecondaryPage.InboxProcessing),
-            mainProductDestination("product/inbox/processing"),
-        )
-
-        state.closeSecondaryPage()
-        assertEquals(MainNavigationRequest.Back, state.consumeNavigationRequest())
-        state.syncDestination(MainProductDestination.Domain(PrimaryDomain.Inbox))
-        assertNull(state.secondaryPage)
+    fun retiredInboxProcessingEntryNoLongerResolves() {
+        // The duplicate 「处理进度」 product entry is retired: its secondary page,
+        // route and Pending link are gone. Background-task authority now lives
+        // only under Settings.
+        assertTrue(ProductSecondaryPage.entries.none { it.route == "product/inbox/processing" })
+        assertNull(mainProductDestination("product/inbox/processing"))
     }
 
     @Test

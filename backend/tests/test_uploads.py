@@ -53,7 +53,7 @@ def test_upload_passes_client_timezone_to_background_ocr(
         captured["tenant_id"] = tenant_id
         captured["timezone_name"] = timezone_name
 
-    monkeypatch.setattr("app.routes.uploads.enrich_pending_expense", fake_enrich)
+    monkeypatch.setattr("app.routes._upload_request.enrich_pending_expense", fake_enrich)
 
     response = client.post(
         identity.upload_url_path,
@@ -220,12 +220,12 @@ def test_shortcut_upload_rejects_app_token_before_saving_file(
 
 
 def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch, *, identity) -> None:
-    from app.routes import uploads as upload_routes
+    from app.routes import _upload_request as upload_request_routes
     from app.services import file_service
 
     small_settings = replace(file_service.get_settings(), max_upload_size_mb=0)
     monkeypatch.setattr(file_service, "get_settings", lambda: small_settings)
-    monkeypatch.setattr(upload_routes, "get_settings", lambda: small_settings)
+    monkeypatch.setattr(upload_request_routes, "get_settings", lambda: small_settings)
 
     response = client.post(
         identity.upload_url_path,
@@ -260,12 +260,12 @@ def test_upload_rejects_empty_raw_body_and_empty_multipart_file(
 
 
 def test_upload_multipart_uses_same_size_limit(client: TestClient, monkeypatch, *, identity) -> None:
-    from app.routes import uploads as upload_routes
+    from app.routes import _upload_request as upload_request_routes
     from app.services import file_service
 
     small_settings = replace(file_service.get_settings(), max_upload_size_mb=0)
     monkeypatch.setattr(file_service, "get_settings", lambda: small_settings)
-    monkeypatch.setattr(upload_routes, "get_settings", lambda: small_settings)
+    monkeypatch.setattr(upload_request_routes, "get_settings", lambda: small_settings)
 
     response = client.post(
         identity.upload_url_path,

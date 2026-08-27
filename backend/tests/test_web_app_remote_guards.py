@@ -14,11 +14,6 @@ def test_web_pending_remote_returns_403(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
-def test_web_dashboard_data_remote_returns_403(client: TestClient) -> None:
-    resp = client.get("/web/dashboard/data")
-    assert resp.status_code == 403
-
-
 def test_web_root_remote_returns_403(client: TestClient) -> None:
     resp = client.get("/web")
     assert resp.status_code == 403
@@ -34,6 +29,10 @@ def test_web_reject_remote_returns_403(client: TestClient) -> None:
 
 def test_web_pending_batch_reject_remote_returns_403(client: TestClient) -> None:
     assert client.post("/web/pending/batch-reject").status_code == 403
+
+
+def test_web_pending_upload_remote_returns_403(client: TestClient) -> None:
+    assert client.post("/web/pending/upload").status_code == 403
 
 
 def test_web_confirmed_batch_update_remote_returns_403(client: TestClient) -> None:

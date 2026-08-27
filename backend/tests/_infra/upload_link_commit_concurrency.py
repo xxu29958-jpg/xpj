@@ -11,7 +11,7 @@ import pytest
 from fastapi import Request
 from sqlalchemy import func, select
 
-import app.routes.uploads as upload_routes
+import app.routes._upload_request as upload_request_routes
 import app.services.admin_service._upload_links as admin_upload_links
 import app.services.identity_service._auth as identity_auth
 from app.database import SessionLocal
@@ -44,7 +44,7 @@ def _assert_inflight_upload_rechecks_revocation(
 ) -> None:
     file_saved = threading.Event()
     release_request = threading.Event()
-    original_save = upload_routes._save_request_upload
+    original_save = upload_request_routes.save_request_upload
 
     async def gated_save(
         request: Request,
@@ -62,7 +62,7 @@ def _assert_inflight_upload_rechecks_revocation(
         return saved
 
     with monkeypatch.context() as patch, ThreadPoolExecutor(max_workers=1) as pool:
-        patch.setattr(upload_routes, "_save_request_upload", gated_save)
+        patch.setattr(upload_request_routes, "save_request_upload", gated_save)
         future = pool.submit(_post_shortcut_upload, identity.upload_key)
         assert file_saved.wait(timeout=5)
         try:

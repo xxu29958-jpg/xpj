@@ -25,16 +25,15 @@
 
     call("initThemeToggle");
     call("initLedgerSwitcher");
-    call("initSparks");
     call("initDrawer");
     call("initReviewHotkeys");
     call("initBulkBar");
     call("initReceiptSkeletons");
-    call("initDashboard");
     call("initTrendChart");
     call("initCategoryDonut");
     call("initDragReorder");
     call("initSplitLayout");
+    call("initInboxCapture");
   }
 
   app.boot = boot;

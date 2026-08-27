@@ -1,7 +1,7 @@
 """Product-shell contracts for the Web UI/IA rebuild (218-D S3, 移植自产品矿并适配 main).
 
 S3 落「壳基座」: base.html / _sidebar_nav.html 重写 + product 设计系统 CSS
-+ web_common 展示 helper。S4 落「收件域正文」: pending/tasks/duplicates 三页
++ web_common 展示 helper。S4 落「收件域正文」: pending/duplicates 两页
 换 product 新标记, 经 _product_body_domains 开关断旧栈、挂 domains/inbox.css,
 /web 根 303→/web/pending —— 页面级断言族在 test_web_inbox_rebuild.py,
 本文件只钉壳层与旧栈分流防回归。
@@ -10,7 +10,7 @@ S3 落「壳基座」: base.html / _sidebar_nav.html 重写 + product 设计系�
 - 正文仍是旧标记的页 (confirmed/debts/budgets 等): 旧全局栈+页级 CSS 保持在场
   (本文件钉死防回归), 对应 domain 模块不双挂 (矿域模块与旧页共享类名谱系
   .exp-row/.timeline-row 等, 双挂则旧规则被盖、新 grid 不认嵌套标记)。
-- 正文已是新标记的页 (overview S2; 收件域三页 S4): 断旧栈, 挂对应 domain 模块。
+- 正文已是新标记的页 (overview S2; 收件域两页 S4): 断旧栈, 挂对应 domain 模块。
 """
 
 from __future__ import annotations

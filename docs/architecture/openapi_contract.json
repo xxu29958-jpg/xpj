@@ -2658,6 +2658,30 @@
         "title": "Body_web_pending_batch_undo_web_pending_batch_undo_post",
         "type": "object"
       },
+      "Body_web_pending_upload_web_pending_upload_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_web_pending_upload_web_pending_upload_post",
+        "type": "object"
+      },
       "Body_web_record_adjustment_web_debts__public_id__adjustments_post": {
         "properties": {
           "amount_major": {
@@ -3432,17 +3456,6 @@
           }
         },
         "title": "Body_web_tag_undo_web_tags_mutations__mutation_public_id__undo_post",
-        "type": "object"
-      },
-      "Body_web_task_cancel_web_tasks__public_id__cancel_post": {
-        "properties": {
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_task_cancel_web_tasks__public_id__cancel_post",
         "type": "object"
       },
       "Body_web_uncategorized_bulk_set_web_categories_uncategorized_bulk_set_post": {
@@ -34417,53 +34430,6 @@
         ]
       }
     },
-    "/web/dashboard/data": {
-      "get": {
-        "operationId": "web_dashboard_data_web_dashboard_data_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "ledger_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Ledger Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Web Dashboard Data",
-        "tags": [
-          "web"
-        ]
-      }
-    },
     "/web/data-quality": {
       "get": {
         "operationId": "web_data_quality_web_data_quality_get",
@@ -37988,6 +37954,41 @@
         ]
       }
     },
+    "/web/pending/upload": {
+      "post": {
+        "description": "Accept one real image into the selected ledger's pending queue.",
+        "operationId": "web_pending_upload_web_pending_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_pending_upload_web_pending_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "303": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Pending Upload",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/receivables": {
       "get": {
         "operationId": "web_receivables_web_receivables_get",
@@ -39637,122 +39638,6 @@
           }
         },
         "summary": "Web Tag Rename",
-        "tags": [
-          "web"
-        ]
-      }
-    },
-    "/web/tasks": {
-      "get": {
-        "operationId": "web_tasks_web_tasks_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "ledger_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Ledger Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "msg",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Msg"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Web Tasks",
-        "tags": [
-          "web"
-        ]
-      }
-    },
-    "/web/tasks/{public_id}/cancel": {
-      "post": {
-        "operationId": "web_task_cancel_web_tasks__public_id__cancel_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "public_id",
-            "required": true,
-            "schema": {
-              "title": "Public Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_web_task_cancel_web_tasks__public_id__cancel_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Web Task Cancel",
         "tags": [
           "web"
         ]

@@ -21,7 +21,7 @@ import re
 from datetime import timedelta
 
 import pytest
-from api_contract_helpers import confirm_expense_api
+from api_contract_helpers import _stored_upload_files, confirm_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -29,13 +29,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import SessionLocal
 from app.main import app
 from app.middleware import web_session as web_session_middleware
-from app.models import AuthToken
+from app.models import AuthToken, Expense
 from app.routes.web_auth import (
     SESSION_COOKIE_MAX_AGE_SECONDS,
     SESSION_COOKIE_NAME,
 )
 from app.services.identity_service import hash_secret
 from app.services.time_service import ensure_utc, now_utc
+from tests._infra.assets import PNG_BYTES
 
 # A public host header that the test injects to simulate a Cloudflare
 # Tunnel request reaching the backend.
@@ -187,6 +188,71 @@ def test_public_bulk_form_native_post_uses_rendered_csrf_token(
     )
     assert detail.status_code == 200, detail.text
     assert detail.json()["category"] == "家庭采购"
+
+
+def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    token = _mint_session(client, identity=identity)
+    pub = _public_client()
+    pub.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
+    page = pub.get("/web/pending")
+    assert page.status_code == 200, page.text
+    upload_form = re.search(
+        r'<form class="inbox-upload-form".*?</form>',
+        page.text,
+        re.DOTALL,
+    )
+    assert upload_form is not None, page.text
+    csrf = re.search(
+        r'name="csrf_token" value="([^"]+)"',
+        upload_form.group(0),
+    )
+    assert csrf is not None, upload_form.group(0)
+
+    before_files = set(_stored_upload_files())
+    denied = pub.post(
+        "/web/pending/upload",
+        headers={"Origin": f"https://{PUBLIC_HOST}"},
+        data={"ledger_id": "owner", "timezone": "Asia/Shanghai"},
+        files={"file": ("denied.png", PNG_BYTES, "image/png")},
+        follow_redirects=False,
+    )
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["error"] == "invalid_request"
+    assert set(_stored_upload_files()) == before_files
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(Expense.id).where(Expense.source == "网页上传").limit(1)
+        ) is None
+
+    accepted = pub.post(
+        "/web/pending/upload",
+        headers={"Origin": f"https://{PUBLIC_HOST}"},
+        data={
+            "csrf_token": csrf.group(1),
+            "ledger_id": "owner",
+            "timezone": "Asia/Shanghai",
+        },
+        files={"file": ("accepted.png", PNG_BYTES, "image/png")},
+        follow_redirects=False,
+    )
+    assert accepted.status_code == 303, accepted.text
+    assert accepted.headers["location"].startswith("/web/pending?")
+    assert set(_stored_upload_files()) > before_files
+    with SessionLocal() as db:
+        expense = db.scalar(
+            select(Expense)
+            .where(Expense.tenant_id == "owner", Expense.source == "网页上传")
+            .order_by(Expense.id.desc())
+            .limit(1)
+        )
+        assert expense is not None
+        assert expense.status == "pending"
+        assert expense.image_path is not None
+        assert expense.image_hash
 
 
 def test_public_host_cookie_does_not_refresh_last_used_or_cookie(client: TestClient, *, identity) -> None:

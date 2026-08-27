@@ -70,19 +70,6 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
     }
 }
 
-internal fun NavGraphBuilder.addInboxRoutes(
-    dependencies: MainProductRouteDependencies,
-) {
-    with(dependencies) {
-        composable(ProductSecondaryPage.InboxProcessing.route) {
-            InboxProcessingRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-            )
-        }
-    }
-}
-
 internal fun NavGraphBuilder.addPlanRoutes(
     dependencies: MainProductRouteDependencies,
 ) {

@@ -50,7 +50,6 @@ internal enum class InboxSection(@param:StringRes val labelRes: Int) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun InboxActionLinks(
-    onOpenProcessing: () -> Unit,
     onOpenRepaymentReview: () -> Unit,
     onOpenDataQuality: () -> Unit,
 ) {
@@ -66,11 +65,6 @@ internal fun InboxActionLinks(
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
-                AppFilterChip(
-                    label = stringResource(R.string.inbox_processing_entry_title),
-                    selected = false,
-                    onClick = onOpenProcessing,
-                )
                 AppFilterChip(
                     label = stringResource(R.string.relations_repayment_review),
                     selected = false,

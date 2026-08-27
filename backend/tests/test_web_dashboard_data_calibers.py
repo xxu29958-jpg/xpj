@@ -332,9 +332,9 @@ def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_curr
             currency_code="JPY", amount_minor=1234, merchant="すき家", category="餐饮"
         )
         # 数据层: amount_label / amount_major 同按 minor digits 投影 (donut 优先消费后者)。
-        data = web_client.get("/web/dashboard/data?ledger_id=owner")
-        assert data.status_code == 200, data.text
-        row = data.json()["category_share"][0]
+        with SessionLocal() as db:
+            payload = web_common._dashboard_data_payload(db, "owner", include_trend=False)
+        row = payload["category_share"][0]
         assert row["amount_major"] == 1234
         assert row["amount_major_text"] == "1234"
         assert row["amount_label"] == "¥1,234"
@@ -349,12 +349,9 @@ def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_curr
     finally:
         get_settings.cache_clear()
 
-    # JS 渐进渲染同口径静态钉 (无 JS runner): 清单吃 amount_label (label 自带符号),
-    # 不再用 homeCurrencySymbol()+moneyRounded 拼 amount_yuan。
+    # 渐进增强环图与服务端清单都消费 amount_label，不自行重算金额。
     static_root = Path(__file__).resolve().parents[1] / "app"
-    dashboard_js = (static_root / "static/web/desktop/dashboard.js").read_text(encoding="utf-8")
-    assert 'el("div", "cat-amt", text(c.amount_label))' in dashboard_js
-    assert "moneyRounded(c.amount_yuan)" not in dashboard_js
-    dashboard_html = (static_root / "templates/web/dashboard.html").read_text(encoding="utf-8")
-    assert "{{ c.amount_label }}" in dashboard_html
-    assert "'%.0f' % c.amount_yuan" not in dashboard_html
+    donut_js = (static_root / "static/web/desktop/category-donut.js").read_text(encoding="utf-8")
+    assert "amountLabel: d.amount_label" in donut_js
+    overview_html = (static_root / "templates/web/overview.html").read_text(encoding="utf-8")
+    assert "{{ category.amount_label }}" in overview_html

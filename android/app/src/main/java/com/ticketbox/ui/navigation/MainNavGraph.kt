@@ -303,7 +303,6 @@ private fun MainProductNavHost(
     ) {
         addPrimaryDomainRoutes(dependencies)
         addWorkspaceRoute(dependencies)
-        addInboxRoutes(dependencies)
         addPlanRoutes(dependencies)
         addInsightsRoutes(dependencies)
         addTransactionRoutes(dependencies)

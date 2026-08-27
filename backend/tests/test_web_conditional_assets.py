@@ -20,7 +20,6 @@ _ECHARTS = "/static/web/vendor/echarts.min.js"
 _CATEGORY_DONUT = "/static/web/desktop/category-donut.js"
 _TREND_CHART = "/static/web/desktop/trend-chart.js"
 _REPORTS_JS = "/static/web/reports.js"
-_DASHBOARD_JS = "/static/web/desktop/dashboard.js"
 # ``/static/web/desktop.js`` (the boot script) — the ".js" right after "desktop"
 # makes this substring distinct from the ``/static/web/desktop/<module>.js`` files.
 _DESKTOP_JS = "/static/web/desktop.js"
@@ -44,7 +43,6 @@ def test_reports_loads_echarts_trend_and_reports_scripts_only(web_client: TestCl
     assert _REPORTS_JS in resp.text
     # The dashboard donut module is not needed on reports.
     assert _CATEGORY_DONUT not in resp.text
-    assert _DASHBOARD_JS not in resp.text
     _assert_chart_script_order(resp.text, [_ECHARTS, _TREND_CHART, _REPORTS_JS])
 
 
@@ -108,7 +106,6 @@ def test_overview_loads_echarts_only_when_category_chart_renders(
     # overview 只用环图: reports/dashboard 的图表脚本不下放。
     assert _REPORTS_JS not in resp.text
     assert _TREND_CHART not in resp.text
-    assert _DASHBOARD_JS not in resp.text
     _assert_chart_script_order(resp.text, [_ECHARTS, _CATEGORY_DONUT])
 
 

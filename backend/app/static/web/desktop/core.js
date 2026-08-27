@@ -95,13 +95,6 @@
     return app.homeCurrencySymbol() + app.escapeHtml(value);
   };
 
-  app.dashboardUrl = function dashboardUrl(path, ledgerId, extra) {
-    const params = new URLSearchParams(extra || {});
-    if (ledgerId) params.set("ledger_id", ledgerId);
-    const query = params.toString();
-    return path + (query ? "?" + query : "");
-  };
-
   app.moneyParts = function moneyParts(value) {
     const digits = app.homeCurrencyMinorDigits();
     if (digits === null) return [UNKNOWN_MONEY_TEXT, ""];
@@ -121,5 +114,16 @@
 
   app.readVar = function readVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  };
+
+  // K3: 收件页原生上传表单的渐进增强 — 仅填充 hidden timezone
+  // (无 JS 时留空, 服务端回落默认时区), 绝不自动提交。
+  app.initInboxCapture = function initInboxCapture() {
+    const field = document.querySelector("[data-inbox-timezone]");
+    if (!field) return;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (typeof tz === "string" && tz) field.value = tz;
+    } catch (_) {}
   };
 })(window, document);

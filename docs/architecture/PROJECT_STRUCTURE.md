@@ -109,7 +109,6 @@ backend\
         upload_links.html
         diagnostics.html
       web\
-        dashboard.html
         import_export.html
         import_batch.html
         reports.html
