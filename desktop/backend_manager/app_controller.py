@@ -58,17 +58,10 @@ _CONTROL_NOTICES = MappingProxyType(
         "start": "启动操作已完成。",
         "stop": "停止操作已完成。",
         "restart": "重启操作已完成。",
-        "backup": "数据库与原始附件完整备份已完成。",
-        "restore": "已从所选完整备份恢复，并发布新的数据 generation。",
         "toggle_auto_restart": "自动重启设置已更新。",
     }
 )
 _NOTICE_SECONDS = 8.0
-_RESTORE_CLEANUP_PENDING_NOTICE = (
-    "已从所选完整备份恢复并发布新数据 generation；本地恢复身份清理待下次维护重试。"
-)
-
-
 class ManagerShuttingDownError(RuntimeError):
     """Raised when a new action races with an accepted maintenance handoff."""
 
@@ -303,30 +296,6 @@ class AppController:
 
     def restart(self) -> None:
         self._control("restart")
-
-    def backup(self) -> None:
-        self._control("backup")
-
-    def backup_inventory(self) -> list[dict[str, object]]:
-        try:
-            items = self._provider.current().runtime.backup_inventory()
-        except (ConfigError, RuntimeControlError) as exc:
-            raise RuntimeControlError(self._display_error(exc)) from exc
-        return [item.public_projection() for item in items]
-
-    def restore(self, backup_generation: str) -> None:
-        self._begin_action()
-        try:
-            runtime = self._provider.current().runtime
-            outcome = runtime.restore(backup_generation)
-        except (ConfigError, RuntimeControlError) as exc:
-            self._record_error(self._display_error(exc))
-        else:
-            self._record_notice(
-                _RESTORE_CLEANUP_PENDING_NOTICE
-                if outcome.cleanup_pending
-                else _CONTROL_NOTICES["restore"]
-            )
 
     def auto_restart(self) -> None:
         self._control("toggle_auto_restart")

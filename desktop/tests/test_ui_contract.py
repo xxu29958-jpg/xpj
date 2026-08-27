@@ -111,6 +111,43 @@ def test_hidden_attribute_is_authoritative_over_product_display_rules() -> None:
     assert "[hidden] { display: none !important; }" in html
 
 
+def test_data_protection_card_exposes_only_real_capabilities() -> None:
+    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
+
+    # Real entries: the in-product import/export page and the read-only backup
+    # history; the copy must not imply full backup or restore.
+    assert "数据保护" in html
+    assert "导入与导出" in html
+    assert 'window.location.assign("/web/import")' in html
+    assert "查看备份记录" in html
+    assert "open_backups" in html
+    assert "恢复功能当前未开放" in html
+    assert "完整备份" not in html
+    # The card stays visible when service controls are unavailable.
+    assert "dataProtectionCard" in html
+    assert "maintenanceCard" not in html
+    # The product entry rides the existing owner-action disable mechanism and
+    # is additionally gated on a live product binding — no dead clicks.
+    assert 'class="button button-primary owner-action" id="importExportAction" type="button" disabled' in html
+    assert '$("importExportAction").disabled' in html
+    # The retired backup/restore mutations leave no markup, JS, or fetch behind.
+    for retired in (
+        "立即完整备份",
+        "读取备份列表",
+        "恢复所选备份",
+        "restoreGeneration",
+        "backupAction",
+        "restoreAction",
+        "backupInventoryAction",
+        "loadBackupInventory",
+        "restoreDataset",
+        "/api/backups",
+        "/api/restore",
+        "restore-actions",
+    ):
+        assert retired not in html
+
+
 def test_product_card_visibility_matrix_and_dirty_selection_are_declared() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 

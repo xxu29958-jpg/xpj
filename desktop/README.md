@@ -1,6 +1,6 @@
 # 小票夹 桌面后端管理器
 
-一个 Windows 桌面工具，把 headless 的 FastAPI 后端变成普通用户可操作的本机产品入口：**正式安装时控制 Windows 服务**，源码开发时监督 Uvicorn 进程，并提供设备绑定、iPhone 上传、备份、系统体检和诊断包任务入口。管理器不重造后端管理功能，只负责主机运行态、受限服务动作和任务交接。开始菜单默认打开 Manager 同源 `/web`——通过受限 BFF 复用完整 Web 产品作为桌面工作区。
+一个 Windows 桌面工具，把 headless 的 FastAPI 后端变成普通用户可操作的本机产品入口：正式安装时只读观察 Windows 服务，源码开发时监督 Uvicorn 进程，并提供设备绑定、iPhone 上传、数据保护、系统体检和诊断包任务入口。管理器不重造后端管理功能，也不承担正式安装的数据生命周期或 SCM mutation。开始菜单默认打开 Manager 同源 `/web`——通过受限 BFF 复用完整 Web 产品作为桌面工作区。
 
 ## 启动
 
@@ -15,7 +15,7 @@ UI 只以 HKLM App Paths 动态发现并校验的 Edge `--app` 窗口打开；�
 
 Manager BFF 只连接 `127.0.0.1`，从 WinCred 临时读取既有 app identity，在进程内注入 Bearer 与固定 `X-Ticketbox-Desktop-Bridge: v1`。它只代理 `/web/**`、Web/shared 静态资源和精确的 `PUT /api/me/ui-preferences` 主题写入，其他 `/api/**`、`/owner`、`/desktop`、认证页及歧义路径全部拒绝；浏览器侧敏感头（控制 token、伪造的 Authorization/Bridge 头、非 allowlist cookie）不会进入后端。Manager 不读数据库、不 iframe `/web`，也不复制账务真值。
 
-正式安装后，管理器从 `HKLM\Software\Ticketbox` 动态读取 Inno 写入的安装布局和服务合同，通过 Windows SCM 的只读投影查看状态；启停只调用安装目录中受保护 `ticketbox-manager.exe` 的固定动作短命 UAC helper，当前源码树或复制到用户目录的 Manager 不会被提升。普通用户进程不读取受保护的 `.env`、数据库或后端原始日志。正式运行态不依赖源码目录、Python 或 `.venv`。
+正式安装后，管理器从 `HKLM\Software\Ticketbox` 动态读取 Inno 写入的安装布局和服务合同，通过 Windows SCM 的只读投影查看状态。正式安装态不暴露启停、备份或恢复 mutation 路由，也不启动提权 helper。普通用户进程不读取受保护的 `.env`、数据库或后端原始日志。正式运行态不依赖源码目录、Python 或 `.venv`。
 
 若 HKLM 登记或 release config 已损坏，冻结 Manager 不伪造服务配置，也不回退源码模式；它只从相邻构建 manifest 取得当前版本并进入受限维护壳。此时 SCM 与 Owner 动作全部禁用，只保留脱敏诊断导出，并提示用户手动使用可信安装包维护。
 
@@ -25,7 +25,7 @@ Manager BFF 只连接 `127.0.0.1`，从 WinCred 临时读取既有 app identity�
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop\scripts\build_manager_exe.ps1 -Clean
 ```
 
-输出是 `desktop\dist\ticketbox-manager\ticketbox-manager.exe` 与同目录 `BUILD_PROVENANCE.json`。Inno 构建会验证该 manifest 与当前 Manager 源码、版本和 payload hash 一致，再把整份 onedir 安装到 `{app}\manager` 并创建开始菜单入口。普通双击 Setup 后经 UAC 提权时，完成页会先释放安装生命周期锁，再用 Inno `ExecAsOriginalUser` 尝试在原登录用户上下文启动 Manager；若 Setup 本来就是直接提权启动、Windows 无法恢复原用户，安装仍成功并明确提示从开始菜单打开。Manager 由普通用户消费 8 位短期 pairing code，并由该进程通过 `CredWriteW` 把长期桌面 session 写入当前登录会话的 WinCred；提权安装器不接触用户长期凭据。覆盖安装只有在生命周期预检、停服和升级前备份成功后，才先清空旧 Manager payload 再复制新 onedir，避免 N-1 独有 DLL/PYD 留在运行目录形成混合版本；真实 N-1 升级仍以 clean-machine E2E 为发布资格证据。
+输出是 `desktop\dist\ticketbox-manager\ticketbox-manager.exe` 与同目录 `BUILD_PROVENANCE.json`。Inno 构建会验证该 manifest 与当前 Manager 源码、版本和 payload hash 一致，再把整份 onedir 安装到 `{app}\manager` 并创建开始菜单入口。普通双击 Setup 后经 UAC 提权时，完成页会先释放安装生命周期锁，再用 Inno `ExecAsOriginalUser` 尝试在原登录用户上下文启动 Manager；若 Setup 本来就是直接提权启动、Windows 无法恢复原用户，安装仍成功并明确提示从开始菜单打开。Manager 由普通用户消费 8 位短期 pairing code，并由该进程通过 `CredWriteW` 把长期桌面 session 写入当前登录会话的 WinCred；提权安装器不接触用户长期凭据。repair、preserved reinstall、upgrade/downgrade 与 complete uninstall 当前均为 `HOLD`；仓库中的历史安装器路径不构成这些能力已出货或已资格化。
 
 ## 结构（一文件一职责）
 
@@ -36,8 +36,7 @@ backend_manager/
 ├── config.py          从 env + 后端 .env + 发现 解析配置,URL 全 derive，零硬编码
 ├── installation.py    读取 installation.json 安装身份，以 Registry InstallDir 定位 Program Files
 ├── runtime.py         源码进程与正式服务共用的运行态契约
-├── elevation.py       固定数据维护动作的短命 UAC helper,高权限进程不开放 HTTP
-├── windows_service.py Windows SCM 控制 + 服务/安装身份脱敏诊断
+├── windows_service.py Windows SCM 与服务/安装身份脱敏只读诊断
 ├── diagnostic_bundle.py 只按 allowlist 导出脱敏主机/构建证据
 ├── supervisor.py      进程生命周期:树kill 无孤儿 / health-aware 带启动宽限 / 可注入可测
 ├── process.py         真实 OS 原语:spawn uvicorn / taskkill /T / 健康探测
@@ -49,7 +48,7 @@ backend_manager/
 ├── product_recovery.py WinCred 重绑定恢复位（attempt 证明持久化,崩溃可幂等重放）
 ├── web_bff.py         同源 /web 受限 relay（身份无关,只注入 Bearer + bridge 头）
 ├── netinfo.py         真实 LAN IPv4 发现：psutil 逐网卡枚举（绕开被 Clash 劫持的路由表）+ 过滤 CGNAT/link-local
-└── ui.html            服务 / 连接 / 备份升级 / 自救任务工作台 + 桌面账本绑定控制
+└── ui.html            服务 / 连接 / 数据保护 / 自救任务工作台 + 桌面账本绑定控制
 tests/                 supervisor / control-auth / config / netinfo 单测
 requirements.txt       运行依赖（psutil，可选；缺失时 netinfo 降级为主机名解析）
 requirements-build.*   Manager 冻结构建的精确依赖输入与 hash lock
@@ -74,16 +73,16 @@ scripts/               Manager provenance 与冻结构建入口
 - **无孤儿**:停止/重启走 `taskkill /T`,父+worker 一起死,端口真正释放。
 - **不杀外部进程**:启动时端口上若已有健康后端(开机计划任务或上次 manager 残留的 worker),**收养**它而非 kill;只 tree-kill 自己 spawn 的进程。端口被无关进程占用时让 uvicorn bind 失败、日志暴露,绝不盲杀不属于自己的进程。
 - **健康感知重启**:进程退出立即重启;父在但 `/api/health` 持续失败(过启动宽限)才重启,首启迁移不误杀。
-- **服务边界清楚**:正式模式只通过 SCM 停/启后端;启动时先保证 PostgreSQL 就绪,停止后端时不顺带停库;崩溃恢复仍由安装器配置的 SCM/Shawl 策略负责。
+- **服务边界清楚**:正式模式只观察 SCM 与安装身份，不从 Manager 停/启服务；崩溃恢复仍由已安装的 SCM/Shawl 策略负责。源码模式只监督自己启动的开发后端。
 - **GUI 生命周期不接管服务**:正式模式关闭最后一个 Edge 窗口只退出 Manager 主进程和本机控制面,不停止 SCM 服务;源码模式只清理自己创建的开发后端。
 - **单实例仍完整持窗**:第二次启动先用 challenge/HMAC 识别既有 owner,再让 owner 通过 authenticated reopen 创建和登记新窗口;第二个进程不直接留下无人跟踪的 Edge。
-- **业务权威不进 GUI**：绑定码、设备、UploadLink、备份与业务诊断仍由 loopback `/owner` 和后端服务生成；Manager 只打开精确任务页，不读取或写入数据库。
-- **GUI 永不提权**:localhost 控制服务始终以普通用户运行;每次正式服务启停只为固定动作启动短命 UAC helper,执行完立即退出。高权限进程不提供 HTTP 页面,不能被本机进程当作常驻高权限代理。
+- **业务权威不进 GUI**：绑定码、设备、UploadLink 与业务诊断仍由 loopback `/owner` 和后端服务生成；Manager 只打开精确任务页，不读取或写入数据库。数据保护卡只连接产品内 CSV 导入/已确认流水导出和只读备份记录，不把两者称为完整备份或恢复。
+- **GUI 永不提权**:localhost 控制服务始终以普通用户运行；正式安装态没有提权 helper 或常驻高权限代理。
 - **控制面 loopback-only**:`TICKETBOX_MANAGER_HOST` 非 loopback(`0.0.0.0` / LAN IP)会在启动前被 `config.py` 拒绝——控制服务发 token + 收控制 POST,绝不绑到公网/局域网。
 - **CSRF-safe**:控制 POST 需 per-process token + 同源,跨站页面打不动。
 - **诊断默认脱敏**：一键导出的 ZIP 只含 allowlist 服务状态、OS 版本和构建摘要；不含 token、数据库内容、原始日志、LAN/公网 URL 或数据绝对路径。
 - **桌面身份两阶段提交**：绑定/切账时客户端生成 attempt 证明并以与后端一致的 KDF 派生 5 分钟 `desktop_pending` 暂存值（服务端永不另发 token）；Manager 先把 attempt 证明持久写入 WinCred recovery 位，再调用 `/api/auth/desktop/activate` 同值晋升为正式 app 会话，最后把新会话提升到 primary。激活响应丢失、Manager 崩溃或 primary 写入失败都可从 recovery 幂等重放——重放响应的元数据（真实过期时间）永远以 activate 响应为准，不信陈旧的暂存副本；recovery 写入失败则不会发起激活。切账不把源账本凭据当作激活前任证明（后端只接受同账本前任），新会话落盘后才显式撤销旧凭据，TTL 兜底。
-- **升级权威仍归安装器**：未建立签名发行链前，Manager 不自动选择或提权运行安装包。外部安装、升级和卸载通过绑定生命周期锁 owner 的 HKLM 维护记录回收 Manager 窗口；崩溃残留按 PID 与进程创建时间识别，不会永久阻塞。
+- **生命周期不进 Manager**：Manager 不自动选择或提权运行安装包；repair、preserved reinstall、upgrade/downgrade 与 complete uninstall 保持 `HOLD`。
 - **零硬编码**:host/port/路径/URL 全来自 `config.py` 解析。
 
 测试：`cd desktop && ..\backend\.venv\Scripts\python.exe -m pytest tests/`。Windows 测试会通过本机 Edge DevTools 协议真实渲染 390×844 / 820×660 的正常与修复态，检查 overflow、控件交叠和可访问名称；还会直接调用生产 `open_app_window()` 验证用户关窗后进程退出，以及页面完全不响应时宿主仍能终止并回收 Edge。缺少 Edge 会使 Windows 门禁失败而不是静默跳过。ruff 配置复用 `desktop/pyproject.toml`。

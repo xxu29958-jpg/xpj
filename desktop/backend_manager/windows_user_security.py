@@ -16,9 +16,6 @@ _CREATE_NO_WINDOW = 0x08000000
 _CSIDL_LOCAL_APPDATA = 0x001C
 _MB_OK = 0x00000000
 _MB_ICONWARNING = 0x00000030
-_NONCE_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}\Z")
-
-
 def _show_warning(message: str, title: str) -> None:
     if os.name != "nt":
         return
@@ -40,9 +37,18 @@ def _show_warning(message: str, title: str) -> None:
 
 def show_elevated_manager_warning() -> None:
     _show_warning(
-        "小票夹管理器不能以管理员身份运行。请从 Windows 开始菜单正常打开；需要控制服务时会单独请求 UAC 授权。",
+        "小票夹管理器不能以管理员身份运行。请从 Windows 开始菜单正常打开；安装维护请使用可信安装包。",
         "小票夹管理器",
     )
+
+
+def is_process_elevated() -> bool:
+    if os.name != "nt":
+        return False
+    shell32 = ctypes.WinDLL("Shell32", use_last_error=True)
+    shell32.IsUserAnAdmin.argtypes = []
+    shell32.IsUserAnAdmin.restype = ctypes.c_int
+    return bool(shell32.IsUserAnAdmin())
 
 
 def show_manager_repair_required_warning() -> None:
@@ -164,28 +170,6 @@ def require_local_fixed_regular_file(path: Path, *, label: str) -> Path:
     if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
         raise RuntimeControlError(f"{label}必须是单链接普通文件。")
     return resolved
-
-
-def assert_helper_channel_path(path: Path, root: Path, nonce: str) -> None:
-    if not _NONCE_PATTERN.fullmatch(nonce):
-        raise RuntimeControlError("管理员结果通道 nonce 格式无效。")
-    if not path.is_absolute() or not root.is_absolute():
-        raise RuntimeControlError("管理员结果通道必须使用绝对路径。")
-    canonical = Path(os.path.abspath(path))
-    canonical_root = Path(os.path.abspath(root))
-    if not re.fullmatch(r"[A-Za-z]:", canonical.drive) or canonical.drive.casefold() != canonical_root.drive.casefold():
-        raise RuntimeControlError("管理员结果通道必须位于本地盘 caller profile。")
-    if os.name == "nt":
-        kernel32 = ctypes.WinDLL("Kernel32", use_last_error=True)
-        if kernel32.GetDriveTypeW(f"{canonical.drive}\\") != 3:
-            raise RuntimeControlError("管理员结果通道必须位于本地固定磁盘。")
-    if canonical.name != f"{nonce}.json":
-        raise RuntimeControlError("管理员结果通道文件名与 nonce 不一致。")
-    if os.path.normcase(str(canonical.parent)) != os.path.normcase(str(canonical_root)):
-        raise RuntimeControlError("管理员结果通道不属于发起用户的 Ticketbox 目录。")
-    for component in (canonical, canonical_root, *canonical_root.parents):
-        if component.exists() and is_reparse_point(component):
-            raise RuntimeControlError("管理员结果通道路径包含重解析点。")
 
 
 def set_exact_user_acl(path: Path, *, directory: bool) -> None:

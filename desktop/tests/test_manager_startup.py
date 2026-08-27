@@ -17,7 +17,6 @@ from backend_manager.config import (
     ManagerConfig,
     SourceRuntimeConfig,
 )
-from backend_manager.elevation import HELPER_EXIT_CONFIG
 from backend_manager.instance_owner import InstanceRegistration
 from backend_manager.manager_startup import ManagerWindowSession, run_manager, run_owned_manager
 from backend_manager.runtime import RuntimeControlError, RuntimeStatus
@@ -525,44 +524,16 @@ def test_frozen_manager_version_mismatch_enters_diagnostics_only_mode(
     ]
 
 
-def test_elevated_helper_rejects_invalid_frozen_payload_before_service_access(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    results: list[tuple[int, str]] = []
+def test_elevated_ui_process_is_refused_before_control_server_starts(monkeypatch) -> None:
+    warnings: list[bool] = []
     monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: True)
-    monkeypatch.setattr("backend_manager.__main__.sys.frozen", True, raising=False)
-    monkeypatch.setattr("backend_manager.__main__.validate_helper_result_channel", lambda *_args: None)
-    monkeypatch.setattr("backend_manager.__main__.load_frozen_manager_identity", lambda: None)
     monkeypatch.setattr(
-        "backend_manager.__main__.load_config",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("service access must stay closed")),
-    )
-    monkeypatch.setattr(
-        "backend_manager.__main__.write_helper_result",
-        lambda *_args: results.append((_args[-3], _args[-2])),
-    )
-    nonce = "a" * 32
-
-    exit_code = main(
-        [
-            "--elevated-service-action",
-            "inventory",
-            "--helper-result-path",
-            str(tmp_path / f"{nonce}.json"),
-            "--helper-result-root",
-            str(tmp_path),
-            "--helper-result-nonce",
-            nonce,
-            "--helper-channel-owner-sid",
-            "S-1-5-21-1",
-            "--helper-channel-file-id",
-            "file-id",
-        ],
+        "backend_manager.__main__.show_elevated_manager_warning",
+        lambda: warnings.append(True),
     )
 
-    assert exit_code == HELPER_EXIT_CONFIG
-    assert results == [(HELPER_EXIT_CONFIG, "桌面管理器载荷身份无效，请使用可信安装包执行修复。")]
+    assert main([]) == 2
+    assert warnings == [True]
 
 
 def test_source_startup_error_does_not_forge_an_installed_maintenance_shell(monkeypatch) -> None:

@@ -1,52 +1,16 @@
-# Ticketbox Windows 完整数据集备份与恢复
+# Ticketbox Windows 数据保护当前边界
 
-## 当前出货边界
+## 当前可用入口
 
-正式 Windows 安装没有 `TicketboxBackup` 计划任务，也不再出货 DB-only
-`backup_database.ps1`。唯一用户入口是桌面管理器：
+正式 Windows Manager 的“数据保护”卡只连接两个真实消费者：
 
-- “立即备份”经短时提权 helper 调用已安装的
-  `installer\windows_dataset_backup.ps1`。
-- “恢复”必须由用户明确选择一个 `ticketbox-backup-<UUID>` generation，再经短时提权 helper
-  调用 `installer\windows_dataset_restore.ps1`。
-- 源码模式没有正式安装 backup/restore owner；源码历史只用于演进和测试，不构成正式运行记录。
+- “导入与导出”进入同源 `/web/import`，可导入 CSV，并导出当前账本的已确认流水 CSV。CSV 是业务数据副本，不是包含数据库、附件、身份和安装状态的完整备份。
+- “查看备份记录”调用既有 `open_backups` 只读入口，只用于核对历史记录，不创建备份，也不执行恢复。
 
-## 完整备份 generation
+诊断包仍在“检查与自救”卡中，且不包含令牌、账本内容或原始日志。
 
-备份写入 `<DataRoot>\backups\ticketbox-backup-<UUID>\`，并且只有整个目录完成校验后才原子
-发布。generation 包含：
+## 不可用能力
 
-- 严格、不可变的 `manifest.json`，绑定 Dataset Authority、restore epoch、schema revision、
-  writer fence、release 和每个 artifact 的长度/hash；
-- PostgreSQL custom-format archive；
-- 数据库仍然引用的全部原始附件。
+当前 Manager 不暴露 `/api/backup`、`/api/backups` 或 `/api/restore` mutation，不出货或调用提权备份/恢复 helper。完整数据集备份、正式恢复以及 repair/upgrade/uninstall 生命周期仍为 `HOLD`，不能作为当前产品能力操作或宣传。
 
-备份 owner 在第一笔数据读取前验证 installed identity、Generation CURRENT 和服务合同，停止 backend
-writer，确认 PostgreSQL 没有其他 client writer，再调用 frozen backend 的 complete-dataset helper。
-任一数据库、附件、manifest 或 publication 失败只留下失败，不发布半个 generation。
-
-## 恢复
-
-恢复 owner 先把明确选择的 generation 校验为同一 Dataset Authority，再在任何停服或覆盖前持久化
-恢复请求。它将数据库恢复到隔离候选集群、重建 originals、重读 live database identity，随后同卷
-提升候选。最终 CURRENT 仍只由 H1 Generation Owner 发布；restore、journal、receipt 和 historical
-reader 都没有第二份 current/publication 权限。
-
-崩溃重试从 durable request、candidate evidence、Dataset Authority 和 CURRENT 重新分类，不按目录时间
-猜“最新备份”，也不依赖旧 stage coordinator。
-
-## 凭据与工具
-
-`pg_dump` / `pg_restore` 只接收显式、无内联口令的 PostgreSQL URL、受保护 passfile 和已解析的
-工具绝对路径。子进程环境会移除 ambient PostgreSQL/数据库路由变量；原生 stdout/stderr 不进入用户
-日志。恢复使用 `--single-transaction --exit-on-error --no-owner --no-privileges --role <owner>`。
-
-## 资格边界
-
-CI 的真实 PostgreSQL recovery lane 会通过生产 complete-generation owner 备份 smoke dataset，验证
-manifest/files，再恢复到专用 scratch 库并比较全部 public tables。该证据不能替代正式 Windows
-生命周期证据。没有同一 exact-head EXE 在真正干净的本地 Windows VM 完成首装、备份、恢复、重启、
-卸载前，项目继续 `QUALIFIED_HOLD`。
-
-禁止把单独 `pg_dump`、手工复制 uploads、只运行 `pg_restore --list`、CI green 或旧源码升级历史称为
-正式备份/恢复闭环。
+backend 中的 complete-dataset/restore 模块、历史 Windows 脚本、旧 ADR 和旧验收记录只作审计与演进输入；它们不是当前出货 Owner。单独 `pg_dump`、手工复制 uploads、`pg_restore --list`、CI green 或旧源码历史都不能冒充正式备份/恢复闭环。

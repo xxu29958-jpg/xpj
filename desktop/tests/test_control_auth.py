@@ -5,7 +5,6 @@ from __future__ import annotations
 import http.client
 import json
 import re
-import socket
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,7 +17,6 @@ from backend_manager.control_server import (
     request_existing_manager_window,
 )
 from backend_manager.projection import UnavailableInstalledRuntimeConfigProvider
-from backend_manager.runtime import RuntimeControlError
 
 _TOKEN = "s3cr3t-token"
 _INSTANCE_SECRET = "instance-proof-secret"
@@ -467,25 +465,32 @@ def test_control_server_rejects_overlapping_actions_but_keeps_status_available(t
     assert first_result == [(200, {"status": "ok"})]
 
 
-def test_backup_inventory_endpoint_is_authenticated_closed_and_fail_closed(tmp_path) -> None:
-    class InventoryController:
-        unavailable = False
+def test_unqualified_data_lifecycle_endpoints_are_not_exposed(tmp_path) -> None:
+    calls: list[str] = []
+
+    class Controller:
+        def status(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+        def backup(self) -> None:
+            calls.append("backup")
 
         def backup_inventory(self) -> list[dict[str, object]]:
-            if self.unavailable:
-                raise RuntimeControlError("private detail")
-            return [{"generation": "ticketbox-backup-11111111-1111-4111-8111-111111111111"}]
+            calls.append("backups")
+            return []
+
+        def restore(self, _backup_generation: str) -> None:
+            calls.append("restore")
 
         def is_manager_shutting_down(self) -> bool:
             return False
 
-    controller = InventoryController()
     ui = tmp_path / "ui.html"
     ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
     server = ControlServer(
         "127.0.0.1",
         0,
-        controller=controller,
+        controller=Controller(),
         token=_TOKEN,
         instance_secret=_INSTANCE_SECRET,
         ui_html=ui,
@@ -498,43 +503,24 @@ def test_backup_inventory_endpoint_is_authenticated_closed_and_fail_closed(tmp_p
     }
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
-
-    def post(request_headers: dict[str, str], body: bytes | None = None) -> tuple[int, dict | bytes]:
-        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
-        connection.request("POST", "/api/backups", body=body, headers=request_headers)
-        response = connection.getresponse()
-        encoded = response.read()
-        connection.close()
-        if (response.getheader("Content-Type") or "").startswith("application/json"):
-            return response.status, json.loads(encoded)
-        return response.status, encoded
-
     try:
-        assert post({})[0] == 403
-        assert post(headers, b"{}") == (400, b"request body not allowed")
-        stalled = socket.create_connection(("127.0.0.1", port), timeout=2)
-        stalled.settimeout(2)
-        try:
-            stalled.sendall(
-                (
-                    "POST /api/backups HTTP/1.1\r\n"
-                    f"Host: 127.0.0.1:{port}\r\n"
-                    f"X-Control-Token: {_TOKEN}\r\n"
-                    "Sec-Fetch-Site: same-origin\r\n"
-                    f"Origin: http://127.0.0.1:{port}\r\n"
-                    "Content-Length: 2\r\n"
-                    "Connection: close\r\n\r\n{"
-                ).encode("ascii")
-            )
-            assert stalled.recv(1) == b""
-        finally:
-            stalled.close()
-        assert post(headers) == (
-            200,
-            {"generations": [{"generation": "ticketbox-backup-11111111-1111-4111-8111-111111111111"}]},
-        )
-        controller.unavailable = True
-        assert post(headers) == (503, {"error": "backup_inventory_unavailable"})
+        for path, body in (
+            ("/api/backup", None),
+            ("/api/backups", None),
+            (
+                "/api/restore",
+                json.dumps(
+                    {"backup_generation": "ticketbox-backup-11111111-1111-4111-8111-111111111111"}
+                ),
+            ),
+        ):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            connection.request("POST", path, body=body, headers=headers)
+            response = connection.getresponse()
+            assert response.status == 404
+            response.read()
+            connection.close()
+        assert calls == []
     finally:
         server.shutdown()
         server.server_close()

@@ -504,35 +504,29 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 ---
 
-## 12. 完整数据集备份与恢复
+## 12. Windows 完整数据集备份与恢复（HOLD）
 
-**验收项**：正式安装能从桌面管理器创建完整 dataset generation，并从用户明确选择的 generation
-恢复为新的 Generation CURRENT。
+**验收项**：当前版本不执行完整数据集备份/恢复资格验收；先验证 Manager 没有把未出货能力暴露给用户。
 
 **执行人**：服务拥有者
 
 **执行命令/动作**：
 
-在干净 Windows VM 首装 exact-head EXE，创建一笔带原始附件的数据；从管理器执行“立即备份”，记录
-返回的 `ticketbox-backup-<UUID>`。再新增可区分数据，明确选择刚才的 generation 执行恢复，并完成
-服务重启与卸载检查。源码/CI scratch 演练步骤见
-[POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)，不能替代这项真机证据。
+打开 Desktop Manager 的“数据保护”卡，确认只有“导入与导出”和“查看备份记录”。前者进入现有 `/web/import`；后者只读。确认页面没有“立即完整备份”、备份列表选择或恢复按钮。
 
 **预期结果**：
 
-- `<DataRoot>\backups\ticketbox-backup-<UUID>\` 的 manifest、database archive 与 originals 均通过 hash/长度校验。
-- 恢复后 Dataset Authority 保持同一 dataset id、restore epoch 单调递增，所选备份的数据与附件一致。
-- CURRENT 只由 Generation Owner 发布；重启后服务和 runtime projection 指向该 exact generation。
-- 缺少同一 exact-head EXE 的完整证据时继续 `QUALIFIED_HOLD`。
+- “导入与导出”只承诺 CSV 导入与已确认流水 CSV 导出，不暗示完整备份。
+- “查看备份记录”不创建备份、不恢复数据。
+- 完整备份、恢复以及 repair/upgrade/uninstall 生命周期继续 `HOLD`。
 
 **失败处理**：
 
-- 任一步失败都保留原始诊断与 candidate/intent evidence，不手工改 CURRENT、数据库或 originals。
-- CI scratch 演练失败时检查显式 passfile、工具版本和 dedicated database；不得拿它冒充 VM 通过。
+- 若仍出现旧备份/恢复控件，视为当前产品合同失败；不得通过重接旧 helper 或手工数据库操作绕过。
 
-**是否阻断灰度**：是。完整 dataset 恢复是 Windows 生命周期资格的一部分。
+**是否阻断灰度**：旧 mutation 控件存在时阻断；本项不把 `HOLD` 能力提升为当前发布门。
 
-**证据路径**：计划任务状态截图 + backups 目录文件列表截图
+**证据路径**：Desktop Manager 宽屏/窄屏数据保护卡
 
 **状态**：
 

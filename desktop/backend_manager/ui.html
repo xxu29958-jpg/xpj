@@ -94,7 +94,7 @@
     .product-link:hover { color: var(--ink); text-decoration: underline; }
     .product-link + .overall-state { margin-left: 0; }
     .product-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .product-actions input[type="text"], .product-actions select, .restore-actions select {
+    .product-actions input[type="text"], .product-actions select {
       min-height: 34px;
       padding: 6px 9px;
       border: 1px solid var(--line);
@@ -105,8 +105,6 @@
       background: var(--card);
     }
     .product-actions input[type="text"] { width: 9em; letter-spacing: 0.12em; }
-    .restore-actions { display: grid; gap: 8px; margin-top: 10px; }
-    .restore-actions select { width: 100%; font-family: var(--mono); font-size: 11px; }
     /* The hidden attribute is authoritative over every display rule above —
        pair form / manage group / product link must never coexist. */
     [hidden] { display: none !important; }
@@ -320,20 +318,13 @@
         </div>
       </article>
 
-      <article class="task-card" id="maintenanceCard">
+      <article class="task-card" id="dataProtectionCard">
         <div class="task-icon" aria-hidden="true">▣</div>
-        <div class="task-title">备份</div>
-        <div class="task-state" id="protectState">升级前请确认最近备份可用。</div>
+        <div class="task-title">数据保护</div>
+        <div class="task-state" id="protectState">导出已确认流水留存副本；备份记录仅供核对，恢复功能当前未开放。</div>
         <div class="task-actions">
-          <button class="button manager-action" id="backupAction" type="button" onclick="act('backup', this)">立即完整备份</button>
-          <button class="button manager-action owner-action" type="button" onclick="act('open_backups', this)">查看备份</button>
-        </div>
-        <div class="restore-actions">
-          <select id="restoreGeneration" aria-label="要恢复的完整备份 generation">
-            <option value="">请先读取备份列表</option>
-          </select>
-          <button class="button manager-action" id="backupInventoryAction" type="button" onclick="loadBackupInventory(this)">读取备份列表</button>
-          <button class="button manager-action" id="restoreAction" type="button" onclick="restoreDataset(this)">恢复所选备份</button>
+          <button class="button button-primary owner-action" id="importExportAction" type="button" disabled onclick="openImportExport()">导入与导出</button>
+          <button class="button manager-action owner-action" type="button" onclick="act('open_backups', this)">查看备份记录</button>
         </div>
       </article>
 
@@ -399,19 +390,19 @@
       const serviceControls = hasStatus && Boolean(s.service_controls_available);
       $("primaryAction").hidden = !serviceControls;
       $("restartAction").hidden = !serviceControls;
-      $("maintenanceCard").hidden = !serviceControls;
       $("primaryAction").disabled = actionInFlight || !serviceControls;
       $("restartAction").disabled = actionInFlight || !serviceControls || !isRunning;
       document.querySelectorAll(".owner-action").forEach((button) => {
         button.disabled = actionInFlight || !productAvailable;
       });
+      // Runtime health cannot authorize product navigation before the
+      // current user's WinCred-backed product session has been read.
+      $("importExportAction").disabled = actionInFlight
+        || !productAvailable
+        || !Boolean(productSession && productSession.configured);
       $("androidAction").disabled = actionInFlight || !productAvailable || s.android_binding_state !== "configured_unverified";
       $("iphoneAction").disabled = actionInFlight || !productAvailable || s.iphone_upload_state !== "configured_unverified";
       $("diagnosticExportAction").disabled = actionInFlight;
-      $("backupAction").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed" || !serviceControls;
-      $("restoreAction").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed" || !serviceControls;
-      $("restoreGeneration").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed";
-      $("backupInventoryAction").disabled = actionInFlight || !hasStatus || s.runtime_mode !== "installed";
       document.querySelector("main").setAttribute("aria-busy", String(actionInFlight));
     }
 
@@ -488,8 +479,8 @@
           ? "手机入口已配置，连接结果以手机实测为准。"
           : "当前仅本机可用，请先在设置中配置手机入口。")));
       $("protectState").textContent = s.runtime_mode === "installed"
-        ? "升级前请确认最近备份可用。"
-        : "开发环境不使用正式安装器维护。";
+        ? "导出已确认流水留存副本；备份记录仅供核对，恢复功能当前未开放。"
+        : "导出已确认流水留存副本；开发环境不产生安装器备份记录。";
       $("diagnosticState").textContent = s.diagnostic_bundle_file ? `最近导出：${s.diagnostic_bundle_file}` : "导出包不包含令牌、账本内容或原始日志。";
 
       $("backendService").textContent = serviceState(s.backend_service_state);
@@ -544,6 +535,9 @@
       $("productHomeLink").hidden = !(showManage && available);
       $("productPairGroup").hidden = showManage;
       $("productManageGroup").hidden = !showManage;
+      // The import/export entry opens the bound ledger's product page; without a
+      // live binding it stays disabled so the card never offers a dead click.
+      $("importExportAction").disabled = productBusy || !available || !showManage;
       if (!configured) {
         $("productState").textContent = available
           ? "输入安装器提供的“绑定此电脑”码，连接桌面账本。"
@@ -742,77 +736,9 @@
       }
     }
 
-    async function restoreDataset(button) {
-      const generation = $("restoreGeneration").value.trim();
-      if (!/^ticketbox-backup-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(generation)) {
-        setMessage("controlError", "请先读取并选择一个完整备份。");
-        return;
-      }
-      if (!window.confirm("恢复会停止服务，并用所选备份发布新的数据 generation。原数据会保留到发布成功。继续吗？")) return;
-      if (actionInFlight) return;
-      const original = button.innerHTML;
-      actionInFlight = true;
-      applyActionAvailability(latestStatus);
-      button.innerHTML = '<span class="icon spinner" aria-hidden="true">↻</span><span>恢复中</span>';
-      try {
-        const response = await fetch("/api/restore", {
-          method: "POST",
-          headers: {
-            "X-Control-Token": window.CONTROL_TOKEN,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({backup_generation: generation})
-        });
-        if (response.status === 409) throw new Error("busy");
-        if (!response.ok) throw new Error("action");
-        render(await response.json());
-      } catch (error) {
-        setMessage(
-          "controlError",
-          error.message === "busy" ? "另一项操作正在进行，请等待完成。" : "完整恢复结果未知；请刷新服务和数据状态后，重试同一 generation。"
-        );
-      } finally {
-        button.innerHTML = original;
-        actionInFlight = false;
-        applyActionAvailability(latestStatus);
-        await refresh();
-      }
-    }
-
-    async function loadBackupInventory(button) {
-      if (actionInFlight) return;
-      actionInFlight = true;
-      applyActionAvailability(latestStatus);
-      const original = button.textContent;
-      button.textContent = "读取中";
-      try {
-        const response = await fetch("/api/backups", {
-          method: "POST",
-          headers: {"X-Control-Token": window.CONTROL_TOKEN}
-        });
-        if (!response.ok) throw new Error("inventory");
-        const payload = await response.json();
-        const rows = Array.isArray(payload.generations) ? payload.generations : [];
-        $("restoreGeneration").replaceChildren(...rows.map((row) => {
-          const option = document.createElement("option");
-          option.value = row.generation;
-          option.textContent = `${row.created_at} · ${row.generation}`;
-          return option;
-        }));
-        if (rows.length === 0) {
-          const option = document.createElement("option");
-          option.value = "";
-          option.textContent = "没有已发布的完整备份";
-          $("restoreGeneration").append(option);
-        }
-        setMessage("controlError", "");
-      } catch (_error) {
-        setMessage("controlError", "无法读取可信的完整备份列表；备份 payload 未被开放给管理器。");
-      } finally {
-        button.textContent = original;
-        actionInFlight = false;
-        applyActionAvailability(latestStatus);
-      }
+    function openImportExport() {
+      if ($("importExportAction").disabled) return;
+      window.location.assign("/web/import");
     }
 
     refresh();

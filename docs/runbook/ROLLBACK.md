@@ -1,9 +1,6 @@
 # 版本回滚 Runbook
 
-本页主要提供源码/测试后端、Cloudflare Tunnel 与 Android 灰度的回退参考。正式 Windows 已有
-“从明确完整 generation 恢复”为新 CURRENT 的 owner，但不等于任意二进制/schema 降级；以下源码
-命令不能冒充产品回滚能力。没有 exact-head 干净 Windows VM 全生命周期证据前继续
-`QUALIFIED_HOLD`。
+本页主要提供源码/测试后端、Cloudflare Tunnel 与 Android 灰度的回退参考。当前正式 Windows 没有已出货的完整数据集恢复或二进制/schema 降级入口；以下源码命令不能冒充产品回滚能力。
 
 ## 适用范围与不可逆边界
 
@@ -13,7 +10,7 @@
 |---|---|---|
 | 源码/测试后端补丁（同一 minor 内） | ⚠️ 逐项验证 | 代码可 `git revert`；数据库只允许 scratch 恢复演练 |
 | Android 补丁（同一 minor 内） | ✅ 始终可逆 | 卸载灰度 APK，装上一版即可，Pairing 配对仍有效 |
-| 正式 Windows 完整 generation 恢复 | ⚠️ 仅管理器闭合入口 | 只接受明确、同 dataset 的完整 generation；仍需 exact-head VM 资格证据 |
+| 正式 Windows 完整 generation 恢复 | ❌ 当前不可用 | Manager 不提供备份/恢复 mutation；该生命周期仍为 `HOLD` |
 | 正式 Windows 二进制/schema 降级 | ❌ 不支持 | 不能用数据恢复绕过 release program 与运行态投影验证 |
 | Android minor 降级 | ⚠️ 必须重新 Pairing | session token 在 Android 端 Keystore 中；旧 APK 不识别新 token，需重新配对 |
 | **identity_schema 降级（任何方向越过 v0.3）** | ❌ 禁止 | `identity_schema=v0.3` 是 v0.3 以来的稳定契约；v0.3 之前的 `APP_TOKEN`/`UPLOAD_TOKEN` 模型已永久退役 |
@@ -53,17 +50,13 @@ git checkout <tag>          # 例如 v0.8.0
 
 ## 数据库备份与恢复
 
-### 回滚前备份
+### 回滚前数据留存
 
-正式 Windows 安装必须从桌面管理器创建完整数据集备份。成功结果是
-`<DataRoot>\backups\ticketbox-backup-<UUID>\`，包含闭合 manifest、数据库 archive 和实际引用
-的 originals。旧 DB-only PowerShell、`TicketboxBackup` 计划任务以及手工复制 uploads 均已退役。
+源码/测试环境按 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 在专用 scratch 数据库演练。正式 Windows 当前只能从产品内 `/web/import` 导出已确认流水 CSV；该文件不包含数据库、附件、身份或安装状态，不能称为完整备份。
 
 ### 恢复到某个备份
 
-源码/测试 scratch 数据库可按 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 使用
-`pg_restore`。正式 Windows 安装只能由桌面管理器恢复用户明确选择的完整 generation；不得用
-“停后端 → 手工恢复 → 重启”绕过 Dataset Authority、Generation CURRENT 与运行态投影校验。
+源码/测试 scratch 数据库可按 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 使用 `pg_restore`。正式 Windows Manager 当前不提供恢复入口；不得用“停后端 → 手工恢复 → 重启”绕过 Dataset Authority、Generation CURRENT 与运行态投影校验。
 
 ### 版本特定的数据库回滚注意
 
@@ -75,9 +68,7 @@ git checkout <tag>          # 例如 v0.8.0
 
 ADR-0041 把存储从 SQLite 换到本机 PostgreSQL，PG-only 瘦身后 SQLite 引擎/方言已**彻底退役**——没有 `DATABASE_URL=sqlite:///...` 回滚路径了。引擎层不可逆:
 
-- 正式安装恢复只接受桌面管理器明确选择的完整 generation，并在隔离候选中执行 `pg_restore`、
-  身份/语义校验和原子 CURRENT 发布；没有 exact-head 干净 Windows VM 生命周期证据前仍为
-  `QUALIFIED_HOLD`。
+- 正式 Windows 完整恢复当前不可用并保持 `HOLD`；backend 恢复代码或 scratch 演练不是已出货产品入口。
 - 历史背景见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) 与 ADR-0041(cut-over 2026-06-04 完成,SQLite 回滚源已失效)。
 
 ## Android APK 回退
