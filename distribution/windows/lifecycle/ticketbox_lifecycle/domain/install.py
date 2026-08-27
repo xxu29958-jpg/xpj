@@ -155,11 +155,17 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
                 adapter = adapter_for_step(stores.adapters, step.name)
                 _ensure_postcondition(adapter, bound, step.name)
             last_phase = phase_after(step.name)
+            completed_step = _furthest_step(active.completed_step, step.name)
+            if last_phase == "data_ready" and _completed_at_or_after(
+                completed_step,
+                "owner_claim",
+            ):
+                completed_step = "owner_claim"
             candidate = replace(
                 active,
                 phase=last_phase,
                 no_return_point=last_phase in {"data_ready", "release_activated"},
-                completed_step=_furthest_step(active.completed_step, step.name),
+                completed_step=completed_step,
             )
             if step.name != "start_services":
                 stores.operations_write.publish_active(candidate)
