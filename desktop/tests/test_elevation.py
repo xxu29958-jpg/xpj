@@ -18,8 +18,6 @@ from backend_manager.config import InstalledRuntimeConfig, ManagerConfig
 from backend_manager.elevation import (
     HELPER_EXIT_CONFIG,
     HELPER_EXIT_LIFECYCLE_BUSY,
-    HELPER_EXIT_MISSING_SERVICE,
-    HELPER_EXIT_NOT_ELEVATED,
     HELPER_EXIT_RESTORE_SUPERSEDED,
     HELPER_EXIT_TIMEOUT,
     ElevatedServiceActionRunner,
@@ -30,12 +28,13 @@ from backend_manager.elevation import (
     start_helper_watchdog,
     write_helper_result,
 )
+from backend_manager.health_probe import InstalledHealthExpectation
 from backend_manager.helper_channel import channel_file_identity, open_exclusive_channel
 from backend_manager.installation import InstalledLayout, WindowsReleaseConfig
 from backend_manager.lifecycle_lock import hold_installer_lifecycle_lock
-from backend_manager.runtime import RuntimeControlError, ServiceMissingError
+from backend_manager.runtime import RuntimeControlError
 from backend_manager.runtime_factory import build_runtime
-from backend_manager.windows_service import BrokeredWindowsServiceRuntime, ServiceSnapshot
+from backend_manager.windows_service import ServiceSnapshot, WindowsServiceRuntime
 
 
 def _release() -> WindowsReleaseConfig:
@@ -84,12 +83,12 @@ def test_helper_command_uses_only_registered_installed_manager(tmp_path: Path) -
         path=tmp_path / "result.json",
         root=tmp_path,
         nonce="n" * 43,
-        action="restart",
+        action="inventory",
         owner_sid="S-1-5-21-1000",
         file_identity="1:2",
     )
     command = build_helper_command(
-        "restart",
+        "inventory",
         channel,
         123_456,
         helper_executable=executable,
@@ -98,7 +97,7 @@ def test_helper_command_uses_only_registered_installed_manager(tmp_path: Path) -
     assert command.executable == executable.resolve()
     assert command.arguments == (
         "--elevated-service-action",
-        "restart",
+        "inventory",
         "--helper-result-path",
         str(channel.path),
         "--helper-result-root",
@@ -119,13 +118,13 @@ def test_helper_command_rejects_source_python_or_copied_payload(tmp_path: Path) 
         path=tmp_path / "result.json",
         root=tmp_path,
         nonce="n" * 43,
-        action="stop",
+        action="backup",
         owner_sid="S-1-5-21-1000",
         file_identity="1:2",
     )
     with pytest.raises(RuntimeControlError, match="安装目录"):
         build_helper_command(
-            "stop",
+            "backup",
             channel,
             87_000,
             helper_executable=tmp_path / "python.exe",
@@ -136,7 +135,6 @@ def test_helper_command_rejects_source_python_or_copied_payload(tmp_path: Path) 
     ("exit_code", "message"),
     [
         (HELPER_EXIT_CONFIG, "安装信息不可用"),
-        (HELPER_EXIT_MISSING_SERVICE, "未找到小票夹 Windows 服务"),
         (HELPER_EXIT_TIMEOUT, "可能仍在完成操作"),
         (HELPER_EXIT_LIFECYCLE_BUSY, "正在安装、升级或卸载"),
         (99, "exit=99"),
@@ -157,14 +155,14 @@ def test_action_runner_maps_helper_exit_to_actionable_message(
         helper,
         launcher=lambda command: (
             exit_code
-            if command.wait_timeout_ms == release.helper_parent_timeout_ms("start")
+            if command.wait_timeout_ms == release.helper_parent_timeout_ms("backup")
             else (_ for _ in ()).throw(AssertionError("helper timeout ignored release config"))
         ),
         channel_factory=lambda action: _fake_result_channel(action, exit_code, diagnostic),
     )
 
     with pytest.raises(RuntimeControlError, match=message if exit_code != 99 else "helper detail"):
-        runner.run("start")
+        runner.run("backup")
 
 
 def test_restore_reuses_attempt_after_trusted_helper_response_is_lost(
@@ -337,7 +335,7 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
                 "schema": "ticketbox-manager-helper-result-v2",
                 "root": str(tmp_path),
                 "nonce": nonce,
-                "action": "start",
+                "action": "backup",
                 "state": "pending",
                 "owner_sid": "S-1-5-21-1000",
                 "file_identity": file_identity,
@@ -351,7 +349,7 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
         path,
         tmp_path,
         nonce,
-        "start",
+        "backup",
         "S-1-5-21-1000",
         file_identity,
         HELPER_EXIT_CONFIG,
@@ -362,7 +360,7 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
         path,
         tmp_path,
         nonce,
-        "start",
+        "backup",
         "S-1-5-21-1000",
         file_identity,
     ).read(HELPER_EXIT_CONFIG)
@@ -372,7 +370,7 @@ def test_helper_watchdog_and_nonce_result_are_bounded_and_secret_redacted(tmp_pa
     assert result.diagnostic == "小票夹安装信息不可用，请修复或重新安装后重试。"
     assert len(result.diagnostic) <= 800
     assert (
-        HelperResultChannel(path, tmp_path, "z" * 43, "start", "S-1-5-21-1000", file_identity).read(
+        HelperResultChannel(path, tmp_path, "z" * 43, "backup", "S-1-5-21-1000", file_identity).read(
             HELPER_EXIT_CONFIG,
         )
         is None
@@ -411,93 +409,10 @@ def test_elevated_ui_process_is_refused_before_control_server_starts(monkeypatch
     assert warnings == [True]
 
 
-def test_helper_action_without_elevation_cannot_touch_services(monkeypatch) -> None:
-    monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: False)
-
-    assert main(["--elevated-service-action", "stop"]) == HELPER_EXIT_NOT_ELEVATED
-
-
-def test_elevated_helper_preserves_missing_service_result(monkeypatch, tmp_path: Path) -> None:
-    layout = InstalledLayout(
-        tmp_path / "program",
-        tmp_path / "data",
-        8000,
-        5432,
-        "TicketboxBackend",
-        "TicketboxPg",
-        "9.8.7",
-    )
-    release = _release()
-    config = ManagerConfig(
-        runtime=InstalledRuntimeConfig(layout, release),
-        backend_host="127.0.0.1",
-        backend_port=8000,
-        manager_host="127.0.0.1",
-        manager_port=8799,
-        public_base_url=None,
-        expected_backend_version=layout.backend_version,
-        expected_installation_id=layout.installation_id,
-        health_request_timeout_seconds=release.backend_health_request_timeout_seconds,
-    )
-
-    class BrokenRuntime:
-        def stop(self) -> None:
-            raise ServiceMissingError("missing")
-
-    events: list[str] = []
-    watchdog_timeouts: list[float] = []
-
-    def build_runtime(*_args, backend_stopped_validator=None):
-        assert callable(backend_stopped_validator)
-        events.append("build")
-        return BrokenRuntime()
-
-    monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: True)
-    monkeypatch.setattr(
-        "backend_manager.__main__.start_helper_watchdog",
-        lambda *, timeout_seconds: (
-            watchdog_timeouts.append(timeout_seconds),
-            threading.Event(),
-        )[-1],
-    )
-    monkeypatch.setattr("backend_manager.__main__.validate_helper_result_channel", lambda *_args: None)
-    monkeypatch.setattr("backend_manager.__main__.hold_installer_lifecycle_lock", _no_op_lock)
-    monkeypatch.setattr("backend_manager.__main__.load_config", lambda **_kwargs: config)
-    monkeypatch.setattr(
-        "backend_manager.__main__.validate_installed_service_contract",
-        lambda _layout, _release_config: events.append("validate"),
-    )
-    monkeypatch.setattr("backend_manager.__main__.build_direct_service_runtime", build_runtime)
-    results: list[tuple[int, str]] = []
-    monkeypatch.setattr(
-        "backend_manager.__main__.write_helper_result",
-        lambda _path, _root, _nonce, _action, _owner_sid, _file_id, code, detail, _payload: results.append(
-            (code, detail)
-        ),
-    )
-
-    assert (
-        main(
-            [
-                "--elevated-service-action",
-                "stop",
-                "--helper-result-path",
-                str(tmp_path / "result.json"),
-                "--helper-result-root",
-                str(tmp_path),
-                "--helper-result-nonce",
-                "n" * 43,
-                "--helper-channel-owner-sid",
-                "S-1-5-21-1000",
-                "--helper-channel-file-id",
-                "1:2",
-            ],
-        )
-        == HELPER_EXIT_MISSING_SERVICE
-    )
-    assert events == ["validate", "build"]
-    assert watchdog_timeouts == [release.helper_watchdog_seconds("stop")]
-    assert results == [(HELPER_EXIT_MISSING_SERVICE, "missing")]
+@pytest.mark.parametrize("action", ["start", "stop", "restart"])
+def test_hidden_helper_cli_rejects_retired_installed_service_controls(action: str) -> None:
+    with pytest.raises(SystemExit):
+        main(["--elevated-service-action", action])
 
 
 def test_elevated_backup_delegates_to_installed_owner_without_python_lock(
@@ -512,6 +427,8 @@ def test_elevated_backup_delegates_to_installed_owner_without_python_lock(
         "TicketboxBackend",
         "TicketboxPg",
         "9.8.7",
+        "11111111-1111-4111-8111-111111111111",
+        "a" * 64,
     )
     release = _release()
     config = ManagerConfig(
@@ -530,10 +447,6 @@ def test_elevated_backup_delegates_to_installed_owner_without_python_lock(
     monkeypatch.setattr("backend_manager.__main__.is_process_elevated", lambda: True)
     monkeypatch.setattr("backend_manager.__main__.validate_helper_result_channel", lambda *_args: None)
     monkeypatch.setattr("backend_manager.__main__.load_config", lambda **_kwargs: config)
-    monkeypatch.setattr(
-        "backend_manager.__main__.validate_installed_service_contract",
-        lambda _layout, _release: events.append("validate"),
-    )
     monkeypatch.setattr(
         "backend_manager.__main__.run_installed_dataset_backup",
         lambda actual_layout, actual_release: events.append(
@@ -576,7 +489,6 @@ def test_elevated_backup_delegates_to_installed_owner_without_python_lock(
     )
     assert events == [
         "watchdog:" + str(release.helper_watchdog_seconds("backup")),
-        "validate",
         "backup",
     ]
     assert results == [(0, "Ticketbox 完整数据集备份已完成。")]
@@ -618,7 +530,7 @@ def test_python_lifecycle_lock_interoperates_with_real_powershell_hosts(tmp_path
     assert acquired == [0] * len(hosts)
 
 
-def test_installed_ui_runtime_uses_uac_broker_not_direct_service_mutation(monkeypatch, tmp_path: Path) -> None:
+def test_cut_b_installed_ui_runtime_is_observation_only(monkeypatch, tmp_path: Path) -> None:
     class QueryOnlyGateway:
         def query(self, name: str) -> ServiceSnapshot:
             return ServiceSnapshot(name=name, state="stopped")
@@ -629,17 +541,7 @@ def test_installed_ui_runtime_uses_uac_broker_not_direct_service_mutation(monkey
         def stop(self, _name: str) -> None:
             raise AssertionError("unelevated UI must not mutate SCM directly")
 
-    actions: list[str] = []
-
-    class Runner:
-        def __init__(self, _release_config, helper_executable: Path) -> None:
-            assert helper_executable == layout.manager_executable_path
-
-        def run(self, action: str) -> None:
-            actions.append(action)
-
     monkeypatch.setattr(runtime_factory, "WindowsServiceGateway", QueryOnlyGateway)
-    monkeypatch.setattr(runtime_factory, "ElevatedServiceActionRunner", Runner)
     layout = InstalledLayout(
         tmp_path / "program",
         tmp_path / "data",
@@ -648,9 +550,9 @@ def test_installed_ui_runtime_uses_uac_broker_not_direct_service_mutation(monkey
         "TicketboxBackend",
         "TicketboxPg",
         "9.8.7",
+        "11111111-1111-4111-8111-111111111111",
+        "a" * 64,
     )
-    layout.manager_executable_path.parent.mkdir(parents=True)
-    layout.manager_executable_path.write_bytes(b"MZ")
     release = _release()
     config = ManagerConfig(
         runtime=InstalledRuntimeConfig(layout, release),
@@ -665,12 +567,18 @@ def test_installed_ui_runtime_uses_uac_broker_not_direct_service_mutation(monkey
     )
 
     runtime = build_runtime(config)
-    runtime.stop()
-
-    assert isinstance(runtime, BrokeredWindowsServiceRuntime)
-    assert runtime._status_runtime._wait_timeout_seconds == 17  # noqa: SLF001 - wiring contract
-    assert runtime._status_runtime._pg_wait_timeout_seconds == 23  # noqa: SLF001 - wiring contract
-    assert runtime._status_runtime._poll_seconds == 0.125  # noqa: SLF001 - wiring contract
-    assert runtime._status_runtime._backend_ready_timeout_seconds == 31  # noqa: SLF001 - wiring contract
-    assert runtime._status_runtime._backend_ready_poll_seconds == 0.375  # noqa: SLF001 - wiring contract
-    assert actions == ["stop"]
+    assert isinstance(runtime, WindowsServiceRuntime)
+    assert runtime.status().service_controls_available is False
+    with pytest.raises(RuntimeControlError, match="Cut B"):
+        runtime.stop()
+    assert runtime._wait_timeout_seconds == 17  # noqa: SLF001 - wiring contract
+    assert runtime._pg_wait_timeout_seconds == 23  # noqa: SLF001 - wiring contract
+    assert runtime._poll_seconds == 0.125  # noqa: SLF001 - wiring contract
+    assert runtime._backend_ready_timeout_seconds == 31  # noqa: SLF001 - wiring contract
+    assert runtime._backend_ready_poll_seconds == 0.375  # noqa: SLF001 - wiring contract
+    expectation = runtime._health_probe.keywords["expectation"]  # noqa: SLF001 - wiring contract
+    assert expectation == InstalledHealthExpectation(
+        installation_id=layout.installation_id,
+        backend_version=layout.backend_version,
+        attestation_key=layout.health_attestation_key,
+    )

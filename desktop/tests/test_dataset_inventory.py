@@ -71,6 +71,8 @@ def test_installed_inventory_uses_exact_system_powershell_and_sanitizes(
         backend_service_name="ticketbox-backend",
         pg_service_name="ticketbox-pg",
         backend_version="1.0.0",
+        install_id="11111111-1111-4111-8111-111111111111",
+        health_attestation_key="a" * 64,
     )
     system = tmp_path / "Windows" / "System32"
     powershell = system / "WindowsPowerShell" / "v1.0" / "powershell.exe"

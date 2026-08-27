@@ -10,8 +10,13 @@ from pathlib import Path
 
 import pytest
 
+from backend_manager.health_probe import (
+    HealthProbeResult,
+    InstalledHealthExpectation,
+    _parse_health_payload,
+    _sign_challenge,
+)
 from backend_manager.installation import WindowsReleaseConfig
-from backend_manager.process import HealthProbeResult, TicketboxHealthExpectation, _parse_health_payload
 from backend_manager.runtime import RuntimeControlError, ServiceAccessError
 from backend_manager.windows_service import (
     BrokeredWindowsServiceRuntime,
@@ -39,6 +44,10 @@ class FakeGateway:
         self.states[name] = "stopped"
 
 
+_HEALTH_ATTESTATION_KEY = "a" * 64
+_HEALTH_CHALLENGE = "b" * 64
+
+
 class FakeClock:
     def __init__(self) -> None:
         self.now = 0.0
@@ -60,7 +69,7 @@ class FakeActionRunner:
 
 def _health_payload(
     *,
-    installation_id: str = "ticketbox-0123456789abcdef0123456789abcdef",
+    installation_id: str = "01234567-89ab-4def-8123-456789abcdef",
     runtime_access_state: str = "available",
     owner_state: str = "configured",
     owner_recovery_channel: str = "managed_host",
@@ -107,6 +116,7 @@ def _runtime(
         poll_seconds=0,
         backend_ready_timeout_seconds=120,
         backend_ready_poll_seconds=1,
+        control_actions_allowed=True,
         backend_stopped_validator=backend_stopped_validator,
     )
 
@@ -133,22 +143,46 @@ def test_status_reports_services_and_redacted_identity_health_without_raw_logs(t
 
 
 def test_health_json_requires_exact_product_version_and_installation_identity(tmp_path: Path) -> None:
-    expectation = TicketboxHealthExpectation(
+    expectation = InstalledHealthExpectation(
         backend_version="9.8.7",
-        installation_id="ticketbox-0123456789abcdef0123456789abcdef",
+        installation_id="01234567-89ab-4def-8123-456789abcdef",
+        attestation_key=_HEALTH_ATTESTATION_KEY,
     )
-    random_200 = _parse_health_payload(b'{"status":"ok"}', expectation)
-    valid = _parse_health_payload(_health_payload(), expectation)
-    wrong_install = _parse_health_payload(
-        _health_payload(installation_id="ticketbox-ffffffffffffffffffffffffffffffff"),
+    random_200 = _parse_health_payload(
+        b'{"status":"ok"}',
         expectation,
+        challenge=_HEALTH_CHALLENGE,
+        attestation="0" * 64,
+    )
+    forged_payload = json.loads(_health_payload())
+    forged = _parse_health_payload(
+        json.dumps(forged_payload).encode(),
+        expectation,
+        challenge=_HEALTH_CHALLENGE,
+        attestation="0" * 64,
+    )
+    attestation = _sign_challenge(_HEALTH_ATTESTATION_KEY, _HEALTH_CHALLENGE)
+    valid = _parse_health_payload(
+        _health_payload(),
+        expectation,
+        challenge=_HEALTH_CHALLENGE,
+        attestation=attestation,
+    )
+    wrong_install = _parse_health_payload(
+        _health_payload(installation_id="ffffffff-ffff-4fff-8fff-ffffffffffff"),
+        expectation,
+        challenge=_HEALTH_CHALLENGE,
+        attestation=attestation,
     )
     missing_owner = _parse_health_payload(
         _health_payload(owner_state="recovery_required"),
         expectation,
+        challenge=_HEALTH_CHALLENGE,
+        attestation=attestation,
     )
 
     assert random_200.state == "mismatch"
+    assert forged.state == "mismatch"
     assert valid.healthy is True
     assert valid.mobile_endpoint_state == "local_only"
     assert valid.android_binding_state == "setup_required"
@@ -160,6 +194,8 @@ def test_health_json_requires_exact_product_version_and_installation_identity(tm
     repair_required = _parse_health_payload(
         _health_payload(runtime_access_state="repair_required"),
         expectation,
+        challenge=_HEALTH_CHALLENGE,
+        attestation=attestation,
     )
     assert repair_required.healthy is True
     assert repair_required.runtime_access_state == "repair_required"
@@ -316,6 +352,7 @@ def test_start_timeout_reports_service_and_current_state(tmp_path: Path) -> None
         poll_seconds=0.25,
         backend_ready_timeout_seconds=1,
         backend_ready_poll_seconds=0.25,
+        control_actions_allowed=True,
         clock=clock,
         sleep=clock.sleep,
     )
@@ -362,6 +399,7 @@ def test_postgres_progress_can_continue_for_more_than_45_seconds(tmp_path: Path)
         poll_seconds=1,
         backend_ready_timeout_seconds=120,
         backend_ready_poll_seconds=1,
+        control_actions_allowed=True,
         clock=clock,
         sleep=clock.sleep,
     )
@@ -457,6 +495,7 @@ def test_phase_budget_outlasts_full_reachable_restart_state_machine(tmp_path: Pa
         poll_seconds=release.service_poll_seconds,
         backend_ready_timeout_seconds=release.backend_ready_timeout_seconds,
         backend_ready_poll_seconds=release.backend_ready_poll_seconds,
+        control_actions_allowed=True,
         clock=clock,
         sleep=clock.sleep,
         backend_stopped_validator=validate_stopped,
@@ -500,6 +539,7 @@ def test_blocked_health_probe_does_not_block_service_stop(tmp_path: Path) -> Non
         poll_seconds=0,
         backend_ready_timeout_seconds=120,
         backend_ready_poll_seconds=1,
+        control_actions_allowed=True,
     )
     status_thread = threading.Thread(target=runtime.status)
     status_thread.start()

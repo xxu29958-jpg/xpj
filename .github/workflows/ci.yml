@@ -226,31 +226,15 @@ jobs:
       - name: Frozen backend locked smoke build
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
 
-  windows_packaging_lifecycle:
-    name: Windows PowerShell lifecycle safety / ${{ matrix.suite.label }}
+  windows_vnext_lifecycle:
+    name: Windows vNext coordinator contracts
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
     runs-on: windows-latest
-    timeout-minutes: ${{ matrix.suite.timeout_minutes }}
-    strategy:
-      fail-fast: false
-      matrix:
-        suite:
-          - label: Database generation writer fence
-            selector: test_database_generation_writer_fence
-            timeout_minutes: 20
-          - label: Database generation authority
-            selector: test_database_generation_owner or test_database_generation_intent_bootstrap or test_database_generation_bootstrap_retirement or test_database_generation_target_authorization
-            timeout_minutes: 20
-          - label: Service lifecycle remainder
-            selector: test_service_lifecycle_contract and not heartbeat
-            timeout_minutes: 20
+    timeout-minutes: 15
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -268,21 +252,17 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.sha }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
+      - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+          python -m pip install -r backend/requirements-dev.txt
 
-      - name: Resource-isolated PowerShell lifecycle behavior
-        env:
-          PYTEST_ADDOPTS: ""
+      - name: vNext coordinator contracts
         run: >-
-          python -m pytest -q packaging/tests -m xdist_group
-          -k "${{ matrix.suite.selector }}"
+          python -m pytest -q distribution/windows/tests
           --strict-markers -p no:cacheprovider -o addopts=
-          -n 0 --dist loadfile --max-worker-restart 0
 
   windows_packaging_build:
     name: Windows installer build
@@ -299,6 +279,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -314,7 +296,7 @@ jobs:
         id: qualification
         shell: bash
         env:
-          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python -E -S scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
@@ -352,6 +334,14 @@ jobs:
           --strict-markers -p no:cacheprovider -o addopts=
           -n 4 --dist loadfile --max-worker-restart 0
 
+      - name: Windows installer resource-serial behavior
+        env:
+          PYTEST_ADDOPTS: ""
+        run: >-
+          python -m pytest -q packaging/tests -m xdist_group
+          --strict-markers -p no:cacheprovider -o addopts=
+          -n 0 --dist loadfile --max-worker-restart 0
+
       - name: Windows database maintenance contract
         run: >-
           python -m pytest -q
@@ -362,100 +352,17 @@ jobs:
 
       - name: Installer source preflight (Windows PowerShell 5.1)
         shell: powershell
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
+        working-directory: ${{ github.workspace }}
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
 
       - name: Installer source preflight (PowerShell 7)
         shell: pwsh
-        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
-
-      - name: Windows local PostgreSQL lifecycle
-        env:
-          PYTEST_ADDOPTS: ""
-        run: >-
-          python -m pytest -q
-          packaging/tests/test_local_test_postgres_lifecycle.py
-          --strict-markers -p no:cacheprovider -o addopts=
-          -n 0 --max-worker-restart 0
-
-      - name: Database generation projection real PostgreSQL contract
-        env:
-          PYTEST_ADDOPTS: ""
-          XPJ_REQUIRE_REAL_PG17_PROJECTION: "1"
-        run: >-
-          python -m pytest -q
-          packaging/tests/test_database_generation_projection_cleanup.py
-          packaging/tests/test_database_generation_projection.py
-          --strict-markers -p no:cacheprovider -o addopts=
+        working-directory: ${{ github.workspace }}
+        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
 
       - name: Frozen backend locked release build
         shell: powershell
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
-
-      - name: Exact frozen dataset restore on real local PostgreSQL
-        shell: powershell
-        env:
-          PYTEST_ADDOPTS: ""
-        run: |
-          $ErrorActionPreference = 'Stop'
-          . .\scripts\test_pg_storage_contract.ps1
-          . .\scripts\test_pg_auth_contract.ps1
-          . .\packaging\windows_operation_failure.ps1
-          $contract = Get-XpjTestPostgresContract
-          $port = [int]$contract.ports.local
-          $dataDir = Get-XpjTestPostgresDefaultDataDir -Port $port
-          $connectionEnv = Join-Path $env:RUNNER_TEMP 'ticketbox-frozen-restore.env'
-          $savedPgEnvironment = Enter-XpjCleanPostgresEnvironment
-          $primaryFailure = $null
-          $cleanupFailures = @()
-          try {
-            & .\scripts\stop_test_pg.ps1 -Port $port -DataDir $dataDir
-            & .\scripts\start_test_pg.ps1 -Port $port -DataDir $dataDir `
-              -PostgresBin (Join-Path $PWD 'packaging\vendor\pg\bin')
-            if ($LASTEXITCODE -ne 0) { throw 'frozen restore PostgreSQL start failed' }
-            $passfile = Join-Path $dataDir ([string]$contract.passfile_name)
-            python -m scripts.write_test_postgres_env `
-              --host localhost --port-profile local --admin-user postgres `
-              --existing-passfile $passfile --output $connectionEnv
-            if ($LASTEXITCODE -ne 0) { throw 'frozen restore connection contract failed' }
-            foreach ($line in [IO.File]::ReadAllLines($connectionEnv)) {
-              $separator = $line.IndexOf('=')
-              if ($separator -le 0) { throw 'malformed frozen restore connection contract' }
-              [Environment]::SetEnvironmentVariable(
-                $line.Substring(0, $separator),
-                $line.Substring($separator + 1),
-                [EnvironmentVariableTarget]::Process
-              )
-            }
-            $pgEnvironmentKeys = @(
-              Get-ChildItem Env: |
-                Where-Object { $_.Name -match '^PG' } |
-                ForEach-Object { [string]$_.Name }
-            )
-            if ($pgEnvironmentKeys.Count -ne 1 -or $pgEnvironmentKeys[0] -cne 'PGPASSFILE') {
-              throw 'frozen restore PostgreSQL environment is not sealed'
-            }
-            python scripts\smoke_test.py
-            if ($LASTEXITCODE -ne 0) { throw 'frozen restore source smoke failed' }
-            python scripts\postgres_backup_drill.py `
-              --upload-root (Join-Path $PWD 'uploads') `
-              --frozen-restore-helper `
-                (Join-Path $PWD 'dist\ticketbox-backend\ticketbox-database-maintenance.exe')
-            if ($LASTEXITCODE -ne 0) { throw 'exact frozen dataset restore failed' }
-          }
-          catch { $primaryFailure = $_ }
-          finally {
-            try { & .\scripts\stop_test_pg.ps1 -Port $port -DataDir $dataDir }
-            catch { $cleanupFailures += $_ }
-            try {
-              if (Test-Path -LiteralPath $connectionEnv) {
-                Remove-Item -LiteralPath $connectionEnv -Force -ErrorAction Stop
-              }
-            }
-            catch { $cleanupFailures += $_ }
-            try { Exit-XpjCleanPostgresEnvironment -Saved $savedPgEnvironment }
-            catch { $cleanupFailures += $_ }
-          }
-          Throw-TicketboxOperationFailure $primaryFailure $cleanupFailures
 
       - name: Frozen Desktop Manager locked release build
         shell: powershell
@@ -470,16 +377,19 @@ jobs:
       - name: Compile authoritative Inno installer
         id: compile_installer
         shell: powershell
+        working-directory: ${{ github.workspace }}
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -InstallerHashOutputFile "$env:GITHUB_OUTPUT"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -InstallerHashOutputFile "$env:GITHUB_OUTPUT"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify atomic Windows installer publish unit
         shell: powershell
+        working-directory: ${{ github.workspace }}
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve verified Windows installer publish path
@@ -529,17 +439,46 @@ jobs:
 
       - name: Verify uploaded Windows installer bytes
         shell: powershell
+        working-directory: ${{ github.workspace }}
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Reject writable installer root before materialization
+        shell: powershell
+        working-directory: ${{ github.workspace }}
+        run: |
+          $installer = @(Get-ChildItem -LiteralPath $env:INSTALLER_VERIFY_DOWNLOAD_PATH -Filter 'Ticketbox-Setup-*.exe' -File)
+          if ($installer.Count -ne 1) { throw "Expected one verified Setup.exe publish artifact." }
+          $nonce = [Guid]::NewGuid().ToString("N")
+          $rejectedRoot = Join-Path $env:RUNNER_TEMP ("ticketbox-rejected-root-" + $nonce)
+          $logPath = Join-Path $env:RUNNER_TEMP ("ticketbox-rejected-root-" + $nonce + ".log")
+          $arguments = @(
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/NORESTART',
+            ("/DIR=" + $rejectedRoot),
+            ("/LOG=" + $logPath)
+          )
+          $process = Start-Process -FilePath $installer[0].FullName -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 7) {
+            throw "Writable /DIR was not rejected by PrepareToInstall: exit=$($process.ExitCode)"
+          }
+          if (Test-Path -LiteralPath $rejectedRoot) {
+            throw "Rejected writable /DIR was materialized before Setup failed."
+          }
+          if (-not (Test-Path -LiteralPath $logPath -PathType Leaf)) {
+            throw "Rejected Setup run did not produce its promised diagnostic log."
+          }
 
   windows_packaging:
     name: Windows release packaging
     needs:
       - scope
-      - windows_packaging_lifecycle
+      - windows_vnext_lifecycle
       - windows_packaging_build
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -575,9 +514,9 @@ jobs:
           AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
           SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
           SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
-          LIFECYCLE_RESULT: ${{ needs.windows_packaging_lifecycle.result }}
-          LIFECYCLE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_sha }}
-          LIFECYCLE_SOURCE_SHA: ${{ needs.windows_packaging_lifecycle.outputs.qualification_source_sha }}
+          VNEXT_RESULT: ${{ needs.windows_vnext_lifecycle.result }}
+          VNEXT_SHA: ${{ needs.windows_vnext_lifecycle.outputs.qualification_sha }}
+          VNEXT_SOURCE_SHA: ${{ needs.windows_vnext_lifecycle.outputs.qualification_source_sha }}
           BUILD_RESULT: ${{ needs.windows_packaging_build.result }}
           BUILD_SHA: ${{ needs.windows_packaging_build.outputs.qualification_sha }}
           BUILD_SOURCE_SHA: ${{ needs.windows_packaging_build.outputs.qualification_source_sha }}
@@ -585,8 +524,9 @@ jobs:
           python -E -S backend/scripts/verify_scoped_ci_results.py
           --label "Windows release packaging"
           --scope-key WINDOWS_SCOPE
-          --lane LIFECYCLE
+          --lane VNEXT
           --lane BUILD
+          --source-lane BUILD
 
   backend:
     name: Backend

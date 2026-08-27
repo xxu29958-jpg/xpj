@@ -72,6 +72,7 @@ _WINDOWS_ONLY_BACKEND_FILES = {
     "backend/scripts/test_pg_storage_contract.ps1",
     "backend/scripts/windows_build_provenance.ps1",
     "backend/scripts/windows_backend_build_provenance.ps1",
+    "backend/scripts/windows_python_build_environment.ps1",
     "backend/tests/_infra/windows_tree.py",
 }
 _POSTGRES_BACKEND_PREFIXES = ("backend/tests/", "backend/audit/")
@@ -86,7 +87,6 @@ _BACKEND_RELEASE_FILES = {
     "backend/requirements.txt",
 }
 _WINDOWS_SECURITY_BACKEND_FILES = {
-    "backend/app/services/installer_runtime_guard.py",
     "backend/app/services/runtime_settings_store.py",
     "backend/app/services/secure_file.py",
     "backend/app/services/secure_file_windows.py",
@@ -101,6 +101,15 @@ _DATASET_MAINTENANCE_ROOT_MODULES = (
     "app.database._dataset_restore_action",
     "app.database._dataset_restore_authority",
     "app.database._dataset_restore_security",
+)
+_FRESH_INSTALL_ROOT_MODULES = (
+    "app.database._fresh_schema_upgrade",
+    "app.services.identity_service",
+)
+_INSTALLATION_HEALTH_ROOT_MODULES = (
+    "app.database._database_generation_runtime_admission",
+    "app.services.installation_health_attestation",
+    "app.services.installation_health_service",
 )
 
 
@@ -157,10 +166,10 @@ def _app_imports(path: pathlib.Path) -> set[str]:
     return imported
 
 
-def dataset_maintenance_python_dependencies() -> frozenset[str]:
+def _app_python_dependencies(root_modules: tuple[str, ...]) -> frozenset[str]:
     pending = [
         source
-        for module_name in _DATASET_MAINTENANCE_ROOT_MODULES
+        for module_name in root_modules
         if (source := _app_module_source(module_name)) is not None
     ]
     visited: set[pathlib.Path] = set()
@@ -179,7 +188,23 @@ def dataset_maintenance_python_dependencies() -> frozenset[str]:
     )
 
 
+def dataset_maintenance_python_dependencies() -> frozenset[str]:
+    return _app_python_dependencies(_DATASET_MAINTENANCE_ROOT_MODULES)
+
+
+def fresh_install_python_dependencies() -> frozenset[str]:
+    return _app_python_dependencies(_FRESH_INSTALL_ROOT_MODULES)
+
+
+def installation_health_python_dependencies() -> frozenset[str]:
+    return _app_python_dependencies(_INSTALLATION_HEALTH_ROOT_MODULES)
+
+
 _WINDOWS_DATASET_MAINTENANCE_FILES = dataset_maintenance_python_dependencies()
+_WINDOWS_FRESH_INSTALL_FILES = fresh_install_python_dependencies()
+_WINDOWS_INSTALLATION_HEALTH_FILES = installation_health_python_dependencies() | {
+    "backend/app/main.py",
+}
 _WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
     "backend/app/database/_dataset_",
 )
@@ -210,6 +235,14 @@ _EXACT_SCOPE_RULES = {
         _WINDOWS_DATASET_MAINTENANCE_FILES,
         ("postgres", "backend_frozen", "windows"),
     ),
+    **dict.fromkeys(
+        _WINDOWS_FRESH_INSTALL_FILES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
+    **dict.fromkeys(
+        _WINDOWS_INSTALLATION_HEALTH_FILES,
+        ("postgres", "backend_frozen", "windows"),
+    ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
     _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
     "backend/app/version.py": ("postgres", "desktop", "windows"),
@@ -226,6 +259,7 @@ _PREFIX_SCOPE_RULES = (
     ),
     (_POSTGRES_WINDOWS_BACKEND_PREFIXES, ("postgres", "backend_frozen")),
     (_WINDOWS_ONLY_BACKEND_PREFIXES, ("windows",)),
+    (("distribution/",), ("windows",)),
     (_POSTGRES_BACKEND_PREFIXES, ("postgres",)),
 )
 _STATUS_FUNCTION = re.compile(r"(?i)\b(success|always|failure|cancelled)\s*\(")

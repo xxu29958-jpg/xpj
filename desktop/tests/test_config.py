@@ -212,6 +212,8 @@ def test_auto_mode_uses_safe_install_metadata_without_reading_protected_env(tmp_
         backend_service_name="TicketboxBackendConfigured",
         pg_service_name="TicketboxPgConfigured",
         backend_version="9.8.7",
+        install_id="11111111-1111-4111-8111-111111111111",
+        health_attestation_key="a" * 64,
     )
     monkeypatch.setattr("backend_manager.config.discover_installed_layout", lambda: layout)
     monkeypatch.setattr("backend_manager.config.load_installed_release_config", lambda _layout: _release_config())

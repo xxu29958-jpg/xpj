@@ -45,7 +45,7 @@ def _status(*, degraded: bool) -> dict[str, object]:
         "owner_recovery_channel": "managed_host" if not degraded else "unknown",
         "owner_url": None if degraded else "http://127.0.0.1:8000/owner",
         "version": "1.2.0",
-        "service_controls_available": not degraded,
+        "service_controls_available": False,
         "log": ["运行投影不可用；未使用启动时的旧安装信息。"] if degraded else ["服务正常。"],
         "control_error": "安装信息已变化或不可用；请修复或重新安装小票夹。" if degraded else None,
         "action_notice": None,
@@ -82,6 +82,9 @@ def _probe_script(status: dict[str, object]) -> str:
         button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1
       ).length,
       primaryDisabled: document.getElementById("primaryAction").disabled,
+      primaryHidden: document.getElementById("primaryAction").hidden,
+      restartHidden: document.getElementById("restartAction").hidden,
+      maintenanceHidden: document.getElementById("maintenanceCard").hidden,
       primaryAction: document.getElementById("primaryAction").dataset.action,
       primaryText: document.getElementById("primaryAction").textContent.trim(),
       diagnosticsDisabled: document.getElementById("diagnosticExportAction").disabled,
@@ -119,10 +122,8 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
     source = _UI_HTML.read_text(encoding="utf-8")
     assert source.count(_STARTUP_SCRIPT) == 1
     healthy = _status(degraded=False)
-    stopped = {**healthy, "running": False, "health": False, "backend_service_state": "stopped"}
     script = f"""    (async () => {{
       const healthy = {json.dumps(healthy, ensure_ascii=False)};
-      const stopped = {json.dumps(stopped, ensure_ascii=False)};
       render(healthy);
       window.fetch = async () => {{ throw new Error("offline"); }};
       let offlineThrew = false;
@@ -133,21 +134,7 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
         androidDisabled: document.getElementById("androidAction").disabled,
         overallText: document.getElementById("overallText").textContent
       }};
-
-      render(healthy);
-      window.fetch = async (url) => {{
-        if (url === "/api/stop") {{
-          return {{status: 200, ok: true, json: async () => stopped}};
-        }}
-        throw new Error("offline");
-      }};
-      await act("stop", document.getElementById("primaryAction"));
-      const primary = document.getElementById("primaryAction");
-      document.body.setAttribute("data-behavior-probe", JSON.stringify({{
-        offline,
-        primaryAction: primary.dataset.action,
-        primaryText: primary.textContent.trim()
-      }}));
+      document.body.setAttribute("data-behavior-probe", JSON.stringify({{offline}}));
     }})();"""
     page = tmp_path / "manager-behavior.html"
     page.write_text(source.replace(_STARTUP_SCRIPT, script), encoding="utf-8")
@@ -179,7 +166,10 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
     assert probe["unnamedButtons"] == 0
     assert probe["clippedButtons"] == 0
     assert probe["diagnosticsDisabled"] is False
-    assert probe["primaryDisabled"] is degraded
+    assert probe["primaryDisabled"] is True
+    assert probe["primaryHidden"] is True
+    assert probe["restartHidden"] is True
+    assert probe["maintenanceHidden"] is True
     assert probe["primaryAction"] == ("start" if degraded else "stop")
     assert probe["primaryText"] == ("▶启动" if degraded else "■停止")
     assert probe["overallText"] == ("需要处理" if degraded else "运行正常")
@@ -188,7 +178,7 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
-def test_manager_offline_and_service_action_states_remain_coherent(tmp_path: Path) -> None:
+def test_manager_offline_state_remains_coherent(tmp_path: Path) -> None:
     probe = _render_behavior_probe(tmp_path)
 
     assert probe["offline"] == {
@@ -197,8 +187,6 @@ def test_manager_offline_and_service_action_states_remain_coherent(tmp_path: Pat
         "androidDisabled": True,
         "overallText": "管理器离线",
     }
-    assert probe["primaryAction"] == "start"
-    assert probe["primaryText"] == "▶启动"
 
 
 def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(

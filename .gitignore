@@ -53,6 +53,11 @@ release_audit.log
 # Backend EXE packaging + venv build/rollback artifacts (regenerable; never committed)
 backend/dist/
 backend/build/
+# vNext installer build scripts live under distribution/windows/build; keep them
+# despite the global build/ ignore. Frozen payload EXEs remain regenerable.
+!distribution/windows/build/
+!distribution/windows/build/**
+distribution/windows/payload/*.exe
 desktop/dist/
 # Vendored native bundle binaries (PG / Shawl) for ADR-0047 Option D — regenerable
 # via backend/packaging/build_pg_bundle.ps1 (PG) + GitHub release (Shawl); never committed.

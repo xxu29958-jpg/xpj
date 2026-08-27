@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from backend_manager.dataset_inventory import BackupInventoryItem
 
-from backend_manager.process import HealthProbeResult
+from backend_manager.health_probe import HealthProbeResult
 from backend_manager.supervisor import BackendSupervisor, SupervisorControlError
 
 
@@ -58,6 +58,7 @@ class RuntimeStatus:
     runtime_access_state: str = "unknown"
     owner_state: str = "unknown"
     owner_recovery_channel: str = "unknown"
+    service_controls_available: bool = True
 
 
 class BackendRuntime(Protocol):

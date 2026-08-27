@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import ctypes
 import hashlib
 import json
 import os
@@ -15,14 +14,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from backend_manager.version_contract import is_managed_release_version
+from backend_manager.windows_known_folders import DOWNLOADS_FOLDER_ID, known_folder_path
 
 _MANIFEST_NAME = "BUILD_PROVENANCE.json"
 _MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 _MAX_MANIFEST_FILES = 10_000
-_DOWNLOADS_FOLDER_ID = UUID("374de290-123f-4565-9164-39c4925e467b")
 _UTC_TIMESTAMP_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z\Z")
 _SOURCE_KEYS = frozenset({"algorithm", "fingerprint", "files"})
 _MANAGER_MANIFEST_KEYS = frozenset(
@@ -42,10 +41,9 @@ _BACKEND_MANIFEST_KEYS = frozenset(
 _STARTUP_FAILURE_CODES = frozenset(
     {
         "installation_missing",
+        "installed_binding_invalid",
         "manager_identity_mismatch",
         "manager_config_invalid",
-        "registry_contract_invalid",
-        "release_contract_invalid",
         "runtime_config_invalid",
         "service_contract_invalid",
     },
@@ -93,49 +91,15 @@ _MANIFEST_SPECS = (
 )
 
 
-class _Guid(ctypes.Structure):
-    _fields_ = [
-        ("data1", ctypes.c_uint32),
-        ("data2", ctypes.c_uint16),
-        ("data3", ctypes.c_uint16),
-        ("data4", ctypes.c_ubyte * 8),
-    ]
-
-    @classmethod
-    def from_uuid(cls, value: UUID) -> _Guid:
-        raw = value.bytes_le
-        return cls(
-            int.from_bytes(raw[0:4], "little"),
-            int.from_bytes(raw[4:6], "little"),
-            int.from_bytes(raw[6:8], "little"),
-            (ctypes.c_ubyte * 8)(*raw[8:16]),
-        )
-
-
 def downloads_directory() -> Path:
     """Resolve the current user's Downloads known folder without a fixed path."""
     if os.name != "nt":
         return Path.home() / "Downloads"
 
-    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
-    ole32 = ctypes.WinDLL("ole32", use_last_error=True)
-    shell32.SHGetKnownFolderPath.argtypes = [
-        ctypes.POINTER(_Guid),
-        ctypes.c_uint32,
-        ctypes.c_void_p,
-        ctypes.POINTER(ctypes.c_wchar_p),
-    ]
-    shell32.SHGetKnownFolderPath.restype = ctypes.c_long
-    ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
-    folder_id = _Guid.from_uuid(_DOWNLOADS_FOLDER_ID)
-    raw_path = ctypes.c_wchar_p()
-    result = shell32.SHGetKnownFolderPath(ctypes.byref(folder_id), 0, None, ctypes.byref(raw_path))
-    if result != 0 or not raw_path.value:
-        raise DiagnosticExportError("Windows 无法定位当前用户的下载文件夹。")
     try:
-        return Path(raw_path.value)
-    finally:
-        ole32.CoTaskMemFree(raw_path)
+        return known_folder_path(DOWNLOADS_FOLDER_ID, label="Downloads")
+    except RuntimeError as exc:
+        raise DiagnosticExportError("Windows 无法定位当前用户的下载文件夹。") from exc
 
 
 def _manifest_paths() -> tuple[Path, ...]:

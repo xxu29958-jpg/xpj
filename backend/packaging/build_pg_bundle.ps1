@@ -63,14 +63,6 @@ if (-not (Test-Path -LiteralPath $BuildProvenanceScript -PathType Leaf)) {
     throw "缺少 Windows build provenance helper：$BuildProvenanceScript"
 }
 . $BuildProvenanceScript
-$InstallationSafetyScript = Join-Path $ScriptDir "windows_installation_safety.ps1"
-$DatabaseSafetyScript = Join-Path $ScriptDir "windows_database_safety.ps1"
-foreach ($requiredScript in @($InstallationSafetyScript, $DatabaseSafetyScript)) {
-    if (-not (Test-Path -LiteralPath $requiredScript -PathType Leaf)) {
-        throw "缺少 PostgreSQL 安全 helper：$requiredScript"
-    }
-    . $requiredScript
-}
 if ($OutDir.Trim().Length -eq 0) { $OutDir = Join-Path $ScriptDir "vendor\pg" }
 $VendorRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "vendor"))
 $OutDir = [System.IO.Path]::GetFullPath($OutDir)
@@ -128,6 +120,43 @@ $KeepTopFiles = @("server_license.txt", "commandlinetools_3rd_party_licenses.txt
 
 function Write-Step([string]$m) { Write-Host ""; Write-Host "==> $m" -ForegroundColor Cyan }
 function Write-Ok([string]$m)   { Write-Host "    $m" -ForegroundColor Green }
+
+function Invoke-TicketboxWithPgPassFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$DatabaseUrl,
+        [Parameter(Mandatory = $true)][string]$Password,
+        [Parameter(Mandatory = $true)][scriptblock]$Action
+    )
+    # libpq pgpass: hostname:port:database:username:password
+    # https://www.postgresql.org/docs/current/libpq-pgpass.html
+    if ($DatabaseUrl -notmatch "^postgresql://([^:@/]+)@([^:/]+):(\d+)/([^?]+)") {
+        throw "Verify DatabaseUrl 不是 libpq pgpass 可解析的 postgresql://user@host:port/db"
+    }
+    $pgUser = $Matches[1]
+    $pgHost = $Matches[2]
+    $pgPort = $Matches[3]
+    $pgDb = $Matches[4]
+    $passDir = Join-Path $env:TEMP ("ticketbox-pgpass-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $passDir | Out-Null
+    $pgpass = Join-Path $passDir "pgpass.conf"
+    $line = "{0}:{1}:{2}:{3}:{4}" -f $pgHost, $pgPort, $pgDb, $pgUser, $Password
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($pgpass, $line + [Environment]::NewLine, $utf8NoBom)
+    $previous = [Environment]::GetEnvironmentVariable("PGPASSFILE")
+    try {
+        $env:PGPASSFILE = $pgpass
+        return & $Action $DatabaseUrl
+    }
+    finally {
+        if ($null -eq $previous -or $previous -eq "") {
+            Remove-Item Env:PGPASSFILE -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:PGPASSFILE = $previous
+        }
+        Remove-Item -LiteralPath $passDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 function Assert-TicketboxNoReparseAncestors([string]$Path, [string]$Label) {
     $cursor = [System.IO.Path]::GetFullPath($Path)
@@ -433,6 +462,11 @@ Write-Ok ("完成：bin {0} EXE + {1} DLL，全包 {2} MB。" -f $exeCount, $dll
 
 # ── 5) 可选独立冒烟（裁出的 initdb/postgres/psql 自洽性）──────────────────────
 if ($Verify) {
+    $InstallationSafetyScript = Join-Path $ScriptDir "windows_installation_safety.ps1"
+    if (-not (Test-Path -LiteralPath $InstallationSafetyScript -PathType Leaf)) {
+        throw "缺少 PostgreSQL 安全 helper：$InstallationSafetyScript"
+    }
+    . $InstallationSafetyScript
     if ($VerifyPort -eq 5432 -or $VerifyPort -eq 5433 -or $VerifyPort -eq 5438) {
         throw "拒绝端口 ${VerifyPort}：5432=prod / 5433=CI / 5438=test。换专用端口（默认 5439）。"
     }

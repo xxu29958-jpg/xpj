@@ -1,4 +1,4 @@
-"""One-shot, exact-base test-retirement ratchets for completed owner cuts."""
+"""Exact-base test-retirement floors for completed owner cuts."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _violations_for(
     )[1]
 
 
-def _assert_exact_installer_hop(
+def _assert_exact_installer_retirement_floor(
     mod: Any,
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -47,6 +47,17 @@ def _assert_exact_installer_hop(
             "installer_pytest_count",
             base_count,
             current_count,
+            base_commit,
+        )
+        == []
+    )
+    assert (
+        _violations_for(
+            mod,
+            monkeypatch,
+            "installer_pytest_count",
+            base_count,
+            current_count + 1,
             base_commit,
         )
         == []
@@ -80,7 +91,7 @@ def _assert_exact_installer_hop(
     )
 
 
-def test_pr_delta_allows_only_exact_installer_test_retirements(
+def test_pr_delta_allows_only_exact_installer_test_retirement_floors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
@@ -88,28 +99,33 @@ def test_pr_delta_allows_only_exact_installer_test_retirements(
         (
             "051464999fc1f71d9072bb5c9cfc012b521181cd",
             (387, 379),
-            ((386, 379), (387, 380), (387, 378), (388, 379), (379, 378)),
+            ((386, 379), (387, 378), (388, 379), (379, 378)),
         ),
         (
             "9d74b04f318362d5e222d897787db074bb5ca8ab",
             (379, 282),
-            ((378, 282), (379, 283), (379, 281), (380, 282), (282, 281)),
+            ((378, 282), (379, 281), (380, 282), (282, 281)),
         ),
         (
             "ce9a5aa413f20e5455fe0572d9416187038135b0",
             (283, 260),
-            ((282, 260), (283, 261), (283, 259), (284, 260), (260, 259)),
+            ((282, 260), (283, 259), (284, 260), (260, 259)),
+        ),
+        (
+            "6557125826d7c76a06568164814b4e5cb9e08f88",
+            (369, 76),
+            ((368, 76), (369, 75), (370, 76), (76, 75)),
         ),
     )
     for base_commit, accepted_hop, neighboring_hops in hops:
-        _assert_exact_installer_hop(
+        _assert_exact_installer_retirement_floor(
             mod,
             monkeypatch,
             base_commit=base_commit,
             accepted_hop=accepted_hop,
             neighboring_hops=neighboring_hops,
         )
-    for base_count, current_count in ((283, 260), (379, 282), (387, 379)):
+    for base_count, current_count in ((369, 76), (283, 260), (379, 282), (387, 379)):
         base_commit = next(commit for commit, hop, _ in hops if hop == (base_count, current_count))
         violations = _violations_for(
             mod,

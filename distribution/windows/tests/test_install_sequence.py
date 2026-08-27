@@ -1,0 +1,563 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+from fakes import MemoryStores, RecordingAdapterBundle, make_install_request as _request
+from ticketbox_lifecycle import cli
+from ticketbox_lifecycle.domain.install import (
+    hash_install_identity,
+    hash_request_payload,
+    inspect_machine,
+    install_or_resume,
+)
+from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
+from ticketbox_lifecycle.schemas import (
+    APPLY_SEQUENCE,
+    ActiveOperation,
+    CommandResult,
+    InstallRequest,
+)
+
+
+def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    seen_active_before_apply = {"value": False}
+    seen_unpublished_through_health = {"value": False}
+    operation_store_order: list[str] = []
+
+    original_files_apply = adapters.files.apply
+    original_health_verify = adapters.dataset.verify
+    original_prepare = stores.prepare
+    original_require_fresh_inputs = stores.require_fresh_inputs
+
+    def wrapped_files_apply(req: InstallRequest, step: str) -> str:
+        assert stores.read_active() is not None
+        assert stores.read_active().phase == "prepared"
+        assert stores.read() is None
+        seen_active_before_apply["value"] = True
+        return original_files_apply(req, step)
+
+    def wrapped_health_verify(req: InstallRequest, step: str) -> None:
+        assert stores.read() is None
+        seen_unpublished_through_health["value"] = True
+        original_health_verify(req, step)
+
+    def wrapped_prepare(req: InstallRequest) -> None:
+        operation_store_order.append("prepare")
+        original_prepare(req)
+
+    def wrapped_require_fresh_inputs(req: InstallRequest) -> None:
+        operation_store_order.append("fresh-preflight")
+        original_require_fresh_inputs(req)
+
+    adapters.files.apply = wrapped_files_apply  # type: ignore[method-assign]
+    adapters.dataset.verify = wrapped_health_verify  # type: ignore[method-assign]
+    stores.prepare = wrapped_prepare  # type: ignore[method-assign]
+    stores.require_fresh_inputs = wrapped_require_fresh_inputs  # type: ignore[method-assign]
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert result.ok
+    assert result.phase == "committed"
+    assert result.pairing_code == "12345678"
+    assert result.pairing_expires_at == "2026-08-25T12:00:00Z"
+    assert seen_active_before_apply["value"] is True
+    assert stores.operation_store_prepared is True
+    assert seen_unpublished_through_health["value"] is True
+    assert stores.read() is not None
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "committed"
+    assert stores.history == []
+    assert adapters.apply_order() == list(APPLY_SEQUENCE)
+    assert operation_store_order == ["fresh-preflight", "prepare"]
+    assert stores.binding_publish_count == 1
+    assert stores.fresh_inputs_check_count == 1
+    binding = stores.read()
+    assert binding is not None
+    assert binding.install_id
+    assert binding.dataset_id
+    assert binding.release_manifest_sha256 == request.release_manifest_sha256
+    assert binding.release_manifest_sha256 != "pending"
+
+
+def test_backend_first_start_consumes_one_stable_active_publication(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    original_start = adapters.scm.apply
+    original_health_verify = adapters.dataset.verify
+    original_publish = stores.publish_active
+    backend_reading = False
+    observed_health = False
+    published: list[tuple[str, str | None]] = []
+
+    def start_backend(req: InstallRequest, step: str) -> str:
+        nonlocal backend_reading
+        result = original_start(req, step)
+        if step == "start_services":
+            backend_reading = True
+        return result
+
+    def verify_health(req: InstallRequest, step: str) -> None:
+        nonlocal backend_reading, observed_health
+        if step == "health":
+            active = stores.read_active()
+            assert active is not None
+            assert active.phase == "data_ready"
+            assert active.completed_step == "owner_claim"
+            backend_reading = False
+            observed_health = True
+        original_health_verify(req, step)
+
+    def publish_active(operation: ActiveOperation) -> None:
+        if backend_reading:
+            raise OSError("injected active.json sharing violation")
+        published.append((operation.phase, operation.completed_step))
+        original_publish(operation)
+
+    adapters.scm.apply = start_backend  # type: ignore[method-assign]
+    adapters.dataset.verify = verify_health  # type: ignore[method-assign]
+    stores.publish_active = publish_active  # type: ignore[method-assign]
+
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    assert result.ok is True
+    assert observed_health is True
+    assert ("release_activated", "start_services") not in published
+    assert ("release_activated", "health") in published
+    assert ("committed", "health") in published
+
+
+def test_commit_precedes_rebuildable_backend_autostart_projection(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    order: list[str] = []
+    original_publish = stores.publish
+    original_enable = adapters.scm.enable_autostart
+    original_publish_active = stores.publish_active
+
+    def publish(binding) -> None:
+        order.append("binding")
+        original_publish(binding)
+
+    def enable_autostart(bound: InstallRequest) -> None:
+        assert stores.read() is not None
+        assert stores.read_active() is not None
+        assert stores.read_active().phase == "committed"
+        order.append("autostart")
+        original_enable(bound)
+
+    def publish_active(operation) -> None:
+        if operation.phase == "committed":
+            order.append("commit")
+        original_publish_active(operation)
+
+    stores.publish = publish  # type: ignore[method-assign]
+    adapters.scm.enable_autostart = enable_autostart  # type: ignore[method-assign]
+    stores.publish_active = publish_active  # type: ignore[method-assign]
+
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    assert result.ok is True
+    assert order == ["binding", "commit", "autostart"]
+    assert adapters.scm.autostart_enabled is True
+
+
+def test_autostart_failure_is_retryable_without_republishing_binding(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.scm.fail_autostart = True
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    assert first.ok is False
+    assert first.code == "injected_autostart_failure"
+    assert first.installation_published is True
+    assert stores.binding_publish_count == 1
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "committed"
+
+    adapters.scm.fail_autostart = False
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+    second = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert second.ok is True
+    assert stores.binding_publish_count == 1
+    assert adapters.scm.autostart_enabled is True
+
+
+def test_health_failure_keeps_binding_unpublished(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.dataset.fail_on = "health"
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert result.ok is False
+    assert result.installation_published is False
+    assert stores.read() is None
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "failed_recoverable"
+    assert stores.history == []
+    assert adapters.scm.fence_calls == 1
+    assert adapters.scm.backend_fenced is True
+
+
+def test_resume_after_health_failure_publishes_binding_once_after_success(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.dataset.fail_on = "health"
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert first.ok is False
+    assert stores.read() is None
+    adapters.dataset.fail_on = None
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+    second = install_or_resume(stores.as_lifecycle_stores(), resume)
+    assert second.ok
+    assert second.phase == "committed"
+    assert stores.binding_publish_count == 1
+    assert stores.read() is not None
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "committed"
+    assert stores.fresh_inputs_check_count == 1
+
+
+@pytest.mark.parametrize("code", ["command_outcome_unknown", "command_start_failed"])
+def test_unknown_verification_never_authorizes_apply(tmp_path: Path, code: str) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+
+    def fail_verification(_request: InstallRequest, _step: str) -> None:
+        raise LifecycleError(code, "injected command boundary failure")
+
+    adapters.files.verify = fail_verification  # type: ignore[method-assign]
+
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    assert result.ok is False
+    assert result.code == code
+    assert adapters.files.apply_calls == 0
+
+
+def test_active_operation_is_archived_before_committed_result_is_published(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+    result_path = tmp_path / "result.json"
+    events: list[str] = []
+    archive_committed = stores.archive_committed
+    write_result = cli._write_result
+
+    def record_archive(operation: ActiveOperation) -> None:
+        events.append("archive")
+        archive_committed(operation)
+
+    def record_result(path: Path, command_result: CommandResult) -> None:
+        events.append("result")
+        write_result(path, command_result)
+
+    monkeypatch.setattr(stores, "archive_committed", record_archive)
+    monkeypatch.setattr(cli, "_write_result", record_result)
+
+    assert cli._deliver_install_result(result_path, result, stores.as_lifecycle_stores()) == 0
+    assert events == ["archive", "result"]
+    delivered = json.loads(result_path.read_text(encoding="utf-8"))
+    assert delivered["ok"] is True
+    assert delivered["pairing_code"] == "12345678"
+    assert stores.read_active() is None
+    assert [operation.phase for operation in stores.history] == ["committed"]
+
+
+def test_archived_commit_replays_pairing_after_setup_crashes_before_consuming_result(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path, operation_id="fresh-" + "a" * 64)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    first_result = tmp_path / "first-setup" / "result.json"
+
+    assert cli._deliver_install_result(first_result, first, stores.as_lifecycle_stores()) == 0
+    assert stores.read_active() is None
+    assert stores.read_committed(request.operation_id) is not None
+
+    replay_request = InstallRequest(**{**request.__dict__, "command": "resume"})
+    replay = install_or_resume(stores.as_lifecycle_stores(), replay_request)
+    second_result = tmp_path / "second-setup" / "result.json"
+
+    assert replay.ok is True
+    assert replay.operation_id == request.operation_id
+    assert replay.pairing_code == first.pairing_code
+    assert cli._deliver_install_result(second_result, replay, stores.as_lifecycle_stores()) == 0
+    assert json.loads(second_result.read_text(encoding="utf-8"))["pairing_code"] == "12345678"
+
+
+def test_archived_result_replay_does_not_take_over_another_active_operation(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path, operation_id="fresh-" + "a" * 64)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert cli._deliver_install_result(
+        tmp_path / "first.json",
+        first,
+        stores.as_lifecycle_stores(),
+    ) == 0
+    replay_request = InstallRequest(**{**request.__dict__, "command": "resume"})
+    replay = install_or_resume(stores.as_lifecycle_stores(), replay_request)
+    committed = stores.read_committed(request.operation_id)
+    assert committed is not None
+    foreign = replace(committed, operation_id="foreign-operation")
+    stores.prepare(request)
+    stores.publish_active(foreign)
+
+    assert cli._deliver_install_result(
+        tmp_path / "replay.json",
+        replay,
+        stores.as_lifecycle_stores(),
+    ) == 2
+    assert stores.read_active() == foreign
+
+
+def test_result_write_failure_after_archive_replays_exact_committed_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+
+    def fail_result_write(path: Path, result: object) -> None:
+        del path, result
+        raise OSError("injected result write failure")
+
+    monkeypatch.setattr(cli, "_write_result", fail_result_write)
+    with pytest.raises(OSError, match="result write failure"):
+        cli._deliver_install_result(tmp_path / "result.json", first, stores.as_lifecycle_stores())
+
+    assert stores.read_active() is None
+    assert [operation.phase for operation in stores.history] == ["committed"]
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+    replay = install_or_resume(stores.as_lifecycle_stores(), resume)
+    assert replay.ok is True
+    assert replay.pairing_code == first.pairing_code
+    assert replay.pairing_expires_at == first.pairing_expires_at
+
+
+def test_committed_resume_restarts_backend_and_reverifies_health_after_cold_crash(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert first.ok is True
+    assert stores.read_active() is not None
+    assert stores.read_active().phase == "committed"
+
+    adapters.scm._done.discard("start_services")
+    start_apply_calls = adapters.scm.apply_calls
+    autostart_calls = adapters.scm.autostart_calls
+    health_verify_calls = adapters.dataset.verify_calls
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+
+    replay = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert replay.ok is True
+    assert adapters.scm.autostart_calls == autostart_calls + 1
+    assert adapters.scm.apply_calls == start_apply_calls + 1
+    assert adapters.dataset.verify_calls == health_verify_calls + 1
+
+
+def test_committed_resume_starts_stopped_services_before_claiming_owner(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert first.ok is True
+
+    adapters.scm._done.discard("start_services")
+    claim_owner = adapters.dataset.claim_owner
+
+    def require_running_services(bound: InstallRequest):
+        if "start_services" not in adapters.scm._done:
+            raise LifecycleError("owner_claim_failed", "PostgreSQL is stopped")
+        return claim_owner(bound)
+
+    adapters.dataset.claim_owner = require_running_services  # type: ignore[method-assign]
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+
+    replay = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert replay.ok is True
+    assert "start_services" in adapters.scm._done
+
+
+def test_committed_resume_does_not_restart_an_already_running_backend(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    assert install_or_resume(stores.as_lifecycle_stores(), request).ok is True
+    start_apply_calls = adapters.scm.apply_calls
+    autostart_calls = adapters.scm.autostart_calls
+    health_verify_calls = adapters.dataset.verify_calls
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+
+    replay = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert replay.ok is True
+    assert adapters.scm.autostart_calls == autostart_calls + 1
+    assert adapters.scm.apply_calls == start_apply_calls
+    assert adapters.dataset.verify_calls == health_verify_calls + 1
+
+
+def test_fresh_install_refuses_unbound_mutable_state_before_publishing_active(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    stores.reject_fresh_inputs = True
+
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), request)
+        raise AssertionError("fresh install must reject preexisting mutable state")
+    except LifecycleViolation as exc:
+        assert exc.code == "preexisting_mutable_state"
+
+    assert stores.read_active() is None
+    assert stores.fresh_inputs_check_count == 1
+
+
+def test_second_install_refuses_new_identity(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    assert install_or_resume(stores.as_lifecycle_stores(), request).ok
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), request)
+        raise AssertionError("second install must fail")
+    except LifecycleViolation as exc:
+        assert exc.code == "already_installed"
+
+
+def test_resume_replays_initdb_when_shape_precedes_durable_completion(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.postgres.fail_on = "postgres_initdb"
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert first.ok is False
+    adapters.postgres.fail_on = None
+    adapters.postgres._done.add("postgres_initdb")
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+    second = install_or_resume(stores.as_lifecycle_stores(), resume)
+    assert second.ok
+    assert adapters.files.apply_calls == 1
+    assert adapters.security.apply_calls == 1
+    assert adapters.postgres.applied == ["postgres_initdb", "start_postgres", "roles_database"]
+    assert adapters.postgres.apply_calls == 4
+
+
+def test_later_durable_progress_never_reinitializes_pgdata_when_verify_fails(
+    tmp_path: Path,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.dataset.fail_on = "health"
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    first = install_or_resume(stores.as_lifecycle_stores(), request)
+    assert first.ok is False
+    active = stores.read_active()
+    assert active is not None
+    assert active.completed_step == "owner_claim"
+    apply_calls = adapters.postgres.apply_calls
+    adapters.postgres._done.remove("postgres_initdb")
+    adapters.dataset.fail_on = None
+
+    resume = InstallRequest(**{**request.__dict__, "command": "resume"})
+    second = install_or_resume(stores.as_lifecycle_stores(), resume)
+
+    assert second.ok is False
+    assert adapters.postgres.apply_calls == apply_calls
+
+
+def test_resume_rejects_different_operation_or_data_root(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    adapters.postgres.fail_on = "postgres_initdb"
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    assert install_or_resume(stores.as_lifecycle_stores(), request).ok is False
+    other_op = InstallRequest(**{**request.__dict__, "operation_id": "22222222-2222-4222-8222-222222222222"})
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), other_op)
+        raise AssertionError("different operation_id must not take over")
+    except LifecycleViolation as exc:
+        assert exc.code == "operation_conflict"
+    other_root = InstallRequest(**{**request.__dict__, "data_root": str(tmp_path / "other-data")})
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), other_root)
+        raise AssertionError("different data_root must not resume")
+    except LifecycleViolation as exc:
+        assert exc.code == "request_mismatch"
+
+
+def test_install_identity_hash_ignores_operation_id(tmp_path: Path) -> None:
+    first = _request(tmp_path, "11111111-1111-4111-8111-111111111111")
+    second = _request(tmp_path, "22222222-2222-4222-8222-222222222222")
+    assert hash_install_identity(first) == hash_install_identity(second)
+    moved = InstallRequest(**{**first.__dict__, "data_root": str(tmp_path / "moved")})
+    assert hash_install_identity(first) != hash_install_identity(moved)
+
+
+def test_release_hash_mismatch_refuses_install(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    tampered = InstallRequest(**{**request.__dict__, "release_manifest_sha256": "c" * 64})
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), tampered)
+        raise AssertionError("wrong manifest hash must not install")
+    except LifecycleViolation as exc:
+        assert exc.code == "release_hash_mismatch"
+    pending = InstallRequest(**{**request.__dict__, "release_manifest_sha256": "pending"})
+    try:
+        install_or_resume(stores.as_lifecycle_stores(), pending)
+        raise AssertionError("pending manifest hash must not install")
+    except LifecycleViolation as exc:
+        assert exc.code == "release_hash_mismatch"
+
+
+def test_inspect_does_not_mutate(tmp_path: Path) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    inspect = inspect_machine(stores.as_lifecycle_stores(), request)
+    assert inspect.ok
+    assert adapters.apply_order() == []
+    assert stores.read() is None
+    assert stores.read_active() is None
+
+
+def test_request_hash_is_canonical() -> None:
+    payload = {"b": 1, "a": 2}
+    assert hash_request_payload(payload) == hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()

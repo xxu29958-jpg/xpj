@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import app.services.installer_runtime_guard as installer_runtime_guard
 from scripts import ci_gap_trigger_scope, ci_scope
 from scripts.ci_gap_trigger_scope import all_ci_scopes, classify_ci_paths
 from scripts.postgres_release_policy import POSTGRES_RELEASE_POLICY
@@ -50,6 +49,9 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
         "android": False,
         "windows": True,
     }
+
+
+def test_windows_build_inputs_select_windows_scope() -> None:
     _assert_path_scopes(
         (
             "backend/requirements-build.txt",
@@ -62,16 +64,25 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
             "backend/scripts/test_pg_storage_contract.ps1",
             "backend/scripts/windows_build_provenance.ps1",
             "backend/scripts/windows_backend_build_provenance.ps1",
+            "backend/scripts/windows_python_build_environment.ps1",
             "backend/tests/_infra/windows_tree.py",
             "backend/packaging/audit/test_count_baseline.txt",
         ),
         "windows",
     )
+
+
+def test_backend_runtime_inputs_select_execution_scopes() -> None:
     _assert_path_scopes(
         ("backend/audit/test_count_baseline.txt",),
         "postgres",
     )
-    _assert_path_scopes(("backend/app/main.py",), "postgres", "backend_frozen")
+    _assert_path_scopes(
+        ("backend/app/main.py",),
+        "postgres",
+        "backend_frozen",
+        "windows",
+    )
     _assert_path_scopes(
         (
             "backend/app/services/runtime_settings_store.py",
@@ -94,6 +105,9 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
         "backend_frozen",
         "windows",
     )
+
+
+def test_backend_tooling_and_packaging_inputs_select_execution_scopes() -> None:
     _assert_path_scopes(
         (
             "backend/alembic.ini",
@@ -106,6 +120,10 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
     _assert_path_scopes(
         ("backend/packaging/windows-build-toolchain.json",),
         "postgres",
+        "windows",
+    )
+    _assert_path_scopes(
+        ("distribution/windows/installer/ticketbox.iss", "distribution/windows/tests/test_cli.py"),
         "windows",
     )
     _assert_path_scopes(
@@ -140,16 +158,6 @@ def test_dataset_maintenance_changes_select_all_required_execution_scopes() -> N
     )
 
 
-def test_installer_guard_adapter_changes_select_windows() -> None:
-    assert installer_runtime_guard.GUARD_FILENAME == "installer-runtime-recovery-pending"
-    _assert_path_scopes(
-        ("backend/app/services/installer_runtime_guard.py",),
-        "postgres",
-        "backend_frozen",
-        "windows",
-    )
-
-
 def test_dataset_maintenance_transitive_app_dependencies_select_windows() -> None:
     dependencies = ci_gap_trigger_scope.dataset_maintenance_python_dependencies()
     assert "backend/app/__init__.py" in dependencies
@@ -158,6 +166,31 @@ def test_dataset_maintenance_transitive_app_dependencies_select_windows() -> Non
     assert "backend/app/models/__init__.py" in dependencies
     for dependency in dependencies:
         assert classify_ci_paths([dependency])["windows"], dependency
+
+
+def test_fresh_install_helper_transitive_dependencies_select_windows() -> None:
+    dependencies = ci_gap_trigger_scope.fresh_install_python_dependencies()
+    assert "backend/app/database/_fresh_schema_upgrade.py" in dependencies
+    assert "backend/app/services/identity_service/__init__.py" in dependencies
+    assert "backend/app/services/identity_service/_bootstrap.py" in dependencies
+    for dependency in dependencies:
+        scopes = classify_ci_paths([dependency])
+        assert scopes["postgres"], dependency
+        assert scopes["backend_frozen"], dependency
+        assert scopes["windows"], dependency
+
+
+def test_installation_health_transitive_dependencies_select_windows() -> None:
+    dependencies = ci_gap_trigger_scope.installation_health_python_dependencies()
+    assert "backend/app/database/_database_generation_runtime_admission.py" in dependencies
+    assert "backend/app/database/_database_generation_runtime_queries.py" in dependencies
+    assert "backend/app/services/installation_health_attestation.py" in dependencies
+    assert "backend/app/services/installation_health_service.py" in dependencies
+    for dependency in dependencies:
+        scopes = classify_ci_paths([dependency])
+        assert scopes["postgres"], dependency
+        assert scopes["backend_frozen"], dependency
+        assert scopes["windows"], dependency
 
 
 def test_desktop_build_contract_runs_tests_and_packaging() -> None:

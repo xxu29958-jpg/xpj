@@ -90,8 +90,8 @@ def init_db() -> None:
         if installed_runtime:
             raise DatabaseMigrationPreflightError(
                 "拒绝由安装版普通后端初始化空数据库:空库必须交由安装器的 "
-                "Generation Owner 建立 exact target、isolated restore proof、"
-                "database binding 与 CURRENT；数据库未执行 backup/DDL/DML。"
+                "Lifecycle Coordinator 建立 exact target 与 dataset_authority；"
+                "数据库未执行 backup/DDL/DML。"
             )
     elif plan.action is DatabaseLifecycleAction.NOOP:
         _assert_database_generation_startup_ready(

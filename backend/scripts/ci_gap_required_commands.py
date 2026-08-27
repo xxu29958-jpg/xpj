@@ -8,6 +8,8 @@ from dataclasses import dataclass
 
 from ci_gap_shell import shell_tokens
 
+_PROVENANCE_HASH_ARGUMENTS = ("-expectedprovenancesha256", "$env:build_provenance_expected_sha256")
+
 
 @dataclass(frozen=True)
 class RequiredCommand:
@@ -20,7 +22,6 @@ class RequiredCommand:
         if self.matcher is not None:
             return self.matcher(command)
         return self.pattern.search(command) is not None
-
     def matches_environment(self, environment: tuple[tuple[str, str], ...]) -> bool:
         return (
             self.environment_matcher is None
@@ -253,8 +254,9 @@ def _matches_installer_source_preflight(command: str, *, executables: set[str]) 
     if invocation is None:
         return False
     script, arguments = invocation
-    return script == "packaging/build_inno_installer.ps1" and (
-        "-checksourceinputsonly" in arguments
+    return (
+        script == "distribution/windows/build/check_source_inputs.ps1"
+        and arguments == ()
     )
 
 
@@ -291,7 +293,7 @@ def _matches_authoritative_inno_build(command: str) -> bool:
     if invocation is None:
         return False
     script, arguments = invocation
-    return script == "packaging/build_inno_installer.ps1" and arguments == (
+    return script == "distribution/windows/build/build_installer.ps1" and arguments == (
         "-installerhashoutputfile",
         "$env:github_output",
     )
@@ -305,10 +307,11 @@ def _matches_installer_publish_verification(command: str) -> bool:
     if invocation is None:
         return False
     script, arguments = invocation
-    return script == "packaging/build_inno_installer.ps1" and arguments == (
+    return script == "distribution/windows/build/build_installer.ps1" and arguments == (
         "-verifyonly",
         "-expectedinstallersha256",
         "$env:installer_expected_sha256",
+        *_PROVENANCE_HASH_ARGUMENTS,
     )
 
 
@@ -320,10 +323,11 @@ def _matches_uploaded_installer_verification(command: str) -> bool:
     if invocation is None:
         return False
     script, arguments = invocation
-    return script == "packaging/build_inno_installer.ps1" and arguments == (
+    return script == "distribution/windows/build/build_installer.ps1" and arguments == (
         "-verifyonly",
         "-expectedinstallersha256",
         "$env:installer_expected_sha256",
+        *_PROVENANCE_HASH_ARGUMENTS,
         "-verifypublishdirectory",
         "$env:installer_verify_download_path",
     )
@@ -360,8 +364,8 @@ REQUIRED_CI_INVOCATIONS = (
         "installer source preflight (Windows PowerShell 5.1)",
         re.compile(
             r"(?i)^\s*(?:&\s+)?powershell(?:\.exe)?\b[^\r\n]*\s-File\s+"
-            r"(?:\.[\\/])?packaging[\\/]+build_inno_installer\.ps1\b"
-            r"[^\r\n]*\s-CheckSourceInputsOnly\b"
+            r"(?:\.[\\/])?distribution[\\/]+windows[\\/]+build[\\/]+"
+            r"check_source_inputs\.ps1\s*$"
         ),
         matcher=_matches_windows_powershell_installer_source_preflight,
     ),
@@ -369,8 +373,8 @@ REQUIRED_CI_INVOCATIONS = (
         "installer source preflight (PowerShell 7)",
         re.compile(
             r"(?i)^\s*(?:&\s+)?pwsh(?:\.exe)?\b[^\r\n]*\s-File\s+"
-            r"(?:\.[\\/])?packaging[\\/]+build_inno_installer\.ps1\b"
-            r"[^\r\n]*\s-CheckSourceInputsOnly\b"
+            r"(?:\.[\\/])?distribution[\\/]+windows[\\/]+build[\\/]+"
+            r"check_source_inputs\.ps1\s*$"
         ),
         matcher=_matches_pwsh_installer_source_preflight,
     ),
@@ -422,7 +426,8 @@ _REQUIRED_INNO_BUILD_INVOCATIONS = (
         "authoritative Inno installer compile",
         re.compile(
             r"(?i)^\s*(?:&\s+)?(?:powershell|pwsh)(?:\.exe)?\b[^\r\n]*\s-File\s+"
-            r"(?:\.[\\/])?packaging[\\/]+build_inno_installer\.ps1\b"
+            r"(?:\.[\\/])?distribution[\\/]+windows[\\/]+build[\\/]+"
+            r"build_installer\.ps1\b"
             r"[^\r\n]*\s-InstallerHashOutputFile\s+[^\r\n]*GITHUB_OUTPUT\s*$"
         ),
         matcher=_matches_authoritative_inno_build,
@@ -431,7 +436,8 @@ _REQUIRED_INNO_BUILD_INVOCATIONS = (
         "atomic installer publish-unit verification",
         re.compile(
             r"(?i)^\s*(?:&\s+)?(?:powershell|pwsh)(?:\.exe)?\b[^\r\n]*\s-File\s+"
-            r"(?:\.[\\/])?packaging[\\/]+build_inno_installer\.ps1\b"
+            r"(?:\.[\\/])?distribution[\\/]+windows[\\/]+build[\\/]+"
+            r"build_installer\.ps1\b"
             r"[^\r\n]*\s-VerifyOnly\b"
         ),
         matcher=_matches_installer_publish_verification,
@@ -448,7 +454,8 @@ REQUIRED_INSTALLER_POST_UPLOAD_INVOCATION_BY_PLATFORM = {
         "uploaded installer byte verification",
         re.compile(
             r"(?i)^\s*(?:&\s+)?(?:powershell|pwsh)(?:\.exe)?\b[^\r\n]*\s-File\s+"
-            r"(?:\.[\\/])?packaging[\\/]+build_inno_installer\.ps1\b"
+            r"(?:\.[\\/])?distribution[\\/]+windows[\\/]+build[\\/]+"
+            r"build_installer\.ps1\b"
             r"[^\r\n]*\s-VerifyPublishDirectory\b"
         ),
         matcher=_matches_uploaded_installer_verification,

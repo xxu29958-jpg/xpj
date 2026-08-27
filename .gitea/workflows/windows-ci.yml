@@ -122,14 +122,20 @@ jobs:
           tests/test_dataset_originals_file_identity.py
           --noconftest --strict-markers -p no:cacheprovider -o addopts=
 
+      - name: vNext fresh-install contracts
+        env:
+          PYTEST_ADDOPTS: ""
+          PYTHONPATH: ${{ gitea.workspace }}/distribution/windows/lifecycle;${{ gitea.workspace }}/distribution/windows/tests
+        run: >-
+          .\backend\.ci-venv\Scripts\python.exe -m pytest -q distribution/windows/tests
+          --strict-markers -p no:cacheprovider -o addopts=
+
       - name: Installer source preflight (Windows PowerShell 5.1)
-        working-directory: backend
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
 
       - name: Installer source preflight (PowerShell 7)
-        working-directory: backend
         shell: pwsh
-        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -CheckSourceInputsOnly
+        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
 
       - name: Frozen backend locked release build
         working-directory: backend
@@ -149,17 +155,16 @@ jobs:
 
       - name: Compile authoritative Inno installer
         id: compile_installer
-        working-directory: backend
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -InstallerHashOutputFile "$env:GITHUB_OUTPUT"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -InstallerHashOutputFile "$env:GITHUB_OUTPUT"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify atomic Windows installer publish unit
-        working-directory: backend
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve verified Windows installer publish path
@@ -208,11 +213,11 @@ jobs:
           path: ${{ env.INSTALLER_VERIFY_DOWNLOAD_PATH }}
 
       - name: Verify uploaded Windows installer bytes
-        working-directory: backend
         env:
           INSTALLER_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.installer_sha256 }}
+          BUILD_PROVENANCE_EXPECTED_SHA256: ${{ steps.compile_installer.outputs.build_provenance_sha256 }}
         run: |
-          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\build_inno_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\build_installer.ps1 -VerifyOnly -ExpectedInstallerSha256 "$env:INSTALLER_EXPECTED_SHA256" -ExpectedProvenanceSha256 "$env:BUILD_PROVENANCE_EXPECTED_SHA256" -VerifyPublishDirectory "$env:INSTALLER_VERIFY_DOWNLOAD_PATH"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # The business pytest suite AND the end-to-end smoke run on PostgreSQL in the
@@ -383,9 +388,7 @@ jobs:
             # glob as pg_dump (not on the runner's PATH).
             Write-Host "--- PostgreSQL backup/restore drill ---"
             .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py `
-              --upload-root (Join-Path $PWD "uploads") `
-              --frozen-restore-helper `
-                (Join-Path $PWD "dist\ticketbox-backend\ticketbox-database-maintenance.exe")
+              --upload-root (Join-Path $PWD "uploads")
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL backup/restore drill failed" }
 
             # Keep the offline single-runner mirror serial. Source-local real_db

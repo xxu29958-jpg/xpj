@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import os
 from dataclasses import dataclass
 from functools import lru_cache
@@ -39,21 +38,13 @@ def _resolve_data_root(backend_root: Path) -> Path:
 DATA_ROOT = _resolve_data_root(BACKEND_ROOT)
 load_dotenv(DATA_ROOT / ".env", encoding="utf-8-sig")
 RUNTIME_SETTINGS_PATH = DATA_ROOT / "runtime-settings" / "runtime-settings.json"
-_RUNTIME_SETTINGS_SERVICE_OWNED = bool(os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip())
-_INSTALLATION_ID_NAMESPACE = b"ticketbox-installation-v1\0"
+_RUNTIME_SETTINGS_SERVICE_OWNED = bool(os.environ.get("TICKETBOX_INSTALLATION_ID", "").strip())
 
 
 def runtime_settings_service_owned() -> bool:
     """Return whether the installer granted the service-owned projection contract."""
 
     return _RUNTIME_SETTINGS_SERVICE_OWNED
-
-
-def installation_identity(data_root: Path = DATA_ROOT) -> str:
-    """Return a path-redacted identity stable for this installed data root."""
-    canonical = os.path.normcase(str(data_root.resolve())).encode("utf-8")
-    digest = hashlib.sha256(_INSTALLATION_ID_NAMESPACE + canonical).hexdigest()
-    return f"ticketbox-{digest[:32]}"
 
 
 # Hosts considered loopback for outbound calls from the backend (e.g. local

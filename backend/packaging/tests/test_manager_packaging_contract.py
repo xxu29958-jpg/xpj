@@ -42,58 +42,58 @@ def test_manager_frozen_payload_is_a_separate_windowed_adapter() -> None:
     assert "Assert-TicketboxManagerToolchainEvidence" in provenance
 
 
-def test_inno_installs_manager_and_launches_only_as_the_original_user() -> None:
-    installer = _read(PACKAGING / "ticketbox-installer.iss")
-    flow = _read(PACKAGING / "ticketbox-installer-flow.isph")
-    build = _read(PACKAGING / "build_inno_installer.ps1", sig=True)
+def test_inno_installs_manager_under_release_without_postinstall_launch() -> None:
+    installer = _read(REPO_ROOT / "distribution" / "windows" / "installer" / "ticketbox.iss")
+    build = _read(
+        REPO_ROOT / "distribution" / "windows" / "build" / "build_installer.ps1",
+        sig=True,
+    )
     shared_provenance = _read(
         BACKEND_ROOT / "scripts" / "windows_build_provenance.ps1",
         sig=True,
     )
 
-    assert (
-        'Source: "..\\..\\desktop\\dist\\ticketbox-manager\\*"; '
-        'DestDir: "{app}\\manager"; Flags: ignoreversion recursesubdirs createallsubdirs'
-    ) in installer
+    assert 'DestDir: "{app}\\releases\\{#ReleaseId}\\manager"' in installer
     assert 'Name: "{autoprograms}\\小票夹\\管理小票夹"' in installer
-    assert 'Filename: "{app}\\manager\\ticketbox-manager.exe"' in installer
-    assert "CloseApplications=yes" in installer
+    assert (
+        'Filename: "{app}\\releases\\{#ReleaseId}\\manager\\ticketbox-manager.exe"'
+        in installer
+    )
+    assert "CloseApplications=no" in installer
+    assert "CloseApplications=yes" not in installer
     assert "RestartApplications=no" in installer
     assert "postinstall" not in installer
-    assert "ExecAsOriginalUser(" in flow
-    assert "Exec(" not in flow[flow.index("ManagerLaunchAttempted := True") :]
-    assert "完成后打开小票夹管理器（推荐）" in flow
-    assert flow.index("ReleaseLifecycleLock") < flow.index("ExecAsOriginalUser(")
-    assert "$managerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $ManagerDist" in build
+    assert "AfterInstall: TicketboxProvision" not in installer
+    run_section = installer.split("[Run]", 1)[1].split("[", 1)[0]
+    assert "ticketbox-manager.exe" not in run_section
+    assert "TicketboxLifecycle.exe" in run_section
+    assert "if CurStep = ssPostInstall then" in installer
+    assert "waituntilterminated" in run_section
+    assert "Exec(" not in installer.split("[Code]", 1)[1]
+    assert "TicketboxResultIsCommitted" in installer
+    assert "GetCustomSetupExitCode" in installer
+    assert "FinishedHeadingLabel.Caption" in installer
+    assert "$managerManifest = Assert-TicketboxManagerBuildManifest $RepoRoot $managerDist" in build
     assert "manager = [ordered]@{" in build
     assert "manager = $BuildInputs.manager" in build
     assert '"安装器 Desktop Manager provenance"' in shared_provenance
     assert "$manifest.manager" in shared_provenance
     assert "$ExpectedBuildInputs.manager" in shared_provenance
-    assert "Copy-Item -Path (Join-Path $ManagerDist \"*\")" in build
-    assert "Get-ChildItem -LiteralPath $stagedRepoRoot -Recurse -File" in build
+    assert "New-TicketboxInstalledPayloadManifest" in build
+    assert "/DReleaseManifestSha256=$releaseManifestSha256" in build
+    assert "shipment = $BuildInputs.shipment" in build
+    assert "$ExpectedBuildInputs.shipment" in shared_provenance
 
 
-def test_inno_replaces_each_immutable_payload_directory_before_copy() -> None:
-    installer = _read(PACKAGING / "ticketbox-installer.iss")
-    flow = _read(PACKAGING / "ticketbox-installer-flow.isph")
-    install_delete = installer.index("[InstallDelete]")
-    files = installer.index("[Files]")
+def test_inno_keeps_release_payloads_side_by_side_without_c07_precopy_delete() -> None:
+    installer = _read(REPO_ROOT / "distribution" / "windows" / "installer" / "ticketbox.iss")
 
-    assert install_delete < files
-    for destination in (
-        r"{app}\program\ticketbox-backend\*",
-        r"{app}\manager\*",
-        r"{app}\pg\*",
-        r"{app}\shawl\*",
-        r"{app}\installer\*",
-    ):
-        assert (
-            f'Type: filesandordirs; Name: "{destination}"; '
-            "Check: AuthoritativePayloadReplacementPrepared"
-        ) in installer
-    assert "function AuthoritativePayloadReplacementPrepared(): Boolean;" in flow
-    assert "Result := LifecyclePrepared;" in flow
+    assert "[InstallDelete]" not in installer
+    assert "AuthoritativePayloadReplacementPrepared" not in installer
+    assert 'DestDir: "{app}\\releases\\{#ReleaseId}\\backend"' in installer
+    assert 'DestDir: "{app}\\releases\\{#ReleaseId}\\manager"' in installer
+    assert 'DestDir: "{app}\\postgresql"' in installer
+    assert 'DestDir: "{app}\\bin"' in installer
 
 
 def test_windows_release_lanes_build_manager_before_inno() -> None:
@@ -145,11 +145,11 @@ def test_manager_source_contract_is_identical_across_powershell_engines(
 
 
 @pytest.mark.parametrize("executable", powershell_contract_engines())
-def test_installer_provenance_binds_manager_evidence_and_rejects_tampering(
+def test_installer_provenance_binds_manager_and_lifecycle_evidence_and_rejects_tampering(
     executable: str,
     tmp_path: Path,
 ) -> None:
-    build_path = PACKAGING / "build_inno_installer.ps1"
+    build_path = REPO_ROOT / "distribution" / "windows" / "build" / "build_installer.ps1"
     manifest_path = tmp_path / "BUILD_PROVENANCE.json"
     command = (
         f". '{_ps_literal(BACKEND_ROOT / 'scripts' / 'windows_build_provenance.ps1')}'; "
@@ -176,13 +176,25 @@ def test_installer_provenance_binds_manager_evidence_and_rejects_tampering(
         "backend = [ordered]@{ version = '1.2.0'; fingerprint = ('b' * 64) }; "
         "manager = [ordered]@{ version = '1.2.0'; fingerprint = ('c' * 64) }; "
         "postgresql = [ordered]@{ version = '17.10-1'; fingerprint = ('d' * 64) }; "
-        "shawl = [ordered]@{ version = '1.9.0'; fingerprint = ('e' * 64) } }; "
+        "shawl = [ordered]@{ version = '1.9.0'; fingerprint = ('e' * 64) }; "
+        "lifecycle = [ordered]@{ fingerprint = ('1' * 64) }; "
+        "shipment = [ordered]@{ release_manifest_sha256 = ('f' * 64); "
+        "immutable_file_count = 42 } }; "
         "$defines = @('/DAppVersion=1.2.0'); "
         "Write-InstallerBuildProvenance $inputs $recipe $git $compiler $defines $manifestPath | Out-Null; "
         "Assert-TicketboxInstallerBuildProvenance $root $manifestPath $compiler $inputs $defines | Out-Null; "
         "$recorded = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json; "
         "if ($null -eq $recorded.manager -or $recorded.manager.fingerprint -cne ('c' * 64)) { "
         "throw 'manager evidence was not persisted' }; "
+        "if ($null -eq $recorded.lifecycle -or $recorded.lifecycle.fingerprint -cne ('1' * 64)) { "
+        "throw 'lifecycle evidence was not persisted' }; "
+        "$recorded.lifecycle.fingerprint = ('2' * 64); "
+        "Write-TicketboxJsonFile $manifestPath $recorded; "
+        "$rejected = $false; try { "
+        "Assert-TicketboxInstallerBuildProvenance $root $manifestPath $compiler $inputs $defines | Out-Null "
+        "} catch { $rejected = $true }; "
+        "if (-not $rejected) { throw 'tampered lifecycle evidence was accepted' }; "
+        "$recorded.lifecycle.fingerprint = ('1' * 64); "
         "$recorded.manager.fingerprint = ('f' * 64); "
         "Write-TicketboxJsonFile $manifestPath $recorded; "
         "$rejected = $false; try { "

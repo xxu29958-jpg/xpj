@@ -55,8 +55,8 @@ jobs:
       - env:
           PYTEST_ADDOPTS: ""
         run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -m xdist_group -n 0 --dist loadfile --max-worker-restart 0
-      - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
-      - run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
+      - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\\windows\\build\\check_source_inputs.ps1
+      - run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\\windows\\build\\check_source_inputs.ps1
       - run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\\build_backend_exe.ps1 -Clean
       - run: .\\.ci-venv\\Scripts\\python.exe scripts\\release_audit.py
       - run: .\\.ci-venv\\Scripts\\python.exe scripts\\check_api_contract.py
@@ -330,8 +330,8 @@ name: CI
 jobs:
   disabled-installer:
     steps:
-      - run: powershell -NoProfile -File packaging\\build_inno_installer.ps1
-      - run: powershell -NoProfile -File packaging\\build_inno_installer.ps1 -VerifyOnly
+      - run: powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1
+      - run: powershell -NoProfile -File distribution\\windows\\build\\build_installer.ps1 -VerifyOnly
     if: false
 """,
         encoding="utf-8",
@@ -364,12 +364,12 @@ jobs:
           echo "./gradlew --no-daemon :app:testGrayDebugUnitTest"
           Write-Host ":app:lintGrayDebug moved elsewhere"
           Write-Host "./gradlew --no-daemon :app:lintGrayDebug"
-          # powershell -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
-          echo "powershell -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly"
-          Write-Host "powershell -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly"
-          powershell -Command "Write-Host 'powershell -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly'"
-          powershell -Command Write-Host -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
-          powershell -EncodedCommand ZgBhAGsAZQA= -File packaging\\build_inno_installer.ps1 -CheckSourceInputsOnly
+          # powershell -File distribution\\windows\\build\\check_source_inputs.ps1
+          echo "powershell -File distribution\\windows\\build\\check_source_inputs.ps1"
+          Write-Host "powershell -File distribution\\windows\\build\\check_source_inputs.ps1"
+          powershell -Command "Write-Host 'powershell -File distribution\\windows\\build\\check_source_inputs.ps1'"
+          powershell -Command Write-Host -File distribution\\windows\\build\\check_source_inputs.ps1
+          powershell -EncodedCommand ZgBhAGsAZQA= -File distribution\\windows\\build\\check_source_inputs.ps1
           echo "powershell -File scripts\\build_backend_exe.ps1 -Clean"
           powershell -Command Write-Host -File scripts\\build_backend_exe.ps1 -Clean
 """,
@@ -387,8 +387,7 @@ jobs:
     commands.append(
         mod.WorkflowCommand(
             Path("ci.yml"),
-            "powershell -NoProfile -File packaging\\build_inno_installer.ps1 "
-            "-CheckSourceInputsOnly",
+            "powershell -NoProfile -File distribution\\windows\\build\\check_source_inputs.ps1",
         )
     )
     assert "installer source preflight (Windows PowerShell 5.1)" not in mod._missing_ci_invocations(commands)
@@ -396,8 +395,7 @@ jobs:
     commands.append(
         mod.WorkflowCommand(
             Path("ci.yml"),
-            "pwsh -NoProfile -File packaging\\build_inno_installer.ps1 "
-            "-CheckSourceInputsOnly",
+            "pwsh -NoProfile -File distribution\\windows\\build\\check_source_inputs.ps1",
         )
     )
     assert "installer source preflight (PowerShell 7)" not in mod._missing_ci_invocations(commands)

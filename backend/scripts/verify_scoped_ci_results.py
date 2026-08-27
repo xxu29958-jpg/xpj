@@ -99,6 +99,7 @@ def _verify_required_lanes(
     values: Mapping[str, str],
     label: str,
     lanes: Sequence[str],
+    source_lanes: Sequence[str],
 ) -> Verification:
     failed = [lane for lane in lanes if values[f"{lane}_RESULT"] != "success"]
     if failed:
@@ -107,8 +108,16 @@ def _verify_required_lanes(
             f"{label} lanes did not succeed: {', '.join(failed)}",
         )
     expected_sha = values["EXPECTED_SHA"]
+    exact_source_lanes = set(source_lanes)
     mismatched_sha = [
-        lane for lane in lanes if values[f"{lane}_SHA"] != expected_sha
+        lane
+        for lane in lanes
+        if values[f"{lane}_SHA"]
+        != (
+            values["EXPECTED_SOURCE_SHA"]
+            if lane in exact_source_lanes
+            else expected_sha
+        )
     ]
     if mismatched_sha:
         return Verification(
@@ -135,7 +144,10 @@ def verify(
     label: str,
     scope_key: str,
     lanes: Sequence[str],
+    source_lanes: Sequence[str],
 ) -> Verification:
+    if not set(source_lanes).issubset(lanes):
+        return Verification(False, "source lanes must also be required lanes")
     missing = _missing_fields(values, scope_key=scope_key, lanes=lanes)
     if missing:
         return Verification(
@@ -151,7 +163,7 @@ def verify(
         return _verify_skipped_lanes(values, label, lanes)
     if scope != "true":
         return Verification(False, f"invalid {label} scope output: {scope}")
-    return _verify_required_lanes(values, label, lanes)
+    return _verify_required_lanes(values, label, lanes, source_lanes)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -159,6 +171,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--label", required=True)
     parser.add_argument("--scope-key", required=True)
     parser.add_argument("--lane", action="append", default=[])
+    parser.add_argument("--source-lane", action="append", default=[])
     return parser
 
 
@@ -166,17 +179,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     lanes = tuple(args.lane)
+    source_lanes = tuple(args.source_lane)
     if (
         not _ENV_KEY.fullmatch(args.scope_key)
         or any(_ENV_KEY.fullmatch(lane) is None for lane in lanes)
+        or any(_ENV_KEY.fullmatch(lane) is None for lane in source_lanes)
         or len(set(lanes)) != len(lanes)
+        or len(set(source_lanes)) != len(source_lanes)
+        or not set(source_lanes).issubset(lanes)
     ):
-        parser.error("scope key and lanes must be unique uppercase environment keys")
+        parser.error(
+            "scope key and lanes must be unique uppercase environment keys; "
+            "source lanes must also be required lanes"
+        )
     result = verify(
         os.environ,
         label=args.label,
         scope_key=args.scope_key,
         lanes=lanes,
+        source_lanes=source_lanes,
     )
     print(result.message, file=sys.stdout if result.ok else sys.stderr)
     return 0 if result.ok else 1

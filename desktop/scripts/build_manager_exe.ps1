@@ -21,26 +21,28 @@ $ToolchainPrepScript = Join-Path $BackendRoot "packaging\prepare_windows_build_t
 $ToolchainRoot = Join-Path $BackendRoot "build\windows-toolchain"
 $BuildProvenanceScript = Join-Path $BackendRoot "scripts\windows_build_provenance.ps1"
 $BackendBuildProvenanceScript = Join-Path $BackendRoot "scripts\windows_backend_build_provenance.ps1"
+$PythonBuildEnvironmentScript = Join-Path $BackendRoot "scripts\windows_python_build_environment.ps1"
 $ManagerBuildProvenanceScript = Join-Path $PSScriptRoot "windows_manager_build_provenance.ps1"
 $InputSnapshotRoot = Join-Path $BuildRoot (".ticketbox-manager-inputs-{0}" -f $BuildNonce)
 $LockSnapshotPath = Join-Path $InputSnapshotRoot "desktop\requirements-build.lock"
 $StagingRoot = Join-Path $DistRoot (".ticketbox-manager-staging-{0}" -f $BuildNonce)
 $StagingDir = Join-Path $StagingRoot "ticketbox-manager"
 $WorkRoot = Join-Path $BuildRoot (".ticketbox-manager-work-{0}" -f $BuildNonce)
+$BuildPyInstallerConfig = Join-Path $BuildRoot (".ticketbox-manager-pyinstaller-{0}" -f $BuildNonce)
 $FinalDir = Join-Path $DistRoot "ticketbox-manager"
 $BackupDir = Join-Path $DistRoot ".ticketbox-manager.last-known-good"
 $PublishReceipt = Join-Path $DistRoot ".ticketbox-manager.publish-receipt.json"
 $BuildLock = $null
 $InputLocks = $null
 $ToolchainLocks = $null
+$BuildEnvironment = $null
 $PrimaryFailure = $null
 $CleanupFailures = New-Object System.Collections.Generic.List[string]
-$PreviousUvPythonDownloads = [Environment]::GetEnvironmentVariable("UV_PYTHON_DOWNLOADS", "Process")
-$PreviousPythonNoUserSite = [Environment]::GetEnvironmentVariable("PYTHONNOUSERSITE", "Process")
-$PreviousPythonDontWriteBytecode = [Environment]::GetEnvironmentVariable("PYTHONDONTWRITEBYTECODE", "Process")
+$UvIsolationArguments = @("--no-config", "--no-cache", "--no-python-downloads")
 
 . $BuildProvenanceScript
 . $BackendBuildProvenanceScript
+. $PythonBuildEnvironmentScript
 . $ManagerBuildProvenanceScript
 
 function Remove-TicketboxManagerBuildDirectory([string]$Path, [string]$AllowedRoot) {
@@ -79,6 +81,7 @@ try {
     Remove-TicketboxManagerBuildDirectory $WorkRoot $BuildRoot
     Remove-TicketboxManagerBuildDirectory $InputSnapshotRoot $BuildRoot
     Remove-TicketboxManagerBuildDirectory $BuildVenv $BuildRoot
+    Remove-TicketboxManagerBuildDirectory $BuildPyInstallerConfig $BuildRoot
     if ($Clean -and (Test-Path -LiteralPath $LegacyBuildVenv)) {
         Remove-TicketboxManagerBuildDirectory $LegacyBuildVenv $DesktopRoot
     }
@@ -113,22 +116,27 @@ try {
         -Snapshot $sourceBeforeFreeze | Out-Null
     $InputLocks = @(Enter-TicketboxFileSetReadLocks -Root $InputSnapshotRoot -Snapshot $sourceBeforeFreeze)
 
-    $env:UV_PYTHON_DOWNLOADS = "never"
-    $env:PYTHONNOUSERSITE = "1"
-    $env:PYTHONDONTWRITEBYTECODE = "1"
-    & $UvPath venv $BuildVenv --python $SourcePython
+    Assert-TicketboxNoReparsePath -Path $BuildPyInstallerConfig -AllowedRoot $BuildRoot | Out-Null
+    New-Item -ItemType Directory -Path $BuildPyInstallerConfig | Out-Null
+    $BuildEnvironment = Enter-TicketboxSealedPythonBuildEnvironment `
+        -PyInstallerConfigDirectory $BuildPyInstallerConfig
+    & $UvPath @UvIsolationArguments venv $BuildVenv `
+        --python $SourcePython --link-mode "copy"
     if ($LASTEXITCODE -ne 0) { throw "uv venv failed (exit=$LASTEXITCODE)" }
-    & $UvPath pip sync --strict --require-hashes --python $PyBuild $LockSnapshotPath
+    & $UvPath @UvIsolationArguments pip sync --strict --require-hashes `
+        --only-binary ":all:" --link-mode "copy" --python $PyBuild $LockSnapshotPath
     if ($LASTEXITCODE -ne 0) { throw "uv pip sync failed (exit=$LASTEXITCODE)" }
 
     $pythonVersion = Invoke-TicketboxManagerVersionProbe `
-        $PyBuild @("-c", "import platform; print(platform.python_version())") `
+        $PyBuild @("-I", "-B", "-c", "import platform; print(platform.python_version())") `
         '^(\d+\.\d+\.\d+)$' "Python"
-    $uvVersion = Invoke-TicketboxManagerVersionProbe $UvPath @("--version") '^uv\s+(\d+\.\d+\.\d+)\b' "uv"
+    $uvVersion = Invoke-TicketboxManagerVersionProbe `
+        $UvPath (@($UvIsolationArguments) + @("--version")) `
+        '^uv\s+(\d+\.\d+\.\d+)\b' "uv"
     $pyInstallerVersion = Invoke-TicketboxManagerVersionProbe `
         $PyBuild @("-I", "-B", "-m", "PyInstaller", "--version") `
         '^(\d+\.\d+\.\d+)$' "PyInstaller"
-    $installedDistributions = @(& $UvPath pip freeze --python $PyBuild)
+    $installedDistributions = @(& $UvPath @UvIsolationArguments pip freeze --python $PyBuild)
     if ($LASTEXITCODE -ne 0) { throw "uv pip freeze failed (exit=$LASTEXITCODE)" }
     $executionTreeBeforeFreeze = Get-TicketboxPythonExecutionTreeSnapshot $PyBuild
     $toolchainProvenance = New-TicketboxManagerBuildToolchainProvenance `
@@ -196,20 +204,10 @@ finally {
     foreach ($cleanup in @(
         [pscustomobject]@{ Label = "input read locks"; Action = { Exit-TicketboxFileSetReadLocks $InputLocks } },
         [pscustomobject]@{ Label = "toolchain read locks"; Action = { Exit-TicketboxFileSetReadLocks $ToolchainLocks } },
-        [pscustomobject]@{ Label = "UV_PYTHON_DOWNLOADS"; Action = {
-            if ($null -eq $PreviousUvPythonDownloads) { Remove-Item Env:UV_PYTHON_DOWNLOADS -ErrorAction SilentlyContinue }
-            else { $env:UV_PYTHON_DOWNLOADS = $PreviousUvPythonDownloads }
-        } },
-        [pscustomobject]@{ Label = "PYTHONNOUSERSITE"; Action = {
-            if ($null -eq $PreviousPythonNoUserSite) { Remove-Item Env:PYTHONNOUSERSITE -ErrorAction SilentlyContinue }
-            else { $env:PYTHONNOUSERSITE = $PreviousPythonNoUserSite }
-        } },
-        [pscustomobject]@{ Label = "PYTHONDONTWRITEBYTECODE"; Action = {
-            if ($null -eq $PreviousPythonDontWriteBytecode) { Remove-Item Env:PYTHONDONTWRITEBYTECODE -ErrorAction SilentlyContinue }
-            else { $env:PYTHONDONTWRITEBYTECODE = $PreviousPythonDontWriteBytecode }
-        } },
+        [pscustomobject]@{ Label = "sealed Python build environment"; Action = { Exit-TicketboxSealedPythonBuildEnvironment $BuildEnvironment } },
         [pscustomobject]@{ Label = "dist staging"; Action = { Remove-TicketboxManagerBuildDirectory $StagingRoot $DistRoot } },
         [pscustomobject]@{ Label = "PyInstaller work"; Action = { Remove-TicketboxManagerBuildDirectory $WorkRoot $BuildRoot } },
+        [pscustomobject]@{ Label = "PyInstaller config"; Action = { Remove-TicketboxManagerBuildDirectory $BuildPyInstallerConfig $BuildRoot } },
         [pscustomobject]@{ Label = "input snapshot"; Action = { Remove-TicketboxManagerBuildDirectory $InputSnapshotRoot $BuildRoot } },
         [pscustomobject]@{ Label = "build venv"; Action = { Remove-TicketboxManagerBuildDirectory $BuildVenv $BuildRoot } },
         [pscustomobject]@{ Label = "Windows build lock"; Action = { Exit-TicketboxWindowsBuildLock $BuildLock } }

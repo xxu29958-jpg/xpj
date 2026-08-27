@@ -34,16 +34,15 @@ backend_manager/
 ├── __main__.py        入口:装配 + 启动,无 import 副作用
 ├── build_identity.py  冻结 Manager 相邻 manifest 的最小版本身份
 ├── config.py          从 env + 后端 .env + 发现 解析配置,URL 全 derive，零硬编码
-├── installation.py    读取/校验 Inno 安装注册表,解析 Program Files / ProgramData 布局
+├── installation.py    读取 installation.json 安装身份，以 Registry InstallDir 定位 Program Files
 ├── runtime.py         源码进程与正式服务共用的运行态契约
-├── elevation.py       固定服务动作的短命 UAC helper,高权限进程不开放 HTTP
+├── elevation.py       固定数据维护动作的短命 UAC helper,高权限进程不开放 HTTP
 ├── windows_service.py Windows SCM 控制 + 服务/安装身份脱敏诊断
 ├── diagnostic_bundle.py 只按 allowlist 导出脱敏主机/构建证据
 ├── supervisor.py      进程生命周期:树kill 无孤儿 / health-aware 带启动宽限 / 可注入可测
 ├── process.py         真实 OS 原语:spawn uvicorn / taskkill /T / 健康探测
 ├── manager_startup.py 单实例 owner、窗口进程集合与宿主退出状态机
 ├── desktop_shell.py   HKLM Edge 发现、独立 app profile 与可等待窗口进程
-├── maintenance_gate.py 只读验证 HKLM 安装维护 owner 记录和进程身份
 ├── control_server.py  localhost HTTP 控制:token 鉴权 + authenticated reopen + bootstrap 会话 + 产品桥
 ├── product_data.py    #219 两阶段身份协议客户端（attempt 证明 + KDF 派生）与 loopback 数据面
 ├── product_identity.py WinCred app 会话存取（installation 作用域、fail-closed、token 不进 repr）

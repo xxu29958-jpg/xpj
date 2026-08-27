@@ -126,16 +126,18 @@ def hold_protected_file_for_read(path: Path) -> Iterator[Path]:
 
 
 @contextlib.contextmanager
-def hold_system_authority_file_for_read(path: Path) -> Iterator[Path]:
-    """Hold a host authority artifact owned by SYSTEM with exact SY/BA ACL."""
+def hold_installer_machine_secret_for_read(path: Path) -> Iterator[Path]:
+    """Hold an Administrators-owned installer secret with the exact SY/BA ACL."""
 
     if not path.is_absolute():
-        raise ValueError("host authority path must be absolute")
+        raise ValueError("machine secret path must be absolute")
     if os.name != "nt":
-        raise OSError("SYSTEM-owned host authority is a Windows-only contract")
+        with hold_protected_file_for_read(path) as resolved:
+            yield resolved
+        return
     with _hold_windows_protected_file(
         path,
-        owner_sids=frozenset({_SYSTEM_SID}),
+        owner_sids=frozenset({_ADMINISTRATORS_SID}),
         access_rules={
             _SYSTEM_SID: _FILE_ALL_ACCESS,
             _ADMINISTRATORS_SID: _FILE_ALL_ACCESS,

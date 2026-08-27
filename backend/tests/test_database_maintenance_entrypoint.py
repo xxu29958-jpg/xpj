@@ -83,9 +83,11 @@ spec.loader.exec_module(launch)
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
 managed = launch._load_managed_schema_upgrade_module()
 target = launch._load_database_generation_target_module()
+fresh = launch._load_fresh_schema_upgrade_module()
 assert callable(managed.validate_database_generation_program)
 assert callable(managed.run_managed_schema_upgrade_action)
 assert callable(target.run_database_generation_target_verification_action)
+assert callable(fresh.run_fresh_schema_upgrade_action)
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
 """
 

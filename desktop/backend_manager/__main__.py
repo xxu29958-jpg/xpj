@@ -6,14 +6,12 @@ import argparse
 import sys
 import threading
 from contextlib import nullcontext
-from functools import partial
 from pathlib import Path
 
 from backend_manager.build_identity import FrozenManagerIdentity, load_frozen_manager_identity
 from backend_manager.config import (
     ConfigError,
     InstalledRuntimeConfig,
-    ManagerConfig,
     load_config,
     load_maintenance_manager_config,
 )
@@ -21,34 +19,21 @@ from backend_manager.dataset_backup import run_installed_dataset_backup
 from backend_manager.dataset_inventory import read_installed_dataset_inventory
 from backend_manager.dataset_restore import RestoreSupersededError, run_installed_dataset_restore
 from backend_manager.elevation import (
-    HELPER_EXIT_ACCESS,
     HELPER_EXIT_CONFIG,
     HELPER_EXIT_LIFECYCLE_BUSY,
-    HELPER_EXIT_MISSING_SERVICE,
     HELPER_EXIT_NOT_ELEVATED,
     HELPER_EXIT_OS,
     HELPER_EXIT_RESTORE_SUPERSEDED,
-    HELPER_EXIT_TRANSITION,
     ServiceAction,
     is_process_elevated,
     start_helper_watchdog,
     validate_helper_result_channel,
     write_helper_result,
 )
-from backend_manager.installation import (
-    InstallationConfigError,
-    validate_installed_backend_stopped,
-    validate_installed_service_contract,
-)
+from backend_manager.installation import InstallationConfigError
 from backend_manager.lifecycle_lock import LifecycleBusyError, hold_installer_lifecycle_lock
 from backend_manager.manager_startup import run_manager
-from backend_manager.runtime import (
-    RuntimeControlError,
-    ServiceAccessError,
-    ServiceMissingError,
-    ServiceTransitionError,
-)
-from backend_manager.runtime_factory import build_direct_service_runtime
+from backend_manager.runtime import RuntimeControlError
 from backend_manager.windows_user_security import (
     show_elevated_manager_warning,
     show_manager_repair_required_warning,
@@ -68,7 +53,6 @@ def _load_validated_frozen_identity() -> FrozenManagerIdentity | None:
 
 def _execute_validated_installed_action(
     action: ServiceAction,
-    config: ManagerConfig,
     runtime_config: InstalledRuntimeConfig,
     backup_generation: str | None,
     restore_attempt_id: str | None,
@@ -91,17 +75,7 @@ def _execute_validated_installed_action(
         if outcome == "superseded":
             raise RestoreSupersededError("此前恢复已完成，但已被后续数据 generation 取代；请重新确认后再发起恢复。")
         return "Ticketbox 完整数据集恢复已完成。", None
-    runtime = build_direct_service_runtime(
-        config,
-        runtime_config,
-        backend_stopped_validator=partial(
-            validate_installed_backend_stopped,
-            runtime_config.layout,
-            runtime_config.release,
-        ),
-    )
-    getattr(runtime, action)()
-    return "Ticketbox Windows 服务操作已完成。", None
+    raise ConfigError(f"不支持的管理员维护操作：{action}")
 
 
 def _run_elevated_service_action(
@@ -154,10 +128,8 @@ def _run_elevated_service_action(
             watchdog = start_helper_watchdog(
                 timeout_seconds=runtime_config.release.helper_watchdog_seconds(action),
             )
-            validate_installed_service_contract(runtime_config.layout, runtime_config.release)
             diagnostic, payload = _execute_validated_installed_action(
                 action,
-                config,
                 runtime_config,
                 backup_generation,
                 restore_attempt_id,
@@ -166,12 +138,6 @@ def _run_elevated_service_action(
         exit_code, diagnostic = HELPER_EXIT_LIFECYCLE_BUSY, str(exc)
     except (ConfigError, InstallationConfigError) as exc:
         exit_code, diagnostic = HELPER_EXIT_CONFIG, str(exc)
-    except ServiceMissingError as exc:
-        exit_code, diagnostic = HELPER_EXIT_MISSING_SERVICE, str(exc)
-    except ServiceTransitionError as exc:
-        exit_code, diagnostic = HELPER_EXIT_TRANSITION, str(exc)
-    except ServiceAccessError as exc:
-        exit_code, diagnostic = HELPER_EXIT_ACCESS, str(exc)
     except RestoreSupersededError as exc:
         exit_code, diagnostic = HELPER_EXIT_RESTORE_SUPERSEDED, str(exc)
     except (OSError, RuntimeControlError) as exc:
@@ -200,7 +166,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--elevated-service-action",
-        choices=("start", "stop", "restart", "backup", "restore", "inventory"),
+        choices=("backup", "restore", "inventory"),
     )
     parser.add_argument("--helper-result-path", type=Path)
     parser.add_argument("--helper-result-root", type=Path)

@@ -276,6 +276,8 @@ def _installed_config(tmp_path: Path, *, port: int, service_suffix: str) -> Mana
         backend_service_name=f"TicketboxBackend{service_suffix}",
         pg_service_name=f"TicketboxPg{service_suffix}",
         backend_version=f"1.0.{port}",
+        install_id="11111111-1111-4111-8111-111111111111",
+        health_attestation_key="a" * 64,
     )
     release = WindowsReleaseConfig(
         backend_service_name=layout.backend_service_name,
@@ -406,7 +408,7 @@ def test_shutdown_seal_is_idempotent_and_rejects_direct_actions() -> None:
     controller = AppController(
         UnavailableInstalledRuntimeConfigProvider(),
         maintenance_version="1.2.0",
-        startup_failure_code="release_contract_invalid",
+        startup_failure_code="installed_binding_invalid",
         startup_failure_stage="runtime_discovery",
         request_shutdown=lambda: shutdown_requests.append("shutdown"),
     )
@@ -416,7 +418,7 @@ def test_shutdown_seal_is_idempotent_and_rejects_direct_actions() -> None:
 
     assert controller.is_manager_shutting_down() is True
     assert shutdown_requests == ["shutdown"]
-    assert controller.status()["startup_failure_code"] == "release_contract_invalid"
+    assert controller.status()["startup_failure_code"] == "installed_binding_invalid"
     assert controller.status()["startup_failure_stage"] == "runtime_discovery"
     for action in (
         controller.start,

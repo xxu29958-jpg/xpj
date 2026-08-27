@@ -46,6 +46,7 @@ def _verify(values: dict[str, str]) -> Verification:
         label="PostgreSQL",
         scope_key="POSTGRES_SCOPE",
         lanes=("ORDINARY", "REAL_DB", "RECOVERY"),
+        source_lanes=(),
     )
 
 
@@ -142,6 +143,7 @@ def test_postgres_result_verifier_rejects_every_single_field_mutation(scope: str
         label="Scope only",
         scope_key="POSTGRES_SCOPE",
         lanes=(),
+        source_lanes=(),
     ).ok
     mutations = {
         "SCOPE_RESULT": "failure",
@@ -169,3 +171,36 @@ def test_postgres_result_verifier_rejects_every_single_field_mutation(scope: str
         candidate = dict(baseline)
         del candidate[field]
         assert not _verify(candidate).ok, field
+
+
+def test_scoped_verifier_binds_artifact_lane_to_exact_source_head() -> None:
+    merge_sha = "a" * 40
+    source_sha = "b" * 40
+    values = {
+        "SCOPE_RESULT": "success",
+        "WINDOWS_SCOPE": "true",
+        "EXPECTED_SHA": merge_sha,
+        "EXPECTED_SOURCE_SHA": source_sha,
+        "AGGREGATOR_SHA": merge_sha,
+        "AGGREGATOR_SOURCE_SHA": source_sha,
+        "SCOPE_SHA": merge_sha,
+        "SCOPE_SOURCE_SHA": source_sha,
+        "BUILD_RESULT": "success",
+        "BUILD_SHA": source_sha,
+        "BUILD_SOURCE_SHA": source_sha,
+    }
+
+    assert verify(
+        values,
+        label="Windows",
+        scope_key="WINDOWS_SCOPE",
+        lanes=("BUILD",),
+        source_lanes=("BUILD",),
+    ).ok
+    assert not verify(
+        {**values, "BUILD_SHA": merge_sha},
+        label="Windows",
+        scope_key="WINDOWS_SCOPE",
+        lanes=("BUILD",),
+        source_lanes=("BUILD",),
+    ).ok
