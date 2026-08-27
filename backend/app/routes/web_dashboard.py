@@ -1,9 +1,9 @@
-"""/web dashboard, insights overview, dashboard data, and card settings routes."""
+"""/web insights overview and dashboard-card settings routes."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -124,18 +124,6 @@ def web_overview(
         item["key"] == "reports" for item in visible_cards
     )
     return templates.TemplateResponse(request=request, name="overview.html", context=ctx)
-
-
-@router.get("/dashboard/data", response_class=JSONResponse)
-def web_dashboard_data(
-    request: Request,
-    ledger_id: str | None = None,
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> JSONResponse:
-    options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return JSONResponse(_dashboard_data_payload(db, selected_id))
 
 
 def _dashboard_cards_context(db: Session, selected_id: str) -> list[dict]:

@@ -1,6 +1,6 @@
 """Inbox-domain page contracts for the Web UI/IA rebuild (218-D S4, 移植自产品矿并适配 main).
 
-S4 落「收件域正文」: pending/tasks/duplicates 三页换 product 新标记, 经
+S4 落「收件域正文」: pending/duplicates 两页换 product 新标记, 经
 base.html 的 _product_body_domains 开关断旧栈、挂 domains/inbox.css; /web 根
 303→/web/pending (矿 IA 收件首域)。壳层合同 (五域 IA/月选器/角色壳/CSS token)
 在 test_web_product_rebuild.py, 本文件只钉收件域页面正文。
@@ -9,7 +9,6 @@ base.html 的 _product_body_domains 开关断旧栈、挂 domains/inbox.css; /we
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,7 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Account, BackgroundTask, Expense
+from app.models import Expense
 from app.version import STATIC_ASSET_VERSION
 from tests._infra.assets import PNG_BYTES
 
@@ -107,7 +106,6 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     ("path", "page_level", "copy"),
     [
         ("/web/pending?ledger_id=owner", "primary", "把新账单整理清楚"),
-        ("/web/tasks?ledger_id=owner", "secondary", "跟踪导入、迁移等耗时操作"),
         ("/web/duplicates?ledger_id=owner", "secondary", "逐组核对相似账单"),
     ],
 )
@@ -157,7 +155,6 @@ def test_inbox_pages_render_new_modular_product_shell(
     "path",
     [
         "/web/pending?ledger_id=owner",
-        "/web/tasks?ledger_id=owner",
         "/web/duplicates?ledger_id=owner",
     ],
 )
@@ -421,33 +418,3 @@ def test_inbox_drawer_surfaces_missing_category_and_blocks_confirm(
 
     payload = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     assert payload["status"] == "pending"
-
-
-def test_inbox_tasks_failed_row_uses_failure_label(web_client: TestClient) -> None:
-    """S4-R2: 任务服务与路由无重试操作, failed 任务用失败标签「已失败」,
-    不指引不可能执行的「需要重试」。"""
-    with SessionLocal() as db:
-        account = db.query(Account).order_by(Account.id.asc()).first()
-        assert account is not None
-        now = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
-        db.add(
-            BackgroundTask(
-                tenant_id="owner",
-                task_type="csv_import",
-                initiated_by_account_id=account.id,
-                status="failed",
-                progress_current=12,
-                progress_total=57,
-                error_message="第 13 行日期无法解析，已中止。",
-                created_at=now,
-                started_at=now,
-                completed_at=now,
-            )
-        )
-        db.commit()
-
-    resp = web_client.get("/web/tasks?ledger_id=owner")
-    assert resp.status_code == 200
-    assert "已失败" in resp.text
-    assert "需要重试" not in resp.text
-    assert "2026-05-04 20:00" in resp.text

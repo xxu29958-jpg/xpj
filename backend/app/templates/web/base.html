@@ -12,7 +12,6 @@
 ) %}
 {% set _is_inbox_context = (
   _path in ['/web', '/web/'] or '/pending' in _path or '/duplicates' in _path or
-  '/tasks' in _path or
   ('/expenses/' in _path and _edit_origin in ['pending', 'duplicates'])
 ) %}
 {# 资料库 (/web/library) 是后续切片 C5c-1, 路由尚不存在, 不参与域判定。 #}
@@ -81,7 +80,7 @@
      二三级页) 保持 main 原装配: 旧全局栈+页级 CSS 全量, 不挂对应 domain CSS——
      矿域模块与旧页共享类名谱系 (.exp-row/.timeline-row 等), 双挂则旧规则被盖、
      新 grid 不认嵌套标记, 行格双失 (S3 #256 P1: 收件行整列塌缩)。
-   - 正文已是新标记的页 (overview S2; pending/tasks/duplicates S4 收件域) 断旧栈、
+   - 正文已是新标记的页 (overview S2; pending/duplicates S4 收件域) 断旧栈、
      挂域模块。
    域模块挂载点=下表逐域显式开关: 随 S4(inbox)/S-TX(transactions)/
    S5(obligations/plans)/S6(insights) 各域正文迁移逐域开启, 勿留隐式魔法。
@@ -92,7 +91,6 @@
 {% set _product_body_domains = {
   '/web/overview': 'insights',
   '/web/pending': 'inbox',
-  '/web/tasks': 'inbox',
   '/web/duplicates': 'inbox',
 } %}
 {% set _product_body_domain = _product_body_domains.get(_path) %}
@@ -161,14 +159,12 @@
   {% block page_styles %}{% endblock %}
   <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ asset_version }}">
 
-  {# JS 保持 main 现状全量挂载: 矿的按域条件加载属 dashboard.js 演进 (S7),
-     且未迁移页依赖全局脚本 (drawer/bulk-bar/receipt-skeletons 等)。 #}
+  {# 未迁移页仍依赖全局脚本 (drawer/bulk-bar/receipt-skeletons 等)。 #}
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/pwa-register.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/core.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/theme.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/ledger-switcher.js?v={{ asset_version }}"></script>
-  <script defer src="/static/web/desktop/sparks.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/receipt-skeletons.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/drawer.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/review-hotkeys.js?v={{ asset_version }}"></script>

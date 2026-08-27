@@ -6,9 +6,8 @@ live in ``web_rules.py``, helpers and the loopback gate live in
 ``web_common.py``.
 
 218-D S4: ``/web`` no longer renders the legacy dashboard — it 303s into the
-inbox domain home ``/web/pending`` (矿 IA 收件首域). dashboard.html and the
-``/web/dashboard/*`` endpoints stay untouched; their removal is a separate
-cleanup slice.
+inbox domain home ``/web/pending`` (矿 IA 收件首域). The remaining
+``/web/dashboard/cards`` routes own overview-card preferences only.
 
 It re-exports ``_require_local`` and ``templates`` because existing tests
 import them from this module.

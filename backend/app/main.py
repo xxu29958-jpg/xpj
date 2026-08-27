@@ -81,6 +81,7 @@ from app.routes import (
     web_expense_splits,
     web_goals,
     web_import_export,
+    web_inbox_capture,
     web_income_plans,
     web_media,
     web_merchants,
@@ -92,7 +93,6 @@ from app.routes import (
     web_reports,
     web_search,
     web_tags,
-    web_tasks,
 )
 from app.routes import web_rules as web_rules_routes
 from app.schemas import (
@@ -384,13 +384,13 @@ app.include_router(owner_ledgers.router)
 app.include_router(web_auth.router)
 app.include_router(web_app.router)
 app.include_router(web_bill_split.router)
-app.include_router(web_tasks.router)
 app.include_router(web_dashboard.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_expense_items.router)
 app.include_router(web_expense_splits.router)
 app.include_router(web_media.router)
 app.include_router(web_pending.router)
+app.include_router(web_inbox_capture.router)
 app.include_router(web_rules_routes.router)
 app.include_router(web_budgets.router)
 app.include_router(web_budget_advise.router)

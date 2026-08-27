@@ -7,6 +7,8 @@ import re
 from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
 
+from app.database import SessionLocal
+from app.routes import web_common
 from app.services.time_service import current_month
 
 
@@ -161,11 +163,10 @@ def _seed_confirmed_expense(
     assert resp.status_code == 200, resp.text
 
 
-def test_dashboard_data_payload_includes_budget_and_goals_top(
+def test_overview_payload_includes_budget_and_goals_top(
     web_client: TestClient, *, identity
 ) -> None:
-    """A6: /web/dashboard/data carries per-category budget + per-goal progress
-    rows the JS renderer turns into bars."""
+    """Overview assembly keeps per-category budget and per-goal progress rows."""
     _seed_confirmed_expense(
         web_client, identity=identity, amount_cents=6000, merchant="餐厅", category="餐饮"
     )
@@ -179,7 +180,8 @@ def test_dashboard_data_payload_includes_budget_and_goals_top(
         web_client, identity=identity, name="控制餐饮", target_amount_cents=10000, category="餐饮"
     )
 
-    payload = web_client.get("/web/dashboard/data?ledger_id=owner").json()
+    with SessionLocal() as db:
+        payload = web_common._dashboard_data_payload(db, "owner", include_trend=False)
     cards = payload["cards"]
 
     budget_top = cards["budget_top"]
@@ -224,7 +226,7 @@ def test_dashboard_renders_budget_and_goals_progress_bars(
     assert "餐饮" in body
 
 
-def test_dashboard_budget_overspent_row_marks_over_state(
+def test_overview_budget_overspent_row_marks_over_state(
     web_client: TestClient, *, identity
 ) -> None:
     """A6: an over-limit category budget row carries is_over + the「超」amount,
@@ -236,7 +238,8 @@ def test_dashboard_budget_overspent_row_marks_over_state(
         web_client, identity=identity, dining_limit_cents=10000, transit_limit_cents=5000
     )
 
-    payload = web_client.get("/web/dashboard/data?ledger_id=owner").json()
+    with SessionLocal() as db:
+        payload = web_common._dashboard_data_payload(db, "owner", include_trend=False)
     by_name = {row["name"]: row for row in payload["cards"]["budget_top"]}
     over = by_name["餐饮"]
     assert over["is_over"] is True

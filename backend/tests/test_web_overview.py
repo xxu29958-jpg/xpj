@@ -349,10 +349,9 @@ def test_overview_skips_trend14_assembly(web_client: TestClient, monkeypatch: py
     assert resp.status_code == 200
     assert calls == []
 
-    # 218-D S4: /web 根改向收件域 (303, 不再装配 trend14); JSON 端行为不变
-    # (trend14 仍由 /web/dashboard/data 装配)。
-    resp = web_client.get("/web/dashboard/data?ledger_id=owner")
-    assert resp.status_code == 200
+    # 完整聚合仍可显式请求趋势，但不再暴露一套孤立的 dashboard JSON Owner。
+    with SessionLocal() as db:
+        web_common._dashboard_data_payload(db, "owner")
     assert calls == ["owner"]
 
 

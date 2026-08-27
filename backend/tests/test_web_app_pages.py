@@ -186,17 +186,8 @@ def test_web_search_local_returns_200(web_client: TestClient) -> None:
     assert 'name="q"' in resp.text
 
 
-def test_web_nav_links_orphan_pages_reachable(web_client: TestClient) -> None:
-    """孤儿页接回:有路由有模板但曾零入站链接的页面,在五域 IA 下各自从
-    所属域的页面一次 GET 应能看到入口(收件域侧栏子导航 ×1 + 计划域侧栏子导航
-    ×2 + 总览页头「模块设置」),且 ledger_id 透传。撤掉任一模板链接本测试必红。"""
-    # 218-D S4: /web 根 303→/web/pending, 收件域落地页即 pending。
-    inbox = web_client.get("/web?ledger_id=owner")
-    assert inbox.status_code == 200
-    assert 'href="/web/tasks?ledger_id=owner"' in inbox.text
-
-    # 仪表盘卡片设置入口 S4 起由 /web/overview 页头「模块设置」承接
-    # (dashboard.html 不再直接服务, 删旧片统一处置)。
+def test_web_nav_links_secondary_pages_reachable(web_client: TestClient) -> None:
+    """可用的二级页都从所属产品域保有入站链接和 ledger_id。"""
     overview = web_client.get("/web/overview?ledger_id=owner")
     assert overview.status_code == 200
     assert 'href="/web/dashboard/cards?ledger_id=owner"' in overview.text

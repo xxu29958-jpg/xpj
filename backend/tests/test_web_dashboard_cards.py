@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember
+from app.routes import web_common
 from app.routes.web_app import _require_local as _web_require_local
 
 WEB_CARD_KEYS = [
@@ -54,7 +55,6 @@ def _demote_owner_ledger_to_viewer() -> None:
 
 
 def test_web_dashboard_cards_remote_returns_403(client: TestClient) -> None:
-    assert client.get("/web/dashboard/data").status_code == 403
     assert client.get("/web/dashboard/cards").status_code == 403
     assert client.post("/web/dashboard/cards/save").status_code == 403
     assert client.post("/web/dashboard/cards/reset").status_code == 403
@@ -109,9 +109,8 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
     )
     assert 'data-overview-card="reports"' not in overview.text
 
-    dashboard_data = web_client.get("/web/dashboard/data?ledger_id=owner")
-    assert dashboard_data.status_code == 200, dashboard_data.text
-    payload = dashboard_data.json()
+    with SessionLocal() as db:
+        payload = web_common._dashboard_data_payload(db, "owner")
     assert payload["selected_ledger_id"] == "owner"
     assert {"layout", "pending_count", "month"}.issubset(payload["cards"])
     assert "trend14" in payload and "category_share" in payload
@@ -130,9 +129,8 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
     assert "总览暂时没有可见模块" in empty_overview.text
     # 空态必须给出「模块设置」入口(孤儿页接回:服务端 fallback 分支)。
     assert 'href="/web/dashboard/cards?ledger_id=owner"' in empty_overview.text
-    empty_data = web_client.get("/web/dashboard/data?ledger_id=owner")
-    assert empty_data.status_code == 200, empty_data.text
-    assert empty_data.json()["visible_layout"] == []
+    with SessionLocal() as db:
+        assert web_common._dashboard_data_payload(db, "owner")["visible_layout"] == []
 
     reset = web_client.post(
         "/web/dashboard/cards/reset",
@@ -166,31 +164,6 @@ def test_web_dashboard_cards_viewer_can_read_but_not_save(web_client: TestClient
     assert denied.json()["error"] == "permission_denied"
 
 
-def test_web_dashboard_static_js_wires_category_donut(client: TestClient) -> None:
-    """分类环图接线静态钉:dashboard.js 必须渲染 #chart-category 容器并在
-    fetch 渲染后补调 initCategoryDonut(仪表盘晚于 desktop.js boot());
-    category-donut.js 必须读 category_share 的现成键(name/amount_yuan,
-    元而非分——cents 直出会把展示放大 100 倍)。撤任一接线行本测试红。"""
-    dashboard_js = client.get("/static/web/desktop/dashboard.js")
-    assert dashboard_js.status_code == 200
-    assert "chart-category" in dashboard_js.text
-    assert "initCategoryDonut" in dashboard_js.text
-    assert "data-categories" in dashboard_js.text
-    assert "SLOW_LOAD_MS = 2000" in dashboard_js.text
-    assert "FALLBACK_LOAD_MS = 8000" in dashboard_js.text
-    assert "AbortController" in dashboard_js.text
-    assert 'data-dashboard-state", "slow"' in dashboard_js.text
-    assert "data-dashboard-retry" in dashboard_js.text
-    assert 'cards.backup_age_status === "future"' in dashboard_js.text
-    assert "备份发布时间晚于当前系统时间" in dashboard_js.text
-
-    donut_js = client.get("/static/web/desktop/category-donut.js")
-    assert donut_js.status_code == 200
-    assert "d.name" in donut_js.text
-    assert "d.amount_yuan" in donut_js.text
-    assert "d.amount_cents" not in donut_js.text
-
-
 _TINY_PNG = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
     b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
@@ -205,7 +178,7 @@ def test_web_overview_first_day_shows_entry_links_until_first_expense(
     流水」引导与产品内进票口(待我处理 / 导入历史记录),而不是满屏 0;有了第一笔
     账单后回到稳态账面摘要、引导消失。
 
-    218-D S4: /web 根改向收件域, 原仪表盘首日分支 (dashboard.html) 不再直接
+    218-D S4: /web 根改向收件域, 原仪表盘首日分支不再直接
     服务; 首日引导的承接面是 /web/overview (S2 起就有 has_any_expense 分支)。
     引导在 JS 渲染区外服务端无条件渲染,所以这条路由级断言对脚本开/关两路径
     都成立。撤掉首日分支或任一入口链接本测试必红。"""
