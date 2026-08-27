@@ -262,12 +262,9 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
         get_settings.cache_clear()
 
 
-def test_report_scripts_share_the_home_currency_minor_digit_contract() -> None:
+def test_active_report_scripts_share_the_home_currency_minor_digit_contract() -> None:
     static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"
     core = (static_root / "desktop" / "core.js").read_text(encoding="utf-8")
-    dashboard = (static_root / "desktop" / "dashboard.js").read_text(
-        encoding="utf-8"
-    )
     reports = (static_root / "reports.js").read_text(encoding="utf-8")
     trend = (static_root / "desktop" / "trend-chart.js").read_text(
         encoding="utf-8"
@@ -279,7 +276,6 @@ def test_report_scripts_share_the_home_currency_minor_digit_contract() -> None:
     assert "app.homeMinorToMajor" in core
     assert "app.homeMinorToMajorText" in core
     assert "app.homeMoneyMinor" in core
-    assert "if (parts[1])" in dashboard
     assert "Number(cents || 0) / 100" not in reports
     assert "app.homeMoneyMinor(cents)" in reports
     assert "app.homeCurrencySymbol() + compactYuan(cents)" in reports

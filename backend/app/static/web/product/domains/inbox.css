@@ -352,88 +352,6 @@
     }
 }
 
-/* 处理中：把长任务作为收件队列的一部分，而不是系统管理页。 */
-
-.task-workspace {
-    display: grid;
-    gap: var(--space-6);
-}
-
-.task-overview {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border-block: 1px solid var(--border-card);
-}
-
-.task-overview > div {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: baseline;
-    gap: var(--space-2) var(--space-4);
-    padding: var(--space-5);
-    border-inline-end: 1px solid var(--border-card);
-}
-
-.task-overview > div:last-child {
-    border-inline-end: 0;
-}
-
-.task-overview .product-eyebrow {
-    grid-column: 1 / -1;
-}
-
-.task-overview strong {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-headline-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-headline-weight);
-}
-
-.task-overview span:last-child,
-.task-time,
-.task-message,
-.task-complete-mark,
-.task-progress span {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-    line-height: var(--type-caption-line);
-}
-
-.task-table td {
-    vertical-align: top;
-}
-
-.task-table td:first-child strong {
-    color: var(--text-default);
-    font-weight: var(--type-subtitle-weight);
-}
-
-.task-progress {
-    display: grid;
-    min-width: calc(var(--space-12) * 2);
-    gap: var(--space-2);
-}
-
-.task-progress .product-progress {
-    min-width: calc(var(--space-12) * 2);
-}
-
-.task-time {
-    display: grid;
-    min-width: calc(var(--space-12) * 2);
-    gap: var(--space-1);
-}
-
-.task-message {
-    max-width: calc(var(--space-12) * 3);
-    overflow-wrap: anywhere;
-}
-
-.task-message--error {
-    color: var(--state-danger-fg);
-}
-
 /* 待我处理抽屉：凭证与字段同屏，所有写入仍走原有 CSRF + OCC 合同。 */
 
 .product-drawer-editor,
@@ -626,19 +544,13 @@
 }
 
 @media (max-width: 48rem) {
-    .task-overview,
     .product-drawer-facts,
     .product-drawer-field-row {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .task-overview > div,
     .product-drawer-facts > div:nth-child(odd) {
         border-inline-end: 0;
-    }
-
-    .task-overview > div:first-child {
-        border-block-end: 1px solid var(--border-card);
     }
 
     .product-drawer-facts > div:nth-last-child(-n + 2) {

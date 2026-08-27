@@ -366,6 +366,9 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/merchants/aliases/{public_id}/undo": Exempt(
         "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")
     ),
+    # Native Inbox capture creates a new pending expense after the selected
+    # ledger's writer guard; there is no pre-existing row to version-fence.
+    "POST /web/pending/upload": Exempt("create_row", "expenses", ("expenses",)),
     # 218-C5a: POST /web/pending/batch-reject 与 POST /web/review/bulk 现在携带
     # 页面快照 expected_row_version(fail-closed 409),schema 自动判定为 carrier,
     # 不再占用 batch_db_write 豁免。
@@ -386,8 +389,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/rules/{rule_id}/undo": Exempt(
         "terminal_flag_flip", "rules", ("category_rules", "ledger_audit_logs")
     ),
-    "POST /web/tasks/{public_id}/cancel": Exempt("terminal_flag_flip", "tasks", ("background_tasks",)),
-
     # --- /owner console (loopback-only admin / single-writer / batch) ---
     "POST /owner/ai-advisor/confirmation": Exempt("external_side_effect", "owner_console", (), "medium"),
     "POST /owner/algorithm-versions/withdraw": Exempt("batch_db_write", "learning", _ALGO_DECISIONS, "medium"),

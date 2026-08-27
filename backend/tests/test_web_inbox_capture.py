@@ -81,3 +81,32 @@ def test_retired_inbox_surfaces_and_dashboard_owner_are_gone(
     assert not (app_root / "templates" / "web" / "tasks.html").exists()
     assert not (app_root / "templates" / "web" / "dashboard.html").exists()
     assert not (app_root / "static" / "web" / "desktop" / "dashboard.js").exists()
+
+
+def test_retired_dashboard_runtime_owners_are_physically_gone() -> None:
+    app_root = Path(__file__).resolve().parents[1] / "app"
+
+    assert not (app_root / "static" / "web" / "pages" / "dashboard.css").exists()
+    assert (app_root / "static" / "web" / "components" / "responsive-layout.css").exists()
+
+    desktop_boot = (app_root / "static" / "web" / "desktop.js").read_text(encoding="utf-8")
+    assert "initDashboard" not in desktop_boot
+    assert "initSparks" not in desktop_boot
+
+    desktop_core = (app_root / "static" / "web" / "desktop" / "core.js").read_text(encoding="utf-8")
+    assert "dashboardUrl" not in desktop_core
+
+    insights_css = (
+        app_root / "static" / "web" / "product" / "domains" / "insights.css"
+    ).read_text(encoding="utf-8")
+    assert "data-dashboard-state" not in insights_css
+
+    inbox_css = (
+        app_root / "static" / "web" / "product" / "domains" / "inbox.css"
+    ).read_text(encoding="utf-8")
+    assert ".task-" not in inbox_css
+
+    mutation_ledger = (
+        app_root.parent / "scripts" / "_mutate_token_ledger.py"
+    ).read_text(encoding="utf-8")
+    assert 'POST /web/tasks/{public_id}/cancel' not in mutation_ledger

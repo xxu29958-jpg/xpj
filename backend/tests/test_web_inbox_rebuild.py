@@ -115,7 +115,7 @@ def test_inbox_pages_render_new_modular_product_shell(
     page_level: str,
     copy: str,
 ) -> None:
-    """S4 (矿页面断言族回收): 收件域三页正文已是新标记 — 挂壳+组件+inbox 域模块,
+    """S4 (矿页面断言族回收): 收件域两页正文已是新标记 — 挂壳+组件+inbox 域模块,
     退役旧栈 (含页级 pages/pending.css / pages/duplicates.css) 不得回流,
     body hook 换 data-body-stack="product", 全页零内联样式。"""
     response = web_client.get(path)

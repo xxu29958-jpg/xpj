@@ -95,13 +95,6 @@
     return app.homeCurrencySymbol() + app.escapeHtml(value);
   };
 
-  app.dashboardUrl = function dashboardUrl(path, ledgerId, extra) {
-    const params = new URLSearchParams(extra || {});
-    if (ledgerId) params.set("ledger_id", ledgerId);
-    const query = params.toString();
-    return path + (query ? "?" + query : "");
-  };
-
   app.moneyParts = function moneyParts(value) {
     const digits = app.homeCurrencyMinorDigits();
     if (digits === null) return [UNKNOWN_MONEY_TEXT, ""];

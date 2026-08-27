@@ -1,74 +1,23 @@
-/* /web 桌面账本 · 仪表盘页样式 (v0.10.1 从 desktop.css 拆出)
+/* Legacy-body responsive layout shared by the remaining /web pages.
  *
- * 包含 Dashboard grid + Goals + Recent uploads 全部 dashboard 专属规则
+ * The retired dashboard once owned these live grid and narrow-shell rules.
+ * Keeping them in a shared component preserves the current cascade position
+ * without leaving a dashboard runtime owner behind.
  */
 
-/* ───── Dashboard grid ───── */
 .dash-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 16px;
     align-items: start;
 }
-.dashboard-skeleton-grid {
-    margin-bottom: 16px;
-}
-.dashboard-skeleton-card {
-    min-height: 180px;
-}
-#dashboard-app[data-dashboard-state="pending"] [data-dashboard-fallback],
-#dashboard-app[data-dashboard-state="pending"] [data-dashboard-rendered],
-#dashboard-app[data-dashboard-state="slow"] [data-dashboard-fallback],
-#dashboard-app[data-dashboard-state="slow"] [data-dashboard-rendered],
-#dashboard-app[data-dashboard-state="ready"] [data-dashboard-skeleton],
-#dashboard-app[data-dashboard-state="ready"] [data-dashboard-status],
-#dashboard-app[data-dashboard-state="ready"] [data-dashboard-fallback],
-#dashboard-app[data-dashboard-state="fallback"] [data-dashboard-skeleton],
-#dashboard-app[data-dashboard-state="fallback"] [data-dashboard-rendered] {
-    display: none;
-}
-#dashboard-app[data-dashboard-state="pending"] [data-dashboard-status],
-#dashboard-app[data-dashboard-state="slow"] [data-dashboard-retry] {
-    display: none;
-}
-.dashboard-load-panel {
-    display: none;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-5);
-    margin-bottom: var(--space-5);
-    padding: var(--space-4) var(--space-5);
-    border: 1px solid var(--state-info-border);
-    border-radius: var(--radius-md);
-    background: var(--state-info-bg);
-    color: var(--state-info-fg);
-}
-#dashboard-app[data-dashboard-state="slow"] [data-dashboard-status],
-#dashboard-app[data-dashboard-state="fallback"] [data-dashboard-status] {
-    display: flex;
-}
-.dashboard-load-copy {
-    min-width: 0;
-}
-.dashboard-load-title {
-    color: var(--text-default);
-    font-size: var(--type-body-size);
-    line-height: var(--type-body-line);
-    font-weight: var(--type-subtitle-weight);
-}
-.dashboard-load-body {
-    color: var(--text-muted);
-    font-size: var(--type-caption-size);
-    line-height: var(--type-caption-line);
-}
-.dashboard-load-retry {
-    flex-shrink: 0;
-}
+
 .col-4,
 .col-5,
 .col-6 {
     grid-column: span 1;
 }
+
 .col-7,
 .col-8,
 .col-12 {
@@ -80,11 +29,13 @@
     .dash-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
     .col-4,
     .col-5,
     .col-6 {
         grid-column: span 1;
     }
+
     .col-7,
     .col-8,
     .col-12 {
@@ -99,6 +50,7 @@
         grid-template-columns: minmax(0, 1fr);
         min-height: auto;
     }
+
     .sidebar {
         position: static;
         height: auto;
@@ -108,18 +60,22 @@
         gap: var(--space-3-5);
         overflow: hidden;
     }
+
     .brand {
         padding: 0;
         margin-bottom: var(--space-2);
     }
+
     .desktop-nav {
         display: none;
     }
+
     .mobile-primary-nav {
         display: grid;
         grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: var(--space-2);
     }
+
     .mobile-primary-nav .nav-item {
         min-width: 0;
         min-height: var(--space-10);
@@ -135,18 +91,18 @@
         font-size: var(--type-caption-size);
         line-height: var(--type-caption-line);
     }
+
     .mobile-primary-nav .nav-item.active {
         border-color: var(--text-default);
         background: var(--surface-sunken);
     }
-    .mobile-primary-nav .nav-icon {
-        width: var(--space-5);
-        height: var(--space-5);
-    }
+
+    .mobile-primary-nav .nav-icon,
     .mobile-primary-nav .nav-icon svg {
         width: var(--space-5);
         height: var(--space-5);
     }
+
     .mobile-primary-nav .nav-badge {
         position: absolute;
         top: var(--space-2);
@@ -155,9 +111,11 @@
         padding: 0 var(--space-2);
         line-height: var(--type-caption-line);
     }
+
     .mobile-primary-nav .nav-item.active::before {
         display: none;
     }
+
     /* 五域 IA (218-D S1): 窄屏第二行 = 当前域页级链接, 横向滚动芯片。
        min-width:0 必须——sidebar 是纵向 flex, 长芯片行(计划域 6 项)的
        min-content 否则会撑宽整栏并把主域卡挤出视口。 */
@@ -169,9 +127,11 @@
         scrollbar-width: none;
         padding-bottom: var(--space-1);
     }
+
     .mobile-plan-nav::-webkit-scrollbar {
         display: none;
     }
+
     .mobile-plan-nav a {
         flex: 0 0 auto;
         display: flex;
@@ -188,18 +148,22 @@
         line-height: var(--type-caption-line);
         white-space: nowrap;
     }
+
     .mobile-plan-nav a.active {
         border-color: var(--text-default);
         background: var(--surface-sunken);
         color: var(--text-default);
         font-weight: 500;
     }
+
     .mobile-plan-nav a .nav-badge {
         margin-left: 0;
     }
+
     .sidebar-foot {
         display: none;
     }
+
     .topbar {
         position: static;
         height: auto;
@@ -208,27 +172,28 @@
         flex-wrap: wrap;
         align-items: flex-start;
     }
+
     .topbar .grow {
         flex-basis: 100%;
         height: 0;
         order: 1;
     }
+
     .month-picker,
     .icon-btn,
     .ledger-switcher {
         order: 2;
     }
+
     .content {
         padding: var(--space-7) var(--space-6) calc(var(--space-10) + var(--space-3));
         max-width: none;
     }
+
     .dash-grid {
         grid-template-columns: 1fr;
     }
-    .dashboard-load-panel {
-        align-items: stretch;
-        flex-direction: column;
-    }
+
     .col-4,
     .col-5,
     .col-6,
@@ -243,83 +208,27 @@
     .topbar {
         gap: 10px;
     }
+
     .crumb {
         flex-wrap: wrap;
     }
+
     .ledger-switcher {
         width: 100%;
     }
+
     .ledger-popover {
         left: 0;
         right: auto;
         min-width: min(100%, 280px);
     }
+
     .metric-grid,
     .kpi-strip {
         grid-template-columns: 1fr;
     }
+
     .dt-card {
         padding: 18px;
     }
 }
-
-
-/* ── 续段(原 desktop.css 第 814 行起) ── */
-
-/* ───── Goals (scoped to .dt-card 防止撞 legacy /web/goals 的 .goal-row) ───── */
-.dt-card .goal-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 12px 0;
-}
-.dt-card .goal-row + .goal-row { border-top: 1px solid var(--border-card); }
-.dt-card .goal-ring { width: 44px; height: 44px; position: relative; flex-shrink: 0; }
-.dt-card .goal-pct {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    font-family: var(--font-num);
-    font-size: 10.5px;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-muted);
-}
-.dt-card .goal-meta { flex: 1; min-width: 0; }
-.dt-card .goal-title { font-size: 13.5px; color: var(--text-default); margin-bottom: 2px; }
-.dt-card .goal-foot { font-size: 11.5px; color: var(--text-meta); display: flex; gap: 6px; align-items: baseline; }
-.dt-card .goal-foot .num { font-size: 12.5px; color: var(--text-muted); }
-
-/* ───── Recent uploads (dashboard 的 RecentUploadsCard，scoped 避免 future 冲突) ───── */
-.dt-card .upload-row {
-    display: grid;
-    grid-template-columns: 36px 1fr auto auto;
-    gap: 12px;
-    align-items: center;
-    padding: 10px 0;
-}
-.dt-card .upload-row + .upload-row { border-top: 1px solid var(--border-card); }
-.dt-card .upload-thumb {
-    width: 36px; height: 44px;
-    background:
-        repeating-linear-gradient(135deg,
-            var(--surface-sunken) 0 2px, transparent 2px 6px),
-        var(--surface-card);
-    border: 1px solid var(--border-card);
-    border-radius: 3px;
-    position: relative;
-    overflow: hidden;
-    flex-shrink: 0;
-}
-.dt-card .upload-thumb::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.04));
-}
-.dt-card .upload-merch { font-size: 13px; color: var(--text-default); }
-.dt-card .upload-meta { font-size: 11.5px; color: var(--text-meta); font-family: var(--font-num); }
-.dt-card .upload-amt { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 13.5px; }
-
-/* 已迁出到 components/pills.css (v0.10.1 拆分). */
-/* 已迁出到 components/toolbar.css (v0.10.1 拆分). */
