@@ -56,7 +56,6 @@ class MainProductNavigationPolicyTest {
         val secondaryOwners = ProductSecondaryPage.entries.associateWith(
             ProductSecondaryPage::primaryDomain,
         )
-        assertEquals(PrimaryDomain.Inbox, secondaryOwners.getValue(ProductSecondaryPage.InboxProcessing))
         assertEquals(PrimaryDomain.Transactions, secondaryOwners.getValue(ProductSecondaryPage.GlobalSearch))
         assertEquals(PrimaryDomain.Obligations, secondaryOwners.getValue(ProductSecondaryPage.RepaymentDrafts))
         assertEquals(PrimaryDomain.Plans, secondaryOwners.getValue(ProductSecondaryPage.Budget))

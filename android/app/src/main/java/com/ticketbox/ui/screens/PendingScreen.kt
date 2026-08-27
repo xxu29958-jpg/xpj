@@ -136,7 +136,6 @@ fun PendingScreen(
     )
     val triagePaneActions = PendingTriagePaneActions(
         onSelectFilter = { needsReviewFilter = it },
-        onOpenProcessing = chromeActions.onOpenProcessing,
         onOpenRepaymentReview = chromeActions.onOpenRepaymentReview,
         onOpenDataQuality = chromeActions.onOpenDataQuality,
         onOpenBulkConfirm = reviewActions.queue.onOpenBulkConfirm,
@@ -312,6 +311,7 @@ fun PendingScreen(
                             readOnly = readOnly,
                             showUploadGuide = showUploadGuide,
                         ),
+                        onUploadScreenshot = chromeActions.onUploadScreenshot,
                         onToggleGuide = { showUploadGuide = !showUploadGuide },
                         onRefresh = chromeActions.onRefresh,
                     )
@@ -382,7 +382,6 @@ private data class PendingTriagePaneState(
 
 private data class PendingTriagePaneActions(
     val onSelectFilter: (NeedsReviewFilter) -> Unit,
-    val onOpenProcessing: () -> Unit,
     val onOpenRepaymentReview: () -> Unit,
     val onOpenDataQuality: () -> Unit,
     val onOpenBulkConfirm: () -> Unit,
@@ -419,7 +418,6 @@ private fun PendingTriagePane(
             },
         )
         InboxActionLinks(
-            onOpenProcessing = actions.onOpenProcessing,
             onOpenRepaymentReview = actions.onOpenRepaymentReview,
             onOpenDataQuality = actions.onOpenDataQuality,
         )

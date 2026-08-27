@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.pending
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -48,6 +50,7 @@ internal fun UploadProgressCard() {
 @Composable
 internal fun EmptyPendingState(
     state: EmptyPendingStateModel,
+    onUploadScreenshot: () -> Unit,
     onToggleGuide: () -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -73,6 +76,19 @@ internal fun EmptyPendingState(
         if (state.loading) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
+        emptyPendingUploadCta(
+            uploading = state.uploading,
+            loading = state.loading,
+            readOnly = state.readOnly,
+        )?.let { cta ->
+            AppPrimaryButton(
+                text = stringResource(cta.labelRes),
+                icon = Icons.Filled.AddPhotoAlternate,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = cta.enabled,
+                onClick = onUploadScreenshot,
+            )
+        }
         PendingEmptyActions(
             state = state,
             onToggleGuide = onToggleGuide,
@@ -90,6 +106,31 @@ internal data class EmptyPendingStateModel(
     val readOnly: Boolean,
     val showUploadGuide: Boolean,
 )
+
+/**
+ * 空态主上传 CTA 的纯模型：只读角色没有上传入口（返回 null）；上传中 / 加载中
+ * 置灰防重入。标签复用页头 CTA 文案，不新增字符串。
+ */
+internal data class EmptyPendingUploadCta(
+    @param:StringRes val labelRes: Int,
+    val enabled: Boolean,
+)
+
+internal fun emptyPendingUploadCta(
+    uploading: Boolean,
+    loading: Boolean,
+    readOnly: Boolean,
+): EmptyPendingUploadCta? {
+    if (readOnly) return null
+    return EmptyPendingUploadCta(
+        labelRes = if (uploading) {
+            R.string.pending_top_cta_uploading
+        } else {
+            R.string.pending_top_cta_upload
+        },
+        enabled = !uploading && !loading,
+    )
+}
 
 @Composable
 private fun PendingUploadGuide() {

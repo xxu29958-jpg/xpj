@@ -57,8 +57,6 @@ internal enum class PrimaryDomain(
 }
 
 internal enum class ProductSecondaryPage(val route: String) {
-    // 收件域：服务端持久化长任务台账。
-    InboxProcessing("product/inbox/processing"),
     SpendingGoal("product/plans/spending-goal"),
     Budget("product/plans/budget"),
     BudgetAdvice("product/plans/budget-advice"),
@@ -280,8 +278,6 @@ internal val PrimaryDomain.surfaceRole: SurfaceRole
 
 internal val ProductSecondaryPage.surfaceRole: SurfaceRole
     get() = when (this) {
-        ProductSecondaryPage.InboxProcessing -> SurfaceRole.Pending
-
         ProductSecondaryPage.BillSplits,
         ProductSecondaryPage.GlobalSearch,
         ProductSecondaryPage.TransactionsLibrary,

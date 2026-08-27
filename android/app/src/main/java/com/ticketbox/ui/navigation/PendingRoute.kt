@@ -99,9 +99,6 @@ internal fun PendingRoute(
             viewModel = pendingViewModel,
             onUploadScreenshot = launchImagePicker,
             navigation = PendingInboxNavigationActions(
-                onOpenProcessing = {
-                    shellState.openSecondaryPage(ProductSecondaryPage.InboxProcessing)
-                },
                 onOpenRepaymentReview = shellState::openRepaymentDrafts,
                 onOpenDataQuality = {
                     shellState.openSecondaryPage(ProductSecondaryPage.InsightsDataQuality)
@@ -116,7 +113,6 @@ internal fun PendingRoute(
 }
 
 private data class PendingInboxNavigationActions(
-    val onOpenProcessing: () -> Unit,
     val onOpenRepaymentReview: () -> Unit,
     val onOpenDataQuality: () -> Unit,
 )
@@ -129,7 +125,6 @@ private fun pendingScreenChromeActions(
 ): PendingScreenChromeActions = PendingScreenChromeActions(
     onRefresh = viewModel::refresh,
     onUploadScreenshot = onUploadScreenshot,
-    onOpenProcessing = navigation.onOpenProcessing,
     onOpenRepaymentReview = navigation.onOpenRepaymentReview,
     onOpenDataQuality = navigation.onOpenDataQuality,
     requestedFilter = filterRequest.pending,

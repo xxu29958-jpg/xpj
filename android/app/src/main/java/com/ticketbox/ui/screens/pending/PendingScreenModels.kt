@@ -23,7 +23,6 @@ internal fun pendingListBodyState(
 data class PendingScreenChromeActions(
     val onRefresh: () -> Unit,
     val onUploadScreenshot: () -> Unit,
-    val onOpenProcessing: () -> Unit,
     val onOpenRepaymentReview: () -> Unit,
     val onOpenDataQuality: () -> Unit,
     val requestedFilter: NeedsReviewFilter? = null,
