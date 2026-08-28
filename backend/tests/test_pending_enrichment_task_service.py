@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 import app.services.expense_service._enrich as enrich_service
 from app.database import SessionLocal
 from app.models import BackgroundTask, Expense
+from app.services import background_task_service
 from app.services.background_task_handler_api import TaskCancelledError
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service import create_pending_expense
@@ -172,6 +175,120 @@ def test_enrichment_conflict_discards_unpublished_thumbnail(
     assert checkpoint_count == 2
     assert not thumbnail_path.exists()
     assert not list(thumbnail_path.parent.glob(f".{source.stem}.*.staging.jpg"))
+
+
+@pytest.mark.real_db
+def test_enrichment_commit_failure_discards_published_thumbnail(
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    expense_id, predecessor_row_version, _task_id = _seed_pending_enrichment_task()
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        source = resolve_upload_path_for_tenant(expense.image_path, "owner")
+        assert source is not None
+    thumbnail_path = source.parent / "thumbs" / f"{source.stem}.jpg"
+    assert not thumbnail_path.exists()
+
+    real_commit = Session.commit
+    rejected_publication = False
+
+    def fail_publication_commit(db: Session) -> None:
+        nonlocal rejected_publication
+        expense = db.get(Expense, expense_id)
+        if not rejected_publication and expense is not None and expense.thumbnail_path:
+            rejected_publication = True
+            raise SQLAlchemyError("thumbnail owner commit rejected")
+        real_commit(db)
+
+    monkeypatch.setattr(Session, "commit", fail_publication_commit)
+    monkeypatch.setattr(
+        enrich_service,
+        "collect_auto_ocr_extractions",
+        lambda *_args, **_kwargs: [],
+    )
+
+    result = enrich_service.enrich_pending_expense(
+        expense_id,
+        "owner",
+        expected_row_version=predecessor_row_version,
+    )
+
+    assert result.outcome == "failed"
+    assert rejected_publication is True
+    assert not thumbnail_path.exists()
+    assert not list(thumbnail_path.parent.glob(f".{source.stem}.*.staging.jpg"))
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.thumbnail_path is None
+        assert expense.row_version == predecessor_row_version
+
+
+@pytest.mark.real_db
+def test_enrichment_post_commit_read_failure_does_not_false_fail_task(
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    expense_id, predecessor_row_version, task_id = _seed_pending_enrichment_task()
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        assert task is not None
+        task.status = "queued"
+        task.started_at = None
+        db.commit()
+
+    real_commit = Session.commit
+    real_refresh = Session.refresh
+    enrichment_commit_completed = False
+
+    def observe_enrichment_commit(db: Session) -> None:
+        nonlocal enrichment_commit_completed
+        owns_expense = any(
+            isinstance(value, Expense) and value.__dict__.get("id") == expense_id for value in db.identity_map.values()
+        )
+        real_commit(db)
+        if owns_expense:
+            enrichment_commit_completed = True
+
+    def reject_post_commit_expense_read(db: Session, instance, *args, **kwargs) -> None:
+        if enrichment_commit_completed and isinstance(instance, Expense) and instance.__dict__.get("id") == expense_id:
+            raise SQLAlchemyError("post-commit expense refresh unavailable")
+        real_refresh(db, instance, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "commit", observe_enrichment_commit)
+    monkeypatch.setattr(Session, "refresh", reject_post_commit_expense_read)
+    monkeypatch.setattr(
+        enrich_service,
+        "collect_auto_ocr_extractions",
+        lambda *_args, **_kwargs: _ocr_result(),
+    )
+    monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", lambda *_args: None)
+
+    background_task_service._run_task(  # noqa: SLF001 - exercise the real worker outcome barrier.
+        task_id,
+        {
+            "expense_id": expense_id,
+            "tenant_id": "owner",
+            "timezone_name": None,
+            "expected_row_version": predecessor_row_version,
+        },
+    )
+
+    assert enrichment_commit_completed is True
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        expense = db.get(Expense, expense_id)
+        assert task is not None
+        assert task.status == "completed"
+        assert task.error_code is None
+        assert expense is not None
+        assert expense.amount_cents == 1990
+        assert expense.merchant == "盒马"
+        assert expense.row_version == predecessor_row_version + 1
 
 
 @pytest.mark.real_db

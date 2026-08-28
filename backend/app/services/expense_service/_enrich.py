@@ -25,6 +25,7 @@ from app.services.ocr_service import OcrExtraction, collect_auto_ocr_extractions
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.thumb_service import (
     StagedThumbnail,
+    discard_published_thumbnail,
     discard_staged_thumbnail,
     publish_staged_thumbnail,
     stage_thumbnail,
@@ -178,18 +179,29 @@ def _apply_enrichment(
         if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
             mark_duplicate_status(db, expense)
         user_visible_changed = _enrichment_occ_snapshot(expense) != occ_snapshot
+        result_row_version = prepared.predecessor_row_version
         if prepared.ocr_extractions or user_visible_changed:
             expense.updated_at = now_utc()
             bump_row_version(expense)
+            result_row_version += 1
+        published_thumbnail: StagedThumbnail | None = None
         if not expense.thumbnail_path and staged_thumbnail is not None:
             expense.thumbnail_path = publish_staged_thumbnail(staged_thumbnail)
-        db.commit()
-        db.refresh(expense)
-        return PendingEnrichmentResult(
+            published_thumbnail = staged_thumbnail
+        result = PendingEnrichmentResult(
             expense_id=expense.id,
             outcome="updated" if user_visible_changed else "no_result",
-            row_version=expense.row_version,
+            row_version=result_row_version,
         )
+        try:
+            db.commit()
+        except SQLAlchemyError:
+            # The derived file has no durable Expense owner if this transaction
+            # is rejected. Remove only the canonical path owned by this staging
+            # token while the Expense row lock still excludes a later apply.
+            discard_published_thumbnail(published_thumbnail)
+            raise
+        return result
 
 
 def _failed_enrichment_result(

@@ -51,10 +51,9 @@ packaging\build_inno_installer.ps1                    # 原子发布完整版本
 安装包版本只能从 `app/version.py` 的 `BACKEND_VERSION` 动态读取；构建工具版本只能从
 `packaging/windows-build-toolchain.json` 读取；服务/数据库身份、默认/隔离端口、SCM 策略、
 就绪等待、bootstrap 默认值和密钥强度只能从 `packaging/windows-release-config.json` 读取。构建脚本只把向导所需值
-注入 Inno，升级预检、安装和卸载则通过 `windows_release_config.ps1` 读取并校验配置，不再从 Inno 重复传递服务名或
-超时。覆盖升级在复制前读取已安装的 N-1 config 校验旧服务，并把该已验证配置保存到 Inno 临时快照，复制后仍用 N-1
-策略完成旧服务删除，注册后才以 N config 验证新服务；服务名、数据库名和数据库角色
-属于持久身份，变化必须有显式迁移，不能伪装成普通策略更新。`build_inno_installer.ps1` 是受支持的构建入口：它绑定实际
+注入 Inno；current shipment 只资格化 Fresh install，不提供 upgrade、uninstall 或 N-1 lifecycle。
+旧版本配置、服务删除与迁移设计只保留在下方历史审计段，不能作为当前入口或产品承诺。
+`build_inno_installer.ps1` 是受支持的构建入口：它绑定实际
 ISCC defines，编译后重新读取 backend/PG/Shawl/recipe/Git/ISCC 证据，再把 EXE、SHA-256 旁车、provenance 和完成标记作为
 一个 staging 单元验证并原子发布到 `dist\installer\Ticketbox-Setup-<version>\`；并发构建由同一机器级构建锁串行化，替换失败
 会恢复上一份完整发布单元。编译入口还在释放同一构建锁前，把内存中的 installer SHA-256 写到 publish unit 外的 runner step
@@ -127,8 +126,8 @@ Generation Owner 当前只闭合全新机器上的 `empty source -> target -> ca
 
 服务宿主通过 Shawl 把 `TICKETBOX_DATA_DIR` 设置为 machine-owned
 `{commonappdata}\TicketboxRuntimeBinding\data-root\app` junction；v2 DataRoot marker 与
-Volume GUID 把它绑定到安装器选择的物理 `<DataRoot>\app`。因此 `.env`、uploads、logs、
-backups 的 bytes 位于物理 DataRoot，不会写入 Program Files，也不直接依赖可复用盘符。
+Volume GUID 把它绑定到安装器选择的物理 `<DataRoot>\app`。因此 `.env`、uploads、logs
+等当前 backend 运行时文件位于物理 DataRoot，不会写入 Program Files，也不直接依赖可复用盘符。
 
 `launch.py` 在 import `app.*` 之前把 `UPLOAD_DIR` 指向数据目录、并把 uvicorn + app 日志配到 `logs/backend.log`(windowed `console=False` 无 stdout,改写文件);若存在 `<data>\.env` 则**优先**采用其中的值(`override=True`)。`DATABASE_URL` 不在这里默认——后端是 PostgreSQL-only,要么在 `.env` 里设、要么回落到 `app.config` 的本机 PostgreSQL 默认(EXE 假设本机已装 PostgreSQL 服务)。
 

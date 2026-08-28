@@ -113,6 +113,12 @@ def discard_staged_thumbnail(staged: StagedThumbnail | None) -> None:
         staged.staging_path.unlink(missing_ok=True)
 
 
+def discard_published_thumbnail(staged: StagedThumbnail | None) -> None:
+    """Remove this staging token's canonical file before DB ownership commits."""
+    if staged is not None:
+        staged.canonical_path.unlink(missing_ok=True)
+
+
 def generate_thumbnail(
     relative_path: str | None,
     *,
