@@ -28,7 +28,6 @@ Navigation:
     GET  /owner/recycle-bin         — unified archived/deleted restore surface
     POST /owner/recycle-bin/restore — restore one recycle-bin item
     GET  /owner/settings(/*)        — runtime settings (5 endpoints)
-    GET  /owner/backups             — list manual backups
 """
 
 from __future__ import annotations
@@ -38,7 +37,6 @@ from fastapi import APIRouter
 from app.routes.owner_console import (
     _ai_advisor,
     _algorithm_versions,
-    _backups,
     _devices,
     _diagnostics,
     _fx,
@@ -72,7 +70,6 @@ router.include_router(_upload_links.router)
 router.include_router(_diagnostics.router)
 router.include_router(_fx.router)
 router.include_router(_settings.router)
-router.include_router(_backups.router)
 
 
 __all__ = [

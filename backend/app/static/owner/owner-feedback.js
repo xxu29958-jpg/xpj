@@ -2,12 +2,12 @@
  *
  * 用法:
  *   1. 表单提交触发 loading:
- *        <form ... data-show-loading="正在备份…">
+ *        <form ... data-show-loading="正在保存…">
  *   2. 程序触发:
  *        window.OwnerLoading.show("处理中…");
  *        window.OwnerLoading.hide();
  *   3. Toast 提示:
- *        window.OwnerToast.success("备份完成");
+ *        window.OwnerToast.success("保存完成");
  *        window.OwnerToast.warn("队列已满");
  *        window.OwnerToast.danger("操作失败");
  *

@@ -42,16 +42,24 @@ def test_upload_screenshot_accepts_ios_file_body(client: TestClient, *, identity
 
 
 def test_upload_passes_client_timezone_to_background_ocr(
-    client: TestClient, monkeypatch
-, *, identity) -> None:
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+) -> None:
     captured: dict[str, object] = {}
 
     def fake_enrich(
-        expense_id: int, tenant_id: str, timezone_name: str | None = None
+        expense_id: int,
+        tenant_id: str,
+        timezone_name: str | None = None,
+        *,
+        expected_row_version: int | None = None,
     ) -> None:
         captured["expense_id"] = expense_id
         captured["tenant_id"] = tenant_id
         captured["timezone_name"] = timezone_name
+        captured["expected_row_version"] = expected_row_version
 
     monkeypatch.setattr("app.routes._upload_request.enrich_pending_expense", fake_enrich)
 
@@ -69,6 +77,7 @@ def test_upload_passes_client_timezone_to_background_ocr(
     assert captured["expense_id"] == response.json()["id"]
     assert captured["tenant_id"] == "owner"
     assert captured["timezone_name"] == "America/Los_Angeles"
+    assert captured["expected_row_version"] == 1
 
 
 def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient, *, identity) -> None:
@@ -533,8 +542,9 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
 
     monkeypatch.setattr(create_mod, "classify_expense", fail_classify)
 
-    enrich_pending_expense(expense_id, "owner")
+    failed = enrich_pending_expense(expense_id, "owner")
 
+    assert failed.outcome == "failed"
     assert set(_stored_upload_files()) == before
     with SessionLocal() as db:
         row = db.get(Expense, expense_id)
@@ -551,8 +561,9 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
         "collect_auto_ocr_extractions",
         lambda *_args, **_kwargs: [],
     )
-    enrich_pending_expense(expense_id, "owner")
+    no_result = enrich_pending_expense(expense_id, "owner")
 
+    assert no_result.outcome == "no_result"
     assert set(_stored_upload_files()) > before
     with SessionLocal() as db:
         row = db.get(Expense, expense_id)

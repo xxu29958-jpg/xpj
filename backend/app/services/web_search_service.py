@@ -15,6 +15,7 @@ from app.services.spending_contract_service import (
     merchant_search_terms,
     stat_time,
 )
+from app.services.web_stats_service import source_label
 
 MAX_QUERY_LENGTH = 80
 DEFAULT_GROUP_LIMIT = 6
@@ -174,7 +175,7 @@ def _search_expenses(
 def _expense_subtitle(expense: Expense) -> str:
     parts = [
         expense.category or "未分类",
-        expense.source or "未知来源",
+        source_label(expense.source, "未知来源"),
     ]
     when = stat_time(expense)
     if when:

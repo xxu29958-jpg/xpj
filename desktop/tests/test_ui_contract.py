@@ -57,7 +57,6 @@ def test_primary_workbench_uses_real_tasks_without_fake_qr_or_token_copy() -> No
     for action in (
         "open_pairing",
         "open_upload_links",
-        "open_backups",
         "export_diagnostics",
         "open_diagnostics",
     ):
@@ -114,14 +113,14 @@ def test_hidden_attribute_is_authoritative_over_product_display_rules() -> None:
 def test_data_protection_card_exposes_only_real_capabilities() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 
-    # Real entries: the in-product import/export page and the read-only backup
-    # history; the copy must not imply full backup or restore.
+    # The only current user capability is import/export. Backup and restore
+    # lifecycle remain HOLD, so the Manager must not advertise either one.
     assert "数据保护" in html
     assert "导入与导出" in html
     assert 'window.location.assign("/web/import")' in html
-    assert "查看备份记录" in html
-    assert "open_backups" in html
-    assert "恢复功能当前未开放" in html
+    assert "查看备份记录" not in html
+    assert "open_backups" not in html
+    assert "恢复功能当前未开放" not in html
     assert "完整备份" not in html
     # The card stays visible when service controls are unavailable.
     assert "dataProtectionCard" in html

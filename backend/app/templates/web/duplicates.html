@@ -44,7 +44,7 @@
   {% for pair in duplicate_pairs %}
   {% set cur = pair.current %}
   {% set orig = pair.original %}
-  <section class="product-panel duplicate-case">
+  <section class="product-panel duplicate-case" id="duplicate-{{ cur.id }}">
     <div class="product-panel-header">
       <div>
         <div class="product-panel-title">{{ (orig.merchant if orig else cur.merchant) or '未填写商家' }}</div>

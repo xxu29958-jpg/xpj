@@ -55,6 +55,7 @@
          人话而不是 bill_split_received 这种裸 token；未知来源回退原值。 -->
     <string name="expense_edit_source_iphone">iPhone</string>
     <string name="expense_edit_source_android">Android</string>
+    <string name="expense_edit_source_web">网页</string>
     <string name="expense_edit_source_manual">手动</string>
     <string name="expense_edit_source_csv">CSV</string>
     <string name="expense_edit_source_bill_split">拆账</string>

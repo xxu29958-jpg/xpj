@@ -18,10 +18,11 @@ from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.config import reset_settings_cache
 from app.database import SessionLocal
-from app.models import Account, BackgroundTask
+from app.models import Account, BackgroundTask, LedgerMember
 from app.services import background_task_service as bgtasks
 from app.services.time_service import now_utc
 
@@ -223,6 +224,44 @@ def test_handler_observes_cancellation_request(*, identity) -> None:
         row = bgtasks.get_task(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
         assert row.status == "cancelled"
         assert row.completed_at is not None
+
+
+def test_viewer_cannot_cancel_a_ledger_task(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    with SessionLocal() as db:
+        task = BackgroundTask(
+            task_type="test_viewer_cancel",
+            tenant_id="owner",
+            initiated_by_account_id=_owner_account_id(),
+            status="running",
+        )
+        db.add(task)
+        db.commit()
+        public_id = task.public_id
+
+        membership = db.scalar(
+            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
+        )
+        assert membership is not None
+        membership.role = "viewer"
+        db.commit()
+
+    response = client.post(
+        f"/api/tasks/{public_id}/cancel",
+        headers=identity.app_headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "permission_denied"
+    with SessionLocal() as db:
+        task = db.scalar(
+            select(BackgroundTask).where(BackgroundTask.public_id == public_id)
+        )
+        assert task is not None
+        assert task.cancellation_requested_at is None
 
 
 def test_request_cancellation_idempotent_on_terminal_task(*, identity) -> None:

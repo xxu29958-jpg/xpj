@@ -37,6 +37,21 @@ retired_c07_modules = sorted(
     if module == "app.database_generation_c07_contract"
     or module.startswith("app.database._c07_")
 )
+retired_dataset_mutation_modules = {
+    "app.dataset_maintenance_cli",
+    "app.database._dataset_backup_action",
+    "app.database._dataset_backup_snapshot",
+    "app.database._dataset_restore_action",
+    "app.database._dataset_restore_authority",
+    "app.database._dataset_restore_security",
+    "app.database._managed_schema_upgrade",
+    "app.services.backup_service",
+    "app.services.backup_job_lease",
+    "app.services.dataset_originals_adapter",
+    "app.services.dataset_restore_service",
+    "app.services.postgres_backup_adapter",
+    "app.services.postgres_backup_validation_service",
+}
 if retired_c07_modules:
     raise RuntimeError(
         "retired C07 database modules returned to the frozen source graph: "
@@ -47,10 +62,11 @@ app_hiddenimports = [
     for module in discovered_app_modules
     if module
     not in {
-        "app.database._managed_schema_upgrade",
+        "app.database._database_generation_program_validation",
         "app.database._fresh_schema_upgrade",
         "app.database._database_generation_target_verification",
     }
+    and module not in retired_dataset_mutation_modules
 ]
 for required_app_module in (
     "app.app_meta_observation",
@@ -112,7 +128,7 @@ datas = [
             BACKEND,
             "app",
             "database",
-            "_managed_schema_upgrade.py",
+            "_database_generation_program_validation.py",
         ),
         "app/database",
     ),
@@ -122,24 +138,6 @@ datas = [
             "app",
             "database",
             "_fresh_schema_upgrade.py",
-        ),
-        "app/database",
-    ),
-    (
-        os.path.join(
-            BACKEND,
-            "app",
-            "database",
-            "_dataset_backup_action.py",
-        ),
-        "app/database",
-    ),
-    (
-        os.path.join(
-            BACKEND,
-            "app",
-            "database",
-            "_dataset_restore_action.py",
         ),
         "app/database",
     ),
@@ -162,6 +160,7 @@ excludes = [
     "pysqlite2",
     "MySQLdb",
     *retired_c07_modules,
+    *sorted(retired_dataset_mutation_modules),
 ]
 
 a = Analysis(
@@ -204,8 +203,8 @@ exe = EXE(
 
 # The service executable is deliberately windowed, so it has no reliable
 # stdout/stderr pipe.  The installer invokes the same frozen entry point through
-# this console helper for build-program validation, the one managed schema
-# transaction and isolated-target verification. Both binaries share the same
+# this console helper for build-program validation, Fresh-only schema/owner
+# creation and read-only target verification. Both binaries share the same
 # PYZ/Analysis and therefore the same attested generation code.
 database_maintenance_exe = EXE(
     pyz,

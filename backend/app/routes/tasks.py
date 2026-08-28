@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context
+from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import BackgroundTaskListResponse, BackgroundTaskResponse
 from app.services import background_task_service as bgtasks
@@ -44,7 +44,7 @@ def get_task(
 @router.post("/{public_id}/cancel", response_model=BackgroundTaskResponse)
 def cancel_task(
     public_id: str,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> BackgroundTaskResponse:
     task = bgtasks.request_cancellation(

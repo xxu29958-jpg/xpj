@@ -133,7 +133,6 @@ def test_task_links_open_exact_owner_authority_pages(monkeypatch) -> None:
     controller.open_pairing()
     controller.open_devices()
     controller.open_upload_links()
-    controller.open_backups()
     controller.open_diagnostics()
     controller.open_settings()
 
@@ -141,7 +140,6 @@ def test_task_links_open_exact_owner_authority_pages(monkeypatch) -> None:
         "http://127.0.0.1:8000/owner/pairing",
         "http://127.0.0.1:8000/owner/devices",
         "http://127.0.0.1:8000/owner/upload-links",
-        "http://127.0.0.1:8000/owner/backups",
         "http://127.0.0.1:8000/owner/diagnostics",
         "http://127.0.0.1:8000/owner/settings",
     ]
@@ -405,7 +403,6 @@ def test_shutdown_seal_is_idempotent_and_rejects_direct_actions() -> None:
         controller.open_pairing,
         controller.open_devices,
         controller.open_upload_links,
-        controller.open_backups,
         controller.open_diagnostics,
         controller.open_settings,
         controller.export_diagnostics,

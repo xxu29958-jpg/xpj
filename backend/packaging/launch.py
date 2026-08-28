@@ -57,13 +57,14 @@ _FROZEN_HOST_AUTHORITY_KEYS = (
     "TICKETBOX_PORT",
 )
 _HEALTH_ATTESTATION_ENV = "TICKETBOX_HEALTH_ATTESTATION_KEY"
-_MANAGED_SCHEMA_UPGRADE_SWITCH = "--managed-schema-upgrade"
 _FRESH_SCHEMA_UPGRADE_SWITCH = "--fresh-schema-upgrade"
 _FRESH_OWNER_CLAIM_SWITCH = "--fresh-owner-claim"
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
-_MANAGED_SCHEMA_MODULE_NAME = "_ticketbox_managed_schema_upgrade"
+_GENERATION_PROGRAM_VALIDATION_MODULE_NAME = (
+    "_ticketbox_database_generation_program_validation"
+)
 _FRESH_SCHEMA_MODULE_NAME = "_ticketbox_fresh_schema_upgrade"
 _DATABASE_GENERATION_TARGET_MODULE_NAME = "_ticketbox_database_generation_target"
 _GENERATION_PROGRAM_VALIDATION_FIELDS = (
@@ -94,16 +95,6 @@ _FRESH_OWNER_RESULT_FIELDS = (
     "pairing_derivation_index",
     "claim_generation",
 )
-_MANAGED_SCHEMA_RESULT_FIELDS = (
-    "schema",
-    "source_revision",
-    "target_revision",
-    "generation_program_sha256",
-    "result",
-    "alembic_revision",
-)
-
-
 def _bundle_dir() -> Path:
     """Directory the EXE was launched from (read-only program root when frozen).
 
@@ -138,26 +129,6 @@ def _parse_generation_program_validation_args(argv: list[str]) -> Namespace:
         required=True,
     )
     _add_generation_program_arguments(parser)
-    return parser.parse_args(argv)
-
-
-def _parse_managed_schema_upgrade_args(argv: list[str]) -> Namespace:
-    parser = ArgumentParser(
-        prog="ticketbox-database-maintenance",
-        add_help=False,
-        allow_abbrev=False,
-    )
-    parser.add_argument(
-        _MANAGED_SCHEMA_UPGRADE_SWITCH,
-        action="store_true",
-        required=True,
-    )
-    parser.add_argument("--database-url", required=True)
-    parser.add_argument("--pgpassfile", type=Path, required=True)
-    _add_generation_program_arguments(parser)
-    parser.add_argument("--source-revision", required=True)
-    parser.add_argument("--target-revision", required=True)
-    parser.add_argument("--generation-operation-id", required=True)
     return parser.parse_args(argv)
 
 
@@ -218,10 +189,10 @@ def _parse_database_generation_target_args(argv: list[str]) -> Namespace:
     return parser.parse_args(argv)
 
 
-def _load_managed_schema_upgrade_module() -> ModuleType:
+def _load_generation_program_validation_module() -> ModuleType:
     return _load_standalone_database_module(
-        module_name=_MANAGED_SCHEMA_MODULE_NAME,
-        filename="_managed_schema_upgrade.py",
+        module_name=_GENERATION_PROGRAM_VALIDATION_MODULE_NAME,
+        filename="_database_generation_program_validation.py",
         database_package_seam=True,
     )
 
@@ -259,47 +230,13 @@ def _run_generation_program_validation(
         raise RuntimeError("generation program validation requires redirected stdin/stdout")
     if input_stream.read(1) != b"":
         raise RuntimeError("generation program validation requires empty stdin")
-    managed = _load_managed_schema_upgrade_module()
-    result = managed.validate_database_generation_program(
+    validation = _load_generation_program_validation_module()
+    result = validation.validate_database_generation_program(
         generation_program_path=_resolve_generation_program(args.generation_program_path),
         expected_generation_program_sha256=(args.expected_generation_program_sha256),
     )
     if tuple(result) != _GENERATION_PROGRAM_VALIDATION_FIELDS:
         raise RuntimeError("generation program validation returned an unsupported shape")
-    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
-    output_stream.flush()
-    return 0
-
-
-def _run_managed_schema_upgrade(
-    argv: list[str],
-    *,
-    input_stream: BinaryIO | None = None,
-    output_stream: TextIO | None = None,
-) -> int:
-    args = _parse_managed_schema_upgrade_args(argv)
-    if input_stream is None:
-        input_stream = sys.stdin.buffer
-    if output_stream is None:
-        output_stream = sys.stdout
-    if input_stream is None or output_stream is None:
-        raise RuntimeError("managed schema upgrade requires redirected stdin/stdout")
-    if input_stream.read(1) != b"":
-        raise RuntimeError("managed schema upgrade requires empty stdin")
-
-    _assert_maintenance_libpq_environment(args.pgpassfile)
-    managed = _load_managed_schema_upgrade_module()
-    result = managed.run_managed_schema_upgrade_action(
-        database_url=args.database_url,
-        pgpassfile=args.pgpassfile,
-        generation_program_path=_resolve_generation_program(args.generation_program_path),
-        expected_generation_program_sha256=(args.expected_generation_program_sha256),
-        source_revision=args.source_revision,
-        target_revision=args.target_revision,
-        generation_operation_id=args.generation_operation_id,
-    )
-    if tuple(result) != _MANAGED_SCHEMA_RESULT_FIELDS:
-        raise RuntimeError("managed schema upgrade returned an unsupported result shape")
     output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
@@ -792,7 +729,6 @@ def main() -> int | None:
     maintenance_switches = [
         switch
         for switch in (
-            _MANAGED_SCHEMA_UPGRADE_SWITCH,
             _FRESH_SCHEMA_UPGRADE_SWITCH,
             _FRESH_OWNER_CLAIM_SWITCH,
             _DATABASE_GENERATION_TARGET_VERIFY_SWITCH,
@@ -805,8 +741,6 @@ def main() -> int | None:
     if maintenance_switches:
         if getattr(sys, "frozen", False) and not _is_database_generation_helper():
             raise RuntimeError("database generation requires the dedicated frozen helper")
-        if maintenance_switches[0] == _MANAGED_SCHEMA_UPGRADE_SWITCH:
-            return _run_managed_schema_upgrade(arguments)
         if maintenance_switches[0] == _FRESH_SCHEMA_UPGRADE_SWITCH:
             return _run_fresh_schema_upgrade(arguments)
         if maintenance_switches[0] == _FRESH_OWNER_CLAIM_SWITCH:

@@ -9,6 +9,9 @@ flows are tenant-facing direct-create paths that bypass uploads entirely.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Literal
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -70,6 +73,13 @@ _AUTO_ENRICHMENT_FAILURES = (
 _ENRICHMENT_NON_OCC_COLUMNS = frozenset({"thumbnail_path", "updated_at", "row_version"})
 
 
+@dataclass(frozen=True, slots=True)
+class PendingEnrichmentResult:
+    expense_id: int
+    outcome: Literal["updated", "no_result", "not_pending", "conflict", "failed"]
+    row_version: int | None
+
+
 def _enrichment_occ_snapshot(expense: Expense) -> tuple[tuple[str, object], ...]:
     """Snapshot business columns while excluding the derived thumbnail cache."""
     return tuple(
@@ -84,6 +94,7 @@ __all__ = [
     "create_notification_draft",
     "create_pending_expense",
     "enrich_pending_expense",
+    "PendingEnrichmentResult",
 ]
 
 
@@ -164,35 +175,93 @@ def create_pending_expense(
             delete_relative_upload(saved_file.relative_path)
 
 
-def enrich_pending_expense(expense_id: int, tenant_id: str, timezone_name: str | None = None) -> None:
-    """Fill OCR/category draft fields after the upload response has been sent."""
+def _run_enrichment_checkpoint(callback: Callable[[], None] | None) -> None:
+    """Run a task cancellation checkpoint when enrichment has one."""
+    if callback is not None:
+        callback()
+
+
+def enrich_pending_expense(
+    expense_id: int,
+    tenant_id: str,
+    timezone_name: str | None = None,
+    *,
+    expected_row_version: int | None = None,
+    before_apply: Callable[[], None] | None = None,
+    raise_on_failure: bool = False,
+) -> PendingEnrichmentResult:
+    """Fill OCR/category draft fields and report the task-specific outcome.
+
+    The default remains tolerant for API uploads: provider failures are logged
+    while the safely-created Pending row stays available for manual repair.
+    Persistent task handlers opt into ``raise_on_failure`` so their own task row
+    can become ``failed`` instead of pretending OCR returned no usable result.
+    """
     from app.database import SessionLocal
 
-    with SessionLocal() as db:
-        expense = resolve_expense(db, tenant_id, expense_id)
-        if expense is None or expense.status != "pending":
-            return
-
-        ocr_extractions = collect_auto_ocr_extractions(expense, timezone_name=timezone_name)
-
     generated_thumbnail_path: str | None = None
-    with SessionLocal() as db:
-        try:
-            # PG-only (债 #1): the SQLite-only BEGIN IMMEDIATE whole-DB lock the
-            # prior code took here is gone. We deliberately do NOT replace it with
-            # a parent-row FOR UPDATE — that lock would be held across the slow
-            # thumbnail I/O below (a lock-during-I/O anti-pattern), and prod (PG)
-            # already ran this background enrichment with no lock at all (the old
-            # shim was SQLite-only). Serializing concurrent same-expense
-            # enrichment without holding a row lock over the I/O is deferred (low
-            # value: single background worker, rare).
+    try:
+        with SessionLocal() as db:
             expense = resolve_expense(db, tenant_id, expense_id)
             if expense is None or expense.status != "pending":
-                return
+                return PendingEnrichmentResult(
+                    expense_id=expense_id,
+                    outcome="not_pending",
+                    row_version=expense.row_version if expense is not None else None,
+                )
+            predecessor_row_version = (
+                expense.row_version
+                if expected_row_version is None
+                else expected_row_version
+            )
+            if expense.row_version != predecessor_row_version:
+                return PendingEnrichmentResult(
+                    expense_id=expense_id,
+                    outcome="conflict",
+                    row_version=expense.row_version,
+                )
+            thumbnail_source_path = expense.image_path
+            thumbnail_needed = not expense.thumbnail_path
+            ocr_extractions = collect_auto_ocr_extractions(
+                expense,
+                timezone_name=timezone_name,
+                raise_on_failure=raise_on_failure,
+            )
+
+        _run_enrichment_checkpoint(before_apply)
+        if thumbnail_needed:
+            # Thumbnail decode/resize/write is optional filesystem work. Finish
+            # it before the Expense apply lock; the derived file remains
+            # unreferenced until the final status/version checks succeed.
+            generated_thumbnail_path = _try_generate_thumbnail(
+                thumbnail_source_path,
+                tenant_id,
+            )
+        _run_enrichment_checkpoint(before_apply)
+
+        with SessionLocal() as db:
+            # Slow provider I/O finished above. Lock only the short apply phase so
+            # the creation-time predecessor is still current when OCR facts and
+            # draft children are published. A later human edit/confirm either wins
+            # before this lock (and fails the version/status check below) or waits
+            # and then observes our bumped row_version through normal OCC.
+            expense = resolve_expense(db, tenant_id, expense_id, for_update=True)
+            if expense is None or expense.status != "pending":
+                return PendingEnrichmentResult(
+                    expense_id=expense_id,
+                    outcome="not_pending",
+                    row_version=expense.row_version if expense is not None else None,
+                )
+            if expense.row_version != predecessor_row_version:
+                return PendingEnrichmentResult(
+                    expense_id=expense_id,
+                    outcome="conflict",
+                    row_version=expense.row_version,
+                )
+            _run_enrichment_checkpoint(before_apply)
             resolve_write_capability(db)
             occ_snapshot = _enrichment_occ_snapshot(expense)
             if not expense.thumbnail_path:
-                generated_thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
                 expense.thumbnail_path = generated_thumbnail_path
             for extraction in ocr_extractions:
                 apply_ocr_result_and_append_fact(
@@ -210,27 +279,42 @@ def enrich_pending_expense(expense_id: int, tenant_id: str, timezone_name: str |
             if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
                 mark_duplicate_status(db, expense)
             # OCR can replace child draft items / append evidence even when the
-            # denormalized Expense values compare equal, so any extraction is a
-            # business-visible change. Thumbnail-only/cache-only work is not.
-            if ocr_extractions or _enrichment_occ_snapshot(expense) != occ_snapshot:
+            # denormalized Expense values compare equal, so any extraction still
+            # advances OCC. The task outcome is narrower: only a changed user-
+            # visible Expense snapshot is reported as ``updated``; hollow OCR and
+            # thumbnail-only/cache-only work truthfully report ``no_result``.
+            user_visible_changed = _enrichment_occ_snapshot(expense) != occ_snapshot
+            occ_changed = bool(ocr_extractions or user_visible_changed)
+            if occ_changed:
                 expense.updated_at = now_utc()
                 bump_row_version(expense)
             db.commit()
-        except _AUTO_ENRICHMENT_FAILURES:
-            # Auto-enrichment runs after the upload response has already
-            # been returned to the client. We intentionally don't propagate
-            # — the row is still in `pending` and the user can retry OCR
-            # manually. Record the failure so it isn't invisible.
-            from app.services.expense_service._helpers import _record_background_failure
-
-            _record_background_failure("auto_enrich")
-            logger.exception(
-                "auto enrichment failed for expense_id=%s tenant_id=%s",
-                expense_id,
-                tenant_id,
+            db.refresh(expense)
+            return PendingEnrichmentResult(
+                expense_id=expense.id,
+                outcome="updated" if user_visible_changed else "no_result",
+                row_version=expense.row_version,
             )
-            db.rollback()
-            delete_relative_upload(generated_thumbnail_path)
+    except _AUTO_ENRICHMENT_FAILURES:
+        # The Pending row was committed before this function runs, so it remains
+        # safe even when OCR fails. The persistent Web task path re-raises after
+        # recording the failure; legacy API background callbacks stay tolerant.
+        from app.services.expense_service._helpers import _record_background_failure
+
+        _record_background_failure("auto_enrich")
+        logger.exception(
+            "auto enrichment failed for expense_id=%s tenant_id=%s",
+            expense_id,
+            tenant_id,
+        )
+        delete_relative_upload(generated_thumbnail_path)
+        if raise_on_failure:
+            raise
+        return PendingEnrichmentResult(
+            expense_id=expense_id,
+            outcome="failed",
+            row_version=None,
+        )
 
 
 def _manual_request_fingerprint(payload: ExpenseManualCreateRequest) -> str:

@@ -14,6 +14,7 @@ from starlette.responses import Response
 from app.config import PLACEHOLDER_SECRETS, get_settings
 from app.errors import AppError, error_response
 from app.network_boundary import is_loopback_request
+from app.upload_limits import multipart_request_limit_bytes
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 _PROTECTED_PREFIXES = ("/web", "/owner")
@@ -30,7 +31,7 @@ def _max_csrf_body_bytes() -> int:
     """CSRF body 缓冲上限。codex P1 #2:此前 await request.body() 整包读 multipart,
     认证用户可超大 multipart 打内存。跟随 max_upload_size_bytes + 1MB 头部 / 表单字段
     余量,既允许合法 CSV / multipart 上传 + csrf_token 字段,又拒掉无限大请求。"""
-    return get_settings().max_upload_size_bytes + 1 * 1024 * 1024
+    return multipart_request_limit_bytes(get_settings().max_upload_size_bytes)
 
 
 async def csrf_loopback_form_guard(

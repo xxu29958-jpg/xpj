@@ -4,7 +4,7 @@
     v0.3-rc1-preflight self-use health monitor.
 
 .DESCRIPTION
-    Aggregates 11 quick health probes against the locally running TicketBox
+    Aggregates 10 quick health probes against the locally running TicketBox
     backend and its surrounding artefacts. Designed to be safe to run on the
     self-use Windows machine: it never prints tokens, secrets, pairing codes,
     upload keys or full UploadLink URLs.
@@ -26,7 +26,7 @@
     Filesystem root of the backend folder. Defaults to <repo>/backend.
 
 .NOTES
-    The 11 health items, in order:
+    The 10 health items, in order:
       H01 backend HTTP up (local /api/health)
       H02 health.identity_schema is set
       H03 owner console reachable on loopback
@@ -36,8 +36,7 @@
       H07 public /docs blocked
       H08 PostgreSQL reachable (TCP connect to DATABASE_URL host:port)
       H09 uploads dir exists and writable
-      H10 recent backup exists (<= 7d) — warn-only when missing
-      H11 recent log errors counted (warn-only when > 50)
+      H10 recent log errors counted (warn-only when > 50)
 #>
 
 [CmdletBinding()]
@@ -209,22 +208,7 @@ $upDetail = if ($upOk) { 'uploads/ 存在' } else { 'uploads/ 缺失' }
 Add-Item -Id 'H09' -Name '上传目录存在' `
     -Status $upStatus -Detail $upDetail
 
-# H10 recent backup
-$bkRoot = Join-Path $BackendRoot 'backups'
-$recentBk = $null
-if (Test-Path -LiteralPath $bkRoot) {
-    $recentBk = Get-ChildItem -LiteralPath $bkRoot -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-7) } |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-}
-if ($recentBk) {
-    Add-Item -Id 'H10' -Name '最近 7 天内有备份' -Status 'ok' `
-        -Detail ("最新备份 {0} ({1:yyyy-MM-dd HH:mm})" -f $recentBk.Name, $recentBk.LastWriteTime)
-} else {
-    Add-Item -Id 'H10' -Name '最近 7 天内有备份' -Status 'warn' -Detail 'backups/ 内未发现最近 7 天的文件'
-}
-
-# H11 recent log errors
+# H10 recent log errors
 $logRoot = Join-Path $BackendRoot 'logs'
 $errCount = 0
 if (Test-Path -LiteralPath $logRoot) {
@@ -239,7 +223,7 @@ if (Test-Path -LiteralPath $logRoot) {
     }
 }
 $logStatus = if ($errCount -eq 0) { 'ok' } elseif ($errCount -le 50) { 'warn' } else { 'fail' }
-Add-Item -Id 'H11' -Name '近 24h 日志中错误计数' -Status $logStatus -Detail "errors=$errCount"
+Add-Item -Id 'H10' -Name '近 24h 日志中错误计数' -Status $logStatus -Detail "errors=$errCount"
 
 # ── summary ────────────────────────────────────────────────────────────────
 Write-Host "=== v0.3-rc1-preflight self-use health ===" -ForegroundColor Cyan

@@ -116,14 +116,79 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   };
 
-  // K3: 收件页原生上传表单的渐进增强 — 仅填充 hidden timezone
-  // (无 JS 时留空, 服务端回落默认时区), 绝不自动提交。
+  // 收件页原生上传表单的渐进增强：权限所需 ledger 已在 action query，
+  // 这里只补浏览器时区；不触碰 multipart body，也绝不自动提交。
   app.initInboxCapture = function initInboxCapture() {
-    const field = document.querySelector("[data-inbox-timezone]");
-    if (!field) return;
+    const form = document.querySelector("[data-inbox-capture]");
+    if (!form) return;
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (typeof tz === "string" && tz) field.value = tz;
+      if (typeof tz !== "string" || !tz) return;
+      const action = new URL(form.action, window.location.href);
+      action.searchParams.set("timezone", tz);
+      form.action = action.pathname + action.search;
     } catch (_) {}
+  };
+
+  app.initInboxEnrichmentWatch = function initInboxEnrichmentWatch() {
+    const marker = document.querySelector("[data-inbox-enrichment-watch]");
+    if (!marker) return;
+    const delayMs = 1500;
+    const fetchTimeoutMs = 5000;
+    const configuredTimeoutMs = Number(marker.dataset.watchTimeoutMs);
+    const watchTimeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+      ? configuredTimeoutMs
+      : 30000;
+    const deadline = Date.now() + watchTimeoutMs;
+
+    const stopWaiting = function stopWaiting() {
+      marker.setAttribute("aria-busy", "false");
+      const message = marker.querySelector("span");
+      if (message) {
+        message.textContent = "识别仍在处理中或未返回可用字段；可以稍后刷新，也可直接手动补全。";
+      }
+    };
+
+    const poll = async function poll() {
+      if (Date.now() >= deadline) {
+        stopWaiting();
+        return;
+      }
+      const controller = new AbortController();
+      const requestTimer = window.setTimeout(function abortSlowPoll() {
+        controller.abort();
+      }, Math.min(fetchTimeoutMs, Math.max(1, deadline - Date.now())));
+      try {
+        const response = await fetch(window.location.href, {
+          cache: "no-store",
+          headers: {Accept: "text/html"},
+          signal: controller.signal
+        });
+        if (response.ok) {
+          const next = new DOMParser().parseFromString(await response.text(), "text/html");
+          if (next.querySelector("[data-inbox-enrichment-terminal]")) {
+            window.location.replace(window.location.href);
+            return;
+          }
+          if (!next.querySelector("[data-inbox-enrichment-watch]")) {
+            stopWaiting();
+            return;
+          }
+        }
+      } catch (_) {
+        // A transient network failure is retried within the server-provided
+        // OCR deadline. Each individual fetch is independently bounded.
+      } finally {
+        window.clearTimeout(requestTimer);
+      }
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        stopWaiting();
+        return;
+      }
+      window.setTimeout(poll, Math.min(delayMs, remainingMs));
+    };
+
+    window.setTimeout(poll, delayMs);
   };
 })(window, document);

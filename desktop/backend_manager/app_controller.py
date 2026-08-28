@@ -48,7 +48,6 @@ _OWNER_PATHS = MappingProxyType(
         "pairing": "/pairing",
         "devices": "/devices",
         "upload_links": "/upload-links",
-        "backups": "/backups",
         "diagnostics": "/diagnostics",
         "settings": "/settings",
     }
@@ -880,9 +879,6 @@ class AppController:
 
     def open_upload_links(self) -> None:
         self._open_owner_page("upload_links")
-
-    def open_backups(self) -> None:
-        self._open_owner_page("backups")
 
     def open_diagnostics(self) -> None:
         self._open_owner_page("diagnostics")

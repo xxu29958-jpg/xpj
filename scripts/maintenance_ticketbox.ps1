@@ -56,7 +56,7 @@ if (-not $hasAction) {
     Write-Host "  -CleanupOrphans [-DeleteOrphans]"
     Write-Host "  -Vacuum"
     Write-Host ""
-    Write-Host "建议：先在已安装 Manager 中完成完整数据集备份，再 dry-run 清理。"
+    Write-Host "建议：先确认无需保留待清理的原图，并保持 dry-run 预览。"
     return
 }
 

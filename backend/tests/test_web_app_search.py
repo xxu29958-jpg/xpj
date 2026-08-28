@@ -115,6 +115,28 @@ def test_web_search_uses_enabled_merchant_aliases(web_client: TestClient, *, ide
     assert f"/web/expenses/{expense_id}/edit?ledger_id=owner" in page.text
 
 
+def test_web_search_uses_product_label_for_web_upload_source(
+    web_client: TestClient, *, identity
+) -> None:
+    expense_id = _seed_pending_with_amount(
+        web_client,
+        "19.00",
+        "Web Source Search",
+        identity=identity,
+    )
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.source = "网页上传"
+        db.commit()
+
+    page = web_client.get("/web/search?ledger_id=owner&q=Web+Source+Search")
+
+    assert page.status_code == 200
+    assert "其他 · 网页 ·" in page.text
+    assert "网页上传" not in page.text
+
+
 def test_web_search_matches_ocr_facts_raw_text(
     web_client: TestClient, *, identity,
 ) -> None:

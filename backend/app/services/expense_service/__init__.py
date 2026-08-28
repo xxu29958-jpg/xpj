@@ -20,6 +20,7 @@ Internal layout:
 from __future__ import annotations
 
 from app.services.expense_service._create import (
+    PendingEnrichmentResult,
     create_manual_expense,
     create_notification_draft,
     create_pending_expense,
@@ -60,6 +61,7 @@ from app.services.expense_service._update import (
 __all__ = [
     "EDITABLE_STATUSES",
     "NOTIFICATION_DRAFT_SOURCE_PREFIX",
+    "PendingEnrichmentResult",
     "batch_update_confirmed_expenses",
     "confirm_expense",
     "create_manual_expense",

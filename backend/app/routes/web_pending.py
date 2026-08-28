@@ -16,6 +16,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_bulk_snapshot import parse_bulk_snapshot
+from app.routes._web_pending_enrichment_watch import (
+    pending_enrichment_presentation,
+    resolve_web_pending_enrichment_watch,
+)
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -134,6 +138,7 @@ def web_pending(
     ledger_id: str | None = None,
     filter: str | None = None,
     msg: str | None = None,
+    watch: str | None = None,
     undo: str | None = None,
     undo_id: list[int] = Query(default=[]),
     undo_rv: list[str] = Query(default=[]),
@@ -170,6 +175,20 @@ def web_pending(
     # values from the redirect map onto a banner style; anything else falls back
     # to the legacy info style so the param can't drive arbitrary CSS classes.
     ctx["flash_type"] = flash_type if flash_type in ("success", "error") else ""
+    enrichment = pending_enrichment_presentation(
+        resolve_web_pending_enrichment_watch(
+            db,
+            request,
+            tenant_id=selected_id,
+            raw_task_public_id=watch,
+        ),
+        flash_message=ctx["flash_message"],
+        flash_type=ctx["flash_type"],
+    )
+    ctx["enrichment_watch"] = enrichment.active_watch
+    ctx["enrichment_terminal"] = enrichment.terminal
+    ctx["flash_message"] = enrichment.flash_message
+    ctx["flash_type"] = enrichment.flash_type
     # ADR-0038 undo: just-rejected expense_id; pending.html renders a 5s 撤销
     # banner that POSTs to /web/expenses/{undo_expense_id}/undo. ``undo`` is a
     # plain int string from the redirect query — invalid values just disable the

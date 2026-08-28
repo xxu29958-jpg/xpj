@@ -78,6 +78,14 @@ class BackgroundTaskRegistrationError(Exception):
     """Raised when test-only handler registration is used outside its scope."""
 
 
+class BackgroundTaskSubmissionError(RuntimeError):
+    """A durable task row exists, but its in-process execution was not submitted."""
+
+    def __init__(self, task_public_id: str) -> None:
+        super().__init__("background task submission failed")
+        self.task_public_id = task_public_id
+
+
 _handler_registry_context: ContextVar[TaskHandlerRegistry | None] = ContextVar(
     "xpj_background_task_handler_registry",
     default=None,
@@ -195,7 +203,17 @@ def enqueue(
         ledger_id=ledger_id,
         progress_total=progress_total,
     )
-    _submit_task(task.id, payload_copy, registry=registry)
+    try:
+        _submit_task(task.id, payload_copy, registry=registry)
+    except Exception as exc:  # noqa: BLE001 - executor submission barrier
+        logger.exception("background task %s could not be submitted", task.id)
+        _mark_failed(
+            db,
+            task.id,
+            error_code="task_submission_failed",
+            error_message="Task execution could not be started.",
+        )
+        raise BackgroundTaskSubmissionError(task.public_id) from exc
     return task
 
 

@@ -20,6 +20,7 @@ from app.services.web_stats_service import source_breakdown, source_label
 def test_source_label_maps_real_write_path_values() -> None:
     assert source_label("iPhone截图", "未知") == "iPhone"
     assert source_label("Android截图", "未知") == "Android"
+    assert source_label("网页上传", "未知") == "网页"
     assert source_label("手动记账", "未知") == "手动"
     assert source_label("CSV导入", "未知") == "CSV"
     assert source_label("bill_split_received", "未知") == "拆账"
@@ -59,6 +60,7 @@ def test_source_breakdown_aggregates_after_labeling(client: TestClient) -> None:
     identically-named rows."""
     del client  # fixture seeds the schema/identity baseline
     _seed_confirmed("iPhone截图", count=2)
+    _seed_confirmed("网页上传", count=1)
     _seed_confirmed("通知草稿:微信", count=1)
     _seed_confirmed("通知草稿:支付宝", count=1)
     _seed_confirmed("bill_split_received", count=1)
@@ -69,6 +71,7 @@ def test_source_breakdown_aggregates_after_labeling(client: TestClient) -> None:
     by_label = {row["label"]: row for row in rows}
     assert len(by_label) == len(rows), rows  # no duplicate-label rows
     assert by_label["iPhone"]["count"] == 2
+    assert by_label["网页"]["count"] == 1
     assert by_label["通知"]["count"] == 2  # 微信 + 支付宝 merged
     assert by_label["拆账"]["count"] == 1
     assert "未知" not in by_label

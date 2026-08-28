@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.database._database_generation_program import (
-    BASE_SOURCE,
     DatabaseGenerationProgramError,
     load_database_generation_program,
 )
@@ -23,35 +22,11 @@ from app.database._managed_postgres_migration_runtime import (
 )
 
 RESULT_SCHEMA = "ticketbox-managed-schema-upgrade-result-v2"
-VALIDATION_SCHEMA = "ticketbox-database-generation-program-validation-v2"
 _TRANSACTION_TIMEOUT_MS = 20 * 60 * 1000
 
 
 class ManagedSchemaUpgradeError(RuntimeError):
     """The frozen helper cannot prove or execute the generation program."""
-
-
-def validate_database_generation_program(
-    *,
-    generation_program_path: Path,
-    expected_generation_program_sha256: str,
-) -> dict[str, object]:
-    try:
-        program = load_database_generation_program(
-            path=generation_program_path,
-            expected_sha256=expected_generation_program_sha256,
-        )
-    except DatabaseGenerationProgramError as exc:
-        raise ManagedSchemaUpgradeError(
-            "database generation program validation failed"
-        ) from exc
-    return {
-        "schema": VALIDATION_SCHEMA,
-        "source_revision": BASE_SOURCE,
-        "target_revision": program.target_revision,
-        "revision_count": len(program.revisions),
-        "generation_program_sha256": program.payload_sha256,
-    }
 
 
 def run_managed_schema_upgrade_action(
@@ -112,5 +87,4 @@ def run_managed_schema_upgrade_action(
 __all__ = [
     "ManagedSchemaUpgradeError",
     "run_managed_schema_upgrade_action",
-    "validate_database_generation_program",
 ]

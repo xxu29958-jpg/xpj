@@ -1,4 +1,4 @@
-"""Read-only Owner Console view of complete dataset backup generations."""
+"""Retirement contract for the removed backup/restore product surface."""
 
 from __future__ import annotations
 
@@ -49,25 +49,84 @@ def _stub_latest_backup(monkeypatch: pytest.MonkeyPatch, *, hours_ago: int | Non
     return entry
 
 
-def test_owner_backups_page_is_read_only_complete_generation_view(
-    local_client: TestClient,
-) -> None:
-    response = local_client.get("/owner/backups")
+def test_owner_backups_surface_is_retired(local_client: TestClient) -> None:
+    assert local_client.get("/owner/backups").status_code == 404
+    assert local_client.post("/owner/backups").status_code == 404
+
+
+def test_owner_home_has_no_retired_backup_promise_or_entry(local_client: TestClient) -> None:
+    response = local_client.get("/owner")
     assert response.status_code == 200
-    assert "备份记录" in response.text
-    assert "数据库、原始票据附件、数据集身份和校验清单" in response.text
-    assert "当前字节未复检" in response.text
-    assert "不会显示为有效备份" not in response.text
-    assert 'method="post" action="/owner/backups"' not in response.text
-    assert local_client.post("/owner/backups").status_code == 405
+    assert "/owner/backups" not in response.text
+    assert "请从桌面 Manager 发起备份" not in response.text
+    assert "数据库备份" not in response.text
+    assert "最近备份" not in response.text
 
 
-def test_owner_backups_remote_returns_403(client: TestClient) -> None:
-    assert client.get("/owner/backups").status_code == 403
+def test_frozen_shipment_excludes_retired_dataset_mutation_owners() -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    spec = (backend_root / "packaging" / "ticketbox-backend.spec").read_text(
+        encoding="utf-8"
+    )
+    release_config = json.loads(
+        (backend_root / "packaging" / "windows-release-config.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert '"_dataset_backup_action.py"' not in spec
+    assert '"_dataset_restore_action.py"' not in spec
+    assert "retired_dataset_mutation_modules" in spec
+    for retired_module in (
+        "app.dataset_maintenance_cli",
+        "app.database._managed_schema_upgrade",
+        "app.services.backup_job_lease",
+        "app.services.postgres_backup_adapter",
+        "app.services.postgres_backup_validation_service",
+    ):
+        assert retired_module in spec
+    launch = (backend_root / "packaging" / "launch.py").read_text(encoding="utf-8")
+    assert "--managed-schema-upgrade" not in launch
+    for retired_timeout in (
+        "dataset_backup_helper_timeout_ms",
+        "dataset_restore_helper_timeout_ms",
+        "dataset_payload_verification_timeout_ms",
+        "complete_dataset_cleanup_reserve_ms",
+        "complete_dataset_backup_timeout_ms",
+        "complete_dataset_restore_timeout_ms",
+    ):
+        assert retired_timeout not in release_config
+
+
+def test_maintained_docs_do_not_promise_the_retired_backup_record_entry() -> None:
+    root = Path(__file__).resolve().parents[2]
+    maintained = (
+        root / "docs" / "runbook" / "WINDOWS_BACKUP_TASK.md",
+        root / "docs" / "runbook" / "GRAY_ACCEPTANCE_EXECUTION.md",
+        root / "docs" / "runbook" / "WINDOWS_SERVICE_RUNBOOK.md",
+        root / "docs" / "runbook" / "POSTGRES_MIGRATION.md",
+        root / "docs" / "architecture" / "SECURITY.md",
+        root / "backend" / "README.md",
+        root / "backend" / "packaging" / "README.md",
+        root / "backend" / "packaging" / "build_pg_bundle.ps1",
+        root / "scripts" / "maintenance_ticketbox.ps1",
+        root / "scripts" / "check_selfuse_health.ps1",
+    )
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in maintained)
+
+    assert "查看备份记录" not in combined
+    assert "open_backups" not in combined
+    assert "windows_dataset_backup.ps1" not in combined
+    assert "windows_dataset_restore.ps1" not in combined
+    assert "完整 backup generation 的隔离恢复" not in combined
+    assert "正式 Windows 安装只通过桌面管理器执行备份和恢复" not in combined
+    assert "先在已安装 Manager 中完成完整数据集备份" not in combined
+    assert "recent backup exists" not in combined
+    assert "计划备份（backup_service）" not in combined
+    assert "恢复 / 备份校验" not in combined
 
 
 def test_incomplete_generation_is_not_listed(
-    local_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -86,7 +145,6 @@ def test_incomplete_generation_is_not_listed(
     assert dataset_backup_inventory.list_published_backup_records() == []
     with pytest.raises(AppError):
         read_manifest(bogus, verify_files=True)
-    assert bogus.name not in local_client.get("/owner/backups").text
 
 
 def test_backup_inventory_separates_record_age_from_current_integrity(
@@ -187,10 +245,3 @@ def test_backup_inventory_rejects_generation_identity_mismatch(
         dataset_backup_inventory.list_published_backup_records(
             inventory_path=inventory_path
         )
-
-
-def test_owner_page_never_leaks_absolute_data_path(local_client: TestClient) -> None:
-    response = local_client.get("/owner/backups")
-    assert response.status_code == 200
-    assert "C:\\" not in response.text
-    assert "E:\\" not in response.text

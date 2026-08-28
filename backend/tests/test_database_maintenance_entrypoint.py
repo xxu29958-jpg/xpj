@@ -20,6 +20,7 @@ TARGET_REVISION = "20260809_0001"
 PROGRAM_PATH = "DATABASE_GENERATION_PROGRAM.json"
 SHA_A = "a" * 64
 _RETIRED_SWITCHES = (
+    "--managed-schema-upgrade",
     "--c07-production-migrate",
     "--c07-fresh-source-bootstrap",
     "--c07-maintenance-upgrade",
@@ -81,11 +82,10 @@ assert spec is not None and spec.loader is not None
 launch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launch)
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
-managed = launch._load_managed_schema_upgrade_module()
+validation = launch._load_generation_program_validation_module()
 target = launch._load_database_generation_target_module()
 fresh = launch._load_fresh_schema_upgrade_module()
-assert callable(managed.validate_database_generation_program)
-assert callable(managed.run_managed_schema_upgrade_action)
+assert callable(validation.validate_database_generation_program)
 assert callable(target.run_database_generation_target_verification_action)
 assert callable(fresh.run_fresh_schema_upgrade_action)
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
@@ -204,7 +204,7 @@ def test_generation_program_validation_does_not_require_libpq(monkeypatch) -> No
     monkeypatch.setattr(launch, "_resolve_generation_program", Path)
     monkeypatch.setattr(
         launch,
-        "_load_managed_schema_upgrade_module",
+        "_load_generation_program_validation_module",
         lambda: type(
             "Managed",
             (),
@@ -229,7 +229,7 @@ def test_generation_program_validation_rejects_nonempty_input(monkeypatch) -> No
     launch = _load_launch_module()
     monkeypatch.setattr(
         launch,
-        "_load_managed_schema_upgrade_module",
+        "_load_generation_program_validation_module",
         lambda: pytest.fail("validation loaded after nonempty stdin"),
     )
     with pytest.raises(RuntimeError, match="requires empty stdin"):
@@ -240,20 +240,25 @@ def test_generation_program_validation_rejects_nonempty_input(monkeypatch) -> No
         )
 
 
-def test_managed_schema_mode_rejects_ambient_libpq(monkeypatch) -> None:
+def test_managed_schema_mode_is_retired_before_libpq_or_action(monkeypatch) -> None:
     launch = _load_launch_module()
     argv = _managed_schema_args()
     _seal_pg_environment(monkeypatch, argv)
     monkeypatch.setenv("PGHOSTADDR", "203.0.113.10")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        launch.sys,
+        "executable",
+        "ticketbox-database-maintenance.exe",
+    )
     monkeypatch.setattr(
         launch,
-        "_load_managed_schema_upgrade_module",
-        lambda: pytest.fail("managed action loaded before libpq guard"),
+        "_assert_maintenance_libpq_environment",
+        lambda *_args: pytest.fail("retired managed action reached libpq guard"),
     )
-    with pytest.raises(RuntimeError, match="libpq environment is not sealed"):
-        launch._run_managed_schema_upgrade(
-            argv, input_stream=io.BytesIO(b""), output_stream=io.StringIO()
-        )
+    monkeypatch.setattr(launch.sys, "argv", ["ticketbox-database-maintenance.exe", *argv])
+    with pytest.raises(RuntimeError, match="requires an explicit mode"):
+        launch.main()
 
 
 def test_target_verification_mode_rejects_ambient_libpq(monkeypatch) -> None:
@@ -274,7 +279,7 @@ def test_target_verification_mode_rejects_ambient_libpq(monkeypatch) -> None:
 
 def test_libpq_environment_allows_only_exact_passfile(monkeypatch) -> None:
     launch = _load_launch_module()
-    argv = _managed_schema_args()
+    argv = _target_args()
     pgpassfile = _seal_pg_environment(monkeypatch, argv)
     launch._assert_maintenance_libpq_environment(pgpassfile)
     for name in _LIBPQ_ENVIRONMENT_VARIABLES:

@@ -17,7 +17,10 @@ These tests exercise the middleware end to end:
 
 from __future__ import annotations
 
+import asyncio
+import json
 import re
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -190,11 +193,14 @@ def test_public_bulk_form_native_post_uses_rendered_csrf_token(
     assert detail.json()["category"] == "家庭采购"
 
 
+@pytest.mark.real_db
 def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
     client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
     *,
     identity,
 ) -> None:
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
     token = _mint_session(client, identity=identity)
     pub = _public_client()
     pub.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
@@ -214,9 +220,8 @@ def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
 
     before_files = set(_stored_upload_files())
     denied = pub.post(
-        "/web/pending/upload",
+        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
         headers={"Origin": f"https://{PUBLIC_HOST}"},
-        data={"ledger_id": "owner", "timezone": "Asia/Shanghai"},
         files={"file": ("denied.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )
@@ -229,12 +234,10 @@ def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
         ) is None
 
     accepted = pub.post(
-        "/web/pending/upload",
+        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
         headers={"Origin": f"https://{PUBLIC_HOST}"},
         data={
             "csrf_token": csrf.group(1),
-            "ledger_id": "owner",
-            "timezone": "Asia/Shanghai",
         },
         files={"file": ("accepted.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
@@ -253,6 +256,102 @@ def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
         assert expense.status == "pending"
         assert expense.image_path is not None
         assert expense.image_hash
+
+
+def test_public_pending_upload_caps_chunked_multipart_before_framework_parse(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    from app.routes import _upload_request as upload_request_routes
+    from app.services import file_service
+
+    token = _mint_session(client, identity=identity)
+    pub = _public_client()
+    pub.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
+    page = pub.get("/web/pending")
+    assert page.status_code == 200, page.text
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    assert csrf is not None, page.text
+
+    small_settings = replace(file_service.get_settings(), max_upload_size_mb=0)
+    monkeypatch.setattr(file_service, "get_settings", lambda: small_settings)
+    monkeypatch.setattr(upload_request_routes, "get_settings", lambda: small_settings)
+
+    boundary = "ticketbox-chunked-limit"
+    prefix = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="csrf_token"\r\n\r\n'
+        f"{csrf.group(1)}\r\n"
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="large.png"\r\n'
+        "Content-Type: image/png\r\n\r\n"
+    ).encode()
+    suffix = f"\r\n--{boundary}--\r\n".encode()
+    body = prefix + (b"x" * (2 * 1024 * 1024)) + suffix
+    chunk_size = 64 * 1024
+    yielded = {"bytes": 0}
+    body_chunks = [
+        body[offset : offset + chunk_size]
+        for offset in range(0, len(body), chunk_size)
+    ]
+    csrf_seed = pub.cookies.get("xpj_csrf_seed")
+    assert csrf_seed
+    sent: list[dict] = []
+    next_chunk = 0
+
+    async def receive():
+        nonlocal next_chunk
+        if next_chunk >= len(body_chunks):
+            return {"type": "http.request", "body": b"", "more_body": False}
+        chunk = body_chunks[next_chunk]
+        next_chunk += 1
+        yielded["bytes"] += len(chunk)
+        return {
+            "type": "http.request",
+            "body": chunk,
+            "more_body": next_chunk < len(body_chunks),
+        }
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "https",
+        "path": "/web/pending/upload",
+        "raw_path": b"/web/pending/upload",
+        "query_string": b"ledger_id=owner",
+        "root_path": "",
+        "headers": [
+            (b"host", PUBLIC_HOST.encode()),
+            (b"origin", f"https://{PUBLIC_HOST}".encode()),
+            (b"x-csrf-token", csrf.group(1).encode()),
+            (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            (b"transfer-encoding", b"chunked"),
+            (
+                b"cookie",
+                f"{SESSION_COOKIE_NAME}={token}; xpj_csrf_seed={csrf_seed}".encode(),
+            ),
+        ],
+        "client": ("203.0.113.10", 50002),
+        "server": (PUBLIC_HOST, 443),
+    }
+    asyncio.run(app(scope, receive, send))
+
+    start = next(message for message in sent if message["type"] == "http.response.start")
+    response_body = b"".join(
+        message.get("body", b"")
+        for message in sent
+        if message["type"] == "http.response.body"
+    )
+    assert start["status"] == 413, response_body
+    assert json.loads(response_body)["error"] == "file_too_large"
+    assert yielded["bytes"] <= (1024 * 1024) + chunk_size
 
 
 def test_public_host_cookie_does_not_refresh_last_used_or_cookie(client: TestClient, *, identity) -> None:

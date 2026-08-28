@@ -26,7 +26,7 @@
 
 ## 1. 备份
 
-- 正式 Windows Manager 当前不创建完整 dataset generation；它只提供产品内 CSV 导入/已确认流水导出和只读备份记录。完整备份/恢复保持 `HOLD`，见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
+- 正式 Windows Manager 当前不创建完整 dataset generation；它只提供产品内 CSV 导入与已确认流水导出。完整备份/恢复保持 `HOLD`，见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
 - CI/source 的真实 PostgreSQL 演练运行 `python scripts/postgres_backup_drill.py --upload-root <absolute-root>`，只证明 backend archive 可在专用 scratch 库中演练；不能把它称为已出货 Windows Owner。
 - PostgreSQL 工具只接收无内联口令的显式 URL 与受保护 passfile；不能从 ambient `PGPASSWORD`、
   cwd 或默认服务配置猜测凭据和目标。
