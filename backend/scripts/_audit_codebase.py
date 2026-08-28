@@ -1102,26 +1102,31 @@ def audit_n_plus_one() -> DebtCounts:
 
 
 def audit_test_coverage_by_module() -> DebtCounts:
-    """Map each app/ module to whether a test file references it directly."""
-    grep_targets: dict[str, int] = {}
+    """Count app modules with no reference from tests or another app module."""
+    grep_targets: dict[str, pathlib.Path] = {}
     for p in walk(APP):
         if p.name == "__init__.py":
             continue
         rel = str(p).replace(os.sep, "/").removesuffix(".py")
         mod = rel.replace("/", ".")
-        grep_targets[mod] = 0
+        grep_targets[mod] = p
 
-    body_blob: list[str] = []
-    for p in walk(TESTS):
+    reference_sources: list[tuple[pathlib.Path, str]] = []
+    for p in (*walk(TESTS), *walk(APP)):
         with contextlib.suppress(Exception):
-            body_blob.append(p.read_text(encoding="utf-8", errors="ignore"))
-    blob = "\n".join(body_blob)
-    for mod in grep_targets:
-        if mod in blob:
-            grep_targets[mod] = 1
+            reference_sources.append(
+                (p, p.read_text(encoding="utf-8", errors="ignore"))
+            )
 
-    unreferenced = sorted(m for m, hit in grep_targets.items() if not hit)
-    print(f"== G7. App modules never referenced by tests ({len(unreferenced)} of {len(grep_targets)}) ==")
+    unreferenced = sorted(
+        mod
+        for mod, own_path in grep_targets.items()
+        if not any(path != own_path and mod in body for path, body in reference_sources)
+    )
+    print(
+        "== G7. App modules never referenced by tests or app modules "
+        f"({len(unreferenced)} of {len(grep_targets)}) =="
+    )
     for m in unreferenced:
         print(f"  {m}")
     print()

@@ -1695,6 +1695,11 @@
             "title": "Expense Snapshot",
             "type": "array"
           },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -20190,6 +20195,22 @@
       "post": {
         "operationId": "post_confirmed_expenses_batch_update_api_expenses_confirmed_batch_update_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",

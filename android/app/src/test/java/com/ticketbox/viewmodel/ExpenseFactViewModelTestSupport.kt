@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.ExpenseFactActions
+import com.ticketbox.data.repository.ItemsAckOutcome
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.CurrencyCode
@@ -12,6 +13,7 @@ import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.ExpenseRevisionPage
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RepaymentDraft
 import kotlinx.coroutines.Dispatchers
@@ -147,6 +149,91 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     var fetchExpenseCalls = 0
     var fetchRevisionsCalls = 0
     var fetchBillSplitSentCalls = 0
+    var createBillSplitCalls = 0
+    var lastCreateBillSplitArgs: Triple<Long, Long, Long>? = null
+    var repaymentDraftCalls = 0
+    var repaymentDraftExpense: Expense? = null
+    var ackCalls = 0
+    var lastAckExpense: Expense? = null
+    var lastAckItems: ExpenseItems? = null
+
+    /** 默认「原小票如此」结果：服务端确认 + 父行版本随 revision owner 递增。 */
+    var ackResult: (Expense, ExpenseItems) -> Result<ItemsAckOutcome> = { expense, items ->
+        Result.success(
+            ItemsAckOutcome.Synced(
+                items.copy(
+                    itemsSumStatus = ItemsSumStatus.MISMATCH_ACKNOWLEDGED,
+                    parentRowVersion = expense.rowVersion + 1,
+                ),
+            ),
+        )
+    }
+    var splitMembersResult: () -> Result<List<FamilyMember>> = { Result.success(emptyList()) }
+    var billSplitSentResult: () -> Result<List<BillSplitSent>> = { Result.success(emptyList()) }
+    var createBillSplitResult: (Long, Long, Long) -> Result<BillSplitSent> = { _, _, _ ->
+        Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
+    }
+    var cancelBillSplitResult: (String) -> Result<BillSplitSent> = {
+        Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
+    }
+    var repaymentDraftResult: (Expense) -> Result<RepaymentDraft> = {
+        Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
+    }
+
+    fun member(
+        memberId: Long,
+        accountId: Long = memberId * 100,
+        displayName: String = "成员$memberId",
+        isSelf: Boolean = false,
+        disabledAt: String? = null,
+    ): FamilyMember = FamilyMember(
+        memberId = memberId,
+        accountId = accountId,
+        accountPublicId = "acc-$memberId",
+        displayName = displayName,
+        role = "member",
+        joinedAt = null,
+        disabledAt = disabledAt,
+        isSelf = isSelf,
+    )
+
+    fun sentInvite(
+        publicId: String = "bs-1",
+        status: String = "invited",
+        amountCents: Long = 500L,
+        senderExpenseId: Long = 7L,
+    ): BillSplitSent = BillSplitSent(
+        publicId = publicId,
+        status = status,
+        amountCents = amountCents,
+        merchantSnapshot = null,
+        categorySuggestion = null,
+        expenseTimeSnapshot = null,
+        expiresAt = "2026-09-01T00:00:00Z",
+        createdAt = "2026-08-28T00:00:00Z",
+        acceptedAt = null,
+        rejectedAt = null,
+        cancelledAt = null,
+        expiredAt = null,
+        receiverAccountId = 200L,
+        receiverDisplayNameSnapshot = "家人",
+        senderExpenseId = senderExpenseId,
+    )
+
+    fun repaymentDraft(publicId: String = "rd-1"): RepaymentDraft = RepaymentDraft(
+        publicId = publicId,
+        source = "other",
+        amountCents = 391363L,
+        homeCurrencyCode = "CNY",
+        merchantLabel = "旧商家",
+        capturedAt = "2026-08-28T13:13:00Z",
+        status = "pending",
+        suggestedDebtPublicId = null,
+        committedDebtPublicId = null,
+        committedRepaymentPublicId = null,
+        createdAt = "2026-08-28T13:14:00Z",
+        resolvedAt = null,
+    )
 
     override fun canModifyLedger(): Boolean = canModifyLedgerFlag
 
@@ -180,7 +267,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         ),
     )
 
-    override suspend fun fetchSplitMembers(): Result<List<FamilyMember>> = Result.success(emptyList())
+    override suspend fun fetchSplitMembers(): Result<List<FamilyMember>> = splitMembersResult()
 
     override suspend fun fetchExpenseRevisions(
         id: Long,
@@ -220,21 +307,37 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         return correctResult(expense, correction)
     }
 
-    override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> =
-        Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
+    override suspend fun acknowledgeItemsMismatchAllowingOffline(
+        expense: Expense,
+        currentItems: ExpenseItems,
+    ): Result<ItemsAckOutcome> {
+        ackCalls++
+        lastAckExpense = expense
+        lastAckItems = currentItems
+        return ackResult(expense, currentItems)
+    }
+
+    override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> {
+        repaymentDraftCalls++
+        repaymentDraftExpense = expense
+        return repaymentDraftResult(expense)
+    }
 
     override suspend fun createBillSplitInvitation(
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,
-    ): Result<BillSplitSent> =
-        Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
+    ): Result<BillSplitSent> {
+        createBillSplitCalls++
+        lastCreateBillSplitArgs = Triple(expenseId, receiverAccountId, amountCents)
+        return createBillSplitResult(expenseId, receiverAccountId, amountCents)
+    }
 
     override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> {
         fetchBillSplitSentCalls++
-        return Result.success(emptyList())
+        return billSplitSentResult()
     }
 
     override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
-        Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
+        cancelBillSplitResult(publicId)
 }

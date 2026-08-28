@@ -176,9 +176,11 @@
   <input type="hidden" name="month" value="{{ month }}">
   <input type="hidden" name="tag" value="{{ tag }}">
   <input type="hidden" name="page" value="{{ page }}">
+  <input type="hidden" name="idempotency_key" value="{{ batch_idempotency_key }}">
   <span class="count" data-bulk-count>0</span>
   <span class="label">已选中</span>
   <button class="dt-btn" type="button" data-bulk-clear>取消选择</button>
+  <input class="bulk-field" name="reason" value="{{ batch_reason_input }}" maxlength="500" required placeholder="更正理由" aria-label="批量更正理由">
   <input class="bulk-field" name="category" value="{{ batch_category_input }}" maxlength="64" placeholder="分类" aria-label="批量修改分类">
   <button class="dt-btn" type="submit" name="action" value="set_category">改分类</button>
   <input class="bulk-field" name="tags" value="{{ batch_tags_input }}" maxlength="500" placeholder="标签，逗号分隔" aria-label="批量修改标签">

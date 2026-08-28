@@ -11,13 +11,18 @@ import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class BillSplitSentLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
+
 /**
- * A1: 拆账邀请域 —— 从旧编辑 VM（ExpenseEditViewModelBillSplit.kt）迁移到
- * 事实页 Owner，能力不丢：已发列表 / 发起 sheet / 撤回。
+ * A1: 拆账邀请域 —— 从已退役的确认后编辑责任迁移到事实页 Owner，
+ * 能力不丢：已发列表 / 发起 sheet / 撤回。
  * 语义不变：ADR-0029 跨账本拆账，**在线-only**（直连失败直接报错，不入 outbox）。
  */
-
-/** 本票已活跃（invited/accepted）的拆账总额——发起金额上限 = 父金额 − 该总额。 */
 internal fun List<BillSplitSent>.factActiveSplitCentsFor(expenseId: Long): Long =
     filter { it.senderExpenseId == expenseId && it.isActiveSplit }
         .sumOf { it.amountCents }

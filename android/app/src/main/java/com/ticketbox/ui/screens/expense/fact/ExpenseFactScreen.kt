@@ -19,6 +19,7 @@ import com.ticketbox.ui.asString
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
 import com.ticketbox.viewmodel.ExpenseFactUiState
 import com.ticketbox.viewmodel.ExpenseFactViewModel
+import com.ticketbox.viewmodel.acknowledgeItemsMismatch
 import com.ticketbox.viewmodel.cancelBillSplitInvitation
 import com.ticketbox.viewmodel.createRepaymentDraftFromExpense
 import com.ticketbox.viewmodel.loadExpenseRevisions
@@ -95,6 +96,7 @@ private fun FactContentSections(
                     state = state,
                     onRetryItems = viewModel::loadExpenseItems,
                     onRetrySplits = viewModel::loadExpenseSplits,
+                    onAcknowledgeItems = viewModel::acknowledgeItemsMismatch,
                 )
                 FactTimelineSection(
                     state = state,

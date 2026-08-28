@@ -22,6 +22,10 @@ depends_on = None
 
 _TABLE = "expense_revisions"
 _EXPENSE_CHECK = "ck_expenses_fact_revision_nonnegative"
+_CURRENCY_BINDING_TABLE = "installation_currency_bindings"
+_CURRENCY_WRITER_GUC = "xpj.currency_writer"
+_IDEMPOTENCY_TABLE = "api_idempotency_keys"
+_IDEMPOTENCY_RESPONSE_COLUMN = "response_body"
 _REVISION_CHECKS = {
     "ck_expense_revisions_number_positive",
     "ck_expense_revisions_kind_valid",
@@ -103,6 +107,18 @@ def _add_projection_column(bind: sa.Connection) -> None:
             _EXPENSE_CHECK,
             "expenses",
             "fact_revision >= 0",
+        )
+
+
+def _add_idempotency_response_column(bind: sa.Connection) -> None:
+    columns = {
+        column["name"]
+        for column in sa.inspect(bind).get_columns(_IDEMPOTENCY_TABLE)
+    }
+    if _IDEMPOTENCY_RESPONSE_COLUMN not in columns:
+        op.add_column(
+            _IDEMPOTENCY_TABLE,
+            sa.Column(_IDEMPOTENCY_RESPONSE_COLUMN, sa.JSON(), nullable=True),
         )
 
 
@@ -213,7 +229,7 @@ def _backfill_confirmed_baselines(bind: sa.Connection) -> None:
             "exchange_rate_date, exchange_rate_source, fx_status, merchant, category, "
             "note, source, tags, value_score, regret_score, expense_time, confirmed_at, "
             "items_sum_status, row_version, created_at, updated_at "
-            "FROM expenses WHERE status = 'confirmed' ORDER BY id"
+            "FROM expenses WHERE confirmed_at IS NOT NULL ORDER BY id"
         )
     ).mappings().all()
     if not expenses:
@@ -279,25 +295,98 @@ def _backfill_confirmed_baselines(bind: sa.Connection) -> None:
                 "created_at": row["confirmed_at"] or row["updated_at"] or row["created_at"],
             },
         )
+    binding = bind.execute(
+        sa.text(
+            "SELECT state, currency_contract_version, binding_revision "
+            f"FROM {_CURRENCY_BINDING_TABLE} WHERE singleton_id = 1 FOR SHARE"
+        )
+    ).mappings().one_or_none()
+    if binding is None or binding["state"] != "ACTIVE":
+        raise RuntimeError("confirmed expense backfill requires an active currency binding")
+    bind.execute(
+        sa.text("SELECT set_config(:key, :proof, true)"),
+        {
+            "key": _CURRENCY_WRITER_GUC,
+            "proof": (
+                f'{int(binding["currency_contract_version"])}:'
+                f'{int(binding["binding_revision"])}'
+            ),
+        },
+    )
     bind.execute(
         sa.text(
             "UPDATE expenses SET fact_revision = 1 "
-            "WHERE status = 'confirmed' AND fact_revision = 0"
+            "WHERE confirmed_at IS NOT NULL AND fact_revision = 0"
         )
     )
+
+
+def _set_dataset_authority_revision(
+    bind: sa.Connection,
+    *,
+    expected_revision: str,
+    target_revision: str,
+) -> None:
+    current = bind.scalar(
+        sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")
+    )
+    if current == target_revision:
+        return
+    if current != expected_revision:
+        raise RuntimeError("dataset authority revision is outside this migration edge")
+    updated = bind.execute(
+        sa.text(
+            "UPDATE dataset_authority SET schema_revision = :target_revision "
+            "WHERE singleton_id = 1 AND schema_revision = :expected_revision"
+        ),
+        {
+            "expected_revision": expected_revision,
+            "target_revision": target_revision,
+        },
+    )
+    if updated.rowcount != 1:
+        raise RuntimeError("dataset authority revision update lost its migration claim")
 
 
 def upgrade() -> None:
     bind = op.get_bind()
     _add_projection_column(bind)
+    _add_idempotency_response_column(bind)
     _create_revision_table(bind)
     _backfill_confirmed_baselines(bind)
+    _set_dataset_authority_revision(
+        bind,
+        expected_revision=down_revision,
+        target_revision=revision,
+    )
     assert_postcondition(bind)
 
 
 def downgrade() -> None:
     bind = op.get_bind()
+    idempotency_columns = {
+        column["name"]
+        for column in sa.inspect(bind).get_columns(_IDEMPOTENCY_TABLE)
+    }
+    if _IDEMPOTENCY_RESPONSE_COLUMN in idempotency_columns:
+        has_aggregate_results = bind.scalar(
+            sa.text(
+                f"SELECT EXISTS (SELECT 1 FROM {_IDEMPOTENCY_TABLE} "
+                f"WHERE {_IDEMPOTENCY_RESPONSE_COLUMN} IS NOT NULL LIMIT 1)"
+            )
+        )
+        if has_aggregate_results:
+            raise RuntimeError(
+                "cannot downgrade expense revisions while aggregate command results exist"
+            )
     if sa.inspect(bind).has_table(_TABLE):
+        has_financial_history = bind.scalar(
+            sa.text(f"SELECT EXISTS (SELECT 1 FROM {_TABLE} LIMIT 1)")
+        )
+        if has_financial_history:
+            raise RuntimeError(
+                "cannot downgrade expense revisions while financial history exists"
+            )
         op.drop_table(_TABLE)
     op.execute("DROP FUNCTION IF EXISTS ticketbox_reject_expense_revision_mutation()")
     columns = {column["name"] for column in sa.inspect(bind).get_columns("expenses")}
@@ -308,6 +397,13 @@ def downgrade() -> None:
         if _EXPENSE_CHECK in checks:
             op.drop_constraint(_EXPENSE_CHECK, "expenses", type_="check")
         op.drop_column("expenses", "fact_revision")
+    if _IDEMPOTENCY_RESPONSE_COLUMN in idempotency_columns:
+        op.drop_column(_IDEMPOTENCY_TABLE, _IDEMPOTENCY_RESPONSE_COLUMN)
+    _set_dataset_authority_revision(
+        bind,
+        expected_revision=revision,
+        target_revision=down_revision,
+    )
 
 
 def assert_postcondition(bind: sa.Connection) -> None:
@@ -318,6 +414,11 @@ def assert_postcondition(bind: sa.Connection) -> None:
     }
     if "fact_revision" not in expense_columns or _EXPENSE_CHECK not in expense_checks:
         raise RuntimeError("expenses fact_revision projection is incomplete")
+    idempotency_columns = {
+        column["name"] for column in inspector.get_columns(_IDEMPOTENCY_TABLE)
+    }
+    if _IDEMPOTENCY_RESPONSE_COLUMN not in idempotency_columns:
+        raise RuntimeError("aggregate command replay projection is incomplete")
     if not inspector.has_table(_TABLE):
         raise RuntimeError("expense_revisions table is missing")
     columns = {column["name"] for column in inspector.get_columns(_TABLE)}
@@ -335,7 +436,7 @@ def assert_postcondition(bind: sa.Connection) -> None:
         raise RuntimeError("expense_revisions append-only trigger is missing")
     missing = bind.scalar(
         sa.text(
-            "SELECT count(*) FROM expenses e WHERE e.status = 'confirmed' "
+            "SELECT count(*) FROM expenses e WHERE e.confirmed_at IS NOT NULL "
             "AND (e.fact_revision < 1 OR NOT EXISTS ("
             "SELECT 1 FROM expense_revisions r WHERE r.tenant_id = e.tenant_id "
             "AND r.expense_id = e.id AND r.revision_number = 1))"
@@ -343,3 +444,8 @@ def assert_postcondition(bind: sa.Connection) -> None:
     )
     if missing:
         raise RuntimeError("confirmed expense baseline backfill is incomplete")
+    authority_revision = bind.scalar(
+        sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")
+    )
+    if authority_revision != revision:
+        raise RuntimeError("dataset authority revision is not aligned with Alembic head")

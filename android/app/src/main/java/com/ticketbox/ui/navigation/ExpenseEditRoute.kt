@@ -11,7 +11,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -29,7 +28,6 @@ import com.ticketbox.ui.components.SkeletonScaffold
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ExpenseEditActionAvailability
-import com.ticketbox.ui.screens.ExpenseEditBillSplitActions
 import com.ticketbox.ui.screens.ExpenseEditItemizationActions
 import com.ticketbox.ui.screens.ExpenseEditMediaActions
 import com.ticketbox.ui.screens.ExpenseEditPrimaryActions
@@ -44,21 +42,15 @@ import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.acknowledgeItemsMismatch
 import com.ticketbox.viewmodel.addItemRow
-import com.ticketbox.viewmodel.cancelBillSplitInvitation
-import com.ticketbox.viewmodel.closeBillSplitInviteSheet
 import com.ticketbox.viewmodel.closeItemsEditor
 import com.ticketbox.viewmodel.closeSplitsEditor
 import com.ticketbox.viewmodel.evenSplitAmounts
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
-import com.ticketbox.viewmodel.openBillSplitInviteSheet
 import com.ticketbox.viewmodel.openItemsEditor
 import com.ticketbox.viewmodel.openSplitsEditor
 import com.ticketbox.viewmodel.removeItemRow
 import com.ticketbox.viewmodel.saveItems
 import com.ticketbox.viewmodel.saveSplits
-import com.ticketbox.viewmodel.selectBillSplitInviteMember
-import com.ticketbox.viewmodel.sendBillSplitInvite
-import com.ticketbox.viewmodel.updateBillSplitInviteAmount
 import com.ticketbox.viewmodel.updateItemDraft
 import com.ticketbox.viewmodel.updateSplitAmount
 import com.ticketbox.viewmodel.updateSplitIncluded
@@ -77,8 +69,6 @@ internal fun ExpenseEditRoute(
     )
     val editState by editViewModel.uiState.collectAsStateWithLifecycle()
     val expense = editState.expense
-
-    RepaymentDraftOpenEffect(editState, editViewModel, onOpenRepaymentDrafts)
 
     if (expense == null) {
         ExpenseEditLoadingRoute(
@@ -122,7 +112,6 @@ internal fun ExpenseEditRoute(
             related = expenseEditRelatedActions(editViewModel),
             itemization = expenseEditItemizationActions(editViewModel),
             splitEditing = expenseEditSplitEditingActions(editViewModel),
-            billSplit = expenseEditBillSplitActions(editViewModel),
         ),
     )
 }
@@ -155,7 +144,6 @@ private fun expenseEditMediaActions(viewModel: ExpenseEditViewModel): ExpenseEdi
 private fun expenseEditRelatedActions(viewModel: ExpenseEditViewModel): ExpenseEditRelatedActions =
     ExpenseEditRelatedActions(
         onKeepDuplicate = viewModel::markNotDuplicate,
-        onCreateRepaymentDraft = viewModel::createRepaymentDraftFromExpense,
     )
 
 private fun expenseEditItemizationActions(viewModel: ExpenseEditViewModel): ExpenseEditItemizationActions =
@@ -182,30 +170,6 @@ private fun expenseEditSplitEditingActions(viewModel: ExpenseEditViewModel): Exp
             onDismiss = viewModel::closeSplitsEditor,
         ),
     )
-
-private fun expenseEditBillSplitActions(viewModel: ExpenseEditViewModel): ExpenseEditBillSplitActions =
-    ExpenseEditBillSplitActions(
-        onStartInvite = viewModel::openBillSplitInviteSheet,
-        onCancelInvite = viewModel::cancelBillSplitInvitation,
-        onSelectMember = viewModel::selectBillSplitInviteMember,
-        onUpdateAmount = viewModel::updateBillSplitInviteAmount,
-        onSend = viewModel::sendBillSplitInvite,
-        onDismissSheet = viewModel::closeBillSplitInviteSheet,
-    )
-
-@Composable
-private fun RepaymentDraftOpenEffect(
-    state: ExpenseEditUiState,
-    viewModel: ExpenseEditViewModel,
-    onOpenRepaymentDrafts: (String) -> Unit,
-) {
-    LaunchedEffect(state.openRepaymentDraftPublicId) {
-        val draftPublicId = viewModel.consumeOpenRepaymentDraftPublicId()
-        if (draftPublicId != null) {
-            onOpenRepaymentDrafts(draftPublicId)
-        }
-    }
-}
 
 @Composable
 private fun ExpenseEditLoadingRoute(

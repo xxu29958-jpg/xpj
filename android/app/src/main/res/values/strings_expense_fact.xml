@@ -84,6 +84,7 @@
     <string name="expense_correction_score_invalid">评分只能选择 1 到 5，或清空评分。</string>
     <string name="expense_correction_currency_unsupported">账本币种未确认或不受支持，暂不能更正金额。</string>
     <string name="expense_correction_saved">已记录更正。</string>
+    <string name="expense_correction_saved_refresh_pending">更正已记录；列表将在下次同步时刷新</string>
     <string name="expense_correction_queued">已加入同步队列，联网后自动更正。</string>
     <string name="expense_correction_failed">更正保存失败，请重试。</string>
     <string name="expense_correction_conflict">这笔账单刚在其它端被修改，已为你刷新当前值；请对照后重新提交。</string>

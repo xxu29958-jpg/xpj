@@ -47,6 +47,7 @@ sealed interface ExpenseCorrectionOutcome {
     data class Synced(
         val expense: Expense,
         val revision: ExpenseRevision,
+        val refreshPending: Boolean = false,
     ) : ExpenseCorrectionOutcome
 
     data class Queued(

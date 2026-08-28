@@ -9,8 +9,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import inspect, text
 
-from app.database import engine
-from app.database_model_registry import Base
+from app.database import SessionLocal, engine
+from app.services.currency_binding_service import resolve_write_capability
 from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
@@ -47,6 +47,9 @@ def _assert_revision_schema_present() -> None:
     assert _CHECK in {
         check["name"] for check in inspector.get_check_constraints("expenses")
     }
+    assert "response_body" in {
+        column["name"] for column in inspector.get_columns("api_idempotency_keys")
+    }
 
 
 def _downgrade_to_parent(command) -> None:
@@ -61,22 +64,23 @@ def _downgrade_to_parent(command) -> None:
 
 def _seed_legacy_confirmed_expense() -> int:
     confirmed_at = datetime(2026, 8, 20, 8, 30, tzinfo=UTC)
-    with engine.begin() as connection:
-        account_id = connection.execute(
+    with SessionLocal.begin() as db:
+        resolve_write_capability(db)
+        account_id = db.execute(
             text(
                 "INSERT INTO accounts (public_id, display_name, created_at) "
                 "VALUES (:public_id, '迁移用户', :created_at) RETURNING id"
             ),
             {"public_id": str(uuid4()), "created_at": confirmed_at},
         ).scalar_one()
-        connection.execute(
+        db.execute(
             text(
                 "INSERT INTO ledgers (ledger_id, name, owner_account_id, created_at) "
                 "VALUES ('migration-ledger', '迁移账本', :owner_account_id, :created_at)"
             ),
             {"owner_account_id": account_id, "created_at": confirmed_at},
         )
-        return connection.execute(
+        return db.execute(
             text(
                 "INSERT INTO expenses "
                 "(public_id, tenant_id, amount_cents, home_currency_code, "
@@ -121,17 +125,87 @@ def _assert_legacy_backfill(expense_id: int) -> None:
     assert baseline.resulting_row_version == 7
 
 
+def _dataset_authority_revision() -> str:
+    with engine.connect() as connection:
+        return connection.scalar(
+            text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")
+        )
+
+
+def test_expense_revision_migration_keeps_dataset_authority_aligned() -> None:
+    from alembic import command
+
+    reset_public_schema(engine)
+    _drop_alembic_version()
+    try:
+        _run(command.upgrade, _PARENT)
+        assert _dataset_authority_revision() == _PARENT
+        _run(command.upgrade, _HEAD)
+        assert _dataset_authority_revision() == _HEAD
+        _run(command.downgrade, _PARENT)
+        assert _dataset_authority_revision() == _PARENT
+        _run(command.upgrade, _HEAD)
+        assert _dataset_authority_revision() == _HEAD
+    finally:
+        reset_public_schema(engine)
+        _drop_alembic_version()
+
+
 def test_expense_revision_schema_round_trips_on_postgres() -> None:
     from alembic import command
 
     reset_public_schema(engine)
     _drop_alembic_version()
     try:
-        Base.metadata.create_all(bind=engine)
-        _assert_revision_schema_present()
-        _downgrade_to_parent(command)
+        _run(command.upgrade, _PARENT)
         legacy_expense_id = _seed_legacy_confirmed_expense()
         _run(command.upgrade, "head")
+        _assert_legacy_backfill(legacy_expense_id)
+    finally:
+        reset_public_schema(engine)
+        _drop_alembic_version()
+
+
+def test_expense_revision_migration_backfills_historically_confirmed_rejected_row() -> None:
+    from alembic import command
+
+    reset_public_schema(engine)
+    _drop_alembic_version()
+    try:
+        _run(command.upgrade, _PARENT)
+        legacy_expense_id = _seed_legacy_confirmed_expense()
+        rejected_at = datetime(2026, 8, 20, 8, 35, tzinfo=UTC)
+        with SessionLocal.begin() as db:
+            resolve_write_capability(db)
+            db.execute(
+                text(
+                    "UPDATE expenses SET status = 'rejected', rejected_at = :rejected_at "
+                    "WHERE id = :expense_id"
+                ),
+                {"expense_id": legacy_expense_id, "rejected_at": rejected_at},
+            )
+
+        _run(command.upgrade, _HEAD)
+        _assert_legacy_backfill(legacy_expense_id)
+    finally:
+        reset_public_schema(engine)
+        _drop_alembic_version()
+
+
+def test_expense_revision_migration_refuses_downgrade_that_would_erase_history() -> None:
+    from alembic import command
+
+    reset_public_schema(engine)
+    _drop_alembic_version()
+    try:
+        _run(command.upgrade, _PARENT)
+        legacy_expense_id = _seed_legacy_confirmed_expense()
+        _run(command.upgrade, _HEAD)
+
+        with pytest.raises(RuntimeError, match="financial history"):
+            _run(command.downgrade, _PARENT)
+
+        assert _dataset_authority_revision() == _HEAD
         _assert_legacy_backfill(legacy_expense_id)
     finally:
         reset_public_schema(engine)

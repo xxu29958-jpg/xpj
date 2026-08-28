@@ -724,6 +724,7 @@ class LedgerViewModel(
             if (result.skippedNotConfirmed > 0) {
                 add(UiText.res(R.string.ledger_msg_batch_part_skipped_not_confirmed, result.skippedNotConfirmed))
             }
+            if (result.refreshPending) add(UiText.res(R.string.ledger_msg_batch_refresh_pending))
         }
         if (parts.isEmpty()) return UiText.res(R.string.ledger_msg_batch_none)
         return UiText.compound(parts, "；")
@@ -752,6 +753,7 @@ private fun LedgerUiState.withSelection(
 )
 
 private fun batchResultTone(result: BatchApplyResult): MessageTone = when {
+    result.refreshPending -> MessageTone.Info
     result.updated > 0 -> MessageTone.Success
     else -> MessageTone.Info
 }

@@ -2,13 +2,14 @@
 
 ``backfill_expense_tags`` only seeds links when a ledger has *none*; it can't
 fix partial drift. ``reconcile_expense_tag_mirror`` is the independent pass that
-rebuilds relation rows from the (source-of-truth) denormalised string and bumps
-``row_version`` on every row it repairs (契约 1).
+rebuilds relation rows from the denormalised string. Pending rows bump
+``row_version``; confirmed facts only repair the derived link projection.
 """
 from __future__ import annotations
 
 from types import SimpleNamespace
 
+from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -22,13 +23,15 @@ from app.services.tag_service import reconcile_expense_tag_mirror
 from app.services.time_service import now_utc
 
 
-def _manual_with_tag(
-    client: TestClient, headers: dict[str, str], tags: str, *, merchant: str = "镜像"
+def _pending_with_tag(
+    client: TestClient, *, identity, tags: str, merchant: str = "镜像"
 ) -> dict:
-    response = client.post(
-        "/api/expenses/manual",
-        headers=headers,
-        json={
+    expense_id = upload_png(client, identity=identity)
+    response = patch_expense(
+        client,
+        expense_id,
+        headers=identity.app_headers,
+        fields={
             "amount_cents": 1000,
             "merchant": merchant,
             "category": "餐饮",
@@ -72,7 +75,7 @@ def _row_version(expense_id: int) -> int:
 
 
 def test_reconcile_relinks_missing_relation_row_and_bumps(client: TestClient, *, identity) -> None:
-    _manual_with_tag(client, identity.app_headers, "食物")
+    _pending_with_tag(client, identity=identity, tags="食物")
     expense_id = _only_expense_id()
     before = _row_version(expense_id)
 
@@ -90,8 +93,77 @@ def test_reconcile_relinks_missing_relation_row_and_bumps(client: TestClient, *,
     assert _row_version(expense_id) == before + 1
 
 
+def test_reconcile_confirmed_tag_projection_does_not_publish_a_new_fact(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense = _pending_with_tag(client, identity=identity, tags="食物")
+    confirmed = client.post(
+        f"/api/expenses/{expense['id']}/confirm",
+        headers={**identity.app_headers, "Idempotency-Key": "tag-reconcile-confirm"},
+        json={"expected_row_version": expense["row_version"]},
+    )
+    assert confirmed.status_code == 200
+    expense_id = confirmed.json()["id"]
+    before_row_version = confirmed.json()["row_version"]
+    before_fact_revision = confirmed.json()["fact_revision"]
+
+    with SessionLocal() as db:
+        for link in db.scalars(select(ExpenseTag).where(ExpenseTag.expense_id == expense_id)):
+            db.delete(link)
+        db.commit()
+
+    with SessionLocal() as db:
+        assert reconcile_expense_tag_mirror(db, "owner") == 1
+
+    with SessionLocal() as db:
+        repaired = db.get(Expense, expense_id)
+        assert repaired.row_version == before_row_version
+        assert repaired.fact_revision == before_fact_revision
+    assert len(_links(expense_id)) == 1
+
+
+def test_reconcile_historically_confirmed_rejected_projection_does_not_bypass_fact_owner(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense = _pending_with_tag(client, identity=identity, tags="食物")
+    confirmed = client.post(
+        f"/api/expenses/{expense['id']}/confirm",
+        headers={**identity.app_headers, "Idempotency-Key": "tag-reconcile-history"},
+        json={"expected_row_version": expense["row_version"]},
+    )
+    assert confirmed.status_code == 200
+    expense_id = confirmed.json()["id"]
+    before_row_version = confirmed.json()["row_version"]
+    before_fact_revision = confirmed.json()["fact_revision"]
+
+    # Simulate a legacy row that was confirmed and later rejected before A1
+    # retired the generic confirmed writer.  confirmed_at keeps it inside the
+    # published financial-history boundary even though current status is rejected.
+    with SessionLocal() as db:
+        row = db.get(Expense, expense_id)
+        row.status = "rejected"
+        for link in db.scalars(select(ExpenseTag).where(ExpenseTag.expense_id == expense_id)):
+            db.delete(link)
+        db.commit()
+
+    with SessionLocal() as db:
+        assert reconcile_expense_tag_mirror(db, "owner") == 1
+
+    with SessionLocal() as db:
+        repaired = db.get(Expense, expense_id)
+        assert repaired.status == "rejected"
+        assert repaired.confirmed_at is not None
+        assert repaired.row_version == before_row_version
+        assert repaired.fact_revision == before_fact_revision
+    assert len(_links(expense_id)) == 1
+
+
 def test_reconcile_removes_orphan_link_when_string_cleared(client: TestClient, *, identity) -> None:
-    _manual_with_tag(client, identity.app_headers, "食物")
+    _pending_with_tag(client, identity=identity, tags="食物")
     expense_id = _only_expense_id()
     before = _row_version(expense_id)
 
@@ -114,7 +186,7 @@ def test_reconcile_is_noop_and_idempotent_when_consistent(
     *,
     identity,
 ) -> None:
-    _manual_with_tag(client, identity.app_headers, "食物")
+    _pending_with_tag(client, identity=identity, tags="食物")
     expense_id = _only_expense_id()
     before = _row_version(expense_id)
 
@@ -150,7 +222,7 @@ def test_reconcile_is_noop_and_idempotent_when_consistent(
 def test_reconcile_bump_is_occ_effective(client: TestClient, *, identity) -> None:
     """Contract 1: the bump must actually invalidate a stale OCC token — a PATCH
     carrying the pre-reconcile row_version would 409, not silently revert."""
-    _manual_with_tag(client, identity.app_headers, "食物")
+    _pending_with_tag(client, identity=identity, tags="食物")
     expense_id = _only_expense_id()
     before = _row_version(expense_id)
     # Pre-reconcile token claims fine; establishes the baseline.
@@ -171,8 +243,8 @@ def test_reconcile_bump_is_occ_effective(client: TestClient, *, identity) -> Non
 
 def test_reconcile_leaves_unrelated_expense_unbumped(client: TestClient, *, identity) -> None:
     """ADR matrix '无关账单不 bump': only the drifted row is repaired/bumped."""
-    _manual_with_tag(client, identity.app_headers, "食物", merchant="漂移")
-    _manual_with_tag(client, identity.app_headers, "差旅", merchant="干净")
+    _pending_with_tag(client, identity=identity, tags="食物", merchant="漂移")
+    _pending_with_tag(client, identity=identity, tags="差旅", merchant="干净")
     with SessionLocal() as db:
         by_merchant = {
             expense.merchant: expense.id
@@ -203,7 +275,12 @@ def test_reconcile_repairs_across_multiple_batches(
     """ADR '分批': keyset-paged reconcile repairs every drifted row across batch
     boundaries, each bumped exactly once, with a correct total count."""
     for i in range(3):
-        _manual_with_tag(client, identity.app_headers, f"标签{i}", merchant=f"商家{i}")
+        _pending_with_tag(
+            client,
+            identity=identity,
+            tags=f"标签{i}",
+            merchant=f"商家{i}",
+        )
     with SessionLocal() as db:
         before = {
             expense.id: expense.row_version

@@ -39,6 +39,7 @@ router = APIRouter(prefix="/api/expenses", tags=["expenses"])
 )
 def post_confirmed_expenses_batch_update(
     payload: ConfirmedExpenseBatchUpdateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ConfirmedExpenseBatchUpdateResponse:
@@ -48,6 +49,7 @@ def post_confirmed_expenses_batch_update(
         payload=payload,
         actor_account_id=auth.account_id,
         actor_device_id=auth.device_id,
+        idempotency_key=idempotency_key,
     )
 
 

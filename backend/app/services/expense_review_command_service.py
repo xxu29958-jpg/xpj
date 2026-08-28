@@ -181,6 +181,11 @@ def reject_duplicate_original_keep_current(
         if not snapshots_match:
             raise AppError("state_conflict", status_code=409)
 
+        if original.status == "confirmed":
+            raise AppError("expense_reversal_required", status_code=409)
+        if original.status != "pending":
+            raise AppError("state_conflict", status_code=409)
+
         mark_expense_not_duplicate(
             db,
             current.id,

@@ -5,8 +5,10 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateRequestDto
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.UUID
 
 internal class ExpenseLedgerRepositoryActions(
@@ -130,15 +132,25 @@ internal class ExpenseLedgerRepositoryActions(
         }
         val cleanReason = reason.trim()
         require(cleanReason.isNotEmpty()) { "请填写更正理由。" }
+        val cleanCategory = category?.trim()
+        val cleanTags = tags?.trim()
+        val orderedExpenses = expenses.sortedBy(Expense::id)
+        val idempotencyKey = confirmedBatchIdempotencyKey(
+            expenses = orderedExpenses,
+            category = cleanCategory,
+            tags = cleanTags,
+            reason = cleanReason,
+        )
 
         val bound = core.ledgerRequestGuard.bind()
         val response = bound.call { api ->
             api.updateConfirmedBatch(
-                ConfirmedExpenseBatchUpdateRequestDto(
-                    expenseIds = expenses.map(Expense::id),
-                    expectedRowVersionById = expenses.associate { it.id to it.rowVersion },
-                    category = category,
-                    tags = tags,
+                idempotencyKey = idempotencyKey,
+                request = ConfirmedExpenseBatchUpdateRequestDto(
+                    expenseIds = orderedExpenses.map(Expense::id),
+                    expectedRowVersionById = orderedExpenses.associate { it.id to it.rowVersion },
+                    category = cleanCategory,
+                    tags = cleanTags,
                     reason = cleanReason,
                 ),
             )
@@ -147,12 +159,50 @@ internal class ExpenseLedgerRepositoryActions(
         // The command response owns counts, not row projections. Refresh through
         // the same bound ledger before reporting success so Room and every real
         // confirmed-list consumer observe the published facts.
-        core.syncConfirmedFromService(bound)
+        val refreshPending = try {
+            core.syncConfirmedFromService(bound)
+            false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            true
+        }
         BatchApplyResult(
             requested = response.requestedCount,
             updated = response.updatedCount,
             skippedNotFound = response.skippedNotFound,
             skippedNotConfirmed = response.skippedNotConfirmed,
+            refreshPending = refreshPending,
         )
+    }
+}
+
+private fun confirmedBatchIdempotencyKey(
+    expenses: List<Expense>,
+    category: String?,
+    tags: String?,
+    reason: String,
+): String {
+    val canonical = buildString {
+        append("confirmed-expense-batch-v1|")
+        expenses.forEach { expense ->
+            append(expense.id).append(':').append(expense.rowVersion).append(';')
+        }
+        appendLengthPrefixed(category)
+        appendLengthPrefixed(tags)
+        appendLengthPrefixed(reason)
+    }
+    return MessageDigest.getInstance("SHA-256")
+        .digest(canonical.toByteArray(Charsets.UTF_8))
+        .joinToString(separator = "") { byte ->
+            (byte.toInt() and 0xff).toString(radix = 16).padStart(length = 2, padChar = '0')
+        }
+}
+
+private fun StringBuilder.appendLengthPrefixed(value: String?) {
+    if (value == null) {
+        append("-1:|")
+    } else {
+        append(value.length).append(':').append(value).append('|')
     }
 }

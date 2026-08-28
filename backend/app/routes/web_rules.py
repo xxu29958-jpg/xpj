@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_session_common import resolve_web_actor_account_id
+from app.routes._web_session_common import resolve_web_actor, resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -355,10 +355,12 @@ def web_rules_apply_confirmed(
     if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
         msg = "历史账单预览已过期，请重新预览后再确认应用。"
         return _web_redirect("/web/rules", selected_id, confirmed_preview="1", msg=msg)
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     confirmed_scanned, changed_count, limited = apply_rules_to_confirmed(
         db,
         tenant_id=selected_id,
-        actor_account_id=resolve_web_actor_account_id(db, request, selected_id),
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
     )
     suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
     msg = f"扫描了 {confirmed_scanned} 条已确认；改写了 {changed_count} 条分类。{suffix}"

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_session_common import resolve_web_actor_account_id
+from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -102,7 +102,7 @@ def web_tag_rename(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _stale_redirect(selected_id)
-    actor_account_id = resolve_web_actor_account_id(db, request, selected_id)
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         tag = rename_tag(
             db,
@@ -111,6 +111,7 @@ def web_tag_rename(
             expected_row_version=parsed,
             name=name,
             actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         )
         msg = f"标签已重命名为 「{tag.name}」。"
     except AppError as exc:
@@ -133,7 +134,7 @@ def web_tag_delete(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _stale_redirect(selected_id)
-    actor_account_id = resolve_web_actor_account_id(db, request, selected_id)
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         result = delete_tag(
             db,
@@ -141,6 +142,7 @@ def web_tag_delete(
             public_id=public_id,
             expected_row_version=parsed,
             actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         )
     except AppError as exc:
         return _web_redirect("/web/tags", selected_id, msg=_conflict_message(exc))
@@ -176,7 +178,7 @@ def web_tag_merge(
     target_rv = parse_form_row_version_token(target_rv_raw)
     if source_rv is None or not target_public_id or target_rv is None:
         return _stale_redirect(selected_id)
-    actor_account_id = resolve_web_actor_account_id(db, request, selected_id)
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         result = merge_tags(
             db,
@@ -186,6 +188,7 @@ def web_tag_merge(
             target_public_id=target_public_id,
             target_row_version=target_rv,
             actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         )
     except AppError as exc:
         return _web_redirect("/web/tags", selected_id, msg=_conflict_message(exc))
@@ -217,7 +220,7 @@ def web_tag_undo(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _stale_redirect(selected_id)
-    actor_account_id = resolve_web_actor_account_id(db, request, selected_id)
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         result = undo_tag_mutation(
             db,
@@ -225,6 +228,7 @@ def web_tag_undo(
             mutation_public_id=mutation_public_id,
             expected_row_version=parsed,
             actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         )
         if result.skipped:
             msg = f"已撤销标签操作（恢复 {result.applied} 笔，{result.skipped} 笔已改动跳过）。"

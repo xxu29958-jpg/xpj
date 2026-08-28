@@ -16,6 +16,7 @@ import them from this module.
 from __future__ import annotations
 
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -227,6 +228,7 @@ def _render_confirmed_page(
     batch_category_input: str = "",
     batch_tags_input: str = "",
     batch_reason_input: str = "",
+    batch_idempotency_key: str = "",
 ) -> HTMLResponse:
     effective_month, home, items, total, total_pages, pager_query = _confirmed_page_rows(
         db, selected_id=selected_id, page=page, month=month, tag=tag
@@ -272,6 +274,7 @@ def _render_confirmed_page(
         batch_category_input=batch_category_input,
         batch_tags_input=batch_tags_input,
         batch_reason_input=batch_reason_input,
+        batch_idempotency_key=batch_idempotency_key or str(uuid4()),
     )
     return templates.TemplateResponse(
         request=request,

@@ -13,6 +13,7 @@ from app.routes._web_expense_edit_command import WebExpenseConfirmOutcome, prepa
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_helpers import confirm_reject_error, drawer_fragment_ok
 from app.routes._web_expense_return_context import resolve_return_to, return_context_params
+from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -53,6 +54,8 @@ def confirm_web_expense(
     note: str,
     tags: str,
     expense_time: str | None,
+    actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
 ) -> WebExpenseConfirmOutcome:
     form_values: dict[str, str] | None = None
     field_errors: dict[str, str] | None = None
@@ -95,6 +98,8 @@ def confirm_web_expense(
             idempotency_key=idempotency_key or None,
             intent_body=_confirmation_intent_body(form_values),
             update_payload=update_payload,
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         )
     except AppError as exc:
         message = "账单已在其它端被修改，请刷新后重新确认。" if exc.error == "state_conflict" else exc.message
@@ -138,6 +143,7 @@ def web_confirm(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     outcome = confirm_web_expense(
         db,
         expense_id=expense_id,
@@ -152,6 +158,8 @@ def web_confirm(
         note=note,
         tags=tags,
         expense_time=expense_time,
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
     )
     if outcome.error is not None:
         return confirm_reject_error(

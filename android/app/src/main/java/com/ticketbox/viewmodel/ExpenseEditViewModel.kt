@@ -9,7 +9,6 @@ import com.ticketbox.data.repository.ExpenseEditActions
 import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.data.repository.changesAdvisorPayloadAgainst
-import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
@@ -17,13 +16,10 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
-import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.domain.model.canCreateRepaymentDraft
-import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.ui.components.formatMinorAmountInput
 import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,13 +66,6 @@ data class EditableSplit(
     val baselineAmountCents: Long? = null,
 )
 
-enum class BillSplitSentLoadState {
-    Unknown,
-    Loading,
-    Loaded,
-    Failed,
-}
-
 enum class ExpenseDetailDataLoadState {
     Unknown,
     Loading,
@@ -111,25 +100,7 @@ data class ExpenseEditUiState(
     val splitsSaving: Boolean = false,
     val splitsMessage: UiText? = null,
     val splitsMessageTone: MessageTone = MessageTone.Neutral,
-    // ADR-0029 拆账发起（批 13）。billSplitSent 已按本票 senderExpenseId 过滤；
-    // inviteSheetOpen 控制发起 sheet；inviteMembers 是可选收件人（已剔自己/停用）；
-    // inviteSelectedMemberId/inviteAmountText 是 sheet 表单态；inviteSending 是发送中。
-    val billSplitSent: List<BillSplitSent> = emptyList(),
-    val billSplitSentLoadState: BillSplitSentLoadState = BillSplitSentLoadState.Unknown,
-    val billSplitLoading: Boolean = false,
-    val billSplitMessage: UiText? = null,
-    val billSplitMessageTone: MessageTone = MessageTone.Neutral,
-    val billSplitInviteSheetOpen: Boolean = false,
-    val billSplitInviteMembers: List<FamilyMember> = emptyList(),
-    val billSplitInviteMembersLoading: Boolean = false,
-    val billSplitInviteSelectedMemberId: Long? = null,
-    val billSplitInviteAmountText: String = "",
-    val billSplitInviteSending: Boolean = false,
-    val billSplitInviteMessage: UiText? = null,
-    val billSplitInviteMessageTone: MessageTone = MessageTone.Neutral,
     val recognizeTextDialogOpen: Boolean = false,
-    val repaymentDraftCreating: Boolean = false,
-    val openRepaymentDraftPublicId: String? = null,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
     val done: Boolean = false,
@@ -167,17 +138,6 @@ class ExpenseEditViewModel(
 
     init {
         loadExpense()
-        loadCategories()
-        // issue #65 slice 5: a not-yet-synced offline create (negative local id)
-        // has no server-side image / line items / splits yet — skip those loads so
-        // they don't 404 and surface spurious "load failed" messages on the page.
-        if (expenseId > 0) {
-            loadThumbnail()
-            loadExpenseItems()
-            loadExpenseSplits()
-        } else {
-            markLocalOnlyDetailLoadsLoaded(expense = null)
-        }
     }
 
     fun retryLoadExpense() {
@@ -206,13 +166,12 @@ class ExpenseEditViewModel(
                             messageTone = MessageTone.Neutral,
                         )
                     }
-                    if (expenseId < 0) {
-                        markLocalOnlyDetailLoadsLoaded(expense)
-                    }
-                    // 批 13：仅已确认/有金额/非收到拆账/可写的票才拉本票已发邀请，
-                    // 给「找家人分摊」卡填列表（pending/received 票不发无谓请求）。
-                    if (expense.canInitiateBillSplit(_uiState.value.readOnly)) {
-                        loadBillSplitSent()
+                    // A1 owner retirement: this VM may identify the status for routing,
+                    // but the confirmed fact owner alone loads category/media/items/splits
+                    // and bill-split projections. Starting those reads here creates a hidden
+                    // second page state behind ExpenseFactRoute.
+                    if (expense.status != "confirmed") {
+                        loadLegacyEditorDependencies(expense)
                     }
                 }
                 .onFailure { error ->
@@ -224,6 +183,19 @@ class ExpenseEditViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    private fun loadLegacyEditorDependencies(expense: Expense) {
+        loadCategories()
+        // issue #65 slice 5: a not-yet-synced offline create (negative local id)
+        // has no server-side image / line items / splits yet.
+        if (expenseId > 0) {
+            loadThumbnail()
+            loadExpenseItems()
+            loadExpenseSplits()
+        } else {
+            markLocalOnlyDetailLoadsLoaded(expense)
         }
     }
 
@@ -740,56 +712,6 @@ class ExpenseEditViewModel(
         }
     }
 
-    fun createRepaymentDraftFromExpense() {
-        if (blockReadOnlyWrite()) return
-        val expense = _uiState.value.expense
-        if (expense == null) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded), messageTone = MessageTone.Danger)
-            }
-            return
-        }
-        if (!expense.canCreateRepaymentDraft(_uiState.value.readOnly)) {
-            _uiState.update {
-                it.copy(
-                    message = UiText.res(R.string.expense_edit_repayment_draft_unavailable),
-                    messageTone = MessageTone.Danger,
-                )
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    repaymentDraftCreating = true,
-                    openRepaymentDraftPublicId = null,
-                    message = null,
-                    messageTone = MessageTone.Neutral,
-                )
-            }
-            repository.createRepaymentDraftFromExpense(expense)
-                .onSuccess { draft ->
-                    _uiState.update {
-                        it.copy(
-                            repaymentDraftCreating = false,
-                            openRepaymentDraftPublicId = draft.publicId,
-                            message = UiText.res(R.string.expense_edit_repayment_draft_created),
-                            messageTone = MessageTone.Success,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            repaymentDraftCreating = false,
-                            message = error.toUiText(R.string.expense_edit_repayment_draft_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
-    }
-
     fun consumeDone(): Boolean {
         val wasDone = _uiState.value.done
         if (wasDone) {
@@ -806,14 +728,6 @@ class ExpenseEditViewModel(
         return changed
     }
 
-    fun consumeOpenRepaymentDraftPublicId(): String? {
-        val publicId = _uiState.value.openRepaymentDraftPublicId
-        if (publicId != null) {
-            _uiState.update { it.copy(openRepaymentDraftPublicId = null) }
-        }
-        return publicId
-    }
-
     private fun blockReadOnlyWrite(): Boolean {
         if (repository.canModifyLedger()) {
             _uiState.update { it.copy(readOnly = false) }
@@ -824,7 +738,6 @@ class ExpenseEditViewModel(
                 readOnly = true,
                 saving = false,
                 ocrRunning = false,
-                repaymentDraftCreating = false,
                 message = UiText.res(R.string.common_readonly_ledger),
                 messageTone = MessageTone.Danger,
             )

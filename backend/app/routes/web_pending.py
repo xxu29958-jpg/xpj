@@ -27,6 +27,7 @@ from app.routes._web_pending_bulk_response import (
 from app.routes._web_pending_enrichment_watch import (
     web_pending_enrichment_context,
 )
+from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -338,6 +339,58 @@ def web_pending_batch_undo(
     )
 
 
+def _apply_web_review_bulk(
+    db: Session,
+    request: Request,
+    *,
+    selected_id: str,
+    action: str,
+    expense_ids: list[int],
+    expected_by_id: dict[int, int],
+    category: str,
+    merchant: str,
+) -> BulkResult:
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
+    return apply_review_bulk(
+        db,
+        tenant_id=selected_id,
+        action=action,
+        expense_ids=expense_ids,
+        expected_row_version_by_id=expected_by_id,
+        category=category,
+        merchant=merchant,
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+    )
+
+
+def _bulk_review_response(
+    *,
+    selected_id: str,
+    action: str,
+    filter_key: str,
+    fragment_removal: bool,
+    result: BulkResult,
+) -> Response:
+    if fragment_removal:
+        return bulk_fragment_json(
+            action,
+            result,
+            selected_id=selected_id,
+            filter=filter_key,
+        )
+    message = format_bulk_message(action, result)
+    if action in REMOVAL_ACTIONS:
+        return pending_bulk_result_redirect(
+            selected_id,
+            action=action,
+            filter=filter_key,
+            msg=message,
+            result=result,
+        )
+    return pending_redirect(selected_id, filter=filter_key, msg=message)
+
+
 @router.post("/review/bulk", response_class=HTMLResponse)
 def web_review_bulk(
     request: Request,
@@ -383,12 +436,13 @@ def web_review_bulk(
     unique_expense_ids, expected_by_id = snapshot
 
     try:
-        result = apply_review_bulk(
+        result = _apply_web_review_bulk(
             db,
-            tenant_id=selected_id,
+            request,
+            selected_id=selected_id,
             action=action_clean,
             expense_ids=unique_expense_ids,
-            expected_row_version_by_id=expected_by_id,
+            expected_by_id=expected_by_id,
             category=category,
             merchant=merchant,
         )
@@ -399,23 +453,10 @@ def web_review_bulk(
             return pending_redirect(selected_id, filter=filter, msg=exc.message)
         raise
 
-    if fragment_removal:
-        return bulk_fragment_json(
-            action_clean,
-            result,
-            selected_id=selected_id,
-            filter=filter,
-        )
-    if action_clean in REMOVAL_ACTIONS:
-        return pending_bulk_result_redirect(
-            selected_id,
-            action=action_clean,
-            filter=filter,
-            msg=format_bulk_message(action_clean, result),
-            result=result,
-        )
-    return pending_redirect(
-        selected_id,
-        filter=filter,
-        msg=format_bulk_message(action_clean, result),
+    return _bulk_review_response(
+        selected_id=selected_id,
+        action=action_clean,
+        filter_key=filter,
+        fragment_removal=fragment_removal,
+        result=result,
     )

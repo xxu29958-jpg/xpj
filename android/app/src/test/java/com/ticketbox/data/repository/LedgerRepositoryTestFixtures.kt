@@ -301,6 +301,7 @@ internal class StubApi(
         pageSize: Int,
     ): com.ticketbox.data.remote.dto.ExpenseRevisionPageDto = ledgerUnsupported()
     override suspend fun updateConfirmedBatch(
+        idempotencyKey: String,
         request: com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateRequestDto,
     ): com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateResponseDto = ledgerUnsupported()
     override suspend fun createRepaymentDraftFromExpense(

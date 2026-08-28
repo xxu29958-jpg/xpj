@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_confirmed_write_guard import confirmed_write_guard_response
+from app.routes._web_expense_fact import web_fact_error_response
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_helpers import _edit_page_or_flash_redirect
 from app.routes._web_expense_return_context import edit_context_params
@@ -177,7 +178,21 @@ def _mismatch_error_response(
     *,
     status_code: int,
     return_context: dict[str, str],
-) -> HTMLResponse:
+) -> Response:
+    try:
+        if get_expense(db, expense_id, selected_id).status == "confirmed":
+            return web_fact_error_response(
+                db,
+                request,
+                options,
+                selected_id,
+                expense_id,
+                message,
+                status_code=status_code,
+            )
+    except AppError:
+        # The shared edit helper owns the vanished-row flash fallback.
+        pass
     return _edit_page_or_flash_redirect(
         db,
         request,
@@ -210,10 +225,6 @@ def web_items_acknowledge_mismatch(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    # ADR-0038 PR-2e: stale-click ("原小票如此" on an outdated page
-    # after a peer edited amount/items) surfaces as ``state_conflict``
-    # 409 → "账单已在其它端被修改" UX instead of silently flipping a
-    # *new* mismatch into ``mismatch_acknowledged``.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)

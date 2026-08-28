@@ -7,8 +7,9 @@ in a single click. Either row may still be pending or already confirmed:
 * **不是重复，保留两条** — calls ``mark_expense_not_duplicate`` (records the
   ignore pair so it never re-fires for the same kind).
 * **忽略当前记录** — rejects the suspected row (restorable).
-* **忽略参考记录** — rejects the referenced row instead, then clears the
-  suspected flag on the kept row so it stops blocking review.
+* **忽略参考记录** — rejects a still-pending referenced row, then clears the
+  suspected flag on the kept row. Confirmed references remain immutable here
+  and direct the user to correction/reversal semantics instead.
 
 All actions stay loopback-only via ``LocalOnly`` and respect ledger
 isolation via ``selected_id``.

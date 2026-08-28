@@ -91,6 +91,43 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
         assertTrue(row.payload.contains("补充原始备注"), row.payload)
     }
 
+    @Test
+    fun `server success remains synced when Room publication needs a later refresh`() = runTest {
+        val dao = FakeExpenseDao().apply {
+            insertFailure = IllegalStateException("room unavailable")
+        }
+        val responseExpense = successExpenseDto().copy(
+            status = "confirmed",
+            category = "购物",
+            rowVersion = 4L,
+            factRevision = 2L,
+            confirmedAt = "2026-05-20T12:30:00Z",
+        )
+        val api = CorrectionApiService(
+            delegate = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0),
+            response = ExpenseCorrectionResponseDto(
+                expense = responseExpense,
+                revision = revisionDto(),
+            ),
+        )
+        val repo = buildCorrectionRepository(api = api, expenseDao = dao)
+        val baseline = baselineExpense().copy(
+            status = "confirmed",
+            confirmedAt = "2026-05-20T12:30:00Z",
+            rowVersion = 3L,
+            factRevision = 1L,
+        )
+
+        val outcome = repo.correctExpenseAllowingOffline(
+            expense = baseline,
+            correction = ExpenseCorrectionDraft(reason = "修正分类", category = "购物"),
+        ).getOrThrow()
+
+        val synced = assertIs<ExpenseCorrectionOutcome.Synced>(outcome)
+        assertEquals(2L, synced.expense.factRevision)
+        assertTrue(synced.refreshPending)
+    }
+
     private fun buildCorrectionRepository(
         api: ApiService,
         expenseDao: FakeExpenseDao = FakeExpenseDao(),

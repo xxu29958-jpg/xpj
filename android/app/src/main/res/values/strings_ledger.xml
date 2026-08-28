@@ -178,4 +178,5 @@
     <string name="ledger_msg_batch_part_updated">已更新 %1$d 条</string>
     <string name="ledger_msg_batch_part_skipped_not_found">跳过 %1$d 条：不属于当前账本</string>
     <string name="ledger_msg_batch_part_skipped_not_confirmed">跳过 %1$d 条：不是已入账</string>
+    <string name="ledger_msg_batch_refresh_pending">更正已提交；列表将在下次同步时刷新</string>
 </resources>

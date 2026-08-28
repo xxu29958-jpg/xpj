@@ -15,8 +15,9 @@ is what closes the committed-but-unseen false-409 gap.
 ``status`` is the concurrency placeholder: an in-flight claim writes
 ``in_progress`` first (atomic unique-conflict claim), flips to ``succeeded`` in
 the SAME transaction as the business mutation. ``resource_type`` /
-``resource_id`` locate the mutated resource so a replay can re-serialise the
-canonical success shape (ADR-0042 §4.6) without storing the response body.
+``resource_id`` locate an ordinary mutated resource so a replay can re-serialise
+its canonical current shape. Aggregate commands with no single canonical
+resource may store only their successful typed result in ``response_body``.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -73,10 +75,13 @@ class ApiIdempotencyKey(Base):
     # canonical(operation + target + body + expected_row_version) sha256 hex (64).
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
-    # Locate the mutated resource so a replay re-serialises the canonical shape
-    # from current state (ADR-0042 §4.6) — we do NOT cache the response body.
+    # Locate an ordinary mutated resource so replay can re-serialise current state.
     resource_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     resource_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Aggregate commands have no single canonical resource that can reconstruct
+    # their result counts.  Store only their successful typed payload; ordinary
+    # resource mutations keep this NULL and continue re-serialising current state.
+    response_body: Mapped[dict[str, object] | None] = mapped_column(JSON(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
     )

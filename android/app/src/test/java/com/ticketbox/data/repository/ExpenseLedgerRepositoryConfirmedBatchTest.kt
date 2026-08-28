@@ -54,6 +54,7 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
             result,
         )
         assertEquals(listOf("batch", "syncConfirmed"), events)
+        assertTrue(api.idempotencyKeys.single().isNotBlank())
         assertEquals(
             ConfirmedExpenseBatchUpdateRequestDto(
                 expenseIds = listOf(1L, 2L),
@@ -96,6 +97,60 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
         assertFalse(events.contains("syncConfirmed"), "a failed command must not publish a refreshed projection")
     }
 
+    @Test
+    fun `committed batch stays successful when authoritative cache refresh is pending`() = runTest {
+        val events = mutableListOf<String>()
+        val delegate = FakeApiService(events = events, confirmedFailuresRemaining = 1)
+        val api = BatchApiService(
+            delegate = delegate,
+            events = events,
+            response = ConfirmedExpenseBatchUpdateResponseDto(
+                requestedCount = 1,
+                updatedCount = 1,
+                skippedNotFound = 0,
+                skippedNotConfirmed = 0,
+            ),
+        )
+        val repo = buildRepository(api)
+        val expense = baselineExpense().copy(id = 5L, status = "confirmed", rowVersion = 9L)
+
+        val result = repo.applyConfirmedBatch(
+            expenses = listOf(expense),
+            category = "交通",
+            tags = null,
+            reason = "修正分类",
+        ).getOrThrow()
+
+        assertEquals(1, result.updated)
+        assertTrue(result.refreshPending)
+        assertEquals(listOf("batch", "syncConfirmed"), events)
+    }
+
+    @Test
+    fun `same batch intent reuses one deterministic command key`() = runTest {
+        val events = mutableListOf<String>()
+        val delegate = FakeApiService(events = events, confirmedFailuresRemaining = 0)
+        val api = BatchApiService(
+            delegate = delegate,
+            events = events,
+            response = ConfirmedExpenseBatchUpdateResponseDto(1, 1, 0, 0),
+        )
+        val repo = buildRepository(api)
+        val expense = baselineExpense().copy(id = 7L, status = "confirmed", rowVersion = 4L)
+
+        repeat(2) {
+            repo.applyConfirmedBatch(
+                expenses = listOf(expense),
+                category = null,
+                tags = "差旅",
+                reason = "补上出差标签",
+            ).getOrThrow()
+        }
+
+        assertEquals(2, api.idempotencyKeys.size)
+        assertEquals(1, api.idempotencyKeys.distinct().size)
+    }
+
     private class BatchApiService(
         private val delegate: ApiService,
         private val events: MutableList<String>,
@@ -104,11 +159,14 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
     ) : ApiService by delegate {
         var request: ConfirmedExpenseBatchUpdateRequestDto? = null
             private set
+        val idempotencyKeys = mutableListOf<String>()
 
         override suspend fun updateConfirmedBatch(
+            idempotencyKey: String,
             request: ConfirmedExpenseBatchUpdateRequestDto,
         ): ConfirmedExpenseBatchUpdateResponseDto {
             events += "batch"
+            idempotencyKeys += idempotencyKey
             this.request = request
             failure?.let { throw it }
             return requireNotNull(response)

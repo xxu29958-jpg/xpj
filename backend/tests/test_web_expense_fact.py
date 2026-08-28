@@ -460,6 +460,7 @@ def test_batch_update_requires_reason_and_applies(web_client: TestClient, *, ide
             "expense_snapshot": [snapshot],
             "category": "居家",
             "reason": "统一整理分类",
+            "idempotency_key": "web-fact-batch-category",
         },
         follow_redirects=False,
     )

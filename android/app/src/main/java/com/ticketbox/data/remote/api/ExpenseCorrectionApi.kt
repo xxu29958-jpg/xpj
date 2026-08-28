@@ -29,6 +29,7 @@ interface ExpenseCorrectionApi {
 
     @POST("api/expenses/confirmed/batch-update")
     suspend fun updateConfirmedBatch(
+        @Header("Idempotency-Key") idempotencyKey: String,
         @Body request: ConfirmedExpenseBatchUpdateRequestDto,
     ): ConfirmedExpenseBatchUpdateResponseDto
 }

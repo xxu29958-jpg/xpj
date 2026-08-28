@@ -37,6 +37,15 @@ interface ExpenseFactCommandActions {
         expense: Expense,
         correction: ExpenseCorrectionDraft,
     ): Result<ExpenseCorrectionOutcome>
+
+    /**
+     * 「原小票如此」明细差异确认：不是字段编辑，而是经既有 OCC/幂等/Outbox
+     * owner 的状态确认；[ExpenseRepository] 的既有 override 同时满足本端口。
+     */
+    suspend fun acknowledgeItemsMismatchAllowingOffline(
+        expense: Expense,
+        currentItems: ExpenseItems,
+    ): Result<ItemsAckOutcome>
     suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft>
     suspend fun createBillSplitInvitation(
         expenseId: Long,

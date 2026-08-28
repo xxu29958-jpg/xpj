@@ -27,17 +27,25 @@ import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
 
 /**
  * A1 明细/拆账只读段：事实呈现，不出现会 409 的旧 PUT 编辑入口；
- * 修改路径统一指向「更正这笔账单」。
+ * 修改路径统一指向「更正这笔账单」。唯一例外：mismatch_known 时明细卡片给出
+ * 「原小票如此」状态确认命令（非字段编辑，走既有 revision/OCC owner），
+ * 只读角色不渲染该动作。
  */
 @Composable
 internal fun FactLinesSection(
     state: ExpenseFactUiState,
     onRetryItems: () -> Unit,
     onRetrySplits: () -> Unit,
+    onAcknowledgeItems: () -> Unit,
 ) {
     val expense = state.expense ?: return
     val display = expense.recordCurrencyDisplay()
-    FactItemsCard(state = state, display = display, onRetry = onRetryItems)
+    FactItemsCard(
+        state = state,
+        display = display,
+        onRetry = onRetryItems,
+        onAcknowledgeItems = onAcknowledgeItems,
+    )
     FactSplitsCard(state = state, display = display, onRetry = onRetrySplits)
 }
 
@@ -46,6 +54,7 @@ private fun FactItemsCard(
     state: ExpenseFactUiState,
     display: com.ticketbox.domain.model.CurrencyDisplay,
     onRetry: () -> Unit,
+    onAcknowledgeItems: () -> Unit,
 ) {
     val items = state.expenseItems
     Column(
@@ -75,13 +84,12 @@ private fun FactItemsCard(
             }
             else -> {
                 if (items != null && items.hasMismatch) {
-                    Text(
-                        text = stringResource(
-                            R.string.expense_fact_items_mismatch,
-                            formatDisplayAmount(items.mismatchCents, display),
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
+                    FactItemsMismatchAffordance(
+                        items = items,
+                        display = display,
+                        readOnly = state.readOnly,
+                        itemsLoading = state.itemsLoading,
+                        onAcknowledgeItems = onAcknowledgeItems,
                     )
                 }
                 val rows = items?.items.orEmpty()
@@ -97,6 +105,43 @@ private fun FactItemsCard(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 明细差异供能组：差异文案 + 终态/命令入口。
+ * mismatch_acknowledged 给诚实终态文案；mismatch_known + 写权限给真实
+ * 「原小票如此」命令（次级 TextButton，在途禁用），只读不渲染动作。
+ */
+@Composable
+private fun FactItemsMismatchAffordance(
+    items: ExpenseItems,
+    display: com.ticketbox.domain.model.CurrencyDisplay,
+    readOnly: Boolean,
+    itemsLoading: Boolean,
+    onAcknowledgeItems: () -> Unit,
+) {
+    Text(
+        text = stringResource(
+            R.string.expense_fact_items_mismatch,
+            formatDisplayAmount(items.mismatchCents, display),
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (items.mismatchAcknowledged) {
+        Text(
+            text = stringResource(R.string.expense_edit_v1_items_mismatch_acknowledged),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    } else if (items.mismatchKnown && !readOnly) {
+        TextButton(
+            onClick = onAcknowledgeItems,
+            enabled = !itemsLoading,
+        ) {
+            Text(text = stringResource(R.string.expense_edit_v1_items_mismatch_ack_button))
         }
     }
 }

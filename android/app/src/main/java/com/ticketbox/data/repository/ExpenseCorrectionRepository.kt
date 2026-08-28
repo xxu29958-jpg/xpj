@@ -3,10 +3,12 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
+import com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
 import com.ticketbox.domain.model.ExpenseRevisionPage
+import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import java.util.UUID
 
@@ -50,30 +52,22 @@ internal class ExpenseCorrectionRepository(
             val response = bound.call {
                 it.correctExpense(expense.id.toString(), request, idempotencyKey)
             }
-            core.cacheIfConfirmed(response.expense, bound)
-            return@safeCall ExpenseCorrectionOutcome.Synced(
-                expense = response.expense.toDomain(),
-                revision = response.revision.toDomain(),
-            )
+            return@safeCall syncedOutcome(response, bound)
         }
 
         if (core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))) {
             enqueue(QueuedExpenseCorrection(bound, outbox, adapter, expense, request, idempotencyKey))
             return@safeCall ExpenseCorrectionOutcome.Queued(expense.projectCorrection(correction))
         }
-        try {
-            val response = bound.call {
+        val response = try {
+            bound.call {
                 it.correctExpense(expense.id.toString(), request, idempotencyKey)
             }
-            core.cacheIfConfirmed(response.expense, bound)
-            ExpenseCorrectionOutcome.Synced(
-                expense = response.expense.toDomain(),
-                revision = response.revision.toDomain(),
-            )
         } catch (networkError: IOException) {
             enqueue(QueuedExpenseCorrection(bound, outbox, adapter, expense, request, idempotencyKey))
-            ExpenseCorrectionOutcome.Queued(expense.projectCorrection(correction))
+            return@safeCall ExpenseCorrectionOutcome.Queued(expense.projectCorrection(correction))
         }
+        syncedOutcome(response, bound)
     }
 
     private suspend fun enqueue(command: QueuedExpenseCorrection) {
@@ -86,6 +80,27 @@ internal class ExpenseCorrectionRepository(
                 expectedRowVersion = command.expense.rowVersion,
                 idempotencyKey = command.idempotencyKey,
             ),
+        )
+    }
+
+    private suspend fun syncedOutcome(
+        response: ExpenseCorrectionResponseDto,
+        bound: BoundLedgerRequest,
+    ): ExpenseCorrectionOutcome.Synced {
+        val refreshPending = try {
+            core.cacheIfConfirmed(response.expense, bound)
+            false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (bindingError: RepositoryException) {
+            throw bindingError
+        } catch (_: Exception) {
+            true
+        }
+        return ExpenseCorrectionOutcome.Synced(
+            expense = response.expense.toDomain(),
+            revision = response.revision.toDomain(),
+            refreshPending = refreshPending,
         )
     }
 }

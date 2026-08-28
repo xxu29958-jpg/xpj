@@ -17,9 +17,9 @@ claim.
                               transaction.
     - ``HIT``                 key already ``succeeded`` with a matching
                               fingerprint → caller skips the OCC claim and
-                              re-serialises the resource's canonical current
-                              state from ``resource_type``/``resource_id``
-                              (ADR-0042 §4.6); this is what kills the false-409.
+                              either re-serialises an ordinary resource's
+                              canonical current state or returns an aggregate
+                              command's stored typed success result.
     - ``IN_PROGRESS``         a concurrent same-key request holds the claim →
                               caller returns 409 ``idempotency_key_in_progress``.
     - ``FINGERPRINT_MISMATCH`` same key, different request → caller returns 422
@@ -32,7 +32,8 @@ claim.
 Only *committed-success* is ever recorded — validation / OCC-409 / permission /
 pre-commit-5xx leave no ``succeeded`` row, so a later legitimate retry still
 runs (§4.9). This is an outbox mutation-dedupe table, NOT a Stripe-style generic
-response cache (we never cache error responses or response bytes).
+response cache: errors are never cached, and typed success payload storage is
+reserved for aggregates that cannot be reconstructed from one resource.
 """
 
 from __future__ import annotations
@@ -220,6 +221,7 @@ def mark_idempotency_succeeded(
     *,
     resource_type: str | None = None,
     resource_id: str | None = None,
+    response_body: dict[str, Any] | None = None,
 ) -> None:
     """Flip a claimed ``in_progress`` row to ``succeeded`` (ADR-0042 §4.5).
 
@@ -233,6 +235,7 @@ def mark_idempotency_succeeded(
     # the HIT path depends on is never silently nulled out.
     row.resource_type = resource_type if resource_type is not None else row.target_type
     row.resource_id = resource_id if resource_id is not None else row.target_id
+    row.response_body = response_body
     row.completed_at = now_utc()
     db.flush()
 

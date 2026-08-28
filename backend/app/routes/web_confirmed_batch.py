@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_bulk_snapshot import parse_bulk_snapshot
-from app.routes._web_session_common import resolve_web_actor_account_id
+from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_app import _confirmed_redirect, _render_confirmed_page
 from app.routes.web_common import (
     LocalOnly,
@@ -105,6 +105,8 @@ def _execute_confirmed_batch(
     tags: str,
     reason: str,
     actor_account_id: int | None,
+    actor_device_id: int | None,
+    idempotency_key: str,
 ) -> _ConfirmedBatchOutcome:
     parsed = parse_bulk_snapshot(expense_ids, expected_row_version, expense_snapshot)
     if parsed is None:
@@ -128,6 +130,8 @@ def _execute_confirmed_batch(
             tenant_id=selected_id,
             payload=payload,
             actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
+            idempotency_key=idempotency_key,
         )
     except AppError as exc:
         db.rollback()
@@ -147,6 +151,7 @@ def web_confirmed_batch_update(
     category: str = Form(default=""),
     tags: str = Form(default=""),
     reason: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
     month: str = Form(default=""),
     tag: str = Form(default=""),
     page: int = Form(default=1),
@@ -156,6 +161,11 @@ def web_confirmed_batch_update(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    actor_account_id, actor_device_id = resolve_web_actor(
+        db,
+        request,
+        selected_id,
+    )
     outcome = _execute_confirmed_batch(
         db,
         selected_id=selected_id,
@@ -166,7 +176,9 @@ def web_confirmed_batch_update(
         category=category,
         tags=tags,
         reason=reason,
-        actor_account_id=resolve_web_actor_account_id(db, request, selected_id),
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+        idempotency_key=idempotency_key,
     )
     if outcome.error_message:
         return _render_confirmed_page(
@@ -183,6 +195,7 @@ def web_confirmed_batch_update(
             batch_category_input=category,
             batch_tags_input=tags,
             batch_reason_input=reason,
+            batch_idempotency_key=idempotency_key,
             selected_expense_ids=outcome.selected_expense_ids,
         )
     if outcome.result is None:

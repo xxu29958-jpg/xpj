@@ -273,9 +273,13 @@ def reconcile_expense_tag_mirror(db: Session, tenant_id: str, *, batch_size: int
 
     ADR-0043 slice A. The denormalised string is the source of truth (rule
     matcher / CSV export / DTO all read it); relation rows are rebuilt to match.
-    Only expenses whose link key set differs from the string's are touched, and
-    each fix bumps the expense ``row_version`` so a stale cross-surface PATCH
-    can't silently revert the repair (契约 1 / [[feedback_row_version_bump_rule]]).
+    Only expenses whose link key set differs from the string's are touched.
+    Rows that have never been confirmed also canonicalize the string and bump
+    ``row_version`` so a stale cross-surface PATCH cannot silently revert the
+    repair.  Once ``confirmed_at`` exists, the string belongs to published
+    financial history even if a legacy path later changed current status:
+    startup repair may rebuild its derived relation projection, but must not
+    publish a new fact behind the correction Owner.
     Keyset-pages the mirror surface, reads each page's relation rows in bulk,
     then commits repairs per batch (§12); returns the number of expenses repaired.
 
@@ -323,7 +327,6 @@ def reconcile_expense_tag_mirror(db: Session, tenant_id: str, *, batch_size: int
 
         for expense in drifted_expenses:
             names = desired_names_by_id[expense.id]
-            expense.tags = format_tags(names)
             target_tag_ids = {tags_by_key[tag_key(name)].id for name in names}
             _replace_expense_tag_links(
                 db,
@@ -331,7 +334,9 @@ def reconcile_expense_tag_mirror(db: Session, tenant_id: str, *, batch_size: int
                 target_tag_ids=target_tag_ids,
                 existing_links=links_by_expense_id.get(expense.id, []),
             )
-            bump_row_version(expense)
+            if expense.confirmed_at is None:
+                expense.tags = format_tags(names)
+                bump_row_version(expense)
         fixed += len(drifted_expenses)
         if drifted_expenses:
             db.commit()

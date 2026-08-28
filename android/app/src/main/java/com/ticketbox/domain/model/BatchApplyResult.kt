@@ -6,6 +6,7 @@ data class BatchApplyResult(
     val updated: Int,
     val skippedNotFound: Int,
     val skippedNotConfirmed: Int,
+    val refreshPending: Boolean = false,
 ) {
     val skipped: Int get() = skippedNotFound + skippedNotConfirmed
 }

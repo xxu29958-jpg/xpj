@@ -156,34 +156,7 @@ fun ExpenseFactViewModel.submitCorrection() {
     viewModelScope.launch {
         updateCorrection { it.copy(saving = true) }
         repository.correctExpenseAllowingOffline(expense, draft)
-            .onSuccess { outcome ->
-                when (outcome) {
-                    is ExpenseCorrectionOutcome.Synced -> {
-                        _uiState.update {
-                            it.copy(
-                                expense = outcome.expense,
-                                correction = CorrectionFormState(),
-                                message = UiText.res(R.string.expense_correction_saved),
-                                messageTone = MessageTone.Success,
-                                doneAdviceInputsChanged = it.doneAdviceInputsChanged || invalidatesAdvice,
-                            )
-                        }
-                        // 时间线只认服务端：Synced 后重拉，不本地伪造 revision。
-                        loadExpenseRevisions()
-                    }
-                    is ExpenseCorrectionOutcome.Queued -> {
-                        _uiState.update {
-                            it.copy(
-                                expense = outcome.expense,
-                                correction = CorrectionFormState(),
-                                message = UiText.res(R.string.expense_correction_queued),
-                                messageTone = MessageTone.Info,
-                                doneAdviceInputsChanged = it.doneAdviceInputsChanged || invalidatesAdvice,
-                            )
-                        }
-                    }
-                }
-            }
+            .onSuccess { outcome -> publishCorrectionOutcome(outcome, invalidatesAdvice) }
             .onFailure { error ->
                 val isConflict = (error as? RepositoryException)?.errorCode == "state_conflict"
                 if (isConflict) {

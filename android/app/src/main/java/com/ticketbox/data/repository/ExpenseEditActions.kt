@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseItemDraft
@@ -9,7 +8,6 @@ import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
-import com.ticketbox.domain.model.RepaymentDraft
 
 /**
  * 架构债 #5：ExpenseEditViewModel 依赖反转用接口。
@@ -62,8 +60,6 @@ interface ExpenseEditActions {
     suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
     suspend fun recognizeTextAllowingOffline(expense: Expense, rawText: String): Result<ExpenseStateOutcome>
     suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
-    suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft>
-
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems>
     suspend fun acknowledgeItemsMismatchAllowingOffline(
         expense: Expense,
@@ -84,17 +80,4 @@ interface ExpenseEditActions {
         currentSplits: ExpenseSplits,
     ): Result<ReplaceSplitsOutcome>
 
-    // ADR-0029 拆账发起闭环（批 13）：编辑页「找家人分摊」卡 + 发起 sheet 用。
-    // 在线-only（无 outbox，无幂等键）：直连失败直接报错，不入离线队列。
-    suspend fun createBillSplitInvitation(
-        expenseId: Long,
-        receiverAccountId: Long,
-        amountCents: Long,
-    ): Result<BillSplitSent>
-
-    /** 本票已发出的拆账邀请；调用方按 senderExpenseId 客户端过滤出本票的。 */
-    suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>>
-
-    /** 撤回一条 invited 状态的拆账邀请（卡内 invited 行的撤回钮复用此动作）。 */
-    suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent>
 }

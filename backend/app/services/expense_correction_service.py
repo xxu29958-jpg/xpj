@@ -217,6 +217,41 @@ def _apply_one_batch_correction(
     return True
 
 
+def _claim_batch_idempotency(
+    db: Session,
+    *,
+    tenant_id: str,
+    payload: ConfirmedExpenseBatchUpdateRequest,
+    actor_account_id: int | None,
+    idempotency_key: str | None,
+) -> tuple[ApiIdempotencyKey | None, ConfirmedExpenseBatchUpdateResponse | None]:
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=tenant_id,
+        operation="correct_confirmed_expense_batch",
+        target_id="confirmed",
+        target_type="expense_batch",
+        body={
+            **payload.model_dump(mode="json"),
+            "actor_account_id": actor_account_id,
+        },
+        expected_row_version=None,
+    )
+    if claim is not None:
+        return claim, None
+    if idempotency_key is None:  # narrowed by claim_idempotent_request
+        raise AppError("server_error", status_code=500)
+    stored = db.scalar(
+        select(ApiIdempotencyKey)
+        .where(ApiIdempotencyKey.tenant_id == tenant_id)
+        .where(ApiIdempotencyKey.idempotency_key == idempotency_key)
+    )
+    if stored is None or stored.response_body is None:
+        raise AppError("server_error", status_code=500)
+    return None, ConfirmedExpenseBatchUpdateResponse.model_validate(stored.response_body)
+
+
 def batch_update_confirmed_expenses(
     db: Session,
     *,
@@ -224,11 +259,24 @@ def batch_update_confirmed_expenses(
     payload: ConfirmedExpenseBatchUpdateRequest,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
+    idempotency_key: str | None = None,
 ) -> ConfirmedExpenseBatchUpdateResponse:
     """Apply one reasoned correction intent to each eligible confirmed fact."""
 
-    authorize_currency_metadata_write(db)
     intent = _batch_correction_intent(payload)
+    claim, replay = _claim_batch_idempotency(
+        db,
+        tenant_id=tenant_id,
+        payload=payload,
+        actor_account_id=actor_account_id,
+        idempotency_key=idempotency_key,
+    )
+    if replay is not None:
+        return replay
+    if claim is None:
+        raise AssertionError("new batch command must hold an idempotency claim")
+
+    authorize_currency_metadata_write(db)
     rows = list(
         db.scalars(select(Expense).where(Expense.tenant_id == tenant_id).where(Expense.id.in_(intent.expense_ids)))
     )
@@ -258,15 +306,21 @@ def batch_update_confirmed_expenses(
             )
         )
 
-    if updated_count:
-        db.commit()
-
-    return ConfirmedExpenseBatchUpdateResponse(
+    result = ConfirmedExpenseBatchUpdateResponse(
         requested_count=len(intent.expense_ids),
         updated_count=updated_count,
         skipped_not_found=skipped_not_found,
         skipped_not_confirmed=skipped_not_confirmed,
     )
+    mark_idempotency_succeeded(
+        db,
+        claim,
+        resource_type="expense_batch",
+        resource_id="confirmed",
+        response_body=result.model_dump(mode="json"),
+    )
+    db.commit()
+    return result
 
 
 def _claim_confirmed_correction(

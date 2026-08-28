@@ -6,6 +6,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
 from _web_bulk_test_support import (
     bulk_snapshot_fields as _bulk_snapshot_fields,
 )
@@ -20,9 +21,10 @@ from _web_bulk_test_support import (
 )
 from api_contract_helpers import web_confirm_expense
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense
+from app.models import Account, Device, Expense
 
 
 class _RowLinkNestingProbe(HTMLParser):
@@ -100,10 +102,39 @@ def test_web_bulk_rows_do_not_nest_interactive_elements(web_client: TestClient, 
         assert probe.nested_interactive == []
 
 
-def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, identity) -> None:
+def _confirmed_expense_with_web_actor(
+    web_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> int:
     expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe", identity=identity)
     confirmed = web_confirm_expense(web_client, expense_id, identity=identity, follow_redirects=False)
     assert confirmed.status_code in {303, 307}
+    with SessionLocal() as db:
+        actor_account_id = db.scalar(select(Account.id).where(Account.display_name == "我"))
+        actor_device_id = db.scalar(
+            select(Device.id).where(Device.device_name == "pytest-android")
+        )
+        assert actor_account_id is not None and actor_device_id is not None
+    monkeypatch.setattr(
+        "app.routes.web_confirmed_batch.resolve_web_actor",
+        lambda *_args: (actor_account_id, actor_device_id),
+    )
+    return expense_id
+
+
+def test_web_confirmed_batch_markup(
+    web_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    expense_id = _confirmed_expense_with_web_actor(
+        web_client,
+        monkeypatch,
+        identity=identity,
+    )
 
     page = web_client.get("/web/confirmed?ledger_id=owner")
     assert page.status_code == 200
@@ -111,12 +142,27 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
     assert f'data-id="{expense_id}"' in page.text
     assert 'data-row-version="' in page.text
     assert 'id="check-all"' in page.text
+    assert 'name="reason"' in page.text
+    assert 'name="idempotency_key"' in page.text
     assert 'type="checkbox"' in page.text
     assert 'role="checkbox"' not in page.text
     # 行结构已按 #218 拆开:checkbox(.lrow-sel) 与整行链接(a.timeline-row-detail)
     # 是兄弟节点,行容器 .timeline-row 不再是锚点。
     assert "timeline-row-detail" in page.text
     assert ('<button class="dt-btn" type="button" data-bulk-clear>取消选择</button>') in page.text
+
+
+def test_web_confirmed_batch_updates_and_records_actor(
+    web_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    expense_id = _confirmed_expense_with_web_actor(
+        web_client,
+        monkeypatch,
+        identity=identity,
+    )
     token = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()["row_version"]
 
     category_resp = web_client.post(
@@ -128,6 +174,7 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
             "expected_row_version": [token],
             "category": "Batch Web Cat",
             "reason": "统一整理分类",
+            "idempotency_key": "web-batch-category",
             "page": "2",
         },
         follow_redirects=False,
@@ -147,6 +194,7 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
             "expected_row_version": [token],
             "tags": "web, family, web",
             "reason": "统一整理标签",
+            "idempotency_key": "web-batch-tags",
         },
         follow_redirects=False,
     )
@@ -154,6 +202,21 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
     api_detail = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert api_detail.status_code == 200
     assert api_detail.json()["tags"] == "web, family"
+    timeline = web_client.get(
+        f"/api/expenses/{expense_id}/revisions",
+        headers=identity.app_headers,
+    )
+    assert timeline.status_code == 200, timeline.text
+    batch_revisions = [
+        revision
+        for revision in timeline.json()["items"]
+        if revision["reason"] in {"统一整理分类", "统一整理标签"}
+    ]
+    assert len(batch_revisions) == 2
+    assert {revision["actor_account_name"] for revision in batch_revisions} == {"我"}
+    assert {revision["actor_device_name"] for revision in batch_revisions} == {
+        "pytest-android"
+    }
 
 
 def test_web_confirmed_batch_stale_token_redirects_without_partial_update(web_client: TestClient, *, identity) -> None:
@@ -188,6 +251,7 @@ def test_web_confirmed_batch_stale_token_redirects_without_partial_update(web_cl
             "expected_row_version": [first_before["row_version"], second_before["row_version"]],
             "category": "Should Not Land",
             "reason": "批量分类",
+            "idempotency_key": "web-batch-stale",
         },
         follow_redirects=False,
     )

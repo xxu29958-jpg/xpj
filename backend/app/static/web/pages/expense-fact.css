@@ -159,6 +159,11 @@
     gap: var(--space-5);
 }
 
+/* 「原小票如此」确认行：贴差异警告下方，次级动作，不抢更正主任务。 */
+.fact-ack-form {
+    margin-block-start: var(--space-2);
+}
+
 /* 断点与 product/detail.css 同一约定（56rem）。
    1) 页头改列向，金额 hero 不再被右侧裁切；
    2) 宽表重组为带标签的行卡（mobile-native fields），不整页横向滚动；

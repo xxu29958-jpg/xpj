@@ -1,5 +1,9 @@
-{# 事实页小票明细（只读呈现，非表单 —— 与编辑表格是两个语义，勿合并）。
-   契约：receipt_items（rows/status/mismatch_yuan）, can_write, home_currency_symbol。 #}
+{# 事实页小票明细（只读呈现 —— 与编辑表格是两个语义，勿合并；唯一例外是
+   mismatch_known 时的「原小票如此」确认命令：它不是字段编辑，而是经 revision
+   owner 的状态确认，入口贴在其回答的警告下）。
+   契约：receipt_items（rows/status/mismatch_yuan）, can_write, home_currency_symbol；
+   渲染确认表单时另需 csrf_token / selected_ledger_id / expense.row_version /
+   edit_return_fields（均可由 web_fact_context 提供）。 #}
 <section class="dt-card" aria-label="小票明细">
   <div class="card-header">
     <div>
@@ -9,6 +13,18 @@
   </div>
   {% if receipt_items.status == 'mismatch_known' %}
   <div class="dt-alert warn">明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。</div>
+  {% if can_write %}
+  {# 「原小票如此」真实命令入口：消费现有 acknowledge-mismatch route
+     （csrf/ledger/row_version/return context），成功 303 与冲突呈现均由 route 表达。
+     只读角色整个不渲染 —— 不给假动作。 #}
+  <form method="post" action="/web/expenses/{{ expense.id }}/items/acknowledge-mismatch" class="fact-ack-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
+    {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+    <button type="submit" class="dt-btn">原小票如此</button>
+  </form>
+  {% endif %}
   {% elif receipt_items.status == 'mismatch_acknowledged' %}
   <div class="dt-alert info">已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异。</div>
   {% endif %}
