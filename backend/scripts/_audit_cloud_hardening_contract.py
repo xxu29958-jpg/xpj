@@ -38,8 +38,7 @@ def _advisor_quota_missing() -> list[str]:
         ),
     )
     advisor_package = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (BACKEND_ROOT / "app/services/budget_advisor_service").glob("*.py")
+        path.read_text(encoding="utf-8") for path in (BACKEND_ROOT / "app/services/budget_advisor_service").glob("*.py")
     )
     if "_LIVE_CALL_LOCKS" in advisor_package:
         missing.append("advisor quota: process-local _LIVE_CALL_LOCKS returned")
@@ -170,13 +169,13 @@ def _bill_split_missing() -> list[str]:
 
 
 def _thumbnail_cleanup_missing() -> list[str]:
-    expense_create = _read("app/services/expense_service/_create.py")
+    expense_enrich = _read("app/services/expense_service/_enrich.py")
     return _require_tokens(
-        "thumbnail cleanup",
-        expense_create,
+        "thumbnail staging and cleanup",
+        expense_enrich,
         (
-            "generated_thumbnail_path",
-            "delete_relative_upload(generated_thumbnail_path)",
+            "publish_staged_thumbnail(staged_thumbnail)",
+            "discard_staged_thumbnail(staged_thumbnail)",
         ),
     )
 
@@ -233,6 +232,7 @@ def _regression_test_missing() -> list[str]:
             "test_fresh_schema_minimum_is_owned_by_dataset_authority",
             "test_factory_rejects_public_api_key_with_unsafe_shape",
             "test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails",
+            "test_enrichment_conflict_discards_unpublished_thumbnail",
             "split_total_exceeds_parent",
             "ai_advisor_provider_empty",
         ),

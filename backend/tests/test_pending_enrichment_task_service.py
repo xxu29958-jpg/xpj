@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-import app.services.expense_service._create as create_service
+import app.services.expense_service._enrich as enrich_service
 from app.database import SessionLocal
 from app.models import BackgroundTask, Expense
-from app.services.background_task_service import TaskCancelledError
+from app.services.background_task_handler_api import TaskCancelledError
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service import create_pending_expense
-from app.services.file_service import save_upload_bytes
+from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
 from app.services.ledger_service import find_owner_account_id_for_ledger
 from app.services.ocr_service import OcrExtraction, OcrResult
 from app.services.optimistic_concurrency import bump_row_version
@@ -94,11 +94,11 @@ def test_enrichment_predecessor_rejects_a_newer_manual_edit(
         return _ocr_result()
 
     monkeypatch.setattr(
-        create_service,
+        enrich_service,
         "collect_auto_ocr_extractions",
         edit_while_ocr_is_running,
     )
-    monkeypatch.setattr(create_service, "_try_generate_thumbnail", lambda *_args: None)
+    monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", lambda *_args: None)
 
     with SessionLocal() as task_db:
         task = task_db.get(BackgroundTask, task_id)
@@ -125,6 +125,56 @@ def test_enrichment_predecessor_rejects_a_newer_manual_edit(
 
 
 @pytest.mark.real_db
+def test_enrichment_conflict_discards_unpublished_thumbnail(
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    expense_id, predecessor_row_version, _task_id = _seed_pending_enrichment_task()
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        source = resolve_upload_path_for_tenant(expense.image_path, "owner")
+        assert source is not None
+    thumbnail_path = source.parent / "thumbs" / f"{source.stem}.jpg"
+    assert not thumbnail_path.exists()
+
+    checkpoint_count = 0
+
+    def edit_after_thumbnail_work() -> None:
+        nonlocal checkpoint_count
+        checkpoint_count += 1
+        if checkpoint_count != 2:
+            return
+        with SessionLocal() as user_db:
+            resolve_write_capability(user_db)
+            expense = user_db.get(Expense, expense_id)
+            assert expense is not None
+            expense.merchant = "用户在识别期间修改"
+            expense.updated_at = now_utc()
+            bump_row_version(expense)
+            user_db.commit()
+
+    monkeypatch.setattr(
+        enrich_service,
+        "collect_auto_ocr_extractions",
+        lambda *_args, **_kwargs: [],
+    )
+
+    result = enrich_service.enrich_pending_expense(
+        expense_id,
+        "owner",
+        expected_row_version=predecessor_row_version,
+        before_apply=edit_after_thumbnail_work,
+    )
+
+    assert result.outcome == "conflict"
+    assert checkpoint_count == 2
+    assert not thumbnail_path.exists()
+    assert not list(thumbnail_path.parent.glob(f".{source.stem}.*.staging.jpg"))
+
+
+@pytest.mark.real_db
 def test_enrichment_observes_cancellation_after_ocr_before_mutation(
     monkeypatch,
     *,
@@ -141,11 +191,11 @@ def test_enrichment_observes_cancellation_after_ocr_before_mutation(
         return _ocr_result()
 
     monkeypatch.setattr(
-        create_service,
+        enrich_service,
         "collect_auto_ocr_extractions",
         cancel_while_ocr_is_running,
     )
-    monkeypatch.setattr(create_service, "_try_generate_thumbnail", lambda *_args: None)
+    monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", lambda *_args: None)
 
     with SessionLocal() as task_db:
         task = task_db.get(BackgroundTask, task_id)
@@ -178,7 +228,7 @@ def test_thumbnail_io_finishes_before_expense_apply_lock(
     identity,
 ) -> None:
     expense_id, predecessor_row_version, _task_id = _seed_pending_enrichment_task()
-    real_resolve_expense = create_service.resolve_expense
+    real_resolve_expense = enrich_service.resolve_expense
     apply_lock_started = False
 
     def observe_resolve(*args, **kwargs):
@@ -191,19 +241,19 @@ def test_thumbnail_io_finishes_before_expense_apply_lock(
         assert apply_lock_started is False
         return None
 
-    monkeypatch.setattr(create_service, "resolve_expense", observe_resolve)
+    monkeypatch.setattr(enrich_service, "resolve_expense", observe_resolve)
     monkeypatch.setattr(
-        create_service,
+        enrich_service,
         "collect_auto_ocr_extractions",
         lambda *_args, **_kwargs: [],
     )
     monkeypatch.setattr(
-        create_service,
-        "_try_generate_thumbnail",
+        enrich_service,
+        "_try_stage_thumbnail",
         generate_thumbnail_before_lock,
     )
 
-    result = create_service.enrich_pending_expense(
+    result = enrich_service.enrich_pending_expense(
         expense_id,
         "owner",
         expected_row_version=predecessor_row_version,
@@ -220,24 +270,33 @@ def test_enrichment_observes_cancellation_during_thumbnail_before_mutation(
     identity,
 ) -> None:
     expense_id, predecessor_row_version, task_id = _seed_pending_enrichment_task()
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        source = resolve_upload_path_for_tenant(expense.image_path, "owner")
+        assert source is not None
+    thumbnail_path = source.parent / "thumbs" / f"{source.stem}.jpg"
+    real_stage_thumbnail = enrich_service._try_stage_thumbnail
 
     monkeypatch.setattr(
-        create_service,
+        enrich_service,
         "collect_auto_ocr_extractions",
         lambda *_args, **_kwargs: _ocr_result(),
     )
 
-    def cancel_during_thumbnail(*_args, **_kwargs):
+    def cancel_during_thumbnail(*args, **kwargs):
+        staged = real_stage_thumbnail(*args, **kwargs)
+        assert staged is not None
         with SessionLocal() as cancel_db:
             task = cancel_db.get(BackgroundTask, task_id)
             assert task is not None
             task.cancellation_requested_at = now_utc()
             cancel_db.commit()
-        return None
+        return staged
 
     monkeypatch.setattr(
-        create_service,
-        "_try_generate_thumbnail",
+        enrich_service,
+        "_try_stage_thumbnail",
         cancel_during_thumbnail,
     )
 
@@ -262,3 +321,5 @@ def test_enrichment_observes_cancellation_during_thumbnail_before_mutation(
         assert expense.amount_cents is None
         assert expense.merchant is None
         assert expense.row_version == predecessor_row_version
+    assert not thumbnail_path.exists()
+    assert not list(thumbnail_path.parent.glob(f".{source.stem}.*.staging.jpg"))

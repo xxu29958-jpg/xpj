@@ -7,15 +7,15 @@ Design:
       (see ``background_task_registry.runtime_handler_registry``). Tests may
       inject a per-test registry through :func:`isolated_registered_handlers_for_testing`;
       production code does not mutate a module-level handler map.
-    - All progress writes go through this module so chunked transactions
-      and ``last_progress_at`` heartbeats are consistent.
+    - All progress writes go through ``background_task_handler_api`` so
+      chunked transactions and ``last_progress_at`` heartbeats are consistent.
     - ``XPJ_BACKGROUND_TASK_INLINE=1`` runs ``enqueue`` synchronously
       (no executor thread) so unit tests can verify chunk / cancellation
       / handler outcomes without needing a real worker thread + a file-
       backed SQLite shared across threads.
 
 Cancellation contract:
-    Handlers must call :func:`check_cancellation_requested` at every chunk
+    Handlers must call ``background_task_handler_api.check_cancellation_requested`` at every chunk
     boundary. If it returns ``True`` the handler raises
     :class:`TaskCancelledError` (or returns a ``cancelled`` result) — the
     service does the rest.
@@ -50,6 +50,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BackgroundTask
+from app.services.background_task_handler_api import TaskCancelledError
 from app.services.background_task_recovery_service import (
     recover_orphaned_tasks as _recover_orphaned_tasks,
 )
@@ -65,13 +66,10 @@ MAX_WORKERS = 2
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _RECOVERABLE_STATUSES = frozenset({"running", "queued"})
 
+
 # Sentinel: set XPJ_BACKGROUND_TASK_INLINE=1 in tests for synchronous runs.
 def _inline_mode() -> bool:
     return os.environ.get("XPJ_BACKGROUND_TASK_INLINE") == "1"
-
-
-class TaskCancelledError(Exception):
-    """Raised by a task handler when it observes cancellation_requested_at."""
 
 
 class BackgroundTaskRegistrationError(Exception):
@@ -148,9 +146,7 @@ class _ExecutorPool:
 
     def get(self) -> ThreadPoolExecutor:
         if self._executor is None:
-            self._executor = ThreadPoolExecutor(
-                max_workers=MAX_WORKERS, thread_name_prefix="xpj-bgtask"
-            )
+            self._executor = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="xpj-bgtask")
         return self._executor
 
     def shutdown(self, *, wait: bool) -> None:
@@ -327,9 +323,7 @@ def _active_task(
     return db.scalar(stmt.order_by(BackgroundTask.created_at.desc()).limit(1))
 
 
-def get_task(
-    db: Session, public_id: str, *, account_id: int | None, tenant_id: str | None
-) -> BackgroundTask:
+def get_task(db: Session, public_id: str, *, account_id: int | None, tenant_id: str | None) -> BackgroundTask:
     """Owner-scoped fetch. account_id=None means caller is system-scoped
     (no enforcement) — only safe in tests / startup hooks. When account_id is
     set, the task must also belong to the caller's active ledger (tenant_id):
@@ -338,9 +332,7 @@ def get_task(
     task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == public_id))
     if task is None:
         raise AppError("task_not_found", status_code=404)
-    if account_id is not None and (
-        task.initiated_by_account_id != account_id or task.tenant_id != tenant_id
-    ):
+    if account_id is not None and (task.initiated_by_account_id != account_id or task.tenant_id != tenant_id):
         # Don't leak existence — return same 404 as missing task.
         raise AppError("task_not_found", status_code=404)
     return task
@@ -381,51 +373,19 @@ def request_cancellation(
 
 
 # -------------------------------------------------------------------------
-# Handler-facing API: progress + cancellation polling
-
-
-def update_progress(
-    db: Session,
-    task_id: int,
-    *,
-    current: int,
-    total: int | None = None,
-    message: str | None = None,
-) -> None:
-    """Handler calls this every chunk. Writes are small (single row update)
-    so chunk size should be tuned by the handler (50-100 row range)."""
-    task = db.get(BackgroundTask, task_id)
-    if task is None:
-        return
-    task.progress_current = max(0, current)
-    if total is not None:
-        task.progress_total = total
-    if message is not None:
-        task.progress_message = message
-    task.last_progress_at = now_utc()
-    db.commit()
-
-
-def check_cancellation_requested(db: Session, task_id: int) -> bool:
-    """Handler calls this at every chunk boundary. Cheap single-row read."""
-    task = db.get(BackgroundTask, task_id)
-    if task is None:
-        return False
-    db.refresh(task)
-    return task.cancellation_requested_at is not None
-
-
-# -------------------------------------------------------------------------
 # Internal: the worker that wraps a registered handler
+
 
 def _run_task(
     task_id: int,
     payload: dict[str, Any],
     registry: TaskHandlerRegistry | None = None,
 ) -> None:
-    """Pulled from the executor (or called inline in tests). Owns a single
-    SessionLocal so all writes go through one DB session even if the
-    handler does its own commits."""
+    """Run one claimed task with a task-status session.
+
+    Handlers may open their own short-lived domain sessions; this session
+    remains the owner of task claim and terminal-status publication.
+    """
     with SessionLocal() as db:
         task = _claim_queued_task(db, task_id)
         if task is None:
@@ -437,7 +397,8 @@ def _run_task(
         handler = active_registry.get(task.task_type)
         if handler is None:
             _mark_failed(
-                db, task_id,
+                db,
+                task_id,
                 error_code="unknown_task_type",
                 error_message=f"No handler registered for {task.task_type!r}.",
             )
@@ -450,7 +411,8 @@ def _run_task(
         except Exception as exc:  # noqa: BLE001 - top-of-task barrier
             logger.exception("background task %s (%s) failed", task_id, task.task_type)
             _mark_failed(
-                db, task_id,
+                db,
+                task_id,
                 error_code=type(exc).__name__,
                 error_message=str(exc)[:500],
             )
@@ -494,9 +456,7 @@ def _mark_completed(db: Session, task_id: int) -> None:
     db.commit()
 
 
-def _mark_failed(
-    db: Session, task_id: int, *, error_code: str, error_message: str
-) -> None:
+def _mark_failed(db: Session, task_id: int, *, error_code: str, error_message: str) -> None:
     task = db.get(BackgroundTask, task_id)
     if task is None or task.status in _TERMINAL_STATUSES:
         return

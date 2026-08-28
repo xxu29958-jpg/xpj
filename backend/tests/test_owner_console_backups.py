@@ -65,13 +65,9 @@ def test_owner_home_has_no_retired_backup_promise_or_entry(local_client: TestCli
 
 def test_frozen_shipment_excludes_retired_dataset_mutation_owners() -> None:
     backend_root = Path(__file__).resolve().parents[1]
-    spec = (backend_root / "packaging" / "ticketbox-backend.spec").read_text(
-        encoding="utf-8"
-    )
+    spec = (backend_root / "packaging" / "ticketbox-backend.spec").read_text(encoding="utf-8")
     release_config = json.loads(
-        (backend_root / "packaging" / "windows-release-config.json").read_text(
-            encoding="utf-8"
-        )
+        (backend_root / "packaging" / "windows-release-config.json").read_text(encoding="utf-8")
     )
 
     assert '"_dataset_backup_action.py"' not in spec
@@ -86,7 +82,11 @@ def test_frozen_shipment_excludes_retired_dataset_mutation_owners() -> None:
     ):
         assert retired_module in spec
     launch = (backend_root / "packaging" / "launch.py").read_text(encoding="utf-8")
+    setup = (backend_root / "scripts" / "setup_backend.ps1").read_text(encoding="utf-8")
     assert "--managed-schema-upgrade" not in launch
+    assert "files the backend *creates* (uploads, .env, backups)" not in launch
+    assert "Owner Console settings .env, PostgreSQL backups" not in launch
+    assert 'Join-Path $BackendRoot "backups"' not in setup
     for retired_timeout in (
         "dataset_backup_helper_timeout_ms",
         "dataset_restore_helper_timeout_ms",
@@ -124,6 +124,7 @@ def test_maintained_docs_do_not_promise_the_retired_backup_record_entry() -> Non
     assert "recent backup exists" not in combined
     assert "计划备份（backup_service）" not in combined
     assert "恢复 / 备份校验" not in combined
+    assert "创建 `data`、`uploads`、`logs`、`backups` 目录" not in combined
 
 
 def test_incomplete_generation_is_not_listed(
@@ -242,6 +243,4 @@ def test_backup_inventory_rejects_generation_identity_mismatch(
     )
 
     with pytest.raises(AppError):
-        dataset_backup_inventory.list_published_backup_records(
-            inventory_path=inventory_path
-        )
+        dataset_backup_inventory.list_published_backup_records(inventory_path=inventory_path)

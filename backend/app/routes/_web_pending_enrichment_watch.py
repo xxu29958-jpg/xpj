@@ -79,10 +79,7 @@ def _canonical_task_public_id(raw: str | None) -> str | None:
 def pending_enrichment_watch_timeout_ms() -> int:
     """Bound browser waiting to the configured two-provider OCR budget."""
     settings = get_settings()
-    one_attempt_seconds = (
-        settings.local_llm_timeout_seconds
-        + settings.local_llm_queue_timeout_seconds
-    )
+    one_attempt_seconds = settings.local_llm_timeout_seconds + settings.local_llm_queue_timeout_seconds
     total_seconds = math.ceil((one_attempt_seconds * 2) + 15)
     return max(30_000, min(total_seconds * 1_000, 600_000))
 
@@ -177,3 +174,31 @@ def pending_enrichment_presentation(
         flash_message=flash_message,
         flash_type=flash_type,
     )
+
+
+def web_pending_enrichment_context(
+    db: Session,
+    request: Request,
+    *,
+    tenant_id: str,
+    raw_task_public_id: str | None,
+    flash_message: str,
+    flash_type: str,
+) -> dict[str, object]:
+    """Project one task watch into the Pending template context."""
+    presentation = pending_enrichment_presentation(
+        resolve_web_pending_enrichment_watch(
+            db,
+            request,
+            tenant_id=tenant_id,
+            raw_task_public_id=raw_task_public_id,
+        ),
+        flash_message=flash_message,
+        flash_type=flash_type,
+    )
+    return {
+        "enrichment_watch": presentation.active_watch,
+        "enrichment_terminal": presentation.terminal,
+        "flash_message": presentation.flash_message,
+        "flash_type": presentation.flash_type,
+    }

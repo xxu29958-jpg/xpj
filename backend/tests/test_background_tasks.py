@@ -20,10 +20,11 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+import app.services.background_task_service as bgtasks
 from app.config import reset_settings_cache
 from app.database import SessionLocal
 from app.models import Account, BackgroundTask, LedgerMember
-from app.services import background_task_service as bgtasks
+from app.services import background_task_handler_api as handler_api
 from app.services.time_service import now_utc
 
 pytestmark = pytest.mark.real_db
@@ -169,9 +170,7 @@ def test_handler_reports_progress_through_chunks(*, identity) -> None:
     def chunked(db, task, payload):
         total = 5
         for i in range(total):
-            bgtasks.update_progress(
-                db, task.id, current=i + 1, total=total, message=f"row {i + 1}"
-            )
+            handler_api.update_progress(db, task.id, current=i + 1, total=total, message=f"row {i + 1}")
 
     bgtasks.register_handler("test_chunked", chunked)
     with SessionLocal() as db:
@@ -203,9 +202,9 @@ def test_handler_observes_cancellation_request(*, identity) -> None:
             outer.commit()
         # Now the inline handler observes the flag on its first chunk.
         for i in range(10):
-            if bgtasks.check_cancellation_requested(db, task.id):
-                raise bgtasks.TaskCancelledError()
-            bgtasks.update_progress(db, task.id, current=i + 1, total=10)
+            if handler_api.check_cancellation_requested(db, task.id):
+                raise handler_api.TaskCancelledError()
+            handler_api.update_progress(db, task.id, current=i + 1, total=10)
         # If we somehow get here without cancelling, fail the test.
         raise AssertionError("Cancellation flag should have stopped the loop")
 
@@ -242,9 +241,7 @@ def test_viewer_cannot_cancel_a_ledger_task(
         db.commit()
         public_id = task.public_id
 
-        membership = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
+        membership = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
         assert membership is not None
         membership.role = "viewer"
         db.commit()
@@ -257,9 +254,7 @@ def test_viewer_cannot_cancel_a_ledger_task(
     assert response.status_code == 403
     assert response.json()["error"] == "permission_denied"
     with SessionLocal() as db:
-        task = db.scalar(
-            select(BackgroundTask).where(BackgroundTask.public_id == public_id)
-        )
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == public_id))
         assert task is not None
         assert task.cancellation_requested_at is None
 
@@ -282,9 +277,7 @@ def test_request_cancellation_idempotent_on_terminal_task(*, identity) -> None:
 
     with SessionLocal() as db:
         # cancel should not flip status from completed
-        row = bgtasks.request_cancellation(
-            db, public_id, account_id=_owner_account_id(), tenant_id="owner"
-        )
+        row = bgtasks.request_cancellation(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
         assert row.status == "completed"
         assert row.cancellation_requested_at is None
 

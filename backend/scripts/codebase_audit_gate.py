@@ -46,7 +46,7 @@ _strict_baseline_selected_commit: str | None = None
 CODEBASE_DEBT_LIMITS: DebtCounts = {
     # Keep active ceilings here. Older ratchet provenance belongs in git history,
     # not in executable override chains.
-    "files_over_500": 13,
+    "files_over_500": 12,
     "long_functions": 5,  # 2026-07-09: bill-split invitation accept flow split.
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,

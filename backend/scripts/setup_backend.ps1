@@ -135,7 +135,6 @@ if ($Dev) {
 New-Item -ItemType Directory -Force -Path (Join-Path $BackendRoot "data") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $BackendRoot "uploads") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $BackendRoot "logs") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $BackendRoot "backups") | Out-Null
 Write-EnvFile
 
 Write-Host ""

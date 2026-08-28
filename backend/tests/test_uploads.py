@@ -18,7 +18,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import Device, Expense, LedgerMember, UploadLink
 from app.services.category_common import DEFAULT_CATEGORIES
-from app.services.expense_service._create import enrich_pending_expense
+from app.services.expense_service._enrich import enrich_pending_expense
 from app.services.file_service import resolve_protected_image, save_upload_bytes
 from app.services.identity_service import authenticate_upload_link, hash_secret
 from app.services.time_service import ensure_utc, now_utc
@@ -138,9 +138,7 @@ def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> 
     assert _stored_upload_files() == []
 
 
-def test_expired_upload_link_is_rejected_and_revoked_before_saving_file(
-    client: TestClient, *, identity
-) -> None:
+def test_expired_upload_link_is_rejected_and_revoked_before_saving_file(client: TestClient, *, identity) -> None:
     expired_at = now_utc() - timedelta(minutes=1)
     with SessionLocal() as db:
         link = db.scalar(select(UploadLink).where(UploadLink.token_hash == hash_secret(identity.upload_key)))
@@ -188,12 +186,12 @@ def test_upload_link_activity_refresh_is_throttled(client: TestClient, *, identi
 
 
 def test_upload_link_rejects_viewer_after_role_downgrade_before_saving_file(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     with SessionLocal() as db:
-        members = db.scalars(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner")
-        ).all()
+        members = db.scalars(select(LedgerMember).where(LedgerMember.ledger_id == "owner")).all()
         assert members
         for member in members:
             member.role = "viewer"
@@ -216,7 +214,9 @@ def test_upload_link_commit_races_are_serialized(monkeypatch, *, identity) -> No
 
 
 def test_shortcut_upload_rejects_app_token_before_saving_file(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     response = client.post(
         "/api/upload-screenshot",
@@ -247,7 +247,9 @@ def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch, *
 
 
 def test_upload_rejects_empty_raw_body_and_empty_multipart_file(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     response = client.post(
         identity.upload_url_path,
@@ -343,7 +345,9 @@ def test_saved_upload_strips_exif_metadata() -> None:
 
 
 def test_upload_rejects_fake_heic_brand_without_decodable_image(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     fake_heic = b"\x00\x00\x00\x1cftypheic\x00\x00\x00\x00fake-heic-payload"
 
@@ -360,7 +364,9 @@ def test_upload_rejects_fake_heic_brand_without_decodable_image(
 
 @pytest.mark.real_db
 def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     heic_bytes = make_heic_bytes()
 
@@ -394,16 +400,16 @@ def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(
         assert stored.size[1] > 0
         assert not stored.getexif()
 
-    thumbnail = client.get(
-        f"/api/expenses/{payload['id']}/thumbnail", headers=identity.app_headers
-    )
+    thumbnail = client.get(f"/api/expenses/{payload['id']}/thumbnail", headers=identity.app_headers)
     assert thumbnail.status_code == 200
     assert thumbnail.headers["content-type"].startswith("image/jpeg")
     assert thumbnail.content.startswith(b"\xff\xd8")
 
 
 def test_upload_uses_image_header_instead_of_spoofed_metadata(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     response = client.post(
         identity.upload_url_path,
@@ -439,9 +445,7 @@ def test_upload_randomizes_path_traversal_filename(client: TestClient, *, identi
     assert ":" not in item["image_path"]
 
 
-def test_upload_cleans_saved_file_when_pending_creation_fails(
-    client: TestClient, monkeypatch, *, identity
-) -> None:
+def test_upload_cleans_saved_file_when_pending_creation_fails(client: TestClient, monkeypatch, *, identity) -> None:
     from app.services.expense_service import _create as create_service
 
     def fail_duplicate_mark(*args, **kwargs):
@@ -460,15 +464,11 @@ def test_upload_cleans_saved_file_when_pending_creation_fails(
     assert _stored_upload_files() == []
 
 
-def test_upload_thumbnail_failure_does_not_block_pending(
-    client: TestClient, monkeypatch, *, identity
-) -> None:
+def test_upload_thumbnail_failure_does_not_block_pending(client: TestClient, monkeypatch, *, identity) -> None:
     def fail_thumbnail(_: str | None) -> str | None:
         raise RuntimeError("thumbnail backend unavailable")
 
-    monkeypatch.setattr(
-        "app.services.expense_service._helpers.generate_thumbnail", fail_thumbnail
-    )
+    monkeypatch.setattr("app.services.expense_service._helpers.generate_thumbnail", fail_thumbnail)
 
     response = client.post(
         identity.upload_url_path,
@@ -507,10 +507,8 @@ def test_generate_thumbnail_decompression_bomb_degrades(monkeypatch) -> None:
     assert generate_thumbnail(saved.relative_path, tenant_id="owner") is None
 
 
-def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
-    monkeypatch, *, identity
-) -> None:
-    import app.services.expense_service._create as create_mod
+def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(monkeypatch, *, identity) -> None:
+    import app.services.expense_service._enrich as enrich_mod
 
     saved = save_upload_bytes(
         PNG_BYTES,
@@ -540,7 +538,7 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
     def fail_classify(*args, **kwargs):
         raise RuntimeError("classify failed after thumbnail generation")
 
-    monkeypatch.setattr(create_mod, "classify_expense", fail_classify)
+    monkeypatch.setattr(enrich_mod, "classify_expense", fail_classify)
 
     failed = enrich_pending_expense(expense_id, "owner")
 
@@ -555,9 +553,9 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
 
     # A successful retry that only fills the derived thumbnail cache must also
     # leave the client-facing business snapshot untouched.
-    monkeypatch.setattr(create_mod, "classify_expense", lambda _db, row: row)
+    monkeypatch.setattr(enrich_mod, "classify_expense", lambda _db, row: row)
     monkeypatch.setattr(
-        create_mod,
+        enrich_mod,
         "collect_auto_ocr_extractions",
         lambda *_args, **_kwargs: [],
     )
@@ -574,7 +572,9 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
 
 
 def test_upload_same_image_marks_suspected_duplicate_without_rejecting(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     first = client.post(
         identity.upload_url_path,
@@ -599,7 +599,9 @@ def test_upload_same_image_marks_suspected_duplicate_without_rejecting(
 
 
 def test_rejecting_duplicate_original_clears_other_pending_reference(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     first = client.post(
         identity.upload_url_path,
@@ -648,13 +650,13 @@ def test_upload_stores_relative_paths_and_never_confirms(client: TestClient, *, 
     assert "user-original-name" not in expense["image_path"]
     assert "\\" not in expense["image_path"]
     assert ":\\" not in expense["image_path"]
-    assert expense["thumbnail_path"] is None or expense["thumbnail_path"].startswith(
-        "uploads/"
-    )
+    assert expense["thumbnail_path"] is None or expense["thumbnail_path"].startswith("uploads/")
 
 
 def test_upload_screenshot_rejects_multipart_without_image_file(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     response = client.post(
         identity.upload_url_path,
@@ -668,7 +670,10 @@ def test_upload_screenshot_rejects_multipart_without_image_file(
 
 
 def test_upload_rejects_image_exceeding_pixel_cap(
-    client: TestClient, monkeypatch, *, identity,
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
 ) -> None:
     from io import BytesIO
 

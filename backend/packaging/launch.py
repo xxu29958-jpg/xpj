@@ -62,9 +62,7 @@ _FRESH_OWNER_CLAIM_SWITCH = "--fresh-owner-claim"
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
-_GENERATION_PROGRAM_VALIDATION_MODULE_NAME = (
-    "_ticketbox_database_generation_program_validation"
-)
+_GENERATION_PROGRAM_VALIDATION_MODULE_NAME = "_ticketbox_database_generation_program_validation"
 _FRESH_SCHEMA_MODULE_NAME = "_ticketbox_fresh_schema_upgrade"
 _DATABASE_GENERATION_TARGET_MODULE_NAME = "_ticketbox_database_generation_target"
 _GENERATION_PROGRAM_VALIDATION_FIELDS = (
@@ -95,6 +93,8 @@ _FRESH_OWNER_RESULT_FIELDS = (
     "pairing_derivation_index",
     "claim_generation",
 )
+
+
 def _bundle_dir() -> Path:
     """Directory the EXE was launched from (read-only program root when frozen).
 
@@ -371,7 +371,7 @@ def _run_database_generation_target_verification(
 
 
 def _resolve_writable_data_dir() -> Path:
-    """Writable data root for files the backend *creates* (uploads, .env, backups).
+    """Writable data root for backend uploads and operator configuration.
 
     Honors the explicit installer/service ``TICKETBOX_DATA_DIR``. Frozen
     service startup additionally verifies this path against the installed
@@ -382,7 +382,6 @@ def _resolve_writable_data_dir() -> Path:
     if preset:
         return Path(os.path.abspath(preset))
     return _bundle_dir() / "ticketbox-data"
-
 
 
 def _is_reparse_entry(entry: os.stat_result) -> bool:
@@ -431,11 +430,7 @@ def _read_vnext_authority(
 
 
 def _frozen_service_contract(data_dir: Path) -> tuple[str, str, str, int]:
-    missing = [
-        key
-        for key in _FROZEN_HOST_AUTHORITY_KEYS
-        if not (os.environ.get(key) or "").strip()
-    ]
+    missing = [key for key in _FROZEN_HOST_AUTHORITY_KEYS if not (os.environ.get(key) or "").strip()]
     if missing:
         raise RuntimeError("frozen backend runtime authority environment is incomplete: " + ", ".join(missing))
     if os.environ["TICKETBOX_OWNER_RECOVERY_CHANNEL"].strip() != "managed_host":
@@ -489,15 +484,36 @@ def _closed_authorities(
 ) -> list[dict[str, object]]:
     authorities: list[dict[str, object]] = []
     binding_fields = {
-        "schema", "install_id", "dataset_id", "expected_restore_epoch", "data_root",
-        "active_release_id", "previous_release_id", "release_manifest_sha256", "postgres_major",
-        "pg_service_name", "backend_service_name", "pg_port", "backend_port",
+        "schema",
+        "install_id",
+        "dataset_id",
+        "expected_restore_epoch",
+        "data_root",
+        "active_release_id",
+        "previous_release_id",
+        "release_manifest_sha256",
+        "postgres_major",
+        "pg_service_name",
+        "backend_service_name",
+        "pg_port",
+        "backend_port",
         "health_attestation_key",
     }
     active_fields = {
-        "schema", "operation_id", "kind", "request_hash", "target_release_id", "data_root",
-        "release_manifest_sha256", "backend_port", "phase", "no_return_point",
-        "completed_step", "install_id", "dataset_id", "schema_revision",
+        "schema",
+        "operation_id",
+        "kind",
+        "request_hash",
+        "target_release_id",
+        "data_root",
+        "release_manifest_sha256",
+        "backend_port",
+        "phase",
+        "no_return_point",
+        "completed_step",
+        "install_id",
+        "dataset_id",
+        "schema_revision",
         "health_attestation_key",
     }
     if binding is not None:
@@ -588,7 +604,6 @@ def _assert_vnext_runtime_authority(data_dir: Path) -> str:
     return str(authorities[0]["health_attestation_key"])
 
 
-
 def _assert_runtime_data_root_authority(data_dir: Path) -> str | None:
     if getattr(sys, "frozen", False):
         return _assert_vnext_runtime_authority(data_dir)
@@ -612,8 +627,8 @@ def configure_environment() -> Path:
     health_attestation_key = _assert_runtime_data_root_authority(data_dir)
     (data_dir / "uploads").mkdir(parents=True, exist_ok=True)
 
-    # Anchor app.config.DATA_ROOT here so writable files the backend *creates*
-    # (Owner Console settings .env, PostgreSQL backups) persist in this folder
+    # Anchor app.config.DATA_ROOT here so mutable application data
+    # (Owner Console settings .env and uploaded attachments) persists here
     # rather than the frozen build's throwaway _MEIPASS extraction dir. We
     # normalize the (possibly preset) value before the .env load and before
     # main() imports app.* so app.config reads the same resolved path we just
@@ -643,7 +658,6 @@ def configure_environment() -> Path:
     # default (the EXE assumes a local PostgreSQL service is installed).
     os.environ.setdefault("UPLOAD_DIR", str(data_dir / "uploads"))
     return data_dir
-
 
 
 def _build_log_config(log_dir: Path, *, console: bool | None = None) -> dict:

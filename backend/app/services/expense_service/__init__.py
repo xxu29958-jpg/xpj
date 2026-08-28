@@ -10,7 +10,8 @@ Internal layout:
 - ``_helpers``  — text cleaners, notification key hash, FX gating, thumbnail
                   helper, OCR draft refresh; ``EDITABLE_STATUSES`` lives here
 - ``_query``    — ``get_expense``, ``list_pending``, ``list_confirmed``
-- ``_create``   — upload pending + enrichment, manual entry, notification draft
+- ``_create``   — upload pending, manual entry, notification draft
+- ``_enrich``   — background OCR/thumbnail preparation + OCC apply
 - ``_update``   — field update, batch update, confirm, reject
 - ``_ocr``      — retry / text re-recognition (with optimistic claim)
 - ``_image``    — image / thumbnail file resolution
@@ -20,15 +21,17 @@ Internal layout:
 from __future__ import annotations
 
 from app.services.expense_service._create import (
-    PendingEnrichmentResult,
     create_manual_expense,
     create_notification_draft,
     create_pending_expense,
-    enrich_pending_expense,
 )
 from app.services.expense_service._duplicate import (
     list_duplicate_expenses,
     mark_expense_not_duplicate,
+)
+from app.services.expense_service._enrich import (
+    PendingEnrichmentResult,
+    enrich_pending_expense,
 )
 from app.services.expense_service._helpers import (
     EDITABLE_STATUSES,

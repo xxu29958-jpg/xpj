@@ -8,6 +8,10 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask
+from app.services.background_task_handler_api import (
+    TaskCancelledError,
+    check_cancellation_requested,
+)
 from app.services.expense_service import enrich_pending_expense
 
 PENDING_EXPENSE_ENRICHMENT_TASK_TYPE = "expense_enrichment"
@@ -18,6 +22,10 @@ _PROGRESS_MESSAGES = {
     "not_pending": "账单已不在待确认队列。",
     "conflict": "用户后续修改已保留，识别结果未覆盖账单。",
 }
+
+
+class PendingEnrichmentTaskError(Exception):
+    """The enrichment owner returned an impossible task outcome."""
 
 
 def _task_payload(
@@ -36,11 +44,7 @@ def _task_payload(
     if timezone_name is not None and not isinstance(timezone_name, str):
         raise ValueError("expense_enrichment timezone_name must be a string")
     expected_row_version = payload.get("expected_row_version")
-    if (
-        isinstance(expected_row_version, bool)
-        or not isinstance(expected_row_version, int)
-        or expected_row_version <= 0
-    ):
+    if isinstance(expected_row_version, bool) or not isinstance(expected_row_version, int) or expected_row_version <= 0:
         raise ValueError("expense_enrichment requires a positive expected_row_version")
     return expense_id, tenant_id, timezone_name or None, expected_row_version
 
@@ -51,11 +55,6 @@ def run_pending_expense_enrichment_task(
     payload: dict[str, Any],
 ) -> None:
     """Run one task-scoped enrichment and persist its exact user outcome."""
-    from app.services.background_task_service import (
-        TaskCancelledError,
-        check_cancellation_requested,
-    )
-
     expense_id, tenant_id, timezone_name, expected_row_version = _task_payload(
         task,
         payload,
@@ -76,7 +75,7 @@ def run_pending_expense_enrichment_task(
         raise_on_failure=True,
     )
     if result.outcome == "failed":
-        raise RuntimeError("expense enrichment failed without an exception")
+        raise PendingEnrichmentTaskError("expense enrichment failed without an exception")
 
     task.result_summary_json = json.dumps(
         {

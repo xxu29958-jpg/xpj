@@ -34,7 +34,7 @@ setup.bat -Dev
 - 检查 Python 3.11+。
 - 创建 `.venv`。
 - 安装后端依赖。
-- 创建 `data`、`uploads`、`logs`、`backups` 目录。
+- 创建 `data`、`uploads`、`logs` 目录。
 - 如果 `.env` 不存在，创建不含运行时身份凭证的基础配置文件。
 
 已有 `.env` 时脚本不会覆盖。确实要重建基础配置时才使用：
