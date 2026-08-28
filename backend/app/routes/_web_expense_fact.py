@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from fastapi import Request
 from fastapi.responses import Response
@@ -170,6 +171,7 @@ def web_fact_context(
         accounting_datetime_label(expense.confirmed_at) if expense.confirmed_at else ""
     )
     ctx["page_title"] = "账单详情"
+    ctx["items_ack_idempotency_key"] = str(uuid4())
     ctx["message"] = message if message is not None else request.query_params.get("msg")
     ctx["error"] = error
     ctx["split_invite"] = build_split_invite_context(

@@ -169,6 +169,31 @@ def test_correction_idempotent_replay_writes_exactly_one_revision(client: TestCl
     assert replay.json()["expense"]["row_version"] == first.json()["expense"]["row_version"]
     assert replay.json()["revision"]["public_id"] == first.json()["revision"]["public_id"]
 
+    later = client.post(
+        f"/api/expenses/{expense['id']}/corrections",
+        headers=_idem(identity.app_headers),
+        json={
+            "expected_row_version": first.json()["expense"]["row_version"],
+            "reason": "后来又修正一次",
+            "merchant": "后续权威值",
+        },
+    )
+    assert later.status_code == 201, later.text
+
+    # A late replay reports the original operation revision together with the
+    # current canonical projection. Returning the first response's stale
+    # Expense here would let Android overwrite the later fact in Room.
+    replay_after_later = client.post(
+        f"/api/expenses/{expense['id']}/corrections", headers=headers, json=payload
+    )
+    assert replay_after_later.status_code == 201, replay_after_later.text
+    assert replay_after_later.json()["revision"]["public_id"] == first.json()["revision"]["public_id"]
+    assert replay_after_later.json()["expense"]["merchant"] == "后续权威值"
+    assert (
+        replay_after_later.json()["expense"]["fact_revision"]
+        == later.json()["expense"]["fact_revision"]
+    )
+
     invitation = client.post(
         "/api/ledgers/owner/invitations",
         headers=identity.app_headers,
@@ -196,8 +221,8 @@ def test_correction_idempotent_replay_writes_exactly_one_revision(client: TestCl
     assert cross_actor_replay.json()["error"] == "idempotency_key_reused"
 
     history = _history(client, identity, expense["id"])
-    assert history["total"] == 2
-    assert sum(item["change_kind"] == "correction" for item in history["items"]) == 1
+    assert history["total"] == 3
+    assert sum(item["change_kind"] == "correction" for item in history["items"]) == 2
 
 
 def test_stale_correction_is_409_and_leaves_no_revision(client: TestClient, *, identity) -> None:

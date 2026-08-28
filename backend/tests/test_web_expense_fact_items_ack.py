@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -38,6 +40,12 @@ def _ack_form_html(page_text: str, expense_id: int) -> str | None:
     return page_text[start:end]
 
 
+def _hidden_value(form_html: str, name: str) -> str:
+    match = re.search(rf'name="{re.escape(name)}" value="([^"]+)"', form_html)
+    assert match is not None
+    return match.group(1)
+
+
 def test_fact_page_renders_acknowledge_action_for_writer(
     web_client: TestClient, *, identity
 ) -> None:
@@ -54,6 +62,7 @@ def test_fact_page_renders_acknowledge_action_for_writer(
     assert 'name="csrf_token"' in form
     assert 'name="ledger_id" value="owner"' in form
     assert f'name="expected_row_version" value="{row_version}"' in form
+    assert _hidden_value(form, "idempotency_key")
 
 
 def test_fact_page_hides_acknowledge_action_for_viewer(
@@ -103,3 +112,42 @@ def test_fact_acknowledge_conflict_stays_on_fact_owner(
     assert "账单详情" in response.text
     assert f'action="/web/expenses/{expense_id}/save"' not in response.text
     assert _ack_form_html(response.text, expense_id) is not None
+
+
+def test_fact_acknowledge_replays_the_same_form_intent_without_a_second_revision(
+    web_client: TestClient, *, identity
+) -> None:
+    expense_id, row_version = _create_confirmed_items_mismatch(
+        web_client,
+        identity=identity,
+        setup_key="fact-ack-replay-owner",
+    )
+    page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    form = _ack_form_html(page.text, expense_id)
+    assert form is not None
+    form_data = {
+        "ledger_id": "owner",
+        "expected_row_version": str(row_version),
+        "idempotency_key": _hidden_value(form, "idempotency_key"),
+    }
+
+    first = web_client.post(
+        f"/web/expenses/{expense_id}/items/acknowledge-mismatch",
+        data=form_data,
+        follow_redirects=False,
+    )
+    assert first.status_code == 303, first.text
+    first_history = web_client.get(
+        f"/api/expenses/{expense_id}/revisions", headers=identity.app_headers
+    ).json()
+
+    replay = web_client.post(
+        f"/web/expenses/{expense_id}/items/acknowledge-mismatch",
+        data=form_data,
+        follow_redirects=False,
+    )
+    assert replay.status_code == 303, replay.text
+    replay_history = web_client.get(
+        f"/api/expenses/{expense_id}/revisions", headers=identity.app_headers
+    ).json()
+    assert replay_history == first_history

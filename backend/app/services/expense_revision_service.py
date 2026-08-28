@@ -121,7 +121,7 @@ def record_confirmation_revision(
     )
     if existing is not None:
         return existing
-    if expense.status != "confirmed":
+    if expense.confirmed_at is None:
         raise AppError("state_conflict", status_code=409)
     db.flush()
     if not isinstance(expense.row_version, int):
@@ -193,13 +193,16 @@ def prepare_correction_revision(
     db: Session,
     expense: Expense,
 ) -> PreparedCorrectionRevision | None:
-    """Capture a confirmed fact before an existing command changes it.
+    """Capture a published fact before an existing command changes it.
 
-    Pending commands keep their existing semantics and return ``None``. Legacy
-    confirmed rows receive revision 1 before the caller's own CAS/write.
+    ``confirmed_at`` is the publication boundary: a legacy row may currently be
+    rejected and still belong to confirmed financial history.  Only rows that
+    have never been published keep pending/rejected draft semantics and return
+    ``None``. Legacy published rows receive revision 1 before the caller's own
+    CAS/write when the migration backfill has not already created it.
     """
 
-    if expense.status != "confirmed":
+    if expense.confirmed_at is None:
         return None
     if expense.fact_revision == 0:
         record_confirmation_revision(

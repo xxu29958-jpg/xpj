@@ -21,6 +21,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
+    <input type="hidden" name="idempotency_key" value="{{ items_ack_idempotency_key }}">
     {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
     <button type="submit" class="dt-btn">原小票如此</button>
   </form>

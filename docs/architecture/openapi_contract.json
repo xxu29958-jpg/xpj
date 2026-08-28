@@ -2477,6 +2477,11 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
@@ -30,6 +32,7 @@ from app.routes.web_common import (
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.expense_service import get_expense
+from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.receipt_item_service import (
     acknowledge_items_sum_mismatch,
     replace_expense_items,
@@ -207,6 +210,49 @@ def _mismatch_error_response(
     )
 
 
+def _acknowledge_web_items_mismatch(
+    db: Session,
+    request: Request,
+    *,
+    expense_id: int,
+    selected_id: str,
+    expected_row_version: int,
+    idempotency_key: str,
+) -> None:
+    """Run the shared ack command and its request claim in one transaction."""
+
+    key = idempotency_key.strip() or str(uuid4())
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=key,
+        tenant_id=selected_id,
+        operation="acknowledge_items_mismatch",
+        target_id=str(expense_id),
+        body={},
+        expected_row_version=expected_row_version,
+    )
+    if claim is None:
+        return
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
+    acknowledge_items_sum_mismatch(
+        db,
+        expense_id,
+        selected_id,
+        expected_row_version=expected_row_version,
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+        idempotency_key=key,
+        commit=False,
+    )
+    mark_idempotency_succeeded(
+        db,
+        claim,
+        resource_type="expense",
+        resource_id=str(expense_id),
+    )
+    db.commit()
+
+
 @router.post(
     "/expenses/{expense_id}/items/acknowledge-mismatch",
     response_class=HTMLResponse,
@@ -216,6 +262,7 @@ def web_items_acknowledge_mismatch(
     request: Request,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
     return_to: str = Form(default=""),
     return_month: str = Form(default=""),
     return_filter: str = Form(default=""),
@@ -248,15 +295,14 @@ def web_items_acknowledge_mismatch(
             status_code=422,
             return_context=return_context,
         )
-    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
-        acknowledge_items_sum_mismatch(
+        _acknowledge_web_items_mismatch(
             db,
-            expense_id,
-            selected_id,
+            request,
+            expense_id=expense_id,
+            selected_id=selected_id,
             expected_row_version=parsed,
-            actor_account_id=actor_account_id,
-            actor_device_id=actor_device_id,
+            idempotency_key=idempotency_key,
         )
     except AppError as exc:
         db.rollback()

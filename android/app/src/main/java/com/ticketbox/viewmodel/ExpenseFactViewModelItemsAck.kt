@@ -37,15 +37,20 @@ fun ExpenseFactViewModel.acknowledgeItemsMismatch() {
         repository.acknowledgeItemsMismatchAllowingOffline(expense, currentItems)
             .onSuccess { outcome ->
                 when (outcome) {
-                    is ItemsAckOutcome.Synced -> _uiState.update {
-                        it.copy(
-                            expense = it.expense?.withParentRowVersion(outcome.items.parentRowVersion),
-                            expenseItems = outcome.items,
-                            itemsLoading = false,
-                            itemsLoadState = ExpenseDetailDataLoadState.Loaded,
-                            message = UiText.res(R.string.expense_edit_items_ack_synced),
-                            messageTone = MessageTone.Success,
-                        )
+                    is ItemsAckOutcome.Synced -> {
+                        _uiState.update {
+                            it.copy(
+                                expense = it.expense?.withParentRowVersion(outcome.items.parentRowVersion),
+                                expenseItems = outcome.items,
+                                itemsLoading = false,
+                                itemsLoadState = ExpenseDetailDataLoadState.Loaded,
+                                message = UiText.res(R.string.expense_edit_items_ack_synced),
+                                messageTone = MessageTone.Success,
+                            )
+                        }
+                        // The command appends an immutable correction revision;
+                        // publish that server-owned postcondition on the same page.
+                        loadExpenseRevisions()
                     }
                     is ItemsAckOutcome.Queued -> _uiState.update {
                         // 离线：保留当前 token，展示乐观 acknowledged 投影；

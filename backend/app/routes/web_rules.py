@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_session_common import resolve_web_actor, resolve_web_actor_account_id
+from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -190,16 +190,14 @@ def web_rules_application_rollback(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         _batch, changed, skipped = rollback_rule_application(
             db,
             tenant_id=selected_id,
             public_id=public_id,
-            actor_account_id=resolve_web_actor_account_id(
-                db,
-                request,
-                selected_id,
-            ),
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         )
         msg = f"已回滚规则应用：恢复 {changed} 条，跳过 {skipped} 条。"
     except AppError as exc:
