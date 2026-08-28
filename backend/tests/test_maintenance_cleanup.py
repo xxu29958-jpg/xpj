@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR
@@ -273,6 +274,43 @@ def test_cleanup_orphans_deletes_only_unreferenced_old_files(client: TestClient,
     assert not orphan.exists()
     assert tester_orphan.exists()
     assert os.path.isfile(referenced_path)
+
+
+def test_cleanup_orphans_reclaims_file_reappearing_after_deletion_marker(
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    from app.services import cleanup_service
+
+    expense_id = _upload_png(client, identity=identity)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None and expense.image_path is not None
+        image_path = _absolute(expense.image_path)
+        authorize_currency_metadata_write(db)
+        expense.image_deleted_at = now_utc()
+        db.commit()
+
+    old = (now_utc() - timedelta(hours=3)).timestamp()
+    os.utime(image_path, (old, old))
+    settings = cleanup_service.get_settings()
+    monkeypatch.setattr(
+        cleanup_service,
+        "get_settings",
+        lambda: replace(settings, orphan_upload_grace_hours=1),
+    )
+
+    response = client.post(
+        "/api/maintenance/cleanup-orphans?dry_run=false",
+        headers=identity.admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["orphan_files"] == 1
+    assert response.json()["deleted_files"] == 1
+    assert not os.path.exists(image_path)
 
 
 def test_cleanup_orphans_treats_windows_style_upload_paths_as_referenced(

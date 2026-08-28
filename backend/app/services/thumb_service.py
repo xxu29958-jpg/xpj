@@ -4,6 +4,7 @@ import logging
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from app.config import get_settings
 from app.errors import PathTraversalError
@@ -16,22 +17,24 @@ logger = logging.getLogger(__name__)
 class StagedThumbnail:
     """One unpublished thumbnail whose unique file is owned by its caller."""
 
+    source_reference: str
     staging_path: Path
-    canonical_path: Path
-    canonical_reference: str
+    final_path: Path
+    final_reference: str
 
 
-def _discard_staging_path(path: Path) -> None:
+def _discard_attempt_path(path: Path, *, event: str) -> None:
     try:
         path.unlink(missing_ok=True)
     except OSError as exc:
-        # A unique staging file is not product truth. Preserve the caller's
-        # result/error and let the grace-based orphan sweep retry its cleanup.
+        # Attempt-unique files are not independent product truth. Preserve the
+        # caller's result/error and let grace-based orphan GC retry cleanup.
         logger.warning(
-            "event=thumbnail_staging_cleanup_failed error_type=%s",
+            "event=%s error_type=%s",
+            event,
             type(exc).__name__,
             extra={
-                "event": "thumbnail_staging_cleanup_failed",
+                "event": event,
                 "error_type": type(exc).__name__,
             },
         )
@@ -86,21 +89,22 @@ def stage_thumbnail(
     tenant_id: str,
     size: tuple[int, int] = (512, 512),
 ) -> StagedThumbnail | None:
-    """Render a unique thumbnail without publishing its canonical path."""
+    """Render a unique thumbnail without publishing its attempt final."""
     source = _thumbnail_source(relative_path, tenant_id)
     if source is None:
         return None
 
     thumbnail_dir = source.parent / "thumbs"
     thumbnail_dir.mkdir(parents=True, exist_ok=True)
-    canonical_path = thumbnail_dir / f"{source.stem}.jpg"
+    attempt_id = uuid4().hex
+    final_path = thumbnail_dir / f"{source.stem}.{attempt_id}.jpg"
     try:
-        canonical_reference = upload_reference_for_path(canonical_path)
+        final_reference = upload_reference_for_path(final_path)
     except PathTraversalError:
         return None
     with tempfile.NamedTemporaryFile(
         dir=thumbnail_dir,
-        prefix=f".{source.stem}.",
+        prefix=f".{source.stem}.{attempt_id}.",
         suffix=".staging.jpg",
         delete=False,
     ) as temporary:
@@ -111,25 +115,40 @@ def stage_thumbnail(
         if not _render_thumbnail(source, staging_path, size):
             return None
         staged = StagedThumbnail(
+            source_reference=relative_path,
             staging_path=staging_path,
-            canonical_path=canonical_path,
-            canonical_reference=canonical_reference,
+            final_path=final_path,
+            final_reference=final_reference,
         )
         return staged
     finally:
         if staged is None:
-            _discard_staging_path(staging_path)
+            _discard_attempt_path(
+                staging_path,
+                event="thumbnail_staging_cleanup_failed",
+            )
 
 
-def publish_staged_thumbnail(staged: StagedThumbnail) -> str:
-    """Atomically publish a caller-owned staging file to its canonical path."""
-    staged.staging_path.replace(staged.canonical_path)
-    return staged.canonical_reference
+def publish_staged_thumbnail_attempt(staged: StagedThumbnail) -> str:
+    """Atomically publish one attempt to its own unique final path."""
+    staged.staging_path.replace(staged.final_path)
+    return staged.final_reference
 
 
 def discard_staged_thumbnail(staged: StagedThumbnail | None) -> None:
     if staged is not None:
-        _discard_staging_path(staged.staging_path)
+        _discard_attempt_path(
+            staged.staging_path,
+            event="thumbnail_staging_cleanup_failed",
+        )
+
+
+def discard_published_thumbnail_attempt(staged: StagedThumbnail | None) -> None:
+    if staged is not None:
+        _discard_attempt_path(
+            staged.final_path,
+            event="thumbnail_attempt_cleanup_failed",
+        )
 
 
 def resolve_protected_thumbnail(relative_path: str | None, tenant_id: str) -> tuple[Path, str] | None:

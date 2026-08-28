@@ -18,6 +18,7 @@ from app.services import background_task_service, cleanup_service, thumb_service
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_service import create_pending_expense
 from app.services.expense_service._image import ensure_thumbnail_file
+from app.services.expense_service._thumbnail_publication import publish_claimed_thumbnail
 from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
 from app.services.ledger_service import find_owner_account_id_for_ledger
 from app.services.ocr_service import OcrExtraction, OcrResult
@@ -128,7 +129,7 @@ def test_enrichment_commit_failure_never_publishes_staged_thumbnail(
     assert rejected_publication is True
     assert len(staged_attempts) == 1
     staged = staged_attempts[0]
-    assert not staged.canonical_path.exists()
+    assert not staged.final_path.exists()
     assert not staged.staging_path.exists()
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
@@ -186,15 +187,19 @@ def test_enrichment_commit_ack_loss_leaves_thumbnail_owner_self_healing(
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
-        assert expense.thumbnail_path == staged.canonical_reference
+        assert expense.thumbnail_path == staged.final_reference
         assert expense.row_version == predecessor_row_version
-    assert not staged.canonical_path.exists()
+    assert not staged.final_path.exists()
     assert not staged.staging_path.exists()
     with SessionLocal() as db:
         thumbnail_path, media_type = ensure_thumbnail_file(db, expense_id, "owner")
-    assert thumbnail_path == staged.canonical_path
+    assert thumbnail_path != staged.final_path
     assert thumbnail_path.is_file()
     assert media_type == "image/jpeg"
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.thumbnail_path != staged.final_reference
 
 
 @pytest.mark.real_db
@@ -219,7 +224,7 @@ def test_thumbnail_get_commits_cache_owner_before_publishing(
     if previous_thumbnail is not None:
         previous_thumbnail[0].unlink(missing_ok=True)
 
-    real_publish = thumb_service.publish_staged_thumbnail
+    real_publish = thumb_service.publish_staged_thumbnail_attempt
     owner_was_durable_before_publish = False
 
     def observe_publish(staged):
@@ -227,11 +232,15 @@ def test_thumbnail_get_commits_cache_owner_before_publishing(
         with SessionLocal() as probe_db:
             durable = probe_db.get(Expense, expense_id)
             assert durable is not None
-            assert durable.thumbnail_path == staged.canonical_reference
+            assert durable.thumbnail_path == staged.final_reference
         owner_was_durable_before_publish = True
         return real_publish(staged)
 
-    monkeypatch.setattr(thumb_service, "publish_staged_thumbnail", observe_publish)
+    monkeypatch.setattr(
+        thumb_service,
+        "publish_staged_thumbnail_attempt",
+        observe_publish,
+    )
 
     response = client.get(
         f"/api/expenses/{expense_id}/thumbnail",
@@ -267,7 +276,11 @@ def test_enrichment_staging_cleanup_failure_preserves_completed_task_truth(
             "collect_auto_ocr_extractions",
             lambda *_args, **_kwargs: _ocr_result(),
         )
-        failure.setattr(enrich_service, "publish_staged_thumbnail", fail_publication)
+        failure.setattr(
+            thumb_service,
+            "publish_staged_thumbnail_attempt",
+            fail_publication,
+        )
         failure.setattr(Path, "unlink", deny_staging_cleanup)
         background_task_service._run_task(  # noqa: SLF001 - exercise the real worker truth barrier.
             task_id,
@@ -322,7 +335,7 @@ def test_thumbnail_get_rechecks_cleanup_after_staging(
     assert caught.value.error == "image_not_found"
     assert len(staged_attempts) == 1
     staged = staged_attempts[0]
-    assert not staged.canonical_path.exists()
+    assert not staged.final_path.exists()
     assert not staged.staging_path.exists()
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
@@ -348,7 +361,7 @@ def test_cleanup_defers_when_durable_thumbnail_is_not_yet_published(
         assert staged is not None
         thumb_service.discard_staged_thumbnail(staged)
         authorize_currency_metadata_write(db)
-        expense.thumbnail_path = staged.canonical_reference
+        expense.thumbnail_path = staged.final_reference
         db.commit()
 
     with SessionLocal() as db:
@@ -358,12 +371,71 @@ def test_cleanup_defers_when_durable_thumbnail_is_not_yet_published(
         db.commit()
 
     assert source.is_file()
-    assert not staged.canonical_path.exists()
+    assert not staged.final_path.exists()
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
         assert expense.image_deleted_at is None
         assert expense.thumbnail_deleted_at is None
+
+
+@pytest.mark.real_db
+def test_unique_publication_owner_defers_cleanup_until_live_attempt_publishes(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    _enable_delete_after_confirm(monkeypatch)
+    expense_id, _row_version = _seed_pending_expense()
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        source = resolve_upload_path_for_tenant(expense.image_path, "owner")
+        first = thumb_service.stage_thumbnail(expense.image_path, tenant_id="owner")
+        second = thumb_service.stage_thumbnail(expense.image_path, tenant_id="owner")
+        assert source is not None
+        assert first is not None
+        assert second is not None
+        assert first.staging_path != second.staging_path
+        assert first.final_path != second.final_path
+        authorize_currency_metadata_write(db)
+        expense.thumbnail_path = second.final_reference
+        db.commit()
+
+    try:
+        with SessionLocal() as publication_db:
+            expense = publication_db.get(Expense, expense_id)
+            assert expense is not None
+            assert publish_claimed_thumbnail(publication_db, expense, first) is False
+        assert not first.final_path.exists()
+        assert second.staging_path.is_file()
+
+        with SessionLocal() as cleanup_db:
+            expense = cleanup_db.get(Expense, expense_id)
+            assert expense is not None
+            assert cleanup_service.cleanup_after_confirm(cleanup_db, expense) is False
+            cleanup_db.commit()
+
+        assert source.is_file()
+        with SessionLocal() as publication_db:
+            expense = publication_db.get(Expense, expense_id)
+            assert expense is not None
+            assert publish_claimed_thumbnail(publication_db, expense, second) is True
+
+        with SessionLocal() as cleanup_db:
+            expense = cleanup_db.get(Expense, expense_id)
+            assert expense is not None
+            assert cleanup_service.cleanup_after_confirm(cleanup_db, expense) is True
+            cleanup_db.commit()
+
+        assert not source.exists()
+        assert not first.final_path.exists()
+        assert not second.final_path.exists()
+    finally:
+        thumb_service.discard_staged_thumbnail(first)
+        thumb_service.discard_staged_thumbnail(second)
+        first.final_path.unlink(missing_ok=True)
+        second.final_path.unlink(missing_ok=True)
 
 
 @pytest.mark.real_db

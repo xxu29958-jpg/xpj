@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -130,23 +130,30 @@ def _normalize_upload_reference(relative_path: str | None, tenant_id: str) -> st
 
 def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
     rows = db.execute(
-        select(Expense.image_path, Expense.thumbnail_path)
+        select(
+            Expense.image_path,
+            Expense.thumbnail_path,
+            Expense.image_deleted_at,
+            Expense.thumbnail_deleted_at,
+        )
         .where(Expense.tenant_id == tenant_id)
         .where(
             or_(
-                Expense.image_path.is_not(None),
-                Expense.thumbnail_path.is_not(None),
+                and_(Expense.image_path.is_not(None), Expense.image_deleted_at.is_(None)),
+                and_(Expense.thumbnail_path.is_not(None), Expense.thumbnail_deleted_at.is_(None)),
             )
         )
     )
     referenced: set[str] = set()
-    for image_path, thumbnail_path in rows:
-        normalized_image = _normalize_upload_reference(image_path, tenant_id)
-        if normalized_image:
-            referenced.add(normalized_image)
-        normalized_thumbnail = _normalize_upload_reference(thumbnail_path, tenant_id)
-        if normalized_thumbnail:
-            referenced.add(normalized_thumbnail)
+    for image_path, thumbnail_path, image_deleted_at, thumbnail_deleted_at in rows:
+        if image_deleted_at is None:
+            normalized_image = _normalize_upload_reference(image_path, tenant_id)
+            if normalized_image:
+                referenced.add(normalized_image)
+        if thumbnail_deleted_at is None:
+            normalized_thumbnail = _normalize_upload_reference(thumbnail_path, tenant_id)
+            if normalized_thumbnail:
+                referenced.add(normalized_thumbnail)
     return referenced
 
 
@@ -186,10 +193,6 @@ def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
     if changed:
         expense.updated_at = now
     return changed
-
-
-def delete_after_confirm_files(db: Session, expense: Expense) -> None:
-    cleanup_after_confirm(db, expense)
 
 
 def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:

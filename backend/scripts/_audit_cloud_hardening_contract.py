@@ -171,14 +171,15 @@ def _bill_split_missing() -> list[str]:
 def _thumbnail_cleanup_missing() -> list[str]:
     expense_enrich = _read("app/services/expense_service/_enrich.py")
     expense_image = _read("app/services/expense_service/_image.py")
+    publication_owner = _read("app/services/expense_service/_thumbnail_publication.py")
     cleanup_service = _read("app/services/cleanup_service.py")
-    return [
+    missing = [
         *_require_tokens(
             "thumbnail enrichment publication",
             expense_enrich,
             (
-                "expense.thumbnail_path = staged_thumbnail.canonical_reference",
-                "publish_staged_thumbnail(thumbnail_to_publish)",
+                "claim_staged_thumbnail(",
+                "_publish_enrichment_thumbnail_best_effort(",
                 "discard_staged_thumbnail(staged_thumbnail)",
             ),
         ),
@@ -186,11 +187,22 @@ def _thumbnail_cleanup_missing() -> list[str]:
             "thumbnail GET publication",
             expense_image,
             (
-                "expense.thumbnail_path = staged.canonical_reference",
+                "claim_staged_thumbnail(",
                 "db.refresh(expense, with_for_update=True)",
                 "expense.image_path != thumbnail_source_path",
-                "thumb_service.publish_staged_thumbnail(staged)",
+                "publish_claimed_thumbnail(db, expense, staged)",
                 "thumb_service.discard_staged_thumbnail(staged)",
+            ),
+        ),
+        *_require_tokens(
+            "thumbnail unique publication owner",
+            publication_owner,
+            (
+                "expense.thumbnail_path = staged.final_reference",
+                "thumb_service.publish_staged_thumbnail_attempt(staged)",
+                "db.refresh(expense, with_for_update=True)",
+                "expense.thumbnail_path == staged.final_reference",
+                "thumb_service.discard_published_thumbnail_attempt(staged)",
             ),
         ),
         *_require_tokens(
@@ -204,6 +216,14 @@ def _thumbnail_cleanup_missing() -> list[str]:
             ),
         ),
     ]
+    expense_service_sources = "\n".join(
+        path.read_text(encoding="utf-8") for path in (BACKEND_ROOT / "app/services/expense_service").glob("*.py")
+    )
+    if expense_service_sources.count("expense.thumbnail_path = staged.final_reference") != 1:
+        missing.append("thumbnail unique publication owner: durable claim must have exactly one writer")
+    if expense_service_sources.count("thumb_service.publish_staged_thumbnail_attempt(staged)") != 1:
+        missing.append("thumbnail unique publication owner: filesystem publish must have exactly one writer")
+    return missing
 
 
 def _ocr_csv_missing() -> list[str]:
@@ -266,6 +286,8 @@ def _regression_test_missing() -> list[str]:
             "test_thumbnail_get_rechecks_cleanup_after_staging",
             "test_cleanup_defers_when_durable_thumbnail_is_not_yet_published",
             "test_cleanup_locks_expense_before_file_deletion",
+            "test_unique_publication_owner_defers_cleanup_until_live_attempt_publishes",
+            "test_cleanup_orphans_reclaims_file_reappearing_after_deletion_marker",
             "test_web_pending_upload_enqueues_without_rereading_committed_expense",
             "split_total_exceeds_parent",
             "ai_advisor_provider_empty",

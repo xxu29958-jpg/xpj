@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.errors import AppError, PathTraversalError
 from app.models import Expense
@@ -21,12 +22,15 @@ from app.services.expense_service._helpers import (
     _replace_ocr_draft_items_from_text,
 )
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
+from app.services.expense_service._thumbnail_publication import (
+    claim_staged_thumbnail,
+    publish_claimed_thumbnail,
+)
 from app.services.ocr_service import OcrExtraction, collect_auto_ocr_extractions
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.thumb_service import (
     StagedThumbnail,
     discard_staged_thumbnail,
-    publish_staged_thumbnail,
     stage_thumbnail,
 )
 from app.services.time_service import now_utc
@@ -85,6 +89,25 @@ def _try_stage_thumbnail(relative_path: str | None, tenant_id: str) -> StagedThu
             relative_path,
         )
         return None
+
+
+def _publish_enrichment_thumbnail_best_effort(
+    db: Session,
+    expense: Expense,
+    staged: StagedThumbnail,
+    *,
+    expense_id: int,
+    tenant_id: str,
+) -> None:
+    try:
+        publish_claimed_thumbnail(db, expense, staged)
+    except (OSError, SQLAlchemyError):
+        _record_background_failure("thumbnail")
+        logger.exception(
+            "thumbnail publication failed after durable owner commit for expense_id=%s ledger=%s",
+            expense_id,
+            tenant_id,
+        )
 
 
 def _prepare_enrichment(
@@ -184,8 +207,11 @@ def _apply_enrichment(
             bump_row_version(expense)
             result_row_version += 1
         thumbnail_to_publish: StagedThumbnail | None = None
-        if not expense.thumbnail_path and staged_thumbnail is not None:
-            expense.thumbnail_path = staged_thumbnail.canonical_reference
+        if staged_thumbnail is not None and claim_staged_thumbnail(
+            expense,
+            staged_thumbnail,
+            replace_missing_reference=False,
+        ):
             thumbnail_to_publish = staged_thumbnail
         result = PendingEnrichmentResult(
             expense_id=expense.id,
@@ -194,15 +220,13 @@ def _apply_enrichment(
         )
         db.commit()
         if thumbnail_to_publish is not None:
-            try:
-                publish_staged_thumbnail(thumbnail_to_publish)
-            except OSError:
-                _record_background_failure("thumbnail")
-                logger.exception(
-                    "thumbnail publication failed after durable owner commit for expense_id=%s ledger=%s",
-                    expense_id,
-                    tenant_id,
-                )
+            _publish_enrichment_thumbnail_best_effort(
+                db,
+                expense,
+                thumbnail_to_publish,
+                expense_id=expense_id,
+                tenant_id=tenant_id,
+            )
         return result
 
 

@@ -10,6 +10,10 @@ from app.errors import AppError
 from app.services import thumb_service
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_service._query import get_expense
+from app.services.expense_service._thumbnail_publication import (
+    claim_staged_thumbnail,
+    publish_claimed_thumbnail,
+)
 from app.services.file_service import resolve_protected_image
 
 __all__ = ["ensure_image_file", "ensure_thumbnail_file"]
@@ -40,17 +44,21 @@ def ensure_thumbnail_file(db: Session, expense_id: int, tenant_id: str) -> tuple
                 or expense.thumbnail_deleted_at is not None
             ):
                 raise AppError("image_not_found", status_code=404)
-            # The derived cache locator is durable before file publication. If
-            # commit or its acknowledgement fails, only the unique staging file
-            # is discarded; a later GET rebuilds the deterministic canonical.
-            # Cache materialization never changes the business OCC snapshot.
-            expense.thumbnail_path = staged.canonical_reference
-            expense.thumbnail_deleted_at = None
-            db.commit()
-            thumb_service.publish_staged_thumbnail(staged)
+            if claim_staged_thumbnail(
+                expense,
+                staged,
+                replace_missing_reference=True,
+            ):
+                # The attempt-unique reference is durable before publication.
+                # ACK uncertainty leaves no shared final to compensate; a
+                # later GET can claim a fresh attempt and self-heal.
+                db.commit()
+                publish_claimed_thumbnail(db, expense, staged)
         finally:
             thumb_service.discard_staged_thumbnail(staged)
 
+    if expense.image_deleted_at is not None or expense.thumbnail_deleted_at is not None:
+        raise AppError("image_not_found", status_code=404)
     resolved = thumb_service.resolve_protected_thumbnail(expense.thumbnail_path, tenant_id)
     if resolved is None:
         raise AppError("image_not_found", status_code=404)
