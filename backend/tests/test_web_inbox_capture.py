@@ -11,6 +11,7 @@ from _web_bulk_test_support import create_pending as _create_pending
 from _web_bulk_test_support import seed_pending_with_amount as _seed_pending_with_amount
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 import app.routes.uploads as upload_routes
 import app.routes.web_inbox_capture as web_inbox_capture_routes
@@ -75,6 +76,44 @@ def test_web_pending_upload_uses_shared_owner_and_creates_real_pending_expense(
     assert "data-inbox-enrichment-terminal" in final_page.text
     assert 'data-enrichment-state="no_result"' in final_page.text
     assert "未返回可用字段" in final_page.text
+
+
+@pytest.mark.real_db
+def test_web_pending_upload_enqueues_without_rereading_committed_expense(
+    web_client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
+
+    def reject_committed_expense_reread(*_args, **_kwargs):
+        raise SQLAlchemyError("committed expense reread unavailable")
+
+    monkeypatch.setattr(
+        web_inbox_capture_routes,
+        "get_expense",
+        reject_committed_expense_reread,
+        raising=False,
+    )
+
+    response = web_client.post(
+        "/web/pending/upload?ledger_id=owner",
+        files={"file": ("receipt.png", PNG_BYTES, "image/png")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, response.text
+    task_public_id = parse_qs(urlsplit(response.headers["location"]).query)["watch"][0]
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == task_public_id))
+        expense = db.scalar(
+            select(Expense)
+            .where(Expense.tenant_id == "owner", Expense.source == "网页上传")
+            .order_by(Expense.id.desc())
+            .limit(1)
+        )
+        assert task is not None
+        assert task.status == "completed"
+        assert expense is not None
 
 
 def test_web_pending_upload_rejects_viewer_before_saving(

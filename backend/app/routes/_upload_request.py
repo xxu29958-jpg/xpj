@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from time import perf_counter
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,14 @@ if TYPE_CHECKING:
 
 IOS_SHORTCUT_FILE_FIELDS = ("file", "image", "photo", "screenshot")
 logger = logging.getLogger("ticketbox.upload")
+
+
+@dataclass(frozen=True, slots=True)
+class HandledUpload:
+    """Internal upload result plus the committed enrichment predecessor."""
+
+    response: UploadResponse
+    predecessor_row_version: int
 
 
 async def read_raw_body_limited(
@@ -190,7 +199,7 @@ async def handle_upload(
     max_size_bytes: int | None = None,
     commit_guard: Callable[[], None] | None = None,
     schedule_enrichment: bool = True,
-) -> UploadResponse:
+) -> HandledUpload:
     started_at = perf_counter()
     saved_file, timing_ms = await save_request_upload(
         request,
@@ -235,4 +244,7 @@ async def handle_upload(
             timezone_name,
             expected_row_version=expense.row_version,
         )
-    return upload_response(expense, saved_file, duration_ms, timing_ms)
+    return HandledUpload(
+        response=upload_response(expense, saved_file, duration_ms, timing_ms),
+        predecessor_row_version=expense.row_version,
+    )

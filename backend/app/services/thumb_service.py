@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,6 +8,8 @@ from pathlib import Path
 from app.config import get_settings
 from app.errors import PathTraversalError
 from app.services.file_service import resolve_upload_path_for_tenant, upload_reference_for_path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +19,22 @@ class StagedThumbnail:
     staging_path: Path
     canonical_path: Path
     canonical_reference: str
+
+
+def _discard_staging_path(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        # A unique staging file is not product truth. Preserve the caller's
+        # result/error and let the grace-based orphan sweep retry its cleanup.
+        logger.warning(
+            "event=thumbnail_staging_cleanup_failed error_type=%s",
+            type(exc).__name__,
+            extra={
+                "event": "thumbnail_staging_cleanup_failed",
+                "error_type": type(exc).__name__,
+            },
+        )
 
 
 def _tenant_upload_dir(tenant_id: str) -> Path:
@@ -99,7 +118,7 @@ def stage_thumbnail(
         return staged
     finally:
         if staged is None:
-            staging_path.unlink(missing_ok=True)
+            _discard_staging_path(staging_path)
 
 
 def publish_staged_thumbnail(staged: StagedThumbnail) -> str:
@@ -110,7 +129,7 @@ def publish_staged_thumbnail(staged: StagedThumbnail) -> str:
 
 def discard_staged_thumbnail(staged: StagedThumbnail | None) -> None:
     if staged is not None:
-        staged.staging_path.unlink(missing_ok=True)
+        _discard_staging_path(staged.staging_path)
 
 
 def resolve_protected_thumbnail(relative_path: str | None, tenant_id: str) -> tuple[Path, str] | None:

@@ -56,19 +56,6 @@ class OrphanCleanupResult:
     deleted_bytes: int
 
 
-def _delete_relative_file(relative_path: str | None, tenant_id: str) -> bool:
-    candidate = _resolve_relative_file(relative_path, tenant_id)
-    if candidate is None:
-        return False
-    if candidate.is_file():
-        try:
-            candidate.unlink()
-            return True
-        except OSError:
-            return False
-    return False
-
-
 def _delete_relative_file_for_db_mark(relative_path: str | None, tenant_id: str) -> tuple[bool, bool]:
     """Return ``(can_mark_deleted, physical_file_deleted)`` for a DB file reference."""
 
@@ -76,16 +63,7 @@ def _delete_relative_file_for_db_mark(relative_path: str | None, tenant_id: str)
     if candidate is None:
         return False, False
     if not candidate.exists():
-        reference_digest = hashlib.sha256(f"{tenant_id}\0{relative_path}".encode()).hexdigest()[:16]
-        logger.error(
-            "event=upload_integrity_missing reference_digest=%s "
-            "referenced upload is missing; database deletion marker remains unset",
-            reference_digest,
-            extra={
-                "event": "upload_integrity_missing",
-                "reference_digest": reference_digest,
-            },
-        )
+        _log_missing_upload_integrity(relative_path, tenant_id)
         return False, False
     if not candidate.is_file():
         return False, False
@@ -100,9 +78,38 @@ def _resolve_relative_file(relative_path: str | None, tenant_id: str) -> Path | 
     return resolve_upload_path_for_tenant(relative_path, tenant_id)
 
 
-def _relative_file_exists(relative_path: str | None, tenant_id: str) -> bool:
-    candidate = _resolve_relative_file(relative_path, tenant_id)
-    return candidate is not None and candidate.is_file()
+def _log_missing_upload_integrity(relative_path: str, tenant_id: str) -> None:
+    reference_digest = hashlib.sha256(f"{tenant_id}\0{relative_path}".encode()).hexdigest()[:16]
+    logger.error(
+        "event=upload_integrity_missing reference_digest=%s "
+        "referenced upload is missing; database deletion marker remains unset",
+        reference_digest,
+        extra={
+            "event": "upload_integrity_missing",
+            "reference_digest": reference_digest,
+        },
+    )
+
+
+def _cleanup_files_ready(expense: Expense) -> bool:
+    """Preflight every live reference before deleting any bytes for one row."""
+
+    references = (
+        (expense.image_path, expense.image_deleted_at),
+        (expense.thumbnail_path, expense.thumbnail_deleted_at),
+    )
+    for relative_path, deleted_at in references:
+        if relative_path is None or deleted_at is not None:
+            continue
+        candidate = _resolve_relative_file(relative_path, expense.tenant_id)
+        if candidate is None:
+            return False
+        if not candidate.exists():
+            _log_missing_upload_integrity(relative_path, expense.tenant_id)
+            return False
+        if not candidate.is_file():
+            return False
+    return True
 
 
 def _relative_upload_path(path: Path) -> str | None:
@@ -158,6 +165,9 @@ def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
     # this marker update runs in a new transaction and must acquire a fresh
     # currency-writer proof before any irreversible file deletion begins.
     authorize_currency_metadata_write(db)
+    db.refresh(expense, with_for_update=True)
+    if not _cleanup_files_ready(expense):
+        return False
 
     now = now_utc()
     changed = False
@@ -197,12 +207,14 @@ def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
     cutoff = now_utc() - timedelta(days=settings.delete_image_after_days)
     expenses = list(
         db.scalars(
-            select(Expense).where(
+            select(Expense)
+            .where(
                 Expense.tenant_id == tenant_id,
                 Expense.status == "confirmed",
                 Expense.confirmed_at.is_not(None),
                 Expense.confirmed_at <= cutoff,
-            ),
+            )
+            .with_for_update(),
         ),
     )
 
@@ -211,6 +223,8 @@ def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
     deleted_images = 0
     deleted_thumbnails = 0
     for expense in expenses:
+        if not _cleanup_files_ready(expense):
+            continue
         expense_changed = False
         if expense.image_deleted_at is None:
             can_mark_image, deleted_image = _delete_relative_file_for_db_mark(expense.image_path, expense.tenant_id)
@@ -258,12 +272,14 @@ def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
     cutoff = now_utc() - timedelta(days=settings.delete_rejected_after_days)
     expenses = list(
         db.scalars(
-            select(Expense).where(
+            select(Expense)
+            .where(
                 Expense.tenant_id == tenant_id,
                 Expense.status == "rejected",
                 Expense.rejected_at.is_not(None),
                 Expense.rejected_at <= cutoff,
-            ),
+            )
+            .with_for_update(),
         ),
     )
 
@@ -272,6 +288,8 @@ def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
     deleted_images = 0
     deleted_thumbnails = 0
     for expense in expenses:
+        if not _cleanup_files_ready(expense):
+            continue
         expense_changed = False
         if expense.image_deleted_at is None:
             can_mark_image, deleted_image = _delete_relative_file_for_db_mark(expense.image_path, expense.tenant_id)

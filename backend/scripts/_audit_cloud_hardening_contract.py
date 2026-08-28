@@ -171,6 +171,7 @@ def _bill_split_missing() -> list[str]:
 def _thumbnail_cleanup_missing() -> list[str]:
     expense_enrich = _read("app/services/expense_service/_enrich.py")
     expense_image = _read("app/services/expense_service/_image.py")
+    cleanup_service = _read("app/services/cleanup_service.py")
     return [
         *_require_tokens(
             "thumbnail enrichment publication",
@@ -186,8 +187,20 @@ def _thumbnail_cleanup_missing() -> list[str]:
             expense_image,
             (
                 "expense.thumbnail_path = staged.canonical_reference",
+                "db.refresh(expense, with_for_update=True)",
+                "expense.image_path != thumbnail_source_path",
                 "thumb_service.publish_staged_thumbnail(staged)",
                 "thumb_service.discard_staged_thumbnail(staged)",
+            ),
+        ),
+        *_require_tokens(
+            "thumbnail cleanup serialization",
+            cleanup_service,
+            (
+                "def _cleanup_files_ready(expense: Expense) -> bool:",
+                "db.refresh(expense, with_for_update=True)",
+                ".with_for_update()",
+                "if not _cleanup_files_ready(expense):",
             ),
         ),
     ]
@@ -249,6 +262,11 @@ def _regression_test_missing() -> list[str]:
             "test_enrichment_commit_failure_never_publishes_staged_thumbnail",
             "test_enrichment_commit_ack_loss_leaves_thumbnail_owner_self_healing",
             "test_thumbnail_get_commits_cache_owner_before_publishing",
+            "test_enrichment_staging_cleanup_failure_preserves_completed_task_truth",
+            "test_thumbnail_get_rechecks_cleanup_after_staging",
+            "test_cleanup_defers_when_durable_thumbnail_is_not_yet_published",
+            "test_cleanup_locks_expense_before_file_deletion",
+            "test_web_pending_upload_enqueues_without_rereading_committed_expense",
             "split_total_exceeds_parent",
             "ai_advisor_provider_empty",
         ),

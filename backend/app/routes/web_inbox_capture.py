@@ -17,7 +17,6 @@ from app.routes.web_common import (
     _web_redirect,
 )
 from app.services import background_task_service
-from app.services.expense_service import get_expense
 from app.services.pending_enrichment_task_service import (
     PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
 )
@@ -79,7 +78,6 @@ async def web_pending_upload(
         timezone_name=timezone_name,
         schedule_enrichment=False,
     )
-    predecessor_row_version = get_expense(db, upload.id, selected_id).row_version
     try:
         task = background_task_service.enqueue(
             db,
@@ -87,10 +85,10 @@ async def web_pending_upload(
             initiator_account_id=actor_account_id,
             ledger_id=selected_id,
             payload={
-                "expense_id": upload.id,
+                "expense_id": upload.response.id,
                 "tenant_id": selected_id,
                 "timezone_name": timezone_name,
-                "expected_row_version": predecessor_row_version,
+                "expected_row_version": upload.predecessor_row_version,
             },
             progress_total=1,
         )

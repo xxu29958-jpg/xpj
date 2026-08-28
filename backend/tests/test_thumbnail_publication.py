@@ -1,19 +1,27 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 import pytest
 from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 import app.services.expense_service._enrich as enrich_service
 from app.database import SessionLocal
-from app.models import Expense
-from app.services import thumb_service
+from app.errors import AppError
+from app.models import BackgroundTask, Expense
+from app.services import background_task_service, cleanup_service, thumb_service
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_service import create_pending_expense
 from app.services.expense_service._image import ensure_thumbnail_file
-from app.services.file_service import save_upload_bytes
+from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
+from app.services.ledger_service import find_owner_account_id_for_ledger
+from app.services.ocr_service import OcrExtraction, OcrResult
+from app.services.pending_enrichment_task_service import PENDING_EXPENSE_ENRICHMENT_TASK_TYPE
 from tests._infra.assets import PNG_BYTES
 
 
@@ -32,6 +40,47 @@ def _seed_pending_expense() -> tuple[int, int]:
             source="网页上传",
         )
         return expense.id, expense.row_version
+
+
+def _seed_queued_enrichment_task() -> tuple[int, int, int]:
+    expense_id, row_version = _seed_pending_expense()
+    with SessionLocal() as db:
+        account_id = find_owner_account_id_for_ledger(db, ledger_id="owner")
+        assert account_id is not None
+        task = BackgroundTask(
+            task_type=PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
+            tenant_id="owner",
+            initiated_by_account_id=account_id,
+            status="queued",
+            progress_total=1,
+        )
+        db.add(task)
+        db.commit()
+        return expense_id, row_version, task.id
+
+
+def _ocr_result() -> list[OcrExtraction]:
+    return [
+        OcrExtraction(
+            provider_name="mock",
+            ocr_model="test-model",
+            result=OcrResult(
+                raw_text="盒马\n交易金额：19.90",
+                confidence=0.98,
+                amount_cents=1990,
+                merchant="盒马",
+            ),
+        )
+    ]
+
+
+def _enable_delete_after_confirm(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = cleanup_service.get_settings()
+    monkeypatch.setattr(
+        cleanup_service,
+        "get_settings",
+        lambda: replace(settings, delete_image_after_confirm=True),
+    )
 
 
 @pytest.mark.real_db
@@ -191,3 +240,169 @@ def test_thumbnail_get_commits_cache_owner_before_publishing(
 
     assert response.status_code == 200
     assert owner_was_durable_before_publish is True
+
+
+@pytest.mark.real_db
+def test_enrichment_staging_cleanup_failure_preserves_completed_task_truth(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    expense_id, predecessor_row_version, task_id = _seed_queued_enrichment_task()
+    staged_attempts = []
+    real_unlink = Path.unlink
+
+    def fail_publication(staged):
+        staged_attempts.append(staged)
+        raise OSError("thumbnail publication unavailable")
+
+    def deny_staging_cleanup(path: Path, *args, **kwargs):
+        if any(path == staged.staging_path for staged in staged_attempts):
+            raise PermissionError("thumbnail staging file is locked")
+        return real_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as failure:
+        failure.setattr(
+            enrich_service,
+            "collect_auto_ocr_extractions",
+            lambda *_args, **_kwargs: _ocr_result(),
+        )
+        failure.setattr(enrich_service, "publish_staged_thumbnail", fail_publication)
+        failure.setattr(Path, "unlink", deny_staging_cleanup)
+        background_task_service._run_task(  # noqa: SLF001 - exercise the real worker truth barrier.
+            task_id,
+            {
+                "expense_id": expense_id,
+                "tenant_id": "owner",
+                "timezone_name": None,
+                "expected_row_version": predecessor_row_version,
+            },
+        )
+
+    for staged in staged_attempts:
+        real_unlink(staged.staging_path, missing_ok=True)
+    assert len(staged_attempts) == 1
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        expense = db.get(Expense, expense_id)
+        assert task is not None
+        assert task.status == "completed"
+        assert expense is not None
+        assert expense.amount_cents == 1990
+        assert expense.merchant == "盒马"
+
+
+@pytest.mark.real_db
+def test_thumbnail_get_rechecks_cleanup_after_staging(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    _enable_delete_after_confirm(monkeypatch)
+    expense_id, _row_version = _seed_pending_expense()
+    staged_attempts = []
+    real_stage_thumbnail = thumb_service.stage_thumbnail
+
+    def stage_then_cleanup(*args, **kwargs):
+        staged = real_stage_thumbnail(*args, **kwargs)
+        assert staged is not None
+        staged_attempts.append(staged)
+        with SessionLocal() as cleanup_db:
+            expense = cleanup_db.get(Expense, expense_id)
+            assert expense is not None
+            assert cleanup_service.cleanup_after_confirm(cleanup_db, expense) is True
+            cleanup_db.commit()
+        return staged
+
+    monkeypatch.setattr(thumb_service, "stage_thumbnail", stage_then_cleanup)
+
+    with SessionLocal() as db, pytest.raises(AppError) as caught:
+        ensure_thumbnail_file(db, expense_id, "owner")
+
+    assert caught.value.error == "image_not_found"
+    assert len(staged_attempts) == 1
+    staged = staged_attempts[0]
+    assert not staged.canonical_path.exists()
+    assert not staged.staging_path.exists()
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.image_deleted_at is not None
+        assert expense.thumbnail_path is None
+
+
+@pytest.mark.real_db
+def test_cleanup_defers_when_durable_thumbnail_is_not_yet_published(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    _enable_delete_after_confirm(monkeypatch)
+    expense_id, _row_version = _seed_pending_expense()
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        source = resolve_upload_path_for_tenant(expense.image_path, "owner")
+        staged = thumb_service.stage_thumbnail(expense.image_path, tenant_id="owner")
+        assert source is not None
+        assert staged is not None
+        thumb_service.discard_staged_thumbnail(staged)
+        authorize_currency_metadata_write(db)
+        expense.thumbnail_path = staged.canonical_reference
+        db.commit()
+
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert cleanup_service.cleanup_after_confirm(db, expense) is False
+        db.commit()
+
+    assert source.is_file()
+    assert not staged.canonical_path.exists()
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.image_deleted_at is None
+        assert expense.thumbnail_deleted_at is None
+
+
+@pytest.mark.real_db
+def test_cleanup_locks_expense_before_file_deletion(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    _enable_delete_after_confirm(monkeypatch)
+    expense_id, _row_version = _seed_pending_expense()
+    real_delete = cleanup_service._delete_relative_file_for_db_mark
+    lock_observed = False
+
+    def observe_expense_lock(relative_path: str | None, tenant_id: str):
+        nonlocal lock_observed
+        with SessionLocal() as probe_db:
+            try:
+                probe_db.scalar(
+                    select(Expense.id)
+                    .where(Expense.id == expense_id, Expense.tenant_id == "owner")
+                    .with_for_update(nowait=True)
+                )
+            except OperationalError:
+                probe_db.rollback()
+                lock_observed = True
+            else:
+                probe_db.rollback()
+        return real_delete(relative_path, tenant_id)
+
+    monkeypatch.setattr(
+        cleanup_service,
+        "_delete_relative_file_for_db_mark",
+        observe_expense_lock,
+    )
+
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert cleanup_service.cleanup_after_confirm(db, expense) is True
+        db.commit()
+
+    assert lock_observed is True

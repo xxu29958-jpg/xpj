@@ -81,7 +81,7 @@ async def app_upload_screenshot(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
-    return await handle_upload(
+    handled = await handle_upload(
         request=request,
         background_tasks=background_tasks,
         tenant_id=auth.ledger_id,
@@ -90,6 +90,7 @@ async def app_upload_screenshot(
         endpoint="android_app",
         timezone_name=timezone,
     )
+    return handled.response
 
 
 def _load_upload_link(db: Session, upload_key: str) -> UploadLink:
@@ -134,9 +135,7 @@ async def upload_link_screenshot(
     # budget would also block legitimate bulk imports from the owner.
     if not is_loopback:
         remote_key = upload_link_remote_key(request)
-        enforce_remote_interval(
-            db, link=link, remote_key=remote_key, limits=limits
-        )
+        enforce_remote_interval(db, link=link, remote_key=remote_key, limits=limits)
         db.commit()
         reservation = reserve_upload_bytes(
             db,
@@ -161,7 +160,7 @@ async def upload_link_screenshot(
         require_create_pending_expense(refreshed_auth)
 
     try:
-        response = await handle_upload(
+        handled = await handle_upload(
             request=request,
             background_tasks=background_tasks,
             tenant_id=auth.ledger_id,
@@ -169,13 +168,10 @@ async def upload_link_screenshot(
             source="iPhone截图",
             endpoint="ios_upload_link",
             timezone_name=resolved_timezone,
-            max_size_bytes=(
-                reservation.reserved_bytes
-                if reservation and reservation.reserved_bytes > 0
-                else None
-            ),
+            max_size_bytes=(reservation.reserved_bytes if reservation and reservation.reserved_bytes > 0 else None),
             commit_guard=revalidate_before_commit,
         )
+        response = handled.response
         finalize_upload_bytes(
             db,
             reservation=reservation,

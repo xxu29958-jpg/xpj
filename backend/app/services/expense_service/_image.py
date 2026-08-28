@@ -26,9 +26,20 @@ def ensure_thumbnail_file(db: Session, expense_id: int, tenant_id: str) -> tuple
         return resolved
 
     authorize_currency_metadata_write(db)
-    staged = thumb_service.stage_thumbnail(expense.image_path, tenant_id=tenant_id)
+    thumbnail_source_path = expense.image_path
+    staged = thumb_service.stage_thumbnail(thumbnail_source_path, tenant_id=tenant_id)
     if staged is not None:
         try:
+            # Rendering is deliberately outside the row lock. Before this
+            # staged derivative can become durable truth, serialize with file
+            # cleanup and recheck that its source is still the live image.
+            db.refresh(expense, with_for_update=True)
+            if (
+                expense.image_path != thumbnail_source_path
+                or expense.image_deleted_at is not None
+                or expense.thumbnail_deleted_at is not None
+            ):
+                raise AppError("image_not_found", status_code=404)
             # The derived cache locator is durable before file publication. If
             # commit or its acknowledgement fails, only the unique staging file
             # is discarded; a later GET rebuilds the deterministic canonical.
