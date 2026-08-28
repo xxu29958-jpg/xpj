@@ -6,9 +6,9 @@ infrastructure table (not tied to a single business domain), which is why
 it lives in its own module rather than next to expense / identity / budget.
 
 ``tenant_id`` is nullable so a future system-wide task could record
-progress without binding to a single ledger; the only current producer
-(csv import) is user-scoped and MUST set ``tenant_id`` so a user only sees
-their own ledger's task list.
+progress without binding to a single ledger. Current user-facing producers,
+including CSV import and receipt enrichment, MUST set ``tenant_id`` so a user
+only sees their own ledger's task list.
 """
 
 from __future__ import annotations

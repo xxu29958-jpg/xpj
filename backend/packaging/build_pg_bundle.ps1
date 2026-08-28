@@ -2,8 +2,8 @@
 <#
 .SYNOPSIS
   ADR-0047 Slice 2-C：从 EDB「binaries without installer」zip 裁出最小 PostgreSQL
-  捆绑包（server + initdb + psql + pg_dump/pg_restore），供 Option D 服务化（2-D）
-  与 Inno 安装器（Slice 4）打包。
+  捆绑包（server + initdb + psql；另保留源码/测试 scratch 所需的通用
+  pg_dump/pg_restore 工具），供 Option D 服务化（2-D）与 Inno 安装器（Slice 4）打包。
 
 .DESCRIPTION
   EDB 的 postgresql-<ver>-windows-x64-binaries.zip 解包后约 800MB+（pgAdmin 一项就
@@ -102,14 +102,16 @@ if (
 }
 
 # bin 内保留的 EXE 白名单；所有 *.dll 无条件保留（运行时依赖）。
-# 单机内嵌单库部署用得到的最小集：server + 簇生命周期 + 管理客户端 + 备份/恢复 + 诊断。
+# 单机内嵌单库部署用得到的最小集：server + 簇生命周期 + 管理客户端 + 诊断；
+# pg_dump/pg_restore 只作为通用 PostgreSQL/source-test scratch 工具保留，frozen backend
+# 不包含调用它们的完整数据集 mutation owner，也不因此形成产品备份/恢复能力。
 $KeepExe = @(
     "postgres.exe",       # 服务器
     "initdb.exe",         # 首启建簇
     "pg_ctl.exe",         # 起停 / register 服务
     "psql.exe",           # 应用角色 bootstrap + fix_table_owners.sql
-    "pg_dump.exe",        # 升级前快照 + 计划备份（backup_service）
-    "pg_restore.exe",     # 恢复 / 备份校验
+    "pg_dump.exe",        # PostgreSQL/source-test scratch 工具（无产品 mutation owner）
+    "pg_restore.exe",     # PostgreSQL/source-test scratch 工具（无产品 mutation owner）
     "pg_isready.exe",     # 就绪探针（运维）
     "pg_controldata.exe", # 诊断
     "pg_resetwal.exe"     # 应急恢复

@@ -22,6 +22,7 @@ internal fun backgroundTaskStatusLabelRes(status: String): Int = when (status) {
 @StringRes
 internal fun backgroundTaskTypeLabelRes(taskType: String): Int = when (taskType) {
     "csv_import" -> R.string.background_tasks_type_csv_import
+    "expense_enrichment" -> R.string.background_tasks_type_expense_enrichment
     else -> R.string.background_tasks_type_unknown
 }
 

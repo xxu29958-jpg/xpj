@@ -156,7 +156,10 @@ def retry_ocr(expense: Expense, provider: OcrProvider | None = None, timezone_na
 
 
 def collect_auto_ocr_extractions(
-    expense: Expense, timezone_name: str | None = None
+    expense: Expense,
+    timezone_name: str | None = None,
+    *,
+    raise_on_failure: bool = False,
 ) -> list[OcrExtraction]:
     """Run configured OCR providers and return draft results with provenance."""
     settings = get_settings()
@@ -217,6 +220,8 @@ def collect_auto_ocr_extractions(
     except _AUTO_OCR_FAILURES:
         # Upload must stay reliable. Manual retry exposes provider errors to the user.
         logger.exception("auto OCR failed for expense=%s ledger=%s", expense.id, expense.tenant_id)
+        if raise_on_failure:
+            raise
         return []
 
 

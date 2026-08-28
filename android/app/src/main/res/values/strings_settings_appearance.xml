@@ -144,6 +144,7 @@
     <string name="background_tasks_empty">发起 CSV 导入或迁移等长任务后，进度会出现在这里。</string>
     <string name="background_tasks_row_error_generic">这个任务没有完成，请稍后重试。</string>
     <string name="background_tasks_type_csv_import">CSV 导入</string>
+    <string name="background_tasks_type_expense_enrichment">小票识别</string>
     <string name="background_tasks_type_unknown">后台任务</string>
     <string name="background_tasks_status_queued">排队中</string>
     <string name="background_tasks_status_running">运行中</string>

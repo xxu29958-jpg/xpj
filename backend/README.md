@@ -34,7 +34,7 @@ setup.bat -Dev
 - 检查 Python 3.11+。
 - 创建 `.venv`。
 - 安装后端依赖。
-- 创建 `data`、`uploads`、`logs`、`backups` 目录。
+- 创建 `data`、`uploads`、`logs` 目录。
 - 如果 `.env` 不存在，创建不含运行时身份凭证的基础配置文件。
 
 已有 `.env` 时脚本不会覆盖。确实要重建基础配置时才使用：
@@ -157,18 +157,16 @@ Get-ScheduledTask -TaskName TicketboxBackend
 
 长期运行、睡眠设置和外网诊断见 [Windows 长期运行 Runbook](../docs/runbook/WINDOWS_SERVICE_RUNBOOK.md)。
 
-## 完整数据集备份与恢复
+## 数据保护当前边界
 
-正式 Windows 安装只通过桌面管理器执行备份和恢复。备份 owner 会停住 backend writer、
-确认 PostgreSQL writer barrier，并原子发布
-`<DataRoot>\backups\ticketbox-backup-<UUID>\`。每个 generation 同时包含闭合 manifest、
-`database.dump` 和数据库实际引用的原始附件；旧 DB-only 脚本、计划任务和 `.dump` 列表已经退役。
+正式 Windows Manager 当前只连接产品内 CSV 导入和已确认流水 CSV 导出；不提供完整数据集
+备份/恢复 mutation。complete-dataset 与 restore 源码只作审计和后续演进输入，不进入 frozen
+backend，也不是当前产品能力。完整备份/恢复、repair、reinstall、upgrade/downgrade 继续
+`QUALIFIED_HOLD`。
 
-恢复必须从管理器明确选择一个完整 generation。恢复 owner 在隔离候选集群中验证并恢复，
-重建 originals，随后由唯一 Generation Owner 发布新的 CURRENT；不能对已安装库手工执行
-`DROP/CREATE/pg_restore`。源码/测试 scratch 演练见
-[POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)。在 exact-head 干净 Windows VM
-完成全生命周期前，这项能力仍是 `QUALIFIED_HOLD`。
+源码/测试 scratch 的 PostgreSQL 演练见
+[POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)；不得把 `pg_dump` 文件、
+`pg_restore --list` 或旧代码路径当作正式 Windows 恢复能力。
 
 ## PowerShell 测试
 

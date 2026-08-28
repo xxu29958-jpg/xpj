@@ -40,9 +40,16 @@ def runtime_handler_registry() -> TaskHandlerRegistry:
 
     Returns a fresh registry every time instead of keeping a mutable
     module-level handler map, so runtime task types are explicit code
-    dependencies. The catalog is currently empty: its only entry — the v1.0
-    cut-over handler — was retired with the PostgreSQL-only migration. Tests
-    that need stubs use background_task_service's isolated ContextVar registry.
+    dependencies. Tests that need stubs use background_task_service's isolated
+    ContextVar registry.
     """
+    from app.services.pending_enrichment_task_service import (
+        PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
+        run_pending_expense_enrichment_task,
+    )
 
-    return TaskHandlerRegistry()
+    return TaskHandlerRegistry(
+        {
+            PENDING_EXPENSE_ENRICHMENT_TASK_TYPE: run_pending_expense_enrichment_task,
+        }
+    )

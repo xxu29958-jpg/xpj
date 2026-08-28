@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from time import perf_counter
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,7 @@ from fastapi import BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.formparsers import MultiPartException
 
 from app.config import get_settings
 from app.errors import AppError
@@ -21,12 +23,21 @@ from app.services.file_service import (
     save_upload,
     save_upload_bytes,
 )
+from app.upload_limits import multipart_request_limit_bytes
 
 if TYPE_CHECKING:
     from app.models import Expense
 
 IOS_SHORTCUT_FILE_FIELDS = ("file", "image", "photo", "screenshot")
 logger = logging.getLogger("ticketbox.upload")
+
+
+@dataclass(frozen=True, slots=True)
+class HandledUpload:
+    """Internal upload result plus the committed enrichment predecessor."""
+
+    response: UploadResponse
+    predecessor_row_version: int
 
 
 async def read_raw_body_limited(
@@ -63,6 +74,35 @@ def pick_first_upload_file(form) -> UploadFile | None:
     return None
 
 
+def _install_multipart_receive_limit(request: Request, *, max_body_bytes: int):
+    raw_content_length = request.headers.get("content-length")
+    if raw_content_length:
+        try:
+            declared = int(raw_content_length)
+        except (TypeError, ValueError):
+            declared = -1
+        if declared > max_body_bytes:
+            raise AppError("file_too_large", status_code=413)
+
+    original_receive = request._receive  # noqa: SLF001 - ASGI pre-parser byte gate.
+    received = 0
+
+    async def limited_receive():
+        nonlocal received
+        message = await original_receive()
+        if message.get("type") == "http.request":
+            received += len(message.get("body") or b"")
+            if received > max_body_bytes:
+                # MultiPartParser owns any SpooledTemporaryFile opened so far;
+                # raising its native exception makes it close those files before
+                # Request.form projects the error to HTTPException.
+                raise MultiPartException("Request exceeded maximum size.")
+        return message
+
+    request._receive = limited_receive  # noqa: SLF001 - restored after parsing.
+    return original_receive
+
+
 async def save_request_upload(
     request: Request,
     tenant_id: str,
@@ -75,6 +115,10 @@ async def save_request_upload(
         limit = max(0, min(limit, int(max_size_bytes)))
     content_type = request.headers.get("content-type", "")
     if content_type.lower().startswith("multipart/form-data"):
+        original_receive = _install_multipart_receive_limit(
+            request,
+            max_body_bytes=multipart_request_limit_bytes(limit),
+        )
         try:
             form_context = request.form(
                 max_files=4,
@@ -99,6 +143,8 @@ async def save_request_upload(
             if "maximum size" in detail or "too large" in detail:
                 raise AppError("file_too_large", status_code=413) from exc
             raise AppError("invalid_request", status_code=422) from exc
+        finally:
+            request._receive = original_receive  # noqa: SLF001
 
         raise AppError("invalid_request", "表单里没有找到图片文件。", status_code=422)
 
@@ -152,7 +198,8 @@ async def handle_upload(
     timezone_name: str | None = None,
     max_size_bytes: int | None = None,
     commit_guard: Callable[[], None] | None = None,
-) -> UploadResponse:
+    schedule_enrichment: bool = True,
+) -> HandledUpload:
     started_at = perf_counter()
     saved_file, timing_ms = await save_request_upload(
         request,
@@ -174,7 +221,6 @@ async def handle_upload(
         saved_file,
         tenant_id,
         source=source,
-        run_enrichment=False,
     )
     timing_ms["db_create_ms"] = elapsed_ms(db_started_at)
     duration_ms = elapsed_ms(started_at)
@@ -190,10 +236,15 @@ async def handle_upload(
         json.dumps(timing_ms, ensure_ascii=False, sort_keys=True),
         expense.duplicate_status,
     )
-    background_tasks.add_task(
-        enrich_pending_expense,
-        expense.id,
-        tenant_id,
-        timezone_name,
+    if schedule_enrichment:
+        background_tasks.add_task(
+            enrich_pending_expense,
+            expense.id,
+            tenant_id,
+            timezone_name,
+            expected_row_version=expense.row_version,
+        )
+    return HandledUpload(
+        response=upload_response(expense, saved_file, duration_ms, timing_ms),
+        predecessor_row_version=expense.row_version,
     )
-    return upload_response(expense, saved_file, duration_ms, timing_ms)

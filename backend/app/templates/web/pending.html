@@ -29,12 +29,10 @@
   </div>
   <div class="product-page-actions">
     {% if can_write %}
-    {# K3: 原生无 JS 上传表单 (上传走 /web/pending/upload, 真实 multipart);
-       timezone 由 core.js 的 initInboxCapture 渐进填充, 不自动提交。 #}
-    <form class="inbox-upload-form" method="post" action="/web/pending/upload" enctype="multipart/form-data">
+    {# ledger 必须在 multipart body 解析前完成授权，因此放在 query；csrf 留在
+       body。timezone 由 JS 渐进写入 action query，无 JS 时后端使用默认时区。 #}
+    <form class="inbox-upload-form" method="post" action="/web/pending/upload{{ _q }}" data-inbox-capture enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="timezone" value="" data-inbox-timezone>
       <input class="inbox-upload-file" type="file" name="file" accept="image/*" required aria-label="选择小票图片">
       <button class="product-button product-button--primary" type="submit">上传小票</button>
     </form>
@@ -62,6 +60,7 @@
    error → 红(undo 失败)。空值落到默认 info 样式。undo-banner 修饰保留(矿同);
    product 组件表只有 .undo-banner-action 布局, 旧 5s auto-dismiss 动画不移植。 #}
 <div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}{% if undo_items or undo_expense_id %} undo-banner{% endif %}"
+     {% if enrichment_watch %}data-inbox-enrichment-watch data-task-public-id="{{ enrichment_watch.task_public_id }}" data-watch-timeout-ms="{{ enrichment_watch.timeout_ms }}" aria-busy="true"{% elif enrichment_terminal %}data-inbox-enrichment-terminal data-enrichment-state="{{ enrichment_terminal.state }}"{% endif %}
      role="status">
   <span>{{ flash_message }}</span>
   {% if undo_items %}
@@ -240,7 +239,11 @@
         <button class="product-button product-button--primary" type="submit" name="action" value="confirm_ready">确认入账</button>
       </form>
         {% else %}
+          {% if _status_label == '疑似重复' %}
+      <a class="product-button" href="/web/duplicates{{ _q }}#duplicate-{{ e.id }}">{{ _repair_label }}</a>
+          {% else %}
       <a class="product-button" href="/web/expenses/{{ e.id }}/edit{{ _q }}">{{ _repair_label }}</a>
+          {% endif %}
         {% endif %}
       {% endif %}
     </div>

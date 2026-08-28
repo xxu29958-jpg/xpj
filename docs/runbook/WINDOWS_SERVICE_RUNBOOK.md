@@ -166,7 +166,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 - 后端进程是谁。
 - cloudflared 进程或服务是否存在。
 - `TicketboxBackend` / `TicketboxCloudflareTunnel` 计划任务状态。
-- 正式安装当前不提供完整数据集备份/恢复 mutation；桌面管理器只连接 CSV 导入/已确认流水导出和只读备份记录。
+- 正式安装当前不提供完整数据集备份/恢复 mutation；桌面管理器只连接 CSV 导入与已确认流水导出。
 - 本机 `/api/health`。
 - 公网 `/api/health`。
 - 公网 `/api/auth/check`（推荐使用 `TICKETBOX_SESSION_TOKEN` 环境变量，避免 token 进入命令行历史；脚本不会打印 token）。

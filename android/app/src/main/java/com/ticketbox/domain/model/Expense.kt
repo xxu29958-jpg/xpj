@@ -113,6 +113,7 @@ fun Expense.canCreateRepaymentDraft(readOnly: Boolean): Boolean =
 object ExpenseSourceValues {
     const val IPHONE_SCREENSHOT = "iPhone截图"
     const val ANDROID_SCREENSHOT = "Android截图"
+    const val WEB_UPLOAD = "网页上传"
     const val MANUAL_ENTRY = "手动记账"
     const val CSV_IMPORT = "CSV导入"
     const val BILL_SPLIT_RECEIVED = "bill_split_received"

@@ -13,12 +13,15 @@ from api_contract_helpers import (
 )
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.main import app
 from app.models import Device, Expense, LedgerMember, UploadLink
 from app.services.category_common import DEFAULT_CATEGORIES
-from app.services.expense_service._create import enrich_pending_expense
+from app.services.expense_service._create import create_pending_expense
+from app.services.expense_service._enrich import enrich_pending_expense
 from app.services.file_service import resolve_protected_image, save_upload_bytes
 from app.services.identity_service import authenticate_upload_link, hash_secret
 from app.services.time_service import ensure_utc, now_utc
@@ -27,6 +30,99 @@ from tests._infra.env import TEST_UPLOAD_RELATIVE
 from tests._infra.upload_link_commit_concurrency import (
     assert_upload_link_commit_races_are_serialized,
 )
+
+
+@pytest.mark.real_db
+def test_pending_create_does_not_delete_original_after_post_commit_read_failure(
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    saved = save_upload_bytes(
+        PNG_BYTES,
+        tenant_id="owner",
+        filename="receipt.png",
+        content_type="image/png",
+    )
+    source = resolve_protected_image(saved.relative_path, "owner")[0]
+    real_commit = Session.commit
+    real_refresh = Session.refresh
+    expense_commit_completed = False
+
+    def observe_expense_commit(db: Session) -> None:
+        nonlocal expense_commit_completed
+        owns_expense = any(isinstance(value, Expense) for value in db.identity_map.values())
+        real_commit(db)
+        if owns_expense:
+            expense_commit_completed = True
+
+    def reject_post_commit_expense_read(db: Session, instance, *args, **kwargs) -> None:
+        if expense_commit_completed and isinstance(instance, Expense):
+            raise SQLAlchemyError("post-commit expense refresh unavailable")
+        real_refresh(db, instance, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "commit", observe_expense_commit)
+    monkeypatch.setattr(Session, "refresh", reject_post_commit_expense_read)
+    with SessionLocal() as db:
+        expense = create_pending_expense(
+            db,
+            saved,
+            "owner",
+            source="网页上传",
+        )
+        expense_id = expense.id
+        assert expense.public_id
+        assert expense.row_version == 1
+
+    assert expense_commit_completed is True
+    assert source.is_file()
+    with SessionLocal() as db:
+        persisted = db.get(Expense, expense_id)
+        assert persisted is not None
+        assert persisted.image_path == saved.relative_path
+
+
+@pytest.mark.real_db
+def test_pending_create_preserves_original_when_commit_acknowledgement_is_unknown(
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    saved = save_upload_bytes(
+        PNG_BYTES,
+        tenant_id="owner",
+        filename="receipt.png",
+        content_type="image/png",
+    )
+    source = resolve_protected_image(saved.relative_path, "owner")[0]
+    real_commit = Session.commit
+    acknowledgement_lost = False
+
+    def commit_then_lose_acknowledgement(db: Session) -> None:
+        nonlocal acknowledgement_lost
+        owns_upload = any(
+            isinstance(value, Expense) and value.image_path == saved.relative_path for value in db.identity_map.values()
+        )
+        real_commit(db)
+        if owns_upload and not acknowledgement_lost:
+            acknowledgement_lost = True
+            raise SQLAlchemyError("pending expense commit acknowledgement lost")
+
+    monkeypatch.setattr(Session, "commit", commit_then_lose_acknowledgement)
+    with SessionLocal() as db, pytest.raises(SQLAlchemyError, match="acknowledgement lost"):
+        create_pending_expense(
+            db,
+            saved,
+            "owner",
+            source="网页上传",
+        )
+
+    assert acknowledgement_lost is True
+    assert source.is_file()
+    with SessionLocal() as db:
+        persisted = db.scalar(select(Expense).where(Expense.image_path == saved.relative_path))
+        assert persisted is not None
+        assert persisted.status == "pending"
 
 
 def test_upload_screenshot_accepts_ios_file_body(client: TestClient, *, identity) -> None:
@@ -42,16 +138,24 @@ def test_upload_screenshot_accepts_ios_file_body(client: TestClient, *, identity
 
 
 def test_upload_passes_client_timezone_to_background_ocr(
-    client: TestClient, monkeypatch
-, *, identity) -> None:
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+) -> None:
     captured: dict[str, object] = {}
 
     def fake_enrich(
-        expense_id: int, tenant_id: str, timezone_name: str | None = None
+        expense_id: int,
+        tenant_id: str,
+        timezone_name: str | None = None,
+        *,
+        expected_row_version: int | None = None,
     ) -> None:
         captured["expense_id"] = expense_id
         captured["tenant_id"] = tenant_id
         captured["timezone_name"] = timezone_name
+        captured["expected_row_version"] = expected_row_version
 
     monkeypatch.setattr("app.routes._upload_request.enrich_pending_expense", fake_enrich)
 
@@ -69,6 +173,7 @@ def test_upload_passes_client_timezone_to_background_ocr(
     assert captured["expense_id"] == response.json()["id"]
     assert captured["tenant_id"] == "owner"
     assert captured["timezone_name"] == "America/Los_Angeles"
+    assert captured["expected_row_version"] == 1
 
 
 def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient, *, identity) -> None:
@@ -129,9 +234,7 @@ def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> 
     assert _stored_upload_files() == []
 
 
-def test_expired_upload_link_is_rejected_and_revoked_before_saving_file(
-    client: TestClient, *, identity
-) -> None:
+def test_expired_upload_link_is_rejected_and_revoked_before_saving_file(client: TestClient, *, identity) -> None:
     expired_at = now_utc() - timedelta(minutes=1)
     with SessionLocal() as db:
         link = db.scalar(select(UploadLink).where(UploadLink.token_hash == hash_secret(identity.upload_key)))
@@ -179,12 +282,12 @@ def test_upload_link_activity_refresh_is_throttled(client: TestClient, *, identi
 
 
 def test_upload_link_rejects_viewer_after_role_downgrade_before_saving_file(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     with SessionLocal() as db:
-        members = db.scalars(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner")
-        ).all()
+        members = db.scalars(select(LedgerMember).where(LedgerMember.ledger_id == "owner")).all()
         assert members
         for member in members:
             member.role = "viewer"
@@ -207,7 +310,9 @@ def test_upload_link_commit_races_are_serialized(monkeypatch, *, identity) -> No
 
 
 def test_shortcut_upload_rejects_app_token_before_saving_file(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     response = client.post(
         "/api/upload-screenshot",
@@ -238,7 +343,9 @@ def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch, *
 
 
 def test_upload_rejects_empty_raw_body_and_empty_multipart_file(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     response = client.post(
         identity.upload_url_path,
@@ -334,7 +441,9 @@ def test_saved_upload_strips_exif_metadata() -> None:
 
 
 def test_upload_rejects_fake_heic_brand_without_decodable_image(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     fake_heic = b"\x00\x00\x00\x1cftypheic\x00\x00\x00\x00fake-heic-payload"
 
@@ -351,7 +460,9 @@ def test_upload_rejects_fake_heic_brand_without_decodable_image(
 
 @pytest.mark.real_db
 def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     heic_bytes = make_heic_bytes()
 
@@ -385,16 +496,16 @@ def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(
         assert stored.size[1] > 0
         assert not stored.getexif()
 
-    thumbnail = client.get(
-        f"/api/expenses/{payload['id']}/thumbnail", headers=identity.app_headers
-    )
+    thumbnail = client.get(f"/api/expenses/{payload['id']}/thumbnail", headers=identity.app_headers)
     assert thumbnail.status_code == 200
     assert thumbnail.headers["content-type"].startswith("image/jpeg")
     assert thumbnail.content.startswith(b"\xff\xd8")
 
 
 def test_upload_uses_image_header_instead_of_spoofed_metadata(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     response = client.post(
         identity.upload_url_path,
@@ -430,9 +541,7 @@ def test_upload_randomizes_path_traversal_filename(client: TestClient, *, identi
     assert ":" not in item["image_path"]
 
 
-def test_upload_cleans_saved_file_when_pending_creation_fails(
-    client: TestClient, monkeypatch, *, identity
-) -> None:
+def test_upload_cleans_saved_file_when_pending_creation_fails(client: TestClient, monkeypatch, *, identity) -> None:
     from app.services.expense_service import _create as create_service
 
     def fail_duplicate_mark(*args, **kwargs):
@@ -451,15 +560,11 @@ def test_upload_cleans_saved_file_when_pending_creation_fails(
     assert _stored_upload_files() == []
 
 
-def test_upload_thumbnail_failure_does_not_block_pending(
-    client: TestClient, monkeypatch, *, identity
-) -> None:
-    def fail_thumbnail(_: str | None) -> str | None:
+def test_upload_thumbnail_failure_does_not_block_pending(client: TestClient, monkeypatch, *, identity) -> None:
+    def fail_thumbnail(*_args, **_kwargs):
         raise RuntimeError("thumbnail backend unavailable")
 
-    monkeypatch.setattr(
-        "app.services.expense_service._helpers.generate_thumbnail", fail_thumbnail
-    )
+    monkeypatch.setattr("app.services.expense_service._enrich.stage_thumbnail", fail_thumbnail)
 
     response = client.post(
         identity.upload_url_path,
@@ -478,10 +583,10 @@ def test_upload_thumbnail_failure_does_not_block_pending(
     assert item["thumbnail_path"] is None
 
 
-def test_generate_thumbnail_decompression_bomb_degrades(monkeypatch) -> None:
+def test_stage_thumbnail_decompression_bomb_degrades(monkeypatch) -> None:
     from PIL import Image
 
-    from app.services.thumb_service import generate_thumbnail
+    from app.services.thumb_service import stage_thumbnail
 
     saved = save_upload_bytes(
         PNG_BYTES,
@@ -495,13 +600,11 @@ def test_generate_thumbnail_decompression_bomb_degrades(monkeypatch) -> None:
 
     monkeypatch.setattr(Image, "open", reject_oversized_image)
 
-    assert generate_thumbnail(saved.relative_path, tenant_id="owner") is None
+    assert stage_thumbnail(saved.relative_path, tenant_id="owner") is None
 
 
-def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
-    monkeypatch, *, identity
-) -> None:
-    import app.services.expense_service._create as create_mod
+def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(monkeypatch, *, identity) -> None:
+    import app.services.expense_service._enrich as enrich_mod
 
     saved = save_upload_bytes(
         PNG_BYTES,
@@ -531,10 +634,11 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
     def fail_classify(*args, **kwargs):
         raise RuntimeError("classify failed after thumbnail generation")
 
-    monkeypatch.setattr(create_mod, "classify_expense", fail_classify)
+    monkeypatch.setattr(enrich_mod, "classify_expense", fail_classify)
 
-    enrich_pending_expense(expense_id, "owner")
+    failed = enrich_pending_expense(expense_id, "owner")
 
+    assert failed.outcome == "failed"
     assert set(_stored_upload_files()) == before
     with SessionLocal() as db:
         row = db.get(Expense, expense_id)
@@ -545,14 +649,15 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
 
     # A successful retry that only fills the derived thumbnail cache must also
     # leave the client-facing business snapshot untouched.
-    monkeypatch.setattr(create_mod, "classify_expense", lambda _db, row: row)
+    monkeypatch.setattr(enrich_mod, "classify_expense", lambda _db, row: row)
     monkeypatch.setattr(
-        create_mod,
+        enrich_mod,
         "collect_auto_ocr_extractions",
         lambda *_args, **_kwargs: [],
     )
-    enrich_pending_expense(expense_id, "owner")
+    no_result = enrich_pending_expense(expense_id, "owner")
 
+    assert no_result.outcome == "no_result"
     assert set(_stored_upload_files()) > before
     with SessionLocal() as db:
         row = db.get(Expense, expense_id)
@@ -563,7 +668,9 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
 
 
 def test_upload_same_image_marks_suspected_duplicate_without_rejecting(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     first = client.post(
         identity.upload_url_path,
@@ -588,7 +695,9 @@ def test_upload_same_image_marks_suspected_duplicate_without_rejecting(
 
 
 def test_rejecting_duplicate_original_clears_other_pending_reference(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     first = client.post(
         identity.upload_url_path,
@@ -637,13 +746,13 @@ def test_upload_stores_relative_paths_and_never_confirms(client: TestClient, *, 
     assert "user-original-name" not in expense["image_path"]
     assert "\\" not in expense["image_path"]
     assert ":\\" not in expense["image_path"]
-    assert expense["thumbnail_path"] is None or expense["thumbnail_path"].startswith(
-        "uploads/"
-    )
+    assert expense["thumbnail_path"] is None or expense["thumbnail_path"].startswith("uploads/")
 
 
 def test_upload_screenshot_rejects_multipart_without_image_file(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     response = client.post(
         identity.upload_url_path,
@@ -657,7 +766,10 @@ def test_upload_screenshot_rejects_multipart_without_image_file(
 
 
 def test_upload_rejects_image_exceeding_pixel_cap(
-    client: TestClient, monkeypatch, *, identity,
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
 ) -> None:
     from io import BytesIO
 

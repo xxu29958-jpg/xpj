@@ -57,7 +57,7 @@ def _real_admin_boundary() -> Iterator[None]:
 
 def test_public_host_owner_console_403(client: TestClient) -> None:
     pub = _public_client()
-    for path in ("/owner", "/owner/devices", "/owner/upload-links", "/owner/backups", "/owner/settings"):
+    for path in ("/owner", "/owner/devices", "/owner/upload-links", "/owner/settings"):
         resp = pub.get(path)
         assert resp.status_code == 403, f"{path} should refuse public host, got {resp.status_code}"
 

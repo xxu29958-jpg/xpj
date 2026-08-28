@@ -76,7 +76,7 @@ scripts/               Manager provenance 与冻结构建入口
 - **服务边界清楚**:正式模式只观察 SCM 与安装身份，不从 Manager 停/启服务；崩溃恢复仍由已安装的 SCM/Shawl 策略负责。源码模式只监督自己启动的开发后端。
 - **GUI 生命周期不接管服务**:正式模式关闭最后一个 Edge 窗口只退出 Manager 主进程和本机控制面,不停止 SCM 服务;源码模式只清理自己创建的开发后端。
 - **单实例仍完整持窗**:第二次启动先用 challenge/HMAC 识别既有 owner,再让 owner 通过 authenticated reopen 创建和登记新窗口;第二个进程不直接留下无人跟踪的 Edge。
-- **业务权威不进 GUI**：绑定码、设备、UploadLink 与业务诊断仍由 loopback `/owner` 和后端服务生成；Manager 只打开精确任务页，不读取或写入数据库。数据保护卡只连接产品内 CSV 导入/已确认流水导出和只读备份记录，不把两者称为完整备份或恢复。
+- **业务权威不进 GUI**：绑定码、设备、UploadLink 与业务诊断仍由 loopback `/owner` 和后端服务生成；Manager 只打开精确任务页，不读取或写入数据库。数据保护卡只连接产品内 CSV 导入与已确认流水导出，不承诺或暴露仍处于 HOLD 的完整备份/恢复能力。
 - **GUI 永不提权**:localhost 控制服务始终以普通用户运行；正式安装态没有提权 helper 或常驻高权限代理。
 - **控制面 loopback-only**:`TICKETBOX_MANAGER_HOST` 非 loopback(`0.0.0.0` / LAN IP)会在启动前被 `config.py` 拒绝——控制服务发 token + 收控制 POST,绝不绑到公网/局域网。
 - **CSRF-safe**:控制 POST 需 per-process token + 同源,跨站页面打不动。

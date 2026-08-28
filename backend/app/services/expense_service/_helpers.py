@@ -4,8 +4,8 @@ Symbol layout in this module is dictated by where it gets used:
 
 - ``_clean_*`` helpers normalize untrusted text from create/update payloads.
 - ``_notification_*`` helpers compute the dedup key for notification drafts.
-- ``_try_generate_thumbnail`` and ``_replace_ocr_draft_items_from_text`` are
-  infrastructure leaks shared between create / OCR / enrichment flows.
+- ``_replace_ocr_draft_items_from_text`` is the remaining OCR infrastructure
+  helper shared by the explicit OCR and background-enrichment flows.
 - ``_expense_has_pending_fx`` / ``_ensure_expense_can_confirm`` keep the
   FX-gating rules in one place so create / update / OCR confirm see the
   same definition. Optimistic-concurrency / ``row_version`` predicates
@@ -23,7 +23,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.errors import AppError, PathTraversalError
+from app.errors import AppError
 from app.fx_constants import FX_STATUS_PENDING
 from app.models import Expense
 from app.schemas import NotificationDraftCreateRequest
@@ -33,7 +33,6 @@ from app.services.expense_query import EDITABLE_STATUSES  # re-exported
 from app.services.ocr_service import serialize_ocr_draft_fields
 from app.services.ocr_service._apply import _expense_ocr_source_money_context
 from app.services.receipt_parse_service import parse_receipt_text
-from app.services.thumb_service import generate_thumbnail
 from app.services.time_service import ensure_utc
 
 _ = EDITABLE_STATUSES  # quiet F401: re-exported through the package facade
@@ -57,7 +56,6 @@ __all__ = [
     "_notification_window_key",
     "_replace_ocr_draft_items_from_text",
     "_record_background_failure",
-    "_try_generate_thumbnail",
 ]
 
 
@@ -187,37 +185,6 @@ def _notification_draft_fields(payload: NotificationDraftCreateRequest) -> str |
     return serialize_ocr_draft_fields(list(fields))
 
 
-def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | None:
-    try:
-        return generate_thumbnail(relative_path, tenant_id=tenant_id)
-    except _thumbnail_failure_errors():
-        # Thumbnail is an optional artifact — never block the surrounding
-        # upload / enrichment on it. The failure is still recorded so
-        # health checks can see "thumbnails are silently failing".
-        _record_background_failure("thumbnail")
-        logger.exception(
-            "thumbnail generation failed for ledger=%s path=%s",
-            tenant_id,
-            relative_path,
-        )
-        return None
-
-
-def _thumbnail_failure_errors() -> tuple[type[BaseException], ...]:
-    base_errors: tuple[type[BaseException], ...] = (
-        OSError,
-        PathTraversalError,
-        RecursionError,
-        RuntimeError,
-        ValueError,
-    )
-    try:
-        from PIL import Image
-    except ImportError:
-        return base_errors
-    return (*base_errors, Image.DecompressionBombError)
-
-
 def _expense_has_pending_fx(expense: Expense) -> bool:
     return expense.fx_status == FX_STATUS_PENDING or (
         expense.amount_cents is None and expense.original_amount_minor is not None
@@ -258,9 +225,7 @@ def _replace_ocr_draft_items_from_text(
         raw_text,
         timezone_name=timezone_name,
         currency_code=money_context[0] if money_context is not None else None,
-        minor_unit_exponent=(
-            money_context[1] if money_context is not None else None
-        ),
+        minor_unit_exponent=(money_context[1] if money_context is not None else None),
     )
     # Top-level import would form a cycle with receipt_item_service if
     # that module ever re-introduced an expense_service dependency. It

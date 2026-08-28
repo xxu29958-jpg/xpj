@@ -34,6 +34,7 @@
     call("initDragReorder");
     call("initSplitLayout");
     call("initInboxCapture");
+    call("initInboxEnrichmentWatch");
   }
 
   app.boot = boot;

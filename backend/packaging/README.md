@@ -51,10 +51,9 @@ packaging\build_inno_installer.ps1                    # 原子发布完整版本
 安装包版本只能从 `app/version.py` 的 `BACKEND_VERSION` 动态读取；构建工具版本只能从
 `packaging/windows-build-toolchain.json` 读取；服务/数据库身份、默认/隔离端口、SCM 策略、
 就绪等待、bootstrap 默认值和密钥强度只能从 `packaging/windows-release-config.json` 读取。构建脚本只把向导所需值
-注入 Inno，升级预检、安装和卸载则通过 `windows_release_config.ps1` 读取并校验配置，不再从 Inno 重复传递服务名或
-超时。覆盖升级在复制前读取已安装的 N-1 config 校验旧服务，并把该已验证配置保存到 Inno 临时快照，复制后仍用 N-1
-策略完成旧服务删除，注册后才以 N config 验证新服务；服务名、数据库名和数据库角色
-属于持久身份，变化必须有显式迁移，不能伪装成普通策略更新。`build_inno_installer.ps1` 是受支持的构建入口：它绑定实际
+注入 Inno；current shipment 只资格化 Fresh install，不提供 upgrade、uninstall 或 N-1 lifecycle。
+旧版本配置、服务删除与迁移设计只保留在下方历史审计段，不能作为当前入口或产品承诺。
+`build_inno_installer.ps1` 是受支持的构建入口：它绑定实际
 ISCC defines，编译后重新读取 backend/PG/Shawl/recipe/Git/ISCC 证据，再把 EXE、SHA-256 旁车、provenance 和完成标记作为
 一个 staging 单元验证并原子发布到 `dist\installer\Ticketbox-Setup-<version>\`；并发构建由同一机器级构建锁串行化，替换失败
 会恢复上一份完整发布单元。编译入口还在释放同一构建锁前，把内存中的 installer SHA-256 写到 publish unit 外的 runner step
@@ -74,7 +73,11 @@ commit。CI gap gate 以 Windows 大小写不敏感语义合并 workflow/job/ste
 只消费同一输出。Gitea manual workflow 继续使用 canonical merge-base。自比较、非祖先、
 歧义或不可解析基线均失败；只有无 CI marker 的本地探索可跳过比较。
 
-安装行为:
+## 历史实现审计（非当前能力）
+
+以下长项只保留旧 lifecycle/安全机制的审计背景，不是 current shipment、用户入口或可调用
+Owner。当前正式能力与 HOLD 边界只看后文“运行与数据”和“数据保护当前边界”；其中出现的
+backup、restore、repair、upgrade、uninstall 或 `-DeleteData` 现在时描述均不得作为产品承诺。
 
 - 安装包使用小票夹图标和“小票夹后端服务”显示名,开始菜单会创建“打开小票夹 Web”和“数据目录”快捷方式。
 - 安装器标准页面和按钮使用内置简体中文语言文件，并显式绑定可覆盖简中文字形的 Windows UI 字体；自定义数据目录/端口页面也保持中文。
@@ -83,7 +86,7 @@ commit。CI gap gate 以 Windows 大小写不敏感语义合并 workflow/job/ste
 - 首次安装默认使用 `C:\ProgramData\Ticketbox\pgdata` + `C:\ProgramData\Ticketbox\app`；当前 owner pairing handoff 与 repair latch 放在从 OS `CommonProgramFiles` 动态解析的 `Ticketbox\installer-state` 机器生命周期域。fresh install 会先原子建立并复核该目录的 SYSTEM/Administrators owner/ACL。旧 `owner-bootstrap.txt` / `owner-handoff-pending` 只按 no-follow 类型记录为审计对象：不读取内容、不迁移、不删除、不展示、不参与当前身份判断，也不能阻断新协议。只有当前协议自己的权威对象冲突、ACL 漂移或 reparse 才 fail closed。
 - 每个提权 PowerShell 子步骤都写入独立受保护日志；Inno 先用 `SaveStringsToUTF8File` 建立带 UTF-8 BOM 的机器可读头（schema、installer owner PID、单调序号、context），再由 Windows PowerShell 5.1 或 PowerShell 7 `Start-Transcript -Append` 追加。这样两种宿主都保留同一可关联语义和可读中文，不依赖机器活动代码页。
 - `app\.env` 由脚本写成 UTF-8 no BOM,`DATABASE_URL` 指向配置中动态读取的应用角色；上传大小、OCR、API 文档等应用默认值继续由后端 `config.py` 单源负责，安装器不复制一份。SCM 注入的 DataRoot、两类 recovery guard、v2 marker 路径与 Volume GUID 属于宿主权威；frozen launcher 在任何写目录前要求四项全部存在，拒绝 reparse marker，并校验 marker 的完整 DataRoot/InstallDir、稳定 junction 最终目标与 Volume GUID。bootstrap recovery guard 与 marker 必须同经 machine-owned runtime junction 指向同一 Volume GUID DataRoot，不能继续使用可被复用的盘符路径；marker 对 backend 服务 SID 仅授予读取，不授予写、删除、改名或父目录删除权。只有非 frozen 源码模式可以不带这组宿主权威；加载 backend 可写 `.env` 后仍会恢复原值，`.env` 不能清空安装隔离、伪造卷身份或移动数据根。
-- 复制前的旧备份、服务校验和停服机制仍是隔离的底层机制，不构成已授权的升级入口。当前 preinstall 只允许无服务、无 PG 数据、无 `.env`、无 installed manifest/receipt/CURRENT 的真首装，或同一 immutable active intent 的重试；任何既有安装证据都在首笔 generation intent 前 fail closed。
+- 历史切片曾设计复制前备份、服务校验和停服机制；current Fresh shipment 不调用这些旧备份或升级准备 Owner。当前 preinstall 只允许无服务、无 PG 数据、无 `.env`、无 installed manifest/receipt/CURRENT 的真首装，或同一 immutable active intent 的重试；任何既有安装证据都在首笔 generation intent 前 fail closed。
 - 保留数据 repair/reinstall、跨 release 升级和孤儿数据收编尚未实现。旧 lifecycle/C07 producer 已退役，不能通过旧 stage、READY、receipt 或 historical evidence 绕回 current/publication authority。
 - Inno 从启动到复制、服务后置配置和卸载全程持有 `{commoncf64}\Ticketbox\installer-lifecycle.lock`，并动态写入受保护的持锁进程记录。owner 身份不是可复用的 PID 文本，而是 PID + Windows 进程创建 FILETIME；Inno 在启动 holder 前冻结自身创建时间，holder 用 `OpenProcess` + `GetProcessTimes` 验证直接父进程并终身等待同一 `SafeWaitHandle`，后续轮询绝不按 PID 重开或重新解释进程。ready 再声明 holder PID + 创建 FILETIME，Inno 同样取得并持续持有匹配句柄。子 PowerShell 必须是该不可变 owner 身份对应进程的直接子进程、确认零共享锁仍被占用且运行在 64 位宿主中，才可复用安装器总锁。每个 mutation child 先取得独占 operation lock，再校验直接父进程和主锁；该 operation lock 是本次调用的委托租约，其路径必须是 no-follow 普通受保护文件，reparse、目录、不可读或其他 malformed 形态在 holder probe 中都视为 active/indeterminate，不能触发权威释放。DataRoot holder 在目录句柄、marker 与 ready IPC 都已创建、复读并绑定 holder 身份/nonce 之前持续持有启动方的 operation lease，只通过显式回调完成一次性交接；它也打开并等待同一个已验证 owner handle。失败路径不提前释放。交接后即使 Inno 在子进程返回前退出或请求 release，机器锁 holder 与 DataRoot lease holder 也会保留到活动 operation lock 释放，避免仍在执行的已授权 child 失去目录/事务屏障。holder 启动/预检失败时，只有在目录 guard 与 operation lease 均已释放后，才向仍匹配原 owner handle 的 Setup 原子提交并复读 `stopped`；Setup 收到确认前保留本地 holder 状态并拒绝同进程重试。正式安装 mutation 必须同时带当前 Inno owner PID 与 lifecycle receipt；独立脚本只保留只读服务验证，不得自行提交安装。ready/release IPC 也只存在于该受保护机器根：holder 先验证机器根并拒绝 stale IPC，再向受保护 transient bootstrap 写入绑定当前 owner 身份的精确 `root_validated` 短命握手；Inno 收到该握手前不探测机器根子项，收到后才读取 ready。所有已原子发布的 lifecycle/DataRoot coordination artifact 读取均使用固定 `40 x 50 ms` 上限：PowerShell 只重试 Win32 sharing/lock violation `32/33`，ACL、格式、身份或内容错误立即失败；Inno 的读取 API 不返回 native code，因此只在这一受保护、不可原地修改的 IPC 层做同样的 2 秒有界读取重试，超时仍保留原 fail-closed 错误。holder 随后生成 256-bit 随机 nonce，声明真实 PID/创建 FILETIME 与 PowerShell 单源解析的 installer-state 路径；release 必须回传 nonce。DataRoot 目录链 lease 采用同一身份/nonce 协议；缺失链节点从首次可见起即具有最终 SYSTEM/Administrators ACL，新建 DataRoot 会在发布 ready 前写入并复读安装 marker。预先存在却没有 marker 的空 DataRoot 会在 ready 前拒绝，不能对可能仍被低权限进程持有写句柄的目录做事后 ACL 收编；非空无 marker 布局在所有普通安装路径都拒绝，只能交给未来独立隔离恢复/导入。Setup 不会从宽权限 `{tmp}` 直接提权执行 helper：manifest-bound 的受保护 bootstrap 输入集复制到 transient bootstrap 后逐项核对构建时 SHA-256，复制边界前再全量复核；输入数量不作为合同。uninstall holder 来自受保护 Program Files 安装目录，不冒充 bootstrap bundle。该目录不承载 lock/receipt/handoff 权威，`root_validated` 只证明本次 holder 已完成根验证，不能授权 mutation。
 - DataRoot 长命权威单独归属 `hold_data_root_mutation_guard.ps1`；它不加载 release config、服务、数据库或 receipt，`prepare_bundled_upgrade.ps1` 只做短命升级准备。operation lock 路径的 no-follow 分类若因 sharing violation 或其他异常无法完成，一律视为 active/indeterminate，不释放机器/DataRoot 权威。pre-ready holder 死亡且没有 acknowledgement 时，Setup 只能通过同步 `-ConfirmStopped` 先取得 operation lock 并证明 ready absent；post-ready 死亡还必须复核 holder PID/creation FILETIME/nonce 和原身份已不存活。两条路径都在 guard/lease 全部释放后才清理 IPC 并向同一活 owner 原子提交 `stopped`。
@@ -98,7 +101,7 @@ commit。CI gap gate 以 Windows 大小写不敏感语义合并 workflow/job/ste
 - 正式 Windows 首装通过 `/api/bootstrap/installation-owner` 在一个 PostgreSQL 事务中创建 installation owner claim 与一个 8 位、短期、一次性的 pairing child。claim 持久绑定同一 `operation_id` / `installation_id`；同一事务重试重放同一有效 child，过期后只换代 child 并递增 generation，不伪造新的安装 operation。响应不含 admin token、upload key 或任何用户长期 bearer。安装器把 pairing-only 结果原子发布为唯一的 `installation-owner-handoff-v2.txt`，文件同时绑定 claim generation、derivation index 与已冻结的安装器 PID/创建时间；崩溃修复只在持有同一生命周期锁并证明旧 owner 已死亡后原地重绑该文件。Inno 严格解析后只展示 8 位码与到期时间；完成安装时退役该短期文件，再以 `ExecAsOriginalUser` 启动普通用户的 Desktop Manager。Manager 消费 pairing code，并由该普通用户进程把新桌面 session 写入其自己的 Windows Credential Manager。提权安装器不会创建、复制或保存用户长期凭据。每一代 bootstrap listener 的暴露、隔离、停服轮换和失败回执仍由受保护 guard/intent 约束；日志与公开回执不得包含 secret。
 - 卸载默认只删除归属校验通过的服务和程序文件，**保留 ProgramData 数据、安装身份、PG recovery toolset 与同机 repair/reinstall 所需的 machine state**。卸载先严格分类 runtime-state 根与 guard 的实际形态，再校验并 disabled backend；只有普通目录/普通文件合同成立且服务 SID 仍可验证时才退役 guard 与空 runtime-state 目录，随后删除 backend SCM 记录。backend 服务缺失时，任何仍存在或形态异常的 runtime-state 都 fail closed，不能用 `Test-Path -PathType` 把 malformed 状态误报为 absent；安装身份已部分或全部删除的重试 resolver 只读裁决 intent/receipt/state，随后必须先走同一 runtime projection 校验，才能退役空 installer-state。完整身份主流程也先只读验证 installer-state，再校验 runtime projection；staging cleanup 与 PG recovery toolset save 均在 projection 通过后执行。生命周期锁为取得互斥权而清理自己严格命名的非权威临时写入不算业务状态迁移，不能借此删除 receipt/intent/identity。卸载前同时核对 SCM 稳定态与 `pg_ctl status -D`，服务/数据簇进程不一致即失败；删除 PG 服务前再次确认数据簇已停。普通保留数据卸载若存在 completed lifecycle receipt，必须先验证，并在两项服务都删除后退役它，避免下一次重装把旧 commit 当成待续跑事务；无 receipt 只兼容旧版保留数据卸载。手动 `-DeleteData` 还必须通过注册表 DataRoot、安装专属 JSON marker、无重解析点和 installer-state 绑定检查；停服并验证 completed lifecycle receipt 后，先原子写入绑定 receipt SHA-256/InstallDir/DataRoot 的 `delete-data-in-progress.json`，再退役 receipt 并删除可能承载其备份证据的数据根。DataRoot 精确删除把 `.ticketbox-data-root.json` 留到 payload 之后；marker 已删时，只有已验证 intent 才能收敛空根，非空残树拒绝。PG recovery 完整校验后另以 CreateNew 发布 `DELETE_IN_PROGRESS.json`，并把它作为最后删除的续跑 latch；既有 `BUILD_COMPLETE.json` 本身不授权删除。receipt 缺失而没有受保护意图、或 receipt 是目录/reparse/损坏文件时拒绝删除；所有分支先由共享 no-follow 分类器裁决 receipt，原生句柄对悬空目录 junction 返回路径缺失时会回退枚举父目录项，不能误报 retired。DataRoot 后依次退役恢复工具与注册身份，handoff/latch/delete intent 和空 installer-state 最后清理。注册身份已经部分或全部删除时只能从受保护 intent 恢复绑定 DataRoot；intent 已退役后只允许清理精确 ACL 且为空的 state 目录，任一步失败都按剩余权威证据幂等收敛。
 
-当前不声明升级能力：复制前的旧备份/停服机制仍保留，但既有数据库不会进入本刀的 Generation Owner。版本化程序目录、跨 release 恢复和真实故障注入属于后续纵向切片，不能用源码检查或 `pg_restore --list` 冒充完成。
+这组历史细节不声明升级能力：旧备份/停服源码没有 current caller，也不进入 frozen shipment；版本化程序目录、跨 release 恢复和真实故障注入继续 HOLD，不能用源码检查或 `pg_restore --list` 冒充完成。
 
 高级命令行参数仍可用于自动化安装(传给安装器 EXE):
 
@@ -113,20 +116,18 @@ Ticketbox-Setup-<version>.exe /TicketboxDataRoot="D:\TicketboxData" /TicketboxBa
 ## 运行与数据
 
 正式 Windows 分发只支持 Inno 安装器注册的 Shawl/SCM 服务宿主。直接双击 frozen backend、
-手工创建空库或旧式 PowerShell 一键安装不再是受支持入口；数据库初始化、恢复和升级必须由
-安装器持有生命周期权威后调用专用 generation/migration 动作。
+手工创建空库或旧式 PowerShell 一键安装不再是受支持入口；数据库初始化只在安装器持有的
+Fresh generation 动作中执行。
 
-Generation Owner 已闭合全新机器上的 `empty source -> target -> candidate -> CURRENT`
-首次安装，以及用户明确选择的同 Dataset Authority 完整 backup generation 的隔离恢复与 CURRENT
-发布。首次安装要求不存在 predecessor/current，实际执行冻结的 Alembic program；恢复路径先校验
-完整 manifest/payload，再恢复隔离候选并重新观察数据库身份。既有安装升级、保留数据
-repair/reinstall、跨 release 未完成事务和二进制/schema 降级尚未实现，均继续
+Generation Owner 当前只闭合全新机器上的 `empty source -> target -> candidate -> CURRENT`
+首次安装；它要求不存在 predecessor/current，并执行冻结的 Alembic program。完整数据集备份/恢复、
+既有安装升级、保留数据 repair/reinstall、跨 release 未完成事务和二进制/schema 降级尚未实现，均继续
 `QUALIFIED_HOLD`；旧 C07 READY/stage/current 代码不是兼容入口，也不得重新启用。
 
 服务宿主通过 Shawl 把 `TICKETBOX_DATA_DIR` 设置为 machine-owned
 `{commonappdata}\TicketboxRuntimeBinding\data-root\app` junction；v2 DataRoot marker 与
-Volume GUID 把它绑定到安装器选择的物理 `<DataRoot>\app`。因此 `.env`、uploads、logs、
-backups 的 bytes 位于物理 DataRoot，不会写入 Program Files，也不直接依赖可复用盘符。
+Volume GUID 把它绑定到安装器选择的物理 `<DataRoot>\app`。因此 `.env`、uploads、logs
+等当前 backend 运行时文件位于物理 DataRoot，不会写入 Program Files，也不直接依赖可复用盘符。
 
 `launch.py` 在 import `app.*` 之前把 `UPLOAD_DIR` 指向数据目录、并把 uvicorn + app 日志配到 `logs/backend.log`(windowed `console=False` 无 stdout,改写文件);若存在 `<data>\.env` 则**优先**采用其中的值(`override=True`)。`DATABASE_URL` 不在这里默认——后端是 PostgreSQL-only,要么在 `.env` 里设、要么回落到 `app.config` 的本机 PostgreSQL 默认(EXE 假设本机已装 PostgreSQL 服务)。
 
@@ -143,15 +144,11 @@ backups 的 bytes 位于物理 DataRoot，不会写入 Program Files，也不直
 backend-owned store 以 create-only 默认值发布 service-owned runtime projection；此后只能在
 Owner Console 修改。安装重试只校验并复用已有值，不覆盖 operator 设置。
 
-### 备份与恢复
+### 数据保护当前边界
 
-正式安装的唯一备份入口是桌面管理器调用已安装的
-`installer\windows_dataset_backup.ps1`。它在 writer barrier 下发布完整
-`ticketbox-backup-<UUID>` generation（manifest、PostgreSQL custom archive、全部被引用 originals）。
-唯一恢复入口是管理器把用户明确选择的 generation 交给
-`installer\windows_dataset_restore.ps1`；它持久化请求、恢复隔离候选、同卷提升，并只让 H1
-Generation Owner 发布 CURRENT。源码 DB-only 脚本、`TicketboxBackup` 计划任务、按时间猜最新备份和
-手工覆盖正式库均不是出货路径。
+正式安装的桌面管理器只连接产品内 CSV 导入与已确认流水 CSV 导出，不出货或调用完整数据集
+备份/恢复 mutation。backend 中保留的 complete-dataset 源码和 PostgreSQL 演练只作审计与演进输入，
+不会被收进 frozen runtime，也不是当前 Windows 产品能力。
 
 [POSTGRES_MIGRATION.md](../../docs/runbook/POSTGRES_MIGRATION.md) 的直接 `pg_restore` 只用于
 源码/测试 scratch。没有同一 exact-head EXE 的干净 Windows VM 全生命周期证据前，仍为
@@ -168,6 +165,6 @@ Generation Owner 发布 CURRENT。源码 DB-only 脚本、`TicketboxBackup` 计�
 
 ## 与 GUI 管理器的关系
 
-`desktop/` 的后端管理器支持源码监督与正式安装模式；正式模式通过 Windows SCM 管理服务，并以
-短时提权 helper 调用已安装的完整备份/恢复 owner。冻结管理器、helper 与两条 owner 脚本均属于
-同一 Inno/provenance 出货集合。
+`desktop/` 的后端管理器支持源码监督与正式安装模式；正式模式通过 Windows SCM 管理服务，并连接
+配对、上传入口、产品 Web、CSV 导入/导出与诊断等当前已资格能力。完整备份/恢复 owner 不属于当前
+Inno/provenance 出货集合。

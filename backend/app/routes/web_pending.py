@@ -16,6 +16,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_bulk_snapshot import parse_bulk_snapshot
+from app.routes._web_pending_enrichment_watch import (
+    web_pending_enrichment_context,
+)
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -89,9 +92,7 @@ def _matches_filter(view: dict, filter_key: str) -> bool:
     return True
 
 
-def _resolve_single_undo(
-    db: Session, *, selected_id: str, undo: str | None
-) -> tuple[int | None, int | None]:
+def _resolve_single_undo(db: Session, *, selected_id: str, undo: str | None) -> tuple[int | None, int | None]:
     # ADR-0038/0041: a stale or cross-ledger query param only disables the
     # affordance. The POST route remains the source of truth.
     if not undo or not undo.isdigit():
@@ -134,6 +135,7 @@ def web_pending(
     ledger_id: str | None = None,
     filter: str | None = None,
     msg: str | None = None,
+    watch: str | None = None,
     undo: str | None = None,
     undo_id: list[int] = Query(default=[]),
     undo_rv: list[str] = Query(default=[]),
@@ -166,10 +168,18 @@ def web_pending(
     ctx["filtered_count"] = len(items)
     ctx["filter"] = filter_key
     ctx["flash_message"] = msg or ""
-    # ADR-0038 undo: success (green) vs error (red) flash. Only the two canonical
-    # values from the redirect map onto a banner style; anything else falls back
-    # to the legacy info style so the param can't drive arbitrary CSS classes.
+    # Only canonical redirect values may choose a banner style.
     ctx["flash_type"] = flash_type if flash_type in ("success", "error") else ""
+    ctx.update(
+        web_pending_enrichment_context(
+            db,
+            request,
+            tenant_id=selected_id,
+            raw_task_public_id=watch,
+            flash_message=ctx["flash_message"],
+            flash_type=ctx["flash_type"],
+        )
+    )
     # ADR-0038 undo: just-rejected expense_id; pending.html renders a 5s 撤销
     # banner that POSTs to /web/expenses/{undo_expense_id}/undo. ``undo`` is a
     # plain int string from the redirect query — invalid values just disable the
@@ -279,9 +289,7 @@ def _bulk_error_json(message: str, *, status_code: int = 200) -> JSONResponse:
     )
 
 
-def _bulk_no_selection(
-    selected_id: str, *, filter: str, fragment: bool
-) -> Response:
+def _bulk_no_selection(selected_id: str, *, filter: str, fragment: bool) -> Response:
     msg = "请先勾选账单。"
     if fragment:
         return _bulk_error_json(msg)
@@ -384,9 +392,7 @@ def web_pending_batch_undo(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     if not expense_ids:
-        return _web_redirect(
-            "/web/pending", selected_id, msg="没有可撤销的账单。", flash_type="error"
-        )
+        return _web_redirect("/web/pending", selected_id, msg="没有可撤销的账单。", flash_type="error")
     if len(expense_ids) != len(expected_row_version):
         return _web_redirect(
             "/web/pending",

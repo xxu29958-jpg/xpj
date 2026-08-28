@@ -43,6 +43,7 @@ from app.services.time_service import now_utc
 SOURCE_LABELS: dict[str, str] = {
     "iPhone截图": "iPhone",
     "Android截图": "Android",
+    "网页上传": "网页",
     "手动记账": "手动",
     "CSV导入": "CSV",
     "bill_split_received": "拆账",

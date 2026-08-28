@@ -38,8 +38,7 @@ def _advisor_quota_missing() -> list[str]:
         ),
     )
     advisor_package = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (BACKEND_ROOT / "app/services/budget_advisor_service").glob("*.py")
+        path.read_text(encoding="utf-8") for path in (BACKEND_ROOT / "app/services/budget_advisor_service").glob("*.py")
     )
     if "_LIVE_CALL_LOCKS" in advisor_package:
         missing.append("advisor quota: process-local _LIVE_CALL_LOCKS returned")
@@ -170,15 +169,61 @@ def _bill_split_missing() -> list[str]:
 
 
 def _thumbnail_cleanup_missing() -> list[str]:
-    expense_create = _read("app/services/expense_service/_create.py")
-    return _require_tokens(
-        "thumbnail cleanup",
-        expense_create,
-        (
-            "generated_thumbnail_path",
-            "delete_relative_upload(generated_thumbnail_path)",
+    expense_enrich = _read("app/services/expense_service/_enrich.py")
+    expense_image = _read("app/services/expense_service/_image.py")
+    publication_owner = _read("app/services/expense_service/_thumbnail_publication.py")
+    cleanup_service = _read("app/services/cleanup_service.py")
+    missing = [
+        *_require_tokens(
+            "thumbnail enrichment publication",
+            expense_enrich,
+            (
+                "claim_staged_thumbnail(",
+                "_publish_enrichment_thumbnail_best_effort(",
+                "discard_staged_thumbnail(staged_thumbnail)",
+            ),
         ),
+        *_require_tokens(
+            "thumbnail GET publication",
+            expense_image,
+            (
+                "claim_staged_thumbnail(",
+                "db.refresh(expense, with_for_update=True)",
+                "expense.image_path != thumbnail_source_path",
+                "publish_claimed_thumbnail(db, expense, staged)",
+                "thumb_service.discard_staged_thumbnail(staged)",
+            ),
+        ),
+        *_require_tokens(
+            "thumbnail unique publication owner",
+            publication_owner,
+            (
+                "expense.thumbnail_path = staged.final_reference",
+                "thumb_service.publish_staged_thumbnail_attempt(staged)",
+                "db.refresh(expense, with_for_update=True)",
+                "expense.thumbnail_path == staged.final_reference",
+                "thumb_service.discard_published_thumbnail_attempt(staged)",
+            ),
+        ),
+        *_require_tokens(
+            "thumbnail cleanup serialization",
+            cleanup_service,
+            (
+                "def _cleanup_files_ready(expense: Expense) -> bool:",
+                "db.refresh(expense, with_for_update=True)",
+                ".with_for_update()",
+                "if not _cleanup_files_ready(expense):",
+            ),
+        ),
+    ]
+    expense_service_sources = "\n".join(
+        path.read_text(encoding="utf-8") for path in (BACKEND_ROOT / "app/services/expense_service").glob("*.py")
     )
+    if expense_service_sources.count("expense.thumbnail_path = staged.final_reference") != 1:
+        missing.append("thumbnail unique publication owner: durable claim must have exactly one writer")
+    if expense_service_sources.count("thumb_service.publish_staged_thumbnail_attempt(staged)") != 1:
+        missing.append("thumbnail unique publication owner: filesystem publish must have exactly one writer")
+    return missing
 
 
 def _ocr_csv_missing() -> list[str]:
@@ -233,6 +278,17 @@ def _regression_test_missing() -> list[str]:
             "test_fresh_schema_minimum_is_owned_by_dataset_authority",
             "test_factory_rejects_public_api_key_with_unsafe_shape",
             "test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails",
+            "test_enrichment_conflict_discards_unpublished_thumbnail",
+            "test_enrichment_commit_failure_never_publishes_staged_thumbnail",
+            "test_enrichment_commit_ack_loss_leaves_thumbnail_owner_self_healing",
+            "test_thumbnail_get_commits_cache_owner_before_publishing",
+            "test_enrichment_staging_cleanup_failure_preserves_completed_task_truth",
+            "test_thumbnail_get_rechecks_cleanup_after_staging",
+            "test_cleanup_defers_when_durable_thumbnail_is_not_yet_published",
+            "test_cleanup_locks_expense_before_file_deletion",
+            "test_unique_publication_owner_defers_cleanup_until_live_attempt_publishes",
+            "test_cleanup_orphans_reclaims_file_reappearing_after_deletion_marker",
+            "test_web_pending_upload_enqueues_without_rereading_committed_expense",
             "split_total_exceeds_parent",
             "ai_advisor_provider_empty",
         ),

@@ -26,7 +26,7 @@ def test_frozen_backend_and_helper_identities_are_separate(monkeypatch) -> None:
     monkeypatch.setattr(
         launch.sys,
         "argv",
-        ["ticketbox-backend.exe", "--managed-schema-upgrade"],
+        ["ticketbox-backend.exe", "--fresh-schema-upgrade"],
     )
     monkeypatch.setattr(
         launch.sys,

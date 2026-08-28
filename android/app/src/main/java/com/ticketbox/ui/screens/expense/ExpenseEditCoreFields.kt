@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.annotation.StringRes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,7 +17,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
@@ -29,6 +27,7 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.components.expenseSourceLabelRes
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
 
@@ -265,21 +264,5 @@ internal fun ExpenseEditSourceInfo(
             stringResource(R.string.expense_edit_confidence_label, (it * 100).toInt()),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    }
-}
-
-/** Maps persisted `Expense.source` tokens to localized labels. */
-@StringRes
-internal fun expenseSourceLabelRes(source: String): Int? {
-    if (source.startsWith(ExpenseSourceValues.NOTIFICATION_DRAFT_PREFIX)) {
-        return R.string.expense_edit_source_notification
-    }
-    return when (source) {
-        ExpenseSourceValues.IPHONE_SCREENSHOT -> R.string.expense_edit_source_iphone
-        ExpenseSourceValues.ANDROID_SCREENSHOT -> R.string.expense_edit_source_android
-        ExpenseSourceValues.MANUAL_ENTRY -> R.string.expense_edit_source_manual
-        ExpenseSourceValues.CSV_IMPORT -> R.string.expense_edit_source_csv
-        ExpenseSourceValues.BILL_SPLIT_RECEIVED -> R.string.expense_edit_source_bill_split
-        else -> null
     }
 }

@@ -100,8 +100,8 @@ def init_db() -> None:
         )
     elif plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE and installed_runtime:
         raise DatabaseMigrationPreflightError(
-            "拒绝由安装版 runtime 执行 schema DDL:升级必须由安装器在后端停止、"
-            "恢复点已验证且短命 migrator 获得 exact-head 计划后执行；"
+            "拒绝由安装版 runtime 执行 schema DDL:当前安装版不提供既有数据集升级；"
+            "repair/upgrade/restore 继续 HOLD；"
             "数据库未执行 backup/DDL/DML。"
         )
     elif plan.action is not DatabaseLifecycleAction.MANAGED_UPGRADE:
@@ -110,13 +110,12 @@ def init_db() -> None:
             f"current={lifecycle.current_revision!r}, head={alembic.head_revision!r}；"
             "数据库未执行 backup/DDL/DML。"
         )
-    # Development/operator MANAGED_UPGRADE preflights, backup, and Alembic DDL
-    # are repeated under a database-scoped lease below. Installed hosts are
-    # fenced above; their long-lived runtime role intentionally has no DDL.
+    # Existing-dataset mutation remains outside current qualified authority in
+    # both source and installed runtimes. Fresh creation is the only live path.
     if plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
         raise DatabaseMigrationPreflightError(
-            "拒绝由普通后端启动执行既有数据集升级:必须先由离线维护 owner "
-            "发布完整数据库+原图 backup generation，再执行受管迁移；"
+            "拒绝由普通后端启动执行既有数据集升级:当前没有已资格的离线升级 owner；"
+            "完整数据集 backup/restore 与 upgrade 继续 HOLD；"
             "本进程未执行 backup/DDL/DML。"
         )
     _apply_schema_lifecycle(plan, alembic)

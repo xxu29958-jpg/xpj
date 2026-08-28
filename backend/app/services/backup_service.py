@@ -39,10 +39,8 @@ from app.services.dataset_backup_contract import (
     read_manifest,
     sha256_file,
 )
-from app.services.dataset_backup_inventory import (
-    BackupEntry,
-    reconcile_published_backup_inventory,
-)
+from app.services.dataset_backup_inventory import BackupEntry
+from app.services.dataset_backup_inventory_writer import reconcile_published_backup_inventory
 from app.services.dataset_originals_adapter import (
     OriginalReference,
     copy_complete_originals,

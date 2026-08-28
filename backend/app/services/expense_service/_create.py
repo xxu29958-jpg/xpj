@@ -1,16 +1,8 @@
-"""Create-side flows: upload-driven pending, manual entry, notification draft.
-
-``create_pending_expense`` is the only entry point from the upload route;
-``enrich_pending_expense`` is its background follow-up (so the HTTP response
-returns before OCR/thumbnail/classification run). The manual and notification
-flows are tenant-facing direct-create paths that bypass uploads entirely.
-"""
+"""Create-side flows: upload-driven pending, manual entry, notification draft."""
 
 from __future__ import annotations
 
-import logging
-
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -30,7 +22,7 @@ from app.services.exchange_rate_service import (
     apply_currency_payload,
     validate_currency_payload_money_command,
 )
-from app.services.expense_query import local_ref_storage_key, resolve_expense
+from app.services.expense_query import local_ref_storage_key
 from app.services.expense_service._helpers import (
     NOTIFICATION_DRAFT_SOURCE_LABELS,
     NOTIFICATION_DRAFT_SOURCE_PREFIX,
@@ -41,73 +33,22 @@ from app.services.expense_service._helpers import (
     _expense_has_pending_fx,
     _notification_draft_fields,
     _notification_draft_key,
-    _replace_ocr_draft_items_from_text,
-    _try_generate_thumbnail,
 )
-from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.file_service import SavedUpload, delete_relative_upload
 from app.services.idempotency import fingerprint_request
-from app.services.ocr_service import (
-    collect_auto_ocr_extractions,
-)
-from app.services.optimistic_concurrency import bump_row_version
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
-
-logger = logging.getLogger(__name__)
-
-_AUTO_ENRICHMENT_FAILURES = (
-    AppError,
-    ImportError,
-    SQLAlchemyError,
-    OSError,
-    RuntimeError,
-    ValueError,
-    TypeError,
-)
-
-_ENRICHMENT_NON_OCC_COLUMNS = frozenset({"thumbnail_path", "updated_at", "row_version"})
-
-
-def _enrichment_occ_snapshot(expense: Expense) -> tuple[tuple[str, object], ...]:
-    """Snapshot business columns while excluding the derived thumbnail cache."""
-    return tuple(
-        (column.key, getattr(expense, column.key))
-        for column in Expense.__table__.columns
-        if column.key not in _ENRICHMENT_NON_OCC_COLUMNS
-    )
-
 
 __all__ = [
     "create_manual_expense",
     "create_notification_draft",
     "create_pending_expense",
-    "enrich_pending_expense",
 ]
 
 
 def _materialize_category_preference(db: Session, expense: Expense) -> None:
     ensure_category_preference_for_name(db, tenant_id=expense.tenant_id, name=expense.category)
-
-
-def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
-    if not expense.thumbnail_path:
-        expense.thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
-    for extraction in collect_auto_ocr_extractions(expense):
-        apply_ocr_result_and_append_fact(
-            db,
-            expense=expense,
-            result=extraction.result,
-            provider_name=extraction.provider_name,
-            ocr_model=extraction.ocr_model,
-        )
-        _replace_ocr_draft_items_from_text(db, expense, extraction.result.raw_text)
-    if expense.category == "其他":
-        classify_expense(db, expense)
-    _materialize_category_preference(db, expense)
-    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
-        mark_duplicate_status(db, expense)
 
 
 def create_pending_expense(
@@ -116,17 +57,15 @@ def create_pending_expense(
     tenant_id: str,
     *,
     source: str = "iPhone截图",
-    run_enrichment: bool = True,
 ) -> Expense:
     created = False
-    thumbnail_path: str | None = None
+    commit_attempted = False
     try:
         now = now_utc()
         frozen_home_currency = home_currency_code()
         # ADR-0061 C02 桥接门（PR#255 R9）：pending 行即按 env 盖章成持久事实，漂移时
         # 不得放行（与 freeze_home_amount / apply_currency_payload 同一防线）。
         assert_currency_binding_consistent(db, frozen_home_currency)
-        thumbnail_path = _try_generate_thumbnail(saved_file.relative_path, tenant_id) if run_enrichment else None
         expense = Expense(
             tenant_id=tenant_id,
             amount_cents=None,
@@ -138,7 +77,7 @@ def create_pending_expense(
             note="",
             source=source,
             image_path=saved_file.relative_path,
-            thumbnail_path=thumbnail_path,
+            thumbnail_path=None,
             image_hash=saved_file.image_hash,
             image_perceptual_hash=saved_file.image_perceptual_hash,
             raw_text="",
@@ -150,87 +89,16 @@ def create_pending_expense(
         db.add(expense)
         db.flush()
         mark_duplicate_status(db, expense)
-        if run_enrichment:
-            _apply_pending_enrichment(db, expense)
         expense.updated_at = now_utc()
+        commit_attempted = True
         db.commit()
-        db.refresh(expense)
         created = True
         return expense
     finally:
         if not created:
             db.rollback()
-            delete_relative_upload(thumbnail_path)
-            delete_relative_upload(saved_file.relative_path)
-
-
-def enrich_pending_expense(expense_id: int, tenant_id: str, timezone_name: str | None = None) -> None:
-    """Fill OCR/category draft fields after the upload response has been sent."""
-    from app.database import SessionLocal
-
-    with SessionLocal() as db:
-        expense = resolve_expense(db, tenant_id, expense_id)
-        if expense is None or expense.status != "pending":
-            return
-
-        ocr_extractions = collect_auto_ocr_extractions(expense, timezone_name=timezone_name)
-
-    generated_thumbnail_path: str | None = None
-    with SessionLocal() as db:
-        try:
-            # PG-only (债 #1): the SQLite-only BEGIN IMMEDIATE whole-DB lock the
-            # prior code took here is gone. We deliberately do NOT replace it with
-            # a parent-row FOR UPDATE — that lock would be held across the slow
-            # thumbnail I/O below (a lock-during-I/O anti-pattern), and prod (PG)
-            # already ran this background enrichment with no lock at all (the old
-            # shim was SQLite-only). Serializing concurrent same-expense
-            # enrichment without holding a row lock over the I/O is deferred (low
-            # value: single background worker, rare).
-            expense = resolve_expense(db, tenant_id, expense_id)
-            if expense is None or expense.status != "pending":
-                return
-            resolve_write_capability(db)
-            occ_snapshot = _enrichment_occ_snapshot(expense)
-            if not expense.thumbnail_path:
-                generated_thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
-                expense.thumbnail_path = generated_thumbnail_path
-            for extraction in ocr_extractions:
-                apply_ocr_result_and_append_fact(
-                    db,
-                    expense=expense,
-                    result=extraction.result,
-                    provider_name=extraction.provider_name,
-                    ocr_model=extraction.ocr_model,
-                    timezone_name=timezone_name,
-                )
-                _replace_ocr_draft_items_from_text(db, expense, extraction.result.raw_text, timezone_name=timezone_name)
-            if expense.category == "其他":
-                classify_expense(db, expense)
-            _materialize_category_preference(db, expense)
-            if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
-                mark_duplicate_status(db, expense)
-            # OCR can replace child draft items / append evidence even when the
-            # denormalized Expense values compare equal, so any extraction is a
-            # business-visible change. Thumbnail-only/cache-only work is not.
-            if ocr_extractions or _enrichment_occ_snapshot(expense) != occ_snapshot:
-                expense.updated_at = now_utc()
-                bump_row_version(expense)
-            db.commit()
-        except _AUTO_ENRICHMENT_FAILURES:
-            # Auto-enrichment runs after the upload response has already
-            # been returned to the client. We intentionally don't propagate
-            # — the row is still in `pending` and the user can retry OCR
-            # manually. Record the failure so it isn't invisible.
-            from app.services.expense_service._helpers import _record_background_failure
-
-            _record_background_failure("auto_enrich")
-            logger.exception(
-                "auto enrichment failed for expense_id=%s tenant_id=%s",
-                expense_id,
-                tenant_id,
-            )
-            db.rollback()
-            delete_relative_upload(generated_thumbnail_path)
+            if not commit_attempted:
+                delete_relative_upload(saved_file.relative_path)
 
 
 def _manual_request_fingerprint(payload: ExpenseManualCreateRequest) -> str:

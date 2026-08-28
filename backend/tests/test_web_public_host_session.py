@@ -21,13 +21,15 @@ import re
 from datetime import timedelta
 
 import pytest
+from _web_public_session_support import PUBLIC_HOST
+from _web_public_session_support import mint_session as _mint_session
+from _web_public_session_support import public_client as _public_client
 from api_contract_helpers import _stored_upload_files, confirm_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
-from app.main import app
 from app.middleware import web_session as web_session_middleware
 from app.models import AuthToken, Expense
 from app.routes.web_auth import (
@@ -37,67 +39,6 @@ from app.routes.web_auth import (
 from app.services.identity_service import hash_secret
 from app.services.time_service import ensure_utc, now_utc
 from tests._infra.assets import PNG_BYTES
-
-# A public host header that the test injects to simulate a Cloudflare
-# Tunnel request reaching the backend.
-PUBLIC_HOST = "api.example.com"
-
-
-def _public_client() -> TestClient:
-    """Return a TestClient that looks like a public-host caller: client
-    peer is a routable IP and Host header is a non-loopback DNS name.
-
-    Required because the default TestClient (peer=testclient,
-    host=testserver) is excluded from web_session_gate explicitly so
-    pre-PR-3 tests still see LocalOnly 403 instead of 303 redirect.
-    See app/middleware/web_session.py::_is_session_required.
-    """
-    return TestClient(
-        app,
-        base_url=f"https://{PUBLIC_HOST}",
-        client=("203.0.113.10", 50001),
-    )
-
-
-def _request_pairing_code(client: TestClient, *, identity) -> str:
-    resp = client.post(
-        "/api/bootstrap/pairing-codes",
-        headers=identity.admin_headers,
-        json={"ttl_minutes": 15},
-    )
-    assert resp.status_code == 200, resp.text
-    return resp.json()["pairing_code"]
-
-
-def _mint_session(client: TestClient, *, identity) -> str:
-    before = now_utc()
-    code = _request_pairing_code(client, identity=identity)
-    # Login goes through the public-host TestClient too — login itself is
-    # NOT session-gated (see web_auth router). Origin matches the public
-    # host so CSRF middleware accepts the form POST as same-site.
-    login = _public_client()
-    login_form = login.get("/web/auth/login")
-    assert login_form.status_code == 200
-    match = re.search(r'name="csrf_token" value="([^"]+)"', login_form.text)
-    assert match is not None, login_form.text
-    resp = login.post(
-        "/web/auth/login",
-        data={"pairing_code": code, "device_name": "pytest browser", "csrf_token": match.group(1)},
-        headers={"Origin": f"https://{PUBLIC_HOST}"},
-        follow_redirects=False,
-    )
-    after = now_utc()
-    assert resp.status_code == 303, resp.text
-    set_cookie = resp.headers["set-cookie"]
-    token = set_cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
-    with SessionLocal() as db:
-        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
-        assert row is not None
-        expires_at = ensure_utc(row.expires_at)
-        assert expires_at is not None
-        assert expires_at >= before + timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS)
-        assert expires_at <= after + timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS)
-    return token
 
 
 def test_public_host_without_cookie_redirects_to_login(client: TestClient) -> None:
@@ -146,11 +87,14 @@ def test_public_bulk_form_native_post_uses_rendered_csrf_token(
     )
     assert created.status_code == 200, created.text
     expense_id = int(created.json()["id"])
-    assert confirm_expense_api(
-        client,
-        expense_id,
-        headers=identity.app_headers,
-    ).status_code == 200
+    assert (
+        confirm_expense_api(
+            client,
+            expense_id,
+            headers=identity.app_headers,
+        ).status_code
+        == 200
+    )
     token = _mint_session(client, identity=identity)
     pub = _public_client()
     pub.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
@@ -190,11 +134,14 @@ def test_public_bulk_form_native_post_uses_rendered_csrf_token(
     assert detail.json()["category"] == "家庭采购"
 
 
+@pytest.mark.real_db
 def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
     client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
     *,
     identity,
 ) -> None:
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
     token = _mint_session(client, identity=identity)
     pub = _public_client()
     pub.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
@@ -214,9 +161,8 @@ def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
 
     before_files = set(_stored_upload_files())
     denied = pub.post(
-        "/web/pending/upload",
+        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
         headers={"Origin": f"https://{PUBLIC_HOST}"},
-        data={"ledger_id": "owner", "timezone": "Asia/Shanghai"},
         files={"file": ("denied.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )
@@ -224,17 +170,13 @@ def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
     assert denied.json()["error"] == "invalid_request"
     assert set(_stored_upload_files()) == before_files
     with SessionLocal() as db:
-        assert db.scalar(
-            select(Expense.id).where(Expense.source == "网页上传").limit(1)
-        ) is None
+        assert db.scalar(select(Expense.id).where(Expense.source == "网页上传").limit(1)) is None
 
     accepted = pub.post(
-        "/web/pending/upload",
+        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
         headers={"Origin": f"https://{PUBLIC_HOST}"},
         data={
             "csrf_token": csrf.group(1),
-            "ledger_id": "owner",
-            "timezone": "Asia/Shanghai",
         },
         files={"file": ("accepted.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
@@ -327,16 +269,12 @@ def test_public_host_android_app_token_cookie_redirects_clears_and_does_not_revo
     assert "Max-Age=0" in set_cookie or set_cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].startswith(";")
 
     with SessionLocal() as db:
-        row = db.scalar(
-            select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.app_token))
-        )
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.app_token)))
         assert row is not None
         assert row.revoked_at is None
 
 
-def test_public_host_session_db_error_returns_503(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_public_host_session_db_error_returns_503(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise_session() -> None:
         raise SQLAlchemyError("boom")
 
@@ -351,9 +289,7 @@ def test_public_host_session_db_error_returns_503(
     assert resp.json()["error"] == "server_error"
 
 
-def test_public_host_server_side_expired_cookie_redirects_clears_and_revokes(
-    client: TestClient, *, identity
-) -> None:
+def test_public_host_server_side_expired_cookie_redirects_clears_and_revokes(client: TestClient, *, identity) -> None:
     token = _mint_session(client, identity=identity)
     old = now_utc() - timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS + 1)
     with SessionLocal() as db:
@@ -411,9 +347,7 @@ def test_public_host_fixed_ttl_uses_expires_at_not_last_used(client: TestClient,
         assert ensure_utc(row.expires_at) == ensure_utc(expires_at)
 
 
-def test_public_host_legacy_null_expires_at_falls_back_to_created_at(
-    client: TestClient, *, identity
-) -> None:
+def test_public_host_legacy_null_expires_at_falls_back_to_created_at(client: TestClient, *, identity) -> None:
     token = _mint_session(client, identity=identity)
     old = now_utc() - timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS + 1)
     with SessionLocal() as db:

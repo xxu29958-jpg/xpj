@@ -26,6 +26,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.components.expenseSourceLabelRes
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -45,6 +46,7 @@ internal fun SearchResultCard(
     onClick: () -> Unit,
 ) {
     val expense = result.expense
+    val sourceLabel = expenseSourceLabelRes(expense.source)?.let { stringResource(it) } ?: expense.source
     AppContentCard(
         modifier = Modifier.clickable(onClick = onClick),
         contentPadding = PaddingValues(AppSpacing.cardPaddingSmall),
@@ -71,7 +73,7 @@ internal fun SearchResultCard(
                     text = stringResource(
                         R.string.global_search_result_meta,
                         expense.category,
-                        expense.source,
+                        sourceLabel,
                         displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

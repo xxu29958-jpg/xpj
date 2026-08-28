@@ -64,7 +64,6 @@ _ACTIONS = (
     "open_pairing",
     "open_devices",
     "open_upload_links",
-    "open_backups",
     "open_diagnostics",
     "open_settings",
     "export_diagnostics",
@@ -90,7 +89,6 @@ _OWNER_SHORTCUTS = {
     "/owner/pairing": "open_pairing",
     "/owner/devices": "open_devices",
     "/owner/upload-links": "open_upload_links",
-    "/owner/backups": "open_backups",
     "/owner/diagnostics": "open_diagnostics",
     "/owner/settings": "open_settings",
 }
@@ -310,7 +308,6 @@ class Controller(Protocol):
     def open_pairing(self) -> None: ...
     def open_devices(self) -> None: ...
     def open_upload_links(self) -> None: ...
-    def open_backups(self) -> None: ...
     def open_diagnostics(self) -> None: ...
     def open_settings(self) -> None: ...
     def export_diagnostics(self) -> None: ...

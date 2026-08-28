@@ -560,7 +560,6 @@ def test_control_server_rejects_every_action_and_reopen_after_shutdown_seal(tmp_
             "open_pairing",
             "open_devices",
             "open_upload_links",
-            "open_backups",
             "open_diagnostics",
             "open_settings",
             "export_diagnostics",

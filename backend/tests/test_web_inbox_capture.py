@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+from uuid import UUID
 
+import pytest
 from _web_bulk_test_support import create_pending as _create_pending
 from _web_bulk_test_support import seed_pending_with_amount as _seed_pending_with_amount
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 import app.routes.uploads as upload_routes
 import app.routes.web_inbox_capture as web_inbox_capture_routes
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember
+from app.main import app as fastapi_app
+from app.models import BackgroundTask, Expense, LedgerMember
 from app.routes._upload_request import handle_upload
 from tests._infra.assets import PNG_BYTES
 
@@ -24,15 +30,17 @@ def _demote_owner_ledger_to_viewer() -> None:
         db.commit()
 
 
+@pytest.mark.real_db
 def test_web_pending_upload_uses_shared_owner_and_creates_real_pending_expense(
     web_client: TestClient,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
     assert upload_routes.handle_upload is handle_upload
     assert web_inbox_capture_routes.handle_upload is handle_upload
 
     response = web_client.post(
-        "/web/pending/upload",
-        data={"ledger_id": "owner", "timezone": "Asia/Shanghai"},
+        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
         files={"file": ("receipt.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )
@@ -40,6 +48,7 @@ def test_web_pending_upload_uses_shared_owner_and_creates_real_pending_expense(
     assert response.status_code == 303, response.text
     assert response.headers["location"].startswith("/web/pending?")
     assert "ledger_id=owner" in response.headers["location"]
+    redirect_query = parse_qs(urlsplit(response.headers["location"]).query)
 
     with SessionLocal() as db:
         expense = db.scalar(
@@ -52,6 +61,59 @@ def test_web_pending_upload_uses_shared_owner_and_creates_real_pending_expense(
         assert expense.status == "pending"
         assert expense.image_path is not None
         assert expense.image_hash
+        task_public_id = redirect_query["watch"][0]
+        assert str(UUID(task_public_id)) == task_public_id
+        assert "watch_rv" not in redirect_query
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == task_public_id))
+        assert task is not None
+        assert task.task_type == "expense_enrichment"
+        assert task.tenant_id == "owner"
+        assert task.status == "completed"
+        assert json.loads(task.result_summary_json or "{}")["outcome"] == "no_result"
+
+    final_page = web_client.get(response.headers["location"])
+    assert final_page.status_code == 200
+    assert "data-inbox-enrichment-terminal" in final_page.text
+    assert 'data-enrichment-state="no_result"' in final_page.text
+    assert "未返回可用字段" in final_page.text
+
+
+@pytest.mark.real_db
+def test_web_pending_upload_enqueues_without_rereading_committed_expense(
+    web_client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
+
+    def reject_committed_expense_reread(*_args, **_kwargs):
+        raise SQLAlchemyError("committed expense reread unavailable")
+
+    monkeypatch.setattr(
+        web_inbox_capture_routes,
+        "get_expense",
+        reject_committed_expense_reread,
+        raising=False,
+    )
+
+    response = web_client.post(
+        "/web/pending/upload?ledger_id=owner",
+        files={"file": ("receipt.png", PNG_BYTES, "image/png")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, response.text
+    task_public_id = parse_qs(urlsplit(response.headers["location"]).query)["watch"][0]
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == task_public_id))
+        expense = db.scalar(
+            select(Expense)
+            .where(Expense.tenant_id == "owner", Expense.source == "网页上传")
+            .order_by(Expense.id.desc())
+            .limit(1)
+        )
+        assert task is not None
+        assert task.status == "completed"
+        assert expense is not None
 
 
 def test_web_pending_upload_rejects_viewer_before_saving(
@@ -60,8 +122,7 @@ def test_web_pending_upload_rejects_viewer_before_saving(
     _demote_owner_ledger_to_viewer()
 
     response = web_client.post(
-        "/web/pending/upload",
-        data={"ledger_id": "owner", "timezone": "Asia/Shanghai"},
+        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
         files={"file": ("receipt.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )
@@ -80,11 +141,101 @@ def test_web_pending_upload_rejects_viewer_before_saving(
         )
 
 
+@pytest.mark.real_db
+def test_web_pending_upload_keeps_saved_row_visible_when_task_submit_fails(
+    web_client: TestClient,
+    monkeypatch,
+) -> None:
+    from app.services import background_task_service
+
+    def fail_submit(*_args, **_kwargs):
+        raise RuntimeError("executor unavailable")
+
+    monkeypatch.setattr(background_task_service, "_submit_task", fail_submit)
+
+    response = web_client.post(
+        "/web/pending/upload?ledger_id=owner",
+        files={"file": ("receipt.png", PNG_BYTES, "image/png")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, response.text
+    redirect_query = parse_qs(urlsplit(response.headers["location"]).query)
+    task_public_id = redirect_query["watch"][0]
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == task_public_id))
+        assert task is not None
+        assert task.status == "failed"
+        assert task.error_code == "task_submission_failed"
+        expense = db.scalar(
+            select(Expense)
+            .where(
+                Expense.tenant_id == "owner",
+                Expense.source == "网页上传",
+            )
+            .order_by(Expense.id.desc())
+            .limit(1)
+        )
+        assert expense is not None
+        assert expense.status == "pending"
+
+    page = web_client.get(response.headers["location"])
+    assert page.status_code == 200
+    assert 'data-enrichment-state="failed"' in page.text
+    assert "自动识别失败，账单仍安全保留" in page.text
+
+
+def test_web_pending_upload_rejects_viewer_before_multipart_parse(
+    web_client: TestClient,
+) -> None:
+    _demote_owner_ledger_to_viewer()
+
+    response = web_client.post(
+        "/web/pending/upload?ledger_id=owner",
+        headers={"Content-Type": "multipart/form-data; boundary=ticketbox"},
+        content=b"not-a-valid-multipart-body",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "permission_denied"
+
+
+def test_web_pending_upload_applies_shared_multipart_file_count_limit(
+    web_client: TestClient,
+) -> None:
+    files = [
+        (field, (f"{field}.png", PNG_BYTES, "image/png")) for field in ("file", "image", "photo", "screenshot", "extra")
+    ]
+
+    response = web_client.post(
+        "/web/pending/upload?ledger_id=owner",
+        files=files,
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"] == "invalid_request"
+
+
+def test_web_pending_upload_openapi_keeps_explicit_multipart_contract() -> None:
+    operation = fastapi_app.openapi()["paths"]["/web/pending/upload"]["post"]
+    multipart = operation["requestBody"]["content"]["multipart/form-data"]["schema"]
+
+    assert operation["requestBody"]["required"] is True
+    assert multipart["required"] == ["file", "csrf_token"]
+    assert multipart["properties"]["file"] == {
+        "type": "string",
+        "format": "binary",
+    }
+    assert multipart["properties"]["csrf_token"]["type"] == "string"
+
+
 def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     web_client: TestClient, *, identity
 ) -> None:
     """K3: 页头给 writer 原生无 JS 上传表单 (multipart → /web/pending/upload,
-    显式 csrf/ledger/hidden timezone, accept=image/* required, 主按钮上传小票),
+    ledger 在 query、csrf 在 body，时区仅作渐进增强；accept=image/* required),
     导入与导出保留为次级入口; 三数字概况墙压平为一句队列小结, 可行动计数
     只留在筛选 pill 上。"""
     _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
@@ -93,7 +244,8 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     assert response.status_code == 200
     body = response.text
     form = re.search(
-        r'<form class="inbox-upload-form" method="post" action="/web/pending/upload"'
+        r'<form class="inbox-upload-form" method="post"'
+        r' action="/web/pending/upload\?ledger_id=owner" data-inbox-capture'
         r' enctype="multipart/form-data">.*?</form>',
         body,
         re.S,
@@ -101,9 +253,8 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     assert form is not None
     form_html = form.group(0)
     assert 'name="csrf_token"' in form_html
-    assert 'name="ledger_id" value="owner"' in form_html
-    assert 'name="timezone"' in form_html
-    assert "data-inbox-timezone" in form_html
+    assert 'name="ledger_id"' not in form_html
+    assert 'name="timezone"' not in form_html
     assert re.search(
         r'<input class="inbox-upload-file" type="file" name="file"'
         r' accept="image/\*" required',
@@ -119,15 +270,14 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"
     core_js = (static_root / "desktop" / "core.js").read_text(encoding="utf-8")
     assert "initInboxCapture" in core_js
-    assert "data-inbox-timezone" in core_js
+    assert "data-inbox-capture" in core_js
+    assert 'searchParams.set("timezone", tz)' in core_js
     assert ".submit(" not in core_js
     desktop_js = (static_root / "desktop.js").read_text(encoding="utf-8")
     assert 'call("initInboxCapture");' in desktop_js
 
 
-def test_inbox_pending_row_single_priority_status_and_one_writer_action(
-    web_client: TestClient, *, identity
-) -> None:
+def test_inbox_pending_row_single_priority_status_and_one_writer_action(web_client: TestClient, *, identity) -> None:
     """K3: 每行只渲染一个优先级状态 pill (缺金额 > 疑似重复 > 缺商家 > 缺分类 >
     待汇率 > 可确认), 且状态/动作收在链接外的 .exp-flags 兄弟槽; ready 行给
     与批量条同 OCC 合同的单行 confirm_ready 表单, 待修行给编辑页修复链接。"""
@@ -180,9 +330,7 @@ def test_inbox_pending_row_single_priority_status_and_one_writer_action(
     assert repair.group(1) == "补全金额"
 
 
-def test_inbox_pending_viewer_sees_status_without_write_action(
-    web_client: TestClient, *, identity
-) -> None:
+def test_inbox_pending_viewer_sees_status_without_write_action(web_client: TestClient, *, identity) -> None:
     """K3: viewer 行只见状态 pill — 无勾选、无行内确认表单、无修复链接、
     页头也无上传表单; 批量条依旧不渲染。"""
     expense_id = _create_pending(web_client, identity=identity)
@@ -231,17 +379,11 @@ def test_retired_dashboard_runtime_owners_are_physically_gone() -> None:
     desktop_core = (app_root / "static" / "web" / "desktop" / "core.js").read_text(encoding="utf-8")
     assert "dashboardUrl" not in desktop_core
 
-    insights_css = (
-        app_root / "static" / "web" / "product" / "domains" / "insights.css"
-    ).read_text(encoding="utf-8")
+    insights_css = (app_root / "static" / "web" / "product" / "domains" / "insights.css").read_text(encoding="utf-8")
     assert "data-dashboard-state" not in insights_css
 
-    inbox_css = (
-        app_root / "static" / "web" / "product" / "domains" / "inbox.css"
-    ).read_text(encoding="utf-8")
+    inbox_css = (app_root / "static" / "web" / "product" / "domains" / "inbox.css").read_text(encoding="utf-8")
     assert ".task-" not in inbox_css
 
-    mutation_ledger = (
-        app_root.parent / "scripts" / "_mutate_token_ledger.py"
-    ).read_text(encoding="utf-8")
-    assert 'POST /web/tasks/{public_id}/cancel' not in mutation_ledger
+    mutation_ledger = (app_root.parent / "scripts" / "_mutate_token_ledger.py").read_text(encoding="utf-8")
+    assert "POST /web/tasks/{public_id}/cancel" not in mutation_ledger

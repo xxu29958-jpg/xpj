@@ -72,6 +72,7 @@ def resolve_expense(
     ref: int | str,
     *,
     device_id: int | None = None,
+    for_update: bool = False,
 ) -> Expense | None:
     """Resolve a client-supplied expense reference within ``tenant_id`` scope.
 
@@ -89,18 +90,20 @@ def resolve_expense(
         if device_id is None:
             return None
         client_ref = ref[len(LOCAL_REF_PREFIX):]
-        return db.scalar(
-            ledger_scoped_select(Expense, tenant_id).where(
-                Expense.draft_idempotency_key == local_ref_storage_key(device_id, client_ref)
-            )
+        statement = ledger_scoped_select(Expense, tenant_id).where(
+            Expense.draft_idempotency_key == local_ref_storage_key(device_id, client_ref)
         )
+        if for_update:
+            statement = statement.with_for_update()
+        return db.scalar(statement)
     try:
         server_id = int(ref)
     except (TypeError, ValueError):
         return None
-    return db.scalar(
-        ledger_scoped_select(Expense, tenant_id).where(Expense.id == server_id)
-    )
+    statement = ledger_scoped_select(Expense, tenant_id).where(Expense.id == server_id)
+    if for_update:
+        statement = statement.with_for_update()
+    return db.scalar(statement)
 
 
 def resolve_expense_for_mutation(

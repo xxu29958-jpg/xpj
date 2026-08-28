@@ -321,10 +321,9 @@
       <article class="task-card" id="dataProtectionCard">
         <div class="task-icon" aria-hidden="true">▣</div>
         <div class="task-title">数据保护</div>
-        <div class="task-state" id="protectState">导出已确认流水留存副本；备份记录仅供核对，恢复功能当前未开放。</div>
+        <div class="task-state" id="protectState">导出已确认流水，留存一份可迁移的数据副本。</div>
         <div class="task-actions">
           <button class="button button-primary owner-action" id="importExportAction" type="button" disabled onclick="openImportExport()">导入与导出</button>
-          <button class="button manager-action owner-action" type="button" onclick="act('open_backups', this)">查看备份记录</button>
         </div>
       </article>
 
@@ -479,8 +478,8 @@
           ? "手机入口已配置，连接结果以手机实测为准。"
           : "当前仅本机可用，请先在设置中配置手机入口。")));
       $("protectState").textContent = s.runtime_mode === "installed"
-        ? "导出已确认流水留存副本；备份记录仅供核对，恢复功能当前未开放。"
-        : "导出已确认流水留存副本；开发环境不产生安装器备份记录。";
+        ? "导出已确认流水，留存一份可迁移的数据副本。"
+        : "开发环境也可通过导入与导出迁移已确认流水。";
       $("diagnosticState").textContent = s.diagnostic_bundle_file ? `最近导出：${s.diagnostic_bundle_file}` : "导出包不包含令牌、账本内容或原始日志。";
 
       $("backendService").textContent = serviceState(s.backend_service_state);

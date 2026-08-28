@@ -18,11 +18,15 @@ from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
+import app.services.background_task_service as bgtasks
 from app.config import reset_settings_cache
 from app.database import SessionLocal
-from app.models import Account, BackgroundTask
-from app.services import background_task_service as bgtasks
+from app.models import Account, BackgroundTask, LedgerMember
+from app.services import background_task_handler_api as handler_api
 from app.services.time_service import now_utc
 
 pytestmark = pytest.mark.real_db
@@ -85,6 +89,51 @@ def test_enqueue_runs_handler_and_marks_completed(*, identity) -> None:
         assert row.status == "completed"
         assert row.completed_at is not None
         assert json.loads(row.result_summary_json)["ran"] is True
+
+
+def test_enqueue_does_not_false_fail_after_durable_task_insert(
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    handler_ran = False
+
+    def handler(db, task, payload):
+        nonlocal handler_ran
+        handler_ran = True
+
+    bgtasks.register_handler("test_post_commit_read", handler)
+    real_refresh = Session.refresh
+    post_commit_refresh_attempted = False
+
+    def reject_post_commit_task_read(db: Session, instance, *args, **kwargs) -> None:
+        nonlocal post_commit_refresh_attempted
+        if isinstance(instance, BackgroundTask) and instance.task_type == "test_post_commit_read":
+            post_commit_refresh_attempted = True
+            with SessionLocal() as probe_db:
+                persisted = probe_db.scalar(
+                    select(BackgroundTask).where(BackgroundTask.public_id == instance.public_id)
+                )
+                assert persisted is not None
+            raise SQLAlchemyError("post-commit task refresh unavailable")
+        real_refresh(db, instance, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "refresh", reject_post_commit_task_read)
+    with SessionLocal() as db:
+        task = bgtasks.enqueue(
+            db,
+            task_type="test_post_commit_read",
+            initiator_account_id=_owner_account_id(),
+            ledger_id="owner",
+        )
+        public_id = task.public_id
+
+    assert post_commit_refresh_attempted is False
+    assert handler_ran is True
+    with SessionLocal() as db:
+        persisted = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == public_id))
+        assert persisted is not None
+        assert persisted.status == "completed"
 
 
 def test_enqueue_unknown_task_type_400(*, identity) -> None:
@@ -168,9 +217,7 @@ def test_handler_reports_progress_through_chunks(*, identity) -> None:
     def chunked(db, task, payload):
         total = 5
         for i in range(total):
-            bgtasks.update_progress(
-                db, task.id, current=i + 1, total=total, message=f"row {i + 1}"
-            )
+            handler_api.update_progress(db, task.id, current=i + 1, total=total, message=f"row {i + 1}")
 
     bgtasks.register_handler("test_chunked", chunked)
     with SessionLocal() as db:
@@ -202,9 +249,9 @@ def test_handler_observes_cancellation_request(*, identity) -> None:
             outer.commit()
         # Now the inline handler observes the flag on its first chunk.
         for i in range(10):
-            if bgtasks.check_cancellation_requested(db, task.id):
-                raise bgtasks.TaskCancelledError()
-            bgtasks.update_progress(db, task.id, current=i + 1, total=10)
+            if handler_api.check_cancellation_requested(db, task.id):
+                raise handler_api.TaskCancelledError()
+            handler_api.update_progress(db, task.id, current=i + 1, total=10)
         # If we somehow get here without cancelling, fail the test.
         raise AssertionError("Cancellation flag should have stopped the loop")
 
@@ -225,6 +272,40 @@ def test_handler_observes_cancellation_request(*, identity) -> None:
         assert row.completed_at is not None
 
 
+def test_viewer_cannot_cancel_a_ledger_task(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    with SessionLocal() as db:
+        task = BackgroundTask(
+            task_type="test_viewer_cancel",
+            tenant_id="owner",
+            initiated_by_account_id=_owner_account_id(),
+            status="running",
+        )
+        db.add(task)
+        db.commit()
+        public_id = task.public_id
+
+        membership = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
+        assert membership is not None
+        membership.role = "viewer"
+        db.commit()
+
+    response = client.post(
+        f"/api/tasks/{public_id}/cancel",
+        headers=identity.app_headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "permission_denied"
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == public_id))
+        assert task is not None
+        assert task.cancellation_requested_at is None
+
+
 def test_request_cancellation_idempotent_on_terminal_task(*, identity) -> None:
     """Cancelling a completed task is a no-op (returns row unchanged)."""
 
@@ -243,9 +324,7 @@ def test_request_cancellation_idempotent_on_terminal_task(*, identity) -> None:
 
     with SessionLocal() as db:
         # cancel should not flip status from completed
-        row = bgtasks.request_cancellation(
-            db, public_id, account_id=_owner_account_id(), tenant_id="owner"
-        )
+        row = bgtasks.request_cancellation(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
         assert row.status == "completed"
         assert row.cancellation_requested_at is None
 

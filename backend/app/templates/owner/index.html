@@ -4,15 +4,8 @@
 <h1>仪表盘</h1>
 <details class="page-help">
   <summary>这是什么</summary>
-  <p>本机管理后台的首页：一眼看清待办、设备、备份是否正常。日常只需要从下面的「常用操作」进去绑定手机、邀请家人、看体检；遇到红色提示再点进去处理。</p>
+  <p>本机管理后台的首页：一眼看清待办、设备与服务是否正常。日常只需要从下面的「常用操作」进去绑定手机、邀请家人、看体检；遇到红色提示再点进去处理。</p>
 </details>
-
-{% if backup_inventory and backup_inventory.review_due %}
-<div class="alert alert-danger">
-  ⚠️ {% if backup_inventory.age_status == 'future' %}最近一次备份发布时间晚于当前系统时间{% elif backup_inventory.latest %}最近一次备份发布记录是 {{ backup_inventory.age_hours }} 小时前{% else %}还没有备份发布记录{% endif %}。请从桌面 Manager 发起备份。
-  <a href="/owner/backups">查看备份</a>
-</div>
-{% endif %}
 
 <svg class="owner-icon-sprite" aria-hidden="true" focusable="false">
   <symbol id="owner-icon-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -32,11 +25,6 @@
   </symbol>
   <symbol id="owner-icon-health" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M3 12h4l2-5 4 10 2-5h6"></path>
-  </symbol>
-  <symbol id="owner-icon-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="12" cy="5" rx="8" ry="3"></ellipse>
-    <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"></path>
-    <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"></path>
   </symbol>
   <symbol id="owner-icon-web" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <rect x="3" y="4" width="18" height="12" rx="2"></rect>
@@ -76,10 +64,6 @@
     <a class="owner-action-link" href="/owner/diagnostics">
       <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-health"></use></svg></span>
       <span>看系统体检</span>
-    </a>
-    <a class="owner-action-link" href="/owner/backups">
-      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-database"></use></svg></span>
-      <span>数据库备份</span>
     </a>
     <a class="owner-action-link" href="/web" target="_blank">
       <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-web"></use></svg></span>
@@ -126,16 +110,6 @@
     </span>
     <span class="kv-key">本机管理后台</span>
     <span class="kv-val"><span class="badge badge-ok">{{ owner_console_status }}</span></span>
-    <span class="kv-key">最近备份</span>
-    <span class="kv-val">
-      {% if backup_inventory is none or backup_inventory is not defined %}—
-      {% elif backup_inventory.age_status == 'future' %}<span class="badge badge-err">发布时间晚于系统时间</span>
-      {% elif backup_inventory.age_hours is not none %}
-        {% if backup_inventory.review_due %}<span class="badge badge-err">{{ backup_inventory.age_hours }} 小时前</span>
-        {% else %}<span>{{ backup_inventory.age_hours }} 小时前</span>{% endif %}
-        <span class="text-meta">（当前字节未复检）</span>
-      {% else %}<span class="badge badge-err">无备份发布记录</span>{% endif %}
-    </span>
     <span class="kv-key">当前账号</span>
     <span class="kv-val">{{ account_name }}</span>
     <span class="kv-key">当前账本</span>

@@ -49,7 +49,7 @@ def test_source_runtime_refuses_existing_dataset_upgrade_without_mutation() -> N
 
     with pytest.raises(
         db_pkg.DatabaseMigrationPreflightError,
-        match=r"离线维护 owner.*完整数据库\+原图 backup generation",
+        match=r"当前没有已资格的离线升级 owner.*继续 HOLD",
     ):
         db_pkg.init_db()
 
@@ -79,7 +79,7 @@ def test_installed_runtime_refuses_behind_revision_before_maintenance_owner(
 
     with pytest.raises(
         db_pkg.DatabaseMigrationPreflightError,
-        match="安装器.*短命 migrator",
+        match=r"当前安装版不提供既有数据集升级.*继续 HOLD",
     ):
         db_pkg.init_db()
 

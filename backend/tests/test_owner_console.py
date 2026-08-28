@@ -138,7 +138,7 @@ def test_owner_index_local_returns_200(local_client: TestClient) -> None:
     assert f"/static/shared/tokens.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/owner/vendor/qrcode.js?v={STATIC_ASSET_VERSION}" in body
     assert 'class="owner-icon-sprite"' in body
-    assert body.count('class="owner-action-icon"') >= 11
+    assert body.count('class="owner-action-icon"') >= 10
     assert '<a class="owner-action-link" href="/owner/pairing">' in body
     assert 'class="owner-sidebar__group owner-sidebar__advanced"' in body
     assert 'class="owner-sidebar__group-label owner-sidebar__advanced-summary"' in body
@@ -857,7 +857,6 @@ def test_owner_recovery_pages_remain_available_during_currency_adoption(
 
     for path in (
         "/owner",
-        "/owner/backups",
         "/owner/diagnostics",
         "/owner/settings",
         "/owner/pairing",
