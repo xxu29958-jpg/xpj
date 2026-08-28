@@ -13,7 +13,6 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
-from app.services import thumb_service
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
@@ -168,51 +167,6 @@ def test_thumbnail_materialization_preserves_occ_before_image_deletion(client: T
     assert image.status_code == 404
     thumbnail = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers)
     assert thumbnail.status_code == 404
-
-
-@pytest.mark.real_db
-def test_thumbnail_get_commits_cache_owner_before_publishing(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    identity,
-) -> None:
-    expense_id = upload_png(client, identity=identity)
-    previous_thumbnail = None
-    with SessionLocal() as db:
-        authorize_currency_metadata_write(db)
-        expense = db.get(Expense, expense_id)
-        assert expense is not None
-        previous_thumbnail = thumb_service.resolve_protected_thumbnail(
-            expense.thumbnail_path,
-            "owner",
-        )
-        expense.thumbnail_path = None
-        db.commit()
-    if previous_thumbnail is not None:
-        previous_thumbnail[0].unlink(missing_ok=True)
-
-    real_publish = thumb_service.publish_staged_thumbnail
-    owner_was_durable_before_publish = False
-
-    def observe_publish(staged):
-        nonlocal owner_was_durable_before_publish
-        with SessionLocal() as probe_db:
-            durable = probe_db.get(Expense, expense_id)
-            assert durable is not None
-            assert durable.thumbnail_path == staged.canonical_reference
-        owner_was_durable_before_publish = True
-        return real_publish(staged)
-
-    monkeypatch.setattr(thumb_service, "publish_staged_thumbnail", observe_publish)
-
-    response = client.get(
-        f"/api/expenses/{expense_id}/thumbnail",
-        headers=identity.app_headers,
-    )
-
-    assert response.status_code == 200
-    assert owner_was_durable_before_publish is True
 
 
 def test_confirm_removes_expense_from_pending_and_adds_confirmed(

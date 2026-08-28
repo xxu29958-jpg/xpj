@@ -12,7 +12,6 @@ from app.services import background_task_service
 from app.services.background_task_handler_api import TaskCancelledError
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service import create_pending_expense
-from app.services.expense_service._image import ensure_thumbnail_file
 from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
 from app.services.ledger_service import find_owner_account_id_for_ledger
 from app.services.ocr_service import OcrExtraction, OcrResult
@@ -175,125 +174,6 @@ def test_enrichment_conflict_discards_unpublished_thumbnail(
     assert checkpoint_count == 2
     assert not thumbnail_path.exists()
     assert not list(thumbnail_path.parent.glob(f".{source.stem}.*.staging.jpg"))
-
-
-@pytest.mark.real_db
-def test_enrichment_commit_failure_never_publishes_staged_thumbnail(
-    monkeypatch,
-    *,
-    identity,
-) -> None:
-    expense_id, predecessor_row_version, _task_id = _seed_pending_enrichment_task()
-    with SessionLocal() as db:
-        expense = db.get(Expense, expense_id)
-        assert expense is not None
-        source = resolve_upload_path_for_tenant(expense.image_path, "owner")
-        assert source is not None
-    staged_attempts = []
-    real_stage_thumbnail = enrich_service._try_stage_thumbnail
-
-    def capture_staged_attempt(*args, **kwargs):
-        staged = real_stage_thumbnail(*args, **kwargs)
-        assert staged is not None
-        staged_attempts.append(staged)
-        return staged
-
-    real_commit = Session.commit
-    rejected_publication = False
-
-    def fail_publication_commit(db: Session) -> None:
-        nonlocal rejected_publication
-        expense = db.get(Expense, expense_id)
-        if not rejected_publication and expense is not None and expense.thumbnail_path:
-            rejected_publication = True
-            raise SQLAlchemyError("thumbnail owner commit rejected")
-        real_commit(db)
-
-    monkeypatch.setattr(Session, "commit", fail_publication_commit)
-    monkeypatch.setattr(
-        enrich_service,
-        "collect_auto_ocr_extractions",
-        lambda *_args, **_kwargs: [],
-    )
-    monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", capture_staged_attempt)
-
-    result = enrich_service.enrich_pending_expense(
-        expense_id,
-        "owner",
-        expected_row_version=predecessor_row_version,
-    )
-
-    assert result.outcome == "failed"
-    assert rejected_publication is True
-    assert len(staged_attempts) == 1
-    staged = staged_attempts[0]
-    assert not staged.canonical_path.exists()
-    assert not staged.staging_path.exists()
-    with SessionLocal() as db:
-        expense = db.get(Expense, expense_id)
-        assert expense is not None
-        assert expense.thumbnail_path is None
-        assert expense.row_version == predecessor_row_version
-
-
-@pytest.mark.real_db
-def test_enrichment_commit_ack_loss_leaves_thumbnail_owner_self_healing(
-    monkeypatch,
-    *,
-    identity,
-) -> None:
-    expense_id, predecessor_row_version, _task_id = _seed_pending_enrichment_task()
-    staged_attempts = []
-    real_stage_thumbnail = enrich_service._try_stage_thumbnail
-
-    def capture_staged_attempt(*args, **kwargs):
-        staged = real_stage_thumbnail(*args, **kwargs)
-        assert staged is not None
-        staged_attempts.append(staged)
-        return staged
-
-    real_commit = Session.commit
-    acknowledgement_lost = False
-
-    def commit_then_lose_acknowledgement(db: Session) -> None:
-        nonlocal acknowledgement_lost
-        expense = db.get(Expense, expense_id)
-        if not acknowledgement_lost and expense is not None and expense.thumbnail_path:
-            real_commit(db)
-            acknowledgement_lost = True
-            raise SQLAlchemyError("thumbnail owner commit acknowledgement lost")
-        real_commit(db)
-
-    monkeypatch.setattr(Session, "commit", commit_then_lose_acknowledgement)
-    monkeypatch.setattr(
-        enrich_service,
-        "collect_auto_ocr_extractions",
-        lambda *_args, **_kwargs: [],
-    )
-    monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", capture_staged_attempt)
-
-    result = enrich_service.enrich_pending_expense(
-        expense_id,
-        "owner",
-        expected_row_version=predecessor_row_version,
-    )
-
-    assert result.outcome == "failed"
-    assert acknowledgement_lost is True
-    assert len(staged_attempts) == 1
-    staged = staged_attempts[0]
-    with SessionLocal() as db:
-        expense = db.get(Expense, expense_id)
-        assert expense is not None
-        assert expense.thumbnail_path == staged.canonical_reference
-        assert expense.row_version == predecessor_row_version
-    assert not staged.canonical_path.exists()
-    assert not staged.staging_path.exists()
-    with SessionLocal() as db:
-        thumbnail_path, media_type = ensure_thumbnail_file(db, expense_id, "owner")
-    assert thumbnail_path == staged.canonical_path
-    assert thumbnail_path.is_file()
-    assert media_type == "image/jpeg"
 
 
 @pytest.mark.real_db

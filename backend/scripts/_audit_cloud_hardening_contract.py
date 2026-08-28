@@ -170,14 +170,27 @@ def _bill_split_missing() -> list[str]:
 
 def _thumbnail_cleanup_missing() -> list[str]:
     expense_enrich = _read("app/services/expense_service/_enrich.py")
-    return _require_tokens(
-        "thumbnail staging and cleanup",
-        expense_enrich,
-        (
-            "publish_staged_thumbnail(staged_thumbnail)",
-            "discard_staged_thumbnail(staged_thumbnail)",
+    expense_image = _read("app/services/expense_service/_image.py")
+    return [
+        *_require_tokens(
+            "thumbnail enrichment publication",
+            expense_enrich,
+            (
+                "expense.thumbnail_path = staged_thumbnail.canonical_reference",
+                "publish_staged_thumbnail(thumbnail_to_publish)",
+                "discard_staged_thumbnail(staged_thumbnail)",
+            ),
         ),
-    )
+        *_require_tokens(
+            "thumbnail GET publication",
+            expense_image,
+            (
+                "expense.thumbnail_path = staged.canonical_reference",
+                "thumb_service.publish_staged_thumbnail(staged)",
+                "thumb_service.discard_staged_thumbnail(staged)",
+            ),
+        ),
+    ]
 
 
 def _ocr_csv_missing() -> list[str]:
@@ -233,6 +246,9 @@ def _regression_test_missing() -> list[str]:
             "test_factory_rejects_public_api_key_with_unsafe_shape",
             "test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails",
             "test_enrichment_conflict_discards_unpublished_thumbnail",
+            "test_enrichment_commit_failure_never_publishes_staged_thumbnail",
+            "test_enrichment_commit_ack_loss_leaves_thumbnail_owner_self_healing",
+            "test_thumbnail_get_commits_cache_owner_before_publishing",
             "split_total_exceeds_parent",
             "ai_advisor_provider_empty",
         ),
