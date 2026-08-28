@@ -212,7 +212,6 @@ async def handle_upload(
         saved_file,
         tenant_id,
         source=source,
-        run_enrichment=False,
     )
     timing_ms["db_create_ms"] = elapsed_ms(db_started_at)
     duration_ms = elapsed_ms(started_at)

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services import thumb_service
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
@@ -46,9 +47,7 @@ def _assert_uploaded_image_access_contract(client: TestClient, *, identity, expe
     assert image.status_code == 200
     assert image.content == PNG_BYTES
 
-    thumbnail = client.get(
-        f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
-    )
+    thumbnail = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers)
     assert thumbnail.status_code == 200
     assert thumbnail.content.startswith(b"\xff\xd8")
 
@@ -99,9 +98,7 @@ def _assert_confirmed_upload_surfaces(client: TestClient, *, identity) -> None:
     assert months.status_code == 200
     assert "2026-05" in months.json()["items"]
 
-    exported = client.get(
-        "/api/expenses/export.csv?month=2026-05&category=餐饮", headers=identity.app_headers
-    )
+    exported = client.get("/api/expenses/export.csv?month=2026-05&category=餐饮", headers=identity.app_headers)
     assert exported.status_code == 200
     assert "text/csv" in exported.headers["content-type"]
     assert "美团外卖" in exported.text
@@ -125,9 +122,7 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     _assert_confirmed_upload_surfaces(client, identity=identity)
 
 
-def test_thumbnail_materialization_preserves_occ_before_image_deletion(
-    client: TestClient, *, identity
-) -> None:
+def test_thumbnail_materialization_preserves_occ_before_image_deletion(client: TestClient, *, identity) -> None:
     expense_id = upload_png(client, identity=identity)
 
     # Simulate a migrated row whose source image exists but whose derived cache
@@ -142,9 +137,7 @@ def test_thumbnail_materialization_preserves_occ_before_image_deletion(
         before_row_version = expense.row_version
         before_updated_at = expense.updated_at
 
-    thumbnail = client.get(
-        f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
-    )
+    thumbnail = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers)
     assert thumbnail.status_code == 200
 
     with SessionLocal() as db:
@@ -173,14 +166,59 @@ def test_thumbnail_materialization_preserves_occ_before_image_deletion(
 
     image = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert image.status_code == 404
-    thumbnail = client.get(
-        f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
-    )
+    thumbnail = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers)
     assert thumbnail.status_code == 404
 
 
+@pytest.mark.real_db
+def test_thumbnail_get_commits_cache_owner_before_publishing(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    expense_id = upload_png(client, identity=identity)
+    previous_thumbnail = None
+    with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        previous_thumbnail = thumb_service.resolve_protected_thumbnail(
+            expense.thumbnail_path,
+            "owner",
+        )
+        expense.thumbnail_path = None
+        db.commit()
+    if previous_thumbnail is not None:
+        previous_thumbnail[0].unlink(missing_ok=True)
+
+    real_publish = thumb_service.publish_staged_thumbnail
+    owner_was_durable_before_publish = False
+
+    def observe_publish(staged):
+        nonlocal owner_was_durable_before_publish
+        with SessionLocal() as probe_db:
+            durable = probe_db.get(Expense, expense_id)
+            assert durable is not None
+            assert durable.thumbnail_path == staged.canonical_reference
+        owner_was_durable_before_publish = True
+        return real_publish(staged)
+
+    monkeypatch.setattr(thumb_service, "publish_staged_thumbnail", observe_publish)
+
+    response = client.get(
+        f"/api/expenses/{expense_id}/thumbnail",
+        headers=identity.app_headers,
+    )
+
+    assert response.status_code == 200
+    assert owner_was_durable_before_publish is True
+
+
 def test_confirm_removes_expense_from_pending_and_adds_confirmed(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     expense_id = upload_png(client, identity=identity)
     response = patch_expense(
@@ -204,9 +242,7 @@ def test_confirm_removes_expense_from_pending_and_adds_confirmed(
     assert pending.status_code == 200
     assert all(item["id"] != expense_id for item in pending.json())
 
-    confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=identity.app_headers
-    )
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=identity.app_headers)
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 1
     assert confirmed.json()["items"][0]["id"] == expense_id
@@ -219,7 +255,9 @@ def test_confirm_removes_expense_from_pending_and_adds_confirmed(
 @pytest.mark.real_db
 def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch, *, identity,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
 ) -> None:
     from app.services import cleanup_service
 
@@ -292,12 +330,7 @@ def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient, 
         },
     )
     assert response.status_code == 200
-    assert (
-        confirm_expense_api(
-            client, expense_id, headers=identity.app_headers
-        ).status_code
-        == 200
-    )
+    assert confirm_expense_api(client, expense_id, headers=identity.app_headers).status_code == 200
 
     detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200
@@ -306,9 +339,7 @@ def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient, 
         if relative_path:
             (BACKEND_ROOT / relative_path).unlink(missing_ok=True)
 
-    detail_after_delete = client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    )
+    detail_after_delete = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail_after_delete.status_code == 200
     payload = detail_after_delete.json()
     assert payload["status"] == "confirmed"

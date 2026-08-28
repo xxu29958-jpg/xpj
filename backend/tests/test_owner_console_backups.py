@@ -77,10 +77,15 @@ def test_frozen_shipment_excludes_retired_dataset_mutation_owners() -> None:
         "app.dataset_maintenance_cli",
         "app.database._managed_schema_upgrade",
         "app.services.backup_job_lease",
+        "app.services.dataset_backup_inventory_writer",
         "app.services.postgres_backup_adapter",
         "app.services.postgres_backup_validation_service",
     ):
         assert retired_module in spec
+    inventory_reader = (backend_root / "app" / "services" / "dataset_backup_inventory.py").read_text(encoding="utf-8")
+    assert "reconcile_published_backup_inventory" not in inventory_reader
+    assert "shutil.rmtree" not in inventory_reader
+    assert "replace_durable_file" not in inventory_reader
     launch = (backend_root / "packaging" / "launch.py").read_text(encoding="utf-8")
     setup = (backend_root / "scripts" / "setup_backend.ps1").read_text(encoding="utf-8")
     assert "--managed-schema-upgrade" not in launch
@@ -204,11 +209,7 @@ def test_ordinary_backup_status_does_not_hash_historical_payloads(
         encoding="utf-8",
     )
     monkeypatch.setattr(dataset_backup_inventory, "_INVENTORY_PATH", inventory_path)
-    monkeypatch.setattr(
-        dataset_backup_inventory,
-        "read_manifest",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("payload scan")),
-    )
+    assert not hasattr(dataset_backup_inventory, "read_manifest")
 
     assert len(dataset_backup_inventory.list_published_backup_records()) == 1
     inventory = dataset_backup_inventory.published_backup_inventory()

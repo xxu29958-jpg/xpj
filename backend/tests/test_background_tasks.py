@@ -19,6 +19,8 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 import app.services.background_task_service as bgtasks
 from app.config import reset_settings_cache
@@ -87,6 +89,51 @@ def test_enqueue_runs_handler_and_marks_completed(*, identity) -> None:
         assert row.status == "completed"
         assert row.completed_at is not None
         assert json.loads(row.result_summary_json)["ran"] is True
+
+
+def test_enqueue_does_not_false_fail_after_durable_task_insert(
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    handler_ran = False
+
+    def handler(db, task, payload):
+        nonlocal handler_ran
+        handler_ran = True
+
+    bgtasks.register_handler("test_post_commit_read", handler)
+    real_refresh = Session.refresh
+    post_commit_refresh_attempted = False
+
+    def reject_post_commit_task_read(db: Session, instance, *args, **kwargs) -> None:
+        nonlocal post_commit_refresh_attempted
+        if isinstance(instance, BackgroundTask) and instance.task_type == "test_post_commit_read":
+            post_commit_refresh_attempted = True
+            with SessionLocal() as probe_db:
+                persisted = probe_db.scalar(
+                    select(BackgroundTask).where(BackgroundTask.public_id == instance.public_id)
+                )
+                assert persisted is not None
+            raise SQLAlchemyError("post-commit task refresh unavailable")
+        real_refresh(db, instance, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "refresh", reject_post_commit_task_read)
+    with SessionLocal() as db:
+        task = bgtasks.enqueue(
+            db,
+            task_type="test_post_commit_read",
+            initiator_account_id=_owner_account_id(),
+            ledger_id="owner",
+        )
+        public_id = task.public_id
+
+    assert post_commit_refresh_attempted is False
+    assert handler_ran is True
+    with SessionLocal() as db:
+        persisted = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == public_id))
+        assert persisted is not None
+        assert persisted.status == "completed"
 
 
 def test_enqueue_unknown_task_type_400(*, identity) -> None:

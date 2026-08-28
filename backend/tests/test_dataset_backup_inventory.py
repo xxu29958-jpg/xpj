@@ -66,10 +66,8 @@ def _write_complete_generation(
 def test_verified_publication_prunes_only_after_new_generation_and_projects_inventory(
     tmp_path: Path,
 ) -> None:
-    from app.services.dataset_backup_inventory import (
-        list_published_backup_records,
-        reconcile_published_backup_inventory,
-    )
+    from app.services.dataset_backup_inventory import list_published_backup_records
+    from app.services.dataset_backup_inventory_writer import reconcile_published_backup_inventory
 
     backup_root = tmp_path / "backups"
     backup_root.mkdir()
@@ -105,7 +103,7 @@ def test_verified_publication_prunes_only_after_new_generation_and_projects_inve
 
 
 def test_corrupt_new_generation_cannot_trigger_retention(tmp_path: Path) -> None:
-    from app.services.dataset_backup_inventory import reconcile_published_backup_inventory
+    from app.services.dataset_backup_inventory_writer import reconcile_published_backup_inventory
 
     backup_root = tmp_path / "backups"
     backup_root.mkdir()
@@ -141,10 +139,8 @@ def test_corrupt_new_generation_cannot_trigger_retention(tmp_path: Path) -> None
 def test_corrupt_retained_generation_does_not_block_new_verified_publication(
     tmp_path: Path,
 ) -> None:
-    from app.services.dataset_backup_inventory import (
-        list_published_backup_records,
-        reconcile_published_backup_inventory,
-    )
+    from app.services.dataset_backup_inventory import list_published_backup_records
+    from app.services.dataset_backup_inventory_writer import reconcile_published_backup_inventory
 
     backup_root = tmp_path / "backups"
     backup_root.mkdir()
@@ -175,7 +171,7 @@ def test_inventory_must_publish_before_any_retention_delete(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import dataset_backup_inventory
+    from app.services import dataset_backup_inventory_writer
 
     backup_root = tmp_path / "backups"
     backup_root.mkdir()
@@ -198,9 +194,9 @@ def test_inventory_must_publish_before_any_retention_delete(
     def fail_publication(*_args, **_kwargs) -> None:
         raise OSError("inventory publication failed")
 
-    monkeypatch.setattr(dataset_backup_inventory, "_write_inventory", fail_publication)
+    monkeypatch.setattr(dataset_backup_inventory_writer, "_write_inventory", fail_publication)
     with pytest.raises(OSError, match="inventory publication failed"):
-        dataset_backup_inventory.reconcile_published_backup_inventory(
+        dataset_backup_inventory_writer.reconcile_published_backup_inventory(
             backup_root=backup_root,
             inventory_path=inventory_path,
             required_generation=f"ticketbox-backup-{ids[-1]}",
@@ -213,7 +209,7 @@ def test_partial_retention_delete_leaves_retryable_tombstone(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import dataset_backup_inventory
+    from app.services import dataset_backup_inventory_writer
 
     backup_root = tmp_path / "backups"
     backup_root.mkdir()
@@ -233,7 +229,7 @@ def test_partial_retention_delete_leaves_retryable_tombstone(
             created_at=created + timedelta(minutes=index),
         )
 
-    real_rmtree = dataset_backup_inventory.shutil.rmtree
+    real_rmtree = dataset_backup_inventory_writer.shutil.rmtree
     failed = False
 
     def fail_after_partial_delete(path: Path) -> None:
@@ -244,9 +240,9 @@ def test_partial_retention_delete_leaves_retryable_tombstone(
             raise OSError("partial retention failure")
         real_rmtree(path)
 
-    monkeypatch.setattr(dataset_backup_inventory.shutil, "rmtree", fail_after_partial_delete)
+    monkeypatch.setattr(dataset_backup_inventory_writer.shutil, "rmtree", fail_after_partial_delete)
     with pytest.raises(AppError):
-        dataset_backup_inventory.reconcile_published_backup_inventory(
+        dataset_backup_inventory_writer.reconcile_published_backup_inventory(
             backup_root=backup_root,
             inventory_path=inventory_path,
             required_generation=f"ticketbox-backup-{ids[-1]}",
@@ -256,7 +252,7 @@ def test_partial_retention_delete_leaves_retryable_tombstone(
     tombstones = tuple(backup_root.glob(".ticketbox-retired-backup-*"))
     assert len(tombstones) == 1
 
-    dataset_backup_inventory.reconcile_published_backup_inventory(
+    dataset_backup_inventory_writer.reconcile_published_backup_inventory(
         backup_root=backup_root,
         inventory_path=inventory_path,
         required_generation=f"ticketbox-backup-{ids[-1]}",
@@ -268,7 +264,7 @@ def test_inventory_publication_preserves_primary_and_cleanup_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import dataset_backup_inventory
+    from app.services import dataset_backup_inventory_writer
 
     primary = OSError("inventory write failed")
     cleanup = OSError("inventory cleanup failed")
@@ -283,7 +279,7 @@ def test_inventory_publication_preserves_primary_and_cleanup_failures(
     monkeypatch.setattr(Path, "unlink", fail_unlink)
 
     with pytest.raises(BaseExceptionGroup) as caught:
-        dataset_backup_inventory._write_inventory(tmp_path / "inventory.json", ())
+        dataset_backup_inventory_writer._write_inventory(tmp_path / "inventory.json", ())
 
     assert caught.value.exceptions == (primary, cleanup)
 
@@ -292,7 +288,7 @@ def test_inventory_publication_preserves_a_lone_primary_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import dataset_backup_inventory
+    from app.services import dataset_backup_inventory_writer
 
     primary = OSError("inventory write failed")
 
@@ -302,6 +298,6 @@ def test_inventory_publication_preserves_a_lone_primary_failure(
     monkeypatch.setattr(Path, "open", fail_open)
 
     with pytest.raises(OSError) as caught:
-        dataset_backup_inventory._write_inventory(tmp_path / "inventory.json", ())
+        dataset_backup_inventory_writer._write_inventory(tmp_path / "inventory.json", ())
 
     assert caught.value is primary

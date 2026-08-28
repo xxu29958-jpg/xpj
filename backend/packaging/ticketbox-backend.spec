@@ -47,6 +47,7 @@ retired_dataset_mutation_modules = {
     "app.database._managed_schema_upgrade",
     "app.services.backup_service",
     "app.services.backup_job_lease",
+    "app.services.dataset_backup_inventory_writer",
     "app.services.dataset_originals_adapter",
     "app.services.dataset_restore_service",
     "app.services.postgres_backup_adapter",

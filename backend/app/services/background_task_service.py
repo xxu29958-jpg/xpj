@@ -290,7 +290,6 @@ def _insert_queued_task(
     )
     db.add(task)
     db.commit()
-    db.refresh(task)
     return task
 
 

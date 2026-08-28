@@ -25,7 +25,6 @@ from app.services.ocr_service import OcrExtraction, collect_auto_ocr_extractions
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.thumb_service import (
     StagedThumbnail,
-    discard_published_thumbnail,
     discard_staged_thumbnail,
     publish_staged_thumbnail,
     stage_thumbnail,
@@ -184,23 +183,26 @@ def _apply_enrichment(
             expense.updated_at = now_utc()
             bump_row_version(expense)
             result_row_version += 1
-        published_thumbnail: StagedThumbnail | None = None
+        thumbnail_to_publish: StagedThumbnail | None = None
         if not expense.thumbnail_path and staged_thumbnail is not None:
-            expense.thumbnail_path = publish_staged_thumbnail(staged_thumbnail)
-            published_thumbnail = staged_thumbnail
+            expense.thumbnail_path = staged_thumbnail.canonical_reference
+            thumbnail_to_publish = staged_thumbnail
         result = PendingEnrichmentResult(
             expense_id=expense.id,
             outcome="updated" if user_visible_changed else "no_result",
             row_version=result_row_version,
         )
-        try:
-            db.commit()
-        except SQLAlchemyError:
-            # The derived file has no durable Expense owner if this transaction
-            # is rejected. Remove only the canonical path owned by this staging
-            # token while the Expense row lock still excludes a later apply.
-            discard_published_thumbnail(published_thumbnail)
-            raise
+        db.commit()
+        if thumbnail_to_publish is not None:
+            try:
+                publish_staged_thumbnail(thumbnail_to_publish)
+            except OSError:
+                _record_background_failure("thumbnail")
+                logger.exception(
+                    "thumbnail publication failed after durable owner commit for expense_id=%s ledger=%s",
+                    expense_id,
+                    tenant_id,
+                )
         return result
 
 

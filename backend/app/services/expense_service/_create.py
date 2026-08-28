@@ -33,15 +33,9 @@ from app.services.expense_service._helpers import (
     _expense_has_pending_fx,
     _notification_draft_fields,
     _notification_draft_key,
-    _replace_ocr_draft_items_from_text,
-    _try_generate_thumbnail,
 )
-from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.file_service import SavedUpload, delete_relative_upload
 from app.services.idempotency import fingerprint_request
-from app.services.ocr_service import (
-    collect_auto_ocr_extractions,
-)
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
@@ -57,42 +51,21 @@ def _materialize_category_preference(db: Session, expense: Expense) -> None:
     ensure_category_preference_for_name(db, tenant_id=expense.tenant_id, name=expense.category)
 
 
-def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
-    if not expense.thumbnail_path:
-        expense.thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
-    for extraction in collect_auto_ocr_extractions(expense):
-        apply_ocr_result_and_append_fact(
-            db,
-            expense=expense,
-            result=extraction.result,
-            provider_name=extraction.provider_name,
-            ocr_model=extraction.ocr_model,
-        )
-        _replace_ocr_draft_items_from_text(db, expense, extraction.result.raw_text)
-    if expense.category == "其他":
-        classify_expense(db, expense)
-    _materialize_category_preference(db, expense)
-    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
-        mark_duplicate_status(db, expense)
-
-
 def create_pending_expense(
     db: Session,
     saved_file: SavedUpload,
     tenant_id: str,
     *,
     source: str = "iPhone截图",
-    run_enrichment: bool = True,
 ) -> Expense:
     created = False
-    thumbnail_path: str | None = None
+    commit_attempted = False
     try:
         now = now_utc()
         frozen_home_currency = home_currency_code()
         # ADR-0061 C02 桥接门（PR#255 R9）：pending 行即按 env 盖章成持久事实，漂移时
         # 不得放行（与 freeze_home_amount / apply_currency_payload 同一防线）。
         assert_currency_binding_consistent(db, frozen_home_currency)
-        thumbnail_path = _try_generate_thumbnail(saved_file.relative_path, tenant_id) if run_enrichment else None
         expense = Expense(
             tenant_id=tenant_id,
             amount_cents=None,
@@ -104,7 +77,7 @@ def create_pending_expense(
             note="",
             source=source,
             image_path=saved_file.relative_path,
-            thumbnail_path=thumbnail_path,
+            thumbnail_path=None,
             image_hash=saved_file.image_hash,
             image_perceptual_hash=saved_file.image_perceptual_hash,
             raw_text="",
@@ -116,18 +89,16 @@ def create_pending_expense(
         db.add(expense)
         db.flush()
         mark_duplicate_status(db, expense)
-        if run_enrichment:
-            _apply_pending_enrichment(db, expense)
         expense.updated_at = now_utc()
+        commit_attempted = True
         db.commit()
-        db.refresh(expense)
         created = True
         return expense
     finally:
         if not created:
             db.rollback()
-            delete_relative_upload(thumbnail_path)
-            delete_relative_upload(saved_file.relative_path)
+            if not commit_attempted:
+                delete_relative_upload(saved_file.relative_path)
 
 
 def _manual_request_fingerprint(payload: ExpenseManualCreateRequest) -> str:

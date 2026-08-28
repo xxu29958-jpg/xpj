@@ -113,28 +113,6 @@ def discard_staged_thumbnail(staged: StagedThumbnail | None) -> None:
         staged.staging_path.unlink(missing_ok=True)
 
 
-def discard_published_thumbnail(staged: StagedThumbnail | None) -> None:
-    """Remove this staging token's canonical file before DB ownership commits."""
-    if staged is not None:
-        staged.canonical_path.unlink(missing_ok=True)
-
-
-def generate_thumbnail(
-    relative_path: str | None,
-    *,
-    tenant_id: str,
-    size: tuple[int, int] = (512, 512),
-) -> str | None:
-    staged = stage_thumbnail(relative_path, tenant_id=tenant_id, size=size)
-    if staged is None:
-        return None
-
-    try:
-        return publish_staged_thumbnail(staged)
-    finally:
-        discard_staged_thumbnail(staged)
-
-
 def resolve_protected_thumbnail(relative_path: str | None, tenant_id: str) -> tuple[Path, str] | None:
     if not relative_path:
         return None

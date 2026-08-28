@@ -13,11 +13,14 @@ from api_contract_helpers import (
 )
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.main import app
 from app.models import Device, Expense, LedgerMember, UploadLink
 from app.services.category_common import DEFAULT_CATEGORIES
+from app.services.expense_service._create import create_pending_expense
 from app.services.expense_service._enrich import enrich_pending_expense
 from app.services.file_service import resolve_protected_image, save_upload_bytes
 from app.services.identity_service import authenticate_upload_link, hash_secret
@@ -27,6 +30,99 @@ from tests._infra.env import TEST_UPLOAD_RELATIVE
 from tests._infra.upload_link_commit_concurrency import (
     assert_upload_link_commit_races_are_serialized,
 )
+
+
+@pytest.mark.real_db
+def test_pending_create_does_not_delete_original_after_post_commit_read_failure(
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    saved = save_upload_bytes(
+        PNG_BYTES,
+        tenant_id="owner",
+        filename="receipt.png",
+        content_type="image/png",
+    )
+    source = resolve_protected_image(saved.relative_path, "owner")[0]
+    real_commit = Session.commit
+    real_refresh = Session.refresh
+    expense_commit_completed = False
+
+    def observe_expense_commit(db: Session) -> None:
+        nonlocal expense_commit_completed
+        owns_expense = any(isinstance(value, Expense) for value in db.identity_map.values())
+        real_commit(db)
+        if owns_expense:
+            expense_commit_completed = True
+
+    def reject_post_commit_expense_read(db: Session, instance, *args, **kwargs) -> None:
+        if expense_commit_completed and isinstance(instance, Expense):
+            raise SQLAlchemyError("post-commit expense refresh unavailable")
+        real_refresh(db, instance, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "commit", observe_expense_commit)
+    monkeypatch.setattr(Session, "refresh", reject_post_commit_expense_read)
+    with SessionLocal() as db:
+        expense = create_pending_expense(
+            db,
+            saved,
+            "owner",
+            source="网页上传",
+        )
+        expense_id = expense.id
+        assert expense.public_id
+        assert expense.row_version == 1
+
+    assert expense_commit_completed is True
+    assert source.is_file()
+    with SessionLocal() as db:
+        persisted = db.get(Expense, expense_id)
+        assert persisted is not None
+        assert persisted.image_path == saved.relative_path
+
+
+@pytest.mark.real_db
+def test_pending_create_preserves_original_when_commit_acknowledgement_is_unknown(
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    saved = save_upload_bytes(
+        PNG_BYTES,
+        tenant_id="owner",
+        filename="receipt.png",
+        content_type="image/png",
+    )
+    source = resolve_protected_image(saved.relative_path, "owner")[0]
+    real_commit = Session.commit
+    acknowledgement_lost = False
+
+    def commit_then_lose_acknowledgement(db: Session) -> None:
+        nonlocal acknowledgement_lost
+        owns_upload = any(
+            isinstance(value, Expense) and value.image_path == saved.relative_path for value in db.identity_map.values()
+        )
+        real_commit(db)
+        if owns_upload and not acknowledgement_lost:
+            acknowledgement_lost = True
+            raise SQLAlchemyError("pending expense commit acknowledgement lost")
+
+    monkeypatch.setattr(Session, "commit", commit_then_lose_acknowledgement)
+    with SessionLocal() as db, pytest.raises(SQLAlchemyError, match="acknowledgement lost"):
+        create_pending_expense(
+            db,
+            saved,
+            "owner",
+            source="网页上传",
+        )
+
+    assert acknowledgement_lost is True
+    assert source.is_file()
+    with SessionLocal() as db:
+        persisted = db.scalar(select(Expense).where(Expense.image_path == saved.relative_path))
+        assert persisted is not None
+        assert persisted.status == "pending"
 
 
 def test_upload_screenshot_accepts_ios_file_body(client: TestClient, *, identity) -> None:
@@ -465,10 +561,10 @@ def test_upload_cleans_saved_file_when_pending_creation_fails(client: TestClient
 
 
 def test_upload_thumbnail_failure_does_not_block_pending(client: TestClient, monkeypatch, *, identity) -> None:
-    def fail_thumbnail(_: str | None) -> str | None:
+    def fail_thumbnail(*_args, **_kwargs):
         raise RuntimeError("thumbnail backend unavailable")
 
-    monkeypatch.setattr("app.services.expense_service._helpers.generate_thumbnail", fail_thumbnail)
+    monkeypatch.setattr("app.services.expense_service._enrich.stage_thumbnail", fail_thumbnail)
 
     response = client.post(
         identity.upload_url_path,
@@ -487,10 +583,10 @@ def test_upload_thumbnail_failure_does_not_block_pending(client: TestClient, mon
     assert item["thumbnail_path"] is None
 
 
-def test_generate_thumbnail_decompression_bomb_degrades(monkeypatch) -> None:
+def test_stage_thumbnail_decompression_bomb_degrades(monkeypatch) -> None:
     from PIL import Image
 
-    from app.services.thumb_service import generate_thumbnail
+    from app.services.thumb_service import stage_thumbnail
 
     saved = save_upload_bytes(
         PNG_BYTES,
@@ -504,7 +600,7 @@ def test_generate_thumbnail_decompression_bomb_degrades(monkeypatch) -> None:
 
     monkeypatch.setattr(Image, "open", reject_oversized_image)
 
-    assert generate_thumbnail(saved.relative_path, tenant_id="owner") is None
+    assert stage_thumbnail(saved.relative_path, tenant_id="owner") is None
 
 
 def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(monkeypatch, *, identity) -> None:
