@@ -7,6 +7,7 @@ import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.ExpenseRepositoryBackgroundTaskActions
+import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.ExpenseRepositorySettingsActions
 import com.ticketbox.data.repository.IncomePlanActions
@@ -235,6 +236,21 @@ fun expenseEditViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return ExpenseEditViewModel(expenseId, repository) as T
+    }
+}
+
+/**
+ * A1: confirmed 事实/更正 Owner 的工厂。依赖窄接口 [ExpenseFactActions]
+ * （生产由 ExpenseRepository 满足；测试用 fake）—— pending 编辑不经过这里。
+ */
+@Suppress("UNCHECKED_CAST")
+fun expenseFactViewModelFactory(
+    expenseId: Long,
+    repository: ExpenseFactActions,
+    initialExpense: com.ticketbox.domain.model.Expense? = null,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return ExpenseFactViewModel(expenseId, repository, initialExpense) as T
     }
 }
 

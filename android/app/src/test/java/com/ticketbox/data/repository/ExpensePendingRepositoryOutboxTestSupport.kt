@@ -4,6 +4,7 @@ import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ExpenseDto
@@ -86,7 +87,10 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         regretScore = null,
     )
 
-    protected fun moshi(): Moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    protected fun moshi(): Moshi = Moshi.Builder()
+        .addExpenseCorrectionWireAdapters()
+        .add(KotlinJsonAdapterFactory())
+        .build()
 
     protected fun seededSettingsStore(): FakeTicketboxSettingsStore =
         FakeTicketboxSettingsStore().apply {
@@ -115,6 +119,9 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         outbox: OutboxRepository? = null,
         adapter: com.squareup.moshi.JsonAdapter<ExpenseUpdateRequest>? = null,
         stateTokenAdapter: com.squareup.moshi.JsonAdapter<ExpenseStateTokenRequest>? = null,
+        correctionAdapter: com.squareup.moshi.JsonAdapter<
+            com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
+        >? = null,
     ): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
         binding = testServerSessionBinding(
@@ -126,6 +133,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         offlineMutations = ExpenseOfflineMutationWiring(
             outbox = outbox,
             patchExpenseAdapter = adapter,
+            correctionAdapter = correctionAdapter,
             expenseStateTokenAdapter = stateTokenAdapter,
         ),
     )

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -118,9 +119,7 @@ def web_rules(
         )
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     presentation_currency = ctx["home_currency_code"]
-    ctx["minor_amount_label"] = lambda cents: minor_amount_value(
-        cents, presentation_currency
-    )
+    ctx["minor_amount_label"] = lambda cents: minor_amount_value(cents, presentation_currency)
     ctx["rules"] = rules
     ctx["rule_applications"] = rule_applications
     ctx["preview"] = preview
@@ -196,6 +195,11 @@ def web_rules_application_rollback(
             db,
             tenant_id=selected_id,
             public_id=public_id,
+            actor_account_id=resolve_web_actor_account_id(
+                db,
+                request,
+                selected_id,
+            ),
         )
         msg = f"已回滚规则应用：恢复 {changed} 条，跳过 {skipped} 条。"
     except AppError as exc:
@@ -227,24 +231,16 @@ def web_rules_toggle(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect(
-            "/web/rules", selected_id, msg="页面已过期，请刷新后重试。"
-        )
+        return _web_redirect("/web/rules", selected_id, msg="页面已过期，请刷新后重试。")
     rule = _get_rule(db, rule_id, selected_id)
     if rule is None:
         msg = "规则不存在。"
     else:
         try:
-            updated_rule = update_rule(
-                db, rule, expected_row_version=parsed, enabled=not rule.enabled
-            )
+            updated_rule = update_rule(db, rule, expected_row_version=parsed, enabled=not rule.enabled)
             msg = f"规则「{updated_rule.keyword}」{'已启用' if updated_rule.enabled else '已停用'}。"
         except AppError as exc:
-            msg = (
-                "规则已在其它端被修改，请刷新后重试。"
-                if exc.error == "state_conflict"
-                else exc.message
-            )
+            msg = "规则已在其它端被修改，请刷新后重试。" if exc.error == "state_conflict" else exc.message
     return _web_redirect("/web/rules", selected_id, msg=msg)
 
 
@@ -263,9 +259,7 @@ def web_rules_delete(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect(
-            "/web/rules", selected_id, msg="页面已过期，请刷新后重试。"
-        )
+        return _web_redirect("/web/rules", selected_id, msg="页面已过期，请刷新后重试。")
     rule = _get_rule(db, rule_id, selected_id)
     if rule is None:
         return _web_redirect("/web/rules", selected_id, msg="规则不存在。")
@@ -273,16 +267,10 @@ def web_rules_delete(
     try:
         delete_rule(db, rule, expected_row_version=parsed)
     except AppError as exc:
-        msg = (
-            "规则已在其它端被修改，请刷新后重试。"
-            if exc.error == "state_conflict"
-            else exc.message
-        )
+        msg = "规则已在其它端被修改，请刷新后重试。" if exc.error == "state_conflict" else exc.message
         return _web_redirect("/web/rules", selected_id, msg=msg)
     # ADR-0038 undo: surface a 撤销 banner; the row is recoverable until purge.
-    return _web_redirect(
-        "/web/rules", selected_id, msg=f"规则「{keyword}」已删除。", undo=str(rule_id)
-    )
+    return _web_redirect("/web/rules", selected_id, msg=f"规则「{keyword}」已删除。", undo=str(rule_id))
 
 
 @router.post("/rules/{rule_id}/undo", response_class=HTMLResponse)
@@ -367,7 +355,11 @@ def web_rules_apply_confirmed(
     if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
         msg = "历史账单预览已过期，请重新预览后再确认应用。"
         return _web_redirect("/web/rules", selected_id, confirmed_preview="1", msg=msg)
-    confirmed_scanned, changed_count, limited = apply_rules_to_confirmed(db, tenant_id=selected_id)
+    confirmed_scanned, changed_count, limited = apply_rules_to_confirmed(
+        db,
+        tenant_id=selected_id,
+        actor_account_id=resolve_web_actor_account_id(db, request, selected_id),
+    )
     suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
     msg = f"扫描了 {confirmed_scanned} 条已确认；改写了 {changed_count} 条分类。{suffix}"
     return _web_redirect("/web/rules", selected_id, msg=msg)

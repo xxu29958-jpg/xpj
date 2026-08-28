@@ -66,17 +66,13 @@ def _fmt_local(value) -> str:
 # Account resolver
 
 
-def _resolve_request_account_id(
-    db: Session, request: Request, *, selected_ledger_id: str
-) -> int:
+def _resolve_request_account_id(db: Session, request: Request, *, selected_ledger_id: str) -> int:
     """Pick the account the current /web request acts as."""
     session_auth = getattr(request.state, "web_session_auth", None)
     if session_auth is not None:
         return session_auth.account_id
     # Loopback owner console: use the owner of the selected ledger.
-    account_id = find_owner_account_id_for_ledger(
-        db, ledger_id=selected_ledger_id
-    )
+    account_id = find_owner_account_id_for_ledger(db, ledger_id=selected_ledger_id)
     if account_id is None:
         raise AppError(
             "bill_split_owner_account_missing",
@@ -101,19 +97,11 @@ def _remaining_split_capacity(
 ) -> tuple[str, int]:
     currency_code = expense.get("home_currency_code") or presentation_currency
     active_total = projection_values_sum_to_int(
-        (
-            invitation.amount_cents
-            for invitation in invitations
-            if invitation.status in _INVITE_ACTIVE_STATUSES
-        ),
+        (invitation.amount_cents for invitation in invitations if invitation.status in _INVITE_ACTIVE_STATUSES),
         label="web_bill_split.active_total",
     )
     raw_parent = expense.get("amount_cents")
-    parent = (
-        0
-        if raw_parent is None
-        else projection_sum_to_int(raw_parent, label="web_bill_split.parent_amount")
-    )
+    parent = 0 if raw_parent is None else projection_sum_to_int(raw_parent, label="web_bill_split.parent_amount")
     remaining = projection_sum_to_int(
         parent - active_total,
         label="web_bill_split.remaining",
@@ -129,7 +117,7 @@ def build_split_invite_context(
     expense: dict,
     can_write: bool,
 ) -> dict | None:
-    """Context for the "找家人分摊" 发起卡 on edit.html, or ``None`` to hide it.
+    """Context for the confirmed fact page's "找家人分摊" card, or ``None``.
 
     The card only makes sense for a **confirmed** expense that has an amount,
     is writable by the caller, and is not itself a received split (no chain
@@ -154,9 +142,7 @@ def build_split_invite_context(
     # exists for the selected ledger; degrade to no-card rather than 500 the
     # whole edit page.
     try:
-        sender_account_id = _resolve_request_account_id(
-            db, request, selected_ledger_id=selected_ledger_id
-        )
+        sender_account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_ledger_id)
     except AppError:
         return None
 
@@ -166,15 +152,11 @@ def build_split_invite_context(
             "account_name": summary.account_name,
             "role": summary.role,
         }
-        for summary in list_members(
-            db, ledger_id=selected_ledger_id, requester_account_id=sender_account_id
-        )
+        for summary in list_members(db, ledger_id=selected_ledger_id, requester_account_id=sender_account_id)
         if not summary.is_self and summary.disabled_at is None
     ]
 
-    invitations = bsplit.list_sent_for_expense(
-        db, sender_account_id=sender_account_id, expense_id=expense["id"]
-    )
+    invitations = bsplit.list_sent_for_expense(db, sender_account_id=sender_account_id, expense_id=expense["id"])
     expense_currency, remaining_cents = _remaining_split_capacity(
         expense,
         invitations,
@@ -222,13 +204,8 @@ def web_bill_split_inbox(
     # for the accept-target filter, and a {id: name} map so the dropdown shows
     # the ledger NAME, not the internal ledger_id (ENGINEERING_RULES §3: UI
     # never surfaces ids).
-    writer_ledger_ids = list_writer_ledger_ids_for_account(
-        db, account_id=account_id
-    )
-    ledger_names = {
-        summary.ledger_id: summary.name
-        for summary in list_ledgers_for_account(db, account_id=account_id)
-    }
+    writer_ledger_ids = list_writer_ledger_ids_for_account(db, account_id=account_id)
+    ledger_names = {summary.ledger_id: summary.name for summary in list_ledgers_for_account(db, account_id=account_id)}
     rows = []
     for inv in invitations:
         choices: list[dict] = []
@@ -236,24 +213,26 @@ def web_bill_split_inbox(
             for ledger_id_choice in writer_ledger_ids:
                 if ledger_id_choice == inv.sender_ledger_id:
                     continue
-                choices.append({
-                    "ledger_id": ledger_id_choice,
-                    "name": ledger_names.get(ledger_id_choice, ledger_id_choice),
-                })
-        rows.append({
-            "public_id": inv.public_id,
-            "status": inv.status,
-            "amount_yuan": _cents_to_yuan(
-                inv.amount_cents, inv.home_currency_code
-            ),
-            "sender_display_name": inv.sender_display_name,
-            "merchant": inv.merchant_snapshot or "",
-            "category": inv.category_suggestion or "",
-            "expense_time": _fmt_local(inv.expense_time_snapshot),
-            "expires_at": _fmt_local(inv.expires_at),
-            "is_expired": ensure_utc(inv.expires_at) <= now_utc() if inv.status == "invited" else False,
-            "accept_choices": choices,
-        })
+                choices.append(
+                    {
+                        "ledger_id": ledger_id_choice,
+                        "name": ledger_names.get(ledger_id_choice, ledger_id_choice),
+                    }
+                )
+        rows.append(
+            {
+                "public_id": inv.public_id,
+                "status": inv.status,
+                "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
+                "sender_display_name": inv.sender_display_name,
+                "merchant": inv.merchant_snapshot or "",
+                "category": inv.category_suggestion or "",
+                "expense_time": _fmt_local(inv.expense_time_snapshot),
+                "expires_at": _fmt_local(inv.expires_at),
+                "is_expired": ensure_utc(inv.expires_at) <= now_utc() if inv.status == "invited" else False,
+                "accept_choices": choices,
+            }
+        )
 
     ctx = _base_ctx(
         request,
@@ -264,9 +243,7 @@ def web_bill_split_inbox(
     )
     ctx["bill_split_rows"] = rows
     ctx["message"] = msg
-    return templates.TemplateResponse(
-        request=request, name="bill_splits_inbox.html", context=ctx
-    )
+    return templates.TemplateResponse(request=request, name="bill_splits_inbox.html", context=ctx)
 
 
 @router.get("/bill-splits/sent", response_class=HTMLResponse)
@@ -281,16 +258,12 @@ def web_bill_split_sent(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
 
-    invitations = bsplit.list_sent(
-        db, sender_account_id=account_id, sender_ledger_id=selected_id
-    )
+    invitations = bsplit.list_sent(db, sender_account_id=account_id, sender_ledger_id=selected_id)
     rows = [
         {
             "public_id": inv.public_id,
             "status": inv.status,
-            "amount_yuan": _cents_to_yuan(
-                inv.amount_cents, inv.home_currency_code
-            ),
+            "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
             "receiver_display_name": inv.receiver_display_name_snapshot or "",
             "merchant": inv.merchant_snapshot or "",
             "expense_time": _fmt_local(inv.expense_time_snapshot),
@@ -308,9 +281,7 @@ def web_bill_split_sent(
     )
     ctx["bill_split_rows"] = rows
     ctx["message"] = msg
-    return templates.TemplateResponse(
-        request=request, name="bill_splits_sent.html", context=ctx
-    )
+    return templates.TemplateResponse(request=request, name="bill_splits_sent.html", context=ctx)
 
 
 # -------------------------------------------------------------------------
@@ -333,9 +304,7 @@ def web_split_invite(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    sender_account_id = _resolve_request_account_id(
-        db, request, selected_ledger_id=selected_id
-    )
+    sender_account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
 
     # Form failures (bad amount / cap exceeded / duplicate pending invite …)
     # flash back onto the page instead of escaping to the global AppError
@@ -436,11 +405,7 @@ def web_split_cancel(
         msg = exc.message
     # 编辑页发起卡的撤回带 return_expense_id 回编辑页(int 类型天然挡住任意
     # 跳转目标;0=未带,落已发列表——sent 页自己的撤回表单不带此字段)。
-    target = (
-        f"/web/expenses/{return_expense_id}/edit"
-        if return_expense_id > 0
-        else "/web/bill-splits/sent"
-    )
+    target = f"/web/expenses/{return_expense_id}/edit" if return_expense_id > 0 else "/web/bill-splits/sent"
     return _web_redirect(target, selected_id, msg=msg)
 
 

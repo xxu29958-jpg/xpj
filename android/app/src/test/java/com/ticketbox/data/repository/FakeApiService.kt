@@ -260,6 +260,19 @@ internal class FakeApiService(
         request: ExpenseUpdateRequest,
         idempotencyKey: String?,
     ): ExpenseDto = unsupported()
+    override suspend fun correctExpense(
+        id: String,
+        request: com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto = unsupported()
+    override suspend fun expenseRevisions(
+        id: Long,
+        page: Int,
+        pageSize: Int,
+    ): com.ticketbox.data.remote.dto.ExpenseRevisionPageDto = unsupported()
+    override suspend fun updateConfirmedBatch(
+        request: com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateRequestDto,
+    ): com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateResponseDto = unsupported()
 
     override suspend fun createRepaymentDraftFromExpense(
         id: String,

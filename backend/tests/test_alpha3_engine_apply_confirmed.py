@@ -1,4 +1,5 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -9,7 +10,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember, RuleApplicationBatch, RuleApplicationChange
+from app.models import (
+    Expense,
+    ExpenseRevision,
+    LedgerMember,
+    RuleApplicationBatch,
+    RuleApplicationChange,
+)
 
 
 def _seed_pending_with_merchant(merchant: str) -> int:
@@ -156,10 +163,25 @@ def _assert_confirmed_apply_persisted(
         assert change.rule_id == rule_id
         assert change.before_category == "其他"
         assert change.after_category == "餐饮"
+        revisions = list(
+            db.scalars(
+                select(ExpenseRevision)
+                .where(ExpenseRevision.expense_id == confirmed_id)
+                .order_by(ExpenseRevision.revision_number.asc())
+            )
+        )
+        assert [revision.change_kind for revision in revisions] == [
+            "confirmed",
+            "correction",
+        ]
+        assert revisions[-1].before_snapshot["category"] == "其他"
+        assert revisions[-1].after_snapshot["category"] == "餐饮"
 
 
 def test_rule_apply_confirmed_dry_run_then_confirm_integration(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     confirmed_id, non_matching_id = _seed_confirmed_apply_candidates()
     rule_id = _create_confirmed_apply_rule(client, identity=identity)
@@ -275,7 +297,9 @@ def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient, *,
 
 
 def test_rule_apply_confirmed_viewer_denied_and_cross_ledger_isolated(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     owner_confirmed_id = insert_confirmed_expense(
         amount_cents=4200,

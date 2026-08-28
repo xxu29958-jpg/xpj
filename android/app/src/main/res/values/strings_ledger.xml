@@ -171,4 +171,11 @@
     <string name="ledger_tools_tag_all">全部标签</string>
     <string name="ledger_inline_filter_missing_category">未分类交易</string>
     <string name="ledger_inline_filter_confirmed_without_image">已确认无图</string>
+<!-- Batch (ledger bulk edit) -->
+    <string name="ledger_bulk_reason_label">更正原因（必填）</string>
+    <string name="ledger_bulk_reason_placeholder">例如：统一整理餐饮</string>
+    <string name="ledger_msg_batch_reason_required">请说明这次批量更正的原因。</string>
+    <string name="ledger_msg_batch_part_updated">已更新 %1$d 条</string>
+    <string name="ledger_msg_batch_part_skipped_not_found">跳过 %1$d 条：不属于当前账本</string>
+    <string name="ledger_msg_batch_part_skipped_not_confirmed">跳过 %1$d 条：不是已入账</string>
 </resources>

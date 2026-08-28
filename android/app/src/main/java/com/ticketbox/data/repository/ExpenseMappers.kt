@@ -101,6 +101,7 @@ fun ExpenseDto.toDomain(): Expense {
         createdAt = createdAt,
         updatedAt = updatedAt,
         rowVersion = rowVersion,
+        factRevision = factRevision,
         confirmedAt = confirmedAt,
         rejectedAt = rejectedAt,
     )
@@ -145,6 +146,7 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     confirmedAt = confirmedAt,
     updatedAt = updatedAt,
     rowVersion = rowVersion,
+    factRevision = factRevision,
 )
 
 private val ExpenseDto.resolvedFxRate: String?
@@ -221,6 +223,7 @@ fun ExpenseEntity.toDomain(): Expense {
         createdAt = createdAt,
         updatedAt = updatedAt ?: createdAt,
         rowVersion = rowVersion,
+        factRevision = factRevision,
         confirmedAt = confirmedAt,
         rejectedAt = null,
         clientRef = clientRef,

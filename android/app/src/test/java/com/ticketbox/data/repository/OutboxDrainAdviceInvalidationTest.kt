@@ -34,6 +34,27 @@ class OutboxDrainAdviceInvalidationTest {
     }
 
     @Test
+    fun confirmedCorrectionReplaySuccessInvalidatesAdviceInputs() = runTest {
+        val (engine, outbox) = withDispatcher(
+            TypedStubDispatcher(type = PendingMutationType.CorrectExpense),
+        )
+        var fired = 0
+        engine.onAdviceInputReplaySucceeded = { fired += 1 }
+        outbox.enqueue(
+            type = PendingMutationType.CorrectExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedRowVersion = 2L,
+            idempotencyKey = "correction-intent",
+        )
+
+        val summary = engine.drainOnce()
+
+        assertEquals(1, summary.done)
+        assertEquals(1, fired)
+    }
+
+    @Test
     fun nonInputReplaySuccessDoesNotFireInvalidationSeam() = runTest {
         // Spending goals travel the outbox but are not an advisor input
         // (nor is the monthly-budget row — it never travels the outbox).

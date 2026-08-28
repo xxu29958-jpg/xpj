@@ -26,17 +26,13 @@ interface LedgerActions {
     suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense>
 
     /**
-     * ADR-0042 Slice C: apply a single field edit (category XOR tags — at least
-     * one non-null) to a set of already-confirmed [expenses] by fanning out into
-     * one offline-aware ``PatchExpense`` per expense. Reuses the outbox +
-     * keep-mine machinery, so a stale row 409s / queues independently of its
-     * siblings (partial success, reported via [BatchApplyResult]). Each expense
-     * carries its own ``rowVersion`` token — the caller holds them from the
-     * synced confirmed list.
+     * Apply one atomic correction to [expenses]. The server validates all OCC
+     * tokens before publishing any fact; this command is intentionally online-only.
      */
     suspend fun applyConfirmedBatch(
         expenses: List<Expense>,
         category: String? = null,
         tags: String? = null,
+        reason: String,
     ): Result<BatchApplyResult>
 }

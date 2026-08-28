@@ -41,6 +41,14 @@ data class EditableItem(
     val name: String = "",
     val amountText: String = "",
     val kind: String = ExpenseItemKind.PRODUCT,
+    /** Hidden baseline fields that must survive a replace-style save. */
+    val quantityText: String? = null,
+    val unitPriceCents: Long? = null,
+    val category: String? = null,
+    val rawText: String? = null,
+    val confidence: Double? = null,
+    /** Original signed minor value, used to preserve unsupported-currency rows. */
+    val baselineAmountCents: Long? = null,
 )
 
 /**
@@ -56,6 +64,10 @@ data class EditableSplit(
     val included: Boolean,
     val amountText: String = "",
     val disabled: Boolean = false,
+    /** Hidden baseline attribution note preserved when only the amount changes. */
+    val note: String? = null,
+    /** Original minor value, used to preserve unsupported-currency rows. */
+    val baselineAmountCents: Long? = null,
 )
 
 enum class BillSplitSentLoadState {

@@ -7,6 +7,8 @@ import com.squareup.moshi.Moshi
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
+import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
@@ -27,7 +29,11 @@ internal class OutboxAdapterGraph {
     // payloads we serialise here MUST line up with the Retrofit DTOs
     // (same nullability + @Json names) since the dispatcher
     // deserialises a row back into the same DTO shape on replay.
-    private val moshi: Moshi by lazy { Moshi.Builder().build() }
+    private val moshi: Moshi by lazy {
+        Moshi.Builder()
+            .addExpenseCorrectionWireAdapters()
+            .build()
+    }
 
     // PR-2g.3: the SAME adapter is shared between the call-site
     // serialiser (ExpenseRepository routes IOException -> outbox.enqueue)
@@ -37,6 +43,10 @@ internal class OutboxAdapterGraph {
     // today but could drift if Moshi options change in one place.
     val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest> = lazyJsonAdapter {
         moshi.adapter(ExpenseUpdateRequest::class.java)
+    }
+
+    val correctionAdapter: JsonAdapter<ExpenseCorrectionRequestDto> = lazyJsonAdapter {
+        moshi.adapter(ExpenseCorrectionRequestDto::class.java)
     }
 
     // PR-2g.4: shared between UpdateCategoryRuleDispatcher

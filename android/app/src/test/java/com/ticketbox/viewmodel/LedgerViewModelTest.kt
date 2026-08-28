@@ -185,7 +185,7 @@ class LedgerViewModelTest {
     }
 
     @Test
-    fun applyBatchCategoryFansOutToSelectedExpenses() = ledgerTest {
+    fun applyBatchCategoryAppliesToSelectedExpenses() = ledgerTest {
         val fake = FakeLedgerActions(
             expenses = listOf(
                 expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店"),
@@ -199,7 +199,7 @@ class LedgerViewModelTest {
 
         vm.enterSelection(1)
         vm.toggleSelected(2)
-        vm.applyBatchCategory("购物")
+        vm.applyBatchCategory("购物", "统一整理")
         advanceUntilIdle()
 
         assertEquals(1, fake.batchCallCount)
@@ -211,7 +211,7 @@ class LedgerViewModelTest {
         assertTrue(!vm.uiState.value.selectionMode)
         assertEquals(emptySet(), vm.uiState.value.selectedIds)
         assertEquals(
-            UiText.compound(listOf(UiText.res(R.string.ledger_msg_batch_part_synced, 2)), "，"),
+            UiText.compound(listOf(UiText.res(R.string.ledger_msg_batch_part_updated, 2)), "；"),
             vm.uiState.value.message,
         )
     }
@@ -227,7 +227,7 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         vm.enterSelection(1)
-        vm.applyBatchTags("出差")
+        vm.applyBatchTags("出差", "统一整理")
         advanceUntilIdle()
 
         // The category column must NOT be touched by a tags-only batch.
@@ -243,7 +243,7 @@ class LedgerViewModelTest {
                 expense(id = 2, amountCents = 1200, category = "餐饮", merchant = "B"),
                 expense(id = 3, amountCents = 1200, category = "餐饮", merchant = "C"),
             ),
-            batchResult = BatchApplyResult(synced = 1, queued = 1, failed = 1),
+            batchResult = BatchApplyResult(requested = 3, updated = 1, skippedNotFound = 1, skippedNotConfirmed = 1),
         )
         val vm = LedgerViewModel(fake, CapabilityDebtActions())
         advanceUntilIdle()
@@ -251,7 +251,7 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         vm.selectAllVisible()
-        vm.applyBatchCategory("购物")
+        vm.applyBatchCategory("购物", "统一整理")
         advanceUntilIdle()
 
         // Per-clause resourced parts joined by Compound (ADR-0044): the
@@ -260,11 +260,11 @@ class LedgerViewModelTest {
         assertEquals(
             UiText.compound(
                 listOf(
-                    UiText.res(R.string.ledger_msg_batch_part_synced, 1),
-                    UiText.res(R.string.ledger_msg_batch_part_queued, 1),
-                    UiText.res(R.string.ledger_msg_batch_part_failed, 1),
+                    UiText.res(R.string.ledger_msg_batch_part_updated, 1),
+                    UiText.res(R.string.ledger_msg_batch_part_skipped_not_found, 1),
+                    UiText.res(R.string.ledger_msg_batch_part_skipped_not_confirmed, 1),
                 ),
-                "，",
+                "；",
             ),
             vm.uiState.value.message,
         )
@@ -381,7 +381,7 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         vm.enterSelection(1)
-        vm.applyBatchCategory("购物")
+        vm.applyBatchCategory("购物", "统一整理")
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.batchDone)
@@ -404,7 +404,7 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         vm.enterSelection(1)
-        vm.applyBatchCategory("购物")
+        vm.applyBatchCategory("购物", "统一整理")
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.batchDone)
@@ -431,11 +431,11 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         vm.enterSelection(1)
-        vm.applyBatchCategory("购物") // launches; applyingBatch=true synchronously, awaits the gate
+        vm.applyBatchCategory("购物", "统一整理") // launches; applyingBatch=true synchronously, awaits the gate
         runCurrent()
         assertTrue(vm.uiState.value.applyingBatch)
 
-        vm.applyBatchCategory("购物") // re-entry while in-flight → guard returns, no second launch
+        vm.applyBatchCategory("购物", "统一整理") // re-entry while in-flight → guard returns, no second launch
         runCurrent()
 
         gate.complete(Unit)
@@ -456,7 +456,7 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         vm.enterSelection(1)
-        vm.applyBatchCategory("购物")
+        vm.applyBatchCategory("购物", "统一整理")
         advanceUntilIdle()
 
         assertEquals(0, fake.batchCallCount)
@@ -473,7 +473,7 @@ class LedgerViewModelTest {
         vm.setMonthFilter(FIXTURE_MONTH)
         advanceUntilIdle()
 
-        vm.applyBatchCategory("购物")
+        vm.applyBatchCategory("购物", "统一整理")
         advanceUntilIdle()
 
         assertEquals(0, fake.batchCallCount)
@@ -769,7 +769,7 @@ class LedgerBatchAdviceInvalidationTest {
         advanceUntilIdle()
 
         vm.enterSelection(1)
-        vm.applyBatchTags("出差")
+        vm.applyBatchTags("出差", "统一整理")
         advanceUntilIdle()
 
         assertEquals(1, fake.batchCallCount)
@@ -789,7 +789,7 @@ class LedgerBatchAdviceInvalidationTest {
         advanceUntilIdle()
 
         vm.enterSelection(1)
-        vm.applyBatchCategory("购物")
+        vm.applyBatchCategory("购物", "统一整理")
         advanceUntilIdle()
 
         assertEquals(1, fake.batchCallCount)
@@ -824,6 +824,7 @@ private class FakeLedgerActions(
     var lastBatchCategory: String? = null
         private set
     var lastBatchTags: String? = null
+    var lastBatchReason: String? = null
         private set
     var syncCallCount = 0
         private set
@@ -891,14 +892,23 @@ private class FakeLedgerActions(
         expenses: List<Expense>,
         category: String?,
         tags: String?,
+        reason: String,
     ): Result<BatchApplyResult> {
         batchCallCount++
         lastBatchExpenses = expenses
         lastBatchCategory = category
         lastBatchTags = tags
+        lastBatchReason = reason
         batchGate?.await()
         batchFailure?.let { return Result.failure(it) }
-        return Result.success(batchResult ?: BatchApplyResult(synced = expenses.size))
+        return Result.success(
+            batchResult ?: BatchApplyResult(
+                requested = expenses.size,
+                updated = expenses.size,
+                skippedNotFound = 0,
+                skippedNotConfirmed = 0,
+            ),
+        )
     }
 }
 

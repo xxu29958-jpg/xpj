@@ -89,13 +89,31 @@ internal fun ExpenseEditRoute(
         return
     }
 
+    // A1 责任分流：confirmed 账单的事实/更正是独立 Owner —— 旧编辑 VM 不再
+    // 渲染 confirmed（save/reject/PUT affordance 物理失权），改交 Fact owner。
+    // pending（及其它待整理状态）保持原编辑屏。
+    if (expense.status == "confirmed") {
+        ExpenseFactRoute(
+            expenseId = expenseId,
+            initialExpense = expense,
+            screenFactory = screenFactory,
+            onExit = { adviceInputsChanged ->
+                if (adviceInputsChanged) onCompleted(true) else onBack()
+            },
+            onOpenRepaymentDrafts = onOpenRepaymentDrafts,
+        )
+        return
+    }
+
     ExpenseEditScreen(
         screenState = ExpenseEditScreenState(
             expense = expense,
             editState = editState,
             actionAvailability = ExpenseEditActionAvailability(
                 allowConfirm = expense.status == "pending",
-                allowReject = expense.status == "pending" || expense.status == "confirmed",
+                // A1: confirmed 不再可达此屏（上方已分流），pending 之外的状态
+                // （rejected 等）同样没有 reject 入口。
+                allowReject = expense.status == "pending",
             ),
         ),
         actions = ExpenseEditScreenActions(

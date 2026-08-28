@@ -1,0 +1,38 @@
+{# 事实页家庭拆账（只读呈现，非表单）。契约：split_rows, can_write, home_currency_symbol。 #}
+<section class="dt-card" aria-label="家庭拆账">
+  <div class="card-header">
+    <div>
+      <h2>家庭拆账</h2>
+      <div class="meta">家庭分摊记录，不改变入账金额。{% if can_write %}需要修改请使用「更正这笔账单」。{% endif %}</div>
+    </div>
+  </div>
+  {% if split_rows.total_yuan %}
+  <div class="reconcile-line">
+    账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
+    {% if split_rows.has_mismatch %}· 差额 {{ home_currency_symbol }}{{ split_rows.mismatch_yuan }}{% endif %}
+  </div>
+  {% endif %}
+  {% set visible_splits = split_rows.rows | selectattr('member_id') | list %}
+  {% if visible_splits %}
+  <table class="dt-table dt-table--compact fact-lines-table">
+    <thead>
+      <tr>
+        <th>成员</th>
+        <th class="th-w-120">金额</th>
+        <th>备注</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for split in visible_splits %}
+      <tr>
+        <td data-label="成员">{{ split.account_name }}{% if split.disabled %}<span class="meta">（已停用）</span>{% endif %}</td>
+        <td data-label="金额" class="num">{{ split.amount_yuan }}</td>
+        <td data-label="备注">{{ split.note }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="meta">没有拆账记录。</div>
+  {% endif %}
+</section>

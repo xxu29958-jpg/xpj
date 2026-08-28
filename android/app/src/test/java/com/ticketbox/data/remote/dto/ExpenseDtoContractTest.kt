@@ -102,6 +102,7 @@ class ExpenseDtoContractTest {
                   "created_at": "2026-05-13T00:00:00Z",
                   "updated_at": "2026-05-13T00:05:00Z",
                   "row_version": 7,
+                  "fact_revision": 4,
                   "confirmed_at": "2026-05-13T00:05:00Z",
                   "rejected_at": null
                 }
@@ -111,6 +112,7 @@ class ExpenseDtoContractTest {
 
         assertEquals(9L, dto.id)
         assertEquals(7L, dto.rowVersion)
+        assertEquals(4L, dto.factRevision)
     }
 
     @Test

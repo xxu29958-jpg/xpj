@@ -15,18 +15,14 @@ import them from this module.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.errors import AppError
 from app.money_contract import projection_sum_to_int
-from app.routes._web_bulk_snapshot import parse_bulk_snapshot
 from app.routes._web_expense_return_context import edit_context_params
 from app.routes.web_common import (
     LocalOnly,
@@ -37,28 +33,19 @@ from app.routes.web_common import (
     _expense_view,
     _list_ledger_options,
     _require_local,  # re-exported for tests
-    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _sidebar_counts,
     _web_redirect,
     templates,
 )
-from app.schemas import (
-    ConfirmedExpenseBatchUpdateRequest,
-    ConfirmedExpenseBatchUpdateResponse,
-)
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import average_minor_amount
-from app.services.expense_service import (
-    batch_update_confirmed_expenses,
-    list_confirmed,
-)
+from app.services.expense_service import list_confirmed
 from app.services.spending_contract_service import (
     accounting_timezone_key,
     current_accounting_month,
 )
 from app.services.stats_service import monthly_stats
-from app.tag_text import parse_tags
 
 __all__ = ["router", "_require_local", "templates"]
 
@@ -167,10 +154,7 @@ def _confirmed_month_context(
 
 
 def _confirmed_items(expenses, home_currency_code: str) -> list[dict]:
-    return [
-        _expense_view(expense, presentation_currency_code=home_currency_code)
-        for expense in expenses
-    ]
+    return [_expense_view(expense, presentation_currency_code=home_currency_code) for expense in expenses]
 
 
 def _confirmed_edit_query(
@@ -193,6 +177,40 @@ def _confirmed_edit_query(
     )
 
 
+def _confirmed_page_rows(
+    db: Session,
+    *,
+    selected_id: str,
+    page: int,
+    month: str | None,
+    tag: str | None,
+) -> tuple[str, str, list[dict], int, int, str]:
+    timezone_name = accounting_timezone_key()
+    effective_month = month or current_accounting_month(timezone_name)
+    expenses, total = list_confirmed(
+        db,
+        tenant_id=selected_id,
+        page=page,
+        page_size=_CONFIRMED_PAGE_SIZE,
+        month=effective_month,
+        tag=tag,
+        timezone_name=timezone_name,
+    )
+    home = require_runtime_home_currency_code(db)
+    total_pages = max(1, (total + _CONFIRMED_PAGE_SIZE - 1) // _CONFIRMED_PAGE_SIZE)
+    pager_params = {"ledger_id": selected_id, "month": effective_month}
+    if tag:
+        pager_params["tag"] = tag
+    return (
+        effective_month,
+        home,
+        _confirmed_items(expenses, home),
+        total,
+        total_pages,
+        urlencode(pager_params),
+    )
+
+
 def _render_confirmed_page(
     request: Request,
     db: Session,
@@ -208,24 +226,11 @@ def _render_confirmed_page(
     selected_expense_ids: list[int] | None = None,
     batch_category_input: str = "",
     batch_tags_input: str = "",
+    batch_reason_input: str = "",
 ) -> HTMLResponse:
-    timezone_name = accounting_timezone_key()
-    effective_month = month or current_accounting_month(timezone_name)
-    expenses, total = list_confirmed(
-        db,
-        tenant_id=selected_id,
-        page=page,
-        page_size=_CONFIRMED_PAGE_SIZE,
-        month=effective_month,
-        tag=tag,
-        timezone_name=timezone_name,
+    effective_month, home, items, total, total_pages, pager_query = _confirmed_page_rows(
+        db, selected_id=selected_id, page=page, month=month, tag=tag
     )
-    home = require_runtime_home_currency_code(db)
-    items = _confirmed_items(expenses, home)
-    total_pages = max(1, (total + _CONFIRMED_PAGE_SIZE - 1) // _CONFIRMED_PAGE_SIZE)
-    pager_params = {"ledger_id": selected_id, "month": effective_month}
-    if tag:
-        pager_params["tag"] = tag
     ctx = _base_ctx(
         request,
         db=db,
@@ -243,7 +248,7 @@ def _render_confirmed_page(
         total=total,
         month=effective_month,
         tag=tag or "",
-        pager_query=urlencode(pager_params),
+        pager_query=pager_query,
         confirmed_edit_query=_confirmed_edit_query(
             selected_id,
             effective_month=effective_month,
@@ -266,6 +271,7 @@ def _render_confirmed_page(
         selected_expense_ids=set(selected_expense_ids or []),
         batch_category_input=batch_category_input,
         batch_tags_input=batch_tags_input,
+        batch_reason_input=batch_reason_input,
     )
     return templates.TemplateResponse(
         request=request,
@@ -297,191 +303,6 @@ def web_confirmed(
         month=month,
         tag=tag,
         msg=msg,
-    )
-
-
-def _confirmed_batch_payload(
-    *,
-    action: str,
-    expense_ids: list[int],
-    expected_row_version_by_id: dict[int, int],
-    category: str,
-    tags: str,
-) -> tuple[ConfirmedExpenseBatchUpdateRequest | None, str]:
-    action_clean = (action or "").strip()
-    try:
-        if action_clean == "set_category":
-            category_clean = category.strip()
-            if not category_clean:
-                return None, "请填写分类。"
-            return (
-                ConfirmedExpenseBatchUpdateRequest(
-                    expense_ids=expense_ids,
-                    expected_row_version_by_id=expected_row_version_by_id,
-                    category=category_clean,
-                ),
-                "",
-            )
-        if action_clean == "set_tags":
-            tags_clean = tags.strip()
-            tag_names = parse_tags(tags_clean)
-            if not tag_names:
-                return None, "请填写标签。"
-            tags_clean = ", ".join(tag_names)
-            return (
-                ConfirmedExpenseBatchUpdateRequest(
-                    expense_ids=expense_ids,
-                    expected_row_version_by_id=expected_row_version_by_id,
-                    tags=tags_clean,
-                ),
-                "",
-            )
-        return None, "批处理操作不正确。"
-    except ValidationError as exc:
-        first_field = str(exc.errors(include_url=False)[0]["loc"][-1])
-        if first_field == "category":
-            return None, "分类最多 64 个字符。"
-        if first_field == "tags" and len(tags) > 500:
-            return None, "标签最多 500 个字符。"
-        if first_field == "tags":
-            return None, "单个标签最多 64 个字符。"
-        return None, "批处理参数不正确。"
-
-
-def _confirmed_batch_result_message(
-    result: ConfirmedExpenseBatchUpdateResponse,
-) -> str:
-    parts: list[str] = []
-    if result.updated_count:
-        parts.append(f"已更新 {result.updated_count} 条")
-    if result.skipped_not_found:
-        parts.append(f"跳过 {result.skipped_not_found} 条：不属于当前账本")
-    if result.skipped_not_confirmed:
-        parts.append(f"跳过 {result.skipped_not_confirmed} 条：不是已入账")
-    if not parts:
-        parts.append("没有可更新的账单")
-    return "；".join(parts) + "。"
-
-
-@dataclass(frozen=True)
-class _ConfirmedBatchOutcome:
-    selected_expense_ids: list[int]
-    result: ConfirmedExpenseBatchUpdateResponse | None = None
-    error_message: str = ""
-    error_status: int = 422
-
-
-def _execute_confirmed_batch(
-    db: Session,
-    *,
-    selected_id: str,
-    action: str,
-    expense_ids: list[int],
-    expected_row_version: list[str],
-    expense_snapshot: list[str],
-    category: str,
-    tags: str,
-) -> _ConfirmedBatchOutcome:
-    parsed_snapshot = parse_bulk_snapshot(
-        expense_ids,
-        expected_row_version,
-        expense_snapshot,
-    )
-    if parsed_snapshot is None:
-        return _ConfirmedBatchOutcome(
-            [], error_message="页面已过期，请刷新后重新批处理。"
-        )
-    selected_expense_ids, expected_row_version_by_id = parsed_snapshot
-    if not selected_expense_ids:
-        return _ConfirmedBatchOutcome([], error_message="请先勾选账单。")
-
-    payload, error_message = _confirmed_batch_payload(
-        action=action,
-        expense_ids=selected_expense_ids,
-        expected_row_version_by_id=expected_row_version_by_id,
-        category=category,
-        tags=tags,
-    )
-    if error_message or payload is None:
-        return _ConfirmedBatchOutcome(
-            selected_expense_ids,
-            error_message=error_message or "批处理参数不正确。",
-        )
-    try:
-        result = batch_update_confirmed_expenses(
-            db, tenant_id=selected_id, payload=payload
-        )
-    except AppError as exc:
-        db.rollback()
-        message = (
-            "账单已在其它端被修改，请刷新后重试。"
-            if exc.error == "state_conflict"
-            else exc.message
-        )
-        return _ConfirmedBatchOutcome(
-            selected_expense_ids,
-            error_message=message,
-            error_status=exc.status_code,
-        )
-    return _ConfirmedBatchOutcome(selected_expense_ids, result=result)
-
-
-@router.post("/confirmed/batch-update", response_class=HTMLResponse)
-def web_confirmed_batch_update(
-    request: Request,
-    action: str = Form(...),
-    ledger_id: str = Form(default=""),
-    expense_ids: list[int] = Form(default=[]),
-    expected_row_version: list[str] = Form(default=[]),
-    expense_snapshot: list[str] = Form(default=[]),
-    category: str = Form(default=""),
-    tags: str = Form(default=""),
-    month: str = Form(default=""),
-    tag: str = Form(default=""),
-    page: int = Form(default=1),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> Response:
-    options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
-    error_page_args = {
-        "page": page,
-        "month": month or None,
-        "tag": tag or None,
-        "flash_type": "error",
-        "batch_category_input": category,
-        "batch_tags_input": tags,
-    }
-    outcome = _execute_confirmed_batch(
-        db,
-        selected_id=selected_id,
-        action=action,
-        expense_ids=expense_ids,
-        expected_row_version=expected_row_version,
-        expense_snapshot=expense_snapshot,
-        category=category,
-        tags=tags,
-    )
-    if outcome.error_message:
-        return _render_confirmed_page(
-            request,
-            db,
-            options,
-            selected_id,
-            msg=outcome.error_message,
-            status_code=outcome.error_status,
-            selected_expense_ids=outcome.selected_expense_ids,
-            **error_page_args,
-        )
-    if outcome.result is None:
-        raise AppError("server_error", status_code=500)
-    return _confirmed_redirect(
-        selected_id,
-        month=month,
-        tag=tag,
-        page=page,
-        msg=_confirmed_batch_result_message(outcome.result),
     )
 
 

@@ -133,9 +133,11 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/duplicates/{expense_id}/keep"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-current"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-original"): "writer-only",
-    # Expense edit (pending + confirmed both land here)
+    # Expense edit / confirmed fact correction
     ("GET", "/web/expenses/{expense_id}/edit"): "local-only-rendering",
+    ("GET", "/web/expenses/{expense_id}/correct"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/save"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/corrections"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/confirm"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/acknowledge-mismatch"): "writer-only",
@@ -256,17 +258,11 @@ def _enumerate_web_route_counts() -> Counter[tuple[str, str]]:
 
 
 def _writer_only_paths() -> list[tuple[str, str]]:
-    return [
-        key for key, kind in _WEB_ROUTE_CLASSIFICATION.items()
-        if kind == "writer-only"
-    ]
+    return [key for key, kind in _WEB_ROUTE_CLASSIFICATION.items() if kind == "writer-only"]
 
 
 def _owner_live_provider_paths() -> list[tuple[str, str]]:
-    return [
-        key for key, kind in _WEB_ROUTE_CLASSIFICATION.items()
-        if kind == "owner-live-provider"
-    ]
+    return [key for key, kind in _WEB_ROUTE_CLASSIFICATION.items() if kind == "owner-live-provider"]
 
 
 def _route_endpoint(method: str, path: str) -> Callable[..., object] | None:
@@ -321,13 +317,9 @@ def test_every_web_route_is_classified() -> None:
     missing_in_table = sorted(live - classified)
     stale_in_table = sorted(classified - live)
     assert not missing_in_table, (
-        "/web routes registered on the app but not classified in "
-        f"_WEB_ROUTE_CLASSIFICATION: {missing_in_table}"
+        f"/web routes registered on the app but not classified in _WEB_ROUTE_CLASSIFICATION: {missing_in_table}"
     )
-    assert not stale_in_table, (
-        f"_WEB_ROUTE_CLASSIFICATION lists routes that no longer exist: "
-        f"{stale_in_table}"
-    )
+    assert not stale_in_table, f"_WEB_ROUTE_CLASSIFICATION lists routes that no longer exist: {stale_in_table}"
 
 
 def test_web_routes_are_not_registered_twice() -> None:
@@ -349,9 +341,7 @@ def test_writer_only_routes_actually_check_writer(method: str, path: str) -> Non
 
 
 @pytest.mark.parametrize("method,path", _owner_live_provider_paths())
-def test_owner_live_provider_routes_use_shared_advisor_runner(
-    method: str, path: str
-) -> None:
+def test_owner_live_provider_routes_use_shared_advisor_runner(method: str, path: str) -> None:
     endpoint = _route_endpoint(method, path)
     assert endpoint is not None, f"endpoint not found: {method} {path}"
     source = inspect.getsource(endpoint)

@@ -28,8 +28,6 @@ ExpenseItemKind = Literal["product", "discount", "tax", "service_fee"]
 ItemsSumStatus = Literal["matched", "mismatch_known", "mismatch_acknowledged", "no_items"]
 
 __all__ = [
-    "ConfirmedExpenseBatchUpdateRequest",
-    "ConfirmedExpenseBatchUpdateResponse",
     "CategoryPreferenceListResponse",
     "CategoryPreferenceResponse",
     "CategoryPreferenceTokenRequest",
@@ -206,24 +204,6 @@ class ExpenseOcrRetryRequest(BaseModel):
     expected_row_version: int
 
 
-class ConfirmedExpenseBatchUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    expense_ids: list[int] = Field(min_length=1, max_length=200)
-    expected_row_version_by_id: dict[int, int] = Field(min_length=1, max_length=200)
-    category: str | None = Field(default=None, max_length=64)
-    tags: str | None = Field(default=None, max_length=500)
-
-    _tags_fit_mirror = field_validator("tags")(validate_tags_fit_storage)
-
-
-class ConfirmedExpenseBatchUpdateResponse(BaseModel):
-    requested_count: int
-    updated_count: int
-    skipped_not_found: int
-    skipped_not_confirmed: int
-
-
 class CategoryPreferenceTokenRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -344,14 +324,13 @@ class ExpenseResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     row_version: int
+    fact_revision: int
     confirmed_at: datetime | None
     rejected_at: datetime | None
     image_deleted_at: datetime | None
     thumbnail_deleted_at: datetime | None
     category_suggestion: PendingCategorySuggestionResponse | None = None
-    duplicate_candidates: list[PendingDuplicateCandidateResponse] = Field(
-        default_factory=list
-    )
+    duplicate_candidates: list[PendingDuplicateCandidateResponse] = Field(default_factory=list)
 
     @field_serializer(
         "expense_time",

@@ -33,9 +33,7 @@ def test_manual_expense_create_contract(client: TestClient, *, identity) -> None
     assert payload["image_path"] is None
     assert payload["confirmed_at"].endswith("Z")
 
-    confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05&category=餐饮", headers=identity.app_headers
-    )
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05&category=餐饮", headers=identity.app_headers)
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 1
 
@@ -91,6 +89,7 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
             "expected_row_version_by_id": expected_row_version_by_id,
             "category": "Family Meals",
             "tags": "weekend, shared, weekend",
+            "reason": "批量整理分类与标签",
         },
     )
     assert response.status_code == 200, response.json()
@@ -107,6 +106,12 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
         assert detail.status_code == 200
         assert detail.json()["category"] == "Family Meals"
         assert detail.json()["tags"] == "weekend, shared"
+        history = client.get(
+            f"/api/expenses/{expense_id}/revisions",
+            headers=identity.app_headers,
+        )
+        assert history.status_code == 200, history.text
+        assert history.json()["items"][0]["reason"] == "批量整理分类与标签"
 
     pending_detail = client.get(f"/api/expenses/{pending_id}", headers=identity.app_headers)
     assert pending_detail.status_code == 200
@@ -117,9 +122,7 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
     assert other_detail.json()["category"] == "GrayCat"
 
 
-def test_confirmed_batch_update_stale_token_returns_409_without_partial_update(
-    client: TestClient, *, identity
-) -> None:
+def test_confirmed_batch_update_stale_token_returns_409_without_partial_update(client: TestClient, *, identity) -> None:
     def _manual(merchant: str, category: str) -> int:
         response = client.post(
             "/api/expenses/manual",
@@ -144,13 +147,16 @@ def test_confirmed_batch_update_stale_token_returns_409_without_partial_update(
     first_snapshot = _detail(first_id)
     second_snapshot = _detail(second_id)
 
-    intervening = patch_expense(
-        client,
-        first_id,
-        headers=identity.app_headers,
-        fields={"category": "Intervening"},
+    intervening = client.post(
+        f"/api/expenses/{first_id}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": str(UUID(int=1))},
+        json={
+            "expected_row_version": first_snapshot["row_version"],
+            "reason": "并发更正",
+            "category": "Intervening",
+        },
     )
-    assert intervening.status_code == 200, intervening.text
+    assert intervening.status_code == 201, intervening.text
 
     response = client.post(
         "/api/expenses/confirmed/batch-update",
@@ -162,6 +168,7 @@ def test_confirmed_batch_update_stale_token_returns_409_without_partial_update(
                 second_id: second_snapshot["row_version"],
             },
             "category": "Should Not Land",
+            "reason": "批量更正分类",
         },
     )
     assert response.status_code == 409, response.text
@@ -228,22 +235,16 @@ def test_patch_explicit_null_tags_does_not_clobber(client: TestClient, *, identi
     (the legitimate "remove all tags" path)."""
     expense_id = upload_png(client, identity=identity)
 
-    set_tags = patch_expense(
-        client, expense_id, headers=identity.app_headers, fields={"tags": "出差"}
-    )
+    set_tags = patch_expense(client, expense_id, headers=identity.app_headers, fields={"tags": "出差"})
     assert set_tags.status_code == 200, set_tags.text
     assert set_tags.json()["tags"] == "出差"
 
     # explicit null → untouched (the hardening; before the fix this cleared tags).
-    null_tags = patch_expense(
-        client, expense_id, headers=identity.app_headers, fields={"tags": None}
-    )
+    null_tags = patch_expense(client, expense_id, headers=identity.app_headers, fields={"tags": None})
     assert null_tags.status_code == 200, null_tags.text
     assert null_tags.json()["tags"] == "出差"
 
     # empty string → genuinely cleared (legitimate remove-tags path preserved).
-    clear_tags = patch_expense(
-        client, expense_id, headers=identity.app_headers, fields={"tags": ""}
-    )
+    clear_tags = patch_expense(client, expense_id, headers=identity.app_headers, fields={"tags": ""})
     assert clear_tags.status_code == 200, clear_tags.text
     assert clear_tags.json()["tags"] is None

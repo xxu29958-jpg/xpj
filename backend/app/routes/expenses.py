@@ -14,8 +14,6 @@ from app.schemas import (
     CategoryPreferenceListResponse,
     CategoryPreferenceResponse,
     CategoryPreferenceTokenRequest,
-    ConfirmedExpenseBatchUpdateRequest,
-    ConfirmedExpenseBatchUpdateResponse,
     ExpenseAcknowledgeItemsMismatchRequest,
     ExpenseConfirmRequest,
     ExpenseItemReplaceRequest,
@@ -54,7 +52,6 @@ from app.services.expense_response_service import (
 )
 from app.services.expense_review_command_service import confirm_expense_submission
 from app.services.expense_service import (
-    batch_update_confirmed_expenses,
     create_manual_expense,
     create_notification_draft,
     create_repayment_draft_from_expense,
@@ -104,9 +101,7 @@ def get_pending_expenses(
     db: Session = Depends(get_db),
 ) -> list[ExpenseResponse]:
     expenses = list_pending(db, auth.tenant_id)
-    raw_text_by_id = expense_raw_text_by_id(
-        db, tenant_id=auth.tenant_id, expenses=expenses
-    )
+    raw_text_by_id = expense_raw_text_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
     items: list[ExpenseResponse] = []
     for expense in expenses:
         items.append(
@@ -170,15 +165,6 @@ def get_confirmed_expenses(
     )
 
 
-@router.post("/confirmed/batch-update", response_model=ConfirmedExpenseBatchUpdateResponse)
-def post_confirmed_expenses_batch_update(
-    payload: ConfirmedExpenseBatchUpdateRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
-    db: Session = Depends(get_db),
-) -> ConfirmedExpenseBatchUpdateResponse:
-    return batch_update_confirmed_expenses(db, tenant_id=auth.tenant_id, payload=payload)
-
-
 @router.get("/categories", response_model=CategoriesResponse)
 def get_expense_categories(
     auth: AuthContext = Depends(get_current_app_context),
@@ -193,10 +179,7 @@ def get_expense_category_preferences(
     db: Session = Depends(get_db),
 ) -> CategoryPreferenceListResponse:
     return CategoryPreferenceListResponse(
-        items=[
-            _category_preference_response(item)
-            for item in list_category_preferences(db, tenant_id=auth.tenant_id)
-        ]
+        items=[_category_preference_response(item) for item in list_category_preferences(db, tenant_id=auth.tenant_id)]
     )
 
 
@@ -300,8 +283,11 @@ def put_expense_item_rows(
     db: Session = Depends(get_db),
 ) -> ExpenseItemsResponse:
     expense_pk, effective_row_version = resolve_expense_for_mutation(
-        db, auth.tenant_id, expense_id,
-        device_id=auth.device_id, expected_row_version=payload.expected_row_version,
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
     )
     claim = claim_idempotent_request(
         db,
@@ -309,22 +295,20 @@ def put_expense_item_rows(
         tenant_id=auth.tenant_id,
         operation="replace_items",
         target_id=str(expense_pk),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:  # §4.6 HIT — re-serialise current items state
         return list_expense_items(db, expense_pk, auth.tenant_id)
 
     response = replace_expense_items(
-        db, expense_pk, auth.tenant_id,
+        db,
+        expense_pk,
+        auth.tenant_id,
         payload.model_copy(update={"expected_row_version": effective_row_version}),
         commit=False,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="expense", resource_id=str(expense_pk)
-    )
+    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
     return response
 
@@ -346,8 +330,11 @@ def acknowledge_expense_items_mismatch(
     # amount/items — without the token the service would flip a *new*
     # mismatch into ``mismatch_acknowledged``.
     expense_pk, effective_row_version = resolve_expense_for_mutation(
-        db, auth.tenant_id, expense_id,
-        device_id=auth.device_id, expected_row_version=payload.expected_row_version,
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
     )
     claim = claim_idempotent_request(
         db,
@@ -355,9 +342,7 @@ def acknowledge_expense_items_mismatch(
         tenant_id=auth.tenant_id,
         operation="acknowledge_items_mismatch",
         target_id=str(expense_pk),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:  # §4.6 HIT — re-serialise current canonical items state
@@ -368,11 +353,12 @@ def acknowledge_expense_items_mismatch(
         expense_pk,
         auth.tenant_id,
         expected_row_version=effective_row_version,
+        actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id,
+        idempotency_key=idempotency_key,
         commit=False,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="expense", resource_id=str(expense_pk)
-    )
+    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
     return response
 
@@ -395,8 +381,11 @@ def put_expense_split_rows(
     db: Session = Depends(get_db),
 ) -> ExpenseSplitsResponse:
     expense_pk, effective_row_version = resolve_expense_for_mutation(
-        db, auth.tenant_id, expense_id,
-        device_id=auth.device_id, expected_row_version=payload.expected_row_version,
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
     )
     claim = claim_idempotent_request(
         db,
@@ -404,9 +393,7 @@ def put_expense_split_rows(
         tenant_id=auth.tenant_id,
         operation="replace_splits",
         target_id=str(expense_pk),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:  # §4.6 HIT — re-serialise current splits state
@@ -420,9 +407,7 @@ def put_expense_split_rows(
         actor_account_id=auth.account_id,
         commit=False,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="expense", resource_id=str(expense_pk)
-    )
+    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
     return response
 
@@ -511,8 +496,11 @@ def patch_expense(
     effective OCC version (first-write sentinel → current row_version).
     """
     expense_pk, effective_row_version = resolve_expense_for_mutation(
-        db, auth.tenant_id, expense_id,
-        device_id=auth.device_id, expected_row_version=payload.expected_row_version,
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
     )
     claim = claim_idempotent_request(
         db,
@@ -520,9 +508,7 @@ def patch_expense(
         tenant_id=auth.tenant_id,
         operation="patch_expense",
         target_id=str(expense_pk),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         # RAW sentinel, not effective — a first-write replay must keep a stable
         # fingerprint even though the current row_version may have drifted.
         expected_row_version=payload.expected_row_version,
@@ -539,13 +525,13 @@ def patch_expense(
     # PROCEED: run the mutation without committing, record the key's success,
     # then commit both atomically (§4.5).
     expense = update_expense(
-        db, expense_pk, auth.tenant_id,
+        db,
+        expense_pk,
+        auth.tenant_id,
         payload.model_copy(update={"expected_row_version": effective_row_version}),
         commit=False,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="expense", resource_id=str(expense_pk)
-    )
+    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
     db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
@@ -560,8 +546,11 @@ def post_confirm_expense(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     expense_pk, effective_row_version = resolve_expense_for_mutation(
-        db, auth.tenant_id, expense_id,
-        device_id=auth.device_id, expected_row_version=payload.expected_row_version,
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
     )
     expense = confirm_expense_submission(
         db,
@@ -570,10 +559,10 @@ def post_confirm_expense(
         tenant_id=auth.tenant_id,
         expected_row_version=effective_row_version,
         request_expected_row_version=payload.expected_row_version,
-        intent_body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        intent_body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         update_payload=None,
+        actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id,
         require_idempotency=True,
     )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
@@ -588,8 +577,11 @@ def post_reject_expense(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     expense_pk, effective_row_version = resolve_expense_for_mutation(
-        db, auth.tenant_id, expense_id,
-        device_id=auth.device_id, expected_row_version=payload.expected_row_version,
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
     )
     claim = claim_idempotent_request(
         db,
@@ -597,9 +589,7 @@ def post_reject_expense(
         tenant_id=auth.tenant_id,
         operation="reject_expense",
         target_id=str(expense_pk),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:
@@ -613,9 +603,7 @@ def post_reject_expense(
         expected_row_version=effective_row_version,
         commit=False,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="expense", resource_id=str(expense_pk)
-    )
+    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
     db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
@@ -663,8 +651,11 @@ def post_retry_ocr(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     expense_pk, effective_row_version = resolve_expense_for_mutation(
-        db, auth.tenant_id, expense_id,
-        device_id=auth.device_id, expected_row_version=payload.expected_row_version,
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
     )
     claim = claim_idempotent_request(
         db,
@@ -672,9 +663,7 @@ def post_retry_ocr(
         tenant_id=auth.tenant_id,
         operation="retry_ocr",
         target_id=str(expense_pk),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:
@@ -688,9 +677,7 @@ def post_retry_ocr(
         expected_row_version=effective_row_version,
         commit=False,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="expense", resource_id=str(expense_pk)
-    )
+    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
     db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
@@ -705,8 +692,11 @@ def post_recognize_text(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     expense_pk, effective_row_version = resolve_expense_for_mutation(
-        db, auth.tenant_id, expense_id,
-        device_id=auth.device_id, expected_row_version=payload.expected_row_version,
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
     )
     claim = claim_idempotent_request(
         db,
@@ -714,9 +704,7 @@ def post_recognize_text(
         tenant_id=auth.tenant_id,
         operation="recognize_text",
         target_id=str(expense_pk),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:  # §4.6 HIT — re-serialise the current expense
@@ -724,13 +712,13 @@ def post_recognize_text(
         return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
     expense = recognize_expense_text(
-        db, expense_pk, auth.tenant_id,
+        db,
+        expense_pk,
+        auth.tenant_id,
         payload.model_copy(update={"expected_row_version": effective_row_version}),
         commit=False,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="expense", resource_id=str(expense_pk)
-    )
+    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
     db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
@@ -797,8 +785,11 @@ def post_mark_not_duplicate(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     expense_pk, effective_row_version = resolve_expense_for_mutation(
-        db, auth.tenant_id, expense_id,
-        device_id=auth.device_id, expected_row_version=payload.expected_row_version,
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+        expected_row_version=payload.expected_row_version,
     )
     claim = claim_idempotent_request(
         db,
@@ -806,9 +797,7 @@ def post_mark_not_duplicate(
         tenant_id=auth.tenant_id,
         operation="mark_not_duplicate",
         target_id=str(expense_pk),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:
@@ -822,9 +811,7 @@ def post_mark_not_duplicate(
         expected_row_version=effective_row_version,
         commit=False,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="expense", resource_id=str(expense_pk)
-    )
+    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
     db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
@@ -837,9 +824,7 @@ def _expense_response_with_suggestions(
     expense: Expense,
     raw_text_by_id: dict[int, str] | None = None,
 ) -> ExpenseResponse:
-    suggestions = suggestions_for_pending_expense(
-        db, tenant_id=tenant_id, expense=expense
-    )
+    suggestions = suggestions_for_pending_expense(db, tenant_id=tenant_id, expense=expense)
     dto = expense_to_response(
         db,
         tenant_id=tenant_id,

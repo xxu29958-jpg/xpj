@@ -37,6 +37,8 @@ def rollback_rule_application(
     *,
     tenant_id: str,
     public_id: str,
+    actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
 ) -> tuple[RuleApplicationBatch, int, int]:
     authorize_currency_metadata_write(db)
     batch = db.scalar(
@@ -85,6 +87,8 @@ def rollback_rule_application(
             expense=expense,
             change=change,
             now=now,
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         ):
             change.status = "skipped"
             change.rolled_back_at = now

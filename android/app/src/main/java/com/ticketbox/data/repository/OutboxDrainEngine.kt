@@ -135,6 +135,7 @@ class OutboxDrainEngine(
             PendingMutationType.ConfirmExpense,
             PendingMutationType.CreateExpense,
             PendingMutationType.PatchExpense,
+            PendingMutationType.CorrectExpense,
             PendingMutationType.UpdateIncomePlan,
         )
     }

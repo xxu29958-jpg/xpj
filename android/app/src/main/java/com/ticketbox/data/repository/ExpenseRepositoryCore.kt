@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.ExpenseListFilterQuery
 import com.ticketbox.data.remote.PageQuery
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
@@ -61,6 +62,8 @@ internal class ExpenseRepositoryCore(
         get() = offlineMutations.outbox
     val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>?
         get() = offlineMutations.patchExpenseAdapter
+    val correctionAdapter: JsonAdapter<ExpenseCorrectionRequestDto>?
+        get() = offlineMutations.correctionAdapter
     val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>?
         get() = offlineMutations.expenseStateTokenAdapter
     val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>?

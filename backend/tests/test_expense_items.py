@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from api_contract_helpers import recognize_text_api, reject_expense_api, upload_png
+from api_contract_helpers import (
+    confirm_expense_api,
+    patch_expense,
+    recognize_text_api,
+    reject_expense_api,
+    upload_png,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -10,17 +16,27 @@ from app.database import SessionLocal
 from app.models import LedgerMember
 
 
-def _create_manual_expense(
+def _create_pending_expense(
     client: TestClient,
-    *, identity,
+    *,
+    identity,
     amount_cents: int = 1500,
     merchant: str = "Receipt Cafe",
     headers: dict[str, str] | None = None,
 ) -> int:
-    response = client.post(
-        "/api/expenses/manual",
-        headers=headers or identity.app_headers,
-        json={
+    request_headers = headers or identity.app_headers
+    is_gray = request_headers == identity.gray_app_headers
+    expense_id = upload_png(
+        client,
+        identity=identity,
+        headers=identity.gray_upload_headers if is_gray else identity.upload_headers,
+        path=identity.gray_upload_url_path if is_gray else identity.upload_url_path,
+    )
+    response = patch_expense(
+        client,
+        expense_id,
+        headers=request_headers,
+        fields={
             "amount_cents": amount_cents,
             "merchant": merchant,
             "category": "餐饮",
@@ -28,13 +44,14 @@ def _create_manual_expense(
         },
     )
     assert response.status_code == 200, response.json()
-    return int(response.json()["id"])
+    return expense_id
 
 
 def _replace_items(
     client: TestClient,
     expense_id: int,
-    *, identity,
+    *,
+    identity,
     headers: dict[str, str] | None = None,
 ) -> dict[str, object]:
     request_headers = headers or identity.app_headers
@@ -66,7 +83,7 @@ def _replace_items(
                     "name": "优惠",
                     "category": "其他",
                 },
-            ]
+            ],
         },
     )
     assert response.status_code == 200, response.json()
@@ -76,7 +93,8 @@ def _replace_items(
 def _recognize_receipt_items(
     client: TestClient,
     expense_id: int,
-    *, identity,
+    *,
+    identity,
     item_lines: list[str] | None = None,
 ) -> dict[str, object]:
     raw_text = "\n".join(
@@ -87,9 +105,7 @@ def _recognize_receipt_items(
             "支付成功",
         ]
     )
-    response = recognize_text_api(
-        client, expense_id, headers=identity.app_headers, raw_text=raw_text
-    )
+    response = recognize_text_api(client, expense_id, headers=identity.app_headers, raw_text=raw_text)
     assert response.status_code == 200, response.json()
     return response.json()
 
@@ -103,7 +119,7 @@ def _demote_owner_ledger_to_viewer() -> None:
 
 
 def test_expense_items_replace_read_and_reconcile_with_parent_amount(client: TestClient, *, identity) -> None:
-    expense_id = _create_manual_expense(client, amount_cents=1500, identity=identity)
+    expense_id = _create_pending_expense(client, amount_cents=1500, identity=identity)
 
     replaced = _replace_items(client, expense_id, identity=identity)
 
@@ -140,13 +156,11 @@ def test_expense_items_replace_read_and_reconcile_with_parent_amount(client: Tes
     assert [item["name"] for item in payload["items"]] == ["咖啡豆"]
 
 
-def test_expense_items_replace_response_carries_bumped_parent_row_version(
-    client: TestClient, *, identity
-) -> None:
+def test_expense_items_replace_response_carries_bumped_parent_row_version(client: TestClient, *, identity) -> None:
     """ADR-0041 self-describing contract: PUT /items returns the *parent*
     expense's row_version, advanced past the value the client sent — so a
     chained client can reuse it without a second GET on the expense."""
-    expense_id = _create_manual_expense(client, amount_cents=1500, identity=identity)
+    expense_id = _create_pending_expense(client, amount_cents=1500, identity=identity)
 
     snapshot = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert snapshot.status_code == 200, snapshot.json()
@@ -175,12 +189,10 @@ def test_expense_items_replace_response_carries_bumped_parent_row_version(
     assert listed.json()["row_version"] == body["row_version"]
 
 
-def test_acknowledge_mismatch_response_carries_bumped_parent_row_version(
-    client: TestClient, *, identity
-) -> None:
+def test_acknowledge_mismatch_response_carries_bumped_parent_row_version(client: TestClient, *, identity) -> None:
     """ADR-0041 self-describing contract: acknowledge-mismatch bumps the
     parent expense's row_version and the response exposes the new value."""
-    expense_id = _create_manual_expense(client, amount_cents=1500, identity=identity)
+    expense_id = _create_pending_expense(client, amount_cents=1500, identity=identity)
     # Build a mismatch_known state: items sum (1250) != expense amount (1500).
     _replace_items(client, expense_id, identity=identity)
 
@@ -204,10 +216,17 @@ def test_acknowledge_mismatch_response_carries_bumped_parent_row_version(
 
 
 def test_expense_items_mismatch_does_not_change_stats_or_export(client: TestClient, *, identity) -> None:
-    expense_id = _create_manual_expense(client, amount_cents=1500, identity=identity)
+    expense_id = _create_pending_expense(client, amount_cents=1500, identity=identity)
     replaced = _replace_items(client, expense_id, identity=identity)
     assert replaced["items_total_amount_cents"] == 1250
     assert replaced["mismatch_cents"] == 250
+
+    confirmed = confirm_expense_api(
+        client,
+        expense_id,
+        headers=identity.app_headers,
+    )
+    assert confirmed.status_code == 200, confirmed.text
 
     stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200, stats.json()
@@ -297,20 +316,16 @@ def test_recognize_text_does_not_overwrite_manual_items(client: TestClient, *, i
         f"/api/expenses/{expense_id}/items",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
-            "expected_row_version": client.get(
-                f"/api/expenses/{expense_id}", headers=identity.app_headers
-            ).json()["row_version"],
+            "expected_row_version": client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()[
+                "row_version"
+            ],
             "items": [{"name": "用户确认明细", "amount_cents": 1250, "category": "餐饮"}],
         },
     )
     assert manual.status_code == 200, manual.json()
     assert manual.json()["items"][0]["is_ocr_draft"] is False
 
-    _recognize_receipt_items(
-        client,
-        expense_id,
-        item_lines=["矿泉水 1瓶 2.00", "饭团 1个 6.00"],
-     identity=identity)
+    _recognize_receipt_items(client, expense_id, item_lines=["矿泉水 1瓶 2.00", "饭团 1个 6.00"], identity=identity)
 
     listed = client.get(f"/api/expenses/{expense_id}/items", headers=identity.app_headers)
     assert listed.status_code == 200, listed.json()
@@ -320,12 +335,10 @@ def test_recognize_text_does_not_overwrite_manual_items(client: TestClient, *, i
 
 
 def test_expense_items_are_tenant_isolated_and_viewer_can_only_read(client: TestClient, *, identity) -> None:
-    owner_expense_id = _create_manual_expense(client, merchant="Owner Items", identity=identity)
-    gray_expense_id = _create_manual_expense(
-        client,
-        merchant="Gray Items",
-        headers=identity.gray_app_headers,
-     identity=identity)
+    owner_expense_id = _create_pending_expense(client, merchant="Owner Items", identity=identity)
+    gray_expense_id = _create_pending_expense(
+        client, merchant="Gray Items", headers=identity.gray_app_headers, identity=identity
+    )
     _replace_items(client, owner_expense_id, identity=identity)
 
     gray_cross_read = client.get(
@@ -345,9 +358,7 @@ def test_expense_items_are_tenant_isolated_and_viewer_can_only_read(client: Test
     viewer_read = client.get(f"/api/expenses/{owner_expense_id}/items", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     assert [item["name"] for item in viewer_read.json()["items"]] == ["拿铁", "三明治", "优惠"]
-    viewer_snapshot = client.get(
-        f"/api/expenses/{owner_expense_id}", headers=identity.app_headers
-    )
+    viewer_snapshot = client.get(f"/api/expenses/{owner_expense_id}", headers=identity.app_headers)
     assert viewer_snapshot.status_code == 200, viewer_snapshot.json()
 
     viewer_write = client.put(

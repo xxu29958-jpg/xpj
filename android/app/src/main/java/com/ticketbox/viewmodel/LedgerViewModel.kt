@@ -571,17 +571,12 @@ class LedgerViewModel(
 
     // ADR-0042 Slice C — multi-select + batch edit -------------------------
 
-    private fun withSelection(state: LedgerUiState, ids: Set<Long>): LedgerUiState =
-        state.copy(
-            selectionMode = true,
-            selectedIds = ids,
-            // From allConfirmed (the fan-out's target source), not the filtered view.
-            selectedHaveTags = allConfirmed.any { it.id in ids && !it.tags.isNullOrBlank() },
-        )
-
     fun enterSelection(initialId: Long? = null) {
         _uiState.update {
-            withSelection(it, if (initialId != null) it.selectedIds + initialId else it.selectedIds)
+            it.withSelection(
+                if (initialId != null) it.selectedIds + initialId else it.selectedIds,
+                allConfirmed,
+            )
         }
     }
 
@@ -594,26 +589,40 @@ class LedgerViewModel(
             val next = if (id in state.selectedIds) state.selectedIds - id else state.selectedIds + id
             // Leaving selection mode entirely is an explicit action (exitSelection);
             // unticking the last row keeps the bar open so the user can re-pick.
-            withSelection(state, next)
+            state.withSelection(next, allConfirmed)
         }
     }
 
     /** Select every expense currently visible under the active filters. */
     fun selectAllVisible() {
-        _uiState.update { state -> withSelection(state, state.items.map { it.id }.toSet()) }
+        _uiState.update { state ->
+            state.withSelection(state.items.map { it.id }.toSet(), allConfirmed)
+        }
     }
 
-    fun applyBatchCategory(category: String) = applyBatch(category = category, tags = null)
+    fun applyBatchCategory(category: String, reason: String) = applyBatch(category = category, tags = null, reason = reason)
 
-    fun applyBatchTags(tags: String) = applyBatch(category = null, tags = tags)
+    fun applyBatchTags(tags: String, reason: String) = applyBatch(category = null, tags = tags, reason = reason)
 
-    private fun applyBatch(category: String?, tags: String?) {
+    private fun prepareBatchTargets(reason: String): List<Expense>? {
         // Synchronous re-entry guard: applyingBatch is flipped synchronously below (BEFORE the
         // launch), so a double-tap during the dispatch+recomposition window can't fire a second
         // fan-out — the second would capture the same rowVersions, hit OCC conflicts on the
         // just-bumped rows, and report spurious failures. The `!applying` button disable lags
         // a frame; this guard closes the window deterministically.
-        if (_uiState.value.applyingBatch) return
+        if (_uiState.value.applyingBatch) return null
+        // A1: 批量更正必须有自然语言 reason（backend batch contract 必填）。
+        // 本地拦截并保持 sheet 打开（不置 batchDone），让用户补一句话而不是重来。
+        if (reason.isBlank()) {
+            _uiState.update {
+                it.copy(
+                    applyingBatch = false,
+                    message = UiText.res(R.string.ledger_msg_batch_reason_required),
+                    messageTone = MessageTone.Danger,
+                )
+            }
+            return null
+        }
         if (!repository.canModifyLedger()) {
             _uiState.update {
                 it.copy(
@@ -623,7 +632,7 @@ class LedgerViewModel(
                     messageTone = MessageTone.Danger,
                 )
             }
-            return
+            return null
         }
         val selected = _uiState.value.selectedIds
         // Resolve to the full Expense objects (each carries its own rowVersion
@@ -641,11 +650,16 @@ class LedgerViewModel(
                     messageTone = MessageTone.Info,
                 )
             }
-            return
+            return null
         }
         _uiState.update { it.copy(applyingBatch = true, message = null, messageTone = MessageTone.Neutral) }
+        return targets
+    }
+
+    private fun applyBatch(category: String?, tags: String?, reason: String) {
+        val targets = prepareBatchTargets(reason) ?: return
         viewModelScope.launch {
-            repository.applyConfirmedBatch(targets, category = category, tags = tags)
+            repository.applyConfirmedBatch(targets, category = category, tags = tags, reason = reason.trim())
                 .onSuccess { result ->
                     // A freshly-applied category / tag may be new — refresh the
                     // filter chips so it shows up immediately.
@@ -662,7 +676,7 @@ class LedgerViewModel(
                             messageTone = batchResultTone(result),
                         )
                     }
-                    if (result.synced > 0 || result.queued > 0) {
+                    if (result.updated > 0) {
                         onDataChanged()
                         // Category moves the advisor's aggregates; tags-only does not.
                         if (category != null) onAdviceInputsChanged()
@@ -699,14 +713,20 @@ class LedgerViewModel(
      * them at the presentation layer, where [LedgerScreen] now renders
      * `state.message`.
      */
+    /** A1: 原子批量更正的诚实结果文案（与 Web `_confirmed_batch_result_message` 同义）：
+     *  已更新 / 跳过（不属于当前账本）/ 跳过（不是已入账），不再出现 queued/partial。 */
     private fun batchResultMessage(result: BatchApplyResult): UiText {
         val parts = buildList {
-            if (result.synced > 0) add(UiText.res(R.string.ledger_msg_batch_part_synced, result.synced))
-            if (result.queued > 0) add(UiText.res(R.string.ledger_msg_batch_part_queued, result.queued))
-            if (result.failed > 0) add(UiText.res(R.string.ledger_msg_batch_part_failed, result.failed))
+            if (result.updated > 0) add(UiText.res(R.string.ledger_msg_batch_part_updated, result.updated))
+            if (result.skippedNotFound > 0) {
+                add(UiText.res(R.string.ledger_msg_batch_part_skipped_not_found, result.skippedNotFound))
+            }
+            if (result.skippedNotConfirmed > 0) {
+                add(UiText.res(R.string.ledger_msg_batch_part_skipped_not_confirmed, result.skippedNotConfirmed))
+            }
         }
         if (parts.isEmpty()) return UiText.res(R.string.ledger_msg_batch_none)
-        return UiText.compound(parts, "，")
+        return UiText.compound(parts, "；")
     }
 
     fun exportLaunchHandled() {
@@ -721,9 +741,17 @@ class LedgerViewModel(
     }
 }
 
+private fun LedgerUiState.withSelection(
+    ids: Set<Long>,
+    allConfirmed: List<Expense>,
+): LedgerUiState = copy(
+    selectionMode = true,
+    selectedIds = ids,
+    // From allConfirmed (the fan-out's target source), not the filtered view.
+    selectedHaveTags = allConfirmed.any { it.id in ids && !it.tags.isNullOrBlank() },
+)
+
 private fun batchResultTone(result: BatchApplyResult): MessageTone = when {
-    result.failed > 0 -> MessageTone.Danger
-    result.queued > 0 -> MessageTone.Info
-    result.synced > 0 -> MessageTone.Success
+    result.updated > 0 -> MessageTone.Success
     else -> MessageTone.Info
 }

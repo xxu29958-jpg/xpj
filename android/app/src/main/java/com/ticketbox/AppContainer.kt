@@ -12,6 +12,7 @@ import com.ticketbox.data.repository.ADVICE_INPUT_RECURRING_ITEMS
 import com.ticketbox.data.repository.AcknowledgeItemsMismatchDispatcher
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
+import com.ticketbox.data.repository.CorrectExpenseDispatcher
 import com.ticketbox.data.repository.CreateExpenseDispatcher
 import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
@@ -140,6 +141,16 @@ class AppContainer(context: Context) {
             PatchExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.patchExpenseAdapter,
+            ),
+            CorrectExpenseDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.correctionAdapter,
+                cacheAuthoritativeExpense = { ledgerId, expense ->
+                    database.expenseDao().upsertByServerIdForLedger(
+                        ledgerId,
+                        expense.toEntity(ledgerId),
+                    )
+                },
             ),
             // issue #65 slice 4: POST /api/expenses/manual via outbox (offline manual
             // create). On success, write the server-assigned id/public_id/row_version

@@ -34,14 +34,12 @@ def test_web_tags_local_returns_200(web_client: TestClient, *, identity) -> None
     # UI/UX 批 14: 旧「按标签看统计」(跳已删除的 /web/stats) 改成行级「看账单」,
     # 跳已确认账单页并按本标签过滤(tag 经 urlencode;& 写字面量,不经 autoescape)。
     assert "看账单" in resp.text
-    assert (
-        "/web/confirmed?ledger_id=owner&tag=%E5%87%BA%E5%B7%AE" in resp.text
-    )
+    assert "/web/confirmed?ledger_id=owner&tag=%E5%87%BA%E5%B7%AE" in resp.text
     assert "/web/stats" not in resp.text
 
 
 def test_web_tag_rename(web_client: TestClient, *, identity) -> None:
-    manual_expense(web_client, identity.app_headers, tags="出差", merchant="A")
+    expense = manual_expense(web_client, identity.app_headers, tags="出差", merchant="A")
     public_id = tag_index(web_client, identity.app_headers)["出差"]["public_id"]
 
     page = web_client.get("/web/tags?ledger_id=owner")
@@ -57,6 +55,12 @@ def test_web_tag_rename(web_client: TestClient, *, identity) -> None:
     assert "差旅" in page.text
     # The denormalised tag on the expense was rewritten too.
     assert tag_index(web_client, identity.app_headers).keys() == {"差旅"}
+    history = web_client.get(
+        f"/api/expenses/{expense['id']}/revisions",
+        headers=identity.app_headers,
+    )
+    assert history.status_code == 200, history.text
+    assert history.json()["items"][0]["actor_account_name"] == "我"
 
 
 def test_web_tag_rename_conflict_points_to_merge(web_client: TestClient, *, identity) -> None:

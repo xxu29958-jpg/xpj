@@ -69,7 +69,9 @@
 {% set _primary_paths = [
   '/web/pending', '/web/confirmed', '/web/debts', '/web/budgets', '/web/overview'
 ] %}
+{% set _explicit_page_level = page_surface | default('') %}
 {% set _page_level = (
+  _explicit_page_level if _explicit_page_level in ['primary', 'secondary', 'tertiary'] else
   'tertiary' if (_is_expense_detail or _is_debt_detail or _is_import_detail) else
   'primary' if _path in _primary_paths else
   'secondary'

@@ -76,6 +76,7 @@ internal class RepositoryGraph(
         offlineMutations = ExpenseOfflineMutationWiring(
             outbox = outbox,
             patchExpenseAdapter = outboxAdapters.patchExpenseAdapter,
+            correctionAdapter = outboxAdapters.correctionAdapter,
             expenseStateTokenAdapter = outboxAdapters.expenseStateTokenAdapter,
             replaceItemsAdapter = outboxAdapters.replaceItemsAdapter,
             replaceSplitsAdapter = outboxAdapters.replaceSplitsAdapter,

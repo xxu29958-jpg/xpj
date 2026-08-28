@@ -239,6 +239,35 @@ def _replace_expense_tag_links(
             db.delete(link)
 
 
+def replace_expense_tag_links(
+    db: Session,
+    *,
+    expense: Expense,
+    target_tag_ids: set[int],
+) -> None:
+    """Replace only the relation mirror for an already-authorized tag command.
+
+    Ordinary edits should use :func:`set_expense_tags`, which also validates and
+    writes the denormalised string. Tag rename/delete/merge/undo already own the
+    target identity set and use this narrow primitive so ``ExpenseTag`` DML has
+    one owner.
+    """
+
+    existing_links = list(
+        db.scalars(
+            ledger_scoped_select(ExpenseTag, expense.tenant_id).where(
+                ExpenseTag.expense_id == expense.id
+            )
+        )
+    )
+    _replace_expense_tag_links(
+        db,
+        expense=expense,
+        target_tag_ids=target_tag_ids,
+        existing_links=existing_links,
+    )
+
+
 def reconcile_expense_tag_mirror(db: Session, tenant_id: str, *, batch_size: int = 500) -> int:
     """Repair expenses whose ``tags`` string and ``expense_tags`` rows drifted.
 

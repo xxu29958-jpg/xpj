@@ -22,6 +22,7 @@ from app.services.bill_split_service._query import get_invitation
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import create_bill_split_debt
 from app.services.exchange_rate_service import default_rate_date
+from app.services.expense_revision_service import record_confirmation_revision
 from app.services.time_service import ensure_utc, now_utc
 
 
@@ -83,6 +84,13 @@ def accept_invitation(
     ):
         db.rollback()
         return _resolve_lost_accept(db, public_id, target_ledger_id, None)
+
+    record_confirmation_revision(
+        db,
+        received,
+        actor_account_id=accepting_account_id,
+        actor_device_id=None,
+    )
 
     _audit(
         db,

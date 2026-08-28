@@ -24,7 +24,7 @@ from app.schemas import (
     ExpenseSplitsResponse,
 )
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.expense_service import EDITABLE_STATUSES, get_expense, resolve_expense
+from app.services.expense_service import get_expense, resolve_expense
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 
@@ -93,9 +93,8 @@ def replace_expense_splits(
     actor_account_id: int | None,
     commit: bool = True,
 ) -> ExpenseSplitsResponse:
-    validated_amounts = validate_expense_split_money_command(payload.splits)
+    validate_expense_split_money_command(payload.splits)
     resolve_write_capability(db)
-    members = _active_members_for_split_payload(db, tenant_id=tenant_id, payload=payload)
     now = now_utc()
     expense = _claim_expense_for_split_replace(
         db,
@@ -104,8 +103,43 @@ def replace_expense_splits(
         expected_row_version=payload.expected_row_version,
         now=now,
     )
-    existing = _expense_splits(db, tenant_id=tenant_id, expense_id=expense.id)
-    existing_members = _members_for_existing_splits(db, tenant_id=tenant_id, splits=existing)
+    apply_expense_splits_to_claimed_row(
+        db,
+        expense=expense,
+        payload=payload,
+        actor_account_id=actor_account_id,
+        now=now,
+    )
+    _finish_split_replace(db, expense=expense, commit=commit)
+    return _build_response(db, expense)
+
+
+def apply_expense_splits_to_claimed_row(
+    db: Session,
+    *,
+    expense: Expense,
+    payload: ExpenseSplitReplaceRequest,
+    actor_account_id: int | None,
+    now: datetime,
+) -> None:
+    """Replace split facts after the caller has acquired the parent CAS."""
+
+    validated_amounts = validate_expense_split_money_command(payload.splits)
+    members = _active_members_for_split_payload(
+        db,
+        tenant_id=expense.tenant_id,
+        payload=payload,
+    )
+    existing = _expense_splits(
+        db,
+        tenant_id=expense.tenant_id,
+        expense_id=expense.id,
+    )
+    existing_members = _members_for_existing_splits(
+        db,
+        tenant_id=expense.tenant_id,
+        splits=existing,
+    )
     before_snapshot = _audit_snapshot(existing, existing_members)
     new_splits = _replace_split_rows(
         db,
@@ -122,8 +156,7 @@ def replace_expense_splits(
         before_snapshot=before_snapshot,
         after_snapshot=_audit_snapshot(new_splits, members),
     )
-    _finish_split_replace(db, expense=expense, commit=commit)
-    return _build_response(db, expense)
+    db.flush()
 
 
 def _active_members_for_split_payload(
@@ -162,7 +195,7 @@ def _claim_expense_for_split_replace(
         tenant_id=tenant_id,
         expected_row_version=expected_row_version,
         set_values={"updated_at": now},
-        extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
+        extra_where=(Expense.status == "pending",),
         synchronize_session=False,
     )
     if rowcount != 1:
@@ -174,8 +207,10 @@ def _claim_expense_for_split_replace(
 def _raise_split_replace_claim_conflict(db: Session, *, tenant_id: str, expense_id: int) -> NoReturn:
     db.expire_all()
     current = resolve_expense(db, tenant_id, expense_id)
-    if current is None or current.status not in EDITABLE_STATUSES:
+    if current is None or current.status == "rejected":
         raise AppError("expense_not_found", status_code=404)
+    if current.status == "confirmed":
+        raise AppError("expense_correction_required", status_code=409)
     raise AppError("state_conflict", status_code=409)
 
 

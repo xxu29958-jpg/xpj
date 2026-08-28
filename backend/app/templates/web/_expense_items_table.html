@@ -1,0 +1,45 @@
+{# 共享明细行编辑表格：pending 编辑（edit.html 的 items/save 表单）与 confirmed
+   更正（_correction_items.html，同一次 corrections 提交）共用同一行语义与 input
+   name 谱系 —— 后端 _web_expense_rows.item_replace_payload 只认这套 name。
+   契约：receipt_items.rows（含错误投影）, can_write, currency_input。
+   可访问性：placeholder 不冒充标签 —— 每个控件带「明细第 N 行：列名」
+   aria-label；窄屏行卡模式的可见标签由 CSS 消费 td 的 data-label。 #}
+<table class="dt-table dt-table--compact edit-subtable">
+  <thead>
+    <tr>
+      <th class="th-w-110">类型</th>
+      <th>名称</th>
+      <th class="th-w-90">数量</th>
+      <th class="th-w-110">单价</th>
+      <th class="th-w-110">金额</th>
+      <th class="th-w-100">分类</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for item in receipt_items.rows %}
+    {% set row_index = loop.index0 %}
+    {% set row_label = '明细第 ' ~ loop.index ~ ' 行：' %}
+    {% set item_errors = item.errors or {} %}
+    <tr>
+      <td data-label="类型">
+        <select name="item_kind" aria-label="{{ row_label }}类型" {% if item_errors.get('kind') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-kind-error"{% endif %} {% if not can_write %}disabled{% endif %}>
+          <option value="product" {% if item.kind == 'product' %}selected{% endif %}>商品</option>
+          <option value="discount" {% if item.kind == 'discount' %}selected{% endif %}>优惠/折扣</option>
+          <option value="tax" {% if item.kind == 'tax' %}selected{% endif %}>税</option>
+          <option value="service_fee" {% if item.kind == 'service_fee' %}selected{% endif %}>服务费</option>
+        </select>
+        {% if item_errors.get('kind') %}<div id="item-{{ row_index }}-kind-error" class="error-text">{{ item_errors.get('kind') }}</div>{% endif %}
+      </td>
+      <td data-label="名称">
+        <input type="text" name="item_name" value="{{ item.name }}" maxlength="255" placeholder="商品或服务" aria-label="{{ row_label }}名称" {% if item_errors.get('name') or item_errors.get('row') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-name-error"{% endif %} {% if not can_write %}disabled{% endif %}>
+        {% if item_errors.get('name') or item_errors.get('row') %}<div id="item-{{ row_index }}-name-error" class="error-text">{{ item_errors.get('name') or item_errors.get('row') }}</div>{% endif %}
+        {% if item.is_ocr_draft %}<div class="meta">识别草稿</div>{% endif %}
+      </td>
+      <td data-label="数量"><input type="text" name="item_quantity" value="{{ item.quantity_text }}" maxlength="64" placeholder="1份" aria-label="{{ row_label }}数量" {% if item_errors.get('quantity') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-quantity-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('quantity') %}<div id="item-{{ row_index }}-quantity-error" class="error-text">{{ item_errors.get('quantity') }}</div>{% endif %}</td>
+      <td data-label="单价"><input type="number" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" aria-label="{{ row_label }}单价" {% if item_errors.get('unit_price_yuan') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-unit-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('unit_price_yuan') %}<div id="item-{{ row_index }}-unit-error" class="error-text">{{ item_errors.get('unit_price_yuan') }}</div>{% endif %}</td>
+      <td data-label="金额"><input type="number" name="item_amount_yuan" value="{{ item.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" aria-label="{{ row_label }}金额" {% if item_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-amount-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('amount_yuan') %}<div id="item-{{ row_index }}-amount-error" class="error-text">{{ item_errors.get('amount_yuan') }}</div>{% endif %}</td>
+      <td data-label="分类"><input type="text" name="item_category" value="{{ item.category }}" maxlength="64" placeholder="其他" aria-label="{{ row_label }}分类" {% if item_errors.get('category') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-category-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('category') %}<div id="item-{{ row_index }}-category-error" class="error-text">{{ item_errors.get('category') }}</div>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>

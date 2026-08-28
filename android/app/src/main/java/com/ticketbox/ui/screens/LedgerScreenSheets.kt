@@ -158,8 +158,10 @@ private fun LedgerBulkEditHost(
                 applying = state.applyingBatch,
             ),
             actions = LedgerBulkEditSheetActions(
-                onApplyCategory = actions.onApplyBatchCategory,
-                onApplyTags = actions.onApplyBatchTags,
+                // A1: reason 随动作贯通到 backend 原子批量更正（Codex 接缝：
+                // LedgerScreenActions 的这两个字段类型随之变为 (String, String)）。
+                onApplyCategory = { category, reason -> actions.onApplyBatchCategory(category, reason) },
+                onApplyTags = { tags, reason -> actions.onApplyBatchTags(tags, reason) },
             ),
         )
     }

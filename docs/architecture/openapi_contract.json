@@ -1710,6 +1710,11 @@
             "title": "Page",
             "type": "integer"
           },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
           "tag": {
             "default": "",
             "title": "Tag",
@@ -1725,6 +1730,179 @@
           "action"
         ],
         "title": "Body_web_confirmed_batch_update_web_confirmed_batch_update_post",
+        "type": "object"
+      },
+      "Body_web_correct_post_web_expenses__expense_id__corrections_post": {
+        "properties": {
+          "amount_yuan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Yuan"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "item_amount_yuan": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Amount Yuan",
+            "type": "array"
+          },
+          "item_category": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Category",
+            "type": "array"
+          },
+          "item_kind": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Kind",
+            "type": "array"
+          },
+          "item_name": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Name",
+            "type": "array"
+          },
+          "item_quantity": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Quantity",
+            "type": "array"
+          },
+          "item_unit_price_yuan": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Unit Price Yuan",
+            "type": "array"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "original_currency": {
+            "default": "",
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "regret_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
+          "split_amount_yuan": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Amount Yuan",
+            "type": "array"
+          },
+          "split_member_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Member Id",
+            "type": "array"
+          },
+          "split_note": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Note",
+            "type": "array"
+          },
+          "tags": {
+            "default": "",
+            "title": "Tags",
+            "type": "string"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
+          }
+        },
+        "title": "Body_web_correct_post_web_expenses__expense_id__corrections_post",
         "type": "object"
       },
       "Body_web_create_debt_web_debts_post": {
@@ -4663,6 +4841,7 @@
       },
       "ConfirmedExpenseBatchUpdateRequest": {
         "additionalProperties": false,
+        "description": "One reasoned category or tag correction across confirmed facts.",
         "properties": {
           "category": {
             "anyOf": [
@@ -4694,6 +4873,12 @@
             "title": "Expense Ids",
             "type": "array"
           },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
           "tags": {
             "anyOf": [
               {
@@ -4709,7 +4894,8 @@
         },
         "required": [
           "expense_ids",
-          "expected_row_version_by_id"
+          "expected_row_version_by_id",
+          "reason"
         ],
         "title": "ConfirmedExpenseBatchUpdateRequest",
         "type": "object"
@@ -6811,6 +6997,238 @@
         "title": "ExpenseConfirmRequest",
         "type": "object"
       },
+      "ExpenseCorrectionRequest": {
+        "additionalProperties": false,
+        "description": "One explicit correction intent against a confirmed fact snapshot.",
+        "properties": {
+          "amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
+          },
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExpenseItemRequest"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "original_amount": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "original_currency": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Currency"
+          },
+          "original_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Currency Code"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "regret_score": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
+          "spent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent At"
+          },
+          "splits": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExpenseSplitRequest"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Splits"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "reason"
+        ],
+        "title": "ExpenseCorrectionRequest",
+        "type": "object"
+      },
+      "ExpenseCorrectionResponse": {
+        "properties": {
+          "expense": {
+            "$ref": "#/components/schemas/ExpenseResponse"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/ExpenseRevisionResponse"
+          }
+        },
+        "required": [
+          "expense",
+          "revision"
+        ],
+        "title": "ExpenseCorrectionResponse",
+        "type": "object"
+      },
       "ExpenseItemReplaceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -7607,6 +8025,10 @@
             ],
             "title": "Expense Time"
           },
+          "fact_revision": {
+            "title": "Fact Revision",
+            "type": "integer"
+          },
           "fx_rate": {
             "anyOf": [
               {
@@ -7897,12 +8319,132 @@
           "created_at",
           "updated_at",
           "row_version",
+          "fact_revision",
           "confirmed_at",
           "rejected_at",
           "image_deleted_at",
           "thumbnail_deleted_at"
         ],
         "title": "ExpenseResponse",
+        "type": "object"
+      },
+      "ExpenseRevisionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseRevisionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "ExpenseRevisionListResponse",
+        "type": "object"
+      },
+      "ExpenseRevisionResponse": {
+        "additionalProperties": false,
+        "description": "Human-timeline evidence; snapshots stay server-authored JSON.",
+        "properties": {
+          "actor_account_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Account Name"
+          },
+          "actor_device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Device Name"
+          },
+          "after": {
+            "additionalProperties": true,
+            "title": "After",
+            "type": "object"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "change_kind": {
+            "enum": [
+              "confirmed",
+              "correction"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "changed_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed Fields",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "public_id",
+          "revision_number",
+          "change_kind",
+          "reason",
+          "changed_fields",
+          "before",
+          "after",
+          "created_at"
+        ],
+        "title": "ExpenseRevisionResponse",
         "type": "object"
       },
       "ExpenseSplitReplaceRequest": {
@@ -20614,6 +21156,122 @@
         ]
       }
     },
+    "/api/expenses/{expense_id}/corrections": {
+      "post": {
+        "operationId": "post_expense_correction_api_expenses__expense_id__corrections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseCorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseCorrectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Expense Correction",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
     "/api/expenses/{expense_id}/image": {
       "get": {
         "operationId": "get_expense_image_api_expenses__expense_id__image_get",
@@ -21569,6 +22227,113 @@
           }
         },
         "summary": "Post Expense Repayment Draft",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{expense_id}/revisions": {
+      "get": {
+        "operationId": "get_expense_revision_history_api_expenses__expense_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseRevisionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Expense Revision History",
         "tags": [
           "expenses"
         ]
@@ -35818,6 +36583,115 @@
           }
         },
         "summary": "Web Confirm",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/correct": {
+      "get": {
+        "operationId": "web_correct_get_web_expenses__expense_id__correct_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Correct Get",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/corrections": {
+      "post": {
+        "operationId": "web_correct_post_web_expenses__expense_id__corrections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_correct_post_web_expenses__expense_id__corrections_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Correct Post",
         "tags": [
           "web"
         ]

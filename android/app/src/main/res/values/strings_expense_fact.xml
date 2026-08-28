@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A1: confirmed 账单事实页 + 显式更正流。复用 expense_edit_* 的既有字段文案，
+     本文件只放事实页/更正流新责任文案。 -->
+<resources>
+    <!-- Fact page -->
+    <string name="expense_fact_title">账单详情</string>
+    <string name="expense_fact_subtitle_confirmed">已确认 · 修改请使用更正</string>
+    <string name="expense_fact_status_confirmed">已确认</string>
+    <string name="expense_fact_revision_badge">第 %1$d 版</string>
+    <string name="expense_fact_field_amount">金额</string>
+    <string name="expense_fact_field_merchant">商家</string>
+    <string name="expense_fact_field_category">分类</string>
+    <string name="expense_fact_field_time">消费时间</string>
+    <string name="expense_fact_field_tags">标签</string>
+    <string name="expense_fact_field_note">备注</string>
+    <string name="expense_fact_field_source">来源</string>
+    <string name="expense_fact_field_created">上传时间</string>
+    <string name="expense_fact_field_confirmed_at">确认时间</string>
+    <string name="expense_fact_value_empty">—</string>
+    <string name="expense_fact_correct_cta">更正这笔账单</string>
+    <string name="expense_fact_readonly_hint">只读角色可查看事实与变更记录。</string>
+    <string name="expense_fact_items_title">小票明细</string>
+    <string name="expense_fact_items_hint">只记录本张小票的商品行，修改请使用更正。</string>
+    <string name="expense_fact_items_empty">没有记录明细行。</string>
+    <string name="expense_fact_items_mismatch">明细合计与账单金额差 %1$s。</string>
+    <string name="expense_fact_splits_title">家庭拆账</string>
+    <string name="expense_fact_splits_hint">家庭分摊记录，不改变入账金额，修改请使用更正。</string>
+    <string name="expense_fact_splits_empty">没有拆账记录。</string>
+    <string name="expense_fact_splits_reconcile">账单 %1$s · 已拆 %2$s</string>
+    <string name="expense_fact_splits_reconcile_mismatch">账单 %1$s · 已拆 %2$s · 差额 %3$s</string>
+    <string name="expense_fact_split_member_disabled">（已停用）</string>
+    <string name="expense_fact_image_empty">没有凭证图片</string>
+    <string name="expense_fact_image_view_full">查看大图</string>
+    <string name="expense_fact_image_cleaned">凭证图片已清理</string>
+    <string name="expense_fact_timeline_title">变更记录</string>
+    <string name="expense_fact_timeline_empty">这笔账单还没有变更记录；第一次更正后会从这里开始记录。</string>
+    <string name="expense_fact_timeline_expand">查看全部 %1$d 条</string>
+    <string name="expense_fact_timeline_collapse">收起</string>
+    <string name="expense_fact_timeline_kind_confirmed">首次确认</string>
+    <string name="expense_fact_timeline_kind_correction">更正</string>
+    <string name="expense_fact_timeline_system_touched">系统信息已更新</string>
+    <string name="expense_fact_timeline_value_empty">（空）</string>
+    <string name="expense_fact_timeline_lines_count">共 %1$d 行</string>
+    <string name="expense_fact_timeline_field_amount">入账金额</string>
+    <string name="expense_fact_timeline_field_original_amount">原币金额</string>
+    <string name="expense_fact_timeline_field_original_currency">原币币种</string>
+    <string name="expense_fact_timeline_field_merchant">商家</string>
+    <string name="expense_fact_timeline_field_category">分类</string>
+    <string name="expense_fact_timeline_field_note">备注</string>
+    <string name="expense_fact_timeline_field_tags">标签</string>
+    <string name="expense_fact_timeline_field_time">消费时间</string>
+    <string name="expense_fact_timeline_field_items">小票明细</string>
+    <string name="expense_fact_timeline_field_splits">家庭拆账</string>
+    <string name="expense_fact_timeline_field_value_score">值回票价</string>
+    <string name="expense_fact_timeline_field_regret_score">后悔指数</string>
+    <string name="expense_fact_revisions_failed">变更记录加载失败，点按重试。</string>
+    <string name="expense_fact_refresh_failed_showing_known">暂时无法刷新，正在显示已加载的账单。</string>
+    <string name="expense_fact_cached_showing">当前离线，正在显示设备上保存的账单。</string>
+    <string name="expense_fact_thumbnail_failed">凭证图片加载失败。</string>
+    <string name="expense_fact_items_failed">小票明细加载失败。</string>
+    <string name="expense_fact_splits_failed">家庭拆账加载失败。</string>
+
+    <!-- Correction sheet -->
+    <string name="expense_correction_sheet_title">更正账单</string>
+    <string name="expense_correction_sheet_subtitle">更正会保留修改记录：保存后，原值与新值都会显示在变更记录里。</string>
+    <string name="expense_correction_reason_label">更正原因（必填）</string>
+    <string name="expense_correction_reason_placeholder">例如：小票金额看错了 / 商家识别错了</string>
+    <string name="expense_correction_reason_helper">这句话会显示在变更记录里，帮助家人（和以后的你）理解为什么改。</string>
+    <string name="expense_correction_reason_required">请说明这次更正的原因。</string>
+    <string name="expense_correction_no_changes">没有检测到需要保存的更正。</string>
+    <string name="expense_correction_amount_label">金额（%1$s）</string>
+    <string name="expense_correction_time_label">消费时间</string>
+    <string name="expense_correction_time_placeholder">留空不改；格式 2026-08-22 11:38</string>
+    <string name="expense_correction_time_invalid">请按 年-月-日 时:分 填写时间。</string>
+    <string name="expense_correction_tags_label">标签</string>
+    <string name="expense_correction_tags_placeholder">用逗号分隔，例如 报销, 出差</string>
+    <string name="expense_correction_items_entry">小票明细</string>
+    <string name="expense_correction_splits_entry">家庭拆账</string>
+    <string name="expense_correction_section_pending_change">将随本次更正更新</string>
+    <string name="expense_correction_submit">保存更正</string>
+    <string name="expense_correction_amount_invalid">请填写正确的金额。</string>
+    <string name="expense_correction_items_amount_invalid">小票明细里有无法识别的金额，请检查后再保存。</string>
+    <string name="expense_correction_splits_amount_invalid">家庭拆账里有空白或无法识别的金额，请检查后再保存。</string>
+    <string name="expense_correction_score_invalid">评分只能选择 1 到 5，或清空评分。</string>
+    <string name="expense_correction_currency_unsupported">账本币种未确认或不受支持，暂不能更正金额。</string>
+    <string name="expense_correction_saved">已记录更正。</string>
+    <string name="expense_correction_queued">已加入同步队列，联网后自动更正。</string>
+    <string name="expense_correction_failed">更正保存失败，请重试。</string>
+    <string name="expense_correction_conflict">这笔账单刚在其它端被修改，已为你刷新当前值；请对照后重新提交。</string>
+    <string name="expense_correction_readonly_blocked">当前为只读账本，无法更正。</string>
+
+    <!-- 首载/刷新/段落三态 -->
+    <string name="expense_fact_load_failed_title">账单暂时打不开</string>
+    <string name="expense_fact_retry">重试</string>
+    <string name="expense_fact_stale_banner">内容可能不是最新。</string>
+    <string name="expense_fact_media_loading">凭证加载中…</string>
+    <string name="expense_fact_media_failed">凭证图片加载失败</string>
+    <string name="expense_fact_field_score">评价</string>
+    <string name="expense_fact_score_format">%1$d/5</string>
+    <string name="expense_fact_score_pair">值回 %1$s · 后悔 %2$s</string>
+    <!-- 更正：币种/评分 -->
+    <string name="expense_correction_currency_unsupported_hint">当前账单币种（%1$s）暂不受支持：金额暂不可改，选择下方支持的币种后可继续；其他字段不受影响。</string>
+    <string name="expense_correction_currency_foreign">保存时按账单日期的已有汇率换算；汇率未就绪时会提示稍后重试。</string>
+    <string name="expense_correction_score_value">值回票价</string>
+    <string name="expense_correction_score_regret">后悔指数</string>
+    <string name="expense_correction_score_clear">清除</string>
+    <string name="expense_correction_time_helper">留空表示清空现有时间。</string>
+    <string name="expense_correction_saving">保存中…</string>
+</resources>

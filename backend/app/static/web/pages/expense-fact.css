@@ -1,0 +1,388 @@
+/* A1: confirmed 账单事实详情 / 更正表单。
+   Read-first 视觉层级：金额 hero + 事实定义列表为主，动作与系统信息降层级；
+   时间线是人话 delta，不是 revision 管理器。仅挂在 expense_fact.html /
+   expense_correct.html（page_styles），不进全局栈。
+   Token 合同：全部消费 shared/tokens.css（type/space/radius/color/motion），
+   布局骨架复用 product/detail.css（.detail-layout/.receipt-preview），
+   eyebrow 复用 product/components.css（.dt-eyebrow）；不复制它们的 skin。
+   例外（逐项登记）：1px hairline 分隔线（token 无 hairline 尺度）；
+   56rem 断点（与 product/detail.css 同一约定）。 */
+
+.fact-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-5);
+    flex-wrap: wrap;
+    margin-block-end: var(--space-5);
+}
+
+.fact-heading {
+    min-width: 0;
+}
+
+.fact-title {
+    margin: 0 0 var(--space-2);
+}
+
+.fact-statusline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.fact-hero {
+    text-align: right;
+}
+
+.fact-amount {
+    font-family: var(--font-num);
+    font-size: var(--type-display-size);
+    font-weight: var(--type-display-weight);
+    line-height: var(--type-display-line);
+    font-variant-numeric: tabular-nums;
+}
+
+.fact-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3-5) var(--space-7);
+    margin: 0 0 var(--space-5);
+}
+
+.fact-row {
+    display: flex;
+    gap: var(--space-4);
+    min-width: 0;
+}
+
+.fact-row dt {
+    flex: 0 0 var(--space-12);
+    color: var(--text-faint);
+    font-size: var(--type-caption-size);
+}
+
+.fact-row dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.fact-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.fact-timeline-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.fact-timeline-entry {
+    padding: var(--space-4) 0;
+    /* 1px hairline：token 体系无分隔线尺度，登记为例外。 */
+    border-block-start: 1px solid var(--border-card);
+}
+
+.fact-timeline-entry:first-child {
+    border-block-start: none;
+    padding-block-start: 0;
+}
+
+.fact-timeline-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-block-end: var(--space-2);
+}
+
+.fact-timeline-when {
+    font-size: var(--type-caption-size);
+}
+
+.fact-timeline-reason {
+    font-weight: var(--type-title-weight);
+    margin-block-end: var(--space-2);
+}
+
+.fact-timeline-changes {
+    margin: 0;
+}
+
+.fact-timeline-change {
+    display: flex;
+    gap: var(--space-4);
+    padding: var(--space-1) 0;
+    font-size: var(--type-body-size);
+}
+
+.fact-timeline-change dt {
+    flex: 0 0 calc(var(--space-12) + var(--space-3));
+    color: var(--text-faint);
+}
+
+.fact-timeline-change dd {
+    margin: 0;
+}
+
+.fact-change-before {
+    color: var(--text-muted);
+}
+
+.fact-change-arrow {
+    margin: 0 var(--space-2);
+    color: var(--text-faint);
+}
+
+.fact-change-after {
+    font-weight: var(--type-subtitle-weight);
+}
+
+.correction-reason-card {
+    margin-block-end: var(--space-5);
+}
+
+.correction-form .dt-card {
+    margin-block-end: var(--space-5);
+}
+
+/* 明细/拆账卡片堆叠（桌面全宽单列；不再与六列表格硬并排）。 */
+.fact-lines {
+    display: grid;
+    gap: var(--space-5);
+}
+
+/* 断点与 product/detail.css 同一约定（56rem）。
+   1) 页头改列向，金额 hero 不再被右侧裁切；
+   2) 宽表重组为带标签的行卡（mobile-native fields），不整页横向滚动；
+   作用域仅 .correction-form（更正页可编辑表）与 .fact-lines-table（事实页
+   只读表）—— 共享 partial 的另一消费者 edit.html 不加载本文件，不受影响。 */
+@media (max-width: 56rem) {
+    .fact-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .fact-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .fact-hero {
+        text-align: left;
+    }
+
+    .correction-form .edit-subtable,
+    .fact-lines-table {
+        display: block;
+    }
+
+    .correction-form .edit-subtable thead,
+    .fact-lines-table thead {
+        /* 视觉隐藏、保留读屏（标准 visually-hidden；1px 为登记例外，
+           与 hairline 同列 —— token 体系无此尺度）。 */
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .correction-form .edit-subtable tbody,
+    .fact-lines-table tbody {
+        display: grid;
+        gap: var(--space-4);
+    }
+
+    .correction-form .edit-subtable tr,
+    .fact-lines-table tr {
+        display: grid;
+        gap: var(--space-2);
+        padding: var(--space-3);
+        border: 1px solid var(--border-card);
+        border-radius: var(--radius-md);
+        background: var(--surface-card);
+    }
+
+    .correction-form .edit-subtable td,
+    .fact-lines-table td {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2) var(--space-3);
+        min-width: 0;
+    }
+
+    .correction-form .edit-subtable td::before,
+    .fact-lines-table td::before {
+        content: attr(data-label);
+        flex: 0 0 var(--space-12);
+        color: var(--text-faint);
+        font-size: var(--type-caption-size);
+    }
+
+    .correction-form .edit-subtable td > input,
+    .correction-form .edit-subtable td > select {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: auto;
+    }
+
+    .correction-form .edit-subtable td > .error-text,
+    .correction-form .edit-subtable td > .meta {
+        flex-basis: 100%;
+    }
+}
+
+/* ── hero 关键元数据行（何时/属于什么/评价） ─────────────────────────── */
+.fact-keymeta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-block-end: var(--space-3);
+    color: var(--text-muted);
+    font-size: var(--type-subtitle-size);
+}
+
+.fact-keymeta-sep {
+    color: var(--text-faint);
+}
+
+/* ── 更正：原生 details 渐进披露 ────────────────────────────────────── */
+.correction-fold {
+    padding: 0;
+}
+
+.correction-fold-summary {
+    position: relative;
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-4) calc(var(--space-12) + var(--space-5)) var(--space-4) var(--space-5);
+    cursor: pointer;
+    list-style: none;
+}
+
+.correction-fold-summary::-webkit-details-marker {
+    display: none;
+}
+
+.correction-fold-summary::after {
+    content: "展开";
+    position: absolute;
+    inset-block-start: var(--space-4);
+    inset-inline-end: var(--space-5);
+    color: var(--brand-primary);
+    font-size: var(--type-caption-size);
+}
+
+.correction-fold[open] > .correction-fold-summary::after {
+    content: "收起";
+}
+
+.correction-fold-title {
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+}
+
+.correction-fold-body {
+    padding: 0 var(--space-5) var(--space-5);
+    display: grid;
+    gap: var(--space-3);
+}
+
+/* ── 更正：评分 radiogroup（原生语义 + pill 视觉） ───────────────────── */
+.score-row {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+}
+
+.score-row legend {
+    padding: 0;
+    font-size: var(--type-caption-size);
+    color: var(--text-faint);
+}
+
+.score-seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.score-seg-option {
+    position: relative;
+    cursor: pointer;
+}
+
+.score-seg-option input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+}
+
+.score-seg-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--space-9);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-pill);
+    background: var(--surface-card);
+    color: var(--text-muted);
+    font-size: var(--type-body-size);
+    transition: background var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard),
+        border-color var(--motion-fast) var(--ease-standard);
+}
+
+.score-seg-option input:checked + .score-seg-pill {
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+    color: var(--text-on-primary);
+}
+
+.score-seg-option input:focus-visible + .score-seg-pill {
+    outline: 2px solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+/* ── 更正：保存动作收尾于正流（两端一致） ─────────────────────────────
+   不做 sticky 吸底：`sticky; bottom:0` 在表单超出视口时会悬浮覆盖途经的
+   编辑字段（1440×1000 实拍压在标签/备注上）；合格的吸底需要滚动容器
+   scroll-padding + 占位预留且仍难免中段遮挡。本页折叠后约 1.5 视口、
+   reason 锚点在顶，正流收尾同时保住行动可达与编辑无遮挡。 */
+.correction-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    margin-block-start: var(--space-2);
+    padding: var(--space-3) 0;
+    border-block-start: 1px solid var(--border-card);
+}
+
+/* ── 窄屏：凭证上移、无意义空字段隐藏 ───────────────────────────────── */
+@media (max-width: 56rem) {
+    /* 凭证是事实的旁证：移动端正文之前，而非时间线之后。 */
+    .detail-aside {
+        order: -1;
+    }
+
+    /* 行卡模式下不渲染空单价/空数量/空分类的无意义标签行。 */
+    .fact-lines-table td.fact-cell-empty {
+        display: none;
+    }
+}

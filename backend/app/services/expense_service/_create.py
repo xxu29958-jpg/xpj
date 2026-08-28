@@ -23,6 +23,7 @@ from app.services.exchange_rate_service import (
     validate_currency_payload_money_command,
 )
 from app.services.expense_query import local_ref_storage_key
+from app.services.expense_revision_service import record_confirmation_revision
 from app.services.expense_service._helpers import (
     NOTIFICATION_DRAFT_SOURCE_LABELS,
     NOTIFICATION_DRAFT_SOURCE_PREFIX,
@@ -138,6 +139,8 @@ def _insert_manual_expense(
     *,
     draft_idempotency_key: str | None,
     draft_request_fingerprint: str | None,
+    actor_account_id: int,
+    actor_device_id: int,
 ) -> Expense:
     resolve_write_capability(db)
     now = now_utc()
@@ -183,6 +186,13 @@ def _insert_manual_expense(
     db.flush()
     sync_expense_tags(db, expense)
     mark_duplicate_status(db, expense)
+    if expense.status == "confirmed":
+        record_confirmation_revision(
+            db,
+            expense,
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
+        )
     db.commit()
     db.refresh(expense)
     return expense
@@ -205,6 +215,8 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth
             tenant_id,
             draft_idempotency_key=None,
             draft_request_fingerprint=None,
+            actor_account_id=auth.account_id,
+            actor_device_id=auth.device_id,
         )
 
     # Issue #65 slice 1: device-scoped idempotent create. The composite key lives in
@@ -223,6 +235,8 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth
             tenant_id,
             draft_idempotency_key=key,
             draft_request_fingerprint=fingerprint,
+            actor_account_id=auth.account_id,
+            actor_device_id=auth.device_id,
         )
     except IntegrityError:
         # A concurrent request won the (tenant_id, draft_idempotency_key) unique race

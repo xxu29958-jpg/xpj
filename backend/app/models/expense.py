@@ -74,6 +74,10 @@ class Expense(Base):
             "row_version >= 1",
             name="ck_expenses_row_version_positive",
         ),
+        CheckConstraint(
+            "fact_revision >= 0",
+            name="ck_expenses_fact_revision_nonnegative",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -84,7 +88,9 @@ class Expense(Base):
         nullable=False,
         index=True,
     )
-    public_id: Mapped[str] = mapped_column(String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
     amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     home_currency_code: Mapped[str] = mapped_column(
         String(3),
@@ -145,9 +151,11 @@ class Expense(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     # ADR-0041: monotonic row_version OCC token (updated_at kept for display/sort).
-    row_version: Mapped[int] = mapped_column(
-        Integer, default=1, server_default="1", nullable=False
-    )
+    row_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    # Current financial-fact projection revision. ``row_version`` protects every
+    # mutable row concern (including pending workflow metadata); this counter only
+    # advances when the confirmed financial fact is first published or corrected.
+    fact_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     image_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -162,9 +170,7 @@ class Expense(Base):
     # ADR-0038 PR-C: indexed via the module-level partial-UNIQUE index below
     # (not column-level) so create_all and the startup migrator declare the
     # same index set — the DB backstop against a concurrent-accept double-create.
-    split_origin_invitation_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True
-    )
+    split_origin_invitation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     @property
     def home_amount_cents(self) -> int | None:
@@ -204,11 +210,41 @@ Index("ix_expenses_tenant_status_created_at", Expense.tenant_id, Expense.status,
 Index("ix_expenses_tenant_category_status", Expense.tenant_id, Expense.category, Expense.status)
 Index("ix_expenses_tenant_status_expense_time", Expense.tenant_id, Expense.status, Expense.expense_time)
 Index("ix_expenses_tenant_status_confirmed_at", Expense.tenant_id, Expense.status, Expense.confirmed_at)
-Index("ix_expenses_tenant_status_category_expense_time", Expense.tenant_id, Expense.status, Expense.category, Expense.expense_time)
-Index("ix_expenses_tenant_status_category_confirmed_at", Expense.tenant_id, Expense.status, Expense.category, Expense.confirmed_at)
-Index("ix_expenses_tenant_status_amount_merchant", Expense.tenant_id, Expense.status, Expense.amount_cents, Expense.merchant)
-Index("ix_expenses_tenant_status_merchant_expense_time", Expense.tenant_id, Expense.status, Expense.merchant, Expense.expense_time)
-Index("ix_expenses_tenant_status_merchant_confirmed_at", Expense.tenant_id, Expense.status, Expense.merchant, Expense.confirmed_at)
+Index(
+    "ix_expenses_tenant_status_category_expense_time",
+    Expense.tenant_id,
+    Expense.status,
+    Expense.category,
+    Expense.expense_time,
+)
+Index(
+    "ix_expenses_tenant_status_category_confirmed_at",
+    Expense.tenant_id,
+    Expense.status,
+    Expense.category,
+    Expense.confirmed_at,
+)
+Index(
+    "ix_expenses_tenant_status_amount_merchant",
+    Expense.tenant_id,
+    Expense.status,
+    Expense.amount_cents,
+    Expense.merchant,
+)
+Index(
+    "ix_expenses_tenant_status_merchant_expense_time",
+    Expense.tenant_id,
+    Expense.status,
+    Expense.merchant,
+    Expense.expense_time,
+)
+Index(
+    "ix_expenses_tenant_status_merchant_confirmed_at",
+    Expense.tenant_id,
+    Expense.status,
+    Expense.merchant,
+    Expense.confirmed_at,
+)
 Index("ix_expenses_tenant_draft_idempotency_key", Expense.tenant_id, Expense.draft_idempotency_key, unique=True)
 Index("ix_expenses_tenant_image_hash", Expense.tenant_id, Expense.image_hash)
 Index("ix_expenses_tenant_image_phash", Expense.tenant_id, Expense.image_perceptual_hash)
@@ -241,7 +277,9 @@ class ExpenseItem(Base):
     __table_args__ = (
         *money_check_constraints_for_table("expense_items"),
         CheckConstraint("position >= 0", name="ck_expense_items_position_non_negative"),
-        CheckConstraint("confidence IS NULL OR (confidence >= 0 AND confidence <= 1)", name="ck_expense_items_confidence"),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)", name="ck_expense_items_confidence"
+        ),
         CheckConstraint(
             "kind IN ('product', 'discount', 'tax', 'service_fee')",
             name="ck_expense_items_kind_valid",
@@ -261,9 +299,7 @@ class ExpenseItem(Base):
     tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
     expense_id: Mapped[int] = mapped_column(Integer, ForeignKey("expenses.id"), nullable=False, index=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
-    kind: Mapped[str] = mapped_column(
-        String(32), default="product", server_default="product", nullable=False
-    )
+    kind: Mapped[str] = mapped_column(String(32), default="product", server_default="product", nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     quantity_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
     unit_price_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -314,6 +350,8 @@ class ExpenseSplit(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
-Index("ix_expense_splits_tenant_expense_position", ExpenseSplit.tenant_id, ExpenseSplit.expense_id, ExpenseSplit.position)
+Index(
+    "ix_expense_splits_tenant_expense_position", ExpenseSplit.tenant_id, ExpenseSplit.expense_id, ExpenseSplit.position
+)
 Index("ix_expense_splits_tenant_public_id", ExpenseSplit.tenant_id, ExpenseSplit.public_id)
 Index("ix_expense_splits_tenant_member", ExpenseSplit.tenant_id, ExpenseSplit.member_id)

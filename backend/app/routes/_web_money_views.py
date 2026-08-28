@@ -122,9 +122,7 @@ def _expense_amount_labels(
         getattr(expense, "home_currency_code", None),
         presentation_currency_code,
     )
-    original_code = (
-        getattr(expense, "original_currency_code", None) or home_code
-    ).upper()
+    original_code = (getattr(expense, "original_currency_code", None) or home_code).upper()
     original_minor = getattr(expense, "original_amount_minor", None)
     amount_cents = getattr(expense, "amount_cents", None)
     is_foreign = original_code != home_code
@@ -136,20 +134,13 @@ def _expense_amount_labels(
     if not is_foreign:
         return primary, None
     rate_date = getattr(expense, "exchange_rate_date", None)
-    date_text = (
-        rate_date.isoformat()
-        if hasattr(rate_date, "isoformat")
-        else (str(rate_date) if rate_date else "")
-    )
+    date_text = rate_date.isoformat() if hasattr(rate_date, "isoformat") else (str(rate_date) if rate_date else "")
     if getattr(expense, "fx_status", "") == FX_STATUS_PENDING or amount_cents is None:
         return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
     rate = getattr(expense, "exchange_rate_to_cny", None)
     if rate is None:
         return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
-    meta = (
-        f"≈ {_home_amount_label(amount_cents, home_code)} · "
-        f"汇率 1 {original_code} = {rate} {home_code}"
-    )
+    meta = f"≈ {_home_amount_label(amount_cents, home_code)} · 汇率 1 {original_code} = {rate} {home_code}"
     if date_text:
         meta += f" · {date_text}"
     return primary, meta
@@ -249,12 +240,12 @@ def _expense_view(
         "category_input": "" if needs_category else expense.category,
         "note": expense.note or "",
         "tags": getattr(expense, "tags", None) or "",
+        "value_score": getattr(expense, "value_score", None),
+        "regret_score": getattr(expense, "regret_score", None),
         "status": expense.status,
         "expense_time": accounting_datetime_label(expense.expense_time),
         "stat_time": accounting_datetime_label(stat_time(expense)),
-        "expense_time_local": _expense_time_local_input(
-            getattr(expense, "expense_time", None)
-        ),
+        "expense_time_local": _expense_time_local_input(getattr(expense, "expense_time", None)),
         "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),
         "row_version": getattr(expense, "row_version", None),
         "created_at": accounting_datetime_label(expense.created_at),

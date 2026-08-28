@@ -20,10 +20,10 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _BULK_BAR_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "bulk-bar.js"
-_LEDGER_FILTER_JS = (
-    _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "ledger-filter.js"
-)
+_LEDGER_FILTER_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "ledger-filter.js"
 _BULK_BAR_FIXTURE = _REPO_ROOT / "backend" / "tests" / "fixtures" / "bulk_bar_announcement_contract.html"
+_DRAWER_BULK_OCC_FIXTURE = _REPO_ROOT / "backend" / "tests" / "fixtures" / "drawer_bulk_occ_contract.html"
+_DRAWER_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "drawer.js"
 _EDGE_CDP: ModuleType | None = None
 
 
@@ -103,13 +103,13 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
 
     batch_mode = probe["batchMode"]
     assert batch_mode == {
-        "ariaDisabled": "true",
-        "tabIndex": "-1",
-        "ariaCurrent": None,
+        "ariaDisabled": None,
+        "tabIndex": None,
+        "ariaCurrent": "true",
         "checkboxChecked": True,
         "checkboxTabIndex": 0,
-        "navigationPrevented": True,
-        "locationHash": "",
+        "navigationPrevented": False,
+        "locationHash": "#row-1-navigation",
     }
 
     cleared = probe["cleared"]
@@ -136,6 +136,42 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
     assert failure["live"] == "assertive"
     assert failure["atomic"] == "true"
     assert failure["message"] == "批量操作失败，请重试。"
+    assert probe["emptyRedirectHash"] == "#authoritative-empty-state"
+
+
+def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(
+    tmp_path: Path,
+) -> None:
+    page = _write_fixture(
+        tmp_path,
+        "drawer-bulk-occ-contract.html",
+        _DRAWER_BULK_OCC_FIXTURE.read_text(encoding="utf-8")
+        .replace(
+            "__BULK_BAR_URI__",
+            html.escape(_BULK_BAR_JS.as_uri(), quote=True),
+        )
+        .replace(
+            "__DRAWER_URI__",
+            html.escape(_DRAWER_JS.as_uri(), quote=True),
+        ),
+    )
+    probe = _evaluate_fixture(
+        tmp_path,
+        page=page,
+        width=1024,
+        height=768,
+        profile_name="edge-drawer-bulk-occ-contract",
+    )
+
+    assert probe == {
+        "drawerOpenedWhileSelected": True,
+        "checkboxChecked": True,
+        "checkboxDataRowVersion": "12",
+        "checkboxValue": "1:12",
+        "quickConfirmSnapshot": "1:12",
+        "bulkTokens": ["12"],
+        "selectedCount": "1",
+    }
 
 
 def _ledger_filter_fixture_html() -> str:

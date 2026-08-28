@@ -23,6 +23,11 @@ from app.services.category_preference_service import (
 )
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.data_quality_service import is_uncategorized_expense_category
+from app.services.expense_revision_service import (
+    prepare_correction_revision,
+    record_prepared_correction_revision,
+)
+from app.services.optimistic_concurrency import bump_row_version
 from app.services.spending_contract_service import month_bounds_utc, stat_time_expr
 
 # Re-exports — existing callers do
@@ -104,10 +109,7 @@ def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
     )
     if not expenses and not rules:
         return
-    rules_are_non_financial = all(
-        rule.amount_min_cents is None and rule.amount_max_cents is None
-        for rule in rules
-    )
+    rules_are_non_financial = all(rule.amount_min_cents is None and rule.amount_max_cents is None for rule in rules)
     authorize_currency_metadata_write(
         db,
         allow_empty_category_rule=not expenses and rules_are_non_financial,
@@ -115,7 +117,21 @@ def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
     for expense in expenses:
         normalized = normalize_category(expense.category)
         if normalized != expense.category:
+            prepared = prepare_correction_revision(db, expense)
             expense.category = normalized
+            if prepared is not None:
+                bump_row_version(expense)
+                expense.fact_revision = Expense.fact_revision + 1
+                db.flush()
+                db.refresh(expense)
+                record_prepared_correction_revision(
+                    db,
+                    expense,
+                    prepared,
+                    reason="系统统一历史分类名称",
+                    actor_account_id=None,
+                    actor_device_id=None,
+                )
             changed = True
     for rule in rules:
         normalized = normalize_category(rule.category)

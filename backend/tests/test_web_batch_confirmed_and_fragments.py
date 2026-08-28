@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from _web_bulk_test_support import (
     bulk_snapshot_fields as _bulk_snapshot_fields,
@@ -17,7 +18,7 @@ from _web_bulk_test_support import (
 from _web_bulk_test_support import (
     seed_pending_with_amount as _seed_pending_with_amount,
 )
-from api_contract_helpers import web_confirm_expense, web_save_expense
+from api_contract_helpers import web_confirm_expense
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -38,8 +39,19 @@ class _RowLinkNestingProbe(HTMLParser):
 
     _INTERACTIVE = {"a", "button", "input", "select", "textarea"}
     _VOID = {
-        "area", "base", "br", "col", "embed", "hr", "img", "input",
-        "link", "meta", "source", "track", "wbr",
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "source",
+        "track",
+        "wbr",
     }
 
     def __init__(self, row_link_class: str) -> None:
@@ -115,6 +127,7 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
             "expense_ids": [str(expense_id)],
             "expected_row_version": [token],
             "category": "Batch Web Cat",
+            "reason": "统一整理分类",
             "page": "2",
         },
         follow_redirects=False,
@@ -133,6 +146,7 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
             "expense_ids": [str(expense_id)],
             "expected_row_version": [token],
             "tags": "web, family, web",
+            "reason": "统一整理标签",
         },
         follow_redirects=False,
     )
@@ -151,13 +165,19 @@ def test_web_confirmed_batch_stale_token_redirects_without_partial_update(web_cl
 
     first_before = web_client.get(f"/api/expenses/{first_id}", headers=identity.app_headers).json()
     second_before = web_client.get(f"/api/expenses/{second_id}", headers=identity.app_headers).json()
-    changed = web_save_expense(
-        web_client,
-        first_id,
-        identity=identity,
-        data={"amount_yuan": "21.00", "merchant": "Bulk Stale A", "category": "Intervening"},
+    changed = web_client.post(
+        f"/api/expenses/{first_id}/corrections",
+        headers={
+            **identity.app_headers,
+            "Idempotency-Key": f"batch-stale-{first_id}",
+        },
+        json={
+            "expected_row_version": first_before["row_version"],
+            "category": "Intervening",
+            "reason": "制造真实并发更正",
+        },
     )
-    assert changed.status_code in {303, 307}, changed.text
+    assert changed.status_code == 201, changed.text
 
     response = web_client.post(
         "/web/confirmed/batch-update",
@@ -167,6 +187,7 @@ def test_web_confirmed_batch_stale_token_redirects_without_partial_update(web_cl
             "expense_ids": [str(first_id), str(second_id)],
             "expected_row_version": [first_before["row_version"], second_before["row_version"]],
             "category": "Should Not Land",
+            "reason": "批量分类",
         },
         follow_redirects=False,
     )
@@ -222,6 +243,11 @@ def test_web_bulk_confirm_ready_fragment_returns_actioned_ids(web_client: TestCl
     assert body["flash_type"] == "success"
     assert "已确认 1 条" in body["message"]
     assert "跳过 1 条" in body["message"]
+    redirect = urlsplit(body["redirect_url"])
+    assert redirect.path == "/web/pending"
+    assert parse_qs(redirect.query)["ledger_id"] == ["owner"]
+    assert parse_qs(redirect.query)["filter"] == ["all"]
+    assert parse_qs(redirect.query)["flash_type"] == ["success"]
     # Server-side state actually changed: ready confirmed (gone), no-amount stays.
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert f"/web/expenses/{ready}/edit" not in pending.text
@@ -281,6 +307,18 @@ def test_web_batch_reject_fragment_returns_removed_ids(web_client: TestClient, *
     assert all(item["expected_row_version"] > 0 for item in body["undo_items"])
     assert body["flash_type"] == "success"
     assert "已忽略 2 条" in body["message"]
+    redirect = urlsplit(body["redirect_url"])
+    query = parse_qs(redirect.query)
+    assert redirect.path == "/web/pending"
+    assert query["ledger_id"] == ["owner"]
+    assert query["filter"] == ["all"]
+    assert query["flash_type"] == ["success"]
+    assert set(map(int, query["undo_id"])) == {first, second}
+    assert sorted(map(int, query["undo_rv"])) == sorted(item["expected_row_version"] for item in body["undo_items"])
+    authoritative = web_client.get(body["redirect_url"])
+    assert authoritative.status_code == 200
+    assert "收件队列已经清空" in authoritative.text
+    assert "撤销 2 条" in authoritative.text
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert f"/web/expenses/{first}/edit" not in pending.text
     assert f"/web/expenses/{second}/edit" not in pending.text

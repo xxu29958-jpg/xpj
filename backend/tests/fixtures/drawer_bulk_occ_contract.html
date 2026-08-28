@@ -1,0 +1,97 @@
+<html lang="zh-CN">
+<head><meta charset="utf-8"></head>
+<body>
+  <main class="content">
+    <section id="exp-table">
+      <div class="exp-row" data-expense-id="1">
+        <input class="row-check"
+               id="check-1"
+               type="checkbox"
+               name="expense_snapshot"
+               value="1:11"
+               form="bulk-form"
+               data-id="1"
+               data-row-version="11">
+        <a class="exp-row-detail"
+           id="row-1"
+           href="#full-page"
+           data-fragment-url="/fragment/1">第一笔</a>
+        <div class="exp-flags">
+          <form id="quick-confirm">
+            <input type="hidden" name="expense_snapshot" value="1:11">
+          </form>
+        </div>
+      </div>
+    </section>
+    <form id="bulk-form" data-bulk action="/web/review/bulk">
+      <span data-bulk-count>0</span>
+      <button type="button" data-bulk-clear>取消选择</button>
+      <button type="submit" name="action" value="confirm_ready">确认入账</button>
+    </form>
+  </main>
+  <div class="drawer-host">
+    <div id="drawer" tabindex="-1" aria-hidden="true"></div>
+  </div>
+  <div id="drawer-scrim"></div>
+  <script>
+    let fragmentFetches = 0;
+    window.fetch = async (_url, options) => {
+      if (options && options.method === "POST") return {ok: true};
+      fragmentFetches += 1;
+      const version = fragmentFetches === 1 ? "11" : "12";
+      return {
+        ok: true,
+        text: async () => `
+          <form data-drawer-form action="/web/expenses/1/save">
+            <input type="hidden" name="expected_row_version" value="${version}">
+            <button id="drawer-save" type="submit">保存</button>
+            <button type="button" data-drawer-close>关闭</button>
+          </form>`
+      };
+    };
+  </script>
+  <script src="__BULK_BAR_URI__"></script>
+  <script src="__DRAWER_URI__"></script>
+  <script>
+    (async () => {
+      const wait = () => new Promise((resolve) => setTimeout(resolve, 30));
+      window.TicketboxWeb.initBulkBar();
+      window.TicketboxWeb.initDrawer();
+
+      const checkbox = document.getElementById("check-1");
+      const row = document.getElementById("row-1");
+      checkbox.click();
+      row.click();
+      await wait();
+
+      const drawerForm = document.querySelector("[data-drawer-form]");
+      if (!drawerForm) {
+        window.__webConsumerProbe = {drawerOpenedWhileSelected: false};
+        return;
+      }
+      drawerForm.dispatchEvent(new SubmitEvent("submit", {
+        bubbles: true,
+        cancelable: true,
+        submitter: document.getElementById("drawer-save")
+      }));
+      await wait();
+      await wait();
+
+      const bulkTokens = Array.from(
+        document.querySelectorAll('#bulk-form input[name="expected_row_version"]')
+      ).map((node) => node.value);
+      window.__webConsumerProbe = {
+        drawerOpenedWhileSelected: true,
+        checkboxChecked: checkbox.checked,
+        checkboxDataRowVersion: checkbox.getAttribute("data-row-version"),
+        checkboxValue: checkbox.value,
+        quickConfirmSnapshot: document.querySelector(
+          '#quick-confirm input[name="expense_snapshot"]'
+        ).value,
+        bulkTokens,
+        selectedCount: document.querySelector("[data-bulk-count]").textContent
+      };
+    })();
+  </script>
+</body>
+</html>

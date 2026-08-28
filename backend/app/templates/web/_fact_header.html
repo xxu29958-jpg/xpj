@@ -1,0 +1,30 @@
+{# 事实 hero 带：商家（主体）+ 金额（焦点）+ 关键元数据一行（何时/属于什么/评价）。
+   先回答「哪笔钱、在哪、何时、属于什么」；次级字段在 _fact_summary_card。
+   契约：expense（含 fact_revision/source_label/amount_label/fx_meta/is_duplicate）。 #}
+<header class="fact-header">
+  <div class="fact-heading">
+    <span class="dt-eyebrow">流水 · 已确认事实</span>
+    <h1 class="page-title page-title--compact fact-title">{{ expense.merchant or '账单 #' ~ expense.id }}</h1>
+    <div class="fact-keymeta">
+      <span>{{ expense.expense_time or '时间待核对' }}</span>
+      <span class="fact-keymeta-sep" aria-hidden="true">·</span>
+      <span>{{ expense.category }}</span>
+      {% if expense.value_score or expense.regret_score %}
+      <span class="fact-keymeta-sep" aria-hidden="true">·</span>
+      <span>值回 {{ expense.value_score ~ '/5' if expense.value_score else '—' }} · 后悔 {{ expense.regret_score ~ '/5' if expense.regret_score else '—' }}</span>
+      {% endif %}
+    </div>
+    <div class="fact-statusline">
+      <span class="dt-pill ok">已确认</span>
+      {% if expense.fact_revision and expense.fact_revision > 1 %}
+      <span class="dt-pill">第 {{ expense.fact_revision }} 版</span>
+      {% endif %}
+      {% if expense.is_duplicate %}<span class="dt-pill warn">疑似重复</span>{% endif %}
+      <span class="meta">{{ expense.source_label }}</span>
+    </div>
+  </div>
+  <div class="fact-hero">
+    <div class="fact-amount">{{ expense.amount_label }}</div>
+    {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
+  </div>
+</header>

@@ -54,7 +54,6 @@ from app.services.expense_service._repayment_bridge import (
     create_repayment_draft_from_expense,
 )
 from app.services.expense_service._update import (
-    batch_update_confirmed_expenses,
     confirm_expense,
     reject_expense,
     undo_reject_expense,
@@ -65,7 +64,6 @@ __all__ = [
     "EDITABLE_STATUSES",
     "NOTIFICATION_DRAFT_SOURCE_PREFIX",
     "PendingEnrichmentResult",
-    "batch_update_confirmed_expenses",
     "confirm_expense",
     "create_manual_expense",
     "create_notification_draft",

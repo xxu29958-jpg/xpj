@@ -4,6 +4,7 @@ import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateRequestDto
 import kotlinx.coroutines.flow.Flow
 import java.io.IOException
 import java.util.UUID
@@ -120,38 +121,38 @@ internal class ExpenseLedgerRepositoryActions(
         expenses: List<Expense>,
         category: String?,
         tags: String?,
+        reason: String,
     ): Result<BatchApplyResult> = core.errorHandler.safeCall {
-        // Fan out into one offline-aware PatchExpense per expense. Each call owns
-        // its own direct-PATCH-then-outbox attempt + idempotency key, so the
-        // batch is non-atomic by design: synced / queued / failed are tallied
-        // independently (mirrors the per-row keep-mine model, unlike the atomic
-        // /web batch endpoint). Sequential — same-scale as the confirmed list and
-        // keeps the ledger-session guard + outbox ordering simple.
-        // KNOWN LIMITATION (review P2, deferred): a SYNCED fan-out row updates the
-        // Room cache (patchExpenseOffline → cacheIfConfirmed) so the confirmed list
-        // reflects it immediately; a QUEUED (offline) row does NOT, so during the
-        // offline window the list keeps the old category/tags even though the
-        // "已加入同步" snackbar fired. It self-heals on the next confirmed-list
-        // sync (syncConfirmed re-fetches from the server) — NOT on drain, since
-        // PatchExpenseDispatcher's success doesn't re-cache locally. Optimistic
-        // local-cache write for the queued case needs a domain→entity mapper that
-        // doesn't exist yet; tracked as a follow-up rather than risking an
-        // optimistic/server normalisation skew.
-        val pending = ExpensePendingRepository(core)
-        var synced = 0
-        var queued = 0
-        var failed = 0
-        for (expense in expenses) {
-            pending.applyConfirmedFieldsOffline(expense, category = category, tags = tags).fold(
-                onSuccess = { outcome ->
-                    when (outcome) {
-                        is SaveOutcome.Synced -> synced++
-                        is SaveOutcome.Queued -> queued++
-                    }
-                },
-                onFailure = { failed++ },
+        require(expenses.isNotEmpty()) { "请先选择要更正的账单。" }
+        require(category != null || tags != null) { "请选择要批量更正的字段。" }
+        require(expenses.map(Expense::id).distinct().size == expenses.size) {
+            "批量更正中存在重复账单。"
+        }
+        val cleanReason = reason.trim()
+        require(cleanReason.isNotEmpty()) { "请填写更正理由。" }
+
+        val bound = core.ledgerRequestGuard.bind()
+        val response = bound.call { api ->
+            api.updateConfirmedBatch(
+                ConfirmedExpenseBatchUpdateRequestDto(
+                    expenseIds = expenses.map(Expense::id),
+                    expectedRowVersionById = expenses.associate { it.id to it.rowVersion },
+                    category = category,
+                    tags = tags,
+                    reason = cleanReason,
+                ),
             )
         }
-        BatchApplyResult(synced = synced, queued = queued, failed = failed)
+
+        // The command response owns counts, not row projections. Refresh through
+        // the same bound ledger before reporting success so Room and every real
+        // confirmed-list consumer observe the published facts.
+        core.syncConfirmedFromService(bound)
+        BatchApplyResult(
+            requested = response.requestedCount,
+            updated = response.updatedCount,
+            skippedNotFound = response.skippedNotFound,
+            skippedNotConfirmed = response.skippedNotConfirmed,
+        )
     }
 }

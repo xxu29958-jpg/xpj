@@ -50,7 +50,8 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert f'data-expense-id="{eid}"' in resp.text
     # 218-D S4-R1 行结构 (#218 同构): 原生 checkbox 是容器内兄弟槽,
     # 行链接 a.exp-row-detail 子树零交互控件；表单关联保留无 JS 路径。
-    assert 'aria-selected="false"' in resp.text
+    assert "aria-selected" not in resp.text
+    assert "aria-haspopup" not in resp.text
     assert ('<button class="product-button" type="button" data-bulk-clear>取消选择</button>') in resp.text
     assert f'aria-label="选择账单 #{eid}"' in resp.text
     assert 'type="checkbox"' in resp.text
@@ -71,18 +72,32 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert 'document.querySelectorAll(".row-check:checked")' in js
     assert "isNativeBox" not in js
     assert 'classList.toggle("checked", on);' not in js
-    assert 'row.setAttribute("aria-disabled", "true");' in js
-    assert 'row.setAttribute("tabindex", "-1");' in js
-    assert "setBatchNavigationMode(entries.length > 0);" in js
+    # Selection/navigation coexistence is exercised in real Edge by
+    # test_web_edge_runtime_contract; do not pin the retired exclusive-mode
+    # implementation here.
     assert "e.stopPropagation();" in js
 
     drawer_js = js_path.with_name("drawer.js").read_text(encoding="utf-8")
-    hotkeys_js = js_path.with_name("review-hotkeys.js").read_text(encoding="utf-8")
+    keyboard_js = js_path.with_name("review-keyboard.js").read_text(encoding="utf-8")
     assert 'row.getAttribute("aria-disabled") === "true"' in drawer_js
-    assert 'getAttribute("aria-disabled") !== "true"' in hotkeys_js
-    assert 'classList.toggle("is-current", r === row);' in hotkeys_js
+    # PE dialog 语义: JS 成立时宣布 aria-haspopup/controls/expanded, 开态切 expanded。
+    assert 'row.setAttribute("aria-haspopup", "dialog");' in drawer_js
+    assert 'row.setAttribute("aria-controls", "drawer");' in drawer_js
+    assert 'row.setAttribute("aria-expanded", "false");' in drawer_js
+    assert "aria-selected" not in drawer_js
+    # 队列耗尽重取服务端权威页面 (空态/计数/焦点), 不在 JS 复制文案。
+    assert "window.location.reload();" in drawer_js
+    # 键盘: 无裸字母 J/K, 方向键仅作用于真实焦点所在行链接, 先过 isComposing。
+    assert "if (e.isComposing) return;" in keyboard_js
+    assert "active.matches(ROW_SELECTOR)" in keyboard_js
+    assert 'getAttribute("aria-disabled") !== "true"' in keyboard_js
+    assert '"ArrowDown"' in keyboard_js
+    assert '"j"' not in keyboard_js
+    assert "aria-selected" not in keyboard_js
     inbox_css = js_path.parents[1] / "product" / "domains" / "inbox.css"
-    assert inbox_css.read_text(encoding="utf-8").count(".exp-row.is-current") >= 1
+    inbox_css_text = inbox_css.read_text(encoding="utf-8")
+    assert inbox_css_text.count(".exp-row.is-current") >= 1
+    assert ".exp-row:focus-within" in inbox_css_text
 
     # 原生 checkbox 自带 id:row_version，无 JS 仍提交相同 OCC 快照。
     token = _row_version(web_client, eid, identity=identity)
@@ -125,9 +140,7 @@ def test_inbox_pages_render_new_modular_product_shell(
     assert 'data-domain="inbox"' in body
     assert f'data-page="inbox" data-page-level="{page_level}"' in body
     assert copy in body
-    assert re.search(
-        r'href="/web/pending\?ledger_id=owner"[^>]+aria-current="location"', body
-    )
+    assert re.search(r'href="/web/pending\?ledger_id=owner"[^>]+aria-current="location"', body)
 
     assert f"/static/web/product/shell.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/components.css?v={STATIC_ASSET_VERSION}" in body
@@ -194,12 +207,10 @@ def test_inbox_empty_state_matches_real_ingestion_routing(
     assert "从 CSV 导入" in body
 
 
-def test_inbox_pending_rows_keep_checkbox_outside_row_link(
-    web_client: TestClient, *, identity
-) -> None:
+def test_inbox_pending_rows_keep_checkbox_outside_row_link(web_client: TestClient, *, identity) -> None:
     """S4-R1 行格钉: 勾选控件是 .exp-row 容器内的兄弟节点 (选择槽), 行链接
     a.exp-row-detail 子树内零交互控件 (HTML 禁嵌, JS 未载时嵌套点击会穿透
-    　跳转); 原生控件保留 label 与 main 的批量 OCC token，并关联
+    跳转); 原生控件保留 label 与 main 的批量 OCC token，并关联
     bulk-form。表头不做整树 aria-hidden，只对纯展示列标签隐藏。"""
     expense_id = _create_pending(web_client, identity=identity)
     response = web_client.get("/web/pending?ledger_id=owner")
@@ -219,7 +230,7 @@ def test_inbox_pending_rows_keep_checkbox_outside_row_link(
     link_html = link.group(0)
     assert f'href="/web/expenses/{expense_id}/edit?ledger_id=owner"' in link_html
     assert "data-fragment-url=" in link_html
-    assert 'aria-selected="false"' in link_html
+    assert "aria-selected" not in link_html
     # 行链接子树内零交互控件 (R1-5 结构钉): 剥掉起始标签后无 role=checkbox /
     # input / button / 嵌套 a。
     link_inner = re.sub(r"^<a [^>]*>", "", link_html)
@@ -229,9 +240,7 @@ def test_inbox_pending_rows_keep_checkbox_outside_row_link(
     assert "<a " not in link_inner
     # 原生勾选控件在容器内、链接外 (兄弟位), 保留 OCC token，
     # 并关联 bulk-form，无 JS 仍可提交同一快照。
-    check = re.search(
-        r'<input class="checkbox row-check"[^>]+type="checkbox"[^>]*>', row_html
-    )
+    check = re.search(r'<input class="checkbox row-check"[^>]+type="checkbox"[^>]*>', row_html)
     assert check is not None
     assert row_html.index('class="checkbox row-check"') < row_html.index('class="exp-row-detail"')
     assert 'name="expense_snapshot"' in check.group(0)
@@ -247,9 +256,7 @@ def test_inbox_pending_rows_keep_checkbox_outside_row_link(
     head_html = head.group(0)
     assert '<div class="exp-head" aria-hidden="true">' not in head_html
     assert '<div class="exp-head">' in head_html
-    select_all = re.search(
-        r'<input class="checkbox" id="check-all"[^>]*>', head_html
-    )
+    select_all = re.search(r'<input class="checkbox" id="check-all"[^>]*>', head_html)
     assert select_all is not None
     assert 'type="checkbox"' in select_all.group(0)
     assert 'aria-label="选择全部账单"' in select_all.group(0)
@@ -260,17 +267,13 @@ def test_inbox_pending_rows_keep_checkbox_outside_row_link(
     assert "data-bulk-clear" in body
 
 
-def test_inbox_pending_drawer_uses_product_markup(
-    web_client: TestClient, *, identity
-) -> None:
+def test_inbox_pending_drawer_uses_product_markup(web_client: TestClient, *, identity) -> None:
     """S4 drawer 范围裁决 (矿版含新 drawer 标记 → 一并移植): fragment=1 返回的
     抽屉本体是 product-drawer 新标记 (样式由 domains/inbox.css 的 product-drawer
     族供给), 旧 dt-*/drawer-head 标记不得残留; 批10 合同字段 (return_to=pending,
     OCC token, data-drawer-form) 保持。"""
     expense_id = _create_pending(web_client, identity=identity)
-    drawer = web_client.get(
-        f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
-    )
+    drawer = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1")
 
     assert drawer.status_code == 200
     body = drawer.text
@@ -286,9 +289,7 @@ def test_inbox_pending_drawer_uses_product_markup(
     assert 'style="' not in body
 
 
-def test_inbox_duplicates_pair_renders_side_by_side_product_markup(
-    web_client: TestClient, *, identity
-) -> None:
+def test_inbox_duplicates_pair_renders_side_by_side_product_markup(web_client: TestClient, *, identity) -> None:
     """S4 疑似重复并排钉: 参考记录/当前记录并排 (duplicate-compare), 状态 chip
     与判定原因走 glue 文案 (status_label/reason_label), 三个判定动作表单带
     CSRF + OCC token; viewer 无路可走时动作区不渲染写按钮。"""
@@ -320,9 +321,7 @@ def test_inbox_duplicates_pair_renders_side_by_side_product_markup(
         assert 'name="expected_row_version"' in form_html.group(0)
 
 
-def test_inbox_thumbnail_materialization_does_not_bump_occ_token(
-    web_client: TestClient, *, identity
-) -> None:
+def test_inbox_thumbnail_materialization_does_not_bump_occ_token(web_client: TestClient, *, identity) -> None:
     """S4-R1: 派生缩略图物化不进 OCC 版本语义 — 有原图无缩略图的行, GET
     thumbnail 物化后 row_version 不变; 页面渲染时嵌入的批量 token 在物化
     后依然可用 (物化路径曾 bump_row_version, 任何批量动作 409)。"""
@@ -331,8 +330,7 @@ def test_inbox_thumbnail_materialization_does_not_bump_occ_token(
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": "9.00", "merchant": "盒马", "category": "餐饮",
-              "note": "", "ledger_id": "owner"},
+        data={"amount_yuan": "9.00", "merchant": "盒马", "category": "餐饮", "note": "", "ledger_id": "owner"},
     )
     assert saved.status_code in {303, 307}, saved.text
     # 模拟迁移行: 有原图、无缩略图产物。
@@ -350,9 +348,7 @@ def test_inbox_thumbnail_materialization_does_not_bump_occ_token(
     assert _row_version(web_client, expense_id, identity=identity) == before
 
     # 用页面渲染时嵌入的 token 批量确认 → 不得 409。
-    check = re.search(
-        rf'<input class="checkbox row-check"[^>]+data-id="{expense_id}"[^>]*>', page.text
-    )
+    check = re.search(rf'<input class="checkbox row-check"[^>]+data-id="{expense_id}"[^>]*>', page.text)
     assert check is not None
     token = re.search(r'data-row-version="([^"]+)"', check.group(0))
     assert token is not None
@@ -372,16 +368,19 @@ def test_inbox_thumbnail_materialization_does_not_bump_occ_token(
     assert payload["status"] == "confirmed"
 
 
-def test_inbox_drawer_surfaces_missing_category_and_blocks_confirm(
-    web_client: TestClient, *, identity
-) -> None:
+def test_inbox_drawer_surfaces_missing_category_and_blocks_confirm(web_client: TestClient, *, identity) -> None:
     """S4-R1/R2: 缺类信号进抽屉 — 脏分类行 (none/未分类 族) 在抽屉里只有警示条、
     无绿徽, facts 格显示「待分类」而非脏 token; 单行确认与队列 ready 门同义。
     R2: 缺类门下沉 confirm_expense 服务层, API 直调同 422, 不随传输层漂移。"""
     with SessionLocal() as db:
         dirty = Expense(
-            tenant_id="owner", amount_cents=500, merchant="星巴克", category="none",
-            source="pytest", status="pending", duplicate_status="none",
+            tenant_id="owner",
+            amount_cents=500,
+            merchant="星巴克",
+            category="none",
+            source="pytest",
+            status="pending",
+            duplicate_status="none",
         )
         db.add(dirty)
         db.commit()

@@ -4,126 +4,38 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import case, select, update
+from sqlalchemy import case, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Expense
-from app.schemas import (
-    ConfirmedExpenseBatchUpdateRequest,
-    ConfirmedExpenseBatchUpdateResponse,
-    ExpenseUpdateRequest,
-)
-from app.services.bill_split_service import assert_no_immutable_field_changes
-from app.services.category_preference_service import ensure_category_preference_for_name
-from app.services.classify_service import classify_expense
+from app.schemas import ExpenseUpdateRequest
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.currency_binding_service import (
     authorize_currency_metadata_write,
     resolve_write_capability,
 )
-from app.services.duplicate_service import (
-    clear_duplicate_references_to,
-    mark_duplicate_status,
-    revalidate_duplicate_references_to,
-)
-from app.services.exchange_rate_service import refresh_currency_snapshot, validate_currency_payload_money_command
+from app.services.duplicate_service import clear_duplicate_references_to
+from app.services.exchange_rate_service import refresh_currency_snapshot
+from app.services.expense_revision_service import record_confirmation_revision
+from app.services.expense_service._field_mutation import apply_expense_fields_to_claimed_row
 from app.services.expense_service._helpers import (
-    EDITABLE_STATUSES,
-    _clean_category,
-    _clean_optional_text,
-    _clean_text,
-    _ensure_expense_can_confirm,
     _ensure_pending_expense_can_confirm,
     _expense_has_pending_fx,
 )
 from app.services.expense_service._query import get_expense, resolve_expense
-from app.services.expense_service._update_currency import _apply_update_currency
-from app.services.ocr_service import clear_ocr_draft_fields
 from app.services.optimistic_concurrency import claim_row_with_token
-from app.services.receipt_item_service import recompute_items_sum_status
 from app.services.resource_audit import record_resource_action
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
-from app.services.tag_service import normalize_tags, sync_expense_tags
-from app.services.time_service import ensure_utc, now_utc
+from app.services.tag_service import sync_expense_tags
+from app.services.time_service import now_utc
 
 __all__ = [
-    "batch_update_confirmed_expenses",
     "confirm_expense",
     "reject_expense",
     "undo_reject_expense",
     "update_expense",
 ]
-
-
-def batch_update_confirmed_expenses(
-    db: Session,
-    *,
-    tenant_id: str,
-    payload: ConfirmedExpenseBatchUpdateRequest,
-) -> ConfirmedExpenseBatchUpdateResponse:
-    authorize_currency_metadata_write(db)
-    expense_ids = list(dict.fromkeys(payload.expense_ids))
-    expected_by_id = payload.expected_row_version_by_id
-    if set(expected_by_id) != set(expense_ids):
-        raise AppError("invalid_request", status_code=422)
-
-    category_provided = payload.category is not None
-    tags_provided = payload.tags is not None
-    if not category_provided and not tags_provided:
-        raise AppError("invalid_request", status_code=422)
-
-    category = payload.category.strip() if category_provided else None
-    if category_provided and not category:
-        raise AppError("invalid_request", status_code=422)
-
-    normalized_tags = normalize_tags(payload.tags) if tags_provided else None
-    rows = list(db.scalars(select(Expense).where(Expense.tenant_id == tenant_id).where(Expense.id.in_(expense_ids))))
-    rows_by_id = {row.id: row for row in rows}
-
-    updated_count = 0
-    skipped_not_found = 0
-    skipped_not_confirmed = 0
-    now = now_utc()
-    for expense_id in expense_ids:
-        expense = rows_by_id.get(expense_id)
-        if expense is None:
-            skipped_not_found += 1
-            continue
-        if expense.status != "confirmed":
-            skipped_not_confirmed += 1
-            continue
-        rowcount = claim_row_with_token(
-            db,
-            Expense,
-            pk_id=expense_id,
-            tenant_id=tenant_id,
-            expected_row_version=expected_by_id[expense_id],
-            set_values={"updated_at": now},
-            extra_where=(Expense.status == "confirmed",),
-            synchronize_session=False,
-        )
-        if rowcount != 1:
-            db.rollback()
-            raise AppError("state_conflict", status_code=409)
-        if category_provided:
-            expense.category = _clean_category(category)
-            ensure_category_preference_for_name(db, tenant_id=tenant_id, name=expense.category)
-        if tags_provided:
-            expense.tags = normalized_tags
-            sync_expense_tags(db, expense)
-        expense.updated_at = now
-        updated_count += 1
-
-    if updated_count:
-        db.commit()
-
-    return ConfirmedExpenseBatchUpdateResponse(
-        requested_count=len(expense_ids),
-        updated_count=updated_count,
-        skipped_not_found=skipped_not_found,
-        skipped_not_confirmed=skipped_not_confirmed,
-    )
 
 
 def _claim_expense_for_update(
@@ -137,7 +49,7 @@ def _claim_expense_for_update(
     """ADR-0038 atomic optimistic-concurrency claim for ``PATCH /api/expenses/{id}``.
 
     Atomically sets ``updated_at = claimed_at`` only when the row's
-    ``(id, tenant_id, status ∈ EDITABLE_STATUSES, updated_at)``
+    ``(id, tenant_id, status = pending, row_version)``
     matches the client's snapshot. ``rowcount == 0`` disambiguates:
     missing / non-editable row → ``expense_not_found`` 404; else →
     ``state_conflict`` 409. The claim becomes part of the same
@@ -153,14 +65,16 @@ def _claim_expense_for_update(
         tenant_id=tenant_id,
         expected_row_version=expected_row_version,
         set_values={"updated_at": claimed_at},
-        extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
+        extra_where=(Expense.status == "pending",),
         synchronize_session=False,
     )
     if rowcount != 1:
         db.expire_all()
         current = resolve_expense(db, tenant_id, expense_id)
-        if current is None or current.status not in EDITABLE_STATUSES:
+        if current is None or current.status == "rejected":
             raise AppError("expense_not_found", status_code=404)
+        if current.status == "confirmed":
+            raise AppError("expense_correction_required", status_code=409)
         raise AppError("state_conflict", status_code=409)
     db.expire_all()
     return get_expense(db, expense_id, tenant_id)
@@ -174,7 +88,6 @@ def update_expense(
     *,
     commit: bool = True,
 ) -> Expense:
-    validate_currency_payload_money_command(payload, amount_was_explicit="amount_cents" in payload.model_fields_set)
     # ADR-0038: atomic UPDATE WHERE id, tenant_id, status, updated_at =
     # expected. Race-rejected at the DB layer (rowcount=0 → 404/409),
     # so two clients that both read the same updated_at can't both
@@ -195,78 +108,13 @@ def update_expense(
         claimed_at=now_utc(),
     )
 
-    updates = payload.model_dump(exclude_unset=True, exclude={"expected_row_version"})
-
-    # ADR-0029: received split expenses freeze their money / merchant /
-    # time fields — those represent the agreed-upon debt with the sender
-    # and silently mutating them after accept is a data-integrity issue.
-    assert_no_immutable_field_changes(expense, set(updates.keys()))
-
-    if "merchant" in updates:
-        expense.merchant = _clean_optional_text(updates["merchant"])
-    if "category" in updates and updates["category"]:
-        expense.category = _clean_category(updates["category"])
-        ensure_category_preference_for_name(db, tenant_id=tenant_id, name=expense.category)
-    if "note" in updates:
-        expense.note = _clean_text(updates["note"])
-    if "spent_at" in updates:
-        expense.expense_time = ensure_utc(updates["spent_at"])
-    elif "expense_time" in updates:
-        expense.expense_time = ensure_utc(updates["expense_time"])
-    # ADR-0042: explicit {"tags": null} must not clobber tags (Slice C relies on an omitted key leaving them untouched); "" still clears.
-    if updates.get("tags") is not None:
-        expense.tags = normalize_tags(updates["tags"])
-    if "value_score" in updates:
-        expense.value_score = updates["value_score"]
-    if "regret_score" in updates:
-        expense.regret_score = updates["regret_score"]
-    amount_cents_before = expense.amount_cents
-    _apply_update_currency(
+    apply_expense_fields_to_claimed_row(
         db,
-        tenant_id=tenant_id,
         expense=expense,
+        tenant_id=tenant_id,
         payload=payload,
-        updates=updates,
     )
-    if expense.status == "confirmed":
-        _ensure_expense_can_confirm(expense)
 
-    clear_ocr_draft_fields(expense, list(updates.keys()))
-
-    should_auto_classify = (
-        "category" not in updates
-        and expense.category == "其他"
-        and any(field in updates for field in {"merchant", "note"})
-    )
-    if should_auto_classify:
-        classify_expense(db, expense)
-        ensure_category_preference_for_name(db, tenant_id=tenant_id, name=expense.category)
-
-    if any(
-        field in updates
-        for field in {
-            "amount_cents",
-            "original_currency",
-            "original_amount",
-            "original_currency_code",
-            "original_amount_minor",
-            "exchange_rate_date",
-            "merchant",
-            "spent_at",
-            "expense_time",
-        }
-    ):
-        mark_duplicate_status(db, expense)
-        db.flush()
-        revalidate_duplicate_references_to(db, tenant_id=tenant_id, duplicate_of_id=expense.id)
-    if updates.get("tags") is not None:
-        sync_expense_tags(db, expense)
-
-    # 0035: derived amount changes also invalidate the item-sum match.
-    if expense.amount_cents != amount_cents_before:
-        recompute_items_sum_status(db, expense)
-
-    expense.updated_at = now_utc()
     if commit:
         db.commit()
         db.refresh(expense)
@@ -277,12 +125,88 @@ def update_expense(
     return expense
 
 
+def _claim_pending_confirmation(
+    db: Session,
+    *,
+    expense_id: int,
+    tenant_id: str,
+    expected_row_version: int,
+) -> tuple[Expense, bool]:
+    expense = get_expense(db, expense_id, tenant_id)
+    if expense.status == "confirmed":
+        return expense, False
+    if expense.status != "pending":
+        raise AppError("expense_not_found", status_code=404)
+    if _expense_has_pending_fx(expense):
+        refresh_currency_snapshot(db, tenant_id=tenant_id, expense=expense)
+    _ensure_pending_expense_can_confirm(expense)
+    db.flush()
+    now = now_utc()
+    claimed = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_row_version=expected_row_version,
+        set_values={"status": "confirmed", "confirmed_at": now, "updated_at": now},
+        extra_where=(Expense.status == "pending", Expense.amount_cents.is_not(None)),
+        synchronize_session=False,
+    )
+    if claimed == 1:
+        db.expire_all()
+        return get_expense(db, expense_id, tenant_id), True
+    db.expire_all()
+    latest = get_expense(db, expense_id, tenant_id)
+    if latest.status == "confirmed":
+        return latest, False
+    if latest.status == "pending":
+        _ensure_pending_expense_can_confirm(latest)
+        raise AppError("state_conflict", status_code=409)
+    raise AppError("expense_not_found", status_code=404)
+
+
+def _publish_confirmation(
+    db: Session,
+    expense: Expense,
+    *,
+    actor_account_id: int | None,
+    actor_device_id: int | None,
+    commit: bool,
+) -> Expense:
+    sync_expense_tags(db, expense)
+    from app.services.learning_service import close_active_decisions_for_subject
+
+    close_active_decisions_for_subject(
+        db,
+        tenant_id=expense.tenant_id,
+        subject_kind="expense",
+        subject_id=expense.id,
+    )
+    record_confirmation_revision(
+        db,
+        expense,
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+    )
+    if not commit:
+        db.flush()
+        return expense
+    db.commit()
+    db.refresh(expense)
+    if cleanup_after_confirm(db, expense):
+        db.commit()
+        db.refresh(expense)
+    return expense
+
+
 def confirm_expense(
     db: Session,
     expense_id: int,
     tenant_id: str,
     *,
     expected_row_version: int,
+    actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
     commit: bool = True,
 ) -> Expense:
     """ADR-0038 PR-2b: confirm with optimistic concurrency.
@@ -298,64 +222,23 @@ def confirm_expense(
     post-confirm side-effect commit this method does internally when ``commit``.
     """
     resolve_write_capability(db)
-    expense = get_expense(db, expense_id, tenant_id)
-    if expense.status == "confirmed":
-        return expense
-    if expense.status != "pending":
-        raise AppError("expense_not_found", status_code=404)
-    if _expense_has_pending_fx(expense):
-        refresh_currency_snapshot(db, tenant_id=tenant_id, expense=expense)
-    _ensure_pending_expense_can_confirm(expense)
-    db.flush()
-
-    now = now_utc()
-    rowcount = claim_row_with_token(
+    expense, newly_confirmed = _claim_pending_confirmation(
         db,
-        Expense,
-        pk_id=expense_id,
+        expense_id=expense_id,
         tenant_id=tenant_id,
         expected_row_version=expected_row_version,
-        set_values={"status": "confirmed", "confirmed_at": now, "updated_at": now},
-        extra_where=(Expense.status == "pending", Expense.amount_cents.is_not(None)),
-        synchronize_session=False,
     )
-    if rowcount != 1:
-        db.expire_all()
-        expense = get_expense(db, expense_id, tenant_id)
-        if expense.status == "confirmed":
-            return expense
-        if expense.status == "pending":
-            # row is still pending; either required facts are missing (terminal
-            # validation error) or row_version mismatched. Validation
-            # raises its own error; otherwise stale → 409.
-            _ensure_pending_expense_can_confirm(expense)
-            raise AppError("state_conflict", status_code=409)
-        raise AppError("expense_not_found", status_code=404)
-
-    db.expire_all()
-    expense = get_expense(db, expense_id, tenant_id)
-    sync_expense_tags(db, expense)
-    # v1.2 ops: close any active algorithm_decisions attached to this
-    # expense — confirmation means no UI will surface them again.
-    from app.services.learning_service import close_active_decisions_for_subject
-
-    close_active_decisions_for_subject(
+    if not newly_confirmed:
+        return expense
+    if expense.status != "confirmed":
+        raise AppError("server_error", status_code=500)
+    return _publish_confirmation(
         db,
-        tenant_id=tenant_id,
-        subject_kind="expense",
-        subject_id=expense.id,
+        expense,
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+        commit=commit,
     )
-    if commit:
-        db.commit()
-        db.refresh(expense)
-        if cleanup_after_confirm(db, expense):
-            db.commit()
-            db.refresh(expense)
-    else:
-        # Idempotent route owns the commit (it folds in the key record), then
-        # runs cleanup_after_confirm + its own commit afterwards.
-        db.flush()
-    return expense
 
 
 def reject_expense(
@@ -380,7 +263,7 @@ def reject_expense(
         tenant_id=tenant_id,
         expected_row_version=expected_row_version,
         set_values={"status": "rejected", "rejected_at": now, "updated_at": now},
-        extra_where=(Expense.status.in_(("pending", "confirmed")),),
+        extra_where=(Expense.status == "pending",),
         synchronize_session=False,
     )
     if rowcount != 1:
@@ -388,7 +271,9 @@ def reject_expense(
         existing = get_expense(db, expense_id, tenant_id)
         if existing.status == "rejected":
             return existing
-        if existing.status in {"pending", "confirmed"}:
+        if existing.status == "confirmed":
+            raise AppError("expense_reversal_required", status_code=409)
+        if existing.status == "pending":
             raise AppError("state_conflict", status_code=409)
         raise AppError("expense_not_found", status_code=404)
 

@@ -11,6 +11,7 @@ package com.ticketbox.data.local
  * surface that takes ``expected_row_version``):
  *
  *   PatchExpense                     PATCH  /api/expenses/{id}
+ *   CorrectExpense                   POST   /api/expenses/{id}/corrections
  *   ConfirmExpense                   POST   /api/expenses/{id}/confirm
  *   RejectExpense                    POST   /api/expenses/{id}/reject
  *   MarkNotDuplicate                 POST   /api/expenses/{id}/mark-not-duplicate
@@ -39,6 +40,7 @@ package com.ticketbox.data.local
  */
 enum class PendingMutationType(val wireValue: String) {
     PatchExpense("patch_expense"),
+    CorrectExpense("correct_expense"),
     CreateExpense("create_expense"),
     ConfirmExpense("confirm_expense"),
     RejectExpense("reject_expense"),

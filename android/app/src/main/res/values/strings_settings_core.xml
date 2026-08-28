@@ -269,6 +269,7 @@
 
     <!-- 离线同步卡改动类型标签。 -->
     <string name="sync_status_mutation_patch_expense">修改账单</string>
+    <string name="sync_status_mutation_correct_expense">更正已入账记录</string>
     <string name="sync_status_mutation_create_expense">新建账单</string>
     <string name="sync_status_mutation_confirm_expense">确认入账</string>
     <string name="sync_status_mutation_reject_expense">删除账单</string>
