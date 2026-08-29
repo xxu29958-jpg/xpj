@@ -4,21 +4,27 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from api_contract_helpers import acknowledge_items_mismatch_api
+from api_contract_helpers import (
+    acknowledge_items_mismatch_api,
+    patch_expense,
+    upload_png,
+)
 from fastapi.testclient import TestClient
 
 
-def _create_manual_expense(
+def _create_pending_expense(
     client: TestClient,
     *,
     identity,
     amount_cents: int = 3500,
     merchant: str = "Receipt Cafe",
 ) -> int:
-    response = client.post(
-        "/api/expenses/manual",
+    expense_id = upload_png(client, identity=identity)
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": amount_cents,
             "merchant": merchant,
             "category": "餐饮",
@@ -26,7 +32,8 @@ def _create_manual_expense(
         },
     )
     assert response.status_code == 200, response.json()
-    return int(response.json()["id"])
+    assert response.json()["status"] == "pending"
+    return expense_id
 
 
 def _put_items(client: TestClient, *, identity, expense_id: int, items: list[dict]):
@@ -43,7 +50,7 @@ def _put_items(client: TestClient, *, identity, expense_id: int, items: list[dic
 
 
 def test_discount_kind_rejects_positive_amount(client: TestClient, *, identity) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     response = _put_items(
         client,
         identity=identity,
@@ -56,7 +63,7 @@ def test_discount_kind_rejects_positive_amount(client: TestClient, *, identity) 
 
 
 def test_product_kind_rejects_negative_amount(client: TestClient, *, identity) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     response = _put_items(
         client,
         identity=identity,
@@ -69,7 +76,7 @@ def test_product_kind_rejects_negative_amount(client: TestClient, *, identity) -
 
 
 def test_tax_kind_rejects_negative_amount(client: TestClient, *, identity) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     response = _put_items(
         client,
         identity=identity,
@@ -82,7 +89,7 @@ def test_tax_kind_rejects_negative_amount(client: TestClient, *, identity) -> No
 
 
 def test_kind_defaults_to_product(client: TestClient, *, identity) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     response = _put_items(
         client,
         identity=identity,
@@ -101,7 +108,7 @@ def test_kind_defaults_to_product(client: TestClient, *, identity) -> None:
 
 def test_items_sum_status_matched_with_discount(client: TestClient, *, identity) -> None:
     """1 product (¥38) + 1 discount (-¥3) sums to ¥35, equals expense.amount_cents."""
-    expense_id = _create_manual_expense(client, identity=identity, amount_cents=3500)
+    expense_id = _create_pending_expense(client, identity=identity, amount_cents=3500)
     response = _put_items(
         client,
         identity=identity,
@@ -120,7 +127,7 @@ def test_items_sum_status_matched_with_discount(client: TestClient, *, identity)
 
 def test_items_sum_status_mismatch_known(client: TestClient, *, identity) -> None:
     """Items sum ¥38, expense ¥35 → mismatch_known."""
-    expense_id = _create_manual_expense(client, identity=identity, amount_cents=3500)
+    expense_id = _create_pending_expense(client, identity=identity, amount_cents=3500)
     response = _put_items(
         client,
         identity=identity,
@@ -136,7 +143,7 @@ def test_items_sum_status_mismatch_known(client: TestClient, *, identity) -> Non
 
 
 def test_items_sum_status_no_items_when_empty(client: TestClient, *, identity) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     response = _put_items(client, identity=identity, expense_id=expense_id, items=[])
     assert response.status_code == 200
     assert response.json()["items_sum_status"] == "no_items"
@@ -146,7 +153,7 @@ def test_items_sum_status_no_items_when_empty(client: TestClient, *, identity) -
 
 
 def test_acknowledge_mismatch_transition(client: TestClient, *, identity) -> None:
-    expense_id = _create_manual_expense(client, identity=identity, amount_cents=3500)
+    expense_id = _create_pending_expense(client, identity=identity, amount_cents=3500)
     _put_items(
         client,
         identity=identity,
@@ -161,7 +168,7 @@ def test_acknowledge_mismatch_transition(client: TestClient, *, identity) -> Non
 
 
 def test_acknowledge_mismatch_rejects_when_matched(client: TestClient, *, identity) -> None:
-    expense_id = _create_manual_expense(client, identity=identity, amount_cents=3500)
+    expense_id = _create_pending_expense(client, identity=identity, amount_cents=3500)
     _put_items(
         client,
         identity=identity,
@@ -177,7 +184,7 @@ def test_acknowledge_mismatch_rejects_when_matched(client: TestClient, *, identi
 
 def test_acknowledge_persists_across_edit(client: TestClient, *, identity) -> None:
     """已 acknowledged 的 mismatch 在 item 再编辑时如果差异仍存在，保留状态不回退到 mismatch_known。"""
-    expense_id = _create_manual_expense(client, identity=identity, amount_cents=3500)
+    expense_id = _create_pending_expense(client, identity=identity, amount_cents=3500)
     # 先制造一个 mismatch
     _put_items(
         client,

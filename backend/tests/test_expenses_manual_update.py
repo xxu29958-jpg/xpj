@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from api_contract_helpers import (
     patch_expense,
@@ -83,7 +83,7 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
 
     response = client.post(
         "/api/expenses/confirmed/batch-update",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expense_ids": [first_id, second_id, pending_id, other_ledger_id, first_id],
             "expected_row_version_by_id": expected_row_version_by_id,
@@ -160,7 +160,7 @@ def test_confirmed_batch_update_stale_token_returns_409_without_partial_update(c
 
     response = client.post(
         "/api/expenses/confirmed/batch-update",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expense_ids": [first_id, second_id],
             "expected_row_version_by_id": {

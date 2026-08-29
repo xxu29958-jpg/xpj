@@ -103,11 +103,16 @@ def test_public_bulk_form_native_post_uses_rendered_csrf_token(
     form = re.search(r'<form id="bulk-form".*?</form>', page.text, re.DOTALL)
     assert form is not None, page.text
     csrf = re.search(r'name="csrf_token" value="([^"]+)"', form.group(0))
+    idempotency = re.search(
+        r'name="idempotency_key" value="([^"]+)"',
+        form.group(0),
+    )
     snapshot = re.search(
         rf'name="expense_snapshot" value="({expense_id}:\d+)"',
         page.text,
     )
     assert csrf is not None, form.group(0)
+    assert idempotency is not None, form.group(0)
     assert snapshot is not None, page.text
 
     response = pub.post(
@@ -121,6 +126,8 @@ def test_public_bulk_form_native_post_uses_rendered_csrf_token(
             "action": "set_category",
             "expense_snapshot": snapshot.group(1),
             "category": "家庭采购",
+            "reason": "批量更正分类",
+            "idempotency_key": idempotency.group(1),
         },
         follow_redirects=False,
     )

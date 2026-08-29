@@ -26,7 +26,7 @@
     call("initThemeToggle");
     call("initLedgerSwitcher");
     call("initDrawer");
-    call("initReviewHotkeys");
+    call("initReviewKeyboard");
     call("initBulkBar");
     call("initReceiptSkeletons");
     call("initTrendChart");

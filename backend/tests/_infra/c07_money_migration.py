@@ -6,10 +6,11 @@ import importlib.util
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import inspect, select, text
+from sqlalchemy import MetaData, Table, inspect, select, text
 
 from app.database import SessionLocal, engine
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
@@ -17,7 +18,6 @@ from app.models import (
     Account,
     BillSplitInvitation,
     Budget,
-    Expense,
     ExpenseItem,
     ExpenseSplit,
     Ledger,
@@ -216,6 +216,31 @@ def seed_owner() -> tuple[int, int]:
         return int(account.id), int(member.id)
 
 
+def insert_legacy_expense(**values) -> int:
+    """Insert against the reflected historical schema, not today's ORM shape."""
+
+    now = now_utc()
+    row = {
+        "public_id": str(uuid4()),
+        "category": "其他",
+        "note": "",
+        "source": "iPhone截图",
+        "raw_text": "",
+        "duplicate_status": "none",
+        "status": "pending",
+        "created_at": now,
+        "updated_at": now,
+        **values,
+    }
+    with engine.begin() as connection:
+        expenses = Table("expenses", MetaData(), autoload_with=connection)
+        return int(
+            connection.scalar(
+                expenses.insert().values(**row).returning(expenses.c.id)
+            )
+        )
+
+
 def seed_legacy_csv_import_error_row() -> int:
     seed_owner()
     with engine.begin() as connection:
@@ -257,24 +282,22 @@ def seed_legacy_csv_import_error_row() -> int:
 
 def seed_boundary_facts() -> None:
     seed_owner()
+    expense_id = insert_legacy_expense(
+        tenant_id="owner",
+        amount_cents=LEGACY_INT32_MAX,
+        home_currency_code="CNY",
+        original_currency_code="CNY",
+        original_amount_minor=LEGACY_INT32_MAX,
+        exchange_rate_to_cny=Decimal("1"),
+        exchange_rate_source="base",
+        fx_status="ready",
+        merchant="boundary",
+    )
     with SessionLocal() as db:
-        expense = Expense(
-            tenant_id="owner",
-            amount_cents=LEGACY_INT32_MAX,
-            home_currency_code="CNY",
-            original_currency_code="CNY",
-            original_amount_minor=LEGACY_INT32_MAX,
-            exchange_rate_to_cny=Decimal("1"),
-            exchange_rate_source="base",
-            fx_status="ready",
-            merchant="boundary",
-        )
-        db.add(expense)
-        db.flush()
         db.add(
             ExpenseItem(
                 tenant_id="owner",
-                expense_id=expense.id,
+                expense_id=expense_id,
                 position=0,
                 name="boundary discount",
                 kind="discount",
@@ -306,23 +329,21 @@ def seed_legacy_zero_split() -> int:
     """Insert a split that the released pre-C07 API and CHECK accepted."""
 
     _account_id, member_id = seed_owner()
+    expense_id = insert_legacy_expense(
+        tenant_id="owner",
+        amount_cents=1_000,
+        home_currency_code="CNY",
+        original_currency_code="CNY",
+        original_amount_minor=1_000,
+        exchange_rate_to_cny=Decimal("1"),
+        exchange_rate_source="base",
+        fx_status="ready",
+        merchant="legacy zero split",
+    )
     with SessionLocal() as db:
-        expense = Expense(
-            tenant_id="owner",
-            amount_cents=1_000,
-            home_currency_code="CNY",
-            original_currency_code="CNY",
-            original_amount_minor=1_000,
-            exchange_rate_to_cny=Decimal("1"),
-            exchange_rate_source="base",
-            fx_status="ready",
-            merchant="legacy zero split",
-        )
-        db.add(expense)
-        db.flush()
         split = ExpenseSplit(
             tenant_id="owner",
-            expense_id=expense.id,
+            expense_id=expense_id,
             member_id=member_id,
             position=0,
             amount_cents=0,
@@ -334,26 +355,25 @@ def seed_legacy_zero_split() -> int:
 
 def seed_cross_currency_invitation() -> int:
     account_id, member_id = seed_owner()
+    now = now_utc()
+    expense_id = insert_legacy_expense(
+        tenant_id="owner",
+        amount_cents=10_500,
+        merchant="split-parent",
+        home_currency_code="CNY",
+        original_currency_code="USD",
+        original_amount_minor=1_500,
+        exchange_rate_to_cny=Decimal("7"),
+        status="confirmed",
+        expense_time=now,
+        confirmed_at=now,
+    )
     with SessionLocal() as db:
-        expense = Expense(
-            tenant_id="owner",
-            amount_cents=10_500,
-            merchant="split-parent",
-            home_currency_code="CNY",
-            original_currency_code="USD",
-            original_amount_minor=1_500,
-            exchange_rate_to_cny=Decimal("7"),
-            status="confirmed",
-            expense_time=now_utc(),
-            confirmed_at=now_utc(),
-        )
-        db.add(expense)
-        db.flush()
         invitation = BillSplitInvitation(
             sender_account_id=account_id,
             sender_ledger_id="owner",
             sender_member_id=member_id,
-            sender_expense_id=expense.id,
+            sender_expense_id=expense_id,
             sender_display_name="A",
             receiver_account_id=account_id,
             receiver_display_name_snapshot="B",
@@ -374,20 +394,16 @@ def seed_cross_currency_invitation() -> int:
 
 def seed_legacy_ocr_amount_fact() -> int:
     seed_owner()
-    with SessionLocal() as db:
-        expense = Expense(
-            tenant_id="owner",
-            amount_cents=None,
-            home_currency_code="CNY",
-            original_currency_code="CNY",
-            original_amount_minor=None,
-            exchange_rate_source=None,
-            merchant="legacy OCR",
-            status="pending",
-        )
-        db.add(expense)
-        db.commit()
-        expense_id = int(expense.id)
+    expense_id = insert_legacy_expense(
+        tenant_id="owner",
+        amount_cents=None,
+        home_currency_code="CNY",
+        original_currency_code="CNY",
+        original_amount_minor=None,
+        exchange_rate_source=None,
+        merchant="legacy OCR",
+        status="pending",
+    )
     with engine.begin() as connection:
         fact_id = connection.scalar(
             text(

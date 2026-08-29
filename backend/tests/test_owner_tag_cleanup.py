@@ -8,6 +8,7 @@ page.
 from __future__ import annotations
 
 import re as _re
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,14 +28,17 @@ def local_client(client: TestClient) -> TestClient:
 
 def _seed_orphan_tag(client: TestClient, headers: dict[str, str]) -> None:
     """Create an expense tagged 出差+工作, then drop 工作 → 工作 becomes orphan."""
-    from api_contract_helpers import patch_expense
-
-    from tests._infra.tag_helpers import expense_row
-
-    manual_expense(client, headers, tags="出差, 工作", merchant="A")
-    a_id, _, _ = expense_row("A")
-    patched = patch_expense(client, a_id, headers=headers, fields={"tags": "出差"})
-    assert patched.status_code == 200, patched.text
+    expense = manual_expense(client, headers, tags="出差, 工作", merchant="A")
+    corrected = client.post(
+        f"/api/expenses/{expense['id']}/corrections",
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+        json={
+            "expected_row_version": expense["row_version"],
+            "reason": "移除误加标签",
+            "tags": "出差",
+        },
+    )
+    assert corrected.status_code == 201, corrected.text
 
 
 def test_owner_tag_cleanup_get_lists_orphans(local_client: TestClient, *, identity) -> None:

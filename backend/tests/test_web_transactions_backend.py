@@ -12,17 +12,15 @@ import re
 from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from api_contract_helpers import patch_expense, web_confirm_expense
 from fastapi.testclient import TestClient
 
-import app.routes._web_expense_edit_command as edit_command
 from app.database import SessionLocal
 from app.models import Expense
-from app.schemas import ExpenseItemReplaceRequest, ExpenseItemRequest
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.receipt_item_service import replace_expense_items
 from app.services.spending_contract_service import (
     current_accounting_month,
     shift_month,
@@ -176,6 +174,11 @@ def test_confirmed_native_snapshot_updates_without_javascript(
     assert bulk_form is not None, page.text
     assert 'name="csrf_token" value="' in bulk_form.group(0)
     assert "<noscript>" in page.text
+    idempotency = re.search(
+        r'name="idempotency_key" value="([^"]+)"',
+        bulk_form.group(0),
+    )
+    assert idempotency is not None, bulk_form.group(0)
 
     response = web_client.post(
         "/web/confirmed/batch-update",
@@ -184,6 +187,8 @@ def test_confirmed_native_snapshot_updates_without_javascript(
             "ledger_id": "owner",
             "expense_snapshot": f"{expense_id}:{before['row_version']}",
             "category": "家庭采购",
+            "reason": "批量更正分类",
+            "idempotency_key": idempotency.group(1),
         },
         follow_redirects=False,
     )
@@ -220,6 +225,8 @@ def test_confirmed_separator_only_tags_fail_without_clearing_existing_tags(
             "ledger_id": "owner",
             "expense_snapshot": f"{expense_id}:{before['row_version']}",
             "tags": ",，，；",
+            "reason": "批量更正标签",
+            "idempotency_key": str(uuid4()),
         },
         follow_redirects=False,
     )
@@ -268,8 +275,6 @@ def test_web_edit_ignores_mutable_rate_and_preserves_frozen_fx_snapshot(
     *,
     identity,
 ) -> None:
-    import app.routes.web_expense_edit as web_expense_edit_route
-
     expense_id = _foreign_expense(web_client, identity=identity)
     before = _expense_payload(web_client, expense_id, identity=identity)
     assert before["exchange_rate_to_cny"] == "7.00000000"
@@ -284,16 +289,6 @@ def test_web_edit_ignores_mutable_rate_and_preserves_frozen_fx_snapshot(
         },
     )
     assert changed_rate.status_code == 200, changed_rate.text
-    original_update = web_expense_edit_route.update_expense
-    assert edit_command.update_expense is original_update
-    update_calls = 0
-
-    def _counted_update(*args, **kwargs):
-        nonlocal update_calls
-        update_calls += 1
-        return original_update(*args, **kwargs)
-
-    monkeypatch.setattr(web_expense_edit_route, "update_expense", _counted_update)
     monkeypatch.setattr(
         "app.services.expense_service._update_currency.apply_currency_payload",
         lambda *_args, **_kwargs: pytest.fail(
@@ -302,9 +297,11 @@ def test_web_edit_ignores_mutable_rate_and_preserves_frozen_fx_snapshot(
     )
 
     response = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+        f"/web/expenses/{expense_id}/corrections",
         data={
             "ledger_id": "owner",
+            "reason": "外币金额录错",
+            "idempotency_key": str(uuid4()),
             "expected_row_version": str(before["row_version"]),
             "original_currency": "USD",
             "amount_yuan": "124.00",
@@ -317,7 +314,6 @@ def test_web_edit_ignores_mutable_rate_and_preserves_frozen_fx_snapshot(
     )
 
     assert response.status_code == 303, response.text
-    assert update_calls == 1
     after = _expense_payload(web_client, expense_id, identity=identity)
     assert after["original_currency_code"] == "USD"
     assert after["original_amount_minor"] == 12400
@@ -345,18 +341,19 @@ def test_api_amount_correction_preserves_frozen_rate_snapshot(
     )
     assert changed_rate.status_code == 200, changed_rate.text
 
-    response = patch_expense(
-        web_client,
-        expense_id,
-        headers=identity.app_headers,
-        fields={
+    response = web_client.post(
+        f"/api/expenses/{expense_id}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={
+            "expected_row_version": before["row_version"],
+            "reason": "外币金额录错",
             "original_currency_code": "USD",
             "original_amount_minor": 12400,
         },
     )
 
-    assert response.status_code == 200, response.text
-    after = response.json()
+    assert response.status_code == 201, response.text
+    after = response.json()["expense"]
     assert after["exchange_rate_to_cny"] == before["exchange_rate_to_cny"]
     assert after["exchange_rate_date"] == before["exchange_rate_date"]
     assert after["exchange_rate_source"] == before["exchange_rate_source"]
@@ -369,38 +366,52 @@ def test_original_amount_change_recomputes_items_sum_status(
     identity,
 ) -> None:
     expense_id = _foreign_expense(web_client, identity=identity)
-    with SessionLocal() as db:
-        expense = db.get(Expense, expense_id)
-        assert expense is not None
-        replaced = replace_expense_items(
-            db,
-            expense_id,
-            "owner",
-            ExpenseItemReplaceRequest(
-                expected_row_version=expense.row_version,
-                items=[
-                    ExpenseItemRequest(
-                        name="整单",
-                        amount_cents=expense.amount_cents,
-                        category="餐饮",
-                    )
-                ],
-            ),
-        )
-        assert replaced.items_sum_status == "matched"
     before = _expense_payload(web_client, expense_id, identity=identity)
+    assert before["amount_cents"] == 86415
+    seeded = web_client.post(
+        f"/api/expenses/{expense_id}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={
+            "expected_row_version": before["row_version"],
+            "reason": "补录小票明细",
+            "items": [
+                {
+                    "name": "整单",
+                    "kind": "product",
+                    "amount_cents": before["amount_cents"],
+                    "category": "餐饮",
+                }
+            ],
+        },
+    )
+    assert seeded.status_code == 201, seeded.text
+    current = seeded.json()["expense"]
+    seeded_items = web_client.get(
+        f"/api/expenses/{expense_id}/items",
+        headers=identity.app_headers,
+    )
+    assert seeded_items.status_code == 200, seeded_items.text
+    assert seeded_items.json()["items_sum_status"] == "matched"
 
     response = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+        f"/web/expenses/{expense_id}/corrections",
         data={
             "ledger_id": "owner",
-            "expected_row_version": str(before["row_version"]),
+            "reason": "外币金额录错",
+            "idempotency_key": str(uuid4()),
+            "expected_row_version": str(current["row_version"]),
             "original_currency": "USD",
             "amount_yuan": "124.00",
             "merchant": "Frozen FX Cafe",
             "category": "餐饮",
             "note": "",
             "tags": "",
+            "item_name": "整单",
+            "item_kind": "product",
+            "item_quantity": "",
+            "item_unit_price_yuan": "",
+            "item_amount_yuan": "864.15",
+            "item_category": "餐饮",
         },
         follow_redirects=False,
     )

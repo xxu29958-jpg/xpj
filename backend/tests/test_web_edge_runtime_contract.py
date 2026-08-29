@@ -22,6 +22,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _BULK_BAR_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "bulk-bar.js"
 _LEDGER_FILTER_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "ledger-filter.js"
 _BULK_BAR_FIXTURE = _REPO_ROOT / "backend" / "tests" / "fixtures" / "bulk_bar_announcement_contract.html"
+_BULK_EMPTY_RELOAD_FIXTURE = (
+    _REPO_ROOT / "backend" / "tests" / "fixtures" / "bulk_bar_empty_reload_contract.html"
+)
 _DRAWER_BULK_OCC_FIXTURE = _REPO_ROOT / "backend" / "tests" / "fixtures" / "drawer_bulk_occ_contract.html"
 _DRAWER_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "drawer.js"
 _EDGE_CDP: ModuleType | None = None
@@ -82,6 +85,28 @@ def _evaluate_fixture(
     return value
 
 
+def _assert_bulk_queue_exhaustion_reloads_authoritative_page(tmp_path: Path) -> None:
+    page = _write_fixture(
+        tmp_path,
+        "bulk-bar-empty-reload-contract.html",
+        _BULK_EMPTY_RELOAD_FIXTURE.read_text(encoding="utf-8").replace(
+            "__BULK_BAR_URI__",
+            html.escape(_BULK_BAR_JS.as_uri(), quote=True),
+        ),
+    )
+    probe = _evaluate_fixture(
+        tmp_path,
+        page=page,
+        width=1024,
+        height=768,
+        profile_name="edge-bulk-bar-empty-reload-contract",
+    )
+    assert probe == {
+        "authoritativeReloaded": True,
+        "navigationType": "reload",
+    }
+
+
 def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
     tmp_path: Path,
 ) -> None:
@@ -136,7 +161,7 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
     assert failure["live"] == "assertive"
     assert failure["atomic"] == "true"
     assert failure["message"] == "批量操作失败，请重试。"
-    assert probe["emptyRedirectHash"] == "#authoritative-empty-state"
+    _assert_bulk_queue_exhaustion_reloads_authoritative_page(tmp_path)
 
 
 def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(

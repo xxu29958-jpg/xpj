@@ -6,6 +6,7 @@ import re
 from datetime import UTC, datetime
 from html import unescape
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from api_contract_helpers import web_save_expense
@@ -131,7 +132,7 @@ def test_web_edit_rejects_nonpositive_occ_token_as_invalid_form(
     assert _expense_payload(web_client, expense_id, identity=identity) == before
 
 
-def test_web_edit_rejects_hidden_currency_tampering_without_mutation(
+def test_web_correction_rejects_unavailable_currency_without_mutation(
     web_client: TestClient,
     *,
     identity,
@@ -140,9 +141,11 @@ def test_web_edit_rejects_hidden_currency_tampering_without_mutation(
     before = _expense_payload(web_client, expense_id, identity=identity)
 
     response = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+        f"/web/expenses/{expense_id}/corrections",
         data={
             "ledger_id": "owner",
+            "reason": "外币金额录错",
+            "idempotency_key": str(uuid4()),
             "expected_row_version": str(before["row_version"]),
             "original_currency": "JPY",
             "amount_yuan": "124",
@@ -154,9 +157,8 @@ def test_web_edit_rejects_hidden_currency_tampering_without_mutation(
         follow_redirects=False,
     )
 
-    assert response.status_code == 422, response.text
-    assert "币种已冻结" in response.text
-    assert 'aria-invalid="true"' in response.text
+    assert response.status_code == 409, response.text
+    assert "汇率还没同步完成" in response.text
     after = _expense_payload(web_client, expense_id, identity=identity)
     assert after == before
 

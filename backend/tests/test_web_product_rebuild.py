@@ -242,13 +242,15 @@ def test_primary_mutations_keep_real_csrf_and_occ_contracts(
     assert detail.status_code == 200
     assert 'data-page="expense-detail" data-page-level="tertiary"' in detail.text
     assert "/static/web/product/detail.css" in detail.text
-    assert re.search(
-        r'action="/web/expenses/\d+/save".*?'
-        r'name="csrf_token" value="[^"]+".*?'
-        r'name="expected_row_version" value="[^"]+"',
-        detail.text,
-        re.S,
+    assert f'href="/web/expenses/{expense_id}/correct?ledger_id=owner"' in detail.text
+    correction = web_client.get(
+        f"/web/expenses/{expense_id}/correct?ledger_id=owner"
     )
+    assert correction.status_code == 200, correction.text
+    assert f'action="/web/expenses/{expense_id}/corrections"' in correction.text
+    for field in ("csrf_token", "expected_row_version", "idempotency_key"):
+        assert re.search(rf'name="{field}" value="[^"]+"', correction.text)
+    assert 'name="reason"' in correction.text
 
 
 def test_secondary_product_routes_follow_canonical_ownership(

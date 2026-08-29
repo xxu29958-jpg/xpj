@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from uuid import uuid4
 
-from api_contract_helpers import confirm_expense_api, patch_expense
+from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -273,14 +274,17 @@ def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(cli
     assert initial["exchange_rate_date"] == "2026-05-04"
     assert initial["amount_cents"] == 70000
 
-    edited = patch_expense(
-        client,
-        int(initial["id"]),
-        headers=identity.app_headers,
-        fields={"spent_at": "2026-05-05T02:00:00Z"},
+    edited = client.post(
+        f"/api/expenses/{initial['id']}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={
+            "expected_row_version": initial["row_version"],
+            "reason": "交易日期录错",
+            "spent_at": "2026-05-05T02:00:00Z",
+        },
     )
-    assert edited.status_code == 200, edited.json()
-    body = edited.json()
+    assert edited.status_code == 201, edited.json()
+    body = edited.json()["expense"]
     assert body["exchange_rate_date"] == "2026-05-05"
     assert Decimal(body["exchange_rate_to_cny"]) == Decimal("8.00000000")
     assert body["amount_cents"] == 80000

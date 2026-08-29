@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import timedelta
 from uuid import uuid4
 
+from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -41,11 +42,13 @@ def _owner_member_id() -> int:
         return member.id
 
 
-def _manual_expense(client: TestClient, *, identity, amount_cents: int = 1500) -> int:
-    resp = client.post(
-        "/api/expenses/manual",
+def _pending_expense(client: TestClient, *, identity, amount_cents: int = 1500) -> int:
+    expense_id = upload_png(client, identity=identity)
+    resp = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": amount_cents,
             "merchant": "Idem Splits",
             "category": "餐饮",
@@ -53,7 +56,8 @@ def _manual_expense(client: TestClient, *, identity, amount_cents: int = 1500) -
         },
     )
     assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
+    assert resp.json()["status"] == "pending"
+    return expense_id
 
 
 def _row_version(client: TestClient, expense_id: int, *, identity) -> int:
@@ -63,7 +67,7 @@ def _row_version(client: TestClient, expense_id: int, *, identity) -> int:
 
 
 def test_replace_splits_requires_idempotency_key(client: TestClient, *, identity) -> None:
-    expense_id = _manual_expense(client, identity=identity)
+    expense_id = _pending_expense(client, identity=identity)
     v0 = _row_version(client, expense_id, identity=identity)
     member_id = _owner_member_id()
     resp = client.put(
@@ -81,7 +85,7 @@ def test_replace_splits_replay_same_key_returns_canonical_not_409(
     """Committed-but-unseen: the SAME key + SAME now-stale token re-serialises the
     (already-replaced) splits via ``list_expense_splits`` rather than the
     false-409 the OCC claim would raise on the bumped row_version."""
-    expense_id = _manual_expense(client, identity=identity)
+    expense_id = _pending_expense(client, identity=identity)
     v0 = _row_version(client, expense_id, identity=identity)
     member_id = _owner_member_id()
     key = str(uuid4())
@@ -108,7 +112,7 @@ def test_replace_splits_stale_token_with_different_key_still_409s(
 ) -> None:
     """Negative control: a DIFFERENT key with the same now-stale token is a
     genuine concurrent writer → OCC 409 stays intact."""
-    expense_id = _manual_expense(client, identity=identity)
+    expense_id = _pending_expense(client, identity=identity)
     v0 = _row_version(client, expense_id, identity=identity)
     member_id = _owner_member_id()
     body = {"expected_row_version": v0, "splits": [{"member_id": member_id, "amount_cents": 1500}]}
@@ -134,7 +138,7 @@ def test_replace_splits_in_progress_returns_409(client: TestClient, *, identity)
     concurrent same-key request → 409 idempotency_key_in_progress. The fingerprint
     body is the splits list (``expected_row_version`` excluded) — exactly what the
     route computes."""
-    expense_id = _manual_expense(client, identity=identity)
+    expense_id = _pending_expense(client, identity=identity)
     v0 = _row_version(client, expense_id, identity=identity)
     member_id = _owner_member_id()
     splits = [{"member_id": member_id, "amount_cents": 1500}]
@@ -178,7 +182,7 @@ def test_replace_splits_same_key_different_body_is_reused_422(
 ) -> None:
     """§4.7: same key, different request (a different split amount) → 422
     idempotency_key_reused before any mutation."""
-    expense_id = _manual_expense(client, identity=identity)
+    expense_id = _pending_expense(client, identity=identity)
     v0 = _row_version(client, expense_id, identity=identity)
     member_id = _owner_member_id()
     key = str(uuid4())

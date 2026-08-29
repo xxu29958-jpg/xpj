@@ -137,8 +137,9 @@ def test_save_confirm_replay_is_idempotent_but_changed_stale_intent_conflicts(
     # Both payloads were prepared against the same pre-confirm snapshot. The
     # loser changed only amount/category while retaining the old merchant; the
     # winner reached the same amount/category but a different merchant. A
-    # sparse-diff replay heuristic would falsely accept this. A fresh intent
-    # key must instead reach OCC and conflict.
+    # sparse-diff replay heuristic would falsely accept this. Once the winner
+    # publishes the fact, a fresh stale save/confirm intent no longer owns a
+    # generic write: it must be redirected to the correction Owner.
     with SessionLocal() as db, pytest.raises(AppError) as raised:
         confirm_expense_submission(
             db,
@@ -150,7 +151,7 @@ def test_save_confirm_replay_is_idempotent_but_changed_stale_intent_conflicts(
             intent_body=_confirmation_intent(losing_data),
             update_payload=losing_payload,
         )
-    assert raised.value.error == "state_conflict"
+    assert raised.value.error == "expense_correction_required"
     assert _expense_payload(web_client, expense_id, identity=identity) == after
 
 

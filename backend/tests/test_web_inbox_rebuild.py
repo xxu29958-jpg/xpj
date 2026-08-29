@@ -43,6 +43,61 @@ def _create_pending(client: TestClient, *, identity) -> int:
     return int(resp.json()["id"])
 
 
+def _assert_bulk_bar_runtime_contract(js_path: Path) -> None:
+    js = js_path.read_text(encoding="utf-8")
+    assert 'h.name = "expense_ids";' in js
+    assert 'token.name = "expected_row_version";' in js
+    assert "token.value = entry.rowVersion;" in js
+    assert "if (entry.rowVersion)" not in js
+    assert 'document.querySelectorAll(".row-check:checked")' in js
+    assert "isNativeBox" not in js
+    assert 'classList.toggle("checked", on);' not in js
+    # Selection/navigation coexistence is exercised in real Edge; do not pin
+    # the retired exclusive-mode implementation here.
+    assert "e.stopPropagation();" in js
+
+
+def _assert_review_keyboard_runtime_contract(js_path: Path) -> None:
+    drawer_js = js_path.with_name("drawer.js").read_text(encoding="utf-8")
+    keyboard_js = js_path.with_name("review-keyboard.js").read_text(encoding="utf-8")
+    assert 'row.getAttribute("aria-disabled") === "true"' in drawer_js
+    assert 'row.setAttribute("aria-haspopup", "dialog");' in drawer_js
+    assert 'row.setAttribute("aria-controls", "drawer");' in drawer_js
+    assert 'row.setAttribute("aria-expanded", "false");' in drawer_js
+    assert "aria-selected" not in drawer_js
+    assert "window.location.reload();" in drawer_js
+    assert "if (e.isComposing) return;" in keyboard_js
+    assert "active.matches(ROW_SELECTOR)" in keyboard_js
+    assert 'getAttribute("aria-disabled") !== "true"' in keyboard_js
+    for key in ('"ArrowDown"', '"ArrowUp"', '"Home"', '"End"'):
+        assert key in keyboard_js
+    assert '"j"' not in keyboard_js
+    assert '"k"' not in keyboard_js
+    assert "if (app.drawerApi && app.drawerApi.isOpen()) return;" in keyboard_js
+    assert "if (e.altKey || e.ctrlKey || e.metaKey) return;" in keyboard_js
+    assert '(e.ctrlKey || e.metaKey) && e.key === "Enter"' in keyboard_js
+    assert "aria-selected" not in keyboard_js
+    assert "app.initReviewKeyboard = function initReviewKeyboard()" in keyboard_js
+
+    desktop_boot = (js_path.parents[1] / "desktop.js").read_text(encoding="utf-8")
+    assert 'call("initReviewKeyboard");' in desktop_boot
+    assert "initReviewHotkeys" not in desktop_boot
+    base_html = (Path(__file__).resolve().parents[1] / "app/templates/web/base.html").read_text(
+        encoding="utf-8"
+    )
+    assert "/static/web/desktop/review-keyboard.js" in base_html
+    assert "review-hotkeys" not in base_html
+    assert not js_path.with_name("review-hotkeys.js").exists(), "旧 J/K 实现必须物理退役"
+
+    misc_css_text = (js_path.parents[1] / "_misc.css").read_text(encoding="utf-8")
+    assert "exp-row-detail[aria-selected" not in misc_css_text
+    inbox_css_text = (
+        js_path.parents[1] / "product" / "domains" / "inbox.css"
+    ).read_text(encoding="utf-8")
+    assert inbox_css_text.count(".exp-row.is-current") >= 1
+    assert ".exp-row:focus-within" in inbox_css_text
+
+
 def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestClient, *, identity) -> None:
     eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner")
@@ -64,40 +119,8 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert 'name="merchant"' in resp.text
 
     js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
-    js = js_path.read_text(encoding="utf-8")
-    assert 'h.name = "expense_ids";' in js
-    assert 'token.name = "expected_row_version";' in js
-    assert "token.value = entry.rowVersion;" in js
-    assert "if (entry.rowVersion)" not in js
-    assert 'document.querySelectorAll(".row-check:checked")' in js
-    assert "isNativeBox" not in js
-    assert 'classList.toggle("checked", on);' not in js
-    # Selection/navigation coexistence is exercised in real Edge by
-    # test_web_edge_runtime_contract; do not pin the retired exclusive-mode
-    # implementation here.
-    assert "e.stopPropagation();" in js
-
-    drawer_js = js_path.with_name("drawer.js").read_text(encoding="utf-8")
-    keyboard_js = js_path.with_name("review-keyboard.js").read_text(encoding="utf-8")
-    assert 'row.getAttribute("aria-disabled") === "true"' in drawer_js
-    # PE dialog 语义: JS 成立时宣布 aria-haspopup/controls/expanded, 开态切 expanded。
-    assert 'row.setAttribute("aria-haspopup", "dialog");' in drawer_js
-    assert 'row.setAttribute("aria-controls", "drawer");' in drawer_js
-    assert 'row.setAttribute("aria-expanded", "false");' in drawer_js
-    assert "aria-selected" not in drawer_js
-    # 队列耗尽重取服务端权威页面 (空态/计数/焦点), 不在 JS 复制文案。
-    assert "window.location.reload();" in drawer_js
-    # 键盘: 无裸字母 J/K, 方向键仅作用于真实焦点所在行链接, 先过 isComposing。
-    assert "if (e.isComposing) return;" in keyboard_js
-    assert "active.matches(ROW_SELECTOR)" in keyboard_js
-    assert 'getAttribute("aria-disabled") !== "true"' in keyboard_js
-    assert '"ArrowDown"' in keyboard_js
-    assert '"j"' not in keyboard_js
-    assert "aria-selected" not in keyboard_js
-    inbox_css = js_path.parents[1] / "product" / "domains" / "inbox.css"
-    inbox_css_text = inbox_css.read_text(encoding="utf-8")
-    assert inbox_css_text.count(".exp-row.is-current") >= 1
-    assert ".exp-row:focus-within" in inbox_css_text
+    _assert_bulk_bar_runtime_contract(js_path)
+    _assert_review_keyboard_runtime_contract(js_path)
 
     # 原生 checkbox 自带 id:row_version，无 JS 仍提交相同 OCC 快照。
     token = _row_version(web_client, eid, identity=identity)

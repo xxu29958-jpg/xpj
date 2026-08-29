@@ -11,76 +11,11 @@
     const all = document.getElementById("check-all");
     const checks = Array.from(document.querySelectorAll(".row-check"));
     const clearButton = form.querySelector("[data-bulk-clear]");
-    const navigationRows = Array.from(
-      document.querySelectorAll(".exp-row-detail[href], .timeline-row-detail[href]")
-    );
-    let batchModeActive = false;
-    let navigationState = [];
 
-    function attributeState(element, name) {
-      return {
-        present: element.hasAttribute(name),
-        value: element.getAttribute(name)
-      };
-    }
-
-    function restoreAttribute(element, name, state) {
-      if (state.present) {
-        element.setAttribute(name, state.value);
-      } else {
-        element.removeAttribute(name);
-      }
-    }
-
-    // Product choice: a non-empty selection is an exclusive batch mode for
-    // these transaction queues. This is informed by conditional batch-action
-    // practice, not treated as a universal table rule. The checkbox stays
-    // operable while row-level navigation is suspended.
-    function setBatchNavigationMode(active) {
-      if (active === batchModeActive) return;
-      if (active) {
-        navigationState = navigationRows.map(function (row) {
-          return {
-            row: row,
-            tabIndex: attributeState(row, "tabindex"),
-            disabled: attributeState(row, "aria-disabled"),
-            current: attributeState(row, "aria-current")
-          };
-        });
-        navigationRows.forEach(function (row) {
-          row.setAttribute("aria-disabled", "true");
-          row.setAttribute("tabindex", "-1");
-          row.removeAttribute("aria-current");
-          const container = row.closest(".exp-row");
-          if (container) container.classList.remove("is-current");
-        });
-      } else {
-        navigationState.forEach(function (state) {
-          if (!document.contains(state.row)) return;
-          restoreAttribute(state.row, "tabindex", state.tabIndex);
-          restoreAttribute(state.row, "aria-disabled", state.disabled);
-          restoreAttribute(state.row, "aria-current", state.current);
-          const container = state.row.closest(".exp-row");
-          if (container) {
-            container.classList.toggle(
-              "is-current",
-              state.current.present && state.current.value === "true"
-            );
-          }
-        });
-        navigationState = [];
-      }
-      batchModeActive = active;
-    }
-
-    navigationRows.forEach(function (row) {
-      row.addEventListener("click", function (event) {
-        if (row.getAttribute("aria-disabled") !== "true") return;
-        if (event.target.closest && event.target.closest(".row-check")) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }, true);
-    });
+    // 批选不挂起行导航：checkbox 是选择的唯一 owner，行详情链接始终保留
+    // 原生可访问/可导航（成熟列表同构；旧 exclusive-mode 的 aria-disabled /
+    // tabindex 锁已退役，不再有第二套状态机）。drawer.js / review-keyboard.js
+    // 的 aria-disabled 检查是纯防御守卫，本文件不再生产该状态。
 
     // 被类目筛选隐藏的行不参与批选/提交,否则"全选"会误改用户没看见的别类目账单。
     function isVisible(cb) {
@@ -112,7 +47,6 @@
           row.classList.toggle("selected", checked);
         }
       });
-      setBatchNavigationMode(entries.length > 0);
       // 同步隐藏 input
       form.querySelectorAll('input[name="expense_ids"]').forEach(function (n) { n.remove(); });
       form.querySelectorAll('input[name="expected_row_version"]').forEach(function (n) { n.remove(); });
@@ -305,6 +239,12 @@
         const row = document.querySelector('.exp-row[data-expense-id="' + id + '"]');
         if (row && row.parentNode) { row.parentNode.removeChild(row); removed++; }
       });
+      // 队列被清空：重取服务端权威空态/计数（与 drawer.js 队列耗尽同一动作），
+      // 不由 JS 复制空态文案。
+      if (!document.querySelector(".exp-row")) {
+        window.location.reload();
+        return;
+      }
       clearSelection();
       decrementFilterCounts(removed);
       flashBanner(

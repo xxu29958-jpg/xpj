@@ -106,7 +106,8 @@
 }
 
 .exp-row:hover,
-.exp-row.is-current {
+.exp-row.is-current,
+.exp-row:focus-within {
     background: var(--surface-sunken);
 }
 

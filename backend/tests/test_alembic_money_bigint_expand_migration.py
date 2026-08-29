@@ -18,7 +18,6 @@ from app.models import (
     BillSplitInvitation,
     Budget,
     CsvImportRow,
-    Expense,
     ExpenseItem,
     ExpenseSplit,
     Goal,
@@ -223,12 +222,6 @@ def test_upgrade_preserves_legacy_values_and_exposes_c07_release_bounds() -> Non
             db.commit()
         db.rollback()
 
-        expense = db.query(Expense).filter_by(merchant="boundary").one()
-        expense.amount_cents = -1
-        with pytest.raises(IntegrityError):
-            db.commit()
-        db.rollback()
-
         item = db.query(ExpenseItem).filter_by(
             name="boundary discount"
         ).one()
@@ -236,6 +229,11 @@ def test_upgrade_preserves_legacy_values_and_exposes_c07_release_bounds() -> Non
         with pytest.raises(IntegrityError):
             db.commit()
         db.rollback()
+
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            text("UPDATE expenses SET amount_cents = -1 WHERE merchant = 'boundary'")
+        )
 
         item = db.query(ExpenseItem).filter_by(
             name="boundary discount"
@@ -365,36 +363,50 @@ def test_pending_upload_money_is_not_reinterpreted_without_provenance() -> None:
         )
     run_alembic(command.upgrade, HEAD_REVISION)
 
-    with SessionLocal() as db:
-        pending = db.get(Expense, pending_id)
-        assert pending is not None
-        assert pending.amount_cents == 1_234
-        assert pending.original_currency_code == "CNY"
-        assert pending.original_amount_minor == 1_234
-        assert pending.exchange_rate_to_cny == Decimal("1")
-        assert pending.exchange_rate_date.isoformat() == "2026-07-20"
-        assert pending.exchange_rate_source == "base"
-        assert pending.merchant == "legacy pending upload"
-        assert pending.category == "餐饮"
-        assert pending.raw_text == "legacy text"
-        assert pending.image_path == "uploads/legacy-pending.png"
-        assert pending.row_version == 7
-        assert pending.ocr_draft_fields == (
+    with engine.connect() as connection:
+        rows = {
+            int(row["id"]): row
+            for row in connection.execute(
+                text(
+                    "SELECT id, amount_cents, original_currency_code, "
+                    "original_amount_minor, exchange_rate_to_cny, exchange_rate_date, "
+                    "exchange_rate_source, merchant, category, raw_text, image_path, "
+                    "row_version, ocr_draft_fields FROM expenses "
+                    "WHERE id IN (:pending_id, :confirmed_id, :foreign_id)"
+                ),
+                {
+                    "pending_id": pending_id,
+                    "confirmed_id": confirmed_id,
+                    "foreign_id": foreign_id,
+                },
+            ).mappings()
+        }
+        pending = rows[pending_id]
+        assert pending["amount_cents"] == 1_234
+        assert pending["original_currency_code"] == "CNY"
+        assert pending["original_amount_minor"] == 1_234
+        assert pending["exchange_rate_to_cny"] == Decimal("1")
+        assert pending["exchange_rate_date"].isoformat() == "2026-07-20"
+        assert pending["exchange_rate_source"] == "base"
+        assert pending["merchant"] == "legacy pending upload"
+        assert pending["category"] == "餐饮"
+        assert pending["raw_text"] == "legacy text"
+        assert pending["image_path"] == "uploads/legacy-pending.png"
+        assert pending["row_version"] == 7
+        assert pending["ocr_draft_fields"] == (
             '["original_amount", "original_currency", '
             '"exchange_rate_to_cny", "spent_at", "merchant"]'
         )
 
-        confirmed = db.get(Expense, confirmed_id)
-        assert confirmed is not None
-        assert confirmed.amount_cents == 2_345
-        assert confirmed.original_currency_code == "CNY"
-        assert confirmed.original_amount_minor == 2_345
+        confirmed = rows[confirmed_id]
+        assert confirmed["amount_cents"] == 2_345
+        assert confirmed["original_currency_code"] == "CNY"
+        assert confirmed["original_amount_minor"] == 2_345
 
-        foreign = db.get(Expense, foreign_id)
-        assert foreign is not None
-        assert foreign.amount_cents == 7_000
-        assert foreign.original_currency_code == "USD"
-        assert foreign.original_amount_minor == 1_000
+        foreign = rows[foreign_id]
+        assert foreign["amount_cents"] == 7_000
+        assert foreign["original_currency_code"] == "USD"
+        assert foreign["original_amount_minor"] == 1_000
 
     with engine.connect() as connection:
         assert canonical_money_facts_sha256(connection) == source_digest
