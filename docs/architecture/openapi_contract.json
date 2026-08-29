@@ -1808,6 +1808,14 @@
             "title": "Item Name",
             "type": "array"
           },
+          "item_public_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Public Id",
+            "type": "array"
+          },
           "item_quantity": {
             "default": [],
             "items": {
@@ -1888,6 +1896,14 @@
               "type": "string"
             },
             "title": "Split Note",
+            "type": "array"
+          },
+          "split_public_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Public Id",
             "type": "array"
           },
           "tags": {

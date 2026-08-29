@@ -3,7 +3,8 @@ idempotency claim/重放、``correct_expense`` 调用与共享 commit。
 
 幂等/OCC/权限的事实语义由后端服务拥有；本模块只做浏览器命令的执行编排：
 - 每次表单渲染发一把 key，双击/刷新重提交经 claim 重放为同一条 revision；
-- ``state_conflict`` → 调用方用冲突态重渲表单（保留提交值 + 服务器新 token）；
+- ``state_conflict`` → 调用方用冲突态重渲当前标量事实；行级意图只有在
+  predecessor identity 仍匹配时才可保留；
 - key 被别的意图占用（required/reused）→ 提示调用方换钥匙重试。
 
 不做：表单解析/diff（_web_correction_form）、页面渲染（_web_correction_page）。
@@ -27,7 +28,7 @@ from app.services.expense_correction_service import (
 )
 from app.services.expense_revision_service import revision_by_idempotency_key
 
-CONFLICT_MSG = "这笔账单刚在其它端被修改，已为你刷新当前值；请对照后重新提交。"
+CONFLICT_MSG = "这笔账单刚在其它端被修改，已载入最新基本信息；请核对明细和拆账，重新填写这次想改的内容后提交。"
 
 _ROTATE_IDEMPOTENCY_ERRORS = frozenset({"idempotency_key_required", "idempotency_key_reused"})
 

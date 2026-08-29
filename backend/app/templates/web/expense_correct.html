@@ -18,7 +18,7 @@
 {% endif %}
 {% if conflict_current %}
 <div class="dt-alert warn" role="status">
-  当前权威值：商家 {{ conflict_current.merchant or '未填写' }}，金额 {{ conflict_current.amount_label or '待补' }}，分类 {% if conflict_current.needs_category %}待分类{% else %}{{ conflict_current.category }}{% endif %}。你的提交值已保留在表单中，请对照后重新提交。
+  当前权威值：商家 {{ conflict_current.merchant or '未填写' }}，金额 {{ conflict_current.amount_label or '待补' }}，分类 {% if conflict_current.needs_category %}待分类{% else %}{{ conflict_current.category }}{% endif %}。表单已载入最新基本信息，请核对明细和拆账，再重新填写这次想改的内容。
 </div>
 {% endif %}
 

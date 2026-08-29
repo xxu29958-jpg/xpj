@@ -248,6 +248,35 @@ def test_web_rule_rollback_threads_session_account_and_device(identity, monkeypa
     assert captured["actor_device_id"] == device.id
 
 
+def test_web_bill_split_accept_threads_session_account_and_device(identity, monkeypatch) -> None:
+    from app.database import SessionLocal
+    from app.routes import web_bill_split
+
+    token, account, device = _mint_desktop_session(role="owner")
+    auth = _auth_context(token, account, device, ledger_id="owner", role="owner")
+    request = _DesktopSessionRequest(auth)
+    captured: dict[str, object] = {}
+
+    def fake_accept(_db, **kwargs):
+        captured.update(kwargs)
+        return object(), object()
+
+    monkeypatch.setattr(web_bill_split.bsplit, "accept_invitation", fake_accept)
+    with SessionLocal() as db:
+        response = web_bill_split.web_split_accept(
+            "split-device-attribution",
+            request,
+            target_ledger_id="owner",
+            ledger_id="owner",
+            _local=None,
+            db=db,
+        )
+
+    assert response.status_code == 303
+    assert captured["accepting_account_id"] == account.id
+    assert captured["accepting_device_id"] == device.id
+
+
 def test_desktop_principal_revalidated_inside_the_handler_transaction(identity) -> None:
     from app.database import SessionLocal
     from app.models import LedgerMember

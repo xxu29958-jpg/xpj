@@ -24,6 +24,12 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_correction_sources import (
+    item_sources_match_current,
+    preserve_item_provenance,
+    split_sources_match_current,
+    submitted_item_source_ids,
+)
 from app.routes._web_expense_edit_command import prepare_web_expense_form
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_rows import (
@@ -33,13 +39,21 @@ from app.routes._web_expense_rows import (
     submitted_item_form_rows,
     submitted_split_form_rows,
 )
-from app.schemas import ExpenseCorrectionRequest, ExpenseItemRequest, ExpenseSplitRequest
+from app.schemas import (
+    ExpenseCorrectionRequest,
+    ExpenseItemRequest,
+    ExpenseItemResponse,
+    ExpenseSplitRequest,
+    ExpenseSplitResponse,
+)
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.expense_split_service import list_expense_splits
 from app.services.receipt_item_service import list_expense_items
 
 REASON_REQUIRED_MSG = "请说明这次更正的原因。"
 NO_CHANGES_MSG = "没有检测到需要保存的更正。"
+ITEM_SOURCES_STALE_MSG = "明细已在其它端变化，已载入最新明细；请重新调整后提交。"
+SPLIT_SOURCES_STALE_MSG = "拆账已在其它端变化，已载入最新拆账；请重新调整后提交。"
 
 
 @dataclass(frozen=True)
@@ -59,12 +73,14 @@ class CorrectionFormData:
     value_score_present: bool
     regret_score: str | None
     regret_score_present: bool
+    item_public_id: list[str]
     item_name: list[str]
     item_kind: list[str]
     item_quantity: list[str]
     item_unit_price_yuan: list[str]
     item_amount_yuan: list[str]
     item_category: list[str]
+    split_public_id: list[str]
     split_member_id: list[str]
     split_amount_yuan: list[str]
     split_note: list[str]
@@ -83,6 +99,8 @@ class CorrectionParseOutcome:
     error: str | None = None
     error_status: int = 422
     field_errors: dict[str, str] = field(default_factory=dict)
+    item_sources_stale: bool = False
+    split_sources_stale: bool = False
 
 
 def web_correction_idempotency_body(form: CorrectionFormData) -> dict[str, object]:
@@ -111,12 +129,14 @@ def correction_form_data(
     tags: str = Form(default=""),
     value_score: str | None = Form(default=None),
     regret_score: str | None = Form(default=None),
+    item_public_id: list[str] = Form(default=[]),
     item_name: list[str] = Form(default=[]),
     item_kind: list[str] = Form(default=[]),
     item_quantity: list[str] = Form(default=[]),
     item_unit_price_yuan: list[str] = Form(default=[]),
     item_amount_yuan: list[str] = Form(default=[]),
     item_category: list[str] = Form(default=[]),
+    split_public_id: list[str] = Form(default=[]),
     split_member_id: list[str] = Form(default=[]),
     split_amount_yuan: list[str] = Form(default=[]),
     split_note: list[str] = Form(default=[]),
@@ -140,12 +160,14 @@ def correction_form_data(
         value_score_present="value_score" in submitted_fields,
         regret_score=regret_score,
         regret_score_present="regret_score" in submitted_fields,
+        item_public_id=item_public_id,
         item_name=item_name,
         item_kind=item_kind,
         item_quantity=item_quantity,
         item_unit_price_yuan=item_unit_price_yuan,
         item_amount_yuan=item_amount_yuan,
         item_category=item_category,
+        split_public_id=split_public_id,
         split_member_id=split_member_id,
         split_amount_yuan=split_amount_yuan,
         split_note=split_note,
@@ -154,7 +176,7 @@ def correction_form_data(
     )
 
 
-def _normalized_items(items: list[ExpenseItemRequest]) -> list[tuple]:
+def _normalized_items(items: list[ExpenseItemRequest] | list[ExpenseItemResponse]) -> list[tuple]:
     return [
         (
             item.kind,
@@ -168,29 +190,49 @@ def _normalized_items(items: list[ExpenseItemRequest]) -> list[tuple]:
     ]
 
 
-def _current_items_normalized(db: Session, expense_id: int, ledger_id: str) -> list[tuple]:
-    return [
-        (
-            item.kind,
-            (item.name or "").strip(),
-            (item.quantity_text or "").strip() or None,
-            item.unit_price_cents,
-            item.amount_cents,
-            (item.category or "").strip() or None,
-        )
-        for item in list_expense_items(db, expense_id, ledger_id).items
-    ]
-
-
-def _normalized_splits(splits: list[ExpenseSplitRequest]) -> list[tuple]:
+def _normalized_splits(
+    splits: list[ExpenseSplitRequest] | list[ExpenseSplitResponse],
+) -> list[tuple]:
     return [(split.member_id, split.amount_cents, (split.note or "").strip() or None) for split in splits]
 
 
-def _current_splits_normalized(db: Session, expense_id: int, ledger_id: str) -> list[tuple]:
-    return [
-        (split.member_id, split.amount_cents, (split.note or "").strip() or None)
-        for split in list_expense_splits(db, expense_id, ledger_id).splits
-    ]
+def _mark_stale_sources(
+    outcome: CorrectionParseOutcome,
+    form: CorrectionFormData,
+    *,
+    current_items: list[ExpenseItemResponse],
+    current_splits: list[ExpenseSplitResponse],
+) -> bool:
+    messages: list[str] = []
+    if not item_sources_match_current(form.item_public_id, current_items):
+        outcome.item_sources_stale = True
+        messages.append(ITEM_SOURCES_STALE_MSG)
+    if not split_sources_match_current(form.split_public_id, current_splits):
+        outcome.split_sources_stale = True
+        messages.append(SPLIT_SOURCES_STALE_MSG)
+    if not messages:
+        return False
+    outcome.error = " ".join(messages)
+    outcome.error_status = 409
+    return True
+
+
+def refresh_correction_source_flags(
+    db: Session,
+    *,
+    expense_id: int,
+    selected_id: str,
+    form: CorrectionFormData,
+    outcome: CorrectionParseOutcome,
+) -> bool:
+    """Recheck child predecessors after a command-stage parent CAS conflict."""
+
+    return _mark_stale_sources(
+        outcome,
+        form,
+        current_items=list_expense_items(db, expense_id, selected_id).items,
+        current_splits=list_expense_splits(db, expense_id, selected_id).splits,
+    )
 
 
 def _form_values_from(form: CorrectionFormData) -> dict[str, str]:
@@ -234,7 +276,7 @@ def _score_change(
 
 
 def _correction_outcome(form: CorrectionFormData) -> CorrectionParseOutcome:
-    return CorrectionParseOutcome(
+    outcome = CorrectionParseOutcome(
         form_values=_form_values_from(form),
         item_form_rows=submitted_item_form_rows(
             item_name=form.item_name,
@@ -250,6 +292,11 @@ def _correction_outcome(form: CorrectionFormData) -> CorrectionParseOutcome:
             split_note=form.split_note,
         ),
     )
+    for index, row in enumerate(outcome.item_form_rows):
+        row["public_id"] = form.item_public_id[index] if index < len(form.item_public_id) else ""
+    for index, row in enumerate(outcome.split_form_rows):
+        row["public_id"] = form.split_public_id[index] if index < len(form.split_public_id) else ""
+    return outcome
 
 
 def _reason_or_error(form: CorrectionFormData, outcome: CorrectionParseOutcome) -> str | None:
@@ -311,13 +358,11 @@ def _scalar_changes(
 
 
 def _item_changes(
-    db: Session,
     *,
-    expense,
-    selected_id: str,
     form: CorrectionFormData,
     row_version: int,
     currency: str,
+    current: list[ExpenseItemResponse],
     outcome: CorrectionParseOutcome,
 ) -> tuple[list[ExpenseItemRequest], bool] | None:
     try:
@@ -336,18 +381,24 @@ def _item_changes(
         outcome.error = exc.message
         outcome.error_status = web_form_error_status(exc)
         return None
-    current = _current_items_normalized(db, expense.id, selected_id)
-    return candidate, _normalized_items(candidate) != current
+    source_public_ids = submitted_item_source_ids(
+        form.item_public_id,
+        form.item_name,
+        form.item_quantity,
+        form.item_unit_price_yuan,
+        form.item_amount_yuan,
+        form.item_category,
+    )
+    candidate = preserve_item_provenance(candidate, current, source_public_ids)
+    return candidate, _normalized_items(candidate) != _normalized_items(current)
 
 
 def _split_changes(
-    db: Session,
     *,
-    expense,
-    selected_id: str,
     form: CorrectionFormData,
     row_version: int,
     currency: str,
+    current: list[ExpenseSplitResponse],
     outcome: CorrectionParseOutcome,
 ) -> tuple[list[ExpenseSplitRequest], bool] | None:
     try:
@@ -363,8 +414,7 @@ def _split_changes(
         outcome.error = exc.message
         outcome.error_status = web_form_error_status(exc)
         return None
-    current = _current_splits_normalized(db, expense.id, selected_id)
-    return candidate, _normalized_splits(candidate) != current
+    return candidate, _normalized_splits(candidate) != _normalized_splits(current)
 
 
 def parse_correction_form(
@@ -384,26 +434,31 @@ def parse_correction_form(
     if scalar_result is None:
         return outcome
     scalar_changes, row_version = scalar_result
+    current_items = list_expense_items(db, expense.id, selected_id).items
+    current_splits = list_expense_splits(db, expense.id, selected_id).splits
+    if _mark_stale_sources(
+        outcome,
+        form,
+        current_items=current_items,
+        current_splits=current_splits,
+    ):
+        return outcome
     currency = expense.home_currency_code or require_runtime_home_currency_code(db)
     item_result = _item_changes(
-        db,
-        expense=expense,
-        selected_id=selected_id,
         form=form,
         row_version=row_version,
         currency=currency,
+        current=current_items,
         outcome=outcome,
     )
     if outcome.error is not None:
         return outcome
     assert item_result is not None
     split_result = _split_changes(
-        db,
-        expense=expense,
-        selected_id=selected_id,
         form=form,
         row_version=row_version,
         currency=currency,
+        current=current_splits,
         outcome=outcome,
     )
     if outcome.error is not None:

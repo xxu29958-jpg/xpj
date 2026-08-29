@@ -50,7 +50,7 @@ https://api.我的域名.com
   - `PATCH /api/expenses/{id}`、`POST /api/expenses/{id}/confirm`、`POST /api/expenses/{id}/reject`、`POST /api/expenses/{id}/mark-not-duplicate`、`POST /api/expenses/{id}/ocr/retry`、`POST /api/expenses/{id}/recognize-text`、`POST /api/expenses/{id}/items/acknowledge-mismatch`、`PUT /api/expenses/{id}/items`、`PUT /api/expenses/{id}/splits`
   - `PATCH /api/rules/categories/{id}`、`DELETE /api/rules/categories/{id}`、`PATCH /api/merchants/aliases/{public_id}`、`DELETE /api/merchants/aliases/{public_id}`、`PATCH /api/merchants/catalog/{public_id}`、`DELETE /api/merchants/catalog/{public_id}`
   - 缺头 → `422 idempotency_key_required`；同 key 并发在途 → `409 idempotency_key_in_progress`；同 key 用于内容不同的请求（fingerprint 不符）→ `422 idempotency_key_reused`。
-  - 注：OpenAPI snapshot 把这些路由的 `Idempotency-Key` header 标记为 `required: true`（契约要求），但 handler 仍声明为可选 header，以便缺失时返回上述结构化 `{error, message}` 而非 FastAPI 默认校验错误体；不属于 outbox 重放面的写路由（如 `POST /api/expenses/confirmed/batch-update` 原子批处理）不带该头。
+  - 注：OpenAPI snapshot 把这些路由的 `Idempotency-Key` header 标记为 `required: true`（契约要求），但 handler 仍声明为可选 header，以便缺失时返回上述结构化 `{error, message}` 而非 FastAPI 默认校验错误体。`POST /api/expenses/confirmed/batch-update` 是 online-only 原子批处理，不进入 Android Outbox，但每次用户提交仍必须携带 intent-unique UUID；同一网络重试复用该 key，后续相同内容的新意图使用新 key。
 
 错误：
 
@@ -161,7 +161,7 @@ Authorization: Bearer <admin_token>
 | `/api/app/upload-screenshot` | POST | `backend/app/routes/uploads.py` | `uploadScreenshot(file, timezone)` | multipart `file`；header `X-Timezone` | `UploadResponseDto` | Session Token | `backend/tests/test_uploads.py`, `ExpenseDtoContractTest` | Android 上传 |
 | `/api/expenses/pending` | GET | `backend/app/routes/expenses.py` | `pendingExpenses()` | 无 | `List<ExpenseDto>` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
 | `/api/expenses/confirmed` | GET | `backend/app/routes/expenses.py` | `confirmedExpenses(page,pageSize,month,category,timezone)` | query `page/page_size/month/category/tag/timezone` | `PaginatedExpensesDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, Android domain tests | gray/internal |
-| `/api/expenses/confirmed/batch-update` | POST | `backend/app/routes/expenses.py` | 无 | `ConfirmedExpenseBatchUpdateRequest` | `ConfirmedExpenseBatchUpdateResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expenses_manual_update.py`, `backend/tests/test_confirmed_batch_update_optimistic_concurrency.py` | 已入账账单分类/标签批处理 |
+| `/api/expenses/confirmed/batch-update` | POST | `backend/app/routes/expense_corrections.py` | `applyConfirmedBatch(expenses, category, tags, reason)` | `ConfirmedExpenseBatchUpdateRequest` | `ConfirmedExpenseBatchUpdateResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expenses_manual_update.py`, `backend/tests/test_confirmed_batch_update_optimistic_concurrency.py`, `ExpenseLedgerRepositoryConfirmedBatchTest` | 已入账账单分类/标签批处理（Android 在线提交，不进入 Outbox） |
 | `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/categories/preferences` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `CategoryPreferenceListResponse` | Session Token | `backend/tests/test_categories.py` | ADR-0052 自定义分类偏好列表 |
 | `/api/expenses/categories/preferences/{public_id}/delete` | POST | `backend/app/routes/expenses.py` | 无 | `CategoryPreferenceTokenRequest` | `CategoryPreferenceResponse` | Session Token，owner/member 写权限 | `backend/tests/test_categories.py` | 软删自定义分类选项；不改历史账单 |
@@ -808,6 +808,7 @@ timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传
 
 ```http
 Authorization: Bearer <session_token>
+Idempotency-Key: <intent_uuid_v4>
 Content-Type: application/json
 ```
 
@@ -820,6 +821,7 @@ Content-Type: application/json
     "101": 7,
     "102": 3
   },
+  "reason": "统一整理周末餐饮",
   "category": "餐饮",
   "tags": "家庭, 周末"
 }
@@ -828,7 +830,8 @@ Content-Type: application/json
 规则：
 
 - `expense_ids` 最多 200 个，服务端按 id 去重；`expected_row_version_by_id` 必须覆盖每个目标 id，不能缺 token（值为该账单最后一次读取到的 `row_version` 整数）。
-- `category` / `tags` 至少传一个；空分类返回 `invalid_request`。
+- `reason` 必填；`category` / `tags` 至少传一个，空分类返回 `invalid_request`。
+- `Idempotency-Key` 是本次用户意图生成的 UUID v4；同一次网络重试复用，后续相同内容的新操作生成新 key。该在线批处理不进入 Android Outbox。
 - 只修改当前账本内 `confirmed` 账单；跨账本 id 计入 `skipped_not_found`，非 confirmed 计入 `skipped_not_confirmed`。
 - 任一当前账本内 confirmed 目标行的 `row_version` 与 token 不匹配时，整个批处理回滚并返回 `409 state_conflict`；客户端需刷新列表后重试。
 - 标签按普通账单标签规则规范化和去重。

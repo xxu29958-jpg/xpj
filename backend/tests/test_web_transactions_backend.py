@@ -406,6 +406,7 @@ def test_original_amount_change_recomputes_items_sum_status(
             "category": "餐饮",
             "note": "",
             "tags": "",
+            "item_public_id": seeded_items.json()["items"][0]["public_id"],
             "item_name": "整单",
             "item_kind": "product",
             "item_quantity": "",

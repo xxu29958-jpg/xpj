@@ -8,12 +8,14 @@ import com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateRequestDto
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import java.io.IOException
-import java.security.MessageDigest
 import java.util.UUID
 
 internal class ExpenseLedgerRepositoryActions(
     private val core: ExpenseRepositoryCore,
 ) : LedgerActions {
+    private val confirmedBatchIntentLock = Any()
+    private var unresolvedConfirmedBatchIntent: ConfirmedBatchIntent? = null
+
     override fun canModifyLedger(): Boolean = core.canModifyLedger()
 
     override fun lastConfirmedSyncAt(): String? =
@@ -135,25 +137,35 @@ internal class ExpenseLedgerRepositoryActions(
         val cleanCategory = category?.trim()
         val cleanTags = tags?.trim()
         val orderedExpenses = expenses.sortedBy(Expense::id)
-        val idempotencyKey = confirmedBatchIdempotencyKey(
-            expenses = orderedExpenses,
+        val request = ConfirmedExpenseBatchUpdateRequestDto(
+            expenseIds = orderedExpenses.map(Expense::id),
+            expectedRowVersionById = orderedExpenses.associate { it.id to it.rowVersion },
             category = cleanCategory,
             tags = cleanTags,
             reason = cleanReason,
         )
-
         val bound = core.ledgerRequestGuard.bind()
+        // A failed call has an unknown publication outcome. Keep its random UUID
+        // for an identical same-ledger retry; another binding or changed request
+        // is a distinct user intent.
+        val intent = synchronized(confirmedBatchIntentLock) {
+            unresolvedConfirmedBatchIntent
+                ?.takeIf { it.binding == bound.outboxBinding && it.request == request }
+                ?: ConfirmedBatchIntent(bound.outboxBinding, request, UUID.randomUUID().toString()).also {
+                    unresolvedConfirmedBatchIntent = it
+                }
+        }
+
         val response = bound.call { api ->
             api.updateConfirmedBatch(
-                idempotencyKey = idempotencyKey,
-                request = ConfirmedExpenseBatchUpdateRequestDto(
-                    expenseIds = orderedExpenses.map(Expense::id),
-                    expectedRowVersionById = orderedExpenses.associate { it.id to it.rowVersion },
-                    category = cleanCategory,
-                    tags = cleanTags,
-                    reason = cleanReason,
-                ),
+                idempotencyKey = intent.idempotencyKey,
+                request = intent.request,
             )
+        }
+        synchronized(confirmedBatchIntentLock) {
+            if (unresolvedConfirmedBatchIntent?.idempotencyKey == intent.idempotencyKey) {
+                unresolvedConfirmedBatchIntent = null
+            }
         }
 
         // The command response owns counts, not row projections. Refresh through
@@ -177,32 +189,8 @@ internal class ExpenseLedgerRepositoryActions(
     }
 }
 
-private fun confirmedBatchIdempotencyKey(
-    expenses: List<Expense>,
-    category: String?,
-    tags: String?,
-    reason: String,
-): String {
-    val canonical = buildString {
-        append("confirmed-expense-batch-v1|")
-        expenses.forEach { expense ->
-            append(expense.id).append(':').append(expense.rowVersion).append(';')
-        }
-        appendLengthPrefixed(category)
-        appendLengthPrefixed(tags)
-        appendLengthPrefixed(reason)
-    }
-    return MessageDigest.getInstance("SHA-256")
-        .digest(canonical.toByteArray(Charsets.UTF_8))
-        .joinToString(separator = "") { byte ->
-            (byte.toInt() and 0xff).toString(radix = 16).padStart(length = 2, padChar = '0')
-        }
-}
-
-private fun StringBuilder.appendLengthPrefixed(value: String?) {
-    if (value == null) {
-        append("-1:|")
-    } else {
-        append(value.length).append(':').append(value).append('|')
-    }
-}
+private data class ConfirmedBatchIntent(
+    val binding: OutboxBinding,
+    val request: ConfirmedExpenseBatchUpdateRequestDto,
+    val idempotencyKey: String,
+)

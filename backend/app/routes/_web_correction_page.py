@@ -1,9 +1,9 @@
 """Correction 表单页的 context 与错误重渲（A1 Web 适配层责任之一）。
 
 与事实详情（_web_expense_fact）是两个页面责任：本模块只管
-``expense_correct.html`` 的渲染上下文与失败重显 —— 保留提交值、
-行级错误、OCC 冲突态（冲突时把服务器最新 token 写回表单，
-否则用户修正后再次提交只会重演 409）。
+``expense_correct.html`` 的渲染上下文与失败重显 —— 保留可安全重试的提交值、
+行级错误、OCC 冲突态。冲突时标量值回到 current fact，只有已证明
+predecessor identity 未变的行级意图才由调用方保留。
 """
 
 from __future__ import annotations
@@ -54,9 +54,8 @@ def web_correction_context(
     ctx["error"] = error
     ctx["reason_input"] = (form_values or {}).get("reason", "")
     if conflict and ctx["conflict_current"] is not None:
-        # 提交值 overlay 会把过期 token 盖进表单（_overlay_submitted_expense_values
-        # 的 expected_row_version→row_version 映射）；冲突重渲必须带服务器最新
-        # token，否则用户修正后再次提交只会重演 409。
+        # 冲突重渲必须带服务器最新 token；调用方同时负责不把过期标量值
+        # 与这把新 token 组合起来。
         ctx["expense"]["row_version"] = ctx["conflict_current"]["row_version"]
     ctx["frozen_scalars"] = (
         (*_SPLIT_RECEIVED_FROZEN_FIELDS, "original_currency") if ctx["expense"]["is_split_received"] else ()

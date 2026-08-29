@@ -22,6 +22,7 @@
     {% set item_errors = item.errors or {} %}
     <tr>
       <td data-label="类型">
+        {% if correction_mode %}<input type="hidden" name="item_public_id" value="{{ item.public_id or '' }}">{% endif %}
         <select name="item_kind" aria-label="{{ row_label }}类型" {% if item_errors.get('kind') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-kind-error"{% endif %} {% if not can_write %}disabled{% endif %}>
           <option value="product" {% if item.kind == 'product' %}selected{% endif %}>商品</option>
           <option value="discount" {% if item.kind == 'discount' %}selected{% endif %}>优惠/折扣</option>

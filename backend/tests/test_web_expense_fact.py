@@ -334,8 +334,11 @@ def test_correction_stale_token_shows_conflict_with_fresh_values(web_client: Tes
     )
     assert conflict.status_code == 409
     assert "刚在其它端被修改" in conflict.text
-    # 提交值保留在表单里，且 hidden token 已刷新为服务器最新值（不会重演 409）。
-    assert 'value="过期页面提交的值"' in conflict.text
+    # 冲突页不能把过期标量与服务器最新 token 组合起来，否则二次提交会
+    # 静默覆盖另一端事实。表单回到 current fact，并要求用户重新应用修改。
+    assert 'value="第一次的值"' in conflict.text
+    assert 'value="过期页面提交的值"' not in conflict.text
+    assert "表单已载入最新基本信息" in conflict.text
     fresh_token = _row_version(web_client, expense_id, identity)
     assert f'name="expected_row_version" value="{fresh_token}"' in conflict.text
     assert f'name="expected_row_version" value="{stale_token}"' not in conflict.text

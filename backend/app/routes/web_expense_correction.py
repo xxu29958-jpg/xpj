@@ -30,6 +30,7 @@ from app.routes._web_correction_form import (
     CorrectionParseOutcome,
     correction_form_data,
     parse_correction_form,
+    refresh_correction_source_flags,
     web_correction_idempotency_body,
 )
 from app.routes._web_correction_page import (
@@ -108,8 +109,8 @@ def _correction_error_response(
         form_values=form_values if form_values is not None else parsed.form_values,
         field_errors=field_errors,
         conflict=conflict,
-        receipt_item_rows=parsed.item_form_rows,
-        split_form_rows=parsed.split_form_rows,
+        receipt_item_rows=None if parsed.item_sources_stale else parsed.item_form_rows,
+        split_form_rows=None if parsed.split_sources_stale else parsed.split_form_rows,
     )
 
 
@@ -136,6 +137,12 @@ def _claim_correction_submission(
     )
 
 
+def _current_scalar_form_values(values: dict[str, str]) -> dict[str, str]:
+    """Keep the user's explanation, but never pair stale scalars with a fresh CAS token."""
+
+    return {"reason": values.get("reason", ""), "idempotency_key": ""}
+
+
 def _submission_error_response(
     db: Session,
     request: Request,
@@ -148,8 +155,13 @@ def _submission_error_response(
 ) -> Response | None:
     if claimed is not None and claimed.error is not None:
         values = parsed.form_values
-        if claimed.error.rotate_idempotency_key:
+        if claimed.error.conflict:
+            values = _current_scalar_form_values(values)
+        elif claimed.error.rotate_idempotency_key:
             values = {**values, "idempotency_key": ""}
+        message = claimed.error.error or "提交参数不正确，请检查后重试。"
+        if claimed.error.conflict and (parsed.item_sources_stale or parsed.split_sources_stale):
+            message = f"{message} {parsed.error}"
         return _correction_error_response(
             db,
             request,
@@ -157,7 +169,7 @@ def _submission_error_response(
             selected_id,
             expense_id,
             parsed,
-            message=claimed.error.error or "提交参数不正确，请检查后重试。",
+            message=message,
             status_code=claimed.error.error_status,
             conflict=claimed.error.conflict,
             form_values=values,
@@ -165,6 +177,9 @@ def _submission_error_response(
     if parsed.payload is None:
         if claimed is not None and claimed.claim is not None:
             db.rollback()
+        source_conflict = parsed.error_status == 409 and (
+            parsed.item_sources_stale or parsed.split_sources_stale
+        )
         return _correction_error_response(
             db,
             request,
@@ -175,6 +190,12 @@ def _submission_error_response(
             message=parsed.error or "提交参数不正确，请检查后重试。",
             status_code=parsed.error_status,
             field_errors=parsed.field_errors,
+            conflict=source_conflict,
+            form_values=(
+                _current_scalar_form_values(parsed.form_values)
+                if source_conflict
+                else parsed.form_values
+            ),
         )
     if claimed is not None and claimed.claim is not None:
         return None
@@ -198,13 +219,25 @@ def _command_failure_response(
     options,
     selected_id: str,
     expense_id: int,
+    form: CorrectionFormData,
     parsed: CorrectionParseOutcome,
     command: CorrectionCommandOutcome,
 ) -> Response | None:
     if command.error is None:
         return None
     values = parsed.form_values
-    if command.rotate_idempotency_key:
+    message = command.error
+    if command.conflict:
+        values = _current_scalar_form_values(values)
+        if refresh_correction_source_flags(
+            db,
+            expense_id=expense_id,
+            selected_id=selected_id,
+            form=form,
+            outcome=parsed,
+        ):
+            message = f"{message} {parsed.error}"
+    elif command.rotate_idempotency_key:
         values = {**values, "idempotency_key": ""}
     return _correction_error_response(
         db,
@@ -213,7 +246,7 @@ def _command_failure_response(
         selected_id,
         expense_id,
         parsed,
-        message=command.error,
+        message=message,
         status_code=command.error_status,
         conflict=command.conflict,
         form_values=values,
@@ -283,6 +316,7 @@ def _handle_correction_post(
         options=options,
         selected_id=selected_id,
         expense_id=expense_id,
+        form=form,
         parsed=parsed,
         command=command,
     )
