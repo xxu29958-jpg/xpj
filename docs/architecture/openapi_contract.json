@@ -1898,6 +1898,14 @@
             "title": "Split Note",
             "type": "array"
           },
+          "split_public_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Public Id",
+            "type": "array"
+          },
           "tags": {
             "default": "",
             "title": "Tags",

@@ -335,6 +335,7 @@ def _web_split_rows(
     response = list_expense_splits(db, expense_id, ledger_id)
     rows = [
         {
+            "public_id": split.public_id,
             "member_id": split.member_id,
             "account_name": split.account_name,
             "role": split.role,
@@ -347,6 +348,7 @@ def _web_split_rows(
     ]
     rows.extend(
         {
+            "public_id": "",
             "member_id": "",
             "amount_yuan": "",
             "note": "",

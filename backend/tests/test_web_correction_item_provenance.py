@@ -189,6 +189,19 @@ def test_web_item_correction_rejects_stale_row_identities_before_retry(
     )
     assert conflict.status_code == 409, conflict.text
 
+    current_items_response = web_client.get(
+        f"/api/expenses/{expense_id}/items",
+        headers=identity.app_headers,
+    )
+    assert current_items_response.status_code == 200, current_items_response.text
+    current_items = current_items_response.json()["items"]
+    assert len(current_items) == 1
+    assert current_items[0]["name"] == "并发后的 B"
+    assert f'value="{current_items[0]["public_id"]}"' in conflict.text
+    assert "并发后的 B" in conflict.text
+    for old_item in old_items:
+        assert f'value="{old_item["public_id"]}"' not in conflict.text
+
     # Even with the refreshed parent token, the stale row identities may not be
     # rebound positionally to the concurrent writer's replacement rows.
     stale_form["expected_row_version"] = str(concurrent["expense"]["row_version"])
@@ -200,14 +213,6 @@ def test_web_item_correction_rejects_stale_row_identities_before_retry(
     assert stale_retry.status_code == 409, stale_retry.text
     assert "明细已在其它端变化" in stale_retry.text
 
-    current_items_response = web_client.get(
-        f"/api/expenses/{expense_id}/items",
-        headers=identity.app_headers,
-    )
-    assert current_items_response.status_code == 200, current_items_response.text
-    current_items = current_items_response.json()["items"]
-    assert len(current_items) == 1
-    assert current_items[0]["name"] == "并发后的 B"
     assert current_items[0]["raw_text"] == "OCR B 12.34"
     assert current_items[0]["confidence"] == 0.87
 
@@ -231,3 +236,39 @@ def test_web_item_correction_rejects_stale_row_identities_before_retry(
     assert recovered.json()["items"][0]["name"] == "用户编辑后的 B"
     assert recovered.json()["items"][0]["raw_text"] == "OCR B 12.34"
     assert recovered.json()["items"][0]["confidence"] == 0.87
+
+
+def test_web_item_correction_does_not_give_new_row_old_ocr_provenance(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense_id, seeded, current_items = _seed_ocr_items(
+        web_client,
+        identity,
+        merchant="OCR 新增行来源测试",
+        idempotency_key="seed-web-item-new-row",
+    )
+    response = web_client.post(
+        f"/web/expenses/{expense_id}/corrections",
+        data={
+            "ledger_id": "owner",
+            "reason": "新增人工明细",
+            "expected_row_version": str(seeded["expense"]["row_version"]),
+            "idempotency_key": "web-item-new-row",
+            "item_public_id": [*[item["public_id"] for item in current_items], ""],
+            "item_name": ["识别行 A", "识别行 B", "人工新增行"],
+            "item_kind": ["product", "product", "product"],
+            "item_quantity": ["", "", ""],
+            "item_unit_price_yuan": ["", "", ""],
+            "item_amount_yuan": ["0.00", "12.34", "0.00"],
+            "item_category": ["", "", ""],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    current = web_client.get(f"/api/expenses/{expense_id}/items", headers=identity.app_headers)
+    assert current.status_code == 200, current.text
+    added = next(item for item in current.json()["items"] if item["name"] == "人工新增行")
+    assert added["raw_text"] is None
+    assert added["confidence"] is None

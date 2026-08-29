@@ -19,6 +19,7 @@
     {% set split_errors = split.errors or {} %}
     <tr>
       <td data-label="成员">
+        {% if correction_mode %}<input type="hidden" name="split_public_id" value="{{ split.public_id or '' }}">{% endif %}
         <select name="split_member_id" aria-label="{{ row_label }}成员" {% if split_errors.get('member_id') or split_errors.get('row') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-member-error"{% endif %} {% if not can_write %}disabled{% endif %}>
           <option value="">选择成员</option>
           {% if split.member_id is string and split.member_id %}<option value="{{ split.member_id }}" selected>无效成员（请重新选择）</option>{% endif %}
