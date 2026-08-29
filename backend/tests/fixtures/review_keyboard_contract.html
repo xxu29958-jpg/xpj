@@ -1,0 +1,74 @@
+<html lang="zh-CN">
+<head><meta charset="utf-8"></head>
+<body>
+  <div id="exp-table">
+    <a id="row-1" class="exp-row-detail" href="#one" data-fragment-url="/fragment/1">第一笔</a>
+    <a id="row-2" class="exp-row-detail" href="#two" data-fragment-url="/fragment/2"
+       aria-disabled="true">第二笔</a>
+    <a id="row-3" class="exp-row-detail" href="#three" data-fragment-url="/fragment/3">第三笔</a>
+  </div>
+  <input id="editor" type="text" value="编辑中">
+  <script>
+    let drawerOpen = false;
+    let confirmCalls = 0;
+    window.TicketboxWeb = {
+      drawerApi: {
+        isOpen: () => drawerOpen,
+        submitConfirm: () => {
+          confirmCalls += 1;
+          return true;
+        }
+      }
+    };
+  </script>
+  <script src="__REVIEW_KEYBOARD_URI__"></script>
+  <script>
+    const press = (key, options = {}) => {
+      const event = new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...options
+      });
+      document.activeElement.dispatchEvent(event);
+      return {
+        active: document.activeElement && document.activeElement.id,
+        prevented: event.defaultPrevented
+      };
+    };
+
+    window.TicketboxWeb.initReviewKeyboard();
+    const first = document.getElementById("row-1");
+    first.focus();
+    const down = press("ArrowDown");
+    const up = press("ArrowUp");
+    const end = press("End");
+    const home = press("Home");
+    const j = press("j");
+    const k = press("k");
+    const composing = press("ArrowDown", {isComposing: true});
+
+    document.getElementById("editor").focus();
+    const inputArrow = press("ArrowDown");
+
+    first.focus();
+    drawerOpen = true;
+    const drawerArrow = press("ArrowDown");
+    const confirm = press("Enter", {ctrlKey: true});
+
+    window.__webConsumerProbe = {
+      down,
+      up,
+      end,
+      home,
+      j,
+      k,
+      composing,
+      inputArrow,
+      drawerArrow,
+      confirm,
+      confirmCalls
+    };
+  </script>
+</body>
+</html>
