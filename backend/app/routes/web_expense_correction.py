@@ -30,6 +30,7 @@ from app.routes._web_correction_form import (
     CorrectionParseOutcome,
     correction_form_data,
     parse_correction_form,
+    refresh_correction_source_flags,
     web_correction_idempotency_body,
 )
 from app.routes._web_correction_page import (
@@ -218,14 +219,24 @@ def _command_failure_response(
     options,
     selected_id: str,
     expense_id: int,
+    form: CorrectionFormData,
     parsed: CorrectionParseOutcome,
     command: CorrectionCommandOutcome,
 ) -> Response | None:
     if command.error is None:
         return None
     values = parsed.form_values
+    message = command.error
     if command.conflict:
         values = _current_scalar_form_values(values)
+        if refresh_correction_source_flags(
+            db,
+            expense_id=expense_id,
+            selected_id=selected_id,
+            form=form,
+            outcome=parsed,
+        ):
+            message = f"{message} {parsed.error}"
     elif command.rotate_idempotency_key:
         values = {**values, "idempotency_key": ""}
     return _correction_error_response(
@@ -235,7 +246,7 @@ def _command_failure_response(
         selected_id,
         expense_id,
         parsed,
-        message=command.error,
+        message=message,
         status_code=command.error_status,
         conflict=command.conflict,
         form_values=values,
@@ -305,6 +316,7 @@ def _handle_correction_post(
         options=options,
         selected_id=selected_id,
         expense_id=expense_id,
+        form=form,
         parsed=parsed,
         command=command,
     )

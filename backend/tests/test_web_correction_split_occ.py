@@ -1,10 +1,15 @@
 """Web composite correction keeps split facts behind the parent OCC boundary."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import LedgerMember
+from app.models import Account, LedgerMember
+from app.routes import web_expense_correction as correction_route
+from app.schemas import ExpenseCorrectionRequest, ExpenseSplitRequest
+from app.services.expense_correction_service import correct_expense
+from app.services.expense_service import get_expense
 
 
 def _owner_member_id() -> int:
@@ -49,6 +54,33 @@ def _create_expense_with_split(web_client: TestClient, identity: object) -> tupl
     assert correction_page.status_code == 200, correction_page.text
     assert f'name="split_public_id" value="{split["public_id"]}"' in correction_page.text
     return expense_id, seeded.json(), split
+
+
+def _replace_split_in_peer_transaction(expense_id: int, member_id: int) -> None:
+    with SessionLocal() as db:
+        current = get_expense(db, expense_id, "owner")
+        actor_account_id = db.scalar(select(Account.id).order_by(Account.id.asc()).limit(1))
+        assert actor_account_id is not None
+        correct_expense(
+            db,
+            expense_id=expense_id,
+            tenant_id="owner",
+            payload=ExpenseCorrectionRequest(
+                expected_row_version=current.row_version,
+                reason="parse 后的并发更正",
+                note="parse 后的最新备注",
+                splits=[
+                    ExpenseSplitRequest(
+                        member_id=member_id,
+                        amount_cents=700,
+                        note="parse 后的最新拆账",
+                    )
+                ],
+            ),
+            actor_account_id=actor_account_id,
+            actor_device_id=None,
+            idempotency_key="peer-between-parse-and-cas",
+        )
 
 
 def test_web_correction_rejects_stale_split_rows_before_scalar_retry(
@@ -125,3 +157,41 @@ def test_web_correction_rejects_stale_split_rows_before_scalar_retry(
     assert recovered.status_code == 200, recovered.text
     assert recovered.json()["merchant"] == "修正后的商家"
     assert recovered.json()["note"] == "并发后的备注"
+
+
+@pytest.mark.real_db
+def test_command_conflict_renders_split_replaced_after_parse(
+    web_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    expense_id, seeded, old_split = _create_expense_with_split(web_client, identity)
+    original_execute = correction_route.execute_correction
+
+    def execute_after_peer_change(db, **kwargs):
+        _replace_split_in_peer_transaction(expense_id, old_split["member_id"])
+        return original_execute(db, **kwargs)
+
+    monkeypatch.setattr(correction_route, "execute_correction", execute_after_peer_change)
+    conflict = web_client.post(
+        f"/web/expenses/{expense_id}/corrections",
+        data={
+            "ledger_id": "owner",
+            "reason": "只想改商家",
+            "merchant": "我的更正",
+            "expected_row_version": str(seeded["expense"]["row_version"]),
+            "idempotency_key": "web-late-child-race",
+            "split_public_id": old_split["public_id"],
+            "split_member_id": str(old_split["member_id"]),
+            "split_amount_yuan": "5.00",
+            "split_note": "初始",
+        },
+        follow_redirects=False,
+    )
+    assert conflict.status_code == 409, conflict.text
+    current = web_client.get(f"/api/expenses/{expense_id}/splits", headers=identity.app_headers)
+    current_split = current.json()["splits"][0]
+    assert f'value="{current_split["public_id"]}"' in conflict.text
+    assert f'value="{old_split["public_id"]}"' not in conflict.text
+    assert "parse 后的最新拆账" in conflict.text

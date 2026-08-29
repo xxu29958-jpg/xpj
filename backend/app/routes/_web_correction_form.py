@@ -217,6 +217,24 @@ def _mark_stale_sources(
     return True
 
 
+def refresh_correction_source_flags(
+    db: Session,
+    *,
+    expense_id: int,
+    selected_id: str,
+    form: CorrectionFormData,
+    outcome: CorrectionParseOutcome,
+) -> bool:
+    """Recheck child predecessors after a command-stage parent CAS conflict."""
+
+    return _mark_stale_sources(
+        outcome,
+        form,
+        current_items=list_expense_items(db, expense_id, selected_id).items,
+        current_splits=list_expense_splits(db, expense_id, selected_id).splits,
+    )
+
+
 def _form_values_from(form: CorrectionFormData) -> dict[str, str]:
     values = {
         "reason": form.reason,
