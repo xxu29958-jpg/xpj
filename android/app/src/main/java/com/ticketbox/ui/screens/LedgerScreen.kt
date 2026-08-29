@@ -17,7 +17,11 @@ internal data class LedgerLaunchRequest(
     val onManualEntryConsumed: () -> Unit = {},
 )
 
-internal data class LedgerScreenActions(
+internal typealias BatchReasonAction = (String, String) -> Unit
+
+private val noopBatchAction: BatchReasonAction = { _, _ -> }
+
+data class LedgerScreenActions(
     val onMonthChange: (String) -> Unit = {},
     val onCategoryChange: (String) -> Unit = {},
     val onTagChange: (String) -> Unit = {},
@@ -34,8 +38,9 @@ internal data class LedgerScreenActions(
     val onExitSelection: () -> Unit = {},
     val onToggleSelect: (Long) -> Unit = {},
     val onSelectAllVisible: () -> Unit = {},
-    val onApplyBatchCategory: (String) -> Unit = {},
-    val onApplyBatchTags: (String) -> Unit = {},
+    // A1: 批量更正动作携带 reason（backend 原子 endpoint 必填）—— 参数为 (值, 原因)。
+    val onApplyBatchCategory: BatchReasonAction = noopBatchAction,
+    val onApplyBatchTags: BatchReasonAction = noopBatchAction,
     val onManualCreateSettled: () -> Unit = {},
     val onBatchSettled: () -> Unit = {},
 )

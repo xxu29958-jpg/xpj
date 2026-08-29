@@ -142,6 +142,11 @@ def _assert_web_viewer_expense_posts_denied(web_client: TestClient, *, ledger_id
                 },
             ),
             ("expense confirm", "/web/expenses/999/confirm", {"ledger_id": ledger_id}),
+            (
+                "expense correction",
+                "/web/expenses/999/corrections",
+                {"ledger_id": ledger_id},
+            ),
             ("expense reject", "/web/expenses/999/reject", {"ledger_id": ledger_id}),
             ("expense undo", "/web/expenses/999/undo", {"ledger_id": ledger_id}),
             (

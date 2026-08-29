@@ -40,18 +40,18 @@ def _require_local(request: Request) -> None:
 LocalOnly = Depends(_require_local)
 
 
-def resolve_web_actor_account_id(
+def resolve_web_actor(
     db: Session,
     request: Request,
     ledger_id: str,
-) -> int:
-    """Resolve the accountable actor for a session or loopback Web mutation."""
+) -> tuple[int, int | None]:
+    """Resolve the accountable account/device pair for a Web mutation."""
 
     session_auth = getattr(request.state, "web_session_auth", None)
     if session_auth is not None:
         if session_auth.ledger_id != ledger_id:
             raise AppError("permission_denied", status_code=403)
-        return session_auth.account_id
+        return session_auth.account_id, session_auth.device_id
     account_id = find_owner_account_id_for_ledger(db, ledger_id=ledger_id)
     if account_id is None:
         raise AppError(
@@ -59,7 +59,17 @@ def resolve_web_actor_account_id(
             "当前账本没有可记录的操作账号。",
             status_code=403,
         )
-    return account_id
+    return account_id, None
+
+
+def resolve_web_actor_account_id(
+    db: Session,
+    request: Request,
+    ledger_id: str,
+) -> int:
+    """Compatibility projection for commands that only record an account."""
+
+    return resolve_web_actor(db, request, ledger_id)[0]
 
 
 @dataclass

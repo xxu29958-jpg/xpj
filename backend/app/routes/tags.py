@@ -57,6 +57,8 @@ def rename_tag_route(
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
         name=payload.name,
+        actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id,
     )
 
 
@@ -73,6 +75,7 @@ def delete_tag_route(
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
         actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id,
     )
 
 
@@ -91,6 +94,7 @@ def merge_tag_route(
         target_public_id=payload.target_public_id,
         target_row_version=payload.target_row_version,
         actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id,
     )
 
 
@@ -107,4 +111,5 @@ def undo_tag_route(
         mutation_public_id=mutation_public_id,
         expected_row_version=payload.expected_row_version,
         actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id,
     )

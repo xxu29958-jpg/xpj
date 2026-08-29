@@ -16,7 +16,9 @@ from app.services.expense_service import confirm_expense, reject_expense
 
 
 def test_reject_removes_expense_from_pending_without_confirming(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     expense_id = upload_png(client, identity=identity)
 
@@ -30,16 +32,12 @@ def test_reject_removes_expense_from_pending_without_confirming(
     assert pending.status_code == 200
     assert all(item["id"] != expense_id for item in pending.json())
 
-    confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=identity.app_headers
-    )
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=identity.app_headers)
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 0
 
 
-def test_reject_confirmed_expense_removes_from_confirmed_ledger(
-    client: TestClient, *, identity
-) -> None:
+def test_reject_confirmed_expense_requires_refund_or_reversal_fact(client: TestClient, *, identity) -> None:
     expense_id = upload_png(client, identity=identity)
     response = patch_expense(
         client,
@@ -51,27 +49,21 @@ def test_reject_confirmed_expense_removes_from_confirmed_ledger(
 
     confirmed = confirm_expense_api(client, expense_id, headers=identity.app_headers)
     assert confirmed.status_code == 200, confirmed.text
-    confirmed_at = confirmed.json()["confirmed_at"]
     assert confirmed.json()["status"] == "confirmed"
-    assert confirmed_at is not None
 
     rejected = reject_expense_api(client, expense_id, headers=identity.app_headers)
-    assert rejected.status_code == 200, rejected.text
-    payload = rejected.json()
-    assert payload["status"] == "rejected"
-    assert payload["confirmed_at"] == confirmed_at
-    assert payload["rejected_at"] is not None
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["error"] == "expense_reversal_required"
 
-    confirmed_page = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=identity.app_headers
-    )
+    confirmed_page = client.get("/api/expenses/confirmed", headers=identity.app_headers)
     assert confirmed_page.status_code == 200
-    assert confirmed_page.json()["total"] == 0
-    assert all(item["id"] != expense_id for item in confirmed_page.json()["items"])
+    assert confirmed_page.json()["total"] == 1
+    assert any(item["id"] == expense_id for item in confirmed_page.json()["items"])
 
-    stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
-    assert stats.status_code == 200
-    assert stats.json()["total_amount_cents"] == 0
+    detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+    assert detail.status_code == 200
+    assert detail.json()["status"] == "confirmed"
+    assert detail.json()["amount_cents"] == 3500
 
 
 @pytest.mark.real_db
@@ -103,9 +95,8 @@ def test_stale_reject_cannot_overwrite_confirmed_expense(client: TestClient, *, 
         )
         assert confirmed.status == "confirmed"
 
-        # Writer B replays the stale shared_version. Confirmed rows are
-        # rejectable, but the row_version changed; stale deletes still
-        # fail with the normal OCC conflict instead of overwriting.
+        # Confirmed facts no longer enter the workflow recycle bin. A stale
+        # reject intent is routed to the same explicit reversal requirement.
         with pytest.raises(AppError) as error:
             reject_expense(
                 reject_db,
@@ -113,7 +104,7 @@ def test_stale_reject_cannot_overwrite_confirmed_expense(client: TestClient, *, 
                 "owner",
                 expected_row_version=shared_version,
             )
-        assert error.value.error == "state_conflict"
+        assert error.value.error == "expense_reversal_required"
         assert error.value.status_code == 409
     finally:
         confirm_db.close()

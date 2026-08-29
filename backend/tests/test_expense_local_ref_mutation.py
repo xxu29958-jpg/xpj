@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -28,7 +29,11 @@ if TYPE_CHECKING:
     from tests._infra.identity import TestIdentity
 
 
-def _create_manual(client: TestClient, headers: dict[str, str], **overrides) -> dict:
+def _create_local_expense(
+    client: TestClient,
+    headers: dict[str, str],
+    **overrides,
+) -> dict:
     body = {
         "amount_cents": 1500,
         "merchant": "本地引用",
@@ -38,6 +43,7 @@ def _create_manual(client: TestClient, headers: dict[str, str], **overrides) -> 
     body.update(overrides)
     resp = client.post("/api/expenses/manual", headers=headers, json=body)
     assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "confirmed"
     return resp.json()
 
 
@@ -81,11 +87,15 @@ def _second_owner_device_token() -> str:
         return token
 
 
-def _patch(client, ref, *, version, key, headers, merchant):
-    return client.patch(
-        f"/api/expenses/{ref}",
+def _correct(client, ref, *, version, key, headers, merchant):
+    return client.post(
+        f"/api/expenses/{ref}/corrections",
         headers={**headers, "Idempotency-Key": key},
-        json={"merchant": merchant, "expected_row_version": version},
+        json={
+            "merchant": merchant,
+            "reason": "本地引用更正测试",
+            "expected_row_version": version,
+        },
     )
 
 
@@ -98,14 +108,14 @@ def test_local_ref_first_write_succeeds_no_false_409(
     """A ``local:{ref}`` mutation carrying the first-write sentinel (0) — the
     client never saw the server row_version — applies to the current row instead
     of false-409-ing."""
-    _create_manual(client, identity.app_headers, client_ref="fw-1")
+    _create_local_expense(client, identity.app_headers, client_ref="fw-1")
 
-    resp = _patch(
+    resp = _correct(
         client, "local:fw-1", version=0, key=str(uuid4()),
         headers=identity.app_headers, merchant="首写",
     )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["merchant"] == "首写"
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["expense"]["merchant"] == "首写"
 
 
 def test_local_ref_first_write_applies_to_current_row_version(
@@ -114,25 +124,25 @@ def test_local_ref_first_write_applies_to_current_row_version(
     """The sentinel reads the CURRENT row_version, not an assumed 1: after a
     server-id edit bumps the row, a local-ref first-write still lands (no false
     409)."""
-    created = _create_manual(client, identity.app_headers, client_ref="fw-2")
+    created = _create_local_expense(client, identity.app_headers, client_ref="fw-2")
     server_id = created["id"]
     v0 = _row_version(client, server_id, identity=identity)
 
-    bumped = _patch(
+    bumped = _correct(
         client, server_id, version=v0, key=str(uuid4()),
         headers=identity.app_headers, merchant="先抬版本",
     )
-    assert bumped.status_code == 200, bumped.text
-    v1 = bumped.json()["row_version"]
+    assert bumped.status_code == 201, bumped.text
+    v1 = bumped.json()["expense"]["row_version"]
     assert v1 != v0
 
-    first_write = _patch(
+    first_write = _correct(
         client, "local:fw-2", version=0, key=str(uuid4()),
         headers=identity.app_headers, merchant="本地首写到当前版本",
     )
-    assert first_write.status_code == 200, first_write.text
-    assert first_write.json()["merchant"] == "本地首写到当前版本"
-    assert first_write.json()["row_version"] != v1, "the first-write CAS must still bump"
+    assert first_write.status_code == 201, first_write.text
+    assert first_write.json()["expense"]["merchant"] == "本地首写到当前版本"
+    assert first_write.json()["expense"]["row_version"] != v1, "the first-write CAS must still bump"
 
 
 def test_local_ref_resolves_same_row_as_server_id(
@@ -140,14 +150,14 @@ def test_local_ref_resolves_same_row_as_server_id(
 ) -> None:
     """A local-ref edit is visible when the same row is read by server id —
     proving the ref resolves to the very same row."""
-    created = _create_manual(client, identity.app_headers, client_ref="same-row")
+    created = _create_local_expense(client, identity.app_headers, client_ref="same-row")
     server_id = created["id"]
 
-    resp = _patch(
+    resp = _correct(
         client, "local:same-row", version=0, key=str(uuid4()),
         headers=identity.app_headers, merchant="本地改的",
     )
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 201, resp.text
 
     by_id = client.get(f"/api/expenses/{server_id}", headers=identity.app_headers)
     assert by_id.status_code == 200, by_id.text
@@ -158,24 +168,24 @@ def test_local_ref_first_write_replay_returns_canonical(
     client: TestClient, identity: TestIdentity
 ) -> None:
     """§4.6 still holds on the local-ref path: replaying the SAME key + SAME
-    sentinel re-serialises the canonical row (200) without re-applying — even
+    sentinel re-serialises the canonical row (201) without re-applying — even
     though the current row_version drifted after the first write."""
-    _create_manual(client, identity.app_headers, client_ref="replay")
+    _create_local_expense(client, identity.app_headers, client_ref="replay")
     key = str(uuid4())
 
-    first = _patch(
+    first = _correct(
         client, "local:replay", version=0, key=key,
         headers=identity.app_headers, merchant="一次",
     )
-    assert first.status_code == 200, first.text
-    v1 = first.json()["row_version"]
+    assert first.status_code == 201, first.text
+    v1 = first.json()["expense"]["row_version"]
 
-    replay = _patch(
+    replay = _correct(
         client, "local:replay", version=0, key=key,
         headers=identity.app_headers, merchant="一次",
     )
-    assert replay.status_code == 200, replay.text  # NOT 409, NOT a fingerprint mismatch
-    assert replay.json()["row_version"] == v1, "a HIT must re-serialise, not re-bump"
+    assert replay.status_code == 201, replay.text  # NOT 409, NOT a fingerprint mismatch
+    assert replay.json()["expense"]["row_version"] == v1, "a HIT must re-serialise, not re-bump"
 
 
 # ── orthogonality: OCC still enforced for genuine conflicts ─────────────────
@@ -185,22 +195,22 @@ def test_local_ref_and_server_id_paths_are_orthogonal(
     client: TestClient, identity: TestIdentity
 ) -> None:
     """A local-ref first-write does NOT disable OCC: a stale server-id write
-    still 409s, and a correctly-versioned one still 200s."""
-    created = _create_manual(client, identity.app_headers, client_ref="orth")
+    still 409s, and a correctly-versioned one still succeeds."""
+    created = _create_local_expense(client, identity.app_headers, client_ref="orth")
     server_id = created["id"]
     v0 = _row_version(client, server_id, identity=identity)
 
     # (A) local-ref first-write applies to current → bumps the row.
-    a = _patch(
+    a = _correct(
         client, "local:orth", version=0, key=str(uuid4()),
         headers=identity.app_headers, merchant="A",
     )
-    assert a.status_code == 200, a.text
-    v_after = a.json()["row_version"]
+    assert a.status_code == 201, a.text
+    v_after = a.json()["expense"]["row_version"]
     assert v_after != v0
 
     # (B) a genuine concurrent writer holding the now-stale v0 still 409s.
-    b = _patch(
+    b = _correct(
         client, server_id, version=v0, key=str(uuid4()),
         headers=identity.app_headers, merchant="B",
     )
@@ -208,12 +218,12 @@ def test_local_ref_and_server_id_paths_are_orthogonal(
     assert b.json()["error"] == "state_conflict"
 
     # (C) the correctly-versioned server-id write proceeds.
-    c = _patch(
+    c = _correct(
         client, server_id, version=v_after, key=str(uuid4()),
         headers=identity.app_headers, merchant="C",
     )
-    assert c.status_code == 200, c.text
-    assert c.json()["merchant"] == "C"
+    assert c.status_code == 201, c.text
+    assert c.json()["expense"]["merchant"] == "C"
 
 
 def test_server_id_with_sentinel_zero_is_409(
@@ -222,10 +232,10 @@ def test_server_id_with_sentinel_zero_is_409(
     """A SERVER-id ref is never first-write: the sentinel 0 is not special-cased,
     so its CAS finds no row at version 0 (real rows start at 1) → 409. A synced
     row must not be blind-written."""
-    created = _create_manual(client, identity.app_headers, client_ref="no-blind")
+    created = _create_local_expense(client, identity.app_headers, client_ref="no-blind")
     server_id = created["id"]
 
-    resp = _patch(
+    resp = _correct(
         client, server_id, version=0, key=str(uuid4()),
         headers=identity.app_headers, merchant="盲写",
     )
@@ -238,16 +248,16 @@ def test_server_id_string_path_still_works(
 ) -> None:
     """Backward compat: the widened (str) path param still resolves a plain
     numeric server-id ref exactly as before."""
-    created = _create_manual(client, identity.app_headers, client_ref="compat")
+    created = _create_local_expense(client, identity.app_headers, client_ref="compat")
     server_id = created["id"]
     v0 = _row_version(client, server_id, identity=identity)
 
-    resp = _patch(
+    resp = _correct(
         client, server_id, version=v0, key=str(uuid4()),
         headers=identity.app_headers, merchant="老路径",
     )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["merchant"] == "老路径"
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["expense"]["merchant"] == "老路径"
 
 
 # ── miss / malformed refs → 404 ─────────────────────────────────────────────
@@ -257,7 +267,7 @@ def test_unknown_local_ref_returns_404(
     client: TestClient, identity: TestIdentity
 ) -> None:
     """A local ref this device never created resolves to nothing → 404."""
-    resp = _patch(
+    resp = _correct(
         client, "local:never-created", version=0, key=str(uuid4()),
         headers=identity.app_headers, merchant="不存在",
     )
@@ -270,7 +280,7 @@ def test_malformed_ref_returns_404(
 ) -> None:
     """A non-numeric, non-``local:`` ref is a malformed id → 404 (not a 500 from
     ``int()``)."""
-    resp = _patch(
+    resp = _correct(
         client, "not-a-ref", version=1, key=str(uuid4()),
         headers=identity.app_headers, merchant="畸形",
     )
@@ -283,11 +293,11 @@ def test_cross_device_local_ref_miss_returns_404(
 ) -> None:
     """The device namespace is enforced at the route: device B (same ledger,
     different ``device_id``) cannot reach device A's not-yet-synced local ref."""
-    _create_manual(client, identity.app_headers, client_ref="device-a-ref")
+    _create_local_expense(client, identity.app_headers, client_ref="device-a-ref")
     device_b_token = _second_owner_device_token()
     device_b_headers = {"Authorization": f"Bearer {device_b_token}"}
 
-    resp = _patch(
+    resp = _correct(
         client, "local:device-a-ref", version=0, key=str(uuid4()),
         headers=device_b_headers, merchant="别的设备",
     )
@@ -304,7 +314,11 @@ def test_confirm_via_local_ref_resolves(
     """An explicit-version route (confirm) also resolves a local ref. A manual
     expense is already ``confirmed``, so confirm is idempotent (200) — proving
     the ref resolved (a miss would 404)."""
-    _create_manual(client, identity.app_headers, client_ref="confirm-ref")
+    _create_local_expense(
+        client,
+        identity.app_headers,
+        client_ref="confirm-ref",
+    )
 
     resp = client.post(
         "/api/expenses/local:confirm-ref/confirm",
@@ -314,17 +328,32 @@ def test_confirm_via_local_ref_resolves(
     assert resp.status_code == 200, resp.text
 
 
-def _force_pending(client_ref: str, *, device_id: int) -> None:
-    """Flip a manual (born ``confirmed``) expense to ``pending`` so an
-    explicit-version route actually REACHES its OCC CAS (a plain status set does
-    not bump row_version)."""
+def _create_confirmable_pending_local_ref(
+    client: TestClient,
+    identity: TestIdentity,
+    *,
+    client_ref: str,
+) -> None:
+    """Bind a real upload-created pending row to a device-local reference."""
+    expense_id = upload_png(client, identity=identity)
+    patched = patch_expense(
+        client,
+        expense_id,
+        headers=identity.app_headers,
+        fields={
+            "amount_cents": 1500,
+            "merchant": "本地确认",
+            "category": "餐饮",
+            "expense_time": "2026-05-05T00:00:00Z",
+        },
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["status"] == "pending"
+    device_id = _owner_device_id(identity)
     with SessionLocal() as db:
-        exp = (
-            db.query(Expense)
-            .filter(Expense.draft_idempotency_key == local_ref_storage_key(device_id, client_ref))
-            .one()
-        )
-        exp.status = "pending"
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.draft_idempotency_key = local_ref_storage_key(device_id, client_ref)
         db.commit()
 
 
@@ -333,14 +362,12 @@ def test_confirm_via_local_ref_first_write_runs_cas(
 ) -> None:
     """An explicit-version route threads the EFFECTIVE version (not the raw
     sentinel) into its CAS. confirm short-circuits a ``confirmed`` row before the
-    CAS, so this drives a ``pending`` row: a local-ref first-write (sentinel 0)
-    confirms it. Were confirm to pass the raw sentinel 0, its CAS
+    CAS, so this drives a real upload-created ``pending`` row: a local-ref
+    first-write (sentinel 0) confirms it. Were confirm to pass the raw sentinel 0, its CAS
     (``WHERE row_version == 0``) would rowcount-0 → 409; asserting it confirms
-    proves the effective-version threading for the explicit-version family (only
-    PATCH uses ``payload.model_copy``)."""
+    proves the effective-version threading for the explicit-version family."""
     device_id = _owner_device_id(identity)
-    _create_manual(client, identity.app_headers, client_ref="confirm-fw")
-    _force_pending("confirm-fw", device_id=device_id)
+    _create_confirmable_pending_local_ref(client, identity, client_ref="confirm-fw")
 
     resp = client.post(
         "/api/expenses/local:confirm-fw/confirm",

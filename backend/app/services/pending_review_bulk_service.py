@@ -73,6 +73,32 @@ class BulkResult:
         self.skipped_reasons[label] = self.skipped_reasons.get(label, 0) + 1
 
 
+def _validate_bulk_request(
+    *,
+    action: str,
+    expense_ids: list[int],
+    expected_row_version_by_id: dict[int, int],
+    category: str,
+    merchant: str,
+) -> tuple[list[int], str, str]:
+    if action not in ALLOWED_ACTIONS:
+        raise AppError("invalid_request", status_code=422)
+    unique_expense_ids = list(dict.fromkeys(expense_ids))
+    if set(expected_row_version_by_id) != set(unique_expense_ids):
+        raise AppError(
+            "invalid_request",
+            "页面已过期，请刷新后重新操作。",
+            status_code=422,
+        )
+    category_clean = category.strip()
+    merchant_clean = merchant.strip()
+    if action == "set_category" and not category_clean:
+        raise AppError("invalid_request", "请填写分类。", status_code=422)
+    if action == "set_merchant" and not merchant_clean:
+        raise AppError("invalid_request", "请填写商家。", status_code=422)
+    return unique_expense_ids, category_clean, merchant_clean
+
+
 def apply_review_bulk(
     db: Session,
     *,
@@ -82,6 +108,8 @@ def apply_review_bulk(
     expected_row_version_by_id: dict[int, int],
     category: str = "",
     merchant: str = "",
+    actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
 ) -> BulkResult:
     """Run a bulk-review action and return success/skip counters.
 
@@ -90,24 +118,13 @@ def apply_review_bulk(
     metadata-edit actions). Per-row failures are captured in
     ``skipped_reasons``, never raised.
     """
-    if action not in ALLOWED_ACTIONS:
-        raise AppError("invalid_request", status_code=422)
-
-    unique_expense_ids = list(dict.fromkeys(expense_ids))
-    if set(expected_row_version_by_id) != set(unique_expense_ids):
-        raise AppError(
-            "invalid_request",
-            "页面已过期，请刷新后重新操作。",
-            status_code=422,
-        )
-
-    category_clean = category.strip()
-    merchant_clean = merchant.strip()
-
-    if action == "set_category" and not category_clean:
-        raise AppError("invalid_request", "请填写分类。", status_code=422)
-    if action == "set_merchant" and not merchant_clean:
-        raise AppError("invalid_request", "请填写商家。", status_code=422)
+    unique_expense_ids, category_clean, merchant_clean = _validate_bulk_request(
+        action=action,
+        expense_ids=expense_ids,
+        expected_row_version_by_id=expected_row_version_by_id,
+        category=category,
+        merchant=merchant,
+    )
 
     rows = list_expenses_by_ids(db, tenant_id=tenant_id, expense_ids=unique_expense_ids)
     rows_by_id = {row.id: row for row in rows}
@@ -121,7 +138,13 @@ def apply_review_bulk(
     # is a flat dispatcher (audit A5 used to flag this function at
     # nesting depth 6 because the if/elif chain compiles to a nested
     # ``If(orelse=[If(...)])`` tree).
-    handler = _resolve_bulk_action_handler(action, category_clean=category_clean, merchant_clean=merchant_clean)
+    handler = _resolve_bulk_action_handler(
+        action,
+        category_clean=category_clean,
+        merchant_clean=merchant_clean,
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+    )
     try:
         for expense_id in unique_expense_ids:
             row = rows_by_id.get(expense_id)
@@ -155,7 +178,14 @@ def apply_review_bulk(
     return result
 
 
-def _resolve_bulk_action_handler(action: str, *, category_clean: str, merchant_clean: str):
+def _resolve_bulk_action_handler(
+    action: str,
+    *,
+    category_clean: str,
+    merchant_clean: str,
+    actor_account_id: int | None,
+    actor_device_id: int | None,
+):
     """Return a ``(db, row, tenant_id, expected_row_version, result)`` callable.
 
     ``action`` is trusted because the caller already enforced
@@ -187,7 +217,15 @@ def _resolve_bulk_action_handler(action: str, *, category_clean: str, merchant_c
     if action == "reject":
         return _apply_reject
     if action == "confirm_ready":
-        return _apply_confirm_ready
+        return lambda db, row, tenant_id, expected_row_version, result: _apply_confirm_ready(
+            db,
+            row,
+            tenant_id,
+            expected_row_version,
+            result,
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
+        )
     return _apply_keep_duplicate
 
 
@@ -238,6 +276,9 @@ def _apply_confirm_ready(
     tenant_id: str,
     expected_row_version: int,
     result: BulkResult,
+    *,
+    actor_account_id: int | None,
+    actor_device_id: int | None,
 ) -> None:
     if row.status != "pending":
         result.bump(SKIP_REASON_NOT_PENDING)
@@ -260,6 +301,8 @@ def _apply_confirm_ready(
             row.id,
             tenant_id,
             expected_row_version=expected_row_version,
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         )
         result.record_success(row.id)
     except AppError as exc:

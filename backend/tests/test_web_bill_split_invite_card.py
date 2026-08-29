@@ -68,7 +68,7 @@ def _add_owner_ledger_member(display: str = "家人A") -> int:
         return acct.id
 
 
-def test_web_edit_confirmed_shows_split_invite_card(web_client: TestClient) -> None:
+def test_web_confirmed_fact_shows_split_invite_card(web_client: TestClient) -> None:
     """A confirmed expense with another ledger member renders the发起卡 wired to
     the existing split-invite route, listing the member as a receiver option."""
     _add_owner_ledger_member(display="家人甲")
@@ -83,7 +83,7 @@ def test_web_edit_confirmed_shows_split_invite_card(web_client: TestClient) -> N
     assert "家人甲" in body
 
 
-def test_web_edit_pending_hides_split_invite_card(web_client: TestClient) -> None:
+def test_web_pending_edit_hides_split_invite_card(web_client: TestClient) -> None:
     """拆账 only makes sense after入账；a pending expense must not show the卡."""
     _add_owner_ledger_member(display="家人乙")
     with SessionLocal() as db:
@@ -147,7 +147,7 @@ def test_web_edit_invite_card_prompts_when_no_other_members(
     assert 'name="receiver_account_id"' not in body
 
 
-def test_web_split_invite_success_flashes_from_edit_form(
+def test_web_split_invite_success_flashes_from_fact_page(
     web_client: TestClient,
 ) -> None:
     """POSTing the发起卡 form creates the invitation and flashes success on the

@@ -13,6 +13,7 @@ internal class FakeExpenseDao(
     private var nextId = 1L
     var beforeApplyConfirmedSync: (suspend () -> Unit)? = null
     var onAfterApplyConfirmedSync: (() -> Unit)? = null
+    var insertFailure: Throwable? = null
 
     override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> = flowFor(ledgerId)
 
@@ -52,6 +53,7 @@ internal class FakeExpenseDao(
     }
 
     override suspend fun insert(expense: ExpenseEntity): Long {
+        insertFailure?.let { throw it }
         val id = if (expense.id == 0L) nextId++ else expense.id
         expenses[id] = expense.copy(id = id)
         emit(expense.ledgerId)

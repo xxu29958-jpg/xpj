@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}账单事实 — 小票夹{% endblock %}
+{% block page_styles %}<link rel="stylesheet" href="/static/web/pages/expense-fact.css?v={{ asset_version }}">{% endblock %}
+{% block content %}
+{# A1: confirmed 账单的 read-first 事实详情（编排壳）。各段责任：
+   _fact_header / _fact_summary_card / _fact_split_invite /
+   _fact_items_readonly / _fact_splits_readonly / _fact_timeline。 #}
+{% include "_fact_header.html" %}
+
+{% if error %}
+<div class="dt-alert danger" role="alert">⚠️ {{ error }}</div>
+{% endif %}
+{% if message %}
+<div class="dt-alert success" role="status">{{ message }}</div>
+{% endif %}
+
+<div class="detail-layout">
+  <div class="detail-main">
+    {% include "_fact_summary_card.html" %}
+    <div class="detail-sections fact-lines">
+      {% include "_fact_items_readonly.html" %}
+      {% include "_fact_splits_readonly.html" %}
+    </div>
+    {# 拆账邀请是关联动作，排在事实之后、历史之前，不抢事实主体。 #}
+    {% include "_fact_split_invite.html" %}
+    {% include "_fact_timeline.html" %}
+  </div>
+
+  <aside class="detail-aside">
+    {% if expense.has_image %}
+    <div class="dt-card receipt-preview receipt-image-shell" data-image-skeleton>
+      <div class="skeleton skeleton-block receipt-image-skeleton" aria-hidden="true"></div>
+      <a href="/web/expenses/{{ expense.id }}/image{{ q }}" target="_blank">
+        <img src="/web/expenses/{{ expense.id }}/image{{ q }}" alt="小票图片" class="receipt-img" loading="lazy" decoding="async">
+      </a>
+    </div>
+    {% elif expense.image_state == 'cleaned' %}
+    <div class="dt-card meta">凭证图片已清理</div>
+    {% else %}
+    <div class="dt-card meta">没有凭证图片</div>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

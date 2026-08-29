@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from api_contract_helpers import patch_expense, web_duplicates_action
+from api_contract_helpers import confirm_expense_api, patch_expense, web_duplicates_action
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -49,6 +49,38 @@ def _seed_duplicate_pair(web_client: TestClient, *, identity) -> tuple[int, int]
     return first, second
 
 
+def _seed_duplicate_with_confirmed_original(
+    web_client: TestClient, *, identity
+) -> tuple[int, int]:
+    original = _create_pending(web_client, identity=identity)
+    completed = patch_expense(
+        web_client,
+        original,
+        headers=identity.app_headers,
+        fields={
+            "amount_cents": 1851,
+            "merchant": "已入账参考记录",
+            "category": "餐饮",
+            "expense_time": "2026-05-04T08:23:25Z",
+        },
+    )
+    assert completed.status_code == 200, completed.text
+    confirmed = confirm_expense_api(
+        web_client,
+        original,
+        headers=identity.app_headers,
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    current = _create_pending(web_client, identity=identity)
+    with SessionLocal() as db:
+        row = db.get(Expense, current)
+        assert row is not None
+        assert row.duplicate_status == "suspected"
+        assert row.duplicate_of_id == original
+    return original, current
+
+
 # ── Page rendering ─────────────────────────────────────────────────────────
 
 
@@ -77,6 +109,21 @@ def test_web_duplicates_renders_pair(web_client: TestClient, *, identity) -> Non
             f'name="expected_original_row_version" value="{original.row_version}"'
             in body
         )
+
+
+def test_web_duplicates_does_not_offer_reject_for_confirmed_original(
+    web_client: TestClient, *, identity
+) -> None:
+    original, current = _seed_duplicate_with_confirmed_original(
+        web_client,
+        identity=identity,
+    )
+
+    body = web_client.get("/web/duplicates?ledger_id=owner").text
+
+    assert f"/web/duplicates/{current}/reject-original" not in body
+    assert "已入账参考记录不能在重复核对中忽略" in body
+    assert f'name="original_expense_id" value="{original}"' not in body
 
 
 # ── Loopback gate + secret leak ────────────────────────────────────────────
@@ -154,6 +201,46 @@ def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *,
         assert kept.duplicate_of_id is None
         assert kept.row_version == before_row_version + 1
         assert rejected.status == "rejected"
+
+
+def test_web_duplicates_confirmed_original_never_dispatches_generic_reject(
+    web_client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original, current = _seed_duplicate_with_confirmed_original(
+        web_client,
+        identity=identity,
+    )
+    current_token = _token(web_client, current, identity=identity)
+    original_token = _token(web_client, original, identity=identity)
+
+    def fail_if_dispatched(*args, **kwargs):
+        raise AssertionError("confirmed original reached retired generic reject")
+
+    monkeypatch.setattr(
+        "app.services.expense_review_command_service.reject_expense",
+        fail_if_dispatched,
+    )
+    response = web_client.post(
+        f"/web/duplicates/{current}/reject-original",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": current_token,
+            "original_expense_id": original,
+            "expected_original_row_version": original_token,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "flash_type=error" in response.headers["location"]
+    with SessionLocal() as db:
+        kept = db.get(Expense, current)
+        reference = db.get(Expense, original)
+        assert kept is not None and reference is not None
+        assert kept.status == "pending"
+        assert kept.duplicate_status == "suspected"
+        assert kept.duplicate_of_id == original
+        assert reference.status == "confirmed"
 
 
 def test_web_duplicates_reject_original_is_atomic(

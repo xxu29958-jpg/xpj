@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote
 
 import com.squareup.moshi.Moshi
+import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
 import com.ticketbox.security.RequestAuthSnapshot
@@ -146,6 +147,7 @@ private fun requestTargetsRefresh(chain: Interceptor.Chain): Boolean =
 
 internal fun buildApiService(normalizedBaseUrl: String, client: OkHttpClient): ApiService {
     val moshi = Moshi.Builder()
+        .addExpenseCorrectionWireAdapters()
         .add(KotlinJsonAdapterFactory())
         .build()
 

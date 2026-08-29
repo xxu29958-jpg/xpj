@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -65,22 +66,15 @@ def _create_alias(client: TestClient, *, identity: TestIdentity, alias: str = "I
     return resp.json()
 
 
-def _create_items_expense(
-    client: TestClient, *, identity: TestIdentity, amount_cents: int = 1500
-) -> int:
-    """A manual expense (so PUT /items has an editable parent to replace on)."""
-    resp = client.post(
-        "/api/expenses/manual",
-        headers=identity.app_headers,
-        json={
-            "amount_cents": amount_cents,
-            "merchant": "Idem Items Cafe",
-            "category": "餐饮",
-            "expense_time": "2026-05-04T01:00:00Z",
-        },
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
+def _create_items_expense(client: TestClient, *, identity: TestIdentity) -> int:
+    """Create the pending parent that still owns generic item replacement.
+
+    Confirmed facts moved to the correction Owner in A1, so keeping this
+    idempotency regression on a manual (immediately confirmed) row would protect
+    the retired generic writer instead of its remaining pending responsibility.
+    """
+
+    return upload_png(client, identity=identity)
 
 
 def _expense_row_version(client: TestClient, expense_id: int, *, identity: TestIdentity) -> int:

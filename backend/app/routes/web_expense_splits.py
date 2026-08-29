@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_expense_fact import web_fact_error_response
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_helpers import _edit_page_or_flash_redirect
 from app.routes._web_expense_return_context import edit_context_params
@@ -27,7 +28,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
-from app.services.expense_service import get_expense
+from app.services.expense_service import get_expense, resolve_expense
 from app.services.expense_split_service import replace_expense_splits
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -108,6 +109,18 @@ def web_splits_save(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    # A1: confirmed 的旧 splits 直写已失权（拆账改动必须进入更正意图）——
+    # 明确 409 + 事实页错误呈现。
+    guarded_expense = resolve_expense(db, selected_id, expense_id)
+    if guarded_expense is not None and guarded_expense.status == "confirmed":
+        return web_fact_error_response(
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            AppError("expense_correction_required").message,
+        )
     submitted_return_context = {
         "return_to": return_to,
         "return_month": return_month,
@@ -130,8 +143,14 @@ def web_splits_save(
         # codex follow-up on audit P2 #6: the re-read shares the main form's
         # vanished-row guard (flash to /web/confirmed, mirroring the GET).
         return _edit_page_or_flash_redirect(
-            db, request, options, selected_id, expense_id, outcome.error,
-            "/web/confirmed", error_key="splits_error",
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            outcome.error,
+            "/web/confirmed",
+            error_key="splits_error",
             status_code=outcome.error_status,
             split_form_rows=outcome.rows if outcome.error_status == 422 else None,
             **submitted_return_context,

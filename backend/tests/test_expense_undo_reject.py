@@ -1,9 +1,11 @@
 """ADR-0038 undo contract tests: expense reject + restore within 5-min window.
 
 Covers the Undo invariants:
-- ``POST /api/expenses/{id}/undo`` after reject restores ``status='pending'`` or
-  ``status='confirmed'`` from the row's pre-delete state, clears ``rejected_at``,
+- ``POST /api/expenses/{id}/undo`` after a pending reject restores
+  ``status='pending'`` from the row's pre-delete state, clears ``rejected_at``,
   and writes a ``ledger_audit_logs action='undo'`` row.
+- A confirmed fact cannot enter the reject/undo lifecycle; it requires a
+  reversal fact instead and remains unchanged.
 - Undo on a never-rejected (pending / confirmed) expense → 404 (semantic match
   with merchant_alias / category_rule undo: not_found / past_window / wrong_status
   all collapse to 404 so client just re-fetches).
@@ -101,25 +103,20 @@ def test_undo_after_reject_restores_pending_and_writes_audit(
         assert audit is not None, "undo must append a ledger_audit_logs row"
 
 
-def test_undo_after_confirmed_reject_restores_confirmed(
+def test_confirmed_reject_requires_reversal_and_keeps_fact(
     client: TestClient, *, identity
 ) -> None:
     expense_id, confirmed_at = _create_confirmed(client, identity=identity)
-    _reject(client, expense_id, identity=identity)
-
-    response = undo_expense_api(client, expense_id, headers=identity.app_headers)
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["id"] == expense_id
-    assert body["status"] == "confirmed"
-    assert body["confirmed_at"] == confirmed_at
-    assert body.get("rejected_at") is None
+    response = reject_expense_api(client, expense_id, headers=identity.app_headers)
+    assert response.status_code == 409, response.text
+    assert response.json()["error"] == "expense_reversal_required"
 
     with SessionLocal() as db:
         row = db.scalar(select(Expense).where(Expense.id == expense_id))
         assert row is not None
         assert row.status == "confirmed"
         assert row.confirmed_at is not None
+        assert row.confirmed_at.isoformat().replace("+00:00", "Z") == confirmed_at
         assert row.rejected_at is None
 
 

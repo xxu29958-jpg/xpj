@@ -3,6 +3,7 @@
 Split out from ``web_expense_edit.py`` so the expense-main / items / splits
 route files don't have to import from each other.
 """
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -191,6 +192,8 @@ def _overlay_submitted_expense_values(
         "note": "note",
         "tags": "tags",
         "expense_time": "expense_time_local",
+        "value_score": "value_score",
+        "regret_score": "regret_score",
     }
     for form_key, view_key in view_keys.items():
         if form_key in form_values:
@@ -224,9 +227,7 @@ def web_edit_context(
     _overlay_submitted_expense_values(expense_view, form_values)
     ctx["expense"] = expense_view
     ctx["conflict_current"] = current_expense_view if conflict else None
-    ctx["confirm_idempotency_key"] = (
-        (form_values or {}).get("idempotency_key") or str(uuid4())
-    )
+    ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())
     ctx["error"] = None
     ctx["message"] = request.query_params.get("msg")
     ctx["items_error"] = None
@@ -252,9 +253,7 @@ def web_edit_context(
     )
     record_currency = expense.home_currency_code or ctx["home_currency_code"]
     ctx["currency_input"] = _currency_input_view(record_currency)
-    ctx["expense_currency_input"] = _currency_input_view(
-        expense.original_currency_code or record_currency
-    )
+    ctx["expense_currency_input"] = _currency_input_view(expense.original_currency_code or record_currency)
     ctx["receipt_items"] = _web_item_rows(
         db,
         expense_id,
@@ -292,7 +291,8 @@ def _web_item_rows(
             # discount 行 amount_cents 是负数；UI 显示正数（"3.00"），sign 由
             # kind 表达；form post 时 backend 按 kind=discount 重新翻 sign。
             "amount_yuan": _amount_yuan(
-                abs(item.amount_cents) if item.amount_cents is not None and item.kind == "discount"
+                abs(item.amount_cents)
+                if item.amount_cents is not None and item.kind == "discount"
                 else item.amount_cents,
                 currency_code,
             ),

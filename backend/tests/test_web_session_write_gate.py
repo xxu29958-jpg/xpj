@@ -219,6 +219,35 @@ def _auth_context(token, account, device, *, ledger_id: str, role: str, ledger_n
     )
 
 
+def test_web_rule_rollback_threads_session_account_and_device(identity, monkeypatch) -> None:
+    from app.database import SessionLocal
+    from app.routes import web_rules
+
+    token, account, device = _mint_desktop_session(role="owner")
+    auth = _auth_context(token, account, device, ledger_id="owner", role="owner")
+    request = _DesktopSessionRequest(auth)
+    captured: dict[str, object] = {}
+
+    def fake_rollback(_db, **kwargs):
+        captured.update(kwargs)
+        return object(), 1, 0
+
+    monkeypatch.setattr(web_rules, "rollback_rule_application", fake_rollback)
+    with SessionLocal() as db:
+        response = web_rules.web_rules_application_rollback(
+            request,
+            "batch-1",
+            ledger_id="owner",
+            _local=None,
+            db=db,
+        )
+
+    assert response.status_code == 303
+    assert captured["tenant_id"] == "owner"
+    assert captured["actor_account_id"] == account.id
+    assert captured["actor_device_id"] == device.id
+
+
 def test_desktop_principal_revalidated_inside_the_handler_transaction(identity) -> None:
     from app.database import SessionLocal
     from app.models import LedgerMember

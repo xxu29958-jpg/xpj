@@ -6,6 +6,7 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
@@ -35,6 +36,7 @@ data class ServerSessionBinding(
 data class ExpenseOfflineMutationWiring(
     val outbox: OutboxRepository? = null,
     val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>? = null,
+    val correctionAdapter: JsonAdapter<ExpenseCorrectionRequestDto>? = null,
     val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>? = null,
     val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,
     val replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,

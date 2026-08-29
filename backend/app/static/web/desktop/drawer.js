@@ -17,8 +17,9 @@
  * path would silently drop) and avoids forking confirm-modal's dialog.
  *
  * 218-D S4 (移植自产品矿, 适配 main): 补齐矿的模态语义 (aria-hidden 开关 +
- * 焦点圈禁 + 背景 inert 锁)。main 的批选模式守卫保留: 非空选择时 bulk-bar.js
- * 给行挂 aria-disabled, 点击与程序化 open 都要让路。
+ * 焦点圈禁 + 背景 inert 锁)。批选不挂起导航: bulk-bar.js 不再给行挂
+ * aria-disabled, 点击与程序化 open 始终可用; 两处 aria-disabled 检查仅作
+ * 防御守卫保留。
  * S4-R1: 勾选控件移出行链接 (HTML 禁嵌交互控件), 行结构回到 #218 同构 —
  * 容器 .exp-row 内 选择槽 + a.exp-row-detail 兄弟节点; 抽屉操作的是行链接,
  * 移除/找下一行落到外层容器, 高亮经 is-current 类落在容器 (inbox.css)。
@@ -59,7 +60,8 @@
       drawer.classList.remove("on");
       scrim.classList.remove("on");
       drawer.setAttribute("aria-hidden", "true");
-      markSelected(null);
+      markCurrent(null);
+      if (currentRow) currentRow.setAttribute("aria-expanded", "false");
       drawer.innerHTML = "";
       currentRow = null;
       unlockBackground();
@@ -177,8 +179,8 @@
     // behaviour for the open action).
     function openRow(row) {
       if (!row) return;
-      // 批选模式(非空选择)挂起行导航:bulk-bar.js 给行加 aria-disabled,
-      // 点击已被它拦截;这里兜底程序化入口(review-hotkeys 的 drawerApi.open)。
+      // 防御守卫（无当前生产者：批选不再挂 aria-disabled）：行链接被显式
+      // 禁用时，程序化入口（review-keyboard 的 drawerApi.open）同样让路。
       if (row.getAttribute("aria-disabled") === "true") return;
       const url = row.getAttribute("data-fragment-url");
       if (!url) return;
@@ -192,7 +194,8 @@
           scrim.classList.add("on");
           drawer.setAttribute("aria-hidden", "false");
           lockBackground();
-          markSelected(row);
+          markCurrent(row);
+          row.setAttribute("aria-expanded", "true");
           bindFragment();
           focusDrawer();
         })
@@ -208,19 +211,46 @@
       const url = currentRow.getAttribute("data-fragment-url");
       fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
         .then(function (res) { return res.text(); })
-        .then(function (html) { drawer.innerHTML = html; bindFragment(); focusDrawer(); })
+        .then(function (html) {
+          drawer.innerHTML = html;
+          bindFragment();
+          resyncRowConsumers();
+          focusDrawer();
+        })
         .catch(function () { /* leave the drawer as-is; the row is unchanged */ });
     }
 
-    function markSelected(row) {
-      document.querySelectorAll('.exp-row-detail[aria-selected="true"]').forEach(function (r) {
-        if (r !== row) r.setAttribute("aria-selected", "false");
+    // save/keep 的 refetch 带回新 expected_row_version：同一新 OCC token 必须
+    // 同步给该行全部消费者 —— checkbox 的 data-row-version 与 value
+    // （id:version）、行内 quick-confirm 的 expense_snapshot；bulk form 的
+    // hidden token 由 bulk-bar 按 checkbox 现状重建（checked 与计数天然保留）。
+    function resyncRowConsumers() {
+      if (!currentRow) return;
+      const fresh = drawer.querySelector('[data-drawer-form] input[name="expected_row_version"]');
+      const version = fresh && fresh.value;
+      if (!version) return;
+      const container = currentRow.closest(".exp-row");
+      const expenseId = container && container.getAttribute("data-expense-id");
+      if (!expenseId) return;
+      const snapshot = expenseId + ":" + version;
+      const checkbox = container.querySelector(".row-check");
+      if (checkbox) {
+        checkbox.setAttribute("data-row-version", version);
+        checkbox.value = snapshot;
+      }
+      container.querySelectorAll('form input[type="hidden"][name="expense_snapshot"]').forEach(function (node) {
+        node.value = snapshot;
       });
+      if (typeof app.refreshBulkBar === "function") app.refreshBulkBar();
+    }
+
+    // 焦点合同下不再有第二套「选中」态标记：drawer 打开时只标
+    // is-current（与 bulk-bar 同族的容器高亮，inbox.css），行高亮交给 :focus-within。
+    function markCurrent(row) {
       document.querySelectorAll(".exp-row.is-current").forEach(function (r) {
         r.classList.remove("is-current");
       });
       if (row) {
-        row.setAttribute("aria-selected", "true");
         const container = row.closest(".exp-row");
         if (container) container.classList.add("is-current");
       }
@@ -273,7 +303,8 @@
       if (next) {
         openRow(next);
       } else {
-        close();
+        // 队列耗尽：重取服务端权威页面（空态/计数/焦点），不在 JS 复制文案。
+        window.location.reload();
       }
     }
 
@@ -367,9 +398,13 @@
     });
 
     document.querySelectorAll(".exp-row-detail[data-fragment-url]").forEach(function (row) {
+      // PE dialog 语义: JS 成立时行链接宣布自身打开 #drawer dialog; 开/关态切 expanded。
+      row.setAttribute("aria-haspopup", "dialog");
+      row.setAttribute("aria-controls", "drawer");
+      row.setAttribute("aria-expanded", "false");
       row.addEventListener("click", function (e) {
-        // 批选模式下 bulk-bar.js 负责拦截行导航;它在同一节点上后注册,
-        // 所以这里也要自查 aria-disabled,否则监听器执行顺序会让抽屉先开。
+        // 纯防御守卫：当前 bulk-bar.js 不生产 aria-disabled；若其他消费者
+        // 显式禁用该链接，抽屉也不应绕过它。
         if (row.getAttribute("aria-disabled") === "true") return;
         // 点 checkbox / 表单元素时不打开抽屉
         const tag = (e.target.tagName || "").toLowerCase();
@@ -380,7 +415,7 @@
       });
     });
 
-    // Exposed for review-hotkeys.js (J/K navigation + Ctrl+Enter confirm).
+    // Exposed for review-keyboard.js (Arrow/Home/End focus navigation + Ctrl/⌘+Enter confirm).
     app.drawerApi = {
       open: openRow,
       close: close,

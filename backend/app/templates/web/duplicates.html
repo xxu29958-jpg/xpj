@@ -120,7 +120,7 @@
           <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
           <button class="product-button" type="submit">不是重复，保留两条</button>
         </form>
-        {% if orig %}
+        {% if orig and orig.status == 'pending' %}
         <form method="post" action="/web/duplicates/{{ cur.id }}/reject-original" class="product-inline-form"
               data-confirm="将参考记录移入回收站，并保留当前记录。继续吗？">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -130,6 +130,8 @@
           <input type="hidden" name="expected_original_row_version" value="{{ orig.row_version }}">
           <button class="product-button" type="submit">忽略参考记录</button>
         </form>
+        {% elif orig and orig.status == 'confirmed' %}
+        <span class="readonly-inline">已入账参考记录不能在重复核对中忽略；可以进入账单事实页更正，当前暂不支持撤销。</span>
         {% endif %}
         <form method="post" action="/web/duplicates/{{ cur.id }}/reject-current" class="product-inline-form"
               data-confirm="将当前待核对记录移入回收站。继续吗？">

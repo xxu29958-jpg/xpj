@@ -17,15 +17,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FxContract
-import com.ticketbox.domain.model.canCreateRepaymentDraft
-import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.domain.model.recordCurrencyDisplay
@@ -44,13 +40,9 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.screens.expense.BillSplitInviteSheet
-import com.ticketbox.ui.screens.expense.BillSplitInviteSheetActions
-import com.ticketbox.ui.screens.expense.BillSplitInviteSheetState
 import com.ticketbox.ui.screens.expense.EditDraftPreviewCard
 import com.ticketbox.ui.screens.expense.EditDraftPreviewActions
 import com.ticketbox.ui.screens.expense.EditDraftPreviewState
-import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanel
 import com.ticketbox.ui.screens.expense.ExpenseDateField
 import com.ticketbox.ui.screens.expense.ExpenseDateFieldActions
 import com.ticketbox.ui.screens.expense.ExpenseDateFieldState
@@ -71,12 +63,9 @@ import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
 import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
-import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelActions
-import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelState
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsActions
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsState
-import com.ticketbox.ui.screens.expense.ExpenseRepaymentDraftPanel
 import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
@@ -85,7 +74,6 @@ import com.ticketbox.ui.screens.expense.OcrProgressCard
 import com.ticketbox.ui.screens.expense.SplitsEditorSheetActions
 import com.ticketbox.ui.screens.expense.SplitsEditorSheet
 import com.ticketbox.ui.screens.expense.SplitsEditorSheetState
-import com.ticketbox.viewmodel.BillSplitSentLoadState
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
 data class ExpenseEditScreenState(
@@ -105,7 +93,6 @@ data class ExpenseEditScreenActions(
     val related: ExpenseEditRelatedActions = ExpenseEditRelatedActions(),
     val itemization: ExpenseEditItemizationActions = ExpenseEditItemizationActions(),
     val splitEditing: ExpenseEditSplitEditingActions = ExpenseEditSplitEditingActions(),
-    val billSplit: ExpenseEditBillSplitActions = ExpenseEditBillSplitActions(),
 )
 
 data class ExpenseEditPrimaryActions(
@@ -125,7 +112,6 @@ data class ExpenseEditMediaActions(
 
 data class ExpenseEditRelatedActions(
     val onKeepDuplicate: () -> Unit = {},
-    val onCreateRepaymentDraft: () -> Unit = {},
 )
 
 data class ExpenseEditItemizationActions(
@@ -137,15 +123,6 @@ data class ExpenseEditItemizationActions(
 data class ExpenseEditSplitEditingActions(
     val onEditSplits: () -> Unit = {},
     val editor: SplitsEditorSheetActions = noopSplitsEditorSheetActions(),
-)
-
-data class ExpenseEditBillSplitActions(
-    val onStartInvite: () -> Unit = {},
-    val onCancelInvite: (publicId: String) -> Unit = {},
-    val onSelectMember: (memberId: Long) -> Unit = {},
-    val onUpdateAmount: (amountText: String) -> Unit = {},
-    val onSend: () -> Unit = {},
-    val onDismissSheet: () -> Unit = {},
 )
 
 private fun noopItemsEditorSheetActions(): ItemsEditorSheetActions = ItemsEditorSheetActions(
@@ -178,10 +155,9 @@ fun ExpenseEditScreen(
     val relatedActions = actions.related
     val itemizationActions = actions.itemization
     val splitEditingActions = actions.splitEditing
-    val billSplitActions = actions.billSplit
 
     val handleBack = {
-        if (!state.saving && !state.repaymentDraftCreating) {
+        if (!state.saving) {
             primaryActions.onDone()
         }
     }
@@ -192,7 +168,7 @@ fun ExpenseEditScreen(
                 drafts = state.itemDrafts,
                 parentAmountCents = state.expenseItems?.parentAmountCents,
                 saving = state.itemsSaving,
-                display = expense?.recordCurrencyDisplay() ?: CurrencyDisplay.Base,
+                display = expense.recordCurrencyDisplay(),
             ),
             actions = itemizationActions.editor,
         )
@@ -205,32 +181,9 @@ fun ExpenseEditScreen(
                 parentAmountCents = state.expenseSplits?.parentAmountCents,
                 saving = state.splitsSaving,
                 loading = state.splitMembersLoading,
-                display = expense?.recordCurrencyDisplay() ?: CurrencyDisplay.Base,
+                display = expense.recordCurrencyDisplay(),
             ),
             actions = splitEditingActions.editor,
-        )
-    }
-
-    if (state.billSplitInviteSheetOpen) {
-        BillSplitInviteSheet(
-            state = BillSplitInviteSheetState(
-                members = state.billSplitInviteMembers,
-                membersLoading = state.billSplitInviteMembersLoading,
-                selectedMemberId = state.billSplitInviteSelectedMemberId,
-                amountText = state.billSplitInviteAmountText,
-                sending = state.billSplitInviteSending,
-                message = state.billSplitInviteMessage,
-                messageTone = state.billSplitInviteMessageTone,
-                display = expense?.recordCurrencyDisplay() ?: CurrencyDisplay.Base,
-            ),
-            remainingCents = billSplitRemainingCents(state),
-            remainingUnavailable = state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,
-            actions = BillSplitInviteSheetActions(
-                onSelectMember = billSplitActions.onSelectMember,
-                onUpdateAmount = billSplitActions.onUpdateAmount,
-                onSend = billSplitActions.onSend,
-                onDismiss = billSplitActions.onDismissSheet,
-            ),
         )
     }
 
@@ -569,31 +522,6 @@ fun ExpenseEditScreen(
             ),
         )
 
-        // 已入账流水进入还款复核箱；不在详情页直接抵扣欠款。
-        if (currentExpense.canCreateRepaymentDraft(state.readOnly)) {
-            ExpenseRepaymentDraftPanel(
-                creating = state.repaymentDraftCreating,
-                onCreate = relatedActions.onCreateRepaymentDraft,
-            )
-        }
-
-        // 批 13：跨账本「找家人分摊」卡——仅已确认 + 有金额 + 非收到拆账 + 可写时出现。
-        if (currentExpense.canInitiateBillSplit(state.readOnly)) {
-            ExpenseBillSplitInvitePanel(
-                state = ExpenseBillSplitInvitePanelState(
-                    sent = state.billSplitSent,
-                    loadState = state.billSplitSentLoadState,
-                    loading = state.billSplitLoading,
-                    message = state.billSplitMessage,
-                    messageTone = state.billSplitMessageTone,
-                ),
-                actions = ExpenseBillSplitInvitePanelActions(
-                    onStartInvite = billSplitActions.onStartInvite,
-                    onCancelInvite = billSplitActions.onCancelInvite,
-                ),
-            )
-        }
-
         ExpenseEditMoreSection(
             state = ExpenseEditMoreSectionState(
                 tags = tags,
@@ -621,20 +549,6 @@ fun ExpenseEditScreen(
         // 保存 / 确认入账 / 删除 与校验提示现在浮在底部操作栏（见 bottomBar），
         // 不再钉在长表单滚动末尾。
     }
-}
-
-/**
- * 批 13：本笔还可分摊的金额 = 账单金额 − 已活跃（invited/accepted）拆账总额。
- * 仅作 sheet 内的非阻塞提示；金额上限的权威校验在 VM + 后端 split_total_exceeds_parent。
- * 账单无金额时返回 null（卡片本就不会出现，此处只为安全）。
- */
-internal fun billSplitRemainingCents(state: ExpenseEditUiState): Long? {
-    if (state.billSplitSentLoadState != BillSplitSentLoadState.Loaded) return null
-    val parent = state.expense?.amountCents ?: return null
-    val active = state.billSplitSent
-        .filter { it.status == BillSplitStatusValues.INVITED || it.status == BillSplitStatusValues.ACCEPTED }
-        .sumOf { it.amountCents }
-    return (parent - active).coerceAtLeast(0L)
 }
 
 // Category init for the edit form reads the SERVER-STORED value: a row whose

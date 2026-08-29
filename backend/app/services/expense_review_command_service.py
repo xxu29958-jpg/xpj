@@ -47,6 +47,8 @@ def _save_then_confirm(
     tenant_id: str,
     expected_row_version: int,
     payload: ExpenseUpdateRequest,
+    actor_account_id: int | None,
+    actor_device_id: int | None,
 ) -> Expense:
     if payload.expected_row_version != expected_row_version:
         raise AppError("state_conflict", status_code=409)
@@ -62,6 +64,8 @@ def _save_then_confirm(
         expense_id,
         tenant_id,
         expected_row_version=updated.row_version,
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
         commit=False,
     )
 
@@ -76,6 +80,8 @@ def confirm_expense_submission(
     idempotency_key: str | None,
     intent_body: dict[str, object],
     update_payload: ExpenseUpdateRequest | None,
+    actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
     require_idempotency: bool = False,
 ) -> Expense:
     """Confirm one browser snapshot, optionally saving its edits atomically.
@@ -113,6 +119,8 @@ def confirm_expense_submission(
                 tenant_id=tenant_id,
                 expected_row_version=expected_row_version,
                 payload=update_payload,
+                actor_account_id=actor_account_id,
+                actor_device_id=actor_device_id,
             )
         else:
             confirmed = confirm_expense(
@@ -120,6 +128,8 @@ def confirm_expense_submission(
                 expense_id,
                 tenant_id,
                 expected_row_version=expected_row_version,
+                actor_account_id=actor_account_id,
+                actor_device_id=actor_device_id,
                 commit=False,
             )
         if claim is not None:
@@ -169,6 +179,11 @@ def reject_duplicate_original_keep_current(
             and original.row_version == expected_original_row_version
         )
         if not snapshots_match:
+            raise AppError("state_conflict", status_code=409)
+
+        if original.status == "confirmed":
+            raise AppError("expense_reversal_required", status_code=409)
+        if original.status != "pending":
             raise AppError("state_conflict", status_code=409)
 
         mark_expense_not_duplicate(

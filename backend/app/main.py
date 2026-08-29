@@ -40,6 +40,7 @@ from app.routes import (
     devices,
     duplicates,
     exchange_rates,
+    expense_corrections,
     expenses,
     goals,
     imports,
@@ -68,6 +69,7 @@ from app.routes import (
     web_budget_advise,
     web_budgets,
     web_categories,
+    web_confirmed_batch,
     web_dashboard,
     web_data_quality,
     web_debt_actions,
@@ -76,8 +78,10 @@ from app.routes import (
     web_debt_proposal_actions,
     web_debts,
     web_duplicates,
+    web_expense_correction,
     web_expense_edit,
     web_expense_items,
+    web_expense_lifecycle,
     web_expense_splits,
     web_goals,
     web_import_export,
@@ -346,6 +350,7 @@ app.include_router(bootstrap.router)
 app.include_router(uploads.router)
 app.include_router(uploads.upload_link_router)
 app.include_router(expenses.router)
+app.include_router(expense_corrections.router)
 app.include_router(exchange_rates.router)
 app.include_router(duplicates.router)
 app.include_router(ledgers.router)
@@ -383,9 +388,12 @@ app.include_router(owner_ledgers.router)
 # generic /web matcher (FastAPI registers first-mounted-first-matched).
 app.include_router(web_auth.router)
 app.include_router(web_app.router)
+app.include_router(web_confirmed_batch.router)
 app.include_router(web_bill_split.router)
 app.include_router(web_dashboard.router)
 app.include_router(web_expense_edit.router)
+app.include_router(web_expense_correction.router)
+app.include_router(web_expense_lifecycle.router)
 app.include_router(web_expense_items.router)
 app.include_router(web_expense_splits.router)
 app.include_router(web_media.router)

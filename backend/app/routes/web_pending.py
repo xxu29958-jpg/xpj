@@ -7,18 +7,27 @@ modules under the 280-line budget. Business logic lives in
 
 from __future__ import annotations
 
-from urllib.parse import urlencode
-
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_bulk_snapshot import parse_bulk_snapshot
+from app.routes._web_pending_bulk_response import (
+    REMOVAL_ACTIONS,
+    bulk_error_json,
+    bulk_fragment_json,
+    bulk_invalid_snapshot,
+    bulk_no_selection,
+    format_bulk_message,
+    pending_bulk_result_redirect,
+    pending_redirect,
+)
 from app.routes._web_pending_enrichment_watch import (
     web_pending_enrichment_context,
 )
+from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -27,7 +36,6 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
-    _with_ledger,
     parse_form_row_version_token,
     templates,
 )
@@ -207,113 +215,6 @@ def web_pending(
     return templates.TemplateResponse(request=request, name="pending.html", context=ctx)
 
 
-def _pending_redirect(selected_id: str, *, filter: str, msg: str) -> RedirectResponse:
-    return _web_redirect("/web/pending", selected_id, filter=filter or "all", msg=msg)
-
-
-def _pending_redirect_with_batch_undo(
-    selected_id: str, *, filter: str, msg: str, result: BulkResult
-) -> RedirectResponse:
-    url = _with_ledger(
-        "/web/pending",
-        selected_id,
-        filter=filter or "all",
-        msg=msg,
-        flash_type="success",
-    )
-    undo_pairs: list[tuple[str, str]] = []
-    for expense_id in result.success_ids:
-        row_version = result.undo_row_versions.get(expense_id)
-        if row_version is None:
-            continue
-        undo_pairs.append(("undo_id", str(expense_id)))
-        undo_pairs.append(("undo_rv", str(row_version)))
-    if undo_pairs:
-        url = f"{url}&{urlencode(undo_pairs)}"
-    return RedirectResponse(url=url, status_code=303)
-
-
-_SUCCESS_VERBS = {
-    "reject": "已忽略",
-    "confirm_ready": "已确认",
-    "keep_duplicate": "已保留",
-}
-
-
-def _format_bulk_message(action: str, result: BulkResult) -> str:
-    parts: list[str] = []
-    if result.success_count:
-        verb = _SUCCESS_VERBS.get(action, "已更新")
-        parts.append(f"{verb} {result.success_count} 条")
-    for label, count in result.skipped_reasons.items():
-        parts.append(f"跳过 {count} 条：{label}")
-    if not parts:
-        parts.append("没有可操作的账单。")
-    return "；".join(parts) + "。"
-
-
-# issue #64 W3: only the removal-type bulk actions speak the fetch+partial JSON
-# contract — they pop rows out of the pending list, which the /web bulk bar can
-# splice from the DOM without a full reload. set_category / set_merchant /
-# keep_duplicate mutate a row in place (it stays visible), so they keep the
-# full-page redirect and are unaffected by ``fragment``.
-_REMOVAL_ACTIONS = frozenset({"reject", "confirm_ready"})
-
-
-def _bulk_fragment_json(action: str, result: BulkResult) -> JSONResponse:
-    """fetch+partial success body: which rows the server actually removed plus
-    the same summary the redirect path flashes. ``removed_ids`` is authoritative
-    — confirm_ready skips non-ready rows, so the client must not assume every
-    selected row left the queue."""
-    body = {
-        "removed_ids": list(result.success_ids),
-        "message": _format_bulk_message(action, result),
-        "flash_type": "success",
-    }
-    if action == "reject":
-        body["undo_items"] = [
-            {
-                "id": expense_id,
-                "expected_row_version": result.undo_row_versions[expense_id],
-            }
-            for expense_id in result.success_ids
-            if expense_id in result.undo_row_versions
-        ]
-    return JSONResponse(body)
-
-
-def _bulk_error_json(message: str, *, status_code: int = 200) -> JSONResponse:
-    return JSONResponse(
-        {"removed_ids": [], "message": message, "flash_type": "error"},
-        status_code=status_code,
-    )
-
-
-def _bulk_no_selection(selected_id: str, *, filter: str, fragment: bool) -> Response:
-    msg = "请先勾选账单。"
-    if fragment:
-        return _bulk_error_json(msg)
-    return _pending_redirect(selected_id, filter=filter, msg=msg)
-
-
-def _bulk_invalid_snapshot(
-    selected_id: str,
-    *,
-    filter: str,
-    fragment: bool,
-) -> Response:
-    msg = "页面已过期，请刷新后重新操作。"
-    if fragment:
-        return _bulk_error_json(msg, status_code=409)
-    return _web_redirect(
-        "/web/pending",
-        selected_id,
-        filter=filter or "all",
-        msg=msg,
-        flash_type="error",
-    )
-
-
 def _reject_pending_rows(
     db: Session,
     *,
@@ -351,7 +252,7 @@ def web_pending_batch_reject(
     _require_selected_ledger_write(options, selected_id)
 
     if not expense_ids and not expense_snapshot:
-        return _bulk_no_selection(selected_id, filter=filter, fragment=bool(fragment))
+        return bulk_no_selection(selected_id, filter=filter, fragment=bool(fragment))
 
     snapshot = parse_bulk_snapshot(
         expense_ids,
@@ -359,7 +260,7 @@ def web_pending_batch_reject(
         expense_snapshot,
     )
     if snapshot is None:
-        return _bulk_invalid_snapshot(
+        return bulk_invalid_snapshot(
             selected_id,
             filter=filter,
             fragment=bool(fragment),
@@ -373,9 +274,18 @@ def web_pending_batch_reject(
         expected_row_version_by_id=expected_by_id,
     )
     if fragment:
-        return _bulk_fragment_json("reject", result)
-    return _pending_redirect_with_batch_undo(
-        selected_id, filter=filter, msg=_format_bulk_message("reject", result), result=result
+        return bulk_fragment_json(
+            "reject",
+            result,
+            selected_id=selected_id,
+            filter=filter,
+        )
+    return pending_bulk_result_redirect(
+        selected_id,
+        action="reject",
+        filter=filter,
+        msg=format_bulk_message("reject", result),
+        result=result,
     )
 
 
@@ -429,6 +339,58 @@ def web_pending_batch_undo(
     )
 
 
+def _apply_web_review_bulk(
+    db: Session,
+    request: Request,
+    *,
+    selected_id: str,
+    action: str,
+    expense_ids: list[int],
+    expected_by_id: dict[int, int],
+    category: str,
+    merchant: str,
+) -> BulkResult:
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
+    return apply_review_bulk(
+        db,
+        tenant_id=selected_id,
+        action=action,
+        expense_ids=expense_ids,
+        expected_row_version_by_id=expected_by_id,
+        category=category,
+        merchant=merchant,
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+    )
+
+
+def _bulk_review_response(
+    *,
+    selected_id: str,
+    action: str,
+    filter_key: str,
+    fragment_removal: bool,
+    result: BulkResult,
+) -> Response:
+    if fragment_removal:
+        return bulk_fragment_json(
+            action,
+            result,
+            selected_id=selected_id,
+            filter=filter_key,
+        )
+    message = format_bulk_message(action, result)
+    if action in REMOVAL_ACTIONS:
+        return pending_bulk_result_redirect(
+            selected_id,
+            action=action,
+            filter=filter_key,
+            msg=message,
+            result=result,
+        )
+    return pending_redirect(selected_id, filter=filter_key, msg=message)
+
+
 @router.post("/review/bulk", response_class=HTMLResponse)
 def web_review_bulk(
     request: Request,
@@ -455,10 +417,10 @@ def web_review_bulk(
     if action_clean not in ALLOWED_ACTIONS:
         raise AppError("invalid_request", status_code=422)
 
-    fragment_removal = bool(fragment) and action_clean in _REMOVAL_ACTIONS
+    fragment_removal = bool(fragment) and action_clean in REMOVAL_ACTIONS
 
     if not expense_ids and not expense_snapshot:
-        return _bulk_no_selection(selected_id, filter=filter, fragment=fragment_removal)
+        return bulk_no_selection(selected_id, filter=filter, fragment=fragment_removal)
 
     snapshot = parse_bulk_snapshot(
         expense_ids,
@@ -466,7 +428,7 @@ def web_review_bulk(
         expense_snapshot,
     )
     if snapshot is None:
-        return _bulk_invalid_snapshot(
+        return bulk_invalid_snapshot(
             selected_id,
             filter=filter,
             fragment=fragment_removal,
@@ -474,26 +436,27 @@ def web_review_bulk(
     unique_expense_ids, expected_by_id = snapshot
 
     try:
-        result = apply_review_bulk(
+        result = _apply_web_review_bulk(
             db,
-            tenant_id=selected_id,
+            request,
+            selected_id=selected_id,
             action=action_clean,
             expense_ids=unique_expense_ids,
-            expected_row_version_by_id=expected_by_id,
+            expected_by_id=expected_by_id,
             category=category,
             merchant=merchant,
         )
     except AppError as exc:
         if exc.status_code == 422 and exc.error == "invalid_request":
             if fragment_removal:
-                return _bulk_error_json(exc.message)
-            return _pending_redirect(selected_id, filter=filter, msg=exc.message)
+                return bulk_error_json(exc.message)
+            return pending_redirect(selected_id, filter=filter, msg=exc.message)
         raise
 
-    if fragment_removal:
-        return _bulk_fragment_json(action_clean, result)
-    return _pending_redirect(
-        selected_id,
-        filter=filter,
-        msg=_format_bulk_message(action_clean, result),
+    return _bulk_review_response(
+        selected_id=selected_id,
+        action=action_clean,
+        filter_key=filter,
+        fragment_removal=fragment_removal,
+        result=result,
     )

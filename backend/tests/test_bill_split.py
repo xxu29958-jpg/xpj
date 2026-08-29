@@ -13,13 +13,19 @@ Covers Confirmation section of ADR-0029:
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.models import Account, Expense, Ledger, LedgerMember
+from app.errors import AppError
+from app.models import Account, Expense, ExpenseRevision, Ledger, LedgerMember
+from app.schemas import ExpenseCorrectionRequest
+from app.services import bill_split_service as bsplit
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_correction_service import correct_expense
 from app.services.time_service import now_utc
 
 # -------------------------------------------------------------------------
@@ -126,8 +132,6 @@ def test_sent_response_omits_receiver_ledger_even_after_accept(
 
     # 2) receiver accepts (directly via service, since we don't have a
     # second auth token in this test fixture)
-    from app.services import bill_split_service as bsplit
-
     with SessionLocal() as db:
         bsplit.accept_invitation(
             db,
@@ -156,8 +160,6 @@ def test_inbox_response_omits_sender_internal_ids(client: TestClient, *, identit
         json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
 
-    from app.services import bill_split_service as bsplit
-
     with SessionLocal() as db:
         rows = bsplit.list_inbox(db, receiver_account_id=receiver_account_id)
         assert len(rows) == 1
@@ -174,8 +176,6 @@ def test_inbox_response_omits_sender_internal_ids(client: TestClient, *, identit
 
 def test_inbox_account_scoped_regardless_of_ledger() -> None:
     """B's inbox is account-scoped; switching ledgers shouldn't change it."""
-    from app.services import bill_split_service as bsplit
-
     expense_id = _make_expense_for_owner()
     receiver_account_id = _seed_receiver(name="B-scope", ledger_id="receiver_scope")
     with SessionLocal() as db:
@@ -197,8 +197,6 @@ def test_inbox_account_scoped_regardless_of_ledger() -> None:
 def test_accept_idempotent_returns_same_received_expense() -> None:
     """Accepting twice returns the same received_expense_id; UNIQUE
     constraint backs this up at the DB level too."""
-    from app.services import bill_split_service as bsplit
-
     expense_id = _make_expense_for_owner()
     receiver_account_id = _seed_receiver(name="B-idem", ledger_id="receiver_idem")
     with SessionLocal() as db:
@@ -237,9 +235,6 @@ def test_accept_idempotent_returns_same_received_expense() -> None:
 
 def test_accept_to_viewer_ledger_403() -> None:
     """B has only ``viewer`` role on the target ledger → 403 ledger_forbidden."""
-    from app.errors import AppError
-    from app.services import bill_split_service as bsplit
-
     # Create a viewer-only ledger for B.
     receiver_account_id = _seed_receiver(name="B-viewer", ledger_id="receiver_b_view")
     with SessionLocal() as db:
@@ -279,9 +274,6 @@ def test_accept_to_viewer_ledger_403() -> None:
 
 def test_accept_to_sender_ledger_403() -> None:
     """Same-ledger target rejected (don't loopback debt to sender's own ledger)."""
-    from app.errors import AppError
-    from app.services import bill_split_service as bsplit
-
     # Receiver is a member on owner ledger too — but we still reject
     # accepting to sender_ledger.
     receiver_account_id = _seed_receiver(name="B-shared", ledger_id="receiver_shared")
@@ -322,9 +314,6 @@ def test_accept_to_sender_ledger_403() -> None:
 def test_chain_split_on_received_expense_blocked() -> None:
     """B accepts an invitation → generates received expense. B cannot
     then split-invite from that received expense."""
-    from app.errors import AppError
-    from app.services import bill_split_service as bsplit
-
     expense_id = _make_expense_for_owner()
     receiver_account_id = _seed_receiver(name="B-chain", ledger_id="receiver_chain")
     with SessionLocal() as db:
@@ -365,14 +354,9 @@ def test_chain_split_on_received_expense_blocked() -> None:
 # Update guard: received-expense immutable fields
 
 
-def test_received_expense_amount_cannot_be_patched(client: TestClient, *, identity) -> None:
-    """update_expense must reject changes to amount_cents on a
-    ``source='bill_split_received'`` row."""
-    from app.services import bill_split_service as bsplit
-
+def test_received_expense_amount_cannot_be_corrected(client: TestClient, *, identity) -> None:
+    """The correction owner must preserve an accepted split's agreed amount."""
     expense_id = _make_expense_for_owner()
-    # Owner is both sender and receiver here for convenience — we route
-    # the accepted expense back into a sub-ledger they own.
     receiver_account_id = _seed_receiver(name="B-imm", ledger_id="receiver_imm")
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
@@ -391,21 +375,39 @@ def test_received_expense_amount_cannot_be_patched(client: TestClient, *, identi
         )
         received_id = received_expense.id
 
-    # Attempt PATCH amount on the received expense via service (route
-    # behaviour is the same; service-level guard is what we want to assert).
-    from app.errors import AppError
-    from app.schemas import ExpenseUpdateRequest
-    from app.services.expense_service._update import update_expense
-
     with SessionLocal() as db, pytest.raises(AppError) as exc:
         row = db.scalar(select(Expense).where(Expense.id == received_id))
         assert row is not None
-        payload = ExpenseUpdateRequest(
+        before_row_version = row.row_version
+        before_fact_revision = row.fact_revision
+        before_revision_count = db.scalar(
+            select(func.count(ExpenseRevision.id)).where(ExpenseRevision.expense_id == received_id)
+        )
+        payload = ExpenseCorrectionRequest(
             amount_cents=9999,
             expected_row_version=row.row_version,
+            reason="收到的拆账金额与已接受事实不一致",
         )
-        update_expense(db, received_id, "receiver_imm", payload)
+        correct_expense(
+            db,
+            expense_id=received_id,
+            tenant_id="receiver_imm",
+            payload=payload,
+            actor_account_id=receiver_account_id,
+            actor_device_id=None,
+            idempotency_key=str(uuid4()),
+        )
     assert exc.value.error == "split_received_field_immutable"
+
+    with SessionLocal() as db:
+        current = db.scalar(select(Expense).where(Expense.id == received_id))
+        assert current is not None
+        assert current.amount_cents == 2500
+        assert current.row_version == before_row_version
+        assert current.fact_revision == before_fact_revision
+        assert db.scalar(
+            select(func.count(ExpenseRevision.id)).where(ExpenseRevision.expense_id == received_id)
+        ) == before_revision_count
 
 
 # -------------------------------------------------------------------------
@@ -460,9 +462,6 @@ def test_cancel_invited_invitation(client: TestClient, *, identity) -> None:
 def test_cancel_accepted_invitation_rejected() -> None:
     """Already-accepted invitations cannot be cancelled (receiver has a
     real expense; cancelling would silently delete debt)."""
-    from app.errors import AppError
-    from app.services import bill_split_service as bsplit
-
     expense_id = _make_expense_for_owner()
     receiver_account_id = _seed_receiver(name="B-noc", ledger_id="receiver_noc")
     with SessionLocal() as db:

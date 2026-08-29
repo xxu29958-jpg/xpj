@@ -1,0 +1,43 @@
+{# 次级事实卡 + 唯一写入口「更正这笔账单」。
+   关键元数据（时间/分类/评价）已上移到 _fact_header 的 hero 带；
+   本卡只承载次级字段，不再重复商家/金额。契约：expense, can_write, q, edit_return_href。 #}
+<section class="dt-card fact-card" aria-label="更多事实">
+  <dl class="fact-grid">
+    {% if expense.is_foreign_currency %}
+    <div class="fact-row">
+      <dt>原币金额</dt>
+      <dd>{{ expense.original_currency_code }} {{ expense.original_amount_value or '—' }}</dd>
+    </div>
+    {% endif %}
+    <div class="fact-row">
+      <dt>标签</dt>
+      <dd>{{ expense.tags or '—' }}</dd>
+    </div>
+    <div class="fact-row">
+      <dt>备注</dt>
+      <dd>{{ expense.note or '—' }}</dd>
+    </div>
+    <div class="fact-row">
+      <dt>来源</dt>
+      <dd>{{ expense.source_label }}</dd>
+    </div>
+    <div class="fact-row">
+      <dt>上传时间</dt>
+      <dd>{{ expense.created_at }}</dd>
+    </div>
+    {% if expense.confirmed_at_label %}
+    <div class="fact-row">
+      <dt>确认时间</dt>
+      <dd>{{ expense.confirmed_at_label }}</dd>
+    </div>
+    {% endif %}
+  </dl>
+  <div class="fact-actions">
+    {% if can_write %}
+    <a class="dt-btn primary" href="/web/expenses/{{ expense.id }}/correct{{ q }}">更正这笔账单</a>
+    {% else %}
+    <span class="meta">只读角色可查看事实与变更记录。</span>
+    {% endif %}
+    <a href="{{ edit_return_href }}" class="dt-btn link">返回</a>
+  </div>
+</section>

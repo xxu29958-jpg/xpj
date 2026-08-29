@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from uuid import UUID, uuid4
 
@@ -12,11 +13,52 @@ from api_contract_helpers import (
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
+from app.main import app
 from app.models import Expense
+from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import BACKEND_ROOT
+
+_PUBLIC_WEB_ORIGIN = "https://api.example.com"
+
+
+def _html_form_value(html: str, name: str) -> str:
+    match = re.search(rf'name="{re.escape(name)}" value="([^"]*)"', html)
+    assert match is not None, f"missing {name} form field"
+    return match.group(1)
+
+
+def _open_public_web_session(client: TestClient, *, identity) -> tuple[TestClient, dict[str, str]]:
+    pairing = client.post(
+        "/api/bootstrap/pairing-codes",
+        headers=identity.admin_headers,
+        json={"ttl_minutes": 15},
+    )
+    assert pairing.status_code == 200, pairing.text
+
+    public = TestClient(
+        app,
+        base_url=_PUBLIC_WEB_ORIGIN,
+        client=("203.0.113.10", 50001),
+    )
+    login_form = public.get("/web/auth/login")
+    assert login_form.status_code == 200, login_form.text
+    login = public.post(
+        "/web/auth/login",
+        data={
+            "pairing_code": pairing.json()["pairing_code"],
+            "device_name": "A1 Web Browser",
+            "csrf_token": _html_form_value(login_form.text, "csrf_token"),
+        },
+        headers={"Origin": _PUBLIC_WEB_ORIGIN},
+        follow_redirects=False,
+    )
+    assert login.status_code == 303, login.text
+    cookie = login.headers["set-cookie"].split(f"{SESSION_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
+    assert public.cookies.get(SESSION_COOKIE_NAME) == cookie
+    return public, {"Origin": _PUBLIC_WEB_ORIGIN}
 
 
 def _assert_uploaded_expense_detail(client: TestClient, *, identity, expense_id: int) -> None:
@@ -119,6 +161,46 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     _complete_uploaded_expense_fields(client, identity=identity, expense_id=expense_id)
     _confirm_completed_upload(client, identity=identity, expense_id=expense_id)
     _assert_confirmed_upload_surfaces(client, identity=identity)
+
+
+def test_public_web_confirm_records_browser_account_and_device(
+    client: TestClient, *, identity
+) -> None:
+    expense_id = upload_png(client, identity=identity)
+    _complete_uploaded_expense_fields(client, identity=identity, expense_id=expense_id)
+    public, session_headers = _open_public_web_session(client, identity=identity)
+    try:
+        form = public.get(
+            f"/web/expenses/{expense_id}/edit?ledger_id=owner",
+            headers=session_headers,
+        )
+        assert form.status_code == 200, form.text
+        confirmed = public.post(
+            f"/web/expenses/{expense_id}/confirm",
+            headers=session_headers,
+            data={
+                "csrf_token": _html_form_value(form.text, "csrf_token"),
+                "ledger_id": "owner",
+                "expected_row_version": _html_form_value(
+                    form.text,
+                    "expected_row_version",
+                ),
+                "idempotency_key": _html_form_value(form.text, "idempotency_key"),
+            },
+            follow_redirects=False,
+        )
+        assert confirmed.status_code == 303, confirmed.text
+    finally:
+        public.close()
+
+    timeline = client.get(
+        f"/api/expenses/{expense_id}/revisions",
+        headers=identity.app_headers,
+    )
+    assert timeline.status_code == 200, timeline.text
+    revision = timeline.json()["items"][0]
+    assert revision["actor_account_name"] == "我"
+    assert revision["actor_device_name"] == "A1 Web Browser"
 
 
 def test_thumbnail_materialization_preserves_occ_before_image_deletion(client: TestClient, *, identity) -> None:

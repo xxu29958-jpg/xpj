@@ -78,7 +78,7 @@ def _legacy_database() -> None:
 def test_dataset_authority_preserves_identity_and_retires_old_writers() -> None:
     _legacy_database()
     try:
-        _alembic(command.upgrade, "head")
+        _alembic(command.upgrade, _TARGET)
         assert inspect(engine).has_table("dataset_authority")
         with engine.connect() as connection:
             authority = (

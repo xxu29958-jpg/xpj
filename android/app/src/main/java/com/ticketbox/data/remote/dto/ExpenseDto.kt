@@ -114,6 +114,8 @@ data class ExpenseDto(
     val updatedAt: String,
     @param:Json(name = "row_version")
     val rowVersion: Long,
+    @param:Json(name = "fact_revision")
+    val factRevision: Long = 0L,
     @param:Json(name = "confirmed_at")
     val confirmedAt: String?,
     @param:Json(name = "rejected_at")

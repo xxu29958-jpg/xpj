@@ -168,6 +168,28 @@ def downgrade() -> None:
     raise RuntimeError("dataset authority downgrade is not supported")
 
 
+def _expected_authority_revision(bind: sa.Connection) -> str:
+    """Accept this migration checkpoint or the exact later Alembic head.
+
+    Alembic invokes ``upgrade`` before advancing ``alembic_version``, so this
+    migration's inline postcondition sees ``down_revision`` while the authority
+    row already owns ``revision``.  The installed generation executor then
+    revalidates every earlier postcondition after reaching the release head; at
+    that point the sole authority must match that exact live head, not remain
+    pinned to this historical checkpoint.
+    """
+
+    heads = tuple(
+        bind.scalars(
+            sa.text("SELECT version_num FROM alembic_version ORDER BY version_num")
+        )
+    )
+    if len(heads) > 1:
+        raise RuntimeError("dataset authority cannot validate multiple Alembic heads")
+    current = str(heads[0]) if heads else None
+    return revision if current in {None, down_revision, revision} else current
+
+
 def assert_postcondition(bind: sa.Connection) -> None:
     inspector = sa.inspect(bind)
     if not inspector.has_table(_TABLE):
@@ -193,9 +215,10 @@ def assert_postcondition(bind: sa.Connection) -> None:
     row = rows[0]
     _canonical_uuid(row["dataset_id"], label="dataset_id")
     _canonical_uuid(row["client_generation"], label="client_generation")
+    expected_schema_revision = _expected_authority_revision(bind)
     if (
         row["restore_epoch"] != 0
-        or row["schema_revision"] != revision
+        or row["schema_revision"] != expected_schema_revision
         or not row["schema_min_compatible"]
         or row["semantic_revision"] != _SEMANTIC_REVISION
         or row["restored_from_backup_id"] is not None

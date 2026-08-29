@@ -88,8 +88,10 @@ def test_web_expense_edit_routes_have_single_owner() -> None:
     expected = {
         ("GET", "/web/expenses/{expense_id}/edit"): "app.routes.web_expense_edit",
         ("POST", "/web/expenses/{expense_id}/save"): "app.routes.web_expense_edit",
-        ("POST", "/web/expenses/{expense_id}/confirm"): "app.routes.web_expense_edit",
-        ("POST", "/web/expenses/{expense_id}/reject"): "app.routes.web_expense_edit",
+        ("POST", "/web/expenses/{expense_id}/confirm"): "app.routes.web_expense_lifecycle",
+        ("POST", "/web/expenses/{expense_id}/reject"): "app.routes.web_expense_lifecycle",
+        ("GET", "/web/expenses/{expense_id}/correct"): "app.routes.web_expense_correction",
+        ("POST", "/web/expenses/{expense_id}/corrections"): "app.routes.web_expense_correction",
         ("POST", "/web/expenses/{expense_id}/items/save"): "app.routes.web_expense_items",
         ("POST", "/web/expenses/{expense_id}/splits/save"): "app.routes.web_expense_splits",
     }

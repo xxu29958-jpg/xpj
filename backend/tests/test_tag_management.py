@@ -10,6 +10,8 @@ viewer-403, ledger isolation, and 401 auth on every route.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -32,10 +34,17 @@ def test_list_tags_with_usage_and_orphans(client: TestClient, *, identity) -> No
     manual_expense(client, h, tags="食物", merchant="B")
     a_id, _, _ = expense_row("A")
     # Orphan: re-tag A to drop 工作 → the 工作 Tag row stays with no links.
-    from api_contract_helpers import patch_expense
-
-    patched = patch_expense(client, a_id, headers=h, fields={"tags": "食物"})
-    assert patched.status_code == 200, patched.text
+    snapshot = client.get(f"/api/expenses/{a_id}", headers=h).json()
+    patched = client.post(
+        f"/api/expenses/{a_id}/corrections",
+        headers={**h, "Idempotency-Key": str(uuid4())},
+        json={
+            "expected_row_version": snapshot["row_version"],
+            "reason": "移除工作标签",
+            "tags": "食物",
+        },
+    )
+    assert patched.status_code == 201, patched.text
 
     items = tag_index(client, h)
     assert items["食物"]["usage_count"] == 2  # A + B
@@ -57,6 +66,11 @@ def test_rename_rewrites_mirror_and_bumps_expense(client: TestClient, *, identit
     )
     assert r.status_code == 200, r.text
     assert r.json()["name"] == "餐饮"
+    history = client.get(f"/api/expenses/{a_id}/revisions", headers=h)
+    assert history.status_code == 200, history.text
+    assert history.json()["items"][0]["change_kind"] == "correction"
+    assert history.json()["items"][0]["before"]["tags"] == "食物"
+    assert history.json()["items"][0]["after"]["tags"] == "餐饮"
 
     assert set(tag_index(client, h)) == {"餐饮"}
     _, _, a_tags = expense_row("A")
@@ -178,9 +192,7 @@ def test_merge_dedup_bumps_shared_expense_once(client: TestClient, *, identity) 
     assert not occ_claim_blocked(b_id, b_ver + 1)  # ...exactly once (+1, not +2)
 
 
-def test_merge_soft_deletes_source_even_when_source_has_higher_id(
-    client: TestClient, *, identity
-) -> None:
+def test_merge_soft_deletes_source_even_when_source_has_higher_id(client: TestClient, *, identity) -> None:
     """ADR-0043 review (deadlock fix): the two tag-row claims are now issued in
     ascending tag.id order, but the soft-delete must still land on the SOURCE and
     the bump on the TARGET regardless of which id is lower (set_values stay mapped
@@ -206,9 +218,7 @@ def test_merge_soft_deletes_source_even_when_source_has_higher_id(
     assert b_tags == "目标"  # B's link moved to the target
 
 
-def test_merge_pair_claim_on_vanished_tag_surfaces_state_conflict(
-    client: TestClient, *, identity
-) -> None:
+def test_merge_pair_claim_on_vanished_tag_surfaces_state_conflict(client: TestClient, *, identity) -> None:
     """ADR-0043 review (P3): in a reverse-merge race a tag can be soft-deleted
     between ``merge_tags``' upfront live check and the row claim. ``_claim_merge_pair``
     must then surface ``state_conflict`` (409 stale token — the ADR's merge OCC
@@ -226,18 +236,12 @@ def test_merge_pair_claim_on_vanished_tag_surfaces_state_conflict(
     manual_expense(client, h, tags="目标", merchant="B")
     tags = tag_index(client, h)
     with SessionLocal() as db, pytest.raises(AppError) as exc:
-        source = db.scalar(
-            select(Tag).where(Tag.tenant_id == "owner", Tag.public_id == tags["来源"]["public_id"])
-        )
-        target = db.scalar(
-            select(Tag).where(Tag.tenant_id == "owner", Tag.public_id == tags["目标"]["public_id"])
-        )
+        source = db.scalar(select(Tag).where(Tag.tenant_id == "owner", Tag.public_id == tags["来源"]["public_id"]))
+        target = db.scalar(select(Tag).where(Tag.tenant_id == "owner", Tag.public_id == tags["目标"]["public_id"]))
         # Simulate the concurrent loss: source vanished (soft-deleted + bumped)
         # while still held live in-session, before its OCC claim runs.
         db.execute(
-            update(Tag)
-            .where(Tag.id == source.id)
-            .values(deleted_at=now_utc(), row_version=source.row_version + 1)
+            update(Tag).where(Tag.id == source.id).values(deleted_at=now_utc(), row_version=source.row_version + 1)
         )
         db.flush()
         _claim_merge_pair(
@@ -252,9 +256,7 @@ def test_merge_pair_claim_on_vanished_tag_surfaces_state_conflict(
     assert exc.value.status_code == 409
 
 
-def test_delete_tag_require_orphan_rejects_a_relinked_tag(
-    client: TestClient, *, identity
-) -> None:
+def test_delete_tag_require_orphan_rejects_a_relinked_tag(client: TestClient, *, identity) -> None:
     """ADR-0043 review (owner-cleanup TOCTOU): delete_tag(require_orphan=True)
     soft-deletes atomically only while NOT EXISTS(expense_tags). A tag that gained
     a link after the caller's orphan-check (re-tagging doesn't bump row_version,
@@ -306,9 +308,7 @@ def test_soft_deleted_tag_excluded_from_reads(client: TestClient, *, identity) -
     manual_expense(client, h, tags="食物", merchant="A")
     tag = tag_index(client, h)["食物"]
     with SessionLocal() as db:
-        t = db.scalar(
-            select(Tag).where(Tag.tenant_id == "owner").where(Tag.public_id == tag["public_id"])
-        )
+        t = db.scalar(select(Tag).where(Tag.tenant_id == "owner").where(Tag.public_id == tag["public_id"]))
         t.deleted_at = now_utc()
         db.commit()
 
@@ -325,9 +325,23 @@ def test_viewer_cannot_mutate_tags(client: TestClient, *, identity) -> None:
     tag = tag_index(client, h)["食物"]
     demote_owner_to_viewer()
     checks = [
-        client.post(f"/api/tags/{tag['public_id']}/rename", headers=h, json={"expected_row_version": tag["row_version"], "name": "餐饮"}),
-        client.post(f"/api/tags/{tag['public_id']}/delete", headers=h, json={"expected_row_version": tag["row_version"]}),
-        client.post(f"/api/tags/{tag['public_id']}/merge", headers=h, json={"expected_row_version": tag["row_version"], "target_public_id": tag["public_id"], "target_row_version": tag["row_version"]}),
+        client.post(
+            f"/api/tags/{tag['public_id']}/rename",
+            headers=h,
+            json={"expected_row_version": tag["row_version"], "name": "餐饮"},
+        ),
+        client.post(
+            f"/api/tags/{tag['public_id']}/delete", headers=h, json={"expected_row_version": tag["row_version"]}
+        ),
+        client.post(
+            f"/api/tags/{tag['public_id']}/merge",
+            headers=h,
+            json={
+                "expected_row_version": tag["row_version"],
+                "target_public_id": tag["public_id"],
+                "target_row_version": tag["row_version"],
+            },
+        ),
     ]
     for response in checks:
         assert response.status_code == 403, response.text

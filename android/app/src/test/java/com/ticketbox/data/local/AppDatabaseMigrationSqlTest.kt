@@ -75,6 +75,43 @@ class AppDatabaseMigrationSqlTest {
             "status TEXT NOT NULL, expenseTime TEXT, createdAt TEXT NOT NULL, confirmedAt TEXT, updatedAt TEXT, " +
             "rowVersion INTEGER NOT NULL DEFAULT 1, clientRef TEXT)"
 
+    // v15 expenses schema: v14 plus the data-quality columns; factRevision is
+    // deliberately absent until the additive 15→16 migration under test.
+    private val v15Expenses =
+        "CREATE TABLE expenses (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, ledgerId TEXT NOT NULL, " +
+            "serverId INTEGER, publicId TEXT NOT NULL, amountCents INTEGER, homeCurrencyCode TEXT NOT NULL, " +
+            "originalCurrencyCode TEXT NOT NULL, originalAmountMinor INTEGER, exchangeRateToCny TEXT, " +
+            "exchangeRateDate TEXT, exchangeRateSource TEXT, fxStatus TEXT NOT NULL, merchant TEXT, " +
+            "categoryRaw TEXT, category TEXT NOT NULL, note TEXT, source TEXT NOT NULL, hasImage INTEGER NOT NULL DEFAULT 0, " +
+            "thumbnailPath TEXT, imageDeletedAt TEXT, thumbnailDeletedAt TEXT, imageHash TEXT, rawText TEXT, confidence REAL, " +
+            "duplicateStatus TEXT NOT NULL, duplicateOfId INTEGER, duplicateReason TEXT, tags TEXT, valueScore INTEGER, " +
+            "regretScore INTEGER, status TEXT NOT NULL, expenseTime TEXT, createdAt TEXT NOT NULL, confirmedAt TEXT, " +
+            "updatedAt TEXT, rowVersion INTEGER NOT NULL DEFAULT 1, clientRef TEXT)"
+
+    @Test
+    fun migration15To16AddsFactRevisionAndPreservesRows() {
+        Class.forName("org.sqlite.JDBC")
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { conn ->
+            conn.createStatement().use { st ->
+                st.execute(v15Expenses)
+                st.execute(
+                    "INSERT INTO expenses (ledgerId, serverId, publicId, homeCurrencyCode, originalCurrencyCode, " +
+                        "fxStatus, category, source, duplicateStatus, status, createdAt, rowVersion) VALUES " +
+                        "('owner', 9, 'pub-9', 'CNY', 'CNY', 'ready', '餐饮', '缓存', 'none', 'confirmed', " +
+                        "'2026-05-13T00:00:00Z', 7)",
+                )
+                AppDatabase.MIGRATION_15_16_STATEMENTS.forEach(st::execute)
+            }
+
+            assertTrue(conn.columns("expenses").contains("factRevision"))
+            conn.query("SELECT rowVersion, factRevision FROM expenses WHERE serverId = 9") { rs ->
+                assertTrue(rs.next(), "the cached row must survive")
+                assertEquals(7L, rs.getLong(1))
+                assertEquals(0L, rs.getLong(2), "legacy cache rows self-heal from the server")
+            }
+        }
+    }
+
     @Test
     fun migration14To15AddsQualityColumnsAndBackfillsHasImage() {
         Class.forName("org.sqlite.JDBC")

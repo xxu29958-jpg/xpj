@@ -290,6 +290,20 @@ internal class StubApi(
         request: ExpenseUpdateRequest,
         idempotencyKey: String?,
     ): ExpenseDto = ledgerUnsupported()
+    override suspend fun correctExpense(
+        id: String,
+        request: com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto = ledgerUnsupported()
+    override suspend fun expenseRevisions(
+        id: Long,
+        page: Int,
+        pageSize: Int,
+    ): com.ticketbox.data.remote.dto.ExpenseRevisionPageDto = ledgerUnsupported()
+    override suspend fun updateConfirmedBatch(
+        idempotencyKey: String,
+        request: com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateRequestDto,
+    ): com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateResponseDto = ledgerUnsupported()
     override suspend fun createRepaymentDraftFromExpense(
         id: String,
         request: com.ticketbox.data.remote.dto.ExpenseRepaymentDraftCreateRequestDto,

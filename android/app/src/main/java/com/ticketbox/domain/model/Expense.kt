@@ -54,6 +54,7 @@ data class Expense(
     val createdAt: String,
     val updatedAt: String,
     val rowVersion: Long,
+    val factRevision: Long = 0L,
     val confirmedAt: String?,
     val rejectedAt: String?,
     // issue #65 slice 4: present iff this row was created on this device and

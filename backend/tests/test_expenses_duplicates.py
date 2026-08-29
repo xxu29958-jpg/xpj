@@ -208,18 +208,19 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
     assert second.json()["duplicate_of_id"] == first_id
     second_row_version = second.json()["row_version"]
 
-    response = patch_expense(
-        client,
-        first_id,
-        headers=identity.app_headers,
-        fields={
+    response = client.post(
+        f"/api/expenses/{first_id}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={
+            "expected_row_version": first.json()["row_version"],
+            "reason": "原始记录商家录错",
             "amount_cents": 5200,
             "merchant": "Changed Original",
             "category": "生活",
             "expense_time": "2026-05-03T04:20:00Z",
         },
     )
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     after = client.get(f"/api/expenses/{second_id}", headers=identity.app_headers)
     assert after.status_code == 200

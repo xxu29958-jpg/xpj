@@ -10,6 +10,9 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseCorrectionDraft
+import com.ticketbox.domain.model.ExpenseCorrectionOutcome
+import com.ticketbox.domain.model.ExpenseRevisionPage
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplitDraft
@@ -46,7 +49,8 @@ class ExpenseRepository(
     LedgerActions,
     GlobalSearchActions,
     StatsActions,
-    ExpenseEditActions {
+    ExpenseEditActions,
+    ExpenseFactActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
         binding = binding,
@@ -79,6 +83,7 @@ class ExpenseRepository(
     private val statsRepository = ExpenseStatsRepositoryActions(core, ledgerRepository)
     private val searchRepository = ExpenseSearchRepositoryActions(core, pendingRepository, binding.settingsStore)
     private val detailRepository = ExpenseDetailRepository(core)
+    private val correctionRepository = ExpenseCorrectionRepository(core)
     private val billSplitRepository = ExpenseBillSplitRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
@@ -95,6 +100,8 @@ class ExpenseRepository(
     fun localBinding(): LocalBindingInfo? = core.localBinding()
 
     override fun canModifyLedger(): Boolean = pendingRepository.canModifyLedger()
+
+    override fun currentTimezoneId(): String = core.currentTimezoneId()
 
     override fun observeActiveLedgerId(): Flow<String?> = pendingRepository.observeActiveLedgerId()
 
@@ -131,6 +138,18 @@ class ExpenseRepository(
 
     override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> =
         detailRepository.fetchExpenseFromLocalCache(id)
+
+    override suspend fun fetchExpenseRevisions(
+        id: Long,
+        page: Int,
+        pageSize: Int,
+    ): Result<ExpenseRevisionPage> = correctionRepository.fetchRevisions(id, page, pageSize)
+
+    override suspend fun correctExpenseAllowingOffline(
+        expense: Expense,
+        correction: ExpenseCorrectionDraft,
+    ): Result<ExpenseCorrectionOutcome> =
+        correctionRepository.correctAllowingOffline(expense, correction)
 
     override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> =
         pendingRepository.uploadScreenshot(request)
@@ -236,7 +255,8 @@ class ExpenseRepository(
         expenses: List<Expense>,
         category: String?,
         tags: String?,
-    ): Result<BatchApplyResult> = ledgerRepository.applyConfirmedBatch(expenses, category, tags)
+        reason: String,
+    ): Result<BatchApplyResult> = ledgerRepository.applyConfirmedBatch(expenses, category, tags, reason)
 
     internal suspend fun createNotificationDraft(
         draft: NotificationDraft,

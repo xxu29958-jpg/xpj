@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class, PendingMutationEntity::class],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -451,6 +451,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_15_16_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE expenses ADD COLUMN factRevision INTEGER NOT NULL DEFAULT 0",
+        )
+
+        internal val Migration15To16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_15_16_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -473,6 +483,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration12To13,
                         Migration13To14,
                         Migration14To15,
+                        Migration15To16,
                     )
                     .build()
                     .also { instance = it }

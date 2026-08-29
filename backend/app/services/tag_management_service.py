@@ -14,7 +14,6 @@ undo); the cascade + snapshot + token-carrier undo are tag-specific.
 
 from __future__ import annotations
 
-from sqlalchemy import delete as sa_delete
 from sqlalchemy import exists, func, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
@@ -22,12 +21,17 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Expense, ExpenseTag, Tag, TagMutationUndoGroup, TagMutationUndoItem
+from app.models import ExpenseTag, Tag, TagMutationUndoGroup
 from app.services._tag_results import TagMutationResult, TagUsageItem
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.resource_audit import record_resource_action
-from app.services.tag_service import clean_tag_name, format_tags, tag_key
+from app.services.tag_mutation_expense_projection_service import (
+    expenses_linked_to_tag,
+    rewrite_expense_for_tag_change,
+    rewrite_expenses_for_tag_rename,
+)
+from app.services.tag_service import clean_tag_name, tag_key
 from app.services.time_service import now_utc
 
 
@@ -72,105 +76,6 @@ def list_tags_with_usage(db: Session, tenant_id: str) -> list[TagUsageItem]:
         TagUsageItem(public_id=str(pid), name=str(name), usage_count=int(count or 0), row_version=int(rv))
         for pid, name, rv, count in rows
     ]
-
-
-# --------------------------------------------------------------------------- #
-# Mirror helpers
-# --------------------------------------------------------------------------- #
-def _linked_tags(db: Session, tenant_id: str, expense_id: int) -> list[Tag]:
-    return list(
-        db.scalars(
-            select(Tag)
-            .join(ExpenseTag, ExpenseTag.tag_id == Tag.id)
-            .where(ExpenseTag.tenant_id == tenant_id)
-            .where(ExpenseTag.expense_id == expense_id)
-            .where(Tag.tenant_id == tenant_id)
-            .order_by(ExpenseTag.id.asc())
-        )
-    )
-
-
-def _expenses_linked_to_tag(db: Session, tenant_id: str, tag_id: int) -> list[Expense]:
-    return list(
-        db.scalars(
-            select(Expense)
-            .join(ExpenseTag, ExpenseTag.expense_id == Expense.id)
-            .where(ExpenseTag.tenant_id == tenant_id)
-            .where(ExpenseTag.tag_id == tag_id)
-            .where(Expense.tenant_id == tenant_id)
-            .order_by(Expense.id.asc())
-        )
-    )
-
-
-def _rewrite_expense_for_tag_change(
-    db: Session,
-    *,
-    group: TagMutationUndoGroup,
-    expense: Expense,
-    removed_tag_id: int,
-    replacement_tag: Tag | None,
-) -> None:
-    """Snapshot the expense, retag it (drop ``removed_tag_id``; for merge add
-    ``replacement_tag``), rebuild its ``tags`` string from the new link set, and
-    bump its ``row_version`` via an OCC claim — all in the caller's transaction.
-
-    Raises ``state_conflict`` if a concurrent writer bumped the expense between
-    our read and the claim (rare; the whole forward op then rolls back)."""
-    current_tags = _linked_tags(db, expense.tenant_id, expense.id)
-    original_tag_ids = [t.id for t in current_tags]
-    original_tags_str = expense.tags
-    pre_version = expense.row_version
-
-    new_tags: list[Tag] = [t for t in current_tags if t.id != removed_tag_id]
-    if replacement_tag is not None and all(t.id != replacement_tag.id for t in new_tags):
-        new_tags.append(replacement_tag)
-    new_string = format_tags([t.name for t in new_tags])
-
-    # Snapshot BEFORE mutating. cas token = the version the forward op leaves the
-    # expense at (pre_version + 1) — undo restores only if the expense is still
-    # there (no edit since).
-    db.add(
-        TagMutationUndoItem(
-            tenant_id=expense.tenant_id,
-            group_id=group.id,
-            expense_public_id=expense.public_id,
-            original_tags=original_tags_str,
-            original_tag_ids=",".join(str(i) for i in original_tag_ids),
-            original_row_version=pre_version + 1,
-            created_at=now_utc(),
-        )
-    )
-
-    # Relation rows: drop the source link; for merge add the target link unless
-    # it already exists (dedup against uq_expense_tags_tenant_expense_tag).
-    db.execute(
-        sa_delete(ExpenseTag)
-        .where(ExpenseTag.tenant_id == expense.tenant_id)
-        .where(ExpenseTag.expense_id == expense.id)
-        .where(ExpenseTag.tag_id == removed_tag_id)
-    )
-    if replacement_tag is not None and all(t.id != replacement_tag.id for t in current_tags):
-        db.add(
-            ExpenseTag(
-                tenant_id=expense.tenant_id,
-                expense_id=expense.id,
-                tag_id=replacement_tag.id,
-                created_at=now_utc(),
-            )
-        )
-
-    rowcount = claim_row_with_token(
-        db,
-        Expense,
-        pk_id=expense.id,
-        tenant_id=expense.tenant_id,
-        expected_row_version=pre_version,
-        set_values={"tags": new_string, "updated_at": now_utc()},
-        synchronize_session=False,
-    )
-    if rowcount != 1:
-        raise AppError("state_conflict", status_code=409)
 
 
 def _disambiguate_tag_claim(db: Session, tenant_id: str, public_id: str) -> AppError:
@@ -248,6 +153,8 @@ def rename_tag(
     public_id: str,
     expected_row_version: int,
     name: str,
+    actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
 ) -> Tag:
     """Self-inverse rename (no snapshot — undo by renaming back). Rewrites the
     denormalised string on every linked expense (the string carries the NAME)
@@ -256,6 +163,7 @@ def rename_tag(
     client can offer a merge (契约 5)."""
     authorize_currency_metadata_write(db)
     tag = _require_live_tag(db, tenant_id, public_id)
+    old_name = tag.name
     new_name = clean_tag_name(name)
     new_key = tag_key(new_name)
     if not new_key:
@@ -291,22 +199,14 @@ def rename_tag(
     # the mirror or _linked_tags would re-emit the stale name.
     db.expire_all()
 
-    # The string on every linked expense now shows the old name — rebuild + bump.
-    for expense in _expenses_linked_to_tag(db, tenant_id, tag.id):
-        names = [t.name for t in _linked_tags(db, tenant_id, expense.id)]
-        pre = expense.row_version
-        claimed = claim_row_with_token(
-            db,
-            Expense,
-            pk_id=expense.id,
-            tenant_id=tenant_id,
-            expected_row_version=pre,
-            set_values={"tags": format_tags(names), "updated_at": now_utc()},
-            synchronize_session=False,
-        )
-        if claimed != 1:
-            db.rollback()
-            raise AppError("state_conflict", status_code=409)
+    rewrite_expenses_for_tag_rename(
+        db,
+        tenant_id=tenant_id,
+        tag_id=tag.id,
+        reason=f"标签“{old_name}”重命名为“{new_name}”",
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+    )
 
     db.commit()
     db.expire_all()
@@ -366,6 +266,7 @@ def delete_tag(
     public_id: str,
     expected_row_version: int,
     actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
     require_orphan: bool = False,
 ) -> TagMutationResult:
     """Soft-delete the tag, untag every linked expense (rebuild string + bump),
@@ -401,8 +302,17 @@ def delete_tag(
     db.flush()
 
     affected = 0
-    for expense in _expenses_linked_to_tag(db, tenant_id, tag.id):
-        _rewrite_expense_for_tag_change(db, group=group, expense=expense, removed_tag_id=tag.id, replacement_tag=None)
+    for expense in expenses_linked_to_tag(db, tenant_id, tag.id):
+        rewrite_expense_for_tag_change(
+            db,
+            group=group,
+            expense=expense,
+            removed_tag_id=tag.id,
+            replacement_tag=None,
+            reason=f"删除标签“{tag.name}”",
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
+        )
         affected += 1
 
     record_resource_action(
@@ -434,6 +344,7 @@ def merge_tags(
     target_public_id: str,
     target_row_version: int,
     actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
 ) -> TagMutationResult:
     """Merge source A into target B: soft-delete A (keep its tag_id stable),
     move A's links to B (dedup), rebuild + bump each affected expense, write the
@@ -468,9 +379,16 @@ def merge_tags(
     db.flush()
 
     affected = 0
-    for expense in _expenses_linked_to_tag(db, tenant_id, source_id):
-        _rewrite_expense_for_tag_change(
-            db, group=group, expense=expense, removed_tag_id=source_id, replacement_tag=target
+    for expense in expenses_linked_to_tag(db, tenant_id, source_id):
+        rewrite_expense_for_tag_change(
+            db,
+            group=group,
+            expense=expense,
+            removed_tag_id=source_id,
+            replacement_tag=target,
+            reason=f"合并标签“{source.name}”到“{target.name}”",
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         )
         affected += 1
 

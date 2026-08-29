@@ -1,0 +1,39 @@
+{# 事实页变更记录：人话时间线（newest-first），系统字段已由视图模型折叠。
+   契约：fact_timeline（_web_expense_fact.build_fact_timeline 的行）。 #}
+<section class="dt-card fact-timeline" aria-label="变更记录">
+  <div class="card-header">
+    <div>
+      <h2>变更记录</h2>
+      <div class="meta">每次更正都会留下原因和内容对照，最新在最前。</div>
+    </div>
+  </div>
+  {% if fact_timeline %}
+  <ol class="fact-timeline-list">
+    {% for entry in fact_timeline %}
+    <li class="fact-timeline-entry">
+      <div class="fact-timeline-head">
+        <span class="dt-pill {% if entry.is_correction %}warn{% else %}ok{% endif %}">{{ entry.kind_label }}</span>
+        <span class="fact-timeline-when">{{ entry.when }}</span>
+        {% if entry.actor %}<span class="meta">{{ entry.actor }}</span>{% endif %}
+      </div>
+      <div class="fact-timeline-reason">{{ entry.reason }}</div>
+      {% if entry.changes %}
+      <dl class="fact-timeline-changes">
+        {% for change in entry.changes %}
+        <div class="fact-timeline-change">
+          <dt>{{ change.label }}</dt>
+          <dd>
+            {% if change.before %}<span class="fact-change-before">{{ change.before }}</span><span class="fact-change-arrow" aria-hidden="true">→</span>{% endif %}
+            <span class="fact-change-after">{{ change.after }}</span>
+          </dd>
+        </div>
+        {% endfor %}
+      </dl>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <div class="meta">这笔账单还没有变更记录；第一次更正后会从这里开始记录。</div>
+  {% endif %}
+</section>

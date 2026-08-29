@@ -155,8 +155,8 @@ internal data class LedgerBulkEditSheetState(
 )
 
 internal data class LedgerBulkEditSheetActions(
-    val onApplyCategory: (String) -> Unit,
-    val onApplyTags: (String) -> Unit,
+    val onApplyCategory: (category: String, reason: String) -> Unit,
+    val onApplyTags: (tags: String, reason: String) -> Unit,
 )
 
 @Composable
@@ -167,19 +167,33 @@ internal fun LedgerBulkEditSheet(
     var category by rememberSaveable { mutableStateOf("") }
     var tagsEnabled by rememberSaveable { mutableStateOf(false) }
     var tags by rememberSaveable { mutableStateOf("") }
+    var reason by rememberSaveable { mutableStateOf("") }
     var showTagConfirm by remember { mutableStateOf(false) }
 
     AppSheetScaffold(title = stringResource(R.string.ledger_bulk_title, state.selectedCount)) {
+        // A1: 批量更正必须有自然语言 reason（backend 原子 endpoint 必填）——
+        // 原因居首共享给两个动作，按钮在未填时禁用而不是事后报错。
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.ledger_bulk_reason_label),
+                value = reason,
+                placeholder = stringResource(R.string.ledger_bulk_reason_placeholder),
+                enabled = !state.applying,
+            ),
+            actions = AppTextInputActions(onValueChange = { reason = it }),
+            modifier = Modifier.fillMaxWidth(),
+        )
         LedgerBulkCategorySection(
             state = LedgerBulkCategoryState(
                 category = category,
                 categories = state.categories,
                 applying = state.applying,
                 selectedCount = state.selectedCount,
+                reasonReady = reason.isNotBlank(),
             ),
             actions = LedgerBulkCategoryActions(
                 onCategoryChange = { category = it },
-                onApplyCategory = { actions.onApplyCategory(category) },
+                onApplyCategory = { actions.onApplyCategory(category, reason.trim()) },
             ),
         )
         LedgerBulkTagsSection(
@@ -188,6 +202,7 @@ internal fun LedgerBulkEditSheet(
                 tags = tags,
                 applying = state.applying,
                 selectedCount = state.selectedCount,
+                reasonReady = reason.isNotBlank(),
             ),
             actions = LedgerBulkTagsActions(
                 onTagsEnabledChange = { tagsEnabled = it },
@@ -196,7 +211,7 @@ internal fun LedgerBulkEditSheet(
                     if (state.selectedHaveTags) {
                         showTagConfirm = true
                     } else {
-                        actions.onApplyTags(tags)
+                        actions.onApplyTags(tags, reason.trim())
                     }
                 },
             ),
@@ -211,7 +226,7 @@ internal fun LedgerBulkEditSheet(
             confirmButton = {
                 TextButton(onClick = {
                     showTagConfirm = false
-                    actions.onApplyTags(tags)
+                    actions.onApplyTags(tags, reason.trim())
                 }) { Text(stringResource(R.string.ledger_bulk_tags_confirm_replace)) }
             },
             dismissButton = {
@@ -227,6 +242,7 @@ private data class LedgerBulkCategoryState(
     val categories: List<String>,
     val applying: Boolean,
     val selectedCount: Int,
+    val reasonReady: Boolean,
 )
 
 private data class LedgerBulkCategoryActions(
@@ -248,7 +264,7 @@ private fun LedgerBulkCategorySection(
     AppSheetActionRow(
         primary = AppSheetAction(
             text = stringResource(R.string.ledger_bulk_apply_category, state.selectedCount),
-            enabled = state.category.isNotBlank() && !state.applying,
+            enabled = state.category.isNotBlank() && state.reasonReady && !state.applying,
             onClick = actions.onApplyCategory,
         ),
     )
@@ -260,6 +276,7 @@ private data class LedgerBulkTagsState(
     val tags: String,
     val applying: Boolean,
     val selectedCount: Int,
+    val reasonReady: Boolean,
 )
 
 private data class LedgerBulkTagsActions(
@@ -304,7 +321,7 @@ private fun LedgerBulkTagsSection(
     AppSheetActionRow(
         primary = AppSheetAction(
             text = stringResource(R.string.ledger_bulk_apply_tags, state.selectedCount),
-            enabled = state.tags.isNotBlank() && !state.applying,
+            enabled = state.tags.isNotBlank() && state.reasonReady && !state.applying,
             onClick = actions.onApplyTags,
         ),
     )

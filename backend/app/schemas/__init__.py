@@ -129,8 +129,6 @@ from app.schemas._expense import (
     CategoryPreferenceListResponse,
     CategoryPreferenceResponse,
     CategoryPreferenceTokenRequest,
-    ConfirmedExpenseBatchUpdateRequest,
-    ConfirmedExpenseBatchUpdateResponse,
     ExpenseAcknowledgeItemsMismatchRequest,
     ExpenseConfirmRequest,
     ExpenseItemReplaceRequest,
@@ -156,6 +154,14 @@ from app.schemas._expense import (
     PendingCategorySuggestionResponse,
     PendingDuplicateCandidateResponse,
     UploadResponse,
+)
+from app.schemas._expense_revision import (
+    ConfirmedExpenseBatchUpdateRequest,
+    ConfirmedExpenseBatchUpdateResponse,
+    ExpenseCorrectionRequest,
+    ExpenseCorrectionResponse,
+    ExpenseRevisionListResponse,
+    ExpenseRevisionResponse,
 )
 from app.schemas._goals import (
     DebtGoalIntegrityReviewRequest,
@@ -377,6 +383,8 @@ __all__ = [
     "ExchangeRateRequest",
     "ExchangeRateResponse",
     "ExpenseConfirmRequest",
+    "ExpenseCorrectionRequest",
+    "ExpenseCorrectionResponse",
     "ExpenseItemReplaceRequest",
     "ExpenseItemRequest",
     "ExpenseItemResponse",
@@ -389,6 +397,8 @@ __all__ = [
     "ExpenseRejectRequest",
     "ExpenseRepaymentDraftCreateRequest",
     "ExpenseResponse",
+    "ExpenseRevisionListResponse",
+    "ExpenseRevisionResponse",
     "ExpenseUndoRequest",
     "ExpenseSplitReplaceRequest",
     "ExpenseSplitRequest",

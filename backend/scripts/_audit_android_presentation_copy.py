@@ -199,6 +199,8 @@ ALLOWLIST: dict[str, str] = {
     "android/app/src/main/java/com/ticketbox/ui/screens/stats/ReportsInsightChartModels.kt :: ${}¥${}万": "static formatter: amount 万 (ten-thousand) unit",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelItemsEditor.kt :: 未命名": "static fallback-default item name value",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelSplitsEditor.kt :: 未命名成员": "static fallback-default split member name value",
+    "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseFactViewModelCorrectionDrafts.kt :: 未命名": "static fallback-default correction item name value",
+    "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseFactViewModelCorrectionDrafts.kt :: 未命名成员": "static fallback-default correction split member name value",
 }
 
 

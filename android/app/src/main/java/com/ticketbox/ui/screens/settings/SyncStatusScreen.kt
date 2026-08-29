@@ -419,6 +419,7 @@ internal fun syncStatusMutationLabelRes(type: PendingMutationType): Int =
 
 internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,
+    PendingMutationType.CorrectExpense to R.string.sync_status_mutation_correct_expense,
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
     PendingMutationType.ConfirmExpense to R.string.sync_status_mutation_confirm_expense,
     PendingMutationType.RejectExpense to R.string.sync_status_mutation_reject_expense,

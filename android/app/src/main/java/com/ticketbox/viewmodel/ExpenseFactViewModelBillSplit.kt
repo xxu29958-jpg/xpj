@@ -11,37 +11,33 @@ import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * UI/UX 第三波 批 13 — ExpenseEditViewModel 的拆账发起（bill-split invite）扩展。
- *
- * ADR-0029 跨账本拆账：从一笔**已确认**账单向**本账本成员**发起拆账邀请（产品拍板③
- * 收窄收件人为本账本成员；后端实际允许任意账号）。对方在自己的账本记一笔，接受后与
- * 本账单解耦。**在线-only**：直连失败直接报错，不入 outbox 离线队列（该面无幂等键）。
- *
- * 与主 ViewModel 同包，用 `internal` 字段访问（items/splits 编辑器先例模式）。
- * 卡片可见性判断 [canInitiateBillSplit] 在 domain（UI 与 VM 共用，避免漂移）。
- */
+enum class BillSplitSentLoadState {
+    Unknown,
+    Loading,
+    Loaded,
+    Failed,
+}
 
-/** 本票已活跃（invited/accepted）的拆账总额——发起金额上限 = 父金额 − 该总额。 */
-internal fun List<BillSplitSent>.activeSplitCentsFor(expenseId: Long): Long =
+/**
+ * A1: 拆账邀请域 —— 从已退役的确认后编辑责任迁移到事实页 Owner，
+ * 能力不丢：已发列表 / 发起 sheet / 撤回。
+ * 语义不变：ADR-0029 跨账本拆账，**在线-only**（直连失败直接报错，不入 outbox）。
+ */
+internal fun List<BillSplitSent>.factActiveSplitCentsFor(expenseId: Long): Long =
     filter { it.senderExpenseId == expenseId && it.isActiveSplit }
         .sumOf { it.amountCents }
 
 private val BillSplitSent.isActiveSplit: Boolean
     get() = status == BillSplitStatusValues.INVITED || status == BillSplitStatusValues.ACCEPTED
 
-private data class BillSplitInviteRequest(
+private data class FactBillSplitInviteRequest(
     val expenseId: Long,
     val receiverAccountId: Long,
     val amountCents: Long,
 )
 
-/**
- * 拉取本票已发出的拆账邀请。fetchBillSplitSent 返回**账号维度**的全部已发邀请，这里按
- * senderExpenseId 客户端过滤出本票的（隐私上 sent 视图本就只含发起方自己的邀请）。
- * 仅在卡片可见（confirmed 等条件成立）时调用，避免对 pending/received 票做无谓请求。
- */
-fun ExpenseEditViewModel.loadBillSplitSent() {
+/** 拉取本票已发出的拆账邀请（账号维度返回后按 senderExpenseId 客户端过滤）。 */
+fun ExpenseFactViewModel.loadBillSplitSent() {
     val expense = _uiState.value.expense ?: return
     viewModelScope.launch {
         _uiState.update {
@@ -77,7 +73,7 @@ fun ExpenseEditViewModel.loadBillSplitSent() {
 }
 
 /** 打开发起 sheet 并加载本账本成员（收件人候选）。仅在可发起时生效。 */
-fun ExpenseEditViewModel.openBillSplitInviteSheet() {
+fun ExpenseFactViewModel.openBillSplitInviteSheet() {
     val expense = _uiState.value.expense ?: return
     if (!expense.canInitiateBillSplit(_uiState.value.readOnly)) return
     _uiState.update {
@@ -92,8 +88,7 @@ fun ExpenseEditViewModel.openBillSplitInviteSheet() {
     loadBillSplitInviteMembers()
 }
 
-/** 加载本账本成员作为收件人候选：剔除自己（不能拆给自己）和已停用成员，只留可选的。 */
-fun ExpenseEditViewModel.loadBillSplitInviteMembers() {
+private fun ExpenseFactViewModel.loadBillSplitInviteMembers() {
     viewModelScope.launch {
         _uiState.update {
             it.copy(
@@ -124,7 +119,7 @@ fun ExpenseEditViewModel.loadBillSplitInviteMembers() {
     }
 }
 
-fun ExpenseEditViewModel.selectBillSplitInviteMember(memberId: Long) {
+fun ExpenseFactViewModel.selectBillSplitInviteMember(memberId: Long) {
     _uiState.update {
         it.copy(
             billSplitInviteSelectedMemberId = memberId,
@@ -134,7 +129,7 @@ fun ExpenseEditViewModel.selectBillSplitInviteMember(memberId: Long) {
     }
 }
 
-fun ExpenseEditViewModel.updateBillSplitInviteAmount(amountText: String) {
+fun ExpenseFactViewModel.updateBillSplitInviteAmount(amountText: String) {
     _uiState.update {
         it.copy(
             billSplitInviteAmountText = amountText,
@@ -144,7 +139,7 @@ fun ExpenseEditViewModel.updateBillSplitInviteAmount(amountText: String) {
     }
 }
 
-fun ExpenseEditViewModel.closeBillSplitInviteSheet() {
+fun ExpenseFactViewModel.closeBillSplitInviteSheet() {
     _uiState.update {
         it.copy(
             billSplitInviteSheetOpen = false,
@@ -157,12 +152,8 @@ fun ExpenseEditViewModel.closeBillSplitInviteSheet() {
     }
 }
 
-/**
- * 发起拆账邀请。校验顺序：选了人 → 金额可解析 → 0 < 金额 ≤ 父金额 − 已活跃拆账额。
- * 客户端校验只为体验；后端 split_total_exceeds_parent / split_amount_* 仍是兜底权威。
- * **在线-only**：直连失败的 [Result.failure] 直接展示在 sheet 内，不入离线队列。
- */
-fun ExpenseEditViewModel.sendBillSplitInvite() {
+/** 发起拆账邀请：选了人 → 金额可解析 → 0 < 金额 ≤ 父金额 − 已活跃拆账额。 */
+fun ExpenseFactViewModel.sendBillSplitInvite() {
     val request = currentBillSplitInviteRequest() ?: return
     viewModelScope.launch {
         _uiState.update {
@@ -174,7 +165,6 @@ fun ExpenseEditViewModel.sendBillSplitInvite() {
         }
         repository.createBillSplitInvitation(request.expenseId, request.receiverAccountId, request.amountCents)
             .onSuccess { sent ->
-                // 关闭 sheet、刷新本票已发列表（让新邀请立刻出现在卡里）、顶部成功提示。
                 _uiState.update {
                     it.copy(
                         billSplitSent = it.billSplitSent.upsertBillSplitSent(sent, request.expenseId),
@@ -192,7 +182,6 @@ fun ExpenseEditViewModel.sendBillSplitInvite() {
                 loadBillSplitSent()
             }
             .onFailure { error ->
-                // 在线-only：失败留在 sheet 内展示，不入队、不假装已发。
                 _uiState.update {
                     it.copy(
                         billSplitInviteSending = false,
@@ -204,8 +193,8 @@ fun ExpenseEditViewModel.sendBillSplitInvite() {
     }
 }
 
-private fun ExpenseEditViewModel.currentBillSplitInviteRequest(): BillSplitInviteRequest? {
-    fun reject(message: UiText): BillSplitInviteRequest? {
+private fun ExpenseFactViewModel.currentBillSplitInviteRequest(): FactBillSplitInviteRequest? {
+    fun reject(message: UiText): FactBillSplitInviteRequest? {
         _uiState.update {
             it.copy(
                 billSplitInviteMessage = message,
@@ -224,9 +213,6 @@ private fun ExpenseEditViewModel.currentBillSplitInviteRequest(): BillSplitInvit
     if (member == null) {
         return reject(UiText.res(R.string.expense_edit_bill_split_pick_member))
     }
-    // 邀请金额与 expense.amountCents 同 minor 空间对账（remaining 比较在下方），
-    // 故按票据服务端 homeCurrency 解析（JPY 等零小数 home 不 ×100）。
-    // PR#255 R10④：原码严格解析 —— record 币种在支持集外时禁金额承载编辑（同 saveItems）。
     val currency = expense.editParseCurrency()
         ?: return reject(UiText.res(R.string.expense_edit_currency_unsupported))
     val amountCents = parseAmountCents(_uiState.value.billSplitInviteAmountText, currency)
@@ -234,16 +220,16 @@ private fun ExpenseEditViewModel.currentBillSplitInviteRequest(): BillSplitInvit
         return reject(UiText.res(R.string.expense_edit_bill_split_amount_invalid))
     }
     if (_uiState.value.billSplitSentLoadState == BillSplitSentLoadState.Loaded) {
-        val remaining = expense.amountCents - _uiState.value.billSplitSent.activeSplitCentsFor(expense.id)
+        val remaining = expense.amountCents - _uiState.value.billSplitSent.factActiveSplitCentsFor(expense.id)
         if (amountCents > remaining) {
             return reject(UiText.res(R.string.expense_edit_bill_split_amount_exceeds))
         }
     }
-    return BillSplitInviteRequest(expenseId = expense.id, receiverAccountId = member.accountId, amountCents = amountCents)
+    return FactBillSplitInviteRequest(expenseId = expense.id, receiverAccountId = member.accountId, amountCents = amountCents)
 }
 
-/** 撤回一条 invited 状态的拆账邀请（复用 cancel 动作）。成功后刷新本票已发列表。 */
-fun ExpenseEditViewModel.cancelBillSplitInvitation(publicId: String) {
+/** 撤回一条 invited 状态的拆账邀请。成功后刷新本票已发列表。 */
+fun ExpenseFactViewModel.cancelBillSplitInvitation(publicId: String) {
     viewModelScope.launch {
         _uiState.update {
             it.copy(

@@ -1,0 +1,63 @@
+{# 事实页小票明细（只读呈现 —— 与编辑表格是两个语义，勿合并；唯一例外是
+   mismatch_known 时的「原小票如此」确认命令：它不是字段编辑，而是经 revision
+   owner 的状态确认，入口贴在其回答的警告下）。
+   契约：receipt_items（rows/status/mismatch_yuan）, can_write, home_currency_symbol；
+   渲染确认表单时另需 csrf_token / selected_ledger_id / expense.row_version /
+   edit_return_fields（均可由 web_fact_context 提供）。 #}
+<section class="dt-card" aria-label="小票明细">
+  <div class="card-header">
+    <div>
+      <h2>小票明细</h2>
+      <div class="meta">只记录本张小票的商品行。{% if can_write %}需要修改请使用「更正这笔账单」。{% endif %}</div>
+    </div>
+  </div>
+  {% if receipt_items.status == 'mismatch_known' %}
+  <div class="dt-alert warn">明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。</div>
+  {% if can_write %}
+  {# 「原小票如此」真实命令入口：消费现有 acknowledge-mismatch route
+     （csrf/ledger/row_version/return context），成功 303 与冲突呈现均由 route 表达。
+     只读角色整个不渲染 —— 不给假动作。 #}
+  <form method="post" action="/web/expenses/{{ expense.id }}/items/acknowledge-mismatch" class="fact-ack-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
+    <input type="hidden" name="idempotency_key" value="{{ items_ack_idempotency_key }}">
+    {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+    <button type="submit" class="dt-btn">原小票如此</button>
+  </form>
+  {% endif %}
+  {% elif receipt_items.status == 'mismatch_acknowledged' %}
+  <div class="dt-alert info">已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异。</div>
+  {% endif %}
+  {% set visible_items = receipt_items.rows | selectattr('name') | list %}
+  {% if visible_items %}
+  {# 窄屏重组为带标签的行卡（CSS 消费 data-label），不做整页横向滚动。 #}
+  <table class="dt-table dt-table--compact fact-lines-table">
+    <thead>
+      <tr>
+        <th class="th-w-110">类型</th>
+        <th>名称</th>
+        <th class="th-w-90">数量</th>
+        <th class="th-w-110">单价</th>
+        <th class="th-w-110">金额</th>
+        <th class="th-w-100">分类</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in visible_items %}
+      <tr>
+        <td data-label="类型">{% if item.kind == 'discount' %}优惠/折扣{% elif item.kind == 'tax' %}税{% elif item.kind == 'service_fee' %}服务费{% else %}商品{% endif %}</td>
+        <td data-label="名称">{{ item.name }}</td>
+        {# 空单价/空数量在窄屏行卡模式不渲染无意义标签行（fact-cell-empty 仅桌面占位）。 #}
+        {% if item.quantity_text %}<td data-label="数量">{{ item.quantity_text }}</td>{% else %}<td class="fact-cell-empty"></td>{% endif %}
+        {% if item.unit_price_yuan %}<td data-label="单价" class="num">{{ item.unit_price_yuan }}</td>{% else %}<td class="num fact-cell-empty"></td>{% endif %}
+        <td data-label="金额" class="num">{{ item.amount_yuan }}</td>
+        {% if item.category %}<td data-label="分类">{{ item.category }}</td>{% else %}<td class="fact-cell-empty"></td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="meta">没有记录明细行。</div>
+  {% endif %}
+</section>

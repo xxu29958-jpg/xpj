@@ -119,6 +119,8 @@ def _apply_rules_to_status(
             before_category=before_category,
             after_category=new_category,
             now=now,
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
         )
         if applied is not None:
             changes.append(applied)

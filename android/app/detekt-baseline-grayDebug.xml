@@ -85,7 +85,7 @@
     <ID>TooManyFunctions:ExpenseEditViewModel.kt:ExpenseEditViewModel : ViewModel</ID>
     <ID>TooManyFunctions:ExpenseMappers.kt:com.ticketbox.data.repository.ExpenseMappers.kt</ID>
     <ID>TooManyFunctions:ExpensePendingRepository.kt:ExpensePendingRepository : PendingReviewActions</ID>
-    <ID>TooManyFunctions:ExpenseRepository.kt:ExpenseRepository : ServerBindingRepositoryPendingReviewActionsLedgerActionsGlobalSearchActionsStatsActionsExpenseEditActions</ID>
+    <ID>TooManyFunctions:ExpenseRepository.kt:ExpenseRepository : ServerBindingRepositoryPendingReviewActionsLedgerActionsGlobalSearchActionsStatsActionsExpenseEditActionsExpenseFactActions</ID>
     <ID>TooManyFunctions:ExpenseRepositoryCore.kt:ExpenseRepositoryCore</ID>
     <ID>TooManyFunctions:Formatters.kt:com.ticketbox.ui.components.Formatters.kt</ID>
     <ID>TooManyFunctions:LedgerRepository.kt:LedgerRepository</ID>

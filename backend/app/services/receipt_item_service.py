@@ -21,7 +21,11 @@ from app.schemas import (
 )
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.expense_query import EDITABLE_STATUSES, get_expense, resolve_expense
+from app.services.expense_query import get_expense, resolve_expense
+from app.services.expense_revision_service import (
+    prepare_correction_revision,
+    record_prepared_correction_revision,
+)
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.receipt_parse_service import ParsedReceiptItem
 from app.services.time_service import now_utc
@@ -30,6 +34,7 @@ from app.services.time_service import now_utc
 # sum(items.amount_cents); 0 = strict integer equality (cents).
 _ITEMS_SUM_TOLERANCE_CENTS = 0
 _EXPENSE_ITEM_KINDS = frozenset({"product", "discount", "tax", "service_fee"})
+_MISMATCH_ACKNOWLEDGEMENT_REASON = "原小票如此：明细合计与账单金额存在差异"
 
 
 def validate_expense_item_money_command(
@@ -91,35 +96,54 @@ def replace_expense_items(
         tenant_id=tenant_id,
         expected_row_version=payload.expected_row_version,
         set_values={"updated_at": now},
-        extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
+        extra_where=(Expense.status == "pending",),
         synchronize_session=False,
     )
     if rowcount != 1:
         db.expire_all()
         current = resolve_expense(db, tenant_id, expense_id)
-        if current is None or current.status not in EDITABLE_STATUSES:
+        if current is None or current.status == "rejected":
             raise AppError("expense_not_found", status_code=404)
+        if current.status == "confirmed":
+            raise AppError("expense_correction_required", status_code=409)
         raise AppError("state_conflict", status_code=409)
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
 
-    existing = list(
-        db.scalars(ledger_scoped_select(ExpenseItem, tenant_id).where(ExpenseItem.expense_id == expense.id))
+    apply_expense_items_to_claimed_row(
+        db,
+        expense=expense,
+        payload=payload,
+        now=now,
     )
-    for item in existing:
-        db.delete(item)
-    db.flush()
-
-    for position, request_item in enumerate(payload.items):
-        db.add(_new_item(expense, position, request_item, now=now))
-    db.flush()
-    recompute_items_sum_status(db, expense)
     if commit:
         db.commit()
         db.refresh(expense)
     else:
         db.flush()
     return _build_response(db, expense)
+
+
+def apply_expense_items_to_claimed_row(
+    db: Session,
+    *,
+    expense: Expense,
+    payload: ExpenseItemReplaceRequest,
+    now,
+) -> None:
+    """Replace item facts after the caller has acquired the parent CAS."""
+
+    validate_expense_item_money_command(payload.items)
+    existing = list(
+        db.scalars(ledger_scoped_select(ExpenseItem, expense.tenant_id).where(ExpenseItem.expense_id == expense.id))
+    )
+    for item in existing:
+        db.delete(item)
+    db.flush()
+    for position, request_item in enumerate(payload.items):
+        db.add(_new_item(expense, position, request_item, now=now))
+    db.flush()
+    recompute_items_sum_status(db, expense)
 
 
 def replace_ocr_draft_items(
@@ -156,6 +180,9 @@ def acknowledge_items_sum_mismatch(
     tenant_id: str,
     *,
     expected_row_version: int,
+    actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
+    idempotency_key: str | None = None,
     commit: bool = True,
 ) -> ExpenseItemsResponse:
     """User-confirmed "原小票如此" path: mismatch_known → mismatch_acknowledged.
@@ -173,14 +200,23 @@ def acknowledge_items_sum_mismatch(
       the user's read and this acknowledge)
     """
     resolve_write_capability(db)
+    current = get_expense(db, expense_id, tenant_id)
+    prepared = prepare_correction_revision(db, current)
+
     now = now_utc()
+    set_values: dict[str, object] = {
+        "items_sum_status": "mismatch_acknowledged",
+        "updated_at": now,
+    }
+    if prepared is not None:
+        set_values["fact_revision"] = Expense.fact_revision + 1
     rowcount = claim_row_with_token(
         db,
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
         expected_row_version=expected_row_version,
-        set_values={"items_sum_status": "mismatch_acknowledged", "updated_at": now},
+        set_values=set_values,
         extra_where=(Expense.items_sum_status == "mismatch_known",),
         synchronize_session=False,
     )
@@ -196,10 +232,22 @@ def acknowledge_items_sum_mismatch(
                 status_code=409,
             )
         raise AppError("state_conflict", status_code=409)
-    if commit:
-        db.commit()
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
+    record_prepared_correction_revision(
+        db,
+        expense,
+        prepared,
+        reason=_MISMATCH_ACKNOWLEDGEMENT_REASON,
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+        idempotency_key=idempotency_key,
+    )
+    if commit:
+        db.commit()
+        db.refresh(expense)
+    else:
+        db.flush()
     return _build_response(db, expense)
 
 

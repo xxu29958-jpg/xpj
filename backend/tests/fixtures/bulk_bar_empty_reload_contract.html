@@ -1,0 +1,63 @@
+<html lang="zh-CN">
+<head><meta charset="utf-8"></head>
+<body>
+  <main class="content">
+    <div class="exp-row" data-expense-id="1">
+      <input class="row-check"
+             id="check-1"
+             type="checkbox"
+             data-id="1"
+             data-row-version="11">
+      <a class="exp-row-detail" href="#row-1-navigation">第一笔</a>
+    </div>
+    <form data-bulk action="/web/review/bulk">
+      <span data-bulk-count>0</span>
+      <button id="bulk-submit" type="submit" name="action" value="confirm_ready">确认入账</button>
+    </form>
+  </main>
+  <script>
+    const navigation = performance.getEntriesByType("navigation")[0];
+    const isReloadProbe =
+      window.location.hash === "#await-authoritative-reload" &&
+      navigation && navigation.type === "reload";
+    if (isReloadProbe) {
+      window.__webConsumerProbe = {
+        authoritativeReloaded: true,
+        navigationType: navigation.type
+      };
+    } else {
+      window.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          removed_ids: ["1"],
+          message: "已确认 1 条流水。",
+          flash_type: "success"
+        })
+      });
+    }
+  </script>
+  <script src="__BULK_BAR_URI__"></script>
+  <script>
+    if (!isReloadProbe) {
+      (async () => {
+        window.TicketboxWeb.initBulkBar();
+        document.getElementById("check-1").click();
+        window.location.hash = "await-authoritative-reload";
+        const form = document.querySelector("[data-bulk]");
+        form.dispatchEvent(new SubmitEvent("submit", {
+          bubbles: true,
+          cancelable: true,
+          submitter: document.getElementById("bulk-submit")
+        }));
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        if (!window.__webConsumerProbe) {
+          window.__webConsumerProbe = {
+            authoritativeReloaded: false,
+            navigationType: navigation && navigation.type
+          };
+        }
+      })();
+    }
+  </script>
+</body>
+</html>

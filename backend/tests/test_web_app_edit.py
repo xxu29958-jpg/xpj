@@ -29,8 +29,7 @@ def test_web_edit_save_updates_amount(web_client: TestClient, *, identity) -> No
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": "12.34", "merchant": "测试商家", "category": "餐饮",
-              "note": "", "ledger_id": "owner"},
+        data={"amount_yuan": "12.34", "merchant": "测试商家", "category": "餐饮", "note": "", "ledger_id": "owner"},
     )
     assert resp.status_code in {303, 307}
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
@@ -39,7 +38,7 @@ def test_web_edit_save_updates_amount(web_client: TestClient, *, identity) -> No
     assert "测试商家" in detail.text
 
 
-def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient, *, identity) -> None:
+def test_web_correction_preserves_foreign_currency_fields(web_client: TestClient, *, identity) -> None:
     rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
@@ -60,20 +59,25 @@ def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient,
     assert created.status_code == 200, created.json()
     expense_id = int(created.json()["id"])
 
-    saved = web_save_expense(
-        web_client,
-        expense_id,
-        identity=identity,
+    # A1: manual create = confirmed，旧 /save 已失权；同一「编辑外币金额」意图
+    # 现在经显式更正命令闭合（表单同样携带 original_currency 隐藏字段）。
+    snapshot = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+    assert snapshot.status_code == 200, snapshot.text
+    saved = web_client.post(
+        f"/web/expenses/{expense_id}/corrections",
         data={
             "ledger_id": "owner",
+            "reason": "金额录错了",
             "original_currency": "USD",
             "amount_yuan": "124.00",
             "merchant": "Foreign Cafe Updated",
             "category": "餐饮",
             "note": "kept as USD",
+            "expected_row_version": str(snapshot.json()["row_version"]),
         },
+        follow_redirects=False,
     )
-    assert saved.status_code in {303, 307}, saved.text
+    assert saved.status_code == 303, saved.text
 
     detail = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200, detail.json()
@@ -84,9 +88,7 @@ def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient,
     assert payload["merchant"] == "Foreign Cafe Updated"
 
 
-def test_web_edit_save_sets_expense_time_in_accounting_tz(
-    web_client: TestClient, *, identity
-) -> None:
+def test_web_edit_save_sets_expense_time_in_accounting_tz(web_client: TestClient, *, identity) -> None:
     """批1: the datetime-local input is a Beijing wall-clock the route must
     assume-local → store UTC. 20:00 Asia/Shanghai = 12:00Z. The edit page then
     prefills the same 20:00 wall-clock (round-trip, no 8h drift)."""
@@ -95,14 +97,18 @@ def test_web_edit_save_sets_expense_time_in_accounting_tz(
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": "12.34", "merchant": "夜宵店", "category": "餐饮",
-              "note": "", "ledger_id": "owner", "expense_time": "2026-05-04T20:00"},
+        data={
+            "amount_yuan": "12.34",
+            "merchant": "夜宵店",
+            "category": "餐饮",
+            "note": "",
+            "ledger_id": "owner",
+            "expense_time": "2026-05-04T20:00",
+        },
     )
     assert resp.status_code in {303, 307}, resp.text
 
-    payload = web_client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    ).json()
+    payload = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     # 20:00 +08:00 stored as 12:00Z (storage stays UTC).
     assert payload["expense_time"] == "2026-05-04T12:00:00Z", payload["expense_time"]
 
@@ -116,24 +122,26 @@ def test_web_edit_save_sets_expense_time_in_accounting_tz(
     assert "2026-05-04 20:00" in pending.text
 
 
-def test_web_edit_save_bad_expense_time_shows_error(
-    web_client: TestClient, *, identity
-) -> None:
+def test_web_edit_save_bad_expense_time_shows_error(web_client: TestClient, *, identity) -> None:
     """An unparseable time flashes the edit error and leaves the row untouched."""
     expense_id = _create_pending(web_client, identity=identity)
     resp = web_save_expense(
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": "9.00", "merchant": "店", "category": "餐饮",
-              "note": "", "ledger_id": "owner", "expense_time": "not-a-time"},
+        data={
+            "amount_yuan": "9.00",
+            "merchant": "店",
+            "category": "餐饮",
+            "note": "",
+            "ledger_id": "owner",
+            "expense_time": "not-a-time",
+        },
     )
     assert resp.status_code == 422
     assert "请填写正确的时间" in resp.text
     # Nothing committed: a fresh pending still has no expense_time and no amount.
-    payload = web_client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    ).json()
+    payload = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     assert payload["expense_time"] is None
     assert payload["amount_cents"] is None
 
@@ -146,13 +154,17 @@ def test_web_edit_save_sets_and_clears_tags(web_client: TestClient, *, identity)
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": "5.00", "merchant": "店", "category": "餐饮",
-              "note": "", "ledger_id": "owner", "tags": "报销, 出差"},
+        data={
+            "amount_yuan": "5.00",
+            "merchant": "店",
+            "category": "餐饮",
+            "note": "",
+            "ledger_id": "owner",
+            "tags": "报销, 出差",
+        },
     )
     assert saved.status_code in {303, 307}, saved.text
-    payload = web_client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    ).json()
+    payload = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     assert payload["tags"] == "报销, 出差", payload["tags"]
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert 'name="tags"' in detail.text
@@ -163,19 +175,21 @@ def test_web_edit_save_sets_and_clears_tags(web_client: TestClient, *, identity)
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": "5.00", "merchant": "店", "category": "餐饮",
-              "note": "", "ledger_id": "owner", "tags": ""},
+        data={
+            "amount_yuan": "5.00",
+            "merchant": "店",
+            "category": "餐饮",
+            "note": "",
+            "ledger_id": "owner",
+            "tags": "",
+        },
     )
     assert cleared.status_code in {303, 307}, cleared.text
-    after = web_client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    ).json()
+    after = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     assert after["tags"] is None, after["tags"]
 
 
-def test_web_edit_renders_category_datalist_with_used_category(
-    web_client: TestClient, *, identity
-) -> None:
+def test_web_edit_renders_category_datalist_with_used_category(web_client: TestClient, *, identity) -> None:
     """批1: the 分类 input carries a <datalist> seeded with the ledger's used
     categories ∪ defaults, so spelling drift is curbed at the input."""
     expense_id = _create_pending(web_client, identity=identity)
@@ -183,8 +197,7 @@ def test_web_edit_renders_category_datalist_with_used_category(
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": "5.00", "merchant": "店", "category": "测试专属分类",
-              "note": "", "ledger_id": "owner"},
+        data={"amount_yuan": "5.00", "merchant": "店", "category": "测试专属分类", "note": "", "ledger_id": "owner"},
     )
     assert saved.status_code in {303, 307}, saved.text
 
@@ -197,9 +210,7 @@ def test_web_edit_renders_category_datalist_with_used_category(
     assert '<option value="测试专属分类">' in detail.text  # the ledger's own
     assert '<option value="餐饮">' in detail.text  # a default
 
-    drawer = web_client.get(
-        f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
-    )
+    drawer = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1")
     assert drawer.status_code == 200
     assert f'for="drawer-expense-{expense_id}-amount-yuan"' in drawer.text
     assert f'id="drawer-expense-{expense_id}-amount-yuan"' in drawer.text
@@ -227,8 +238,7 @@ def test_web_save_invalid_amount_shows_error(web_client: TestClient, *, identity
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": "not-a-number", "merchant": "", "category": "", "note": "",
-              "ledger_id": "owner"},
+        data={"amount_yuan": "not-a-number", "merchant": "", "category": "", "note": "", "ledger_id": "owner"},
     )
     assert resp.status_code == 422
     assert "请填写正确的金额" in resp.text
@@ -236,9 +246,7 @@ def test_web_save_invalid_amount_shows_error(web_client: TestClient, *, identity
 
 def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    resp = web_confirm_expense(
-        web_client, expense_id, identity=identity, follow_redirects=False
-    )
+    resp = web_confirm_expense(web_client, expense_id, identity=identity, follow_redirects=False)
     assert resp.status_code == 422
     assert "请先填写金额" in resp.text
 
@@ -253,36 +261,31 @@ def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient, 
         ("0", 0),
     ],
 )
-def test_web_amount_decimal_precision(
-    web_client: TestClient, input_str: str, expected_cents: int
-, *, identity) -> None:
+def test_web_amount_decimal_precision(web_client: TestClient, input_str: str, expected_cents: int, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
     resp = web_save_expense(
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": input_str, "merchant": "", "category": "", "note": "",
-              "ledger_id": "owner"},
+        data={"amount_yuan": input_str, "merchant": "", "category": "", "note": "", "ledger_id": "owner"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     from decimal import Decimal
+
     expected_display = str((Decimal(expected_cents) / Decimal("100")).quantize(Decimal("0.01")))
     assert expected_display in detail.text
 
 
 @pytest.mark.parametrize("input_str", ["12.345", "0.005"])
-def test_web_amount_over_precision_rejected(
-    web_client: TestClient, input_str: str, *, identity
-) -> None:
+def test_web_amount_over_precision_rejected(web_client: TestClient, input_str: str, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
     resp = web_save_expense(
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": input_str, "merchant": "", "category": "", "note": "",
-              "ledger_id": "owner"},
+        data={"amount_yuan": input_str, "merchant": "", "category": "", "note": "", "ledger_id": "owner"},
         follow_redirects=True,
     )
     # Over-precision input is rejected, never silently rounded, and the row
@@ -293,6 +296,7 @@ def test_web_amount_over_precision_rejected(
 
     from app.database import SessionLocal
     from app.models import Expense
+
     with SessionLocal() as db:
         amount = db.scalar(select(Expense.amount_cents).where(Expense.id == expense_id))
     assert amount is None
@@ -304,8 +308,7 @@ def test_web_save_negative_amount_shows_error(web_client: TestClient, *, identit
         web_client,
         expense_id,
         identity=identity,
-        data={"amount_yuan": "-5.00", "merchant": "", "category": "", "note": "",
-              "ledger_id": "owner"},
+        data={"amount_yuan": "-5.00", "merchant": "", "category": "", "note": "", "ledger_id": "owner"},
     )
     assert resp.status_code == 422
     assert "负数" in resp.text
@@ -314,9 +317,7 @@ def test_web_save_negative_amount_shows_error(web_client: TestClient, *, identit
 def test_web_edit_missing_expense_redirects_with_flash(web_client: TestClient) -> None:
     """A stale link / cross-ledger expense id must not render a bare-JSON
     page; the full-page form redirects back to the confirmed list."""
-    resp = web_client.get(
-        "/web/expenses/999999/edit?ledger_id=owner", follow_redirects=False
-    )
+    resp = web_client.get("/web/expenses/999999/edit?ledger_id=owner", follow_redirects=False)
     assert resp.status_code == 303
     assert resp.headers["location"].startswith("/web/confirmed")
 
@@ -341,8 +342,14 @@ def test_web_save_missing_expense_redirects_with_flash(web_client: TestClient) -
     bare-JSON handler. It must flash-redirect like the GET guard instead."""
     resp = web_client.post(
         "/web/expenses/999999/save",
-        data={"amount_yuan": "1.00", "merchant": "", "category": "", "note": "",
-              "ledger_id": "owner", "expected_row_version": "1"},
+        data={
+            "amount_yuan": "1.00",
+            "merchant": "",
+            "category": "",
+            "note": "",
+            "ledger_id": "owner",
+            "expected_row_version": "1",
+        },
         follow_redirects=False,
     )
     assert resp.status_code == 303, resp.text
@@ -437,18 +444,14 @@ def test_web_splits_save_missing_expense_redirects_with_flash(web_client: TestCl
     assert "msg=" in resp.headers["location"]
 
 
-def test_web_edit_drawer_default_submit_is_save_not_reject(
-    web_client: TestClient, *, identity
-) -> None:
+def test_web_edit_drawer_default_submit_is_save_not_reject(web_client: TestClient, *, identity) -> None:
     """隐式提交守卫:抽屉表单 tree-order 首个 submit 必须是无 formaction 的
     shim(Enter=保存),且所有 /reject formaction 按钮带 data-confirm。没有
     shim 时首个可见 submit 是「忽略草稿」——在输入框按 Enter 直接软删。"""
     import re
 
     expense_id = _create_pending(web_client, identity=identity)
-    drawer = web_client.get(
-        f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
-    )
+    drawer = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1")
     assert drawer.status_code == 200
 
     buttons = re.findall(r'<button\b[^>]*type="submit"[^>]*>', drawer.text)

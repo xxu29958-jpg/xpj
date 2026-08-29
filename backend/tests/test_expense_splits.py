@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
-from api_contract_helpers import confirm_expense_api, expense_row_version, reject_expense_api
+from api_contract_helpers import (
+    confirm_expense_api,
+    expense_row_version,
+    patch_expense,
+    reject_expense_api,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -75,9 +80,7 @@ def _make_role_token(
     return _accept_invitation(client, invite, account_name=account_name)
 
 
-def _members_by_name(
-    client: TestClient, ledger_id: str, token: str
-) -> dict[str, dict[str, object]]:
+def _members_by_name(client: TestClient, ledger_id: str, token: str) -> dict[str, dict[str, object]]:
     response = client.get(f"/api/ledgers/{ledger_id}/members", headers=_bearer(token))
     assert response.status_code == 200, response.json()
     return {str(item["account_name"]): item for item in response.json()["members"]}
@@ -93,27 +96,6 @@ def _personal_owner_member_id() -> int:
         )
         assert member is not None
         return member.id
-
-
-def _create_manual_expense(
-    client: TestClient,
-    token: str,
-    *,
-    amount_cents: int = 10000,
-    merchant: str = "家庭晚餐",
-) -> int:
-    response = client.post(
-        "/api/expenses/manual",
-        headers=_bearer(token),
-        json={
-            "amount_cents": amount_cents,
-            "merchant": merchant,
-            "category": "餐饮",
-            "expense_time": "2026-05-04T01:00:00Z",
-        },
-    )
-    assert response.status_code == 200, response.json()
-    return int(response.json()["id"])
 
 
 def _upload_expense(client: TestClient, token: str) -> int:
@@ -156,7 +138,7 @@ def _replace_splits(
                     "amount_cents": member_amount_cents,
                     "note": "一起吃饭",
                 },
-            ]
+            ],
         },
     )
     assert response.status_code == 200, response.json()
@@ -164,7 +146,9 @@ def _replace_splits(
 
 
 def _family_split_fixture(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> tuple[str, str, str, str, int, int, int]:
     family_id = _create_family_ledger(client, identity=identity)
     owner_token = _switch_to(client, family_id, identity.app_headers)
@@ -185,7 +169,19 @@ def _family_split_fixture(
     members = _members_by_name(client, family_id, owner_token)
     owner_member_id = int(members["我"]["member_id"])
     member_member_id = int(members["妈妈"]["member_id"])
-    expense_id = _create_manual_expense(client, owner_token)
+    expense_id = _upload_expense(client, owner_token)
+    prepared = patch_expense(
+        client,
+        expense_id,
+        headers=_bearer(owner_token),
+        fields={
+            "amount_cents": 10000,
+            "merchant": "家庭晚餐",
+            "category": "餐饮",
+            "expense_time": "2026-05-04T01:00:00Z",
+        },
+    )
+    assert prepared.status_code == 200, prepared.json()
     return (
         family_id,
         owner_token,
@@ -247,9 +243,7 @@ def test_expense_splits_replace_read_and_audit(client: TestClient, *, identity) 
 
     audit = client.get(f"/api/ledgers/{family_id}/audit", headers=_bearer(owner_token))
     assert audit.status_code == 200, audit.json()
-    split_audits = [
-        item for item in audit.json()["items"] if item["action"] == "expense_splits_replaced"
-    ]
+    split_audits = [item for item in audit.json()["items"] if item["action"] == "expense_splits_replaced"]
     assert split_audits
     latest_audit = split_audits[0]
     assert latest_audit["actor_account_name"] == "妈妈"
@@ -257,25 +251,25 @@ def test_expense_splits_replace_read_and_audit(client: TestClient, *, identity) 
     assert audit_detail["expense_public_id"] == detail.json()["public_id"]
     assert [item["amount_cents"] for item in audit_detail["before"]] == [6000, 3000]
     assert [item["amount_cents"] for item in audit_detail["after"]] == [5000, 5000]
-    assert {
-        item["account_public_id"] for item in audit_detail["after"]
-    } == {item["account_public_id"] for item in audit_detail["before"]}
+    assert {item["account_public_id"] for item in audit_detail["after"]} == {
+        item["account_public_id"] for item in audit_detail["before"]
+    }
 
 
 def test_expense_splits_replace_response_carries_bumped_parent_row_version(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     """ADR-0041 self-describing contract: PUT /splits returns the *parent*
     expense's row_version, advanced past the value the client sent — so a
     chained client can reuse it without a second GET on the expense."""
-    (_f, owner_token, _m, _v, expense_id, owner_member_id, member_member_id) = (
-        _family_split_fixture(client, identity=identity)
+    (_f, owner_token, _m, _v, expense_id, owner_member_id, member_member_id) = _family_split_fixture(
+        client, identity=identity
     )
     before = expense_row_version(client, expense_id, headers=_bearer(owner_token))
 
-    replaced = _replace_splits(
-        client, owner_token, expense_id, owner_member_id, member_member_id
-    )
+    replaced = _replace_splits(client, owner_token, expense_id, owner_member_id, member_member_id)
     assert replaced["row_version"] == before + 1
     # The bumped token matches the parent's current state, and GET /splits
     # mirrors it (no extra bump).
@@ -324,7 +318,9 @@ def test_expense_splits_do_not_change_stats_or_export(client: TestClient, *, ide
 
 
 def test_expense_splits_are_tenant_isolated_and_viewer_can_only_read(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     (
         _family_id,
@@ -355,9 +351,7 @@ def test_expense_splits_are_tenant_isolated_and_viewer_can_only_read(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(viewer_token),
         json={
-            "expected_row_version": expense_row_version(
-                client, expense_id, headers=_bearer(viewer_token)
-            ),
+            "expected_row_version": expense_row_version(client, expense_id, headers=_bearer(viewer_token)),
             "splits": [{"member_id": owner_member_id, "amount_cents": 10000}],
         },
     )
@@ -366,7 +360,9 @@ def test_expense_splits_are_tenant_isolated_and_viewer_can_only_read(
 
 
 def test_expense_splits_preserve_disabled_member_attribution(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     (
         family_id,
@@ -394,9 +390,7 @@ def test_expense_splits_preserve_disabled_member_attribution(
 
     listed = client.get(f"/api/expenses/{expense_id}/splits", headers=_bearer(owner_token))
     assert listed.status_code == 200, listed.json()
-    disabled_split = next(
-        item for item in listed.json()["splits"] if item["member_id"] == member_member_id
-    )
+    disabled_split = next(item for item in listed.json()["splits"] if item["member_id"] == member_member_id)
     assert disabled_split["account_name"] == "妈妈"
     assert disabled_split["role"] == "member"
     assert disabled_split["disabled_at"] is not None
@@ -405,13 +399,11 @@ def test_expense_splits_preserve_disabled_member_attribution(
         f"/api/expenses/{expense_id}/splits",
         headers={**_bearer(owner_token), "Idempotency-Key": str(uuid4())},
         json={
-            "expected_row_version": expense_row_version(
-                client, expense_id, headers=_bearer(owner_token)
-            ),
+            "expected_row_version": expense_row_version(client, expense_id, headers=_bearer(owner_token)),
             "splits": [
                 {"member_id": owner_member_id, "amount_cents": 5000},
                 {"member_id": member_member_id, "amount_cents": 5000},
-            ]
+            ],
         },
     )
     assert replace_with_disabled_member.status_code == 404
@@ -419,7 +411,9 @@ def test_expense_splits_preserve_disabled_member_attribution(
 
 
 def test_expense_splits_reject_duplicate_and_cross_ledger_members(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     (
         _family_id,
@@ -435,13 +429,11 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
         f"/api/expenses/{expense_id}/splits",
         headers={**_bearer(owner_token), "Idempotency-Key": str(uuid4())},
         json={
-            "expected_row_version": expense_row_version(
-                client, expense_id, headers=_bearer(owner_token)
-            ),
+            "expected_row_version": expense_row_version(client, expense_id, headers=_bearer(owner_token)),
             "splits": [
                 {"member_id": owner_member_id, "amount_cents": 5000},
                 {"member_id": owner_member_id, "amount_cents": 5000},
-            ]
+            ],
         },
     )
     assert duplicate.status_code == 422
@@ -451,12 +443,8 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
         f"/api/expenses/{expense_id}/splits",
         headers={**_bearer(owner_token), "Idempotency-Key": str(uuid4())},
         json={
-            "expected_row_version": expense_row_version(
-                client, expense_id, headers=_bearer(owner_token)
-            ),
-            "splits": [
-                {"member_id": _personal_owner_member_id(), "amount_cents": 10000}
-            ]
+            "expected_row_version": expense_row_version(client, expense_id, headers=_bearer(owner_token)),
+            "splits": [{"member_id": _personal_owner_member_id(), "amount_cents": 10000}],
         },
     )
     assert cross_ledger.status_code == 404

@@ -9,6 +9,7 @@ is in test_tag_management.py.
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -79,10 +80,17 @@ def test_undo_partial_skips_edited_expense(client: TestClient, *, identity) -> N
     mutation = _delete(client, h, tag)
 
     # Edit A after the delete → its row_version moves past the snapshot CAS token.
-    from api_contract_helpers import patch_expense
-
-    patched = patch_expense(client, a_id, headers=h, fields={"merchant": "A2"})
-    assert patched.status_code == 200, patched.text
+    snapshot = client.get(f"/api/expenses/{a_id}", headers=h).json()
+    patched = client.post(
+        f"/api/expenses/{a_id}/corrections",
+        headers={**h, "Idempotency-Key": str(uuid4())},
+        json={
+            "expected_row_version": snapshot["row_version"],
+            "reason": "删除标签后的独立商家更正",
+            "merchant": "A2",
+        },
+    )
+    assert patched.status_code == 201, patched.text
 
     undo = client.post(
         f"/api/tags/mutations/{mutation['mutation_public_id']}/undo",
@@ -176,9 +184,7 @@ def test_purge_removes_expired_snapshot_keeps_in_window(client: TestClient, *, i
 
     with SessionLocal() as db:
         group = db.scalar(
-            select(TagMutationUndoGroup).where(
-                TagMutationUndoGroup.mutation_public_id == expired["mutation_public_id"]
-            )
+            select(TagMutationUndoGroup).where(TagMutationUndoGroup.mutation_public_id == expired["mutation_public_id"])
         )
         group.created_at = now_utc() - timedelta(days=31)
         tag_row = db.scalar(
@@ -192,29 +198,42 @@ def test_purge_removes_expired_snapshot_keeps_in_window(client: TestClient, *, i
         assert purge_expired_soft_deletes(db) >= 1
 
     with SessionLocal() as db:
-        assert db.scalar(
-            select(TagMutationUndoGroup).where(
-                TagMutationUndoGroup.mutation_public_id == expired["mutation_public_id"]
+        assert (
+            db.scalar(
+                select(TagMutationUndoGroup).where(
+                    TagMutationUndoGroup.mutation_public_id == expired["mutation_public_id"]
+                )
             )
-        ) is None
-        assert db.scalars(
-            select(TagMutationUndoItem).where(TagMutationUndoItem.group_id == expired_group_id)
-        ).first() is None
+            is None
+        )
+        assert (
+            db.scalars(select(TagMutationUndoItem).where(TagMutationUndoItem.group_id == expired_group_id)).first()
+            is None
+        )
         assert db.scalar(select(Tag).where(Tag.tenant_id == "owner").where(Tag.key == "食物")) is None
-        assert db.scalar(
-            select(TagMutationUndoGroup).where(
-                TagMutationUndoGroup.mutation_public_id == fresh["mutation_public_id"]
+        assert (
+            db.scalar(
+                select(TagMutationUndoGroup).where(
+                    TagMutationUndoGroup.mutation_public_id == fresh["mutation_public_id"]
+                )
             )
-        ) is not None
+            is not None
+        )
 
     # expired → undo 404 (purged); fresh → undo still works
-    assert client.post(
-        f"/api/tags/mutations/{expired['mutation_public_id']}/undo",
-        headers=h,
-        json={"expected_row_version": expired["source_tag_row_version"]},
-    ).status_code == 404
-    assert client.post(
-        f"/api/tags/mutations/{fresh['mutation_public_id']}/undo",
-        headers=h,
-        json={"expected_row_version": fresh["source_tag_row_version"]},
-    ).status_code == 200
+    assert (
+        client.post(
+            f"/api/tags/mutations/{expired['mutation_public_id']}/undo",
+            headers=h,
+            json={"expected_row_version": expired["source_tag_row_version"]},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            f"/api/tags/mutations/{fresh['mutation_public_id']}/undo",
+            headers=h,
+            json={"expected_row_version": fresh["source_tag_row_version"]},
+        ).status_code
+        == 200
+    )

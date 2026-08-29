@@ -158,6 +158,11 @@ ERROR_MESSAGES = {
     "not_found": "没有找到对应的记录。",
     "task_not_found": "后台任务不存在或已结束。",
     "state_conflict": "记录已被其它端修改，请刷新后再试。",
+    "expense_correction_required": "这笔账单已经确认，请通过“更正”保留修改记录。",
+    "expense_not_confirmed": "只有已确认账单才能创建更正记录。",
+    "expense_correction_reason_required": "请说明这次更正的原因。",
+    "expense_correction_no_changes": "没有检测到需要保存的更正。",
+    "expense_reversal_required": "已确认账单不能移入回收站，请记录退款或冲销事实。",
     # ADR-0042 request-idempotency (Idempotency-Key header on outbox-routed
     # mutate面). These are protocol-level errors the client/outbox consumes —
     # the user never sees them in normal flow (Android always sends the key).

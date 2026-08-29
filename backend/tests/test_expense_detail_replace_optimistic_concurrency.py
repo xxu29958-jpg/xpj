@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -21,11 +22,13 @@ from app.services.expense_split_service import replace_expense_splits
 from app.services.receipt_item_service import replace_expense_items
 
 
-def _create_manual_expense(client: TestClient, *, identity, amount_cents: int = 1500) -> int:
-    response = client.post(
-        "/api/expenses/manual",
+def _create_pending_expense(client: TestClient, *, identity, amount_cents: int = 1500) -> int:
+    expense_id = upload_png(client, identity=identity)
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": amount_cents,
             "merchant": "Concurrency Cafe",
             "category": "Dining",
@@ -33,7 +36,8 @@ def _create_manual_expense(client: TestClient, *, identity, amount_cents: int = 
         },
     )
     assert response.status_code == 200, response.json()
-    return int(response.json()["id"])
+    assert response.json()["status"] == "pending"
+    return expense_id
 
 
 def _snapshot(client: TestClient, expense_id: int, *, identity) -> dict:
@@ -57,7 +61,7 @@ def _owner_member_id() -> int:
 def test_replace_items_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     response = client.put(
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
@@ -70,7 +74,7 @@ def test_replace_items_without_expected_row_version_returns_422(
 def test_replace_items_with_stale_updated_at_returns_409_and_keeps_rows(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     stale = _snapshot(client, expense_id, identity=identity)["row_version"]
 
     first = client.put(
@@ -103,7 +107,7 @@ def test_replace_items_with_stale_updated_at_returns_409_and_keeps_rows(
 def test_two_sessions_replace_items_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     tenant_id = "owner"
 
     session_a = SessionLocal()
@@ -145,7 +149,7 @@ def test_two_sessions_replace_items_race_only_first_writer_wins(
 def test_replace_splits_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     member_id = _owner_member_id()
     response = client.put(
         f"/api/expenses/{expense_id}/splits",
@@ -158,7 +162,7 @@ def test_replace_splits_without_expected_row_version_returns_422(
 def test_replace_splits_with_stale_updated_at_returns_409_and_keeps_rows(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     member_id = _owner_member_id()
     stale = _snapshot(client, expense_id, identity=identity)["row_version"]
 
@@ -194,7 +198,7 @@ def test_replace_splits_with_stale_updated_at_returns_409_and_keeps_rows(
 def test_two_sessions_replace_splits_race_only_first_writer_wins(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_manual_expense(client, identity=identity)
+    expense_id = _create_pending_expense(client, identity=identity)
     member_id = _owner_member_id()
     tenant_id = "owner"
 

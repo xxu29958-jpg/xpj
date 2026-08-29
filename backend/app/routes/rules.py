@@ -99,9 +99,7 @@ def patch_category_rule(
         tenant_id=auth.tenant_id,
         operation="update_category_rule",
         target_id=str(rule_id),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         expected_row_version=payload.expected_row_version,
         target_type="category_rule",
     )
@@ -109,9 +107,7 @@ def patch_category_rule(
         return get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
 
     rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
-    field_updates = payload.model_dump(
-        exclude={"expected_row_version"}, exclude_unset=True
-    )
+    field_updates = payload.model_dump(exclude={"expected_row_version"}, exclude_unset=True)
     result = update_rule(
         db,
         rule,
@@ -119,9 +115,7 @@ def patch_category_rule(
         commit=False,
         **field_updates,
     )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="category_rule", resource_id=str(rule_id)
-    )
+    mark_idempotency_succeeded(db, claim, resource_type="category_rule", resource_id=str(rule_id))
     db.commit()
     return result
 
@@ -143,9 +137,7 @@ def delete_category_rule(
         tenant_id=auth.tenant_id,
         operation="delete_category_rule",
         target_id=str(rule_id),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
         expected_row_version=payload.expected_row_version,
         target_type="category_rule",
     )
@@ -153,12 +145,8 @@ def delete_category_rule(
         return StatusResponse()
 
     rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
-    delete_rule(
-        db, rule, expected_row_version=payload.expected_row_version, commit=False
-    )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="category_rule", resource_id=str(rule_id)
-    )
+    delete_rule(db, rule, expected_row_version=payload.expected_row_version, commit=False)
+    mark_idempotency_succeeded(db, claim, resource_type="category_rule", resource_id=str(rule_id))
     db.commit()
     return StatusResponse()
 
@@ -247,9 +235,7 @@ def get_rule_applications(
     db: Session = Depends(get_db),
 ) -> RuleApplicationListResponse:
     batches = list_rule_applications(db, tenant_id=auth.tenant_id, limit=limit)
-    return RuleApplicationListResponse(
-        items=[RuleApplicationBatchResponse.model_validate(batch) for batch in batches]
-    )
+    return RuleApplicationListResponse(items=[RuleApplicationBatchResponse.model_validate(batch) for batch in batches])
 
 
 @router.post(
@@ -265,6 +251,8 @@ def post_rule_application_rollback(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
+        actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id,
     )
     return RuleApplicationRollbackResponse(
         public_id=batch.public_id,

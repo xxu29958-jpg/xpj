@@ -93,4 +93,6 @@ data class ExpenseEntity(
     // ``expense:local:{clientRef}`` (see OutboxExpenseTarget) so a later edit
     // resolves to it before the server id is known.
     val clientRef: String? = null,
+    @ColumnInfo(defaultValue = "0")
+    val factRevision: Long = 0L,
 )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from api_contract_helpers import patch_expense
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -103,14 +104,17 @@ def test_updating_tags_to_blank_clears_filter_links(client: TestClient, *, ident
         tags="外卖, 冲动",
     )
 
-    update = patch_expense(
-        client,
-        int(item["id"]),
-        headers=identity.app_headers,
-        fields={"tags": "   "},
+    update = client.post(
+        f"/api/expenses/{item['id']}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={
+            "expected_row_version": item["row_version"],
+            "reason": "移除错误标签",
+            "tags": "   ",
+        },
     )
-    assert update.status_code == 200
-    assert update.json()["tags"] is None
+    assert update.status_code == 201
+    assert update.json()["expense"]["tags"] is None
 
     tags = client.get("/api/expenses/tags", headers=identity.app_headers)
     assert tags.status_code == 200

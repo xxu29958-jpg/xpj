@@ -233,6 +233,39 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
+    fun migrate15To16AddsFactRevisionWithoutLosingConfirmedRows() {
+        val name = "migration-15-16-test.db"
+        helper.createDatabase(name, 15).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO expenses (
+                    id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                    originalCurrencyCode, fxStatus, merchant, category, source,
+                    duplicateStatus, status, createdAt, rowVersion, hasImage
+                ) VALUES (
+                    1, 'owner', 9, 'pub-9', 1500, 'CNY',
+                    'CNY', 'ready', '星巴克', '餐饮', '缓存',
+                    'none', 'confirmed', '2026-08-28T00:00:00Z', 4, 1
+                )
+                """.trimIndent(),
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            name,
+            16,
+            true,
+            AppDatabase.Migration15To16,
+        )
+
+        db.query("SELECT rowVersion, factRevision FROM expenses WHERE serverId = 9").use { cursor ->
+            assertTrue("the confirmed cache row must survive", cursor.moveToFirst())
+            assertEquals(4L, cursor.getLong(0))
+            assertEquals("legacy cache starts before revision history is synced", 0L, cursor.getLong(1))
+        }
+    }
+
+    @Test
     fun migrate13To14PreservesLegacyIntentWithoutGuessingOwner() {
         val name = "migration-13-14-test.db"
         helper.createDatabase(name, 13).use { db ->

@@ -15,8 +15,10 @@ from uuid import uuid4
 import pytest
 from api_contract_helpers import (
     acknowledge_items_mismatch_api,
+    confirm_expense_api,
     patch_expense,
     replace_items_api,
+    upload_png,
 )
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -28,19 +30,20 @@ from app.services.receipt_item_service import acknowledge_items_sum_mismatch
 
 
 def _create_mismatch_expense(client: TestClient, *, identity) -> int:
-    """Create a confirmed expense whose items_sum_status is mismatch_known."""
-    created = client.post(
-        "/api/expenses/manual",
+    """Create a pending expense whose items_sum_status is mismatch_known."""
+    expense_id = upload_png(client, identity=identity)
+    patched = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 3500,
             "merchant": "Mismatch Cafe",
             "category": "餐饮",
-            "spent_at": "2026-05-04T01:00:00Z",
+            "expense_time": "2026-05-04T01:00:00Z",
         },
     )
-    assert created.status_code == 200, created.text
-    expense_id = int(created.json()["id"])
+    assert patched.status_code == 200, patched.text
 
     response = replace_items_api(
         client,
@@ -53,9 +56,7 @@ def _create_mismatch_expense(client: TestClient, *, identity) -> int:
     return expense_id
 
 
-def test_acknowledge_mismatch_without_token_returns_422(
-    client: TestClient, *, identity
-) -> None:
+def test_acknowledge_mismatch_without_token_returns_422(client: TestClient, *, identity) -> None:
     expense_id = _create_mismatch_expense(client, identity=identity)
     response = client.post(
         f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
@@ -69,9 +70,7 @@ def test_acknowledge_mismatch_without_token_returns_422(
     assert response.json()["error"] == "invalid_request"
 
 
-def test_acknowledge_mismatch_replay_same_key_returns_canonical_not_409(
-    client: TestClient, *, identity
-) -> None:
+def test_acknowledge_mismatch_replay_same_key_returns_canonical_not_409(client: TestClient, *, identity) -> None:
     """ADR-0042 committed-but-unseen for acknowledge — the one D-1 op whose HIT
     path re-serialises via ``list_expense_items`` (not ``get_expense``). Same key
     + same now-stale token must return the canonical (already-acknowledged) items
@@ -79,9 +78,7 @@ def test_acknowledge_mismatch_replay_same_key_returns_canonical_not_409(
     terminal-idempotent: the second claim's ``items_sum_status='mismatch_known'``
     predicate would miss)."""
     expense_id = _create_mismatch_expense(client, identity=identity)
-    v0 = client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    ).json()["row_version"]
+    v0 = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()["row_version"]
     key = str(uuid4())
     headers = {**identity.app_headers, "Idempotency-Key": key}
     body = {"expected_row_version": v0}
@@ -106,9 +103,7 @@ def test_acknowledge_mismatch_replay_same_key_returns_canonical_not_409(
     assert replay.json()["row_version"] == v1
 
 
-def test_acknowledge_mismatch_with_stale_token_returns_409(
-    client: TestClient, *, identity
-) -> None:
+def test_acknowledge_mismatch_with_stale_token_returns_409(client: TestClient, *, identity) -> None:
     expense_id = _create_mismatch_expense(client, identity=identity)
     snapshot = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert snapshot.status_code == 200, snapshot.text
@@ -136,9 +131,7 @@ def test_acknowledge_mismatch_with_stale_token_returns_409(
     assert items.json()["items_sum_status"] == "mismatch_known"
 
 
-def test_acknowledge_mismatch_status_check_preserves_existing_409(
-    client: TestClient, *, identity
-) -> None:
+def test_acknowledge_mismatch_status_check_preserves_existing_409(client: TestClient, *, identity) -> None:
     """When the row exists but its items_sum_status is no longer
     ``mismatch_known`` (e.g. items now match the amount), the old
     ``items_sum_not_in_mismatch`` 409 still wins over ``state_conflict``.
@@ -169,21 +162,64 @@ def test_acknowledge_mismatch_status_check_preserves_existing_409(
     assert response.json()["error"] == "items_sum_not_in_mismatch"
 
 
-def test_acknowledge_mismatch_with_fresh_token_succeeds(
-    client: TestClient, *, identity
-) -> None:
+def test_acknowledge_mismatch_with_fresh_token_succeeds(client: TestClient, *, identity) -> None:
     expense_id = _create_mismatch_expense(client, identity=identity)
-    response = acknowledge_items_mismatch_api(
-        client, expense_id, headers=identity.app_headers
-    )
+    response = acknowledge_items_mismatch_api(client, expense_id, headers=identity.app_headers)
     assert response.status_code == 200, response.text
     assert response.json()["items_sum_status"] == "mismatch_acknowledged"
 
 
+def test_confirmed_acknowledge_mismatch_appends_fact_revision(client: TestClient, *, identity) -> None:
+    """The specialised "原小票如此" command remains one correction intent.
+
+    A confirmed row must not mutate a field included in the immutable fact
+    snapshot while bypassing ``fact_revision`` and ``expense_revisions``.
+    """
+
+    expense_id = _create_mismatch_expense(client, identity=identity)
+    confirmed = confirm_expense_api(
+        client,
+        expense_id,
+        headers=identity.app_headers,
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["fact_revision"] == 1
+    before_row_version = confirmed.json()["row_version"]
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": before_row_version},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["items_sum_status"] == "mismatch_acknowledged"
+    assert response.json()["row_version"] == before_row_version + 1
+
+    detail = client.get(
+        f"/api/expenses/{expense_id}",
+        headers=identity.app_headers,
+    )
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["fact_revision"] == 2
+
+    history = client.get(
+        f"/api/expenses/{expense_id}/revisions",
+        headers=identity.app_headers,
+    )
+    assert history.status_code == 200, history.text
+    assert history.json()["total"] == 2
+    latest = history.json()["items"][0]
+    assert latest["change_kind"] == "correction"
+    assert latest["reason"] == "原小票如此：明细合计与账单金额存在差异"
+    assert latest["changed_fields"] == ["items_sum_status"]
+    assert latest["before"]["items_sum_status"] == "mismatch_known"
+    assert latest["after"]["items_sum_status"] == "mismatch_acknowledged"
+    assert latest["actor_account_name"] == "我"
+    assert latest["actor_device_name"] == "pytest-android"
+
+
 @pytest.mark.real_db
-def test_two_sessions_acknowledge_race_only_first_writer_wins(
-    client: TestClient, *, identity
-) -> None:
+def test_two_sessions_acknowledge_race_only_first_writer_wins(client: TestClient, *, identity) -> None:
     expense_id = _create_mismatch_expense(client, identity=identity)
     tenant_id = "owner"
 
@@ -198,16 +234,12 @@ def test_two_sessions_acknowledge_race_only_first_writer_wins(
 
         # Session A acknowledges first, which bumps updated_at and flips
         # status away from ``mismatch_known``.
-        acknowledge_items_sum_mismatch(
-            session_a, expense_id, tenant_id, expected_row_version=shared_version
-        )
+        acknowledge_items_sum_mismatch(session_a, expense_id, tenant_id, expected_row_version=shared_version)
 
         # Session B's stale snapshot can no longer ack — both updated_at
         # AND status filters miss.
         with pytest.raises(AppError) as exc_info:
-            acknowledge_items_sum_mismatch(
-                session_b, expense_id, tenant_id, expected_row_version=shared_version
-            )
+            acknowledge_items_sum_mismatch(session_b, expense_id, tenant_id, expected_row_version=shared_version)
         assert exc_info.value.status_code == 409
         # Either error code is acceptable per the disambiguation contract;
         # status mismatch surfaces as items_sum_not_in_mismatch.
@@ -223,9 +255,7 @@ def test_two_sessions_acknowledge_race_only_first_writer_wins(
     assert items.json()["items_sum_status"] == "mismatch_acknowledged"
 
 
-def test_acknowledge_mismatch_unknown_expense_returns_404(
-    client: TestClient, *, identity
-) -> None:
+def test_acknowledge_mismatch_unknown_expense_returns_404(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/expenses/9999999/items/acknowledge-mismatch",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},

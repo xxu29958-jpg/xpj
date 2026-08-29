@@ -131,50 +131,12 @@ internal class ExpensePendingRepository(
     }
 
     /**
-     * ADR-0042 Slice C: offline-aware batch primitive. Applies a single field
-     * edit (category XOR tags — at least one non-null) to ONE already-confirmed
-     * expense, reusing the same direct-PATCH-then-outbox path as
-     * [saveExpenseAllowingOffline]. The batch seam ([LedgerActions.applyConfirmedBatch])
-     * fans a multi-select out into one of these calls per selected expense, so a
-     * stale row 409s / queues independently of its siblings (partial success).
-     *
-     * Builds the [ExpenseUpdateRequest] FIELD-SELECTIVELY — deliberately NOT via
-     * [ExpenseDraft.toRequest], whose ``category = normalizeExpenseCategory(category)``
-     * coerces an untouched (null) category to "其他" and would silently overwrite
-     * every batch target's category. Only the field(s) being edited are non-null;
-     * Moshi omits the rest (same null-omission the token-strip below relies on) so
-     * the backend's ``exclude_unset`` leaves the untouched columns alone.
-     */
-    suspend fun applyConfirmedFieldsOffline(
-        expense: Expense,
-        category: String?,
-        tags: String?,
-    ): Result<SaveOutcome> = core.errorHandler.safeCall {
-        require(category != null || tags != null) { "请选择要修改的字段。" }
-        val request = ExpenseUpdateRequest(
-            expectedRowVersion = expense.rowVersion,
-            merchant = null,
-            category = category,
-            note = null,
-            expenseTime = null,
-            tags = tags,
-            valueScore = null,
-            regretScore = null,
-        )
-        val optimistic = expense.copy(
-            category = category ?: expense.category,
-            tags = tags ?: expense.tags,
-        )
-        patchExpenseOffline(id = expense.id, request = request, optimistic = optimistic)
-    }
-
-    /**
-     * Shared offline-aware PATCH core for [saveExpenseAllowingOffline] and
-     * [applyConfirmedFieldsOffline]. Mints ONE intent-time Idempotency-Key, tries
-     * the direct PATCH, and on IOException (only) enqueues a PatchExpense outbox
-     * row replaying that SAME key; [optimistic] is the Expense surfaced in
-     * [SaveOutcome.Queued]. HttpException (409 / 4xx / 5xx) propagates to safeCall
-     * as ``Result.failure``.
+     * Pending-editor offline-aware PATCH core. Mints ONE intent-time
+     * Idempotency-Key, tries the direct PATCH, and on IOException (only) enqueues
+     * a PatchExpense outbox row replaying that SAME key; [optimistic] is the
+     * Expense surfaced in [SaveOutcome.Queued]. HttpException (409 / 4xx / 5xx)
+     * propagates to safeCall as ``Result.failure``. Confirmed batch correction is
+     * owned by the atomic correction endpoint and cannot enter this path.
      */
     private suspend fun patchExpenseOffline(
         id: Long,
