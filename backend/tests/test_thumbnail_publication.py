@@ -14,9 +14,9 @@ import app.services.expense_service._enrich as enrich_service
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BackgroundTask, Expense
-from app.services import background_task_service, cleanup_service, thumb_service
+from app.services import background_task_worker, cleanup_service, thumb_service
 from app.services.currency_binding_service import authorize_currency_metadata_write
-from app.services.expense_service import create_pending_expense
+from app.services.expense_service import stage_pending_expense
 from app.services.expense_service._image import ensure_thumbnail_file
 from app.services.expense_service._thumbnail_publication import publish_claimed_thumbnail
 from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
@@ -34,12 +34,13 @@ def _seed_pending_expense() -> tuple[int, int]:
         content_type="image/png",
     )
     with SessionLocal() as db:
-        expense = create_pending_expense(
+        expense = stage_pending_expense(
             db,
             saved,
             "owner",
             source="网页上传",
         )
+        db.commit()
         return expense.id, expense.row_version
 
 
@@ -282,7 +283,7 @@ def test_enrichment_staging_cleanup_failure_preserves_completed_task_truth(
             fail_publication,
         )
         failure.setattr(Path, "unlink", deny_staging_cleanup)
-        background_task_service._run_task(  # noqa: SLF001 - exercise the real worker truth barrier.
+        background_task_worker.run_task(
             task_id,
             {
                 "expense_id": expense_id,

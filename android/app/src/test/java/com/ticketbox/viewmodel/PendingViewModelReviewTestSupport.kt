@@ -271,10 +271,12 @@ internal class FakeReviewActions(
     // Each uploadScreenshot call records the file name it was given so multi-image
     // share tests can assert order + count without leaking bytes.
     val uploadedFileNames = mutableListOf<String>()
+    val uploadedLedgerIds = mutableListOf<String?>()
 
     override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> {
         uploadCalls += 1
         uploadedFileNames += request.fileName
+        uploadedLedgerIds += request.expectedLedgerId
         uploadResponder?.let { return it(request.fileName) }
         return Result.failure(IllegalStateException("upload not exercised in tests"))
     }

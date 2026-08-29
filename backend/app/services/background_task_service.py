@@ -36,21 +36,23 @@ Orphan recovery:
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BackgroundTask
-from app.services.background_task_handler_api import TaskCancelledError
+from app.services.background_task_admission import stage_queued_task
+from app.services.background_task_executor import (
+    shutdown_executor as _shutdown_executor,
+)
+from app.services.background_task_executor import submit_task as _submit_to_executor
 from app.services.background_task_recovery_service import (
     recover_orphaned_tasks as _recover_orphaned_tasks,
 )
@@ -58,18 +60,14 @@ from app.services.background_task_registry import TaskHandler, TaskHandlerRegist
 from app.services.background_task_registry import (
     runtime_handler_registry as _runtime_handler_registry,
 )
+from app.services.background_task_worker import mark_failed as _mark_failed
+from app.services.background_task_worker import run_task as _run_background_task
 from app.services.time_service import now_utc
 
 logger = logging.getLogger(__name__)
 
-MAX_WORKERS = 2
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _RECOVERABLE_STATUSES = frozenset({"running", "queued"})
-
-
-# Sentinel: set XPJ_BACKGROUND_TASK_INLINE=1 in tests for synchronous runs.
-def _inline_mode() -> bool:
-    return os.environ.get("XPJ_BACKGROUND_TASK_INLINE") == "1"
 
 
 class BackgroundTaskRegistrationError(Exception):
@@ -82,6 +80,17 @@ class BackgroundTaskSubmissionError(RuntimeError):
     def __init__(self, task_public_id: str) -> None:
         super().__init__("background task submission failed")
         self.task_public_id = task_public_id
+
+
+@dataclass(frozen=True)
+class PreparedBackgroundTask:
+    """A staged task plus the process-local execution intent it will submit."""
+
+    task: BackgroundTask
+    task_id: int
+    task_public_id: str
+    payload: dict[str, Any]
+    registry: TaskHandlerRegistry
 
 
 _handler_registry_context: ContextVar[TaskHandlerRegistry | None] = ContextVar(
@@ -134,37 +143,9 @@ def get_registered_handlers() -> dict[str, TaskHandler]:
     return _current_handler_registry().snapshot()
 
 
-# -------------------------------------------------------------------------
-# Executor lifecycle
-
-
-class _ExecutorPool:
-    """Owns the process-local background executor lifecycle."""
-
-    def __init__(self) -> None:
-        self._executor: ThreadPoolExecutor | None = None
-
-    def get(self) -> ThreadPoolExecutor:
-        if self._executor is None:
-            self._executor = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="xpj-bgtask")
-        return self._executor
-
-    def shutdown(self, *, wait: bool) -> None:
-        if self._executor is not None:
-            self._executor.shutdown(wait=wait, cancel_futures=True)
-            self._executor = None
-
-
-_EXECUTOR_POOL = _ExecutorPool()
-
-
-def _get_executor() -> ThreadPoolExecutor:
-    return _EXECUTOR_POOL.get()
-
-
 def shutdown_executor(wait: bool = False) -> None:
     """For graceful shutdown / tests. After this, enqueue() will rebuild."""
-    _EXECUTOR_POOL.shutdown(wait=wait)
+    _shutdown_executor(wait=wait)
 
 
 # -------------------------------------------------------------------------
@@ -182,6 +163,35 @@ def enqueue(
     progress_total: int | None = None,
 ) -> BackgroundTask:
     """Insert a new ``queued`` row and submit it to the executor."""
+    try:
+        prepared = prepare_enqueue(
+            db,
+            task_type=task_type,
+            initiator_account_id=initiator_account_id,
+            initiator_device_id=initiator_device_id,
+            ledger_id=ledger_id,
+            payload=payload,
+            progress_total=progress_total,
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001 - caller-owned transaction rollback barrier
+        db.rollback()
+        raise
+    return submit_committed(db, prepared)
+
+
+def prepare_enqueue(
+    db: Session,
+    *,
+    task_type: str,
+    initiator_account_id: int | None,
+    initiator_device_id: int | None = None,
+    ledger_id: str | None = None,
+    payload: dict[str, Any] | None = None,
+    progress_total: int | None = None,
+) -> PreparedBackgroundTask:
+    """Validate, admit, and stage a task without committing it."""
+
     registry = _current_handler_registry()
     if not registry.contains(task_type):
         raise AppError(
@@ -191,7 +201,7 @@ def enqueue(
         )
 
     payload_copy = dict(payload or {})
-    task = _insert_queued_task(
+    task = stage_queued_task(
         db,
         task_type=task_type,
         initiator_account_id=initiator_account_id,
@@ -199,17 +209,40 @@ def enqueue(
         ledger_id=ledger_id,
         progress_total=progress_total,
     )
+    return PreparedBackgroundTask(
+        task=task,
+        task_id=task.id,
+        task_public_id=task.public_id,
+        payload=payload_copy,
+        registry=registry,
+    )
+
+
+def submit_committed(
+    db: Session,
+    prepared: PreparedBackgroundTask,
+) -> BackgroundTask:
+    """Submit an already-committed task, preserving its durable receipt on failure."""
+
+    task = prepared.task
     try:
-        _submit_task(task.id, payload_copy, registry=registry)
+        _submit_task(prepared.task_id, prepared.payload, registry=prepared.registry)
     except Exception as exc:  # noqa: BLE001 - executor submission barrier
-        logger.exception("background task %s could not be submitted", task.id)
-        _mark_failed(
-            db,
-            task.id,
-            error_code="task_submission_failed",
-            error_message="Task execution could not be started.",
-        )
-        raise BackgroundTaskSubmissionError(task.public_id) from exc
+        logger.exception("background task %s could not be submitted", prepared.task_id)
+        try:
+            _mark_failed(
+                db,
+                prepared.task_id,
+                error_code="task_submission_failed",
+                error_message="Task execution could not be started.",
+            )
+        except SQLAlchemyError:
+            # The task receipt itself is already durable.  A secondary status
+            # publication failure must not turn the accepted upload into a
+            # retryable HTTP error; startup orphan recovery owns the queued row.
+            db.rollback()
+            logger.exception("background task %s failure status could not be persisted", prepared.task_id)
+        raise BackgroundTaskSubmissionError(prepared.task_public_id) from exc
     return task
 
 
@@ -272,37 +305,18 @@ def enqueue_or_get_active(
     return task, True
 
 
-def _insert_queued_task(
-    db: Session,
-    *,
-    task_type: str,
-    initiator_account_id: int | None,
-    initiator_device_id: int | None,
-    ledger_id: str | None,
-    progress_total: int | None,
-) -> BackgroundTask:
-    task = BackgroundTask(
-        task_type=task_type,
-        tenant_id=ledger_id,
-        initiated_by_account_id=initiator_account_id,
-        initiated_by_device_id=initiator_device_id,
-        progress_total=progress_total,
-    )
-    db.add(task)
-    db.commit()
-    return task
-
-
 def _submit_task(
     task_id: int,
     payload: dict[str, Any],
     *,
     registry: TaskHandlerRegistry,
 ) -> None:
-    if _inline_mode():
-        _run_task(task_id, payload, registry=registry)
-    else:
-        _get_executor().submit(_run_task, task_id, payload, registry)
+    _submit_to_executor(
+        task_id,
+        payload,
+        registry=registry,
+        runner=_run_background_task,
+    )
 
 
 def _active_task(
@@ -369,110 +383,6 @@ def request_cancellation(
         db.commit()
         db.refresh(task)
     return task
-
-
-# -------------------------------------------------------------------------
-# Internal: the worker that wraps a registered handler
-
-
-def _run_task(
-    task_id: int,
-    payload: dict[str, Any],
-    registry: TaskHandlerRegistry | None = None,
-) -> None:
-    """Run one claimed task with a task-status session.
-
-    Handlers may open their own short-lived domain sessions; this session
-    remains the owner of task claim and terminal-status publication.
-    """
-    with SessionLocal() as db:
-        task = _claim_queued_task(db, task_id)
-        if task is None:
-            if db.get(BackgroundTask, task_id) is None:
-                logger.error("background task %s vanished before run", task_id)
-            return
-
-        active_registry = registry or _current_handler_registry()
-        handler = active_registry.get(task.task_type)
-        if handler is None:
-            _mark_failed(
-                db,
-                task_id,
-                error_code="unknown_task_type",
-                error_message=f"No handler registered for {task.task_type!r}.",
-            )
-            return
-
-        try:
-            handler(db, task, payload)
-        except TaskCancelledError:
-            _mark_cancelled(db, task_id)
-        except Exception as exc:  # noqa: BLE001 - top-of-task barrier
-            logger.exception("background task %s (%s) failed", task_id, task.task_type)
-            _mark_failed(
-                db,
-                task_id,
-                error_code=type(exc).__name__,
-                error_message=str(exc)[:500],
-            )
-        else:
-            # Handler responsible for setting result_summary_json before
-            # returning; just promote to completed.
-            _mark_completed(db, task_id)
-
-
-def _claim_queued_task(db: Session, task_id: int) -> BackgroundTask | None:
-    """Atomically claim a queued task for this worker.
-
-    The conditional UPDATE is the DB-backed guard that matters in shared-DB
-    cloud deployments: if two workers are asked to run the same row, only one
-    can move it from queued to running.
-    """
-
-    claimed_at = now_utc()
-    result = db.execute(
-        update(BackgroundTask)
-        .where(BackgroundTask.id == task_id, BackgroundTask.status == "queued")
-        .values(
-            status="running",
-            started_at=claimed_at,
-            last_progress_at=claimed_at,
-        )
-    )
-    db.commit()
-    claimed: BackgroundTask | None = None
-    if result.rowcount == 1:
-        claimed = db.get(BackgroundTask, task_id)
-    return claimed
-
-
-def _mark_completed(db: Session, task_id: int) -> None:
-    task = db.get(BackgroundTask, task_id)
-    if task is None or task.status in _TERMINAL_STATUSES:
-        return
-    task.status = "completed"
-    task.completed_at = now_utc()
-    db.commit()
-
-
-def _mark_failed(db: Session, task_id: int, *, error_code: str, error_message: str) -> None:
-    task = db.get(BackgroundTask, task_id)
-    if task is None or task.status in _TERMINAL_STATUSES:
-        return
-    task.status = "failed"
-    task.completed_at = now_utc()
-    task.error_code = error_code
-    task.error_message = error_message
-    db.commit()
-
-
-def _mark_cancelled(db: Session, task_id: int) -> None:
-    task = db.get(BackgroundTask, task_id)
-    if task is None or task.status in _TERMINAL_STATUSES:
-        return
-    task.status = "cancelled"
-    task.completed_at = now_utc()
-    db.commit()
 
 
 # -------------------------------------------------------------------------

@@ -55,6 +55,7 @@ import com.ticketbox.ui.screens.pending.PendingExpenseReviewActions
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewItem
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewRow
 import com.ticketbox.ui.screens.pending.PendingMessageCard
+import com.ticketbox.ui.screens.pending.PendingMessageCardAction
 import com.ticketbox.ui.screens.pending.PendingListBodyState
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
 import com.ticketbox.ui.screens.pending.PendingQueueEvidence
@@ -118,6 +119,14 @@ fun PendingScreen(
         hasRows = state.items.isNotEmpty(),
         loadState = state.listLoadState,
     )
+    // Keep the capacity message and its retained-image action as one UI unit.
+    val showCapacityRetry = state.canRetryUpload && !readOnly
+    val capacityRetryActionLabel = stringResource(R.string.pending_upload_retry_action)
+    val messageCardText = if (showCapacityRetry) {
+        stringResource(R.string.pending_msg_upload_capacity_full)
+    } else {
+        state.message?.asString()
+    }
     val haptics = rememberAppHaptics()
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
     val authorityTone = when {
@@ -276,8 +285,23 @@ fun PendingScreen(
             }
         }
 
-        state.message?.takeIf { bodyState != PendingListBodyState.LoadFailed }?.let { message ->
-            item { PendingMessageCard(message = message.asString()) }
+        messageCardText
+            ?.takeIf { showCapacityRetry || bodyState != PendingListBodyState.LoadFailed }
+            ?.let { message ->
+            item {
+                PendingMessageCard(
+                    message = message,
+                    action = if (showCapacityRetry) {
+                        PendingMessageCardAction(
+                            label = capacityRetryActionLabel,
+                            enabled = !state.uploading,
+                            onClick = chromeActions.onRetryCapacityUpload,
+                        )
+                    } else {
+                        null
+                    },
+                )
+            }
         }
 
         if (state.uploading) {

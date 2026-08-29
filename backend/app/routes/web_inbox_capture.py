@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.errors import AppError
 from app.routes._upload_request import handle_upload
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
@@ -63,16 +64,26 @@ async def web_pending_upload(
     _require_selected_ledger_write(options, selected_id)
     actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     timezone_name = timezone.strip() or None
-    upload = await handle_upload(
-        request=request,
-        tenant_id=selected_id,
-        db=db,
-        source="网页上传",
-        endpoint="web_product",
-        initiator_account_id=actor_account_id,
-        initiator_device_id=actor_device_id,
-        timezone_name=timezone_name,
-    )
+    try:
+        upload = await handle_upload(
+            request=request,
+            tenant_id=selected_id,
+            db=db,
+            source="网页上传",
+            endpoint="web_product",
+            initiator_account_id=actor_account_id,
+            initiator_device_id=actor_device_id,
+            timezone_name=timezone_name,
+        )
+    except AppError as exc:
+        if exc.error != "enrichment_capacity_full":
+            raise
+        return _web_redirect(
+            "/web/pending",
+            selected_id,
+            msg="识别队列暂时已满，这张小票还没有保存；请稍等片刻重新选择上传。",
+            flash_type="error",
+        )
     return _web_redirect(
         "/web/pending",
         selected_id,

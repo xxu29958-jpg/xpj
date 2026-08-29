@@ -122,6 +122,7 @@ internal class FakeApiService(
     // suspend so a test can mutate the (suspend-API) FakeExpenseDao from the
     // hook — e.g. simulate a row being confirmed-and-cached mid-fetch.
     var onConfirmedRequest: (suspend () -> Unit)? = null
+    var onPendingRequest: (suspend () -> List<ExpenseDto>)? = null
     var onExpenseFetch: (() -> Unit)? = null
     var onConfirmExpense: (() -> Unit)? = null
     var onCheckAuth: (() -> Unit)? = null
@@ -187,7 +188,8 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.InvitationCreateRequestDto,
     ): com.ticketbox.data.remote.dto.InvitationCreateResponseDto = unsupported()
 
-    override suspend fun pendingExpenses(): List<ExpenseDto> = unsupported()
+    override suspend fun pendingExpenses(): List<ExpenseDto> =
+        onPendingRequest?.invoke() ?: unsupported()
 
     override suspend fun categories(): CategoriesDto = unsupported()
 

@@ -35,7 +35,7 @@ from app.services.expense_service._helpers import (
     _notification_draft_fields,
     _notification_draft_key,
 )
-from app.services.file_service import SavedUpload, delete_relative_upload
+from app.services.file_service import SavedUpload
 from app.services.idempotency import fingerprint_request
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
@@ -44,7 +44,7 @@ from app.tenants import AuthContext
 __all__ = [
     "create_manual_expense",
     "create_notification_draft",
-    "create_pending_expense",
+    "stage_pending_expense",
 ]
 
 
@@ -52,54 +52,46 @@ def _materialize_category_preference(db: Session, expense: Expense) -> None:
     ensure_category_preference_for_name(db, tenant_id=expense.tenant_id, name=expense.category)
 
 
-def create_pending_expense(
+def stage_pending_expense(
     db: Session,
     saved_file: SavedUpload,
     tenant_id: str,
     *,
     source: str = "iPhone截图",
 ) -> Expense:
-    created = False
-    commit_attempted = False
-    try:
-        now = now_utc()
-        frozen_home_currency = home_currency_code()
-        # ADR-0061 C02 桥接门（PR#255 R9）：pending 行即按 env 盖章成持久事实，漂移时
-        # 不得放行（与 freeze_home_amount / apply_currency_payload 同一防线）。
-        assert_currency_binding_consistent(db, frozen_home_currency)
-        expense = Expense(
-            tenant_id=tenant_id,
-            amount_cents=None,
-            home_currency_code=frozen_home_currency,
-            original_currency_code=frozen_home_currency,
-            original_amount_minor=None,
-            merchant=None,
-            category="其他",
-            note="",
-            source=source,
-            image_path=saved_file.relative_path,
-            thumbnail_path=None,
-            image_hash=saved_file.image_hash,
-            image_perceptual_hash=saved_file.image_perceptual_hash,
-            raw_text="",
-            confidence=None,
-            status="pending",
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(expense)
-        db.flush()
-        mark_duplicate_status(db, expense)
-        expense.updated_at = now_utc()
-        commit_attempted = True
-        db.commit()
-        created = True
-        return expense
-    finally:
-        if not created:
-            db.rollback()
-            if not commit_attempted:
-                delete_relative_upload(saved_file.relative_path)
+    """Stage one Pending expense without committing the caller's transaction."""
+
+    now = now_utc()
+    frozen_home_currency = home_currency_code()
+    # ADR-0061 C02 桥接门（PR#255 R9）：pending 行即按 env 盖章成持久事实，漂移时
+    # 不得放行（与 freeze_home_amount / apply_currency_payload 同一防线）。
+    assert_currency_binding_consistent(db, frozen_home_currency)
+    expense = Expense(
+        tenant_id=tenant_id,
+        amount_cents=None,
+        home_currency_code=frozen_home_currency,
+        original_currency_code=frozen_home_currency,
+        original_amount_minor=None,
+        merchant=None,
+        category="其他",
+        note="",
+        source=source,
+        image_path=saved_file.relative_path,
+        thumbnail_path=None,
+        image_hash=saved_file.image_hash,
+        image_perceptual_hash=saved_file.image_perceptual_hash,
+        raw_text="",
+        confidence=None,
+        status="pending",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(expense)
+    db.flush()
+    mark_duplicate_status(db, expense)
+    expense.updated_at = now_utc()
+    db.flush()
+    return expense
 
 
 def _manual_request_fingerprint(payload: ExpenseManualCreateRequest) -> str:

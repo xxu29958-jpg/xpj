@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 import app.services.expense_service._enrich as enrich_service
 from app.database import SessionLocal
 from app.models import BackgroundTask, Expense
-from app.services import background_task_service
+from app.services import background_task_worker
 from app.services.background_task_handler_api import TaskCancelledError
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.expense_service import create_pending_expense
+from app.services.expense_service import stage_pending_expense
 from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
 from app.services.ledger_service import find_owner_account_id_for_ledger
 from app.services.ocr_service import OcrExtraction, OcrResult
@@ -32,12 +32,13 @@ def _seed_pending_enrichment_task() -> tuple[int, int, int]:
         content_type="image/png",
     )
     with SessionLocal() as db:
-        expense = create_pending_expense(
+        expense = stage_pending_expense(
             db,
             saved,
             "owner",
             source="网页上传",
         )
+        db.commit()
         account_id = find_owner_account_id_for_ledger(db, ledger_id="owner")
         assert account_id is not None
         task = BackgroundTask(
@@ -217,7 +218,7 @@ def test_enrichment_post_commit_read_failure_does_not_false_fail_task(
     )
     monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", lambda *_args: None)
 
-    background_task_service._run_task(  # noqa: SLF001 - exercise the real worker outcome barrier.
+    background_task_worker.run_task(
         task_id,
         {
             "expense_id": expense_id,

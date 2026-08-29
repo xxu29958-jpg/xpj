@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -56,8 +57,8 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        assertTrue(vm.markUploadPreparing())
-        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg")))
+        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
+        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg"), uploadAttempt))
         advanceUntilIdle()
 
         assertEquals(2, fake.enrichmentTasks.calls)
@@ -88,8 +89,8 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        assertTrue(vm.markUploadPreparing())
-        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg")))
+        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
+        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg"), uploadAttempt))
         advanceUntilIdle()
 
         assertEquals(1, fake.enrichmentTasks.calls)
@@ -116,8 +117,8 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        assertTrue(vm.markUploadPreparing())
-        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg")))
+        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
+        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg"), uploadAttempt))
         runCurrent()
         assertEquals(1, vm.uiState.value.enrichment.activeCount)
 
@@ -151,11 +152,11 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        assertTrue(vm.markUploadPreparing())
-        assertTrue(vm.uploadPreparedImage(preparedImage("first.jpg")))
+        val firstAttempt = assertNotNull(vm.beginUploadPreparation())
+        assertTrue(vm.uploadPreparedImage(preparedImage("first.jpg"), firstAttempt))
         runCurrent()
-        assertTrue(vm.markUploadPreparing())
-        assertTrue(vm.uploadPreparedImage(preparedImage("second.jpg")))
+        val secondAttempt = assertNotNull(vm.beginUploadPreparation())
+        assertTrue(vm.uploadPreparedImage(preparedImage("second.jpg"), secondAttempt))
         runCurrent()
         assertEquals(2, vm.uiState.value.enrichment.activeCount)
 
@@ -167,6 +168,39 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         advanceUntilIdle()
         assertEquals(0, vm.uiState.value.enrichment.activeCount)
         assertEquals(PendingEnrichmentFeedbackKind.Cancelled, vm.uiState.value.enrichment.feedback?.kind)
+    }
+
+    @Test
+    fun delayedPreEnrichmentRefreshCannotReplaceTheTerminalSnapshot() = review {
+        val ledgerFlow = MutableStateFlow<String?>("owner")
+        val delayed = CompletableDeferred<Result<List<com.ticketbox.domain.model.Expense>>>()
+        var refreshNumber = 0
+        val fake = FakeReviewActions(
+            activeLedgerFlow = ledgerFlow,
+            activeLedgerIdProvider = { ledgerFlow.value },
+        ).apply {
+            fetchPendingResponder = {
+                refreshNumber += 1
+                when (refreshNumber) {
+                    1 -> Result.success(emptyList()) // ViewModel init.
+                    2 -> delayed.await() // Upload-success refresh, captured before OCR.
+                    else -> Result.success(listOf(expense(id = 12L, merchant = "识别后")))
+                }
+            }
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.refresh()
+        runCurrent()
+        vm.refresh()
+        runCurrent()
+        assertEquals("识别后", vm.uiState.value.items.single().merchant)
+
+        delayed.complete(Result.success(listOf(expense(id = 12L, merchant = "识别前"))))
+        advanceUntilIdle()
+
+        assertEquals("识别后", vm.uiState.value.items.single().merchant)
     }
 
     private fun preparedImage(name: String): PreparedUploadImage = PreparedUploadImage(

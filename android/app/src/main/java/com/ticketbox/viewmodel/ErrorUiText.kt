@@ -38,6 +38,8 @@ private val errorCodeStringResByCode = mapOf(
     "invalid_pairing_code" to R.string.error_invalid_pairing_code,
     "device_recovery_platform_mismatch" to R.string.error_device_recovery_platform_mismatch,
     "rate_limited" to R.string.error_rate_limited,
+    // Pending intercepts this code to offer retained-image retry; this is the fallback.
+    "enrichment_capacity_full" to R.string.error_enrichment_capacity_full,
     "file_too_large" to R.string.error_file_too_large,
     "unsupported_file_type" to R.string.error_unsupported_file_type,
     "expense_not_found" to R.string.error_expense_not_found,

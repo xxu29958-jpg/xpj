@@ -85,6 +85,7 @@ class Settings:
     delete_rejected_after_days: int
     orphan_upload_grace_hours: int
     background_task_orphan_grace_seconds: int
+    background_task_max_active: int
     ocr_provider: str
     ocr_auto_run: bool
     ocr_fallback_provider: str
@@ -336,6 +337,10 @@ def get_settings() -> Settings:
         background_task_orphan_grace_seconds=max(
             0,
             int(os.getenv("BACKGROUND_TASK_ORPHAN_GRACE_SECONDS", "0")),
+        ),
+        background_task_max_active=max(
+            1,
+            int(os.getenv("BACKGROUND_TASK_MAX_ACTIVE", "8")),
         ),
         ocr_provider=os.getenv("OCR_PROVIDER", "empty").strip().lower(),
         ocr_auto_run=_bool_env("OCR_AUTO_RUN", False),

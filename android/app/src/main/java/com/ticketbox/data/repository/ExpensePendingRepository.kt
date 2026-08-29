@@ -24,6 +24,8 @@ import kotlin.system.measureTimeMillis
 internal class ExpensePendingRepository(
     private val core: ExpenseRepositoryCore,
 ) : PendingReviewActions {
+    private val pendingSyncCoordinator = PendingSyncCoordinator()
+
     override fun canModifyLedger(): Boolean = core.canModifyLedger()
 
     override fun observeActiveLedgerId(): Flow<String?> = core.observeActiveLedgerId()
@@ -41,8 +43,11 @@ internal class ExpensePendingRepository(
     }
 
     override suspend fun syncPending(): Result<List<Expense>> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
-        core.syncPendingFromService(bound)
+        val ledgerId = core.ledgerRequestGuard.bind().ledgerId
+        pendingSyncCoordinator.sync(ledgerId) {
+            val bound = core.ledgerRequestGuard.bind(expectedLedgerId = ledgerId)
+            core.syncPendingFromService(bound)
+        }
     }
 
     override suspend fun uploadScreenshot(
