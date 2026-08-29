@@ -1,19 +1,25 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     RecurringCandidateConfirmRequest,
+    RecurringItemCreateRequest,
     RecurringItemListResponse,
     RecurringItemResponse,
     RecurringItemTokenRequest,
+    RecurringItemUpdateRequest,
+)
+from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
+from app.services.recurring_item_command_service import (
+    create_manual_recurring_item,
+    update_recurring_item,
 )
 from app.services.recurring_service import (
     archive_recurring_item,
-    confirm_recurring_candidate,
     get_recurring_item,
     list_recurring_items,
     pause_recurring_item,
@@ -57,6 +63,25 @@ def get_recurring_items(
     )
 
 
+@router.post("/items", response_model=RecurringItemResponse, status_code=201)
+def post_recurring_item(
+    payload: RecurringItemCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> RecurringItemResponse:
+    return recurring_item_response(
+        create_manual_recurring_item(
+            db,
+            tenant_id=auth.tenant_id,
+            idempotency_key=idempotency_key,
+            merchant=payload.merchant,
+            baseline_amount_cents=payload.baseline_amount_cents,
+            next_expected_date=payload.next_expected_date,
+        )
+    )
+
+
 @router.post("/from-candidate", response_model=RecurringItemResponse)
 def post_recurring_from_candidate(
     payload: RecurringCandidateConfirmRequest,
@@ -90,6 +115,31 @@ def get_recurring_item_detail(
         timezone_name=timezone,
     )
     return recurring_item_response(item, anomalies.get(item.public_id))
+
+
+@router.patch("/items/{public_id}", response_model=RecurringItemResponse)
+def patch_recurring_item(
+    public_id: str,
+    payload: RecurringItemUpdateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> RecurringItemResponse:
+    return recurring_item_response(
+        update_recurring_item(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            idempotency_key=idempotency_key,
+            expected_row_version=payload.expected_row_version,
+            merchant=payload.merchant,
+            merchant_provided="merchant" in payload.model_fields_set,
+            baseline_amount_cents=payload.baseline_amount_cents,
+            baseline_provided="baseline_amount_cents" in payload.model_fields_set,
+            next_expected_date=payload.next_expected_date,
+            next_expected_date_provided="next_expected_date" in payload.model_fields_set,
+        )
+    )
 
 
 @router.post("/items/{public_id}/pause", response_model=RecurringItemResponse)

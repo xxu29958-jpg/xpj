@@ -17,7 +17,6 @@ import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
-import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RepaymentDraft
 import java.io.IOException
 import java.util.UUID
@@ -651,11 +650,6 @@ internal class ExpenseDetailRepository(
         bound.call { core.readProtectedImage(it.expenseImage(id)) }
     }
 
-    suspend fun recurringCandidates(): Result<List<RecurringCandidate>> = core.errorHandler.safeCall {
-        core.ledgerRequestGuard.guardedCall { api ->
-            api.recurringCandidates(timezone = core.currentTimezoneId()).items.map { it.toDomain() }
-        }
-    }
 }
 
 private data class DetailOutboxContext(

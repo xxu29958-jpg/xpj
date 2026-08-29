@@ -1,21 +1,15 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.repository.LedgerAccessContext
-import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
-import com.ticketbox.domain.model.RecurringCandidate
-import com.ticketbox.domain.model.RecurringItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -57,7 +51,6 @@ class MonthlyStatsViewModelTest {
         }
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
 
@@ -83,7 +76,6 @@ class MonthlyStatsViewModelTest {
         val stats = FakeStatsActions()
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
 
@@ -97,7 +89,6 @@ class MonthlyStatsViewModelTest {
         stats.lifestyleStatsResponder = { lifestyleResponse.await() }
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
 
@@ -118,7 +109,6 @@ class MonthlyStatsViewModelTest {
         stats.monthlyStatsResponder = { _, _ -> primaryResponse.await() }
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         runCurrent()
         assertTrue(viewModel.uiState.value.loading)
@@ -144,7 +134,6 @@ class MonthlyStatsViewModelTest {
         stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         // Seed local Room cache so the fallback path has something to compute against.
         stats.confirmedFlow.value = listOf(
@@ -207,7 +196,6 @@ class MonthlyStatsViewModelTest {
         }
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         viewModel.setMonth("2026-05")
         advanceUntilIdle()
@@ -235,7 +223,6 @@ class MonthlyStatsViewModelTest {
         stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         viewModel.setMonth("2026-05")
         advanceUntilIdle()
@@ -255,7 +242,6 @@ class MonthlyStatsViewModelTest {
         stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         viewModel.setMonth("2026-05")
         advanceUntilIdle()
@@ -280,7 +266,6 @@ class MonthlyStatsViewModelTest {
         stats.tagList = listOf("餐饮", "还好")
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
         assertEquals(listOf("餐饮", "还好"), viewModel.uiState.value.tags)
@@ -299,7 +284,6 @@ class MonthlyStatsViewModelTest {
         stats.monthList = listOf("2027-06", "2026-06", "2026-05")
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
 
@@ -319,7 +303,6 @@ class MonthlyStatsViewModelTest {
         )
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
 
@@ -362,7 +345,6 @@ class MonthlyStatsFilterOptionsViewModelTest {
         }
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
 
@@ -380,7 +362,6 @@ class MonthlyStatsFilterOptionsViewModelTest {
         stats.dataQualityResponder = { Result.failure(RuntimeException("dq offline")) }
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
 
@@ -397,7 +378,6 @@ class MonthlyStatsFilterOptionsViewModelTest {
         stats.tagListResult = Result.failure(RuntimeException("tags offline"))
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
 
@@ -413,7 +393,6 @@ class MonthlyStatsFilterOptionsViewModelTest {
         stats.tagList = listOf("餐饮", "通勤")
         val viewModel = MonthlyStatsViewModel(
             repository = stats,
-            recurringRepository = FakeStatsRecurringActions(),
         )
         advanceUntilIdle()
         assertEquals(listOf("餐饮", "通勤"), viewModel.uiState.value.tags)
@@ -486,60 +465,6 @@ private class FakeStatsActions : StatsActions {
                     generatedAt = "2026-05-13T00:00:00Z",
                 )
             )
-}
-
-private class FakeStatsRecurringActions : RecurringActions {
-    override fun canModifyLedger(): Boolean = true
-
-    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = flowOf(null)
-
-    override suspend fun items(
-        status: String?,
-        includeArchived: Boolean,
-        month: String?,
-    ): Result<List<RecurringItem>> = Result.success(emptyList())
-
-    override suspend fun items(
-        expectedBinding: LogicalSessionBinding,
-        status: String?,
-        includeArchived: Boolean,
-        month: String?,
-    ): Result<List<RecurringItem>> = items(status, includeArchived, month)
-
-    override suspend fun candidates(): Result<List<RecurringCandidate>> = Result.success(emptyList())
-
-    override suspend fun candidates(
-        expectedBinding: LogicalSessionBinding,
-    ): Result<List<RecurringCandidate>> = candidates()
-
-    override suspend fun detail(publicId: String, month: String?): Result<RecurringItem> =
-        Result.failure(IllegalArgumentException("not used"))
-
-    override suspend fun confirmCandidate(
-        expectedBinding: LogicalSessionBinding,
-        candidate: RecurringCandidate,
-        nextExpectedDate: String?,
-    ): Result<RecurringItem> = Result.failure(IllegalArgumentException("not used"))
-
-    override suspend fun pause(
-        expectedBinding: LogicalSessionBinding,
-        publicId: String,
-        expectedRowVersion: Long,
-    ): Result<RecurringItem> =
-        Result.failure(IllegalArgumentException("not used"))
-
-    override suspend fun resume(
-        expectedBinding: LogicalSessionBinding,
-        publicId: String,
-        expectedRowVersion: Long,
-    ): Result<RecurringItem> =
-        Result.failure(IllegalArgumentException("not used"))
-
-    override suspend fun archive(
-        expectedBinding: LogicalSessionBinding,
-        publicId: String,
-    ): Result<RecurringItem> =
-        Result.failure(IllegalArgumentException("not used"))
 }
 
 private fun statsForMonth(month: String, total: Long = 0): MonthlyStats =

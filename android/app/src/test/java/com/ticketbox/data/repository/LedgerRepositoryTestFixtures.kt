@@ -164,6 +164,22 @@ internal class StubApi(
     val recycleBinRefreshCount = mutableListOf<Unit>()
     val recycleBinRestoreRequests: MutableList<com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto> = mutableListOf()
 
+    override suspend fun createRecurringItem(
+        request: com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto,
+        idempotencyKey: String,
+    ): com.ticketbox.data.remote.dto.RecurringItemDto = error("Unexpected createRecurringItem call")
+
+    override suspend fun updateRecurringItem(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto,
+        idempotencyKey: String,
+    ): com.ticketbox.data.remote.dto.RecurringItemDto = error("Unexpected updateRecurringItem call")
+
+    override suspend fun restoreRecurringItem(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest,
+    ): com.ticketbox.data.remote.dto.RecurringItemDto = error("Unexpected restoreRecurringItem call")
+
     override suspend fun listLedgers(): LedgerListResponseDto {
         state.listLedgersError?.let { throw it }
         onListLedgers?.invoke()
@@ -577,7 +593,6 @@ internal class StubApi(
         request: RecurringCandidateConfirmRequestDto,
         timezone: String?,
     ): RecurringItemDto = ledgerUnsupported()
-    override suspend fun recurringItem(publicId: String, month: String?, timezone: String?): RecurringItemDto = ledgerUnsupported()
     override suspend fun pauseRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = ledgerUnsupported()
     override suspend fun resumeRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = ledgerUnsupported()
     override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = ledgerUnsupported()

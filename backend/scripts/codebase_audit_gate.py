@@ -63,7 +63,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 62,
+    "unreferenced_modules": 60,
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -131,12 +131,12 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 95,
-    "mutate_token_exempted": 128,
+    "mutate_token_carriers": 98,
+    "mutate_token_exempted": 130,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 36,
+    "mutate_token_reason_create_row": 38,
     "mutate_token_reason_enqueue_task": 0,
     "mutate_token_reason_external_side_effect": 3,
     "mutate_token_reason_governance_action": 8,
@@ -172,10 +172,11 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
         "mutate_token_exempted",
     }
 )
-_ADR_0049_EXEMPTED_GRANDFATHER = (
+_A3_MUTATE_TOKEN_EXEMPTION_GRANDFATHER = (
+    "0a0d2be96e5786ffcaa65588f960dea291098abd",
     128,
-    129,
-)  # Windows installation-owner bootstrap: POST /api/bootstrap/installation-owner atomically claims one installation operation and issues only a short-lived pairing child. Replay safety rests on the bootstrap secret + stable operation receipt, not a row-version token. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (127, 128) for Desktop switch-prepare.
+    130,
+)  # A3 adds the API/Web twins of one manual fixed-expense create capability. Both insert a new recurring_items row and require one durable Idempotency-Key; neither has a predecessor row_version to carry. The exact base binding makes this single topology hop non-replayable.
 _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER = (
     "051464999fc1f71d9072bb5c9cfc012b521181cd",
     387,
@@ -307,13 +308,18 @@ def _compute_ratchet_findings(
     walking STRICT_EQUALITY_BASELINE keys against the base baseline dict."""
     bootstrapped: list[str] = []
     movement_violations: list[str] = []
+    a3_base_commit, a3_base_count, a3_current_count = _A3_MUTATE_TOKEN_EXEMPTION_GRANDFATHER
     for key in sorted(STRICT_EQUALITY_BASELINE):
         current_val = STRICT_EQUALITY_BASELINE[key]
         if key not in base_baseline:
             bootstrapped.append(key)
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
-        adr_0049_exempt = key == "mutate_token_exempted" and (base_val, current_val) == _ADR_0049_EXEMPTED_GRANDFATHER
+        a3_exempt = (
+            key == "mutate_token_exempted"
+            and base_commit == a3_base_commit
+            and (base_val, current_val) == (a3_base_count, a3_current_count)
+        )
         test_retirement = key == "installer_pytest_count" and any(
             base_commit == candidate_commit
             and base_val == candidate_base
@@ -332,7 +338,7 @@ def _compute_ratchet_findings(
                 f"accumulate, not vanish. Strict equality alone misses this when "
                 f"actuals dropped in lockstep — this layer catches it."
             )
-        elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not adr_0049_exempt:
+        elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not a3_exempt:
             movement_violations.append(
                 f"  - {key} (DOWN-only): base={base_val}, current={current_val} "
                 f"(rose by {current_val - base_val}). Exemptions should drain as "

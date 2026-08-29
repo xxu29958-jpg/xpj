@@ -56,6 +56,20 @@ class RecurringReminderPolicyTest {
     }
 
     @Test
+    fun manualCommitmentWithoutObservedOccurrenceStillYieldsReminder() {
+        val manual = item(nextExpectedDate = "2026-06-12").copy(
+            occurrenceCount = 0,
+            lastSeenAt = null,
+            confidence = null,
+            source = "manual",
+        )
+
+        val decision = policy.evaluate(today, manual)
+
+        assertEquals(RecurringReminderKind.DUE_SOON, decision?.kind)
+    }
+
+    @Test
     fun activeOnTodayYieldsDueSoon() {
         // nextExpectedDate == today（窗口含今天）→ DUE_SOON，不算逾期。
         val decision = policy.evaluate(today, item(nextExpectedDate = "2026-06-10"))

@@ -50,7 +50,7 @@ from app.services.owner_console_service._recycle_bin_money import (
 from app.services.owner_console_service._recycle_bin_money import (
     money as _money,
 )
-from app.services.recurring_service import restore_recurring_item
+from app.services.recurring_service import recurring_item_monthly_detail, restore_recurring_item
 from app.services.soft_delete_policy import (
     is_within_recycle_bin_window,
     recycle_bin_retention_label,
@@ -357,7 +357,7 @@ def _archived_recurring_rows(
             ledger_name=ledger_names[item.tenant_id],
             resource_id=item.public_id,
             title=item.merchant_name,
-            detail=(f"每月 {_money(item.baseline_amount_cents, currency_code)} · 已出现 {item.occurrence_count} 次"),
+            detail=recurring_item_monthly_detail(item, _money(item.baseline_amount_cents, currency_code)),
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,

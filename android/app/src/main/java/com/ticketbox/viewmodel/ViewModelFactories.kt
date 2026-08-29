@@ -34,7 +34,6 @@ fun appViewModelFactory(
 /** [repositoryViewModelFactory] 的仓库打包（保持工厂签名在 detekt 参数门内）。 */
 data class RepositoryViewModelRepositories(
     val repository: ExpenseRepository,
-    val recurringRepository: RecurringRepository,
     val budgetRepository: BudgetActions? = null,
     val reportsRepository: ReportsActions? = null,
     val debtRepository: DebtActions? = null,
@@ -59,7 +58,7 @@ fun repositoryViewModelFactory(
                 onDataChanged = onExpenseDataChanged,
             )
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
-            MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository, repositories.recurringRepository)
+            MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository)
             StatsBudgetViewModel::class.java -> StatsBudgetViewModel(repository, repositories.budgetRepository)
             StatsReportsViewModel::class.java -> StatsReportsViewModel(repositories.reportsRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")

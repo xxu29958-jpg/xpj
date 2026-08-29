@@ -5,6 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringActions
+import com.ticketbox.data.repository.RecurringItemDraft
+import com.ticketbox.data.repository.RecurringItemPatch
+import com.ticketbox.data.repository.RecurringPendingIntent
+import com.ticketbox.data.repository.RecurringSaveOutcome
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
@@ -22,9 +27,16 @@ data class RecurringUiState(
     val messageTone: MessageTone = MessageTone.Neutral,
     val items: List<RecurringItem> = emptyList(),
     val candidates: List<RecurringCandidate> = emptyList(),
+    val pendingIntents: List<RecurringPendingIntent> = emptyList(),
+    val duplicateConflict: RecurringDuplicateConflict? = null,
     val itemsLoadState: RecurringListLoadState = RecurringListLoadState.Unknown,
     val candidatesLoadState: RecurringListLoadState = RecurringListLoadState.Unknown,
     val canModify: Boolean = true,
+)
+
+data class RecurringDuplicateConflict(
+    val publicId: String,
+    val status: String,
 )
 
 enum class RecurringListLoadState {
@@ -44,6 +56,7 @@ class RecurringViewModel(
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
     private var activeCanModify = false
+    private var observedPendingKeys: Set<String>? = null
 
     init {
         viewModelScope.launch {
@@ -68,6 +81,16 @@ class RecurringViewModel(
                         canModify = access?.canModify ?: false,
                     )
                     if (access != null) refresh()
+                }
+        }
+        viewModelScope.launch {
+            repository.observePendingIntents()
+                .collect { intents ->
+                    val currentKeys = intents.mapTo(mutableSetOf(), RecurringPendingIntent::idempotencyKey)
+                    val resolved = observedPendingKeys?.minus(currentKeys).orEmpty().isNotEmpty()
+                    observedPendingKeys = currentKeys
+                    _uiState.update { it.copy(pendingIntents = intents) }
+                    if (resolved && activeBinding != null) refresh()
                 }
         }
     }
@@ -130,6 +153,14 @@ class RecurringViewModel(
         )
     }
 
+    fun createManual(draft: RecurringItemDraft) {
+        saveManual { binding -> repository.createAllowingOffline(binding, draft) }
+    }
+
+    fun editManual(baseline: RecurringItem, patch: RecurringItemPatch) {
+        saveManual { binding -> repository.updateAllowingOffline(binding, baseline, patch) }
+    }
+
     fun pause(publicId: String, expectedRowVersion: Long) {
         mutate(action = { binding -> repository.pause(binding, publicId, expectedRowVersion) })
     }
@@ -140,6 +171,72 @@ class RecurringViewModel(
 
     fun archive(publicId: String) {
         mutate(action = { binding -> repository.archive(binding, publicId) })
+    }
+
+    fun restore(publicId: String, expectedRowVersion: Long) {
+        mutate(action = { binding -> repository.restore(binding, publicId, expectedRowVersion) })
+    }
+
+    private fun saveManual(
+        action: suspend (LogicalSessionBinding) -> Result<RecurringSaveOutcome>,
+    ) {
+        val binding = activeBinding
+        if (binding == null || !repository.canModifyLedger()) {
+            _uiState.update {
+                it.copy(
+                    message = UiText.res(R.string.common_readonly_ledger),
+                    messageTone = MessageTone.Danger,
+                    canModify = false,
+                )
+            }
+            return
+        }
+        val generation = requestGeneration
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                    duplicateConflict = null,
+                )
+            }
+            val result = action(binding)
+            if (requestGeneration != generation) return@launch
+            result.fold(
+                onSuccess = { outcome ->
+                    when (outcome) {
+                        is RecurringSaveOutcome.Synced -> {
+                            _uiState.update { state ->
+                                state.copy(
+                                    loading = false,
+                                    items = state.items.withRecurringItem(outcome.item),
+                                    message = UiText.res(R.string.recurring_message_updated),
+                                    messageTone = MessageTone.Success,
+                                    duplicateConflict = null,
+                                    canModify = activeCanModify,
+                                )
+                            }
+                            onDataChanged()
+                            refresh()
+                        }
+                        is RecurringSaveOutcome.Queued -> {
+                            _uiState.update { state ->
+                                state.copy(
+                                    loading = false,
+                                    pendingIntents = state.pendingIntents.withPendingIntent(outcome.intent),
+                                    message = UiText.res(R.string.recurring_message_queued),
+                                    messageTone = MessageTone.Info,
+                                    duplicateConflict = null,
+                                    canModify = activeCanModify,
+                                )
+                            }
+                        }
+                    }
+                },
+                onFailure = ::handleMutationFailure,
+            )
+        }
     }
 
     private fun mutate(
@@ -161,7 +258,14 @@ class RecurringViewModel(
         }
         val generation = requestGeneration
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, message = null, messageTone = MessageTone.Neutral) }
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    message = null,
+                    messageTone = MessageTone.Neutral,
+                    duplicateConflict = null,
+                )
+            }
             val result = action(binding)
             if (requestGeneration != generation) return@launch
             result.fold(
@@ -172,6 +276,7 @@ class RecurringViewModel(
                                 loading = false,
                                 message = UiText.res(R.string.recurring_message_updated),
                                 messageTone = MessageTone.Success,
+                                duplicateConflict = null,
                                 canModify = activeCanModify,
                             ),
                             item,
@@ -180,17 +285,28 @@ class RecurringViewModel(
                     onDataChanged()
                     refresh()
                 },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            loading = false,
-                            message = error.toUiText(R.string.recurring_message_action_failed),
-                            messageTone = MessageTone.Danger,
-                            canModify = activeCanModify,
-                        )
-                    }
-                },
+                onFailure = ::handleMutationFailure,
             )
+        }
+    }
+
+    private fun handleMutationFailure(error: Throwable) {
+        val conflict = error.toRecurringDuplicateConflict()
+        _uiState.update {
+            it.copy(
+                loading = false,
+                message = error.toUiText(R.string.recurring_message_action_failed),
+                messageTone = MessageTone.Danger,
+                duplicateConflict = conflict,
+                canModify = activeCanModify,
+            )
+        }
+        if (conflict != null) {
+            // A duplicate response is newer than this screen's snapshot even
+            // when the public id is already present: another device may have
+            // paused/archived it or advanced its row version. Refresh the
+            // existing owner before offering edit/restore against stale facts.
+            refresh()
         }
     }
 }
@@ -204,3 +320,26 @@ private fun List<RecurringItem>.withRecurringItem(item: RecurringItem): List<Rec
     } else {
         listOf(item) + this
     }
+
+private fun List<RecurringPendingIntent>.withPendingIntent(
+    intent: RecurringPendingIntent,
+): List<RecurringPendingIntent> =
+    if (any { it.idempotencyKey == intent.idempotencyKey }) {
+        map { existing -> if (existing.idempotencyKey == intent.idempotencyKey) intent else existing }
+    } else {
+        this + intent
+    }
+
+private fun Throwable.toRecurringDuplicateConflict(): RecurringDuplicateConflict? {
+    val repositoryError = this as? RepositoryException ?: return null
+    if (
+        repositoryError.errorCode != "recurring_item_conflict" &&
+        repositoryError.errorCode != "recurring_item_archived"
+    ) return null
+    val publicId = repositoryError.conflictRecurringPublicId?.trim()?.takeIf(String::isNotEmpty)
+        ?: return null
+    val status = repositoryError.conflictRecurringStatus?.trim()
+        ?.takeIf { it == "active" || it == "paused" || it == "archived" }
+        ?: return null
+    return RecurringDuplicateConflict(publicId = publicId, status = status)
+}

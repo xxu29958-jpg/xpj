@@ -34,10 +34,6 @@ import com.ticketbox.ui.screens.DebtListScreenActions
 import com.ticketbox.ui.screens.DebtSettleCelebrationOverlay
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.ReceivablesScreen
-import com.ticketbox.ui.screens.RecurringCandidateActions
-import com.ticketbox.ui.screens.RecurringItemActions
-import com.ticketbox.ui.screens.RecurringScreen
-import com.ticketbox.ui.screens.RecurringScreenActions
 import com.ticketbox.ui.screens.RepaymentDraftInboxScreen
 import com.ticketbox.ui.screens.RelationsListChrome
 import com.ticketbox.ui.screens.StatsScreen
@@ -51,7 +47,6 @@ import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.ReceivablesViewModel
-import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import com.ticketbox.viewmodel.StatsBudgetViewModel
 import com.ticketbox.viewmodel.StatsReportsViewModel
@@ -64,7 +59,6 @@ import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
 import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.receivablesViewModelFactory
-import com.ticketbox.viewmodel.recurringViewModelFactory
 import com.ticketbox.viewmodel.repaymentDraftInboxViewModelFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -116,36 +110,6 @@ internal fun BudgetRoute(
             onSave = budgetViewModel::save,
         ),
         onBack = onBack,
-    )
-}
-
-@Composable
-internal fun RecurringRoute(
-    screenFactory: MainScreenFactory,
-    onBack: () -> Unit,
-    onDataChanged: () -> Unit = {},
-) {
-    val recurringViewModel: RecurringViewModel = viewModel(
-        factory = recurringViewModelFactory(
-            repository = screenFactory.recurringRepository,
-            onDataChanged = onDataChanged,
-        ),
-    )
-    val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
-    RecurringScreen(
-        state = state,
-        actions = RecurringScreenActions(
-            onRefresh = recurringViewModel::refresh,
-            items = RecurringItemActions(
-                onPause = recurringViewModel::pause,
-                onResume = recurringViewModel::resume,
-                onArchive = recurringViewModel::archive,
-            ),
-            candidates = RecurringCandidateActions(
-                onConfirmCandidate = recurringViewModel::confirmCandidate,
-            ),
-            onBack = onBack,
-        ),
     )
 }
 

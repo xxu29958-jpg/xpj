@@ -1,80 +1,163 @@
 {% extends "base.html" %}
 {% block title %}固定支出 — 小票夹{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="/static/web/pages/recurring.css?v={{ asset_version }}">
+{% endblock %}
 {% block content %}
-<h1 class="page-title page-title--compact">固定支出 <span class="page-title-sub">候选需手动确认；正式记录只做提醒和对比，不会自动入账。</span></h1>
-{% if flash_message %}
-<div class="dt-alert success">{{ flash_message }}</div>
-{% endif %}
-{% if not can_write %}
-<div class="readonly-callout">只读角色可以查看固定支出和候选，但不能确认候选、暂停、恢复或归档。</div>
-{% endif %}
-
-<div class="kpi-strip kpi-strip--compact">
-  <div class="kpi-cell primary">
-    <div class="label">正式记录</div>
-    <div class="val">{{ items|length }}</div>
-    <div class="foot">活跃、暂停和归档</div>
-  </div>
-  <div class="kpi-cell">
-    <div class="label">待确认候选</div>
-    <div class="val">{{ candidates|length }}</div>
-    <div class="foot">来自已确认账单规律</div>
-  </div>
-  <div class="kpi-cell warn">
-    <div class="label">金额异常</div>
-    <div class="val">{{ items|selectattr("anomaly_status", "equalto", "higher_than_average")|list|length }}</div>
-    <div class="foot">提醒和对比，不入账</div>
-  </div>
-</div>
-
-<section class="dt-card">
-  <div class="card-header">
-    <h2>正式固定支出</h2>
-    <div class="actions">
-      <a class="dt-btn" href="/web/recurring?ledger_id={{ selected_ledger_id }}">全部</a>
-      <a class="dt-btn" href="/web/recurring?ledger_id={{ selected_ledger_id }}&status=active">活跃</a>
-      <a class="dt-btn" href="/web/recurring?ledger_id={{ selected_ledger_id }}&status=paused">暂停</a>
-      <a class="dt-btn" href="/web/recurring?ledger_id={{ selected_ledger_id }}&status=archived">归档</a>
+<div class="rc-page">
+  <div class="page-header page-header--with-action">
+    <div>
+      <h1 class="page-title">固定支出</h1>
+      <div class="page-sub">房租、订阅、保险——每月固定要花的钱放在一处，到期前提醒你核对；只做提醒，不会自动入账。</div>
     </div>
+    {% if can_write %}<a class="dt-btn primary" href="#add">添加固定支出</a>{% endif %}
   </div>
-  <p class="meta">这些是已经手动确认过的固定支出；只做提醒和对比，不会自动入账。</p>
-  {% if items %}
-  <table class="dt-table">
-    <thead>
-      <tr>
-        <th>商家</th>
-        <th>周期</th>
-        <th class="amount">上次金额</th>
-        <th>下次预计</th>
-        <th>状态</th>
-        <th>提醒</th>
-        <th class="th-w-190">操作</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for item in items %}
-      <tr>
-        <td>
-          <div class="row-title">{{ item.merchant }}</div>
-          <div class="row-sub">出现 {{ item.occurrence_count }} 次 · 基准 {{ home_currency_symbol }}{{ item.baseline_amount_yuan }}</div>
-        </td>
-        <td>{{ item.frequency }}</td>
-        <td class="amount">{{ home_currency_symbol }}{{ item.last_amount_yuan }}</td>
-        <td>{{ item.next_expected_date or '—' }}</td>
-        <td>
-          {% if item.status == 'active' %}<span class="dt-pill ok">{{ item.status_label }}</span>
-          {% elif item.status == 'paused' %}<span class="dt-pill warn">{{ item.status_label }}</span>
-          {% else %}<span class="dt-pill muted">{{ item.status_label }}</span>{% endif %}
-        </td>
-        <td>
+
+  {% if flash_message %}
+  <div class="dt-alert success">{{ flash_message }}</div>
+  {% endif %}
+  {% if error_message %}
+  <div class="dt-alert danger" role="alert">
+    {{ error_message }}
+    {% if error_guidance %}<a class="rc-alert-link" href="{{ error_guidance.href }}">{{ error_guidance.label }}</a>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if hero %}
+  <section class="rc-hero" aria-label="固定支出概览">
+    <div class="rc-hero-cell rc-hero-cell--primary">
+      <div class="rc-hero-label">每月固定支出</div>
+      <div class="rc-hero-val"><span class="rc-hero-cur">{{ home_currency_symbol }}</span>{{ hero.monthly_total_yuan }}</div>
+      <div class="rc-hero-foot">{{ hero.active_count }} 项活跃固定支出合计</div>
+    </div>
+    <div class="rc-hero-cell">
+      <div class="rc-hero-label">下一笔到期</div>
+      {% if hero.next_due %}
+      <div class="rc-hero-val rc-hero-val--date">{{ hero.next_due.date }}</div>
+      <div class="rc-hero-foot">{{ hero.next_due.merchant }} · {{ home_currency_symbol }}{{ hero.next_due.amount_yuan }}</div>
+      {% else %}
+      <div class="rc-hero-val rc-hero-val--muted">未设置日期</div>
+      <div class="rc-hero-foot">留下下次预计日期才会提醒</div>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if can_write %}
+  <section class="dt-card rc-form-card" id="add">
+    {% if review %}
+    <div class="card-head">
+      <div class="card-title">采用这条建议</div>
+      <div class="card-sub">来自已确认账单的观察</div>
+    </div>
+    <div class="dt-alert info">已观察 {{ review.occurrence_count }} 次{% if review.last_seen_date %} · 最近 {{ review.last_seen_date }}{% endif %}——商家和金额是账单里观察到的，采用后保留观察记录；提醒日期可以留也可以清空。</div>
+    <form method="post" action="/web/recurring/confirm-candidate">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="amount_cents" value="{{ review.amount_cents }}">
+      <div class="dt-form-grid">
+        <div class="dt-form-row">
+          <label for="rc-review-merchant">商家或名称（观察值）</label>
+          <input class="dt-input" id="rc-review-merchant" type="text" name="merchant" value="{{ review.merchant }}" readonly>
+        </div>
+        <div class="dt-form-row">
+          <label for="rc-review-amount">每月金额（观察值）</label>
+          <input class="dt-input" id="rc-review-amount" type="text" value="{{ home_currency_symbol }}{{ review.amount_yuan }}" readonly>
+        </div>
+        <div class="dt-form-row">
+          <label for="rc-review-date">下次预计日期</label>
+          <input class="dt-input" id="rc-review-date" type="date" name="next_expected_date" value="{{ suggested_next_date }}">
+          <div class="hint">已建议下月同日，可以改也可以清空——不留日期就不会提醒。</div>
+        </div>
+      </div>
+      <div class="dt-actions">
+        <button class="dt-btn primary" type="submit">采用建议</button>
+        <a class="dt-btn ghost" href="/web/recurring?ledger_id={{ selected_ledger_id }}">取消</a>
+      </div>
+    </form>
+    {% else %}
+    <div class="card-head">
+      <div class="card-title">添加固定支出</div>
+      <div class="card-sub">手动记下每月固定开销，只做提醒</div>
+    </div>
+    <form method="post" action="/web/recurring/create">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="idempotency_key" value="{{ create_idempotency_key }}">
+      <div class="dt-form-grid">
+        <div class="dt-form-row">
+          <label for="rc-add-merchant">商家或名称</label>
+          <input class="dt-input" id="rc-add-merchant" type="text" name="merchant" maxlength="255"
+                 placeholder="房租、视频会员、保险…" required>
+        </div>
+        <div class="dt-form-row">
+          <label for="rc-add-amount">每月金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
+          <input class="dt-input" id="rc-add-amount" type="number" name="baseline_amount_yuan"
+                 step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}"
+                 inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
+        </div>
+        <div class="dt-form-row">
+          <label for="rc-add-date">下次预计日期</label>
+          <input class="dt-input" id="rc-add-date" type="date" name="next_expected_date" value="{{ suggested_next_date }}">
+          <div class="hint">已建议下月同日，可以改也可以清空——不留日期就不会提醒。</div>
+        </div>
+      </div>
+      <div class="dt-actions">
+        <button class="dt-btn primary" type="submit">保存固定支出</button>
+      </div>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="dt-card">
+    <div class="card-head">
+      <div class="card-title">我的固定支出</div>
+      <div class="card-sub">{{ items|length }} 条</div>
+    </div>
+    <div class="rc-filter" role="group" aria-label="状态筛选">
+      <a class="dt-btn{% if not status_filter %} primary{% endif %}" href="/web/recurring?ledger_id={{ selected_ledger_id }}">全部</a>
+      <a class="dt-btn{% if status_filter == 'active' %} primary{% endif %}" href="/web/recurring?ledger_id={{ selected_ledger_id }}&status=active">活跃</a>
+      <a class="dt-btn{% if status_filter == 'paused' %} primary{% endif %}" href="/web/recurring?ledger_id={{ selected_ledger_id }}&status=paused">暂停</a>
+      <a class="dt-btn{% if status_filter == 'archived' %} primary{% endif %}" href="/web/recurring?ledger_id={{ selected_ledger_id }}&status=archived">归档</a>
+    </div>
+    {% if items %}
+    <ul class="rc-list">
+      {% for item in items %}
+      <li class="rc-row{% if item.status == 'archived' %} rc-row--archived{% endif %}" id="item-{{ item.public_id }}">
+        <div class="rc-row-main">
+          <div class="rc-row-title">
+            <span class="rc-merchant">{{ item.merchant }}</span>
+            {% if item.status == 'active' %}<span class="dt-pill ok">{{ item.status_label }}</span>
+            {% elif item.status == 'paused' %}<span class="dt-pill amber">{{ item.status_label }}</span>
+            {% else %}<span class="dt-pill muted">{{ item.status_label }}</span>{% endif %}
+            {% if item.anomaly_status == 'higher_than_average' %}
+            <span class="dt-pill amber">{{ item.anomaly_label }} {{ item.amount_delta_percent }}%</span>
+            {% endif %}
+          </div>
+          <div class="rc-row-meta">
+            {% if item.observed %}
+            已观察 {{ item.occurrence_count }} 次{% if item.last_seen_date %} · 最近 {{ item.last_seen_date }}{% endif %} · 上次 {{ home_currency_symbol }}{{ item.last_amount_yuan }}
+            {% else %}
+            手动记录 · 还没有观察到账单
+            {% endif %}
+          </div>
           {% if item.anomaly_status == 'higher_than_average' %}
-            <span class="dt-pill warn">{{ item.anomaly_label }} {{ item.amount_delta_percent }}%</span>
-            <div class="row-sub">本月 {{ home_currency_symbol }}{{ item.current_month_amount_yuan }} · 均值 {{ home_currency_symbol }}{{ item.historical_average_amount_yuan }}</div>
-          {% else %}
-            <span class="dt-pill muted">正常</span>
+          <div class="rc-row-meta">本月 {{ home_currency_symbol }}{{ item.current_month_amount_yuan }} · 月均 {{ home_currency_symbol }}{{ item.historical_average_amount_yuan }}</div>
           {% endif %}
-        </td>
-        <td>
+        </div>
+        <div class="rc-row-amount">
+          <div class="rc-amount">{{ home_currency_symbol }}{{ item.baseline_amount_yuan }}<span class="rc-amount-unit">/月</span></div>
+          <div class="rc-amount-caption">{% if item.observed %}每月基准{% else %}每月预计{% endif %}</div>
+        </div>
+        <div class="rc-row-next">
+          {% if item.next_expected_date %}
+          <div class="rc-next-date">{{ item.next_expected_date }}</div>
+          <div class="rc-next-caption">下次预计</div>
+          {% else %}
+          <div class="rc-next-none">不提醒</div>
+          <div class="rc-next-caption">未留日期</div>
+          {% endif %}
+        </div>
+        <div class="rc-row-actions">
           {% if can_write %}
             {# ADR-0038 PR-A: hidden expected_row_version OCC token. Without it
                a stale pause/resume POST (e.g. from a tab opened before another
@@ -83,93 +166,125 @@
             <form method="post" action="/web/recurring/{{ item.public_id }}/pause" class="inline">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
               <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-              <button type="submit" class="dt-btn">暂停</button>
+              <button type="submit" class="dt-btn dt-btn--sm">暂停</button>
             </form>
             {% elif item.status == 'paused' %}
             <form method="post" action="/web/recurring/{{ item.public_id }}/resume" class="inline">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
               <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-              <button type="submit" class="dt-btn">恢复</button>
+              <button type="submit" class="dt-btn dt-btn--sm">恢复</button>
+            </form>
+            {% elif item.status == 'archived' %}
+            <form method="post" action="/web/recurring/{{ item.public_id }}/restore" class="inline">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+              <button type="submit" class="dt-btn dt-btn--sm">恢复</button>
             </form>
             {% endif %}
             {% if item.status != 'archived' %}
             <form method="post" action="/web/recurring/{{ item.public_id }}/archive" class="inline"
                   data-confirm="归档这条固定支出？">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-              <button type="submit" class="dt-btn danger">归档</button>
+              <button type="submit" class="dt-btn dt-btn--sm danger">归档</button>
             </form>
             {% endif %}
           {% else %}
-            <span class="readonly-inline">只读</span>
+          <span class="readonly-inline">只读</span>
           {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">还没有正式固定支出</div>
-    <div class="empty-state-hint">从下方候选中确认后，会出现在这里。</div>
-  </div>
-  {% endif %}
-</section>
-
-<section class="dt-card">
-  <h2>固定支出候选（未确认）</h2>
-  <p class="meta">根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。</p>
-  {% if candidates %}
-  <table class="dt-table">
-    <thead>
-      <tr>
-        <th>商家</th>
-        <th class="amount">金额</th>
-        <th>出现次数</th>
-        <th>最近出现</th>
-        <th>置信度</th>
-        <th class="th-w-110">操作</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for candidate in candidates %}
-      <tr>
-        <td>
-          <div class="row-title">{{ candidate.merchant }}</div>
-          <div class="row-sub">{{ candidate.reason }}</div>
-        </td>
-        <td class="amount">{{ home_currency_symbol }}{{ candidate.amount_yuan }}</td>
-        <td>{{ candidate.occurrence_count }}</td>
-        <td>{{ candidate.last_seen_at or '—' }}</td>
-        <td><span class="dt-pill ok">{{ candidate.confidence }}</span></td>
-        <td>
-          {% if can_write %}
-          <form method="post" action="/web/recurring/confirm-candidate">
+        </div>
+        {% if can_write and item.status != 'archived' %}
+        <details class="rc-edit"{% if open_edit_id == item.public_id %} open{% endif %}>
+          <summary class="dt-btn dt-btn--sm ghost">编辑</summary>
+          <form method="post" action="/web/recurring/{{ item.public_id }}/edit" class="rc-edit-form">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <input type="hidden" name="merchant" value="{{ candidate.merchant }}">
-            <input type="hidden" name="amount_cents" value="{{ candidate.amount_cents }}">
-            <input type="hidden" name="occurrence_count" value="{{ candidate.occurrence_count }}">
-            <input type="hidden" name="last_seen_at" value="{{ candidate.last_seen_at or '' }}">
-            <input type="hidden" name="confidence" value="{{ candidate.confidence }}">
-            <button type="submit" class="dt-btn primary">确认</button>
+            <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+            <input type="hidden" name="idempotency_key" value="{{ item.edit_idempotency_key }}">
+            <div class="dt-form-grid">
+              <div class="dt-form-row">
+                <label for="rc-edit-merchant-{{ item.public_id }}">商家或名称</label>
+                <input class="dt-input" id="rc-edit-merchant-{{ item.public_id }}" type="text" name="merchant"
+                       maxlength="255" value="{{ item.merchant }}" required
+                       {% if not item.merchant_editable %}readonly aria-describedby="rc-edit-merchant-help-{{ item.public_id }}"{% endif %}>
+                {% if not item.merchant_editable %}
+                <div class="hint" id="rc-edit-merchant-help-{{ item.public_id }}">名称与已识别账单绑定；可调整金额和日期。如需更换商家，请归档后新建。</div>
+                {% endif %}
+              </div>
+              <div class="dt-form-row">
+                <label for="rc-edit-amount-{{ item.public_id }}">每月金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
+                <input class="dt-input" id="rc-edit-amount-{{ item.public_id }}" type="number" name="baseline_amount_yuan"
+                       step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}"
+                       inputmode="{{ currency_input.inputmode }}" value="{{ item.baseline_amount_yuan }}" required>
+              </div>
+              <div class="dt-form-row">
+                <label for="rc-edit-date-{{ item.public_id }}">下次预计日期</label>
+                <input class="dt-input" id="rc-edit-date-{{ item.public_id }}" type="date" name="next_expected_date"
+                       value="{{ item.next_expected_date }}">
+                <div class="hint">清空表示不提醒——不留日期就不会提醒。</div>
+              </div>
+            </div>
+            <div class="dt-actions">
+              <button class="dt-btn primary" type="submit">保存修改</button>
+            </div>
           </form>
+        </details>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-state-title">还没有固定支出</div>
+      {% if can_write %}
+      <div class="empty-state-hint">从上方「添加固定支出」记一笔，或先看看下面发现的建议。</div>
+      {% else %}
+      <div class="empty-state-hint">这个账本还没有记录固定支出。</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <details class="dt-card rc-candidates"{% if review %} open{% endif %}>
+    <summary class="rc-candidates-summary">
+      <span class="rc-candidates-title">发现的建议{% if candidates %}（{{ candidates|length }}）{% endif %}</span>
+      <span class="rc-candidates-sub">根据已确认账单的规律猜出，核对后才会变成正式固定支出</span>
+    </summary>
+    {% if candidates %}
+    <ul class="rc-list rc-list--candidates">
+      {% for candidate in candidates %}
+      <li class="rc-row rc-row--candidate">
+        <div class="rc-row-main">
+          <div class="rc-row-title">
+            <span class="rc-merchant">{{ candidate.merchant }}</span>
+            <span class="dt-pill muted">{{ candidate.confidence }}</span>
+          </div>
+          <div class="rc-row-meta">已观察 {{ candidate.occurrence_count }} 次{% if candidate.last_seen_date %} · 最近 {{ candidate.last_seen_date }}{% endif %}</div>
+          {% if candidate.reason %}<div class="rc-row-meta">{{ candidate.reason }}</div>{% endif %}
+        </div>
+        <div class="rc-row-amount">
+          <div class="rc-amount">{{ home_currency_symbol }}{{ candidate.amount_yuan }}<span class="rc-amount-unit">/月</span></div>
+          <div class="rc-amount-caption">观察金额</div>
+        </div>
+        <div class="rc-row-actions">
+          {% if can_write %}
+          <a class="dt-btn dt-btn--sm" href="{{ candidate.review_href }}">复核采用</a>
           {% else %}
           <span class="readonly-inline">只读</span>
           {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% elif candidates_error %}
-  <div class="empty-state">
-    <div class="empty-state-title">固定支出候选分析暂时不可用</div>
-    <div class="empty-state-hint">固定支出列表仍可查看，请稍后刷新本页。</div>
-  </div>
-  {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">还没有固定支出候选</div>
-    <div class="empty-state-hint">同一商家按月稳定出现后，会先作为候选展示，确认后才进入正式固定支出。</div>
-  </div>
-  {% endif %}
-</section>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% elif candidates_error %}
+    <div class="empty-state">
+      <div class="empty-state-title">固定支出候选分析暂时不可用</div>
+      <div class="empty-state-hint">固定支出列表仍可正常使用，请稍后刷新本页重试。</div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-state-title">还没有发现新的固定支出规律</div>
+      <div class="empty-state-hint">同一商家按月稳定出现后，会在这里给出建议。</div>
+    </div>
+    {% endif %}
+  </details>
+</div>
 {% endblock %}

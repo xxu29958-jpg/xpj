@@ -2946,16 +2946,6 @@
             "title": "Amount Cents",
             "type": "string"
           },
-          "confidence": {
-            "default": "",
-            "title": "Confidence",
-            "type": "string"
-          },
-          "last_seen_at": {
-            "default": "",
-            "title": "Last Seen At",
-            "type": "string"
-          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -2965,10 +2955,10 @@
             "title": "Merchant",
             "type": "string"
           },
-          "occurrence_count": {
-            "default": 0,
-            "title": "Occurrence Count",
-            "type": "integer"
+          "next_expected_date": {
+            "default": "",
+            "title": "Next Expected Date",
+            "type": "string"
           }
         },
         "required": [
@@ -2976,6 +2966,73 @@
           "amount_cents"
         ],
         "title": "Body_web_recurring_confirm_candidate_web_recurring_confirm_candidate_post",
+        "type": "object"
+      },
+      "Body_web_recurring_create_web_recurring_create_post": {
+        "properties": {
+          "baseline_amount_yuan": {
+            "default": "",
+            "title": "Baseline Amount Yuan",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "merchant": {
+            "default": "",
+            "title": "Merchant",
+            "type": "string"
+          },
+          "next_expected_date": {
+            "default": "",
+            "title": "Next Expected Date",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_recurring_create_web_recurring_create_post",
+        "type": "object"
+      },
+      "Body_web_recurring_edit_web_recurring__public_id__edit_post": {
+        "properties": {
+          "baseline_amount_yuan": {
+            "default": "",
+            "title": "Baseline Amount Yuan",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "merchant": {
+            "default": "",
+            "title": "Merchant",
+            "type": "string"
+          },
+          "next_expected_date": {
+            "default": "",
+            "title": "Next Expected Date",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_recurring_edit_web_recurring__public_id__edit_post",
         "type": "object"
       },
       "Body_web_recurring_pause_web_recurring__public_id__pause_post": {
@@ -2992,6 +3049,22 @@
           }
         },
         "title": "Body_web_recurring_pause_web_recurring__public_id__pause_post",
+        "type": "object"
+      },
+      "Body_web_recurring_restore_web_recurring__public_id__restore_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_recurring_restore_web_recurring__public_id__restore_post",
         "type": "object"
       },
       "Body_web_recurring_resume_web_recurring__public_id__resume_post": {
@@ -6857,6 +6930,18 @@
             "title": "Message",
             "type": "string"
           },
+          "public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Public Id"
+          },
           "request_id": {
             "anyOf": [
               {
@@ -6868,6 +6953,18 @@
             ],
             "default": null,
             "title": "Request Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
           }
         },
         "required": [
@@ -12403,6 +12500,8 @@
                 "type": "null"
               }
             ],
+            "deprecated": true,
+            "description": "Compatibility input only; confirmation uses the current server-side candidate observation.",
             "title": "Confidence"
           },
           "frequency": {
@@ -12421,6 +12520,8 @@
                 "type": "null"
               }
             ],
+            "deprecated": true,
+            "description": "Compatibility input only; confirmation uses the current server-side candidate observation.",
             "title": "Last Seen At"
           },
           "merchant": {
@@ -12443,6 +12544,8 @@
           },
           "occurrence_count": {
             "default": 0,
+            "deprecated": true,
+            "description": "Compatibility input only; confirmation uses the current server-side candidate observation.",
             "minimum": 0.0,
             "title": "Occurrence Count",
             "type": "integer"
@@ -12517,6 +12620,42 @@
           "items"
         ],
         "title": "RecurringCandidatesResponse",
+        "type": "object"
+      },
+      "RecurringItemCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Baseline Amount Cents",
+            "type": "integer"
+          },
+          "merchant": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Merchant",
+            "type": "string"
+          },
+          "next_expected_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Expected Date"
+          }
+        },
+        "required": [
+          "merchant",
+          "baseline_amount_cents"
+        ],
+        "title": "RecurringItemCreateRequest",
         "type": "object"
       },
       "RecurringItemListResponse": {
@@ -12741,6 +12880,60 @@
           "expected_row_version"
         ],
         "title": "RecurringItemTokenRequest",
+        "type": "object"
+      },
+      "RecurringItemUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Amount Cents"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "next_expected_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Expected Date"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "RecurringItemUpdateRequest",
         "type": "object"
       },
       "RecycleBinItemResponse": {
@@ -28845,6 +29038,111 @@
         "tags": [
           "recurring"
         ]
+      },
+      "post": {
+        "operationId": "post_recurring_item_api_recurring_items_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringItemCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Recurring Item",
+        "tags": [
+          "recurring"
+        ]
       }
     },
     "/api/recurring/items/{public_id}": {
@@ -28958,6 +29256,120 @@
           }
         },
         "summary": "Get Recurring Item Detail",
+        "tags": [
+          "recurring"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_recurring_item_api_recurring_items__public_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringItemUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Patch Recurring Item",
         "tags": [
           "recurring"
         ]
@@ -39017,6 +39429,22 @@
               ],
               "title": "Flash"
             }
+          },
+          {
+            "in": "query",
+            "name": "review",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Review"
+            }
           }
         ],
         "responses": {
@@ -39049,6 +39477,7 @@
     },
     "/web/recurring/confirm-candidate": {
       "post": {
+        "description": "候选「复核采用」的统一表单提交口: 只用 merchant + amount 定位服务端\n候选, provenance (occurrence_count / last_seen_at / confidence) 由 confirm\nservice 从当前服务端扫描给出 — 本路由不接收也不转发客户端的这三个字段。\n409 conflict/archived 消费 details 给出可行动下一步。",
         "operationId": "web_recurring_confirm_candidate_web_recurring_confirm_candidate_post",
         "requestBody": {
           "content": {
@@ -39083,6 +39512,47 @@
           }
         },
         "summary": "Web Recurring Confirm Candidate",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/recurring/create": {
+      "post": {
+        "description": "POST /api/recurring/items 的 Web 面: 手动 monthly 承诺 + durable replay。\n\n幂等键来自渲染进表单的隐藏字段 (一次渲染一把 = 一个真实表单 intent),\n双击/网络重试同一提交 → 服务端 HIT replay, 不会建第二条。",
+        "operationId": "web_recurring_create_web_recurring_create_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_recurring_create_web_recurring_create_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Recurring Create",
         "tags": [
           "web"
         ]
@@ -39139,6 +39609,58 @@
         ]
       }
     },
+    "/web/recurring/{public_id}/edit": {
+      "post": {
+        "description": "PATCH /api/recurring/items/{id} 的 Web 面: 统一编辑表单只提交用户预计\n(merchant / baseline / next date, 空日期 = 显式清空), 观察事实由 service 保留。\nADR-0042: 与 API 路由同一 claim-before-OCC 握手, committed-but-unseen 的\n重放拿成功而不是 false-409。",
+        "operationId": "web_recurring_edit_web_recurring__public_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_recurring_edit_web_recurring__public_id__edit_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Recurring Edit",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/recurring/{public_id}/pause": {
       "post": {
         "operationId": "web_recurring_pause_web_recurring__public_id__pause_post",
@@ -39185,6 +39707,58 @@
           }
         },
         "summary": "Web Recurring Pause",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/recurring/{public_id}/restore": {
+      "post": {
+        "description": "归档项的恢复入口: 让 archived 冲突的「引导恢复」在 Web 面可行动。",
+        "operationId": "web_recurring_restore_web_recurring__public_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_recurring_restore_web_recurring__public_id__restore_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Recurring Restore",
         "tags": [
           "web"
         ]

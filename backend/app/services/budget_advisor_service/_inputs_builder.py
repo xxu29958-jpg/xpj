@@ -88,7 +88,7 @@ def _recurring_total_monthly_cents(db: Session, *, tenant_id: str) -> int:
     detail leaves the device; the advisor sees just the total."""
     return projection_values_sum_to_int(
         (
-            item.last_amount_cents
+            item.baseline_amount_cents
             for item in _active_recurring_items(
                 db,
                 tenant_id=tenant_id,

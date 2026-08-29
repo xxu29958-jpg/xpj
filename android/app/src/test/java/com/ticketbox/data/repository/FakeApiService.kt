@@ -40,8 +40,10 @@ import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.PairRequestDto
 import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
+import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
+import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
 import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.data.remote.dto.RuleApplicationBatchDto
@@ -126,6 +128,22 @@ internal class FakeApiService(
     var onExpenseFetch: (() -> Unit)? = null
     var onConfirmExpense: (() -> Unit)? = null
     var onCheckAuth: (() -> Unit)? = null
+
+    override suspend fun createRecurringItem(
+        request: RecurringItemCreateRequestDto,
+        idempotencyKey: String,
+    ): RecurringItemDto = error("Unexpected createRecurringItem call")
+
+    override suspend fun updateRecurringItem(
+        publicId: String,
+        request: RecurringItemUpdateRequestDto,
+        idempotencyKey: String,
+    ): RecurringItemDto = error("Unexpected updateRecurringItem call")
+
+    override suspend fun restoreRecurringItem(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest,
+    ): RecurringItemDto = error("Unexpected restoreRecurringItem call")
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         pairRequests += request
@@ -710,7 +728,6 @@ internal class FakeApiService(
         request: RecurringCandidateConfirmRequestDto,
         timezone: String?,
     ): RecurringItemDto = unsupported()
-    override suspend fun recurringItem(publicId: String, month: String?, timezone: String?): RecurringItemDto = unsupported()
     override suspend fun pauseRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = unsupported()
     override suspend fun resumeRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = unsupported()
     override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = unsupported()

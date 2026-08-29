@@ -18,6 +18,9 @@ import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
+import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
+import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
+import com.ticketbox.data.remote.dto.addRecurringWireAdapters
 
 internal class OutboxAdapterGraph {
     // ADR-0038 PR-2g.2 + 2g.3: outbox plumbing.
@@ -32,6 +35,7 @@ internal class OutboxAdapterGraph {
     private val moshi: Moshi by lazy {
         Moshi.Builder()
             .addExpenseCorrectionWireAdapters()
+            .addRecurringWireAdapters()
             .build()
     }
 
@@ -118,6 +122,14 @@ internal class OutboxAdapterGraph {
     // between UpdateIncomePlanDispatcher and IncomePlanRepository.updateAllowingOffline.
     val incomePlanUpdateAdapter: JsonAdapter<IncomePlanUpdateRequestDto> = lazyJsonAdapter {
         moshi.adapter(IncomePlanUpdateRequestDto::class.java)
+    }
+
+    val recurringCreateAdapter: JsonAdapter<RecurringItemCreateRequestDto> = lazyJsonAdapter {
+        moshi.adapter(RecurringItemCreateRequestDto::class.java)
+    }
+
+    val recurringUpdateAdapter: JsonAdapter<RecurringItemUpdateRequestDto> = lazyJsonAdapter {
+        moshi.adapter(RecurringItemUpdateRequestDto::class.java)
     }
 }
 

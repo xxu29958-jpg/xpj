@@ -234,6 +234,10 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/merchants/aliases/{public_id}/undo": Exempt(
         "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")
     ),
+    # A3 manual fixed-expense create inserts a brand-new recurring_items row.
+    # There is no predecessor revision to fence; durable replay is owned by the
+    # required Idempotency-Key in the shared recurring command service.
+    "POST /api/recurring/items": Exempt("create_row", "recurring", _RECURRING),
     "POST /api/recurring/from-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /api/rules/categories": Exempt("create_row", "rules", ("category_rules",)),
     "POST /api/rules/categories/{rule_id}/undo": Exempt(
@@ -372,6 +376,7 @@ ALLOWLIST: dict[str, Exempt] = {
     # 218-C5a: POST /web/pending/batch-reject 与 POST /web/review/bulk 现在携带
     # 页面快照 expected_row_version(fail-closed 409),schema 自动判定为 carrier,
     # 不再占用 batch_db_write 豁免。
+    "POST /web/recurring/create": Exempt("create_row", "recurring", _RECURRING),
     "POST /web/recurring/confirm-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /web/recurring/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
     # ADR-0049 slice C3: web twin of the /api dismiss above — same guarded

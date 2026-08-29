@@ -5,6 +5,11 @@ import com.squareup.moshi.Json
 data class ErrorDto(
     val error: String,
     val message: String,
+    // A recurring-item duplicate uses the existing resource identity and status
+    // so create/edit consumers can steer to edit or restore instead of silently
+    // creating another product fact.
+    @param:Json(name = "public_id") val resourcePublicId: String? = null,
+    val status: String? = null,
     // ADR-0043 契约 5: on a `tag_conflict` the backend flattens the colliding tag's
     // identity onto the error envelope's TOP level (AppError.details →
     // content.setdefault in backend errors.py — NOT a nested object), so the client

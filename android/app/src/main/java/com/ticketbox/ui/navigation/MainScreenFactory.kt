@@ -41,7 +41,6 @@ internal class MainScreenFactory(
     val repositoryViewModelFactory: ViewModelProvider.Factory = createRepositoryViewModelFactory(
         RepositoryViewModelRepositories(
             repository = repositories.repository,
-            recurringRepository = repositories.recurringRepository,
             budgetRepository = repositories.budgetRepository,
             reportsRepository = repositories.reportsRepository,
             debtRepository = repositories.debtRepository,
@@ -53,7 +52,6 @@ internal class MainScreenFactory(
     ): ViewModelProvider.Factory = createRepositoryViewModelFactory(
         RepositoryViewModelRepositories(
             repository = repositories.repository,
-            recurringRepository = repositories.recurringRepository,
             budgetRepository = repositories.budgetRepository,
             reportsRepository = repositories.reportsRepository,
             debtRepository = repositories.debtRepository,

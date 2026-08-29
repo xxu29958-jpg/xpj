@@ -17,13 +17,11 @@ from app.money_contract import (
     projection_sum_to_int,
 )
 from app.schemas import RecurringCandidateConfirmRequest
-from app.services.currency_binding_service import (
-    assert_currency_binding_consistent,
-    resolve_write_capability,
-)
+from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import home_currency_code
-from app.services.insights_service import normalize_merchant, recurring_candidates
-from app.services.optimistic_concurrency import bump_row_version
+from app.services.insights_service import recurring_candidates
+from app.services.merchant_service import normalize_merchant
+from app.services.recurring_item_command_service import raise_recurring_item_conflict
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
 _VALID_FREQUENCIES = {"monthly"}
@@ -52,6 +50,14 @@ def _idempotent_formal_match(
     防止漂移。
     """
     formal = _existing_item(db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency)
+    if formal is not None and formal.status == "archived":
+        raise AppError(
+            "recurring_item_archived",
+            status_code=409,
+            details={"public_id": formal.public_id, "status": formal.status},
+        )
+    if formal is not None and formal.source != "candidate":
+        raise_recurring_item_conflict(formal)
     if (
         formal is not None
         and formal.status != "archived"
@@ -119,6 +125,14 @@ def confirm_recurring_candidate(
         )
         if formal is not None:
             return formal
+        existing = _existing_item(
+            db,
+            tenant_id=tenant_id,
+            merchant_key=merchant_key,
+            frequency=frequency,
+        )
+        if existing is not None:
+            raise_recurring_item_conflict(existing)
         raise
     existing = _existing_item(
         db,
@@ -127,13 +141,7 @@ def confirm_recurring_candidate(
         frequency=match.frequency,
     )
     if existing is not None:
-        return _confirm_existing_recurring_item(
-            db,
-            existing,
-            match=match,
-            payload=payload,
-            timezone_name=timezone_name,
-        )
+        raise_recurring_item_conflict(existing)
     return _create_recurring_item_from_candidate(
         db,
         tenant_id=tenant_id,
@@ -179,59 +187,6 @@ def _require_recurring_candidate_match(
     )
 
 
-def _confirm_existing_recurring_item(
-    db: Session,
-    existing: RecurringItem,
-    *,
-    match: _RecurringCandidateMatch,
-    payload: RecurringCandidateConfirmRequest,
-    timezone_name: str | None,
-) -> RecurringItem:
-    if existing.status != "archived" and existing.archived_at is None:
-        return existing
-    return _reactivate_recurring_item_from_candidate(
-        db,
-        existing,
-        match=match,
-        payload=payload,
-        timezone_name=timezone_name,
-    )
-
-
-def _reactivate_recurring_item_from_candidate(
-    db: Session,
-    existing: RecurringItem,
-    *,
-    match: _RecurringCandidateMatch,
-    payload: RecurringCandidateConfirmRequest,
-    timezone_name: str | None,
-) -> RecurringItem:
-    resolve_write_capability(db)
-    last_seen_at = _candidate_last_seen_at(payload, match)
-    confidence = _candidate_confidence(payload, match)
-    now = now_utc()
-    existing.merchant_name = _candidate_merchant_name(match)
-    existing.baseline_amount_cents = match.amount_cents
-    existing.last_amount_cents = match.amount_cents
-    existing.occurrence_count = _candidate_occurrence_count(payload, match, existing=existing)
-    existing.last_seen_at = last_seen_at
-    existing.next_expected_date = _candidate_next_expected_date(
-        payload,
-        last_seen_at=last_seen_at,
-        timezone_name=timezone_name,
-    )
-    existing.status = "active"
-    existing.confidence = str(confidence) if confidence else None
-    existing.source = "candidate"
-    existing.paused_at = None
-    existing.archived_at = None
-    existing.updated_at = now
-    bump_row_version(existing)
-    db.commit()
-    db.refresh(existing)
-    return existing
-
-
 def _create_recurring_item_from_candidate(
     db: Session,
     *,
@@ -240,8 +195,12 @@ def _create_recurring_item_from_candidate(
     payload: RecurringCandidateConfirmRequest,
     timezone_name: str | None,
 ) -> RecurringItem:
-    last_seen_at = _candidate_last_seen_at(payload, match)
-    confidence = _candidate_confidence(payload, match)
+    # Observation provenance belongs to the server-side candidate scan. The
+    # request still carries legacy fields for wire compatibility, but a Web or
+    # Android consumer must not be able to manufacture a larger occurrence
+    # count, a newer observation timestamp, or a stronger/weaker confidence.
+    last_seen_at = _candidate_last_seen_at(match)
+    confidence = _candidate_confidence(match)
     now = now_utc()
     # R15b-4：RecurringItem 属门证据集的无绑定表 —— 创建前过 ADR-0075 写门
     # （与 R13-2 五入口同模式；drift 窗口不得写入新无绑定行）。
@@ -253,7 +212,7 @@ def _create_recurring_item_from_candidate(
         frequency=match.frequency,
         baseline_amount_cents=match.amount_cents,
         last_amount_cents=match.amount_cents,
-        occurrence_count=_candidate_occurrence_count(payload, match),
+        occurrence_count=_candidate_occurrence_count(match),
         last_seen_at=last_seen_at,
         next_expected_date=_candidate_next_expected_date(
             payload,
@@ -271,6 +230,15 @@ def _create_recurring_item_from_candidate(
         db.commit()
     except IntegrityError:
         db.rollback()
+        replayed = _idempotent_formal_match(
+            db,
+            tenant_id=tenant_id,
+            merchant_key=match.merchant_key,
+            frequency=match.frequency,
+            amount_cents=match.amount_cents,
+        )
+        if replayed is not None:
+            return replayed
         existing_after_race = _existing_item(
             db,
             tenant_id=tenant_id,
@@ -278,9 +246,8 @@ def _create_recurring_item_from_candidate(
             frequency=match.frequency,
         )
         if existing_after_race is not None:
-            return existing_after_race
+            raise_recurring_item_conflict(existing_after_race)
         raise
-    db.refresh(item)
     return item
 
 
@@ -349,29 +316,16 @@ def _candidate_merchant_name(match: _RecurringCandidateMatch) -> str:
     return str(match.candidate.get("merchant") or match.merchant)
 
 
-def _candidate_last_seen_at(
-    payload: RecurringCandidateConfirmRequest, match: _RecurringCandidateMatch
-) -> datetime | None:
-    return ensure_utc(payload.last_seen_at) or ensure_utc(match.candidate.get("last_seen_at"))
+def _candidate_last_seen_at(match: _RecurringCandidateMatch) -> datetime | None:
+    return ensure_utc(match.candidate.get("last_seen_at"))
 
 
-def _candidate_confidence(payload: RecurringCandidateConfirmRequest, match: _RecurringCandidateMatch) -> object:
-    return payload.confidence or match.candidate.get("confidence")
+def _candidate_confidence(match: _RecurringCandidateMatch) -> object:
+    return match.candidate.get("confidence")
 
 
-def _candidate_occurrence_count(
-    payload: RecurringCandidateConfirmRequest,
-    match: _RecurringCandidateMatch,
-    *,
-    existing: RecurringItem | None = None,
-) -> int:
-    counts = [
-        int(payload.occurrence_count or 0),
-        int(match.candidate.get("occurrence_count") or 0),
-    ]
-    if existing is not None:
-        counts.append(int(existing.occurrence_count or 0))
-    return max(counts)
+def _candidate_occurrence_count(match: _RecurringCandidateMatch) -> int:
+    return int(match.candidate.get("occurrence_count") or 0)
 
 
 def _candidate_next_expected_date(

@@ -16,16 +16,21 @@ from app.money_contract import (
 )
 from app.schemas import RecurringItemResponse
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.insights_service import normalize_merchant
-from app.services.recurring_candidate_confirmation_service import (
-    confirm_recurring_candidate as confirm_recurring_candidate,
-)  # noqa: F401
+from app.services.merchant_service import normalize_merchant
 from app.services.spending_contract_service import current_accounting_month, month_bounds_utc, stat_time
 from app.services.time_service import now_utc
 
 VALID_STATUSES = {"active", "paused", "archived"}
 ANOMALY_THRESHOLD_PERCENT = 30
 RECURRING_AMOUNT_MATCH_MAX_DELTA_PERCENT = 100
+
+
+def recurring_item_monthly_detail(item: RecurringItem, amount_label: str) -> str:
+    """Describe the plan without presenting a manual compatibility seed as observation."""
+    detail = f"每月 {amount_label}"
+    if item.occurrence_count > 0:
+        detail += f" · 已出现 {item.occurrence_count} 次"
+    return detail
 
 
 @dataclass(frozen=True)
@@ -290,12 +295,15 @@ def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expec
     status='archived', row_version=expected`` only matches a still-archived row
     carrying the client's last-seen token. ``paused_at`` is cleared so a
     restored item lands cleanly ``active`` (mirrors candidate reactivation).
-    Idempotent on an already-active item (404 only when absent); a stale token
-    against an archived item is 409 ``state_conflict``.
+    Idempotent on an already-active item (404 only when absent). ``paused`` is
+    a later, user-owned fact and must never be reported as a successful restore;
+    stale tokens against archived or paused items are 409 ``state_conflict``.
     """
     item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    if item.status == "active" and item.archived_at is None:
+        return item
     if item.status != "archived":
-        return item  # not in the recycle bin — nothing to restore
+        raise AppError("state_conflict", status_code=409)
     resolve_write_capability(db)
     now = now_utc()
     result = db.execute(
@@ -317,8 +325,8 @@ def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expec
         return get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     db.rollback()
     current = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
-    if current.status != "archived":
-        return current  # raced into active — idempotent restore
+    if current.status == "active" and current.archived_at is None:
+        return current  # raced into the requested state — idempotent restore
     raise AppError("state_conflict", status_code=409)
 
 
