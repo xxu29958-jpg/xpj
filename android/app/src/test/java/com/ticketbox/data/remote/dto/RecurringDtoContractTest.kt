@@ -4,6 +4,8 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class RecurringDtoContractTest {
     private val moshi = Moshi.Builder()
@@ -57,5 +59,50 @@ class RecurringDtoContractTest {
         assertEquals("higher_than_average", item.anomalyStatus)
         assertEquals(28000L, item.currentMonthAmountCents)
         assertEquals(40, item.amountDeltaPercent)
+    }
+
+    @Test
+    fun recurringCreateUsesTheManualRegistryWireContract() {
+        val json = requireNotNull(
+            moshi.adapter(RecurringItemCreateRequestDto::class.java).toJson(
+                RecurringItemCreateRequestDto(
+                    merchant = "房租",
+                    baselineAmountCents = 350000,
+                    nextExpectedDate = "2026-09-01",
+                ),
+            ),
+        )
+
+        assertTrue("\"merchant\":\"房租\"" in json)
+        assertTrue("\"baseline_amount_cents\":350000" in json)
+        assertTrue("\"next_expected_date\":\"2026-09-01\"" in json)
+        assertFalse("frequency" in json, "monthly is owned by the server contract")
+    }
+
+    @Test
+    fun recurringUpdateDistinguishesUnchangedDateFromExplicitClear() {
+        val adapter = Moshi.Builder()
+            .addRecurringWireAdapters()
+            .add(KotlinJsonAdapterFactory())
+            .build()
+            .adapter(RecurringItemUpdateRequestDto::class.java)
+
+        val unchanged = adapter.toJson(
+            RecurringItemUpdateRequestDto(
+                expectedRowVersion = 7,
+                merchant = "新名称",
+            ),
+        )
+        val cleared = adapter.toJson(
+            RecurringItemUpdateRequestDto(
+                expectedRowVersion = 7,
+                nextExpectedDate = RecurringOptionalDate.changed(null),
+            ),
+        )
+
+        assertFalse("next_expected_date" in unchanged)
+        assertTrue("\"next_expected_date\":null" in cleared)
+        assertTrue("\"expected_row_version\":7" in unchanged)
+        assertTrue("\"expected_row_version\":7" in cleared)
     }
 }

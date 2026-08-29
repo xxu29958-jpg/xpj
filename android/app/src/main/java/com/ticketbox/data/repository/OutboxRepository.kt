@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
@@ -796,6 +797,26 @@ class OutboxRepository private constructor(
             )
         }
             .map { rows -> rows.map { it.toDomain() } }
+
+    /**
+     * Product-surface view of durable, unresolved intents for selected mutation
+     * kinds. It follows the active binding and never exposes terminal DONE rows.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeActiveByTypes(types: Set<PendingMutationType>): Flow<List<OutboxRow>> {
+        val wireTypes = types
+            .filterNot { it == PendingMutationType.Unknown }
+            .map(PendingMutationType::wireValue)
+        if (wireTypes.isEmpty()) return flowOf(emptyList())
+        return bindingFlow().flatMapLatest { binding ->
+            dao.observeActiveByTypes(
+                ownerKey = binding.ownerStorageKey,
+                ledgerId = binding.ledgerId,
+                types = wireTypes,
+                activeStatuses = ACTIVE_STATUS_VALUES,
+            )
+        }.map { rows -> rows.map { it.toDomain() } }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun observeStatus(): Flow<OutboxStatus> =

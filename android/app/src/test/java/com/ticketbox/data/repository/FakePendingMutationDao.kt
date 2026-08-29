@@ -346,6 +346,22 @@ class FakePendingMutationDao : PendingMutationDao {
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
     }
 
+    override fun observeActiveByTypes(
+        ownerKey: String,
+        ledgerId: String,
+        types: Collection<String>,
+        activeStatuses: Collection<String>,
+    ): Flow<List<PendingMutationEntity>> = queueDepth.map { _ ->
+        rows.values
+            .filter {
+                it.ownerKey == ownerKey &&
+                    it.ledgerId == ledgerId &&
+                    it.type in types &&
+                    it.status in activeStatuses
+            }
+            .sortedWith(compareBy({ it.createdAt }, { it.id }))
+    }
+
     override fun observeQueueDepth(
         ownerKey: String,
         ledgerId: String,

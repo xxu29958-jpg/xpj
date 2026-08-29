@@ -23,7 +23,6 @@ import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
-import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.ServerSettings
 import kotlinx.coroutines.flow.Flow
@@ -355,9 +354,6 @@ class ExpenseRepository(
 
     override suspend fun lifestyleStats(month: String?): Result<LifestyleStats> =
         statsRepository.lifestyleStats(month)
-
-    suspend fun recurringCandidates(): Result<List<RecurringCandidate>> =
-        detailRepository.recurringCandidates()
 
     override suspend fun dataQualitySummary(): Result<DataQualitySummary> =
         statsRepository.dataQualitySummary()

@@ -603,6 +603,26 @@ interface PendingMutationDao {
         activeStatuses: Collection<String>,
     ): List<PendingMutationEntity>
 
+    /** Live, binding-scoped rows for a product surface that owns specific
+     * mutation kinds. This lets the recurring screen render durable queued
+     * intents without treating them as server-published facts. */
+    @Query(
+        """
+        SELECT * FROM pending_mutations
+        WHERE ownerKey = :ownerKey
+          AND ledgerId = :ledgerId
+          AND type IN (:types)
+          AND status IN (:activeStatuses)
+        ORDER BY createdAt ASC, id ASC
+        """,
+    )
+    fun observeActiveByTypes(
+        ownerKey: String,
+        ledgerId: String,
+        types: Collection<String>,
+        activeStatuses: Collection<String>,
+    ): Flow<List<PendingMutationEntity>>
+
     /**
      * Live queue depth for the global "你有 N 笔待同步" status pill.
      * Counts only rows still actively traveling through the queue

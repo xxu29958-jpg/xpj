@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor
 from app.services.time_service import to_iso
@@ -14,8 +14,10 @@ __all__ = [
     "RecurringCandidateItem",
     "RecurringCandidatesResponse",
     "RecurringItemListResponse",
+    "RecurringItemCreateRequest",
     "RecurringItemResponse",
     "RecurringItemTokenRequest",
+    "RecurringItemUpdateRequest",
 ]
 
 
@@ -55,11 +57,48 @@ class RecurringCandidateConfirmRequest(BaseModel):
 
     merchant: str = Field(min_length=1, max_length=255)
     amount_cents: PositiveMoneyMinor
-    occurrence_count: int = Field(default=0, ge=0)
-    last_seen_at: datetime | None = None
-    confidence: str | None = Field(default=None, max_length=32)
+    occurrence_count: int = Field(
+        default=0,
+        ge=0,
+        deprecated=True,
+        description="Compatibility input only; confirmation uses the current server-side candidate observation.",
+    )
+    last_seen_at: datetime | None = Field(
+        default=None,
+        deprecated=True,
+        description="Compatibility input only; confirmation uses the current server-side candidate observation.",
+    )
+    confidence: str | None = Field(
+        default=None,
+        max_length=32,
+        deprecated=True,
+        description="Compatibility input only; confirmation uses the current server-side candidate observation.",
+    )
     frequency: str = Field(default="monthly", max_length=32)
     next_expected_date: date | None = None
+
+
+class RecurringItemCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    merchant: str = Field(min_length=1, max_length=255)
+    baseline_amount_cents: PositiveMoneyMinor
+    next_expected_date: date | None = None
+
+
+class RecurringItemUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    merchant: str | None = Field(default=None, min_length=1, max_length=255)
+    baseline_amount_cents: PositiveMoneyMinor | None = None
+    next_expected_date: date | None = None
+    expected_row_version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def require_edit(self) -> RecurringItemUpdateRequest:
+        if not ({"merchant", "baseline_amount_cents", "next_expected_date"} & self.model_fields_set):
+            raise ValueError("at least one editable field is required")
+        return self
 
 
 class RecurringItemResponse(BaseModel):

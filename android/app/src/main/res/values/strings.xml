@@ -120,6 +120,9 @@
     <string name="error_tag_undo_not_found">撤销窗口已过，无法撤销。</string>
     <string name="error_recurring_candidate_not_found">没有找到可确认的固定支出候选。</string>
     <string name="error_recurring_item_not_found">固定支出不存在。</string>
+    <string name="error_recurring_item_conflict">这个名称已有固定支出，请编辑现有记录。</string>
+    <string name="error_recurring_item_no_changes">没有检测到需要保存的修改。</string>
+    <string name="error_recurring_merchant_required">请填写固定支出的名称。</string>
     <string name="error_recurring_frequency_invalid">固定支出设置不正确。</string>
     <string name="error_recurring_status_invalid">固定支出设置不正确。</string>
     <string name="error_recurring_item_archived">固定支出已归档，不能继续修改。</string>

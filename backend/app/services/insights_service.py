@@ -194,7 +194,7 @@ def recurring_candidates(
       - Group by normalized merchant.
       - Within each group, require >= ``min_occurrences`` distinct month buckets.
       - Require amount range within 15% of the max (T24 spec).
-      - Skip merchants already formalized as active/paused ``RecurringItem``
+      - Skip merchants already formalized as any ``RecurringItem`` status
         (R4: claimed 过滤下推到共享装配, /web/recurring 与 overview 同口径).
       - Output: merchant display label, representative amount (most recent),
         occurrence_count (distinct months), last_seen_at, confidence, reason.
@@ -208,7 +208,6 @@ def recurring_candidates(
         db.scalars(
             select(RecurringItem.merchant_key)
             .where(RecurringItem.tenant_id == tenant_id)
-            .where(RecurringItem.status.in_(("active", "paused")))
         ).all()
     )
 

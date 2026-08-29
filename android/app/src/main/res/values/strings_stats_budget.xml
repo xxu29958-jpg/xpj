@@ -638,16 +638,6 @@
     <string name="debt_goal_target_date_clear">清除日期</string>
     <string name="debt_goal_target_date_updated">还清日期已更新</string>
 
-    <!-- RecurringCandidatesCard / RecurringItemsSummaryCard：统计屏内固定支出摘要卡 -->
-    <string name="stats_recurring_candidates_title">固定支出候选（未确认）</string>
-    <string name="stats_recurring_candidates_count">%1$d 项</string>
-    <string name="stats_recurring_candidates_subtitle">根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。</string>
-    <string name="stats_recurring_items_title">正式固定支出</string>
-    <string name="stats_recurring_items_active_count">%1$d 活跃</string>
-    <string name="stats_recurring_items_subtitle">这些是已经手动确认过的固定支出；只做提醒和对比，不会自动入账。</string>
-    <string name="stats_recurring_candidate_meta">%1$d 次 · %2$s</string>
-    <string name="stats_recurring_merchant_fallback">未填写商家</string>
-
     <!-- StatsEmptyStates：统计空态卡 + 骨架占位 -->
     <string name="stats_empty_month_chip_all">全部月份</string>
     <string name="stats_empty_month_chip_description">选择统计月份</string>
@@ -665,7 +655,7 @@
     <!-- RecurringScreen：固定支出独立屏 -->
     <string name="recurring_back_to_stats">返回计划</string>
     <string name="recurring_header_title">固定支出</string>
-    <string name="recurring_header_subtitle">候选需手动确认；正式记录只做提醒和对比，不会自动入账。</string>
+    <string name="recurring_header_subtitle">记录每月固定支出，只做提醒和对比，不会自动入账。</string>
     <string name="recurring_items_card_title">%1$s 固定支出</string>
     <string name="recurring_items_card_count">%1$d 项</string>
     <string name="recurring_items_card_count_loading">读取中</string>
@@ -680,14 +670,14 @@
     <string name="recurring_action_archive">归档</string>
     <string name="recurring_action_archive_description">归档固定支出</string>
     <string name="recurring_candidates_card_title">固定支出候选（未确认）</string>
-    <string name="recurring_candidates_card_subtitle">识别自最近账单，确认后才进入正式固定支出。</string>
+    <string name="recurring_candidates_card_subtitle">识别自最近账单，仅供参考；采用后才进入正式固定支出。</string>
     <string name="recurring_candidates_empty">还没有新的固定支出候选。</string>
     <string name="recurring_candidates_load_failed_title">候选暂时打不开</string>
     <string name="recurring_candidates_load_failed_body">候选暂未同步完成，稍后刷新再确认。</string>
     <string name="recurring_candidate_merchant_fallback">未填写商家</string>
     <string name="recurring_candidate_meta">%1$s · %2$d 次 · %3$s</string>
     <string name="recurring_candidate_meta_summary">%1$d &#27425; &#183; %2$s</string>
-    <string name="recurring_candidate_confirm">确认</string>
+    <string name="recurring_candidate_confirm">采用建议</string>
     <string name="recurring_candidate_confirm_description">确认固定支出候选</string>
     <string name="recurring_badge_loading">读取中</string>
     <string name="recurring_badge_refresh_needed">待刷新</string>
@@ -820,11 +810,70 @@
     <string name="recurring_meta_anomaly_current_amount"> · 本月 %1$s</string>
     <string name="recurring_meta_combined">%1$s · %2$s%3$s</string>
 
-    <!-- RecurringScreen：分段 tab 标签（即将 / 活跃 / 暂停） + tab 计数 -->
+    <!-- RecurringScreen：分段 tab 标签（即将 / 活跃 / 暂停 / 已归档） + tab 计数 -->
     <string name="recurring_tab_upcoming">即将</string>
     <string name="recurring_tab_active">活跃</string>
     <string name="recurring_tab_paused">暂停</string>
+    <string name="recurring_tab_archived">已归档</string>
     <string name="recurring_tab_label_count">%1$s %2$d</string>
+
+    <!-- A3：固定支出手工创建 / 编辑（计划金额 hero、待同步、表单、行动作） -->
+    <string name="recurring_add_cta">添加固定支出</string>
+    <string name="recurring_hero_label">每月固定支出</string>
+    <string name="recurring_hero_meta">%1$d 项活跃</string>
+    <string name="recurring_hero_meta_next">%1$d 项活跃 · 最近 %2$s</string>
+    <string name="recurring_hero_unavailable">待刷新</string>
+    <string name="recurring_pending_title">待同步</string>
+    <string name="recurring_pending_note">已保存在本机，同步完成后才计入计划。</string>
+    <string name="recurring_pending_kind_create">新建</string>
+    <string name="recurring_pending_kind_update">修改</string>
+    <string name="recurring_action_edit">编辑</string>
+    <string name="recurring_action_edit_description">编辑固定支出</string>
+    <string name="recurring_action_restore">恢复</string>
+    <string name="recurring_action_restore_description">恢复固定支出</string>
+    <string name="recurring_meta_next_no_reminder">未设置日期 · 不会提醒</string>
+    <string name="recurring_meta_observed_count">已记录 %1$d 次</string>
+    <string name="recurring_meta_observed_last">已记录 %1$d 次 · 最近 %2$s</string>
+    <string name="recurring_form_title_create">添加固定支出</string>
+    <string name="recurring_form_title_edit">编辑固定支出</string>
+    <string name="recurring_form_subtitle">只做提醒和对比，不会自动入账。</string>
+    <string name="recurring_form_merchant_label">名称</string>
+    <string name="recurring_form_merchant_placeholder">例如：房租、宽带、视频会员</string>
+    <string name="recurring_form_amount_label">每月金额</string>
+    <string name="recurring_form_date_label">下次日期</string>
+    <string name="recurring_form_date_none">未设置</string>
+    <string name="recurring_form_date_pick">选择日期</string>
+    <string name="recurring_form_date_change">修改日期</string>
+    <string name="recurring_form_date_clear">清空</string>
+    <string name="recurring_form_date_hint_set">清空日期后不会提醒。</string>
+    <string name="recurring_form_date_hint_none">未设置日期，不会提醒。</string>
+    <string name="recurring_form_date_picker_title">选择下次日期</string>
+    <string name="recurring_form_save">保存</string>
+    <string name="recurring_form_saving">保存中…</string>
+    <string name="recurring_form_error_merchant">请填写名称。</string>
+    <string name="recurring_form_error_amount">请输入正确的每月金额。</string>
+
+    <!-- A3：待同步三态（WAITING/CONFLICT/FAILED）与 UPDATE 基线解析 -->
+    <string name="recurring_pending_state_waiting">等待同步</string>
+    <string name="recurring_pending_state_conflict">同步冲突</string>
+    <string name="recurring_pending_state_failed">同步失败</string>
+    <string name="recurring_pending_state_guidance">请在「设置 · 离线同步」里查看并处理。</string>
+    <string name="recurring_pending_kind_state">%1$s · %2$s</string>
+    <string name="recurring_pending_update_unknown">待同步的固定支出修改</string>
+    <string name="recurring_pending_change_merchant">名称改为 %1$s</string>
+    <string name="recurring_pending_change_amount">金额改为 %1$s</string>
+    <string name="recurring_pending_change_date">下次改为 %1$s</string>
+    <string name="recurring_pending_change_date_cleared">清空下次日期</string>
+
+    <!-- A3：创建/编辑撞上既有记录（recurring_item_conflict）的可行动解决 -->
+    <string name="recurring_conflict_title">已有一条相同的固定支出</string>
+    <string name="recurring_conflict_body">「%1$s」已存在，无需重复添加。</string>
+    <string name="recurring_conflict_body_unknown">相同名称的记录已存在，刷新后可在列表中找到它。</string>
+    <string name="recurring_conflict_action_edit">查看/编辑现有记录</string>
+    <string name="recurring_conflict_action_restore">恢复这条记录</string>
+
+    <!-- A3：候选失败降层（辅助区不再与主列表并列红色错误卡） -->
+    <string name="recurring_candidates_unavailable_quiet">候选也暂时不可用，刷新成功后恢复。</string>
 
     <!-- BudgetViewModel：预算屏 Snackbar/提示文案 -->
     <string name="budget_message_load_failed">预算暂时打不开，请稍后再试。</string>
@@ -848,6 +897,7 @@
     <!-- RecurringViewModel：固定支出屏 Snackbar/提示文案 -->
     <string name="recurring_message_candidate_expired">固定支出候选已过期，请刷新后再试。</string>
     <string name="recurring_message_updated">固定支出已更新。</string>
+    <string name="recurring_message_queued">已保存到待同步；同步完成后才会计入计划。</string>
     <string name="recurring_message_action_failed">操作失败。</string>
 
     <!-- ADR-0049 §杠杆③ (slice 3a)：NLS 还款捕获复核箱 -->

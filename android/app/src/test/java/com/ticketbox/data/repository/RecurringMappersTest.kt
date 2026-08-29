@@ -45,7 +45,7 @@ class RecurringMappersTest {
     }
 
     @Test
-    fun recurringCandidateMapsToConfirmRequest() {
+    fun recurringCandidateMapsOnlyServerLocatorAndUserDateToConfirmRequest() {
         val request = RecurringCandidate(
             merchant = "ChatGPT Plus",
             amountCents = 20000,
@@ -57,8 +57,6 @@ class RecurringMappersTest {
 
         assertEquals("ChatGPT Plus", request.merchant)
         assertEquals(20000L, request.amountCents)
-        assertEquals(3, request.occurrenceCount)
-        assertEquals("2026-05-05T12:00:00Z", request.lastSeenAt)
         assertEquals("monthly", request.frequency)
         assertEquals("2026-06-05", request.nextExpectedDate)
     }

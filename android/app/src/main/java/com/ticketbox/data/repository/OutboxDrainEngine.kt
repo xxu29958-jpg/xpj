@@ -125,8 +125,10 @@ class OutboxDrainEngine(
          *  pending-side kinds (reject / OCR / recognize / not-duplicate /
          *  items-mismatch) never touch confirmed aggregates; splits only
          *  re-share an unchanged total; rules / aliases / goals are not
-         *  inputs; recurring writes and monthly-budget saves never travel
-         *  the outbox; and ReplaceItems only rewrites ExpenseItem sub-lines
+         *  inputs; recurring create/update now travel the outbox and change
+         *  the fixed-expense leg, so they are included below; monthly-budget
+         *  saves still do not travel the outbox. ReplaceItems only rewrites
+         *  ExpenseItem sub-lines
          *  (+ updated_at / items_sum_status) — the advisor aggregates
          *  Expense.category / amount_cents / month via confirmed_amount_query
          *  (monthly_report_service.py), never line items, so item replacement
@@ -137,6 +139,8 @@ class OutboxDrainEngine(
             PendingMutationType.PatchExpense,
             PendingMutationType.CorrectExpense,
             PendingMutationType.UpdateIncomePlan,
+            PendingMutationType.CreateRecurringItem,
+            PendingMutationType.UpdateRecurringItem,
         )
     }
 

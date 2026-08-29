@@ -14,6 +14,7 @@ import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
 import com.ticketbox.data.repository.CorrectExpenseDispatcher
 import com.ticketbox.data.repository.CreateExpenseDispatcher
+import com.ticketbox.data.repository.CreateRecurringItemDispatcher
 import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
 import com.ticketbox.data.repository.MarkNotDuplicateDispatcher
@@ -33,6 +34,7 @@ import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
 import com.ticketbox.data.repository.UpdateGoalDispatcher
 import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
+import com.ticketbox.data.repository.UpdateRecurringItemDispatcher
 import com.ticketbox.data.repository.bindingOrNull
 import com.ticketbox.data.repository.reconcileLocalSession
 import com.ticketbox.data.repository.toEntity
@@ -238,6 +240,14 @@ class AppContainer(context: Context) {
             UpdateIncomePlanDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.incomePlanUpdateAdapter,
+            ),
+            CreateRecurringItemDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.recurringCreateAdapter,
+            ),
+            UpdateRecurringItemDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.recurringUpdateAdapter,
             ),
         )
     }

@@ -39,7 +39,10 @@ from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
 from app.services.merchant_alias_service import undo_delete_merchant_alias
 from app.services.merchant_catalog_service import restore_merchant_catalog
-from app.services.recurring_service import restore_recurring_item
+from app.services.recurring_service import (
+    recurring_item_monthly_detail,
+    restore_recurring_item,
+)
 from app.services.soft_delete_policy import (
     is_within_recycle_bin_window,
     recycle_bin_retention_label,
@@ -308,7 +311,10 @@ def _archived_recurring_rows(db: Session, tenant_id: str) -> list[RecycleBinItem
             kind_label="固定支出",
             resource_id=item.public_id,
             title=item.merchant_name,
-            detail=f"每月 {_money(item.baseline_amount_cents)} · 已出现 {item.occurrence_count} 次",
+            detail=recurring_item_monthly_detail(
+                item,
+                _money(item.baseline_amount_cents),
+            ),
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,

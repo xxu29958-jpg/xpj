@@ -22,6 +22,8 @@ class ErrorResponse(BaseModel):
     error: str
     message: str
     request_id: str | None = None
+    public_id: str | None = None
+    status: str | None = None
     conflict_tag_public_id: str | None = None
     conflict_tag_row_version: int | None = None
     conflict_merchant_public_id: str | None = None

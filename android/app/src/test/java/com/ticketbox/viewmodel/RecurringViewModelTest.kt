@@ -4,6 +4,18 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringActions
+import com.ticketbox.data.repository.RecurringConflictDetails
+import com.ticketbox.data.repository.RecurringDateEdit
+import com.ticketbox.data.repository.RecurringItemDraft
+import com.ticketbox.data.repository.RecurringItemPatch
+import com.ticketbox.data.repository.RecurringLifecycleActions
+import com.ticketbox.data.repository.RecurringManualMutationActions
+import com.ticketbox.data.repository.RecurringPendingIntent
+import com.ticketbox.data.repository.RecurringPendingKind
+import com.ticketbox.data.repository.RecurringQueryActions
+import com.ticketbox.data.repository.RecurringSaveOutcome
+import com.ticketbox.data.repository.RepositoryConflictDetails
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
@@ -25,17 +37,18 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class RecurringViewModelTest {
-    private fun recurringTest(block: suspend TestScope.() -> Unit) = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        Dispatchers.setMain(dispatcher)
-        try {
-            block()
-        } finally {
-            Dispatchers.resetMain()
-        }
+private fun recurringTest(block: suspend TestScope.() -> Unit) = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    try {
+        block()
+    } finally {
+        Dispatchers.resetMain()
     }
+}
 
+@OptIn(ExperimentalCoroutinesApi::class)
+class RecurringViewModelTest {
     @Test
     fun initialFailureMarksBothListsFailedWithoutFabricatingEmpty() = recurringTest {
         val fake = FakeRecurringActions(
@@ -161,41 +174,316 @@ class RecurringViewModelTest {
     }
 }
 
-private class FakeRecurringActions(
-    var itemsResult: Result<List<RecurringItem>> = Result.success(emptyList()),
-    var candidatesResult: Result<List<RecurringCandidate>> = Result.success(emptyList()),
-    private val canModify: Boolean = true,
-    private val activeAccessFlow: Flow<LedgerAccessContext?> = flowOf(planAccess(canModify = canModify)),
-) : RecurringActions {
-    var confirmCalls: Int = 0
-        private set
+@OptIn(ExperimentalCoroutinesApi::class)
+class RecurringViewModelMutationTest {
+    @Test
+    fun queuedManualCreateIsVisibleButNeverFabricatesPublishedItem() = recurringTest {
+        val pending = RecurringPendingIntent(
+            kind = RecurringPendingKind.CREATE,
+            targetId = "recurring_item_create:key-1",
+            idempotencyKey = "key-1",
+            merchant = "房租",
+            baselineAmountCents = 350000,
+            nextExpectedDateChanged = true,
+        )
+        val fake = FakeRecurringActions(
+            manual = FakeRecurringManualActions(
+                createResult = Result.success(RecurringSaveOutcome.Queued(pending)),
+            ),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        vm.createManual(RecurringItemDraft("房租", 350000, null))
+        advanceUntilIdle()
+
+        assertEquals(1, fake.createCalls)
+        assertEquals(emptyList(), vm.uiState.value.items)
+        assertEquals(listOf(pending), vm.uiState.value.pendingIntents)
+        assertEquals(UiText.res(R.string.recurring_message_queued), vm.uiState.value.message)
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
+    }
+
+    @Test
+    fun queuedManualEditKeepsObservedFactUntouched() = recurringTest {
+        val observed = item(merchant = "房租").copy(
+            lastAmountCents = 360000,
+            occurrenceCount = 8,
+            lastSeenAt = "2026-08-01T00:00:00Z",
+            rowVersion = 7,
+        )
+        val pending = RecurringPendingIntent(
+            kind = RecurringPendingKind.UPDATE,
+            targetId = "recurring_item:${observed.publicId}",
+            idempotencyKey = "key-2",
+            publicId = observed.publicId,
+            baselineAmountCents = 355000,
+            nextExpectedDateChanged = true,
+            nextExpectedDate = null,
+        )
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(observed)),
+            manual = FakeRecurringManualActions(
+                updateResult = Result.success(RecurringSaveOutcome.Queued(pending)),
+            ),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        vm.editManual(
+            baseline = observed,
+            patch = RecurringItemPatch(
+                baselineAmountCents = 355000,
+                nextExpectedDate = RecurringDateEdit.changed(null),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(360000, vm.uiState.value.items.single().lastAmountCents)
+        assertEquals(8, vm.uiState.value.items.single().occurrenceCount)
+        assertEquals(listOf(pending), vm.uiState.value.pendingIntents)
+    }
+
+    @Test
+    fun archivedRestoreCarriesTheDisplayedRowVersion() = recurringTest {
+        val archived = item(publicId = "rec-archived", merchant = "旧订阅").copy(
+            status = "archived",
+            rowVersion = 11,
+            archivedAt = "2026-08-20T00:00:00Z",
+        )
+        val fake = FakeRecurringActions(itemsResult = Result.success(listOf(archived)))
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        vm.restore(archived.publicId, archived.rowVersion)
+        advanceUntilIdle()
+
+        assertEquals(archived.publicId to 11L, fake.restoreCall)
+    }
+
+    @Test
+    fun duplicateCreateExposesExistingArchivedItemForRestore() = recurringTest {
+        val archived = item(publicId = "rec-archived", merchant = "旧订阅").copy(
+            status = "archived",
+            rowVersion = 11,
+            archivedAt = "2026-08-20T00:00:00Z",
+        )
+        val conflict = RepositoryException(
+            message = "这个名称已有固定支出。",
+            errorCode = "recurring_item_conflict",
+            conflict = RepositoryConflictDetails(
+                recurring = RecurringConflictDetails(
+                    publicId = archived.publicId,
+                    status = archived.status,
+                ),
+            ),
+        )
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(archived)),
+            manual = FakeRecurringManualActions(createResult = Result.failure(conflict)),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        vm.createManual(RecurringItemDraft("旧订阅", 350000, null))
+        advanceUntilIdle()
+
+        assertEquals(
+            RecurringDuplicateConflict(publicId = archived.publicId, status = "archived"),
+            vm.uiState.value.duplicateConflict,
+        )
+        assertEquals(listOf(archived), vm.uiState.value.items)
+    }
+
+    @Test
+    fun duplicateCreateRefreshesAnExistingItemMissingFromTheStaleList() = recurringTest {
+        val existing = item(publicId = "rec-other-device", merchant = "房租")
+        val conflict = RepositoryException(
+            message = "这个名称已有固定支出。",
+            errorCode = "recurring_item_conflict",
+            conflict = RepositoryConflictDetails(
+                recurring = RecurringConflictDetails(
+                    publicId = existing.publicId,
+                    status = existing.status,
+                ),
+            ),
+        )
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(emptyList()),
+            manual = FakeRecurringManualActions(createResult = Result.failure(conflict)),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        fake.itemsResult = Result.success(listOf(existing))
+
+        vm.createManual(RecurringItemDraft("房租", 350000, null))
+        advanceUntilIdle()
+
+        assertEquals(
+            RecurringDuplicateConflict(publicId = existing.publicId, status = "active"),
+            vm.uiState.value.duplicateConflict,
+        )
+        assertEquals(listOf(existing), vm.uiState.value.items)
+    }
+
+    @Test
+    fun duplicateCreateRefreshesAnExistingItemWhoseStatusBecameArchived() = recurringTest {
+        val stale = item(publicId = "rec-other-device", merchant = "房租")
+        val archived = stale.copy(
+            status = "archived",
+            rowVersion = stale.rowVersion + 1,
+            archivedAt = "2026-08-30T00:00:00Z",
+        )
+        val conflict = RepositoryException(
+            message = "这条固定支出已归档。",
+            errorCode = "recurring_item_conflict",
+            conflict = RepositoryConflictDetails(
+                recurring = RecurringConflictDetails(
+                    publicId = archived.publicId,
+                    status = archived.status,
+                ),
+            ),
+        )
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(stale)),
+            manual = FakeRecurringManualActions(createResult = Result.failure(conflict)),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        fake.itemsResult = Result.success(listOf(archived))
+
+        vm.createManual(RecurringItemDraft("房租", 350000, null))
+        advanceUntilIdle()
+
+        assertEquals(listOf(archived), vm.uiState.value.items)
+        assertEquals("archived", vm.uiState.value.duplicateConflict?.status)
+    }
+
+    @Test
+    fun staleCandidateConflictExposesExistingArchivedItemForRestore() = recurringTest {
+        val archived = item(publicId = "rec-archived", merchant = "旧订阅").copy(
+            status = "archived",
+            rowVersion = 11,
+            archivedAt = "2026-08-20T00:00:00Z",
+        )
+        val staleCandidate = candidate("旧订阅")
+        val conflict = RepositoryException(
+            message = "固定支出已归档。",
+            errorCode = "recurring_item_archived",
+            conflict = RepositoryConflictDetails(
+                recurring = RecurringConflictDetails(
+                    publicId = archived.publicId,
+                    status = archived.status,
+                ),
+            ),
+        )
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(archived)),
+            candidatesResult = Result.success(listOf(staleCandidate)),
+            lifecycle = FakeRecurringLifecycleActions(confirmResult = Result.failure(conflict)),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        vm.confirmCandidate(staleCandidate)
+        advanceUntilIdle()
+
+        assertEquals(
+            RecurringDuplicateConflict(publicId = archived.publicId, status = "archived"),
+            vm.uiState.value.duplicateConflict,
+        )
+    }
+}
+
+private class FakeRecurringActions private constructor(
+    private val queryDelegate: FakeRecurringQueryActions,
+    private val manual: FakeRecurringManualActions = FakeRecurringManualActions(),
+    private val lifecycle: FakeRecurringLifecycleActions = FakeRecurringLifecycleActions(),
+) : RecurringActions,
+    RecurringQueryActions by queryDelegate,
+    RecurringManualMutationActions by manual,
+    RecurringLifecycleActions by lifecycle {
+    constructor(
+        itemsResult: Result<List<RecurringItem>> = Result.success(emptyList()),
+        candidatesResult: Result<List<RecurringCandidate>> = Result.success(emptyList()),
+        activeAccessFlow: Flow<LedgerAccessContext?> = flowOf(planAccess()),
+        manual: FakeRecurringManualActions = FakeRecurringManualActions(),
+        lifecycle: FakeRecurringLifecycleActions = FakeRecurringLifecycleActions(),
+    ) : this(
+        queryDelegate = FakeRecurringQueryActions(itemsResult, candidatesResult, activeAccessFlow),
+        manual = manual,
+        lifecycle = lifecycle,
+    )
+
+    var itemsResult: Result<List<RecurringItem>>
+        get() = queryDelegate.itemsResult
+        set(value) { queryDelegate.itemsResult = value }
+    var candidatesResult: Result<List<RecurringCandidate>>
+        get() = queryDelegate.candidatesResult
+        set(value) { queryDelegate.candidatesResult = value }
+    var itemsResponder: (suspend () -> Result<List<RecurringItem>>)?
+        get() = queryDelegate.itemsResponder
+        set(value) { queryDelegate.itemsResponder = value }
+    val confirmCalls: Int get() = lifecycle.confirmCalls
+    val createCalls: Int get() = manual.createCalls
+    val restoreCall: Pair<String, Long>? get() = lifecycle.restoreCall
+}
+
+private class FakeRecurringQueryActions(
+    var itemsResult: Result<List<RecurringItem>>,
+    var candidatesResult: Result<List<RecurringCandidate>>,
+    private val activeAccessFlow: Flow<LedgerAccessContext?>,
+) : RecurringQueryActions {
     var itemsResponder: (suspend () -> Result<List<RecurringItem>>)? = null
 
-    override fun canModifyLedger(): Boolean = canModify
-
+    override fun canModifyLedger(): Boolean = true
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = activeAccessFlow
-
     override suspend fun items(
         status: String?,
         includeArchived: Boolean,
         month: String?,
     ): Result<List<RecurringItem>> = itemsResponder?.invoke() ?: itemsResult
-
     override suspend fun items(
         expectedBinding: LogicalSessionBinding,
         status: String?,
         includeArchived: Boolean,
         month: String?,
     ): Result<List<RecurringItem>> = items(status, includeArchived, month)
-
-    override suspend fun candidates(): Result<List<RecurringCandidate>> = candidatesResult
-
     override suspend fun candidates(
         expectedBinding: LogicalSessionBinding,
-    ): Result<List<RecurringCandidate>> = candidates()
+    ): Result<List<RecurringCandidate>> = candidatesResult
+}
 
-    override suspend fun detail(publicId: String, month: String?): Result<RecurringItem> =
-        Result.success(item(publicId = publicId))
+private class FakeRecurringManualActions(
+    var createResult: Result<RecurringSaveOutcome> = Result.failure(IllegalStateException("create not configured")),
+    var updateResult: Result<RecurringSaveOutcome> = Result.failure(IllegalStateException("update not configured")),
+    private val pendingIntentsFlow: Flow<List<RecurringPendingIntent>> = flowOf(emptyList()),
+) : RecurringManualMutationActions {
+    var createCalls: Int = 0
+        private set
+
+    override fun observePendingIntents(): Flow<List<RecurringPendingIntent>> = pendingIntentsFlow
+    override suspend fun createAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
+        draft: RecurringItemDraft,
+    ): Result<RecurringSaveOutcome> {
+        createCalls += 1
+        return createResult
+    }
+    override suspend fun updateAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
+        baseline: RecurringItem,
+        patch: RecurringItemPatch,
+    ): Result<RecurringSaveOutcome> = updateResult
+}
+
+private class FakeRecurringLifecycleActions(
+    var confirmResult: Result<RecurringItem>? = null,
+) : RecurringLifecycleActions {
+    var confirmCalls: Int = 0
+        private set
+    var restoreCall: Pair<String, Long>? = null
+        private set
 
     override suspend fun confirmCandidate(
         expectedBinding: LogicalSessionBinding,
@@ -203,25 +491,30 @@ private class FakeRecurringActions(
         nextExpectedDate: String?,
     ): Result<RecurringItem> {
         confirmCalls += 1
-        return Result.success(item(merchant = candidate.merchant))
+        return confirmResult ?: Result.success(item(merchant = candidate.merchant))
     }
-
     override suspend fun pause(
         expectedBinding: LogicalSessionBinding,
         publicId: String,
         expectedRowVersion: Long,
     ): Result<RecurringItem> = Result.success(item(publicId = publicId))
-
     override suspend fun resume(
         expectedBinding: LogicalSessionBinding,
         publicId: String,
         expectedRowVersion: Long,
     ): Result<RecurringItem> = Result.success(item(publicId = publicId))
-
     override suspend fun archive(
         expectedBinding: LogicalSessionBinding,
         publicId: String,
     ): Result<RecurringItem> = Result.success(item(publicId = publicId))
+    override suspend fun restore(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        expectedRowVersion: Long,
+    ): Result<RecurringItem> {
+        restoreCall = publicId to expectedRowVersion
+        return Result.success(item(publicId = publicId))
+    }
 }
 
 private fun planBinding(

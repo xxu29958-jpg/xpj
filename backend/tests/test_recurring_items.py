@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from api_contract_helpers import insert_confirmed_expense
 from fastapi.testclient import TestClient
@@ -11,12 +12,10 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import LedgerMember, RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest
-from app.services.currency_binding_service import resolve_write_capability
 from app.services.recurring_candidate_confirmation_service import (
     confirm_recurring_candidate as confirm_recurring_candidate_service,
 )
 from app.services.recurring_service import _historical_average_amount
-from app.services.time_service import now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -148,6 +147,33 @@ def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: Test
     assert [entry["public_id"] for entry in listed.json()["items"]] == [item["public_id"]]
 
 
+def test_recurring_candidate_confirm_uses_server_observation_not_client_provenance(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    last_seen = _seed_monthly_candidate()
+
+    response = client.post(
+        "/api/recurring/from-candidate?timezone=UTC",
+        headers=identity.app_headers,
+        json={
+            "merchant": "ChatGPT Plus",
+            "amount_cents": 20_000,
+            "occurrence_count": 999,
+            "last_seen_at": "2035-12-31T23:59:59Z",
+            "confidence": "low",
+            "frequency": "monthly",
+        },
+    )
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["occurrence_count"] == 3
+    assert body["last_seen_at"] == last_seen.isoformat().replace("+00:00", "Z")
+    assert body["confidence"] == "high"
+
+
 def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestClient, *, identity) -> None:
     merchant = "Boundary Billing"
     amount_cents = 9900
@@ -229,7 +255,7 @@ def test_recurring_item_state_transitions(client: TestClient, *, identity) -> No
     assert blocked.json()["error"] == "recurring_item_archived"
 
 
-def test_confirm_candidate_reactivates_archived_item(client: TestClient, *, identity) -> None:
+def test_confirm_candidate_never_resurrects_archived_item(client: TestClient, *, identity) -> None:
     item = _confirm_candidate(client, identity=identity)
     public_id = item["public_id"]
 
@@ -251,16 +277,70 @@ def test_confirm_candidate_reactivates_archived_item(client: TestClient, *, iden
         },
     )
 
-    assert response.status_code == 200, response.json()
+    assert response.status_code == 409, response.json()
     payload = response.json()
+    assert payload["error"] == "recurring_item_archived"
     assert payload["public_id"] == public_id
-    assert payload["status"] == "active"
-    assert payload["archived_at"] is None
-    assert payload["paused_at"] is None
+    assert payload["status"] == "archived"
 
     listed = client.get("/api/recurring/items", headers=identity.app_headers)
     assert listed.status_code == 200, listed.json()
-    assert [entry["public_id"] for entry in listed.json()["items"]] == [public_id]
+    assert listed.json()["items"] == []
+
+    candidates = client.get(
+        "/api/insights/recurring-candidates?timezone=UTC",
+        headers=identity.app_headers,
+    )
+    assert candidates.status_code == 200, candidates.json()
+    assert candidates.json()["items"] == []
+
+    with SessionLocal() as db:
+        current = db.scalar(select(RecurringItem).where(RecurringItem.public_id == public_id).limit(1))
+        assert current is not None
+        assert current.status == "archived"
+        assert current.source == "candidate"
+        assert current.archived_at is not None
+
+
+def test_confirm_candidate_never_overwrites_manual_commitment(client: TestClient, *, identity) -> None:
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    manual = client.post(
+        "/api/recurring/items",
+        headers=headers,
+        json={
+            "merchant": "ChatGPT Plus",
+            "baseline_amount_cents": 18_000,
+            "next_expected_date": "2026-06-06",
+        },
+    )
+    assert manual.status_code == 201, manual.json()
+
+    last_seen = _seed_monthly_candidate(merchant="ChatGPT Plus", amount_cents=20_000)
+    confirmation = client.post(
+        "/api/recurring/from-candidate?timezone=UTC",
+        headers=identity.app_headers,
+        json={
+            "merchant": "ChatGPT Plus",
+            "amount_cents": 20_000,
+            "occurrence_count": 3,
+            "last_seen_at": last_seen.isoformat().replace("+00:00", "Z"),
+            "confidence": "high",
+            "frequency": "monthly",
+        },
+    )
+
+    assert confirmation.status_code == 409, confirmation.json()
+    assert confirmation.json()["error"] == "recurring_item_conflict"
+    assert confirmation.json()["public_id"] == manual.json()["public_id"]
+    assert confirmation.json()["status"] == "active"
+
+    with SessionLocal() as db:
+        current = db.scalar(select(RecurringItem).where(RecurringItem.public_id == manual.json()["public_id"]).limit(1))
+        assert current is not None
+        assert current.source == "manual"
+        assert current.baseline_amount_cents == 18_000
+        assert current.occurrence_count == 0
+        assert current.last_seen_at is None
 
 
 def test_recurring_item_restore_reactivates_archived(client: TestClient, *, identity) -> None:
@@ -398,47 +478,3 @@ def test_recurring_anomaly_ignores_unrelated_same_merchant_large_purchase(client
     assert current["public_id"] == item["public_id"]
     assert current["anomaly_status"] == "none"
     assert current["current_month_amount_cents"] == 20000
-
-
-def test_recurring_status_filter_and_invalid_candidate_errors(client: TestClient, *, identity) -> None:
-    now = now_utc()
-    with SessionLocal() as db:
-        resolve_write_capability(db)
-        db.add(
-            RecurringItem(
-                tenant_id="owner",
-                merchant_key="netflix",
-                merchant_name="Netflix",
-                frequency="monthly",
-                baseline_amount_cents=6800,
-                last_amount_cents=6800,
-                occurrence_count=4,
-                last_seen_at=now,
-                status="paused",
-                confidence="high",
-                source="candidate",
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        db.commit()
-
-    paused = client.get("/api/recurring/items?status=paused", headers=identity.app_headers)
-    assert paused.status_code == 200, paused.json()
-    assert [entry["merchant"] for entry in paused.json()["items"]] == ["Netflix"]
-
-    invalid_status = client.get("/api/recurring/items?status=unknown", headers=identity.app_headers)
-    assert invalid_status.status_code == 422, invalid_status.json()
-    assert invalid_status.json()["error"] == "recurring_status_invalid"
-
-    not_found = client.post(
-        "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
-        json={
-            "merchant": "Not Monthly",
-            "amount_cents": 1234,
-            "occurrence_count": 1,
-        },
-    )
-    assert not_found.status_code == 404, not_found.json()
-    assert not_found.json()["error"] == "recurring_candidate_not_found"

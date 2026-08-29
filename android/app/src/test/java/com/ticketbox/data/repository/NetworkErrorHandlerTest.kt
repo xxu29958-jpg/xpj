@@ -42,6 +42,9 @@ class NetworkErrorHandlerTest {
             """"conflict_alias_row_version":4,""" +
             """"conflict_alias_enabled":false,""" +
             """"conflict_alias_deleted":false}"""
+    private val recurringConflictBody =
+        """{"error":"recurring_item_conflict","message":"已有固定支出。",""" +
+            """"public_id":"recurring-xyz","status":"archived"}"""
 
     @Test
     fun parseErrorMessageKeepsFlatConflictTokens() {
@@ -81,6 +84,17 @@ class NetworkErrorHandlerTest {
     }
 
     @Test
+    fun safeCallKeepsRecurringConflictIdentityAndStatus() = runTest {
+        val result = handler.safeCall<Unit> { throw httpException(409, recurringConflictBody) }
+
+        assertTrue(result.isFailure)
+        val ex = result.exceptionOrNull() as RepositoryException
+        assertEquals("recurring_item_conflict", ex.errorCode)
+        assertEquals("recurring-xyz", ex.conflictRecurringPublicId)
+        assertEquals("archived", ex.conflictRecurringStatus)
+    }
+
+    @Test
     fun plainErrorCarriesNoConflictTokens() {
         val parsed = handler.parseErrorMessage(409, """{"error":"state_conflict","message":"x"}""")
         assertEquals("state_conflict", parsed.errorCode)
@@ -90,6 +104,8 @@ class NetworkErrorHandlerTest {
         assertNull(parsed.conflictMerchantRowVersion)
         assertNull(parsed.conflictAliasPublicId)
         assertNull(parsed.conflictAliasRowVersion)
+        assertNull(parsed.conflictRecurringPublicId)
+        assertNull(parsed.conflictRecurringStatus)
     }
 
     private fun httpException(code: Int, body: String): HttpException {

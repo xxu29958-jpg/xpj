@@ -27,6 +27,8 @@ class RepositoryException(
     val conflictAliasRowVersion: Long? get() = conflict.alias.rowVersion
     val conflictAliasEnabled: Boolean? get() = conflict.alias.enabled
     val conflictAliasDeleted: Boolean? get() = conflict.alias.deleted
+    val conflictRecurringPublicId: String? get() = conflict.recurring.publicId
+    val conflictRecurringStatus: String? get() = conflict.recurring.status
 }
 
 data class RepositoryConflictDetails(
@@ -38,6 +40,7 @@ data class RepositoryConflictDetails(
     // by a user-confirmed merge. Mirrors the flat ErrorDto fields.
     val merchant: MerchantConflictDetails = MerchantConflictDetails(),
     val alias: AliasConflictDetails = AliasConflictDetails(),
+    val recurring: RecurringConflictDetails = RecurringConflictDetails(),
 )
 
 data class TagConflictDetails(
@@ -58,6 +61,11 @@ data class AliasConflictDetails(
     val rowVersion: Long? = null,
     val enabled: Boolean? = null,
     val deleted: Boolean? = null,
+)
+
+data class RecurringConflictDetails(
+    val publicId: String? = null,
+    val status: String? = null,
 )
 
 /** Maps backend error codes to user-facing Chinese strings.
@@ -103,6 +111,9 @@ private val backendErrorUserMessages = mapOf(
     "tag_undo_not_found" to "撤销窗口已过，无法撤销。",
     "recurring_candidate_not_found" to "没有找到可确认的固定支出候选。",
     "recurring_item_not_found" to "固定支出不存在。",
+    "recurring_item_conflict" to "这个名称已有固定支出，请编辑现有记录。",
+    "recurring_item_no_changes" to "没有检测到需要保存的修改。",
+    "recurring_merchant_required" to "请填写固定支出的名称。",
     "recurring_frequency_invalid" to "固定支出设置不正确。",
     "recurring_status_invalid" to "固定支出设置不正确。",
     "recurring_item_archived" to "固定支出已归档，不能继续修改。",

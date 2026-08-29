@@ -34,9 +34,6 @@ fun RecurringCandidate.toConfirmRequest(nextExpectedDate: String? = null): Recur
     RecurringCandidateConfirmRequestDto(
         merchant = merchant,
         amountCents = amountCents,
-        occurrenceCount = occurrenceCount,
-        lastSeenAt = lastSeenAt,
-        confidence = confidence,
         frequency = "monthly",
         nextExpectedDate = nextExpectedDate,
     )

@@ -259,7 +259,10 @@ def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG0
                 merchant_key="spotify",
                 merchant_name="Spotify",
                 baseline_amount_cents=1_500,
-                last_amount_cents=1_500,
+                # The advisor plans against the user-owned monthly baseline,
+                # not the last observed charge. Editing an expectation must not
+                # be ignored just because provenance keeps the observed amount.
+                last_amount_cents=1_900,
                 frequency="monthly",
                 status="active",
                 source="declared",
@@ -289,7 +292,8 @@ def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG0
             month=_current_month(),
             home_currency="CNY",
         )
-    # 2_000 (Netflix) + 1_500 (Spotify); paused 健身房会员 excluded.
+    # 2_000 (Netflix) + 1_500 Spotify baseline (not its 1_900 observed amount);
+    # paused 健身房会员 excluded.
     assert inputs.recurring_total_monthly_cents == 3_500
     assert inputs.recurring_active_count == 2
     # No merchant identity leaks through the coarse aggregate.

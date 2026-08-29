@@ -1,16 +1,80 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonClass
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
+import com.squareup.moshi.Moshi
+
+/**
+ * PATCH needs three states for the reminder date: absent (leave it alone), a
+ * concrete ISO date, or explicit JSON null (clear it). Keeping that distinction
+ * in the wire DTO lets the existing outbox replay the same user intent without
+ * inventing another persisted recurring-item state.
+ */
+data class RecurringOptionalDate(
+    val changed: Boolean,
+    val value: String?,
+) {
+    companion object {
+        fun unchanged(): RecurringOptionalDate = RecurringOptionalDate(changed = false, value = null)
+        fun changed(value: String?): RecurringOptionalDate = RecurringOptionalDate(changed = true, value = value)
+    }
+}
+
+class RecurringOptionalDateJsonAdapter : JsonAdapter<RecurringOptionalDate>() {
+    override fun fromJson(reader: JsonReader): RecurringOptionalDate =
+        if (reader.peek() == JsonReader.Token.NULL) {
+            reader.nextNull<Unit>()
+            RecurringOptionalDate.changed(null)
+        } else {
+            RecurringOptionalDate.changed(reader.nextString())
+        }
+
+    override fun toJson(writer: JsonWriter, value: RecurringOptionalDate?) {
+        val field = requireNotNull(value)
+        if (field.value != null) {
+            writer.value(field.value)
+            return
+        }
+        val previous = writer.serializeNulls
+        writer.serializeNulls = field.changed
+        try {
+            writer.nullValue()
+        } finally {
+            writer.serializeNulls = previous
+        }
+    }
+}
+
+fun Moshi.Builder.addRecurringWireAdapters(): Moshi.Builder =
+    add(RecurringOptionalDate::class.java, RecurringOptionalDateJsonAdapter())
+
+@JsonClass(generateAdapter = true)
+data class RecurringItemCreateRequestDto(
+    val merchant: String,
+    @param:Json(name = "baseline_amount_cents")
+    val baselineAmountCents: Long,
+    @param:Json(name = "next_expected_date")
+    val nextExpectedDate: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class RecurringItemUpdateRequestDto(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+    val merchant: String? = null,
+    @param:Json(name = "baseline_amount_cents")
+    val baselineAmountCents: Long? = null,
+    @param:Json(name = "next_expected_date")
+    val nextExpectedDate: RecurringOptionalDate = RecurringOptionalDate.unchanged(),
+)
 
 data class RecurringCandidateConfirmRequestDto(
     val merchant: String,
     @param:Json(name = "amount_cents")
     val amountCents: Long,
-    @param:Json(name = "occurrence_count")
-    val occurrenceCount: Int,
-    @param:Json(name = "last_seen_at")
-    val lastSeenAt: String?,
-    val confidence: String?,
     val frequency: String = "monthly",
     @param:Json(name = "next_expected_date")
     val nextExpectedDate: String? = null,

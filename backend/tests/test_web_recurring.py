@@ -1,20 +1,29 @@
-"""Tests for /web recurring management page."""
+"""Presentation tests for /web recurring: page render, error surfaces, IA retirements.
+
+Mutation journeys with DB postconditions live in test_web_recurring_commands.py.
+"""
 
 from __future__ import annotations
 
 import re
-from datetime import timedelta
+from uuid import uuid4
 
 import pytest
-from api_contract_helpers import insert_confirmed_expense
+from _web_recurring_test_support import (
+    create_via_web,
+    demote_owner_ledger_to_viewer,
+    edit_via_web,
+    first_recurring_public_id,
+    hero_block,
+    post_confirm,
+    row_version,
+    seed_candidate,
+    seed_observed_item,
+)
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
-from app.database import SessionLocal
 from app.main import app
-from app.models import LedgerMember, RecurringItem
 from app.routes.web_app import _require_local as _web_require_local
-from app.services.time_service import now_utc
 
 
 @pytest.fixture()
@@ -24,76 +33,214 @@ def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_web_require_local, None)
 
 
-def _seed_candidate() -> None:
-    # PR #253 R4: 候选扫描窗口为近 6 个月, 播种改相对日期 (固定日期会随时间掉出窗口)。
-    base = now_utc()
-    for when in (
-        base - timedelta(days=62),
-        base - timedelta(days=31),
-        base,
-    ):
-        insert_confirmed_expense(
-            amount_cents=20000,
-            merchant="ChatGPT Plus",
-            category="AI订阅",
-            expense_time=when,
-            confirmed_at=when,
-        )
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
-
-
-def _first_recurring_public_id() -> str:
-    with SessionLocal() as db:
-        item = db.scalar(select(RecurringItem).limit(1))
-        assert item is not None
-        return item.public_id
-
-
-def _confirm_candidate(web_client: TestClient) -> None:
-    response = web_client.post(
-        "/web/recurring/confirm-candidate",
-        data={
-            "ledger_id": "owner",
-            "merchant": "ChatGPT Plus",
-            "amount_cents": "20000",
-            "occurrence_count": "3",
-            "last_seen_at": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "confidence": "high",
-        },
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-
-
 def test_web_recurring_remote_returns_403(client: TestClient) -> None:
     assert client.get("/web/recurring").status_code == 403
+    assert client.post("/web/recurring/create").status_code == 403
     assert client.post("/web/recurring/confirm-candidate").status_code == 403
+    assert client.post("/web/recurring/x/edit").status_code == 403
 
 
-def test_web_recurring_renders_candidates(web_client: TestClient) -> None:
-    _seed_candidate()
+def test_web_recurring_create_page_journey(web_client: TestClient) -> None:
+    """Writer first-screen CTA + unified form; manual item renders with 每月预计
+    honesty (never 上次/最近发生); hero aggregates the active commitment."""
+    page = web_client.get("/web/recurring?ledger_id=owner")
+    assert page.status_code == 200
+    # 主 CTA 首屏可达: 统一创建表单 + durable intent key; 顶栏面包屑消重为页名。
+    assert "添加固定支出" in page.text
+    assert 'action="/web/recurring/create"' in page.text
+    assert re.search(r'name="idempotency_key" value="[^"]+"', page.text)
+    assert 'topbar-title">固定支出' in page.text
 
-    response = web_client.get("/web/recurring?ledger_id=owner")
+    assert create_via_web(web_client, merchant="房租", amount="6800", date_str="2026-09-06").status_code == 303
 
-    assert response.status_code == 200
-    assert "固定支出" in response.text
-    assert "ChatGPT Plus" in response.text
-    assert "候选" in response.text
-    assert "确认" in response.text
+    page = web_client.get("/web/recurring?ledger_id=owner")
+    assert "我的固定支出" in page.text
+    assert "每月预计" in page.text
+    # 诚实合同: manual + occurrence=0 不得出现「上次/最近发生」式观察措辞。
+    assert "上次" not in page.text
+    # hero 汇总 active 正式项: 每月合计 + 下一笔到期。
+    hero = hero_block(page.text)
+    assert hero, "active items exist — hero must render"
+    assert "6800.00" in hero
+    assert "2026-09-06" in hero
+    assert "房租" in hero
+
+
+def test_web_recurring_create_duplicate_active_guides_to_edit(web_client: TestClient) -> None:
+    """recurring_item_conflict (active) → 引导编辑且展开碰撞项的编辑表单。"""
+    assert create_via_web(web_client, merchant="房租").status_code == 303
+
+    again = create_via_web(web_client, merchant="房租", amount="6900")
+
+    assert again.status_code == 200
+    assert "已经在你的固定支出里" in again.text
+    assert "去编辑现有记录" in again.text
+    assert 'class="rc-edit" open' in again.text
+
+
+def test_web_recurring_create_duplicate_archived_guides_to_restore(
+    web_client: TestClient,
+) -> None:
+    """recurring_item_conflict (archived) → 引导恢复而非编辑。"""
+    assert create_via_web(web_client, merchant="房租").status_code == 303
+    public_id = first_recurring_public_id()
+    archived = web_client.post(
+        f"/web/recurring/{public_id}/archive",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert archived.status_code == 303
+
+    again = create_via_web(web_client, merchant="房租")
+
+    assert again.status_code == 200
+    assert "归档" in again.text
+    assert "恢复" in again.text
+
+
+def test_web_recurring_create_rejects_invalid_amount(web_client: TestClient) -> None:
+    missing = create_via_web(web_client, amount="")
+    assert missing.status_code == 200
+    assert "请填写每月金额" in missing.text
+
+    zero = create_via_web(web_client, amount="0")
+    assert zero.status_code == 200
+    assert "必须大于 0" in zero.text
+
+
+def test_web_recurring_edit_stale_row_version_shows_conflict(web_client: TestClient) -> None:
+    """OCC: stale token → 诚实冲突文案 + 刷新到最新值。"""
+    public_id = seed_observed_item()
+
+    edited = edit_via_web(web_client, public_id, token=row_version(public_id) + 9)
+
+    assert edited.status_code == 200
+    assert "请核对后再保存" in edited.text
+
+
+def test_web_recurring_edit_archived_item_is_rejected(web_client: TestClient) -> None:
+    """recurring_item_archived → 诚实呈现, 引导恢复而不是编辑。"""
+    public_id = seed_observed_item(status="archived")
+
+    edited = edit_via_web(web_client, public_id, token=row_version(public_id))
+
+    assert edited.status_code == 200
+    assert "已归档" in edited.text
+    assert "恢复" in edited.text
+
+
+def test_web_recurring_edit_rename_conflict_guides_to_existing(web_client: TestClient) -> None:
+    """edit 改名撞上 recurring_item_conflict: 消费 details, 引导编辑碰撞项。"""
+    keep_id = seed_observed_item(
+        merchant="房租", baseline_cents=680_000, last_cents=680_000, occurrence_count=0
+    )
+    other_id = seed_observed_item(
+        merchant="宽带", baseline_cents=10_000, last_cents=10_000, occurrence_count=0
+    )
+
+    edited = edit_via_web(web_client, other_id, merchant="房租", amount="100", token=row_version(other_id))
+
+    assert edited.status_code == 200
+    assert "已经在你的固定支出里" in edited.text
+    assert "去编辑现有记录" in edited.text
+    # 链接落点 = 展开碰撞项的编辑表单, 不只是锚定一个关闭的 details。
+    form = re.search(
+        r'<details class="rc-edit" open>.*?action="/web/recurring/([^"]+)/edit"',
+        edited.text,
+        re.DOTALL,
+    )
+    assert form is not None
+    assert form.group(1) == keep_id
+
+
+def test_web_recurring_candidate_confirm_conflict_consumes_details(
+    web_client: TestClient,
+) -> None:
+    """confirm 的 409 消费 details: active/paused 引导编辑现有项 (展开编辑),
+    archived 引导归档列表恢复。"""
+    assert create_via_web(web_client, merchant="ChatGPT Plus", amount="200", date_str="").status_code == 303
+    public_id = first_recurring_public_id()
+
+    conflict = post_confirm(web_client)
+    assert conflict.status_code == 200
+    assert "已经在你的固定支出里" in conflict.text
+    assert "去编辑现有记录" in conflict.text
+    form = re.search(
+        r'<details class="rc-edit" open>.*?action="/web/recurring/([^"]+)/edit"',
+        conflict.text,
+        re.DOTALL,
+    )
+    assert form is not None
+    assert form.group(1) == public_id
+
+    archived = web_client.post(
+        f"/web/recurring/{public_id}/archive",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert archived.status_code == 303
+
+    conflict = post_confirm(web_client)
+    assert conflict.status_code == 200
+    assert "已归档" in conflict.text
+    assert "去归档列表恢复" in conflict.text
+
+
+def test_web_recurring_hero_sums_active_items_only_and_ignores_filter(
+    web_client: TestClient,
+) -> None:
+    """hero 只汇总 active, 且不随列表状态筛选漂移。"""
+    assert create_via_web(web_client, merchant="房租", amount="6000", date_str="2026-09-05").status_code == 303
+    assert create_via_web(web_client, merchant="宽带", amount="100", date_str="2026-09-01").status_code == 303
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models import RecurringItem
+
+    with SessionLocal() as db:
+        paused_id = db.scalar(
+            select(RecurringItem.public_id).where(RecurringItem.merchant_name == "宽带")
+        )
+    assert paused_id is not None
+    paused = web_client.post(
+        f"/web/recurring/{paused_id}/pause",
+        data={"ledger_id": "owner", "expected_row_version": row_version(paused_id)},
+        follow_redirects=False,
+    )
+    assert paused.status_code == 303
+
+    for suffix in ("", "&status=paused", "&status=archived"):
+        page = web_client.get(f"/web/recurring?ledger_id=owner{suffix}")
+        hero = hero_block(page.text)
+        assert hero, f"hero must not drift with filter {suffix!r}"
+        assert "6000.00" in hero
+        assert "6100.00" not in hero
+        assert "2026-09-05" in hero
+        assert "2026-09-01" not in hero
+
+
+def test_web_recurring_candidate_review_form_shows_server_provenance(
+    web_client: TestClient,
+) -> None:
+    """复核页展示服务端候选观察, 但表单只回传 merchant + amount 定位:
+    不再携带 occurrence_count / last_seen_at / confidence 隐藏字段。"""
+    seed_candidate()
+
+    page = web_client.get("/web/recurring?ledger_id=owner&review=ChatGPT+Plus")
+
+    assert page.status_code == 200
+    assert 'action="/web/recurring/confirm-candidate"' in page.text
+    assert "已观察 3 次" in page.text
+    assert 'value="ChatGPT Plus"' in page.text
+    assert 'name="amount_cents" value="20000"' in page.text
+    assert 'name="occurrence_count"' not in page.text
+    assert 'name="last_seen_at"' not in page.text
+    assert 'name="confidence"' not in page.text
 
 
 def test_web_recurring_candidate_insight_failure_degrades(
     web_client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch,
 ) -> None:
     # Coverage migrated from the deleted /web/stats page: the candidate
     # insight blowing up must degrade to an inline notice, never 500.
@@ -108,290 +255,57 @@ def test_web_recurring_candidate_insight_failure_degrades(
 
     assert resp.status_code == 200
     assert "固定支出候选分析暂时不可用" in resp.text
-
-
-def test_web_recurring_confirm_pause_resume_archive(web_client: TestClient) -> None:
-    _seed_candidate()
-    page = web_client.get("/web/recurring?ledger_id=owner")
-    assert page.status_code == 200
-
-    _confirm_candidate(web_client)
-
-    public_id = _first_recurring_public_id()
-    # ADR-0038 PR-A: pause/resume need OCC token (banner-render time updated_at)
-    with SessionLocal() as db:
-        token = db.scalar(
-            select(RecurringItem.row_version).where(RecurringItem.public_id == public_id)
-        )
-    paused = web_client.post(
-        f"/web/recurring/{public_id}/pause",
-        data={"ledger_id": "owner", "expected_row_version": token},
-        follow_redirects=False,
-    )
-    assert paused.status_code == 303
-    with SessionLocal() as db:
-        assert db.scalar(select(RecurringItem.status).where(RecurringItem.public_id == public_id)) == "paused"
-        token = db.scalar(
-            select(RecurringItem.row_version).where(RecurringItem.public_id == public_id)
-        )
-
-    resumed = web_client.post(
-        f"/web/recurring/{public_id}/resume",
-        data={"ledger_id": "owner", "expected_row_version": token},
-        follow_redirects=False,
-    )
-    assert resumed.status_code == 303
-    archived = web_client.post(
-        f"/web/recurring/{public_id}/archive",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
-    )
-    assert archived.status_code == 303
-    with SessionLocal() as db:
-        assert db.scalar(select(RecurringItem.status).where(RecurringItem.public_id == public_id)) == "archived"
-
-
-def test_web_recurring_distinguishes_formal_recurring_from_candidates(web_client: TestClient) -> None:
-    # UI/UX 批 14: /web/stats 页删除,固定支出表是 /web/recurring 的严格子集,未迁移;
-    # 「正式 vs 候选」区分改在 /web/recurring 页守护。218-D S4: /web 根改向收件域
-    # 后, 固定支出摘要卡的 HTML 承接面是 /web/overview (同一 _dashboard_data_payload
-    # 口径; 文案为 S2 泳道卡措辞「正式计划 / N 个候选待确认」)。
-    _seed_candidate()
-    before = web_client.get("/web/overview?ledger_id=owner")
-    assert before.status_code == 200
-    assert "正式计划" in before.text
-    assert "1 个候选待确认" in before.text
-
-    _confirm_candidate(web_client)
-
-    recurring = web_client.get("/web/recurring?ledger_id=owner")
-    assert recurring.status_code == 200
-    assert "正式固定支出" in recurring.text
-    assert "固定支出候选（未确认）" in recurring.text
-    assert "ChatGPT Plus" in recurring.text
-    assert "只做提醒和对比，不会自动入账" in recurring.text
+    # 候选失败不压过主任务: 主列表与创建表单仍在。
+    assert "我的固定支出" in resp.text
+    assert 'action="/web/recurring/create"' in resp.text
 
 
 def test_web_recurring_viewer_read_only(web_client: TestClient) -> None:
-    _seed_candidate()
-    _demote_owner_ledger_to_viewer()
+    seed_candidate()
+    demote_owner_ledger_to_viewer()
 
     page = web_client.get("/web/recurring?ledger_id=owner")
     assert page.status_code == 200
     assert "只读角色" in page.text
-    assert "/web/recurring/confirm-candidate" not in page.text
+    # viewer: 创建/复核/编辑/状态动作全部隐藏。
+    assert 'action="/web/recurring/create"' not in page.text
+    assert 'action="/web/recurring/confirm-candidate"' not in page.text
+    assert "复核采用" not in page.text
+    assert 'class="rc-edit"' not in page.text
+    assert 'name="expected_row_version"' not in page.text
 
     denied = web_client.post(
-        "/web/recurring/confirm-candidate",
+        "/web/recurring/create",
         data={
             "ledger_id": "owner",
-            "merchant": "ChatGPT Plus",
-            "amount_cents": "20000",
-            "occurrence_count": "3",
-            "last_seen_at": "2026-05-05T12:00:00Z",
-            "confidence": "high",
+            "merchant": "房租",
+            "baseline_amount_yuan": "6800",
+            "next_expected_date": "2026-09-06",
+            "idempotency_key": str(uuid4()),
         },
     )
     assert denied.status_code == 403
     assert denied.json()["error"] == "permission_denied"
 
-
-def _extract_hidden_token(html: str, *, action: str) -> str:
-    """Pull ``expected_row_version`` out of the form whose ``action`` matches —
-    i.e. the token as actually rendered into the page, not a value read
-    straight from the DB. Returns "" when absent so the caller can assert the
-    page emits a real token."""
-    form = re.search(re.escape(f'action="{action}"') + r".*?</form>", html, re.DOTALL)
-    if not form:
-        return ""
-    field = re.search(r'name="expected_row_version"\s+value="([^"]*)"', form.group(0))
-    return field.group(1) if field else ""
+    denied_confirm = post_confirm(web_client)
+    assert denied_confirm.status_code == 403
+    assert denied_confirm.json()["error"] == "permission_denied"
 
 
-def test_web_recurring_pause_resume_use_rendered_token(web_client: TestClient) -> None:
-    """ADR-0038 PR-A regression (codex P1#2). The pause/resume forms must carry
-    a real OCC token *rendered into the page*. ``_item_view`` previously omitted
-    ``updated_at`` so the hidden field rendered empty → parse_form_row_version_token
-    returned None → every web user hit the "页面已过期" redirect and could never
-    toggle. Driving the token from the rendered HTML (not a DB read like the
-    sibling test) fails if the page stops emitting it."""
-    _seed_candidate()
-    _confirm_candidate(web_client)
-    public_id = _first_recurring_public_id()
+def test_web_recurring_retires_legacy_candidate_only_surface(web_client: TestClient) -> None:
+    """物理退役: 7 列 dt-table / 恒定周期列 / 无异常「正常」噪声 / 行内一键确认。"""
+    seed_candidate()
+    assert create_via_web(web_client, merchant="房租").status_code == 303
 
     page = web_client.get("/web/recurring?ledger_id=owner")
+
     assert page.status_code == 200
-    token = _extract_hidden_token(page.text, action=f"/web/recurring/{public_id}/pause")
-    assert token, "pause form must render a non-empty expected_row_version token"
-
-    paused = web_client.post(
-        f"/web/recurring/{public_id}/pause",
-        data={"ledger_id": "owner", "expected_row_version": token},
-        follow_redirects=False,
-    )
-    assert paused.status_code == 303
-    with SessionLocal() as db:
-        assert (
-            db.scalar(select(RecurringItem.status).where(RecurringItem.public_id == public_id))
-            == "paused"
-        )
-
-    page = web_client.get("/web/recurring?ledger_id=owner")
-    token = _extract_hidden_token(page.text, action=f"/web/recurring/{public_id}/resume")
-    assert token, "resume form must render a non-empty expected_row_version token"
-
-    resumed = web_client.post(
-        f"/web/recurring/{public_id}/resume",
-        data={"ledger_id": "owner", "expected_row_version": token},
-        follow_redirects=False,
-    )
-    assert resumed.status_code == 303
-    with SessionLocal() as db:
-        assert (
-            db.scalar(select(RecurringItem.status).where(RecurringItem.public_id == public_id))
-            == "active"
-        )
-
-
-def test_web_recurring_candidate_disappears_after_confirm(web_client: TestClient) -> None:
-    """PR #253 R4-2: claimed 过滤下推共享装配后, 已转正商家从候选列表自然消失。"""
-    _seed_candidate()
-    before = web_client.get("/web/recurring?ledger_id=owner")
-    assert before.status_code == 200
-    assert 'action="/web/recurring/confirm-candidate"' in before.text
-
-    _confirm_candidate(web_client)
-
-    after = web_client.get("/web/recurring?ledger_id=owner")
-    assert after.status_code == 200
-    # 正式列表仍在, 候选确认表单不再出现 (候选集已空)。
-    assert "ChatGPT Plus" in after.text
-    assert 'action="/web/recurring/confirm-candidate"' not in after.text
-
-
-def test_web_recurring_confirm_retry_returns_existing_not_error(web_client: TestClient) -> None:
-    """PR #253 R4-2 幂等: 候选消失后重试同一确认, 返回既有正式项而非 404/409。"""
-    _seed_candidate()
-    _confirm_candidate(web_client)
-    # 重试同一确认 payload — 候选已被 claimed 过滤, 幂等前置返回既有项。
-    retry = web_client.post(
-        "/web/recurring/confirm-candidate",
-        data={
-            "ledger_id": "owner",
-            "merchant": "ChatGPT Plus",
-            "amount_cents": "20000",
-            "occurrence_count": "3",
-            "last_seen_at": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "confidence": "high",
-        },
-        follow_redirects=False,
-    )
-    assert retry.status_code == 303
-    with SessionLocal() as db:
-        items = list(
-            db.scalars(
-                select(RecurringItem)
-                .where(RecurringItem.tenant_id == "owner")
-                .where(RecurringItem.merchant_name == "ChatGPT Plus")
-            ).all()
-        )
-        assert len(items) == 1
-
-
-def test_confirm_retry_with_different_amount_restores_not_found_guard(
-    web_client: TestClient,
-) -> None:
-    """复审 agent-60: 已 formal 商家以不同金额重试 → 恢复 404 守卫; 同金额 → 幂等返回。"""
-    from app.errors import AppError
-    from app.schemas import RecurringCandidateConfirmRequest
-    from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
-
-    _seed_candidate()
-    with SessionLocal() as db:
-        created = confirm_recurring_candidate(
-            db,
-            tenant_id="owner",
-            payload=RecurringCandidateConfirmRequest(
-                merchant="ChatGPT Plus",
-                amount_cents=20000,
-                occurrence_count=3,
-                last_seen_at=now_utc(),
-                confidence="high",
-                frequency="monthly",
-            ),
-        )
-        db.commit()
-        # 同金额重试: 幂等返回既有项。
-        same = confirm_recurring_candidate(
-            db,
-            tenant_id="owner",
-            payload=RecurringCandidateConfirmRequest(
-                merchant="ChatGPT Plus",
-                amount_cents=20000,
-                occurrence_count=3,
-                last_seen_at=now_utc(),
-                confidence="high",
-                frequency="monthly",
-            ),
-        )
-        assert same.id == created.id
-        # 不同金额重试: 恢复候选匹配的 404 守卫, 不静默返回既有项。
-        try:
-            confirm_recurring_candidate(
-                db,
-                tenant_id="owner",
-                payload=RecurringCandidateConfirmRequest(
-                    merchant="ChatGPT Plus",
-                    amount_cents=21000,
-                    occurrence_count=3,
-                    last_seen_at=now_utc(),
-                    confidence="high",
-                    frequency="monthly",
-                ),
-            )
-            raise AssertionError("different-amount retry must not silently return the formal item")
-        except AppError as exc:
-            assert exc.error == "recurring_candidate_not_found"
-            assert exc.status_code == 404
-
-
-def test_confirm_candidate_race_returns_existing_after_candidate_disappears(
-    web_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """PR #253 R5: 并发双请求——前置检查读到提交前快照, candidate 已被对方 claimed
-    过滤时, 按 (merchant_key, frequency, amount_cents) 复查 formal 幂等返回。"""
-    from app.schemas import RecurringCandidateConfirmRequest
-    from app.services import recurring_candidate_confirmation_service as confirmation
-    from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
-
-    _seed_candidate()
-    payload = RecurringCandidateConfirmRequest(
-        merchant="ChatGPT Plus",
-        amount_cents=20000,
-        occurrence_count=3,
-        last_seen_at=now_utc(),
-        confidence="high",
-        frequency="monthly",
-    )
-    with SessionLocal() as db:
-        first = confirm_recurring_candidate(db, tenant_id="owner", payload=payload)
-        db.commit()
-
-        # 模拟请求 B: 第一次 _existing_item 调用 (前置检查) 返回 None —— 即读到
-        # 请求 A 提交前的快照; 随后 candidate 查找已被 claimed 过滤 (not_found)。
-        calls = {"n": 0}
-        real_existing = confirmation._existing_item
-
-        def _stale_existing(db, *, tenant_id, merchant_key, frequency):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                return None
-            return real_existing(
-                db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency
-            )
-
-        monkeypatch.setattr(confirmation, "_existing_item", _stale_existing)
-        second = confirm_recurring_candidate(db, tenant_id="owner", payload=payload)
-        assert second.id == first.id
-        # 路径证明: 确实走了兜底 (前置检查返回过 None)。
-        assert calls["n"] >= 2
+    assert 'class="dt-table"' not in page.text
+    assert "<th>周期</th>" not in page.text
+    assert ">正常</span>" not in page.text
+    assert "固定支出候选（未确认）" not in page.text
+    assert "待确认候选" not in page.text
+    # 候选动作 = 进入统一表单的复核链接; 默认页不再渲染任何确认表单。
+    assert "复核采用" in page.text
+    assert 'action="/web/recurring/confirm-candidate"' not in page.text
+    assert "填入创建表单" not in page.text

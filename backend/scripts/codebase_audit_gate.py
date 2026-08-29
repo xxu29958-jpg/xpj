@@ -63,7 +63,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 62,
+    "unreferenced_modules": 60,
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -131,12 +131,12 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 95,
-    "mutate_token_exempted": 128,
+    "mutate_token_carriers": 98,
+    "mutate_token_exempted": 130,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 36,
+    "mutate_token_reason_create_row": 38,
     "mutate_token_reason_enqueue_task": 0,
     "mutate_token_reason_external_side_effect": 3,
     "mutate_token_reason_governance_action": 8,
@@ -174,8 +174,8 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
 )
 _ADR_0049_EXEMPTED_GRANDFATHER = (
     128,
-    129,
-)  # Windows installation-owner bootstrap: POST /api/bootstrap/installation-owner atomically claims one installation operation and issues only a short-lived pairing child. Replay safety rests on the bootstrap secret + stable operation receipt, not a row-version token. The name is historical (first used for ADR-0049); it is the generic single in-flight exemption-add hop, previously (127, 128) for Desktop switch-prepare.
+    130,
+)  # A3 adds the API/Web twins of one manual fixed-expense create capability. Both insert a new recurring_items row and require one durable Idempotency-Key; neither has a predecessor row_version to carry. The name is historical (first used for ADR-0049); this tuple is the exact single in-flight topology hop.
 _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER = (
     "051464999fc1f71d9072bb5c9cfc012b521181cd",
     387,

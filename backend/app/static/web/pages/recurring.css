@@ -1,0 +1,226 @@
+/* /web/recurring — A3 手动固定支出产品片
+ *
+ * IA: 页头价值句 + 主 CTA「添加固定支出」→ hero (仅 active: 每月合计 + 下一笔到期)
+ * → 主列表「我的固定支出」(状态筛选 + 行内统一编辑) → 折叠「发现的建议」辅助区。
+ * 全部尺寸/颜色走 tokens.css + _base.css 字体 token, 不硬编码第二套 palette/spacing
+ * (裸 1px 仅发丝分界, 与 cards.css 同一约定)。布局按退出门 768px 分流:
+ * >=768 高密度网格行; <768 彻底退役表格挤压, 改可读行卡。
+ */
+
+.rc-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+
+/* ── Hero: 只汇总 active 正式项 ─────────────────────────────────────────── */
+.rc-hero {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+}
+.rc-hero-cell {
+    padding: var(--space-4-5) var(--space-5);
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
+}
+.rc-hero-label {
+    font-family: var(--font-num);
+    font-size: var(--type-meta-size);
+    letter-spacing: var(--type-meta-tracking);
+    text-transform: uppercase;
+    color: var(--text-meta);
+    margin-bottom: var(--space-3);
+}
+.rc-hero-val {
+    font-family: var(--font-serif);
+    font-size: var(--type-hero-size);
+    line-height: var(--type-hero-line);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-default);
+}
+.rc-hero-cell--primary .rc-hero-val { color: var(--brand-primary); }
+.rc-hero-val--date { font-size: var(--type-headline-size); }
+.rc-hero-val--muted { color: var(--text-faint); font-size: var(--type-title-size); }
+.rc-hero-cur {
+    font-family: var(--font-num);
+    font-size: var(--type-subtitle-size);
+    color: var(--text-meta);
+    margin-right: var(--space-1);
+}
+.rc-hero-foot {
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+    margin-top: var(--space-2);
+}
+
+/* ── 提示条内的可行动链接 ───────────────────────────────────────────────── */
+.rc-alert-link {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    margin-left: var(--space-3);
+    white-space: nowrap;
+}
+
+/* ── 状态筛选 ───────────────────────────────────────────────────────────── */
+.rc-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+
+/* ── 行列表 (>=768 高密度网格行) ─────────────────────────────────────────── */
+.rc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+.rc-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+        "main amount next actions"
+        "edit edit edit edit";
+    column-gap: var(--space-5);
+    align-items: center;
+    padding: var(--space-4) 0;
+    border-top: 1px solid var(--border-card);
+}
+.rc-row:first-child { border-top: none; }
+.rc-row--candidate {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "main amount actions";
+}
+.rc-row-main { grid-area: main; min-width: 0; }
+.rc-row-amount { grid-area: amount; text-align: right; }
+.rc-row-next { grid-area: next; text-align: right; }
+.rc-row-actions {
+    grid-area: actions;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.rc-row-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+.rc-merchant {
+    font-weight: 600;
+    color: var(--text-default);
+    word-break: break-word;
+}
+.rc-row-meta {
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+    margin-top: var(--space-1);
+}
+.rc-amount {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-subtitle-size);
+    font-weight: 600;
+    color: var(--text-default);
+    white-space: nowrap;
+}
+.rc-amount-unit {
+    font-size: var(--type-caption-size);
+    font-weight: 400;
+    color: var(--text-meta);
+}
+.rc-amount-caption,
+.rc-next-caption {
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+    margin-top: var(--space-1);
+}
+.rc-next-date {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-subtitle-size);
+    color: var(--text-default);
+    white-space: nowrap;
+}
+.rc-next-none {
+    font-size: var(--type-subtitle-size);
+    color: var(--text-faint);
+    white-space: nowrap;
+}
+
+/* 归档行: 沉降不消失, 文字降一级, 不用红。 */
+.rc-row--archived .rc-merchant,
+.rc-row--archived .rc-amount,
+.rc-row--archived .rc-next-date { color: var(--text-meta); }
+
+/* ── 行内统一编辑 (details/summary, 无 JS 依赖) ─────────────────────────── */
+.rc-edit { grid-area: edit; text-align: right; }
+.rc-edit > summary {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    list-style: none;
+}
+.rc-edit > summary::-webkit-details-marker { display: none; }
+.rc-edit-form {
+    margin-top: var(--space-3);
+    padding: var(--space-4);
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    text-align: left;
+}
+
+/* ── 候选辅助区: 折叠, 不抢主列表 ───────────────────────────────────────── */
+.rc-candidates > summary {
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+.rc-candidates-title {
+    font-size: var(--type-title-size);
+    font-weight: 600;
+    color: var(--text-default);
+}
+.rc-candidates-sub {
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+}
+.rc-list--candidates { margin-top: var(--space-4); }
+
+/* ── <768: 退役网格挤压, 改可读行卡 ─────────────────────────────────────── */
+@media (max-width: 767px) {
+    .rc-hero { grid-template-columns: 1fr; }
+    .rc-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "main main"
+            "amount next"
+            "actions actions"
+            "edit edit";
+        row-gap: var(--space-3);
+        padding: var(--space-4) 0;
+    }
+    .rc-row--candidate {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "main main"
+            "amount amount"
+            "actions actions";
+    }
+    .rc-row-amount,
+    .rc-row-next { text-align: left; }
+    .rc-row--candidate .rc-row-amount { grid-area: amount; }
+    .rc-row-actions { justify-content: flex-start; }
+    .rc-edit { text-align: left; }
+}

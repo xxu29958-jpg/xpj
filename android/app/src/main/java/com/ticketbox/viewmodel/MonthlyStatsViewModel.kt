@@ -3,7 +3,6 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseFilterCriteria
@@ -36,7 +35,6 @@ private data class MonthlyStatsRefreshSnapshot(
 
 class MonthlyStatsViewModel(
     private val repository: StatsActions,
-    private val recurringRepository: RecurringActions,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(MonthlyStatsUiState())
     val uiState: StateFlow<MonthlyStatsUiState> = _uiState.asStateFlow()
@@ -72,8 +70,6 @@ class MonthlyStatsViewModel(
                             dailyTrend = emptyList(),
                             monthComparison = null,
                             categoryInsight = null,
-                            recurringItems = emptyList(),
-                            recurringCandidates = emptyList(),
                             dataQuality = null,
                             dataQualityLoadState = DataQualityLoadState.Unknown,
                             dataQualityError = null,
@@ -241,26 +237,6 @@ class MonthlyStatsViewModel(
         }
     }
 
-    private fun loadRecurring(month: String?, snapshot: MonthlyStatsRefreshSnapshot) {
-        viewModelScope.launch {
-            val result = recurringRepository.items(status = null, includeArchived = false, month = month)
-            if (!snapshot.isCurrent()) return@launch
-            result.onSuccess { items ->
-                _uiState.update { it.copy(recurringItems = items) }
-            }
-        }
-    }
-
-    private fun loadRecurringCandidates(snapshot: MonthlyStatsRefreshSnapshot) {
-        viewModelScope.launch {
-            val result = recurringRepository.candidates()
-            if (!snapshot.isCurrent()) return@launch
-            result.onSuccess { items ->
-                _uiState.update { it.copy(recurringCandidates = items) }
-            }
-        }
-    }
-
     private fun loadDataQuality(snapshot: MonthlyStatsRefreshSnapshot) {
         viewModelScope.launch {
             _uiState.update {
@@ -309,17 +285,12 @@ class MonthlyStatsViewModel(
                 primaryRefreshRevision = it.primaryRefreshRevision + 1,
             )
         }
-        loadSupplementalAfterPrimaryStats(month, snapshot)
+        loadSupplementalAfterPrimaryStats(snapshot)
         loadLifestyleAfterPrimaryStats(month, snapshot)
         syncConfirmedAfterPrimaryStats(month, tag, snapshot)
     }
 
-    private fun loadSupplementalAfterPrimaryStats(
-        month: String?,
-        snapshot: MonthlyStatsRefreshSnapshot,
-    ) {
-        loadRecurring(month, snapshot)
-        loadRecurringCandidates(snapshot)
+    private fun loadSupplementalAfterPrimaryStats(snapshot: MonthlyStatsRefreshSnapshot) {
         loadDataQuality(snapshot)
     }
 
@@ -398,7 +369,7 @@ class MonthlyStatsViewModel(
                 },
             )
         }
-        loadSupplementalAfterPrimaryStats(month, snapshot)
+        loadSupplementalAfterPrimaryStats(snapshot)
     }
 
     private fun beginRefreshSnapshot(): MonthlyStatsRefreshSnapshot? {

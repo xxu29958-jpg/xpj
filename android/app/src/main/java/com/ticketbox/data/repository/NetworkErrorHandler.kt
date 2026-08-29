@@ -110,6 +110,8 @@ internal class NetworkErrorHandler(
         val conflictMerchantRowVersion: Long? get() = conflict.merchant.rowVersion
         val conflictAliasPublicId: String? get() = conflict.alias.publicId
         val conflictAliasRowVersion: Long? get() = conflict.alias.rowVersion
+        val conflictRecurringPublicId: String? get() = conflict.recurring.publicId
+        val conflictRecurringStatus: String? get() = conflict.recurring.status
     }
 
     private companion object {
@@ -141,5 +143,9 @@ private fun ErrorDto.toConflictDetails(): RepositoryConflictDetails =
             rowVersion = conflictAliasRowVersion,
             enabled = conflictAliasEnabled,
             deleted = conflictAliasDeleted,
+        ),
+        recurring = RecurringConflictDetails(
+            publicId = resourcePublicId,
+            status = status,
         ),
     )

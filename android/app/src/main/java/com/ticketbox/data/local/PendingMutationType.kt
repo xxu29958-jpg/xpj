@@ -26,6 +26,8 @@ package com.ticketbox.data.local
  *   DeleteMerchantAlias              DELETE /api/merchants/aliases/{publicId}
  *   UpdateGoal                       PATCH  /api/goals/{publicId}
  *   UpdateIncomePlan                 PATCH  /api/income-plans/{publicId}
+ *   CreateRecurringItem              POST   /api/recurring/items
+ *   UpdateRecurringItem              PATCH  /api/recurring/items/{publicId}
  *   CreateExpense                    POST   /api/expenses/manual
  *
  * Most creates / terminal lifecycle / batch routes are NOT in the
@@ -56,6 +58,8 @@ enum class PendingMutationType(val wireValue: String) {
     DeleteMerchantAlias("delete_merchant_alias"),
     UpdateGoal("update_goal"),
     UpdateIncomePlan("update_income_plan"),
+    CreateRecurringItem("create_recurring_item"),
+    UpdateRecurringItem("update_recurring_item"),
     Unknown("unknown");
 
     companion object {

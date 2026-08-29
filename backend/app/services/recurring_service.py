@@ -28,6 +28,14 @@ ANOMALY_THRESHOLD_PERCENT = 30
 RECURRING_AMOUNT_MATCH_MAX_DELTA_PERCENT = 100
 
 
+def recurring_item_monthly_detail(item: RecurringItem, amount_label: str) -> str:
+    """Describe the plan without presenting a manual compatibility seed as observation."""
+    detail = f"每月 {amount_label}"
+    if item.occurrence_count > 0:
+        detail += f" · 已出现 {item.occurrence_count} 次"
+    return detail
+
+
 @dataclass(frozen=True)
 class RecurringAmountAnomaly:
     anomaly_status: str = "none"

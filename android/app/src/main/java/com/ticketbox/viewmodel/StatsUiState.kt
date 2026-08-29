@@ -9,8 +9,6 @@ import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
-import com.ticketbox.domain.model.RecurringCandidate
-import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
@@ -38,8 +36,6 @@ data class StatsUiState(
     val budgetProgress: BudgetProgress? = null,
     val budgetProgressStatus: BudgetProgressStatus = BudgetProgressStatus.Unknown,
     val categoryInsight: CategoryInsight? = null,
-    val recurringItems: List<RecurringItem> = emptyList(),
-    val recurringCandidates: List<RecurringCandidate> = emptyList(),
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
     val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
@@ -74,8 +70,6 @@ data class MonthlyStatsUiState(
     val dailyTrend: List<DailySpend> = emptyList(),
     val monthComparison: MonthComparison? = null,
     val categoryInsight: CategoryInsight? = null,
-    val recurringItems: List<RecurringItem> = emptyList(),
-    val recurringCandidates: List<RecurringCandidate> = emptyList(),
     val lastUploadAt: String? = null,
     val dataQuality: DataQualitySummary? = null,
     val dataQualityLoadState: DataQualityLoadState = DataQualityLoadState.Unknown,
@@ -133,8 +127,6 @@ internal fun mergeStatsUiState(
             BudgetProgressStatus.Unknown
         },
         categoryInsight = monthly.categoryInsight,
-        recurringItems = monthly.recurringItems,
-        recurringCandidates = monthly.recurringCandidates,
         reportsOverview = if (reportsMatch && monthly.selectedTag.isBlank()) reports.reportsOverview else null,
         reportGoals = if (reportsMatch && monthly.selectedTag.isBlank()) reports.reportGoals else emptyList(),
         reportGoalsLoadState = if (reportsMatch && monthly.selectedTag.isBlank()) {
