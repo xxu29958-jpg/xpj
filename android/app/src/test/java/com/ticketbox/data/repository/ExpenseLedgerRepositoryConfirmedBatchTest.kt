@@ -10,6 +10,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -128,6 +129,103 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
     }
 
     @Test
+    fun `retry after an unknown batch outcome reuses the same user intent key`() = runTest {
+        val events = mutableListOf<String>()
+        val delegate = FakeApiService(events = events, confirmedFailuresRemaining = 0)
+        val api = BatchApiService(
+            delegate = delegate,
+            events = events,
+            response = ConfirmedExpenseBatchUpdateResponseDto(1, 1, 0, 0),
+            failure = IOException("response lost after commit"),
+        )
+        val repo = buildRepository(api)
+        val expense = baselineExpense().copy(id = 7L, status = "confirmed", rowVersion = 4L)
+
+        val first = repo.applyConfirmedBatch(
+            expenses = listOf(expense),
+            category = null,
+            tags = "差旅",
+            reason = "补上出差标签",
+        )
+        assertTrue(first.isFailure)
+
+        api.failure = null
+        repo.applyConfirmedBatch(
+            expenses = listOf(expense),
+            category = null,
+            tags = "差旅",
+            reason = "补上出差标签",
+        ).getOrThrow()
+
+        assertEquals(2, api.idempotencyKeys.size)
+        assertEquals(api.idempotencyKeys[0], api.idempotencyKeys[1])
+    }
+
+    @Test
+    fun `changed batch payload after an unknown outcome starts a distinct intent`() = runTest {
+        val events = mutableListOf<String>()
+        val delegate = FakeApiService(events = events, confirmedFailuresRemaining = 0)
+        val api = BatchApiService(
+            delegate = delegate,
+            events = events,
+            response = ConfirmedExpenseBatchUpdateResponseDto(1, 1, 0, 0),
+            failure = IOException("response lost after commit"),
+        )
+        val repo = buildRepository(api)
+        val expense = baselineExpense().copy(id = 7L, status = "confirmed", rowVersion = 4L)
+
+        assertTrue(
+            repo.applyConfirmedBatch(
+                expenses = listOf(expense),
+                category = null,
+                tags = "差旅",
+                reason = "补上出差标签",
+            ).isFailure,
+        )
+
+        api.failure = null
+        repo.applyConfirmedBatch(
+            expenses = listOf(expense),
+            category = null,
+            tags = "报销",
+            reason = "改为报销标签",
+        ).getOrThrow()
+
+        assertEquals(2, api.idempotencyKeys.size)
+        assertNotEquals(api.idempotencyKeys[0], api.idempotencyKeys[1])
+    }
+
+    @Test
+    fun `unknown batch intent key never crosses a ledger binding`() = runTest {
+        val events = mutableListOf<String>()
+        val tokens = seededTokenStore()
+        val delegate = FakeApiService(events = events, confirmedFailuresRemaining = 0)
+        val api = BatchApiService(
+            delegate = delegate,
+            events = events,
+            response = ConfirmedExpenseBatchUpdateResponseDto(1, 1, 0, 0),
+            failure = IOException("response lost after commit"),
+        )
+        val repo = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            binding = testServerSessionBinding(
+                apiClient = TestApiServiceFactory(api),
+                settingsStore = seededSettingsStore(),
+                tokenStore = tokens,
+            ),
+        )
+        val expense = baselineExpense().copy(id = 7L, status = "confirmed", rowVersion = 4L)
+
+        assertTrue(repo.applyConfirmedBatch(listOf(expense), null, "差旅", "补上出差标签").isFailure)
+        tokens.switchLedgerForFixture("other-ledger", "其他账本")
+        api.failure = null
+        repo.applyConfirmedBatch(listOf(expense), null, "差旅", "补上出差标签").getOrThrow()
+
+        assertEquals(2, api.idempotencyKeys.size)
+        assertNotEquals(api.idempotencyKeys[0], api.idempotencyKeys[1])
+    }
+
+    @Test
     fun `separate batch submissions use distinct user intent keys`() = runTest {
         val events = mutableListOf<String>()
         val delegate = FakeApiService(events = events, confirmedFailuresRemaining = 0)
@@ -157,7 +255,7 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
         private val delegate: ApiService,
         private val events: MutableList<String>,
         private val response: ConfirmedExpenseBatchUpdateResponseDto? = null,
-        private val failure: Throwable? = null,
+        var failure: Throwable? = null,
     ) : ApiService by delegate {
         var request: ConfirmedExpenseBatchUpdateRequestDto? = null
             private set
