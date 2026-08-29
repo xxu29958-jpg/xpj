@@ -188,7 +188,33 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
             expenses = listOf(expense),
             category = null,
             tags = "报销",
-            reason = "改为报销标签",
+            reason = "补上出差标签",
+        ).getOrThrow()
+
+        assertEquals(2, api.idempotencyKeys.size)
+        assertNotEquals(api.idempotencyKeys[0], api.idempotencyKeys[1])
+    }
+
+    @Test
+    fun `changed row version after an unknown outcome starts a distinct intent`() = runTest {
+        val events = mutableListOf<String>()
+        val delegate = FakeApiService(events = events, confirmedFailuresRemaining = 0)
+        val api = BatchApiService(
+            delegate = delegate,
+            events = events,
+            response = ConfirmedExpenseBatchUpdateResponseDto(1, 1, 0, 0),
+            failure = IOException("response lost after commit"),
+        )
+        val repo = buildRepository(api)
+        val expense = baselineExpense().copy(id = 7L, status = "confirmed", rowVersion = 4L)
+
+        assertTrue(repo.applyConfirmedBatch(listOf(expense), null, "差旅", "补上出差标签").isFailure)
+        api.failure = null
+        repo.applyConfirmedBatch(
+            listOf(expense.copy(rowVersion = 5L)),
+            null,
+            "差旅",
+            "补上出差标签",
         ).getOrThrow()
 
         assertEquals(2, api.idempotencyKeys.size)
@@ -223,6 +249,38 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
 
         assertEquals(2, api.idempotencyKeys.size)
         assertNotEquals(api.idempotencyKeys[0], api.idempotencyKeys[1])
+    }
+
+    @Test
+    fun `unknown batch intent key never crosses another binding dimension`() = runTest {
+        BindingDimension.entries.forEach { dimension ->
+            val events = mutableListOf<String>()
+            val tokens = seededTokenStore()
+            val delegate = FakeApiService(events = events, confirmedFailuresRemaining = 0)
+            val api = BatchApiService(
+                delegate = delegate,
+                events = events,
+                response = ConfirmedExpenseBatchUpdateResponseDto(1, 1, 0, 0),
+                failure = IOException("response lost after commit"),
+            )
+            val repo = ExpenseRepository(
+                expenseDao = FakeExpenseDao(),
+                binding = testServerSessionBinding(
+                    apiClient = TestApiServiceFactory(api),
+                    settingsStore = seededSettingsStore(),
+                    tokenStore = tokens,
+                ),
+            )
+            val expense = baselineExpense().copy(id = 7L, status = "confirmed", rowVersion = 4L)
+
+            assertTrue(repo.applyConfirmedBatch(listOf(expense), null, "差旅", "补上出差标签").isFailure)
+            tokens.changeConfirmedBatchBindingForFixture(dimension)
+            api.failure = null
+            repo.applyConfirmedBatch(listOf(expense), null, "差旅", "补上出差标签").getOrThrow()
+
+            assertEquals(2, api.idempotencyKeys.size, dimension.name)
+            assertNotEquals(api.idempotencyKeys[0], api.idempotencyKeys[1], dimension.name)
+        }
     }
 
     @Test
@@ -271,5 +329,33 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
             failure?.let { throw it }
             return requireNotNull(response)
         }
+    }
+
+    private enum class BindingDimension {
+        SERVER,
+        ACCOUNT,
+        DEVICE,
+    }
+
+    private fun TestSessionFixture.changeConfirmedBatchBindingForFixture(dimension: BindingDimension) {
+        val current = requireNotNull(sessionStore.currentSession())
+        val replacementId = UUID.nameUUIDFromBytes(
+            "confirmed-batch-${dimension.name}".toByteArray(Charsets.UTF_8),
+        ).toString()
+        val replacement = when (dimension) {
+            BindingDimension.SERVER -> current.copy(serverUrl = "https://other.example.com")
+            BindingDimension.ACCOUNT -> current.copy(
+                identity = current.identity.copy(accountPublicId = replacementId),
+            )
+            BindingDimension.DEVICE -> current.copy(
+                identity = current.identity.copy(devicePublicId = replacementId),
+            )
+        }
+        sessionStore.replaceForFixture(
+            replacement.copy(
+                sessionGeneration = "confirmed-batch-session-${dimension.name}",
+                bindingRevision = "confirmed-batch-binding-${dimension.name}",
+            ),
+        )
     }
 }
