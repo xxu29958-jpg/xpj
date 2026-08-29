@@ -3,8 +3,8 @@
 Read-only checks that the ledger satisfies the invariants the rest of
 the codebase assumes:
 
-* ``expense_splits`` sum equals ``expenses.amount_cents`` when there
-  are splits at all (no partial / under-/over- assigned splits).
+* ``expense_splits`` may be partial, but their total must never exceed
+  ``expenses.amount_cents``.
 * ``expense_items`` rebuild contract — items sum + tax + service_fee
   - discount ≤ expense.amount_cents OR expense.items_sum_status
   marks the discrepancy.
@@ -32,6 +32,7 @@ from app.money_contract import projection_sum_to_int
 
 InvariantCode = Literal[
     "split_sum_mismatch",
+    "split_overallocated",
     "split_cross_tenant",
     "status_confirmed_no_timestamp",
     "status_rejected_no_timestamp",
@@ -49,8 +50,7 @@ class InvariantViolation:
 def _check_split_sum(
     db: Session, *, tenant_id: str
 ) -> list[InvariantViolation]:
-    """For every expense with at least one split, the splits must sum
-    to the expense's amount_cents."""
+    """Partial allocation is valid; only missing parents or excess are invalid."""
 
     # Compute per-expense split totals via SQL and join back to the
     # expense for the comparison. Skip expenses without any split
@@ -99,14 +99,14 @@ def _check_split_sum(
             amount_cents,
             label="ledger_invariant.expense_amount",
         )
-        if exact_split_total != exact_amount:
+        if exact_split_total > exact_amount:
             findings.append(
                 InvariantViolation(
-                    code="split_sum_mismatch",
+                    code="split_overallocated",
                     expense_id=int(expense_id),
                     tenant_id=tenant_id,
                     detail=(
-                        f"split 总额 {split_total} ≠ 支出 amount_cents "
+                        f"split 总额 {split_total} > 支出 amount_cents "
                         f"{amount_cents}。"
                     ),
                 )

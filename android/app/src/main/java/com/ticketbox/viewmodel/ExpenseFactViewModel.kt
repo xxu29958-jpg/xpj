@@ -104,6 +104,7 @@ data class CorrectionFormState(
     val amountError: UiText? = null,
     val timeError: UiText? = null,
     val conflictMessage: UiText? = null,
+    val submitError: UiText? = null,
     val itemsEditorOpen: Boolean = false,
     val itemDrafts: List<EditableItem> = emptyList(),
     val itemsTouched: Boolean = false,

@@ -455,7 +455,7 @@ internal class ExpenseDetailRepository(
         }
         val total = drafts.sumOf { it.amountCents }
         val parent = currentSplits.parentAmountCents
-        val mismatch = parent?.let { total - it }
+        val mismatch = parent?.let { it - total }
         return currentSplits.copy(
             splitsTotalAmountCents = total,
             mismatchCents = mismatch,

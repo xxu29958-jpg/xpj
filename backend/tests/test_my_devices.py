@@ -232,6 +232,44 @@ def test_delete_revoked_device_removes_it(client: TestClient, *, identity) -> No
         assert db.get(UploadLinkRemoteAttempt, attempt_id) is None
 
 
+def test_delete_revoked_device_preserves_expense_revision_actor_snapshot(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    device_public_id, spare_token = _seed_same_account_device_session(identity.app_token)
+    created = client.post(
+        "/api/expenses/manual",
+        headers=_auth_headers(spare_token),
+        json={
+            "amount_cents": 1880,
+            "merchant": "Revision Device Snapshot",
+            "category": "Test",
+            "expense_time": "2026-08-30T08:00:00Z",
+        },
+    )
+    assert created.status_code == 200, created.text
+    expense_id = created.json()["id"]
+
+    revoke = client.post(
+        f"/api/ledgers/owner/devices/{device_public_id}/revoke",
+        headers=identity.app_headers,
+    )
+    assert revoke.status_code == 200, revoke.text
+    delete = client.post(
+        f"/api/ledgers/owner/devices/{device_public_id}/delete",
+        headers=identity.app_headers,
+    )
+    assert delete.status_code == 204, delete.text
+
+    revisions = client.get(
+        f"/api/expenses/{expense_id}/revisions",
+        headers=identity.app_headers,
+    )
+    assert revisions.status_code == 200, revisions.text
+    assert revisions.json()["items"][0]["actor_device_name"] == "spare phone"
+
+
 def test_cannot_delete_the_current_device(client: TestClient, *, identity) -> None:
     current = [d for d in _devices(client, identity.app_headers) if d["is_current"]][0]
     response = client.post(

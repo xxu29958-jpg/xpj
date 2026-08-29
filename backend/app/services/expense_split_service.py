@@ -56,6 +56,27 @@ def validate_expense_split_money_command(
     )
 
 
+def validate_expense_split_allocation(
+    *,
+    parent_amount_cents: int | None,
+    split_amounts: Sequence[int],
+) -> None:
+    """Allow partial allocation while rejecting totals above the parent fact."""
+
+    if parent_amount_cents is None or not split_amounts:
+        return
+    split_total = projection_values_sum_to_int(
+        split_amounts,
+        label="expense_splits.command_total",
+    )
+    parent_amount = projection_sum_to_int(
+        parent_amount_cents,
+        label="expense_splits.parent_amount",
+    )
+    if split_total > parent_amount:
+        raise AppError("expense_split_total_exceeds_parent", status_code=422)
+
+
 def list_expense_splits(db: Session, expense_id: int, tenant_id: str) -> ExpenseSplitsResponse:
     expense = get_expense(db, expense_id, tenant_id)
     return _build_response(db, expense)
@@ -125,6 +146,10 @@ def apply_expense_splits_to_claimed_row(
     """Replace split facts after the caller has acquired the parent CAS."""
 
     validated_amounts = validate_expense_split_money_command(payload.splits)
+    validate_expense_split_allocation(
+        parent_amount_cents=expense.amount_cents,
+        split_amounts=validated_amounts,
+    )
     members = _active_members_for_split_payload(
         db,
         tenant_id=expense.tenant_id,
@@ -157,6 +182,20 @@ def apply_expense_splits_to_claimed_row(
         after_snapshot=_audit_snapshot(new_splits, members),
     )
     db.flush()
+
+
+def validate_current_expense_split_allocation(db: Session, *, expense: Expense) -> None:
+    """Validate the final split projection after a parent amount correction."""
+
+    splits = _expense_splits(
+        db,
+        tenant_id=expense.tenant_id,
+        expense_id=expense.id,
+    )
+    validate_expense_split_allocation(
+        parent_amount_cents=expense.amount_cents,
+        split_amounts=[split.amount_cents for split in splits],
+    )
 
 
 def _active_members_for_split_payload(

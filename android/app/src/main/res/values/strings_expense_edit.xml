@@ -166,10 +166,14 @@
     <string name="expense_edit_v1_splits_readonly_body">当前角色可以查看家庭拆账；修改分摊需要拥有者或成员权限。</string>
     <string name="expense_edit_v1_reconcile_match_pill">合计一致</string>
     <string name="expense_edit_v1_reconcile_diff_pill">有差额</string>
+    <string name="expense_edit_v1_reconcile_partial_pill">未分完</string>
+    <string name="expense_edit_v1_reconcile_overallocated_pill">已超额</string>
     <string name="expense_edit_v1_reconcile_unknown_pill">合计待确认</string>
     <string name="expense_edit_v1_reconcile_parent_label">账单</string>
     <string name="expense_edit_v1_reconcile_detail_label">明细</string>
     <string name="expense_edit_v1_reconcile_diff_label">差额</string>
+    <string name="expense_edit_v1_reconcile_remaining_label">未分配</string>
+    <string name="expense_edit_v1_reconcile_overallocated_label">超额</string>
 
     <!-- ADR-0044 wave 2：明细分组标题 / 行副标题（原 V1Details 非 @Composable helper） -->
     <string name="expense_edit_item_group_product">商品</string>

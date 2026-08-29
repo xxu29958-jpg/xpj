@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto
 import com.ticketbox.data.remote.dto.ExpenseRevisionDto
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
+import com.ticketbox.domain.model.CurrencyCode
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -16,6 +17,106 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxTestBase() {
+
+    @Test
+    fun `queued correction projects home amount only when the edited currency is the known home currency`() {
+        val baseline = baselineExpense().copy(
+            amountCents = 1_000L,
+            homeAmountCents = 1_000L,
+            homeCurrencyCode = "CNY",
+            originalCurrencyCode = CurrencyCode.CNY,
+            originalCurrencyCodeRaw = "CNY",
+            originalAmountMinor = 1_000L,
+        )
+
+        val projected = baseline.projectCorrection(
+            ExpenseCorrectionDraft(
+                reason = "金额应更高",
+                originalCurrencyCode = CurrencyCode.CNY,
+                originalAmountMinor = 1_200L,
+            ),
+        )
+
+        assertEquals(1_200L, projected.amountCents)
+        assertEquals(1_200L, projected.homeAmountCents)
+    }
+
+    @Test
+    fun `queued foreign-currency amount correction reuses the immutable rate snapshot`() {
+        val baseline = baselineExpense().copy(
+            amountCents = 6_000L,
+            homeAmountCents = 6_000L,
+            homeCurrencyCode = "CNY",
+            originalCurrencyCode = CurrencyCode.JPY,
+            originalCurrencyCodeRaw = "JPY",
+            originalAmountMinor = 1_200L,
+            exchangeRateToCny = "0.05",
+            fxStatus = "ready",
+        )
+
+        val projected = baseline.projectCorrection(
+            ExpenseCorrectionDraft(
+                reason = "修正原币金额",
+                originalCurrencyCode = CurrencyCode.JPY,
+                originalAmountMinor = 1_300L,
+            ),
+        )
+
+        assertEquals(6_500L, projected.amountCents)
+        assertEquals(6_500L, projected.homeAmountCents)
+        assertEquals(1_300L, projected.originalAmountMinor)
+    }
+
+    @Test
+    fun `queued foreign-currency time correction does not reuse a rate from another date`() {
+        val baseline = baselineExpense().copy(
+            amountCents = 6_000L,
+            homeAmountCents = 6_000L,
+            homeCurrencyCode = "CNY",
+            originalCurrencyCode = CurrencyCode.JPY,
+            originalCurrencyCodeRaw = "JPY",
+            originalAmountMinor = 1_200L,
+            exchangeRateToCny = "0.05",
+            fxStatus = "ready",
+        )
+
+        val projected = baseline.projectCorrection(
+            ExpenseCorrectionDraft(
+                reason = "日期和金额都需修正",
+                originalCurrencyCode = CurrencyCode.JPY,
+                originalAmountMinor = 1_300L,
+                expenseTime = "2026-08-31T08:00:00Z",
+                expenseTimeChanged = true,
+            ),
+        )
+
+        assertEquals(6_000L, projected.amountCents)
+        assertEquals(6_000L, projected.homeAmountCents)
+        assertEquals(1_300L, projected.originalAmountMinor)
+    }
+
+    @Test
+    fun `queued amount correction does not project home money when the raw home currency is unknown`() {
+        val baseline = baselineExpense().copy(
+            amountCents = 1_000L,
+            homeAmountCents = 1_000L,
+            homeCurrencyCode = null,
+            originalCurrencyCode = CurrencyCode.CNY,
+            originalCurrencyCodeRaw = "CNY",
+            originalAmountMinor = 1_000L,
+        )
+
+        val projected = baseline.projectCorrection(
+            ExpenseCorrectionDraft(
+                reason = "金额应更高",
+                originalCurrencyCode = CurrencyCode.CNY,
+                originalAmountMinor = 1_200L,
+            ),
+        )
+
+        assertEquals(1_000L, projected.amountCents)
+        assertEquals(1_000L, projected.homeAmountCents)
+    }
 
     @Test
     fun `direct correction sends OCC and reason then caches authoritative fact revision`() = runTest {

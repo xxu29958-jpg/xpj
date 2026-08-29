@@ -2,17 +2,20 @@
    空白待填行全保留；行级错误自动展开并在摘要标记）。 #}
 {% set _filled = split_rows.rows | selectattr('member_id') | list %}
 {% set _error_rows = split_rows.rows | selectattr('errors') | list %}
-<details class="dt-card correction-fold"{% if _error_rows %} open{% endif %}>
+{% set _section_error = field_errors.get('splits') %}
+<details class="dt-card correction-fold"{% if _error_rows or _section_error %} open{% endif %}>
   <summary class="correction-fold-summary">
     <span class="correction-fold-title">家庭拆账</span>
     <span class="meta">已记 {{ _filled | length }} 行；展开可调整，与账单字段同一次更正保存；不动则不会产生拆账变更。</span>
     {% if _error_rows %}<span class="error-text">{{ _error_rows | length }} 行需要修正，请检查后重新提交。</span>{% endif %}
+    {% if _section_error %}<span class="error-text">{{ _section_error }}</span>{% endif %}
   </summary>
   <div class="correction-fold-body">
     {% if split_rows.total_yuan %}
     <div class="reconcile-line">
       账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
-      {% if split_rows.has_mismatch %}· 差额 {{ home_currency_symbol }}{{ split_rows.mismatch_yuan }}{% endif %}
+      {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }} 未分配{% endif %}
+      {% if split_rows.reconcile_state == 'overallocated' %}<span class="error-text">· 已拆超出 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
     </div>
     {% endif %}
     {% include "_expense_splits_table.html" %}

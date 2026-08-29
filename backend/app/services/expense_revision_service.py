@@ -103,6 +103,18 @@ def changed_fact_fields(before: dict[str, object], after: dict[str, object]) -> 
     return [field for field in _SNAPSHOT_FIELDS if before.get(field) != after.get(field)]
 
 
+def _device_snapshot(
+    db: Session,
+    actor_device_id: int | None,
+) -> tuple[str | None, str | None]:
+    if actor_device_id is None:
+        return None, None
+    device = db.execute(select(Device.public_id, Device.device_name).where(Device.id == actor_device_id)).one_or_none()
+    if device is None:
+        raise AppError("state_conflict", status_code=409)
+    return device.public_id, device.device_name
+
+
 def record_confirmation_revision(
     db: Session,
     expense: Expense,
@@ -127,6 +139,7 @@ def record_confirmation_revision(
     if not isinstance(expense.row_version, int):
         db.refresh(expense)
     expense.fact_revision = 1
+    actor_device_public_id, actor_device_name = _device_snapshot(db, actor_device_id)
     revision = ExpenseRevision(
         tenant_id=expense.tenant_id,
         expense_id=expense.id,
@@ -135,7 +148,8 @@ def record_confirmation_revision(
         reason=CONFIRMED_REASON,
         idempotency_key=idempotency_key,
         actor_account_id=actor_account_id,
-        actor_device_id=actor_device_id,
+        actor_device_public_id=actor_device_public_id,
+        actor_device_name=actor_device_name,
         changed_fields=list(_SNAPSHOT_FIELDS),
         before_snapshot=None,
         after_snapshot=expense_fact_snapshot(db, expense),
@@ -169,6 +183,7 @@ def record_correction_revision(
     changed_fields = changed_fact_fields(before, after)
     if not changed_fields:
         raise AppError("expense_correction_no_changes", status_code=422)
+    actor_device_public_id, actor_device_name = _device_snapshot(db, actor_device_id)
     revision = ExpenseRevision(
         tenant_id=expense.tenant_id,
         expense_id=expense.id,
@@ -177,7 +192,8 @@ def record_correction_revision(
         reason=cleaned_reason,
         idempotency_key=idempotency_key,
         actor_account_id=actor_account_id,
-        actor_device_id=actor_device_id,
+        actor_device_public_id=actor_device_public_id,
+        actor_device_name=actor_device_name,
         changed_fields=changed_fields,
         before_snapshot=before,
         after_snapshot=after,
@@ -251,11 +267,8 @@ def revision_by_idempotency_key(db: Session, *, tenant_id: str, idempotency_key:
 
 def revision_to_response(db: Session, revision: ExpenseRevision) -> ExpenseRevisionResponse:
     account_name = None
-    device_name = None
     if revision.actor_account_id is not None:
         account_name = db.scalar(select(Account.display_name).where(Account.id == revision.actor_account_id))
-    if revision.actor_device_id is not None:
-        device_name = db.scalar(select(Device.device_name).where(Device.id == revision.actor_device_id))
     return ExpenseRevisionResponse(
         public_id=revision.public_id,
         revision_number=revision.revision_number,
@@ -265,7 +278,7 @@ def revision_to_response(db: Session, revision: ExpenseRevision) -> ExpenseRevis
         before=revision.before_snapshot,
         after=revision.after_snapshot,
         actor_account_name=account_name,
-        actor_device_name=device_name,
+        actor_device_name=revision.actor_device_name,
         created_at=revision.created_at,
     )
 

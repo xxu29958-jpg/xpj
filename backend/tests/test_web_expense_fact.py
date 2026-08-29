@@ -9,25 +9,10 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
-from app.database import SessionLocal
-from app.models import LedgerMember
-
-
-def _create_confirmed(client: TestClient, *, identity, merchant: str = "测试商家") -> int:
-    resp = client.post(
-        "/api/expenses/manual",
-        headers=identity.app_headers,
-        json={
-            "amount_cents": 1234,
-            "merchant": merchant,
-            "category": "餐饮",
-            "expense_time": "2026-05-04T12:00:00Z",
-        },
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
+from tests.web_expense_fact_test_support import create_confirmed as _create_confirmed
+from tests.web_expense_fact_test_support import owner_member_id as _owner_member_id
+from tests.web_expense_fact_test_support import row_version as _row_version
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -43,24 +28,6 @@ def _create_pending(client: TestClient, *, identity) -> int:
     )
     assert resp.status_code == 200, resp.text
     return int(resp.json()["id"])
-
-
-def _row_version(client: TestClient, expense_id: int, identity) -> int:
-    snapshot = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
-    assert snapshot.status_code == 200, snapshot.text
-    return int(snapshot.json()["row_version"])
-
-
-def _owner_member_id() -> int:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember)
-            .where(LedgerMember.ledger_id == "owner")
-            .where(LedgerMember.disabled_at.is_(None))
-            .limit(1)
-        )
-        assert member is not None
-        return member.id
 
 
 def test_confirmed_fact_page_read_first_and_pending_keeps_edit(web_client: TestClient, *, identity) -> None:
@@ -344,9 +311,7 @@ def test_correction_stale_token_shows_conflict_with_fresh_values(web_client: Tes
     assert f'name="expected_row_version" value="{stale_token}"' not in conflict.text
 
 
-def test_web_correction_replay_hits_claim_before_current_state_diff(
-    web_client: TestClient, *, identity
-) -> None:
+def test_web_correction_replay_hits_claim_before_current_state_diff(web_client: TestClient, *, identity) -> None:
     expense_id = _create_confirmed(web_client, identity=identity)
     submitted = {
         "ledger_id": "owner",
@@ -368,20 +333,14 @@ def test_web_correction_replay_hits_claim_before_current_state_diff(
 
     assert first.status_code == 303, first.text
     assert replay.status_code == 303, replay.text
-    history = web_client.get(
-        f"/api/expenses/{expense_id}/revisions", headers=identity.app_headers
-    )
+    history = web_client.get(f"/api/expenses/{expense_id}/revisions", headers=identity.app_headers)
     assert history.status_code == 200, history.text
     assert history.json()["total"] == 2
 
 
-def test_web_acknowledges_confirmed_mismatch_through_revision_owner(
-    web_client: TestClient, *, identity
-) -> None:
+def test_web_acknowledges_confirmed_mismatch_through_revision_owner(web_client: TestClient, *, identity) -> None:
     expense_id = _create_confirmed(web_client, identity=identity)
-    before = web_client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    ).json()
+    before = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     corrected = web_client.post(
         f"/api/expenses/{expense_id}/corrections",
         headers={**identity.app_headers, "Idempotency-Key": "web-mismatch-setup"},
@@ -393,9 +352,7 @@ def test_web_acknowledges_confirmed_mismatch_through_revision_owner(
     )
     assert corrected.status_code == 201, corrected.text
     current = corrected.json()["expense"]
-    current_items = web_client.get(
-        f"/api/expenses/{expense_id}/items", headers=identity.app_headers
-    ).json()
+    current_items = web_client.get(f"/api/expenses/{expense_id}/items", headers=identity.app_headers).json()
     assert current_items["items_sum_status"] == "mismatch_known"
 
     response = web_client.post(
@@ -408,13 +365,9 @@ def test_web_acknowledges_confirmed_mismatch_through_revision_owner(
     )
 
     assert response.status_code == 303, response.text
-    latest = web_client.get(
-        f"/api/expenses/{expense_id}/items", headers=identity.app_headers
-    ).json()
+    latest = web_client.get(f"/api/expenses/{expense_id}/items", headers=identity.app_headers).json()
     assert latest["items_sum_status"] == "mismatch_acknowledged"
-    history = web_client.get(
-        f"/api/expenses/{expense_id}/revisions", headers=identity.app_headers
-    ).json()
+    history = web_client.get(f"/api/expenses/{expense_id}/revisions", headers=identity.app_headers).json()
     assert history["total"] == 3
     assert history["items"][0]["changed_fields"] == ["items_sum_status"]
 

@@ -91,6 +91,7 @@ private val errorCodeStringResByCode = mapOf(
     "split_amount_invalid" to R.string.error_split_amount_invalid,
     "split_amount_exceeds_parent" to R.string.error_split_amount_exceeds_parent,
     "split_total_exceeds_parent" to R.string.error_split_total_exceeds_parent,
+    "expense_split_total_exceeds_parent" to R.string.error_expense_split_total_exceeds_parent,
     "split_parent_amount_missing" to R.string.error_split_parent_amount_missing,
     "not_found" to R.string.error_not_found,
     "task_not_found" to R.string.error_task_not_found,

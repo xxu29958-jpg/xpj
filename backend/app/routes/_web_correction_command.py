@@ -38,6 +38,7 @@ class CorrectionCommandOutcome:
     """执行结果：``error is None`` 即成功（含重放命中）。"""
 
     error: str | None = None
+    error_code: str | None = None
     error_status: int = 422
     conflict: bool = False
     rotate_idempotency_key: bool = False
@@ -57,6 +58,7 @@ def _command_error(exc: AppError) -> CorrectionCommandOutcome:
         return CorrectionCommandOutcome(error=CONFLICT_MSG, error_status=409, conflict=True)
     return CorrectionCommandOutcome(
         error=exc.message,
+        error_code=exc.error,
         error_status=web_form_error_status(exc),
         rotate_idempotency_key=exc.error in _ROTATE_IDEMPOTENCY_ERRORS,
     )

@@ -66,12 +66,7 @@ def _owner_member_id() -> int:
     from app.models import LedgerMember
 
     with SessionLocal() as db:
-        row = (
-            db.query(LedgerMember)
-            .filter(LedgerMember.ledger_id == "owner")
-            .order_by(LedgerMember.id.asc())
-            .first()
-        )
+        row = db.query(LedgerMember).filter(LedgerMember.ledger_id == "owner").order_by(LedgerMember.id.asc()).first()
         assert row is not None, "identity fixture must seed owner member"
         return row.id
 
@@ -82,7 +77,7 @@ def test_no_findings_on_clean_ledger(*, identity) -> None:
         assert audit_ledger_invariants(db, tenant_id="owner") == []
 
 
-def test_split_sum_mismatch_flagged(*, identity) -> None:
+def test_partial_split_allocation_passes(*, identity) -> None:
     expense_id = _make_expense(
         amount_cents=1000,
         confirmed_at=datetime(2026, 5, 2, tzinfo=UTC),
@@ -95,13 +90,27 @@ def test_split_sum_mismatch_flagged(*, identity) -> None:
         position=0,
         amount_cents=400,
     )
-    # Two splits to the SAME member would violate the unique
-    # (tenant, expense, member) constraint, so we only seed one
-    # split and let the sum 400 ≠ 1000 trigger the mismatch.
+    with SessionLocal() as db:
+        assert audit_ledger_invariants(db, tenant_id="owner") == []
+
+
+def test_overallocated_split_flagged(*, identity) -> None:
+    expense_id = _make_expense(
+        amount_cents=1000,
+        confirmed_at=datetime(2026, 5, 2, tzinfo=UTC),
+    )
+    member_id = _owner_member_id()
+    _add_split(
+        tenant_id="owner",
+        expense_id=expense_id,
+        member_id=member_id,
+        position=0,
+        amount_cents=1001,
+    )
     with SessionLocal() as db:
         findings = audit_ledger_invariants(db, tenant_id="owner")
         assert len(findings) == 1
-        assert findings[0].code == "split_sum_mismatch"
+        assert findings[0].code == "split_overallocated"
         assert findings[0].expense_id == expense_id
 
 
@@ -126,18 +135,14 @@ def test_confirmed_without_timestamp_flagged(*, identity) -> None:
     _make_expense(status="confirmed", confirmed_at=None)
     with SessionLocal() as db:
         findings = audit_ledger_invariants(db, tenant_id="owner")
-        assert any(
-            f.code == "status_confirmed_no_timestamp" for f in findings
-        )
+        assert any(f.code == "status_confirmed_no_timestamp" for f in findings)
 
 
 def test_rejected_without_timestamp_flagged(*, identity) -> None:
     _make_expense(status="rejected", rejected_at=None)
     with SessionLocal() as db:
         findings = audit_ledger_invariants(db, tenant_id="owner")
-        assert any(
-            f.code == "status_rejected_no_timestamp" for f in findings
-        )
+        assert any(f.code == "status_rejected_no_timestamp" for f in findings)
 
 
 def test_tenant_isolation(*, identity) -> None:

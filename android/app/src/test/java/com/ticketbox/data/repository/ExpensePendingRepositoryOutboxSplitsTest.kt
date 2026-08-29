@@ -78,6 +78,7 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
         // Optimistic projection surfaces the user's edit + recomputed total.
         assertEquals(1, outcome.splits.splits.size)
         assertEquals(12L, outcome.splits.splits.first().memberId)
+        assertEquals(9845L, outcome.splits.mismatchCents)
         assertEquals(2500L, outcome.splits.splitsTotalAmountCents)
 
         // One row enqueued; token authoritative on the row, stripped from payload.
@@ -118,7 +119,7 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
                 rowVersion = 2L,
                 parentAmountCents = 12345L,
                 splitsTotalAmountCents = 2500L,
-                mismatchCents = -9845L,
+                mismatchCents = 9845L,
                 splits = emptyList(),
             )
         }

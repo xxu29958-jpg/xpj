@@ -81,6 +81,13 @@ internal fun ExpenseCorrectionSheet(
                         announceUpdates = true,
                     )
                 }
+                state.correction.submitError?.let { error ->
+                    AppStatusBanner(
+                        message = error,
+                        tone = MessageTone.Danger,
+                        announceUpdates = true,
+                    )
+                }
                 CorrectionReasonSection(state = state, actions = actions)
                 CorrectionCurrencySection(state = state, actions = actions)
                 CorrectionScalarSection(state = state, actions = actions)

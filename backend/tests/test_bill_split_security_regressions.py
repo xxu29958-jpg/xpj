@@ -144,12 +144,12 @@ def test_accept_route_attributes_confirmation_revision_to_authenticated_device(
         "receiver_route_device",
     )
     with SessionLocal() as db:
-        authenticated_device_id = db.scalar(
-            select(Device.id)
+        authenticated_device = db.execute(
+            select(Device.public_id, Device.device_name)
             .where(Device.account_id == receiver_account_id)
             .where(Device.device_name == "pytest-bill-split")
-        )
-        assert authenticated_device_id is not None
+        ).one_or_none()
+        assert authenticated_device is not None
 
     accepted = client.post(
         f"/api/bill-splits/{public_id}/accept",
@@ -170,7 +170,8 @@ def test_accept_route_attributes_confirmation_revision_to_authenticated_device(
         )
         assert revision is not None
         assert revision.actor_account_id == receiver_account_id
-        assert revision.actor_device_id == authenticated_device_id
+        assert revision.actor_device_public_id == authenticated_device.public_id
+        assert revision.actor_device_name == authenticated_device.device_name
 
 
 def test_reject_route_allows_current_viewer_ledger(

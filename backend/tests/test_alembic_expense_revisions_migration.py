@@ -20,6 +20,7 @@ _PARENT = "20260821_0001"
 _TABLE = "expense_revisions"
 _COLUMN = "fact_revision"
 _CHECK = "ck_expenses_fact_revision_nonnegative"
+_DEVICE_SNAPSHOT_CHECK = "ck_expense_revisions_actor_device_snapshot_pair"
 
 
 def _cfg():
@@ -43,6 +44,19 @@ def _drop_alembic_version() -> None:
 def _assert_revision_schema_present() -> None:
     inspector = inspect(engine)
     assert _TABLE in inspector.get_table_names()
+    revision_columns = {
+        column["name"]: column for column in inspector.get_columns(_TABLE)
+    }
+    assert "actor_device_id" not in revision_columns
+    assert revision_columns["actor_device_public_id"]["type"].length == 36
+    assert revision_columns["actor_device_name"]["type"].length == 120
+    assert _DEVICE_SNAPSHOT_CHECK in {
+        check["name"] for check in inspector.get_check_constraints(_TABLE)
+    }
+    assert not any(
+        foreign_key["referred_table"] == "devices"
+        for foreign_key in inspector.get_foreign_keys(_TABLE)
+    )
     assert _COLUMN in {column["name"] for column in inspector.get_columns("expenses")}
     assert _CHECK in {
         check["name"] for check in inspector.get_check_constraints("expenses")

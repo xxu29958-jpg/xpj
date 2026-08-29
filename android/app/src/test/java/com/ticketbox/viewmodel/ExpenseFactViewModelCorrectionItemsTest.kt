@@ -90,7 +90,7 @@ internal class ExpenseFactViewModelCorrectionItemsTest : ExpenseFactViewModelTes
         assertEquals(0, fake.correctCalls)
         assertEquals(
             R.string.expense_correction_items_amount_invalid,
-            (vm.uiState.value.message as? UiText.Res)?.id,
+            (vm.uiState.value.correction.submitError as? UiText.Res)?.id,
         )
     }
 }

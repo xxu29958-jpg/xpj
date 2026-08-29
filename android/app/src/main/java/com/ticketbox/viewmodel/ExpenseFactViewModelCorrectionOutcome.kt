@@ -1,7 +1,9 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
+import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.update
@@ -9,6 +11,7 @@ import kotlinx.coroutines.flow.update
 /** Publish one correction command outcome into the fact-page consumers. */
 internal fun ExpenseFactViewModel.publishCorrectionOutcome(
     outcome: ExpenseCorrectionOutcome,
+    draft: ExpenseCorrectionDraft,
     invalidatesAdvice: Boolean,
 ) {
     when (outcome) {
@@ -41,6 +44,11 @@ internal fun ExpenseFactViewModel.publishCorrectionOutcome(
             _uiState.update {
                 it.copy(
                     expense = outcome.expense,
+                    expenseSplits = projectQueuedAmountIntoSplits(
+                        current = it.expenseSplits,
+                        projectedAmountCents = outcome.expense.amountCents,
+                        splitsChanged = draft.splits != null,
+                    ),
                     correction = CorrectionFormState(),
                     message = UiText.res(R.string.expense_correction_queued),
                     messageTone = MessageTone.Info,
@@ -49,4 +57,25 @@ internal fun ExpenseFactViewModel.publishCorrectionOutcome(
             }
         }
     }
+}
+
+private fun projectQueuedAmountIntoSplits(
+    current: ExpenseSplits?,
+    projectedAmountCents: Long?,
+    splitsChanged: Boolean,
+): ExpenseSplits? {
+    if (current == null || splitsChanged || current.parentAmountCents == projectedAmountCents) {
+        return current
+    }
+    val projectedMismatch = if (projectedAmountCents == null) {
+        null
+    } else {
+        current.splitsTotalAmountCents?.let { total ->
+            runCatching { Math.subtractExact(projectedAmountCents, total) }.getOrNull()
+        }
+    }
+    return current.copy(
+        parentAmountCents = projectedAmountCents,
+        mismatchCents = projectedMismatch,
+    )
 }

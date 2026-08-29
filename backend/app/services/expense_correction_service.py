@@ -27,7 +27,10 @@ from app.services.expense_revision_service import (
 from app.services.expense_service._field_mutation import apply_expense_fields_to_claimed_row
 from app.services.expense_service._helpers import _clean_category
 from app.services.expense_service._query import get_expense
-from app.services.expense_split_service import apply_expense_splits_to_claimed_row
+from app.services.expense_split_service import (
+    apply_expense_splits_to_claimed_row,
+    validate_current_expense_split_allocation,
+)
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.receipt_item_service import apply_expense_items_to_claimed_row
@@ -180,6 +183,17 @@ def _apply_one_batch_correction(
     target_category = _clean_category(intent.category) if intent.category_provided else expense.category
     target_tags = intent.tags if intent.tags_provided else expense.tags
     if target_category == expense.category and target_tags == expense.tags:
+        matched_id = db.scalar(
+            select(Expense.id)
+            .where(Expense.id == expense.id)
+            .where(Expense.tenant_id == tenant_id)
+            .where(Expense.status == "confirmed")
+            .where(Expense.row_version == expected_row_version)
+            .with_for_update(read=True)
+        )
+        if matched_id is None:
+            db.rollback()
+            raise AppError("state_conflict", status_code=409)
         return False
 
     prepared = prepare_correction_revision(db, expense)
@@ -363,6 +377,7 @@ def _apply_correction_sections(
     actor_account_id: int,
     now,
 ) -> None:
+    amount_before = expense.amount_cents
     scalar_payload = _scalar_payload(payload)
     if scalar_payload is not None:
         apply_expense_fields_to_claimed_row(
@@ -392,6 +407,8 @@ def _apply_correction_sections(
             actor_account_id=actor_account_id,
             now=now,
         )
+    if expense.amount_cents != amount_before or payload.splits is not None:
+        validate_current_expense_split_allocation(db, expense=expense)
     expense.updated_at = now
 
 

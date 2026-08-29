@@ -275,9 +275,8 @@
     {% if split_rows.total_yuan %}
     <div class="reconcile-line">
       账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
-      {% if split_rows.has_mismatch %}
-      · 差额 {{ home_currency_symbol }}{{ split_rows.mismatch_yuan }}
-      {% endif %}
+      {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }} 未分配{% endif %}
+      {% if split_rows.reconcile_state == 'overallocated' %}<span class="error-text">· 已拆超出 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
     </div>
     {% endif %}
     <form method="post" action="/web/expenses/{{ expense.id }}/splits/save">

@@ -2,7 +2,9 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.projectCorrection
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
+import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
@@ -80,6 +82,34 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         assertEquals("新商家", vm.uiState.value.expense?.merchant)
         assertEquals(R.string.expense_correction_queued, (vm.uiState.value.message as? UiText.Res)?.id)
         assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
+    }
+
+    @Test
+    fun `queued home-currency amount correction keeps the amount and allocation projection consistent`() = edit { fake ->
+        fake.splitsResult = Result.success(
+            ExpenseSplits(
+                expenseId = fake.baseExpense.id,
+                parentAmountCents = 1_000L,
+                splitsTotalAmountCents = 1_000L,
+                mismatchCents = 0L,
+                splits = emptyList(),
+            ),
+        )
+        fake.correctResult = { expense, draft ->
+            Result.success(ExpenseCorrectionOutcome.Queued(expense.projectCorrection(draft)))
+        }
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "金额应更高")
+        vm.updateCorrectionField(CorrectionScalarField.Amount, "12.00")
+
+        vm.submitCorrection()
+        advanceUntilIdle()
+
+        assertEquals(1_200L, vm.uiState.value.expense?.amountCents)
+        assertEquals(1_200L, vm.uiState.value.expenseSplits?.parentAmountCents)
+        assertEquals(1_000L, vm.uiState.value.expenseSplits?.splitsTotalAmountCents)
+        assertEquals(200L, vm.uiState.value.expenseSplits?.mismatchCents)
     }
 
     @Test

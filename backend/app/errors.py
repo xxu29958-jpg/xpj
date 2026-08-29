@@ -18,6 +18,7 @@ ERROR_MESSAGES = {
     "split_parent_amount_missing": "原账单金额未确定，无法发起拆账。",
     "split_amount_exceeds_parent": "拆账金额不能超过原账单金额。",
     "split_total_exceeds_parent": "拆账邀请总额不能超过原账单金额。",
+    "expense_split_total_exceeds_parent": "家庭拆账总额不能超过账单金额。请减少拆账金额，或把账单金额调回不小于已拆总额。",
     "split_status_invalid": "拆账邀请状态不正确。",
     "split_invitation_already_pending": "已有发给对方的待处理拆账邀请。",
     "invitation_not_found": "拆账邀请不存在或已被清理。",

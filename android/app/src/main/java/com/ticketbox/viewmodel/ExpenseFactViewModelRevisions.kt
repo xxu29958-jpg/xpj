@@ -1,9 +1,9 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
-
 import androidx.annotation.StringRes
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -61,19 +61,60 @@ private fun formatFactValue(
     currency: com.ticketbox.domain.model.CurrencyCode,
 ): UiText {
     if (value == null || value == "") return UiText.res(R.string.expense_fact_timeline_value_empty)
-    val display = when (field) {
-        "amount_cents" -> (value as? Number)?.toLong()?.let { formatMinorAmountInput(kotlin.math.abs(it), currency) }
-            ?: value.toString()
-        "original_amount_minor" -> {
-            (value as? Number)?.toLong()?.let { formatMinorAmountInput(kotlin.math.abs(it), currency) } ?: value.toString()
-        }
-        "expense_time" -> displayDateTime(value.toString())
-        "items", "splits" -> return (value as? List<*>)?.size?.let {
-            UiText.res(R.string.expense_fact_timeline_lines_count, it)
-        } ?: UiText.raw(value.toString())
-        else -> value.toString()
+    return when (field) {
+        "amount_cents" -> UiText.raw(formatHomeAmountSnapshot(value, currency))
+        "original_amount_minor" -> formatOriginalAmountSnapshot(value, snapshot)
+        "expense_time" -> UiText.raw(displayDateTime(value.toString()))
+        "items", "splits" -> formatLineCountSnapshot(value)
+        else -> UiText.raw(value.toString())
     }
+}
+
+private fun formatHomeAmountSnapshot(value: Any, currency: CurrencyCode): String =
+    (value as? Number)?.toLong()?.let {
+        formatMinorAmountInput(kotlin.math.abs(it), currency)
+    } ?: value.toString()
+
+private fun formatOriginalAmountSnapshot(
+    value: Any,
+    snapshot: Map<String, Any?>,
+): UiText {
+    val amountMinor = (value as? Number)?.toLong() ?: return UiText.raw(value.toString())
+    val rawCurrencyCode = snapshot["original_currency_code"]?.toString()?.trim()?.uppercase()
+    val display = CurrencyCode.fromStorageKeyOrNull(rawCurrencyCode)?.let {
+        formatMinorAmountInput(kotlin.math.abs(amountMinor), it)
+    } ?: listOfNotNull(
+        kotlin.math.abs(amountMinor).toString(),
+        rawCurrencyCode?.takeIf(String::isNotBlank),
+    ).joinToString(" ")
     return UiText.raw(display)
+}
+
+private fun formatLineCountSnapshot(value: Any): UiText =
+    (value as? List<*>)?.size?.let {
+        UiText.res(R.string.expense_fact_timeline_lines_count, it)
+    } ?: UiText.raw(value.toString())
+
+private fun snapshotAllocationLabel(
+    snapshot: Map<String, Any?>,
+    currency: CurrencyCode,
+): UiText? {
+    val amountCents = (snapshot["amount_cents"] as? Number)?.toLong() ?: return null
+    val splits = (snapshot["splits"] as? List<*>)?.takeIf { it.isNotEmpty() } ?: return null
+    var splitTotal = 0L
+    for (rawSplit in splits) {
+        val split = rawSplit as? Map<*, *> ?: return null
+        val splitAmount = (split["amount_cents"] as? Number)?.toLong() ?: return null
+        splitTotal = runCatching { Math.addExact(splitTotal, splitAmount) }.getOrNull() ?: return null
+    }
+    val remaining = runCatching { Math.subtractExact(amountCents, splitTotal) }.getOrNull() ?: return null
+    if (remaining == 0L) return UiText.res(R.string.expense_fact_timeline_allocation_complete)
+    val amount = formatMinorAmountInput(kotlin.math.abs(remaining), currency)
+    return if (remaining > 0L) {
+        UiText.res(R.string.expense_fact_timeline_allocation_remaining, amount)
+    } else {
+        UiText.res(R.string.expense_fact_timeline_allocation_overallocated, amount)
+    }
 }
 
 private fun ExpenseRevision.toTimelineEntry(
@@ -84,14 +125,35 @@ private fun ExpenseRevision.toTimelineEntry(
         emptyList()
     } else {
         val before = before ?: emptyMap()
-        val deltas = FACT_FIELD_ORDER
-            .filter { (field, _) -> field in changedFields }
-            .map { (field, labelRes) ->
-                FactTimelineChange(
-                    label = UiText.res(labelRes),
-                    before = formatFactValue(field, before[field], before, currency),
-                    after = formatFactValue(field, after[field], after, currency),
-                )
+        val deltas = buildList {
+            FACT_FIELD_ORDER
+                .filter { (field, _) -> field in changedFields }
+                .forEach { (field, labelRes) ->
+                    add(
+                        FactTimelineChange(
+                            label = UiText.res(labelRes),
+                            before = formatFactValue(field, before[field], before, currency),
+                            after = formatFactValue(field, after[field], after, currency),
+                        ),
+                    )
+                    if (field == "amount_cents" && "splits" !in changedFields) {
+                        val beforeAllocation = snapshotAllocationLabel(before, currency)
+                        val afterAllocation = snapshotAllocationLabel(after, currency)
+                        if (
+                            beforeAllocation != null &&
+                            afterAllocation != null &&
+                            beforeAllocation != afterAllocation
+                        ) {
+                            add(
+                                FactTimelineChange(
+                                    label = UiText.res(R.string.expense_fact_timeline_field_splits),
+                                    before = beforeAllocation,
+                                    after = afterAllocation,
+                                ),
+                            )
+                        }
+                    }
+                }
             }
         deltas.ifEmpty {
             listOf(
