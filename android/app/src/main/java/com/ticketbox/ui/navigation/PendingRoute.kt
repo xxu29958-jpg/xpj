@@ -127,6 +127,7 @@ private fun pendingScreenChromeActions(
     onUploadScreenshot = onUploadScreenshot,
     onOpenRepaymentReview = navigation.onOpenRepaymentReview,
     onOpenDataQuality = navigation.onOpenDataQuality,
+    onRetryEnrichment = viewModel::retryEnrichmentObservation,
     requestedFilter = filterRequest.pending,
     onRequestedFilterConsumed = { filterRequest.consume() },
 )

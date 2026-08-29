@@ -7,6 +7,8 @@ data class UploadResponseDto(
     val id: Long,
     @param:Json(name = "public_id")
     val publicId: String,
+    @param:Json(name = "enrichment_task_public_id")
+    val enrichmentTaskPublicId: String,
     val status: String,
     val message: String,
     @param:Json(name = "upload_size_bytes")

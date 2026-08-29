@@ -49,6 +49,7 @@ import com.ticketbox.ui.screens.pending.NeedsReviewFilterBarState
 import com.ticketbox.ui.screens.pending.PendingClearCelebration
 import com.ticketbox.ui.screens.pending.PendingDisplayMode
 import com.ticketbox.ui.screens.pending.PendingDisplayModeButton
+import com.ticketbox.ui.screens.pending.PendingEnrichmentStatusBand
 import com.ticketbox.ui.screens.pending.PendingExpenseQueueActions
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewActions
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewItem
@@ -108,6 +109,11 @@ fun PendingScreen(
     )
     val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
+    // 识别状态带：终态反馈的「打开账单」仅当目标仍在当前队列时出现，
+    // Screen 只做这一次 items 查找与导航窄组合，不复制状态语义。
+    val enrichmentTarget = state.enrichment.feedback?.let { feedback ->
+        state.items.firstOrNull { it.id == feedback.expenseId }
+    }
     val bodyState = pendingListBodyState(
         hasRows = state.items.isNotEmpty(),
         loadState = state.listLoadState,
@@ -276,6 +282,17 @@ fun PendingScreen(
 
         if (state.uploading) {
             item { UploadProgressCard() }
+        }
+
+        if (state.enrichment.activeCount > 0 || state.enrichment.feedback != null) {
+            item {
+                PendingEnrichmentStatusBand(
+                    state = state.enrichment,
+                    feedbackTargetPresent = enrichmentTarget != null,
+                    onOpenFeedbackExpense = { enrichmentTarget?.let(itemActions.onEdit) },
+                    onRetryObservation = chromeActions.onRetryEnrichment,
+                )
+            }
         }
 
         when {

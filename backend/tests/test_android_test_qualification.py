@@ -142,14 +142,27 @@ def test_result_qualification_uses_each_lane_baseline(tmp_path: Path) -> None:
         tests=2,
     )
 
-    assert qualification.verify_test_results(
-        lane="jvm",
-        baseline_path=baseline,
-        results_dir=results,
-    ).tests == 2
-    with pytest.raises(qualification.EvidenceError, match="actual=2, baseline=1"):
+    assert (
+        qualification.verify_test_results(
+            lane="jvm",
+            baseline_path=baseline,
+            results_dir=results,
+        ).tests
+        == 2
+    )
+    assert (
         qualification.verify_test_results(
             lane="instrumentation",
+            baseline_path=baseline,
+            results_dir=results,
+        ).tests
+        == 2
+    )
+
+    baseline.write_text("jvm=3\ninstrumentation=1\n", encoding="utf-8")
+    with pytest.raises(qualification.EvidenceError, match="actual=2, minimum=3"):
+        qualification.verify_test_results(
+            lane="jvm",
             baseline_path=baseline,
             results_dir=results,
         )
@@ -279,15 +292,18 @@ def test_cli_returns_failure_when_runtime_qualification_fails(
 
     monkeypatch.setattr(qualification, "verify_test_results", reject_results)
 
-    assert qualification.main(
-        [
-            "results",
-            "--lane",
-            "jvm",
-            "--baseline",
-            "baseline.txt",
-            "--results-dir",
-            "results",
-        ]
-    ) == 1
+    assert (
+        qualification.main(
+            [
+                "results",
+                "--lane",
+                "jvm",
+                "--baseline",
+                "baseline.txt",
+                "--results-dir",
+                "results",
+            ]
+        )
+        == 1
+    )
     assert "runtime result rejected" in capsys.readouterr().err

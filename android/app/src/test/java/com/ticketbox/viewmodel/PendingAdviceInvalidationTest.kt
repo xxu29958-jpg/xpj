@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -19,7 +20,7 @@ internal class PendingAdviceInvalidationTest : PendingViewModelReviewTestBase() 
     @Test
     fun screenshotUploadDoesNotFireAdviceInvalidation() = review {
         val fake = FakeReviewActions()
-        fake.uploadResponder = { Result.success(1L) }
+        fake.uploadResponder = { Result.success(PendingUploadReceipt(1L, "task-upload")) }
         var invalidations = 0
         val vm = PendingViewModel(fake).also { it.onAdviceInputsChanged = { invalidations += 1 } }
         advanceUntilIdle()

@@ -20,6 +20,7 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
@@ -58,6 +59,8 @@ class ExpenseRepository(
         sessionCoordinator = sessionCoordinator,
         offlineMutations = offlineMutations,
     )
+    internal val pendingEnrichmentTasks: PendingEnrichmentTaskReader =
+        ExpensePendingEnrichmentRepository(core)
     /**
      * 见 [ExpenseRepositoryCore.onConfirmedCommitted]：确认态落本地缓存的单点回调
      * （轴 6 预算超支检测的触发接缝），AppContainer 构造后注入。
@@ -151,7 +154,7 @@ class ExpenseRepository(
     ): Result<ExpenseCorrectionOutcome> =
         correctionRepository.correctAllowingOffline(expense, correction)
 
-    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> =
+    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> =
         pendingRepository.uploadScreenshot(request)
 
     override suspend fun updateExpense(

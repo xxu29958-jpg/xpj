@@ -62,6 +62,7 @@ __all__ = [
 class UploadResponse(BaseModel):
     id: int
     public_id: str
+    enrichment_task_public_id: str
     status: str
     message: str
     image_hash: str

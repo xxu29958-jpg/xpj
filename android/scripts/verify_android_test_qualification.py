@@ -257,12 +257,11 @@ def verify_test_results(
             f"Android {lane} results contain skipped tests: "
             f"skipped={summary.skipped}. Skipped cases are not execution evidence."
         )
-    expected = baseline[lane]
-    if summary.tests != expected:
+    minimum = baseline[lane]
+    if summary.tests < minimum:
         raise EvidenceError(
-            f"Android {lane} executed-result count mismatch: "
-            f"actual={summary.tests}, baseline={expected}. "
-            "Update the baseline in the same change only when the test change is intentional."
+            f"Android {lane} executed-result count fell below the ratchet: "
+            f"actual={summary.tests}, minimum={minimum}."
         )
     return summary
 

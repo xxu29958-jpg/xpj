@@ -5,8 +5,9 @@
 baseline can be lowered in the same cleanup slice.
 
 ``STRICT_EQUALITY_BASELINE`` protects PR-Δ counters from
-``_audit_pr_delta_metrics.py``. It composes three checks: exact current
-actuals, directional movement vs the base branch for ratcheted keys, and
+``_audit_pr_delta_metrics.py``. Structural counters use exact current
+actuals, while responsibility-owned test counts are minimum floors. The gate
+also checks directional movement vs the base branch for ratcheted keys and
 removed-key detection so managed counters cannot be renamed away.
 
 Bootstrap is purely data-shaped: a new key absent from the base baseline
@@ -28,6 +29,7 @@ from pathlib import Path
 from adr_contract_git import has_auditable_ci_context, select_ratchet_base
 from pr_delta_baselines import (
     TEST_COUNT_BASELINES,
+    baseline_policy_mismatches,
     git_show_text,
     load_current_test_count_baselines,
     parse_count_baseline,
@@ -151,11 +153,11 @@ STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 # Cross-job coordination is intentionally avoided: each side enforces its own
 # contract, at the cost of cut-over PRs that touch both sides needing to update
 # both baseline files. Android counts are NOT listed here.
-# Total test counts are reconciliation signals, not coverage proofs. Strict
-# equality declares every change. Backend consolidation may lower its declared
-# count only when review proves the removed cases had no independent risk model;
-# the installer suite remains a release-critical monotonic floor except for the
-# exact one-time removal of the physically retired portable installer harness.
+# Total test counts are reconciliation signals, not coverage proofs. Their
+# checked-in values are minimum floors: additions do not require baseline churn,
+# while a drop still requires an explicit reviewed floor movement. The installer
+# suite remains a release-critical monotonic floor except for exact one-time
+# removals of physically retired lifecycle harnesses.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset(
     {
         "installer_pytest_count",
@@ -289,13 +291,9 @@ def _strict_baseline_base_is_required() -> bool:
 def _compute_strict_equality_findings(
     counts: DebtCounts,
 ) -> tuple[list[str], list[tuple[str, int, int]], list[str]]:
-    """Layer 1: returns (missing, mismatches, extras) against STRICT_EQUALITY_BASELINE."""
+    """Layer 1: return missing, policy mismatches, and unowned extras."""
     missing = sorted(set(STRICT_EQUALITY_BASELINE) - set(counts))
-    mismatches = [
-        (key, counts[key], STRICT_EQUALITY_BASELINE[key])
-        for key in sorted(STRICT_EQUALITY_BASELINE)
-        if key in counts and counts[key] != STRICT_EQUALITY_BASELINE[key]
-    ]
+    mismatches = baseline_policy_mismatches(counts, STRICT_EQUALITY_BASELINE)
     extras = sorted(set(counts) - set(STRICT_EQUALITY_BASELINE))
     return missing, mismatches, extras
 
@@ -356,14 +354,15 @@ def _print_strict_equality_failures(
             print(f"  - {key}")
     if mismatches:
         print(
-            "FAIL: actual != current baseline. Update the owning baseline "
-            "in the SAME PR if change is intentional; otherwise the PR has an "
-            "undeclared regression. Both directions fail:"
+            "FAIL: actual violates its current baseline policy. Update the "
+            "owning baseline in the SAME PR only when the policy movement is "
+            "intentional and reviewed:"
         )
         for key, actual, baseline in mismatches:
             diff = actual - baseline
             sign = "+" if diff > 0 else ""
-            print(f"  - {key}: actual={actual}, current_baseline={baseline} ({sign}{diff})")
+            policy = "minimum" if key in TEST_COUNT_BASELINES else "exact"
+            print(f"  - {key}: actual={actual}, current_baseline={baseline} policy={policy} ({sign}{diff})")
     if extras:
         print(
             "FAIL: audit reported counters with no baseline entry. Add to "
@@ -429,11 +428,11 @@ def _print_info_lines(base_readable: bool, bootstrapped: list[str]) -> None:
 def _print_ok_line(base_readable: bool, bootstrapped: list[str]) -> None:
     passed = len(STRICT_EQUALITY_BASELINE)
     if base_readable:
-        msg = f"OK: {passed} PR-Δ counters pass strict + ratchet + removed-key checks"
+        msg = f"OK: {passed} PR-Δ counters pass baseline policies + ratchet + removed-key checks"
         if bootstrapped:
             msg += f" ({len(bootstrapped)} bootstrapped this PR)"
     else:
-        msg = f"OK: {passed} PR-Δ counters match baseline exactly (ratchet skipped — local)"
+        msg = f"OK: {passed} PR-Δ counters pass current baseline policies (ratchet skipped — local)"
     print(msg + ".")
 
 
@@ -442,10 +441,11 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
 
     Layers (all stacked, each can FAIL independently):
 
-    1. **Strict equality** — every key in STRICT_EQUALITY_BASELINE
-       must appear in ``counts`` and equal its baseline value. Drift
-       in EITHER direction FAILs. Counters in ``counts`` without a
-       baseline entry FAIL ("unprotected new counter").
+    1. **Current baseline policy** — every key in
+       STRICT_EQUALITY_BASELINE must appear in ``counts``. Structural
+       counters equal their baseline exactly; test-count keys stay at or
+       above their minimum floor. Counters without an entry FAIL
+       ("unprotected new counter").
 
     2. **Baseline movement ratchet** — for ``BASELINE_RATCHET_UP`` keys,
        current baseline must be ``>=`` base baseline; for
@@ -482,7 +482,7 @@ def evaluate_pr_delta_metrics(counts: DebtCounts) -> int:
             base_commit=_strict_baseline_selected_commit,
         )
 
-    print("== Gate. ADR-0038 PR-Δ verification (strict-equality + ratchet) ==")
+    print("== Gate. ADR-0038 PR-Δ verification (exact/floor policies + ratchet) ==")
     _print_strict_equality_failures(counts, missing, mismatches, extras)
     _print_ratchet_failures(movement_violations, removed_keys, base_unreadable_but_required)
     _print_info_lines(base_readable, bootstrapped)

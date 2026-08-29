@@ -1,10 +1,14 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.PendingReviewActions
+import com.ticketbox.data.repository.PendingEnrichmentTaskReader
 import com.ticketbox.data.repository.ScreenshotUploadRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.PendingEnrichmentOutcome
+import com.ticketbox.domain.model.PendingEnrichmentTask
+import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -108,6 +112,7 @@ internal class FakeReviewActions(
     canModifyLedger: Boolean = true,
     private val activeLedgerFlow: Flow<String?> = emptyFlow(),
     private val activeLedgerIdProvider: () -> String? = { null },
+    val enrichmentTasks: FakePendingEnrichmentTaskReader = FakePendingEnrichmentTaskReader(),
 ) : PendingReviewActions {
     // Mutable so tests can simulate backend role demotion mid-flow (V11):
     // the existing canModifyLedger = false ctor arg still works for
@@ -139,7 +144,7 @@ internal class FakeReviewActions(
     // W1: drives [uploadScreenshot] so the share-multi-image path can be unit
     // tested. Default (unset) keeps the historical "upload not exercised"
     // failure so existing tests are unaffected. Receives the file name per call.
-    var uploadResponder: (suspend (String) -> Result<Long>)? = null
+    var uploadResponder: (suspend (String) -> Result<PendingUploadReceipt>)? = null
 
     var updateCalls: Int = 0
         private set
@@ -267,10 +272,29 @@ internal class FakeReviewActions(
     // share tests can assert order + count without leaking bytes.
     val uploadedFileNames = mutableListOf<String>()
 
-    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> {
+    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> {
         uploadCalls += 1
         uploadedFileNames += request.fileName
         uploadResponder?.let { return it(request.fileName) }
         return Result.failure(IllegalStateException("upload not exercised in tests"))
+    }
+}
+
+internal class FakePendingEnrichmentTaskReader : PendingEnrichmentTaskReader {
+    var responder: (suspend (String) -> Result<PendingEnrichmentTask>)? = null
+    var calls: Int = 0
+        private set
+    val fetchedTaskIds = mutableListOf<String>()
+
+    override suspend fun fetchPendingEnrichmentTask(publicId: String): Result<PendingEnrichmentTask> {
+        calls += 1
+        fetchedTaskIds += publicId
+        responder?.let { return it(publicId) }
+        return Result.success(
+            PendingEnrichmentTask(
+                status = "completed",
+                outcome = PendingEnrichmentOutcome.NoResult,
+            ),
+        )
     }
 }

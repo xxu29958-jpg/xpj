@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -121,7 +122,7 @@ private class ThumbnailFakeReviewActions(
 
     override suspend fun categories(): Result<List<String>> = Result.success(emptyList())
 
-    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> =
+    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> =
         Result.failure(IllegalStateException("not exercised"))
 }
 

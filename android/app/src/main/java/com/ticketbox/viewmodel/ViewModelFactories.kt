@@ -48,7 +48,11 @@ fun repositoryViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val repository = repositories.repository
         return when (modelClass) {
-            PendingViewModel::class.java -> PendingViewModel(repository, onDataChanged = onExpenseDataChanged)
+            PendingViewModel::class.java -> PendingViewModel(
+                repository = repository,
+                enrichmentTaskReader = repository.pendingEnrichmentTasks,
+                onDataChanged = onExpenseDataChanged,
+            )
             LedgerViewModel::class.java -> LedgerViewModel(
                 repository,
                 checkNotNull(repositories.debtRepository) { "LedgerViewModel requires DebtActions for R13-6 capability" },

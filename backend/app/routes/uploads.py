@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_writer_context
@@ -76,21 +76,20 @@ async def upload_screenshot_legacy_gone(
 )
 async def app_upload_screenshot(
     request: Request,
-    background_tasks: BackgroundTasks,
     timezone: str | None = Header(default=None, alias="X-Timezone"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
-    handled = await handle_upload(
+    return await handle_upload(
         request=request,
-        background_tasks=background_tasks,
         tenant_id=auth.ledger_id,
         db=db,
         source="Android截图",
         endpoint="android_app",
+        initiator_account_id=auth.account_id,
+        initiator_device_id=auth.device_id,
         timezone_name=timezone,
     )
-    return handled.response
 
 
 def _load_upload_link(db: Session, upload_key: str) -> UploadLink:
@@ -118,7 +117,6 @@ def _declared_content_length(request: Request) -> int | None:
 async def upload_link_screenshot(
     upload_key: str,
     request: Request,
-    background_tasks: BackgroundTasks,
     tz: str | None = None,
     timezone: str | None = Header(default=None, alias="X-Timezone"),
     db: Session = Depends(get_db),
@@ -160,18 +158,18 @@ async def upload_link_screenshot(
         require_create_pending_expense(refreshed_auth)
 
     try:
-        handled = await handle_upload(
+        response = await handle_upload(
             request=request,
-            background_tasks=background_tasks,
             tenant_id=auth.ledger_id,
             db=db,
             source="iPhone截图",
             endpoint="ios_upload_link",
+            initiator_account_id=auth.account_id,
+            initiator_device_id=auth.device_id,
             timezone_name=resolved_timezone,
             max_size_bytes=(reservation.reserved_bytes if reservation and reservation.reserved_bytes > 0 else None),
             commit_guard=revalidate_before_commit,
         )
-        response = handled.response
         finalize_upload_bytes(
             db,
             reservation=reservation,

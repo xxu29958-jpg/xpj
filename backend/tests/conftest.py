@@ -154,6 +154,39 @@ def _db_isolation(request: pytest.FixtureRequest):
         yield
 
 
+@pytest.fixture(autouse=True)
+def _background_tasks_respect_db_isolation(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Keep executor threads off the single-connection rollback lane.
+
+    Uploads now persist their generic ``BackgroundTask`` before returning, so
+    ordinary route tests also exercise task creation.  Their surrounding
+    transaction binds every ``SessionLocal`` to one connection; starting the
+    production executor concurrently would share that connection across
+    threads and corrupt SAVEPOINT state.  Real task outcomes already opt into
+    ``@pytest.mark.real_db``.  On the ordinary lane we therefore leave tasks
+    queued, while still allowing an explicit inline test to execute on the
+    calling thread.
+    """
+    if "real_db" in request.keywords:
+        yield
+        return
+
+    from app.services import background_task_service
+
+    submit = background_task_service._submit_task
+
+    def submit_on_calling_thread_only(*args, **kwargs):
+        if os.environ.get("XPJ_BACKGROUND_TASK_INLINE") == "1":
+            return submit(*args, **kwargs)
+        return None
+
+    monkeypatch.setattr(background_task_service, "_submit_task", submit_on_calling_thread_only)
+    yield
+
+
 @pytest.fixture()
 def identity(request: pytest.FixtureRequest, _db_isolation) -> TestIdentity:
     # _db_isolation already set up the per-test transaction (or real_db reset).

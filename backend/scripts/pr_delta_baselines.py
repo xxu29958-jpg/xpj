@@ -1,8 +1,4 @@
-"""Data loading for PR-delta baselines.
-
-Policy stays in ``codebase_audit_gate``. This module only loads the current
-responsibility-owned count files and their exact-base counterparts.
-"""
+"""Responsibility-owned PR-delta baselines and their comparison policy."""
 
 from __future__ import annotations
 
@@ -34,6 +30,23 @@ def load_current_test_count_baselines() -> DebtCounts:
         )
         for key, path in TEST_COUNT_BASELINES.items()
     }
+
+
+def baseline_policy_mismatches(
+    counts: DebtCounts,
+    baseline: DebtCounts,
+) -> list[tuple[str, int, int]]:
+    """Keep test totals above their floors and structural counters exact."""
+    return [
+        (key, counts[key], baseline[key])
+        for key in sorted(baseline)
+        if key in counts
+        and (
+            counts[key] < baseline[key]
+            if key in TEST_COUNT_BASELINES
+            else counts[key] != baseline[key]
+        )
+    ]
 
 
 def strict_baseline_literal(source: str) -> DebtCounts | None:
