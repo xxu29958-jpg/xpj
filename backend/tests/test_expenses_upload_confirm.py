@@ -303,6 +303,7 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
         "get_settings",
         lambda: replace(settings, delete_image_after_confirm=True),
     )
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
 
     expense_id = upload_png(client, identity=identity)
     with SessionLocal() as db:

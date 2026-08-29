@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.mergeExpenseCategories
 import kotlinx.coroutines.flow.Flow
@@ -44,7 +45,9 @@ internal class ExpensePendingRepository(
         core.syncPendingFromService(bound)
     }
 
-    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long> = core.errorHandler.safeCall {
+    override suspend fun uploadScreenshot(
+        request: ScreenshotUploadRequest,
+    ): Result<PendingUploadReceipt> = core.errorHandler.safeCall {
         val fileName = request.fileName
         val contentType = request.contentType
         val bytes = request.bytes
@@ -86,7 +89,7 @@ internal class ExpensePendingRepository(
         core.withActiveBindingCommit(bound) {
             core.settingsStore.saveLastUploadAtForLedger(bound.ledgerId, Instant.now().toString())
         }
-        response.id
+        response.toPendingUploadReceipt()
     }
 
     override suspend fun updateExpense(

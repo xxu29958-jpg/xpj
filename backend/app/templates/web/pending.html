@@ -55,12 +55,33 @@
   </div>
 </section>
 
-{% if flash_message %}
+{% if enrichment_watch %}
+{# K3: OCR/后台识别表达升级为 ambient 状态带, 不再混进通用 flash。
+   core.js 轮询合同 (勿改): data-inbox-enrichment-watch / data-task-public-id /
+   data-watch-timeout-ms / aria-busy 全部保留原义; 带内首个 <span> 必须是消息
+   本体 — core.js 超时回退写 marker.querySelector("span")。表达只靠文案、
+   色调与入场 motion, 不用伪元素图标; 处理中不抢任务层级。 #}
+<div class="inbox-enrichment"
+     data-inbox-enrichment-watch data-task-public-id="{{ enrichment_watch.task_public_id }}" data-watch-timeout-ms="{{ enrichment_watch.timeout_ms }}" aria-busy="true"
+     role="status">
+  <span>{{ flash_message }}</span>
+</div>
+{% elif enrichment_terminal %}
+{# 终态带持久留在队列上方直到下次导航: updated 轻量完成反馈; no_result/failed
+   需行动 (服务端文案已含下一步: 手动补全 / 打开账单重试识别); conflict 是
+   数据主权确认 (用户修改胜出); cancelled/not_pending 最轻量。 #}
+<div class="inbox-enrichment inbox-enrichment--{{ enrichment_terminal.state }}"
+     data-inbox-enrichment-terminal data-enrichment-state="{{ enrichment_terminal.state }}"
+     role="status">
+  <span>{{ flash_message }}</span>
+</div>
+{% elif flash_message %}
 {# ADR-0038 undo: flash_type 决定颜色 — success → 绿(刚 reject + 可撤销 / undo 成功),
    error → 红(undo 失败)。空值落到默认 info 样式。undo-banner 修饰保留(矿同);
-   product 组件表只有 .undo-banner-action 布局, 旧 5s auto-dismiss 动画不移植。 #}
+   product 组件表只有 .undo-banner-action 布局, 旧 5s auto-dismiss 动画不移植。
+   enrichment 在场时 flash_message 归状态带所有, 本条不渲染 (真实路由里 undo
+   重定向不携带 watch 参数, 两者互斥)。 #}
 <div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}{% if undo_items or undo_expense_id %} undo-banner{% endif %}"
-     {% if enrichment_watch %}data-inbox-enrichment-watch data-task-public-id="{{ enrichment_watch.task_public_id }}" data-watch-timeout-ms="{{ enrichment_watch.timeout_ms }}" aria-busy="true"{% elif enrichment_terminal %}data-inbox-enrichment-terminal data-enrichment-state="{{ enrichment_terminal.state }}"{% endif %}
      role="status">
   <span>{{ flash_message }}</span>
   {% if undo_items %}

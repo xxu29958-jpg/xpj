@@ -29,6 +29,61 @@
     font-size: var(--type-caption-size);
 }
 
+/* K3: enrichment ambient 状态带 — OCR/后台识别不再占用通用 flash。
+   选择器 data-inbox-enrichment-watch/-terminal 与 aria-busy 是 core.js 轮询
+   合同, 样式只挂类名; 带内首个 <span> 永远是消息本体。表达只靠真实文案、
+   状态色调、边框与克制入场 motion: 不用 ::before 伪造图标/圆点, 无 CSS art。
+   进入动画被 shell.css 的 prefers-reduced-motion 全局规则归零。 */
+.inbox-enrichment {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    margin-block-end: var(--space-5);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--state-info-border);
+    border-radius: var(--radius-sm);
+    background: var(--state-info-bg);
+    color: var(--state-info-fg);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+    animation: inbox-enrichment-in var(--motion-normal) var(--ease-standard);
+}
+
+/* 终态层级: updated 短促完成 → success; 需行动的 no_result → warn、
+   failed → danger; conflict 保持默认 info (用户修改胜出的中性确认);
+   cancelled / not_pending 最轻 → neutral。 */
+.inbox-enrichment--updated {
+    border-color: var(--state-success-border);
+    background: var(--state-success-bg);
+    color: var(--state-success-fg);
+}
+
+.inbox-enrichment--no_result {
+    border-color: var(--state-warn-border);
+    background: var(--state-warn-bg);
+    color: var(--state-warn-fg);
+}
+
+.inbox-enrichment--failed {
+    border-color: var(--state-danger-border);
+    background: var(--state-danger-bg);
+    color: var(--state-danger-fg);
+}
+
+.inbox-enrichment--cancelled,
+.inbox-enrichment--not_pending {
+    border-color: var(--state-neutral-border);
+    background: var(--state-neutral-bg);
+    color: var(--state-neutral-fg);
+}
+
+@keyframes inbox-enrichment-in {
+    from {
+        opacity: 0;
+    }
+}
+
 .exp-table {
     overflow: hidden;
     border: 1px solid var(--border-card);

@@ -15043,6 +15043,10 @@
             "title": "Duration Ms",
             "type": "integer"
           },
+          "enrichment_task_public_id": {
+            "title": "Enrichment Task Public Id",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -15089,6 +15093,7 @@
         "required": [
           "id",
           "public_id",
+          "enrichment_task_public_id",
           "status",
           "message",
           "image_hash",

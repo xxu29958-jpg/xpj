@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -158,7 +159,7 @@ interface PendingReviewActions {
      */
     suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
     suspend fun categories(): Result<List<String>>
-    suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<Long>
+    suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt>
 }
 
 /**

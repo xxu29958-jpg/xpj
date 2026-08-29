@@ -19,6 +19,7 @@ from app.database import SessionLocal
 from app.main import app as fastapi_app
 from app.models import BackgroundTask, Expense, LedgerMember
 from app.routes._upload_request import handle_upload
+from app.services.ledger_service import find_owner_account_id_for_ledger
 from tests._infra.assets import PNG_BYTES
 
 
@@ -68,6 +69,11 @@ def test_web_pending_upload_uses_shared_owner_and_creates_real_pending_expense(
         assert task is not None
         assert task.task_type == "expense_enrichment"
         assert task.tenant_id == "owner"
+        assert task.initiated_by_account_id == find_owner_account_id_for_ledger(
+            db,
+            ledger_id="owner",
+        )
+        assert task.initiated_by_device_id is None
         assert task.status == "completed"
         assert json.loads(task.result_summary_json or "{}")["outcome"] == "no_result"
 

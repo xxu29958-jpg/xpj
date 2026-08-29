@@ -13,13 +13,15 @@ class ExpenseDtoContractTest {
         .build()
 
     @Test
-    fun uploadResponseDtoParsesCurrentServerShape() {
+    fun uploadResponseDtoPreservesRequiredEnrichmentTaskReceipt() {
+        val adapter = moshi.adapter(UploadResponseDto::class.java)
         val dto = requireNotNull(
-            moshi.adapter(UploadResponseDto::class.java).fromJson(
+            adapter.fromJson(
                 """
                 {
                   "id": 1,
                   "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
+                  "enrichment_task_public_id": "019ad890-619f-72f0-8762-2f3ce1ad0b44",
                   "status": "pending",
                   "message": "uploaded",
                   "image_hash": "sha256",
@@ -41,6 +43,7 @@ class ExpenseDtoContractTest {
 
         assertEquals(1L, dto.id)
         assertEquals("018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d", dto.publicId)
+        assertEquals("019ad890-619f-72f0-8762-2f3ce1ad0b44", dto.enrichmentTaskPublicId)
         assertEquals(348120L, dto.uploadSizeBytes)
         assertEquals(86L, dto.durationMs)
         assertEquals(24L, dto.timingMs?.get("db_create_ms"))

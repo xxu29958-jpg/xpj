@@ -18,10 +18,10 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Device, Expense, LedgerMember, UploadLink
+from app.models import AuthToken, BackgroundTask, Device, Expense, LedgerMember, UploadLink
 from app.services.category_common import DEFAULT_CATEGORIES
 from app.services.expense_service._create import create_pending_expense
-from app.services.expense_service._enrich import enrich_pending_expense
+from app.services.expense_service._enrich import PendingEnrichmentResult, enrich_pending_expense
 from app.services.file_service import resolve_protected_image, save_upload_bytes
 from app.services.identity_service import authenticate_upload_link, hash_secret
 from app.services.time_service import ensure_utc, now_utc
@@ -137,12 +137,14 @@ def test_upload_screenshot_accepts_ios_file_body(client: TestClient, *, identity
     assert item["image_hash"]
 
 
-def test_upload_passes_client_timezone_to_background_ocr(
+@pytest.mark.real_db
+def test_upload_passes_client_timezone_and_occ_predecessor_to_durable_enrichment(
     client: TestClient,
     monkeypatch,
     *,
     identity,
 ) -> None:
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
     captured: dict[str, object] = {}
 
     def fake_enrich(
@@ -151,13 +153,22 @@ def test_upload_passes_client_timezone_to_background_ocr(
         timezone_name: str | None = None,
         *,
         expected_row_version: int | None = None,
-    ) -> None:
+        before_apply=None,
+        raise_on_failure: bool = False,
+    ) -> PendingEnrichmentResult:
         captured["expense_id"] = expense_id
         captured["tenant_id"] = tenant_id
         captured["timezone_name"] = timezone_name
         captured["expected_row_version"] = expected_row_version
+        captured["before_apply"] = before_apply
+        captured["raise_on_failure"] = raise_on_failure
+        return PendingEnrichmentResult(
+            expense_id=expense_id,
+            outcome="no_result",
+            row_version=expected_row_version,
+        )
 
-    monkeypatch.setattr("app.routes._upload_request.enrich_pending_expense", fake_enrich)
+    monkeypatch.setattr("app.services.pending_enrichment_task_service.enrich_pending_expense", fake_enrich)
 
     response = client.post(
         identity.upload_url_path,
@@ -174,6 +185,105 @@ def test_upload_passes_client_timezone_to_background_ocr(
     assert captured["tenant_id"] == "owner"
     assert captured["timezone_name"] == "America/Los_Angeles"
     assert captured["expected_row_version"] == 1
+    assert callable(captured["before_apply"])
+    assert captured["raise_on_failure"] is True
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize(
+    ("path", "headers", "source", "credential_kind"),
+    [
+        ("/api/app/upload-screenshot", "app", "Android截图", "app"),
+        ("upload-link", "upload", "iPhone截图", "upload"),
+    ],
+)
+def test_every_upload_consumer_returns_its_durable_enrichment_task(
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+    path: str,
+    headers: str,
+    source: str,
+    credential_kind: str,
+) -> None:
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
+    request_path = identity.upload_url_path if path == "upload-link" else path
+    request_headers = identity.upload_headers if headers == "upload" else identity.app_headers
+
+    response = client.post(
+        request_path,
+        headers={**request_headers, "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    task_public_id = body["enrichment_task_public_id"]
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == task_public_id))
+        expense = db.get(Expense, body["id"])
+        if credential_kind == "app":
+            credential = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.app_token)))
+        else:
+            credential = db.scalar(select(UploadLink).where(UploadLink.token_hash == hash_secret(identity.upload_key)))
+        assert task is not None
+        assert expense is not None
+        assert credential is not None
+        assert task.task_type == "expense_enrichment"
+        assert task.tenant_id == "owner"
+        assert task.initiated_by_account_id == credential.account_id
+        assert task.initiated_by_device_id == credential.device_id
+        assert task.status == "completed"
+        assert expense.source == source
+        assert expense.status == "pending"
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize(
+    ("path", "headers"),
+    [
+        ("/api/app/upload-screenshot", "app"),
+        ("upload-link", "upload"),
+    ],
+)
+def test_upload_submission_failure_returns_failed_task_receipt_without_losing_expense(
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+    path: str,
+    headers: str,
+) -> None:
+    from app.services import background_task_service
+
+    def fail_submit(*_args, **_kwargs):
+        raise RuntimeError("executor unavailable")
+
+    monkeypatch.setattr(background_task_service, "_submit_task", fail_submit)
+    request_path = identity.upload_url_path if path == "upload-link" else path
+    request_headers = identity.upload_headers if headers == "upload" else identity.app_headers
+
+    response = client.post(
+        request_path,
+        headers={**request_headers, "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    with SessionLocal() as db:
+        task = db.scalar(
+            select(BackgroundTask).where(
+                BackgroundTask.public_id == body["enrichment_task_public_id"],
+            )
+        )
+        expense = db.get(Expense, body["id"])
+        assert task is not None
+        assert task.status == "failed"
+        assert task.error_code == "task_submission_failed"
+        assert expense is not None
+        assert expense.status == "pending"
 
 
 def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient, *, identity) -> None:
@@ -461,9 +571,11 @@ def test_upload_rejects_fake_heic_brand_without_decodable_image(
 @pytest.mark.real_db
 def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(
     client: TestClient,
+    monkeypatch,
     *,
     identity,
 ) -> None:
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
     heic_bytes = make_heic_bytes()
 
     response = client.post(

@@ -205,4 +205,21 @@
     <string name="pending_duplicate_sheet_processing">处理中…</string>
     <string name="pending_duplicate_sheet_keep_both">保留两笔（不是重复）</string>
     <string name="pending_duplicate_sheet_ignore_current">删除当前草稿</string>
+
+    <!-- EnrichmentStatusBand：队列头的识别状态带（ambient，非第二队列） -->
+    <string name="pending_enrichment_active">正在识别 %1$d 张小票</string>
+    <string name="pending_enrichment_active_hint">完成后列表会自动更新</string>
+    <string name="pending_enrichment_active_more">还有 %1$d 张正在识别</string>
+    <string name="pending_enrichment_updated">识别结果已更新，请核对后确认。</string>
+    <string name="pending_enrichment_no_result">识别完成，但没有返回可用字段，需要手动补全。</string>
+    <string name="pending_enrichment_conflict">你后来保存的修改已保留，自动识别没有覆盖这张账单。</string>
+    <string name="pending_enrichment_failed">自动识别失败，账单仍保留在队列中；可在详情里重试识别。</string>
+    <string name="pending_enrichment_cancelled">自动识别已取消，账单仍在待确认队列。</string>
+    <string name="pending_enrichment_not_pending">账单已离开待确认队列，无需继续等待识别。</string>
+    <string name="pending_enrichment_unavailable">暂时取不到识别状态；账单已保留，不影响继续使用。</string>
+    <string name="pending_enrichment_action_review">立即核对</string>
+    <string name="pending_enrichment_action_complete">去补全</string>
+    <string name="pending_enrichment_action_view">查看账单</string>
+    <string name="pending_enrichment_action_open">打开账单</string>
+    <string name="pending_enrichment_action_retry_check">重试检查</string>
 </resources>

@@ -3,11 +3,10 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
 from time import perf_counter
 from typing import TYPE_CHECKING
 
-from fastapi import BackgroundTasks, Request
+from fastapi import Request
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -16,13 +15,14 @@ from starlette.formparsers import MultiPartException
 from app.config import get_settings
 from app.errors import AppError
 from app.schemas import UploadResponse
-from app.services.expense_service import create_pending_expense, enrich_pending_expense
+from app.services.expense_service import create_pending_expense
 from app.services.file_service import (
     SavedUpload,
     delete_relative_upload,
     save_upload,
     save_upload_bytes,
 )
+from app.services.pending_enrichment_task_service import enqueue_pending_expense_enrichment
 from app.upload_limits import multipart_request_limit_bytes
 
 if TYPE_CHECKING:
@@ -30,14 +30,6 @@ if TYPE_CHECKING:
 
 IOS_SHORTCUT_FILE_FIELDS = ("file", "image", "photo", "screenshot")
 logger = logging.getLogger("ticketbox.upload")
-
-
-@dataclass(frozen=True, slots=True)
-class HandledUpload:
-    """Internal upload result plus the committed enrichment predecessor."""
-
-    response: UploadResponse
-    predecessor_row_version: int
 
 
 async def read_raw_body_limited(
@@ -169,12 +161,14 @@ async def save_request_upload(
 def upload_response(
     expense: Expense,
     saved_file: SavedUpload,
+    enrichment_task_public_id: str,
     duration_ms: int,
     timing_ms: dict[str, int],
 ) -> UploadResponse:
     return UploadResponse(
         id=expense.id,
         public_id=expense.public_id,
+        enrichment_task_public_id=enrichment_task_public_id,
         status=expense.status,
         message="uploaded",
         image_hash=expense.image_hash or "",
@@ -190,16 +184,16 @@ def upload_response(
 async def handle_upload(
     *,
     request: Request,
-    background_tasks: BackgroundTasks,
     tenant_id: str,
     db: Session,
     source: str,
     endpoint: str,
+    initiator_account_id: int,
+    initiator_device_id: int | None,
     timezone_name: str | None = None,
     max_size_bytes: int | None = None,
     commit_guard: Callable[[], None] | None = None,
-    schedule_enrichment: bool = True,
-) -> HandledUpload:
+) -> UploadResponse:
     started_at = perf_counter()
     saved_file, timing_ms = await save_request_upload(
         request,
@@ -236,15 +230,19 @@ async def handle_upload(
         json.dumps(timing_ms, ensure_ascii=False, sort_keys=True),
         expense.duplicate_status,
     )
-    if schedule_enrichment:
-        background_tasks.add_task(
-            enrich_pending_expense,
-            expense.id,
-            tenant_id,
-            timezone_name,
-            expected_row_version=expense.row_version,
-        )
-    return HandledUpload(
-        response=upload_response(expense, saved_file, duration_ms, timing_ms),
-        predecessor_row_version=expense.row_version,
+    enrichment_task_public_id = enqueue_pending_expense_enrichment(
+        db,
+        expense_id=expense.id,
+        tenant_id=tenant_id,
+        timezone_name=timezone_name,
+        expected_row_version=expense.row_version,
+        initiator_account_id=initiator_account_id,
+        initiator_device_id=initiator_device_id,
+    )
+    return upload_response(
+        expense,
+        saved_file,
+        enrichment_task_public_id,
+        duration_ms,
+        timing_ms,
     )

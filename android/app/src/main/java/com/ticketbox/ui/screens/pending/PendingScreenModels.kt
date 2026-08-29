@@ -25,6 +25,7 @@ data class PendingScreenChromeActions(
     val onUploadScreenshot: () -> Unit,
     val onOpenRepaymentReview: () -> Unit,
     val onOpenDataQuality: () -> Unit,
+    val onRetryEnrichment: () -> Unit,
     val requestedFilter: NeedsReviewFilter? = null,
     val onRequestedFilterConsumed: () -> Unit = {},
 )

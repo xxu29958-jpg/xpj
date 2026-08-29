@@ -287,6 +287,7 @@ def _facts(expense_id: int):
 def _enable_mock_auto_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services.ocr_service import _apply as ocr_apply
 
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
     settings = replace(
         ocr_apply.get_settings(),
         ocr_auto_run=True,

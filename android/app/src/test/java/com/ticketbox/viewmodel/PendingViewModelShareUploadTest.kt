@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,7 +31,9 @@ internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase(
     fun multipleSharedImagesUploadSequentiallyInOrder() = review {
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
-        fake.uploadResponder = { Result.success(it.length.toLong()) }
+        fake.uploadResponder = {
+            Result.success(PendingUploadReceipt(it.length.toLong(), "task-$it"))
+        }
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
 
@@ -54,7 +57,11 @@ internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase(
         val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
         // First call fails (online-only error), the rest succeed.
         fake.uploadResponder = { name ->
-            if (name == "fail.jpg") Result.failure(IllegalStateException("boom")) else Result.success(1L)
+            if (name == "fail.jpg") {
+                Result.failure(IllegalStateException("boom"))
+            } else {
+                Result.success(PendingUploadReceipt(1L, "task-$name"))
+            }
         }
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
@@ -98,7 +105,7 @@ internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase(
     fun ledgerSwitchBetweenImagesDropsTheInFlightOne() = review {
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
-        fake.uploadResponder = { Result.success(1L) }
+        fake.uploadResponder = { Result.success(PendingUploadReceipt(1L, "task-upload")) }
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
 

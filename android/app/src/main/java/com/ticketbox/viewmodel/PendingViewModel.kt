@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.PendingThumbnailLoader
+import com.ticketbox.data.repository.PendingEnrichmentTaskReader
 import com.ticketbox.data.repository.PendingReviewActions
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.ScreenshotUploadRequest
@@ -63,6 +64,7 @@ data class PendingUiState(
     val hasLoadedOnce: Boolean = false,
     val loading: Boolean = false,
     val uploading: Boolean = false,
+    val enrichment: PendingEnrichmentUiState = PendingEnrichmentUiState(),
     val message: UiText? = null,
     val activeSheet: PendingSheet = PendingSheet.None,
     val categoryOptions: List<String> = emptyList(),
@@ -134,6 +136,7 @@ private data class PendingStateTransitionResultHandler(
 class PendingViewModel(
     internal val repository: PendingReviewActions,
     private val thumbnailLoader: PendingThumbnailLoader = PendingThumbnailLoader(repository),
+    private val enrichmentTaskReader: PendingEnrichmentTaskReader? = null,
     internal val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
     /** Fired ONLY when a pending action lands in confirmed expenses (the
@@ -164,6 +167,7 @@ class PendingViewModel(
     // NavHost pop), which would let the banner outlive the server's 5-min
     // retention window.
     private var undoTimerJob: Job? = null
+    private var enrichmentObserver: PendingEnrichmentObserver? = null
 
     // 连续审阅（批量过堆积待确认票）本轮已「跳过」的票 id。快补 sheet 的
     // 保存并下一笔 / 跳过都朝列表后方推进，跳过的票留在 pending 列表里、不出队、
@@ -188,6 +192,7 @@ class PendingViewModel(
                 .collect {
                     requestGeneration += 1
                     uploadLedgerIdAtStart = null
+                    enrichmentObserver?.clear()
                     reviewSkippedIds.clear()
                     // A3: 新账本要重新种一次首屏缓存。
                     pendingCacheSeeded = false
@@ -212,6 +217,7 @@ class PendingViewModel(
             return false
         }
         uploadLedgerIdAtStart = null
+        enrichmentObserver?.clear()
         // Demoted to viewer mid-banner: the snackbar is now a dead affordance
         // (the user can't 撤销 anything regardless of server retention), and
         // leaving it visible loops the read-only toast on every tap. Tear it
@@ -364,15 +370,16 @@ class PendingViewModel(
                 expectedLedgerId = expectedLedgerId,
             ),
         )
-            .onSuccess {
+            .onSuccess { receipt ->
                 if (uploadGenerationAtStart != requestGeneration) return@onSuccess
                 uploadLedgerIdAtStart = null
                 succeeded = true
                 _uiState.update { state ->
-                    state.copy(uploading = false, message = UiText.res(R.string.pending_msg_upload_succeeded))
+                    state.copy(uploading = false, message = null)
                 }
                 onDataChanged()
                 refresh()
+                enrichmentObserver()?.track(receipt)
             }
             .onFailure { error ->
                 if (uploadGenerationAtStart != requestGeneration) return@onFailure
@@ -385,6 +392,23 @@ class PendingViewModel(
                 }
             }
         return succeeded
+    }
+
+    fun retryEnrichmentObservation() {
+        enrichmentObserver?.retryPaused()
+    }
+
+    private fun enrichmentObserver(): PendingEnrichmentObserver? {
+        val taskReader = enrichmentTaskReader ?: return null
+        return enrichmentObserver ?: PendingEnrichmentObserver(
+            scope = viewModelScope,
+            fetchTask = taskReader::fetchPendingEnrichmentTask,
+            canObserve = { !isReadOnly() },
+            onStateChanged = { enrichment ->
+                _uiState.update { it.copy(enrichment = enrichment) }
+            },
+            onTerminal = ::refresh,
+        ).also { enrichmentObserver = it }
     }
 
     private suspend fun loadThumbnails(expenses: List<Expense>, generation: Int) {
