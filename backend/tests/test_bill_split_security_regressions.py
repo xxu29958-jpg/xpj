@@ -13,6 +13,7 @@ from app.models import (
     BillSplitInvitation,
     Device,
     Expense,
+    ExpenseRevision,
     Ledger,
     LedgerAuditLog,
     LedgerMember,
@@ -119,6 +120,57 @@ def test_accept_route_allows_current_viewer_when_target_ledger_is_writer(
 
     assert accept_resp.status_code == 200, accept_resp.json()
     assert accept_resp.json()["status"] == "accepted"
+
+
+def test_accept_route_attributes_confirmation_revision_to_authenticated_device(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense_id = _make_expense_for_owner()
+    receiver_account_id = _seed_receiver(
+        name="B-route-device",
+        ledger_id="receiver_route_device",
+    )
+    created = client.post(
+        f"/api/expenses/{expense_id}/split-invite",
+        headers=identity.app_headers,
+        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+    )
+    assert created.status_code == 200, created.json()
+    public_id = created.json()["public_id"]
+    receiver_headers = _bearer_for_account_ledger(
+        receiver_account_id,
+        "receiver_route_device",
+    )
+    with SessionLocal() as db:
+        authenticated_device_id = db.scalar(
+            select(Device.id)
+            .where(Device.account_id == receiver_account_id)
+            .where(Device.device_name == "pytest-bill-split")
+        )
+        assert authenticated_device_id is not None
+
+    accepted = client.post(
+        f"/api/bill-splits/{public_id}/accept",
+        headers=receiver_headers,
+        json={"target_ledger_id": "receiver_route_device"},
+    )
+    assert accepted.status_code == 200, accepted.json()
+
+    with SessionLocal() as db:
+        invitation = db.scalar(
+            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
+        )
+        assert invitation is not None and invitation.received_expense_id is not None
+        revision = db.scalar(
+            select(ExpenseRevision).where(
+                ExpenseRevision.expense_id == invitation.received_expense_id
+            )
+        )
+        assert revision is not None
+        assert revision.actor_account_id == receiver_account_id
+        assert revision.actor_device_id == authenticated_device_id
 
 
 def test_reject_route_allows_current_viewer_ledger(

@@ -96,6 +96,7 @@ def accept_split_invitation(
         public_id=public_id,
         accepting_account_id=auth.account_id,
         target_ledger_id=payload.target_ledger_id,
+        accepting_device_id=auth.device_id,
     )
     return BillSplitInboxResponse.model_validate(bsplit.to_inbox_response_dict(inv))
 

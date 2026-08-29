@@ -66,11 +66,16 @@ def _fmt_local(value) -> str:
 # Account resolver
 
 
-def _resolve_request_account_id(db: Session, request: Request, *, selected_ledger_id: str) -> int:
-    """Pick the account the current /web request acts as."""
+def _resolve_request_actor(
+    db: Session,
+    request: Request,
+    *,
+    selected_ledger_id: str,
+) -> tuple[int, int | None]:
+    """Pick the attributable account and device for the current /web request."""
     session_auth = getattr(request.state, "web_session_auth", None)
     if session_auth is not None:
-        return session_auth.account_id
+        return session_auth.account_id, session_auth.device_id
     # Loopback owner console: use the owner of the selected ledger.
     account_id = find_owner_account_id_for_ledger(db, ledger_id=selected_ledger_id)
     if account_id is None:
@@ -79,6 +84,16 @@ def _resolve_request_account_id(db: Session, request: Request, *, selected_ledge
             "未找到 owner 账号；请检查 LedgerMember 配置。",
             status_code=400,
         )
+    return account_id, None
+
+
+def _resolve_request_account_id(db: Session, request: Request, *, selected_ledger_id: str) -> int:
+    """Pick the account the current /web request acts as."""
+    account_id, _device_id = _resolve_request_actor(
+        db,
+        request,
+        selected_ledger_id=selected_ledger_id,
+    )
     return account_id
 
 
@@ -344,7 +359,7 @@ def web_split_accept(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
+    account_id, device_id = _resolve_request_actor(db, request, selected_ledger_id=selected_id)
     # TOCTOU is routine here (sender cancels / a peer accepts while the inbox
     # page is open) — flash the conflict instead of a bare-JSON page.
     try:
@@ -353,6 +368,7 @@ def web_split_accept(
             public_id=public_id,
             accepting_account_id=account_id,
             target_ledger_id=target_ledger_id,
+            accepting_device_id=device_id,
         )
         msg = "已接受拆账邀请。"
     except AppError as exc:

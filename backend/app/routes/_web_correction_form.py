@@ -33,7 +33,12 @@ from app.routes._web_expense_rows import (
     submitted_item_form_rows,
     submitted_split_form_rows,
 )
-from app.schemas import ExpenseCorrectionRequest, ExpenseItemRequest, ExpenseSplitRequest
+from app.schemas import (
+    ExpenseCorrectionRequest,
+    ExpenseItemRequest,
+    ExpenseItemResponse,
+    ExpenseSplitRequest,
+)
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.expense_split_service import list_expense_splits
 from app.services.receipt_item_service import list_expense_items
@@ -154,7 +159,7 @@ def correction_form_data(
     )
 
 
-def _normalized_items(items: list[ExpenseItemRequest]) -> list[tuple]:
+def _normalized_items(items: list[ExpenseItemRequest] | list[ExpenseItemResponse]) -> list[tuple]:
     return [
         (
             item.kind,
@@ -168,18 +173,39 @@ def _normalized_items(items: list[ExpenseItemRequest]) -> list[tuple]:
     ]
 
 
-def _current_items_normalized(db: Session, expense_id: int, ledger_id: str) -> list[tuple]:
+def _submitted_item_indexes(form: CorrectionFormData) -> list[int]:
+    fields = (
+        form.item_name,
+        form.item_quantity,
+        form.item_unit_price_yuan,
+        form.item_amount_yuan,
+        form.item_category,
+    )
+    size = max(*(len(values) for values in fields), 0)
     return [
-        (
-            item.kind,
-            (item.name or "").strip(),
-            (item.quantity_text or "").strip() or None,
-            item.unit_price_cents,
-            item.amount_cents,
-            (item.category or "").strip() or None,
-        )
-        for item in list_expense_items(db, expense_id, ledger_id).items
+        index
+        for index in range(size)
+        if any(index < len(values) and values[index].strip() for values in fields)
     ]
+
+
+def _preserve_item_provenance(
+    candidate: list[ExpenseItemRequest],
+    current: list[ExpenseItemResponse],
+    form: CorrectionFormData,
+) -> list[ExpenseItemRequest]:
+    preserved: list[ExpenseItemRequest] = []
+    for item, source_index in zip(candidate, _submitted_item_indexes(form), strict=True):
+        if source_index >= len(current):
+            preserved.append(item)
+            continue
+        source = current[source_index]
+        preserved.append(
+            item.model_copy(
+                update={"raw_text": source.raw_text, "confidence": source.confidence}
+            )
+        )
+    return preserved
 
 
 def _normalized_splits(splits: list[ExpenseSplitRequest]) -> list[tuple]:
@@ -336,8 +362,9 @@ def _item_changes(
         outcome.error = exc.message
         outcome.error_status = web_form_error_status(exc)
         return None
-    current = _current_items_normalized(db, expense.id, selected_id)
-    return candidate, _normalized_items(candidate) != current
+    current = list_expense_items(db, expense.id, selected_id).items
+    candidate = _preserve_item_provenance(candidate, current, form)
+    return candidate, _normalized_items(candidate) != _normalized_items(current)
 
 
 def _split_changes(

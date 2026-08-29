@@ -32,6 +32,7 @@ def accept_invitation(
     public_id: str,
     accepting_account_id: int,
     target_ledger_id: str,
+    accepting_device_id: int | None = None,
 ) -> tuple[BillSplitInvitation, Expense]:
     """Receiver accepts and binds a received Expense in their chosen ledger.
 
@@ -89,7 +90,7 @@ def accept_invitation(
         db,
         received,
         actor_account_id=accepting_account_id,
-        actor_device_id=None,
+        actor_device_id=accepting_device_id,
     )
 
     _audit(

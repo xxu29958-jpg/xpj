@@ -6,6 +6,7 @@ import com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateResponseDto
 import com.ticketbox.domain.model.BatchApplyResult
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -127,7 +128,7 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
     }
 
     @Test
-    fun `same batch intent reuses one deterministic command key`() = runTest {
+    fun `separate batch submissions use distinct user intent keys`() = runTest {
         val events = mutableListOf<String>()
         val delegate = FakeApiService(events = events, confirmedFailuresRemaining = 0)
         val api = BatchApiService(
@@ -148,7 +149,8 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
         }
 
         assertEquals(2, api.idempotencyKeys.size)
-        assertEquals(1, api.idempotencyKeys.distinct().size)
+        assertEquals(2, api.idempotencyKeys.distinct().size)
+        api.idempotencyKeys.forEach { UUID.fromString(it) }
     }
 
     private class BatchApiService(
