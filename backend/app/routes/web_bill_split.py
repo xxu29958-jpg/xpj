@@ -26,6 +26,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
+from app.routes._web_session_common import (
+    resolve_web_actor,
+    resolve_web_actor_account_id,
+)
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -42,11 +46,7 @@ from app.services.currency_common import (
     minor_amount_value,
 )
 from app.services.invitation_members import list_members
-from app.services.ledger_service import (
-    find_owner_account_id_for_ledger,
-    list_ledgers_for_account,
-    list_writer_ledger_ids_for_account,
-)
+from app.services.ledger_service import list_ledgers_for_account, list_writer_ledger_ids_for_account
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
 
@@ -60,41 +60,6 @@ def _fmt_local(value) -> str:
     if value is None:
         return ""
     return ensure_utc(value).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
-
-
-# -------------------------------------------------------------------------
-# Account resolver
-
-
-def _resolve_request_actor(
-    db: Session,
-    request: Request,
-    *,
-    selected_ledger_id: str,
-) -> tuple[int, int | None]:
-    """Pick the attributable account and device for the current /web request."""
-    session_auth = getattr(request.state, "web_session_auth", None)
-    if session_auth is not None:
-        return session_auth.account_id, session_auth.device_id
-    # Loopback owner console: use the owner of the selected ledger.
-    account_id = find_owner_account_id_for_ledger(db, ledger_id=selected_ledger_id)
-    if account_id is None:
-        raise AppError(
-            "bill_split_owner_account_missing",
-            "未找到 owner 账号；请检查 LedgerMember 配置。",
-            status_code=400,
-        )
-    return account_id, None
-
-
-def _resolve_request_account_id(db: Session, request: Request, *, selected_ledger_id: str) -> int:
-    """Pick the account the current /web request acts as."""
-    account_id, _device_id = _resolve_request_actor(
-        db,
-        request,
-        selected_ledger_id=selected_ledger_id,
-    )
-    return account_id
 
 
 # -------------------------------------------------------------------------
@@ -157,7 +122,7 @@ def build_split_invite_context(
     # exists for the selected ledger; degrade to no-card rather than 500 the
     # whole edit page.
     try:
-        sender_account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_ledger_id)
+        sender_account_id = resolve_web_actor_account_id(db, request, selected_ledger_id)
     except AppError:
         return None
 
@@ -211,7 +176,7 @@ def web_bill_split_inbox(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
+    account_id = resolve_web_actor_account_id(db, request, selected_id)
 
     invitations = bsplit.list_inbox(db, receiver_account_id=account_id, status="invited")
 
@@ -271,7 +236,7 @@ def web_bill_split_sent(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
+    account_id = resolve_web_actor_account_id(db, request, selected_id)
 
     invitations = bsplit.list_sent(db, sender_account_id=account_id, sender_ledger_id=selected_id)
     rows = [
@@ -319,7 +284,7 @@ def web_split_invite(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    sender_account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
+    sender_account_id = resolve_web_actor_account_id(db, request, selected_id)
 
     # Form failures (bad amount / cap exceeded / duplicate pending invite …)
     # flash back onto the page instead of escaping to the global AppError
@@ -359,7 +324,7 @@ def web_split_accept(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    account_id, device_id = _resolve_request_actor(db, request, selected_ledger_id=selected_id)
+    account_id, device_id = resolve_web_actor(db, request, selected_id)
     # TOCTOU is routine here (sender cancels / a peer accepts while the inbox
     # page is open) — flash the conflict instead of a bare-JSON page.
     try:
@@ -389,7 +354,7 @@ def web_split_reject(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
+    account_id = resolve_web_actor_account_id(db, request, selected_id)
     try:
         bsplit.reject_invitation(db, public_id=public_id, rejecting_account_id=account_id)
         msg = "已拒绝拆账邀请。"
@@ -413,7 +378,7 @@ def web_split_cancel(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
+    account_id = resolve_web_actor_account_id(db, request, selected_id)
     try:
         bsplit.cancel_invitation(db, public_id=public_id, sender_account_id=account_id)
         msg = "已撤回拆账邀请。"

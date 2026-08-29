@@ -284,6 +284,7 @@ def _web_item_rows(
     response = list_expense_items(db, expense_id, ledger_id)
     rows = [
         {
+            "public_id": item.public_id,
             "kind": item.kind,
             "name": item.name,
             "quantity_text": item.quantity_text or "",
@@ -304,6 +305,7 @@ def _web_item_rows(
     ]
     rows.extend(
         {
+            "public_id": "",
             "kind": "product",
             "name": "",
             "quantity_text": "",

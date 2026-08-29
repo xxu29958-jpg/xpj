@@ -108,7 +108,7 @@ def _correction_error_response(
         form_values=form_values if form_values is not None else parsed.form_values,
         field_errors=field_errors,
         conflict=conflict,
-        receipt_item_rows=parsed.item_form_rows,
+        receipt_item_rows=None if parsed.item_sources_stale else parsed.item_form_rows,
         split_form_rows=parsed.split_form_rows,
     )
 
@@ -150,6 +150,9 @@ def _submission_error_response(
         values = parsed.form_values
         if claimed.error.rotate_idempotency_key:
             values = {**values, "idempotency_key": ""}
+        message = claimed.error.error or "提交参数不正确，请检查后重试。"
+        if claimed.error.conflict and parsed.item_sources_stale:
+            message = f"{message} {parsed.error}"
         return _correction_error_response(
             db,
             request,
@@ -157,7 +160,7 @@ def _submission_error_response(
             selected_id,
             expense_id,
             parsed,
-            message=claimed.error.error or "提交参数不正确，请检查后重试。",
+            message=message,
             status_code=claimed.error.error_status,
             conflict=claimed.error.conflict,
             form_values=values,

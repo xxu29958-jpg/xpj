@@ -50,7 +50,7 @@ https://api.我的域名.com
   - `PATCH /api/expenses/{id}`、`POST /api/expenses/{id}/confirm`、`POST /api/expenses/{id}/reject`、`POST /api/expenses/{id}/mark-not-duplicate`、`POST /api/expenses/{id}/ocr/retry`、`POST /api/expenses/{id}/recognize-text`、`POST /api/expenses/{id}/items/acknowledge-mismatch`、`PUT /api/expenses/{id}/items`、`PUT /api/expenses/{id}/splits`
   - `PATCH /api/rules/categories/{id}`、`DELETE /api/rules/categories/{id}`、`PATCH /api/merchants/aliases/{public_id}`、`DELETE /api/merchants/aliases/{public_id}`、`PATCH /api/merchants/catalog/{public_id}`、`DELETE /api/merchants/catalog/{public_id}`
   - 缺头 → `422 idempotency_key_required`；同 key 并发在途 → `409 idempotency_key_in_progress`；同 key 用于内容不同的请求（fingerprint 不符）→ `422 idempotency_key_reused`。
-  - 注：OpenAPI snapshot 把这些路由的 `Idempotency-Key` header 标记为 `required: true`（契约要求），但 handler 仍声明为可选 header，以便缺失时返回上述结构化 `{error, message}` 而非 FastAPI 默认校验错误体；不属于 outbox 重放面的写路由（如 `POST /api/expenses/confirmed/batch-update` 原子批处理）不带该头。
+  - 注：OpenAPI snapshot 把这些路由的 `Idempotency-Key` header 标记为 `required: true`（契约要求），但 handler 仍声明为可选 header，以便缺失时返回上述结构化 `{error, message}` 而非 FastAPI 默认校验错误体。`POST /api/expenses/confirmed/batch-update` 是 online-only 原子批处理，不进入 Android Outbox，但每次用户提交仍必须携带 intent-unique UUID；同一网络重试复用该 key，后续相同内容的新意图使用新 key。
 
 错误：
 

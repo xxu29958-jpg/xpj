@@ -45,6 +45,7 @@ from app.services.receipt_item_service import list_expense_items
 
 REASON_REQUIRED_MSG = "请说明这次更正的原因。"
 NO_CHANGES_MSG = "没有检测到需要保存的更正。"
+ITEM_SOURCES_STALE_MSG = "明细已在其它端变化，已载入最新明细；请重新调整后提交。"
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class CorrectionFormData:
     value_score_present: bool
     regret_score: str | None
     regret_score_present: bool
+    item_public_id: list[str]
     item_name: list[str]
     item_kind: list[str]
     item_quantity: list[str]
@@ -88,6 +90,7 @@ class CorrectionParseOutcome:
     error: str | None = None
     error_status: int = 422
     field_errors: dict[str, str] = field(default_factory=dict)
+    item_sources_stale: bool = False
 
 
 def web_correction_idempotency_body(form: CorrectionFormData) -> dict[str, object]:
@@ -116,6 +119,7 @@ def correction_form_data(
     tags: str = Form(default=""),
     value_score: str | None = Form(default=None),
     regret_score: str | None = Form(default=None),
+    item_public_id: list[str] = Form(default=[]),
     item_name: list[str] = Form(default=[]),
     item_kind: list[str] = Form(default=[]),
     item_quantity: list[str] = Form(default=[]),
@@ -145,6 +149,7 @@ def correction_form_data(
         value_score_present="value_score" in submitted_fields,
         regret_score=regret_score,
         regret_score_present="regret_score" in submitted_fields,
+        item_public_id=item_public_id,
         item_name=item_name,
         item_kind=item_kind,
         item_quantity=item_quantity,
@@ -189,17 +194,37 @@ def _submitted_item_indexes(form: CorrectionFormData) -> list[int]:
     ]
 
 
+def _submitted_item_source_ids(form: CorrectionFormData) -> list[str]:
+    return [
+        form.item_public_id[index].strip() if index < len(form.item_public_id) else ""
+        for index in _submitted_item_indexes(form)
+    ]
+
+
+def _item_sources_match_current(
+    form: CorrectionFormData,
+    current: list[ExpenseItemResponse],
+) -> bool:
+    submitted = [public_id.strip() for public_id in form.item_public_id if public_id.strip()]
+    if len(submitted) != len(set(submitted)):
+        return False
+    return set(submitted) == {item.public_id for item in current}
+
+
 def _preserve_item_provenance(
     candidate: list[ExpenseItemRequest],
     current: list[ExpenseItemResponse],
     form: CorrectionFormData,
 ) -> list[ExpenseItemRequest]:
+    current_by_public_id = {item.public_id: item for item in current}
     preserved: list[ExpenseItemRequest] = []
-    for item, source_index in zip(candidate, _submitted_item_indexes(form), strict=True):
-        if source_index >= len(current):
+    used_sources: set[str] = set()
+    for item, source_public_id in zip(candidate, _submitted_item_source_ids(form), strict=True):
+        source = current_by_public_id.get(source_public_id)
+        if source is None or source_public_id in used_sources:
             preserved.append(item)
             continue
-        source = current[source_index]
+        used_sources.add(source_public_id)
         preserved.append(
             item.model_copy(
                 update={"raw_text": source.raw_text, "confidence": source.confidence}
@@ -260,7 +285,7 @@ def _score_change(
 
 
 def _correction_outcome(form: CorrectionFormData) -> CorrectionParseOutcome:
-    return CorrectionParseOutcome(
+    outcome = CorrectionParseOutcome(
         form_values=_form_values_from(form),
         item_form_rows=submitted_item_form_rows(
             item_name=form.item_name,
@@ -276,6 +301,9 @@ def _correction_outcome(form: CorrectionFormData) -> CorrectionParseOutcome:
             split_note=form.split_note,
         ),
     )
+    for index, row in enumerate(outcome.item_form_rows):
+        row["public_id"] = form.item_public_id[index] if index < len(form.item_public_id) else ""
+    return outcome
 
 
 def _reason_or_error(form: CorrectionFormData, outcome: CorrectionParseOutcome) -> str | None:
@@ -346,6 +374,12 @@ def _item_changes(
     currency: str,
     outcome: CorrectionParseOutcome,
 ) -> tuple[list[ExpenseItemRequest], bool] | None:
+    current = list_expense_items(db, expense.id, selected_id).items
+    if not _item_sources_match_current(form, current):
+        outcome.error = ITEM_SOURCES_STALE_MSG
+        outcome.error_status = 409
+        outcome.item_sources_stale = True
+        return None
     try:
         candidate = item_replace_payload(
             currency_code=currency,
@@ -362,7 +396,6 @@ def _item_changes(
         outcome.error = exc.message
         outcome.error_status = web_form_error_status(exc)
         return None
-    current = list_expense_items(db, expense.id, selected_id).items
     candidate = _preserve_item_provenance(candidate, current, form)
     return candidate, _normalized_items(candidate) != _normalized_items(current)
 
