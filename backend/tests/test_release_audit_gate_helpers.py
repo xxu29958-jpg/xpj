@@ -134,13 +134,14 @@ def test_pr_delta_accepts_a3_exact_down_ratchet_exception(monkeypatch) -> None:
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-        {"mutate_token_exempted": 128}
+        {"mutate_token_exempted": 128},
+        base_commit="0a0d2be96e5786ffcaa65588f960dea291098abd",
     )
 
     assert violations == []
 
 
-def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
+def test_pr_delta_a3_exception_does_not_allow_other_transitions(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
 
     # Non-grandfathered transitions still fail: the 128 -> 130 exception is exact,
@@ -159,6 +160,7 @@ def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -
         (127, 128),
         (127, 130),
         (128, 129),
+        (128, 131),
         (129, 130),
         (129, 131),
         (130, 131),
@@ -167,12 +169,29 @@ def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -
         baseline["mutate_token_exempted"] = current_count
         monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
         _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
-            {"mutate_token_exempted": base_count}
+            {"mutate_token_exempted": base_count},
+            base_commit="0a0d2be96e5786ffcaa65588f960dea291098abd",
         )
 
         assert len(violations) == 1
         assert str(base_count) in violations[0]
         assert str(current_count) in violations[0]
+
+
+def test_pr_delta_a3_exception_requires_exact_base_commit(monkeypatch) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    baseline = dict(mod.STRICT_EQUALITY_BASELINE)
+    baseline["mutate_token_exempted"] = 130
+    monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
+
+    for base_commit in (None, "ffffffffffffffffffffffffffffffffffffffff"):
+        _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
+            {"mutate_token_exempted": 128},
+            base_commit=base_commit,
+        )
+
+        assert len(violations) == 1
+        assert "base=128, current=130" in violations[0]
 
 
 def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
