@@ -157,7 +157,6 @@ def _db_isolation(request: pytest.FixtureRequest):
 @pytest.fixture(autouse=True)
 def _background_tasks_respect_db_isolation(
     request: pytest.FixtureRequest,
-    monkeypatch: pytest.MonkeyPatch,
 ):
     """Keep executor threads off the single-connection rollback lane.
 
@@ -176,6 +175,7 @@ def _background_tasks_respect_db_isolation(
 
     from app.services import background_task_service
 
+    monkeypatch = request.getfixturevalue("monkeypatch")
     submit = background_task_service._submit_task
 
     def submit_on_calling_thread_only(*args, **kwargs):
