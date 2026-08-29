@@ -83,6 +83,26 @@ def _replace_split_in_peer_transaction(expense_id: int, member_id: int) -> None:
         )
 
 
+def _change_scalar_in_peer_transaction(expense_id: int) -> None:
+    with SessionLocal() as db:
+        current = get_expense(db, expense_id, "owner")
+        actor_account_id = db.scalar(select(Account.id).order_by(Account.id.asc()).limit(1))
+        assert actor_account_id is not None
+        correct_expense(
+            db,
+            expense_id=expense_id,
+            tenant_id="owner",
+            payload=ExpenseCorrectionRequest(
+                expected_row_version=current.row_version,
+                reason="parse 后的并发标量更正",
+                note="parse 后的最新备注",
+            ),
+            actor_account_id=actor_account_id,
+            actor_device_id=None,
+            idempotency_key="peer-scalar-between-parse-and-cas",
+        )
+
+
 def test_web_correction_rejects_stale_split_rows_before_scalar_retry(
     web_client: TestClient,
     *,
@@ -195,3 +215,41 @@ def test_command_conflict_renders_split_replaced_after_parse(
     assert f'value="{current_split["public_id"]}"' in conflict.text
     assert f'value="{old_split["public_id"]}"' not in conflict.text
     assert "parse 后的最新拆账" in conflict.text
+
+
+@pytest.mark.real_db
+def test_command_conflict_preserves_split_intent_when_identity_is_unchanged(
+    web_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identity,
+) -> None:
+    expense_id, seeded, split = _create_expense_with_split(web_client, identity)
+    original_execute = correction_route.execute_correction
+
+    def execute_after_peer_change(db, **kwargs):
+        _change_scalar_in_peer_transaction(expense_id)
+        return original_execute(db, **kwargs)
+
+    monkeypatch.setattr(correction_route, "execute_correction", execute_after_peer_change)
+    conflict = web_client.post(
+        f"/web/expenses/{expense_id}/corrections",
+        data={
+            "ledger_id": "owner",
+            "reason": "保留我的拆账输入",
+            "merchant": "我的商家更正",
+            "expected_row_version": str(seeded["expense"]["row_version"]),
+            "idempotency_key": "web-late-scalar-race",
+            "split_public_id": split["public_id"],
+            "split_member_id": str(split["member_id"]),
+            "split_amount_yuan": "8.88",
+            "split_note": "用户未提交的拆账",
+        },
+        follow_redirects=False,
+    )
+    assert conflict.status_code == 409, conflict.text
+    assert f'value="{split["public_id"]}"' in conflict.text
+    assert 'name="split_amount_yuan" value="8.88"' in conflict.text
+    assert 'name="split_note" value="用户未提交的拆账"' in conflict.text
+    assert "parse 后的最新备注" in conflict.text
+    assert "拆账已在其它端变化" not in conflict.text
