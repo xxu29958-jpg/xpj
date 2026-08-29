@@ -30,8 +30,18 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppSpacing
 
+/** Optional, quiet action that belongs to the message immediately beside it. */
+internal data class PendingMessageCardAction(
+    val label: String,
+    val enabled: Boolean,
+    val onClick: () -> Unit,
+)
+
 @Composable
-internal fun PendingMessageCard(message: String) {
+internal fun PendingMessageCard(
+    message: String,
+    action: PendingMessageCardAction? = null,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -51,6 +61,13 @@ internal fun PendingMessageCard(message: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )
+        action?.let {
+            AppSecondaryButton(
+                text = it.label,
+                enabled = it.enabled,
+                onClick = it.onClick,
+            )
+        }
     }
 }
 

@@ -7,8 +7,10 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.models import BackgroundTask
 from app.services import background_task_service
+from app.services.background_task_admission import BackgroundTaskCapacityFullError
 from app.services.background_task_handler_api import (
     TaskCancelledError,
     check_cancellation_requested,
@@ -29,7 +31,7 @@ class PendingEnrichmentTaskError(Exception):
     """The enrichment owner returned an impossible task outcome."""
 
 
-def enqueue_pending_expense_enrichment(
+def prepare_pending_expense_enrichment(
     db: Session,
     *,
     expense_id: int,
@@ -38,32 +40,54 @@ def enqueue_pending_expense_enrichment(
     expected_row_version: int,
     initiator_account_id: int,
     initiator_device_id: int | None,
-) -> str:
-    """Persist one upload enrichment task and always return its public receipt.
+) -> background_task_service.PreparedBackgroundTask:
+    """Stage the upload's task in the caller-owned expense transaction."""
 
-    Executor submission happens after the task row commits.  When submission
-    fails, ``background_task_service`` marks that same row failed; surfacing its
-    public id lets every upload consumer show the durable failure without
-    turning an already-saved receipt into a retryable HTTP error.
-    """
     try:
-        task = background_task_service.enqueue(
+        return background_task_service.prepare_enqueue(
             db,
             task_type=PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
             initiator_account_id=initiator_account_id,
             initiator_device_id=initiator_device_id,
             ledger_id=tenant_id,
-            payload={
-                "expense_id": expense_id,
-                "tenant_id": tenant_id,
-                "timezone_name": timezone_name,
-                "expected_row_version": expected_row_version,
-            },
+            payload=_enrichment_payload(
+                expense_id=expense_id,
+                tenant_id=tenant_id,
+                timezone_name=timezone_name,
+                expected_row_version=expected_row_version,
+            ),
             progress_total=1,
         )
-        return task.public_id
+    except BackgroundTaskCapacityFullError as exc:
+        raise AppError("enrichment_capacity_full", status_code=503) from exc
+
+
+def submit_pending_expense_enrichment(
+    db: Session,
+    prepared: background_task_service.PreparedBackgroundTask,
+) -> str:
+    """Submit a committed upload task and always return its durable receipt."""
+
+    try:
+        background_task_service.submit_committed(db, prepared)
+        return prepared.task_public_id
     except background_task_service.BackgroundTaskSubmissionError as exc:
         return exc.task_public_id
+
+
+def _enrichment_payload(
+    *,
+    expense_id: int,
+    tenant_id: str,
+    timezone_name: str | None,
+    expected_row_version: int,
+) -> dict[str, object]:
+    return {
+        "expense_id": expense_id,
+        "tenant_id": tenant_id,
+        "timezone_name": timezone_name,
+        "expected_row_version": expected_row_version,
+    }
 
 
 def _task_payload(
@@ -133,6 +157,7 @@ def run_pending_expense_enrichment_task(
 
 __all__ = [
     "PENDING_EXPENSE_ENRICHMENT_TASK_TYPE",
-    "enqueue_pending_expense_enrichment",
+    "prepare_pending_expense_enrichment",
     "run_pending_expense_enrichment_task",
+    "submit_pending_expense_enrichment",
 ]

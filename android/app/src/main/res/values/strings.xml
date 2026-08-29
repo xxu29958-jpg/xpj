@@ -125,6 +125,7 @@
     <string name="error_recurring_item_archived">固定支出已归档，不能继续修改。</string>
     <string name="error_notification_source_invalid">通知来源暂不支持。</string>
     <string name="error_server_error">暂时处理不了，请稍后再试。</string>
+    <string name="error_enrichment_capacity_full">识别队列暂时已满，这张小票还没有保存，请稍后再试。</string>
     <string name="error_invalid_request">请求参数不正确。</string>
     <string name="error_idempotency_key_required">操作未能完成，请重试。</string>
     <string name="error_idempotency_key_in_progress">操作正在处理，请稍后再试。</string>

@@ -6,7 +6,8 @@ import pytest
 
 from app.database import SessionLocal
 from app.models import BackgroundTask
-from app.services import background_task_service as bgtasks
+from app.services import background_task_worker
+from app.services.background_task_registry import TaskHandlerRegistry
 
 pytestmark = pytest.mark.real_db
 
@@ -19,7 +20,7 @@ def test_claim_queued_task_is_db_atomic(*, identity) -> None:
         task_id = task.id
 
     with SessionLocal() as db:
-        claimed = bgtasks._claim_queued_task(db, task_id)
+        claimed = background_task_worker.claim_queued_task(db, task_id)
 
     assert claimed is not None
     assert claimed.status == "running"
@@ -27,7 +28,7 @@ def test_claim_queued_task_is_db_atomic(*, identity) -> None:
     assert claimed.last_progress_at is not None
 
     with SessionLocal() as db:
-        duplicate_claim = bgtasks._claim_queued_task(db, task_id)
+        duplicate_claim = background_task_worker.claim_queued_task(db, task_id)
 
     assert duplicate_claim is None
     with SessionLocal() as db:
@@ -48,8 +49,8 @@ def test_run_task_does_not_execute_already_claimed_row(*, identity) -> None:
         db.commit()
         task_id = task.id
 
-    registry = bgtasks.TaskHandlerRegistry({"test_already_claimed": handler})
-    bgtasks._run_task(task_id, {}, registry)
+    registry = TaskHandlerRegistry({"test_already_claimed": handler})
+    background_task_worker.run_task(task_id, {}, registry)
 
     assert ran is False
     with SessionLocal() as db:

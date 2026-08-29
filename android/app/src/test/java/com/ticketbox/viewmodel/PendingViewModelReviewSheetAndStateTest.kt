@@ -12,6 +12,8 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -37,7 +39,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.readOnly)
-        assertFalse(vm.markUploadPreparing())
+        assertNull(vm.beginUploadPreparation())
         vm.openQuickCategory(target)
         vm.saveQuickCategory(target.id, "交通")
         vm.confirm(target)
@@ -260,7 +262,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
 
-        assertTrue(vm.markUploadPreparing())
+        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
         ledgerFlow.value = "family"
         advanceUntilIdle()
 
@@ -271,7 +273,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
                 bytes = byteArrayOf(1, 2, 3),
                 sourceSizeBytes = 3L,
             ),
-            uploadAlreadyStarted = true,
+            attempt = uploadAttempt,
         )
         advanceUntilIdle()
 

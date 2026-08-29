@@ -23,7 +23,7 @@ from __future__ import annotations
 from app.services.expense_service._create import (
     create_manual_expense,
     create_notification_draft,
-    create_pending_expense,
+    stage_pending_expense,
 )
 from app.services.expense_service._duplicate import (
     list_duplicate_expenses,
@@ -67,7 +67,7 @@ __all__ = [
     "confirm_expense",
     "create_manual_expense",
     "create_notification_draft",
-    "create_pending_expense",
+    "stage_pending_expense",
     "create_repayment_draft_from_expense",
     "ensure_image_file",
     "ensure_thumbnail_file",

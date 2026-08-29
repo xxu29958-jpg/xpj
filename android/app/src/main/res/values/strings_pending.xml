@@ -127,6 +127,9 @@
     <string name="pending_msg_upload_ledger_switched">账本已切换，请重新选择截图上传。</string>
     <string name="pending_msg_upload_succeeded">截图已上传，待确认后入账。</string>
     <string name="pending_msg_upload_failed">没有上传成功，请稍后再试。</string>
+    <string name="pending_msg_share_partial_failure">有 %1$d 张小票没有上传，请重新分享或逐张上传。</string>
+    <string name="pending_msg_upload_capacity_full">服务正忙，这张小票还没有上传。点「重试上传」即可，图片不用重新选择。</string>
+    <string name="pending_upload_retry_action">重试上传</string>
     <string name="pending_msg_confirmed">已确认入账</string>
     <string name="pending_msg_confirmed_offline">已离线确认，联网后同步</string>
     <string name="pending_msg_confirm_failed">没有确认成功，请稍后再试。</string>

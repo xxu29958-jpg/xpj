@@ -48,6 +48,7 @@ ERROR_MESSAGES = {
     "desktop_invitation_not_supported": "桌面设备请使用绑定码完成配对，暂不支持通过邀请加入。",
     "desktop_bridge_required": "该入口仅接受本机桌面产品桥请求。",
     "rate_limited": "尝试太频繁，请稍后再试。",
+    "enrichment_capacity_full": "识别队列暂时已满，这张小票还没有保存，请稍后再试。",
     "file_too_large": "图片太大，请换一张较小的截图。",
     "unsupported_file_type": "暂不支持这种图片格式。",
     "expense_not_found": "没有找到这笔账单。",

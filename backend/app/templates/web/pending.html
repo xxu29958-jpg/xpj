@@ -82,7 +82,7 @@
    enrichment 在场时 flash_message 归状态带所有, 本条不渲染 (真实路由里 undo
    重定向不携带 watch 参数, 两者互斥)。 #}
 <div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}{% if undo_items or undo_expense_id %} undo-banner{% endif %}"
-     role="status">
+     role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
   <span>{{ flash_message }}</span>
   {% if undo_items %}
   <form method="post" action="/web/pending/batch-undo" class="undo-banner-action">

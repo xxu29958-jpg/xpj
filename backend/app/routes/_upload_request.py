@@ -15,14 +15,17 @@ from starlette.formparsers import MultiPartException
 from app.config import get_settings
 from app.errors import AppError
 from app.schemas import UploadResponse
-from app.services.expense_service import create_pending_expense
+from app.services.expense_service import stage_pending_expense
 from app.services.file_service import (
     SavedUpload,
     delete_relative_upload,
     save_upload,
     save_upload_bytes,
 )
-from app.services.pending_enrichment_task_service import enqueue_pending_expense_enrichment
+from app.services.pending_enrichment_task_service import (
+    prepare_pending_expense_enrichment,
+    submit_pending_expense_enrichment,
+)
 from app.upload_limits import multipart_request_limit_bytes
 
 if TYPE_CHECKING:
@@ -200,23 +203,39 @@ async def handle_upload(
         tenant_id,
         max_size_bytes=max_size_bytes,
     )
-    guard_passed = commit_guard is None
+    commit_attempted = False
     try:
         if commit_guard is not None:
             commit_guard()
-        guard_passed = True
-    finally:
-        if not guard_passed:
-            db.rollback()
+        db_started_at = perf_counter()
+        expense = stage_pending_expense(
+            db,
+            saved_file,
+            tenant_id,
+            source=source,
+        )
+        prepared_task = prepare_pending_expense_enrichment(
+            db,
+            expense_id=expense.id,
+            tenant_id=tenant_id,
+            timezone_name=timezone_name,
+            expected_row_version=expense.row_version,
+            initiator_account_id=initiator_account_id,
+            initiator_device_id=initiator_device_id,
+        )
+        timing_ms["db_create_ms"] = elapsed_ms(db_started_at)
+        # All deterministic writes have flushed.  From here on a raised commit
+        # can mean either rollback or a lost acknowledgement, so preserve the
+        # original image so a committed expense can never point at a deleted file.
+        commit_attempted = True
+        db.commit()
+    except Exception:  # noqa: BLE001 - rollback and file-compensation barrier
+        db.rollback()
+        if not commit_attempted:
             delete_relative_upload(saved_file.relative_path)
-    db_started_at = perf_counter()
-    expense = create_pending_expense(
-        db,
-        saved_file,
-        tenant_id,
-        source=source,
-    )
-    timing_ms["db_create_ms"] = elapsed_ms(db_started_at)
+        raise
+
+    enrichment_task_public_id = submit_pending_expense_enrichment(db, prepared_task)
     duration_ms = elapsed_ms(started_at)
     timing_ms["total_ms"] = duration_ms
     logger.info(
@@ -229,15 +248,6 @@ async def handle_upload(
         duration_ms,
         json.dumps(timing_ms, ensure_ascii=False, sort_keys=True),
         expense.duplicate_status,
-    )
-    enrichment_task_public_id = enqueue_pending_expense_enrichment(
-        db,
-        expense_id=expense.id,
-        tenant_id=tenant_id,
-        timezone_name=timezone_name,
-        expected_row_version=expense.row_version,
-        initiator_account_id=initiator_account_id,
-        initiator_device_id=initiator_device_id,
     )
     return upload_response(
         expense,

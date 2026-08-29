@@ -89,6 +89,7 @@ internal fun PendingRoute(
     // 待确认页负责的两个入口动作：「传小票」shortcut 拉起图片选择 / 系统分享图直传。
     PendingLaunchActionEffect(
         shellState = shellState,
+        uploadScope = uploadScope,
         onOpenPicker = launchImagePicker,
         onUploadSharedImages = { uris -> uploadSharedImages(context, pendingViewModel, uris) },
     )
@@ -128,6 +129,7 @@ private fun pendingScreenChromeActions(
     onOpenRepaymentReview = navigation.onOpenRepaymentReview,
     onOpenDataQuality = navigation.onOpenDataQuality,
     onRetryEnrichment = viewModel::retryEnrichmentObservation,
+    onRetryCapacityUpload = viewModel::retryCapacityUpload,
     requestedFilter = filterRequest.pending,
     onRequestedFilterConsumed = { filterRequest.consume() },
 )
@@ -187,14 +189,11 @@ private fun rememberSingleImageUploadLauncher(
 ): ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?> =
     rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        if (!viewModel.markUploadPreparing()) return@rememberLauncherForActivityResult
+        val attempt = viewModel.beginUploadPreparation() ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val selected = withContext(Dispatchers.IO) { context.prepareScreenshotUpload(uri) }
-            if (selected == null) {
-                viewModel.uploadPreparationFailed()
-                return@launch
+            prepareAndUploadSingleImage(viewModel, attempt) {
+                withContext(Dispatchers.IO) { context.prepareScreenshotUpload(uri) }
             }
-            viewModel.uploadScreenshot(selected, uploadAlreadyStarted = true)
         }
     }
 
@@ -204,8 +203,9 @@ private fun rememberSingleImageUploadLauncher(
  * （取走即清空），不是自己的留给对的 Route——tab 过场两 Route 短暂共存也不会被错的一方吞掉。
  */
 @Composable
-private fun PendingLaunchActionEffect(
+internal fun PendingLaunchActionEffect(
     shellState: MainShellState,
+    uploadScope: CoroutineScope,
     onOpenPicker: () -> Unit,
     onUploadSharedImages: suspend (List<String>) -> Unit,
 ) {
@@ -220,35 +220,11 @@ private fun PendingLaunchActionEffect(
             }
             is LaunchAction.UploadSharedImages -> {
                 val action = shellState.launchAction.consume() as? LaunchAction.UploadSharedImages
-                if (action != null) currentUploadShared(action.uris)
+                if (action != null) {
+                    uploadScope.launch { currentUploadShared(action.uris) }
+                }
             }
             else -> Unit
         }
-    }
-}
-
-/**
- * 顺序上传系统分享带进来的图片。每张：抢 in-progress 锁（[PendingViewModel.markUploadPreparing]，
- * 同时快照 ledger/generation）→ IO 线程预处理 → await 上传完成 → 再下一张。
- *
- * 第一张若拿不到锁（已有上传在跑）即整体放弃；中途某张预处理失败标记「读不出」并跳过，
- * 不中断其余张。账本切换 / 旧请求作废由 VM 内部守卫处理（会把当前张丢弃并提示）。
- */
-private suspend fun uploadSharedImages(
-    context: Context,
-    viewModel: PendingViewModel,
-    uris: List<String>,
-) {
-    for (rawUri in uris) {
-        if (!viewModel.markUploadPreparing()) return
-        val uri = runCatching { Uri.parse(rawUri) }.getOrNull()
-        val prepared = uri?.let {
-            withContext(Dispatchers.IO) { context.prepareScreenshotUpload(it) }
-        }
-        if (prepared == null) {
-            viewModel.uploadPreparationFailed()
-            continue
-        }
-        viewModel.uploadPreparedImage(prepared)
     }
 }

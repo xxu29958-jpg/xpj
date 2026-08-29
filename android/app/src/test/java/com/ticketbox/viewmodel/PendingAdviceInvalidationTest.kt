@@ -6,7 +6,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.assertNotNull
 
 /**
  * 218-B4 review P2-16: the pending screen carries TWO change callbacks — the
@@ -25,7 +25,7 @@ internal class PendingAdviceInvalidationTest : PendingViewModelReviewTestBase() 
         val vm = PendingViewModel(fake).also { it.onAdviceInputsChanged = { invalidations += 1 } }
         advanceUntilIdle()
 
-        assertTrue(vm.markUploadPreparing())
+        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
         vm.uploadPreparedImage(
             PreparedUploadImage(
                 fileName = "a.jpg",
@@ -33,6 +33,7 @@ internal class PendingAdviceInvalidationTest : PendingViewModelReviewTestBase() 
                 bytes = "a.jpg".encodeToByteArray(),
                 sourceSizeBytes = 5L,
             ),
+            uploadAttempt,
         )
         advanceUntilIdle()
 
