@@ -17,7 +17,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import LedgerMember, RecurringItem
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.insights_service import normalize_merchant
+from app.services.merchant_service import normalize_merchant
 from app.services.time_service import now_utc
 
 
@@ -46,6 +46,7 @@ def seed_observed_item(
     occurrence_count: int = 5,
     status: str = "active",
     next_date: date | None = date(2026, 9, 8),
+    source: str = "candidate",
 ) -> str:
     """Seed a candidate-sourced formal item with real observation provenance."""
     now = now_utc()
@@ -59,11 +60,11 @@ def seed_observed_item(
             baseline_amount_cents=baseline_cents,
             last_amount_cents=last_cents,
             occurrence_count=occurrence_count,
-            last_seen_at=now,
+            last_seen_at=now if occurrence_count > 0 else None,
             next_expected_date=next_date,
             status=status,
-            confidence="high",
-            source="candidate",
+            confidence="high" if occurrence_count > 0 else None,
+            source=source,
             created_at=now,
             updated_at=now,
             archived_at=now if status == "archived" else None,

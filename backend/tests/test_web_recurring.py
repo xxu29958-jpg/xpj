@@ -118,6 +118,27 @@ def test_web_recurring_edit_stale_row_version_shows_conflict(web_client: TestCli
     assert "请核对后再保存" in edited.text
 
 
+def test_web_recurring_observed_item_keeps_identity_read_only_but_other_fields_editable(
+    web_client: TestClient,
+) -> None:
+    public_id = seed_observed_item()
+
+    page = web_client.get("/web/recurring?ledger_id=owner")
+
+    assert page.status_code == 200
+    form = re.search(
+        rf'action="/web/recurring/{re.escape(public_id)}/edit".*?</form>',
+        page.text,
+        re.DOTALL,
+    )
+    assert form is not None
+    assert 'name="merchant"' in form.group(0)
+    assert "readonly" in form.group(0)
+    assert "名称与已识别账单绑定" in form.group(0)
+    assert 'name="baseline_amount_yuan"' in form.group(0)
+    assert 'name="next_expected_date"' in form.group(0)
+
+
 def test_web_recurring_edit_archived_item_is_rejected(web_client: TestClient) -> None:
     """recurring_item_archived → 诚实呈现, 引导恢复而不是编辑。"""
     public_id = seed_observed_item(status="archived")
@@ -132,10 +153,18 @@ def test_web_recurring_edit_archived_item_is_rejected(web_client: TestClient) ->
 def test_web_recurring_edit_rename_conflict_guides_to_existing(web_client: TestClient) -> None:
     """edit 改名撞上 recurring_item_conflict: 消费 details, 引导编辑碰撞项。"""
     keep_id = seed_observed_item(
-        merchant="房租", baseline_cents=680_000, last_cents=680_000, occurrence_count=0
+        merchant="房租",
+        baseline_cents=680_000,
+        last_cents=680_000,
+        occurrence_count=0,
+        source="manual",
     )
     other_id = seed_observed_item(
-        merchant="宽带", baseline_cents=10_000, last_cents=10_000, occurrence_count=0
+        merchant="宽带",
+        baseline_cents=10_000,
+        last_cents=10_000,
+        occurrence_count=0,
+        source="manual",
     )
 
     edited = edit_via_web(web_client, other_id, merchant="房租", amount="100", token=row_version(other_id))

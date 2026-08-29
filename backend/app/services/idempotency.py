@@ -283,8 +283,8 @@ def claim_idempotent_request(
     expected_row_version: int | None,
     target_type: str = "expense",
 ) -> ApiIdempotencyKey | None:
-    """Route-layer ADR-0042 claim-before-OCC handshake (§4.4) — the shared front
-    door every outbox-routed mutate route uses.
+    """Shared ADR-0042 claim-before-OCC handshake (§4.4) for an outbox-routed
+    mutation command.
 
     Returns the claimed ``in_progress`` row to PROCEED with: the caller runs the
     mutation with ``commit=False``, then calls :func:`mark_idempotency_succeeded`
@@ -294,7 +294,7 @@ def claim_idempotent_request(
     re-running the mutation (§4.6, kills the committed-but-unseen false-409).
 
     Raises :class:`AppError` for the three contract-violation outcomes so the
-    route body stays a thin ``if claim is None`` branch:
+    command owner can keep one canonical ``if claim is None`` branch:
 
     * no key            → 422 ``idempotency_key_required``
     * concurrent in-flight (same key) → 409 ``idempotency_key_in_progress``

@@ -19,7 +19,8 @@ from app.money_contract import (
 from app.schemas import RecurringCandidateConfirmRequest
 from app.services.currency_binding_service import assert_currency_binding_consistent
 from app.services.currency_common import home_currency_code
-from app.services.insights_service import normalize_merchant, recurring_candidates
+from app.services.insights_service import recurring_candidates
+from app.services.merchant_service import normalize_merchant
 from app.services.recurring_item_command_service import raise_recurring_item_conflict
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
@@ -229,6 +230,15 @@ def _create_recurring_item_from_candidate(
         db.commit()
     except IntegrityError:
         db.rollback()
+        replayed = _idempotent_formal_match(
+            db,
+            tenant_id=tenant_id,
+            merchant_key=match.merchant_key,
+            frequency=match.frequency,
+            amount_cents=match.amount_cents,
+        )
+        if replayed is not None:
+            return replayed
         existing_after_race = _existing_item(
             db,
             tenant_id=tenant_id,

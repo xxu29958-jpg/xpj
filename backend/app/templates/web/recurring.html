@@ -203,7 +203,11 @@
               <div class="dt-form-row">
                 <label for="rc-edit-merchant-{{ item.public_id }}">商家或名称</label>
                 <input class="dt-input" id="rc-edit-merchant-{{ item.public_id }}" type="text" name="merchant"
-                       maxlength="255" value="{{ item.merchant }}" required>
+                       maxlength="255" value="{{ item.merchant }}" required
+                       {% if not item.merchant_editable %}readonly aria-describedby="rc-edit-merchant-help-{{ item.public_id }}"{% endif %}>
+                {% if not item.merchant_editable %}
+                <div class="hint" id="rc-edit-merchant-help-{{ item.public_id }}">名称与已识别账单绑定；可调整金额和日期。如需更换商家，请归档后新建。</div>
+                {% endif %}
               </div>
               <div class="dt-form-row">
                 <label for="rc-edit-amount-{{ item.public_id }}">每月金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>

@@ -6,6 +6,7 @@ Page render / error-surface assertions live in test_web_recurring.py.
 from __future__ import annotations
 
 from datetime import date
+from urllib.parse import unquote
 from uuid import uuid4
 
 import pytest
@@ -68,7 +69,7 @@ def test_web_recurring_create_replays_same_idempotency_key(web_client: TestClien
 def test_web_recurring_edit_updates_expectation_and_preserves_observation(
     web_client: TestClient,
 ) -> None:
-    """PATCH 只改用户预计 (merchant/baseline/next date), 绝不触碰观察事实。"""
+    """PATCH 可改 baseline/next date，绝不触碰观察身份与 provenance。"""
     public_id = seed_observed_item()
     token = row_version(public_id)
     with SessionLocal() as db:
@@ -77,13 +78,13 @@ def test_web_recurring_edit_updates_expectation_and_preserves_observation(
         )
     assert last_seen is not None
 
-    edited = edit_via_web(web_client, public_id, token=token)
+    edited = edit_via_web(web_client, public_id, merchant="Cloud Storage", token=token)
 
     assert edited.status_code == 303
     with SessionLocal() as db:
         item = db.scalar(select(RecurringItem).where(RecurringItem.public_id == public_id))
         assert item is not None
-        assert item.merchant_name == "Cloud Storage 家庭版"
+        assert item.merchant_name == "Cloud Storage"
         assert item.baseline_amount_cents == 2_500
         assert item.next_expected_date == date(2026, 10, 8)
         # 观察来源原样保留。
@@ -99,7 +100,13 @@ def test_web_recurring_edit_clears_next_date(web_client: TestClient) -> None:
     """日期可清空 = 显式 null: 清空后不再提醒。"""
     public_id = seed_observed_item()
 
-    edited = edit_via_web(web_client, public_id, date_str="", token=row_version(public_id))
+    edited = edit_via_web(
+        web_client,
+        public_id,
+        merchant="Cloud Storage",
+        date_str="",
+        token=row_version(public_id),
+    )
 
     assert edited.status_code == 303
     with SessionLocal() as db:
@@ -117,13 +124,25 @@ def test_web_recurring_edit_replays_same_idempotency_key(web_client: TestClient)
     token = row_version(public_id)
     key = str(uuid4())
 
-    assert edit_via_web(web_client, public_id, token=token, key=key).status_code == 303
-    assert edit_via_web(web_client, public_id, token=token, key=key).status_code == 303
+    assert edit_via_web(
+        web_client,
+        public_id,
+        merchant="Cloud Storage",
+        token=token,
+        key=key,
+    ).status_code == 303
+    assert edit_via_web(
+        web_client,
+        public_id,
+        merchant="Cloud Storage",
+        token=token,
+        key=key,
+    ).status_code == 303
 
     with SessionLocal() as db:
         item = db.scalar(select(RecurringItem).where(RecurringItem.public_id == public_id))
         assert item is not None
-        assert item.merchant_name == "Cloud Storage 家庭版"
+        assert item.merchant_name == "Cloud Storage"
         assert item.row_version == token + 1
 
 
@@ -248,6 +267,47 @@ def test_web_recurring_restore_archived_item(web_client: TestClient) -> None:
     assert "Cloud Storage" in default_page.text
 
 
+def test_web_recurring_stale_restore_never_reports_a_later_pause_as_active(
+    web_client: TestClient,
+) -> None:
+    public_id = seed_observed_item(status="archived")
+    restore_token = row_version(public_id)
+    restored = web_client.post(
+        f"/web/recurring/{public_id}/restore",
+        data={"ledger_id": "owner", "expected_row_version": str(restore_token)},
+        follow_redirects=False,
+    )
+    assert restored.status_code == 303
+
+    active_page = web_client.get("/web/recurring?ledger_id=owner")
+    pause_token = extract_hidden_token(
+        active_page.text,
+        action=f"/web/recurring/{public_id}/pause",
+    )
+    assert pause_token
+    paused = web_client.post(
+        f"/web/recurring/{public_id}/pause",
+        data={"ledger_id": "owner", "expected_row_version": pause_token},
+        follow_redirects=False,
+    )
+    assert paused.status_code == 303
+
+    stale_restore = web_client.post(
+        f"/web/recurring/{public_id}/restore",
+        data={"ledger_id": "owner", "expected_row_version": str(restore_token)},
+        follow_redirects=False,
+    )
+    assert stale_restore.status_code == 303
+    location = unquote(stale_restore.headers["location"])
+    assert "页面已过期，请刷新后重新操作。" in location
+    assert "已恢复为活跃。" not in location
+    with SessionLocal() as db:
+        status = db.scalar(
+            select(RecurringItem.status).where(RecurringItem.public_id == public_id)
+        )
+        assert status == "paused"
+
+
 # ── confirm service 语义守护 (本页真实消费者依赖的契约) ───────────────────────
 
 
@@ -338,3 +398,58 @@ def test_confirm_candidate_race_returns_existing_after_candidate_disappears(
         assert second.id == first.id
         # 路径证明: 确实走了兜底 (前置检查返回过 None)。
         assert calls["n"] >= 2
+
+
+@pytest.mark.real_db
+def test_confirm_candidate_insert_race_returns_one_shared_fact(
+    web_client: TestClient,
+    monkeypatch,
+) -> None:
+    """Two real PG sessions may both pass projection/precheck before the unique insert."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from app.schemas import RecurringCandidateConfirmRequest
+    from app.services import recurring_candidate_confirmation_service as confirmation
+
+    seed_candidate()
+    payload = RecurringCandidateConfirmRequest(
+        merchant="ChatGPT Plus",
+        amount_cents=20000,
+        frequency="monthly",
+    )
+    barrier = Barrier(2)
+    real_create = confirmation._create_recurring_item_from_candidate
+
+    def synchronized_create(*args, **kwargs):
+        barrier.wait(timeout=10)
+        return real_create(*args, **kwargs)
+
+    monkeypatch.setattr(
+        confirmation,
+        "_create_recurring_item_from_candidate",
+        synchronized_create,
+    )
+
+    def confirm(_: int) -> int:
+        with SessionLocal() as db:
+            item = confirmation.confirm_recurring_candidate(
+                db,
+                tenant_id="owner",
+                payload=payload,
+            )
+            return item.id
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        ids = list(executor.map(confirm, range(2), timeout=15))
+
+    assert len(ids) == 2
+    assert len(set(ids)) == 1
+    with SessionLocal() as db:
+        count = db.scalar(
+            select(func.count())
+            .select_from(RecurringItem)
+            .where(RecurringItem.tenant_id == "owner")
+            .where(RecurringItem.merchant_key == "chatgpt plus")
+        )
+        assert count == 1

@@ -50,6 +50,7 @@ def item_view(item, anomaly, *, currency_code: str) -> dict:
     return {
         "public_id": item.public_id,
         "merchant": item.merchant_name,
+        "merchant_editable": item.source == "manual",
         "baseline_amount_yuan": _amount_yuan(item.baseline_amount_cents, currency_code),
         "last_amount_yuan": _amount_yuan(item.last_amount_cents, currency_code),
         # A3 诚实合同: manual + occurrence=0 只能称「每月预计」, 观察来源

@@ -192,7 +192,6 @@ def test_recurring_edit_preserves_observed_facts_and_replays_before_occ(client: 
     original = _seed_candidate_item()
     key = str(uuid4())
     payload = {
-        "merchant": "Cloud Storage Family",
         "baseline_amount_cents": 2_500,
         "next_expected_date": None,
         "expected_row_version": original.row_version,
@@ -206,8 +205,8 @@ def test_recurring_edit_preserves_observed_facts_and_replays_before_occ(client: 
 
     assert updated.status_code == 200, updated.json()
     body = updated.json()
-    assert body["merchant"] == "Cloud Storage Family"
-    assert body["merchant_key"] == "cloud storage family"
+    assert body["merchant"] == "Cloud Storage"
+    assert body["merchant_key"] == "cloud storage"
     assert body["baseline_amount_cents"] == 2_500
     assert body["next_expected_date"] is None
     assert body["last_amount_cents"] == 1_900

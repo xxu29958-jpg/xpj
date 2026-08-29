@@ -38,8 +38,8 @@ from app.routes.web_common import (
 )
 from app.schemas import RecurringCandidateConfirmRequest
 from app.services.currency_binding_service import require_runtime_home_currency_code
-from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.insights_service import recurring_candidates
+from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 from app.services.recurring_item_command_service import (
     create_manual_recurring_item,
     update_recurring_item,
@@ -47,7 +47,6 @@ from app.services.recurring_item_command_service import (
 from app.services.recurring_service import (
     RecurringAmountAnomaly,
     archive_recurring_item,
-    confirm_recurring_candidate,
     list_recurring_items,
     pause_recurring_item,
     recurring_amount_anomalies,
@@ -313,26 +312,11 @@ def web_recurring_edit(
         currency_code = require_runtime_home_currency_code(db)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
         expected_date = parse_optional_date(next_expected_date)
-        claim = claim_idempotent_request(
-            db,
-            idempotency_key=(idempotency_key or "").strip() or None,
-            tenant_id=selected_id,
-            operation="update_recurring_item",
-            target_id=public_id,
-            body={
-                "merchant": merchant,
-                "baseline_amount_cents": amount_cents,
-                "next_expected_date": expected_date.isoformat() if expected_date else None,
-            },
-            expected_row_version=parsed,
-            target_type="recurring_item",
-        )
-        if claim is None:
-            return _web_redirect("/web/recurring", selected_id, flash="固定支出已保存。")
         update_recurring_item(
             db,
             tenant_id=selected_id,
             public_id=public_id,
+            idempotency_key=(idempotency_key or "").strip() or None,
             expected_row_version=parsed,
             merchant=merchant,
             merchant_provided=True,
@@ -341,13 +325,6 @@ def web_recurring_edit(
             next_expected_date=expected_date,
             next_expected_date_provided=True,
         )
-        mark_idempotency_succeeded(
-            db,
-            claim,
-            resource_type="recurring_item",
-            resource_id=public_id,
-        )
-        db.commit()
     except AppError as exc:
         db.rollback()
         return _render_recurring(

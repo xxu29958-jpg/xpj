@@ -111,6 +111,7 @@ ERROR_MESSAGES = {
     "recurring_item_conflict": "这个商家已有固定支出，请编辑现有记录。",
     "recurring_item_no_changes": "没有检测到需要保存的固定支出修改。",
     "recurring_merchant_required": "请填写固定支出的商家或名称。",
+    "recurring_observed_merchant_immutable": "这条固定支出来自已识别账单，名称不能直接更换；可调整金额和日期，如需更换请归档后新建。",
     "recurring_frequency_invalid": "固定支出周期暂不支持。",
     "recurring_status_invalid": "固定支出状态无效。",
     "recurring_item_archived": "固定支出已归档，不能继续修改。",

@@ -136,7 +136,18 @@ internal fun RecurringEditorSheet(
 
     RecurringEditorForm(
         title = stringResource(if (editing == null) R.string.recurring_form_title_create else R.string.recurring_form_title_edit),
-        state = RecurringEditorFormState(merchant, amountText, currency, dateIso, showDatePicker, submitUi.awaiting),
+        state = RecurringEditorFormState(
+            merchant = merchant,
+            // Candidate identity suppresses the already-claimed suggestion.
+            // Cross-merchant reassignment needs a separate provenance owner;
+            // this editor keeps the name visible and the other fields usable.
+            merchantEditable = editing == null || editing.source == "manual",
+            amountText = amountText,
+            currency = currency,
+            dateIso = dateIso,
+            showDatePicker = showDatePicker,
+            awaiting = submitUi.awaiting,
+        ),
         callbacks = RecurringEditorFormCallbacks(
             onMerchant = { merchant = it },
             onAmount = { amountText = it },
@@ -182,6 +193,7 @@ private fun RecurringSubmitSettleEffect(
 
 internal data class RecurringEditorFormState(
     val merchant: String,
+    val merchantEditable: Boolean,
     val amountText: String,
     val currency: CurrencyCode,
     val dateIso: String?,
@@ -227,16 +239,27 @@ private fun RecurringEditorForm(
         title = title,
         subtitle = stringResource(R.string.recurring_form_subtitle),
     ) {
-        AppTextInput(
-            state = AppTextInputState(
-                label = stringResource(R.string.recurring_form_merchant_label),
-                value = state.merchant,
-                placeholder = stringResource(R.string.recurring_form_merchant_placeholder),
-                enabled = !state.awaiting,
-            ),
-            actions = AppTextInputActions(onValueChange = callbacks.onMerchant),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (state.merchantEditable) {
+            AppTextInput(
+                state = AppTextInputState(
+                    label = stringResource(R.string.recurring_form_merchant_label),
+                    value = state.merchant,
+                    placeholder = stringResource(R.string.recurring_form_merchant_placeholder),
+                    enabled = !state.awaiting,
+                ),
+                actions = AppTextInputActions(onValueChange = callbacks.onMerchant),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            AppFormFieldGroup(label = stringResource(R.string.recurring_form_merchant_label)) {
+                Text(text = state.merchant, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = stringResource(R.string.recurring_form_observed_merchant_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.recurring_form_amount_label),

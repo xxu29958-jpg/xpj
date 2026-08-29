@@ -839,6 +839,7 @@
     <string name="recurring_form_subtitle">只做提醒和对比，不会自动入账。</string>
     <string name="recurring_form_merchant_label">名称</string>
     <string name="recurring_form_merchant_placeholder">例如：房租、宽带、视频会员</string>
+    <string name="recurring_form_observed_merchant_hint">名称与已识别账单绑定；可调整金额和日期。如需更换，请归档后新建。</string>
     <string name="recurring_form_amount_label">每月金额</string>
     <string name="recurring_form_date_label">下次日期</string>
     <string name="recurring_form_date_none">未设置</string>

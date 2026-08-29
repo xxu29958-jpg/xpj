@@ -16,11 +16,12 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.idempotency import (
     IdempotencyOutcome,
     IdempotencyOutcomeKind,
+    claim_idempotent_request,
     claim_idempotency_key,
     fingerprint_request,
     mark_idempotency_succeeded,
 )
-from app.services.insights_service import normalize_merchant
+from app.services.merchant_service import normalize_merchant
 from app.services.time_service import now_utc
 
 CREATE_RECURRING_OPERATION = "create_recurring_item"
@@ -223,6 +224,8 @@ def _merchant_updates(
     if not provided:
         return {}
     merchant_name, merchant_key = _clean_merchant(merchant)
+    if current.source == "candidate" and merchant_key != current.merchant_key:
+        raise AppError("recurring_observed_merchant_immutable", status_code=409)
     duplicate = _existing_by_key(
         db,
         tenant_id=tenant_id,
@@ -362,7 +365,7 @@ def _raise_update_race(db: Session, *, tenant_id: str, public_id: str) -> None:
     raise AppError("state_conflict", status_code=409)
 
 
-def update_recurring_item(
+def _apply_recurring_item_update(
     db: Session,
     *,
     tenant_id: str,
@@ -375,7 +378,7 @@ def update_recurring_item(
     next_expected_date: date | None,
     next_expected_date_provided: bool,
 ) -> RecurringItem:
-    """Edit user-owned expectations while preserving observed provenance."""
+    """Apply one already-admitted OCC update without committing it."""
     current = _get_item(db, tenant_id=tenant_id, public_id=public_id)
     _ensure_editable_revision(current, expected_row_version=expected_row_version)
     values = _collect_update_values(
@@ -412,3 +415,81 @@ def update_recurring_item(
         _raise_update_race(db, tenant_id=tenant_id, public_id=public_id)
     db.expire_all()
     return _get_item(db, tenant_id=tenant_id, public_id=public_id)
+
+
+def _recurring_update_body(
+    *,
+    merchant: str | None,
+    merchant_provided: bool,
+    baseline_amount_cents: int | None,
+    baseline_provided: bool,
+    next_expected_date: date | None,
+    next_expected_date_provided: bool,
+) -> dict[str, object]:
+    body: dict[str, object] = {}
+    if merchant_provided:
+        body["merchant"] = merchant
+    if baseline_provided:
+        body["baseline_amount_cents"] = baseline_amount_cents
+    if next_expected_date_provided:
+        body["next_expected_date"] = (
+            next_expected_date.isoformat() if next_expected_date else None
+        )
+    return body
+
+
+def update_recurring_item(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    idempotency_key: str | None,
+    expected_row_version: int,
+    merchant: str | None,
+    merchant_provided: bool,
+    baseline_amount_cents: int | None,
+    baseline_provided: bool,
+    next_expected_date: date | None,
+    next_expected_date_provided: bool,
+) -> RecurringItem:
+    """Own claim-before-OCC, mutation publication, and commit for one edit."""
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=tenant_id,
+        operation="update_recurring_item",
+        target_id=public_id,
+        body=_recurring_update_body(
+            merchant=merchant,
+            merchant_provided=merchant_provided,
+            baseline_amount_cents=baseline_amount_cents,
+            baseline_provided=baseline_provided,
+            next_expected_date=next_expected_date,
+            next_expected_date_provided=next_expected_date_provided,
+        ),
+        expected_row_version=expected_row_version,
+        target_type="recurring_item",
+    )
+    if claim is None:
+        return _get_item(db, tenant_id=tenant_id, public_id=public_id)
+    item = _apply_recurring_item_update(
+        db,
+        tenant_id=tenant_id,
+        public_id=public_id,
+        expected_row_version=expected_row_version,
+        merchant=merchant,
+        merchant_provided=merchant_provided,
+        baseline_amount_cents=baseline_amount_cents,
+        baseline_provided=baseline_provided,
+        next_expected_date=next_expected_date,
+        next_expected_date_provided=next_expected_date_provided,
+    )
+    mark_idempotency_succeeded(
+        db,
+        claim,
+        resource_type="recurring_item",
+        resource_id=public_id,
+    )
+    db.commit()
+    db.refresh(item)
+    return item

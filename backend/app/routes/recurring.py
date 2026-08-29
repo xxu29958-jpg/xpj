@@ -13,14 +13,13 @@ from app.schemas import (
     RecurringItemTokenRequest,
     RecurringItemUpdateRequest,
 )
-from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
+from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 from app.services.recurring_item_command_service import (
     create_manual_recurring_item,
     update_recurring_item,
 )
 from app.services.recurring_service import (
     archive_recurring_item,
-    confirm_recurring_candidate,
     get_recurring_item,
     list_recurring_items,
     pause_recurring_item,
@@ -126,43 +125,20 @@ def patch_recurring_item(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="update_recurring_item",
-        target_id=public_id,
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
-        expected_row_version=payload.expected_row_version,
-        target_type="recurring_item",
-    )
-    if claim is None:
-        return recurring_item_response(
-            get_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id)
-        )
-    update_recurring_item(
-        db,
-        tenant_id=auth.tenant_id,
-        public_id=public_id,
-        expected_row_version=payload.expected_row_version,
-        merchant=payload.merchant,
-        merchant_provided="merchant" in payload.model_fields_set,
-        baseline_amount_cents=payload.baseline_amount_cents,
-        baseline_provided="baseline_amount_cents" in payload.model_fields_set,
-        next_expected_date=payload.next_expected_date,
-        next_expected_date_provided="next_expected_date" in payload.model_fields_set,
-    )
-    mark_idempotency_succeeded(
-        db,
-        claim,
-        resource_type="recurring_item",
-        resource_id=public_id,
-    )
-    db.commit()
     return recurring_item_response(
-        get_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id)
+        update_recurring_item(
+            db,
+            tenant_id=auth.tenant_id,
+            public_id=public_id,
+            idempotency_key=idempotency_key,
+            expected_row_version=payload.expected_row_version,
+            merchant=payload.merchant,
+            merchant_provided="merchant" in payload.model_fields_set,
+            baseline_amount_cents=payload.baseline_amount_cents,
+            baseline_provided="baseline_amount_cents" in payload.model_fields_set,
+            next_expected_date=payload.next_expected_date,
+            next_expected_date_provided="next_expected_date" in payload.model_fields_set,
+        )
     )
 
 
