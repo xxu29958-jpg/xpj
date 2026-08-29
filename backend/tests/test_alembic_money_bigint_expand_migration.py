@@ -235,6 +235,7 @@ def test_upgrade_preserves_legacy_values_and_exposes_c07_release_bounds() -> Non
             text("UPDATE expenses SET amount_cents = -1 WHERE merchant = 'boundary'")
         )
 
+    with SessionLocal() as db:
         item = db.query(ExpenseItem).filter_by(
             name="boundary discount"
         ).one()
