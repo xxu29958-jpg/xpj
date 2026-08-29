@@ -306,7 +306,7 @@ def _collect_update_values(
         values["next_expected_date"] = next_expected_date
     if not values:
         raise AppError("recurring_item_no_changes", status_code=422)
-    values.update(updated_at=now_utc(), row_version=RecurringItem.row_version + 1)
+    values.update(updated_at=now_utc(), row_version=current.row_version + 1)
     return values
 
 

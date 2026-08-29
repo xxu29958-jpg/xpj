@@ -125,12 +125,12 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
     assert "stderr detail" in captured.err
 
 
-def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> None:
-    # The single in-flight grandfather points at installation-owner bootstrap.
-    # Older up-hops are dead history.
+def test_pr_delta_accepts_a3_exact_down_ratchet_exception(monkeypatch) -> None:
+    # A3 adds the API/Web twins of one manual fixed-expense create capability.
+    # Only its exact 128 -> 130 topology hop is grandfathered.
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     baseline = dict(mod.STRICT_EQUALITY_BASELINE)
-    baseline["mutate_token_exempted"] = 129
+    baseline["mutate_token_exempted"] = 130
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
 
     _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
@@ -143,9 +143,26 @@ def test_pr_delta_accepts_adr_0049_exact_down_ratchet_exception(monkeypatch) -> 
 def test_pr_delta_adr_0049_exception_does_not_allow_future_growth(monkeypatch) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
 
-    # Non-grandfathered transitions still fail: the 128 -> 129 exception is exact, so
-    # older up-hops, dead hops, partial hops, and overshoots are never waved through.
-    for base_count, current_count in ((116, 119), (119, 120), (120, 121), (121, 122), (122, 123), (123, 124), (123, 125), (123, 126), (123, 128), (126, 127), (127, 128), (129, 130), (129, 131)):
+    # Non-grandfathered transitions still fail: the 128 -> 130 exception is exact,
+    # so older up-hops, partial hops, future hops, and overshoots are never waved through.
+    for base_count, current_count in (
+        (116, 119),
+        (119, 120),
+        (120, 121),
+        (121, 122),
+        (122, 123),
+        (123, 124),
+        (123, 125),
+        (123, 126),
+        (123, 128),
+        (126, 127),
+        (127, 128),
+        (127, 130),
+        (128, 129),
+        (129, 130),
+        (129, 131),
+        (130, 131),
+    ):
         baseline = dict(mod.STRICT_EQUALITY_BASELINE)
         baseline["mutate_token_exempted"] = current_count
         monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", baseline)
