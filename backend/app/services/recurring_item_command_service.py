@@ -16,8 +16,8 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.idempotency import (
     IdempotencyOutcome,
     IdempotencyOutcomeKind,
-    claim_idempotent_request,
     claim_idempotency_key,
+    claim_idempotent_request,
     fingerprint_request,
     mark_idempotency_succeeded,
 )
@@ -208,7 +208,6 @@ def create_manual_recurring_item(
         resource_id=item.public_id,
     )
     db.commit()
-    db.refresh(item)
     return item
 
 
@@ -491,5 +490,4 @@ def update_recurring_item(
         resource_id=public_id,
     )
     db.commit()
-    db.refresh(item)
     return item

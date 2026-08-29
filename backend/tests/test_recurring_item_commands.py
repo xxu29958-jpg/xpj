@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
+import pytest
+from api_contract_helpers import insert_confirmed_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import LedgerMember, RecurringItem
+from app.models import ApiIdempotencyKey, LedgerMember, RecurringItem
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 
@@ -112,6 +116,83 @@ def test_manual_recurring_create_replays_same_resource_once(client: TestClient, 
             .where(RecurringItem.merchant_key == "房租")
         )
     assert count == 1
+
+
+def test_recurring_success_does_not_depend_on_post_commit_refresh(
+    client: TestClient,
+    *,
+    identity,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_times = (
+        datetime(2026, 3, 5, 12, 0, tzinfo=UTC),
+        datetime(2026, 4, 5, 12, 0, tzinfo=UTC),
+        datetime(2026, 5, 5, 12, 0, tzinfo=UTC),
+    )
+    for observed_at in candidate_times:
+        insert_confirmed_expense(
+            amount_cents=8_800,
+            merchant="云存储",
+            category="订阅",
+            expense_time=observed_at,
+            confirmed_at=observed_at,
+        )
+
+    original_refresh = Session.refresh
+
+    def fail_recurring_refresh(session, instance, *args, **kwargs):
+        if isinstance(instance, RecurringItem):
+            raise SQLAlchemyError("post-commit recurring refresh unavailable")
+        return original_refresh(session, instance, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "refresh", fail_recurring_refresh)
+
+    create_key = str(uuid4())
+    created = client.post(
+        "/api/recurring/items",
+        headers=_intent_headers(identity, create_key),
+        json=_manual_payload(merchant="宽带", amount_cents=12_000),
+    )
+    assert created.status_code == 201, created.json()
+
+    update_key = str(uuid4())
+    updated = client.patch(
+        f"/api/recurring/items/{created.json()['public_id']}",
+        headers=_intent_headers(identity, update_key),
+        json={
+            "baseline_amount_cents": 9_900,
+            "expected_row_version": created.json()["row_version"],
+        },
+    )
+    assert updated.status_code == 200, updated.json()
+    assert updated.json()["baseline_amount_cents"] == 9_900
+
+    confirmed = client.post(
+        "/api/recurring/from-candidate?timezone=UTC",
+        headers=identity.app_headers,
+        json={
+            "merchant": "云存储",
+            "amount_cents": 8_800,
+            "frequency": "monthly",
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.json()
+
+    with SessionLocal() as db:
+        items = db.scalars(
+            select(RecurringItem)
+            .where(RecurringItem.tenant_id == "owner")
+            .where(RecurringItem.merchant_key.in_(("宽带", "云存储")))
+        ).all()
+        records = db.scalars(
+            select(ApiIdempotencyKey)
+            .where(ApiIdempotencyKey.tenant_id == "owner")
+            .where(ApiIdempotencyKey.idempotency_key.in_((create_key, update_key)))
+        ).all()
+
+    assert {item.merchant_key for item in items} == {"宽带", "云存储"}
+    assert {record.idempotency_key for record in records} == {create_key, update_key}
+    assert all(record.status == "succeeded" for record in records)
 
 
 def test_manual_recurring_create_requires_idempotency_and_writer(client: TestClient, *, identity) -> None:

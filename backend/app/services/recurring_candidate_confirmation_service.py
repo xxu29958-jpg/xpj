@@ -248,7 +248,6 @@ def _create_recurring_item_from_candidate(
         if existing_after_race is not None:
             raise_recurring_item_conflict(existing_after_race)
         raise
-    db.refresh(item)
     return item
 
 
