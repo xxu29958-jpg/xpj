@@ -254,7 +254,11 @@ def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str, expecte
     db.rollback()
     item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status == "archived" or item.archived_at is not None:
-        raise AppError("recurring_item_archived", status_code=409)
+        raise AppError(
+            "recurring_item_archived",
+            status_code=409,
+            details={"public_id": item.public_id, "status": item.status},
+        )
     raise AppError("state_conflict", status_code=409)
 
 
@@ -283,7 +287,11 @@ def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str, expect
     db.rollback()
     item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status == "archived" or item.archived_at is not None:
-        raise AppError("recurring_item_archived", status_code=409)
+        raise AppError(
+            "recurring_item_archived",
+            status_code=409,
+            details={"public_id": item.public_id, "status": item.status},
+        )
     raise AppError("state_conflict", status_code=409)
 
 

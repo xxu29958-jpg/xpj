@@ -9,7 +9,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -40,7 +39,6 @@ import com.ticketbox.ui.screens.recurring.RecurringConflictModel
 import com.ticketbox.ui.screens.recurring.RecurringDerivedModel
 import com.ticketbox.ui.screens.recurring.RecurringEditorEnvironment
 import com.ticketbox.ui.screens.recurring.RecurringEditorSheetHost
-import com.ticketbox.ui.screens.recurring.RecurringEditorTarget
 import com.ticketbox.ui.screens.recurring.RecurringHeroSection
 import com.ticketbox.ui.screens.recurring.RecurringItemsCard
 import com.ticketbox.ui.screens.recurring.RecurringItemsCardState
@@ -50,7 +48,9 @@ import com.ticketbox.ui.screens.recurring.RecurringTabCounts
 import com.ticketbox.ui.screens.recurring.recurringDefaultTab
 import com.ticketbox.ui.screens.recurring.recurringHasReadableData
 import com.ticketbox.ui.screens.recurring.recurringScreenDerived
+import com.ticketbox.ui.screens.recurring.rememberRecurringEditorHostState
 import com.ticketbox.ui.screens.recurring.resolveRecurringDuplicateConflict
+import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringUiState
 
 /**
@@ -66,20 +66,23 @@ fun RecurringScreen(
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
     var selectedTab by rememberSaveable { mutableStateOf(recurringDefaultTab) }
-    var editorTarget by remember { mutableStateOf<RecurringEditorTarget?>(null) }
+    val editorHost = rememberRecurringEditorHostState(
+        editorEpoch = state.editorEpoch,
+        runtimeId = state.editorRuntimeId,
+    )
     val derived = recurringScreenDerived(state, selectedTab)
     val hasReadableData = recurringHasReadableData(state)
     val callbacks = RecurringScreenCallbacks(
-        onCreate = { editorTarget = RecurringEditorTarget.Create },
-        onEdit = { item -> editorTarget = RecurringEditorTarget.Edit(item) },
+        onCreate = { editorHost.openCreate(currencyDisplay.homeCurrency) },
+        onEdit = { item -> editorHost.openEdit(item, currencyDisplay.homeCurrency) },
         onSelectTab = { selectedTab = it },
         onConflictAction = { model ->
             when (model.action) {
                 RecurringConflictAction.EditExisting ->
                     state.items.firstOrNull { it.publicId == model.publicId }
-                        ?.let { editorTarget = RecurringEditorTarget.Edit(it) }
+                        ?.let { editorHost.openEdit(it, currencyDisplay.homeCurrency) }
                 RecurringConflictAction.RestoreArchived -> {
-                    editorTarget = null
+                    editorHost.dismiss()
                     model.rowVersion?.let { actions.items.onRestore(model.publicId, it) }
                 }
                 RecurringConflictAction.Unavailable -> Unit
@@ -116,19 +119,30 @@ fun RecurringScreen(
         ),
     ) {
         recurringOverviewSection(state, derived, currencyDisplay, callbacks)
-        recurringRegistrySection(derived, currencyDisplay, actions, callbacks)
+        recurringRegistrySection(
+            derived,
+            currencyDisplay,
+            actions,
+            callbacks,
+            editEnabled = !state.manualSaveInFlight,
+        )
     }
 
     RecurringEditorSheetHost(
-        target = editorTarget,
+        editor = editorHost.editor,
         uiState = state,
         environment = RecurringEditorEnvironment(
             currencyDisplay = currencyDisplay,
-            conflict = resolveRecurringDuplicateConflict(state.duplicateConflict, state.items),
-            onDismiss = { editorTarget = null },
+            conflict = resolveRecurringDuplicateConflict(
+                state.duplicateConflict,
+                state.items,
+                ownerLoaded = state.itemsLoadState == RecurringListLoadState.Loaded,
+            ),
+            onRefresh = actions.onRefresh,
+            onDismiss = editorHost::dismiss,
+            onConflictAction = callbacks.onConflictAction,
         ),
         actions = actions.items,
-        onConflictAction = callbacks.onConflictAction,
     )
 }
 
@@ -144,8 +158,8 @@ data class RecurringItemActions(
     val onResume: (String, Long) -> Unit,
     val onArchive: (String) -> Unit,
     val onRestore: (String, Long) -> Unit,
-    val onCreate: (RecurringItemDraft) -> Unit,
-    val onEdit: (RecurringItem, RecurringItemPatch) -> Unit,
+    val onCreate: (RecurringItemDraft) -> Long,
+    val onEdit: (RecurringItem, RecurringItemPatch) -> Long,
 )
 
 data class RecurringCandidateActions(
@@ -166,12 +180,17 @@ private fun LazyListScope.recurringOverviewSection(
     callbacks: RecurringScreenCallbacks,
 ) {
     state.message?.takeIf {
-        derived.itemSection.bodyState != ReadableListBodyState.LoadFailed &&
+        state.duplicateConflict == null &&
+            derived.itemSection.bodyState != ReadableListBodyState.LoadFailed &&
             derived.candidateSection.bodyState != ReadableListBodyState.LoadFailed
     }?.let { message ->
         item { AppStatusBanner(message = message, tone = state.messageTone) }
     }
-    resolveRecurringDuplicateConflict(state.duplicateConflict, state.items)?.let { conflict ->
+    resolveRecurringDuplicateConflict(
+        state.duplicateConflict,
+        state.items,
+        ownerLoaded = state.itemsLoadState == RecurringListLoadState.Loaded,
+    )?.let { conflict ->
         if (state.canModify) {
             item { RecurringConflictBanner(model = conflict, onAction = callbacks.onConflictAction) }
         }
@@ -185,6 +204,7 @@ private fun LazyListScope.recurringOverviewSection(
                 modifier = Modifier.fillMaxWidth(),
                 text = stringResource(R.string.recurring_add_cta),
                 icon = Icons.Filled.Add,
+                enabled = !state.manualSaveInFlight,
                 onClick = callbacks.onCreate,
             )
         }
@@ -205,6 +225,7 @@ private fun LazyListScope.recurringRegistrySection(
     currencyDisplay: CurrencyDisplay,
     actions: RecurringScreenActions,
     callbacks: RecurringScreenCallbacks,
+    editEnabled: Boolean,
 ) {
     item {
         RecurringTabRow(
@@ -220,6 +241,7 @@ private fun LazyListScope.recurringRegistrySection(
                 section = derived.itemSection,
                 currencyDisplay = currencyDisplay,
                 canModify = derived.canModify,
+                editEnabled = editEnabled,
             ),
             onRetry = actions.onRefresh,
             onEdit = callbacks.onEdit,

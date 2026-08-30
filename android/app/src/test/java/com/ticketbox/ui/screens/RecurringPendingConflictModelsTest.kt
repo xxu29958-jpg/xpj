@@ -1,21 +1,51 @@
 package com.ticketbox.ui.screens
 
 import com.ticketbox.R
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SheetValue
+import com.ticketbox.data.repository.RecurringDateEdit
 import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingKind
 import com.ticketbox.data.repository.RecurringPendingState
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.screens.recurring.RecurringConflictAction
+import com.ticketbox.ui.screens.recurring.RecurringEditField
+import com.ticketbox.ui.screens.recurring.RecurringEditorRebase
+import com.ticketbox.ui.screens.recurring.RecurringEditorRebaseDraft
 import com.ticketbox.ui.screens.recurring.RecurringPendingChange
+import com.ticketbox.ui.screens.recurring.RecurringRebaseStage
+import com.ticketbox.ui.screens.recurring.RecurringRebaseUi
+import com.ticketbox.ui.screens.recurring.RecurringOverlapComparison
+import com.ticketbox.ui.screens.recurring.RecurringOverlapDraft
+import com.ticketbox.ui.screens.recurring.RecurringOverlapValue
+import com.ticketbox.ui.screens.recurring.RecurringSubmitSettle
+import com.ticketbox.ui.screens.recurring.RecurringSubmitUi
+import com.ticketbox.ui.screens.recurring.buildRecurringItemPatch
+import com.ticketbox.ui.screens.recurring.newRecurringEditorSession
+import com.ticketbox.ui.screens.recurring.rebaseRecurringEditorDraft
+import com.ticketbox.ui.screens.recurring.recurringEditorAttemptRequiresVisibility
+import com.ticketbox.ui.screens.recurring.recurringEditorDraftEnabled
+import com.ticketbox.ui.screens.recurring.recurringEditorOwnerState
+import com.ticketbox.ui.screens.recurring.recurringEditorSheetAllowsTransition
+import com.ticketbox.ui.screens.recurring.recurringOverlapDisplayOwner
+import com.ticketbox.ui.screens.recurring.recurringOverlapComparisons
 import com.ticketbox.ui.screens.recurring.recurringPendingKindLabelRes
 import com.ticketbox.ui.screens.recurring.recurringRowCapabilities
+import com.ticketbox.ui.screens.recurring.recurringSubmitStep
 import com.ticketbox.ui.screens.recurring.resolveRecurringDuplicateConflict
 import com.ticketbox.ui.screens.recurring.resolveRecurringPendingRow
 import com.ticketbox.viewmodel.RecurringDuplicateConflict
+import com.ticketbox.viewmodel.RecurringListLoadState
+import com.ticketbox.viewmodel.RecurringManualSaveFeedback
+import com.ticketbox.viewmodel.RecurringManualSaveSettlement
+import com.ticketbox.viewmodel.RecurringUiState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /** 待同步 intent 呈现（三态 / 基线解析）、行能力（archived 可恢复不可编辑）与撞单解决。 */
+@OptIn(ExperimentalMaterial3Api::class)
 class RecurringPendingConflictModelsTest {
 
     @Test
@@ -137,6 +167,7 @@ class RecurringPendingConflictModelsTest {
         val active = resolveRecurringDuplicateConflict(
             RecurringDuplicateConflict(publicId = "p1", status = "active"),
             items,
+            ownerLoaded = true,
         )
         assertEquals(RecurringConflictAction.EditExisting, active?.action)
         assertEquals("宽带", active?.merchant)
@@ -144,6 +175,7 @@ class RecurringPendingConflictModelsTest {
         val archived = resolveRecurringDuplicateConflict(
             RecurringDuplicateConflict(publicId = "p2", status = "archived"),
             items,
+            ownerLoaded = true,
         )
         assertEquals(RecurringConflictAction.RestoreArchived, archived?.action)
         assertEquals(3L, archived?.rowVersion)
@@ -151,9 +183,267 @@ class RecurringPendingConflictModelsTest {
         val missing = resolveRecurringDuplicateConflict(
             RecurringDuplicateConflict(publicId = "ghost", status = "paused"),
             items,
+            ownerLoaded = true,
         )
         assertEquals(RecurringConflictAction.Unavailable, missing?.action)
         assertNull(missing?.merchant)
-        assertNull(resolveRecurringDuplicateConflict(null, items))
+        assertNull(resolveRecurringDuplicateConflict(null, items, ownerLoaded = true))
+
+        val stale = resolveRecurringDuplicateConflict(
+            RecurringDuplicateConflict(publicId = "p1", status = "archived"),
+            items,
+            ownerLoaded = false,
+        )
+        assertEquals("archived", stale?.status)
+        assertEquals(RecurringConflictAction.Unavailable, stale?.action)
+        assertNull(stale?.merchant)
+        assertNull(stale?.rowVersion)
     }
+
+    @Test
+    fun conflictRebaseAdoptsUntouchedOwnerFieldsWithoutLosingUserIntent() {
+        val stale = recurringItem {
+            publicId = "p1"
+            rowVersion = 1L
+            baselineAmountCents = 3000_00
+            nextExpectedDate = "2026-09-01"
+        }
+        val fresh = recurringItem {
+            publicId = "p1"
+            rowVersion = 2L
+            baselineAmountCents = 3200_00
+            nextExpectedDate = "2026-09-01"
+        }
+
+        val rebase = rebaseRecurringEditorDraft(
+            previousBaseline = stale,
+            freshOwner = fresh,
+            draft = RecurringEditorRebaseDraft(
+                merchant = stale.merchant,
+                baselineAmountCents = stale.baselineAmountCents,
+                nextExpectedDate = "2026-09-15",
+            ),
+        )
+        val retryPatch = buildRecurringItemPatch(
+            baseline = rebase.baseline,
+            merchant = rebase.merchant,
+            baselineAmountCents = rebase.baselineAmountCents,
+            dateTouched = rebase.dateTouched,
+            nextExpectedDate = rebase.nextExpectedDate,
+        )
+
+        assertEquals(3200_00, rebase.baselineAmountCents)
+        assertNull(retryPatch?.baselineAmountCents, "an untouched remote amount must not be replayed")
+        assertEquals(RecurringDateEdit.changed("2026-09-15"), retryPatch?.nextExpectedDate)
+        assertEquals(emptySet(), rebase.overlappingFields)
+
+        val overlapping = rebaseRecurringEditorDraft(
+            previousBaseline = stale,
+            freshOwner = fresh,
+            draft = RecurringEditorRebaseDraft(
+                merchant = stale.merchant,
+                baselineAmountCents = 3100_00,
+                nextExpectedDate = stale.nextExpectedDate,
+            ),
+        )
+        assertEquals(setOf(RecurringEditField.Amount), overlapping.overlappingFields)
+
+        assertSubsequentOwnerRefreshAdvancesOccBaseline(fresh, overlapping)
+
+        assertEquals(false, recurringEditorDraftEnabled(awaiting = false, RecurringRebaseStage.LoadingOwner))
+        assertEquals(false, recurringEditorDraftEnabled(awaiting = false, RecurringRebaseStage.OwnerUnavailable))
+        assertEquals(true, recurringEditorDraftEnabled(awaiting = false, RecurringRebaseStage.Ready))
+        assertEquals(false, recurringEditorDraftEnabled(awaiting = true, RecurringRebaseStage.Ready))
+    }
+
+    @Test
+    fun savingSheetRejectsHiddenButAllowsVisibleTransitions() {
+        val session = newRecurringEditorSession(baseline = null, currency = CurrencyCode.CNY)
+        fun hiddenAllowed() = recurringEditorSheetAllowsTransition(
+            session = session,
+            manualSaveInFlight = false,
+            targetValue = SheetValue.Hidden,
+        )
+        assertEquals(true, hiddenAllowed())
+        session.submitUi = RecurringSubmitUi(attemptId = 1L, awaiting = true)
+        assertEquals(
+            false,
+            hiddenAllowed(),
+        )
+        // attempt 在途即无条件拥有 sheet 可见性，不读 current/target：保存前已授权的
+        // Back/遮罩 hide 在赢得 drag mutex 前不发布 Hidden target，此刻 current/target
+        // 可能仍读作 Expanded/Expanded——唯有无条件补一次 show() 才能抢占这次隐藏。
+        assertEquals(
+            true,
+            recurringEditorAttemptRequiresVisibility(attemptId = 1L, awaiting = true),
+        )
+        assertEquals(
+            true,
+            recurringEditorSheetAllowsTransition(
+                session = session,
+                manualSaveInFlight = true,
+                targetValue = SheetValue.Expanded,
+            ),
+        )
+        session.submitUi = RecurringSubmitUi(attemptId = 1L, awaiting = false, error = "网络错误")
+        assertEquals(true, hiddenAllowed())
+        // 失败落定后同一 attemptId 停止主张可见性：用户随后主动 dismiss 不会被旧
+        // attempt 强制重开；没有 attempt 的普通打开态也从不触发 show()。
+        assertEquals(
+            false,
+            recurringEditorAttemptRequiresVisibility(attemptId = 1L, awaiting = false),
+        )
+        assertEquals(
+            false,
+            recurringEditorAttemptRequiresVisibility(attemptId = null, awaiting = false),
+        )
+        // VM 侧在途同样锁 Hidden，与 session 无关。
+        assertEquals(
+            false,
+            recurringEditorSheetAllowsTransition(
+                session = session,
+                manualSaveInFlight = true,
+                targetValue = SheetValue.Hidden,
+            ),
+        )
+    }
+
+    @Test
+    fun overlappingConflictCarriesCurrentAndDraftValuesForTheSurface() {
+        val stale = recurringItem {
+            merchant = "旧房租"
+            baselineAmountCents = 3000_00
+            rowVersion = 1L
+        }
+        val fresh = recurringItem {
+            merchant = "当前房租"
+            baselineAmountCents = 3200_00
+            nextExpectedDate = "2026-09-20"
+            rowVersion = 2L
+        }
+
+        assertEquals(fresh, recurringOverlapDisplayOwner(freshOwner = fresh, editingBaseline = stale))
+        assertEquals(stale, recurringOverlapDisplayOwner(freshOwner = null, editingBaseline = stale))
+        assertNull(recurringOverlapDisplayOwner(freshOwner = null, editingBaseline = null))
+
+        val comparisons = recurringOverlapComparisons(
+            freshOwner = fresh,
+            overlappingFields = setOf(RecurringEditField.Amount, RecurringEditField.Date),
+            draft = RecurringOverlapDraft(
+                merchant = "我的房租",
+                amountCents = 3100_00,
+                amountText = "3100.00",
+                nextExpectedDate = "2026-09-15",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                RecurringOverlapValue.Amount(currentCents = 3200_00, draftCents = 3100_00),
+                RecurringOverlapValue.Date(currentIso = "2026-09-20", draftIso = "2026-09-15"),
+            ),
+            comparisons.map(RecurringOverlapComparison::value),
+        )
+    }
+
+    @Test
+    fun submitSettlementRequiresExplicitMutationOutcome() {
+        val inFlight = recurringSubmitStep(
+            awaitingAttemptId = 7L,
+            feedback = RecurringManualSaveFeedback(
+                attemptId = 7L,
+                settlement = RecurringManualSaveSettlement.InFlight,
+            ),
+        )
+        assertNull(inFlight)
+        val explicitSuccess = recurringSubmitStep(
+            awaitingAttemptId = 7L,
+            feedback = RecurringManualSaveFeedback(
+                attemptId = 7L,
+                settlement = RecurringManualSaveSettlement.Accepted,
+            ),
+        )
+        assertEquals(RecurringSubmitSettle.Accepted, explicitSuccess)
+
+        val settlement = recurringSubmitStep(
+            awaitingAttemptId = 7L,
+            feedback = RecurringManualSaveFeedback(
+                attemptId = 7L,
+                settlement = RecurringManualSaveSettlement.Failed,
+            ),
+        )
+        assertEquals(
+            RecurringSubmitSettle.Failure,
+            settlement,
+            "an unresolved conflict must never settle the editor as accepted",
+        )
+
+        val unrelatedDanger = recurringSubmitStep(
+            awaitingAttemptId = 7L,
+            feedback = RecurringManualSaveFeedback(
+                attemptId = 8L,
+                settlement = RecurringManualSaveSettlement.Failed,
+            ),
+        )
+        assertNull(
+            unrelatedDanger,
+            "a refresh failure without manual-attempt ownership cannot settle the editor",
+        )
+    }
+}
+
+private fun assertSubsequentOwnerRefreshAdvancesOccBaseline(
+    fresh: RecurringItem,
+    overlapping: RecurringEditorRebase,
+) {
+    val session = newRecurringEditorSession(fresh, CurrencyCode.CNY).apply {
+        amountText = "3100.00"
+        submitUi = RecurringSubmitUi(attemptId = 42L)
+        rebaseUi = RecurringRebaseUi(42L, overlapping.overlappingFields)
+    }
+    val newer = fresh.copy(rowVersion = 3L, baselineAmountCents = 3300_00)
+    val ownerState = recurringEditorOwnerState(
+        session = session,
+        uiState = RecurringUiState(
+            items = listOf(newer),
+            itemsLoadState = RecurringListLoadState.Loaded,
+            manualSaveFeedback = RecurringManualSaveFeedback(
+                attemptId = 42L,
+                settlement = RecurringManualSaveSettlement.Failed,
+                requiresOwnerReload = true,
+            ),
+        ),
+    )
+    assertEquals(
+        RecurringRebaseStage.LoadingOwner,
+        ownerState.stage,
+        "a newer displayed owner must advance the retry OCC baseline before submit",
+    )
+
+    val secondRebase = rebaseRecurringEditorDraft(
+        previousBaseline = fresh,
+        freshOwner = newer,
+        draft = RecurringEditorRebaseDraft(
+            merchant = overlapping.merchant,
+            baselineAmountCents = overlapping.baselineAmountCents,
+            nextExpectedDate = overlapping.nextExpectedDate,
+            previousOverlappingFields = overlapping.overlappingFields,
+        ),
+    )
+    assertEquals(3L, secondRebase.baseline.rowVersion)
+    assertEquals(3100_00, secondRebase.baselineAmountCents)
+    assertEquals(setOf(RecurringEditField.Amount), secondRebase.overlappingFields)
+
+    val matchingOwner = newer.copy(rowVersion = 4L, baselineAmountCents = 3100_00)
+    val resolvedRebase = rebaseRecurringEditorDraft(
+        previousBaseline = newer,
+        freshOwner = matchingOwner,
+        draft = RecurringEditorRebaseDraft(
+            merchant = secondRebase.merchant,
+            baselineAmountCents = secondRebase.baselineAmountCents,
+            nextExpectedDate = secondRebase.nextExpectedDate,
+            previousOverlappingFields = secondRebase.overlappingFields,
+        ),
+    )
+    assertEquals(emptySet(), resolvedRebase.overlappingFields)
 }

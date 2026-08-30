@@ -269,6 +269,67 @@ def test_manual_recurring_duplicate_points_to_edit_or_restore(client: TestClient
     assert archived_duplicate.json()["status"] == "archived"
 
 
+def test_manual_recurring_rejects_normalized_merchant_key_overflow(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expanding_merchant = "ß" * 255
+    rejected_create_key = str(uuid4())
+
+    rejected_create = client.post(
+        "/api/recurring/items",
+        headers=_intent_headers(identity, rejected_create_key),
+        json=_manual_payload(merchant=expanding_merchant),
+    )
+    assert rejected_create.status_code == 422, rejected_create.json()
+    assert rejected_create.json()["error"] == "recurring_merchant_too_long"
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count())
+            .select_from(ApiIdempotencyKey)
+            .where(ApiIdempotencyKey.tenant_id == "owner")
+            .where(ApiIdempotencyKey.idempotency_key == rejected_create_key)
+        ) == 0
+        assert db.scalar(
+            select(func.count())
+            .select_from(RecurringItem)
+            .where(RecurringItem.tenant_id == "owner")
+        ) == 0
+
+    created = client.post(
+        "/api/recurring/items",
+        headers=_intent_headers(identity, str(uuid4())),
+        json=_manual_payload(merchant="宽带", amount_cents=12_000),
+    )
+    assert created.status_code == 201, created.json()
+    rejected_update_key = str(uuid4())
+    rejected_update = client.patch(
+        f"/api/recurring/items/{created.json()['public_id']}",
+        headers=_intent_headers(identity, rejected_update_key),
+        json={
+            "merchant": expanding_merchant,
+            "expected_row_version": created.json()["row_version"],
+        },
+    )
+    assert rejected_update.status_code == 422, rejected_update.json()
+    assert rejected_update.json()["error"] == "recurring_merchant_too_long"
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count())
+            .select_from(ApiIdempotencyKey)
+            .where(ApiIdempotencyKey.tenant_id == "owner")
+            .where(ApiIdempotencyKey.idempotency_key == rejected_update_key)
+        ) == 0
+
+    current = client.get(
+        f"/api/recurring/items/{created.json()['public_id']}",
+        headers=identity.app_headers,
+    )
+    assert current.status_code == 200, current.json()
+    assert current.json() == created.json()
+
+
 def test_recurring_edit_preserves_observed_facts_and_replays_before_occ(client: TestClient, *, identity) -> None:
     original = _seed_candidate_item()
     key = str(uuid4())

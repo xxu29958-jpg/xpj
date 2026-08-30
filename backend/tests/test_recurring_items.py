@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from api_contract_helpers import insert_confirmed_expense
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.models import LedgerMember, RecurringItem
@@ -55,6 +55,43 @@ def test_recurring_candidate_confirmation_service_creates_item_directly() -> Non
         assert item.baseline_amount_cents == 20000
         assert item.occurrence_count == 3
         assert item.next_expected_date.isoformat() == "2026-06-05"
+
+
+def test_candidate_confirmation_rejects_normalized_merchant_key_overflow(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expanding_merchant = "ß" * 255
+    last_seen = _seed_monthly_candidate(merchant=expanding_merchant)
+    candidates = client.get(
+        "/api/insights/recurring-candidates?timezone=UTC",
+        headers=identity.app_headers,
+    )
+    assert candidates.status_code == 200, candidates.json()
+    assert [item["merchant"] for item in candidates.json()["items"]] == [expanding_merchant]
+
+    rejected = client.post(
+        "/api/recurring/from-candidate?timezone=UTC",
+        headers=identity.app_headers,
+        json={
+            "merchant": expanding_merchant,
+            "amount_cents": 20000,
+            "occurrence_count": 3,
+            "last_seen_at": last_seen.isoformat().replace("+00:00", "Z"),
+            "confidence": "high",
+            "frequency": "monthly",
+        },
+    )
+
+    assert rejected.status_code == 422, rejected.json()
+    assert rejected.json()["error"] == "recurring_merchant_too_long"
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count())
+            .select_from(RecurringItem)
+            .where(RecurringItem.tenant_id == "owner")
+        ) == 0
 
 
 def _seed_monthly_candidate(*, merchant: str = "ChatGPT Plus", amount_cents: int = 20000) -> datetime:
@@ -246,13 +283,16 @@ def test_recurring_item_state_transitions(client: TestClient, *, identity) -> No
     assert visible.status_code == 200, visible.json()
     assert [entry["public_id"] for entry in visible.json()["items"]] == [public_id]
 
-    blocked = client.post(
-        f"/api/recurring/items/{public_id}/resume",
-        headers=identity.app_headers,
-        json={"expected_row_version": visible.json()["items"][0]["row_version"]},
-    )
-    assert blocked.status_code == 409, blocked.json()
-    assert blocked.json()["error"] == "recurring_item_archived"
+    for action in ("pause", "resume"):
+        blocked = client.post(
+            f"/api/recurring/items/{public_id}/{action}",
+            headers=identity.app_headers,
+            json={"expected_row_version": visible.json()["items"][0]["row_version"]},
+        )
+        assert blocked.status_code == 409, blocked.json()
+        assert blocked.json()["error"] == "recurring_item_archived"
+        assert blocked.json()["public_id"] == public_id
+        assert blocked.json()["status"] == "archived"
 
 
 def test_confirm_candidate_never_resurrects_archived_item(client: TestClient, *, identity) -> None:

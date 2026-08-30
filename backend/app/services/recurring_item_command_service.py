@@ -22,6 +22,7 @@ from app.services.idempotency import (
     mark_idempotency_succeeded,
 )
 from app.services.merchant_service import normalize_merchant
+from app.services.recurring_merchant_capacity import ensure_recurring_merchant_storage_shape
 from app.services.time_service import now_utc
 
 CREATE_RECURRING_OPERATION = "create_recurring_item"
@@ -40,6 +41,10 @@ def _clean_merchant(value: str | None) -> tuple[str, str]:
     merchant_key = normalize_merchant(merchant_name)
     if not merchant_name or not merchant_key:
         raise AppError("recurring_merchant_required", status_code=422)
+    ensure_recurring_merchant_storage_shape(
+        merchant_name=merchant_name,
+        merchant_key=merchant_key,
+    )
     return merchant_name, merchant_key
 
 

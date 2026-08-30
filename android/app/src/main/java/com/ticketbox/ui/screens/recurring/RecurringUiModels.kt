@@ -3,13 +3,10 @@ package com.ticketbox.ui.screens.recurring
 import androidx.annotation.StringRes
 import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringDateEdit
-import com.ticketbox.data.repository.RecurringItemDraft
 import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.data.repository.RecurringPendingKind
-import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
-import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.screens.RecurringListSectionModel
 import com.ticketbox.ui.screens.recurringListBodyState
 import com.ticketbox.viewmodel.RecurringListLoadState
@@ -182,90 +179,6 @@ internal fun buildRecurringItemPatch(
         baselineAmountCents = amountEdit,
         nextExpectedDate = dateEdit,
     )
-}
-
-internal data class RecurringFormInput(
-    val merchant: String,
-    val amountText: String,
-    val dateTouched: Boolean,
-    val dateIso: String?,
-)
-
-internal enum class RecurringFormInvalid {
-    Merchant,
-    Amount,
-}
-
-/** 表单提交的解析结果：要么给出要调用的写路径，要么本地拦截（校验失败 / 无改动）。 */
-internal sealed interface RecurringFormSubmit {
-    data class Create(val draft: RecurringItemDraft) : RecurringFormSubmit
-    data class Edit(val item: RecurringItem, val patch: RecurringItemPatch) : RecurringFormSubmit
-    data object DismissUnchanged : RecurringFormSubmit
-    data class Invalid(val reason: RecurringFormInvalid) : RecurringFormSubmit
-}
-
-internal fun resolveRecurringFormSubmit(
-    editing: RecurringItem?,
-    input: RecurringFormInput,
-    currency: CurrencyCode,
-): RecurringFormSubmit {
-    val cents = parseAmountCents(input.amountText, currency)
-    return when {
-        input.merchant.isBlank() -> RecurringFormSubmit.Invalid(RecurringFormInvalid.Merchant)
-        cents == null || cents <= 0L -> RecurringFormSubmit.Invalid(RecurringFormInvalid.Amount)
-        editing == null -> RecurringFormSubmit.Create(
-            RecurringItemDraft(
-                merchant = input.merchant.trim(),
-                baselineAmountCents = cents,
-                nextExpectedDate = input.dateIso,
-            ),
-        )
-        else -> buildRecurringItemPatch(
-            baseline = editing,
-            merchant = input.merchant,
-            baselineAmountCents = cents,
-            dateTouched = input.dateTouched,
-            nextExpectedDate = input.dateIso,
-        )?.let { RecurringFormSubmit.Edit(editing, it) }
-            ?: RecurringFormSubmit.DismissUnchanged
-    }
-}
-
-internal enum class RecurringSubmitSettle {
-    /** ViewModel 以 Danger 落定：保留表单，亮错误。 */
-    Failure,
-    /** 写路径已受理（Synced / Queued 待同步）：关表单，反馈交给页面横幅。 */
-    Accepted,
-}
-
-internal data class RecurringSubmitStep(
-    val sawLoading: Boolean,
-    val outcome: RecurringSubmitSettle?,
-)
-
-/**
- * 提交后等待 ViewModel 落定的状态机（对应 RecurringViewModel 没有一次性 settled
- * 信号的约定）：见过 loading=true 再落回 false 时，Danger=失败、其余=已受理；
- * 守卫直接失败（如只读）loading 不起，但 Danger message 立刻出现，同样判失败。
- */
-internal fun recurringSubmitStep(
-    awaiting: Boolean,
-    sawLoading: Boolean,
-    loading: Boolean,
-    hasMessage: Boolean,
-    danger: Boolean,
-): RecurringSubmitStep = when {
-    !awaiting -> RecurringSubmitStep(sawLoading, null)
-    loading -> RecurringSubmitStep(sawLoading = true, outcome = null)
-    hasMessage && danger -> RecurringSubmitStep(
-        sawLoading = false,
-        outcome = RecurringSubmitSettle.Failure,
-    )
-    sawLoading -> RecurringSubmitStep(
-        sawLoading = false,
-        outcome = RecurringSubmitSettle.Accepted,
-    )
-    else -> RecurringSubmitStep(sawLoading, null)
 }
 
 @StringRes

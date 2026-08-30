@@ -213,8 +213,55 @@ class RecurringRepositoryOutboxFallbackTest {
         )
 
         assertTrue(result.isFailure)
+        assertEquals("permission_denied", (result.exceptionOrNull() as RepositoryException).errorCode)
         assertEquals(0, dao.rows.size)
         assertEquals(null, api.createKey)
+    }
+
+    @Test
+    fun `local recurring validation exposes stable codes without localized repository copy`() = runTest {
+        val api = ApiStub(ApiResult.Success(successDto()))
+        val harness = harness(api)
+        val baseline = baselineItem()
+        val failures = listOf(
+            harness.repository.createAllowingOffline(
+                harness.binding,
+                RecurringItemDraft(" ", 1, null),
+            ),
+            harness.repository.createAllowingOffline(
+                harness.binding,
+                RecurringItemDraft("房租", 0, null),
+            ),
+            harness.repository.updateAllowingOffline(
+                harness.binding,
+                baseline.copy(publicId = ""),
+                RecurringItemPatch(merchant = "新名称"),
+            ),
+            harness.repository.updateAllowingOffline(
+                harness.binding,
+                baseline.copy(rowVersion = 0),
+                RecurringItemPatch(merchant = "新名称"),
+            ),
+            harness.repository.updateAllowingOffline(
+                harness.binding,
+                baseline,
+                RecurringItemPatch(),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "recurring_merchant_required",
+                "amount_invalid",
+                "recurring_item_not_found",
+                "state_conflict",
+                "recurring_item_no_changes",
+            ),
+            failures.map { (it.exceptionOrNull() as RepositoryException).errorCode },
+        )
+        assertTrue(failures.all(Result<RecurringSaveOutcome>::isFailure))
+        assertEquals(null, api.createKey)
+        assertEquals(null, api.updateKey)
     }
 
     @Test

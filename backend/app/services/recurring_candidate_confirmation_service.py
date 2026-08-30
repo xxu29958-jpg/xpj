@@ -22,6 +22,7 @@ from app.services.currency_common import home_currency_code
 from app.services.insights_service import recurring_candidates
 from app.services.merchant_service import normalize_merchant
 from app.services.recurring_item_command_service import raise_recurring_item_conflict
+from app.services.recurring_merchant_capacity import ensure_recurring_merchant_storage_shape
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
 _VALID_FREQUENCIES = {"monthly"}
@@ -83,13 +84,7 @@ def confirm_recurring_candidate(
     # 重试同一确认时走既有幂等返回 (不 404/409)。
     # 复审 agent-60: 幂等匹配必须含金额——已 formal 商家以不同金额重试时
     # 继续走候选匹配原路径 (恢复 404 守卫), 不静默返回既有项。
-    merchant_key = normalize_merchant(payload.merchant.strip())
-    frequency = _clean_frequency(payload.frequency)
-    amount_cents = ensure_money_minor(
-        payload.amount_cents,
-        sign=MoneySign.POSITIVE,
-        label="recurring_candidate.amount_cents",
-    )
+    merchant_key, frequency, amount_cents = _validated_candidate_intent(payload)
     if merchant_key:
         formal = _idempotent_formal_match(
             db,
@@ -149,6 +144,19 @@ def confirm_recurring_candidate(
         payload=payload,
         timezone_name=timezone_name,
     )
+
+
+def _validated_candidate_intent(payload: RecurringCandidateConfirmRequest) -> tuple[str, str, int]:
+    merchant_name = payload.merchant.strip()
+    merchant_key = normalize_merchant(merchant_name)
+    ensure_recurring_merchant_storage_shape(merchant_name=merchant_name, merchant_key=merchant_key)
+    frequency = _clean_frequency(payload.frequency)
+    amount_cents = ensure_money_minor(
+        payload.amount_cents,
+        sign=MoneySign.POSITIVE,
+        label="recurring_candidate.amount_cents",
+    )
+    return merchant_key, frequency, amount_cents
 
 
 def _require_recurring_candidate_match(
