@@ -34,7 +34,7 @@ class SyncStatusFailureTest {
     fun `recycled rule category points the user to restore then retry`() {
         assertEquals(
             R.string.sync_status_error_rule_category_deleted,
-            syncStatusKnownErrorMessageRes("rule_category_deleted"),
+            syncStatusExactErrorMessageResources["rule_category_deleted"],
         )
     }
 
