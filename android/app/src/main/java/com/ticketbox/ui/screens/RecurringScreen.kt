@@ -72,6 +72,10 @@ fun RecurringScreen(
     )
     val derived = recurringScreenDerived(state, selectedTab)
     val hasReadableData = recurringHasReadableData(state)
+    val commandsEnabled = recurringCommandsEnabled(
+        manualSaveInFlight = state.manualSaveInFlight,
+        mutationInFlight = state.mutationInFlight,
+    )
     val callbacks = RecurringScreenCallbacks(
         onCreate = { editorHost.openCreate(currencyDisplay.homeCurrency) },
         onEdit = { item -> editorHost.openEdit(item, currencyDisplay.homeCurrency) },
@@ -101,9 +105,10 @@ fun RecurringScreen(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
         refresh = AppSecondaryRefreshState(
-            isRefreshing = ReadableRefreshIndicator.isActive(
+            isRefreshing = recurringScreenActivityActive(
                 loading = state.loading,
                 hasReadableData = hasReadableData,
+                mutationInFlight = state.mutationInFlight,
             ),
             onRefresh = actions.onRefresh,
         ),
@@ -118,13 +123,13 @@ fun RecurringScreen(
             },
         ),
     ) {
-        recurringOverviewSection(state, derived, currencyDisplay, callbacks)
+        recurringOverviewSection(state, derived, currencyDisplay, callbacks, commandsEnabled)
         recurringRegistrySection(
             derived,
             currencyDisplay,
             actions,
             callbacks,
-            editEnabled = !state.manualSaveInFlight,
+            commandsEnabled = commandsEnabled,
         )
     }
 
@@ -178,6 +183,7 @@ private fun LazyListScope.recurringOverviewSection(
     derived: RecurringDerivedModel,
     currencyDisplay: CurrencyDisplay,
     callbacks: RecurringScreenCallbacks,
+    commandsEnabled: Boolean,
 ) {
     state.message?.takeIf {
         state.duplicateConflict == null &&
@@ -204,7 +210,7 @@ private fun LazyListScope.recurringOverviewSection(
                 modifier = Modifier.fillMaxWidth(),
                 text = stringResource(R.string.recurring_add_cta),
                 icon = Icons.Filled.Add,
-                enabled = !state.manualSaveInFlight,
+                enabled = commandsEnabled,
                 onClick = callbacks.onCreate,
             )
         }
@@ -225,7 +231,7 @@ private fun LazyListScope.recurringRegistrySection(
     currencyDisplay: CurrencyDisplay,
     actions: RecurringScreenActions,
     callbacks: RecurringScreenCallbacks,
-    editEnabled: Boolean,
+    commandsEnabled: Boolean,
 ) {
     item {
         RecurringTabRow(
@@ -241,7 +247,7 @@ private fun LazyListScope.recurringRegistrySection(
                 section = derived.itemSection,
                 currencyDisplay = currencyDisplay,
                 canModify = derived.canModify,
-                editEnabled = editEnabled,
+                commandsEnabled = commandsEnabled,
             ),
             onRetry = actions.onRefresh,
             onEdit = callbacks.onEdit,
@@ -255,6 +261,7 @@ private fun LazyListScope.recurringRegistrySection(
             options = RecurringCandidateSectionOptions(
                 canModify = derived.canModify,
                 itemsHealthy = derived.itemSection.bodyState != ReadableListBodyState.LoadFailed,
+                confirmEnabled = commandsEnabled,
             ),
             onRetry = actions.onRefresh,
             actions = actions.candidates,

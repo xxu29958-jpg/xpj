@@ -35,6 +35,8 @@ internal data class RecurringCandidateSectionOptions(
     val canModify: Boolean,
     /** 主列表健康时候选失败才给重试；主列表已失败时全页只留一个下一步。 */
     val itemsHealthy: Boolean,
+    /** 采用建议是 generic 命令，与行内生命周期键吃同一个屏级在途 gate。 */
+    val confirmEnabled: Boolean,
 )
 
 /**
@@ -86,6 +88,7 @@ internal fun RecurringCandidatesCard(
                             candidate = candidate,
                             currencyDisplay = currencyDisplay,
                             canModify = options.canModify,
+                            confirmEnabled = options.confirmEnabled,
                             actions = actions,
                         )
                     }
@@ -125,6 +128,7 @@ private fun RecurringCandidateRow(
     candidate: RecurringCandidate,
     currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
+    confirmEnabled: Boolean,
     actions: RecurringCandidateActions,
 ) {
     val merchantFallback = stringResource(R.string.recurring_candidate_merchant_fallback)
@@ -167,6 +171,7 @@ private fun RecurringCandidateRow(
                 AppSecondaryButton(
                     modifier = actionModifier,
                     text = stringResource(R.string.recurring_candidate_confirm),
+                    enabled = confirmEnabled,
                     onClick = { actions.onConfirmCandidate(candidate) },
                 )
             },

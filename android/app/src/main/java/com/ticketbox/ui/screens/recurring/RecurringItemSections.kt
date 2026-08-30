@@ -104,11 +104,12 @@ internal data class RecurringItemsCardState(
     val section: RecurringListSectionModel<RecurringItem>,
     val currencyDisplay: CurrencyDisplay,
     val canModify: Boolean,
-    val editEnabled: Boolean,
+    /** 编辑与暂停/恢复/归档/还原吃同一条屏级命令规则；VM hard guard 仍是真正防线。 */
+    val commandsEnabled: Boolean,
 )
 
 private data class RecurringItemInteraction(
-    val editEnabled: Boolean,
+    val commandsEnabled: Boolean,
     val onEdit: (RecurringItem) -> Unit,
 )
 
@@ -121,7 +122,7 @@ internal fun RecurringItemsCard(
 ) {
     val visuals = LocalThemeVisuals.current
     val items = state.section.rows
-    val interaction = RecurringItemInteraction(state.editEnabled, onEdit)
+    val interaction = RecurringItemInteraction(state.commandsEnabled, onEdit)
     AppSectionGroup(
         contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
@@ -331,7 +332,7 @@ private fun RecurringRowActionButtons(
     if (capabilities.editable) {
         TextButton(
             modifier = modifier,
-            enabled = interaction.editEnabled,
+            enabled = interaction.commandsEnabled,
             onClick = { interaction.onEdit(item) },
         ) {
             Icon(
@@ -345,18 +346,24 @@ private fun RecurringRowActionButtons(
         when (item.status) {
             "active" -> TextButton(
                 modifier = modifier,
+                enabled = interaction.commandsEnabled,
                 onClick = { actions.onPause(item.publicId, item.rowVersion) },
             ) {
                 Text(stringResource(R.string.recurring_action_pause))
             }
             "paused" -> TextButton(
                 modifier = modifier,
+                enabled = interaction.commandsEnabled,
                 onClick = { actions.onResume(item.publicId, item.rowVersion) },
             ) {
                 Text(stringResource(R.string.recurring_action_resume))
             }
         }
-        TextButton(modifier = modifier, onClick = { actions.onArchive(item.publicId) }) {
+        TextButton(
+            modifier = modifier,
+            enabled = interaction.commandsEnabled,
+            onClick = { actions.onArchive(item.publicId) },
+        ) {
             Icon(
                 Icons.Filled.DeleteOutline,
                 contentDescription = stringResource(R.string.recurring_action_archive_description),
@@ -367,6 +374,7 @@ private fun RecurringRowActionButtons(
     if (capabilities.restorable) {
         TextButton(
             modifier = modifier,
+            enabled = interaction.commandsEnabled,
             onClick = { actions.onRestore(item.publicId, item.rowVersion) },
         ) {
             Icon(

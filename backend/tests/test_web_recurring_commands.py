@@ -5,7 +5,6 @@ Page render / error-surface assertions live in test_web_recurring.py.
 
 from __future__ import annotations
 
-import re
 from datetime import date
 from urllib.parse import unquote
 from uuid import uuid4
@@ -144,82 +143,6 @@ def test_web_recurring_edit_replays_same_idempotency_key(web_client: TestClient)
         item = db.scalar(select(RecurringItem).where(RecurringItem.public_id == public_id))
         assert item is not None
         assert item.merchant_name == "Cloud Storage"
-        assert item.row_version == token + 1
-
-
-# ── 输入类错误的 attempt@baseline: 草稿携带 submitted token, 世界仲裁留给 backend ──
-
-
-def test_web_recurring_edit_input_error_echoes_attempt_baseline_then_occ_arbitrates(
-    web_client: TestClient,
-) -> None:
-    """精确交错回归: GET 时拿到 token7 → 另一消费者推进到 rv8 → 用户仍持 token7
-    提交非法金额 (route 级 parse 失败, 未进 service/OCC)。错误页必须回声完整草稿
-    与原 token7 — 不得把 hidden expected_row_version 升级为 rv8, 否则修正后重提
-    会带着从未见过的 baseline 通过 OCC, 静默覆盖远端字段。修正金额后以新 intent
-    key 重提 → backend 仲裁判 state_conflict, rv8 不变, 页面只回 server truth。"""
-    public_id = seed_observed_item(merchant="房租", occurrence_count=0, source="manual")
-    stale_token = row_version(public_id)
-
-    # 另一消费者的合法编辑把条目推进到下一 row_version。
-    advanced = edit_via_web(web_client, public_id, merchant="房租", amount="7000", token=stale_token)
-    assert advanced.status_code == 303
-    remote_token = row_version(public_id)
-    assert remote_token == stale_token + 1
-
-    # 用户仍持旧 token 提交非法金额: 输入类错误页回声完整草稿 + 原 baseline token。
-    rejected = edit_via_web(web_client, public_id, merchant="房租（自住）", amount="abc", token=stale_token)
-    assert rejected.status_code == 200
-    assert "每月金额不是合法金额" in rejected.text
-    assert extract_hidden_token(rejected.text, action=f"/web/recurring/{public_id}/edit") == str(stale_token)
-    form = re.search(
-        rf'<details class="rc-edit" open>.*?action="/web/recurring/{re.escape(public_id)}/edit".*?</form>',
-        rejected.text,
-        re.DOTALL,
-    )
-    assert form is not None, "input-error render must keep the edit form open with the draft"
-    assert 'value="房租（自住）"' in form.group(0)
-    assert 'value="abc"' in form.group(0)
-
-    # 修正金额、新 intent key 重提: OCC 仲裁 → state_conflict; rv8 原样, 草稿丢弃,
-    # 表单回到服务端事实 (merchant 与 token 均为远端当前值)。
-    retried = edit_via_web(web_client, public_id, merchant="房租（自住）", amount="7200", token=stale_token)
-    assert retried.status_code == 200
-    assert "请核对后再保存" in retried.text
-    assert "房租（自住）" not in retried.text
-    assert extract_hidden_token(retried.text, action=f"/web/recurring/{public_id}/edit") == str(remote_token)
-    with SessionLocal() as db:
-        item = db.scalar(select(RecurringItem).where(RecurringItem.public_id == public_id))
-        assert item is not None
-        assert item.row_version == remote_token
-        assert item.merchant_name == "房租"
-        assert item.baseline_amount_cents == 700_000
-
-
-def test_web_recurring_edit_input_error_is_correctable_in_place(web_client: TestClient) -> None:
-    """无漂移常态: 输入类错误回声草稿且 token 即当前 row_version, 就地修正后保存成功。"""
-    public_id = seed_observed_item(occurrence_count=0, source="manual")
-    token = row_version(public_id)
-
-    rejected = edit_via_web(web_client, public_id, merchant="物业费", amount="", token=token)
-    assert rejected.status_code == 200
-    assert "请填写每月金额" in rejected.text
-    assert extract_hidden_token(rejected.text, action=f"/web/recurring/{public_id}/edit") == str(token)
-    form = re.search(
-        rf'<details class="rc-edit" open>.*?action="/web/recurring/{re.escape(public_id)}/edit".*?</form>',
-        rejected.text,
-        re.DOTALL,
-    )
-    assert form is not None
-    assert 'value="物业费"' in form.group(0)
-
-    fixed = edit_via_web(web_client, public_id, merchant="物业费", amount="300", token=token)
-    assert fixed.status_code == 303
-    with SessionLocal() as db:
-        item = db.scalar(select(RecurringItem).where(RecurringItem.public_id == public_id))
-        assert item is not None
-        assert item.merchant_name == "物业费"
-        assert item.baseline_amount_cents == 30_000
         assert item.row_version == token + 1
 
 

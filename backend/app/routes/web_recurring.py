@@ -10,11 +10,13 @@ import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.errors import AppError
+from app.errors import AppError, _validation_error_code
 from app.money_contract import MoneySign, parse_canonical_money_minor
 from app.routes._web_recurring_presenter import (
     candidate_review_prefill,
@@ -296,14 +298,22 @@ def web_recurring_confirm_candidate(
             next_expected_date=parse_optional_date(next_expected_date),
         )
         confirm_recurring_candidate(db, tenant_id=selected_id, payload=payload)
-    except AppError as exc:
+    except (AppError, ValidationError) as exc:
+        app_error = (
+            exc
+            if isinstance(exc, AppError)
+            else AppError(
+                _validation_error_code(RequestValidationError(exc.errors())),
+                status_code=422,
+            )
+        )
         db.rollback()
         return _render_recurring(
             request=request,
             db=db,
             selected_id=selected_id,
             options=options,
-            **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
+            **_conflict_kwargs(app_error, selected_id=selected_id, merchant=merchant),
         )
     return _web_redirect("/web/recurring", selected_id, flash="已采用建议，加入你的固定支出。")
 

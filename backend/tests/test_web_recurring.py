@@ -292,6 +292,24 @@ def test_web_recurring_candidate_confirm_conflict_consumes_details(
     assert "去归档列表恢复" in conflict.text
 
 
+@pytest.mark.parametrize(
+    ("merchant", "message"),
+    [
+        ("   ", "请填写固定支出的商家或名称。"),
+        ("😀" * 256, "固定支出名称过长，请缩短后再试。"),
+    ],
+)
+def test_web_recurring_candidate_confirm_surfaces_stable_merchant_errors(
+    web_client: TestClient,
+    merchant: str,
+    message: str,
+) -> None:
+    rejected = post_confirm(web_client, merchant=merchant)
+
+    assert rejected.status_code == 200
+    assert message in rejected.text
+
+
 def test_web_recurring_hero_sums_active_items_only_and_ignores_filter(
     web_client: TestClient,
 ) -> None:

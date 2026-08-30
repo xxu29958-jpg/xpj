@@ -12525,7 +12525,7 @@
             "title": "Last Seen At"
           },
           "merchant": {
-            "maxLength": 255,
+            "description": "Merchant display name. Leading and trailing whitespace is ignored before validation and storage.",
             "minLength": 1,
             "title": "Merchant",
             "type": "string"
@@ -12633,7 +12633,7 @@
             "type": "integer"
           },
           "merchant": {
-            "maxLength": 255,
+            "description": "Merchant display name. Leading and trailing whitespace is ignored before validation and storage.",
             "minLength": 1,
             "title": "Merchant",
             "type": "string"
@@ -12907,7 +12907,6 @@
           "merchant": {
             "anyOf": [
               {
-                "maxLength": 255,
                 "minLength": 1,
                 "type": "string"
               },
@@ -12915,6 +12914,7 @@
                 "type": "null"
               }
             ],
+            "description": "Merchant display name. Leading and trailing whitespace is ignored before validation and storage.",
             "title": "Merchant"
           },
           "next_expected_date": {

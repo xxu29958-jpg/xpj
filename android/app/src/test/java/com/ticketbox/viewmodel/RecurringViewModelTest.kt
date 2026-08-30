@@ -30,6 +30,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
@@ -263,6 +264,106 @@ class RecurringViewModelMutationTest {
         advanceUntilIdle()
 
         assertEquals(archived.publicId to 11L, fake.restoreCall)
+    }
+
+    @Test
+    fun lifecycleMutationIsSingleFlightUntilItsOwnedAttemptSettles() = recurringTest {
+        val pendingPause = CompletableDeferred<Result<RecurringItem>>()
+        val lifecycle = FakeRecurringLifecycleActions().apply {
+            pauseResponder = { pendingPause.await() }
+        }
+        val fake = FakeRecurringActions(lifecycle = lifecycle)
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        vm.pause("rec-1", 1)
+        vm.pause("rec-1", 1)
+
+        assertEquals(true, vm.uiState.value.mutationInFlight)
+        runCurrent()
+
+        assertEquals(1, lifecycle.pauseCalls)
+
+        pendingPause.complete(Result.success(item(publicId = "rec-1")))
+        advanceUntilIdle()
+
+        assertEquals(false, vm.uiState.value.mutationInFlight)
+    }
+
+    @Test
+    fun manualAttemptBlocksGenericMutationBeforeUiLaunchRuns() = recurringTest {
+        val existing = item(publicId = "rec-manual-owner")
+        val pendingUpdate = CompletableDeferred<Result<RecurringSaveOutcome>>()
+        val lifecycle = FakeRecurringLifecycleActions()
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(existing)),
+            lifecycle = lifecycle,
+        ).apply {
+            updateResponder = { pendingUpdate.await() }
+        }
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        vm.saveManual(
+            RecurringManualSaveCommand.Edit(
+                baseline = existing,
+                patch = RecurringItemPatch(merchant = "新的名称"),
+            ),
+        )
+        vm.pause(existing.publicId, existing.rowVersion)
+
+        assertEquals(0, lifecycle.pauseCalls)
+        assertEquals(false, vm.uiState.value.mutationInFlight)
+
+        pendingUpdate.complete(Result.success(RecurringSaveOutcome.Synced(existing)))
+        advanceUntilIdle()
+
+        assertEquals(0, lifecycle.pauseCalls)
+    }
+
+    @Test
+    fun bindingChangeRetiresOldGenericAttemptWithoutClearingNewAttempt() = recurringTest {
+        val accessFlow = MutableStateFlow(planAccess(ownerKey = "owner-a"))
+        val firstPause = CompletableDeferred<Result<RecurringItem>>()
+        val secondPause = CompletableDeferred<Result<RecurringItem>>()
+        val lifecycle = FakeRecurringLifecycleActions().apply {
+            pauseResponder = {
+                if (pauseCalls == 1) firstPause.await() else secondPause.await()
+            }
+        }
+        val fake = FakeRecurringActions(activeAccessFlow = accessFlow, lifecycle = lifecycle)
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        vm.pause("rec-owner-a", 1)
+        runCurrent()
+        assertEquals(true, vm.uiState.value.mutationInFlight)
+
+        accessFlow.value = planAccess(ownerKey = "owner-b")
+        runCurrent()
+        assertEquals(false, vm.uiState.value.mutationInFlight)
+
+        vm.pause("rec-owner-b", 1)
+        runCurrent()
+        assertEquals(2, lifecycle.pauseCalls)
+        assertEquals(true, vm.uiState.value.mutationInFlight)
+
+        firstPause.complete(Result.success(item(publicId = "rec-owner-a")))
+        runCurrent()
+        assertEquals(
+            true,
+            vm.uiState.value.mutationInFlight,
+            "the retired binding must not clear the new binding's attempt",
+        )
+
+        secondPause.complete(Result.failure(IllegalStateException("weak network")))
+        advanceUntilIdle()
+        assertEquals(false, vm.uiState.value.mutationInFlight)
+
+        lifecycle.pauseResponder = null
+        vm.pause("rec-owner-b", 1)
+        advanceUntilIdle()
+        assertEquals(3, lifecycle.pauseCalls)
     }
 
     @Test
@@ -841,6 +942,9 @@ private class FakeRecurringLifecycleActions(
 ) : RecurringLifecycleActions {
     var confirmCalls: Int = 0
         private set
+    var pauseResponder: (suspend () -> Result<RecurringItem>)? = null
+    var pauseCalls: Int = 0
+        private set
     var restoreCall: Pair<String, Long>? = null
         private set
 
@@ -856,7 +960,10 @@ private class FakeRecurringLifecycleActions(
         expectedBinding: LogicalSessionBinding,
         publicId: String,
         expectedRowVersion: Long,
-    ): Result<RecurringItem> = Result.success(item(publicId = publicId))
+    ): Result<RecurringItem> {
+        pauseCalls += 1
+        return pauseResponder?.invoke() ?: Result.success(item(publicId = publicId))
+    }
     override suspend fun resume(
         expectedBinding: LogicalSessionBinding,
         publicId: String,

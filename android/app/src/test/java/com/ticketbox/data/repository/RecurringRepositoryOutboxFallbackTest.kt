@@ -19,117 +19,117 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+private fun baselineItem(): RecurringItem = successDto().toDomain().copy(
+    merchant = "房租",
+    merchantKey = "房租",
+    baselineAmountCents = 350000,
+    nextExpectedDate = "2026-09-01",
+    lastAmountCents = 360000,
+    occurrenceCount = 8,
+    lastSeenAt = "2026-08-01T00:00:00Z",
+    confidence = "high",
+    source = "candidate",
+    rowVersion = 7,
+)
+
+private fun successDto(): RecurringItemDto = RecurringItemDto(
+    publicId = "recurring-1",
+    ledgerId = "family",
+    merchant = "房租",
+    merchantKey = "房租",
+    frequency = "monthly",
+    baselineAmountCents = 350000,
+    lastAmountCents = 350000,
+    occurrenceCount = 0,
+    lastSeenAt = null,
+    nextExpectedDate = "2026-09-01",
+    status = "active",
+    confidence = null,
+    source = "manual",
+    createdAt = "2026-08-30T00:00:00Z",
+    updatedAt = "2026-08-30T00:00:00Z",
+    rowVersion = 1,
+    pausedAt = null,
+    archivedAt = null,
+)
+
+private fun moshi(): Moshi = Moshi.Builder()
+    .addRecurringWireAdapters()
+    .add(KotlinJsonAdapterFactory())
+    .build()
+
+private class ServiceFactory(private val service: ApiService) : ApiServiceFactory {
+    override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
+}
+
+private sealed interface ApiResult {
+    data class Success(val dto: RecurringItemDto) : ApiResult
+    data class Throw(val error: Throwable) : ApiResult
+}
+
+private class ApiStub(
+    private val createResult: ApiResult,
+    private val updateResult: ApiResult = createResult,
+    delegate: ApiService = FakeApiService(mutableListOf(), 0),
+) : ApiService by delegate {
+    var createKey: String? = null
+    var updateKey: String? = null
+    var createRequest: RecurringItemCreateRequestDto? = null
+    var updateRequest: RecurringItemUpdateRequestDto? = null
+
+    override suspend fun createRecurringItem(
+        request: RecurringItemCreateRequestDto,
+        idempotencyKey: String,
+    ): RecurringItemDto {
+        createKey = idempotencyKey
+        createRequest = request
+        return createResult.resolve()
+    }
+
+    override suspend fun updateRecurringItem(
+        publicId: String,
+        request: RecurringItemUpdateRequestDto,
+        idempotencyKey: String,
+    ): RecurringItemDto {
+        updateKey = idempotencyKey
+        updateRequest = request
+        return updateResult.resolve()
+    }
+
+    private fun ApiResult.resolve(): RecurringItemDto = when (this) {
+        is ApiResult.Success -> dto
+        is ApiResult.Throw -> throw error
+    }
+}
+
+private data class Harness(
+    val repository: RecurringRepository,
+    val binding: LogicalSessionBinding,
+)
+
+private fun harness(
+    api: ApiService,
+    role: String = "owner",
+    outbox: OutboxRepository? = null,
+): Harness {
+    val session = TestSessionFixture().apply {
+        saveToken("session-token")
+        if (role != "owner") switchLedgerForFixture("owner", "我的小票夹", role)
+    }
+    val provider = testApiServiceProvider(ServiceFactory(api), session)
+    val adapters = moshi()
+    return Harness(
+        repository = RecurringRepository(
+            apiProvider = provider,
+            outbox = outbox,
+            createAdapter = adapters.adapter(RecurringItemCreateRequestDto::class.java),
+            updateAdapter = adapters.adapter(RecurringItemUpdateRequestDto::class.java),
+        ),
+        binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding()),
+    )
+}
+
 class RecurringRepositoryOutboxFallbackTest {
-    private fun baselineItem(): RecurringItem = successDto().toDomain().copy(
-        merchant = "房租",
-        merchantKey = "房租",
-        baselineAmountCents = 350000,
-        nextExpectedDate = "2026-09-01",
-        lastAmountCents = 360000,
-        occurrenceCount = 8,
-        lastSeenAt = "2026-08-01T00:00:00Z",
-        confidence = "high",
-        source = "candidate",
-        rowVersion = 7,
-    )
-
-    private fun successDto(): RecurringItemDto = RecurringItemDto(
-        publicId = "recurring-1",
-        ledgerId = "family",
-        merchant = "房租",
-        merchantKey = "房租",
-        frequency = "monthly",
-        baselineAmountCents = 350000,
-        lastAmountCents = 350000,
-        occurrenceCount = 0,
-        lastSeenAt = null,
-        nextExpectedDate = "2026-09-01",
-        status = "active",
-        confidence = null,
-        source = "manual",
-        createdAt = "2026-08-30T00:00:00Z",
-        updatedAt = "2026-08-30T00:00:00Z",
-        rowVersion = 1,
-        pausedAt = null,
-        archivedAt = null,
-    )
-
-    private fun moshi(): Moshi = Moshi.Builder()
-        .addRecurringWireAdapters()
-        .add(KotlinJsonAdapterFactory())
-        .build()
-
-    private class ServiceFactory(private val service: ApiService) : ApiServiceFactory {
-        override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
-    }
-
-    private sealed interface ApiResult {
-        data class Success(val dto: RecurringItemDto) : ApiResult
-        data class Throw(val error: Throwable) : ApiResult
-    }
-
-    private class ApiStub(
-        private val createResult: ApiResult,
-        private val updateResult: ApiResult = createResult,
-        delegate: ApiService = FakeApiService(mutableListOf(), 0),
-    ) : ApiService by delegate {
-        var createKey: String? = null
-        var updateKey: String? = null
-        var createRequest: RecurringItemCreateRequestDto? = null
-        var updateRequest: RecurringItemUpdateRequestDto? = null
-
-        override suspend fun createRecurringItem(
-            request: RecurringItemCreateRequestDto,
-            idempotencyKey: String,
-        ): RecurringItemDto {
-            createKey = idempotencyKey
-            createRequest = request
-            return createResult.resolve()
-        }
-
-        override suspend fun updateRecurringItem(
-            publicId: String,
-            request: RecurringItemUpdateRequestDto,
-            idempotencyKey: String,
-        ): RecurringItemDto {
-            updateKey = idempotencyKey
-            updateRequest = request
-            return updateResult.resolve()
-        }
-
-        private fun ApiResult.resolve(): RecurringItemDto = when (this) {
-            is ApiResult.Success -> dto
-            is ApiResult.Throw -> throw error
-        }
-    }
-
-    private data class Harness(
-        val repository: RecurringRepository,
-        val binding: LogicalSessionBinding,
-    )
-
-    private fun harness(
-        api: ApiService,
-        role: String = "owner",
-        outbox: OutboxRepository? = null,
-    ): Harness {
-        val session = TestSessionFixture().apply {
-            saveToken("session-token")
-            if (role != "owner") switchLedgerForFixture("owner", "我的小票夹", role)
-        }
-        val provider = testApiServiceProvider(ServiceFactory(api), session)
-        val adapters = moshi()
-        return Harness(
-            repository = RecurringRepository(
-                apiProvider = provider,
-                outbox = outbox,
-                createAdapter = adapters.adapter(RecurringItemCreateRequestDto::class.java),
-                updateAdapter = adapters.adapter(RecurringItemUpdateRequestDto::class.java),
-            ),
-            binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding()),
-        )
-    }
-
     @Test
     fun `manual create success publishes server fact without queue row`() = runTest {
         val dao = FakePendingMutationDao()
@@ -221,7 +221,9 @@ class RecurringRepositoryOutboxFallbackTest {
         assertEquals(0, dao.rows.size)
         assertEquals(null, api.createKey)
     }
+}
 
+class RecurringRepositoryValidationAndPublicationTest {
     @Test
     fun `merchant overflow is rejected before network or outbox`() = runTest {
         val atLimitApi = ApiStub(ApiResult.Success(successDto()))

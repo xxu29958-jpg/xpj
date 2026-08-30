@@ -137,4 +137,27 @@ class RecurringScreenModelsTest {
         val active = recurringScreenDerived(state, RecurringTab.Active)
         assertEquals(3, active.itemSection.rows.size)
     }
+
+    @Test
+    fun commandsEnabledOnlyWhenNoMutationAndNoManualSaveInFlight() {
+        // 屏级统一 gate：generic mutation 与 manual save 任一在途，所有命令/恢复入口禁用。
+        assertEquals(true, recurringCommandsEnabled(manualSaveInFlight = false, mutationInFlight = false))
+        assertEquals(false, recurringCommandsEnabled(manualSaveInFlight = true, mutationInFlight = false))
+        assertEquals(false, recurringCommandsEnabled(manualSaveInFlight = false, mutationInFlight = true))
+        assertEquals(false, recurringCommandsEnabled(manualSaveInFlight = true, mutationInFlight = true))
+    }
+
+    @Test
+    fun screenActivitySignalCoversMutationEvenWithReadableData() {
+        // mutation 在途：有可读数据时刷新指示本来不亮，但全局「正在工作」信号必须亮。
+        assertEquals(
+            true,
+            recurringScreenActivityActive(loading = false, hasReadableData = true, mutationInFlight = true),
+        )
+        // 无 mutation、无加载：信号必须灭（防恒真实现）。
+        assertEquals(
+            false,
+            recurringScreenActivityActive(loading = false, hasReadableData = true, mutationInFlight = false),
+        )
+    }
 }

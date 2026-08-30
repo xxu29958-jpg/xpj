@@ -22,6 +22,7 @@ import java.util.UUID
 
 data class RecurringUiState(
     val loading: Boolean = false,
+    val mutationInFlight: Boolean = false,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
     val items: List<RecurringItem> = emptyList(),
@@ -286,6 +287,7 @@ class RecurringViewModel(
             state.copy(items = state.items.withRecurringItem(item))
         },
     ) {
+        if (_uiState.value.mutationInFlight || activeManualAttemptId != null) return
         val binding = activeBinding
         if (binding == null || !repository.canModifyLedger()) {
             _uiState.update {
@@ -299,15 +301,16 @@ class RecurringViewModel(
         }
         val generation = requestGeneration
         refreshGeneration += 1
+        _uiState.update {
+            it.copy(
+                loading = true,
+                mutationInFlight = true,
+                message = null,
+                messageTone = MessageTone.Neutral,
+                duplicateConflict = null,
+            )
+        }
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    loading = true,
-                    message = null,
-                    messageTone = MessageTone.Neutral,
-                    duplicateConflict = null,
-                )
-            }
             val result = action(binding)
             if (requestGeneration != generation) return@launch
             val displacedOwnerRefresh = _uiState.value.ownerRefreshInFlight
@@ -318,6 +321,7 @@ class RecurringViewModel(
                         onSuccessState(
                             state.copy(
                                 loading = false,
+                                mutationInFlight = false,
                                 message = UiText.res(R.string.recurring_message_updated),
                                 messageTone = MessageTone.Success,
                                 duplicateConflict = null,
@@ -352,6 +356,7 @@ class RecurringViewModel(
         _uiState.update {
             it.copy(
                 loading = false,
+                mutationInFlight = false,
                 message = message,
                 messageTone = MessageTone.Danger,
                 duplicateConflict = conflict,
