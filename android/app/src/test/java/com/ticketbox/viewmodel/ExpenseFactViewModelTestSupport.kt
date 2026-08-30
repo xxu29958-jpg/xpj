@@ -179,7 +179,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         )
     }
     var splitMembersResult: () -> Result<List<FamilyMember>> = { Result.success(emptyList()) }
-    var revisionsResult: (Int, Int) -> Result<ExpenseRevisionPage> = { page, pageSize ->
+    var revisionsResult: suspend (Int, Int) -> Result<ExpenseRevisionPage> = { page, pageSize ->
         Result.success(
             ExpenseRevisionPage(
                 items = listOf(

@@ -1,8 +1,6 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
-import com.ticketbox.R
-import com.ticketbox.domain.model.MessageTone
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -15,19 +13,27 @@ private const val REVISION_PAGE_SIZE = 50
  */
 
 fun ExpenseFactViewModel.loadExpenseRevisions() {
+    val generation = ++revisionLoadGeneration
     viewModelScope.launch {
-        _uiState.update {
-            it.copy(
+        if (generation != revisionLoadGeneration) return@launch
+        _uiState.update { state ->
+            state.copy(
                 revisionsLoading = true,
-                revisionsLoadState = ExpenseDetailDataLoadState.Loading,
+                revisionsLoadState = if (state.revisions.isEmpty()) {
+                    ExpenseDetailDataLoadState.Loading
+                } else {
+                    ExpenseDetailDataLoadState.Loaded
+                },
                 revisionsOlderLoading = false,
                 revisionsOlderLoadFailed = false,
+                revisionsRefreshFailed = false,
             )
         }
         repository.fetchExpenseRevisions(expenseId, page = 1, pageSize = REVISION_PAGE_SIZE)
             .onSuccess { page ->
-                _uiState.update {
-                    it.copy(
+                _uiState.update { state ->
+                    if (generation != revisionLoadGeneration) return@update state
+                    state.copy(
                         revisions = page.items,
                         revisionsTotal = page.total,
                         revisionsLoading = false,
@@ -35,22 +41,33 @@ fun ExpenseFactViewModel.loadExpenseRevisions() {
                         revisionsNextPage = page.nextPageOrNull(),
                         revisionsOlderLoading = false,
                         revisionsOlderLoadFailed = false,
+                        revisionsRefreshFailed = false,
                     )
                 }
             }
-            .onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        revisionsLoading = false,
-                        revisionsLoadState = ExpenseDetailDataLoadState.Failed,
-                        revisions = emptyList(),
-                        revisionsTotal = 0,
-                        revisionsNextPage = null,
-                        revisionsOlderLoading = false,
-                        revisionsOlderLoadFailed = false,
-                        message = error.toUiText(R.string.expense_fact_revisions_failed),
-                        messageTone = MessageTone.Danger,
-                    )
+            .onFailure {
+                _uiState.update { state ->
+                    if (generation != revisionLoadGeneration) return@update state
+                    if (state.revisions.isNotEmpty()) {
+                        state.copy(
+                            revisionsLoading = false,
+                            revisionsLoadState = ExpenseDetailDataLoadState.Loaded,
+                            revisionsOlderLoading = false,
+                            revisionsOlderLoadFailed = false,
+                            revisionsRefreshFailed = true,
+                        )
+                    } else {
+                        state.copy(
+                            revisionsLoading = false,
+                            revisionsLoadState = ExpenseDetailDataLoadState.Failed,
+                            revisions = emptyList(),
+                            revisionsTotal = 0,
+                            revisionsNextPage = null,
+                            revisionsOlderLoading = false,
+                            revisionsOlderLoadFailed = false,
+                            revisionsRefreshFailed = false,
+                        )
+                    }
                 }
             }
     }
@@ -59,9 +76,13 @@ fun ExpenseFactViewModel.loadExpenseRevisions() {
 fun ExpenseFactViewModel.loadOlderExpenseRevisions() {
     val nextPage = _uiState.value.revisionsNextPage ?: return
     if (_uiState.value.revisionsOlderLoading) return
+    val generation = revisionLoadGeneration
     viewModelScope.launch {
-        _uiState.update {
-            it.copy(
+        if (generation != revisionLoadGeneration || _uiState.value.revisionsNextPage != nextPage) {
+            return@launch
+        }
+        _uiState.update { state ->
+            state.copy(
                 revisionsOlderLoading = true,
                 revisionsOlderLoadFailed = false,
             )
@@ -69,6 +90,9 @@ fun ExpenseFactViewModel.loadOlderExpenseRevisions() {
         repository.fetchExpenseRevisions(expenseId, page = nextPage, pageSize = REVISION_PAGE_SIZE)
             .onSuccess { page ->
                 _uiState.update { state ->
+                    if (generation != revisionLoadGeneration || state.revisionsNextPage != nextPage) {
+                        return@update state
+                    }
                     val known = state.revisions.asSequence().map { it.publicId }.toHashSet()
                     state.copy(
                         revisions = state.revisions + page.items.filter { known.add(it.publicId) },
@@ -80,8 +104,11 @@ fun ExpenseFactViewModel.loadOlderExpenseRevisions() {
                 }
             }
             .onFailure {
-                _uiState.update {
-                    it.copy(
+                _uiState.update { state ->
+                    if (generation != revisionLoadGeneration || state.revisionsNextPage != nextPage) {
+                        return@update state
+                    }
+                    state.copy(
                         revisionsOlderLoading = false,
                         revisionsOlderLoadFailed = true,
                     )

@@ -64,13 +64,14 @@
     <string name="expense_fact_timeline_item_unnamed">未命名明细</string>
     <string name="expense_fact_timeline_member_removed">已移除的成员</string>
     <string name="expense_fact_timeline_member_unknown">家庭成员</string>
-    <string name="expense_fact_timeline_detail_expand">查看前后明细</string>
-    <string name="expense_fact_timeline_detail_collapse">收起明细</string>
+    <string name="expense_fact_timeline_detail_expand_for">%1$s：查看前后明细</string>
+    <string name="expense_fact_timeline_detail_collapse_for">%1$s：收起明细</string>
     <string name="expense_fact_timeline_before_label">更正前</string>
     <string name="expense_fact_timeline_after_label">更正后</string>
     <string name="expense_fact_timeline_load_older">加载更早的记录（还剩 %1$d 条）</string>
     <string name="expense_fact_timeline_older_failed">更早的记录加载失败，点按重试。</string>
     <string name="expense_fact_timeline_expand_loaded">展开最近 %1$d 条</string>
+    <string name="expense_fact_timeline_refresh_failed">暂时无法刷新，正在显示已加载的变更记录，点按重试。</string>
     <string name="expense_fact_refresh_failed_showing_known">暂时无法刷新，正在显示已加载的账单。</string>
     <string name="expense_fact_cached_showing">当前离线，正在显示设备上保存的账单。</string>
     <string name="expense_fact_thumbnail_failed">凭证图片加载失败。</string>

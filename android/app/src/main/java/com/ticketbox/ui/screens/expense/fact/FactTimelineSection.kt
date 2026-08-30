@@ -66,6 +66,13 @@ internal fun FactTimelineSection(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 } else {
+                    // 已有 rows 的 page1 刷新失败：staleness 警告必须先于被信任的内容，
+                    // 安静单行可点重试，不写全局 message（不抢 command settlement 的消息位）。
+                    if (state.revisionsRefreshFailed) {
+                        TextButton(onClick = onRetryLoad) {
+                            Text(text = stringResource(R.string.expense_fact_timeline_refresh_failed))
+                        }
+                    }
                     val entries = remember(state.revisions, state.revisionMemberNames, expense) {
                         state.revisions.toTimelineEntries(expense.homeCurrency, state.revisionMemberNames)
                     }
@@ -174,7 +181,8 @@ private fun FactTimelineEntryRow(entry: FactTimelineEntry) {
     }
 }
 
-/** 完整 Before/After 集合的原地展开件：默认收起，展开后两集合并列对照。 */
+/** 完整 Before/After 集合的原地展开件：默认收起；CTA 前缀字段标签，
+ *  避免同一条目 items+splits 双 disclosure 出现两个无差别按钮（读屏可达性）。 */
 @Composable
 private fun FactTimelineCollectionDisclosure(collection: FactTimelineCollectionDetail) {
     var expanded by remember { mutableStateOf(false) }
@@ -182,10 +190,11 @@ private fun FactTimelineCollectionDisclosure(collection: FactTimelineCollectionD
         Text(
             text = stringResource(
                 if (expanded) {
-                    R.string.expense_fact_timeline_detail_collapse
+                    R.string.expense_fact_timeline_detail_collapse_for
                 } else {
-                    R.string.expense_fact_timeline_detail_expand
+                    R.string.expense_fact_timeline_detail_expand_for
                 },
+                stringResource(collection.labelRes),
             ),
         )
     }

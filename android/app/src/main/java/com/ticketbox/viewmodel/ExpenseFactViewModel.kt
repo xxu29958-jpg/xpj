@@ -59,6 +59,7 @@ data class ExpenseFactUiState(
     val revisionsNextPage: Int? = null,
     val revisionsOlderLoading: Boolean = false,
     val revisionsOlderLoadFailed: Boolean = false,
+    val revisionsRefreshFailed: Boolean = false,
     /** null means the current member directory could not be read. */
     val revisionMemberNames: Map<Long, String>? = null,
     val timelineExpanded: Boolean = false,
@@ -125,6 +126,8 @@ class ExpenseFactViewModel(
     internal val repository: ExpenseFactActions,
     initialExpense: Expense? = null,
 ) : ViewModel() {
+
+    internal var revisionLoadGeneration = 0L
 
     internal val _uiState = MutableStateFlow(
         ExpenseFactUiState(
