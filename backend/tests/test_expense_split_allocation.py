@@ -143,7 +143,7 @@ def test_recognize_text_preserves_coherent_money_when_ocr_suggestion_would_overa
     assert second_payload["row_version"] == before_retry["row_version"] + 1
     money_snapshot_fields = (
         "amount_cents",
-        "home_currency_code",
+        "home_currency",
         "original_currency_code",
         "original_amount_minor",
         "exchange_rate_to_cny",

@@ -136,6 +136,19 @@ private fun snapshotAllocationLabel(
     }
 }
 
+private fun MutableList<FactTimelineChange>.appendAllocationChange(
+    @StringRes labelRes: Int,
+    before: Map<String, Any?>,
+    after: Map<String, Any?>,
+    currency: CurrencyCode,
+): Boolean {
+    val beforeAllocation = snapshotAllocationLabel(before, currency)
+    val afterAllocation = snapshotAllocationLabel(after, currency)
+    if (beforeAllocation == null || afterAllocation == null || beforeAllocation == afterAllocation) return false
+    add(FactTimelineChange(UiText.res(labelRes), beforeAllocation, afterAllocation))
+    return true
+}
+
 private fun ExpenseRevision.toTimelineEntry(
     currency: com.ticketbox.domain.model.CurrencyCode,
 ): FactTimelineEntry {
@@ -151,31 +164,9 @@ private fun ExpenseRevision.toTimelineEntry(
                     if (field == "splits") {
                         val beforeCount = formatFactValue(field, before[field], before, currency)
                         val afterCount = formatFactValue(field, after[field], after, currency)
-                        val beforeAllocation = snapshotAllocationLabel(before, currency)
-                        val afterAllocation = snapshotAllocationLabel(after, currency)
-                        var allocationChanged = false
-                        if (
-                            beforeAllocation != null &&
-                            afterAllocation != null &&
-                            beforeAllocation != afterAllocation
-                        ) {
-                            allocationChanged = true
-                            add(
-                                FactTimelineChange(
-                                    label = UiText.res(labelRes),
-                                    before = beforeAllocation,
-                                    after = afterAllocation,
-                                ),
-                            )
-                        }
+                        val allocationChanged = appendAllocationChange(labelRes, before, after, currency)
                         if (beforeCount != afterCount || !allocationChanged) {
-                            add(
-                                FactTimelineChange(
-                                    label = UiText.res(labelRes),
-                                    before = beforeCount,
-                                    after = afterCount,
-                                ),
-                            )
+                            add(FactTimelineChange(UiText.res(labelRes), beforeCount, afterCount))
                         }
                         return@forEach
                     }
@@ -187,21 +178,12 @@ private fun ExpenseRevision.toTimelineEntry(
                         ),
                     )
                     if (field == "amount_cents" && "splits" !in changedFields) {
-                        val beforeAllocation = snapshotAllocationLabel(before, currency)
-                        val afterAllocation = snapshotAllocationLabel(after, currency)
-                        if (
-                            beforeAllocation != null &&
-                            afterAllocation != null &&
-                            beforeAllocation != afterAllocation
-                        ) {
-                            add(
-                                FactTimelineChange(
-                                    label = UiText.res(R.string.expense_fact_timeline_field_splits),
-                                    before = beforeAllocation,
-                                    after = afterAllocation,
-                                ),
-                            )
-                        }
+                        appendAllocationChange(
+                            R.string.expense_fact_timeline_field_splits,
+                            before,
+                            after,
+                            currency,
+                        )
                     }
                 }
             }
