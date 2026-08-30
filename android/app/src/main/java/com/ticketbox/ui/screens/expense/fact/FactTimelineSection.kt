@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.annotation.StringRes
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.StatusPill
@@ -46,84 +47,116 @@ internal fun FactTimelineSection(
     onToggleExpanded: () -> Unit,
     onLoadOlder: () -> Unit,
 ) {
-    val expense = state.expense ?: return
+    val currency = state.expense?.homeCurrency ?: return
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
         AppSectionHeader(title = stringResource(R.string.expense_fact_timeline_title))
-        when (state.revisionsLoadState) {
-            ExpenseDetailDataLoadState.Failed -> {
-                TextButton(onClick = onRetryLoad) {
-                    Text(text = stringResource(R.string.expense_fact_revisions_failed))
-                }
-            }
-            ExpenseDetailDataLoadState.Loaded -> {
-                if (state.revisions.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.expense_fact_timeline_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } else {
-                    // 已有 rows 的 page1 刷新失败：staleness 警告必须先于被信任的内容，
-                    // 安静单行可点重试，不写全局 message（不抢 command settlement 的消息位）。
-                    if (state.revisionsRefreshFailed) {
-                        TextButton(onClick = onRetryLoad) {
-                            Text(text = stringResource(R.string.expense_fact_timeline_refresh_failed))
-                        }
-                    }
-                    val entries = remember(state.revisions, state.revisionMemberNames, expense) {
-                        state.revisions.toTimelineEntries(expense.homeCurrency, state.revisionMemberNames)
-                    }
-                    val visible = if (state.timelineExpanded) entries else entries.take(TIMELINE_PREVIEW_COUNT)
-                    visible.forEach { entry ->
-                        FactTimelineEntryRow(entry = entry)
-                    }
-                    if (state.timelineExpanded && state.revisionsNextPage != null) {
-                        if (state.revisionsOlderLoadFailed) {
-                            TextButton(
-                                enabled = !state.revisionsLoading,
-                                onClick = onLoadOlder,
-                            ) {
-                                Text(text = stringResource(R.string.expense_fact_timeline_older_failed))
-                            }
-                        } else {
-                            QuietOutlinedButton(
-                                text = stringResource(
-                                    R.string.expense_fact_timeline_load_older,
-                                    (state.revisionsTotal - state.revisions.size).coerceAtLeast(0),
-                                ),
-                                enabled = !state.revisionsLoading && !state.revisionsOlderLoading,
-                                onClick = onLoadOlder,
-                            )
-                        }
-                    }
-                    if (state.revisionsTotal > TIMELINE_PREVIEW_COUNT || entries.size > TIMELINE_PREVIEW_COUNT) {
-                        QuietOutlinedButton(
-                            // CTA 文案必须等于这一次点击的交付：服务端还有更早页时
-                            // 只能承诺展开本地已加载的最近 M 条，不得谎称「全部 N 条」。
-                            text = if (state.timelineExpanded) {
-                                stringResource(R.string.expense_fact_timeline_collapse)
-                            } else if (state.revisionsTotal > entries.size) {
-                                stringResource(R.string.expense_fact_timeline_expand_loaded, entries.size)
-                            } else {
-                                stringResource(R.string.expense_fact_timeline_expand, state.revisionsTotal)
-                            },
-                            onClick = onToggleExpanded,
-                        )
-                    }
-                }
-            }
-            else -> {
-                Text(
-                    text = stringResource(R.string.expense_fact_timeline_title) + "…",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+        FactTimelineStateContent(state, currency, onRetryLoad, onToggleExpanded, onLoadOlder)
+    }
+}
+
+@Composable
+private fun FactTimelineStateContent(
+    state: ExpenseFactUiState,
+    currency: CurrencyCode,
+    onRetryLoad: () -> Unit,
+    onToggleExpanded: () -> Unit,
+    onLoadOlder: () -> Unit,
+) {
+    when (state.revisionsLoadState) {
+        ExpenseDetailDataLoadState.Failed -> TextButton(onClick = onRetryLoad) {
+            Text(text = stringResource(R.string.expense_fact_revisions_failed))
+        }
+        ExpenseDetailDataLoadState.Loaded -> FactTimelineLoadedContent(
+            state = state,
+            currency = currency,
+            onRetryLoad = onRetryLoad,
+            onToggleExpanded = onToggleExpanded,
+            onLoadOlder = onLoadOlder,
+        )
+        else -> Text(
+            text = stringResource(R.string.expense_fact_timeline_title) + "…",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun FactTimelineLoadedContent(
+    state: ExpenseFactUiState,
+    currency: CurrencyCode,
+    onRetryLoad: () -> Unit,
+    onToggleExpanded: () -> Unit,
+    onLoadOlder: () -> Unit,
+) {
+    if (state.revisions.isEmpty()) {
+        Text(
+            text = stringResource(R.string.expense_fact_timeline_empty),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        return
+    }
+    // 已有 rows 的 page1 刷新失败：staleness 警告先于被信任内容，且不抢全局 command 消息位。
+    if (state.revisionsRefreshFailed) {
+        TextButton(onClick = onRetryLoad) {
+            Text(text = stringResource(R.string.expense_fact_timeline_refresh_failed))
         }
     }
+    val entries = remember(state.revisions, state.revisionMemberNames, currency) {
+        state.revisions.toTimelineEntries(currency, state.revisionMemberNames)
+    }
+    val visible = if (state.timelineExpanded) entries else entries.take(TIMELINE_PREVIEW_COUNT)
+    visible.forEach { entry -> FactTimelineEntryRow(entry = entry) }
+    FactTimelineOlderAction(state = state, onLoadOlder = onLoadOlder)
+    FactTimelineExpansionAction(state = state, entriesSize = entries.size, onToggleExpanded = onToggleExpanded)
+}
+
+@Composable
+private fun FactTimelineOlderAction(
+    state: ExpenseFactUiState,
+    onLoadOlder: () -> Unit,
+) {
+    if (!state.timelineExpanded || state.revisionsNextPage == null) return
+    if (state.revisionsOlderLoadFailed) {
+        TextButton(
+            enabled = !state.revisionsLoading,
+            onClick = onLoadOlder,
+        ) {
+            Text(text = stringResource(R.string.expense_fact_timeline_older_failed))
+        }
+        return
+    }
+    QuietOutlinedButton(
+        text = stringResource(
+            R.string.expense_fact_timeline_load_older,
+            (state.revisionsTotal - state.revisions.size).coerceAtLeast(0),
+        ),
+        enabled = !state.revisionsLoading && !state.revisionsOlderLoading,
+        onClick = onLoadOlder,
+    )
+}
+
+@Composable
+private fun FactTimelineExpansionAction(
+    state: ExpenseFactUiState,
+    entriesSize: Int,
+    onToggleExpanded: () -> Unit,
+) {
+    if (state.revisionsTotal <= TIMELINE_PREVIEW_COUNT && entriesSize <= TIMELINE_PREVIEW_COUNT) return
+    // CTA 文案必须等于这一次点击的交付：仍有远端页时只承诺展开本地最近 M 条。
+    val text = when {
+        state.timelineExpanded -> stringResource(R.string.expense_fact_timeline_collapse)
+        state.revisionsTotal > entriesSize -> stringResource(
+            R.string.expense_fact_timeline_expand_loaded,
+            entriesSize,
+        )
+        else -> stringResource(R.string.expense_fact_timeline_expand, state.revisionsTotal)
+    }
+    QuietOutlinedButton(text = text, onClick = onToggleExpanded)
 }
 
 @Composable

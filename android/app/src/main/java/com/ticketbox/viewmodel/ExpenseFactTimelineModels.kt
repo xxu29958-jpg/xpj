@@ -89,7 +89,7 @@ private fun formatHomeAmountSnapshot(
     formatSnapshotHomeMinor(kotlin.math.abs(it), snapshot, fallbackCurrency)
 } ?: value.toString()
 
-private fun formatSnapshotHomeMinor(
+internal fun formatSnapshotHomeMinor(
     amountMinor: Long,
     snapshot: Map<String, Any?>,
     fallbackCurrency: CurrencyCode,
@@ -159,59 +159,73 @@ private fun MutableList<FactTimelineChange>.appendAllocationChange(
     return true
 }
 
+private data class TimelineCorrectionContent(
+    val changes: List<FactTimelineChange>,
+    val collections: List<FactTimelineCollectionDetail>,
+)
+
+private fun ExpenseRevision.correctionTimelineContent(
+    currency: CurrencyCode,
+    memberNames: Map<Long, String>?,
+): TimelineCorrectionContent {
+    val beforeSnapshot = before ?: emptyMap()
+    val collections = mutableListOf<FactTimelineCollectionDetail>()
+    val collectionContext = TimelineCollectionContext(beforeSnapshot, after, currency, memberNames)
+    val deltas = buildList {
+        FACT_FIELD_ORDER
+            .filter { (field, _) -> field in changedFields }
+            .forEach { (field, labelRes) ->
+                if (field == "splits") {
+                    val beforeCount = formatFactValue(field, beforeSnapshot[field], beforeSnapshot, currency)
+                    val afterCount = formatFactValue(field, after[field], after, currency)
+                    val allocationChanged = appendAllocationChange(labelRes, beforeSnapshot, after, currency)
+                    if (beforeCount != afterCount || !allocationChanged) {
+                        add(FactTimelineChange(UiText.res(labelRes), beforeCount, afterCount))
+                    }
+                    collections += timelineCollectionDetail(field, labelRes, collectionContext)
+                    return@forEach
+                }
+                add(
+                    FactTimelineChange(
+                        label = UiText.res(labelRes),
+                        before = formatFactValue(field, beforeSnapshot[field], beforeSnapshot, currency),
+                        after = formatFactValue(field, after[field], after, currency),
+                    ),
+                )
+                if (field == "items") {
+                    collections += timelineCollectionDetail(field, labelRes, collectionContext)
+                }
+                if (field == "amount_cents" && "splits" !in changedFields) {
+                    appendAllocationChange(
+                        R.string.expense_fact_timeline_field_splits,
+                        beforeSnapshot,
+                        after,
+                        currency,
+                    )
+                }
+            }
+    }
+    val changes = deltas.ifEmpty {
+        listOf(
+            FactTimelineChange(
+                label = UiText.res(R.string.expense_fact_timeline_system_touched),
+                before = UiText.raw(""),
+                after = UiText.raw(""),
+            )
+        )
+    }
+    return TimelineCorrectionContent(changes, collections)
+}
+
 private fun ExpenseRevision.toTimelineEntry(
-    currency: com.ticketbox.domain.model.CurrencyCode,
+    currency: CurrencyCode,
     memberNames: Map<Long, String>?,
 ): FactTimelineEntry {
     val isCorrection = changeKind == "correction"
-    val collections = mutableListOf<FactTimelineCollectionDetail>()
-    val changes = if (!isCorrection) {
-        emptyList()
+    val content = if (isCorrection) {
+        correctionTimelineContent(currency, memberNames)
     } else {
-        val before = before ?: emptyMap()
-        val deltas = buildList {
-            FACT_FIELD_ORDER
-                .filter { (field, _) -> field in changedFields }
-                .forEach { (field, labelRes) ->
-                    if (field == "splits") {
-                        val beforeCount = formatFactValue(field, before[field], before, currency)
-                        val afterCount = formatFactValue(field, after[field], after, currency)
-                        val allocationChanged = appendAllocationChange(labelRes, before, after, currency)
-                        if (beforeCount != afterCount || !allocationChanged) {
-                            add(FactTimelineChange(UiText.res(labelRes), beforeCount, afterCount))
-                        }
-                        collections += collectionDetail(field, labelRes, before, after, currency, memberNames)
-                        return@forEach
-                    }
-                    add(
-                        FactTimelineChange(
-                            label = UiText.res(labelRes),
-                            before = formatFactValue(field, before[field], before, currency),
-                            after = formatFactValue(field, after[field], after, currency),
-                        ),
-                    )
-                    if (field == "items") {
-                        collections += collectionDetail(field, labelRes, before, after, currency, memberNames)
-                    }
-                    if (field == "amount_cents" && "splits" !in changedFields) {
-                        appendAllocationChange(
-                            R.string.expense_fact_timeline_field_splits,
-                            before,
-                            after,
-                            currency,
-                        )
-                    }
-                }
-            }
-        deltas.ifEmpty {
-            listOf(
-                FactTimelineChange(
-                    label = UiText.res(R.string.expense_fact_timeline_system_touched),
-                    before = UiText.raw(""),
-                    after = UiText.raw(""),
-                )
-            )
-        }
+        TimelineCorrectionContent(emptyList(), emptyList())
     }
     return FactTimelineEntry(
         isCorrection = isCorrection,
@@ -223,103 +237,13 @@ private fun ExpenseRevision.toTimelineEntry(
         reason = reason,
         whenText = displayDateTime(createdAt),
         actor = listOfNotNull(actorAccountName, actorDeviceName).filter { it.isNotBlank() }.joinToString(" · "),
-        changes = changes,
-        collections = collections,
+        changes = content.changes,
+        collections = content.collections,
     )
 }
 
 /** 时间线展示模型：newest-first（服务端已按 revision_number desc 返回）。 */
 internal fun List<ExpenseRevision>.toTimelineEntries(
-    currency: com.ticketbox.domain.model.CurrencyCode,
+    currency: CurrencyCode,
     memberNames: Map<Long, String>? = null,
 ): List<FactTimelineEntry> = map { it.toTimelineEntry(currency, memberNames) }
-
-/** items 快照集合行：只呈现 snapshot 已有字段（name/数量/单价/金额/分类）。 */
-private fun itemSnapshotRows(
-    value: Any?,
-    snapshot: Map<String, Any?>,
-    currency: CurrencyCode,
-): List<FactTimelineCollectionRow> {
-    val rows = value as? List<*> ?: return emptyList()
-    return rows.mapNotNull { raw ->
-        val row = raw as? Map<*, *> ?: return@mapNotNull null
-        val name = (row["name"] as? String)?.trim()?.takeIf(String::isNotEmpty)
-        val facts = buildList {
-            (row["quantity_text"] as? String)?.trim()?.takeIf(String::isNotEmpty)?.let { add(UiText.raw(it)) }
-            (row["unit_price_cents"] as? Number)?.toLong()?.let {
-                add(
-                    UiText.res(
-                        R.string.expense_fact_timeline_item_unit_price,
-                        formatSnapshotHomeMinor(it, snapshot, currency),
-                    ),
-                )
-            }
-            (row["amount_cents"] as? Number)?.toLong()?.let {
-                add(
-                    UiText.res(
-                        R.string.expense_fact_timeline_item_amount,
-                        formatSnapshotHomeMinor(it, snapshot, currency),
-                    ),
-                )
-            }
-            (row["category"] as? String)?.trim()?.takeIf(String::isNotEmpty)?.let { add(UiText.raw(it)) }
-        }
-        FactTimelineCollectionRow(
-            title = name?.let(UiText::raw) ?: UiText.res(R.string.expense_fact_timeline_item_unnamed),
-            facts = facts,
-        )
-    }
-}
-
-/**
- * splits 快照集合行。member_id 是身份事实；显示名只是当前成员目录投影——
- * 命中目录显示当前名；目录已加载但 id 缺失才显示「已移除的成员」；
- * 目录不可用（null）时退化为中性标签，不谎称移除。
- */
-private fun splitSnapshotRows(
-    value: Any?,
-    snapshot: Map<String, Any?>,
-    currency: CurrencyCode,
-    memberNames: Map<Long, String>?,
-): List<FactTimelineCollectionRow> {
-    val rows = value as? List<*> ?: return emptyList()
-    val directoryAvailable = memberNames != null
-    return rows.mapNotNull { raw ->
-        val row = raw as? Map<*, *> ?: return@mapNotNull null
-        val displayName = (row["member_id"] as? Number)?.toLong()?.let { memberNames?.get(it) }
-        val title = when {
-            displayName != null -> UiText.raw(displayName)
-            directoryAvailable -> UiText.res(R.string.expense_fact_timeline_member_removed)
-            else -> UiText.res(R.string.expense_fact_timeline_member_unknown)
-        }
-        val facts = buildList {
-            (row["amount_cents"] as? Number)?.toLong()?.let {
-                add(UiText.raw(formatSnapshotHomeMinor(it, snapshot, currency)))
-            }
-            (row["note"] as? String)?.trim()?.takeIf(String::isNotEmpty)?.let { add(UiText.raw(it)) }
-        }
-        FactTimelineCollectionRow(title = title, facts = facts)
-    }
-}
-
-private fun collectionDetail(
-    field: String,
-    @StringRes labelRes: Int,
-    before: Map<String, Any?>,
-    after: Map<String, Any?>,
-    currency: CurrencyCode,
-    memberNames: Map<Long, String>?,
-): FactTimelineCollectionDetail {
-    val rowsOf: (Map<String, Any?>) -> List<FactTimelineCollectionRow> = { snapshot ->
-        if (field == "items") {
-            itemSnapshotRows(snapshot[field], snapshot, currency)
-        } else {
-            splitSnapshotRows(snapshot[field], snapshot, currency, memberNames)
-        }
-    }
-    return FactTimelineCollectionDetail(
-        labelRes = labelRes,
-        beforeRows = rowsOf(before),
-        afterRows = rowsOf(after),
-    )
-}
