@@ -419,6 +419,8 @@ def undo_delete_rule(
         # Outside the selected restore window: normal undo stays short-lived,
         # while recycle-bin restore opts into the longer window.
         raise AppError("rule_not_found", status_code=404)
+    if rule.enabled:
+        ensure_rule_category_available(db, tenant_id=tenant_id, category=rule.category)
     # ADR-0038 PR-B: atomic restore (UPDATE WHERE deleted_at IS NOT NULL) so two
     # concurrent undos can't both clear it + double-write the audit log; rowcount
     # ==0 means a peer undo / cleanup purge already won -> 404. Was SELECT-then-write.

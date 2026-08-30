@@ -43,7 +43,7 @@
       <div class="product-panel-title">新增商家</div>
     </div>
     {% if catalog_create_error %}
-    <div id="merchant-create-error" class="product-feedback product-feedback--danger" role="alert">{{ catalog_create_error }}</div>
+    <div id="merchant-create-error" class="product-feedback product-feedback--danger" role="alert">{{ catalog_create_error }}{% if catalog_create_recycle %} <a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
     {% endif %}
     {% if can_write %}
     <form method="post" action="/web/merchants/catalog/create" class="product-form-grid">

@@ -49,7 +49,7 @@
        浏览器不做金额解析/校验, 文案以 Owner 为准。变量缺席时一切如旧。 #}
     {% set rule_draft = rule_form_draft or {} %}
     {% if rule_form_error %}
-    <div id="rule-create-error" class="product-feedback product-feedback--danger" role="alert">{{ rule_form_error }}</div>
+    <div id="rule-create-error" class="product-feedback product-feedback--danger" role="alert">{{ rule_form_error }}{% if rule_form_recycle %} 请先恢复分类，再创建规则。<a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
     {% endif %}
     {% if can_write %}
     <form method="post" action="/web/rules/create" class="product-form-grid"{% if rule_form_error %} aria-describedby="rule-create-error"{% endif %}>
@@ -364,7 +364,7 @@
   </div>
   {% if rule_toggle_error and rule_toggle_rule_id not in (rules | map(attribute='id') | list) %}
   {# 被提交行已不在列表 (他端已删除) 时, 422 文案仍须锚身份可见。 #}
-  <div class="product-feedback product-feedback--danger" role="alert" data-rule-key="{{ rule_toggle_rule_id }}">{{ rule_toggle_error }}{% if rule_toggle_recycle %} <a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
+  <div class="product-feedback product-feedback--danger" role="alert" data-rule-key="{{ rule_toggle_rule_id }}">{{ rule_toggle_error }}{% if rule_toggle_recycle %} 请先恢复分类，再重新启用这条规则；也可以删除本规则。<a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
   {% endif %}
   {% if rules %}
   <div class="product-table-wrap library-table-flush">
@@ -403,7 +403,7 @@
           <td>
             {% if can_write %}
             {% if _toggle_error %}
-            <div id="rule-toggle-error" class="product-feedback product-feedback--danger library-row-error" role="alert">{{ rule_toggle_error }}{% if rule_toggle_recycle %} <a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
+            <div id="rule-toggle-error" class="product-feedback product-feedback--danger library-row-error" role="alert">{{ rule_toggle_error }}{% if rule_toggle_recycle %} 请先恢复分类，再重新启用这条规则；也可以删除本规则。<a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
             {% endif %}
             <div class="library-ops">
               <form method="post" action="/web/rules/{{ r.id }}/toggle">

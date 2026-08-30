@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.errors import AppError
 from app.models import CategoryPreference
 
 
@@ -270,8 +271,44 @@ def test_web_rule_cannot_create_for_a_category_that_is_in_recycle_bin(
 
     assert rejected.status_code == 422
     assert "目标分类「烘焙」已在回收站" in rejected.text
+    assert "请先恢复分类，再创建规则" in rejected.text
+    assert 'href="/web/recycle-bin?ledger_id=owner"' in rejected.text
     assert 'value="bakery-new"' in rejected.text
     assert 'value="烘焙"' in rejected.text
+
+    clean = web_client.get("/web/rules?ledger_id=owner")
+    assert "bakery-new" not in clean.text
+
+
+def test_web_rule_undo_explains_restore_order_when_category_is_recycled(
+    web_client: TestClient,
+    *,
+    monkeypatch,
+) -> None:
+    category = "烘焙撤销"
+    def _blocked_restore(*_args, **_kwargs):
+        raise AppError(
+            "rule_category_deleted",
+            f"目标分类「{category}」已在回收站。",
+            status_code=409,
+        )
+
+    monkeypatch.setattr("app.routes.web_rules.undo_delete_rule", _blocked_restore)
+
+    blocked = web_client.post(
+        "/web/rules/42/undo",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+
+    assert blocked.status_code in {303, 307}
+    message = parse_qs(urlparse(blocked.headers["location"]).query)["msg"][0]
+    assert message == (
+        f"未能恢复规则：目标分类「{category}」已在回收站。"
+        "请先在回收站恢复该分类，再恢复本规则。"
+    )
+    rendered = web_client.get(blocked.headers["location"])
+    assert message in rendered.text
 
 
 def test_web_rules_delete_then_undo(web_client: TestClient) -> None:

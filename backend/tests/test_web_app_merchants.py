@@ -73,6 +73,41 @@ def test_web_merchant_catalog_create_conflict_keeps_the_draft(web_client: TestCl
     assert 'id="merchant-create-error"' not in clean.text
 
 
+def test_web_merchant_catalog_create_conflict_points_to_recycled_entry(
+    web_client: TestClient,
+) -> None:
+    import re as _re
+
+    _create_web_catalog(web_client, "待恢复商家")
+    page = web_client.get("/web/merchants?ledger_id=owner")
+    public_id = _catalog_public_id_for_name(page.text, "待恢复商家", _re)
+    deleted = web_client.post(
+        f"/web/merchants/catalog/{public_id}/delete",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": _catalog_action_token(
+                page.text,
+                public_id,
+                "delete",
+                _re,
+            ),
+        },
+        follow_redirects=False,
+    )
+    assert deleted.status_code in {303, 307}
+
+    conflict = web_client.post(
+        "/web/merchants/catalog/create",
+        data={"display_name": "待恢复商家", "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+
+    assert conflict.status_code == 422
+    assert "同名商家已在回收站。请先恢复该商家，或改用其它名称。" in conflict.text
+    assert 'href="/web/recycle-bin?ledger_id=owner"' in conflict.text
+    assert 'value="待恢复商家"' in conflict.text
+
+
 def test_web_merchant_alias_create_conflict_keeps_both_draft_fields(web_client: TestClient) -> None:
     created = web_client.post(
         "/web/merchants/aliases/create",
@@ -108,6 +143,35 @@ def test_web_merchant_alias_create_conflict_keeps_both_draft_fields(web_client: 
     clean = web_client.get("/web/merchants?ledger_id=owner")
     assert clean.status_code == 200
     assert 'id="alias-create-error"' not in clean.text
+
+
+def test_web_merchant_alias_same_target_conflict_is_neutral_and_truthful(
+    web_client: TestClient,
+) -> None:
+    created = web_client.post(
+        "/web/merchants/aliases/create",
+        data={
+            "canonical_merchant": "星巴克",
+            "alias": "STARBUCKS 国贸店",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code in {303, 307}
+
+    conflict = web_client.post(
+        "/web/merchants/aliases/create",
+        data={
+            "canonical_merchant": "星巴克",
+            "alias": "starbucks 国贸店",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+
+    assert conflict.status_code == 422
+    assert "商家别名已存在。" in conflict.text
+    assert "已指向其他商家" not in conflict.text
 
 
 def test_web_merchant_catalog_merge_creates_alias_without_rewriting_history(
@@ -253,7 +317,7 @@ def _exercise_web_alias_create_toggle_delete(web_client: TestClient, re_module) 
         follow_redirects=False,
     )
     assert duplicate.status_code == 422
-    assert "商家别名已指向其他商家" in duplicate.text
+    assert "商家别名已存在" in duplicate.text
 
     match = re_module.search(r"/web/merchants/aliases/([^/]+)/delete", page.text)
     assert match, page.text[:500]

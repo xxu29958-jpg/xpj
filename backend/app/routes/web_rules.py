@@ -110,6 +110,7 @@ def _render_rules(
     undo: str = "",
     rule_form_error: str = "",
     rule_form_draft: dict[str, str] | None = None,
+    rule_form_recycle: bool = False,
     rule_toggle_error: str = "",
     rule_toggle_rule_id: int | None = None,
     rule_toggle_recycle: bool = False,
@@ -161,6 +162,7 @@ def _render_rules(
         undo_rule_id=undo,
         rule_form_error=rule_form_error,
         rule_form_draft=rule_form_draft or {},
+        rule_form_recycle=rule_form_recycle,
         rule_toggle_error=rule_toggle_error,
         rule_toggle_rule_id=rule_toggle_rule_id,
         rule_toggle_recycle=rule_toggle_recycle,
@@ -267,6 +269,7 @@ def web_rules_create(
             selected_id=selected_id,
             rule_form_error=exc.message or "请检查关键词与分类。",
             rule_form_draft=draft,
+            rule_form_recycle=exc.error == "rule_category_deleted",
             status_code=422,
         )
     return _web_redirect("/web/rules", selected_id, msg=msg)
@@ -393,8 +396,14 @@ def web_rules_undo(
     try:
         rule = undo_delete_rule(db, tenant_id=selected_id, rule_id=rule_id)
         msg = f"已恢复规则 「{rule.keyword}」。"
-    except AppError:
-        msg = "无法撤销：规则不存在或撤销窗口已过期。"
+    except AppError as exc:
+        if exc.error == "rule_category_deleted":
+            msg = (
+                f"未能恢复规则：{exc.message}"
+                "请先在回收站恢复该分类，再恢复本规则。"
+            )
+        else:
+            msg = "无法撤销：规则不存在或撤销窗口已过期。"
     return _web_redirect("/web/rules", selected_id, msg=msg)
 
 

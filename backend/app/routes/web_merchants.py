@@ -79,6 +79,7 @@ def _render_merchants(
     rename_error_value: str = "",
     catalog_create_error: str = "",
     catalog_create_value: str = "",
+    catalog_create_recycle: bool = False,
     alias_create_error: str = "",
     alias_create_draft: dict[str, str] | None = None,
     status_code: int = 200,
@@ -103,6 +104,7 @@ def _render_merchants(
         rename_error_value=rename_error_value,
         catalog_create_error=catalog_create_error,
         catalog_create_value=catalog_create_value,
+        catalog_create_recycle=catalog_create_recycle,
         alias_create_error=alias_create_error,
         alias_create_draft=alias_create_draft or {},
         q="?ledger_id=" + selected_id,
@@ -156,19 +158,25 @@ def web_merchant_catalog_create(
         msg = f"已新增商家：{item.display_name}"
     except AppError as exc:
         db.rollback()
+        # 冲突=目录已有同名商家 (normalization 归 Owner); 呈现层只补中文事实。
+        # 同名者在回收站时必须指向回收站, 不能说「已存在」。
+        details = exc.details or {}
+        is_conflict = exc.error == "state_conflict"
+        deleted_duplicate = is_conflict and bool(details.get("conflict_merchant_deleted"))
         return _render_merchants(
             request,
             db,
             options=options,
             selected_id=selected_id,
-            # 冲突=目录已有同名商家 (normalization 归 Owner); 呈现层只补中文事实,
-            # 其余 Owner 消息原样透传。
             catalog_create_error=(
-                "商家已存在，无需重复添加。"
-                if exc.error == "state_conflict"
+                "同名商家已在回收站。请先恢复该商家，或改用其它名称。"
+                if deleted_duplicate
+                else "商家已存在，无需重复添加。"
+                if is_conflict
                 else exc.message
             ),
             catalog_create_value=display_name,
+            catalog_create_recycle=deleted_duplicate,
             status_code=422,
         )
     return _web_redirect("/web/merchants", selected_id, msg=msg)

@@ -136,7 +136,7 @@ def ensure_rule_category_available(
         return
     raise AppError(
         "rule_category_deleted",
-        f"目标分类「{category}」已在回收站。请先恢复分类，再重新启用这条规则；也可以删除本规则。",
+        f"目标分类「{category}」已在回收站。",
         status_code=409,
         details={"category": category},
     )
