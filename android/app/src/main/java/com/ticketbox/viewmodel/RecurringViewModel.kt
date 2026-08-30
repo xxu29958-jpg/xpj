@@ -5,8 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringActions
-import com.ticketbox.data.repository.RecurringItemDraft
-import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringSaveOutcome
 import com.ticketbox.data.repository.RepositoryException
@@ -32,6 +30,7 @@ data class RecurringUiState(
     val itemsLoadState: RecurringListLoadState = RecurringListLoadState.Unknown,
     val candidatesLoadState: RecurringListLoadState = RecurringListLoadState.Unknown,
     val canModify: Boolean = true,
+    val manualSaveFeedback: RecurringManualSaveFeedback? = null,
 )
 
 data class RecurringDuplicateConflict(
@@ -57,6 +56,7 @@ class RecurringViewModel(
     private var activeBinding: LogicalSessionBinding? = null
     private var activeCanModify = false
     private var observedPendingKeys: Set<String>? = null
+    private var manualSaveSequence = 0L
 
     init {
         viewModelScope.launch {
@@ -96,17 +96,26 @@ class RecurringViewModel(
     }
 
     fun refresh() {
+        refreshInternal(preserveMutationFeedback = false)
+    }
+
+    private fun refreshInternal(preserveMutationFeedback: Boolean) {
         val binding = activeBinding ?: return
         val generation = requestGeneration
         val refresh = ++refreshGeneration
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
+            _uiState.update { state ->
+                val keepFeedback = state.shouldKeepMutationFeedback(preserveMutationFeedback)
+                state.copy(
                     loading = true,
                     itemsLoadState = RecurringListLoadState.Loading,
                     candidatesLoadState = RecurringListLoadState.Loading,
-                    message = null,
-                    messageTone = MessageTone.Neutral,
+                    message = if (keepFeedback) state.message else null,
+                    messageTone = if (keepFeedback) {
+                        state.messageTone
+                    } else {
+                        MessageTone.Neutral
+                    },
                     canModify = activeCanModify,
                 )
             }
@@ -118,10 +127,17 @@ class RecurringViewModel(
                 ?.exceptionOrNull()
                 ?.toUiText(R.string.recurring_message_action_failed)
             _uiState.update { state ->
+                val keepFeedback = state.shouldKeepMutationFeedback(preserveMutationFeedback)
                 state.copy(
                     loading = false,
-                    message = message,
-                    messageTone = if (message == null) MessageTone.Neutral else MessageTone.Danger,
+                    message = if (keepFeedback) state.message else message,
+                    messageTone = if (keepFeedback) {
+                        state.messageTone
+                    } else if (message == null) {
+                        MessageTone.Neutral
+                    } else {
+                        MessageTone.Danger
+                    },
                     items = itemsResult.getOrElse { state.items },
                     candidates = candidatesResult.getOrElse { state.candidates },
                     itemsLoadState = itemsResult.toRecurringListLoadState(),
@@ -153,14 +169,6 @@ class RecurringViewModel(
         )
     }
 
-    fun createManual(draft: RecurringItemDraft) {
-        saveManual { binding -> repository.createAllowingOffline(binding, draft) }
-    }
-
-    fun editManual(baseline: RecurringItem, patch: RecurringItemPatch) {
-        saveManual { binding -> repository.updateAllowingOffline(binding, baseline, patch) }
-    }
-
     fun pause(publicId: String, expectedRowVersion: Long) {
         mutate(action = { binding -> repository.pause(binding, publicId, expectedRowVersion) })
     }
@@ -177,21 +185,11 @@ class RecurringViewModel(
         mutate(action = { binding -> repository.restore(binding, publicId, expectedRowVersion) })
     }
 
-    private fun saveManual(
-        action: suspend (LogicalSessionBinding) -> Result<RecurringSaveOutcome>,
-    ) {
-        val binding = activeBinding
-        if (binding == null || !repository.canModifyLedger()) {
-            _uiState.update {
-                it.copy(
-                    message = UiText.res(R.string.common_readonly_ledger),
-                    messageTone = MessageTone.Danger,
-                    canModify = false,
-                )
-            }
-            return
-        }
+    fun saveManual(command: RecurringManualSaveCommand): Long {
+        val attemptId = ++manualSaveSequence
+        val binding = manualBindingOrReject(attemptId) ?: return attemptId
         val generation = requestGeneration
+        refreshGeneration += 1
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -199,44 +197,60 @@ class RecurringViewModel(
                     message = null,
                     messageTone = MessageTone.Neutral,
                     duplicateConflict = null,
+                    manualSaveFeedback = RecurringManualSaveFeedback(
+                        attemptId = attemptId,
+                        settlement = RecurringManualSaveSettlement.InFlight,
+                    ),
                 )
             }
-            val result = action(binding)
+            val result = when (command) {
+                is RecurringManualSaveCommand.Create ->
+                    repository.createAllowingOffline(binding, command.draft)
+                is RecurringManualSaveCommand.Edit ->
+                    repository.updateAllowingOffline(binding, command.baseline, command.patch)
+            }
             if (requestGeneration != generation) return@launch
+            refreshGeneration += 1
             result.fold(
                 onSuccess = { outcome ->
                     when (outcome) {
                         is RecurringSaveOutcome.Synced -> {
                             _uiState.update { state ->
-                                state.copy(
-                                    loading = false,
-                                    items = state.items.withRecurringItem(outcome.item),
-                                    message = UiText.res(R.string.recurring_message_updated),
-                                    messageTone = MessageTone.Success,
-                                    duplicateConflict = null,
-                                    canModify = activeCanModify,
-                                )
+                                state.withManualSaveOutcome(outcome, activeCanModify, attemptId)
                             }
                             onDataChanged()
-                            refresh()
+                            refreshInternal(preserveMutationFeedback = true)
                         }
                         is RecurringSaveOutcome.Queued -> {
                             _uiState.update { state ->
-                                state.copy(
-                                    loading = false,
-                                    pendingIntents = state.pendingIntents.withPendingIntent(outcome.intent),
-                                    message = UiText.res(R.string.recurring_message_queued),
-                                    messageTone = MessageTone.Info,
-                                    duplicateConflict = null,
-                                    canModify = activeCanModify,
-                                )
+                                state.withManualSaveOutcome(outcome, activeCanModify, attemptId)
                             }
                         }
                     }
                 },
-                onFailure = ::handleMutationFailure,
+                onFailure = { error -> handleMutationFailure(error, manualAttemptId = attemptId) },
             )
         }
+        return attemptId
+    }
+
+    private fun manualBindingOrReject(attemptId: Long): LogicalSessionBinding? {
+        val binding = activeBinding
+        if (binding != null && repository.canModifyLedger()) return binding
+        val message = UiText.res(R.string.common_readonly_ledger)
+        _uiState.update {
+            it.copy(
+                message = message,
+                messageTone = MessageTone.Danger,
+                canModify = false,
+                manualSaveFeedback = RecurringManualSaveFeedback(
+                    attemptId = attemptId,
+                    settlement = RecurringManualSaveSettlement.Failed,
+                    message = message,
+                ),
+            )
+        }
+        return null
     }
 
     private fun mutate(
@@ -257,6 +271,7 @@ class RecurringViewModel(
             return
         }
         val generation = requestGeneration
+        refreshGeneration += 1
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -268,6 +283,7 @@ class RecurringViewModel(
             }
             val result = action(binding)
             if (requestGeneration != generation) return@launch
+            refreshGeneration += 1
             result.fold(
                 onSuccess = { item ->
                     _uiState.update { state ->
@@ -283,33 +299,85 @@ class RecurringViewModel(
                         )
                     }
                     onDataChanged()
-                    refresh()
+                    refreshInternal(preserveMutationFeedback = true)
                 },
                 onFailure = ::handleMutationFailure,
             )
         }
     }
 
-    private fun handleMutationFailure(error: Throwable) {
+    private fun handleMutationFailure(error: Throwable, manualAttemptId: Long? = null) {
         val conflict = error.toRecurringDuplicateConflict()
+        val repositoryErrorCode = (error as? RepositoryException)?.errorCode
+        val stateConflict = repositoryErrorCode == "state_conflict"
+        val refreshOwner = conflict != null || stateConflict
+        val message = error.toUiText(R.string.recurring_message_action_failed)
         _uiState.update {
             it.copy(
                 loading = false,
-                message = error.toUiText(R.string.recurring_message_action_failed),
+                message = message,
                 messageTone = MessageTone.Danger,
                 duplicateConflict = conflict,
+                itemsLoadState = if (refreshOwner) {
+                    RecurringListLoadState.Loading
+                } else {
+                    it.itemsLoadState
+                },
                 canModify = activeCanModify,
+                manualSaveFeedback = manualAttemptId?.let { attemptId ->
+                    RecurringManualSaveFeedback(
+                        attemptId = attemptId,
+                        settlement = RecurringManualSaveSettlement.Failed,
+                        message = message,
+                        requiresOwnerReload = stateConflict,
+                    )
+                } ?: it.manualSaveFeedback,
             )
         }
-        if (conflict != null) {
-            // A duplicate response is newer than this screen's snapshot even
-            // when the public id is already present: another device may have
-            // paused/archived it or advanced its row version. Refresh the
-            // existing owner before offering edit/restore against stale facts.
-            refresh()
+        if (refreshOwner) {
+            // A conflict response proves this screen's snapshot is stale.
+            // Refresh the existing owner while keeping the failed mutation's
+            // feedback and any editor draft visible for an informed retry.
+            refreshInternal(preserveMutationFeedback = true)
         }
     }
 }
+
+private fun RecurringUiState.withManualSaveOutcome(
+    outcome: RecurringSaveOutcome,
+    canModify: Boolean,
+    attemptId: Long,
+): RecurringUiState = when (outcome) {
+    is RecurringSaveOutcome.Synced -> copy(
+        loading = false,
+        items = items.withRecurringItem(outcome.item),
+        message = UiText.res(R.string.recurring_message_updated),
+        messageTone = MessageTone.Success,
+        duplicateConflict = null,
+        canModify = canModify,
+        manualSaveFeedback = RecurringManualSaveFeedback(
+            attemptId = attemptId,
+            settlement = RecurringManualSaveSettlement.Accepted,
+            message = UiText.res(R.string.recurring_message_updated),
+        ),
+    )
+    is RecurringSaveOutcome.Queued -> copy(
+        loading = false,
+        pendingIntents = pendingIntents.withPendingIntent(outcome.intent),
+        message = UiText.res(R.string.recurring_message_queued),
+        messageTone = MessageTone.Info,
+        duplicateConflict = null,
+        canModify = canModify,
+        manualSaveFeedback = RecurringManualSaveFeedback(
+            attemptId = attemptId,
+            settlement = RecurringManualSaveSettlement.Accepted,
+            message = UiText.res(R.string.recurring_message_queued),
+        ),
+    )
+}
+
+private fun RecurringUiState.shouldKeepMutationFeedback(explicit: Boolean): Boolean =
+    explicit || duplicateConflict != null || manualSaveFeedback?.requiresOwnerReload == true
 
 private fun <T> Result<T>.toRecurringListLoadState(): RecurringListLoadState =
     if (isSuccess) RecurringListLoadState.Loaded else RecurringListLoadState.Failed

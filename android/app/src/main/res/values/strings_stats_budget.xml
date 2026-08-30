@@ -851,6 +851,14 @@
     <string name="recurring_form_date_picker_title">选择下次日期</string>
     <string name="recurring_form_save">保存</string>
     <string name="recurring_form_saving">保存中…</string>
+    <string name="recurring_form_loading_latest">正在同步最新内容…</string>
+    <string name="recurring_form_reload_latest">重新加载最新内容</string>
+    <string name="recurring_form_save_again">再次保存</string>
+    <string name="recurring_form_save_mine">仍要保存我的修改</string>
+    <string name="recurring_form_conflict_loading">这条记录刚被更新，正在取得最新内容。你的草稿会保留。</string>
+    <string name="recurring_form_conflict_unavailable">还没取得这条记录的最新内容。请重新加载后再保存，草稿会继续保留。</string>
+    <string name="recurring_form_conflict_rebased">记录已更新。我们保留了你的修改，并同步了其他字段。请再次保存。</string>
+    <string name="recurring_form_conflict_overlapping">记录和你的草稿改了同一字段。再次保存将以你的修改为准。</string>
     <string name="recurring_form_error_merchant">请填写名称。</string>
     <string name="recurring_form_error_amount">请输入正确的每月金额。</string>
 

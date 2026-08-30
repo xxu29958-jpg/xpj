@@ -1,16 +1,24 @@
 package com.ticketbox.ui.screens
 
 import com.ticketbox.R
+import com.ticketbox.data.repository.RecurringDateEdit
 import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingKind
 import com.ticketbox.data.repository.RecurringPendingState
 import com.ticketbox.ui.screens.recurring.RecurringConflictAction
+import com.ticketbox.ui.screens.recurring.RecurringEditField
 import com.ticketbox.ui.screens.recurring.RecurringPendingChange
+import com.ticketbox.ui.screens.recurring.RecurringSubmitSettle
+import com.ticketbox.ui.screens.recurring.buildRecurringItemPatch
+import com.ticketbox.ui.screens.recurring.rebaseRecurringEditorDraft
 import com.ticketbox.ui.screens.recurring.recurringPendingKindLabelRes
 import com.ticketbox.ui.screens.recurring.recurringRowCapabilities
+import com.ticketbox.ui.screens.recurring.recurringSubmitStep
 import com.ticketbox.ui.screens.recurring.resolveRecurringDuplicateConflict
 import com.ticketbox.ui.screens.recurring.resolveRecurringPendingRow
 import com.ticketbox.viewmodel.RecurringDuplicateConflict
+import com.ticketbox.viewmodel.RecurringManualSaveFeedback
+import com.ticketbox.viewmodel.RecurringManualSaveSettlement
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -137,6 +145,7 @@ class RecurringPendingConflictModelsTest {
         val active = resolveRecurringDuplicateConflict(
             RecurringDuplicateConflict(publicId = "p1", status = "active"),
             items,
+            ownerLoaded = true,
         )
         assertEquals(RecurringConflictAction.EditExisting, active?.action)
         assertEquals("宽带", active?.merchant)
@@ -144,6 +153,7 @@ class RecurringPendingConflictModelsTest {
         val archived = resolveRecurringDuplicateConflict(
             RecurringDuplicateConflict(publicId = "p2", status = "archived"),
             items,
+            ownerLoaded = true,
         )
         assertEquals(RecurringConflictAction.RestoreArchived, archived?.action)
         assertEquals(3L, archived?.rowVersion)
@@ -151,9 +161,110 @@ class RecurringPendingConflictModelsTest {
         val missing = resolveRecurringDuplicateConflict(
             RecurringDuplicateConflict(publicId = "ghost", status = "paused"),
             items,
+            ownerLoaded = true,
         )
         assertEquals(RecurringConflictAction.Unavailable, missing?.action)
         assertNull(missing?.merchant)
-        assertNull(resolveRecurringDuplicateConflict(null, items))
+        assertNull(resolveRecurringDuplicateConflict(null, items, ownerLoaded = true))
+
+        val stale = resolveRecurringDuplicateConflict(
+            RecurringDuplicateConflict(publicId = "p1", status = "archived"),
+            items,
+            ownerLoaded = false,
+        )
+        assertEquals("archived", stale?.status)
+        assertEquals(RecurringConflictAction.Unavailable, stale?.action)
+        assertNull(stale?.merchant)
+        assertNull(stale?.rowVersion)
+    }
+
+    @Test
+    fun conflictRebaseAdoptsUntouchedOwnerFieldsWithoutLosingUserIntent() {
+        val stale = recurringItem {
+            publicId = "p1"
+            rowVersion = 1L
+            baselineAmountCents = 3000_00
+            nextExpectedDate = "2026-09-01"
+        }
+        val fresh = recurringItem {
+            publicId = "p1"
+            rowVersion = 2L
+            baselineAmountCents = 3200_00
+            nextExpectedDate = "2026-09-01"
+        }
+
+        val rebase = rebaseRecurringEditorDraft(
+            previousBaseline = stale,
+            freshOwner = fresh,
+            merchant = stale.merchant,
+            baselineAmountCents = stale.baselineAmountCents,
+            nextExpectedDate = "2026-09-15",
+        )
+        val retryPatch = buildRecurringItemPatch(
+            baseline = rebase.baseline,
+            merchant = rebase.merchant,
+            baselineAmountCents = rebase.baselineAmountCents,
+            dateTouched = rebase.dateTouched,
+            nextExpectedDate = rebase.nextExpectedDate,
+        )
+
+        assertEquals(3200_00, rebase.baselineAmountCents)
+        assertNull(retryPatch?.baselineAmountCents, "an untouched remote amount must not be replayed")
+        assertEquals(RecurringDateEdit.changed("2026-09-15"), retryPatch?.nextExpectedDate)
+        assertEquals(emptySet(), rebase.overlappingFields)
+
+        val overlapping = rebaseRecurringEditorDraft(
+            previousBaseline = stale,
+            freshOwner = fresh,
+            merchant = stale.merchant,
+            baselineAmountCents = 3100_00,
+            nextExpectedDate = stale.nextExpectedDate,
+        )
+        assertEquals(setOf(RecurringEditField.Amount), overlapping.overlappingFields)
+    }
+
+    @Test
+    fun submitSettlementRequiresExplicitMutationOutcome() {
+        val inFlight = recurringSubmitStep(
+            awaitingAttemptId = 7L,
+            feedback = RecurringManualSaveFeedback(
+                attemptId = 7L,
+                settlement = RecurringManualSaveSettlement.InFlight,
+            ),
+        )
+        assertNull(inFlight)
+        val explicitSuccess = recurringSubmitStep(
+            awaitingAttemptId = 7L,
+            feedback = RecurringManualSaveFeedback(
+                attemptId = 7L,
+                settlement = RecurringManualSaveSettlement.Accepted,
+            ),
+        )
+        assertEquals(RecurringSubmitSettle.Accepted, explicitSuccess)
+
+        val settlement = recurringSubmitStep(
+            awaitingAttemptId = 7L,
+            feedback = RecurringManualSaveFeedback(
+                attemptId = 7L,
+                settlement = RecurringManualSaveSettlement.Failed,
+            ),
+        )
+        assertEquals(
+            RecurringSubmitSettle.Failure,
+            settlement,
+            "an unresolved conflict must never settle the editor as accepted",
+        )
+
+        val unrelatedDanger = recurringSubmitStep(
+            awaitingAttemptId = 7L,
+            feedback = RecurringManualSaveFeedback(
+                attemptId = 8L,
+                settlement = RecurringManualSaveSettlement.Failed,
+            ),
+        )
+        assertNull(
+            unrelatedDanger,
+            "a refresh failure without manual-attempt ownership cannot settle the editor",
+        )
     }
 }

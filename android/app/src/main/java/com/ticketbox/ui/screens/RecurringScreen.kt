@@ -51,6 +51,7 @@ import com.ticketbox.ui.screens.recurring.recurringDefaultTab
 import com.ticketbox.ui.screens.recurring.recurringHasReadableData
 import com.ticketbox.ui.screens.recurring.recurringScreenDerived
 import com.ticketbox.ui.screens.recurring.resolveRecurringDuplicateConflict
+import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringUiState
 
 /**
@@ -124,11 +125,16 @@ fun RecurringScreen(
         uiState = state,
         environment = RecurringEditorEnvironment(
             currencyDisplay = currencyDisplay,
-            conflict = resolveRecurringDuplicateConflict(state.duplicateConflict, state.items),
+            conflict = resolveRecurringDuplicateConflict(
+                state.duplicateConflict,
+                state.items,
+                ownerLoaded = state.itemsLoadState == RecurringListLoadState.Loaded,
+            ),
+            onRefresh = actions.onRefresh,
             onDismiss = { editorTarget = null },
+            onConflictAction = callbacks.onConflictAction,
         ),
         actions = actions.items,
-        onConflictAction = callbacks.onConflictAction,
     )
 }
 
@@ -144,8 +150,8 @@ data class RecurringItemActions(
     val onResume: (String, Long) -> Unit,
     val onArchive: (String) -> Unit,
     val onRestore: (String, Long) -> Unit,
-    val onCreate: (RecurringItemDraft) -> Unit,
-    val onEdit: (RecurringItem, RecurringItemPatch) -> Unit,
+    val onCreate: (RecurringItemDraft) -> Long,
+    val onEdit: (RecurringItem, RecurringItemPatch) -> Long,
 )
 
 data class RecurringCandidateActions(
@@ -166,12 +172,17 @@ private fun LazyListScope.recurringOverviewSection(
     callbacks: RecurringScreenCallbacks,
 ) {
     state.message?.takeIf {
-        derived.itemSection.bodyState != ReadableListBodyState.LoadFailed &&
+        state.duplicateConflict == null &&
+            derived.itemSection.bodyState != ReadableListBodyState.LoadFailed &&
             derived.candidateSection.bodyState != ReadableListBodyState.LoadFailed
     }?.let { message ->
         item { AppStatusBanner(message = message, tone = state.messageTone) }
     }
-    resolveRecurringDuplicateConflict(state.duplicateConflict, state.items)?.let { conflict ->
+    resolveRecurringDuplicateConflict(
+        state.duplicateConflict,
+        state.items,
+        ownerLoaded = state.itemsLoadState == RecurringListLoadState.Loaded,
+    )?.let { conflict ->
         if (state.canModify) {
             item { RecurringConflictBanner(model = conflict, onAction = callbacks.onConflictAction) }
         }

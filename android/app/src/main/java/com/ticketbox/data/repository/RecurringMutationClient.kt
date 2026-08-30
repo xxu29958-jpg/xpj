@@ -39,7 +39,7 @@ internal class RecurringMutationClient(
         expectedBinding: LogicalSessionBinding,
         draft: RecurringItemDraft,
     ): Result<RecurringSaveOutcome> {
-        validateDraft(draft)?.let { return Result.failure(RepositoryException(it)) }
+        validateDraft(draft)?.let { return recurringValidationFailure(it) }
         if (!canModify()) return readonlyFailure()
         val request = RecurringItemCreateRequestDto(
             merchant = draft.merchant.trim(),
@@ -93,7 +93,7 @@ internal class RecurringMutationClient(
         baseline: RecurringItem,
         patch: RecurringItemPatch,
     ): Result<RecurringSaveOutcome> {
-        validatePatch(baseline, patch)?.let { return Result.failure(RepositoryException(it)) }
+        validatePatch(baseline, patch)?.let { return recurringValidationFailure(it) }
         if (!canModify()) return readonlyFailure()
         val request = patch.toWireRequest(baseline.rowVersion)
         return errorHandler.safeCall {
@@ -200,23 +200,26 @@ private fun RecurringItemPatch.toWireRequest(rowVersion: Long): RecurringItemUpd
     )
 
 private fun validateDraft(draft: RecurringItemDraft): String? = when {
-    draft.merchant.isBlank() -> "请填写固定支出的商家或名称。"
-    draft.baselineAmountCents <= 0 -> "固定支出金额必须大于 0。"
+    draft.merchant.isBlank() -> "recurring_merchant_required"
+    draft.baselineAmountCents <= 0 -> "recurring_amount_invalid"
     else -> null
 }
 
 private fun validatePatch(baseline: RecurringItem, patch: RecurringItemPatch): String? = when {
-    baseline.publicId.isBlank() -> "固定支出不存在。"
-    baseline.rowVersion < 1 -> "固定支出版本无效，请刷新后重试。"
-    patch.merchant != null && patch.merchant.isBlank() -> "请填写固定支出的商家或名称。"
-    patch.baselineAmountCents != null && patch.baselineAmountCents <= 0 -> "固定支出金额必须大于 0。"
+    baseline.publicId.isBlank() -> "recurring_item_not_found"
+    baseline.rowVersion < 1 -> "recurring_version_invalid"
+    patch.merchant != null && patch.merchant.isBlank() -> "recurring_merchant_required"
+    patch.baselineAmountCents != null && patch.baselineAmountCents <= 0 -> "recurring_amount_invalid"
     patch.merchant == null && patch.baselineAmountCents == null && !patch.nextExpectedDate.changed ->
-        "没有检测到需要保存的固定支出修改。"
+        "recurring_item_no_changes"
     else -> null
 }
 
 private fun readonlyFailure(): Result<RecurringSaveOutcome> =
-    Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
+    recurringValidationFailure("permission_denied")
+
+private fun recurringValidationFailure(errorCode: String): Result<RecurringSaveOutcome> =
+    Result.failure(RepositoryException(message = errorCode, errorCode = errorCode))
 
 private fun OutboxRow.toRecurringPendingState(): RecurringPendingState = when (status) {
     PendingMutationStatus.Conflict -> RecurringPendingState.CONFLICT

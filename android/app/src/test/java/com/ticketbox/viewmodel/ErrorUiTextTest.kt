@@ -24,6 +24,21 @@ class ErrorUiTextTest {
         // server message — that is the regression the BillSplit fix restores.
         val ex = RepositoryException("服务端原始消息（不该直接展示）", "server_error")
         assertEquals(UiText.res(R.string.error_server_error), ex.toUiText(R.string.error_generic))
+        assertEquals(
+            UiText.res(R.string.error_recurring_amount_invalid),
+            RepositoryException("recurring_amount_invalid", "recurring_amount_invalid")
+                .toUiText(R.string.error_generic),
+        )
+        assertEquals(
+            UiText.res(R.string.error_recurring_version_invalid),
+            RepositoryException("recurring_version_invalid", "recurring_version_invalid")
+                .toUiText(R.string.error_generic),
+        )
+        assertEquals(
+            UiText.res(R.string.error_recurring_merchant_too_long),
+            RepositoryException("raw backend copy", "recurring_merchant_too_long")
+                .toUiText(R.string.error_generic),
+        )
     }
 
     @Test

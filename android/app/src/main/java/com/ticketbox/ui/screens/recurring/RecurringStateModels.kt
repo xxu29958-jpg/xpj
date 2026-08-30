@@ -62,9 +62,19 @@ internal data class RecurringConflictModel(
 internal fun resolveRecurringDuplicateConflict(
     conflict: RecurringDuplicateConflict?,
     items: List<RecurringItem>,
+    ownerLoaded: Boolean,
 ): RecurringConflictModel? {
     if (conflict == null) return null
     val existing = items.firstOrNull { it.publicId == conflict.publicId }
+    if (!ownerLoaded) {
+        return RecurringConflictModel(
+            publicId = conflict.publicId,
+            status = conflict.status,
+            merchant = null,
+            rowVersion = null,
+            action = RecurringConflictAction.Unavailable,
+        )
+    }
     val resolvedStatus = existing?.status ?: conflict.status
     val action = when {
         existing == null -> RecurringConflictAction.Unavailable

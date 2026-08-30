@@ -194,7 +194,7 @@ class RecurringViewModelMutationTest {
         val vm = RecurringViewModel(fake)
         advanceUntilIdle()
 
-        vm.createManual(RecurringItemDraft("房租", 350000, null))
+        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("房租", 350000, null)))
         advanceUntilIdle()
 
         assertEquals(1, fake.createCalls)
@@ -230,11 +230,13 @@ class RecurringViewModelMutationTest {
         val vm = RecurringViewModel(fake)
         advanceUntilIdle()
 
-        vm.editManual(
-            baseline = observed,
-            patch = RecurringItemPatch(
-                baselineAmountCents = 355000,
-                nextExpectedDate = RecurringDateEdit.changed(null),
+        vm.saveManual(
+            RecurringManualSaveCommand.Edit(
+                baseline = observed,
+                patch = RecurringItemPatch(
+                    baselineAmountCents = 355000,
+                    nextExpectedDate = RecurringDateEdit.changed(null),
+                ),
             ),
         )
         advanceUntilIdle()
@@ -284,8 +286,9 @@ class RecurringViewModelMutationTest {
         )
         val vm = RecurringViewModel(fake)
         advanceUntilIdle()
+        fake.itemsResult = Result.failure(IllegalStateException("owner refresh failed"))
 
-        vm.createManual(RecurringItemDraft("旧订阅", 350000, null))
+        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("旧订阅", 350000, null)))
         advanceUntilIdle()
 
         assertEquals(
@@ -293,6 +296,7 @@ class RecurringViewModelMutationTest {
             vm.uiState.value.duplicateConflict,
         )
         assertEquals(listOf(archived), vm.uiState.value.items)
+        assertEquals(RecurringListLoadState.Failed, vm.uiState.value.itemsLoadState)
     }
 
     @Test
@@ -316,7 +320,7 @@ class RecurringViewModelMutationTest {
         advanceUntilIdle()
         fake.itemsResult = Result.success(listOf(existing))
 
-        vm.createManual(RecurringItemDraft("房租", 350000, null))
+        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("房租", 350000, null)))
         advanceUntilIdle()
 
         assertEquals(
@@ -324,6 +328,130 @@ class RecurringViewModelMutationTest {
             vm.uiState.value.duplicateConflict,
         )
         assertEquals(listOf(existing), vm.uiState.value.items)
+        assertEquals(
+            UiText.res(R.string.error_recurring_item_conflict),
+            vm.uiState.value.message,
+            "background owner refresh must not erase the failed mutation settlement",
+        )
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(
+            UiText.res(R.string.error_recurring_item_conflict),
+            vm.uiState.value.message,
+            "a concurrent ordinary refresh must not erase an unresolved conflict",
+        )
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+        assertEquals(existing.publicId, vm.uiState.value.duplicateConflict?.publicId)
+    }
+
+    @Test
+    fun refreshStartedBeforeManualEditCannotSettleThatEdit() = recurringTest {
+        val existing = item(publicId = "rec-refresh-race", merchant = "房租")
+        val staleRefresh = CompletableDeferred<Result<List<RecurringItem>>>()
+        val pendingUpdate = CompletableDeferred<Result<RecurringSaveOutcome>>()
+        val fake = FakeRecurringActions(itemsResult = Result.success(listOf(existing)))
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        fake.itemsResponder = { staleRefresh.await() }
+        fake.updateResponder = { pendingUpdate.await() }
+
+        vm.refresh()
+        advanceUntilIdle()
+        vm.saveManual(
+            RecurringManualSaveCommand.Edit(existing, RecurringItemPatch(baselineAmountCents = 360000)),
+        )
+        advanceUntilIdle()
+        staleRefresh.complete(Result.success(listOf(existing)))
+        advanceUntilIdle()
+
+        assertTrue(
+            vm.uiState.value.loading,
+            "a refresh started before the mutation must not settle that mutation",
+        )
+        pendingUpdate.complete(Result.failure(RepositoryException("update failed")))
+        advanceUntilIdle()
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+    }
+
+    @Test
+    fun refreshStartedAfterManualEditCannotOwnThatSettlement() = recurringTest {
+        val existing = item(publicId = "rec-refresh-after", merchant = "房租")
+        val refreshItems = CompletableDeferred<Result<List<RecurringItem>>>()
+        val pendingUpdate = CompletableDeferred<Result<RecurringSaveOutcome>>()
+        val updated = existing.copy(rowVersion = 2, baselineAmountCents = 360000)
+        val fake = FakeRecurringActions(itemsResult = Result.success(listOf(existing)))
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        fake.itemsResponder = { refreshItems.await() }
+        fake.updateResponder = { pendingUpdate.await() }
+
+        val attemptId = vm.saveManual(
+            RecurringManualSaveCommand.Edit(existing, RecurringItemPatch(baselineAmountCents = 360000)),
+        )
+        advanceUntilIdle()
+        vm.refresh()
+        advanceUntilIdle()
+        refreshItems.complete(Result.failure(IllegalStateException("refresh failed")))
+        advanceUntilIdle()
+
+        assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
+        assertEquals(
+            RecurringManualSaveSettlement.InFlight,
+            vm.uiState.value.manualSaveFeedback?.settlement,
+            "a later refresh failure cannot settle the editor's mutation",
+        )
+
+        pendingUpdate.complete(Result.success(RecurringSaveOutcome.Synced(updated)))
+        advanceUntilIdle()
+
+        assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
+        assertEquals(RecurringManualSaveSettlement.Accepted, vm.uiState.value.manualSaveFeedback?.settlement)
+    }
+
+    @Test
+    fun repeatedReadonlyGuardsPublishDistinctManualAttempts() = recurringTest {
+        val fake = FakeRecurringActions(activeAccessFlow = flowOf(null))
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        val draft = RecurringItemDraft("房租", 350000, null)
+
+        val firstAttempt = vm.saveManual(RecurringManualSaveCommand.Create(draft))
+        val firstFeedback = vm.uiState.value.manualSaveFeedback
+        val secondAttempt = vm.saveManual(RecurringManualSaveCommand.Create(draft))
+        val secondFeedback = vm.uiState.value.manualSaveFeedback
+
+        assertTrue(secondAttempt > firstAttempt)
+        assertEquals(firstAttempt, firstFeedback?.attemptId)
+        assertEquals(secondAttempt, secondFeedback?.attemptId)
+        assertEquals(RecurringManualSaveSettlement.Failed, secondFeedback?.settlement)
+    }
+
+    @Test
+    fun stateConflictRefreshesTheOwnerWithoutErasingTheFailure() = recurringTest {
+        val stale = item(publicId = "rec-stale-edit", merchant = "房租")
+        val fresh = stale.copy(rowVersion = stale.rowVersion + 1, baselineAmountCents = 360000)
+        val conflict = RepositoryException(message = "版本冲突", errorCode = "state_conflict")
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(stale)),
+            manual = FakeRecurringManualActions(updateResult = Result.failure(conflict)),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        fake.itemsResult = Result.success(listOf(fresh))
+
+        vm.saveManual(
+            RecurringManualSaveCommand.Edit(stale, RecurringItemPatch(baselineAmountCents = 370000)),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(fresh), vm.uiState.value.items)
+        assertEquals(UiText.raw("版本冲突"), vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.itemsLoadState)
+        assertEquals(true, vm.uiState.value.manualSaveFeedback?.requiresOwnerReload)
     }
 
     @Test
@@ -352,7 +480,7 @@ class RecurringViewModelMutationTest {
         advanceUntilIdle()
         fake.itemsResult = Result.success(listOf(archived))
 
-        vm.createManual(RecurringItemDraft("房租", 350000, null))
+        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("房租", 350000, null)))
         advanceUntilIdle()
 
         assertEquals(listOf(archived), vm.uiState.value.items)
@@ -424,6 +552,9 @@ private class FakeRecurringActions private constructor(
     var itemsResponder: (suspend () -> Result<List<RecurringItem>>)?
         get() = queryDelegate.itemsResponder
         set(value) { queryDelegate.itemsResponder = value }
+    var updateResponder: (suspend () -> Result<RecurringSaveOutcome>)?
+        get() = manual.updateResponder
+        set(value) { manual.updateResponder = value }
     val confirmCalls: Int get() = lifecycle.confirmCalls
     val createCalls: Int get() = manual.createCalls
     val restoreCall: Pair<String, Long>? get() = lifecycle.restoreCall
@@ -459,6 +590,7 @@ private class FakeRecurringManualActions(
     var updateResult: Result<RecurringSaveOutcome> = Result.failure(IllegalStateException("update not configured")),
     private val pendingIntentsFlow: Flow<List<RecurringPendingIntent>> = flowOf(emptyList()),
 ) : RecurringManualMutationActions {
+    var updateResponder: (suspend () -> Result<RecurringSaveOutcome>)? = null
     var createCalls: Int = 0
         private set
 
@@ -474,7 +606,7 @@ private class FakeRecurringManualActions(
         expectedBinding: LogicalSessionBinding,
         baseline: RecurringItem,
         patch: RecurringItemPatch,
-    ): Result<RecurringSaveOutcome> = updateResult
+    ): Result<RecurringSaveOutcome> = updateResponder?.invoke() ?: updateResult
 }
 
 private class FakeRecurringLifecycleActions(

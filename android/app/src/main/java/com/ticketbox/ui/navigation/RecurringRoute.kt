@@ -8,6 +8,7 @@ import com.ticketbox.ui.screens.RecurringCandidateActions
 import com.ticketbox.ui.screens.RecurringItemActions
 import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.RecurringScreenActions
+import com.ticketbox.viewmodel.RecurringManualSaveCommand
 import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
@@ -34,8 +35,12 @@ internal fun RecurringRoute(
                 onResume = recurringViewModel::resume,
                 onArchive = recurringViewModel::archive,
                 onRestore = recurringViewModel::restore,
-                onCreate = recurringViewModel::createManual,
-                onEdit = recurringViewModel::editManual,
+                onCreate = { draft ->
+                    recurringViewModel.saveManual(RecurringManualSaveCommand.Create(draft))
+                },
+                onEdit = { baseline, patch ->
+                    recurringViewModel.saveManual(RecurringManualSaveCommand.Edit(baseline, patch))
+                },
             ),
             candidates = RecurringCandidateActions(
                 onConfirmCandidate = recurringViewModel::confirmCandidate,
