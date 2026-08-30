@@ -203,12 +203,14 @@
         {% if can_write and item.status != 'archived' %}
         <details class="rc-edit"{% if open_edit_id == item.public_id %} open{% endif %}>
           {# 输入类错误 (如名称超长) 的编辑草稿: 仅属于本条目的草稿才回填,
-             其余条目与默认渲染一样取服务端事实。 #}
+             其余条目与默认渲染一样取服务端事实。草稿含该次 attempt 的 baseline
+             token, 修正后重提仍由 backend OCC 仲裁 (见 web_recurring.py)。 #}
           {% set draft = edit_draft if edit_draft and edit_draft.public_id == item.public_id else none %}
           <summary class="dt-btn dt-btn--sm ghost">编辑</summary>
           <form method="post" action="/web/recurring/{{ item.public_id }}/edit" class="rc-edit-form">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+            <input type="hidden" name="expected_row_version"
+                   value="{{ draft.expected_row_version if draft else item.row_version }}">
             <input type="hidden" name="idempotency_key" value="{{ item.edit_idempotency_key }}">
             <div class="dt-form-grid">
               <div class="dt-form-row">

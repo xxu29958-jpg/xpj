@@ -75,12 +75,15 @@ class RecurringRepositoryOutboxFallbackTest {
     ) : ApiService by delegate {
         var createKey: String? = null
         var updateKey: String? = null
+        var createRequest: RecurringItemCreateRequestDto? = null
+        var updateRequest: RecurringItemUpdateRequestDto? = null
 
         override suspend fun createRecurringItem(
             request: RecurringItemCreateRequestDto,
             idempotencyKey: String,
         ): RecurringItemDto {
             createKey = idempotencyKey
+            createRequest = request
             return createResult.resolve()
         }
 
@@ -90,6 +93,7 @@ class RecurringRepositoryOutboxFallbackTest {
             idempotencyKey: String,
         ): RecurringItemDto {
             updateKey = idempotencyKey
+            updateRequest = request
             return updateResult.resolve()
         }
 
@@ -253,6 +257,47 @@ class RecurringRepositoryOutboxFallbackTest {
         assertEquals(0, dao.rows.size)
         assertEquals(null, api.createKey)
         assertEquals(null, api.updateKey)
+    }
+
+    @Test
+    fun `merchant capacity ignores outer whitespace before network and outbox publication`() = runTest {
+        val canonical = "😀".repeat(255)
+        val decorated = "  $canonical \n"
+        val directApi = ApiStub(ApiResult.Success(successDto()))
+        val directHarness = harness(directApi)
+
+        val create = directHarness.repository.createAllowingOffline(
+            expectedBinding = directHarness.binding,
+            draft = RecurringItemDraft(decorated, 350000, null),
+        )
+        val update = directHarness.repository.updateAllowingOffline(
+            expectedBinding = directHarness.binding,
+            baseline = baselineItem(),
+            patch = RecurringItemPatch(merchant = decorated),
+        )
+
+        assertTrue(create.isSuccess)
+        assertTrue(update.isSuccess)
+        assertEquals(canonical, directApi.createRequest?.merchant)
+        assertEquals(canonical, directApi.updateRequest?.merchant)
+
+        val dao = FakePendingMutationDao()
+        val offlineHarness = harness(
+            api = ApiStub(ApiResult.Throw(IOException("offline"))),
+            outbox = testOutboxRepository(dao = dao),
+        )
+        val queued = offlineHarness.repository.createAllowingOffline(
+            expectedBinding = offlineHarness.binding,
+            draft = RecurringItemDraft(decorated, 350000, null),
+        ).getOrThrow() as RecurringSaveOutcome.Queued
+
+        assertEquals(canonical, queued.intent.merchant)
+        assertEquals(
+            canonical,
+            moshi().adapter(RecurringItemCreateRequestDto::class.java)
+                .fromJson(dao.rows.values.single().payload)
+                ?.merchant,
+        )
     }
 
     @Test

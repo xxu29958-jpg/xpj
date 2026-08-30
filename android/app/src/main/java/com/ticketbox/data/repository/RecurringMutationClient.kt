@@ -237,5 +237,7 @@ private val RECURRING_OUTBOX_TYPES = setOf(
 
 private const val RECURRING_MERCHANT_MAX_LENGTH = 255
 
-private fun String.exceedsRecurringMerchantMaxLength(): Boolean =
-    codePointCount(0, length) > RECURRING_MERCHANT_MAX_LENGTH
+private fun String.exceedsRecurringMerchantMaxLength(): Boolean {
+    val canonicalDisplay = trim()
+    return canonicalDisplay.codePointCount(0, canonicalDisplay.length) > RECURRING_MERCHANT_MAX_LENGTH
+}

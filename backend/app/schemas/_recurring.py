@@ -23,13 +23,26 @@ __all__ = [
 ]
 
 
-def _preserve_recurring_merchant_length_error(value: object) -> object:
-    if isinstance(value, str) and len(value) > RECURRING_MERCHANT_MAX_LENGTH:
+_RECURRING_MERCHANT_DESCRIPTION = (
+    "Merchant display name. Leading and trailing whitespace is ignored before validation and storage."
+)
+
+
+def _normalize_recurring_merchant_input(value: object) -> object:
+    if not isinstance(value, str):
+        return value
+    normalized = value.strip()
+    if not normalized:
+        raise PydanticCustomError(
+            "recurring_merchant_required",
+            "recurring merchant is required",
+        )
+    if len(normalized) > RECURRING_MERCHANT_MAX_LENGTH:
         raise PydanticCustomError(
             "recurring_merchant_too_long",
             "recurring merchant must fit storage",
         )
-    return value
+    return normalized
 
 
 class RecurringItemTokenRequest(BaseModel):
@@ -66,8 +79,11 @@ class RecurringCandidatesResponse(BaseModel):
 class RecurringCandidateConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    merchant: str = Field(min_length=1, max_length=RECURRING_MERCHANT_MAX_LENGTH)
-    _merchant_length_error = field_validator("merchant", mode="before")(_preserve_recurring_merchant_length_error)
+    merchant: str = Field(
+        min_length=1,
+        description=_RECURRING_MERCHANT_DESCRIPTION,
+    )
+    _merchant_input = field_validator("merchant", mode="before")(_normalize_recurring_merchant_input)
     amount_cents: PositiveMoneyMinor
     occurrence_count: int = Field(
         default=0,
@@ -93,8 +109,11 @@ class RecurringCandidateConfirmRequest(BaseModel):
 class RecurringItemCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    merchant: str = Field(min_length=1, max_length=RECURRING_MERCHANT_MAX_LENGTH)
-    _merchant_length_error = field_validator("merchant", mode="before")(_preserve_recurring_merchant_length_error)
+    merchant: str = Field(
+        min_length=1,
+        description=_RECURRING_MERCHANT_DESCRIPTION,
+    )
+    _merchant_input = field_validator("merchant", mode="before")(_normalize_recurring_merchant_input)
     baseline_amount_cents: PositiveMoneyMinor
     next_expected_date: date | None = None
 
@@ -105,9 +124,9 @@ class RecurringItemUpdateRequest(BaseModel):
     merchant: str | None = Field(
         default=None,
         min_length=1,
-        max_length=RECURRING_MERCHANT_MAX_LENGTH,
+        description=_RECURRING_MERCHANT_DESCRIPTION,
     )
-    _merchant_length_error = field_validator("merchant", mode="before")(_preserve_recurring_merchant_length_error)
+    _merchant_input = field_validator("merchant", mode="before")(_normalize_recurring_merchant_input)
     baseline_amount_cents: PositiveMoneyMinor | None = None
     next_expected_date: date | None = None
     expected_row_version: int = Field(ge=1)

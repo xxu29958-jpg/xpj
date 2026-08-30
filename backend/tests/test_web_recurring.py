@@ -13,6 +13,7 @@ from _web_recurring_test_support import (
     create_via_web,
     demote_owner_ledger_to_viewer,
     edit_via_web,
+    extract_hidden_token,
     first_recurring_public_id,
     hero_block,
     post_confirm,
@@ -162,8 +163,9 @@ def test_web_recurring_over_limit_edit_keeps_draft_and_form_open(web_client: Tes
     assert f'value="{merchant}"' in form.group(0)
     assert 'value="25"' in form.group(0)
     assert 'value="2026-10-08"' in form.group(0)
-    # OCC token 仍是服务端当前 row_version, 不被草稿污染。
-    assert f'name="expected_row_version" value="{token}"' in form.group(0)
+    # 草稿回声携带该次 attempt 的 baseline token (attempt@baseline); 本用例无漂移,
+    # 故与服务端当前 row_version 同值。
+    assert extract_hidden_token(rejected.text, action=f"/web/recurring/{public_id}/edit") == str(token)
 
 
 def test_web_recurring_conflict_refreshes_instead_of_keeping_draft(web_client: TestClient) -> None:

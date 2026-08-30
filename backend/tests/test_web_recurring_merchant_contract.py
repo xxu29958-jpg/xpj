@@ -94,3 +94,18 @@ def test_web_recurring_edit_over_limit_merchant_surfaces_owner_error(
         assert item is not None
         assert item.merchant_name == "Cloud Storage"
         assert item.row_version == token
+
+
+def test_web_recurring_create_ignores_outer_whitespace_for_capacity(
+    web_client: TestClient,
+) -> None:
+    """canonical display 事实钉 (联合合同): 首尾空白在校验与保存前忽略，不计入 255
+    code-point 容量；raw 256 code points (255 个 x + 尾随空格) 必须接受，
+    存 strip 后的 canonical 名称。"""
+    created = create_via_web(web_client, merchant="x" * 255 + " ")
+
+    assert created.status_code == 303
+    with SessionLocal() as db:
+        item = db.scalar(select(RecurringItem).where(RecurringItem.merchant_name == "x" * 255))
+        assert item is not None
+        assert len(item.merchant_name) == 255

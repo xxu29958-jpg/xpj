@@ -387,6 +387,8 @@ def _validation_error_code(exc: RequestValidationError) -> str:
         return "split_amount_invalid"
     if errors and all(error.get("type") == "recurring_merchant_too_long" for error in errors):
         return "recurring_merchant_too_long"
+    if errors and all(error.get("type") == "recurring_merchant_required" for error in errors):
+        return "recurring_merchant_required"
     return "invalid_request"
 
 

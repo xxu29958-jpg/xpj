@@ -353,12 +353,16 @@ def web_recurring_edit(
         kwargs = _conflict_kwargs(exc, selected_id=selected_id, merchant=merchant)
         if exc.error in _DRAFT_PRESERVING_ERRORS:
             # 编辑草稿回填须保持该条目的编辑表单展开, 否则用户看不到被保留的输入。
+            # attempt@baseline: 草稿回声该次 attempt 的全部事实, 含 submitted
+            # expected_row_version — 不得在此升级为 server 当前 row_version, 否则
+            # 用户修正后重提会带着从未见过的 baseline 通过 OCC, 静默覆盖远端字段。
             kwargs["open_edit_id"] = public_id
             kwargs["edit_draft"] = {
                 "public_id": public_id,
                 "merchant": merchant,
                 "baseline_amount_yuan": baseline_amount_yuan,
                 "next_expected_date": next_expected_date,
+                "expected_row_version": parsed,
             }
         return _render_recurring(
             request=request,
