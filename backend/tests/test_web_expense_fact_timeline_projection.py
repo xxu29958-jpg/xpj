@@ -144,11 +144,8 @@ def test_timeline_page_url_keeps_the_fact_page_and_return_context() -> None:
     )
 
 
-def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection() -> None:
-    class RequestStub:
-        query_params: dict[str, str] = {}
-
-    revision_page = ExpenseRevisionListResponse(
+def _disabled_member_revision_page() -> ExpenseRevisionListResponse:
+    return ExpenseRevisionListResponse(
         items=[
             ExpenseRevisionResponse(
                 public_id="revision-2",
@@ -171,7 +168,10 @@ def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection(
         page_size=50,
         total=1,
     )
-    disabled_member = MemberSummary(
+
+
+def _disabled_member_summary() -> MemberSummary:
+    return MemberSummary(
         member_id=7,
         account_id=70,
         account_public_id="account-7",
@@ -181,6 +181,11 @@ def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection(
         disabled_at="2026-08-01T00:00:00Z",
         is_self=False,
     )
+
+
+def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection() -> None:
+    class RequestStub:
+        query_params: dict[str, str] = {}
 
     with (
         patch(
@@ -206,11 +211,11 @@ def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection(
         ),
         patch(
             "app.services.invitation_members.list_members",
-            return_value=[disabled_member],
+            return_value=[_disabled_member_summary()],
         ),
         patch(
             "app.routes._web_expense_fact.list_expense_revisions",
-            return_value=revision_page,
+            return_value=_disabled_member_revision_page(),
         ),
     ):
         context = web_fact_context(
