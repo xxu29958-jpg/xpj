@@ -75,6 +75,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # /web root and slash redirect.
     ("GET", "/web"): "local-only-rendering",
     ("GET", "/web/"): "local-only-rendering",
+    ("GET", "/web/library"): "local-only-rendering",
     # Account flows
     ("GET", "/web/confirmed"): "local-only-rendering",
     ("POST", "/web/confirmed/batch-update"): "writer-only",
@@ -91,6 +92,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Categories
     ("GET", "/web/categories"): "local-only-rendering",
     ("GET", "/web/categories/uncategorized"): "local-only-rendering",
+    ("POST", "/web/categories/preferences/{public_id}/delete"): "writer-only",
     ("POST", "/web/categories/uncategorized/bulk-set"): "writer-only",
     # Dashboard
     ("GET", "/web/dashboard/cards"): "local-only-rendering",

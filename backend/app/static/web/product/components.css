@@ -298,6 +298,11 @@ button[disabled] {
     line-height: var(--type-caption-line);
 }
 
+/* 状态 pill 为单词级标签, 窄列内不得逐字竖排换行。 */
+.product-status {
+    white-space: nowrap;
+}
+
 .dt-pill.ok,
 .product-status--success {
     border-color: var(--state-success-border);
@@ -362,6 +367,14 @@ button[disabled] {
 
 .dt-alert.danger,
 .product-feedback--error {
+    border-color: var(--state-danger-border);
+    background: var(--state-danger-bg);
+    color: var(--state-danger-fg);
+}
+
+/* --danger 与 --error 同语义 (旧命名); 422 role=alert 反馈条统一危险色,
+   此前仅旧 pages/repayment_drafts.css 定义, product 栈页缺该变体。 */
+.product-feedback--danger {
     border-color: var(--state-danger-border);
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);

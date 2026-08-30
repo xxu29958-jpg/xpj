@@ -126,6 +126,16 @@ class UpdateCategoryRuleDispatcherTest {
         assertTrue(result is DispatchResult.Conflict, "state_conflict must stay Conflict: $result")
     }
 
+    @Test
+    fun `409 recycled category keeps the offline edit as a visible failure`() = runTest {
+        val body = """{"error":"rule_category_deleted","message":"目标分类已在回收站。"}"""
+        val stub = Stub(Result.failure(httpException(409, body)))
+
+        val result = dispatcherFor(stub).dispatch(ruleRow(idempotencyKey = "key-abc"))
+
+        assertEquals(DispatchResult.Failure("rule_category_deleted"), result)
+    }
+
     private fun httpException(code: Int, body: String): HttpException {
         val raw = Response.Builder()
             .protocol(Protocol.HTTP_1_1)

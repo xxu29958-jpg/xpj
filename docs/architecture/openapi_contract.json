@@ -1478,6 +1478,22 @@
         "title": "Body_web_budgets_save_web_budgets_save_post",
         "type": "object"
       },
+      "Body_web_category_preference_delete_web_categories_preferences__public_id__delete_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_category_preference_delete_web_categories_preferences__public_id__delete_post",
+        "type": "object"
+      },
       "Body_web_confirm_repayment_draft_web_repayment_drafts__public_id__confirm_post": {
         "properties": {
           "csrf_token": {
@@ -3298,9 +3314,9 @@
             "type": "string"
           },
           "priority": {
-            "default": 100,
+            "default": "100",
             "title": "Priority",
-            "type": "integer"
+            "type": "string"
           },
           "source_contains": {
             "default": "",
@@ -35225,6 +35241,57 @@
         ]
       }
     },
+    "/web/categories/preferences/{public_id}/delete": {
+      "post": {
+        "operationId": "web_category_preference_delete_web_categories_preferences__public_id__delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_category_preference_delete_web_categories_preferences__public_id__delete_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Category Preference Delete",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/categories/uncategorized": {
       "get": {
         "operationId": "web_uncategorized_web_categories_uncategorized_get",
@@ -38479,6 +38546,49 @@
           }
         },
         "summary": "Post Restore",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/library": {
+      "get": {
+        "operationId": "web_reference_library_web_library_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Reference Library",
         "tags": [
           "web"
         ]

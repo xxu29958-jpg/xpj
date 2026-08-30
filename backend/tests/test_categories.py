@@ -136,8 +136,9 @@ def test_display_merchant_preserves_case() -> None:
 def test_web_categories_renders_with_navigation(web_client: TestClient) -> None:
     resp = web_client.get("/web/categories?ledger_id=owner")
     assert resp.status_code == 200
-    # Page heading + nav active marker.
-    assert "分类账本" in resp.text
+    # Canonical section lives under the real Reference Library hub.
+    assert '<h1 class="page-title page-title--compact">分类</h1>' in resp.text
+    assert 'href="/web/library?ledger_id=owner">资料库</a>' in resp.text
     assert 'href="/web/rules?ledger_id=owner"' in resp.text
     assert 'aria-label="选择分类月份"' in resp.text
 

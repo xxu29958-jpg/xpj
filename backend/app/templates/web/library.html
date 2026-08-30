@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% set page_title = '资料库' %}
+{% set product_body_domain = 'transactions' %}
+{% block title %}资料库 · 流水 · 小票夹{% endblock %}
+
+{# C5c-1 增量 1: 流水域资料库 hub (product 栈二级页)。
+   唯一可见入口, 三组分组与 Android TransactionsLibraryScreen 语义对齐;
+   section 保持现有 canonical 路由 (/web/categories|merchants|tags|rules|recycle-bin),
+   计数全部来自路由供给的 library_counts (Owner 只读事实), 模板不推导业务事实。
+   配套样式: product/domains/transactions.css 的 .library-groups/.library-directory。 #}
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水 / 资料库</span>
+    <h1 class="page-title page-title--compact">交易词汇与自动化</h1>
+    <p class="product-page-summary">
+      这里维护系统以后如何称呼和自动整理你的交易：分类、商家、标签与规则，以及整个账本的已移除内容。
+    </p>
+  </div>
+</header>
+
+<div class="library-groups">
+  <section class="library-group" aria-labelledby="library-group-dictionary">
+    <h2 class="library-group-title" id="library-group-dictionary">交易字典</h2>
+    <p class="library-group-desc">系统用来称呼每笔交易的词汇。</p>
+    <div class="library-directory">
+      <a class="library-row" href="/web/categories{{ q }}">
+        <div class="library-row-copy">
+          <h3 class="library-row-title">分类</h3>
+          <span class="library-row-count">{{ library_counts.custom_categories }} 个自定义分类</span>
+        </div>
+        <p>记账时可选择的分类。默认分类始终保留；自定义分类在账单中首次使用后出现，不再需要时可从可选分类中移除。</p>
+        <span class="library-row-action">打开</span>
+      </a>
+      <a class="library-row" href="/web/merchants{{ q }}">
+        <div class="library-row-copy">
+          <h3 class="library-row-title">商家</h3>
+          <span class="library-row-count">{{ library_counts.merchants }} 个商家 · {{ library_counts.merchant_aliases }} 个别名</span>
+        </div>
+        <p>合并重复商家、维护别名，让同一个商家只有一个名字；历史流水保持不变。</p>
+        <span class="library-row-action">打开</span>
+      </a>
+      <a class="library-row" href="/web/tags{{ q }}">
+        <div class="library-row-copy">
+          <h3 class="library-row-title">标签</h3>
+          <span class="library-row-count">{{ library_counts.tags }} 个标签</span>
+        </div>
+        <p>重命名或合并标签，改动会同步到使用它的流水，可随时查看每个标签的使用次数。</p>
+        <span class="library-row-action">打开</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="library-group" aria-labelledby="library-group-automation">
+    <h2 class="library-group-title" id="library-group-automation">自动化</h2>
+    <p class="library-group-desc">让系统按你的规则自动整理交易。</p>
+    <div class="library-directory">
+      <a class="library-row" href="/web/rules{{ q }}">
+        <div class="library-row-copy">
+          <h3 class="library-row-title">规则</h3>
+          <span class="library-row-count">{{ library_counts.rules_enabled }} 条启用 · 共 {{ library_counts.rules_total }} 条</span>
+        </div>
+        <p>新票录入时按商家关键词自动写入分类；已有流水可先预览影响，确认后回溯应用，并可撤销。</p>
+        <span class="library-row-action">打开</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="library-group" aria-labelledby="library-group-lifecycle">
+    <h2 class="library-group-title" id="library-group-lifecycle">数据生命周期</h2>
+    <p class="library-group-desc">误删的内容在保留期内可以恢复。</p>
+    <div class="library-directory">
+      <a class="library-row" href="/web/recycle-bin{{ q }}">
+        <div class="library-row-copy">
+          <h3 class="library-row-title">回收站</h3>
+          <span class="library-row-count">共 {{ library_counts.recycle_total }} 项 · 其中 {{ library_counts.recycle_short_window }} 项保留期较短</span>
+        </div>
+        <p>整个账本的已移除内容都在这里：商家、标签、规则、预算等，保留期内可恢复。</p>
+        <span class="library-row-action">打开</span>
+      </a>
+    </div>
+  </section>
+</div>
+{% endblock %}

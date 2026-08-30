@@ -35,6 +35,18 @@
     color: var(--text-muted);
     font-weight: var(--type-subtitle-weight);
 }
+/* C5c-1: 父级改挂 /web/library 可点链接后的链接态。 */
+a.rb-breadcrumb-parent {
+    display: inline-flex;
+    min-height: var(--space-8);
+    align-items: center;
+    border-radius: var(--radius-xs);
+    color: var(--brand-primary-strong);
+    text-decoration: none;
+}
+a.rb-breadcrumb-parent:hover {
+    text-decoration: underline;
+}
 .rb-breadcrumb-sep {
     color: var(--text-faint);
 }

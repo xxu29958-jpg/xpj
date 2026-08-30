@@ -8,12 +8,12 @@ consistent with the API and the /web/pending bulk path.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.errors import AppError
+from app.errors import ERROR_MESSAGES, AppError
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
@@ -22,7 +22,12 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    parse_form_row_version_token,
     templates,
+)
+from app.services.category_preference_service import (
+    delete_category_preference,
+    list_category_preferences,
 )
 from app.services.category_service import (
     DEFAULT_CATEGORIES,
@@ -40,6 +45,74 @@ from app.services.spending_contract_service import (
 router = APIRouter(prefix="/web", tags=["web"])
 
 
+def _render_categories(
+    request: Request,
+    db: Session,
+    *,
+    options,
+    selected_id: str,
+    month: str = "",
+    msg: str = "",
+    category_error: str = "",
+    category_error_public_id: str = "",
+    status_code: int = 200,
+) -> HTMLResponse:
+    timezone_name = default_accounting_timezone_name()
+    target_month = month.strip() or current_accounting_month(timezone_name)
+    try:
+        dashboard = list_category_summary(
+            db,
+            tenant_id=selected_id,
+            month=target_month,
+            timezone_name=timezone_name,
+        )
+    except ValueError as exc:
+        raise AppError(
+            "invalid_request",
+            "请使用 YYYY-MM 格式的月份。",
+            status_code=400,
+        ) from exc
+    ctx = _base_ctx(
+        request,
+        db=db,
+        options=options,
+        selected_ledger_id=selected_id,
+    )
+    home = ctx["home_currency_code"]
+    ctx.update(
+        categories_rows=[
+            {
+                "category": summary.category,
+                "confirmed_count": summary.confirmed_count,
+                "pending_count": summary.pending_count,
+                "amount_yuan": _amount_yuan(
+                    summary.confirmed_amount_cents,
+                    home,
+                ),
+                "is_uncategorized": summary.is_uncategorized,
+            }
+            for summary in dashboard.summaries
+        ],
+        target_month=target_month,
+        rule_count=dashboard.rule_count,
+        uncategorized_pending=dashboard.uncategorized_pending,
+        category_preferences=list_category_preferences(
+            db,
+            tenant_id=selected_id,
+        ),
+        flash_message=msg,
+        category_error=category_error,
+        category_error_public_id=category_error_public_id,
+        q="?ledger_id=" + selected_id,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="categories.html",
+        context=ctx,
+        status_code=status_code,
+    )
+
+
 @router.get("/categories", response_class=HTMLResponse)
 def web_categories(
     request: Request,
@@ -51,38 +124,77 @@ def web_categories(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    timezone_name = default_accounting_timezone_name()
-    target_month = month.strip() or current_accounting_month(timezone_name)
+    return _render_categories(
+        request,
+        db,
+        options=options,
+        selected_id=selected_id,
+        month=month,
+        msg=msg,
+    )
+
+
+@router.post(
+    "/categories/preferences/{public_id}/delete",
+    response_class=HTMLResponse,
+)
+def web_category_preference_delete(
+    request: Request,
+    public_id: str,
+    ledger_id: str = Form(""),
+    expected_row_version: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> Response:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(
+        db,
+        ledger_id or None,
+        options,
+        request=request,
+    )
+    _require_selected_ledger_write(options, selected_id)
+    parsed = parse_form_row_version_token(expected_row_version)
+    if parsed is None:
+        return _render_categories(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            category_error="页面已过期，请使用当前分类状态重试。",
+            category_error_public_id=public_id,
+            status_code=422,
+        )
     try:
-        dashboard = list_category_summary(
+        removed = delete_category_preference(
             db,
             tenant_id=selected_id,
-            month=target_month,
-            timezone_name=timezone_name,
+            public_id=public_id,
+            expected_row_version=parsed,
         )
-    except ValueError as exc:
-        raise AppError("invalid_request", "请使用 YYYY-MM 格式的月份。", status_code=400) from exc
-    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
-    home = ctx["home_currency_code"]
-    rows = []
-    for s in dashboard.summaries:
-        rows.append(
-            {
-                "category": s.category,
-                "confirmed_count": s.confirmed_count,
-                "pending_count": s.pending_count,
-                "amount_yuan": _amount_yuan(s.confirmed_amount_cents, home),
-                "is_uncategorized": s.is_uncategorized,
-            }
+    except AppError as exc:
+        message = (
+            "分类已在其它端被修改，请刷新后重试。"
+            if exc.error == "state_conflict"
+            and exc.message == ERROR_MESSAGES["state_conflict"]
+            else exc.message
         )
-    ctx["categories_rows"] = rows
-    ctx["target_month"] = target_month
-    ctx["rule_count"] = dashboard.rule_count
-    ctx["uncategorized_pending"] = dashboard.uncategorized_pending
-    ctx["flash_message"] = msg
-    ctx["q"] = "?ledger_id=" + selected_id
-    return templates.TemplateResponse(
-        request=request, name="categories.html", context=ctx
+        return _render_categories(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            category_error=message,
+            category_error_public_id=public_id,
+            status_code=422,
+        )
+    return _web_redirect(
+        "/web/categories",
+        selected_id,
+        msg=(
+            f"已从可选分类移除「{removed.name}」；历史流水不会改写，"
+            "需要时可从回收站恢复。"
+        ),
     )
 
 

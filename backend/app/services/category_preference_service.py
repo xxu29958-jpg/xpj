@@ -122,6 +122,26 @@ def ensure_category_preference_for_name(
     return item
 
 
+def ensure_rule_category_available(
+    db: Session,
+    *,
+    tenant_id: str,
+    category: str,
+) -> None:
+    key = category_key_for_existing(category)
+    if key is None:
+        return
+    preference = _preference_by_key(db, tenant_id=tenant_id, key=key, for_update=True)
+    if preference is None or preference.deleted_at is None:
+        return
+    raise AppError(
+        "rule_category_deleted",
+        f"目标分类「{category}」已在回收站。",
+        status_code=409,
+        details={"category": category},
+    )
+
+
 def delete_category_preference(
     db: Session,
     *,
@@ -129,7 +149,12 @@ def delete_category_preference(
     public_id: str,
     expected_row_version: int,
 ) -> CategoryPreferenceView:
-    item = _preference_by_public_id(db, tenant_id=tenant_id, public_id=public_id)
+    item = _preference_by_public_id(
+        db,
+        tenant_id=tenant_id,
+        public_id=public_id,
+        for_update=True,
+    )
     if item is None or item.deleted_at is not None:
         raise AppError("not_found", "分类偏好不存在。", status_code=404)
     if item.kind != "custom" or item.key in default_category_keys():
@@ -207,25 +232,39 @@ def _refreshed_view(
 
 
 def _preference_by_public_id(
-    db: Session, *, tenant_id: str, public_id: str
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    for_update: bool = False,
 ) -> CategoryPreference | None:
-    return db.scalar(
+    statement = (
         select(CategoryPreference)
         .where(CategoryPreference.tenant_id == tenant_id)
         .where(CategoryPreference.public_id == public_id)
         .limit(1)
     )
+    if for_update:
+        statement = statement.with_for_update()
+    return db.scalar(statement)
 
 
 def _preference_by_key(
-    db: Session, *, tenant_id: str, key: str
+    db: Session,
+    *,
+    tenant_id: str,
+    key: str,
+    for_update: bool = False,
 ) -> CategoryPreference | None:
-    return db.scalar(
+    statement = (
         select(CategoryPreference)
         .where(CategoryPreference.tenant_id == tenant_id)
         .where(CategoryPreference.key == key)
         .limit(1)
     )
+    if for_update:
+        statement = statement.with_for_update()
+    return db.scalar(statement)
 
 
 def _preference_view(

@@ -29,11 +29,17 @@ from app.services.time_service import now_utc
 _KW = "ZqUndoMart"
 
 
-def _create_rule(client: TestClient, *, identity, keyword: str = _KW) -> dict:
+def _create_rule(
+    client: TestClient,
+    *,
+    identity,
+    keyword: str = _KW,
+    category: str = "餐饮",
+) -> dict:
     resp = client.post(
         "/api/rules/categories",
         headers=identity.app_headers,
-        json={"keyword": keyword, "category": "餐饮", "enabled": True, "priority": 1},
+        json={"keyword": keyword, "category": category, "enabled": True, "priority": 1},
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -123,6 +129,69 @@ def test_undo_restores_rule_and_writes_audit(client: TestClient, *, identity) ->
             {"rid": str(rule["id"])},
         ).scalar()
         assert audit_rows == 1
+
+
+def test_undo_enabled_rule_requires_its_category_to_be_restored(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    category = "烘焙"
+    expense = client.post(
+        "/api/expenses/manual",
+        headers=identity.app_headers,
+        json={
+            "amount_cents": 2600,
+            "merchant": "规则恢复分类商家",
+            "category": category,
+            "client_ref": "rule-undo-recycled-category",
+        },
+    )
+    assert expense.status_code == 200, expense.text
+    preferences = client.get(
+        "/api/expenses/categories/preferences",
+        headers=identity.app_headers,
+    )
+    preference = next(
+        item for item in preferences.json()["items"] if item["name"] == category
+    )
+
+    rule = _create_rule(
+        client,
+        identity=identity,
+        keyword=f"{_KW}RecycledCategory",
+        category=category,
+    )
+    _soft_delete(client, identity=identity, rule=rule)
+    deleted_preference = client.post(
+        f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
+        headers=identity.app_headers,
+        json={"expected_row_version": preference["row_version"]},
+    )
+    assert deleted_preference.status_code == 200, deleted_preference.text
+
+    blocked = client.post(
+        f"/api/rules/categories/{rule['id']}/undo",
+        headers=identity.app_headers,
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["error"] == "rule_category_deleted"
+    with SessionLocal() as db:
+        assert db.get(CategoryRule, rule["id"]).deleted_at is not None
+
+    restored_preference = client.post(
+        f"/api/expenses/categories/preferences/{preference['public_id']}/restore",
+        headers=identity.app_headers,
+        json={
+            "expected_row_version": deleted_preference.json()["row_version"],
+        },
+    )
+    assert restored_preference.status_code == 200, restored_preference.text
+    restored_rule = client.post(
+        f"/api/rules/categories/{rule['id']}/undo",
+        headers=identity.app_headers,
+    )
+    assert restored_rule.status_code == 200, restored_rule.text
 
 
 def test_undo_live_or_missing_rule_returns_404(client: TestClient, *, identity) -> None:

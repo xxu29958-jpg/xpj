@@ -31,6 +31,14 @@ class SyncStatusFailureTest {
     }
 
     @Test
+    fun `recycled rule category points the user to restore then retry`() {
+        assertEquals(
+            R.string.sync_status_error_rule_category_deleted,
+            syncStatusExactErrorMessageResources["rule_category_deleted"],
+        )
+    }
+
+    @Test
     fun `overview counts come from outbox status`() {
         val overview = syncStatusOverview(
             OutboxStatus(

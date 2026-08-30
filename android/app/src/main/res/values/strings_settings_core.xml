@@ -293,5 +293,6 @@
     <string name="sync_status_error_max_attempts">已连续多次同步失败,请检查网络或稍后再试。</string>
     <string name="sync_status_error_no_dispatcher">App 版本不支持此操作,请升级后再重试。</string>
     <string name="sync_status_error_expired">这笔改动太久没能同步,已过期,请重新操作。</string>
+    <string name="sync_status_error_rule_category_deleted">目标分类已移入回收站。请先在资料库回收站恢复该分类，再重试。</string>
 
 </resources>

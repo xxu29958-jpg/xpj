@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+import app.routes.web_library as web_library
 from app.auth import get_current_app_context
 from app.config import DATA_ROOT, get_settings
 from app.database import get_db, init_db, wait_for_db
@@ -403,6 +404,7 @@ app.include_router(web_rules_routes.router)
 app.include_router(web_budgets.router)
 app.include_router(web_budget_advise.router)
 app.include_router(web_income_plans.router)
+app.include_router(web_library.router)
 app.include_router(web_reports.router)
 app.include_router(web_goals.router)
 app.include_router(web_search.router)

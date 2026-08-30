@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 def test_web_merchants_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/merchants?ledger_id=owner")
     assert resp.status_code == 200
-    assert "商家治理" in resp.text
+    assert "商家目录" in resp.text
     assert "不会覆盖原始账单商家" in resp.text
 
 
@@ -22,10 +22,10 @@ def test_web_merchants_catalog_and_alias_create_toggle_delete(web_client: TestCl
 def test_web_merchant_catalog_rename_conflict_points_to_merge(web_client: TestClient) -> None:
     import re as _re
 
-    _create_web_catalog(web_client, "Merge Source")
-    _create_web_catalog(web_client, "Merge Target")
+    _create_web_catalog(web_client, "来源商家")
+    _create_web_catalog(web_client, "目标商家")
     page = web_client.get("/web/merchants?ledger_id=owner")
-    source_id = _catalog_public_id_for_name(page.text, "Merge Source", _re)
+    source_id = _catalog_public_id_for_name(page.text, "来源商家", _re)
     source_rv = _catalog_action_token(page.text, source_id, "rename", _re)
 
     conflict = web_client.post(
@@ -33,15 +33,145 @@ def test_web_merchant_catalog_rename_conflict_points_to_merge(web_client: TestCl
         data={
             "ledger_id": "owner",
             "expected_row_version": source_rv,
-            "display_name": "Merge Target",
+            "display_name": "目标商家",
         },
-        follow_redirects=True,
+        follow_redirects=False,
     )
 
-    assert conflict.status_code == 200
-    assert "商家名已被「Merge Target」占用" in conflict.text
+    assert conflict.status_code == 422
+    assert 'data-body-stack="product"' in conflict.text
+    assert f'data-catalog-key="{source_id}"' in conflict.text
+    assert 'aria-describedby="merchant-rename-error"' in conflict.text
+    assert 'role="alert"' in conflict.text
+    assert 'name="display_name" value="目标商家"' in conflict.text
+    assert _catalog_action_token(conflict.text, source_id, "rename", _re) == source_rv
+    assert "商家名已被「目标商家」占用" in conflict.text
     assert "如需归并请使用『合并』" in conflict.text
     assert f"/web/merchants/catalog/{source_id}/merge" in conflict.text
+
+
+def test_web_merchant_catalog_create_conflict_keeps_the_draft(web_client: TestClient) -> None:
+    _create_web_catalog(web_client, "Unicode 咖啡 🧾")
+
+    conflict = web_client.post(
+        "/web/merchants/catalog/create",
+        data={"display_name": "Unicode 咖啡 🧾", "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+
+    assert conflict.status_code == 422
+    assert 'data-body-stack="product"' in conflict.text
+    assert 'id="merchant-create-error"' in conflict.text
+    assert 'role="alert"' in conflict.text
+    assert "商家已存在，无需重复添加。" in conflict.text
+    assert 'aria-describedby="merchant-create-error"' in conflict.text
+    assert 'name="display_name"' in conflict.text
+    assert 'value="Unicode 咖啡 🧾"' in conflict.text
+
+    clean = web_client.get("/web/merchants?ledger_id=owner")
+    assert clean.status_code == 200
+    assert 'id="merchant-create-error"' not in clean.text
+
+
+def test_web_merchant_catalog_create_conflict_points_to_recycled_entry(
+    web_client: TestClient,
+) -> None:
+    import re as _re
+
+    _create_web_catalog(web_client, "待恢复商家")
+    page = web_client.get("/web/merchants?ledger_id=owner")
+    public_id = _catalog_public_id_for_name(page.text, "待恢复商家", _re)
+    deleted = web_client.post(
+        f"/web/merchants/catalog/{public_id}/delete",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": _catalog_action_token(
+                page.text,
+                public_id,
+                "delete",
+                _re,
+            ),
+        },
+        follow_redirects=False,
+    )
+    assert deleted.status_code in {303, 307}
+
+    conflict = web_client.post(
+        "/web/merchants/catalog/create",
+        data={"display_name": "待恢复商家", "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+
+    assert conflict.status_code == 422
+    assert "同名商家已在回收站。请先恢复该商家，或改用其它名称。" in conflict.text
+    assert 'href="/web/recycle-bin?ledger_id=owner"' in conflict.text
+    assert 'value="待恢复商家"' in conflict.text
+
+
+def test_web_merchant_alias_create_conflict_keeps_both_draft_fields(web_client: TestClient) -> None:
+    created = web_client.post(
+        "/web/merchants/aliases/create",
+        data={
+            "canonical_merchant": "星巴克",
+            "alias": "STARBUCKS 国贸店",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code in {303, 307}
+
+    conflict = web_client.post(
+        "/web/merchants/aliases/create",
+        data={
+            "canonical_merchant": "另一家",
+            "alias": "starbucks 国贸店",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+
+    assert conflict.status_code == 422
+    assert 'data-body-stack="product"' in conflict.text
+    assert 'id="alias-create-error"' in conflict.text
+    assert 'role="alert"' in conflict.text
+    assert conflict.text.count('aria-describedby="alias-create-error"') == 2
+    assert 'name="canonical_merchant"' in conflict.text
+    assert 'value="另一家"' in conflict.text
+    assert 'name="alias"' in conflict.text
+    assert 'value="starbucks 国贸店"' in conflict.text
+
+    clean = web_client.get("/web/merchants?ledger_id=owner")
+    assert clean.status_code == 200
+    assert 'id="alias-create-error"' not in clean.text
+
+
+def test_web_merchant_alias_same_target_conflict_is_neutral_and_truthful(
+    web_client: TestClient,
+) -> None:
+    created = web_client.post(
+        "/web/merchants/aliases/create",
+        data={
+            "canonical_merchant": "星巴克",
+            "alias": "STARBUCKS 国贸店",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code in {303, 307}
+
+    conflict = web_client.post(
+        "/web/merchants/aliases/create",
+        data={
+            "canonical_merchant": "星巴克",
+            "alias": "starbucks 国贸店",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+
+    assert conflict.status_code == 422
+    assert "商家别名已存在。" in conflict.text
+    assert "已指向其他商家" not in conflict.text
 
 
 def test_web_merchant_catalog_merge_creates_alias_without_rewriting_history(
@@ -90,7 +220,7 @@ def _create_web_catalog(web_client: TestClient, display_name: str) -> None:
 
 
 def _catalog_public_id_for_name(html: str, display_name: str, re_module) -> str:
-    for row in html.split("<tr>"):
+    for row in html.split("<tr"):
         if f"<td>{display_name}</td>" not in row:
             continue
         match = re_module.search(r"/web/merchants/catalog/([^/]+)/rename", row)
@@ -184,10 +314,10 @@ def _exercise_web_alias_create_toggle_delete(web_client: TestClient, re_module) 
             "alias": "starbucks 国贸店",
             "ledger_id": "owner",
         },
-        follow_redirects=True,
+        follow_redirects=False,
     )
-    assert duplicate.status_code == 200
-    assert "商家别名已指向其他商家" in duplicate.text
+    assert duplicate.status_code == 422
+    assert "商家别名已存在" in duplicate.text
 
     match = re_module.search(r"/web/merchants/aliases/([^/]+)/delete", page.text)
     assert match, page.text[:500]

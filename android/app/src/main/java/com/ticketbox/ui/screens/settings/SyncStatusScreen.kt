@@ -449,10 +449,12 @@ private fun friendlyLastError(raw: String?, fallback: String): String {
         text.startsWith("max_attempts_exceeded") -> stringResource(R.string.sync_status_error_max_attempts)
         text.startsWith("no_dispatcher_registered") -> stringResource(R.string.sync_status_error_no_dispatcher)
         text.startsWith("outbox_row_expired") -> stringResource(R.string.sync_status_error_expired)
-        text == "session_boundary_aborted" -> fallback
-        text == "manual_retry" -> fallback
-        text == "drain cancelled mid-dispatch" -> fallback
-        text == "recovered_from_stuck_in_flight" -> fallback
+        text in syncStatusExactErrorMessageResources ->
+            stringResource(syncStatusExactErrorMessageResources.getValue(text))
         else -> fallback
     }
 }
+
+internal val syncStatusExactErrorMessageResources = mapOf(
+    "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
+)

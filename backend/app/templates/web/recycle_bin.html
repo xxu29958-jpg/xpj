@@ -1,19 +1,19 @@
 {% extends "base.html" %}
-{% block title %}回收站 · 流水 · 小票夹{% endblock %}
+{% set page_title = '回收站' %}
+{% set product_body_domain = 'transactions' %}
+{% block title %}回收站 · 资料库 · 小票夹{% endblock %}
 
-{# C5b-1 工作台化：页面级 CSS 走 pages/recycle-bin.css。S1 (218-D IA) 已落地并合入
-   本分支，但 base.html 仍是 S1 后续切片的热文件，本切片不与它争抢——借 page_scripts
-   块 (位于 <head> 内、全部全局样式之后) 挂载；218-D 视觉主切片收编 pages 列表时迁移。 #}
+{# C5c-1 增量 2: 回收站改挂资料库 (本页 12-14 行旧注释约定的兑现)。
+   页面级 CSS 仍走 pages/recycle-bin.css, 经 page_scripts 块挂载;
+   base.html 的 _product_body_domains 已把本页切到 product 栈。 #}
 {% block page_scripts %}
 <link rel="stylesheet" href="/static/web/pages/recycle-bin.css?v={{ asset_version }}">
 {% endblock %}
 
 {% block content %}
-{# 五域 IA：S1 (218-D) 已把 /web/recycle-bin 归流水 (transactions) 域，页内面包屑与
-   壳面包屑同一父级；父级纯文本不留死链。C5c-1 /web/library 落地时改挂资料库
-   (届时 base.html 的域归属同步迁移)。 #}
+{# C5c-1: 面包屑父级从纯文本「流水」改为可点击的 /web/library 资料库 hub。 #}
 <nav class="rb-breadcrumb" aria-label="面包屑">
-  <span class="rb-breadcrumb-parent">流水</span>
+  <a class="rb-breadcrumb-parent" href="/web/library{{ q }}">资料库</a>
   <span class="rb-breadcrumb-sep" aria-hidden="true">/</span>
   <span class="rb-breadcrumb-current" aria-current="page">回收站</span>
 </nav>
@@ -22,7 +22,7 @@
   <div class="product-page-heading">
     <h1 class="page-title page-title--compact">回收站</h1>
     <p class="product-page-summary">
-      长期归档项目持续保留；分类规则、商家别名和标签仅在保留期内可恢复。
+      整个账本的已移除内容都在这里：预算、收入、固定支出等长期归档项目持续保留；分类规则、商家别名和标签仅在保留期内可恢复。
     </p>
   </div>
   <div class="rb-header-stats">

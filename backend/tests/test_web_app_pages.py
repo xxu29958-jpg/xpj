@@ -89,14 +89,12 @@ def test_web_mobile_primary_nav_contract(web_client: TestClient) -> None:
             "洞察",
             "已确认",
             "搜索",
-            "分类",
-            "商家",
-            "标签",
-            "规则",
-            "回收站",
+            "资料库",
             "导入导出",
         ],
     )
+    for retired_entry in ("分类", "商家", "标签", "规则", "回收站"):
+        assert retired_entry not in desktop_nav
     # 非当前域的页级链接不出现在桌面子导航(五域只展开活跃域)。
     assert "还款捕获" not in desktop_nav
     assert "AI 预算建议" not in desktop_nav
@@ -134,7 +132,8 @@ def test_web_mobile_plan_nav_shows_current_domain_pages(web_client: TestClient) 
     plan_nav = re.search(r'<nav class="mobile-plan-nav".*?</nav>', body, re.S)
     assert plan_nav is not None
     assert "已确认" in plan_nav.group(0)
-    assert "回收站" in plan_nav.group(0)
+    assert "资料库" in plan_nav.group(0)
+    assert "回收站" not in plan_nav.group(0)
     # 非当前域(计划)的页级链接不出现。
     assert "AI 预算建议" not in plan_nav.group(0)
     assert re.search(
