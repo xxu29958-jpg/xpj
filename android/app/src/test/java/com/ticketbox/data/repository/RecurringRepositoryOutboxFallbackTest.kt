@@ -219,6 +219,43 @@ class RecurringRepositoryOutboxFallbackTest {
     }
 
     @Test
+    fun `merchant overflow is rejected before network or outbox`() = runTest {
+        val atLimitApi = ApiStub(ApiResult.Success(successDto()))
+        val atLimitHarness = harness(atLimitApi)
+        val atLimit = atLimitHarness.repository.createAllowingOffline(
+            expectedBinding = atLimitHarness.binding,
+            draft = RecurringItemDraft("😀".repeat(255), 350000, null),
+        )
+        assertTrue(atLimit.isSuccess, "the wire limit counts Unicode code points, not UTF-16 units")
+        assertFalse(atLimitApi.createKey.isNullOrBlank())
+
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val api = ApiStub(ApiResult.Throw(IOException("offline")))
+        val harness = harness(api, outbox = outbox)
+        val tooLong = "😀".repeat(256)
+
+        val create = harness.repository.createAllowingOffline(
+            expectedBinding = harness.binding,
+            draft = RecurringItemDraft(tooLong, 350000, null),
+        )
+        val update = harness.repository.updateAllowingOffline(
+            expectedBinding = harness.binding,
+            baseline = baselineItem(),
+            patch = RecurringItemPatch(merchant = tooLong),
+        )
+
+        assertEquals(
+            listOf("recurring_merchant_too_long", "recurring_merchant_too_long"),
+            listOf(create, update).map { (it.exceptionOrNull() as RepositoryException).errorCode },
+        )
+        assertTrue(listOf(create, update).all(Result<RecurringSaveOutcome>::isFailure))
+        assertEquals(0, dao.rows.size)
+        assertEquals(null, api.createKey)
+        assertEquals(null, api.updateKey)
+    }
+
+    @Test
     fun `local recurring validation exposes stable codes without localized repository copy`() = runTest {
         val api = ApiStub(ApiResult.Success(successDto()))
         val harness = harness(api)

@@ -310,6 +310,7 @@ class RecurringViewModel(
             }
             val result = action(binding)
             if (requestGeneration != generation) return@launch
+            val displacedOwnerRefresh = _uiState.value.ownerRefreshInFlight
             refreshGeneration += 1
             result.fold(
                 onSuccess = { item ->
@@ -328,7 +329,12 @@ class RecurringViewModel(
                     onDataChanged()
                     refreshInternal(preserveMutationFeedback = true)
                 },
-                onFailure = ::handleMutationFailure,
+                onFailure = { error ->
+                    handleMutationFailure(
+                        error = error,
+                        displacedOwnerRefresh = displacedOwnerRefresh,
+                    )
+                },
             )
         }
     }

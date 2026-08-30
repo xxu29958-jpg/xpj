@@ -392,6 +392,40 @@ class RecurringPendingConflictModelsTest {
     }
 }
 
+class RecurringOwnerRefreshFailureModelsTest {
+    @Test
+    fun failedOwnerRefreshWithRetainedNewerRowOffersRetry() {
+        val stale = recurringItem {
+            publicId = "p1"
+            rowVersion = 1L
+        }
+        val fresh = stale.copy(rowVersion = 2L, baselineAmountCents = 3200_00)
+        val session = newRecurringEditorSession(stale, CurrencyCode.CNY).apply {
+            submitUi = RecurringSubmitUi(attemptId = 42L)
+        }
+
+        val ownerState = recurringEditorOwnerState(
+            session = session,
+            uiState = RecurringUiState(
+                items = listOf(fresh),
+                itemsLoadState = RecurringListLoadState.Failed,
+                manualSaveFeedback = RecurringManualSaveFeedback(
+                    attemptId = 42L,
+                    settlement = RecurringManualSaveSettlement.Failed,
+                    requiresOwnerReload = true,
+                ),
+            ),
+        )
+
+        assertEquals(true, ownerState.ownerIsFresh)
+        assertEquals(
+            RecurringRebaseStage.OwnerUnavailable,
+            ownerState.stage,
+            "a failed owner refresh must offer retry instead of pretending it is still loading",
+        )
+    }
+}
+
 private fun assertSubsequentOwnerRefreshAdvancesOccBaseline(
     fresh: RecurringItem,
     overlapping: RecurringEditorRebase,

@@ -160,7 +160,16 @@ private fun recurringRebaseStage(
     ownerIsFresh: Boolean,
 ): RecurringRebaseStage {
     ownerConflict ?: return RecurringRebaseStage.None
-    if (ownerIsFresh) return RecurringRebaseStage.LoadingOwner
+    if (ownerIsFresh) {
+        return when (ownerLoadState) {
+            RecurringListLoadState.Loading,
+            RecurringListLoadState.Loaded,
+            -> RecurringRebaseStage.LoadingOwner
+            RecurringListLoadState.Unknown,
+            RecurringListLoadState.Failed,
+            -> RecurringRebaseStage.OwnerUnavailable
+        }
+    }
     if (rebaseUi?.attemptId == ownerConflict.attemptId) {
         return if (rebaseUi.overlappingFields.isEmpty()) {
             RecurringRebaseStage.Ready

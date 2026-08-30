@@ -37,6 +37,7 @@ from app.schemas._money import (
     PositiveMoneyMinor,
     SignedMoneyMinor,
 )
+from app.schemas._recurring import RecurringItemCreateRequest
 from tests._infra.c07_money_contract_manifest import (
     EXPECTED_TABLES as _EXPECTED_TABLES,
 )
@@ -360,10 +361,17 @@ def test_money_schemas_enforce_documented_c07_bounds_and_signs() -> None:
     assert_documented_money_schema_contract()
 
 
-def test_validation_error_code_allows_only_split_amount_domain_error() -> None:
+def test_validation_error_code_allows_only_explicit_domain_errors() -> None:
     with pytest.raises(ValidationError) as exc_info:
         BillSplitInviteRequest(receiver_account_id=1, amount_cents=0)
     assert _validation_error_code(RequestValidationError(exc_info.value.errors())) == "split_amount_invalid"
+
+    with pytest.raises(ValidationError) as recurring_exc_info:
+        RecurringItemCreateRequest(merchant="x" * 256, baseline_amount_cents=1)
+    assert (
+        _validation_error_code(RequestValidationError(recurring_exc_info.value.errors()))
+        == "recurring_merchant_too_long"
+    )
 
     unknown = RequestValidationError(
         [

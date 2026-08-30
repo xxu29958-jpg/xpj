@@ -384,6 +384,41 @@ class RecurringViewModelMutationTest {
     }
 
     @Test
+    fun refreshStartedBeforeGenericMutationFailureIsReplaced() = recurringTest {
+        val targetCandidate = candidate("Gym")
+        val staleRefresh = CompletableDeferred<Result<List<RecurringItem>>>()
+        var refreshCall = 0
+        val fake = FakeRecurringActions(
+            candidatesResult = Result.success(listOf(targetCandidate)),
+            lifecycle = FakeRecurringLifecycleActions(
+                confirmResult = Result.failure(RepositoryException("confirm failed")),
+            ),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        fake.itemsResponder = {
+            if (++refreshCall == 1) staleRefresh.await() else Result.success(emptyList())
+        }
+
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(RecurringListLoadState.Loading, vm.uiState.value.itemsLoadState)
+        assertEquals(RecurringListLoadState.Loading, vm.uiState.value.candidatesLoadState)
+
+        vm.confirmCandidate(targetCandidate)
+        advanceUntilIdle()
+
+        assertEquals(2, refreshCall, "the invalidated owner refresh needs one replacement")
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.itemsLoadState)
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.candidatesLoadState)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+
+        staleRefresh.complete(Result.success(listOf(item(merchant = "stale"))))
+        advanceUntilIdle()
+        assertEquals(emptyList(), vm.uiState.value.items, "the invalidated refresh must remain unable to publish")
+    }
+
+    @Test
     fun refreshStartedAfterManualEditCannotOwnThatSettlement() = recurringTest {
         val existing = item(publicId = "rec-refresh-after", merchant = "房租")
         val refreshItems = CompletableDeferred<Result<List<RecurringItem>>>()

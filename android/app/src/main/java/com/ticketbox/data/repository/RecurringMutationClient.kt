@@ -201,6 +201,7 @@ private fun RecurringItemPatch.toWireRequest(rowVersion: Long): RecurringItemUpd
 
 private fun validateDraft(draft: RecurringItemDraft): String? = when {
     draft.merchant.isBlank() -> "recurring_merchant_required"
+    draft.merchant.exceedsRecurringMerchantMaxLength() -> "recurring_merchant_too_long"
     draft.baselineAmountCents <= 0 -> "amount_invalid"
     else -> null
 }
@@ -209,6 +210,8 @@ private fun validatePatch(baseline: RecurringItem, patch: RecurringItemPatch): S
     baseline.publicId.isBlank() -> "recurring_item_not_found"
     baseline.rowVersion < 1 -> "state_conflict"
     patch.merchant != null && patch.merchant.isBlank() -> "recurring_merchant_required"
+    patch.merchant != null && patch.merchant.exceedsRecurringMerchantMaxLength() ->
+        "recurring_merchant_too_long"
     patch.baselineAmountCents != null && patch.baselineAmountCents <= 0 -> "amount_invalid"
     patch.merchant == null && patch.baselineAmountCents == null && !patch.nextExpectedDate.changed ->
         "recurring_item_no_changes"
@@ -231,3 +234,8 @@ private val RECURRING_OUTBOX_TYPES = setOf(
     PendingMutationType.CreateRecurringItem,
     PendingMutationType.UpdateRecurringItem,
 )
+
+private const val RECURRING_MERCHANT_MAX_LENGTH = 255
+
+private fun String.exceedsRecurringMerchantMaxLength(): Boolean =
+    codePointCount(0, length) > RECURRING_MERCHANT_MAX_LENGTH

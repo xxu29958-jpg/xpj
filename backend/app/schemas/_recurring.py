@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from pydantic_core import PydanticCustomError
 
 from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor
+from app.services.recurring_merchant_capacity import RECURRING_MERCHANT_MAX_LENGTH
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -19,6 +21,15 @@ __all__ = [
     "RecurringItemTokenRequest",
     "RecurringItemUpdateRequest",
 ]
+
+
+def _preserve_recurring_merchant_length_error(value: object) -> object:
+    if isinstance(value, str) and len(value) > RECURRING_MERCHANT_MAX_LENGTH:
+        raise PydanticCustomError(
+            "recurring_merchant_too_long",
+            "recurring merchant must fit storage",
+        )
+    return value
 
 
 class RecurringItemTokenRequest(BaseModel):
@@ -55,7 +66,8 @@ class RecurringCandidatesResponse(BaseModel):
 class RecurringCandidateConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    merchant: str = Field(min_length=1, max_length=255)
+    merchant: str = Field(min_length=1, max_length=RECURRING_MERCHANT_MAX_LENGTH)
+    _merchant_length_error = field_validator("merchant", mode="before")(_preserve_recurring_merchant_length_error)
     amount_cents: PositiveMoneyMinor
     occurrence_count: int = Field(
         default=0,
@@ -81,7 +93,8 @@ class RecurringCandidateConfirmRequest(BaseModel):
 class RecurringItemCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    merchant: str = Field(min_length=1, max_length=255)
+    merchant: str = Field(min_length=1, max_length=RECURRING_MERCHANT_MAX_LENGTH)
+    _merchant_length_error = field_validator("merchant", mode="before")(_preserve_recurring_merchant_length_error)
     baseline_amount_cents: PositiveMoneyMinor
     next_expected_date: date | None = None
 
@@ -89,7 +102,12 @@ class RecurringItemCreateRequest(BaseModel):
 class RecurringItemUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    merchant: str | None = Field(default=None, min_length=1, max_length=255)
+    merchant: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=RECURRING_MERCHANT_MAX_LENGTH,
+    )
+    _merchant_length_error = field_validator("merchant", mode="before")(_preserve_recurring_merchant_length_error)
     baseline_amount_cents: PositiveMoneyMinor | None = None
     next_expected_date: date | None = None
     expected_row_version: int = Field(ge=1)
