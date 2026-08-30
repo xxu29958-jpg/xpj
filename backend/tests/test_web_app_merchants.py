@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 def test_web_merchants_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/merchants?ledger_id=owner")
     assert resp.status_code == 200
-    assert "商家治理" in resp.text
+    assert "商家目录" in resp.text
     assert "不会覆盖原始账单商家" in resp.text
 
 
@@ -22,10 +22,10 @@ def test_web_merchants_catalog_and_alias_create_toggle_delete(web_client: TestCl
 def test_web_merchant_catalog_rename_conflict_points_to_merge(web_client: TestClient) -> None:
     import re as _re
 
-    _create_web_catalog(web_client, "Merge Source")
-    _create_web_catalog(web_client, "Merge Target")
+    _create_web_catalog(web_client, "来源商家")
+    _create_web_catalog(web_client, "目标商家")
     page = web_client.get("/web/merchants?ledger_id=owner")
-    source_id = _catalog_public_id_for_name(page.text, "Merge Source", _re)
+    source_id = _catalog_public_id_for_name(page.text, "来源商家", _re)
     source_rv = _catalog_action_token(page.text, source_id, "rename", _re)
 
     conflict = web_client.post(
@@ -33,13 +33,19 @@ def test_web_merchant_catalog_rename_conflict_points_to_merge(web_client: TestCl
         data={
             "ledger_id": "owner",
             "expected_row_version": source_rv,
-            "display_name": "Merge Target",
+            "display_name": "目标商家",
         },
-        follow_redirects=True,
+        follow_redirects=False,
     )
 
-    assert conflict.status_code == 200
-    assert "商家名已被「Merge Target」占用" in conflict.text
+    assert conflict.status_code == 422
+    assert 'data-body-stack="product"' in conflict.text
+    assert f'data-catalog-key="{source_id}"' in conflict.text
+    assert 'aria-describedby="merchant-rename-error"' in conflict.text
+    assert 'role="alert"' in conflict.text
+    assert 'name="display_name" value="目标商家"' in conflict.text
+    assert _catalog_action_token(conflict.text, source_id, "rename", _re) == source_rv
+    assert "商家名已被「目标商家」占用" in conflict.text
     assert "如需归并请使用『合并』" in conflict.text
     assert f"/web/merchants/catalog/{source_id}/merge" in conflict.text
 
@@ -90,7 +96,7 @@ def _create_web_catalog(web_client: TestClient, display_name: str) -> None:
 
 
 def _catalog_public_id_for_name(html: str, display_name: str, re_module) -> str:
-    for row in html.split("<tr>"):
+    for row in html.split("<tr"):
         if f"<td>{display_name}</td>" not in row:
             continue
         match = re_module.search(r"/web/merchants/catalog/([^/]+)/rename", row)

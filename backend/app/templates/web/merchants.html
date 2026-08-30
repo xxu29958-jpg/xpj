@@ -1,46 +1,67 @@
 {% extends "base.html" %}
-{% block title %}商家治理 — 小票夹{% endblock %}
+{% set page_title = '商家' %}
+{% set product_body_domain = 'transactions' %}
+{% block title %}商家 · 资料库 · 小票夹{% endblock %}
+
+{# C5c-1 增量 2: 商家 section 迁为资料库 product 三级页。
+   商家目录 = 展示身份治理 (不改写历史账单); 别名 = 规则匹配输入。
+   全部表单 action/hidden/expected_row_version/data-confirm/can_write 分支原样保留。 #}
 {% block content %}
-<h1 class="page-title page-title--compact">商家治理</h1>
-<p class="meta">商家目录用于展示和治理，商家别名用于规则匹配；不会覆盖原始账单商家，也不会批量改写历史账单。</p>
+<nav class="library-breadcrumb" aria-label="面包屑">
+  <a class="library-breadcrumb-parent" href="/web/library{{ q }}">资料库</a>
+  <span class="library-breadcrumb-sep" aria-hidden="true">/</span>
+  <span class="library-breadcrumb-current" aria-current="page">商家</span>
+</nav>
+
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <h1 class="page-title page-title--compact">商家</h1>
+    <p class="product-page-summary">商家目录用于展示和治理，商家别名用于规则匹配；不会覆盖原始账单商家，也不会批量改写历史账单。</p>
+  </div>
+</header>
+
 {% if not can_write %}
-<div class="readonly-callout">只读角色可以查看商家目录和别名，但不能新增、重命名、合并、启停、隐藏或删除。</div>
+<div class="product-feedback" role="status">只读角色可以查看商家目录和别名，但不能新增、重命名、合并、启停、隐藏或删除。</div>
 {% endif %}
 
 {% if flash_message %}
-<div class="dt-alert success{% if undo_public_id and can_write %} undo-banner{% endif %}">
+<div class="product-feedback product-feedback--success{% if undo_public_id and can_write %} undo-banner{% endif %}" role="status">
   <span>{{ flash_message }}</span>
   {% if undo_public_id and can_write %}
   {# ADR-0038 undo: 5s 撤销 affordance (CSS auto-dismisses the banner). #}
   <form method="post" action="/web/merchants/aliases/{{ undo_public_id }}/undo" class="undo-banner-action">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <button type="submit" class="dt-btn">撤销</button>
+    <button type="submit" class="product-button product-button--small">撤销</button>
   </form>
   {% endif %}
 </div>
 {% endif %}
 
-<div class="grid two-col">
-  {% if can_write %}
-  <section class="dt-card">
-    <h2>新增商家</h2>
-    <form method="post" action="/web/merchants/catalog/create" class="dt-form-grid">
+<div class="library-panels">
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div class="product-panel-title">新增商家</div>
+    </div>
+    {% if can_write %}
+    <form method="post" action="/web/merchants/catalog/create" class="product-form-grid">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <label>商家名称
+      <label class="product-field">
+        <span>商家名称</span>
         <input type="text" name="display_name" required placeholder="如：星巴克">
       </label>
-      <button type="submit" class="dt-btn primary">添加商家</button>
+      <div class="actions">
+        <button type="submit" class="product-button product-button--primary">添加商家</button>
+      </div>
     </form>
-  </section>
-  {% else %}
-  <section class="dt-card">
-    <h2>新增商家</h2>
+    {% else %}
     <p class="meta">只读角色无法新增商家。</p>
+    {% endif %}
   </section>
-  {% endif %}
 
-  <section class="dt-card">
-    <h2>使用边界</h2>
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div class="product-panel-title">使用边界</div>
+    </div>
     <ul class="meta">
       <li>商家目录是当前账本的展示身份，不改写历史账单。</li>
       <li>隐藏只影响管理和后续选择；删除会进入当前账本回收站。</li>
@@ -50,117 +71,134 @@
   </section>
 </div>
 
-<section class="dt-card">
-  <div class="card-header">
-    <h2>商家目录（{{ catalog|length }} 个）</h2>
-    <a class="dt-btn" href="/web/recycle-bin{{ q }}">查看回收站</a>
+<section class="product-panel product-panel--padded library-section">
+  <div class="product-panel-header">
+    <div class="product-panel-title">商家目录（{{ catalog|length }} 个）</div>
+    <a class="product-button product-button--quiet" href="/web/recycle-bin{{ q }}">查看回收站</a>
   </div>
+  {% if rename_error and rename_error_public_id not in (catalog | map(attribute='public_id') | list) %}
+  {# 被提交行已不在目录 (他端已合并/删除) 时, 422 文案仍须锚身份可见。 #}
+  <div class="product-feedback product-feedback--danger" role="alert" data-catalog-key="{{ rename_error_public_id }}">{{ rename_error }}</div>
+  {% endif %}
   {% if catalog %}
-  <table class="dt-table">
-    <thead>
-      <tr>
-        <th>商家</th>
-        <th>标准键</th>
-        <th class="th-w-80">历史笔数</th>
-        <th class="th-w-80">状态</th>
-        <th>操作</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for item in catalog %}
-      <tr>
-        <td>{{ item.display_name }}</td>
-        <td><code>{{ item.merchant_key }}</code></td>
-        <td>{{ item.usage_count }}</td>
-        <td>
-          {% if item.status == "active" %}<span class="dt-pill ok">显示</span>
-          {% elif item.status == "hidden" %}<span class="dt-pill muted">隐藏</span>
-          {% else %}<span class="dt-pill muted">已合并</span>{% endif %}
-        </td>
-        <td>
-          {% if can_write and item.status in ["active", "hidden"] %}
-          <div class="tag-actions">
-            <form method="post" action="/web/merchants/catalog/{{ item.public_id }}/rename" class="dt-inline-form">
-              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-              <input type="text" class="dt-input" name="display_name" value="{{ item.display_name }}" required maxlength="255" aria-label="重命名商家">
-              <button type="submit" class="dt-btn">重命名</button>
-            </form>
-            {% if catalog|length > 1 %}
-            <form method="post" action="/web/merchants/catalog/{{ item.public_id }}/merge" class="dt-inline-form"
-                  data-confirm="把商家「{{ item.display_name }}」合并到所选商家？历史账单不会被批量改写。">
-              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-              <select class="dt-input" name="target" required aria-label="合并到">
-                <option value="" disabled selected>合并到…</option>
-                {% for other in catalog if other.public_id != item.public_id and other.status == "active" %}
-                <option value="{{ other.public_id }}:{{ other.row_version }}">{{ other.display_name }}</option>
-                {% endfor %}
-              </select>
-              <select class="dt-input" name="alias_policy" required aria-label="来源别名处理">
-                <option value="" disabled selected>别名处理…</option>
-                <option value="create_source_alias">创建来源别名</option>
-                <option value="none">不创建别名</option>
-              </select>
-              <button type="submit" class="dt-btn">合并</button>
-            </form>
+  <div class="product-table-wrap library-table-flush">
+    <table class="product-table merchant-catalog-table">
+      <thead>
+        <tr>
+          <th>商家</th>
+          <th>标准键</th>
+          <th class="text-end">历史笔数</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in catalog %}
+        {# C5c-1 最终增量: rename 冲突/stale 422 原页行内重渲染 (合同 A)。
+           rename_error* 缺席时一切如旧; 命中行回填用户提交名 + fresh rv。 #}
+        {% set _row_error = rename_error and rename_error_public_id == item.public_id %}
+        <tr data-catalog-key="{{ item.public_id }}"{% if _row_error %} aria-invalid="true" aria-describedby="merchant-rename-error"{% endif %}>
+          <td>{{ item.display_name }}</td>
+          <td><code>{{ item.merchant_key }}</code></td>
+          <td class="num text-end">{{ item.usage_count }}</td>
+          <td>
+            {% if item.status == "active" %}<span class="product-status product-status--success">显示</span>
+            {% elif item.status == "hidden" %}<span class="product-status">隐藏</span>
+            {% else %}<span class="product-status">已合并</span>{% endif %}
+          </td>
+          <td class="merchant-catalog-ops">
+            {% if can_write and item.status in ["active", "hidden"] %}
+            {% if _row_error %}
+            <div id="merchant-rename-error" class="product-feedback product-feedback--danger library-row-error" role="alert">{{ rename_error }}</div>
             {% endif %}
-            <form method="post" action="/web/merchants/catalog/{{ item.public_id }}/toggle" class="dt-inline-form">
-              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-              <button type="submit" class="dt-btn">
-                {% if item.status == "active" %}隐藏{% else %}显示{% endif %}
-              </button>
-            </form>
-            <form method="post" action="/web/merchants/catalog/{{ item.public_id }}/delete" class="dt-inline-form"
-                  data-confirm="删除商家「{{ item.display_name }}」？删除后可在回收站恢复。">
-              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-              <button type="submit" class="dt-btn danger">删除</button>
-            </form>
-          </div>
-          {% elif can_write %}
-          <span class="readonly-inline">已合并</span>
-          {% else %}
-          <span class="readonly-inline">只读</span>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+            <div class="library-ops">
+              <form method="post" action="/web/merchants/catalog/{{ item.public_id }}/rename">
+                <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+                <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+                <input type="text" name="display_name" value="{% if _row_error %}{{ rename_error_value }}{% else %}{{ item.display_name }}{% endif %}" required maxlength="255" aria-label="重命名商家"{% if _row_error %} aria-invalid="true"{% endif %}>
+                <button type="submit" class="product-button product-button--small">重命名</button>
+              </form>
+              {% if catalog|length > 1 %}
+              <form method="post" action="/web/merchants/catalog/{{ item.public_id }}/merge"
+                    data-confirm="把商家「{{ item.display_name }}」合并到所选商家？历史账单不会被批量改写。">
+                <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+                <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+                <select name="target" required aria-label="合并到">
+                  <option value="" disabled selected>合并到…</option>
+                  {% for other in catalog if other.public_id != item.public_id and other.status == "active" %}
+                  <option value="{{ other.public_id }}:{{ other.row_version }}">{{ other.display_name }}</option>
+                  {% endfor %}
+                </select>
+                <select name="alias_policy" required aria-label="来源别名处理">
+                  <option value="" disabled selected>别名处理…</option>
+                  <option value="create_source_alias">创建来源别名</option>
+                  <option value="none">不创建别名</option>
+                </select>
+                <button type="submit" class="product-button product-button--small">合并</button>
+              </form>
+              {% endif %}
+              <form method="post" action="/web/merchants/catalog/{{ item.public_id }}/toggle">
+                <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+                <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+                <button type="submit" class="product-button product-button--small">
+                  {% if item.status == "active" %}隐藏{% else %}显示{% endif %}
+                </button>
+              </form>
+              <form method="post" action="/web/merchants/catalog/{{ item.public_id }}/delete"
+                    data-confirm="删除商家「{{ item.display_name }}」？删除后可在回收站恢复。">
+                <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+                <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+                <button type="submit" class="product-button product-button--small product-button--danger">删除</button>
+              </form>
+            </div>
+            {% elif can_write %}
+            <span class="readonly-inline">已合并</span>
+            {% else %}
+            <span class="readonly-inline">只读</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">还没有商家目录</div>
-    <div class="empty-state-hint">添加常见商家后，可以在这里隐藏或移入回收站。</div>
+  <div class="product-state">
+    <div class="product-state-title">还没有商家目录</div>
+    <div class="product-state-body">添加常见商家后，可以在这里隐藏或移入回收站。</div>
   </div>
   {% endif %}
 </section>
 
-<div class="grid two-col">
-  {% if can_write %}
-  <section class="dt-card">
-    <h2>新增商家别名</h2>
-    <form method="post" action="/web/merchants/aliases/create" class="dt-form-grid">
+<div class="library-panels">
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div class="product-panel-title">新增商家别名</div>
+    </div>
+    {% if can_write %}
+    <form method="post" action="/web/merchants/aliases/create" class="product-form-grid">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <label>标准商家
+      <label class="product-field">
+        <span>标准商家</span>
         <input type="text" name="canonical_merchant" required placeholder="如：星巴克">
       </label>
-      <label>别名
+      <label class="product-field">
+        <span>别名</span>
         <input type="text" name="alias" required placeholder="如：STARBUCKS 国贸店">
       </label>
-      <button type="submit" class="dt-btn primary">添加别名</button>
+      <div class="actions">
+        <button type="submit" class="product-button product-button--primary">添加别名</button>
+      </div>
     </form>
-  </section>
-  {% else %}
-  <section class="dt-card">
-    <h2>新增商家别名</h2>
+    {% else %}
     <p class="meta">只读角色无法新增商家别名。</p>
+    {% endif %}
   </section>
-  {% endif %}
 
-  <section class="dt-card">
-    <h2>别名边界</h2>
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
+      <div class="product-panel-title">别名边界</div>
+    </div>
     <ul class="meta">
       <li>同一账本内，一个别名只能指向一个标准商家。</li>
       <li>不同账本可以有各自的别名规则，互不串账。</li>
@@ -169,61 +207,65 @@
   </section>
 </div>
 
-<section class="dt-card">
-  <div class="card-header">
-    <h2>当前别名（{{ aliases|length }} 条）</h2>
-    <a class="dt-btn" href="/web/rules{{ q }}">查看分类规则</a>
+<section class="product-panel product-panel--padded library-section">
+  <div class="product-panel-header">
+    <div class="product-panel-title">当前别名（{{ aliases|length }} 条）</div>
+    <a class="product-button product-button--quiet" href="/web/rules{{ q }}">查看分类规则</a>
   </div>
   {% if aliases %}
-  <table class="dt-table">
-    <thead>
-      <tr>
-        <th>标准商家</th>
-        <th>别名</th>
-        <th>标准键</th>
-        <th>别名键</th>
-        <th class="th-w-80">状态</th>
-        <th class="th-w-180">操作</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for item in aliases %}
-      <tr>
-        <td>{{ item.canonical_merchant }}</td>
-        <td>{{ item.alias }}</td>
-        <td><code>{{ item.canonical_key }}</code></td>
-        <td><code>{{ item.alias_key }}</code></td>
-        <td>
-          {% if item.enabled %}<span class="dt-pill ok">启用</span>
-          {% else %}<span class="dt-pill muted">停用</span>{% endif %}
-        </td>
-        <td>
-          {% if can_write %}
-          <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/toggle" class="inline-form">
-            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-            <button type="submit" class="dt-btn">
-              {% if item.enabled %}停用{% else %}启用{% endif %}
-            </button>
-          </form>
-          <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/delete" class="inline-form"
-                data-confirm="删除商家别名「{{ item.alias }}」？">
-            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-            <button type="submit" class="dt-btn danger">删除</button>
-          </form>
-          {% else %}
-          <span class="readonly-inline">只读</span>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div class="product-table-wrap library-table-flush">
+    <table class="product-table">
+      <thead>
+        <tr>
+          <th>标准商家</th>
+          <th>别名</th>
+          <th>标准键</th>
+          <th>别名键</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in aliases %}
+        <tr>
+          <td>{{ item.canonical_merchant }}</td>
+          <td>{{ item.alias }}</td>
+          <td><code>{{ item.canonical_key }}</code></td>
+          <td><code>{{ item.alias_key }}</code></td>
+          <td>
+            {% if item.enabled %}<span class="product-status product-status--success">启用</span>
+            {% else %}<span class="product-status">停用</span>{% endif %}
+          </td>
+          <td>
+            {% if can_write %}
+            <div class="library-ops">
+              <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/toggle">
+                <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+                <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+                <button type="submit" class="product-button product-button--small">
+                  {% if item.enabled %}停用{% else %}启用{% endif %}
+                </button>
+              </form>
+              <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/delete"
+                    data-confirm="删除商家别名「{{ item.alias }}」？">
+                <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+                <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+                <button type="submit" class="product-button product-button--small product-button--danger">删除</button>
+              </form>
+            </div>
+            {% else %}
+            <span class="readonly-inline">只读</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">还没有商家别名</div>
-    <div class="empty-state-hint">添加后，分类规则可用标准商家命中不同写法的商家名。</div>
+  <div class="product-state">
+    <div class="product-state-title">还没有商家别名</div>
+    <div class="product-state-body">添加后，分类规则可用标准商家命中不同写法的商家名。</div>
   </div>
   {% endif %}
 </section>

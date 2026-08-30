@@ -207,9 +207,35 @@
     color: var(--text-meta);
 }
 
+/* 资料库 hub (C5c-1): 三组分组 + 目录行; 消费级入口, 非 dashboard。 */
+
+.library-groups {
+    display: grid;
+    gap: var(--space-7);
+}
+
+.library-group {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.library-group-title {
+    margin: 0;
+    font-size: var(--type-headline-size);
+    font-weight: var(--type-headline-weight);
+}
+
+.library-group-desc {
+    margin: 0 0 var(--space-3);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
 .library-directory {
     overflow: hidden;
-    border-block: 1px solid var(--border-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-card);
+    background: var(--surface-card);
 }
 
 .library-row {
@@ -229,20 +255,27 @@
 }
 
 .library-row:hover {
-    background: var(--surface-card);
+    background: var(--surface-sunken);
 }
 
-.library-row h2,
-.library-row p {
+.library-row-copy {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.library-row-title {
     margin: 0;
-}
-
-.library-row h2 {
-    margin-block-start: var(--space-1);
     font-size: var(--type-title-size);
 }
 
+.library-row-count {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
 .library-row p {
+    margin: 0;
     color: var(--text-muted);
 }
 
@@ -586,5 +619,174 @@
 
     .uncategorized-category-field {
         width: 100%;
+    }
+}
+
+/* ── 资料库 section 页 (C5c-1 增量 2): 面包屑 / 面板布局 / 行内操作 ──────────
+   五个 canonical section (/web/categories|merchants|tags|rules|recycle-bin)
+   共用; 只补 product 组件未覆盖的版面规则, 不重述组件本身。 */
+
+.library-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-block-end: var(--space-3);
+    font-size: var(--type-caption-size);
+}
+
+.library-breadcrumb-parent {
+    display: inline-flex;
+    min-height: var(--space-8);
+    align-items: center;
+    border-radius: var(--radius-xs);
+    color: var(--brand-primary-strong);
+    font-weight: var(--type-subtitle-weight);
+    text-decoration: none;
+}
+
+.library-breadcrumb-parent:hover {
+    text-decoration: underline;
+}
+
+.library-breadcrumb-sep {
+    color: var(--text-faint);
+}
+
+.library-breadcrumb-current {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.library-section {
+    margin-block-end: var(--space-6);
+}
+
+/* 双栏面板组 (新增表单 + 边界说明), 窄屏单列。 */
+.library-panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: var(--space-5);
+    margin-block-end: var(--space-6);
+}
+
+/* 面板内表格去掉第二重边框, 由 product-panel 提供外框。 */
+.library-table-flush {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+/* 表格行内的操作簇: 表单与控件收紧为内容宽, 覆盖全局输入 100% 宽规则
+   (特异性需高于 components.css 的 input:not(...)×3 全局规则)。 */
+.library-ops,
+.library-ops form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.library-ops input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+.library-ops select {
+    width: auto;
+    min-width: calc(var(--space-12) + var(--space-6));
+    min-height: var(--space-8);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--type-caption-size);
+}
+
+/* 分类 section 的月份筛选: 标签 + 查询按钮同行右对齐。 */
+.library-month-form {
+    display: flex;
+    align-items: end;
+    gap: var(--space-3);
+}
+
+.library-month-form .product-field {
+    min-width: calc(var(--space-12) * 2);
+}
+
+/* 规则表单里金额上下限并排, 占满表单网格一行。 */
+.library-field-pair {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+}
+
+.library-apply-form {
+    margin-block-start: var(--space-4);
+}
+
+@media (max-width: 56rem) {
+    .library-panels,
+    .library-field-pair {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* 422 行内错误 (C5c-1 增量 3): 锚在被提交行内的反馈条收紧外边距,
+   保持表格行内可读而不漂成页顶泛提示。 */
+.library-row-error {
+    margin: 0 0 var(--space-2);
+    padding: var(--space-2) var(--space-3);
+}
+
+/* 窄屏商家目录: 行重构为纵向节奏, 操作簇整行可见 (390px 实测操作列被横向
+   滚动整体推出首屏, 重命名/合并不可达); 表头视觉隐藏但留在无障碍树。 */
+@media (max-width: 720px) {
+    .product-table-wrap .merchant-catalog-table {
+        display: block;
+        min-width: 0;
+    }
+
+    .merchant-catalog-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .merchant-catalog-table tbody {
+        display: block;
+    }
+
+    .merchant-catalog-table tbody tr {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        column-gap: var(--space-3);
+        row-gap: var(--space-1);
+        padding: var(--space-3) var(--space-4);
+        border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
+    }
+
+    .merchant-catalog-table tbody tr:last-child {
+        border-block-end: 0;
+    }
+
+    .merchant-catalog-table tbody td {
+        display: block;
+        padding: 0;
+        border-block-end: 0;
+    }
+
+    /* 商家名单独占一行作主身份, 其余 meta 单元格顺序换行。 */
+    .merchant-catalog-table tbody td:first-child {
+        flex-basis: 100%;
+        font-weight: var(--type-subtitle-weight);
+    }
+
+    .merchant-catalog-ops {
+        flex-basis: 100%;
+        min-width: 0;
+        margin-block-start: var(--space-2);
     }
 }

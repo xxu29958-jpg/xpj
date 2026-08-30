@@ -6,7 +6,7 @@ does not merge historical expenses or overwrite the original merchant text.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -60,6 +60,53 @@ def _catalog_conflict_message(exc: AppError) -> str:
     return "商家已在其它端被修改，或仍被启用别名/固定支出引用；请刷新后重试。"
 
 
+def _catalog_rename_error_message(exc: AppError) -> str:
+    if exc.error == "state_conflict" and not exc.details:
+        return "商家状态已变化，或仍被启用别名/固定支出引用；请根据当前信息重试。"
+    return _catalog_conflict_message(exc)
+
+
+def _render_merchants(
+    request: Request,
+    db: Session,
+    *,
+    options,
+    selected_id: str,
+    msg: str = "",
+    undo: str = "",
+    rename_error: str = "",
+    rename_error_public_id: str = "",
+    rename_error_value: str = "",
+    status_code: int = 200,
+) -> HTMLResponse:
+    ctx = _base_ctx(
+        request,
+        db=db,
+        options=options,
+        selected_ledger_id=selected_id,
+    )
+    ctx.update(
+        catalog=list_merchant_catalog(
+            db,
+            tenant_id=selected_id,
+            include_hidden=True,
+        ),
+        aliases=list_merchant_aliases(db, selected_id),
+        flash_message=msg,
+        undo_public_id=undo,
+        rename_error=rename_error,
+        rename_error_public_id=rename_error_public_id,
+        rename_error_value=rename_error_value,
+        q="?ledger_id=" + selected_id,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="merchants.html",
+        context=ctx,
+        status_code=status_code,
+    )
+
+
 @router.get("/merchants", response_class=HTMLResponse)
 def web_merchants(
     request: Request,
@@ -71,20 +118,13 @@ def web_merchants(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    catalog = list_merchant_catalog(db, tenant_id=selected_id, include_hidden=True)
-    aliases = list_merchant_aliases(db, selected_id)
-    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
-    ctx["catalog"] = catalog
-    ctx["aliases"] = aliases
-    ctx["flash_message"] = msg
-    # ADR-0038 undo: a just-deleted alias's public_id, so the flash can offer a
-    # 5s 撤销 affordance that POSTs to the undo route.
-    ctx["undo_public_id"] = undo
-    ctx["q"] = "?ledger_id=" + selected_id
-    return templates.TemplateResponse(
-        request=request,
-        name="merchants.html",
-        context=ctx,
+    return _render_merchants(
+        request,
+        db,
+        options=options,
+        selected_id=selected_id,
+        msg=msg,
+        undo=undo,
     )
 
 
@@ -95,7 +135,7 @@ def web_merchant_catalog_create(
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
@@ -126,7 +166,17 @@ def web_merchant_catalog_rename(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _stale_catalog_redirect(selected_id)
+        db.rollback()
+        return _render_merchants(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            rename_error="页面已过期，请使用当前商家状态重试。",
+            rename_error_public_id=public_id,
+            rename_error_value=display_name,
+            status_code=422,
+        )
     try:
         item = update_merchant_catalog(
             db,
@@ -137,7 +187,17 @@ def web_merchant_catalog_rename(
         )
         msg = f"商家已重命名为「{item.display_name}」。"
     except AppError as exc:
-        msg = _catalog_conflict_message(exc)
+        db.rollback()
+        return _render_merchants(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            rename_error=_catalog_rename_error_message(exc),
+            rename_error_public_id=public_id,
+            rename_error_value=display_name,
+            status_code=422,
+        )
     return _web_redirect("/web/merchants", selected_id, msg=msg)
 
 

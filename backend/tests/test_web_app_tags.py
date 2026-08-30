@@ -29,7 +29,7 @@ def test_web_tags_local_returns_200(web_client: TestClient, *, identity) -> None
     manual_expense(web_client, identity.app_headers, tags="出差", merchant="A")
     resp = web_client.get("/web/tags?ledger_id=owner")
     assert resp.status_code == 200
-    assert "标签管理" in resp.text
+    assert "当前标签" in resp.text
     assert "出差" in resp.text
     # UI/UX 批 14: 旧「按标签看统计」(跳已删除的 /web/stats) 改成行级「看账单」,
     # 跳已确认账单页并按本标签过滤(tag 经 urlencode;& 写字面量,不经 autoescape)。
@@ -74,9 +74,15 @@ def test_web_tag_rename_conflict_points_to_merge(web_client: TestClient, *, iden
     resp = web_client.post(
         f"/web/tags/{public_id}/rename",
         data={"ledger_id": "owner", "expected_row_version": token, "name": "差旅"},
-        follow_redirects=True,
+        follow_redirects=False,
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 422
+    assert 'data-body-stack="product"' in resp.text
+    assert f'data-tag-key="{public_id}"' in resp.text
+    assert 'aria-describedby="tag-rename-error"' in resp.text
+    assert 'role="alert"' in resp.text
+    assert 'name="name" value="差旅"' in resp.text
+    assert _row_version_for(resp.text, public_id, "rename") == token
     assert "合并" in resp.text
     # Both tags still exist — nothing silently merged.
     assert set(tag_index(web_client, identity.app_headers)) == {"出差", "差旅"}

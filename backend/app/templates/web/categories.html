@@ -1,62 +1,158 @@
 {% extends "base.html" %}
-{% block title %}分类账本 — 小票夹{% endblock %}
+{% set page_title = '分类' %}
+{% set product_body_domain = 'transactions' %}
+{% block title %}分类 · 资料库 · 小票夹{% endblock %}
+
+{# C5c-1 增量 2: 分类 section 迁为资料库 product 三级页。
+   本增量诚实迁移既有能力: 当月分类汇总 + 未分类入口; CategoryPreference 的
+   Web 管理 consumer 属后续 RED, 此处不虚构数据或命令。 #}
 {% block content %}
-<h1 class="page-title page-title--compact">分类账本</h1>
-<p class="meta">
-  按分类汇总当月（{{ target_month }}）已确认账单，并展示各分类下未处理的待确认条数。
-  共 {{ rule_count }} 条<a href="/web/rules{{ q }}">分类规则</a>。
-  {% if uncategorized_pending %}
-  当前还有 <a href="/web/categories/uncategorized{{ q }}"><b>{{ uncategorized_pending }}</b> 条</a>未分类的待确认账单{% if can_write %}待整理{% else %}可查看{% endif %}。
-  {% endif %}
-</p>
+<nav class="library-breadcrumb" aria-label="面包屑">
+  <a class="library-breadcrumb-parent" href="/web/library{{ q }}">资料库</a>
+  <span class="library-breadcrumb-sep" aria-hidden="true">/</span>
+  <span class="library-breadcrumb-current" aria-current="page">分类</span>
+</nav>
+
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <h1 class="page-title page-title--compact">分类</h1>
+    <p class="product-page-summary">
+      按分类汇总当月（{{ target_month }}）已确认账单，并展示各分类下未处理的待确认条数。
+      共 {{ rule_count }} 条<a href="/web/rules{{ q }}">分类规则</a>。
+    </p>
+  </div>
+</header>
 
 {% if flash_message %}
-<div class="dt-alert success">{{ flash_message }}</div>
+<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
 {% endif %}
 
-<section class="dt-card">
-  <h2>当月分类汇总</h2>
-  <form method="get" action="/web/categories" class="form-inline">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <label>月份
-      <input type="month" name="month" value="{{ target_month }}" aria-label="选择分类月份">
-    </label>
-    <button type="submit" class="dt-btn">查询</button>
-  </form>
+{% if uncategorized_pending %}
+<div class="product-feedback" role="status">
+  <span>当前还有 <strong>{{ uncategorized_pending }}</strong> 条未分类的待确认账单{% if can_write %}待整理{% else %}可查看{% endif %}。</span>
+  <a class="product-button product-button--small" href="/web/categories/uncategorized{{ q }}">{% if can_write %}去整理{% else %}查看{% endif %}</a>
+</div>
+{% endif %}
+
+<section class="product-panel product-panel--padded library-section">
+  <div class="product-panel-header">
+    <div class="product-panel-title">当月分类汇总</div>
+    <form method="get" action="/web/categories" class="library-month-form">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <label class="product-field">
+        <span>月份</span>
+        <input type="month" name="month" value="{{ target_month }}" aria-label="选择分类月份">
+      </label>
+      <button type="submit" class="product-button">查询</button>
+    </form>
+  </div>
   {% if categories_rows %}
-  <table class="dt-table">
-    <thead>
-      <tr>
-        <th>分类</th>
-        <th class="num">本月已确认金额</th>
-        <th class="num">本月已确认数</th>
-        <th class="num">待确认数</th>
-        <th>操作</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in categories_rows %}
-      <tr>
-        <td>
-          {{ row.category }}
-          {% if row.is_uncategorized %}<span class="dt-pill warn">未分类</span>{% endif %}
-        </td>
-        <td class="num">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
-        <td class="num">{{ row.confirmed_count }}</td>
-        <td class="num">{{ row.pending_count }}</td>
-        <td>
-          {% if row.is_uncategorized and row.pending_count %}
-          <a href="/web/categories/uncategorized{{ q }}">{% if can_write %}整理待确认{% else %}查看未分类{% endif %}</a>
-          {% else %}
-          <a href="/web/rules{{ q }}">{% if can_write %}编辑规则{% else %}查看规则{% endif %}</a>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="product-table-wrap library-table-flush">
+    <table class="product-table">
+      <thead>
+        <tr>
+          <th>分类</th>
+          <th class="text-end">本月已确认金额</th>
+          <th class="text-end">本月已确认数</th>
+          <th class="text-end">待确认数</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in categories_rows %}
+        <tr>
+          <td>
+            {{ row.category }}
+            {% if row.is_uncategorized %}<span class="product-status product-status--warning">未分类</span>{% endif %}
+          </td>
+          <td class="num text-end">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+          <td class="num text-end">{{ row.confirmed_count }}</td>
+          <td class="num text-end">{{ row.pending_count }}</td>
+          <td>
+            {% if row.is_uncategorized and row.pending_count %}
+            <a class="product-button product-button--small" href="/web/categories/uncategorized{{ q }}">{% if can_write %}整理待确认{% else %}查看未分类{% endif %}</a>
+            {% else %}
+            <a class="product-button product-button--small product-button--quiet" href="/web/rules{{ q }}">{% if can_write %}编辑规则{% else %}查看规则{% endif %}</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-  <div class="meta">本月还没有已确认账单。</div>
+  <div class="product-state">
+    <div class="product-state-title">本月还没有已确认账单</div>
+  </div>
+  {% endif %}
+</section>
+
+{# C5c-1 增量 3: CategoryPreference Web 管理 consumer。
+   事实合同: 默认分类只读不列入; 自定义分类在真实流水首次使用后实体化;
+   移除只把选项移出今后的选择面, 不改写历史流水; 有 rule/budget/goal
+   active reference 时 Owner 拒绝 (422); 删除后可从整个账本回收站恢复。
+   OCC: 422 原地重渲染, 错误以 data-category-key 锚到被提交行并带
+   fresh row_version 可直接重试 (回收站 C5b-2 同范式); viewer 无表单。 #}
+<section class="product-panel product-panel--padded library-section" aria-labelledby="library-custom-categories">
+  <div class="product-panel-header">
+    <div>
+      <div class="product-panel-title" id="library-custom-categories">自定义分类（{{ category_preferences|length }} 个）</div>
+      <div class="product-panel-subtitle">系统默认分类始终保留、只读。自定义分类在流水中首次使用后出现在这里；移除只是把选项移出今后的选择，不改写任何历史流水，需要时可从回收站恢复。</div>
+    </div>
+  </div>
+
+  {% if category_error %}
+    {% set _orphan = category_error_public_id not in (category_preferences | map(attribute='public_id') | list) %}
+    {% if _orphan %}
+    {# 被提交行已不在列表 (已被其它端移除) 时, 422 文案仍须可见。 #}
+    <div class="product-feedback product-feedback--danger" role="alert" data-category-key="{{ category_error_public_id }}">{{ category_error }}</div>
+    {% endif %}
+  {% endif %}
+
+  {% if category_preferences %}
+  <div class="product-table-wrap library-table-flush">
+    <table class="product-table">
+      <thead>
+        <tr>
+          <th>分类</th>
+          <th>使用情况</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in category_preferences %}
+        {% set _row_error = category_error and category_error_public_id == item.public_id %}
+        <tr data-category-key="{{ item.public_id }}"{% if _row_error %} aria-invalid="true" aria-describedby="category-preference-error"{% endif %}>
+          <td>{{ item.name }}</td>
+          <td>
+            {% if item.usage_count %}<span class="meta">已被 {{ item.usage_count }} 笔流水使用，移除不影响这些流水</span>
+            {% else %}<span class="meta">暂无流水使用</span>{% endif %}
+          </td>
+          <td>
+            {% if can_write %}
+            {% if _row_error %}
+            <div id="category-preference-error" class="product-feedback product-feedback--danger library-row-error" role="alert" data-category-key="{{ item.public_id }}">{{ category_error }}</div>
+            {% endif %}
+            <form method="post" action="/web/categories/preferences/{{ item.public_id }}/delete"
+                  data-confirm="把「{{ item.name }}」从可选分类移除？历史流水保持不变，需要时可从回收站恢复。">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+              <button type="submit" class="product-button product-button--small product-button--danger">移除</button>
+            </form>
+            {% else %}
+            <span class="readonly-inline">只读</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="product-state">
+    <div class="product-state-title">还没有自定义分类</div>
+    <div class="product-state-body">在流水中首次使用一个新分类后，它会出现在这里，可以从今后的选择中移除。</div>
+  </div>
   {% endif %}
 </section>
 {% endblock %}

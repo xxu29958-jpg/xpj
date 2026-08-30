@@ -55,7 +55,7 @@ def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00"
 def test_web_rules_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/rules?ledger_id=owner")
     assert resp.status_code == 200
-    assert "分类规则" in resp.text
+    assert "当前规则" in resp.text
 
 
 def _rule_token_for(page_html: str, rule_id: int, action: str) -> str:
@@ -103,6 +103,48 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
         follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
+
+
+def test_web_rule_create_error_keeps_the_complete_draft(web_client: TestClient) -> None:
+    draft = {
+        "keyword": "Unicode 咖啡 🧾",
+        "category": "餐饮",
+        "priority": "7",
+        "amount_min_yuan": "20",
+        "amount_max_yuan": "10",
+        "source_contains": "微信 手动记账",
+        "tag_contains": "差旅",
+        "ledger_id": "owner",
+    }
+
+    response = web_client.post(
+        "/web/rules/create",
+        data=draft,
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 422
+    assert 'data-body-stack="product"' in response.text
+    assert 'id="rule-create-error"' in response.text
+    assert 'role="alert"' in response.text
+    assert "金额下限不能大于上限" in response.text
+    for field in (
+        "keyword",
+        "category",
+        "priority",
+        "amount_min_yuan",
+        "amount_max_yuan",
+        "source_contains",
+        "tag_contains",
+    ):
+        assert re.search(
+            rf'<input[^>]*name="{field}"[^>]*value="{re.escape(draft[field])}"',
+            response.text,
+        )
+
+    clean = web_client.get("/web/rules?ledger_id=owner")
+    assert clean.status_code == 200
+    assert draft["keyword"] not in clean.text
 
 
 def test_web_rules_delete_then_undo(web_client: TestClient) -> None:
@@ -270,7 +312,7 @@ def test_web_rules_apply_confirmed_requires_preview_then_applies(
 
     preview = web_client.get("/web/rules?ledger_id=owner&confirmed_preview=1")
     assert preview.status_code == 200
-    assert "历史账单规则预览" in preview.text
+    assert "已确认历史账单：规则预览" in preview.text
     assert "Historical Starbucks" in preview.text
     assert "确认应用到已确认" in preview.text
     token_match = re.search(r'name="preview_token" value="([0-9a-f]+)"', preview.text)

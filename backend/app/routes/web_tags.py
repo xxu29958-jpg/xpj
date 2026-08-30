@@ -15,7 +15,7 @@ mutation's handle + the soft-deleted tag's undo token (契约 2).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -62,6 +62,49 @@ def _conflict_message(exc: AppError) -> str:
     return exc.message
 
 
+def _rename_error_message(exc: AppError) -> str:
+    if exc.error == "state_conflict":
+        return "标签状态已变化，请根据当前状态重试。"
+    return _conflict_message(exc)
+
+
+def _render_tags(
+    request: Request,
+    db: Session,
+    *,
+    options,
+    selected_id: str,
+    msg: str = "",
+    undo: str = "",
+    undo_rv: str = "",
+    rename_error: str = "",
+    rename_error_public_id: str = "",
+    rename_error_value: str = "",
+    status_code: int = 200,
+) -> HTMLResponse:
+    ctx = _base_ctx(
+        request,
+        db=db,
+        options=options,
+        selected_ledger_id=selected_id,
+    )
+    ctx.update(
+        tags=list_tags_with_usage(db, selected_id),
+        flash_message=msg,
+        undo_mutation_public_id=undo,
+        undo_row_version=undo_rv,
+        rename_error=rename_error,
+        rename_error_public_id=rename_error_public_id,
+        rename_error_value=rename_error_value,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="tags.html",
+        context=ctx,
+        status_code=status_code,
+    )
+
+
 @router.get("/tags", response_class=HTMLResponse)
 def web_tags(
     request: Request,
@@ -74,16 +117,15 @@ def web_tags(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    tags = list_tags_with_usage(db, selected_id)
-    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
-    ctx["tags"] = tags
-    ctx["flash_message"] = msg
-    # ADR-0043 undo: a just-deleted/merged tag's mutation handle + the
-    # soft-deleted source tag's undo token, so the flash can offer a 5s 撤销
-    # affordance that POSTs to the undo route (契约 2 needs BOTH).
-    ctx["undo_mutation_public_id"] = undo
-    ctx["undo_row_version"] = undo_rv
-    return templates.TemplateResponse(request=request, name="tags.html", context=ctx)
+    return _render_tags(
+        request,
+        db,
+        options=options,
+        selected_id=selected_id,
+        msg=msg,
+        undo=undo,
+        undo_rv=undo_rv,
+    )
 
 
 @router.post("/tags/{public_id}/rename", response_class=HTMLResponse)
@@ -95,13 +137,23 @@ def web_tag_rename(
     expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _stale_redirect(selected_id)
+        db.rollback()
+        return _render_tags(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            rename_error="页面已过期，请使用当前标签状态重试。",
+            rename_error_public_id=public_id,
+            rename_error_value=name,
+            status_code=422,
+        )
     actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         tag = rename_tag(
@@ -115,7 +167,17 @@ def web_tag_rename(
         )
         msg = f"标签已重命名为 「{tag.name}」。"
     except AppError as exc:
-        msg = _conflict_message(exc)
+        db.rollback()
+        return _render_tags(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            rename_error=_rename_error_message(exc),
+            rename_error_public_id=public_id,
+            rename_error_value=name,
+            status_code=422,
+        )
     return _web_redirect("/web/tags", selected_id, msg=msg)
 
 

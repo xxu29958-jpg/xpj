@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -66,21 +66,22 @@ def _parse_optional_amount_cents(raw: str, *, currency_code: str) -> int | None:
         ) from exc
 
 
-@router.get("/rules", response_class=HTMLResponse)
-def web_rules(
+def _render_rules(
     request: Request,
-    ledger_id: str = "",
+    db: Session,
+    *,
+    options,
+    selected_id: str,
     preview_keyword: str = "",
     preview_category: str = "",
     apply_preview: bool = False,
     confirmed_preview: bool = False,
     msg: str = "",
     undo: str = "",
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
+    rule_form_error: str = "",
+    rule_form_draft: dict[str, str] | None = None,
+    status_code: int = 200,
 ) -> HTMLResponse:
-    options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     rules = list_rules(db, selected_id)
     rule_applications = list_rule_applications(db, tenant_id=selected_id, limit=8)
     preview = None
@@ -117,23 +118,67 @@ def web_rules(
             tenant_id=selected_id,
             limit=20,
         )
-    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(
+        request,
+        db=db,
+        options=options,
+        selected_ledger_id=selected_id,
+    )
     presentation_currency = ctx["home_currency_code"]
-    ctx["minor_amount_label"] = lambda cents: minor_amount_value(cents, presentation_currency)
-    ctx["rules"] = rules
-    ctx["rule_applications"] = rule_applications
-    ctx["preview"] = preview
-    ctx["preview_error"] = preview_error
-    ctx["bulk_preview"] = bulk_preview
-    ctx["confirmed_bulk_preview"] = confirmed_bulk_preview
-    ctx["preview_keyword"] = preview_keyword
-    ctx["preview_category"] = preview_category
-    ctx["flash_message"] = msg
-    # ADR-0038 undo: when set, the page renders a 5s 撤销 banner POSTing to the
-    # rule undo route (the row is recoverable until cleanup purges it).
-    ctx["undo_rule_id"] = undo
-    ctx["q"] = "?ledger_id=" + selected_id
-    return templates.TemplateResponse(request=request, name="rules.html", context=ctx)
+    ctx.update(
+        minor_amount_label=lambda cents: minor_amount_value(
+            cents,
+            presentation_currency,
+        ),
+        rules=rules,
+        rule_applications=rule_applications,
+        preview=preview,
+        preview_error=preview_error,
+        bulk_preview=bulk_preview,
+        confirmed_bulk_preview=confirmed_bulk_preview,
+        preview_keyword=preview_keyword,
+        preview_category=preview_category,
+        flash_message=msg,
+        undo_rule_id=undo,
+        rule_form_error=rule_form_error,
+        rule_form_draft=rule_form_draft or {},
+        q="?ledger_id=" + selected_id,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="rules.html",
+        context=ctx,
+        status_code=status_code,
+    )
+
+
+@router.get("/rules", response_class=HTMLResponse)
+def web_rules(
+    request: Request,
+    ledger_id: str = "",
+    preview_keyword: str = "",
+    preview_category: str = "",
+    apply_preview: bool = False,
+    confirmed_preview: bool = False,
+    msg: str = "",
+    undo: str = "",
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    return _render_rules(
+        request,
+        db,
+        options=options,
+        selected_id=selected_id,
+        preview_keyword=preview_keyword,
+        preview_category=preview_category,
+        apply_preview=apply_preview,
+        confirmed_preview=confirmed_preview,
+        msg=msg,
+        undo=undo,
+    )
 
 
 @router.post("/rules/create", response_class=HTMLResponse)
@@ -141,7 +186,7 @@ def web_rules_create(
     request: Request,
     keyword: str = Form(""),
     category: str = Form(""),
-    priority: int = Form(100),
+    priority: str = Form("100"),
     amount_min_yuan: str = Form(""),
     amount_max_yuan: str = Form(""),
     source_contains: str = Form(""),
@@ -149,11 +194,28 @@ def web_rules_create(
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    draft = {
+        "keyword": keyword,
+        "category": category,
+        "priority": priority,
+        "amount_min_yuan": amount_min_yuan,
+        "amount_max_yuan": amount_max_yuan,
+        "source_contains": source_contains,
+        "tag_contains": tag_contains,
+    }
     try:
+        try:
+            parsed_priority = int(priority)
+        except ValueError as exc:
+            raise AppError(
+                "invalid_request",
+                "优先级必须是整数。",
+                status_code=422,
+            ) from exc
         presentation_currency = require_runtime_home_currency_code(db)
         create_rule(
             db,
@@ -161,7 +223,7 @@ def web_rules_create(
             keyword=keyword,
             category=category,
             enabled=True,
-            priority=priority,
+            priority=parsed_priority,
             amount_min_cents=_parse_optional_amount_cents(
                 amount_min_yuan,
                 currency_code=presentation_currency,
@@ -175,7 +237,16 @@ def web_rules_create(
         )
         msg = f"已新增规则：{keyword.strip()} → {category.strip()}"
     except AppError as exc:
-        msg = "新增失败：" + (exc.message or "请检查关键词与分类。")
+        db.rollback()
+        return _render_rules(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            rule_form_error=exc.message or "请检查关键词与分类。",
+            rule_form_draft=draft,
+            status_code=422,
+        )
     return _web_redirect("/web/rules", selected_id, msg=msg)
 
 

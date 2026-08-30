@@ -6,8 +6,9 @@
    - 保留 main S1 的页级标签措辞(待确认/疑似重复/还款捕获/AI 预算建议等,
      既有测试契约); 218-D S4 起 /web 根 303→/web/pending (矿 IA 收件首域),
      main 曾有的 inbox 域「今日」入口(指根仪表盘)随之取消——留着只会原地跳回待确认;
-   - 资料库 (/web/library) 路由属后续片 C5c-1, 入口不挂——勿造死链;
-     流水域保留 分类/商家/标签/规则/回收站 独立入口 (矿的资料库聚合依赖该路由);
+   - 资料库 (/web/library, C5c-1) 是流水域词汇/自动化的唯一可见入口;
+     分类/商家/标签/规则/回收站不再平铺进子导航, 作为资料库 section
+     保留 canonical 路由, 访问其时高亮「资料库」;
    - nav-subnav 沿用 <nav> 元素(矿改用了 div): 既有测试选择器契约 + 导航 landmark 语义。 #}
 {# 上下文：selected_ledger_id (-> q), selected_ledger_name, selected_ledger_role,
             request.url.path, _domain, _edit_origin,
@@ -22,6 +23,8 @@
 {% set is_tags = '/tags' in _p %}
 {% set is_rules = '/rules' in _p %}
 {% set is_recycle_bin = '/recycle-bin' in _p %}
+{# 资料库 section 页面上高亮「资料库」入口: hub + 五个 section  canonical 路由。 #}
+{% set is_library = '/library' in _p or is_categories or is_merchants or is_tags or is_rules or is_recycle_bin %}
 {% set is_import = '/import' in _p or '/export' in _p %}
 {% set is_debts = '/debts' in _p %}
 {% set is_receivables = '/receivables' in _p %}
@@ -78,11 +81,7 @@
     {% elif _domain == 'transactions' %}
       <a class="{% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>已确认</a>
       <a class="{% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>搜索</a>
-      <a class="{% if is_categories %}active{% endif %}" href="/web/categories{{ q }}"{% if is_categories %} aria-current="page"{% endif %}>分类</a>
-      <a class="{% if is_merchants %}active{% endif %}" href="/web/merchants{{ q }}"{% if is_merchants %} aria-current="page"{% endif %}>商家</a>
-      <a class="{% if is_tags %}active{% endif %}" href="/web/tags{{ q }}"{% if is_tags %} aria-current="page"{% endif %}>标签</a>
-      <a class="{% if is_rules %}active{% endif %}" href="/web/rules{{ q }}"{% if is_rules %} aria-current="page"{% endif %}>规则</a>
-      <a class="{% if is_recycle_bin %}active{% endif %}" href="/web/recycle-bin{{ q }}"{% if is_recycle_bin %} aria-current="page"{% endif %}>回收站</a>
+      <a class="{% if is_library %}active{% endif %}" href="/web/library{{ q }}"{% if is_library %} aria-current="page"{% endif %}>资料库</a>
       <a class="{% if is_import %}active{% endif %}" href="/web/import{{ q }}"{% if is_import %} aria-current="page"{% endif %}>导入导出</a>
     {% elif _domain == 'obligations' %}
       <a class="{% if is_debts %}active{% endif %}" href="/web/debts{{ q }}"{% if is_debts %} aria-current="page"{% endif %}>欠款</a>
@@ -126,11 +125,7 @@
         {% elif _domain == 'transactions' %}
           <a class="{% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>已确认</a>
           <a class="{% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>搜索</a>
-          <a class="{% if is_categories %}active{% endif %}" href="/web/categories{{ q }}"{% if is_categories %} aria-current="page"{% endif %}>分类</a>
-          <a class="{% if is_merchants %}active{% endif %}" href="/web/merchants{{ q }}"{% if is_merchants %} aria-current="page"{% endif %}>商家</a>
-          <a class="{% if is_tags %}active{% endif %}" href="/web/tags{{ q }}"{% if is_tags %} aria-current="page"{% endif %}>标签</a>
-          <a class="{% if is_rules %}active{% endif %}" href="/web/rules{{ q }}"{% if is_rules %} aria-current="page"{% endif %}>规则</a>
-          <a class="{% if is_recycle_bin %}active{% endif %}" href="/web/recycle-bin{{ q }}"{% if is_recycle_bin %} aria-current="page"{% endif %}>回收站</a>
+          <a class="{% if is_library %}active{% endif %}" href="/web/library{{ q }}"{% if is_library %} aria-current="page"{% endif %}>资料库</a>
           <a class="{% if is_import %}active{% endif %}" href="/web/import{{ q }}"{% if is_import %} aria-current="page"{% endif %}>导入导出</a>
         {% elif _domain == 'obligations' %}
           <a class="{% if is_debts %}active{% endif %}" href="/web/debts{{ q }}"{% if is_debts %} aria-current="page"{% endif %}>欠款</a>
