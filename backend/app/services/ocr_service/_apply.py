@@ -256,6 +256,7 @@ def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | N
         result,
         timezone_name=timezone_name,
         allow_session_bound=False,
+        split_allocation_floor_cents=None,
     )
 
 
@@ -266,6 +267,7 @@ def _apply_ocr_candidate_fields(
     merged_amount: int | None,
     materialization_context: tuple[str, int] | None,
     draft_fields: set[str],
+    split_allocation_floor_cents: int | None,
 ) -> set[str]:
     applied_fields: set[str] = set()
     if (
@@ -276,6 +278,10 @@ def _apply_ocr_candidate_fields(
             expense.amount_cents is None,
         )
         and merged_amount is not None
+        and (
+            split_allocation_floor_cents is None
+            or merged_amount >= split_allocation_floor_cents
+        )
     ):
         expense.amount_cents = merged_amount
         applied_fields.add("amount_cents")
@@ -318,6 +324,7 @@ def _apply_ocr_result_to_expense(
     timezone_name: str | None = None,
     *,
     allow_session_bound: bool,
+    split_allocation_floor_cents: int | None,
 ) -> None:
     if expense.status != "pending":
         return
@@ -358,6 +365,7 @@ def _apply_ocr_result_to_expense(
         merged_amount=merged_amount,
         materialization_context=materialization_context,
         draft_fields=draft_fields,
+        split_allocation_floor_cents=split_allocation_floor_cents,
     )
     _apply_ocr_home_snapshot(expense, materialization_context)
     if applied_fields:

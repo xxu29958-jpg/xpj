@@ -1,6 +1,10 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseSplit
+import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,7 +29,11 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         vm.submitCorrection()
         advanceUntilIdle()
 
-        assertEquals(R.string.expense_correction_reason_required, (vm.uiState.value.message as? UiText.Res)?.id)
+        assertEquals(
+            R.string.expense_correction_reason_required,
+            (vm.uiState.value.correction.submitError as? UiText.Res)?.id,
+        )
+        assertNull(vm.uiState.value.message)
         assertEquals(0, fake.correctCalls, "reason 空白不得发出更正请求")
         assertTrue(vm.uiState.value.correction.open, "本地拦截后表单保持打开")
     }
@@ -39,7 +47,10 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         vm.submitCorrection()
         advanceUntilIdle()
 
-        assertEquals(R.string.expense_correction_no_changes, (vm.uiState.value.message as? UiText.Res)?.id)
+        assertEquals(
+            R.string.expense_correction_no_changes,
+            (vm.uiState.value.correction.submitError as? UiText.Res)?.id,
+        )
         assertEquals(0, fake.correctCalls)
     }
 
@@ -124,5 +135,123 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         assertEquals("正确商家", draft.merchant)
         assertNull(draft.originalCurrencyCode)
         assertNull(draft.originalAmountMinor)
+    }
+
+    @Test
+    fun `server over-allocation stays visible inside the sheet until the user edits`() = edit { fake ->
+        fake.correctResult = { _, _ ->
+            Result.failure(
+                RepositoryException(
+                    errorCode = "expense_split_total_exceeds_parent",
+                    message = "server copy must not own Android UI",
+                ),
+            )
+        }
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "金额应更低")
+        vm.updateCorrectionField(CorrectionScalarField.Merchant, "新商家")
+
+        vm.submitCorrection()
+        advanceUntilIdle()
+
+        val failed = vm.uiState.value
+        assertTrue(failed.correction.open)
+        assertEquals("新商家", failed.correction.merchant)
+        assertEquals(
+            R.string.error_expense_split_total_exceeds_parent,
+            (failed.correction.submitError as? UiText.Res)?.id,
+        )
+        assertNull(failed.message, "弹层错误不得藏到弹层后的页级 banner")
+
+        vm.updateCorrectionField(CorrectionScalarField.Merchant, "再次调整")
+        assertNull(vm.uiState.value.correction.submitError)
+    }
+
+    @Test
+    fun `known offline amount over-allocation is rejected before enqueue`() = edit { fake ->
+        fake.splitsResult = Result.success(
+            ExpenseSplits(
+                expenseId = fake.baseExpense.id,
+                parentAmountCents = 1_000L,
+                splitsTotalAmountCents = 1_000L,
+                mismatchCents = 0L,
+                splits = listOf(
+                    ExpenseSplit(
+                        publicId = "split-1",
+                        position = 0,
+                        memberId = 7L,
+                        accountName = "我",
+                        role = "owner",
+                        amountCents = 1_000L,
+                        note = null,
+                        disabledAt = null,
+                        createdAt = "",
+                        updatedAt = "",
+                    ),
+                ),
+            ),
+        )
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "金额应更低")
+        vm.updateCorrectionField(CorrectionScalarField.Amount, "9.00")
+
+        vm.submitCorrection()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.correctCalls)
+        assertTrue(vm.uiState.value.correction.open)
+        assertEquals(
+            R.string.error_expense_split_total_exceeds_parent,
+            (vm.uiState.value.correction.submitError as? UiText.Res)?.id,
+        )
+    }
+
+    @Test
+    fun `known offline home currency switch over-allocation is rejected before enqueue`() = edit { fake ->
+        fake.baseExpense = fake.baseExpense.copy(
+            originalCurrency = CurrencyCode.JPY,
+            originalCurrencyCode = CurrencyCode.JPY,
+            originalCurrencyCodeRaw = "JPY",
+            originalAmountMinor = 1_000L,
+        )
+        fake.splitsResult = Result.success(
+            ExpenseSplits(
+                expenseId = fake.baseExpense.id,
+                parentAmountCents = 1_000L,
+                splitsTotalAmountCents = 1_000L,
+                mismatchCents = 0L,
+                splits = listOf(
+                    ExpenseSplit(
+                        publicId = "split-1",
+                        position = 0,
+                        memberId = 7L,
+                        accountName = "我",
+                        role = "owner",
+                        amountCents = 1_000L,
+                        note = null,
+                        disabledAt = null,
+                        createdAt = "",
+                        updatedAt = "",
+                    ),
+                ),
+            ),
+        )
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "改为账本币种")
+        vm.updateCorrectionCurrency(CurrencyCode.CNY)
+        vm.updateCorrectionField(CorrectionScalarField.Amount, "9.00")
+
+        vm.submitCorrection()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.correctCalls)
+        assertTrue(vm.uiState.value.correction.open)
+        assertEquals(
+            R.string.error_expense_split_total_exceeds_parent,
+            (vm.uiState.value.correction.submitError as? UiText.Res)?.id,
+        )
     }
 }

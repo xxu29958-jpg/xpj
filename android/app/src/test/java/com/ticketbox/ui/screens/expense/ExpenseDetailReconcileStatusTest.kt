@@ -33,6 +33,28 @@ class ExpenseDetailReconcileStatusTest {
     }
 
     @Test
+    fun positiveSplitRemainderIsValidPartialAllocation() {
+        assertEquals(
+            ExpenseDetailReconcileStatus.Partial,
+            resolveExpenseDetailReconcileStatus(
+                mismatchCents = 300L,
+                partialIsValid = true,
+            ),
+        )
+    }
+
+    @Test
+    fun negativeSplitRemainderIsOverallocated() {
+        assertEquals(
+            ExpenseDetailReconcileStatus.Overallocated,
+            resolveExpenseDetailReconcileStatus(
+                mismatchCents = -300L,
+                partialIsValid = true,
+            ),
+        )
+    }
+
+    @Test
     fun itemMismatchStatusIsDiff() {
         assertEquals(
             ExpenseDetailReconcileStatus.Diff,

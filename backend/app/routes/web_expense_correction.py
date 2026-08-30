@@ -239,6 +239,7 @@ def _command_failure_response(
             message = f"{message} {parsed.error}"
     elif command.rotate_idempotency_key:
         values = {**values, "idempotency_key": ""}
+    field_errors = {"splits": message} if command.error_code == "expense_split_total_exceeds_parent" else None
     return _correction_error_response(
         db,
         request,
@@ -248,6 +249,7 @@ def _command_failure_response(
         parsed,
         message=message,
         status_code=command.error_status,
+        field_errors=field_errors,
         conflict=command.conflict,
         form_values=values,
     )

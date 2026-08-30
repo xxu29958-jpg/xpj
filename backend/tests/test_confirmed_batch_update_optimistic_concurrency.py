@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+import app.services.expense_correction_service as correction_service
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense, ExpenseRevision
@@ -106,6 +107,75 @@ def test_confirmed_batch_update_replay_returns_committed_result_without_new_revi
             )
         )
     assert revision_count == 2
+
+
+def test_confirmed_batch_update_noop_still_rejects_stale_row_version(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense_id = _create_confirmed(client, identity=identity, merchant="Batch Stale No-op")
+    initial = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+
+    intervening = client.post(
+        f"/api/expenses/{expense_id}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": "batch-noop-intervening"},
+        json={
+            "expected_row_version": initial["row_version"],
+            "reason": "并发修改备注",
+            "note": "newer fact",
+        },
+    )
+    assert intervening.status_code == 201, intervening.text
+
+    response = client.post(
+        "/api/expenses/confirmed/batch-update",
+        headers={**identity.app_headers, "Idempotency-Key": "batch-noop-stale"},
+        json={
+            "expense_ids": [expense_id],
+            "expected_row_version_by_id": {expense_id: initial["row_version"]},
+            "category": initial["category"],
+            "reason": "批量保持分类不变",
+        },
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"] == "state_conflict"
+
+
+def test_confirmed_batch_update_processes_rows_in_stable_id_order(
+    client: TestClient,
+    monkeypatch,
+    *,
+    identity,
+) -> None:
+    first_id = _create_confirmed(client, identity=identity, merchant="Batch Order A")
+    second_id = _create_confirmed(client, identity=identity, merchant="Batch Order B")
+    versions = {
+        expense_id: client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()["row_version"]
+        for expense_id in (first_id, second_id)
+    }
+    observed: list[int] = []
+
+    def observe_apply(*_args, expense: Expense, **_kwargs) -> bool:
+        observed.append(expense.id)
+        return False
+
+    monkeypatch.setattr(correction_service, "_apply_one_batch_correction", observe_apply)
+
+    response = client.post(
+        "/api/expenses/confirmed/batch-update",
+        headers={**identity.app_headers, "Idempotency-Key": "confirmed-batch-stable-order"},
+        json={
+            "expense_ids": [second_id, first_id],
+            "expected_row_version_by_id": versions,
+            "category": "Stable Order",
+            "reason": "验证批量锁顺序",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert observed == sorted([first_id, second_id])
 
 
 @pytest.mark.real_db

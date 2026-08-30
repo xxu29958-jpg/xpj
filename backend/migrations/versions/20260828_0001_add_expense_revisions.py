@@ -32,6 +32,7 @@ _REVISION_CHECKS = {
     "ck_expense_revisions_reason_length",
     "ck_expense_revisions_before_shape",
     "ck_expense_revisions_resulting_row_version_positive",
+    "ck_expense_revisions_actor_device_snapshot_pair",
 }
 _REVISION_COLUMNS = {
     "id",
@@ -43,7 +44,8 @@ _REVISION_COLUMNS = {
     "reason",
     "idempotency_key",
     "actor_account_id",
-    "actor_device_id",
+    "actor_device_public_id",
+    "actor_device_name",
     "changed_fields",
     "before_snapshot",
     "after_snapshot",
@@ -136,7 +138,8 @@ def _create_revision_table(bind: sa.Connection) -> None:
         sa.Column("reason", sa.Text(), nullable=False),
         sa.Column("idempotency_key", sa.String(length=128), nullable=True),
         sa.Column("actor_account_id", sa.Integer(), nullable=True),
-        sa.Column("actor_device_id", sa.Integer(), nullable=True),
+        sa.Column("actor_device_public_id", sa.String(length=36), nullable=True),
+        sa.Column("actor_device_name", sa.String(length=120), nullable=True),
         sa.Column("changed_fields", sa.JSON(), nullable=False),
         sa.Column("before_snapshot", sa.JSON(none_as_null=True), nullable=True),
         sa.Column("after_snapshot", sa.JSON(), nullable=False),
@@ -164,16 +167,14 @@ def _create_revision_table(bind: sa.Connection) -> None:
             "resulting_row_version >= 1",
             name="ck_expense_revisions_resulting_row_version_positive",
         ),
+        sa.CheckConstraint(
+            "(actor_device_public_id IS NULL) = (actor_device_name IS NULL)",
+            name="ck_expense_revisions_actor_device_snapshot_pair",
+        ),
         sa.ForeignKeyConstraint(
             ["actor_account_id"],
             ["accounts.id"],
             name="fk_expense_revisions_actor_account",
-            ondelete="RESTRICT",
-        ),
-        sa.ForeignKeyConstraint(
-            ["actor_device_id"],
-            ["devices.id"],
-            name="fk_expense_revisions_actor_device",
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
@@ -264,11 +265,11 @@ def _backfill_confirmed_baselines(bind: sa.Connection) -> None:
     insert_sql = sa.text(
         "INSERT INTO expense_revisions "
         "(public_id, tenant_id, expense_id, revision_number, change_kind, reason, "
-        "idempotency_key, actor_account_id, actor_device_id, changed_fields, "
+        "idempotency_key, actor_account_id, actor_device_public_id, actor_device_name, changed_fields, "
         "before_snapshot, after_snapshot, previous_row_version, resulting_row_version, created_at) "
         "SELECT CAST(:public_id AS varchar(36)), CAST(:tenant_id AS varchar(64)), "
         "CAST(:expense_id AS integer), 1, 'confirmed', '历史确认事实', "
-        "NULL, NULL, NULL, CAST(:changed_fields AS json), NULL, CAST(:after_snapshot AS json), "
+        "NULL, NULL, NULL, NULL, CAST(:changed_fields AS json), NULL, CAST(:after_snapshot AS json), "
         "NULL, :row_version, :created_at "
         "WHERE NOT EXISTS (SELECT 1 FROM expense_revisions "
         "WHERE tenant_id = CAST(:tenant_id AS varchar(64)) "

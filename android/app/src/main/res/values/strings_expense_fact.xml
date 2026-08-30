@@ -27,7 +27,8 @@
     <string name="expense_fact_splits_hint">家庭分摊记录，不改变入账金额，修改请使用更正。</string>
     <string name="expense_fact_splits_empty">没有拆账记录。</string>
     <string name="expense_fact_splits_reconcile">账单 %1$s · 已拆 %2$s</string>
-    <string name="expense_fact_splits_reconcile_mismatch">账单 %1$s · 已拆 %2$s · 差额 %3$s</string>
+    <string name="expense_fact_splits_reconcile_partial">账单 %1$s · 已拆 %2$s · 还差 %3$s 未分配</string>
+    <string name="expense_fact_splits_reconcile_overallocated">账单 %1$s · 已拆 %2$s · 已拆超出 %3$s</string>
     <string name="expense_fact_split_member_disabled">（已停用）</string>
     <string name="expense_fact_image_empty">没有凭证图片</string>
     <string name="expense_fact_image_view_full">查看大图</string>
@@ -51,6 +52,9 @@
     <string name="expense_fact_timeline_field_time">消费时间</string>
     <string name="expense_fact_timeline_field_items">小票明细</string>
     <string name="expense_fact_timeline_field_splits">家庭拆账</string>
+    <string name="expense_fact_timeline_allocation_complete">已分完</string>
+    <string name="expense_fact_timeline_allocation_remaining">还差 %1$s 未分配</string>
+    <string name="expense_fact_timeline_allocation_overallocated">已拆超出 %1$s</string>
     <string name="expense_fact_timeline_field_value_score">值回票价</string>
     <string name="expense_fact_timeline_field_regret_score">后悔指数</string>
     <string name="expense_fact_revisions_failed">变更记录加载失败，点按重试。</string>

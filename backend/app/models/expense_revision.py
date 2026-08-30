@@ -73,6 +73,10 @@ class ExpenseRevision(Base):
             "resulting_row_version >= 1",
             name="ck_expense_revisions_resulting_row_version_positive",
         ),
+        CheckConstraint(
+            "(actor_device_public_id IS NULL) = (actor_device_name IS NULL)",
+            name="ck_expense_revisions_actor_device_snapshot_pair",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -92,15 +96,8 @@ class ExpenseRevision(Base):
         ),
         nullable=True,
     )
-    actor_device_id: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey(
-            "devices.id",
-            name="fk_expense_revisions_actor_device",
-            ondelete="RESTRICT",
-        ),
-        nullable=True,
-    )
+    actor_device_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    actor_device_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     changed_fields: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     before_snapshot: Mapped[dict[str, object] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     after_snapshot: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)

@@ -148,6 +148,7 @@
     <string name="error_split_amount_invalid">请填写大于 0 的拆账金额。</string>
     <string name="error_split_amount_exceeds_parent">拆账金额不能超过原账单金额。</string>
     <string name="error_split_total_exceeds_parent">拆账邀请总额不能超过原账单金额。</string>
+    <string name="error_expense_split_total_exceeds_parent">家庭拆账总额不能超过账单金额。请减少拆账金额，或把账单金额调回不小于已拆总额。</string>
     <string name="error_split_parent_amount_missing">原账单金额未确定，无法发起拆账。</string>
     <string name="error_not_found">没有找到对应的记录。</string>
     <string name="error_task_not_found">后台任务不存在或已结束。</string>

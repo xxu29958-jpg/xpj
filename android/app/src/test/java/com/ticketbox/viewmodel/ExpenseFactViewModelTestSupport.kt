@@ -91,6 +91,15 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
             items = emptyList(),
         ),
     )
+    var splitsResult: Result<ExpenseSplits> = Result.success(
+        ExpenseSplits(
+            expenseId = 7L,
+            parentAmountCents = 1000L,
+            splitsTotalAmountCents = null,
+            mismatchCents = null,
+            splits = emptyList(),
+        ),
+    )
     var correctResult: (Expense, ExpenseCorrectionDraft) -> Result<ExpenseCorrectionOutcome> =
         { expense, draft ->
             Result.success(
@@ -257,15 +266,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
 
     override suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = itemsResult
 
-    override suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = Result.success(
-        ExpenseSplits(
-            expenseId = 7L,
-            parentAmountCents = 1000L,
-            splitsTotalAmountCents = null,
-            mismatchCents = null,
-            splits = emptyList(),
-        ),
-    )
+    override suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = splitsResult
 
     override suspend fun fetchSplitMembers(): Result<List<FamilyMember>> = splitMembersResult()
 

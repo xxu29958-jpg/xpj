@@ -182,7 +182,10 @@ private fun ExpenseItemsPanel(
                 parentAmountCents = items.parentAmountCents,
                 detailTotalAmountCents = items.itemsTotalAmountCents,
                 mismatchCents = items.mismatchCents,
-                itemsSumStatus = items.itemsSumStatus,
+                reconcileStatus = resolveExpenseDetailReconcileStatus(
+                    mismatchCents = items.mismatchCents,
+                    itemsSumStatus = items.itemsSumStatus,
+                ),
                 currencyDisplay = currencyDisplay,
             )
             // ADR-0035 mismatch banner
@@ -373,6 +376,10 @@ private fun ExpenseSplitsPanel(
                 parentAmountCents = splits.parentAmountCents,
                 detailTotalAmountCents = splits.splitsTotalAmountCents,
                 mismatchCents = splits.mismatchCents,
+                reconcileStatus = resolveExpenseDetailReconcileStatus(
+                    mismatchCents = splits.mismatchCents,
+                    partialIsValid = true,
+                ),
                 currencyDisplay = currencyDisplay,
             )
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
@@ -555,16 +562,18 @@ private fun TotalReconcileLine(
     parentAmountCents: Long?,
     detailTotalAmountCents: Long?,
     mismatchCents: Long?,
-    itemsSumStatus: String? = null,
+    reconcileStatus: ExpenseDetailReconcileStatus,
     currencyDisplay: CurrencyDisplay,
 ) {
-    val reconcileStatus = resolveExpenseDetailReconcileStatus(
-        mismatchCents = mismatchCents,
-        itemsSumStatus = itemsSumStatus,
-    )
     val parentLabel = stringResource(R.string.expense_edit_v1_reconcile_parent_label)
     val detailLabel = stringResource(R.string.expense_edit_v1_reconcile_detail_label)
-    val diffLabel = stringResource(R.string.expense_edit_v1_reconcile_diff_label)
+    val diffLabel = stringResource(
+        when (reconcileStatus) {
+            ExpenseDetailReconcileStatus.Partial -> R.string.expense_edit_v1_reconcile_remaining_label
+            ExpenseDetailReconcileStatus.Overallocated -> R.string.expense_edit_v1_reconcile_overallocated_label
+            else -> R.string.expense_edit_v1_reconcile_diff_label
+        },
+    )
     val amountRows = buildList {
         add(
             ExpenseEditReconciliationLine(
@@ -578,12 +587,18 @@ private fun TotalReconcileLine(
                 value = formatDisplayAmount(detailTotalAmountCents, currencyDisplay),
             ),
         )
-        if (reconcileStatus == ExpenseDetailReconcileStatus.Diff && mismatchCents != null) {
+        if (
+            reconcileStatus in setOf(
+                ExpenseDetailReconcileStatus.Diff,
+                ExpenseDetailReconcileStatus.Partial,
+                ExpenseDetailReconcileStatus.Overallocated,
+            ) && mismatchCents != null
+        ) {
             add(
                 ExpenseEditReconciliationLine(
                     label = diffLabel,
-                    value = formatDisplayAmount(mismatchCents, currencyDisplay),
-                    emphasis = true,
+                    value = formatDisplayAmount(kotlin.math.abs(mismatchCents), currencyDisplay),
+                    emphasis = reconcileStatus != ExpenseDetailReconcileStatus.Partial,
                 ),
             )
         }
@@ -606,6 +621,8 @@ private fun ExpenseDetailReconcileStatus.label(): String = stringResource(
     when (this) {
         ExpenseDetailReconcileStatus.Matched -> R.string.expense_edit_v1_reconcile_match_pill
         ExpenseDetailReconcileStatus.Diff -> R.string.expense_edit_v1_reconcile_diff_pill
+        ExpenseDetailReconcileStatus.Partial -> R.string.expense_edit_v1_reconcile_partial_pill
+        ExpenseDetailReconcileStatus.Overallocated -> R.string.expense_edit_v1_reconcile_overallocated_pill
         ExpenseDetailReconcileStatus.Unknown -> R.string.expense_edit_v1_reconcile_unknown_pill
     },
 )

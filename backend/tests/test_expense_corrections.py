@@ -183,16 +183,11 @@ def test_correction_idempotent_replay_writes_exactly_one_revision(client: TestCl
     # A late replay reports the original operation revision together with the
     # current canonical projection. Returning the first response's stale
     # Expense here would let Android overwrite the later fact in Room.
-    replay_after_later = client.post(
-        f"/api/expenses/{expense['id']}/corrections", headers=headers, json=payload
-    )
+    replay_after_later = client.post(f"/api/expenses/{expense['id']}/corrections", headers=headers, json=payload)
     assert replay_after_later.status_code == 201, replay_after_later.text
     assert replay_after_later.json()["revision"]["public_id"] == first.json()["revision"]["public_id"]
     assert replay_after_later.json()["expense"]["merchant"] == "后续权威值"
-    assert (
-        replay_after_later.json()["expense"]["fact_revision"]
-        == later.json()["expense"]["fact_revision"]
-    )
+    assert replay_after_later.json()["expense"]["fact_revision"] == later.json()["expense"]["fact_revision"]
 
     invitation = client.post(
         "/api/ledgers/owner/invitations",
@@ -429,3 +424,60 @@ def test_one_correction_can_replace_items_and_splits_without_legacy_backdoors(cl
     )
     assert old_splits.status_code == 409, old_splits.text
     assert old_splits.json()["error"] == "expense_correction_required"
+
+
+def test_amount_correction_allows_partial_but_rejects_overallocated_splits_atomically(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense = _manual_confirmed(client, identity, amount_cents=1280)
+    with SessionLocal() as db:
+        membership = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
+        assert membership is not None
+        member_id = int(membership.id)
+
+    balanced = client.post(
+        f"/api/expenses/{expense['id']}/corrections",
+        headers=_idem(identity.app_headers),
+        json={
+            "expected_row_version": expense["row_version"],
+            "reason": "记录家庭分摊",
+            "splits": [{"member_id": member_id, "amount_cents": 1280}],
+        },
+    )
+    assert balanced.status_code == 201, balanced.text
+    balanced_expense = balanced.json()["expense"]
+    history_before = _history(client, identity, expense["id"])
+
+    overallocated = client.post(
+        f"/api/expenses/{expense['id']}/corrections",
+        headers=_idem(identity.app_headers),
+        json={
+            "expected_row_version": balanced_expense["row_version"],
+            "reason": "金额应更低",
+            "amount_cents": 1200,
+        },
+    )
+    assert overallocated.status_code == 422, overallocated.text
+    assert overallocated.json()["error"] == "expense_split_total_exceeds_parent"
+    unchanged = client.get(f"/api/expenses/{expense['id']}", headers=identity.app_headers).json()
+    assert unchanged["amount_cents"] == 1280
+    assert unchanged["row_version"] == balanced_expense["row_version"]
+    assert unchanged["fact_revision"] == balanced_expense["fact_revision"]
+    assert _history(client, identity, expense["id"])["total"] == history_before["total"]
+
+    partial = client.post(
+        f"/api/expenses/{expense['id']}/corrections",
+        headers=_idem(identity.app_headers),
+        json={
+            "expected_row_version": unchanged["row_version"],
+            "reason": "金额应更高，保留现有分摊",
+            "amount_cents": 1380,
+        },
+    )
+    assert partial.status_code == 201, partial.text
+    listed = client.get(f"/api/expenses/{expense['id']}/splits", headers=identity.app_headers)
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["splits_total_amount_cents"] == 1280
+    assert listed.json()["mismatch_cents"] == 100

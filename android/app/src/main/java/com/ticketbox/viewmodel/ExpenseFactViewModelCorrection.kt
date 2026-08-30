@@ -8,7 +8,6 @@ import com.ticketbox.data.repository.changesAdvisorPayloadAgainst
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import java.time.ZoneId
 import kotlinx.coroutines.flow.update
@@ -75,7 +74,9 @@ fun ExpenseFactViewModel.updateCorrectionScore(field: CorrectionScoreField, valu
     }
 
 internal fun ExpenseFactViewModel.updateCorrection(transform: (CorrectionFormState) -> CorrectionFormState) {
-    _uiState.update { it.copy(correction = transform(it.correction)) }
+    _uiState.update {
+        it.copy(correction = transform(it.correction).copy(submitError = null))
+    }
 }
 
 private fun ExpenseFactViewModel.rejectCorrection(@StringRes resId: Int): ExpenseCorrectionDraft? {
@@ -89,9 +90,8 @@ private fun ExpenseFactViewModel.rejectCorrection(@StringRes resId: Int): Expens
                 timeError = UiText.res(resId).takeIf {
                     resId == R.string.expense_correction_time_invalid
                 },
+                submitError = UiText.res(resId),
             ),
-            message = UiText.res(resId),
-            messageTone = MessageTone.Danger,
         )
     }
     return null
@@ -123,7 +123,7 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
     if (!scalar.hasAny && items == null && splits == null) {
         return rejectCorrection(R.string.expense_correction_no_changes)
     }
-    return ExpenseCorrectionDraft(
+    val draft = ExpenseCorrectionDraft(
         reason = form.reason.trim(),
         originalCurrencyCode = scalar.originalCurrencyCode,
         originalAmountMinor = scalar.originalAmountMinor,
@@ -140,6 +140,10 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
         items = items,
         splits = splits,
     )
+    if (wouldOverallocateLoadedSplits(expense, draft, _uiState.value.expenseSplits)) {
+        return rejectCorrection(R.string.error_expense_split_total_exceeds_parent)
+    }
+    return draft
 }
 
 /** 提交按钮的可用性（屏幕用它做禁用态而不是错误说教）：reason 非空且不在保存中。 */
@@ -156,7 +160,7 @@ fun ExpenseFactViewModel.submitCorrection() {
     viewModelScope.launch {
         updateCorrection { it.copy(saving = true) }
         repository.correctExpenseAllowingOffline(expense, draft)
-            .onSuccess { outcome -> publishCorrectionOutcome(outcome, invalidatesAdvice) }
+            .onSuccess { outcome -> publishCorrectionOutcome(outcome, draft, invalidatesAdvice) }
             .onFailure { error ->
                 val isConflict = (error as? RepositoryException)?.errorCode == "state_conflict"
                 if (isConflict) {
@@ -174,12 +178,13 @@ fun ExpenseFactViewModel.submitCorrection() {
                 } else {
                     _uiState.update {
                         it.copy(
-                            message = error.toUiText(R.string.expense_correction_failed),
-                            messageTone = MessageTone.Danger,
+                            correction = it.correction.copy(
+                                saving = false,
+                                submitError = error.toUiText(R.string.expense_correction_failed),
+                            ),
                         )
                     }
                 }
-                updateCorrection { it.copy(saving = false) }
             }
     }
 }

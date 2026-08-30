@@ -19,6 +19,7 @@ from app.routes._web_expense_return_context import (
     return_context_params,
     return_href,
 )
+from app.routes._web_expense_split_presenter import web_split_members, web_split_rows
 from app.routes.web_common import (
     _amount_yuan,
     _base_ctx,
@@ -29,10 +30,6 @@ from app.routes.web_common import (
 )
 from app.services.category_service import list_ledger_category_options
 from app.services.expense_service import get_expense
-from app.services.expense_split_service import (
-    list_active_split_members,
-    list_expense_splits,
-)
 from app.services.receipt_item_service import list_expense_items
 
 
@@ -260,13 +257,13 @@ def web_edit_context(
         selected_id,
         currency_code=record_currency,
     )
-    ctx["split_rows"] = _web_split_rows(
+    ctx["split_rows"] = web_split_rows(
         db,
         expense_id,
         selected_id,
         currency_code=record_currency,
     )
-    ctx["split_members"] = _web_split_members(db, selected_id)
+    ctx["split_members"] = web_split_members(db, selected_id)
     ctx["category_options"] = list_ledger_category_options(db, tenant_id=selected_id)
     return ctx
 
@@ -323,51 +320,6 @@ def _web_item_rows(
         "mismatch_cents": response.mismatch_cents,
         "mismatch_yuan": _amount_yuan(response.mismatch_cents, currency_code),
     }
-
-
-def _web_split_rows(
-    db: Session,
-    expense_id: int,
-    ledger_id: str,
-    *,
-    currency_code: str,
-) -> dict:
-    response = list_expense_splits(db, expense_id, ledger_id)
-    rows = [
-        {
-            "public_id": split.public_id,
-            "member_id": split.member_id,
-            "account_name": split.account_name,
-            "role": split.role,
-            "amount_yuan": _amount_yuan(split.amount_cents, currency_code),
-            "note": split.note or "",
-            "disabled": split.disabled_at is not None,
-            "errors": {},
-        }
-        for split in response.splits
-    ]
-    rows.extend(
-        {
-            "public_id": "",
-            "member_id": "",
-            "amount_yuan": "",
-            "note": "",
-            "disabled": False,
-            "errors": {},
-        }
-        for _ in range(3)
-    )
-    return {
-        "parent_amount_yuan": _amount_yuan(response.parent_amount_cents, currency_code),
-        "total_yuan": _amount_yuan(response.splits_total_amount_cents, currency_code),
-        "mismatch_yuan": _amount_yuan(response.mismatch_cents, currency_code),
-        "has_mismatch": response.mismatch_cents != 0,
-        "rows": rows,
-    }
-
-
-def _web_split_members(db: Session, ledger_id: str) -> list[dict]:
-    return list_active_split_members(db, tenant_id=ledger_id)
 
 
 def confirm_reject_error(

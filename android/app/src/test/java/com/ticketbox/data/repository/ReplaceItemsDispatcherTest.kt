@@ -37,7 +37,7 @@ class ReplaceItemsDispatcherTest {
         rowVersion = rowVersion,
         parentAmountCents = 12345L,
         itemsTotalAmountCents = 2500L,
-        mismatchCents = -9845L,
+        mismatchCents = 9845L,
         itemsSumStatus = "mismatch_known",
         items = emptyList(),
     )

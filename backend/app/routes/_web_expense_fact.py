@@ -83,6 +83,24 @@ def _format_fact_value(
     return str(value)
 
 
+def _snapshot_allocation_label(
+    snapshot: dict[str, object],
+    home_currency_code: str,
+) -> str | None:
+    splits = snapshot.get("splits")
+    amount_cents = snapshot.get("amount_cents")
+    if not isinstance(splits, list) or not splits or not isinstance(amount_cents, int):
+        return None
+    amounts = [row.get("amount_cents") for row in splits if isinstance(row, dict)]
+    if len(amounts) != len(splits) or any(not isinstance(value, int) for value in amounts):
+        return None
+    remaining = amount_cents - sum(amounts)
+    if remaining == 0:
+        return "已分完"
+    amount_label = _minor_amount_label(abs(remaining), home_currency_code)
+    return f"还差 {amount_label} 未分配" if remaining > 0 else f"已拆超出 {amount_label}"
+
+
 def _timeline_changes(
     revision: dict[str, Any],
     home_currency_code: str,
@@ -97,6 +115,33 @@ def _timeline_changes(
     changes: list[dict[str, str]] = []
     ordered = [f for f in _FACT_FIELD_ORDER if f in changed_fields]
     for field in ordered:
+        if field == "splits":
+            before_count = _format_fact_value(field, before.get(field), before, home_currency_code)
+            after_count = _format_fact_value(field, after.get(field), after, home_currency_code)
+            before_allocation = _snapshot_allocation_label(before, home_currency_code)
+            after_allocation = _snapshot_allocation_label(after, home_currency_code)
+            allocation_changed = (
+                before_allocation is not None
+                and after_allocation is not None
+                and before_allocation != after_allocation
+            )
+            if allocation_changed:
+                changes.append(
+                    {
+                        "label": _FACT_FIELD_LABELS[field],
+                        "before": before_allocation,
+                        "after": after_allocation,
+                    }
+                )
+            if before_count != after_count or not allocation_changed:
+                changes.append(
+                    {
+                        "label": _FACT_FIELD_LABELS[field],
+                        "before": before_count,
+                        "after": after_count,
+                    }
+                )
+            continue
         changes.append(
             {
                 "label": _FACT_FIELD_LABELS[field],
@@ -104,6 +149,17 @@ def _timeline_changes(
                 "after": _format_fact_value(field, after.get(field), after, home_currency_code),
             }
         )
+        if field == "amount_cents" and "splits" not in changed_fields:
+            before_allocation = _snapshot_allocation_label(before, home_currency_code)
+            after_allocation = _snapshot_allocation_label(after, home_currency_code)
+            if before_allocation and after_allocation and before_allocation != after_allocation:
+                changes.append(
+                    {
+                        "label": _FACT_FIELD_LABELS["splits"],
+                        "before": before_allocation,
+                        "after": after_allocation,
+                    }
+                )
     if not changes:
         # 更正实际只触到系统字段（理论上少见）：一句话折叠，不渲染字段名。
         changes.append({"label": "系统信息", "before": "", "after": "已更新"})

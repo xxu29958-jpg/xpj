@@ -246,22 +246,39 @@ private fun FactSplitsReconcileLine(
     display: com.ticketbox.domain.model.CurrencyDisplay,
 ) {
     if (splits == null || splits.splitsTotalAmountCents == null) return
+    val mismatch = splits.mismatchCents
+    val isOverallocated = mismatch != null && mismatch < 0L
     Text(
-        text = if (splits.hasMismatch) {
-            stringResource(
-                R.string.expense_fact_splits_reconcile_mismatch,
-                formatDisplayAmount(splits.parentAmountCents, display),
-                formatDisplayAmount(splits.splitsTotalAmountCents, display),
-                formatDisplayAmount(splits.mismatchCents, display),
-            )
-        } else {
-            stringResource(
-                R.string.expense_fact_splits_reconcile,
-                formatDisplayAmount(splits.parentAmountCents, display),
-                formatDisplayAmount(splits.splitsTotalAmountCents, display),
-            )
+        text = when {
+            mismatch == null || mismatch == 0L -> {
+                stringResource(
+                    R.string.expense_fact_splits_reconcile,
+                    formatDisplayAmount(splits.parentAmountCents, display),
+                    formatDisplayAmount(splits.splitsTotalAmountCents, display),
+                )
+            }
+            mismatch > 0L -> {
+                stringResource(
+                    R.string.expense_fact_splits_reconcile_partial,
+                    formatDisplayAmount(splits.parentAmountCents, display),
+                    formatDisplayAmount(splits.splitsTotalAmountCents, display),
+                    formatDisplayAmount(mismatch, display),
+                )
+            }
+            else -> {
+                stringResource(
+                    R.string.expense_fact_splits_reconcile_overallocated,
+                    formatDisplayAmount(splits.parentAmountCents, display),
+                    formatDisplayAmount(splits.splitsTotalAmountCents, display),
+                    formatDisplayAmount(kotlin.math.abs(mismatch), display),
+                )
+            }
         },
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (isOverallocated) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
         style = MaterialTheme.typography.bodySmall,
     )
 }
