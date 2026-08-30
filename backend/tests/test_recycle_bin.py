@@ -332,10 +332,9 @@ def test_web_recycle_bin_workbench_structure_owner(
 
     assert response.status_code == 200
     body = response.text
-    # 五域 IA：S1 (218-D) 把回收站归流水 (transactions) 域，页内面包屑与壳同父级；
-    # C5c-1 /web/library 落地时再改挂资料库。
+    # 五域 IA：回收站仍归流水域，但 section 父级已经收口到资料库 hub。
     assert 'aria-label="面包屑"' in body
-    assert 'rb-breadcrumb-parent">流水<' in body
+    assert 'class="rb-breadcrumb-parent" href="/web/library?ledger_id=owner">资料库</a>' in body
     # 工作台面板 + 产品表格 (取代旧 dt-card KPI + dt-table)。
     assert 'aria-label="可恢复项目"' in body
     assert 'class="product-table"' in body

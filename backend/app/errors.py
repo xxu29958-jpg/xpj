@@ -81,6 +81,7 @@ ERROR_MESSAGES = {
     "rule_not_found": "分类规则不存在。",
     "rule_application_not_found": "规则应用批次不存在。",
     "rule_in_use": "分类规则仍在使用，不能删除。",
+    "rule_category_deleted": "规则目标分类已在回收站，请先恢复分类。",
     "admin_api_local_only": "管理接口仅允许本机访问。",
     "maintenance_local_only": "这项安装维护操作仅允许在本机执行。",
     "backup_in_progress": "正在备份中，请稍后再试。",

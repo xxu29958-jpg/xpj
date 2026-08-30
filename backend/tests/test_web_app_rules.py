@@ -7,6 +7,10 @@ from urllib.parse import parse_qs, urlparse
 
 from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.models import CategoryPreference
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -62,7 +66,8 @@ def _rule_token_for(page_html: str, rule_id: int, action: str) -> str:
     # ADR-0038 PR-1 (form-token): toggle/delete forms render the row's
     # current updated_at as a hidden ``expected_row_version`` input.
     pattern = (
-        rf"/web/rules/{rule_id}/{action}.*?expected_row_version\"\s*value=\"([^\"]+)\""
+        rf'<form[^>]*action="/web/rules/{rule_id}/{action}"[^>]*>.*?'
+        r'name="expected_row_version"\s+value="([^"]+)"'
     )
     match = re.search(pattern, page_html, flags=re.DOTALL)
     assert match, page_html[:1000]
@@ -145,6 +150,128 @@ def test_web_rule_create_error_keeps_the_complete_draft(web_client: TestClient) 
     clean = web_client.get("/web/rules?ledger_id=owner")
     assert clean.status_code == 200
     assert draft["keyword"] not in clean.text
+
+
+def _disabled_rule_with_recycled_category(
+    web_client: TestClient,
+    *,
+    identity,
+) -> tuple[int, str]:
+    created_expense = web_client.post(
+        "/api/expenses/manual",
+        headers=identity.app_headers,
+        json={
+            "amount_cents": 2600,
+            "merchant": "规则分类商家",
+            "category": "烘焙",
+            "client_ref": "web-rule-recycled-category",
+        },
+    )
+    assert created_expense.status_code == 200, created_expense.text
+
+    created_rule = web_client.post(
+        "/web/rules/create",
+        data={
+            "keyword": "bakery",
+            "category": "烘焙",
+            "priority": "10",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+    assert created_rule.status_code in {303, 307}
+
+    rules_page = web_client.get("/web/rules?ledger_id=owner")
+    rule_id = _rule_id_for_keyword(rules_page.text, "bakery")
+    disabled = web_client.post(
+        f"/web/rules/{rule_id}/toggle",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": _rule_token_for(rules_page.text, rule_id, "toggle"),
+        },
+        follow_redirects=False,
+    )
+    assert disabled.status_code in {303, 307}
+
+    with SessionLocal() as db:
+        preference = db.scalar(
+            select(CategoryPreference).where(
+                CategoryPreference.tenant_id == "owner",
+                CategoryPreference.name == "烘焙",
+            )
+        )
+        assert preference is not None
+        preference_public_id = preference.public_id
+        preference_row_version = preference.row_version
+
+    removed = web_client.post(
+        f"/web/categories/preferences/{preference_public_id}/delete",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": str(preference_row_version),
+        },
+        follow_redirects=False,
+    )
+    assert removed.status_code == 303
+
+    disabled_page = web_client.get("/web/rules?ledger_id=owner")
+    return rule_id, _rule_token_for(disabled_page.text, rule_id, "toggle")
+
+
+def test_web_rule_cannot_enable_a_category_that_is_in_recycle_bin(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    rule_id, retry_token = _disabled_rule_with_recycled_category(
+        web_client,
+        identity=identity,
+    )
+    rejected = web_client.post(
+        f"/web/rules/{rule_id}/toggle",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": retry_token,
+        },
+        follow_redirects=False,
+    )
+
+    assert rejected.status_code == 422
+    assert 'data-body-stack="product"' in rejected.text
+    assert 'id="rule-toggle-error"' in rejected.text
+    assert 'role="alert"' in rejected.text
+    assert "目标分类「烘焙」已在回收站" in rejected.text
+    assert "请先恢复分类，再重新启用这条规则" in rejected.text
+    assert 'href="/web/recycle-bin?ledger_id=owner"' in rejected.text
+    assert _rule_token_for(rejected.text, rule_id, "toggle") == retry_token
+
+    clean = web_client.get("/web/rules?ledger_id=owner")
+    assert clean.status_code == 200
+    assert 'id="rule-toggle-error"' not in clean.text
+
+
+def test_web_rule_cannot_create_for_a_category_that_is_in_recycle_bin(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    _disabled_rule_with_recycled_category(web_client, identity=identity)
+
+    rejected = web_client.post(
+        "/web/rules/create",
+        data={
+            "keyword": "bakery-new",
+            "category": "烘焙",
+            "priority": "10",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+
+    assert rejected.status_code == 422
+    assert "目标分类「烘焙」已在回收站" in rejected.text
+    assert 'value="bakery-new"' in rejected.text
+    assert 'value="烘焙"' in rejected.text
 
 
 def test_web_rules_delete_then_undo(web_client: TestClient) -> None:

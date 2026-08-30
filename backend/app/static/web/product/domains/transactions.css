@@ -733,6 +733,13 @@
     padding: var(--space-2) var(--space-3);
 }
 
+/* 错误条内的恢复导航链接 (如「查看回收站」): 继承语义色, 下划线可辨。 */
+.product-feedback-link {
+    color: inherit;
+    font-weight: var(--type-subtitle-weight);
+    text-underline-offset: var(--space-1);
+}
+
 /* 窄屏商家目录: 行重构为纵向节奏, 操作簇整行可见 (390px 实测操作列被横向
    滚动整体推出首屏, 重命名/合并不可达); 表头视觉隐藏但留在无障碍树。 */
 @media (max-width: 720px) {

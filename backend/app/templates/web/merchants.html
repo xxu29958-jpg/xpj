@@ -42,12 +42,15 @@
     <div class="product-panel-header">
       <div class="product-panel-title">新增商家</div>
     </div>
+    {% if catalog_create_error %}
+    <div id="merchant-create-error" class="product-feedback product-feedback--danger" role="alert">{{ catalog_create_error }}</div>
+    {% endif %}
     {% if can_write %}
     <form method="post" action="/web/merchants/catalog/create" class="product-form-grid">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <label class="product-field">
         <span>商家名称</span>
-        <input type="text" name="display_name" required placeholder="如：星巴克">
+        <input type="text" name="display_name" required placeholder="如：星巴克" value="{{ catalog_create_value | default('') }}"{% if catalog_create_error %} aria-invalid="true" aria-describedby="merchant-create-error"{% endif %}>
       </label>
       <div class="actions">
         <button type="submit" class="product-button product-button--primary">添加商家</button>
@@ -175,16 +178,19 @@
     <div class="product-panel-header">
       <div class="product-panel-title">新增商家别名</div>
     </div>
+    {% if alias_create_error %}
+    <div id="alias-create-error" class="product-feedback product-feedback--danger" role="alert">{{ alias_create_error }}</div>
+    {% endif %}
     {% if can_write %}
     <form method="post" action="/web/merchants/aliases/create" class="product-form-grid">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <label class="product-field">
         <span>标准商家</span>
-        <input type="text" name="canonical_merchant" required placeholder="如：星巴克">
+        <input type="text" name="canonical_merchant" required placeholder="如：星巴克" value="{{ alias_create_draft.canonical_merchant | default('') }}"{% if alias_create_error %} aria-invalid="true" aria-describedby="alias-create-error"{% endif %}>
       </label>
       <label class="product-field">
         <span>别名</span>
-        <input type="text" name="alias" required placeholder="如：STARBUCKS 国贸店">
+        <input type="text" name="alias" required placeholder="如：STARBUCKS 国贸店" value="{{ alias_create_draft.alias | default('') }}"{% if alias_create_error %} aria-invalid="true" aria-describedby="alias-create-error"{% endif %}>
       </label>
       <div class="actions">
         <button type="submit" class="product-button product-button--primary">添加别名</button>

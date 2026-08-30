@@ -66,6 +66,36 @@ def _parse_optional_amount_cents(raw: str, *, currency_code: str) -> int | None:
         ) from exc
 
 
+def _rule_preview(
+    db: Session,
+    *,
+    selected_id: str,
+    preview_keyword: str,
+    preview_category: str,
+) -> tuple[dict[str, object] | None, str | None]:
+    keyword = preview_keyword.strip()
+    if not keyword:
+        return None, None
+    category = preview_category.strip() or "其他"
+    try:
+        matched_count, items = preview_rule_for_pending(
+            db,
+            tenant_id=selected_id,
+            keyword=preview_keyword,
+            target_category=category,
+            match_field="merchant",
+            limit=10,
+        )
+    except AppError as exc:
+        return None, exc.message
+    return {
+        "matched_count": matched_count,
+        "items": items,
+        "keyword": keyword,
+        "target_category": category,
+    }, None
+
+
 def _render_rules(
     request: Request,
     db: Session,
@@ -80,30 +110,19 @@ def _render_rules(
     undo: str = "",
     rule_form_error: str = "",
     rule_form_draft: dict[str, str] | None = None,
+    rule_toggle_error: str = "",
+    rule_toggle_rule_id: int | None = None,
+    rule_toggle_recycle: bool = False,
     status_code: int = 200,
 ) -> HTMLResponse:
     rules = list_rules(db, selected_id)
     rule_applications = list_rule_applications(db, tenant_id=selected_id, limit=8)
-    preview = None
-    preview_error = None
-    if preview_keyword.strip():
-        try:
-            matched_count, items = preview_rule_for_pending(
-                db,
-                tenant_id=selected_id,
-                keyword=preview_keyword,
-                target_category=preview_category.strip() or "其他",
-                match_field="merchant",
-                limit=10,
-            )
-            preview = {
-                "matched_count": matched_count,
-                "items": items,
-                "keyword": preview_keyword.strip(),
-                "target_category": preview_category.strip() or "其他",
-            }
-        except AppError as exc:
-            preview_error = exc.message
+    preview, preview_error = _rule_preview(
+        db,
+        selected_id=selected_id,
+        preview_keyword=preview_keyword,
+        preview_category=preview_category,
+    )
     bulk_preview = None
     if apply_preview:
         bulk_preview = preview_apply_rules_to_pending(
@@ -142,6 +161,9 @@ def _render_rules(
         undo_rule_id=undo,
         rule_form_error=rule_form_error,
         rule_form_draft=rule_form_draft or {},
+        rule_toggle_error=rule_toggle_error,
+        rule_toggle_rule_id=rule_toggle_rule_id,
+        rule_toggle_recycle=rule_toggle_recycle,
         q="?ledger_id=" + selected_id,
     )
     return templates.TemplateResponse(
@@ -288,7 +310,7 @@ def web_rules_toggle(
     expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     # ADR-0038 PR-1 (form-token follow-up): /web is no longer loopback-
     # only — ADR-0028 PR-4 lets a public-host request with a valid
     # ``__Host-session`` cookie reach /web too. The pre-PR-4 comment
@@ -309,6 +331,18 @@ def web_rules_toggle(
             updated_rule = update_rule(db, rule, expected_row_version=parsed, enabled=not rule.enabled)
             msg = f"规则「{updated_rule.keyword}」{'已启用' if updated_rule.enabled else '已停用'}。"
         except AppError as exc:
+            db.rollback()
+            if exc.error == "rule_category_deleted":
+                return _render_rules(
+                    request,
+                    db,
+                    options=options,
+                    selected_id=selected_id,
+                    rule_toggle_error=exc.message,
+                    rule_toggle_rule_id=rule_id,
+                    rule_toggle_recycle=True,
+                    status_code=422,
+                )
             msg = "规则已在其它端被修改，请刷新后重试。" if exc.error == "state_conflict" else exc.message
     return _web_redirect("/web/rules", selected_id, msg=msg)
 

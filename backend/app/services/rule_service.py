@@ -9,6 +9,7 @@ from sqlalchemy.orm.exc import ObjectDeletedError
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CategoryRule, Expense
+from app.services.category_preference_service import ensure_rule_category_available
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import (
     authorize_currency_metadata_write,
@@ -197,6 +198,8 @@ def create_rule(
     if not keyword or not category:
         raise AppError("invalid_request", status_code=422)
     _authorize_rule_write(db, amount_min_cents=amount_min_cents, amount_max_cents=amount_max_cents)
+    if enabled:
+        ensure_rule_category_available(db, tenant_id=tenant_id, category=category)
     now = now_utc()
     rule = CategoryRule(
         tenant_id=tenant_id,
@@ -239,7 +242,9 @@ def update_rule(
 ) -> CategoryRule:
     """Update a rule through the DB row-version predicate."""
     amount_min_cents, amount_max_cents = clean_rule_update_amounts(amount_min_cents, amount_max_cents, unset=_UNSET)
-    rule_id, rule_tenant_id, existing_min, existing_max = _snapshot_rule_update_context(rule)
+    rule_id, rule_tenant_id, existing_category, existing_enabled, existing_min, existing_max = (
+        _snapshot_rule_update_context(rule)
+    )
     update_values = _build_rule_update_values(
         existing_min=existing_min,
         existing_max=existing_max,
@@ -255,6 +260,13 @@ def update_rule(
     next_min = cast(int | None, update_values.get("amount_min_cents", existing_min))
     next_max = cast(int | None, update_values.get("amount_max_cents", existing_max))
     _authorize_rule_write(db, amount_min_cents=next_min, amount_max_cents=next_max)
+    next_enabled = cast(bool, update_values.get("enabled", existing_enabled))
+    if next_enabled:
+        ensure_rule_category_available(
+            db,
+            tenant_id=rule_tenant_id,
+            category=cast(str, update_values.get("category", existing_category)),
+        )
     rowcount = claim_row_with_token(
         db,
         CategoryRule,
@@ -272,14 +284,9 @@ def update_rule(
 
 def _snapshot_rule_update_context(
     rule: CategoryRule,
-) -> tuple[int, str, int | None, int | None]:
+) -> tuple[int, str, str, bool, int | None, int | None]:
     try:
-        return (
-            rule.id,
-            rule.tenant_id,
-            rule.amount_min_cents,
-            rule.amount_max_cents,
-        )
+        return (rule.id, rule.tenant_id, rule.category, rule.enabled, rule.amount_min_cents, rule.amount_max_cents)
     except ObjectDeletedError as exc:
         raise AppError("rule_not_found", status_code=404) from exc
 

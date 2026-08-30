@@ -77,6 +77,10 @@ def _render_merchants(
     rename_error: str = "",
     rename_error_public_id: str = "",
     rename_error_value: str = "",
+    catalog_create_error: str = "",
+    catalog_create_value: str = "",
+    alias_create_error: str = "",
+    alias_create_draft: dict[str, str] | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     ctx = _base_ctx(
@@ -97,6 +101,10 @@ def _render_merchants(
         rename_error=rename_error,
         rename_error_public_id=rename_error_public_id,
         rename_error_value=rename_error_value,
+        catalog_create_error=catalog_create_error,
+        catalog_create_value=catalog_create_value,
+        alias_create_error=alias_create_error,
+        alias_create_draft=alias_create_draft or {},
         q="?ledger_id=" + selected_id,
     )
     return templates.TemplateResponse(
@@ -147,7 +155,22 @@ def web_merchant_catalog_create(
         )
         msg = f"已新增商家：{item.display_name}"
     except AppError as exc:
-        msg = "新增失败：" + exc.message
+        db.rollback()
+        return _render_merchants(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            # 冲突=目录已有同名商家 (normalization 归 Owner); 呈现层只补中文事实,
+            # 其余 Owner 消息原样透传。
+            catalog_create_error=(
+                "商家已存在，无需重复添加。"
+                if exc.error == "state_conflict"
+                else exc.message
+            ),
+            catalog_create_value=display_name,
+            status_code=422,
+        )
     return _web_redirect("/web/merchants", selected_id, msg=msg)
 
 
@@ -326,7 +349,7 @@ def web_merchant_alias_create(
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
@@ -339,7 +362,19 @@ def web_merchant_alias_create(
         )
         msg = f"已新增别名：{item.alias} → {item.canonical_merchant}"
     except AppError as exc:
-        msg = "新增失败：" + exc.message
+        db.rollback()
+        return _render_merchants(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            alias_create_error=exc.message,
+            alias_create_draft={
+                "canonical_merchant": canonical_merchant,
+                "alias": alias,
+            },
+            status_code=422,
+        )
     return _web_redirect("/web/merchants", selected_id, msg=msg)
 
 

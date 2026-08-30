@@ -362,6 +362,10 @@
     <div class="product-panel-title">当前规则（{{ rules|length }} 条）</div>
     <span class="meta">批量应用入口在上方预览区。</span>
   </div>
+  {% if rule_toggle_error and rule_toggle_rule_id not in (rules | map(attribute='id') | list) %}
+  {# 被提交行已不在列表 (他端已删除) 时, 422 文案仍须锚身份可见。 #}
+  <div class="product-feedback product-feedback--danger" role="alert" data-rule-key="{{ rule_toggle_rule_id }}">{{ rule_toggle_error }}{% if rule_toggle_recycle %} <a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
+  {% endif %}
   {% if rules %}
   <div class="product-table-wrap library-table-flush">
     <table class="product-table">
@@ -377,7 +381,10 @@
       </thead>
       <tbody>
       {% for r in rules %}
-        <tr>
+        {# 启用被拒 422 (目标分类已入回收站): 行内锚定, fresh rv 取自行本身,
+           用户恢复分类后可直接重试; toggle 无草稿。 #}
+        {% set _toggle_error = rule_toggle_error and rule_toggle_rule_id == r.id %}
+        <tr{% if _toggle_error %} aria-invalid="true" aria-describedby="rule-toggle-error"{% endif %}>
           <td class="num">{{ r.priority }}</td>
           <td><code>{{ r.keyword }}</code></td>
           <td><span class="product-status product-status--info">{{ r.category }}</span></td>
@@ -395,6 +402,9 @@
           </td>
           <td>
             {% if can_write %}
+            {% if _toggle_error %}
+            <div id="rule-toggle-error" class="product-feedback product-feedback--danger library-row-error" role="alert">{{ rule_toggle_error }}{% if rule_toggle_recycle %} <a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
+            {% endif %}
             <div class="library-ops">
               <form method="post" action="/web/rules/{{ r.id }}/toggle">
                 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
