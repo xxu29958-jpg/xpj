@@ -17,14 +17,15 @@ def test_split_timeline_prioritizes_changed_allocation_over_unchanged_line_count
             "changed_fields": ["splits"],
             "before": {
                 "amount_cents": 1_200,
-                "splits": [{"amount_cents": 1_200}],
+                "splits": [{"member_id": 7, "amount_cents": 1_200}],
             },
             "after": {
                 "amount_cents": 1_200,
-                "splits": [{"amount_cents": 1_100}],
+                "splits": [{"member_id": 7, "amount_cents": 1_100}],
             },
         },
         "CNY",
+        member_names={7: "我"},
     )
 
     assert changes == [
@@ -32,6 +33,10 @@ def test_split_timeline_prioritizes_changed_allocation_over_unchanged_line_count
             "label": "家庭拆账",
             "before": "已分完",
             "after": "还差 ¥1.00 未分配",
+            "details": {
+                "before_rows": [{"title": "我", "facts": ["¥12.00"]}],
+                "after_rows": [{"title": "我", "facts": ["¥11.00"]}],
+            },
         }
     ]
 
