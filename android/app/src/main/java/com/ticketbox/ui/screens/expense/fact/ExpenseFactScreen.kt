@@ -23,6 +23,7 @@ import com.ticketbox.viewmodel.acknowledgeItemsMismatch
 import com.ticketbox.viewmodel.cancelBillSplitInvitation
 import com.ticketbox.viewmodel.createRepaymentDraftFromExpense
 import com.ticketbox.viewmodel.loadExpenseRevisions
+import com.ticketbox.viewmodel.loadOlderExpenseRevisions
 import com.ticketbox.viewmodel.openBillSplitInviteSheet
 import com.ticketbox.viewmodel.openCorrectionSheet
 import com.ticketbox.viewmodel.toggleTimelineExpanded
@@ -102,6 +103,7 @@ private fun FactContentSections(
                     state = state,
                     onRetryLoad = viewModel::loadExpenseRevisions,
                     onToggleExpanded = viewModel::toggleTimelineExpanded,
+                    onLoadOlder = viewModel::loadOlderExpenseRevisions,
                 )
                 if (expense.canInitiateBillSplit(state.readOnly)) {
                     ExpenseBillSplitInvitePanel(

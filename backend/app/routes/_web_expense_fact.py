@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import Request
@@ -24,6 +25,7 @@ from app.routes.web_bill_split import build_split_invite_context
 from app.routes.web_common import _web_redirect, templates
 from app.services.expense_revision_service import list_expense_revisions
 from app.services.expense_service import get_expense
+from app.services.expense_split_service import list_active_split_members
 from app.services.spending_contract_service import accounting_datetime_label
 
 # 用户可写字段 → 时间线人话标签。对照 expense_revision_service._SCALAR_FIELDS；
@@ -48,6 +50,33 @@ _FACT_FIELD_LABELS: dict[str, str] = {
 _FACT_FIELD_ORDER = tuple(_FACT_FIELD_LABELS)
 
 _KIND_LABELS = {"confirmed": "首次确认", "correction": "更正"}
+
+_TIMELINE_RETURN_QUERY_KEYS = (
+    "return_to",
+    "return_month",
+    "return_filter",
+    "return_page",
+    "return_tag",
+    "return_query",
+)
+
+
+def timeline_page_url(
+    request: Request,
+    *,
+    expense_id: int,
+    selected_ledger_id: str,
+    page: int,
+) -> str:
+    params: list[tuple[str, str]] = [
+        ("ledger_id", selected_ledger_id),
+        ("rev_page", str(page)),
+    ]
+    for key in _TIMELINE_RETURN_QUERY_KEYS:
+        value = request.query_params.get(key)
+        if value:
+            params.append((key, value))
+    return f"/web/expenses/{expense_id}/edit?{urlencode(params)}#fact-timeline"
 
 
 def _snapshot_time_label(value: object) -> str:
@@ -101,10 +130,83 @@ def _snapshot_allocation_label(
     return f"还差 {amount_label} 未分配" if remaining > 0 else f"已拆超出 {amount_label}"
 
 
+def _item_snapshot_rows(
+    value: object,
+    home_currency_code: str,
+) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    rows: list[dict[str, object]] = []
+    for raw_row in value:
+        if not isinstance(raw_row, dict):
+            continue
+        title = str(raw_row.get("name") or "").strip() or "未命名明细"
+        facts: list[str] = []
+        quantity = str(raw_row.get("quantity_text") or "").strip()
+        if quantity:
+            facts.append(quantity)
+        unit_price = raw_row.get("unit_price_cents")
+        if isinstance(unit_price, int):
+            facts.append(f"单价 {_minor_amount_label(unit_price, home_currency_code)}")
+        amount = raw_row.get("amount_cents")
+        if isinstance(amount, int):
+            facts.append(f"金额 {_minor_amount_label(amount, home_currency_code)}")
+        category = str(raw_row.get("category") or "").strip()
+        if category:
+            facts.append(category)
+        rows.append({"title": title, "facts": facts})
+    return rows
+
+
+def _split_snapshot_rows(
+    value: object,
+    home_currency_code: str,
+    member_names: dict[int, str],
+) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    rows: list[dict[str, object]] = []
+    for raw_row in value:
+        if not isinstance(raw_row, dict):
+            continue
+        member_id = raw_row.get("member_id")
+        title = member_names.get(member_id, "") if isinstance(member_id, int) else ""
+        facts: list[str] = []
+        amount = raw_row.get("amount_cents")
+        if isinstance(amount, int):
+            facts.append(_minor_amount_label(amount, home_currency_code))
+        note = str(raw_row.get("note") or "").strip()
+        if note:
+            facts.append(note)
+        rows.append({"title": title or "已移除的成员", "facts": facts})
+    return rows
+
+
+def _collection_details(
+    *,
+    field: str,
+    before: dict[str, object],
+    after: dict[str, object],
+    home_currency_code: str,
+    member_names: dict[int, str],
+) -> dict[str, list[dict[str, object]]]:
+    if field == "items":
+        return {
+            "before_rows": _item_snapshot_rows(before.get(field), home_currency_code),
+            "after_rows": _item_snapshot_rows(after.get(field), home_currency_code),
+        }
+    return {
+        "before_rows": _split_snapshot_rows(before.get(field), home_currency_code, member_names),
+        "after_rows": _split_snapshot_rows(after.get(field), home_currency_code, member_names),
+    }
+
+
 def _timeline_changes(
     revision: dict[str, Any],
     home_currency_code: str,
-) -> list[dict[str, str]]:
+    *,
+    member_names: dict[int, str] | None = None,
+) -> list[dict[str, Any]]:
     """Translate changed_fields into before→after deltas for user-writable fields."""
 
     changed_fields = revision.get("changed_fields") or []
@@ -112,10 +214,12 @@ def _timeline_changes(
         return []
     before = revision.get("before") or {}
     after = revision.get("after") or {}
-    changes: list[dict[str, str]] = []
+    resolved_member_names = member_names or {}
+    changes: list[dict[str, Any]] = []
     ordered = [f for f in _FACT_FIELD_ORDER if f in changed_fields]
     for field in ordered:
         if field == "splits":
+            change_start = len(changes)
             before_count = _format_fact_value(field, before.get(field), before, home_currency_code)
             after_count = _format_fact_value(field, after.get(field), after, home_currency_code)
             before_allocation = _snapshot_allocation_label(before, home_currency_code)
@@ -141,13 +245,30 @@ def _timeline_changes(
                         "after": after_count,
                     }
                 )
+            if len(changes) > change_start:
+                changes[-1]["details"] = _collection_details(
+                    field=field,
+                    before=before,
+                    after=after,
+                    home_currency_code=home_currency_code,
+                    member_names=resolved_member_names,
+                )
             continue
+        change: dict[str, Any] = {
+            "label": _FACT_FIELD_LABELS[field],
+            "before": _format_fact_value(field, before.get(field), before, home_currency_code),
+            "after": _format_fact_value(field, after.get(field), after, home_currency_code),
+        }
+        if field == "items":
+            change["details"] = _collection_details(
+                field=field,
+                before=before,
+                after=after,
+                home_currency_code=home_currency_code,
+                member_names=resolved_member_names,
+            )
         changes.append(
-            {
-                "label": _FACT_FIELD_LABELS[field],
-                "before": _format_fact_value(field, before.get(field), before, home_currency_code),
-                "after": _format_fact_value(field, after.get(field), after, home_currency_code),
-            }
+            change
         )
         if field == "amount_cents" and "splits" not in changed_fields:
             before_allocation = _snapshot_allocation_label(before, home_currency_code)
@@ -172,15 +293,17 @@ def build_fact_timeline(
     tenant_id: str,
     expense_id: int,
     home_currency_code: str,
+    page: int = 1,
     page_size: int = 50,
-) -> list[dict[str, Any]]:
+    member_names: dict[int, str] | None = None,
+) -> dict[str, Any]:
     """Newest-first human timeline rows for the fact page."""
 
     response = list_expense_revisions(
         db,
         tenant_id=tenant_id,
         expense_id=expense_id,
-        page=1,
+        page=page,
         page_size=page_size,
     )
     rows: list[dict[str, Any]] = []
@@ -196,10 +319,21 @@ def build_fact_timeline(
                 "when": _snapshot_time_label(item.created_at.isoformat()),
                 "actor": " · ".join(actor_parts),
                 "is_correction": item.change_kind == "correction",
-                "changes": _timeline_changes(revision, home_currency_code),
+                "changes": _timeline_changes(
+                    revision,
+                    home_currency_code,
+                    member_names=member_names,
+                ),
             }
         )
-    return rows
+    return {
+        "entries": rows,
+        "page": response.page,
+        "page_size": response.page_size,
+        "total": response.total,
+        "has_newer": response.page > 1,
+        "has_older": response.page * response.page_size < response.total,
+    }
 
 
 def web_fact_context(
@@ -209,6 +343,7 @@ def web_fact_context(
     selected_id: str,
     expense_id: int,
     *,
+    revision_page: int = 1,
     message: str | None = None,
     error: str | None = None,
 ) -> dict:
@@ -237,11 +372,46 @@ def web_fact_context(
         expense=ctx["expense"],
         can_write=ctx["can_write"],
     )
-    ctx["fact_timeline"] = build_fact_timeline(
+    member_names = {
+        int(row["member_id"]): str(row["account_name"])
+        for row in list_active_split_members(db, tenant_id=selected_id)
+    }
+    timeline = build_fact_timeline(
         db,
         tenant_id=selected_id,
         expense_id=expense_id,
         home_currency_code=ctx["home_currency_code"],
+        page=revision_page,
+        member_names=member_names,
+    )
+    ctx["fact_timeline"] = timeline["entries"]
+    ctx["fact_timeline_page"] = {
+        key: timeline[key]
+        for key in ("page", "page_size", "total", "has_newer", "has_older")
+    }
+    ctx["fact_timeline_page"]["older_remaining"] = max(
+        0,
+        timeline["total"] - timeline["page"] * timeline["page_size"],
+    )
+    ctx["fact_timeline_page"]["newer_url"] = (
+        timeline_page_url(
+            request,
+            expense_id=expense_id,
+            selected_ledger_id=selected_id,
+            page=timeline["page"] - 1,
+        )
+        if timeline["has_newer"]
+        else ""
+    )
+    ctx["fact_timeline_page"]["older_url"] = (
+        timeline_page_url(
+            request,
+            expense_id=expense_id,
+            selected_ledger_id=selected_id,
+            page=timeline["page"] + 1,
+        )
+        if timeline["has_older"]
+        else ""
     )
     return ctx
 

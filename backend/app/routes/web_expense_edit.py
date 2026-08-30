@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
@@ -44,6 +44,7 @@ def web_edit_get(
     return_page: str = "",
     return_tag: str = "",
     return_query: str = "",
+    rev_page: int = Query(default=1, ge=1),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -95,7 +96,14 @@ def web_edit_get(
                 '<div class="empty-cell">这笔账单已确认：请在完整页面查看事实与变更记录，'
                 "需要修改请使用「更正这笔账单」。</div>"
             )
-        fact_ctx = web_fact_context(db, request, options, selected_id, expense_id)
+        fact_ctx = web_fact_context(
+            db,
+            request,
+            options,
+            selected_id,
+            expense_id,
+            revision_page=rev_page,
+        )
         return templates.TemplateResponse(request=request, name="expense_fact.html", context=fact_ctx)
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.
     if fragment:

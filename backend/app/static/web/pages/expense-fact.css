@@ -145,6 +145,112 @@
     font-weight: var(--type-subtitle-weight);
 }
 
+/* items/splits 完整 Before/After 集合：原生 details（no-JS），安静 text-button 风
+   + 旋转 chevron（沿用 debts.css .debt-history-more 惯例；1.5px 发丝为装饰非布局）。 */
+.fact-change-detail {
+    margin: 0 0 var(--space-1) calc(var(--space-12) + var(--space-3) + var(--space-4));
+}
+
+.fact-change-detail summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    list-style: none;
+    width: fit-content;
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+
+.fact-change-detail summary::-webkit-details-marker {
+    display: none;
+}
+
+.fact-change-detail summary::after {
+    content: "";
+    width: var(--space-2);
+    height: var(--space-2);
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.fact-change-detail details[open] summary::after {
+    transform: rotate(45deg);
+}
+
+.fact-change-detail-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4) var(--space-6);
+    padding: var(--space-2) 0 var(--space-3);
+}
+
+.fact-change-set-label {
+    display: block;
+    color: var(--text-faint);
+    font-size: var(--type-caption-size);
+    margin-block-end: var(--space-1);
+}
+
+.fact-change-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.fact-change-rows li {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: var(--type-body-size);
+}
+
+.fact-change-row-facts {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.fact-change-row-empty {
+    color: var(--text-faint);
+}
+
+/* 翻页：服务端渲染链接（no-JS），锚回 #fact-timeline；slot 保持左右槽位稳定。 */
+.fact-timeline-pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    padding-block-start: var(--space-4);
+    /* 1px hairline：同 .fact-timeline-entry 登记的例外。 */
+    border-block-start: 1px solid var(--border-card);
+}
+
+.fact-pager-slot {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.fact-pager-slot--older {
+    text-align: right;
+}
+
+@media (max-width: 56rem) {
+    .fact-change-detail-body {
+        grid-template-columns: 1fr;
+    }
+
+    .fact-change-detail {
+        margin-inline-start: 0;
+    }
+}
+
 .correction-reason-card {
     margin-block-end: var(--space-5);
 }
