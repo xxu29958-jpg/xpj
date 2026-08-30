@@ -42,7 +42,12 @@ internal fun RecurringEditorSheetHost(
 ) {
     if (target == null) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = environment.onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(
+        onDismissRequest = {
+            if (!uiState.manualSaveInFlight) environment.onDismiss()
+        },
+        sheetState = sheetState,
+    ) {
         RecurringEditorSheet(
             target = target,
             uiState = uiState,
@@ -124,6 +129,7 @@ private fun RecurringEditorContent(
             dateIso = session.dateIso,
             showDatePicker = session.showDatePicker,
             awaiting = session.submitUi.awaiting,
+            draftEnabled = recurringEditorDraftEnabled(session.submitUi.awaiting, ownerState.stage),
             primaryText = stringResource(
                 recurringPrimaryActionTextRes(session.submitUi.awaiting, ownerState.stage),
             ),

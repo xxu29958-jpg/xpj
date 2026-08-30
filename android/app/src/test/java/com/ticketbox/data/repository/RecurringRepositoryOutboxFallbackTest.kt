@@ -252,9 +252,9 @@ class RecurringRepositoryOutboxFallbackTest {
         assertEquals(
             listOf(
                 "recurring_merchant_required",
-                "recurring_amount_invalid",
+                "amount_invalid",
                 "recurring_item_not_found",
-                "recurring_version_invalid",
+                "state_conflict",
                 "recurring_item_no_changes",
             ),
             failures.map { (it.exceptionOrNull() as RepositoryException).errorCode },

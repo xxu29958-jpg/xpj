@@ -194,3 +194,10 @@ internal fun recurringPrimaryActionTextRes(
     stage == RecurringRebaseStage.Ready -> R.string.recurring_form_save_again
     else -> R.string.recurring_form_save
 }
+
+internal fun recurringEditorDraftEnabled(
+    awaiting: Boolean,
+    stage: RecurringRebaseStage,
+): Boolean = !awaiting &&
+    stage != RecurringRebaseStage.LoadingOwner &&
+    stage != RecurringRebaseStage.OwnerUnavailable

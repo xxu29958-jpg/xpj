@@ -135,12 +135,14 @@ class RecurringViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(oldCandidate), vm.uiState.value.candidates)
+        val oldEditorEpoch = vm.uiState.value.editorEpoch
 
         fake.candidatesResult = Result.success(emptyList())
         accessFlow.value = planAccess(ownerKey = "owner-b")
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.candidates.isEmpty())
+        assertTrue(vm.uiState.value.editorEpoch > oldEditorEpoch)
         vm.confirmCandidate(oldCandidate)
         advanceUntilIdle()
 
@@ -410,7 +412,80 @@ class RecurringViewModelMutationTest {
         assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
         assertEquals(RecurringManualSaveSettlement.Accepted, vm.uiState.value.manualSaveFeedback?.settlement)
     }
+}
 
+@OptIn(ExperimentalCoroutinesApi::class)
+class RecurringViewModelAttemptOwnershipTest {
+    @Test
+    fun manualSaveIsSingleFlightAcrossEditorReentry() = recurringTest {
+        val existing = item(publicId = "rec-single-flight", merchant = "房租")
+        val pendingUpdate = CompletableDeferred<Result<RecurringSaveOutcome>>()
+        val updated = existing.copy(rowVersion = 2, baselineAmountCents = 360000)
+        val fake = FakeRecurringActions(itemsResult = Result.success(listOf(existing)))
+        fake.updateResponder = { pendingUpdate.await() }
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        val command = RecurringManualSaveCommand.Edit(
+            existing,
+            RecurringItemPatch(baselineAmountCents = updated.baselineAmountCents),
+        )
+
+        val firstAttempt = vm.saveManual(command)
+        advanceUntilIdle()
+        val reenteredAttempt = vm.saveManual(command)
+        advanceUntilIdle()
+
+        assertEquals(firstAttempt, reenteredAttempt)
+        assertEquals(1, fake.updateCalls)
+        assertEquals(true, vm.uiState.value.manualSaveInFlight)
+
+        pendingUpdate.complete(Result.success(RecurringSaveOutcome.Synced(updated)))
+        advanceUntilIdle()
+
+        assertEquals(firstAttempt, vm.uiState.value.manualSaveFeedback?.attemptId)
+        assertEquals(RecurringManualSaveSettlement.Accepted, vm.uiState.value.manualSaveFeedback?.settlement)
+        assertEquals(false, vm.uiState.value.manualSaveInFlight)
+    }
+
+    @Test
+    fun roleOnlyAccessProjectionCannotInvalidateManualSettlement() = recurringTest {
+        val accessFlow = MutableStateFlow(planAccess(canModify = true))
+        val existing = item(publicId = "rec-role-change", merchant = "房租")
+        val pendingUpdate = CompletableDeferred<Result<RecurringSaveOutcome>>()
+        val updated = existing.copy(rowVersion = 2, baselineAmountCents = 360000)
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(existing)),
+            activeAccessFlow = accessFlow,
+        )
+        fake.updateResponder = { pendingUpdate.await() }
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        val attemptId = vm.saveManual(
+            RecurringManualSaveCommand.Edit(
+                existing,
+                RecurringItemPatch(baselineAmountCents = updated.baselineAmountCents),
+            ),
+        )
+        advanceUntilIdle()
+        accessFlow.value = planAccess(canModify = false)
+        advanceUntilIdle()
+
+        assertEquals(false, vm.uiState.value.canModify)
+        assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
+        assertEquals(RecurringManualSaveSettlement.InFlight, vm.uiState.value.manualSaveFeedback?.settlement)
+
+        pendingUpdate.complete(Result.success(RecurringSaveOutcome.Synced(updated)))
+        advanceUntilIdle()
+
+        assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
+        assertEquals(RecurringManualSaveSettlement.Accepted, vm.uiState.value.manualSaveFeedback?.settlement)
+        assertEquals(false, vm.uiState.value.canModify)
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class RecurringViewModelFailureRecoveryTest {
     @Test
     fun repeatedReadonlyGuardsPublishDistinctManualAttempts() = recurringTest {
         val fake = FakeRecurringActions(activeAccessFlow = flowOf(null))
@@ -452,6 +527,17 @@ class RecurringViewModelMutationTest {
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.itemsLoadState)
         assertEquals(true, vm.uiState.value.manualSaveFeedback?.requiresOwnerReload)
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(null, vm.uiState.value.message)
+        assertEquals(MessageTone.Neutral, vm.uiState.value.messageTone)
+        assertEquals(
+            true,
+            vm.uiState.value.manualSaveFeedback?.requiresOwnerReload,
+            "ordinary page refresh clears stale copy without stealing the editor's conflict receipt",
+        )
     }
 
     @Test
@@ -555,6 +641,7 @@ private class FakeRecurringActions private constructor(
     var updateResponder: (suspend () -> Result<RecurringSaveOutcome>)?
         get() = manual.updateResponder
         set(value) { manual.updateResponder = value }
+    val updateCalls: Int get() = manual.updateCalls
     val confirmCalls: Int get() = lifecycle.confirmCalls
     val createCalls: Int get() = manual.createCalls
     val restoreCall: Pair<String, Long>? get() = lifecycle.restoreCall
@@ -593,6 +680,8 @@ private class FakeRecurringManualActions(
     var updateResponder: (suspend () -> Result<RecurringSaveOutcome>)? = null
     var createCalls: Int = 0
         private set
+    var updateCalls: Int = 0
+        private set
 
     override fun observePendingIntents(): Flow<List<RecurringPendingIntent>> = pendingIntentsFlow
     override suspend fun createAllowingOffline(
@@ -606,7 +695,10 @@ private class FakeRecurringManualActions(
         expectedBinding: LogicalSessionBinding,
         baseline: RecurringItem,
         patch: RecurringItemPatch,
-    ): Result<RecurringSaveOutcome> = updateResponder?.invoke() ?: updateResult
+    ): Result<RecurringSaveOutcome> {
+        updateCalls += 1
+        return updateResponder?.invoke() ?: updateResult
+    }
 }
 
 private class FakeRecurringLifecycleActions(

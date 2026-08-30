@@ -67,7 +67,7 @@ fun RecurringScreen(
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
     var selectedTab by rememberSaveable { mutableStateOf(recurringDefaultTab) }
-    var editorTarget by remember { mutableStateOf<RecurringEditorTarget?>(null) }
+    var editorTarget by remember(state.editorEpoch) { mutableStateOf<RecurringEditorTarget?>(null) }
     val derived = recurringScreenDerived(state, selectedTab)
     val hasReadableData = recurringHasReadableData(state)
     val callbacks = RecurringScreenCallbacks(
@@ -117,7 +117,13 @@ fun RecurringScreen(
         ),
     ) {
         recurringOverviewSection(state, derived, currencyDisplay, callbacks)
-        recurringRegistrySection(derived, currencyDisplay, actions, callbacks)
+        recurringRegistrySection(
+            derived,
+            currencyDisplay,
+            actions,
+            callbacks,
+            editEnabled = !state.manualSaveInFlight,
+        )
     }
 
     RecurringEditorSheetHost(
@@ -196,6 +202,7 @@ private fun LazyListScope.recurringOverviewSection(
                 modifier = Modifier.fillMaxWidth(),
                 text = stringResource(R.string.recurring_add_cta),
                 icon = Icons.Filled.Add,
+                enabled = !state.manualSaveInFlight,
                 onClick = callbacks.onCreate,
             )
         }
@@ -216,6 +223,7 @@ private fun LazyListScope.recurringRegistrySection(
     currencyDisplay: CurrencyDisplay,
     actions: RecurringScreenActions,
     callbacks: RecurringScreenCallbacks,
+    editEnabled: Boolean,
 ) {
     item {
         RecurringTabRow(
@@ -231,6 +239,7 @@ private fun LazyListScope.recurringRegistrySection(
                 section = derived.itemSection,
                 currencyDisplay = currencyDisplay,
                 canModify = derived.canModify,
+                editEnabled = editEnabled,
             ),
             onRetry = actions.onRefresh,
             onEdit = callbacks.onEdit,

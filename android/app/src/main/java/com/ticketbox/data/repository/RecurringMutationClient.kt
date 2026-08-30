@@ -201,15 +201,15 @@ private fun RecurringItemPatch.toWireRequest(rowVersion: Long): RecurringItemUpd
 
 private fun validateDraft(draft: RecurringItemDraft): String? = when {
     draft.merchant.isBlank() -> "recurring_merchant_required"
-    draft.baselineAmountCents <= 0 -> "recurring_amount_invalid"
+    draft.baselineAmountCents <= 0 -> "amount_invalid"
     else -> null
 }
 
 private fun validatePatch(baseline: RecurringItem, patch: RecurringItemPatch): String? = when {
     baseline.publicId.isBlank() -> "recurring_item_not_found"
-    baseline.rowVersion < 1 -> "recurring_version_invalid"
+    baseline.rowVersion < 1 -> "state_conflict"
     patch.merchant != null && patch.merchant.isBlank() -> "recurring_merchant_required"
-    patch.baselineAmountCents != null && patch.baselineAmountCents <= 0 -> "recurring_amount_invalid"
+    patch.baselineAmountCents != null && patch.baselineAmountCents <= 0 -> "amount_invalid"
     patch.merchant == null && patch.baselineAmountCents == null && !patch.nextExpectedDate.changed ->
         "recurring_item_no_changes"
     else -> null

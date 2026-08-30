@@ -46,6 +46,7 @@ internal data class RecurringEditorFormState(
     val dateIso: String?,
     val showDatePicker: Boolean,
     val awaiting: Boolean,
+    val draftEnabled: Boolean,
     val primaryText: String,
     val primaryEnabled: Boolean,
 )
@@ -95,7 +96,7 @@ internal fun RecurringEditorForm(
                     label = stringResource(R.string.recurring_form_merchant_label),
                     value = state.merchant,
                     placeholder = stringResource(R.string.recurring_form_merchant_placeholder),
-                    enabled = !state.awaiting,
+                    enabled = state.draftEnabled,
                 ),
                 actions = AppTextInputActions(onValueChange = callbacks.onMerchant),
                 modifier = Modifier.fillMaxWidth(),
@@ -116,14 +117,14 @@ internal fun RecurringEditorForm(
                 currency = state.currency,
                 value = state.amountText,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
-                enabled = !state.awaiting,
+                enabled = state.draftEnabled,
                 isError = feedback.errorText == stringResource(R.string.recurring_form_error_amount),
             ),
             actions = AppAmountInputActions(onValueChange = callbacks.onAmount),
         )
         RecurringDateField(
             dateIso = state.dateIso,
-            enabled = !state.awaiting,
+            enabled = state.draftEnabled,
             onPick = callbacks.date.onPick,
             onClear = callbacks.date.onClear,
         )

@@ -31,7 +31,11 @@ data class RecurringUiState(
     val candidatesLoadState: RecurringListLoadState = RecurringListLoadState.Unknown,
     val canModify: Boolean = true,
     val manualSaveFeedback: RecurringManualSaveFeedback? = null,
-)
+    val editorEpoch: Long = 0,
+) {
+    val manualSaveInFlight: Boolean
+        get() = manualSaveFeedback?.settlement == RecurringManualSaveSettlement.InFlight
+}
 
 data class RecurringDuplicateConflict(
     val publicId: String,
@@ -57,15 +61,26 @@ class RecurringViewModel(
     private var activeCanModify = false
     private var observedPendingKeys: Set<String>? = null
     private var manualSaveSequence = 0L
+    private var activeManualAttemptId: Long? = null
+    private var editorEpoch = 0L
 
     init {
         viewModelScope.launch {
             repository.observeActiveLedgerAccess()
                 .distinctUntilChanged()
                 .collect { access ->
-                    activeBinding = access?.binding
+                    val nextBinding = access?.binding
+                    val bindingChanged = activeBinding != nextBinding
                     activeCanModify = access?.canModify ?: false
+                    if (!bindingChanged) {
+                        _uiState.update { it.copy(canModify = activeCanModify) }
+                        return@collect
+                    }
+                    activeBinding = nextBinding
                     requestGeneration += 1
+                    refreshGeneration += 1
+                    activeManualAttemptId = null
+                    editorEpoch += 1
                     _uiState.value = RecurringUiState(
                         loading = access != null,
                         itemsLoadState = if (access == null) {
@@ -79,6 +94,7 @@ class RecurringViewModel(
                             RecurringListLoadState.Loading
                         },
                         canModify = access?.canModify ?: false,
+                        editorEpoch = editorEpoch,
                     )
                     if (access != null) refresh()
                 }
@@ -186,8 +202,10 @@ class RecurringViewModel(
     }
 
     fun saveManual(command: RecurringManualSaveCommand): Long {
+        activeManualAttemptId?.let { return it }
         val attemptId = ++manualSaveSequence
         val binding = manualBindingOrReject(attemptId) ?: return attemptId
+        activeManualAttemptId = attemptId
         val generation = requestGeneration
         refreshGeneration += 1
         viewModelScope.launch {
@@ -209,7 +227,11 @@ class RecurringViewModel(
                 is RecurringManualSaveCommand.Edit ->
                     repository.updateAllowingOffline(binding, command.baseline, command.patch)
             }
-            if (requestGeneration != generation) return@launch
+            if (requestGeneration != generation) {
+                if (activeManualAttemptId == attemptId) activeManualAttemptId = null
+                return@launch
+            }
+            if (activeManualAttemptId == attemptId) activeManualAttemptId = null
             refreshGeneration += 1
             result.fold(
                 onSuccess = { outcome ->
@@ -377,7 +399,7 @@ private fun RecurringUiState.withManualSaveOutcome(
 }
 
 private fun RecurringUiState.shouldKeepMutationFeedback(explicit: Boolean): Boolean =
-    explicit || duplicateConflict != null || manualSaveFeedback?.requiresOwnerReload == true
+    explicit || duplicateConflict != null
 
 private fun <T> Result<T>.toRecurringListLoadState(): RecurringListLoadState =
     if (isSuccess) RecurringListLoadState.Loaded else RecurringListLoadState.Failed

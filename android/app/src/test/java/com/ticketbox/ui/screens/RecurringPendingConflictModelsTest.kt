@@ -8,9 +8,11 @@ import com.ticketbox.data.repository.RecurringPendingState
 import com.ticketbox.ui.screens.recurring.RecurringConflictAction
 import com.ticketbox.ui.screens.recurring.RecurringEditField
 import com.ticketbox.ui.screens.recurring.RecurringPendingChange
+import com.ticketbox.ui.screens.recurring.RecurringRebaseStage
 import com.ticketbox.ui.screens.recurring.RecurringSubmitSettle
 import com.ticketbox.ui.screens.recurring.buildRecurringItemPatch
 import com.ticketbox.ui.screens.recurring.rebaseRecurringEditorDraft
+import com.ticketbox.ui.screens.recurring.recurringEditorDraftEnabled
 import com.ticketbox.ui.screens.recurring.recurringPendingKindLabelRes
 import com.ticketbox.ui.screens.recurring.recurringRowCapabilities
 import com.ticketbox.ui.screens.recurring.recurringSubmitStep
@@ -221,6 +223,11 @@ class RecurringPendingConflictModelsTest {
             nextExpectedDate = stale.nextExpectedDate,
         )
         assertEquals(setOf(RecurringEditField.Amount), overlapping.overlappingFields)
+
+        assertEquals(false, recurringEditorDraftEnabled(awaiting = false, RecurringRebaseStage.LoadingOwner))
+        assertEquals(false, recurringEditorDraftEnabled(awaiting = false, RecurringRebaseStage.OwnerUnavailable))
+        assertEquals(true, recurringEditorDraftEnabled(awaiting = false, RecurringRebaseStage.Ready))
+        assertEquals(false, recurringEditorDraftEnabled(awaiting = true, RecurringRebaseStage.Ready))
     }
 
     @Test

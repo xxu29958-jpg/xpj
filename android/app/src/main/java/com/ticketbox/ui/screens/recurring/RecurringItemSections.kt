@@ -104,6 +104,12 @@ internal data class RecurringItemsCardState(
     val section: RecurringListSectionModel<RecurringItem>,
     val currencyDisplay: CurrencyDisplay,
     val canModify: Boolean,
+    val editEnabled: Boolean,
+)
+
+private data class RecurringItemInteraction(
+    val editEnabled: Boolean,
+    val onEdit: (RecurringItem) -> Unit,
 )
 
 @Composable
@@ -115,32 +121,13 @@ internal fun RecurringItemsCard(
 ) {
     val visuals = LocalThemeVisuals.current
     val items = state.section.rows
+    val interaction = RecurringItemInteraction(state.editEnabled, onEdit)
     AppSectionGroup(
         contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.recurring_items_card_title, state.title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                )
-                Text(
-                    text = when (state.section.bodyState) {
-                        ReadableListBodyState.Loading -> stringResource(R.string.recurring_items_card_count_loading)
-                        ReadableListBodyState.LoadFailed -> stringResource(R.string.recurring_items_card_count_unavailable)
-                        ReadableListBodyState.Empty,
-                        ReadableListBodyState.Content -> stringResource(R.string.recurring_items_card_count, items.size)
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
+            RecurringItemsCardHeader(state, items.size)
             when (state.section.bodyState) {
                 ReadableListBodyState.LoadFailed -> AppErrorState(
                     title = stringResource(R.string.recurring_items_load_failed_title),
@@ -163,13 +150,38 @@ internal fun RecurringItemsCard(
                             item = item,
                             currencyDisplay = state.currencyDisplay,
                             canModify = state.canModify,
-                            onEdit = onEdit,
+                            interaction = interaction,
                             actions = actions,
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RecurringItemsCardHeader(state: RecurringItemsCardState, itemCount: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.recurring_items_card_title, state.title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+        Text(
+            text = when (state.section.bodyState) {
+                ReadableListBodyState.Loading -> stringResource(R.string.recurring_items_card_count_loading)
+                ReadableListBodyState.LoadFailed -> stringResource(R.string.recurring_items_card_count_unavailable)
+                ReadableListBodyState.Empty,
+                ReadableListBodyState.Content -> stringResource(R.string.recurring_items_card_count, itemCount)
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+        )
     }
 }
 
@@ -182,7 +194,7 @@ private fun RecurringItemRow(
     item: RecurringItem,
     currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
-    onEdit: (RecurringItem) -> Unit,
+    interaction: RecurringItemInteraction,
     actions: RecurringItemActions,
 ) {
     val meta = recurringItemMeta(item)
@@ -208,7 +220,7 @@ private fun RecurringItemRow(
                     RecurringRowActions(
                         modifier = actionModifier,
                         item = item,
-                        onEdit = onEdit,
+                        interaction = interaction,
                         actions = actions,
                     )
                 },
@@ -267,7 +279,7 @@ private fun recurringNextDateText(meta: RecurringItemMeta): String =
 private fun RecurringRowActions(
     modifier: Modifier = Modifier,
     item: RecurringItem,
-    onEdit: (RecurringItem) -> Unit,
+    interaction: RecurringItemInteraction,
     actions: RecurringItemActions,
 ) {
     val capabilities = recurringRowCapabilities(item.status)
@@ -285,7 +297,7 @@ private fun RecurringRowActions(
                 RecurringRowActionButtons(
                     item = item,
                     capabilities = capabilities,
-                    onEdit = onEdit,
+                    interaction = interaction,
                     actions = actions,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -299,7 +311,7 @@ private fun RecurringRowActions(
                 RecurringRowActionButtons(
                     item = item,
                     capabilities = capabilities,
-                    onEdit = onEdit,
+                    interaction = interaction,
                     actions = actions,
                     modifier = Modifier,
                 )
@@ -312,12 +324,16 @@ private fun RecurringRowActions(
 private fun RecurringRowActionButtons(
     item: RecurringItem,
     capabilities: RecurringRowCapabilities,
-    onEdit: (RecurringItem) -> Unit,
+    interaction: RecurringItemInteraction,
     actions: RecurringItemActions,
     modifier: Modifier = Modifier,
 ) {
     if (capabilities.editable) {
-        TextButton(modifier = modifier, onClick = { onEdit(item) }) {
+        TextButton(
+            modifier = modifier,
+            enabled = interaction.editEnabled,
+            onClick = { interaction.onEdit(item) },
+        ) {
             Icon(
                 Icons.Filled.Edit,
                 contentDescription = stringResource(R.string.recurring_action_edit_description),
