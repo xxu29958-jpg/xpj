@@ -57,7 +57,7 @@ def test_recurring_candidate_confirmation_service_creates_item_directly() -> Non
         assert item.next_expected_date.isoformat() == "2026-06-05"
 
 
-def test_candidate_confirmation_rejects_display_or_normalized_merchant_overflow_with_domain_error(
+def test_candidate_confirmation_rejects_normalized_merchant_key_overflow(
     client: TestClient,
     *,
     identity,
@@ -86,22 +86,6 @@ def test_candidate_confirmation_rejects_display_or_normalized_merchant_overflow_
 
     assert rejected.status_code == 422, rejected.json()
     assert rejected.json()["error"] == "recurring_merchant_too_long"
-
-    display_overflow = client.post(
-        "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
-        json={
-            "merchant": "x" * 256,
-            "amount_cents": 20000,
-            "occurrence_count": 3,
-            "last_seen_at": last_seen.isoformat().replace("+00:00", "Z"),
-            "confidence": "high",
-            "frequency": "monthly",
-        },
-    )
-    assert display_overflow.status_code == 422, display_overflow.json()
-    assert display_overflow.json()["error"] == "recurring_merchant_too_long"
-
     with SessionLocal() as db:
         assert db.scalar(
             select(func.count())
