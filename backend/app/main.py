@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+import app.routes.web_library as web_library
 from app.auth import get_current_app_context
 from app.config import DATA_ROOT, get_settings
 from app.database import get_db, init_db, wait_for_db
@@ -87,7 +88,6 @@ from app.routes import (
     web_import_export,
     web_inbox_capture,
     web_income_plans,
-    web_library,
     web_media,
     web_merchants,
     web_pending,

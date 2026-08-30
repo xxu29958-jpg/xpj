@@ -92,6 +92,8 @@ class UpdateCategoryRuleDispatcher(
                 // lands — retry on the next tick, don't drop.
                 "idempotency_key_in_progress" in body ->
                     DispatchResult.RetryableFailure(message.ifEmpty { "idempotency key in progress" })
+                "rule_category_deleted" in body ->
+                    DispatchResult.Failure("rule_category_deleted")
                 // Other 409s are structural and belong in Discarded.
                 else -> DispatchResult.Discarded(message)
             }

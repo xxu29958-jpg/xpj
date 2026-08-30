@@ -443,16 +443,18 @@ internal val syncStatusMutationLabelResources = mapOf(
 /** Translate known outbox error markers; never expose raw transport or engine errors to users. */
 @Composable
 private fun friendlyLastError(raw: String?, fallback: String): String {
+    val resource = syncStatusKnownErrorMessageRes(raw) ?: return fallback
+    return stringResource(resource)
+}
+
+@StringRes
+internal fun syncStatusKnownErrorMessageRes(raw: String?): Int? {
     val text = raw?.trim().orEmpty()
-    if (text.isEmpty()) return fallback
     return when {
-        text.startsWith("max_attempts_exceeded") -> stringResource(R.string.sync_status_error_max_attempts)
-        text.startsWith("no_dispatcher_registered") -> stringResource(R.string.sync_status_error_no_dispatcher)
-        text.startsWith("outbox_row_expired") -> stringResource(R.string.sync_status_error_expired)
-        text == "session_boundary_aborted" -> fallback
-        text == "manual_retry" -> fallback
-        text == "drain cancelled mid-dispatch" -> fallback
-        text == "recovered_from_stuck_in_flight" -> fallback
-        else -> fallback
+        text.startsWith("max_attempts_exceeded") -> R.string.sync_status_error_max_attempts
+        text.startsWith("no_dispatcher_registered") -> R.string.sync_status_error_no_dispatcher
+        text.startsWith("outbox_row_expired") -> R.string.sync_status_error_expired
+        text.startsWith("rule_category_deleted") -> R.string.sync_status_error_rule_category_deleted
+        else -> null
     }
 }
