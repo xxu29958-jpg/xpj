@@ -2,9 +2,11 @@ package com.ticketbox.ui.screens.recurring
 
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
@@ -18,12 +20,6 @@ import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringManualSaveFeedback
 import com.ticketbox.viewmodel.RecurringUiState
 
-/** 编辑器打开目标：新建，或编辑某条已发布项（active/paused 才会进来，archived 不给编辑）。 */
-internal sealed interface RecurringEditorTarget {
-    data object Create : RecurringEditorTarget
-    data class Edit(val item: RecurringItem) : RecurringEditorTarget
-}
-
 internal data class RecurringEditorEnvironment(
     val currencyDisplay: CurrencyDisplay,
     val conflict: RecurringConflictModel?,
@@ -35,21 +31,52 @@ internal data class RecurringEditorEnvironment(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RecurringEditorSheetHost(
-    target: RecurringEditorTarget?,
+    editor: RecurringEditorState?,
     uiState: RecurringUiState,
     environment: RecurringEditorEnvironment,
     actions: RecurringItemActions,
 ) {
-    if (target == null) return
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (editor == null) return
+    // Only the VM flag needs updated-state capture; session.submitUi.awaiting is
+    // snapshot-backed, so callbacks read it live at invocation time.
+    val vmSaveInFlight = rememberUpdatedState(uiState.manualSaveInFlight)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { targetValue ->
+            recurringEditorSheetAllowsTransition(
+                session = editor.session,
+                manualSaveInFlight = vmSaveInFlight.value,
+                targetValue = targetValue,
+            )
+        },
+    )
+    val submitUi = editor.session.submitUi
+    // A Hidden transition authorized immediately before this attempt will not
+    // re-run confirmValueChange when the attempt flips to awaiting. Reverse it
+    // once for this attempt so a failed settlement cannot strand the draft and
+    // error behind a hidden sheet. Settlement is deliberately not an effect key:
+    // awaiting=false must neither cancel an in-flight show() nor force later opens.
+    LaunchedEffect(submitUi.attemptId) {
+        if (
+            submitUi.attemptId != null &&
+            recurringEditorSheetNeedsAttemptRescue(
+                awaiting = submitUi.awaiting,
+                currentValue = sheetState.currentValue,
+                targetValue = sheetState.targetValue,
+            )
+        ) {
+            sheetState.show()
+        }
+    }
     ModalBottomSheet(
         onDismissRequest = {
-            if (!uiState.manualSaveInFlight) environment.onDismiss()
+            val sessionAwaiting = editor.session.submitUi.awaiting
+            if (!sessionAwaiting && !vmSaveInFlight.value) environment.onDismiss()
         },
         sheetState = sheetState,
     ) {
         RecurringEditorSheet(
-            target = target,
+            session = editor.session,
             uiState = uiState,
             actions = actions,
             environment = environment,
@@ -64,14 +91,13 @@ internal fun RecurringEditorSheetHost(
  */
 @Composable
 internal fun RecurringEditorSheet(
-    target: RecurringEditorTarget,
+    session: RecurringEditorSession,
     uiState: RecurringUiState,
     actions: RecurringItemActions,
     environment: RecurringEditorEnvironment,
 ) {
     // 与 IncomePlan 表单同一约定：display home 仅作展示兜底，写面由 VM 账本 binding 守门。
     val currency = environment.currencyDisplay.homeCurrency
-    val session = rememberRecurringEditorSession(target, currency)
     val ownerState = recurringEditorOwnerState(session, uiState)
     RecurringEditorRebaseEffect(session, ownerState, uiState.itemsLoadState, currency)
     RecurringSubmitSettleEffect(
@@ -81,6 +107,22 @@ internal fun RecurringEditorSheet(
     )
     RecurringEditorContent(session, ownerState, actions, environment)
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun recurringEditorSheetAllowsTransition(
+    session: RecurringEditorSession,
+    manualSaveInFlight: Boolean,
+    targetValue: SheetValue,
+): Boolean = targetValue != SheetValue.Hidden ||
+    !(session.submitUi.awaiting || manualSaveInFlight)
+
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun recurringEditorSheetNeedsAttemptRescue(
+    awaiting: Boolean,
+    currentValue: SheetValue,
+    targetValue: SheetValue,
+): Boolean = awaiting &&
+    (currentValue == SheetValue.Hidden || targetValue == SheetValue.Hidden)
 
 @Composable
 private fun RecurringEditorRebaseEffect(
@@ -92,15 +134,21 @@ private fun RecurringEditorRebaseEffect(
     LaunchedEffect(ownerState.conflict?.attemptId, ownerLoadState, ownerState.freshOwner?.rowVersion) {
         val conflict = ownerState.conflict ?: return@LaunchedEffect
         val previousBaseline = session.editing ?: return@LaunchedEffect
-        if (session.rebaseUi?.attemptId == conflict.attemptId) return@LaunchedEffect
         if (ownerLoadState != RecurringListLoadState.Loaded || !ownerState.ownerIsFresh) return@LaunchedEffect
         val parsedAmount = parseAmountCents(session.amountText, currency) ?: return@LaunchedEffect
+        val previousOverlaps = session.rebaseUi
+            ?.takeIf { it.attemptId == conflict.attemptId }
+            ?.overlappingFields
+            .orEmpty()
         val rebase = rebaseRecurringEditorDraft(
             previousBaseline = previousBaseline,
             freshOwner = checkNotNull(ownerState.freshOwner),
-            merchant = session.merchant,
-            baselineAmountCents = parsedAmount,
-            nextExpectedDate = session.dateIso,
+            draft = RecurringEditorRebaseDraft(
+                merchant = session.merchant,
+                baselineAmountCents = parsedAmount,
+                nextExpectedDate = session.dateIso,
+                previousOverlappingFields = previousOverlaps,
+            ),
         )
         session.applyRebase(rebase, conflict.attemptId, currency)
     }
@@ -140,10 +188,37 @@ private fun RecurringEditorContent(
             errorText = session.submitUi.error,
             conflict = environment.conflict,
             conflictStatus = recurringConflictStatus(ownerState.stage),
+            overlaps = session.overlapComparisons(ownerState, currency),
             onConflictAction = environment.onConflictAction,
         ),
     )
 }
+
+private fun RecurringEditorSession.overlapComparisons(
+    ownerState: RecurringEditorOwnerState,
+    currency: CurrencyCode,
+): List<RecurringOverlapComparison> {
+    if (ownerState.stage != RecurringRebaseStage.Overlapping) return emptyList()
+    // 展示面优先新鲜 owner；OCC 保存基线仍是 session.editing。
+    val freshOwner = recurringOverlapDisplayOwner(ownerState.freshOwner, editing) ?: return emptyList()
+    val fields = rebaseUi?.overlappingFields.orEmpty()
+    return recurringOverlapComparisons(
+        freshOwner = freshOwner,
+        overlappingFields = fields,
+        draft = RecurringOverlapDraft(
+            merchant = merchant,
+            amountCents = parseAmountCents(amountText, currency),
+            amountText = amountText,
+            nextExpectedDate = dateIso,
+        ),
+    )
+}
+
+/** overlap「当前记录」展示面：优先新鲜 owner，fallback 会话 OCC 基线。 */
+internal fun recurringOverlapDisplayOwner(
+    freshOwner: RecurringItem?,
+    editingBaseline: RecurringItem?,
+): RecurringItem? = freshOwner ?: editingBaseline
 
 @Composable
 private fun recurringEditorCallbacks(

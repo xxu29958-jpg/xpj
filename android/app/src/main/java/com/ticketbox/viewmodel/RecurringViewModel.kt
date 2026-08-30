@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class RecurringUiState(
     val loading: Boolean = false,
@@ -32,6 +33,7 @@ data class RecurringUiState(
     val canModify: Boolean = true,
     val manualSaveFeedback: RecurringManualSaveFeedback? = null,
     val editorEpoch: Long = 0,
+    val editorRuntimeId: String = "",
 ) {
     val manualSaveInFlight: Boolean
         get() = manualSaveFeedback?.settlement == RecurringManualSaveSettlement.InFlight
@@ -53,7 +55,10 @@ class RecurringViewModel(
     private val repository: RecurringActions,
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(RecurringUiState(canModify = false))
+    private val editorRuntimeId = UUID.randomUUID().toString()
+    private val _uiState = MutableStateFlow(
+        RecurringUiState(canModify = false, editorRuntimeId = editorRuntimeId),
+    )
     val uiState: StateFlow<RecurringUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0
     private var refreshGeneration = 0
@@ -95,6 +100,7 @@ class RecurringViewModel(
                         },
                         canModify = access?.canModify ?: false,
                         editorEpoch = editorEpoch,
+                        editorRuntimeId = editorRuntimeId,
                     )
                     if (access != null) refresh()
                 }
@@ -232,25 +238,24 @@ class RecurringViewModel(
                 return@launch
             }
             if (activeManualAttemptId == attemptId) activeManualAttemptId = null
+            val displacedOwnerRefresh = _uiState.value.ownerRefreshInFlight
             refreshGeneration += 1
             result.fold(
                 onSuccess = { outcome ->
-                    when (outcome) {
-                        is RecurringSaveOutcome.Synced -> {
-                            _uiState.update { state ->
-                                state.withManualSaveOutcome(outcome, activeCanModify, attemptId)
-                            }
-                            onDataChanged()
-                            refreshInternal(preserveMutationFeedback = true)
-                        }
-                        is RecurringSaveOutcome.Queued -> {
-                            _uiState.update { state ->
-                                state.withManualSaveOutcome(outcome, activeCanModify, attemptId)
-                            }
-                        }
+                    _uiState.update { state ->
+                        state.withManualSaveOutcome(outcome, activeCanModify, attemptId)
+                    }
+                    outcome.finishManualSave(displacedOwnerRefresh, onDataChanged) {
+                        refreshInternal(preserveMutationFeedback = true)
                     }
                 },
-                onFailure = { error -> handleMutationFailure(error, manualAttemptId = attemptId) },
+                onFailure = { error ->
+                    handleMutationFailure(
+                        error = error,
+                        manualAttemptId = attemptId,
+                        displacedOwnerRefresh = displacedOwnerRefresh,
+                    )
+                },
             )
         }
         return attemptId
@@ -328,7 +333,11 @@ class RecurringViewModel(
         }
     }
 
-    private fun handleMutationFailure(error: Throwable, manualAttemptId: Long? = null) {
+    private fun handleMutationFailure(
+        error: Throwable,
+        manualAttemptId: Long? = null,
+        displacedOwnerRefresh: Boolean = false,
+    ) {
         val conflict = error.toRecurringDuplicateConflict()
         val repositoryErrorCode = (error as? RepositoryException)?.errorCode
         val stateConflict = repositoryErrorCode == "state_conflict"
@@ -356,13 +365,26 @@ class RecurringViewModel(
                 } ?: it.manualSaveFeedback,
             )
         }
-        if (refreshOwner) {
-            // A conflict response proves this screen's snapshot is stale.
-            // Refresh the existing owner while keeping the failed mutation's
-            // feedback and any editor draft visible for an informed retry.
+        if (refreshOwner || displacedOwnerRefresh) {
+            // A conflict requires a fresh owner; a displaced Loading owner
+            // requires a replacement. Stable Loaded/Empty owners are left
+            // untouched so an offline failure cannot manufacture LoadFailed.
             refreshInternal(preserveMutationFeedback = true)
         }
     }
+}
+
+private val RecurringUiState.ownerRefreshInFlight: Boolean
+    get() = itemsLoadState == RecurringListLoadState.Loading ||
+        candidatesLoadState == RecurringListLoadState.Loading
+
+private fun RecurringSaveOutcome.finishManualSave(
+    displacedOwnerRefresh: Boolean,
+    onSynced: () -> Unit,
+    refreshOwner: () -> Unit,
+) {
+    if (this is RecurringSaveOutcome.Synced) onSynced()
+    if (this is RecurringSaveOutcome.Synced || displacedOwnerRefresh) refreshOwner()
 }
 
 private fun RecurringUiState.withManualSaveOutcome(

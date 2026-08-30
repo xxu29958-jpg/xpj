@@ -1,13 +1,10 @@
 package com.ticketbox.ui.screens.recurring
 
 import androidx.annotation.StringRes
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
@@ -103,28 +100,23 @@ internal class RecurringEditorSession internal constructor(
     }
 }
 
-@Composable
-internal fun rememberRecurringEditorSession(
-    target: RecurringEditorTarget,
+internal fun newRecurringEditorSession(
+    baseline: RecurringItem?,
     currency: CurrencyCode,
 ): RecurringEditorSession {
-    val baseline = (target as? RecurringEditorTarget.Edit)?.item
-    val fieldKey = baseline?.publicId ?: "create"
     val draft = RecurringDraftStates(
-        editing = remember(fieldKey) { mutableStateOf(baseline) },
-        merchant = rememberSaveable(fieldKey) { mutableStateOf(baseline?.merchant.orEmpty()) },
-        amountText = rememberSaveable(fieldKey) {
-            mutableStateOf(baseline?.let { formatAmountInput(it.baselineAmountCents, currency) } ?: "")
-        },
-        dateIso = rememberSaveable(fieldKey) {
-            mutableStateOf(baseline?.nextExpectedDate ?: recurringDefaultNextDate())
-        },
-        dateTouched = rememberSaveable(fieldKey) { mutableStateOf(false) },
+        editing = mutableStateOf(baseline),
+        merchant = mutableStateOf(baseline?.merchant.orEmpty()),
+        amountText = mutableStateOf(
+            baseline?.let { formatAmountInput(it.baselineAmountCents, currency) } ?: "",
+        ),
+        dateIso = mutableStateOf(baseline?.nextExpectedDate ?: recurringDefaultNextDate()),
+        dateTouched = mutableStateOf(false),
     )
     val interaction = RecurringInteractionStates(
-        showDatePicker = rememberSaveable(fieldKey) { mutableStateOf(false) },
-        submitUi = remember(fieldKey) { mutableStateOf(RecurringSubmitUi()) },
-        rebaseUi = remember(fieldKey) { mutableStateOf(null) },
+        showDatePicker = mutableStateOf(false),
+        submitUi = mutableStateOf(RecurringSubmitUi()),
+        rebaseUi = mutableStateOf(null),
     )
     return RecurringEditorSession(draft, interaction)
 }
@@ -168,6 +160,7 @@ private fun recurringRebaseStage(
     ownerIsFresh: Boolean,
 ): RecurringRebaseStage {
     ownerConflict ?: return RecurringRebaseStage.None
+    if (ownerIsFresh) return RecurringRebaseStage.LoadingOwner
     if (rebaseUi?.attemptId == ownerConflict.attemptId) {
         return if (rebaseUi.overlappingFields.isEmpty()) {
             RecurringRebaseStage.Ready
@@ -177,7 +170,6 @@ private fun recurringRebaseStage(
     }
     return when {
         ownerLoadState == RecurringListLoadState.Loading -> RecurringRebaseStage.LoadingOwner
-        ownerLoadState == RecurringListLoadState.Loaded && ownerIsFresh -> RecurringRebaseStage.LoadingOwner
         else -> RecurringRebaseStage.OwnerUnavailable
     }
 }

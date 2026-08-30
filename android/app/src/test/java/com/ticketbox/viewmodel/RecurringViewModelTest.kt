@@ -376,6 +376,11 @@ class RecurringViewModelMutationTest {
         pendingUpdate.complete(Result.failure(RepositoryException("update failed")))
         advanceUntilIdle()
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+        assertEquals(
+            RecurringListLoadState.Loaded,
+            vm.uiState.value.itemsLoadState,
+            "a failed save must replace the refresh it invalidated",
+        )
     }
 
     @Test
@@ -481,6 +486,101 @@ class RecurringViewModelAttemptOwnershipTest {
         assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
         assertEquals(RecurringManualSaveSettlement.Accepted, vm.uiState.value.manualSaveFeedback?.settlement)
         assertEquals(false, vm.uiState.value.canModify)
+    }
+
+    @Test
+    fun queuedSaveReplacesTheRefreshItInvalidated() = recurringTest {
+        val existing = item(publicId = "rec-queued-refresh", merchant = "房租")
+        val refreshItems = CompletableDeferred<Result<List<RecurringItem>>>()
+        val pending = RecurringPendingIntent(
+            kind = RecurringPendingKind.UPDATE,
+            targetId = "recurring_item:${existing.publicId}",
+            idempotencyKey = "queued-refresh-key",
+            publicId = existing.publicId,
+            baselineAmountCents = 360000,
+        )
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(existing)),
+            manual = FakeRecurringManualActions(
+                updateResult = Result.success(RecurringSaveOutcome.Queued(pending)),
+            ),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        fake.itemsResponder = { refreshItems.await() }
+
+        vm.refresh()
+        advanceUntilIdle()
+        vm.saveManual(
+            RecurringManualSaveCommand.Edit(
+                existing,
+                RecurringItemPatch(baselineAmountCents = 360000),
+            ),
+        )
+        advanceUntilIdle()
+        refreshItems.complete(Result.success(listOf(existing)))
+        advanceUntilIdle()
+
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.itemsLoadState)
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.candidatesLoadState)
+        assertEquals(UiText.res(R.string.recurring_message_queued), vm.uiState.value.message)
+        assertEquals(listOf(pending), vm.uiState.value.pendingIntents)
+    }
+
+    @Test
+    fun queuedSaveWithoutDisplacedRefreshKeepsTheLoadedEmptyOwner() = recurringTest {
+        val pending = RecurringPendingIntent(
+            kind = RecurringPendingKind.CREATE,
+            targetId = "recurring_item_create:offline-key",
+            idempotencyKey = "offline-key",
+            merchant = "宽带",
+            baselineAmountCents = 12000,
+        )
+        val fake = FakeRecurringActions(
+            manual = FakeRecurringManualActions(
+                createResult = Result.success(RecurringSaveOutcome.Queued(pending)),
+            ),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        fake.itemsResult = Result.failure(IllegalStateException("offline"))
+        fake.candidatesResult = Result.failure(IllegalStateException("offline"))
+
+        vm.saveManual(
+            RecurringManualSaveCommand.Create(
+                RecurringItemDraft("宽带", 12000, "2026-09-01"),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.itemsLoadState)
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.candidatesLoadState)
+        assertEquals(UiText.res(R.string.recurring_message_queued), vm.uiState.value.message)
+        assertEquals(listOf(pending), vm.uiState.value.pendingIntents)
+    }
+
+    @Test
+    fun failedSaveWithoutDisplacedRefreshKeepsTheLoadedEmptyOwner() = recurringTest {
+        val fake = FakeRecurringActions(
+            manual = FakeRecurringManualActions(
+                createResult = Result.failure(RepositoryException("save rejected")),
+            ),
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+        fake.itemsResult = Result.failure(IllegalStateException("offline"))
+        fake.candidatesResult = Result.failure(IllegalStateException("offline"))
+
+        vm.saveManual(
+            RecurringManualSaveCommand.Create(
+                RecurringItemDraft("宽带", 12000, "2026-09-01"),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.itemsLoadState)
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.candidatesLoadState)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
 }
 

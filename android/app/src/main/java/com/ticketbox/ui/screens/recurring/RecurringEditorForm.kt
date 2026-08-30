@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.recurring
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAmountInput
@@ -35,6 +37,7 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.design.AppSpacing
 
@@ -70,6 +73,7 @@ internal data class RecurringEditorFeedback(
     val errorText: String?,
     val conflict: RecurringConflictModel?,
     val conflictStatus: Pair<String, MessageTone>?,
+    val overlaps: List<RecurringOverlapComparison>,
     val onConflictAction: (RecurringConflictModel) -> Unit,
 )
 
@@ -147,6 +151,9 @@ private fun RecurringEditorFeedbackSlot(
         feedback.conflictStatus?.let { (text, tone) ->
             AppStatusBanner(message = UiText.raw(text), tone = tone)
         }
+        if (feedback.overlaps.isNotEmpty()) {
+            RecurringOverlapComparisonSection(feedback.overlaps, state.currency)
+        }
         AppSheetActionFeedback(
             state = AppSheetActionFeedbackState(
                 validationMessage = feedback.errorText.takeIf {
@@ -166,6 +173,75 @@ private fun RecurringEditorFeedbackSlot(
             ),
         )
     }
+}
+
+@Composable
+private fun RecurringOverlapComparisonSection(
+    comparisons: List<RecurringOverlapComparison>,
+    currency: CurrencyCode,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
+        Text(
+            text = stringResource(R.string.recurring_form_conflict_compare_title),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        comparisons.forEach { comparison ->
+            AppFormFieldGroup(label = stringResource(comparison.field.labelRes())) {
+                Text(
+                    text = stringResource(
+                        R.string.recurring_form_conflict_current_value,
+                        comparison.value.currentDisplay(currency),
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.recurring_form_conflict_draft_value,
+                        comparison.value.draftDisplay(currency),
+                    ),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+}
+
+@StringRes
+private fun RecurringEditField.labelRes(): Int = when (this) {
+    RecurringEditField.Merchant -> R.string.recurring_form_merchant_label
+    RecurringEditField.Amount -> R.string.recurring_form_amount_label
+    RecurringEditField.Date -> R.string.recurring_form_date_label
+}
+
+@Composable
+private fun RecurringOverlapValue.currentDisplay(currency: CurrencyCode): String = when (this) {
+    is RecurringOverlapValue.Text -> current
+    is RecurringOverlapValue.Amount -> formatDisplayAmount(
+        currentCents,
+        CurrencyDisplay(homeCurrency = currency),
+    )
+    is RecurringOverlapValue.RawAmount -> formatDisplayAmount(
+        currentCents,
+        CurrencyDisplay(homeCurrency = currency),
+    )
+    is RecurringOverlapValue.Date -> currentIso?.let(::recurringDisplayDate)
+        ?: stringResource(R.string.recurring_form_date_none)
+}
+
+@Composable
+private fun RecurringOverlapValue.draftDisplay(currency: CurrencyCode): String = when (this) {
+    is RecurringOverlapValue.Text -> draft
+    is RecurringOverlapValue.Amount -> formatDisplayAmount(
+        draftCents,
+        CurrencyDisplay(homeCurrency = currency),
+    )
+    is RecurringOverlapValue.RawAmount -> draftText.ifBlank {
+        stringResource(R.string.recurring_form_conflict_value_unavailable)
+    }
+    is RecurringOverlapValue.Date -> draftIso?.let(::recurringDisplayDate)
+        ?: stringResource(R.string.recurring_form_date_none)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

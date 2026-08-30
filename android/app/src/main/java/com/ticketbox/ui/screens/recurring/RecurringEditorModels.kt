@@ -21,6 +21,57 @@ internal enum class RecurringEditField {
     Date,
 }
 
+internal data class RecurringOverlapComparison(
+    val field: RecurringEditField,
+    val value: RecurringOverlapValue,
+)
+
+internal data class RecurringOverlapDraft(
+    val merchant: String,
+    val amountCents: Long?,
+    val amountText: String,
+    val nextExpectedDate: String?,
+)
+
+internal sealed interface RecurringOverlapValue {
+    data class Text(val current: String, val draft: String) : RecurringOverlapValue
+    data class Amount(val currentCents: Long, val draftCents: Long) : RecurringOverlapValue
+    data class RawAmount(val currentCents: Long, val draftText: String) : RecurringOverlapValue
+    data class Date(val currentIso: String?, val draftIso: String?) : RecurringOverlapValue
+}
+
+/** Values already available after owner refresh; no conflict payload or second fact owner is invented. */
+internal fun recurringOverlapComparisons(
+    freshOwner: RecurringItem,
+    overlappingFields: Set<RecurringEditField>,
+    draft: RecurringOverlapDraft,
+): List<RecurringOverlapComparison> = RecurringEditField.entries
+    .filter(overlappingFields::contains)
+    .map { field ->
+        RecurringOverlapComparison(
+            field = field,
+            value = when (field) {
+                RecurringEditField.Merchant -> RecurringOverlapValue.Text(
+                    current = freshOwner.merchant,
+                    draft = draft.merchant,
+                )
+                RecurringEditField.Amount -> draft.amountCents?.let { draftCents ->
+                    RecurringOverlapValue.Amount(
+                        currentCents = freshOwner.baselineAmountCents,
+                        draftCents = draftCents,
+                    )
+                } ?: RecurringOverlapValue.RawAmount(
+                    currentCents = freshOwner.baselineAmountCents,
+                    draftText = draft.amountText,
+                )
+                RecurringEditField.Date -> RecurringOverlapValue.Date(
+                    currentIso = freshOwner.nextExpectedDate,
+                    draftIso = draft.nextExpectedDate,
+                )
+            },
+        )
+    }
+
 /**
  * Safe OCC rebase for an already-open editor. User-changed fields keep the
  * draft; untouched fields adopt the fresh owner. A field is only overlapping
@@ -35,13 +86,21 @@ internal data class RecurringEditorRebase(
     val overlappingFields: Set<RecurringEditField>,
 )
 
+internal data class RecurringEditorRebaseDraft(
+    val merchant: String,
+    val baselineAmountCents: Long,
+    val nextExpectedDate: String?,
+    val previousOverlappingFields: Set<RecurringEditField> = emptySet(),
+)
+
 internal fun rebaseRecurringEditorDraft(
     previousBaseline: RecurringItem,
     freshOwner: RecurringItem,
-    merchant: String,
-    baselineAmountCents: Long,
-    nextExpectedDate: String?,
+    draft: RecurringEditorRebaseDraft,
 ): RecurringEditorRebase {
+    val merchant = draft.merchant
+    val baselineAmountCents = draft.baselineAmountCents
+    val nextExpectedDate = draft.nextExpectedDate
     val merchantTouched = merchant.trim() != previousBaseline.merchant
     val amountTouched = baselineAmountCents != previousBaseline.baselineAmountCents
     val dateTouched = nextExpectedDate != previousBaseline.nextExpectedDate
@@ -55,6 +114,13 @@ internal fun rebaseRecurringEditorDraft(
         nextExpectedDate = rebasedDate,
         dateTouched = rebasedDate != freshOwner.nextExpectedDate,
         overlappingFields = buildSet {
+            addAll(draft.previousOverlappingFields.filter { field ->
+                when (field) {
+                    RecurringEditField.Merchant -> rebasedMerchant.trim() != freshOwner.merchant
+                    RecurringEditField.Amount -> rebasedAmount != freshOwner.baselineAmountCents
+                    RecurringEditField.Date -> rebasedDate != freshOwner.nextExpectedDate
+                }
+            })
             addOverlappingMerchant(previousBaseline, freshOwner, merchant, merchantTouched)
             addOverlappingAmount(previousBaseline, freshOwner, baselineAmountCents, amountTouched)
             addOverlappingDate(previousBaseline, freshOwner, nextExpectedDate, dateTouched)
