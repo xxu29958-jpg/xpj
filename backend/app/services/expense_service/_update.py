@@ -24,6 +24,7 @@ from app.services.expense_service._helpers import (
     _expense_has_pending_fx,
 )
 from app.services.expense_service._query import get_expense, resolve_expense
+from app.services.expense_split_service import validate_current_expense_split_allocation
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.resource_audit import record_resource_action
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
@@ -107,6 +108,7 @@ def update_expense(
         expected_row_version=payload.expected_row_version,
         claimed_at=now_utc(),
     )
+    amount_before = expense.amount_cents
 
     apply_expense_fields_to_claimed_row(
         db,
@@ -114,6 +116,8 @@ def update_expense(
         tenant_id=tenant_id,
         payload=payload,
     )
+    if expense.amount_cents != amount_before:
+        validate_current_expense_split_allocation(db, expense=expense)
 
     if commit:
         db.commit()
@@ -140,6 +144,7 @@ def _claim_pending_confirmation(
     if _expense_has_pending_fx(expense):
         refresh_currency_snapshot(db, tenant_id=tenant_id, expense=expense)
     _ensure_pending_expense_can_confirm(expense)
+    validate_current_expense_split_allocation(db, expense=expense)
     db.flush()
     now = now_utc()
     claimed = claim_row_with_token(

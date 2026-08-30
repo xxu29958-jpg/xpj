@@ -8,6 +8,7 @@ import com.ticketbox.data.remote.dto.ExpenseRevisionDto
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseSplitDraft
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -68,7 +69,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     }
 
     @Test
-    fun `queued foreign-currency time correction does not reuse a rate from another date`() {
+    fun `queued foreign-currency time correction keeps the prior authoritative FX snapshot`() {
         val baseline = baselineExpense().copy(
             amountCents = 6_000L,
             homeAmountCents = 6_000L,
@@ -92,15 +93,54 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
 
         assertEquals(6_000L, projected.amountCents)
         assertEquals(6_000L, projected.homeAmountCents)
-        assertEquals(1_300L, projected.originalAmountMinor)
+        assertEquals(CurrencyCode.JPY, projected.originalCurrencyCode)
+        assertEquals("JPY", projected.originalCurrencyCodeRaw)
+        assertEquals(1_200L, projected.originalAmountMinor)
+        assertEquals("0.05", projected.exchangeRateToCny)
+        assertEquals("ready", projected.fxStatus)
+        assertEquals(baseline.expenseTime, projected.expenseTime)
     }
 
     @Test
-    fun `queued amount correction does not project home money when the raw home currency is unknown`() {
+    fun `queued currency change keeps the prior authoritative FX snapshot until replay`() {
+        val baseline = baselineExpense().copy(
+            amountCents = 6_000L,
+            homeAmountCents = 6_000L,
+            homeCurrencyCode = "CNY",
+            originalCurrencyCode = CurrencyCode.JPY,
+            originalCurrencyCodeRaw = "JPY",
+            originalAmountMinor = 1_200L,
+            exchangeRateToCny = "0.05",
+            exchangeRateDate = "2026-05-20",
+            exchangeRateSource = "provider",
+            fxStatus = "ready",
+        )
+
+        val projected = baseline.projectCorrection(
+            ExpenseCorrectionDraft(
+                reason = "币种应为美元",
+                originalCurrencyCode = CurrencyCode.USD,
+                originalAmountMinor = 1_300L,
+            ),
+        )
+
+        assertEquals(6_000L, projected.amountCents)
+        assertEquals(6_000L, projected.homeAmountCents)
+        assertEquals(CurrencyCode.JPY, projected.originalCurrencyCode)
+        assertEquals("JPY", projected.originalCurrencyCodeRaw)
+        assertEquals(1_200L, projected.originalAmountMinor)
+        assertEquals("0.05", projected.exchangeRateToCny)
+        assertEquals("2026-05-20", projected.exchangeRateDate)
+        assertEquals("provider", projected.exchangeRateSource)
+        assertEquals("ready", projected.fxStatus)
+    }
+
+    @Test
+    fun `queued amount correction does not project home money when the raw home currency is unsupported`() {
         val baseline = baselineExpense().copy(
             amountCents = 1_000L,
             homeAmountCents = 1_000L,
-            homeCurrencyCode = null,
+            homeCurrencyCode = "VND",
             originalCurrencyCode = CurrencyCode.CNY,
             originalCurrencyCodeRaw = "CNY",
             originalAmountMinor = 1_000L,
@@ -116,6 +156,31 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
 
         assertEquals(1_000L, projected.amountCents)
         assertEquals(1_000L, projected.homeAmountCents)
+    }
+
+    @Test
+    fun `queued composite amount and splits keeps the prior coherent money projection`() {
+        val baseline = baselineExpense().copy(
+            amountCents = 1_000L,
+            homeAmountCents = 1_000L,
+            homeCurrencyCode = "CNY",
+            originalCurrencyCode = CurrencyCode.CNY,
+            originalCurrencyCodeRaw = "CNY",
+            originalAmountMinor = 1_000L,
+        )
+
+        val projected = baseline.projectCorrection(
+            ExpenseCorrectionDraft(
+                reason = "金额和分摊一起修正",
+                originalCurrencyCode = CurrencyCode.CNY,
+                originalAmountMinor = 1_200L,
+                splits = listOf(ExpenseSplitDraft(memberId = 7L, amountCents = 1_200L, note = null)),
+            ),
+        )
+
+        assertEquals(1_000L, projected.amountCents)
+        assertEquals(1_000L, projected.homeAmountCents)
+        assertEquals(1_000L, projected.originalAmountMinor)
     }
 
     @Test

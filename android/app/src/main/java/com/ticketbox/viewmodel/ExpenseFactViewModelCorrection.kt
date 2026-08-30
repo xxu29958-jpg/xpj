@@ -123,7 +123,7 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
     if (!scalar.hasAny && items == null && splits == null) {
         return rejectCorrection(R.string.expense_correction_no_changes)
     }
-    return ExpenseCorrectionDraft(
+    val draft = ExpenseCorrectionDraft(
         reason = form.reason.trim(),
         originalCurrencyCode = scalar.originalCurrencyCode,
         originalAmountMinor = scalar.originalAmountMinor,
@@ -140,6 +140,10 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
         items = items,
         splits = splits,
     )
+    if (wouldOverallocateLoadedSplits(expense, draft, _uiState.value.expenseSplits)) {
+        return rejectCorrection(R.string.error_expense_split_total_exceeds_parent)
+    }
+    return draft
 }
 
 /** 提交按钮的可用性（屏幕用它做禁用态而不是错误说教）：reason 非空且不在保存中。 */

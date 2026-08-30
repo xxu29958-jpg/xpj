@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.annotation.StringRes
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -62,7 +63,7 @@ private fun formatFactValue(
 ): UiText {
     if (value == null || value == "") return UiText.res(R.string.expense_fact_timeline_value_empty)
     return when (field) {
-        "amount_cents" -> UiText.raw(formatHomeAmountSnapshot(value, currency))
+        "amount_cents" -> UiText.raw(formatHomeAmountSnapshot(value, snapshot, currency))
         "original_amount_minor" -> formatOriginalAmountSnapshot(value, snapshot)
         "expense_time" -> UiText.raw(displayDateTime(value.toString()))
         "items", "splits" -> formatLineCountSnapshot(value)
@@ -70,10 +71,28 @@ private fun formatFactValue(
     }
 }
 
-private fun formatHomeAmountSnapshot(value: Any, currency: CurrencyCode): String =
-    (value as? Number)?.toLong()?.let {
-        formatMinorAmountInput(kotlin.math.abs(it), currency)
-    } ?: value.toString()
+private fun formatHomeAmountSnapshot(
+    value: Any,
+    snapshot: Map<String, Any?>,
+    fallbackCurrency: CurrencyCode,
+): String = (value as? Number)?.toLong()?.let {
+    formatSnapshotHomeMinor(kotlin.math.abs(it), snapshot, fallbackCurrency)
+} ?: value.toString()
+
+private fun formatSnapshotHomeMinor(
+    amountMinor: Long,
+    snapshot: Map<String, Any?>,
+    fallbackCurrency: CurrencyCode,
+): String {
+    val rawHomeCurrency = snapshot["home_currency_code"]?.toString()
+        ?.trim()
+        ?.uppercase()
+        ?.takeIf(String::isNotBlank)
+        ?: fallbackCurrency.storageKey
+    val display = CurrencyDisplay.forRecord(rawHomeCurrency)
+    return display.unknownCode?.let { "$amountMinor $it" }
+        ?: formatMinorAmountInput(amountMinor, display.homeCurrency)
+}
 
 private fun formatOriginalAmountSnapshot(
     value: Any,
@@ -109,7 +128,7 @@ private fun snapshotAllocationLabel(
     }
     val remaining = runCatching { Math.subtractExact(amountCents, splitTotal) }.getOrNull() ?: return null
     if (remaining == 0L) return UiText.res(R.string.expense_fact_timeline_allocation_complete)
-    val amount = formatMinorAmountInput(kotlin.math.abs(remaining), currency)
+    val amount = formatSnapshotHomeMinor(kotlin.math.abs(remaining), snapshot, currency)
     return if (remaining > 0L) {
         UiText.res(R.string.expense_fact_timeline_allocation_remaining, amount)
     } else {

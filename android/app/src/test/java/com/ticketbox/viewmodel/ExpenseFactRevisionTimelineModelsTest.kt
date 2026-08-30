@@ -72,4 +72,48 @@ class ExpenseFactRevisionTimelineModelsTest {
             allocationChange.after,
         )
     }
+
+    @Test
+    fun `unknown snapshot home currency stays raw in amount and allocation history`() {
+        val revision = ExpenseRevision(
+            publicId = "revision-4",
+            revisionNumber = 4,
+            changeKind = "correction",
+            reason = "修正账单金额",
+            changedFields = listOf("amount_cents"),
+            before = mapOf(
+                "home_currency_code" to "VND",
+                "amount_cents" to 1_200L,
+                "splits" to listOf(mapOf("amount_cents" to 1_200L)),
+            ),
+            after = mapOf(
+                "home_currency_code" to "VND",
+                "amount_cents" to 1_300L,
+                "splits" to listOf(mapOf("amount_cents" to 1_200L)),
+            ),
+            actorAccountName = "我",
+            actorDeviceName = "手机",
+            createdAt = "2026-08-30T08:00:00Z",
+        )
+
+        val changes = listOf(revision)
+            .toTimelineEntries(CurrencyCode.CNY)
+            .single()
+            .changes
+
+        val amountChange = changes.single {
+            (it.label as? UiText.Res)?.id == R.string.expense_fact_timeline_field_amount
+        }
+        val allocationChange = changes.single {
+            (it.label as? UiText.Res)?.id == R.string.expense_fact_timeline_field_splits
+        }
+
+        assertEquals(UiText.raw("1200 VND"), amountChange.before)
+        assertEquals(UiText.raw("1300 VND"), amountChange.after)
+        assertEquals(UiText.res(R.string.expense_fact_timeline_allocation_complete), allocationChange.before)
+        assertEquals(
+            UiText.res(R.string.expense_fact_timeline_allocation_remaining, "100 VND"),
+            allocationChange.after,
+        )
+    }
 }

@@ -3,7 +3,9 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
+import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.update
@@ -44,6 +46,11 @@ internal fun ExpenseFactViewModel.publishCorrectionOutcome(
             _uiState.update {
                 it.copy(
                     expense = outcome.expense,
+                    expenseItems = projectQueuedAmountIntoItems(
+                        current = it.expenseItems,
+                        projectedAmountCents = outcome.expense.amountCents,
+                        itemsChanged = draft.items != null,
+                    ),
                     expenseSplits = projectQueuedAmountIntoSplits(
                         current = it.expenseSplits,
                         projectedAmountCents = outcome.expense.amountCents,
@@ -57,6 +64,35 @@ internal fun ExpenseFactViewModel.publishCorrectionOutcome(
             }
         }
     }
+}
+
+private fun projectQueuedAmountIntoItems(
+    current: ExpenseItems?,
+    projectedAmountCents: Long?,
+    itemsChanged: Boolean,
+): ExpenseItems? {
+    if (current == null || itemsChanged || current.parentAmountCents == projectedAmountCents) {
+        return current
+    }
+    val projectedMismatch = if (projectedAmountCents == null) {
+        null
+    } else {
+        current.itemsTotalAmountCents?.let { total ->
+            // 与 current backend response 保持同一 parent − total 语义。
+            runCatching { Math.subtractExact(projectedAmountCents, total) }.getOrNull()
+        }
+    }
+    val projectedStatus = when {
+        current.items.isEmpty() -> ItemsSumStatus.NO_ITEMS
+        projectedMismatch == null || projectedMismatch == 0L -> ItemsSumStatus.MATCHED
+        current.itemsSumStatus == ItemsSumStatus.MISMATCH_ACKNOWLEDGED -> ItemsSumStatus.MISMATCH_ACKNOWLEDGED
+        else -> ItemsSumStatus.MISMATCH_KNOWN
+    }
+    return current.copy(
+        parentAmountCents = projectedAmountCents,
+        mismatchCents = projectedMismatch,
+        itemsSumStatus = projectedStatus,
+    )
 }
 
 private fun projectQueuedAmountIntoSplits(

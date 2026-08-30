@@ -75,13 +75,27 @@ private fun ExpenseCorrectionDraft.hasMutationFields(): Boolean =
         tags != null || valueScoreChanged || regretScoreChanged || items != null || splits != null
 
 fun Expense.projectCorrection(draft: ExpenseCorrectionDraft): Expense =
-    projectCorrectionMoney(draft).projectCorrectionDetails(draft)
+    projectCorrectionMoney(draft).projectCorrectionDetails(
+        draft = draft,
+        projectExpenseTime = canProjectExpenseTimeWithoutFxRefresh(draft),
+    )
 
 private fun Expense.projectCorrectionMoney(draft: ExpenseCorrectionDraft): Expense {
-    val projectedHomeAmount = draft.amountCents ?: projectedFrozenHomeAmount(draft)
+    val changesOriginalMoney = draft.originalCurrencyCode != null || draft.originalAmountMinor != null
+    if ((changesOriginalMoney || draft.amountCents != null) && (draft.items != null || draft.splits != null)) {
+        return this
+    }
+    if (!changesOriginalMoney) {
+        val projectedHomeAmount = draft.amountCents ?: return this
+        return copy(
+            amountCents = projectedHomeAmount,
+            homeAmountCents = projectedHomeAmount,
+        )
+    }
+    val projectedHomeAmount = projectedFrozenHomeAmount(draft) ?: return this
     return copy(
-        amountCents = projectedHomeAmount ?: amountCents,
-        homeAmountCents = projectedHomeAmount ?: homeAmountCents,
+        amountCents = projectedHomeAmount,
+        homeAmountCents = projectedHomeAmount,
         originalCurrency = draft.originalCurrencyCode ?: originalCurrency,
         originalCurrencyCode = draft.originalCurrencyCode ?: originalCurrencyCode,
         originalCurrencyCodeRaw = draft.originalCurrencyCode?.storageKey ?: originalCurrencyCodeRaw,
@@ -92,9 +106,12 @@ private fun Expense.projectCorrectionMoney(draft: ExpenseCorrectionDraft): Expen
 private fun Expense.projectedFrozenHomeAmount(draft: ExpenseCorrectionDraft): Long? {
     val originalAmount = draft.originalAmountMinor ?: return null
     val targetCurrency = draft.originalCurrencyCode ?: return null
-    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode) ?: return null
-    if (targetCurrency == homeCurrency) return originalAmount
+    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)
+        ?: homeCurrency.takeIf { homeCurrencyCode.isNullOrBlank() }
+        ?: return null
     val currentCurrency = CurrencyCode.fromStorageKeyOrNull(originalCurrencyCodeRaw)
+        ?: originalCurrencyCode.takeIf { originalCurrencyCodeRaw.isNullOrBlank() }
+        ?: return null
     if (
         draft.expenseTimeChanged ||
         targetCurrency != currentCurrency ||
@@ -102,6 +119,7 @@ private fun Expense.projectedFrozenHomeAmount(draft: ExpenseCorrectionDraft): Lo
     ) {
         return null
     }
+    if (targetCurrency == homeCurrency) return originalAmount
     val frozenRate = exchangeRateToCny?.trim()?.toBigDecimalOrNull()
         ?.takeIf { it.signum() > 0 }
         ?: return null
@@ -116,12 +134,27 @@ private fun Expense.projectedFrozenHomeAmount(draft: ExpenseCorrectionDraft): Lo
     }.getOrNull()
 }
 
-private fun Expense.projectCorrectionDetails(draft: ExpenseCorrectionDraft): Expense = copy(
+private fun Expense.canProjectExpenseTimeWithoutFxRefresh(draft: ExpenseCorrectionDraft): Boolean {
+    if (!draft.expenseTimeChanged) return false
+    val currentCurrency = CurrencyCode.fromStorageKeyOrNull(originalCurrencyCodeRaw)
+        ?: originalCurrencyCode.takeIf { originalCurrencyCodeRaw.isNullOrBlank() }
+        ?: return false
+    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)
+        ?: homeCurrency.takeIf { homeCurrencyCode.isNullOrBlank() }
+        ?: return false
+    val targetCurrency = draft.originalCurrencyCode ?: currentCurrency
+    return currentCurrency == homeCurrency && targetCurrency == homeCurrency
+}
+
+private fun Expense.projectCorrectionDetails(
+    draft: ExpenseCorrectionDraft,
+    projectExpenseTime: Boolean,
+): Expense = copy(
     merchant = draft.merchant ?: merchant,
     serverCategory = draft.category ?: serverCategory,
     category = draft.category ?: category,
     note = draft.note ?: note,
-    expenseTime = if (draft.expenseTimeChanged) draft.expenseTime else expenseTime,
+    expenseTime = if (projectExpenseTime) draft.expenseTime else expenseTime,
     tags = draft.tags ?: tags,
     valueScore = if (draft.valueScoreChanged) draft.valueScore else valueScore,
     regretScore = if (draft.regretScoreChanged) draft.regretScore else regretScore,

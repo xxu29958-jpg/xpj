@@ -2,6 +2,8 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.domain.model.ExpenseSplit
+import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -163,5 +165,45 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
 
         vm.updateCorrectionField(CorrectionScalarField.Merchant, "再次调整")
         assertNull(vm.uiState.value.correction.submitError)
+    }
+
+    @Test
+    fun `known offline amount over-allocation is rejected before enqueue`() = edit { fake ->
+        fake.splitsResult = Result.success(
+            ExpenseSplits(
+                expenseId = fake.baseExpense.id,
+                parentAmountCents = 1_000L,
+                splitsTotalAmountCents = 1_000L,
+                mismatchCents = 0L,
+                splits = listOf(
+                    ExpenseSplit(
+                        publicId = "split-1",
+                        position = 0,
+                        memberId = 7L,
+                        accountName = "我",
+                        role = "owner",
+                        amountCents = 1_000L,
+                        note = null,
+                        disabledAt = null,
+                        createdAt = "",
+                        updatedAt = "",
+                    ),
+                ),
+            ),
+        )
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "金额应更低")
+        vm.updateCorrectionField(CorrectionScalarField.Amount, "9.00")
+
+        vm.submitCorrection()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.correctCalls)
+        assertTrue(vm.uiState.value.correction.open)
+        assertEquals(
+            R.string.error_expense_split_total_exceeds_parent,
+            (vm.uiState.value.correction.submitError as? UiText.Res)?.id,
+        )
     }
 }

@@ -286,7 +286,8 @@ internal class ExpenseDetailRepository(
         }
         val total = drafts.sumOf { it.amountCents ?: 0L }
         val parent = currentItems.parentAmountCents
-        val mismatch = parent?.let { total - it }
+        // 与 current backend response 保持同一 parent − total 语义。
+        val mismatch = parent?.let { it - total }
         val status = when {
             projected.isEmpty() -> ItemsSumStatus.NO_ITEMS
             mismatch == null || mismatch == 0L -> ItemsSumStatus.MATCHED

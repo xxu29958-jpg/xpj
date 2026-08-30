@@ -4,7 +4,10 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.projectCorrection
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
+import com.ticketbox.domain.model.ExpenseItem
+import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
@@ -110,6 +113,52 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         assertEquals(1_200L, vm.uiState.value.expenseSplits?.parentAmountCents)
         assertEquals(1_000L, vm.uiState.value.expenseSplits?.splitsTotalAmountCents)
         assertEquals(200L, vm.uiState.value.expenseSplits?.mismatchCents)
+    }
+
+    @Test
+    fun `queued amount correction reconciles the loaded item summary`() = edit { fake ->
+        fake.itemsResult = Result.success(
+            ExpenseItems(
+                expenseId = fake.baseExpense.id,
+                parentAmountCents = 1_000L,
+                itemsTotalAmountCents = 1_000L,
+                mismatchCents = 0L,
+                itemsSumStatus = ItemsSumStatus.MATCHED,
+                items = listOf(
+                    ExpenseItem(
+                        publicId = "item-1",
+                        position = 0,
+                        name = "商品",
+                        quantityText = null,
+                        unitPriceCents = null,
+                        amountCents = 1_000L,
+                        category = "其他",
+                        rawText = null,
+                        confidence = null,
+                        isOcrDraft = false,
+                        createdAt = "",
+                        updatedAt = "",
+                    ),
+                ),
+            ),
+        )
+        fake.correctResult = { expense, draft ->
+            Result.success(ExpenseCorrectionOutcome.Queued(expense.projectCorrection(draft)))
+        }
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "金额应更高")
+        vm.updateCorrectionField(CorrectionScalarField.Amount, "12.00")
+
+        vm.submitCorrection()
+        advanceUntilIdle()
+
+        assertEquals(1_200L, vm.uiState.value.expense?.amountCents)
+        assertEquals(1_200L, vm.uiState.value.expenseItems?.parentAmountCents)
+        assertEquals(1_000L, vm.uiState.value.expenseItems?.itemsTotalAmountCents)
+        // parent(1200) − total(1000) = +200，与服务端同步后的真值同号。
+        assertEquals(200L, vm.uiState.value.expenseItems?.mismatchCents)
+        assertEquals(ItemsSumStatus.MISMATCH_KNOWN, vm.uiState.value.expenseItems?.itemsSumStatus)
     }
 
     @Test

@@ -51,6 +51,8 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
         assertEquals(1, outcome.items.items.size)
         assertEquals("咖啡", outcome.items.items.first().name)
         assertEquals(2500L, outcome.items.itemsTotalAmountCents)
+        // parent(12345) − total(2500) = +9845，与服务端同步后的真值同号。
+        assertEquals(9845L, outcome.items.mismatchCents)
 
         // One row enqueued; token authoritative on the row, stripped from payload.
         assertEquals(1, dao.rows.size)
@@ -130,7 +132,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
                 rowVersion = 1L,
                 parentAmountCents = 12345L,
                 itemsTotalAmountCents = 2500L,
-                mismatchCents = -9845L,
+                mismatchCents = 9845L,
                 itemsSumStatus = "mismatch_known",
                 items = emptyList(),
             )
