@@ -145,9 +145,8 @@ class RecurringViewModel(
             val itemsResult = repository.items(binding, includeArchived = true)
             val candidatesResult = repository.candidates(binding)
             if (requestGeneration != generation || refreshGeneration != refresh) return@launch
-            val message = listOf(itemsResult, candidatesResult)
-                .firstOrNull { it.isFailure }
-                ?.exceptionOrNull()
+            val message = itemsResult
+                .exceptionOrNull()
                 ?.toUiText(R.string.recurring_message_action_failed)
             _uiState.update { state ->
                 val keepFeedback = state.shouldKeepMutationFeedback(preserveMutationFeedback)
@@ -211,6 +210,21 @@ class RecurringViewModel(
     fun saveManual(command: RecurringManualSaveCommand): Long {
         activeManualAttemptId?.let { return it }
         val attemptId = ++manualSaveSequence
+        if (_uiState.value.mutationInFlight) {
+            val message = UiText.res(R.string.error_idempotency_key_in_progress)
+            _uiState.update {
+                it.copy(
+                    message = message,
+                    messageTone = MessageTone.Info,
+                    manualSaveFeedback = RecurringManualSaveFeedback(
+                        attemptId = attemptId,
+                        settlement = RecurringManualSaveSettlement.Failed,
+                        message = message,
+                    ),
+                )
+            }
+            return attemptId
+        }
         val binding = manualBindingOrReject(attemptId) ?: return attemptId
         activeManualAttemptId = attemptId
         val generation = requestGeneration

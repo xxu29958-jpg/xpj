@@ -69,7 +69,7 @@ def test_candidate_confirmation_rejects_normalized_merchant_key_overflow(
         headers=identity.app_headers,
     )
     assert candidates.status_code == 200, candidates.json()
-    assert [item["merchant"] for item in candidates.json()["items"]] == [expanding_merchant]
+    assert candidates.json()["items"] == []
 
     rejected = client.post(
         "/api/recurring/from-candidate?timezone=UTC",

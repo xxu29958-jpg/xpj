@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.models import Expense, RecurringItem
 from app.money_contract import projection_sum_to_int
 from app.services.merchant_service import normalize_merchant
+from app.services.recurring_merchant_capacity import recurring_merchant_fits_storage_shape
 from app.services.time_service import ensure_utc, local_month_label, now_utc, safe_zone
 
 _RecurringEntry = tuple[datetime, int, str]
@@ -218,7 +219,10 @@ def recurring_candidates(
         candidate = _candidate_from_entries(
             entries, timezone_name=tz, min_occurrences=min_occurrences
         )
-        if candidate is not None:
+        if candidate is not None and recurring_merchant_fits_storage_shape(
+            merchant_name=str(candidate["merchant"]),
+            merchant_key=key,
+        ):
             candidates.append(candidate)
     return list(_sort_recurring_candidates(candidates))
 

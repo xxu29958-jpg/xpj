@@ -79,6 +79,8 @@ class RecurringViewModelTest {
         assertEquals(RecurringListLoadState.Failed, vm.uiState.value.candidatesLoadState)
         assertEquals(emptyList(), vm.uiState.value.items)
         assertEquals(emptyList(), vm.uiState.value.candidates)
+        assertEquals(null, vm.uiState.value.message)
+        assertEquals(MessageTone.Neutral, vm.uiState.value.messageTone)
     }
 
     @Test
@@ -552,6 +554,53 @@ class RecurringViewModelMutationTest {
 
         assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
         assertEquals(RecurringManualSaveSettlement.Accepted, vm.uiState.value.manualSaveFeedback?.settlement)
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class RecurringViewModelMutationGuardTest {
+    @Test
+    fun genericMutationRejectsManualAttemptWithoutClearingGenericOwner() = recurringTest {
+        val existing = item(publicId = "rec-generic-owner")
+        val pendingPause = CompletableDeferred<Result<RecurringItem>>()
+        val lifecycle = FakeRecurringLifecycleActions().apply {
+            pauseResponder = { pendingPause.await() }
+        }
+        val fake = FakeRecurringActions(
+            itemsResult = Result.success(listOf(existing)),
+            lifecycle = lifecycle,
+        )
+        val vm = RecurringViewModel(fake)
+        advanceUntilIdle()
+
+        vm.pause(existing.publicId, existing.rowVersion)
+        runCurrent()
+        assertEquals(true, vm.uiState.value.mutationInFlight)
+
+        val attemptId = vm.saveManual(
+            RecurringManualSaveCommand.Edit(
+                baseline = existing,
+                patch = RecurringItemPatch(merchant = "新的名称"),
+            ),
+        )
+        runCurrent()
+
+        assertEquals(0, fake.updateCalls)
+        assertEquals(true, vm.uiState.value.mutationInFlight)
+        assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
+        assertEquals(
+            RecurringManualSaveSettlement.Failed,
+            vm.uiState.value.manualSaveFeedback?.settlement,
+        )
+        assertEquals(
+            UiText.res(R.string.error_idempotency_key_in_progress),
+            vm.uiState.value.manualSaveFeedback?.message,
+        )
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
+
+        pendingPause.complete(Result.success(existing.copy(status = "paused", rowVersion = 2)))
+        advanceUntilIdle()
+        assertEquals(false, vm.uiState.value.mutationInFlight)
     }
 }
 

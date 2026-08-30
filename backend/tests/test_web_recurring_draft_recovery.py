@@ -145,3 +145,32 @@ def test_web_recurring_edit_input_error_is_correctable_in_place(
         assert item.merchant_name == "物业费"
         assert item.baseline_amount_cents == 30_000
         assert item.row_version == token + 1
+
+
+def test_web_recurring_edit_input_error_yields_to_remote_archive(
+    web_client: TestClient,
+) -> None:
+    """输入错误发生前 target 已被另一消费者归档：页面必须给恢复出口，不能
+    伪称旧草稿仍可就地修正，也不能回声旧 OCC token。"""
+    public_id = seed_observed_item(merchant="房租", occurrence_count=0, source="manual")
+    stale_token = row_version(public_id)
+
+    archived = web_client.post(
+        f"/web/recurring/{public_id}/archive",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert archived.status_code == 303
+
+    rejected = edit_via_web(
+        web_client,
+        public_id,
+        merchant="房租（自住）",
+        amount="90000000001",
+        token=stale_token,
+    )
+
+    assert rejected.status_code == 200
+    assert "这条固定支出已归档" in rejected.text
+    assert "去归档列表恢复" in rejected.text
+    assert f'action="/web/recurring/{public_id}/edit"' not in rejected.text

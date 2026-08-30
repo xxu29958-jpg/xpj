@@ -36,3 +36,13 @@ internal fun recurringScreenActivityActive(
     hasReadableData: Boolean,
     mutationInFlight: Boolean,
 ): Boolean = ReadableRefreshIndicator.isActive(loading, hasReadableData) || mutationInFlight
+
+/**
+ * page status message 可见性：撞单 banner 在场时让位（冲突本身即消息）；
+ * items 主列表破损时由 AppErrorState 承担唯一出口。候选 section 只是辅助
+ * 发现，其加载失败不得吞掉命令结果，故不作本谓词输入。
+ */
+internal fun recurringStatusMessageVisible(
+    hasDuplicateConflict: Boolean,
+    itemsBodyState: ReadableListBodyState,
+): Boolean = !hasDuplicateConflict && itemsBodyState != ReadableListBodyState.LoadFailed

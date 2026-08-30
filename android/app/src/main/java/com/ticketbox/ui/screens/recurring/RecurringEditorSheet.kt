@@ -103,7 +103,13 @@ internal fun RecurringEditorSheet(
         feedback = ownerState.attemptFeedback,
         onAccepted = environment.onDismiss,
     )
-    RecurringEditorContent(session, ownerState, actions, environment)
+    RecurringEditorContent(
+        session = session,
+        ownerState = ownerState,
+        actions = actions,
+        environment = environment,
+        mutationInFlight = uiState.mutationInFlight,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -163,6 +169,7 @@ private fun RecurringEditorContent(
     ownerState: RecurringEditorOwnerState,
     actions: RecurringItemActions,
     environment: RecurringEditorEnvironment,
+    mutationInFlight: Boolean,
 ) {
     val currency = environment.currencyDisplay.homeCurrency
     RecurringEditorForm(
@@ -180,11 +187,15 @@ private fun RecurringEditorContent(
             dateIso = session.dateIso,
             showDatePicker = session.showDatePicker,
             awaiting = session.submitUi.awaiting,
-            draftEnabled = recurringEditorDraftEnabled(session.submitUi.awaiting, ownerState.stage),
+            // generic mutation 在途时表单与提交同禁：页面一次只结算一个命令。
+            draftEnabled = recurringEditorDraftEnabled(session.submitUi.awaiting, ownerState.stage) &&
+                !mutationInFlight,
             primaryText = stringResource(
                 recurringPrimaryActionTextRes(session.submitUi.awaiting, ownerState.stage),
             ),
-            primaryEnabled = !session.submitUi.awaiting && ownerState.stage != RecurringRebaseStage.LoadingOwner,
+            primaryEnabled = !session.submitUi.awaiting &&
+                ownerState.stage != RecurringRebaseStage.LoadingOwner &&
+                !mutationInFlight,
         ),
         callbacks = recurringEditorCallbacks(session, ownerState, actions, environment),
         feedback = RecurringEditorFeedback(

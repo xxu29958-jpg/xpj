@@ -186,9 +186,10 @@ private fun LazyListScope.recurringOverviewSection(
     commandsEnabled: Boolean,
 ) {
     state.message?.takeIf {
-        state.duplicateConflict == null &&
-            derived.itemSection.bodyState != ReadableListBodyState.LoadFailed &&
-            derived.candidateSection.bodyState != ReadableListBodyState.LoadFailed
+        recurringStatusMessageVisible(
+            hasDuplicateConflict = state.duplicateConflict != null,
+            itemsBodyState = derived.itemSection.bodyState,
+        )
     }?.let { message ->
         item { AppStatusBanner(message = message, tone = state.messageTone) }
     }

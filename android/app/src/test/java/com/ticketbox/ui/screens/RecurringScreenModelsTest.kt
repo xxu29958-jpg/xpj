@@ -139,6 +139,39 @@ class RecurringScreenModelsTest {
     }
 
     @Test
+    fun statusMessageVisibleUnlessDuplicateOrItemsLoadFailed() {
+        // 命令结果必须到达；候选 section 状态不是本谓词输入，其失败结构性无法吞消息。
+        assertEquals(
+            true,
+            recurringStatusMessageVisible(
+                hasDuplicateConflict = false,
+                itemsBodyState = ReadableListBodyState.Content,
+            ),
+        )
+        assertEquals(
+            true,
+            recurringStatusMessageVisible(
+                hasDuplicateConflict = false,
+                itemsBodyState = ReadableListBodyState.Loading,
+            ),
+        )
+        assertEquals(
+            false,
+            recurringStatusMessageVisible(
+                hasDuplicateConflict = false,
+                itemsBodyState = ReadableListBodyState.LoadFailed,
+            ),
+        )
+        assertEquals(
+            false,
+            recurringStatusMessageVisible(
+                hasDuplicateConflict = true,
+                itemsBodyState = ReadableListBodyState.Content,
+            ),
+        )
+    }
+
+    @Test
     fun commandsEnabledOnlyWhenNoMutationAndNoManualSaveInFlight() {
         // 屏级统一 gate：generic mutation 与 manual save 任一在途，所有命令/恢复入口禁用。
         assertEquals(true, recurringCommandsEnabled(manualSaveInFlight = false, mutationInFlight = false))
