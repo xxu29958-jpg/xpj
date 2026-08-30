@@ -157,6 +157,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     var lastCorrectionDraft: ExpenseCorrectionDraft? = null
     var fetchExpenseCalls = 0
     var fetchRevisionsCalls = 0
+    val revisionRequests = mutableListOf<Pair<Int, Int>>()
     var fetchBillSplitSentCalls = 0
     var createBillSplitCalls = 0
     var lastCreateBillSplitArgs: Triple<Long, Long, Long>? = null
@@ -178,6 +179,29 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         )
     }
     var splitMembersResult: () -> Result<List<FamilyMember>> = { Result.success(emptyList()) }
+    var revisionsResult: suspend (Int, Int) -> Result<ExpenseRevisionPage> = { page, pageSize ->
+        Result.success(
+            ExpenseRevisionPage(
+                items = listOf(
+                    ExpenseRevision(
+                        publicId = "rev-1",
+                        revisionNumber = 1L,
+                        changeKind = "confirmed",
+                        reason = "首次确认",
+                        changedFields = emptyList(),
+                        before = null,
+                        after = emptyMap(),
+                        actorAccountName = "我",
+                        actorDeviceName = "这台手机",
+                        createdAt = "2026-08-22T11:38:00Z",
+                    ),
+                ),
+                page = page,
+                pageSize = pageSize,
+                total = 1,
+            ),
+        )
+    }
     var billSplitSentResult: () -> Result<List<BillSplitSent>> = { Result.success(emptyList()) }
     var createBillSplitResult: (Long, Long, Long) -> Result<BillSplitSent> = { _, _, _ ->
         Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
@@ -276,27 +300,8 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         pageSize: Int,
     ): Result<ExpenseRevisionPage> {
         fetchRevisionsCalls++
-        return Result.success(
-            ExpenseRevisionPage(
-                items = listOf(
-                    ExpenseRevision(
-                        publicId = "rev-1",
-                        revisionNumber = 1L,
-                        changeKind = "confirmed",
-                        reason = "首次确认",
-                        changedFields = emptyList(),
-                        before = null,
-                        after = emptyMap(),
-                        actorAccountName = "我",
-                        actorDeviceName = "这台手机",
-                        createdAt = "2026-08-22T11:38:00Z",
-                    ),
-                ),
-                page = 1,
-                pageSize = 50,
-                total = 1,
-            ),
-        )
+        revisionRequests += page to pageSize
+        return revisionsResult(page, pageSize)
     }
 
     override suspend fun correctExpenseAllowingOffline(

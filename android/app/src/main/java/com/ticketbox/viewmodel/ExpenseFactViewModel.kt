@@ -56,6 +56,12 @@ data class ExpenseFactUiState(
     val revisionsTotal: Int = 0,
     val revisionsLoading: Boolean = false,
     val revisionsLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Unknown,
+    val revisionsNextPage: Int? = null,
+    val revisionsOlderLoading: Boolean = false,
+    val revisionsOlderLoadFailed: Boolean = false,
+    val revisionsRefreshFailed: Boolean = false,
+    /** null means the current member directory could not be read. */
+    val revisionMemberNames: Map<Long, String>? = null,
     val timelineExpanded: Boolean = false,
     // 更正流（correction 扩展拥有全部逻辑）。
     val correction: CorrectionFormState = CorrectionFormState(),
@@ -121,6 +127,8 @@ class ExpenseFactViewModel(
     initialExpense: Expense? = null,
 ) : ViewModel() {
 
+    internal var revisionLoadGeneration = 0L
+
     internal val _uiState = MutableStateFlow(
         ExpenseFactUiState(
             expense = initialExpense,
@@ -146,6 +154,7 @@ class ExpenseFactViewModel(
         loadExpenseItems()
         loadExpenseSplits()
         loadExpenseRevisions()
+        loadRevisionMemberNames()
     }
 
     fun retryLoadExpense() {

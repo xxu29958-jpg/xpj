@@ -37254,6 +37254,17 @@
               "title": "Return Query",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "rev_page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Rev Page",
+              "type": "integer"
+            }
           }
         ],
         "responses": {

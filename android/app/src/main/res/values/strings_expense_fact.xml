@@ -58,6 +58,20 @@
     <string name="expense_fact_timeline_field_value_score">值回票价</string>
     <string name="expense_fact_timeline_field_regret_score">后悔指数</string>
     <string name="expense_fact_revisions_failed">变更记录加载失败，点按重试。</string>
+    <!-- 变更记录 Before/After 集合（只呈现 snapshot 已有字段，不做行级 diff 推断） -->
+    <string name="expense_fact_timeline_item_unit_price">单价 %1$s</string>
+    <string name="expense_fact_timeline_item_amount">金额 %1$s</string>
+    <string name="expense_fact_timeline_item_unnamed">未命名明细</string>
+    <string name="expense_fact_timeline_member_removed">已移除的成员</string>
+    <string name="expense_fact_timeline_member_unknown">家庭成员</string>
+    <string name="expense_fact_timeline_detail_expand_for">%1$s：查看前后明细</string>
+    <string name="expense_fact_timeline_detail_collapse_for">%1$s：收起明细</string>
+    <string name="expense_fact_timeline_before_label">更正前</string>
+    <string name="expense_fact_timeline_after_label">更正后</string>
+    <string name="expense_fact_timeline_load_older">加载更早的记录（还剩 %1$d 条）</string>
+    <string name="expense_fact_timeline_older_failed">更早的记录加载失败，点按重试。</string>
+    <string name="expense_fact_timeline_expand_loaded">展开最近 %1$d 条</string>
+    <string name="expense_fact_timeline_refresh_failed">暂时无法刷新，正在显示已加载的变更记录，点按重试。</string>
     <string name="expense_fact_refresh_failed_showing_known">暂时无法刷新，正在显示已加载的账单。</string>
     <string name="expense_fact_cached_showing">当前离线，正在显示设备上保存的账单。</string>
     <string name="expense_fact_thumbnail_failed">凭证图片加载失败。</string>
