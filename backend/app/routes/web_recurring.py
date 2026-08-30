@@ -63,6 +63,19 @@ router = APIRouter(prefix="/web/recurring", tags=["web"])
 _STALE_PAGE_FLASH = "页面已过期，请刷新后重新操作。"
 _VALID_STATUS_FILTERS = {"active", "paused", "archived"}
 
+# 草稿保留的 IA 分界: 客户端输入类错误 (金额/日期格式、名称缺失/超长) 保留用户
+# 草稿就地修正 — 落实 ERROR_MESSAGE_MAPPING.md「缩短名称后重新保存; 已填写的其他
+# 内容继续保留」, 对齐 debt_new values / 账单纠错面 form_values 的既有先例;
+# 世界状态类错误 (冲突 / 归档 / OCC / 幂等 / 观察身份不可变) 不保留草稿,
+# 页面刷新到服务端事实, 防止把可修正输入叠加到已变化的世界。
+_DRAFT_PRESERVING_ERRORS = frozenset(
+    {
+        "invalid_request",
+        "recurring_merchant_required",
+        "recurring_merchant_too_long",
+    }
+)
+
 
 def _conflict_kwargs(exc: AppError, *, selected_id: str, merchant: str | None = None) -> dict:
     return conflict_error_kwargs(
@@ -110,6 +123,8 @@ def _render_recurring(
     error_guidance: dict | None = None,
     review_merchant: str | None = None,
     open_edit_id: str | None = None,
+    create_draft: dict | None = None,
+    edit_draft: dict | None = None,
 ) -> HTMLResponse:
     if status and status not in _VALID_STATUS_FILTERS:
         raise AppError("recurring_status_invalid", status_code=422)
@@ -174,6 +189,7 @@ def _render_recurring(
     # 创建表单的 durable intent key: 一次渲染一把, 同一提交的重试/双击都回放它。
     ctx["create_idempotency_key"] = uuid4().hex
     ctx["open_edit_id"] = open_edit_id
+    ctx.update(create_draft=create_draft, edit_draft=edit_draft)
     return templates.TemplateResponse(request=request, name="recurring.html", context=ctx)
 
 
@@ -233,12 +249,19 @@ def web_recurring_create(
         )
     except AppError as exc:
         db.rollback()
+        kwargs = _conflict_kwargs(exc, selected_id=selected_id, merchant=merchant)
+        if exc.error in _DRAFT_PRESERVING_ERRORS:
+            kwargs["create_draft"] = {
+                "merchant": merchant,
+                "baseline_amount_yuan": baseline_amount_yuan,
+                "next_expected_date": next_expected_date,
+            }
         return _render_recurring(
             request=request,
             db=db,
             selected_id=selected_id,
             options=options,
-            **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
+            **kwargs,
         )
     return _web_redirect("/web/recurring", selected_id, flash="已加入你的固定支出。")
 
@@ -327,12 +350,22 @@ def web_recurring_edit(
         )
     except AppError as exc:
         db.rollback()
+        kwargs = _conflict_kwargs(exc, selected_id=selected_id, merchant=merchant)
+        if exc.error in _DRAFT_PRESERVING_ERRORS:
+            # 编辑草稿回填须保持该条目的编辑表单展开, 否则用户看不到被保留的输入。
+            kwargs["open_edit_id"] = public_id
+            kwargs["edit_draft"] = {
+                "public_id": public_id,
+                "merchant": merchant,
+                "baseline_amount_yuan": baseline_amount_yuan,
+                "next_expected_date": next_expected_date,
+            }
         return _render_recurring(
             request=request,
             db=db,
             selected_id=selected_id,
             options=options,
-            **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
+            **kwargs,
         )
     return _web_redirect("/web/recurring", selected_id, flash="固定支出已保存。")
 

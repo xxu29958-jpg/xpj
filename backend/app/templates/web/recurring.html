@@ -85,18 +85,26 @@
       <div class="dt-form-grid">
         <div class="dt-form-row">
           <label for="rc-add-merchant">商家或名称</label>
-          <input class="dt-input" id="rc-add-merchant" type="text" name="merchant" maxlength="255"
+          {# 名称长度上限只由后端按 Unicode code points 强制 (recurring_merchant_too_long,
+             页面级 alert 呈现)。HTML maxlength 按 UTF-16 code units 计数 (WHATWG Infra
+             string length): 128 个 😀 = 256 units 会被浏览器静默拦截, 尽管 128 code
+             points 对 API / Android / backend 全合法 —— create/edit 商家输入均不设
+             客户端上限, 超上限用户由后端给出可行动文案。 #}
+          <input class="dt-input" id="rc-add-merchant" type="text" name="merchant"
+                 value="{{ create_draft.merchant if create_draft else '' }}"
                  placeholder="房租、视频会员、保险…" required>
         </div>
         <div class="dt-form-row">
           <label for="rc-add-amount">每月金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
           <input class="dt-input" id="rc-add-amount" type="number" name="baseline_amount_yuan"
                  step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}"
-                 inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
+                 inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}"
+                 value="{{ create_draft.baseline_amount_yuan if create_draft else '' }}" required>
         </div>
         <div class="dt-form-row">
           <label for="rc-add-date">下次预计日期</label>
-          <input class="dt-input" id="rc-add-date" type="date" name="next_expected_date" value="{{ suggested_next_date }}">
+          <input class="dt-input" id="rc-add-date" type="date" name="next_expected_date"
+                 value="{{ create_draft.next_expected_date if create_draft else suggested_next_date }}">
           <div class="hint">已建议下月同日，可以改也可以清空——不留日期就不会提醒。</div>
         </div>
       </div>
@@ -194,6 +202,9 @@
         </div>
         {% if can_write and item.status != 'archived' %}
         <details class="rc-edit"{% if open_edit_id == item.public_id %} open{% endif %}>
+          {# 输入类错误 (如名称超长) 的编辑草稿: 仅属于本条目的草稿才回填,
+             其余条目与默认渲染一样取服务端事实。 #}
+          {% set draft = edit_draft if edit_draft and edit_draft.public_id == item.public_id else none %}
           <summary class="dt-btn dt-btn--sm ghost">编辑</summary>
           <form method="post" action="/web/recurring/{{ item.public_id }}/edit" class="rc-edit-form">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -203,7 +214,7 @@
               <div class="dt-form-row">
                 <label for="rc-edit-merchant-{{ item.public_id }}">商家或名称</label>
                 <input class="dt-input" id="rc-edit-merchant-{{ item.public_id }}" type="text" name="merchant"
-                       maxlength="255" value="{{ item.merchant }}" required
+                       value="{{ draft.merchant if draft else item.merchant }}" required
                        {% if not item.merchant_editable %}readonly aria-describedby="rc-edit-merchant-help-{{ item.public_id }}"{% endif %}>
                 {% if not item.merchant_editable %}
                 <div class="hint" id="rc-edit-merchant-help-{{ item.public_id }}">名称与已识别账单绑定；可调整金额和日期。如需更换商家，请归档后新建。</div>
@@ -213,12 +224,13 @@
                 <label for="rc-edit-amount-{{ item.public_id }}">每月金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
                 <input class="dt-input" id="rc-edit-amount-{{ item.public_id }}" type="number" name="baseline_amount_yuan"
                        step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}"
-                       inputmode="{{ currency_input.inputmode }}" value="{{ item.baseline_amount_yuan }}" required>
+                       inputmode="{{ currency_input.inputmode }}"
+                       value="{{ draft.baseline_amount_yuan if draft else item.baseline_amount_yuan }}" required>
               </div>
               <div class="dt-form-row">
                 <label for="rc-edit-date-{{ item.public_id }}">下次预计日期</label>
                 <input class="dt-input" id="rc-edit-date-{{ item.public_id }}" type="date" name="next_expected_date"
-                       value="{{ item.next_expected_date }}">
+                       value="{{ draft.next_expected_date if draft else item.next_expected_date }}">
                 <div class="hint">清空表示不提醒——不留日期就不会提醒。</div>
               </div>
             </div>

@@ -108,6 +108,81 @@ def test_web_recurring_create_rejects_invalid_amount(web_client: TestClient) -> 
     assert "必须大于 0" in zero.text
 
 
+def test_web_recurring_merchant_inputs_carry_no_browser_length_cap(web_client: TestClient) -> None:
+    """HTML maxlength 按 UTF-16 code units 计数 (WHATWG Infra string length):
+    任何固定 unit 上限都会在非 BMP 边界误伤合法 code-point 输入 (128 个 😀 =
+    128 code points 合法, 却是 256 units)。名称上限的唯一 Owner 是 backend
+    (recurring_merchant_too_long), 客户端不设限——本断言杀死原 maxlength="255" 回归。"""
+    public_id = seed_observed_item(occurrence_count=0, source="manual")
+
+    page = web_client.get("/web/recurring?ledger_id=owner")
+
+    assert page.status_code == 200
+    for input_id in ("rc-add-merchant", f"rc-edit-merchant-{public_id}"):
+        tag = re.search(rf'<input\b[^>]*\bid="{re.escape(input_id)}"[^>]*>', page.text)
+        assert tag is not None, f"missing merchant input {input_id}"
+        assert "maxlength" not in tag.group(0)
+
+
+def test_web_recurring_over_limit_create_keeps_draft_for_trim_and_resave(
+    web_client: TestClient,
+) -> None:
+    """ERROR_MESSAGE_MAPPING「缩短名称后重新保存; 已填写的其他内容继续保留」的 Web
+    落实: 输入类错误保留草稿 (debt_new values / 纠错面 form_values 先例), 用户就地
+    修剪名称即可重试, 不必重填金额和日期。"""
+    merchant = "😀" * 256
+
+    rejected = create_via_web(web_client, merchant=merchant, amount="6800", date_str="2026-09-06")
+
+    assert rejected.status_code == 200
+    assert "固定支出名称过长，请缩短后再试。" in rejected.text
+    form = re.search(r'action="/web/recurring/create".*?</form>', rejected.text, re.DOTALL)
+    assert form is not None
+    assert f'value="{merchant}"' in form.group(0)
+    assert 'value="6800"' in form.group(0)
+    assert 'value="2026-09-06"' in form.group(0)
+
+
+def test_web_recurring_over_limit_edit_keeps_draft_and_form_open(web_client: TestClient) -> None:
+    """edit 同规则: 草稿回填且该条目编辑表单保持展开; OCC token 仍渲染服务端当前值。"""
+    public_id = seed_observed_item(occurrence_count=0, source="manual")
+    token = row_version(public_id)
+    merchant = "😀" * 256
+
+    rejected = edit_via_web(web_client, public_id, merchant=merchant, amount="25", date_str="2026-10-08", token=token)
+
+    assert rejected.status_code == 200
+    assert "固定支出名称过长，请缩短后再试。" in rejected.text
+    form = re.search(
+        rf'<details class="rc-edit" open>.*?action="/web/recurring/{re.escape(public_id)}/edit".*?</form>',
+        rejected.text,
+        re.DOTALL,
+    )
+    assert form is not None, "edit form must stay open with the rejected draft"
+    assert f'value="{merchant}"' in form.group(0)
+    assert 'value="25"' in form.group(0)
+    assert 'value="2026-10-08"' in form.group(0)
+    # OCC token 仍是服务端当前 row_version, 不被草稿污染。
+    assert f'name="expected_row_version" value="{token}"' in form.group(0)
+
+
+def test_web_recurring_conflict_refreshes_instead_of_keeping_draft(web_client: TestClient) -> None:
+    """IA 分界的另一半: 世界状态类错误 (冲突/归档/OCC/幂等) 不保留草稿——用户编辑
+    针对的是已变化的事实, 页面刷新到服务端真相。"""
+    assert create_via_web(web_client, merchant="房租").status_code == 303
+
+    conflict = create_via_web(web_client, merchant="房租", amount="6900")
+
+    assert conflict.status_code == 200
+    assert "已经在你的固定支出里" in conflict.text
+    form = re.search(r'action="/web/recurring/create".*?</form>', conflict.text, re.DOTALL)
+    assert form is not None
+    assert 'value="6900"' not in form.group(0)
+    merchant_input = re.search(r'<input\b[^>]*\bid="rc-add-merchant"[^>]*>', form.group(0))
+    assert merchant_input is not None
+    assert 'value=""' in merchant_input.group(0)
+
+
 def test_web_recurring_edit_stale_row_version_shows_conflict(web_client: TestClient) -> None:
     """OCC: stale token → 诚实冲突文案 + 刷新到最新值。"""
     public_id = seed_observed_item()
