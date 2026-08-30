@@ -107,6 +107,40 @@ internal class ExpenseFactRevisionPagingTest : ExpenseFactViewModelTestBase() {
     }
 
     @Test
+    fun `older paging cannot start while first page refresh is unsettled`() = edit { fake ->
+        fake.revisionsResult = { page, pageSize ->
+            Result.success(revisionPage(page = page, pageSize = pageSize, total = 100))
+        }
+        val viewModel = viewModel(fake)
+        val freshPageOne = CompletableDeferred<Result<ExpenseRevisionPage>>()
+        fake.revisionsResult = { page, pageSize ->
+            if (page == 1) {
+                freshPageOne.await()
+            } else {
+                Result.success(revisionPage(page = page, pageSize = pageSize, total = 102))
+            }
+        }
+
+        viewModel.loadExpenseRevisions()
+        viewModel.loadOlderExpenseRevisions()
+        runCurrent()
+
+        assertEquals(listOf(1 to 50, 1 to 50), fake.revisionRequests)
+
+        freshPageOne.complete(Result.success(revisionPage(page = 1, pageSize = 50, total = 102)))
+        advanceUntilIdle()
+        viewModel.loadOlderExpenseRevisions()
+        advanceUntilIdle()
+        viewModel.loadOlderExpenseRevisions()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals((102 downTo 1).map { it.toLong() }, state.revisions.map { it.revisionNumber })
+        assertNull(state.revisionsNextPage)
+        assertEquals(listOf(1 to 50, 1 to 50, 2 to 50, 3 to 50), fake.revisionRequests)
+    }
+
+    @Test
     fun `first page refresh failure keeps loaded history and retry rebuilds paging`() = edit { fake ->
         fake.revisionsResult = { page, pageSize ->
             Result.success(revisionPage(page = page, pageSize = pageSize, total = 51))

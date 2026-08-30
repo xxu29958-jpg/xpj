@@ -82,7 +82,10 @@ internal fun FactTimelineSection(
                     }
                     if (state.timelineExpanded && state.revisionsNextPage != null) {
                         if (state.revisionsOlderLoadFailed) {
-                            TextButton(onClick = onLoadOlder) {
+                            TextButton(
+                                enabled = !state.revisionsLoading,
+                                onClick = onLoadOlder,
+                            ) {
                                 Text(text = stringResource(R.string.expense_fact_timeline_older_failed))
                             }
                         } else {
@@ -91,7 +94,7 @@ internal fun FactTimelineSection(
                                     R.string.expense_fact_timeline_load_older,
                                     (state.revisionsTotal - state.revisions.size).coerceAtLeast(0),
                                 ),
-                                enabled = !state.revisionsOlderLoading,
+                                enabled = !state.revisionsLoading && !state.revisionsOlderLoading,
                                 onClick = onLoadOlder,
                             )
                         }

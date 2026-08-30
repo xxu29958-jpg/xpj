@@ -74,11 +74,18 @@ fun ExpenseFactViewModel.loadExpenseRevisions() {
 }
 
 fun ExpenseFactViewModel.loadOlderExpenseRevisions() {
-    val nextPage = _uiState.value.revisionsNextPage ?: return
-    if (_uiState.value.revisionsOlderLoading) return
+    val current = _uiState.value
+    val nextPage = current.revisionsNextPage ?: return
+    if (current.revisionsLoading || current.revisionsOlderLoading) return
     val generation = revisionLoadGeneration
     viewModelScope.launch {
-        if (generation != revisionLoadGeneration || _uiState.value.revisionsNextPage != nextPage) {
+        val state = _uiState.value
+        if (
+            generation != revisionLoadGeneration ||
+            state.revisionsNextPage != nextPage ||
+            state.revisionsLoading ||
+            state.revisionsOlderLoading
+        ) {
             return@launch
         }
         _uiState.update { state ->
