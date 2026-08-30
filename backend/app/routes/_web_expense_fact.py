@@ -201,6 +201,49 @@ def _collection_details(
     }
 
 
+def _split_timeline_changes(
+    *,
+    before: dict[str, object],
+    after: dict[str, object],
+    home_currency_code: str,
+    member_names: dict[int, str],
+) -> list[dict[str, Any]]:
+    before_count = _format_fact_value("splits", before.get("splits"), before, home_currency_code)
+    after_count = _format_fact_value("splits", after.get("splits"), after, home_currency_code)
+    before_allocation = _snapshot_allocation_label(before, home_currency_code)
+    after_allocation = _snapshot_allocation_label(after, home_currency_code)
+    allocation_changed = (
+        before_allocation is not None
+        and after_allocation is not None
+        and before_allocation != after_allocation
+    )
+    changes: list[dict[str, Any]] = []
+    if allocation_changed:
+        changes.append(
+            {
+                "label": _FACT_FIELD_LABELS["splits"],
+                "before": before_allocation,
+                "after": after_allocation,
+            }
+        )
+    if before_count != after_count or not allocation_changed:
+        changes.append(
+            {
+                "label": _FACT_FIELD_LABELS["splits"],
+                "before": before_count,
+                "after": after_count,
+            }
+        )
+    changes[-1]["details"] = _collection_details(
+        field="splits",
+        before=before,
+        after=after,
+        home_currency_code=home_currency_code,
+        member_names=member_names,
+    )
+    return changes
+
+
 def _timeline_changes(
     revision: dict[str, Any],
     home_currency_code: str,
@@ -219,40 +262,14 @@ def _timeline_changes(
     ordered = [f for f in _FACT_FIELD_ORDER if f in changed_fields]
     for field in ordered:
         if field == "splits":
-            change_start = len(changes)
-            before_count = _format_fact_value(field, before.get(field), before, home_currency_code)
-            after_count = _format_fact_value(field, after.get(field), after, home_currency_code)
-            before_allocation = _snapshot_allocation_label(before, home_currency_code)
-            after_allocation = _snapshot_allocation_label(after, home_currency_code)
-            allocation_changed = (
-                before_allocation is not None
-                and after_allocation is not None
-                and before_allocation != after_allocation
-            )
-            if allocation_changed:
-                changes.append(
-                    {
-                        "label": _FACT_FIELD_LABELS[field],
-                        "before": before_allocation,
-                        "after": after_allocation,
-                    }
-                )
-            if before_count != after_count or not allocation_changed:
-                changes.append(
-                    {
-                        "label": _FACT_FIELD_LABELS[field],
-                        "before": before_count,
-                        "after": after_count,
-                    }
-                )
-            if len(changes) > change_start:
-                changes[-1]["details"] = _collection_details(
-                    field=field,
+            changes.extend(
+                _split_timeline_changes(
                     before=before,
                     after=after,
                     home_currency_code=home_currency_code,
                     member_names=resolved_member_names,
                 )
+            )
             continue
         change: dict[str, Any] = {
             "label": _FACT_FIELD_LABELS[field],
