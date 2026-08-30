@@ -23,9 +23,9 @@ from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_bill_split import build_split_invite_context
 from app.routes.web_common import _web_redirect, templates
+from app.services import invitation_members
 from app.services.expense_revision_service import list_expense_revisions
 from app.services.expense_service import get_expense
-from app.services.expense_split_service import list_active_split_members
 from app.services.spending_contract_service import accounting_datetime_label
 
 # 用户可写字段 → 时间线人话标签。对照 expense_revision_service._SCALAR_FIELDS；
@@ -213,9 +213,7 @@ def _split_timeline_changes(
     before_allocation = _snapshot_allocation_label(before, home_currency_code)
     after_allocation = _snapshot_allocation_label(after, home_currency_code)
     allocation_changed = (
-        before_allocation is not None
-        and after_allocation is not None
-        and before_allocation != after_allocation
+        before_allocation is not None and after_allocation is not None and before_allocation != after_allocation
     )
     changes: list[dict[str, Any]] = []
     if allocation_changed:
@@ -284,9 +282,7 @@ def _timeline_changes(
                 home_currency_code=home_currency_code,
                 member_names=resolved_member_names,
             )
-        changes.append(
-            change
-        )
+        changes.append(change)
         if field == "amount_cents" and "splits" not in changed_fields:
             before_allocation = _snapshot_allocation_label(before, home_currency_code)
             after_allocation = _snapshot_allocation_label(after, home_currency_code)
@@ -390,8 +386,12 @@ def web_fact_context(
         can_write=ctx["can_write"],
     )
     member_names = {
-        int(row["member_id"]): str(row["account_name"])
-        for row in list_active_split_members(db, tenant_id=selected_id)
+        member.member_id: member.account_name
+        for member in invitation_members.list_members(
+            db,
+            ledger_id=selected_id,
+            requester_account_id=0,
+        )
     }
     timeline = build_fact_timeline(
         db,
@@ -402,10 +402,7 @@ def web_fact_context(
         member_names=member_names,
     )
     ctx["fact_timeline"] = timeline["entries"]
-    ctx["fact_timeline_page"] = {
-        key: timeline[key]
-        for key in ("page", "page_size", "total", "has_newer", "has_older")
-    }
+    ctx["fact_timeline_page"] = {key: timeline[key] for key in ("page", "page_size", "total", "has_newer", "has_older")}
     ctx["fact_timeline_page"]["older_remaining"] = max(
         0,
         timeline["total"] - timeline["page"] * timeline["page_size"],
