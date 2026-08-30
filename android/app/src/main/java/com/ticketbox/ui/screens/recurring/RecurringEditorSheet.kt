@@ -51,20 +51,18 @@ internal fun RecurringEditorSheetHost(
         },
     )
     val submitUi = editor.session.submitUi
-    // A Hidden transition authorized immediately before this attempt will not
-    // re-run confirmValueChange when the attempt flips to awaiting. Reverse it
-    // once for this attempt so a failed settlement cannot strand the draft and
-    // error behind a hidden sheet. Settlement is deliberately not an effect key:
-    // awaiting=false must neither cancel an in-flight show() nor force later opens.
+    // Material3 consults confirmValueChange once, before the hide mutation wins
+    // the AnchoredDraggableState drag mutex, and publishes the Hidden target only
+    // after winning it. A Back/scrim hide authorized just before this attempt can
+    // therefore still read Expanded/Expanded here and publish Hidden afterwards
+    // without re-asking. Claim visibility once per in-flight attempt: the fresh
+    // show() mutation preempts that stale pre-authorized hide (and reverses an
+    // already published Hidden), so a failed settlement cannot strand the draft
+    // and error behind a hidden sheet. Settlement is deliberately not an effect
+    // key: awaiting=false must neither cancel an in-flight show() nor retrigger
+    // it, so after a failure the user can still dismiss normally.
     LaunchedEffect(submitUi.attemptId) {
-        if (
-            submitUi.attemptId != null &&
-            recurringEditorSheetNeedsAttemptRescue(
-                awaiting = submitUi.awaiting,
-                currentValue = sheetState.currentValue,
-                targetValue = sheetState.targetValue,
-            )
-        ) {
+        if (recurringEditorAttemptRequiresVisibility(submitUi.attemptId, submitUi.awaiting)) {
             sheetState.show()
         }
     }
@@ -116,13 +114,18 @@ internal fun recurringEditorSheetAllowsTransition(
 ): Boolean = targetValue != SheetValue.Hidden ||
     !(session.submitUi.awaiting || manualSaveInFlight)
 
-@OptIn(ExperimentalMaterial3Api::class)
-internal fun recurringEditorSheetNeedsAttemptRescue(
+/**
+ * Once-per-attempt visibility ownership. While a submit attempt is in flight the
+ * sheet must be (or become) visible — unconditionally of the sheet's current or
+ * target value, because a hide authorized before the attempt may not have
+ * published its Hidden target yet (drag-mutex timing). Once the attempt settles,
+ * the same attemptId stops claiming visibility, so a post-failure dismiss stays
+ * dismissed and is never force-reopened by a stale attempt.
+ */
+internal fun recurringEditorAttemptRequiresVisibility(
+    attemptId: Long?,
     awaiting: Boolean,
-    currentValue: SheetValue,
-    targetValue: SheetValue,
-): Boolean = awaiting &&
-    (currentValue == SheetValue.Hidden || targetValue == SheetValue.Hidden)
+): Boolean = attemptId != null && awaiting
 
 @Composable
 private fun RecurringEditorRebaseEffect(

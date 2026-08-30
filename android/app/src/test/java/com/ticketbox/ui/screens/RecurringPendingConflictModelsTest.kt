@@ -24,10 +24,10 @@ import com.ticketbox.ui.screens.recurring.RecurringSubmitUi
 import com.ticketbox.ui.screens.recurring.buildRecurringItemPatch
 import com.ticketbox.ui.screens.recurring.newRecurringEditorSession
 import com.ticketbox.ui.screens.recurring.rebaseRecurringEditorDraft
+import com.ticketbox.ui.screens.recurring.recurringEditorAttemptRequiresVisibility
 import com.ticketbox.ui.screens.recurring.recurringEditorDraftEnabled
 import com.ticketbox.ui.screens.recurring.recurringEditorOwnerState
 import com.ticketbox.ui.screens.recurring.recurringEditorSheetAllowsTransition
-import com.ticketbox.ui.screens.recurring.recurringEditorSheetNeedsAttemptRescue
 import com.ticketbox.ui.screens.recurring.recurringOverlapDisplayOwner
 import com.ticketbox.ui.screens.recurring.recurringOverlapComparisons
 import com.ticketbox.ui.screens.recurring.recurringPendingKindLabelRes
@@ -270,29 +270,12 @@ class RecurringPendingConflictModelsTest {
             false,
             hiddenAllowed(),
         )
+        // attempt 在途即无条件拥有 sheet 可见性，不读 current/target：保存前已授权的
+        // Back/遮罩 hide 在赢得 drag mutex 前不发布 Hidden target，此刻 current/target
+        // 可能仍读作 Expanded/Expanded——唯有无条件补一次 show() 才能抢占这次隐藏。
         assertEquals(
             true,
-            recurringEditorSheetNeedsAttemptRescue(
-                awaiting = true,
-                currentValue = SheetValue.Expanded,
-                targetValue = SheetValue.Hidden,
-            ),
-        )
-        assertEquals(
-            true,
-            recurringEditorSheetNeedsAttemptRescue(
-                awaiting = true,
-                currentValue = SheetValue.Hidden,
-                targetValue = SheetValue.Hidden,
-            ),
-        )
-        assertEquals(
-            false,
-            recurringEditorSheetNeedsAttemptRescue(
-                awaiting = true,
-                currentValue = SheetValue.Expanded,
-                targetValue = SheetValue.Expanded,
-            ),
+            recurringEditorAttemptRequiresVisibility(attemptId = 1L, awaiting = true),
         )
         assertEquals(
             true,
@@ -304,13 +287,15 @@ class RecurringPendingConflictModelsTest {
         )
         session.submitUi = RecurringSubmitUi(attemptId = 1L, awaiting = false, error = "网络错误")
         assertEquals(true, hiddenAllowed())
+        // 失败落定后同一 attemptId 停止主张可见性：用户随后主动 dismiss 不会被旧
+        // attempt 强制重开；没有 attempt 的普通打开态也从不触发 show()。
         assertEquals(
             false,
-            recurringEditorSheetNeedsAttemptRescue(
-                awaiting = false,
-                currentValue = SheetValue.Hidden,
-                targetValue = SheetValue.Hidden,
-            ),
+            recurringEditorAttemptRequiresVisibility(attemptId = 1L, awaiting = false),
+        )
+        assertEquals(
+            false,
+            recurringEditorAttemptRequiresVisibility(attemptId = null, awaiting = false),
         )
         // VM 侧在途同样锁 Hidden，与 session 无关。
         assertEquals(
