@@ -21,11 +21,19 @@ def apply_ocr_result_and_append_fact(
 ) -> None:
     if expense.status != "pending":
         return
+    # Runtime import keeps the persistent bridge connected to the current split
+    # owner without making the pure OCR module depend on SQLAlchemy services.
+    from app.services.expense_split_service import current_expense_split_total_amount
+
     _apply_ocr_result_to_expense(
         expense,
         result,
         timezone_name=timezone_name,
         allow_session_bound=True,
+        split_allocation_floor_cents=current_expense_split_total_amount(
+            db,
+            expense=expense,
+        ),
     )
     append_ocr_fact(
         db,

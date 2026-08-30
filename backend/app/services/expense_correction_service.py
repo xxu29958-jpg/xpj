@@ -299,7 +299,9 @@ def batch_update_confirmed_expenses(
     updated_count = 0
     skipped_not_found = 0
     skipped_not_confirmed = 0
-    for expense_id in intent.expense_ids:
+    # Web and Android submit different selection orders; all row locks must
+    # still be acquired in one global order for overlapping batches.
+    for expense_id in sorted(intent.expense_ids):
         expense = rows_by_id.get(expense_id)
         if expense is None:
             skipped_not_found += 1

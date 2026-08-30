@@ -74,6 +74,41 @@ class ExpenseFactRevisionTimelineModelsTest {
     }
 
     @Test
+    fun `split correction prioritizes changed allocation over unchanged line count`() {
+        val revision = ExpenseRevision(
+            publicId = "revision-splits",
+            revisionNumber = 4,
+            changeKind = "correction",
+            reason = "修正家庭拆账",
+            changedFields = listOf("splits"),
+            before = mapOf(
+                "amount_cents" to 1_200L,
+                "splits" to listOf(mapOf("amount_cents" to 1_200L)),
+            ),
+            after = mapOf(
+                "amount_cents" to 1_200L,
+                "splits" to listOf(mapOf("amount_cents" to 1_100L)),
+            ),
+            actorAccountName = "我",
+            actorDeviceName = "手机",
+            createdAt = "2026-08-30T08:00:00Z",
+        )
+
+        val allocationChange = listOf(revision)
+            .toTimelineEntries(CurrencyCode.CNY)
+            .single()
+            .changes
+            .single()
+
+        assertEquals(UiText.res(R.string.expense_fact_timeline_field_splits), allocationChange.label)
+        assertEquals(UiText.res(R.string.expense_fact_timeline_allocation_complete), allocationChange.before)
+        assertEquals(
+            UiText.res(R.string.expense_fact_timeline_allocation_remaining, "1.00"),
+            allocationChange.after,
+        )
+    }
+
+    @Test
     fun `unknown snapshot home currency stays raw in amount and allocation history`() {
         val revision = ExpenseRevision(
             publicId = "revision-4",

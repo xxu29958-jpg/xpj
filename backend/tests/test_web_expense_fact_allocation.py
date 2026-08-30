@@ -6,7 +6,34 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.routes._web_expense_fact import _timeline_changes
 from tests.web_expense_fact_test_support import create_confirmed, owner_member_id
+
+
+def test_split_timeline_prioritizes_changed_allocation_over_unchanged_line_count() -> None:
+    changes = _timeline_changes(
+        {
+            "change_kind": "correction",
+            "changed_fields": ["splits"],
+            "before": {
+                "amount_cents": 1_200,
+                "splits": [{"amount_cents": 1_200}],
+            },
+            "after": {
+                "amount_cents": 1_200,
+                "splits": [{"amount_cents": 1_100}],
+            },
+        },
+        "CNY",
+    )
+
+    assert changes == [
+        {
+            "label": "家庭拆账",
+            "before": "已分完",
+            "after": "还差 ¥1.00 未分配",
+        }
+    ]
 
 
 def test_amount_correction_rejects_overallocation_in_split_fold_and_timeline_shows_partial(

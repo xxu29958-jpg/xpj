@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.projectCorrection
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseSplits
@@ -37,6 +38,9 @@ private fun projectedCorrectionParent(
     }
     val targetCurrency = draft.originalCurrencyCode ?: return null
     val targetAmount = draft.originalAmountMinor ?: return null
+    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(expense.homeCurrencyCode?.trim()?.uppercase())
+        ?: expense.homeCurrency.takeIf { expense.homeCurrencyCode.isNullOrBlank() }
+    if (targetCurrency == homeCurrency) return targetAmount
     if (projected.originalCurrencyCode != targetCurrency || projected.originalAmountMinor != targetAmount) {
         return null
     }

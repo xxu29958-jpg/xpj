@@ -115,6 +115,33 @@ def _timeline_changes(
     changes: list[dict[str, str]] = []
     ordered = [f for f in _FACT_FIELD_ORDER if f in changed_fields]
     for field in ordered:
+        if field == "splits":
+            before_count = _format_fact_value(field, before.get(field), before, home_currency_code)
+            after_count = _format_fact_value(field, after.get(field), after, home_currency_code)
+            before_allocation = _snapshot_allocation_label(before, home_currency_code)
+            after_allocation = _snapshot_allocation_label(after, home_currency_code)
+            allocation_changed = (
+                before_allocation is not None
+                and after_allocation is not None
+                and before_allocation != after_allocation
+            )
+            if allocation_changed:
+                changes.append(
+                    {
+                        "label": _FACT_FIELD_LABELS[field],
+                        "before": before_allocation,
+                        "after": after_allocation,
+                    }
+                )
+            if before_count != after_count or not allocation_changed:
+                changes.append(
+                    {
+                        "label": _FACT_FIELD_LABELS[field],
+                        "before": before_count,
+                        "after": after_count,
+                    }
+                )
+            continue
         changes.append(
             {
                 "label": _FACT_FIELD_LABELS[field],

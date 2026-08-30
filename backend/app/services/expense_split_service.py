@@ -198,6 +198,26 @@ def validate_current_expense_split_allocation(db: Session, *, expense: Expense) 
     )
 
 
+def current_expense_split_total_amount(
+    db: Session,
+    *,
+    expense: Expense,
+) -> int | None:
+    """Return the current allocation floor for another existing fact writer."""
+
+    splits = _expense_splits(
+        db,
+        tenant_id=expense.tenant_id,
+        expense_id=expense.id,
+    )
+    if not splits:
+        return None
+    return projection_values_sum_to_int(
+        (split.amount_cents for split in splits),
+        label="expense_splits.current_total",
+    )
+
+
 def _active_members_for_split_payload(
     db: Session, *, tenant_id: str, payload: ExpenseSplitReplaceRequest
 ) -> dict[int, _SplitMember]:

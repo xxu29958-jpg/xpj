@@ -148,6 +148,37 @@ private fun ExpenseRevision.toTimelineEntry(
             FACT_FIELD_ORDER
                 .filter { (field, _) -> field in changedFields }
                 .forEach { (field, labelRes) ->
+                    if (field == "splits") {
+                        val beforeCount = formatFactValue(field, before[field], before, currency)
+                        val afterCount = formatFactValue(field, after[field], after, currency)
+                        val beforeAllocation = snapshotAllocationLabel(before, currency)
+                        val afterAllocation = snapshotAllocationLabel(after, currency)
+                        var allocationChanged = false
+                        if (
+                            beforeAllocation != null &&
+                            afterAllocation != null &&
+                            beforeAllocation != afterAllocation
+                        ) {
+                            allocationChanged = true
+                            add(
+                                FactTimelineChange(
+                                    label = UiText.res(labelRes),
+                                    before = beforeAllocation,
+                                    after = afterAllocation,
+                                ),
+                            )
+                        }
+                        if (beforeCount != afterCount || !allocationChanged) {
+                            add(
+                                FactTimelineChange(
+                                    label = UiText.res(labelRes),
+                                    before = beforeCount,
+                                    after = afterCount,
+                                ),
+                            )
+                        }
+                        return@forEach
+                    }
                     add(
                         FactTimelineChange(
                             label = UiText.res(labelRes),
