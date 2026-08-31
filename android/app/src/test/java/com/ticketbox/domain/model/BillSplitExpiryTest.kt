@@ -2,6 +2,7 @@ package com.ticketbox.domain.model
 
 import java.time.Instant
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -46,23 +47,84 @@ class BillSplitExpiryTest {
         assertFalse(inboxRow(expiresAt = "not-a-timestamp").isInviteLocallyExpired(now))
     }
 
-    private fun inboxRow(
-        status: String = BillSplitStatusValues.INVITED,
-        expiresAt: String,
-    ): BillSplitInbox = BillSplitInbox(
-        publicId = "bs-1",
-        status = status,
-        amountCents = 1200L,
-        merchantSnapshot = null,
-        categorySuggestion = null,
-        expenseTimeSnapshot = null,
-        expiresAt = expiresAt,
-        createdAt = "2026-06-01T00:00:00Z",
-        acceptedAt = null,
-        rejectedAt = null,
-        cancelledAt = null,
-        expiredAt = null,
-        senderAccountId = 1L,
-        senderDisplayName = "甲",
-    )
+    @Test
+    fun sentInvitationPastExpiryUsesTheSameLocalMirror() {
+        assertTrue(sentRow(expiresAt = "2026-06-11T23:59:59Z").isInviteLocallyExpired(now))
+    }
+
+    @Test
+    fun settledSentInvitationDoesNotDeriveExpiry() {
+        val row = sentRow(
+            status = BillSplitStatusValues.ACCEPTED,
+            expiresAt = "2026-06-11T23:59:59Z",
+        )
+        assertFalse(row.isInviteLocallyExpired(now))
+    }
+
+    @Test
+    fun sentRowPastExpiryPresentsExpired() {
+        assertEquals(
+            BillSplitStatusValues.EXPIRED,
+            sentRow(expiresAt = "2026-06-11T23:59:59Z").presentedStatus(now),
+        )
+    }
+
+    @Test
+    fun sentRowBeforeExpiryPresentsInvitedAndCancelable() {
+        assertEquals(
+            BillSplitStatusValues.INVITED,
+            sentRow(expiresAt = "2026-06-12T00:00:01Z").presentedStatus(now),
+        )
+    }
+
+    @Test
+    fun settledSentRowPastExpiryKeepsSettledStatus() {
+        val row = sentRow(
+            status = BillSplitStatusValues.ACCEPTED,
+            expiresAt = "2026-06-11T23:59:59Z",
+        )
+        assertEquals(BillSplitStatusValues.ACCEPTED, row.presentedStatus(now))
+    }
+
 }
+
+private fun inboxRow(
+    status: String = BillSplitStatusValues.INVITED,
+    expiresAt: String,
+): BillSplitInbox = BillSplitInbox(
+    publicId = "bs-1",
+    status = status,
+    amountCents = 1200L,
+    merchantSnapshot = null,
+    categorySuggestion = null,
+    expenseTimeSnapshot = null,
+    expiresAt = expiresAt,
+    createdAt = "2026-06-01T00:00:00Z",
+    acceptedAt = null,
+    rejectedAt = null,
+    cancelledAt = null,
+    expiredAt = null,
+    senderAccountId = 1L,
+    senderDisplayName = "甲",
+)
+
+private fun sentRow(
+    status: String = BillSplitStatusValues.INVITED,
+    expiresAt: String,
+): BillSplitSent = BillSplitSent(
+    publicId = "bs-sent-1",
+    status = status,
+    amountCents = 1200L,
+    merchantSnapshot = null,
+    categorySuggestion = null,
+    expenseTimeSnapshot = null,
+    expiresAt = expiresAt,
+    createdAt = "2026-06-01T00:00:00Z",
+    acceptedAt = null,
+    rejectedAt = null,
+    cancelledAt = null,
+    expiredAt = null,
+    receiverAccountId = 2L,
+    receiverDisplayNameSnapshot = "乙",
+    senderExpenseId = 42L,
+)

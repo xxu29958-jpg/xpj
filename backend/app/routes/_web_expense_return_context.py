@@ -15,12 +15,16 @@ RETURN_TO_PATHS: dict[str, str] = {
     "confirmed": "/web/confirmed",
     "duplicates": "/web/duplicates",
     "search": "/web/search",
+    "bill_splits_inbox": "/web/bill-splits/inbox",
+    "bill_splits_sent": "/web/bill-splits/sent",
 }
 RETURN_TO_LABELS: dict[str, str] = {
     "pending": "返回待确认",
     "confirmed": "返回已确认流水",
     "duplicates": "返回重复检查",
     "search": "返回搜索结果",
+    "bill_splits_inbox": "返回拆账收件箱",
+    "bill_splits_sent": "返回已发拆账",
 }
 _PENDING_FILTERS = {
     "all",

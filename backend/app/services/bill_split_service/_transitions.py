@@ -286,6 +286,8 @@ def _resolve_lost_accept(
 ) -> tuple[BillSplitInvitation, Expense]:
     """Recover after a peer accept won the claim or partial-unique race."""
     inv = get_invitation(db, public_id)
+    if inv.status == "expired":
+        raise AppError("invitation_expired", status_code=410) from cause
     settled = _resolve_settled_accept(db, inv, target_ledger_id)
     if settled is not None:
         return settled
@@ -297,6 +299,7 @@ def reject_invitation(db: Session, *, public_id: str, rejecting_account_id: int)
     inv = get_invitation(db, public_id)
     if rejecting_account_id != inv.receiver_account_id:
         raise AppError("invitation_not_yours", status_code=403)
+    inv = _settle_expiry_before_transition(db, public_id, inv)
     if inv.status != "invited":
         raise AppError("invitation_not_acceptable", status_code=409)
     # Atomic flip (mirrors the accept claim): only reject while still
@@ -313,7 +316,7 @@ def reject_invitation(db: Session, *, public_id: str, rejecting_account_id: int)
         # A peer settled the invitation first; same outcome as having read
         # the settled row up front.
         db.rollback()
-        raise AppError("invitation_not_acceptable", status_code=409)
+        _raise_lost_non_accept(db, public_id, "invitation_not_acceptable")
     _audit(
         db,
         inv.sender_ledger_id,
@@ -333,6 +336,7 @@ def cancel_invitation(db: Session, *, public_id: str, sender_account_id: int) ->
     if sender_account_id != inv.sender_account_id:
         raise AppError("invitation_not_yours", status_code=403)
     _load_writer_member(db, inv.sender_ledger_id, sender_account_id)
+    inv = _settle_expiry_before_transition(db, public_id, inv)
     if inv.status != "invited":
         # Already terminal; accepted invitations cannot be cancelled because
         # the receiver already has a real expense.
@@ -348,7 +352,7 @@ def cancel_invitation(db: Session, *, public_id: str, sender_account_id: int) ->
     ).rowcount
     if rowcount != 1:
         db.rollback()
-        raise AppError("invitation_not_cancellable", status_code=409)
+        _raise_lost_non_accept(db, public_id, "invitation_not_cancellable")
     _audit(
         db,
         inv.sender_ledger_id,
@@ -360,6 +364,30 @@ def cancel_invitation(db: Session, *, public_id: str, sender_account_id: int) ->
     db.commit()
     db.refresh(inv)
     return inv
+
+
+def _raise_lost_non_accept(db: Session, public_id: str, default_error: str) -> None:
+    """Report the canonical winner after a reject/cancel claim loses."""
+    if get_invitation(db, public_id).status == "expired":
+        raise AppError("invitation_expired", status_code=410)
+    raise AppError(default_error, status_code=409)
+
+
+def _settle_expiry_before_transition(
+    db: Session,
+    public_id: str,
+    inv: BillSplitInvitation,
+) -> BillSplitInvitation:
+    """Make the command-time TTL boundary authoritative for every action."""
+    if ensure_utc(inv.expires_at) > now_utc():
+        return inv
+    if _mark_expired(db, inv):
+        raise AppError("invitation_expired", status_code=410)
+
+    fresh = get_invitation(db, public_id)
+    if fresh.status == "expired":
+        raise AppError("invitation_expired", status_code=410)
+    return fresh
 
 
 def expire_invitations(db: Session) -> int:

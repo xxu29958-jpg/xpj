@@ -7,6 +7,20 @@ from decimal import Decimal
 from typing import TypedDict
 
 from app.models import BillSplitInvitation
+from app.services.identity_service import DEFAULT_ACCOUNT_NAME
+
+UNKNOWN_SENDER_DISPLAY_NAME = "未设置姓名的发起人"
+
+
+def receiver_sender_presentation(snapshot_name: str, visible_ledger_name: str = "") -> tuple[str, str]:
+    """Build an honest receiver-facing sender label from authorized facts."""
+    name = (snapshot_name or "").strip()
+    ledger_name = (visible_ledger_name or "").strip()
+    if not name or name == DEFAULT_ACCOUNT_NAME:
+        if ledger_name:
+            return f"来自「{ledger_name}」的成员", ""
+        return UNKNOWN_SENDER_DISPLAY_NAME, ""
+    return name, f"来自「{ledger_name}」" if ledger_name else ""
 
 
 class _BillSplitCommonPayload(TypedDict):
@@ -92,5 +106,5 @@ def to_inbox_response_dict(inv: BillSplitInvitation) -> BillSplitInboxPayload:
         "cancelled_at": inv.cancelled_at,
         "expired_at": inv.expired_at,
         "sender_account_id": inv.sender_account_id,
-        "sender_display_name": inv.sender_display_name,
+        "sender_display_name": receiver_sender_presentation(inv.sender_display_name)[0],
     }

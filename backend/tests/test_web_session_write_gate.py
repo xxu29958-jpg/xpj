@@ -11,6 +11,7 @@ console's ``owner``. Without the fix a Web viewer could mutate any /web route.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -259,7 +260,7 @@ def test_web_bill_split_accept_threads_session_account_and_device(identity, monk
 
     def fake_accept(_db, **kwargs):
         captured.update(kwargs)
-        return object(), object()
+        return SimpleNamespace(public_id="split-device-attribution"), object()
 
     monkeypatch.setattr(web_bill_split.bsplit, "accept_invitation", fake_accept)
     with SessionLocal() as db:
@@ -273,6 +274,7 @@ def test_web_bill_split_accept_threads_session_account_and_device(identity, monk
         )
 
     assert response.status_code == 303
+    assert "accepted=split-device-attribution" in response.headers["location"]
     assert captured["accepting_account_id"] == account.id
     assert captured["accepting_device_id"] == device.id
 

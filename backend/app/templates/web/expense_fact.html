@@ -13,7 +13,10 @@
 <div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>
 {% endif %}
 {% if message %}
-<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>
+{# C3b: tone 由 route 经 flash_type 传入 (撤回撞上 TTL 的 410 须是 error,
+   不能渲染成成功色); 无 flash_type 的历史 msg-only 流程保持 success 默认。 #}
+{% set _msg_tone = flash_type | default('') %}
+<div class="product-feedback{% if _msg_tone == 'error' %} product-feedback--error{% elif _msg_tone == 'warning' %} product-feedback--warning{% else %} product-feedback--success{% endif %}" role="{% if _msg_tone == 'error' %}alert{% else %}status{% endif %}">{{ message }}</div>
 {% endif %}
 
 <div class="detail-layout fact-layout">

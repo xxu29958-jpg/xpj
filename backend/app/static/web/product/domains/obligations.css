@@ -599,6 +599,100 @@
     font-size: var(--type-caption-size);
 }
 
+/* ===== C3b 拆账邀请（收件箱 + 已发出） ===== */
+
+/* 反馈条内恢复导航链接 (收件箱 receipt 的「查看这笔记录」): 与
+   transactions.css 既有规则同名同值 —— 该模式现被两个 domain 消费,
+   后续应由 base 侧上移到 components.css, 此处先保证本域不悬空。 */
+.product-feedback-link {
+    color: inherit;
+    font-weight: var(--type-subtitle-weight);
+    text-underline-offset: var(--space-1);
+}
+
+.bsplit-list {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.bsplit-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-6);
+    align-items: start;
+    padding: var(--space-5);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+}
+
+.bsplit-row-main,
+.bsplit-row-side {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.bsplit-row-side {
+    justify-items: end;
+    text-align: end;
+}
+
+.bsplit-party {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-3);
+}
+
+.bsplit-sender {
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-title-weight);
+}
+
+.bsplit-amount {
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: var(--type-headline-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-headline-weight);
+}
+
+.bsplit-meta,
+.bsplit-deadline,
+.bsplit-note {
+    margin: 0;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.bsplit-source {
+    color: var(--brand-primary);
+}
+
+.bsplit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.bsplit-accept {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.bsplit-target {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.bsplit-accept select {
+    max-width: calc(var(--space-12) * 4);
+}
+
 /* ===== 窄屏 ===== */
 
 @media (max-width: 48rem) {
@@ -619,5 +713,19 @@
     .dh-amt--hero {
         font-size: var(--type-hero-size);
         line-height: var(--type-hero-line);
+    }
+
+    .bsplit-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .bsplit-row-side {
+        justify-items: stretch;
+        text-align: start;
+    }
+
+    .bsplit-actions,
+    .bsplit-accept {
+        justify-content: flex-start;
     }
 }

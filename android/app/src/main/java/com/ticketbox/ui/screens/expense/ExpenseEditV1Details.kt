@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
+import com.ticketbox.domain.model.presentedStatus
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseItem
 import com.ticketbox.domain.model.ExpenseItemKind
@@ -487,6 +488,8 @@ private fun BillSplitSentRow(
     actionsEnabled: Boolean,
     onCancel: () -> Unit,
 ) {
+    // Keep expiry presentation and cancel eligibility aligned with BillSplitScreen.
+    val presented = row.presentedStatus()
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
@@ -508,13 +511,13 @@ private fun BillSplitSentRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = billSplitSentStatusLabel(row.status),
+                    text = billSplitSentStatusLabel(presented),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
         }
-        if (row.status == BillSplitStatusValues.INVITED) {
+        if (presented == BillSplitStatusValues.INVITED) {
             ExpenseDetailActionButtonRow(
                 text = stringResource(R.string.expense_edit_bill_split_row_cancel),
                 icon = Icons.Filled.Close,
