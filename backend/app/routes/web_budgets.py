@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -106,8 +107,8 @@ def _parse_category_budgets(
             continue
         if not category or not amount_text:
             raise AppError("invalid_request", "分类预算需要同时填写分类和金额。", status_code=422)
-        rows.append(
-            BudgetCategoryRequest(
+        try:
+            row = BudgetCategoryRequest(
                 category=category,
                 amount_cents=_parse_amount_yuan(
                     amount_text,
@@ -115,7 +116,13 @@ def _parse_category_budgets(
                     label="分类预算金额",
                 ),
             )
-        )
+        except ValidationError as exc:
+            raise AppError(
+                "invalid_request",
+                "分类名称过长，请缩短后再保存。",
+                status_code=422,
+            ) from exc
+        rows.append(row)
     return rows
 
 
@@ -147,22 +154,22 @@ def _category_form_rows(
     rows: list[dict] = []
     for index, (category, amount_yuan) in enumerate(pairs):
         saved_item = saved[index] if index < len(saved) else None
-        shows_saved_execution = saved_item is not None and category.strip() == saved_item.category
         rows.append(
             {
                 "index": index,
                 "category": category,
+                "saved_category": saved_item.category if saved_item is not None else "",
                 "amount_yuan": amount_yuan,
                 "spent_yuan": (
-                    _amount_yuan(saved_item.spent_amount_cents, currency_code) if shows_saved_execution else ""
+                    _amount_yuan(saved_item.spent_amount_cents, currency_code) if saved_item is not None else ""
                 ),
                 "remaining_yuan": (
-                    _amount_yuan(saved_item.remaining_amount_cents, currency_code) if shows_saved_execution else ""
+                    _amount_yuan(saved_item.remaining_amount_cents, currency_code) if saved_item is not None else ""
                 ),
                 "overspent_yuan": (
-                    _amount_yuan(saved_item.overspent_amount_cents, currency_code) if shows_saved_execution else ""
+                    _amount_yuan(saved_item.overspent_amount_cents, currency_code) if saved_item is not None else ""
                 ),
-                "has_overspend": bool(shows_saved_execution and saved_item.overspent_amount_cents > 0),
+                "has_overspend": bool(saved_item is not None and saved_item.overspent_amount_cents > 0),
                 "is_configured": saved_item is not None,
                 "remove_requested": index in removed,
             }
@@ -173,6 +180,7 @@ def _category_form_rows(
         {
             "index": first_blank_index + offset,
             "category": "",
+            "saved_category": "",
             "amount_yuan": "",
             "spent_yuan": "",
             "remaining_yuan": "",

@@ -157,12 +157,17 @@
           <tbody>
             {% for row in configured_rows %}
             <tr class="budget-row">
-              <td><input class="product-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮" aria-label="分类预算分类"></td>
+              <td>
+                <input class="product-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮" aria-label="分类预算分类">
+                {# 已保存身份是不可变事实, 常显且零 JS: input 里是要保存的 draft,
+                   改名/422 时执行列仍明确归属旧行, 三态同一表达。 #}
+                <div class="budget-row-saved">已保存：{{ row.saved_category }}</div>
+              </td>
               <td><input class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" aria-label="分类预算金额"></td>
               <td class="amount">{% if row.spent_yuan %}<span class="budget-cell-sign">本月已花</span>{{ home_currency_symbol }}{{ row.spent_yuan }}{% else %}—{% endif %}</td>
               <td class="amount">{% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ home_currency_symbol }}{{ row.overspent_yuan }}</span>{% elif row.remaining_yuan %}<span class="budget-cell-sign">剩余</span>{{ home_currency_symbol }}{{ row.remaining_yuan }}{% else %}—{% endif %}</td>
               <td class="budget-remove-cell">
-                <label class="budget-remove"><input type="checkbox" name="category_budget_remove" value="{{ row.index }}"{% if row.remove_requested %} checked{% endif %} aria-label="移除分类预算：{{ row.category }}"><span>移除</span></label>
+                <label class="budget-remove"><input type="checkbox" name="category_budget_remove" value="{{ row.index }}"{% if row.remove_requested %} checked{% endif %} aria-label="移除分类预算：{{ row.saved_category }}"><span>移除</span></label>
               </td>
             </tr>
             {% endfor %}

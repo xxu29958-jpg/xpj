@@ -675,3 +675,13 @@ fieldset.budget-excluded .hint {
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+/* 已保存分类身份: 与可编辑 input 分层的安静行 meta。执行列 (已花/剩余/超支)
+   始终归属这个不可变身份; input 只是要保存的 draft。unchanged / 编辑中 /
+   422 恢复三态同一表达, 零 JS (CSS 无法比较 input 与已保存名, 故常显而非
+   mismatch 才显); 窄屏行块内随 input 自然堆叠, 无需断点规则。 */
+.budget-row-saved {
+    margin-block-start: var(--space-1);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
