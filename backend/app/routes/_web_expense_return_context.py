@@ -13,6 +13,12 @@ RETURN_TO_PATHS: dict[str, str] = {
     "duplicates": "/web/duplicates",
     "search": "/web/search",
 }
+RETURN_TO_LABELS: dict[str, str] = {
+    "pending": "返回待确认",
+    "confirmed": "返回已确认流水",
+    "duplicates": "返回重复检查",
+    "search": "返回搜索结果",
+}
 _PENDING_FILTERS = {
     "all",
     "missing_amount",
@@ -100,6 +106,37 @@ def edit_context_params(
     params = {"return_to": token}
     params.update({_EDIT_KEY_BY_LIST_KEY[key]: value for key, value in list_params.items()})
     return params
+
+
+def flow_href(
+    path: str,
+    *,
+    ledger_id: str,
+    return_to: str = "",
+    return_month: str = "",
+    return_filter: str = "",
+    return_page: str = "",
+    return_tag: str = "",
+    return_query: str = "",
+) -> str:
+    """Keep validated list-origin state on a fact/correction flow link."""
+
+    params = {"ledger_id": ledger_id}
+    params.update(
+        edit_context_params(
+            return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+            return_query=return_query,
+        )
+    )
+    return f"{path}?{urlencode(params)}"
+
+
+def return_label(return_to: str, *, default: str = "返回流水") -> str:
+    return RETURN_TO_LABELS.get(clean_return_to(return_to), default)
 
 
 def return_href(

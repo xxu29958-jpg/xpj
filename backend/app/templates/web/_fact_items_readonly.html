@@ -3,16 +3,16 @@
    owner 的状态确认，入口贴在其回答的警告下）。
    契约：receipt_items（rows/status/mismatch_yuan）, can_write, home_currency_symbol；
    渲染确认表单时另需 csrf_token / selected_ledger_id / expense.row_version /
-   edit_return_fields（均可由 web_fact_context 提供）。 #}
-<section class="dt-card" aria-label="小票明细">
-  <div class="card-header">
+   edit_return_fields / items_ack_idempotency_key（均由 web_fact_context 提供）。 #}
+<section class="product-panel product-panel--padded" aria-label="小票明细">
+  <div class="product-panel-header">
     <div>
-      <h2>小票明细</h2>
-      <div class="meta">只记录本张小票的商品行。{% if can_write %}需要修改请使用「更正这笔账单」。{% endif %}</div>
+      <h2 class="product-panel-title">小票明细</h2>
+      <div class="product-panel-subtitle">只记录本张小票的商品行。{% if can_write %}需要修改请使用「更正这笔账单」。{% endif %}</div>
     </div>
   </div>
   {% if receipt_items.status == 'mismatch_known' %}
-  <div class="dt-alert warn">明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。</div>
+  <div class="product-feedback product-feedback--warning">明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。</div>
   {% if can_write %}
   {# 「原小票如此」真实命令入口：消费现有 acknowledge-mismatch route
      （csrf/ledger/row_version/return context），成功 303 与冲突呈现均由 route 表达。
@@ -23,24 +23,24 @@
     <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
     <input type="hidden" name="idempotency_key" value="{{ items_ack_idempotency_key }}">
     {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
-    <button type="submit" class="dt-btn">原小票如此</button>
+    <button type="submit" class="product-button product-button--quiet">原小票如此</button>
   </form>
   {% endif %}
   {% elif receipt_items.status == 'mismatch_acknowledged' %}
-  <div class="dt-alert info">已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异。</div>
+  <div class="product-feedback">已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异。</div>
   {% endif %}
   {% set visible_items = receipt_items.rows | selectattr('name') | list %}
   {% if visible_items %}
   {# 窄屏重组为带标签的行卡（CSS 消费 data-label），不做整页横向滚动。 #}
-  <table class="dt-table dt-table--compact fact-lines-table">
+  <table class="product-table fact-lines-table">
     <thead>
       <tr>
-        <th class="th-w-110">类型</th>
+        <th>类型</th>
         <th>名称</th>
-        <th class="th-w-90">数量</th>
-        <th class="th-w-110">单价</th>
-        <th class="th-w-110">金额</th>
-        <th class="th-w-100">分类</th>
+        <th>数量</th>
+        <th>单价</th>
+        <th>金额</th>
+        <th>分类</th>
       </tr>
     </thead>
     <tbody>

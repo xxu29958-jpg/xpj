@@ -1,7 +1,9 @@
 {# 次级事实卡 + 唯一写入口「更正这笔账单」。
    关键元数据（时间/分类/评价）已上移到 _fact_header 的 hero 带；
-   本卡只承载次级字段，不再重复商家/金额。契约：expense, can_write, q, edit_return_href。 #}
-<section class="dt-card fact-card" aria-label="更多事实">
+   本卡只承载次级字段，不再重复商家/金额。
+   契约：expense, can_write, correction_href（含 return context）,
+   edit_return_href / edit_return_label（回来源列表，如「返回搜索结果」）。 #}
+<section class="product-panel product-panel--padded" aria-label="更多事实">
   <dl class="fact-grid">
     {% if expense.is_foreign_currency %}
     <div class="fact-row">
@@ -34,10 +36,10 @@
   </dl>
   <div class="fact-actions">
     {% if can_write %}
-    <a class="dt-btn primary" href="/web/expenses/{{ expense.id }}/correct{{ q }}">更正这笔账单</a>
+    <a class="product-button product-button--primary" href="{{ correction_href }}">更正这笔账单</a>
     {% else %}
     <span class="meta">只读角色可查看事实与变更记录。</span>
     {% endif %}
-    <a href="{{ edit_return_href }}" class="dt-btn link">返回</a>
+    <a href="{{ edit_return_href }}" class="product-button product-button--quiet">{{ edit_return_label }}</a>
   </div>
 </section>

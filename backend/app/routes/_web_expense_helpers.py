@@ -18,6 +18,7 @@ from app.routes._web_expense_return_context import (
     resolve_return_to,
     return_context_params,
     return_href,
+    return_label,
 )
 from app.routes._web_expense_split_presenter import web_split_members, web_split_rows
 from app.routes.web_common import (
@@ -248,6 +249,7 @@ def web_edit_context(
         return_tag=return_tag,
         return_query=return_query,
     )
+    ctx["edit_return_label"] = return_label(return_to)
     record_currency = expense.home_currency_code or ctx["home_currency_code"]
     ctx["currency_input"] = _currency_input_view(record_currency)
     ctx["expense_currency_input"] = _currency_input_view(expense.original_currency_code or record_currency)

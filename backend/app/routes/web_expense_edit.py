@@ -106,6 +106,12 @@ def web_edit_get(
             expense_id,
             revision_page=rev_page,
             revision_snapshot=rev_snapshot,
+            return_to=return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+            return_query=return_query,
         )
         return templates.TemplateResponse(request=request, name="expense_fact.html", context=fact_ctx)
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.

@@ -1,25 +1,26 @@
-{# 更正标量字段卡：卡片 chrome 为更正专属；字段行复用共享 partial
-   （_expense_scalar_fields.html，与 pending 编辑同一实现）。
-   correction_mode 只影响时间帮助文案（更正里留空 = 清空现有时间）。 #}
+{# 更正标量字段卡：字段行由更正专属 partial _expense_scalar_fields.html 承载
+   （correction_mode 只影响金额 step 与时间帮助文案：更正里留空 = 清空现有时间）。 #}
 {% set correction_mode = true %}
-<div class="dt-card">
-  <div class="card-header">
+<div class="product-panel product-panel--padded">
+  <div class="product-panel-header">
     <div>
-      <h2>账单字段</h2>
-      <div class="meta">只改需要改的；没动的字段不会写进变更记录。</div>
+      <h2 class="product-panel-title">账单字段</h2>
+      <div class="product-panel-subtitle">只改需要改的；没动的字段不会写进变更记录。</div>
     </div>
   </div>
-  <div class="dt-form-row">
-    <label for="correct-currency">币种</label>
-    <select id="correct-currency" name="original_currency" {% if 'original_currency' in frozen_scalars %}disabled{% endif %} {% if field_errors.get('original_currency') %}aria-invalid="true" aria-describedby="correct-currency-error"{% endif %}>
-      {% for code in currency_options %}
-      <option value="{{ code }}" {% if code == selected_original_currency %}selected{% endif %}>{{ code }}</option>
-      {% endfor %}
-    </select>
-    {% if 'original_currency' in frozen_scalars %}<input type="hidden" name="original_currency" value="{{ expense.original_currency_code }}">{% endif %}
-    {% if field_errors.get('original_currency') %}<div id="correct-currency-error" class="error-text">{{ field_errors.get('original_currency') }}</div>{% endif %}
-    <div class="meta">金额按所选币种填写；保存时按账单日期的已有汇率换算，汇率未就绪会提示稍后重试。</div>
+  <div class="correction-fields">
+    <div class="product-field">
+      <label for="correct-currency">币种</label>
+      <select id="correct-currency" name="original_currency" {% if 'original_currency' in frozen_scalars %}disabled{% endif %} {% if field_errors.get('original_currency') %}aria-invalid="true" aria-describedby="correct-currency-error"{% endif %}>
+        {% for code in currency_options %}
+        <option value="{{ code }}" {% if code == selected_original_currency %}selected{% endif %}>{{ code }}</option>
+        {% endfor %}
+      </select>
+      {% if 'original_currency' in frozen_scalars %}<input type="hidden" name="original_currency" value="{{ expense.original_currency_code }}">{% endif %}
+      {% if field_errors.get('original_currency') %}<div id="correct-currency-error" class="field-error">{{ field_errors.get('original_currency') }}</div>{% endif %}
+      <div class="meta">金额按所选币种填写；保存时按账单日期的已有汇率换算，汇率未就绪会提示稍后重试。</div>
+    </div>
+    {% include "_expense_scalar_fields.html" %}
   </div>
-  {% include "_expense_scalar_fields.html" %}
-  {% if expense.is_split_received %}<div class="meta">来自家庭拆账的金额、商家和消费时间按协定冻结；分类、标签和备注仍可更正。</div>{% endif %}
+  {% if expense.is_split_received %}<div class="meta correction-frozen-note">来自家庭拆账的金额、商家和消费时间按协定冻结；分类、标签和备注仍可更正。</div>{% endif %}
 </div>

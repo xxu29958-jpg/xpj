@@ -1,14 +1,14 @@
-{# 共享拆账行编辑表格：pending 编辑（edit.html 的 splits/save 表单）与 confirmed
-   更正（_correction_splits.html，同一次 corrections 提交）共用同一行语义与 input
-   name 谱系 —— 后端 _web_expense_rows.split_replace_payload 只认这套 name。
+{# 更正拆账行编辑表格：confirmed 更正（_correction_splits.html，同一次
+   corrections 提交）专属 —— 后端 _web_expense_rows.split_replace_payload
+   只认这套 input name 谱系。
    契约：split_rows.rows（含错误投影）, split_members, can_write, currency_input。
    可访问性：placeholder 不冒充标签 —— 每个控件带「拆账第 N 行：列名」
    aria-label；窄屏行卡模式的可见标签由 CSS 消费 td 的 data-label。 #}
-<table class="dt-table dt-table--compact edit-subtable">
+<table class="product-table edit-subtable">
   <thead>
     <tr>
       <th>成员</th>
-      <th class="th-w-120">金额</th>
+      <th>金额</th>
       <th>备注</th>
     </tr>
   </thead>
@@ -32,10 +32,10 @@
           </option>
           {% endfor %}
         </select>
-        {% if split_errors.get('member_id') or split_errors.get('row') %}<div id="split-{{ row_index }}-member-error" class="error-text">{{ split_errors.get('member_id') or split_errors.get('row') }}</div>{% endif %}
+        {% if split_errors.get('member_id') or split_errors.get('row') %}<div id="split-{{ row_index }}-member-error" class="field-error">{{ split_errors.get('member_id') or split_errors.get('row') }}</div>{% endif %}
       </td>
-      <td data-label="金额"><input type="number" name="split_amount_yuan" value="{{ split.amount_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" aria-label="{{ row_label }}金额" {% if split_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-amount-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('amount_yuan') %}<div id="split-{{ row_index }}-amount-error" class="error-text">{{ split_errors.get('amount_yuan') }}</div>{% endif %}</td>
-      <td data-label="备注"><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" aria-label="{{ row_label }}备注" {% if split_errors.get('note') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-note-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('note') %}<div id="split-{{ row_index }}-note-error" class="error-text">{{ split_errors.get('note') }}</div>{% endif %}</td>
+      <td data-label="金额"><input type="number" name="split_amount_yuan" value="{{ split.amount_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" aria-label="{{ row_label }}金额" {% if split_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-amount-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('amount_yuan') %}<div id="split-{{ row_index }}-amount-error" class="field-error">{{ split_errors.get('amount_yuan') }}</div>{% endif %}</td>
+      <td data-label="备注"><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" aria-label="{{ row_label }}备注" {% if split_errors.get('note') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-note-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('note') %}<div id="split-{{ row_index }}-note-error" class="field-error">{{ split_errors.get('note') }}</div>{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>

@@ -20,6 +20,12 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes._web_expense_fact_pager import fact_timeline_page_context
 from app.routes._web_expense_helpers import web_edit_context
+from app.routes._web_expense_return_context import (
+    clean_return_to,
+    flow_href,
+    return_href,
+    return_label,
+)
 from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_bill_split import build_split_invite_context
 from app.routes.web_common import _web_redirect, templates
@@ -337,10 +343,43 @@ def web_fact_context(
     revision_snapshot: int | None = None,
     message: str | None = None,
     error: str | None = None,
+    return_to: str = "",
+    return_month: str = "",
+    return_filter: str = "",
+    return_page: str = "",
+    return_tag: str = "",
+    return_query: str = "",
 ) -> dict:
     """Read-first fact page context: base edit view-model + fact extras."""
 
-    ctx = web_edit_context(db, request, options, selected_id, expense_id)
+    return_values = {
+        "return_to": return_to,
+        "return_month": return_month,
+        "return_filter": return_filter,
+        "return_page": return_page,
+        "return_tag": return_tag,
+        "return_query": return_query,
+    }
+    ctx = web_edit_context(
+        db,
+        request,
+        options,
+        selected_id,
+        expense_id,
+        **return_values,
+    )
+    if not clean_return_to(return_to):
+        ctx["edit_return_href"] = return_href(
+            "",
+            ledger_id=selected_id,
+            default_path="/web/confirmed",
+        )
+        ctx["edit_return_label"] = return_label("confirmed")
+    ctx["correction_href"] = flow_href(
+        f"/web/expenses/{expense_id}/correct",
+        ledger_id=selected_id,
+        **return_values,
+    )
     expense = get_expense(db, expense_id, selected_id)
     # 页级装配事实（A1 复裁）：事实页是三级详情工作区，依赖 detail.css 的
     # .detail-layout/.receipt-preview。正常 GET /edit 时 base.html 的 URL 子串

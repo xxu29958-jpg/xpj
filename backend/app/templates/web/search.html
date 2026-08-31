@@ -1,62 +1,69 @@
 {% extends "base.html" %}
+{% set product_body_domain = 'transactions' %}
 {% block title %}搜索 · 小票夹{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">搜索</h1>
-  <div class="page-sub">
-    在当前账本里查待确认、已确认、规则和目标，快速回到一笔账或一条规则。
+{# 搜索只是「找到记录」的入口：query owner/四组/排序均在服务端
+   （web_search_service.search_web），本页只承载壳、层级与三态。 #}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水 / 搜索</span>
+    <h1 class="page-title">搜索</h1>
+    <p class="product-page-summary">在当前账本里查待确认、已确认、规则和目标，快速回到一笔账或一条规则。</p>
   </div>
-</div>
+</header>
 
-<form class="search-box" method="get" action="/web/search">
+<form class="ledger-search-form" method="get" action="/web/search">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-  <input class="search-input" type="search" name="q" value="{{ search_query }}" maxlength="80" placeholder="商家、分类、备注、规则关键词或目标名" autofocus{% if search_error %} aria-invalid="true" aria-describedby="search-query-error"{% endif %}>
-  <button class="dt-btn primary" type="submit">搜索</button>
+  <div class="product-field">
+    <label class="sr-only" for="search-query">搜索关键词</label>
+    <input id="search-query" class="product-input" type="search" name="q" value="{{ search_query }}" maxlength="80" placeholder="商家、分类、备注、规则关键词或目标名" autofocus{% if search_error %} aria-invalid="true" aria-describedby="search-query-error"{% endif %}>
+  </div>
+  <button class="product-button product-button--primary" type="submit">搜索</button>
 </form>
 
 {% if search_error %}
-<div id="search-query-error" class="error-text" role="alert">{{ search_error }}</div>
+<div id="search-query-error" class="product-feedback product-feedback--danger" role="alert">{{ search_error }}</div>
 {% endif %}
 
 {% if search_error %}
 {% elif not search_query %}
-<div class="search-empty dt-card">
-  <div class="card-title">先输入一个关键词</div>
-  <div class="card-sub">例如早餐、地铁、咖啡、预算分类或目标名称。</div>
+<div class="product-state">
+  <div class="product-state-title">先输入一个关键词</div>
+  <div class="product-state-body">例如早餐、地铁、咖啡、预算分类或目标名称。</div>
 </div>
 {% elif search_total == 0 %}
-<div class="search-empty dt-card">
-  <div class="card-title">没有找到匹配项</div>
-  <div class="card-sub">可以换一个更短的商家名、分类名或规则关键词。</div>
+<div class="product-state">
+  <div class="product-state-title">没有找到匹配项</div>
+  <div class="product-state-body">可以换一个更短的商家名、分类名或规则关键词。</div>
 </div>
 {% else %}
-<div class="search-groups">
+<div class="ledger-search-groups">
   {% for group in search_groups %}
-  <section class="dt-card search-group">
-    <div class="card-head">
+  <section class="product-panel ledger-search-group" aria-label="{{ group.title }}">
+    <div class="product-panel-header ledger-search-group-head">
       <div>
-        <div class="card-title">{{ group.title }}</div>
-        <div class="card-sub">{{ group.results | length }} 条匹配</div>
+        <h2 class="product-panel-title">{{ group.title }}</h2>
+        <div class="product-panel-subtitle">{{ group.results | length }} 条匹配</div>
       </div>
     </div>
     {% if group.results %}
-      <div class="search-result-list">
+      <div class="ledger-search-results">
         {% for result in group.results %}
-        <a class="search-result" href="{{ result.href }}">
-          <span class="search-type">{{ result.badge }}</span>
-          <span class="search-main">
-            <span class="search-title">{{ result.title }}</span>
-            <span class="search-subtitle">{{ result.subtitle }}</span>
+        <a class="ledger-search-result" href="{{ result.href }}">
+          <span class="product-status">{{ result.badge }}</span>
+          <span class="ledger-search-copy">
+            <strong>{{ result.title }}</strong>
+            <span>{{ result.subtitle }}</span>
           </span>
           {% if result.amount_cents is not none %}
-          <span class="search-amount">{{ search_amount_label(result.amount_cents, result.currency_code or home_currency_code) }}{% if result.currency_code %} <small>{{ result.currency_code }}</small>{% endif %}</span>
+          <span class="ledger-search-amount">{{ search_amount_label(result.amount_cents, result.currency_code or home_currency_code) }}{% if result.currency_code %} <small>{{ result.currency_code }}</small>{% endif %}</span>
           {% endif %}
         </a>
         {% endfor %}
       </div>
     {% else %}
-      <div class="search-none">这一组没有匹配项。</div>
+      <div class="meta ledger-search-none">这一组没有匹配项。</div>
     {% endif %}
   </section>
   {% endfor %}

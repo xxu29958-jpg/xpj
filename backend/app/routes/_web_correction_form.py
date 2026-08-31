@@ -86,6 +86,12 @@ class CorrectionFormData:
     split_note: list[str]
     expected_row_version: str
     idempotency_key: str
+    return_to: str
+    return_month: str
+    return_filter: str
+    return_page: str
+    return_tag: str
+    return_query: str
 
 
 @dataclass
@@ -109,6 +115,15 @@ def web_correction_idempotency_body(form: CorrectionFormData) -> dict[str, objec
     submitted = asdict(form)
     submitted.pop("expected_row_version")
     submitted.pop("idempotency_key")
+    for field_name in (
+        "return_to",
+        "return_month",
+        "return_filter",
+        "return_page",
+        "return_tag",
+        "return_query",
+    ):
+        submitted.pop(field_name)
     return {"web_form": submitted}
 
 
@@ -142,6 +157,12 @@ def correction_form_data(
     split_note: list[str] = Form(default=[]),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    return_to: str = Form(default=""),
+    return_month: str = Form(default=""),
+    return_filter: str = Form(default=""),
+    return_page: str = Form(default=""),
+    return_tag: str = Form(default=""),
+    return_query: str = Form(default=""),
     submitted_fields: frozenset[str] = Depends(_submitted_form_field_names),
 ) -> CorrectionFormData:
     """Bind FastAPI form fields without making the HTTP route a giant parser."""
@@ -173,6 +194,12 @@ def correction_form_data(
         split_note=split_note,
         expected_row_version=expected_row_version,
         idempotency_key=idempotency_key,
+        return_to=return_to,
+        return_month=return_month,
+        return_filter=return_filter,
+        return_page=return_page,
+        return_tag=return_tag,
+        return_query=return_query,
     )
 
 

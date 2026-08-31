@@ -3,12 +3,13 @@
    fact_timeline_page（page/total/snapshot_revision/has_newer/has_older/older_remaining/newer_url/older_url）。
    翻页链接钉在同一 rev_snapshot 上（服务端快照口径），重新进入事实页才取新锚。
    items/splits 变化附完整 Before/After 集合（原生 details 展开，no-JS），
-   只呈现 snapshot 已有字段，不做行级 diff 推断。 #}
-<section class="dt-card fact-timeline" id="fact-timeline" aria-label="变更记录">
-  <div class="card-header">
+   只呈现 snapshot 已有字段，不做行级 diff 推断。分页文案与 URL 语义属 #319
+   冻结合同，一行不动。 #}
+<section class="product-panel product-panel--padded fact-timeline" id="fact-timeline" aria-label="变更记录">
+  <div class="product-panel-header">
     <div>
-      <h2>变更记录</h2>
-      <div class="meta">每次更正都会留下原因和内容对照，最新在最前。</div>
+      <h2 class="product-panel-title">变更记录</h2>
+      <div class="product-panel-subtitle">每次更正都会留下原因和内容对照，最新在最前。</div>
     </div>
   </div>
   {% if fact_timeline %}
@@ -16,7 +17,7 @@
     {% for entry in fact_timeline %}
     <li class="fact-timeline-entry">
       <div class="fact-timeline-head">
-        <span class="dt-pill {% if entry.is_correction %}warn{% else %}ok{% endif %}">{{ entry.kind_label }}</span>
+        <span class="product-status {% if entry.is_correction %}product-status--warning{% else %}product-status--success{% endif %}">{{ entry.kind_label }}</span>
         <span class="fact-timeline-when">{{ entry.when }}</span>
         {% if entry.actor %}<span class="meta">{{ entry.actor }}</span>{% endif %}
       </div>

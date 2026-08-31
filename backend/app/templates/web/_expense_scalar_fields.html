@@ -1,45 +1,44 @@
-{# 共享标量字段行：pending 编辑（edit.html）与 confirmed 更正（_correction_scalars.html）
-   的唯一实现 —— 两个消费者的字段名/解析（_web_expense_edit_command）完全一致。
+{# 更正标量字段行：confirmed 更正（_correction_scalars.html）专属实现 ——
+   字段名/解析（_web_expense_edit_command）与服务端合同一致。
    契约（由调用方上下文提供）：form_prefix, expense, field_errors, category_options,
    expense_currency_input, can_write, frozen_scalars（强制禁用的字段名元组，
-   拆账接收票的协定冻结面；无冻结时为 ()）。 #}
-<div class="dt-form-row">
+   拆账接收票的协定冻结面；无冻结时为 ()），correction_mode（更正恒为 true）。 #}
+<div class="product-field">
   <label for="{{ form_prefix }}-amount-yuan">金额{% if not correction_mode %} ({{ expense.original_currency_code }}){% endif %}</label>
   {# step 参与浏览器 constraint validation（非纯视觉提示）：correction 允许改币种，
      初始渲染的 step 会在 JPY→USD 这类切换后误拦合法输入（或反向放行不诚实精度），
-     故更正模式用 step="any" 放行意图、由服务器按新币种 minor-unit 终验；
-     pending 冻结币种继续使用 metadata 的精确 step/inputmode。
+     故更正模式用 step="any" 放行意图、由服务器按新币种 minor-unit 终验。
      placeholder 的示例金额同样随币种陈旧，更正模式省略（指引由下方 meta 承担）。 #}
   <input id="{{ form_prefix }}-amount-yuan" type="number" name="amount_yuan" value="{{ expense.original_amount_value }}" min="0" {% if correction_mode %}step="any" inputmode="decimal"{% else %}step="{{ expense_currency_input.amount_step }}" placeholder="例如 {{ expense_currency_input.amount_example }}" inputmode="{{ expense_currency_input.inputmode }}"{% endif %} {% if field_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-amount-error"{% endif %} {% if not can_write or 'amount_yuan' in frozen_scalars %}disabled{% endif %}>
-  {% if field_errors.get('amount_yuan') %}<div id="{{ form_prefix }}-amount-error" class="error-text">{{ field_errors.get('amount_yuan') }}</div>{% endif %}
+  {% if field_errors.get('amount_yuan') %}<div id="{{ form_prefix }}-amount-error" class="field-error">{{ field_errors.get('amount_yuan') }}</div>{% endif %}
   {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
   {% if correction_mode %}<div class="meta">金额按上方所选币种解析；小数位由服务器按币种校验。</div>{% endif %}
 </div>
-<div class="dt-form-row">
+<div class="product-field">
   <label for="{{ form_prefix }}-merchant">商家</label>
   <input id="{{ form_prefix }}-merchant" type="text" name="merchant" value="{{ expense.merchant }}" maxlength="255" placeholder="未填写商家" {% if field_errors.get('merchant') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-merchant-error"{% endif %} {% if not can_write or 'merchant' in frozen_scalars %}disabled{% endif %}>
-  {% if field_errors.get('merchant') %}<div id="{{ form_prefix }}-merchant-error" class="error-text">{{ field_errors.get('merchant') }}</div>{% endif %}
+  {% if field_errors.get('merchant') %}<div id="{{ form_prefix }}-merchant-error" class="field-error">{{ field_errors.get('merchant') }}</div>{% endif %}
 </div>
-<div class="dt-form-row">
+<div class="product-field">
   <label for="{{ form_prefix }}-expense-time">消费时间</label>
   <input id="{{ form_prefix }}-expense-time" type="datetime-local" name="expense_time" value="{{ expense.expense_time_local }}" {% if field_errors.get('expense_time') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-time-error"{% endif %} {% if not can_write or 'expense_time' in frozen_scalars %}disabled{% endif %}>
-  {% if field_errors.get('expense_time') %}<div id="{{ form_prefix }}-time-error" class="error-text">{{ field_errors.get('expense_time') }}</div>{% endif %}
+  {% if field_errors.get('expense_time') %}<div id="{{ form_prefix }}-time-error" class="field-error">{{ field_errors.get('expense_time') }}</div>{% endif %}
   {% if correction_mode %}<div class="meta">留空表示清空现有时间。</div>{% else %}<div class="meta">留空表示不修改时间。</div>{% endif %}
 </div>
-<div class="dt-form-row">
+<div class="product-field">
   <label for="{{ form_prefix }}-category">分类</label>
   <input id="{{ form_prefix }}-category" type="text" name="category" value="{{ expense.category_input }}" maxlength="64" placeholder="例如 餐饮" list="category-options" {% if field_errors.get('category') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-category-error"{% endif %} {% if not can_write %}disabled{% endif %}>
-  {% if field_errors.get('category') %}<div id="{{ form_prefix }}-category-error" class="error-text">{{ field_errors.get('category') }}</div>{% endif %}
+  {% if field_errors.get('category') %}<div id="{{ form_prefix }}-category-error" class="field-error">{{ field_errors.get('category') }}</div>{% endif %}
   <datalist id="category-options">
     {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
   </datalist>
 </div>
-<div class="dt-form-row">
+<div class="product-field">
   <label for="{{ form_prefix }}-tags">标签</label>
   <input id="{{ form_prefix }}-tags" type="text" name="tags" value="{{ expense.tags }}" maxlength="500" placeholder="用逗号分隔，例如 报销, 出差" {% if field_errors.get('tags') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-tags-error"{% endif %} {% if not can_write %}disabled{% endif %}>
-  {% if field_errors.get('tags') %}<div id="{{ form_prefix }}-tags-error" class="error-text">{{ field_errors.get('tags') }}</div>{% endif %}
+  {% if field_errors.get('tags') %}<div id="{{ form_prefix }}-tags-error" class="field-error">{{ field_errors.get('tags') }}</div>{% endif %}
 </div>
-<div class="dt-form-row">
+<div class="product-field">
   <label for="{{ form_prefix }}-note">备注</label>
   <textarea id="{{ form_prefix }}-note" name="note" rows="3" {% if not can_write %}disabled{% endif %}>{{ expense.note }}</textarea>
 </div>

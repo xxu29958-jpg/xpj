@@ -1,43 +1,43 @@
 {% extends "base.html" %}
-{% block title %}账单事实 — 小票夹{% endblock %}
-{% block page_styles %}<link rel="stylesheet" href="/static/web/pages/expense-fact.css?v={{ asset_version }}">{% endblock %}
+{% set product_body_domain = 'transactions' %}
+{% block title %}账单详情 — 小票夹{% endblock %}
 {% block content %}
-{# A1: confirmed 账单的 read-first 事实详情（编排壳）。各段责任：
-   _fact_header / _fact_summary_card / _fact_split_invite /
-   _fact_items_readonly / _fact_splits_readonly / _fact_timeline。 #}
+{# 已确认账单事实详情（编排壳）：read-first 单任务页。各段责任：
+   _fact_header / _fact_summary_card / _fact_items_readonly /
+   _fact_splits_readonly / _fact_split_invite / _fact_timeline。
+   凭证是事实的旁证：桌面右侧 aside（detail.css 骨架），窄屏上移到明细
+   之前（transactions.css 的 order 规则），不抢 hero。 #}
 {% include "_fact_header.html" %}
 
 {% if error %}
-<div class="dt-alert danger" role="alert">⚠️ {{ error }}</div>
+<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>
 {% endif %}
 {% if message %}
-<div class="dt-alert success" role="status">{{ message }}</div>
+<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>
 {% endif %}
 
-<div class="detail-layout">
+<div class="detail-layout fact-layout">
   <div class="detail-main">
     {% include "_fact_summary_card.html" %}
-    <div class="detail-sections fact-lines">
-      {% include "_fact_items_readonly.html" %}
-      {% include "_fact_splits_readonly.html" %}
-    </div>
+    {% include "_fact_items_readonly.html" %}
+    {% include "_fact_splits_readonly.html" %}
     {# 拆账邀请是关联动作，排在事实之后、历史之前，不抢事实主体。 #}
     {% include "_fact_split_invite.html" %}
     {% include "_fact_timeline.html" %}
   </div>
 
-  <aside class="detail-aside">
+  <aside class="detail-aside fact-evidence">
     {% if expense.has_image %}
-    <div class="dt-card receipt-preview receipt-image-shell" data-image-skeleton>
-      <div class="skeleton skeleton-block receipt-image-skeleton" aria-hidden="true"></div>
-      <a href="/web/expenses/{{ expense.id }}/image{{ q }}" target="_blank">
+    <div class="product-panel receipt-preview receipt-image-shell" data-image-skeleton>
+      <div class="receipt-loading" aria-hidden="true"></div>
+      <a href="/web/expenses/{{ expense.id }}/image{{ q }}" target="_blank" rel="noopener">
         <img src="/web/expenses/{{ expense.id }}/image{{ q }}" alt="小票图片" class="receipt-img" loading="lazy" decoding="async">
       </a>
     </div>
     {% elif expense.image_state == 'cleaned' %}
-    <div class="dt-card meta">凭证图片已清理</div>
+    <div class="product-panel product-panel--padded meta">凭证图片已清理</div>
     {% else %}
-    <div class="dt-card meta">没有凭证图片</div>
+    <div class="product-panel product-panel--padded meta">没有凭证图片</div>
     {% endif %}
   </aside>
 </div>
