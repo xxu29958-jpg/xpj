@@ -316,3 +316,308 @@
     justify-content: space-between;
     gap: var(--space-4);
 }
+
+
+/* ===== C3a 往来核心：列表 / 新建 / 详情的产品化表达 ===== */
+
+/* 失败兜底的 attempted 静态记录行: 在 danger/feedback 块内降一档, 仅作记录。 */
+.debt-attempted {
+    display: block;
+    margin-block-start: var(--space-2);
+    font-size: var(--type-caption-size);
+    opacity: .85;
+}
+
+/* 欠我的行内剩余 caption: 安静陈述, 不催不红, 数字等宽。 */
+.debt-row-remaining {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 三级页返回链接：安静的导航，不与正文争层级。 */
+.debt-back {
+    display: inline-block;
+    margin-block-end: var(--space-4);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    text-decoration: none;
+}
+
+.debt-back:hover {
+    color: var(--brand-primary-strong);
+    text-decoration: underline;
+    text-underline-offset: var(--space-1);
+}
+
+/* 列表行状态徽章簇。 */
+.debt-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+}
+
+/* ===== 详情：成员往来卡 ===== */
+
+.debt-member-card,
+.debt-summary-card,
+.debt-installment-card {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.debt-member-eyebrow,
+.debt-card-label {
+    margin: 0;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* 成员「看看账」折叠明细。 */
+.debt-look summary {
+    color: var(--brand-primary-strong);
+    cursor: pointer;
+}
+
+.debt-look-rows {
+    display: grid;
+    gap: var(--space-2);
+    margin-block-start: var(--space-3);
+}
+
+.debt-look-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: var(--space-4);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* 外部债务的进度用中性色：商业语义不借家人往来的品牌色。 */
+.debt-progress--neutral {
+    accent-color: var(--text-default);
+}
+
+.debt-installment-schedule {
+    margin: 0;
+    padding-inline-start: var(--space-5);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* 成员 proposal 的状态句：安静陈述，不是操作按钮。 */
+.debt-proposal-flow {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.debt-proposal-status {
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* ===== 详情：动作区 ===== */
+
+.debt-actions {
+    display: grid;
+    gap: var(--space-5);
+    margin-block-start: var(--space-6);
+}
+
+.debt-action-form,
+.debt-create-form {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.debt-create-form {
+    gap: var(--space-6);
+}
+
+.debt-form-actions {
+    display: flex;
+    justify-content: flex-start;
+    gap: var(--space-3);
+}
+
+.debt-secondary-actions {
+    display: grid;
+    gap: 0;
+    margin-block-start: var(--space-2);
+}
+
+/* 低频 / 危险动作收进 native disclosure，发丝分隔。 */
+.debt-action-panel {
+    padding-block: var(--space-3);
+    border-block-start: 1px solid var(--border-card);
+}
+
+.debt-action-panel:first-child {
+    border-block-start: 0;
+}
+
+.debt-action-panel > summary {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+    cursor: pointer;
+}
+
+.debt-action-panel--danger > summary {
+    color: var(--state-danger-fg);
+}
+
+.debt-action-panel > summary:focus-visible {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+.debt-action-panel .debt-action-form {
+    margin-block-start: var(--space-3);
+}
+
+/* 表单原位错误：紧凑条，role=alert 由模板承担。 */
+.debt-action-error {
+    margin: 0 0 var(--space-3);
+    padding: var(--space-2) var(--space-3);
+}
+
+/* 待确认 proposal 的内联确认 / 拒绝。 */
+.debt-pending-actions {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.debt-inline-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3);
+}
+
+.debt-inline-label {
+    display: grid;
+    gap: var(--space-1);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* ===== 详情：还款事实 ===== */
+
+.debt-history-title {
+    margin: 0 0 var(--space-3);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-meta-weight);
+    letter-spacing: var(--type-meta-tracking);
+}
+
+.debt-history-side {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.debt-history-amt--voided {
+    color: var(--text-meta);
+    text-decoration: line-through;
+}
+
+/* 行内误记撤销：不额外造卡片。 */
+.debt-fact-void {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+/* ===== 新建：方向 / 偿还方式选择卡 ===== */
+
+.debt-choice-group {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.debt-choice-group > legend {
+    padding: 0;
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.debt-choice-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+}
+
+.debt-choice-row--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.debt-choice {
+    position: relative;
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    cursor: pointer;
+}
+
+.debt-choice input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.debt-choice:has(input:checked) {
+    border-color: var(--brand-primary);
+    background: var(--brand-primary-bg);
+}
+
+.debt-choice:has(input:focus-visible) {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+.debt-choice-title {
+    font-weight: var(--type-subtitle-weight);
+}
+
+.debt-choice-hint {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* ===== 窄屏 ===== */
+
+@media (max-width: 48rem) {
+    .debt-choice-row,
+    .debt-choice-row--three {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .debt-inline-form {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .debt-badges {
+        justify-content: flex-start;
+    }
+
+    .dh-amt--hero {
+        font-size: var(--type-hero-size);
+        line-height: var(--type-hero-line);
+    }
+}

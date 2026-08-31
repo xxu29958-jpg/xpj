@@ -69,8 +69,8 @@
     <div class="dg-all-voided">{{ all_voided_text }}</div>
     {% else %}
     <div class="dg-headline">{{ goal.headline }}</div>
-    <div class="debt-progress" role="img" aria-label="已两清 {{ goal.cleared_count }} 笔，共 {{ goal.total_count }} 笔">
-      <div class="debt-progress-fill" style="width: {{ goal.fraction_percent }}%"></div>
+    <div class="dg-progress" role="img" aria-label="已两清 {{ goal.cleared_count }} 笔，共 {{ goal.total_count }} 笔">
+      <div class="dg-progress-fill" style="width: {{ goal.fraction_percent }}%"></div>
     </div>
     {% if goal.amount_line %}
     <div class="dg-amount">{{ goal.amount_line }}</div>
@@ -118,7 +118,7 @@
     {% endif %}
 
     {% if can_write and goal.can_set_target_date %}
-    <details class="debt-look">
+    <details class="dg-disclosure">
       <summary>{% if goal.target_date_value %}修改还清日期{% else %}设置还清日期{% endif %}</summary>
       <form method="post" action="/web/debt-goals/{{ goal.public_id }}/target-date">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -142,7 +142,7 @@
     <div class="dg-links">
       <div class="dg-links-title">{{ goal.links_title }}</div>
       {% for link in goal.links %}
-      <div class="dg-link{% if link.recede %} debt-card-sunk{% endif %}">
+      <div class="dg-link{% if link.recede %} dg-sunk{% endif %}">
         <div class="dg-link-top">
           <span class="dg-link-name">{{ link.name }}</span>
           <span class="dt-pill {{ link.status_tone }}">{{ link.status_label }}</span>
@@ -163,7 +163,7 @@
     </div>
 
     {% if can_write %}
-    <details class="debt-look">
+    <details class="dg-disclosure">
       <summary>调整关联欠款</summary>
       <form method="post" action="/web/debt-goals/{{ goal.public_id }}/links">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -206,7 +206,7 @@
 <div class="dg-list dg-archived">
   <div class="dg-links-title">已归档计划（{{ goals_archived | length }} 条；恢复不会改动关联欠款）</div>
   {% for goal in goals_archived %}
-  <div class="dt-card dt-card--static dg-card debt-card-sunk">
+  <div class="dt-card dt-card--static dg-card dg-sunk">
     <div class="dg-head">
       <div class="dg-name">{{ goal.name }}</div>
       <span class="dt-pill">{{ goal.eval_label }}</span>

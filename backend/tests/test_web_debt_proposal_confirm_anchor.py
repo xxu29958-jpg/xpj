@@ -108,6 +108,58 @@ def test_web_confirm_invalid_amount_error_not_attached_to_new_pending_proposal(
         assert repayments == []
 
 
+def test_web_confirm_stale_old_proposal_keeps_attempt_separate_from_new_pending(
+    web_client: TestClient,
+) -> None:
+    public_id, debt_id, owner_id, member_id, proposal_a = seed_creditor_view()
+    before_version = row_version_of(debt_id)
+    settled = post_confirm(
+        web_client,
+        public_id,
+        proposal_a,
+        **{
+            PROPOSAL_CONFIRM_AMOUNT_FIELD: "80.00",
+            "expected_row_version": str(before_version),
+        },
+    )
+    assert settled.status_code == 303
+    proposal_b = add_pending_proposal(
+        debt_id=debt_id,
+        debtor_id=member_id,
+        creditor_id=owner_id,
+        amount_cents=9_000,
+    )
+
+    stale = post_confirm(
+        web_client,
+        public_id,
+        proposal_a,
+        **{
+            PROPOSAL_CONFIRM_AMOUNT_FIELD: "50.00",
+            "expected_row_version": str(before_version),
+        },
+    )
+
+    assert stale.status_code == 409
+    assert 'role="alert"' in stale.text
+    assert f'data-proposal-public-id="{proposal_a}"' in stale.text
+    assert "50.00" in stale.text
+    assert 'value="50.00"' not in stale.text
+    assert f'action="/web/debts/{public_id}/repayment-proposals/{proposal_b}/confirm"' in stale.text
+    assert 'value="90.00"' in stale.text
+    with SessionLocal() as db:
+        old = db.scalar(
+            select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_a)
+        )
+        fresh = db.scalar(
+            select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_b)
+        )
+        repayments = db.scalars(select(Repayment).where(Repayment.debt_id == debt_id)).all()
+        assert old is not None and old.status == "confirmed"
+        assert fresh is not None and fresh.status == "pending"
+        assert len(repayments) == 1
+
+
 # ── P2 构造性旁路：两锚点都不成立时,无锚裸错误块仍须让文案可见 ──────────────
 
 

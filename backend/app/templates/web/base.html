@@ -61,7 +61,7 @@
    为 product 正文, 面包屑聚合到 /web/library; /web/categories/uncategorized
    等下钻页正文迁移属后续增量。 #}
 {% set _is_expense_detail = '/expenses/' in _path and '/edit' in _path %}
-{% set _is_debt_detail = _path.startswith('/web/debts/') %}
+{% set _is_debt_detail = _path.startswith('/web/debts/') and _path != '/web/debts/new' %}
 {% set _is_import_detail = _path.startswith('/web/import/') %}
 {% set _page_key = (
   'expense-detail' if _is_expense_detail else
@@ -151,7 +151,6 @@
   <link rel="stylesheet" href="/static/web/pages/reports.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/duplicates.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/bill-splits.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/debts.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/debt_goals.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/repayment_drafts.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/_misc.css?v={{ asset_version }}">

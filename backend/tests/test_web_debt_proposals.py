@@ -248,6 +248,7 @@ def test_web_creditor_can_partially_confirm_pending_proposal(
 
     assert confirmed.status_code == 200
     assert "收到啦，谢谢 TA" in confirmed.text
+    assert f'action="/web/debts/{public_id}/repayment-voids"' not in confirmed.text
     with SessionLocal() as db:
         proposal = db.scalar(
             select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_public_id)
@@ -319,7 +320,7 @@ def test_web_debt_detail_pending_proposal_debtor_view(web_client: TestClient) ->
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     assert "你说你还了这一份，等家人确认一下" in resp.text  # debtor-side pending line
-    assert "dt-pill danger" not in resp.text  # member surface never red
+    assert "product-status--danger" not in resp.text  # member surface never red
 
 
 def test_web_debt_detail_pending_proposal_creditor_view(web_client: TestClient) -> None:
@@ -336,7 +337,7 @@ def test_web_debt_detail_pending_proposal_creditor_view(web_client: TestClient) 
     assert "/confirm" in resp.text
     assert "/reject" in resp.text
     assert 'value="80.00"' in resp.text
-    assert f"/web/debts/{public_id}/forgive" not in resp.text
+    assert f"/web/debts/{public_id}/forgive" in resp.text
 
 
 def test_web_debt_detail_resolved_history_is_sunk_and_neutral(web_client: TestClient) -> None:
@@ -366,10 +367,10 @@ def test_web_debt_detail_resolved_history_is_sunk_and_neutral(web_client: TestCl
     assert "在对账" in resp.text  # rejected reads 在对账, NOT failure
     assert "已拒绝" not in resp.text
     assert "失败" not in resp.text
-    assert "dt-pill danger" not in resp.text  # all resolved pills neutral
+    assert "product-status--danger" not in resp.text  # all resolved pills neutral
     # §3.4: a confirmed proposal in 过往 is NEUTRAL, never挑成 success green. The debt itself is
     # open (status badge 进行中, neutral), so no success pill should appear anywhere on the page.
-    assert "dt-pill ok" not in resp.text
+    assert "product-status--success" not in resp.text
 
 
 def test_web_debt_detail_resolved_history_collapses_over_three(web_client: TestClient) -> None:

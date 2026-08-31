@@ -7,6 +7,7 @@ timeline rows, and the soft write gate. The routes themselves stay in
 
 from __future__ import annotations
 
+from datetime import date, datetime, time
 from uuid import uuid4
 
 from fastapi import Request
@@ -47,6 +48,21 @@ PROPOSAL_CONFIRM_AMOUNT_FIELD = "confirmed_amount_major"
 # N-1 兼容：D3 修复前路由误读的旧字段名。旧客户端/旧页面仍按它提交时不得静默丢金额
 # (新字段非空优先，旧字段兜底，两者皆空按申报全额)；路由侧同样以 Form(alias=...) 绑定本常量。
 PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY = "amount_major"
+
+
+def _parse_paid_at(raw: str) -> datetime | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        selected_date = date.fromisoformat(text)
+    except ValueError as exc:
+        raise AppError(
+            "invalid_request",
+            "请选择正确的还款日期。",
+            status_code=422,
+        ) from exc
+    return datetime.combine(selected_date, time.min, tzinfo=accounting_zone())
 
 
 def _day_label(value) -> str:

@@ -108,7 +108,7 @@ def test_web_debts_lists_external_i_owe_open(web_client: TestClient, *, identity
     assert "本金" in resp.text
     assert "500.00" in resp.text  # home-currency principal footnote
     # Editorial-split remaining hero (cur/int/dec spans), not a blunt label string.
-    assert "dh-amt--row" in resp.text
+    assert 'class="dh-amt"' in resp.text
     assert '<span class="dh-int">500</span>' in resp.text
 
 
@@ -136,7 +136,7 @@ def test_web_debts_renders_cleared_status_and_zero_remaining(
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert "已结清" in resp.text  # cleared status label
-    assert "dt-pill ok" in resp.text  # cleared → success tone class rendered
+    assert "product-status--success" in resp.text  # cleared → success tone class rendered
     # Remaining hero integer is now exactly 0 (the only dh-int in the row; principal
     # stays a plain footnote, so this precisely checks remaining == 0).
     assert '<span class="dh-int">0</span>' in resp.text
@@ -154,7 +154,7 @@ def test_web_debts_renders_voided_status(web_client: TestClient, *, identity) ->
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert "已作废" in resp.text  # voided status label
-    assert "dt-pill danger" in resp.text  # voided → danger tone class rendered
+    assert "product-status--danger" in resp.text  # voided → danger tone class rendered
 
 
 def _seed_third_party_member_debt() -> str:
@@ -195,7 +195,7 @@ def test_web_debts_lists_member_debt_communal(web_client: TestClient) -> None:
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert "家庭成员" in resp.text  # counterparty fallback name
-    assert '<h2 class="debt-section-title">家人</h2>' in resp.text  # 家人 section header
+    assert 'id="debt-section-member">家人</h2>' in resp.text  # 家人 section header
     # Communal relational headline (viewer=owner=debtor, open, ratio 0).
     assert "你帮我垫了，慢慢还给你" in resp.text
     assert "进行中" in resp.text  # member open status badge (neutral)
@@ -203,7 +203,7 @@ def test_web_debts_lists_member_debt_communal(web_client: TestClient) -> None:
     assert "应付" not in resp.text
     assert "应收" not in resp.text
     # No external debts seeded → no 外部 section.
-    assert '<h2 class="debt-section-title">外部</h2>' not in resp.text
+    assert 'id="debt-section-external">外部</h2>' not in resp.text
 
 
 def test_web_debts_groups_family_before_external(web_client: TestClient, *, identity) -> None:
@@ -213,8 +213,8 @@ def test_web_debts_groups_family_before_external(web_client: TestClient, *, iden
     _create_external_debt(web_client, identity=identity, direction="i_owe", label="招商信用卡")
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
-    fam = '<h2 class="debt-section-title">家人</h2>'
-    ext = '<h2 class="debt-section-title">外部</h2>'
+    fam = 'id="debt-section-member">家人</h2>'
+    ext = 'id="debt-section-external">外部</h2>'
     assert fam in resp.text
     assert ext in resp.text
     assert resp.text.index(fam) < resp.text.index(ext)  # 家人 before 外部
@@ -233,7 +233,7 @@ def test_web_debts_member_row_third_party_viewer(web_client: TestClient) -> None
     assert "这件事还在进行中" in resp.text  # third-party headline
     assert "你帮我垫" not in resp.text
     assert "我帮你垫" not in resp.text
-    assert "dt-pill danger" not in resp.text  # never red for a member row
+    assert "product-status--danger" not in resp.text  # never red for a member row
 
 
 def _stub_debt(**overrides) -> SimpleNamespace:
@@ -382,8 +382,8 @@ def test_web_debt_detail_external_renders_summary(web_client: TestClient, *, ide
     # 1B premium: editorial display-split hero + businesslike repayment bar +
     # tracked (letter-spaced) card-title eyebrow (uppercase is a no-op on 剩余).
     assert "dh-amt--hero" in resp.text
-    assert "debt-pay-bar" in resp.text
-    assert "card-title" in resp.text
+    assert "debt-progress--neutral" in resp.text
+    assert "debt-card-label" in resp.text
     # The duplicate 剩余 ROW is removed (剩余 now lives only in the eyebrow/aria);
     # there must be no 剩余 row label left.
     assert "<span>剩余</span>" not in resp.text
@@ -403,7 +403,7 @@ def test_web_debt_detail_member_renders_communal(web_client: TestClient) -> None
     assert "应付" not in detail.text
     assert "应收" not in detail.text
     assert "剩余" not in detail.text  # member card never surfaces remaining
-    assert "dt-pill danger" not in detail.text  # never red for member debt
+    assert "product-status--danger" not in detail.text  # never red for member debt
     assert "进行中" in detail.text  # member open status badge (neutral)
 
 

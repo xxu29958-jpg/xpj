@@ -8,8 +8,8 @@
 每行走 communal 关系行(逐字复用 ``web_debts`` 的成员行词汇,三端同一套呈现):债务人名
 (``counterparty_label`` 由 ⑤c-1 填成 debtor 的 display_name)+ 关系主句「我帮你垫的…」
 (viewer 恒是债权人 → ``viewer_is_debtor=False``)+ open 时细进度条 + 状态徽章
-(neutral/success **永不红**)。**纯只读、非链接**(镜像还款捕获审计页):还款由债务人在
-手机 App 发起、债权人确认;§7.0 命名要对上的人但不催、不红、不汇总记分。
+(neutral/success **永不红**)。每行保留 canonical remaining 与 public_id，打开既有
+participant-scoped detail；写动作仍由真实角色与 Owner 决定，不催、不红、不汇总记分。
 
 viewer 由 ``_web_viewer_account_id`` 解析(web session→会话账户;loopback owner-console
 →选定账本 owner,同 slice 2a/2b/3/4);viewer None(账本无活跃 owner)→ premium 空态。
@@ -36,6 +36,7 @@ from app.routes.web_debts import (
     _STATUS_RANK,
     _communal_ratio,
     _debt_name,
+    _home_amount_label,
     _member_headline,
     _member_progress_note,
     _web_viewer_account_id,
@@ -52,10 +53,12 @@ _EMPTY_BODY = "你帮家人垫了钱、对方接受拆账后,还没对上的份�
 def _receivable_row_view(debt) -> dict:
     """一行应收的 communal 关系行视图。viewer 恒是债权人(``viewer_is_debtor=False``,由
     ``list_member_receivables_for_account`` 的查询保证),故关系主句恒走「我帮你垫的…」侧,
-    与 ``/web/debts`` 家人段同一套词汇。无金额英雄(§7.0 命名不催),金额只隐含在进度条。"""
+    与 ``/web/debts`` 家人段同一套词汇。无金额英雄(§7.0 命名不催)，只安静显示 exact
+    remaining 并进入既有 participant detail。"""
     ratio = _communal_ratio(debt.paid_amount_cents, debt.principal_amount_cents)
     status_label, status_tone = _MEMBER_STATUS.get(debt.status, _MEMBER_STATUS["open"])
     return {
+        "public_id": debt.public_id,
         # name = 债务人 display_name(⑤c-1 把它填进 counterparty_label),回退「家庭成员」。
         "name": _debt_name(debt),
         "member_headline": _member_headline(
@@ -64,6 +67,10 @@ def _receivable_row_view(debt) -> dict:
         "show_progress": debt.status == "open",
         "ratio_percent": int(round(ratio * 100)),
         "progress_note": _member_progress_note(ratio),
+        "remaining_label": _home_amount_label(
+            debt.remaining_amount_cents,
+            debt.home_currency_code,
+        ),
         "status_label": status_label,
         "status_tone": status_tone,
         # 已结清/作废行视觉沉降(淡出、永不红 — 办完可追溯)。

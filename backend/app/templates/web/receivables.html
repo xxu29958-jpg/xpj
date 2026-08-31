@@ -1,35 +1,47 @@
 {% extends "base.html" %}
-{% block title %}欠我的 · 小票夹{% endblock %}
+{% set page_title = '欠我的' %}
+{% set product_body_domain = 'obligations' %}
+{% block title %}欠我的 · 往来 · 小票夹{% endblock %}
+
+{# C3a: 欠我的 = 服务端 canonical 跨账本应收 lens (viewer 恒为债权人)。
+   communal 关系行与 /web/debts 家人段同一套词汇, open 时 native progress;
+   整行链接到已有 participant detail (public_id + 当前 selected ledger,
+   不暴露债务人账本); open 行补安静 caption「还剩 X 没对上」, 不催不红不汇总;
+   已结清/作废沉降淡出。 #}
+{% set _tone = {'ok': 'product-status--success', 'danger': 'product-status--danger', 'warn': 'product-status--warning', 'info': 'product-status--info'} %}
 {% block content %}
-<h1 class="page-title page-title--compact">欠我的</h1>
-<p class="page-hint">{{ intro }}</p>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">往来 / 欠我的</span>
+    <h1 class="page-title">欠我的</h1>
+    <p class="product-page-summary">{{ intro }}</p>
+  </div>
+</header>
 
 {% if not rows %}
-<div class="dt-card dt-card--empty">
-  <div class="empty-headline">{{ empty_title }}</div>
-  <div class="empty-body">{{ empty_body }}</div>
+<div class="product-state">
+  <div class="product-state-title">{{ empty_title }}</div>
+  <div class="product-state-body">{{ empty_body }}</div>
 </div>
 {% else %}
 <div class="debt-list">
   {% for debt in rows %}
-  {# 应收 = communal 关系行 (.dt-card--static 不抬升=只读非链接,镜像还款捕获审计页):债务人名 +
-     viewer-相对关系主句「我帮你垫的…」(无金额) + open 时细 success 进度条 + 状态徽章
-     (neutral/success 永不红 — 红线②)。作废/已结清沉降 (.debt-card-sunk 淡出,办完可追溯)。 #}
-  <div class="dt-card dt-card--static debt-row debt-row--member{% if debt.recede %} debt-card-sunk{% endif %}"
-       role="group" aria-label="{{ debt.name }},{{ debt.member_headline }},{{ debt.status_label }}">
+  <a class="debt-row{% if debt.recede %} is-receded{% endif %}" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
+     aria-label="{{ debt.name }},{{ debt.member_headline }}{% if debt.show_progress %},还剩 {{ debt.remaining_label }} 没对上{% endif %},{{ debt.status_label }}">
     <div class="debt-row-main">
       <div class="debt-name">{{ debt.name }}</div>
       <div class="debt-member-line">{{ debt.member_headline }}</div>
       {% if debt.show_progress %}
-      <div class="debt-progress debt-progress--row" role="img" aria-label="{{ debt.progress_note }}">
-        <div class="debt-progress-fill" style="width: {{ debt.ratio_percent }}%"></div>
-      </div>
+      <progress class="debt-progress" value="{{ debt.ratio_percent }}" max="100" aria-label="{{ debt.progress_note }}"></progress>
       {% endif %}
     </div>
     <div class="debt-row-side">
-      <span class="dt-pill {{ debt.status_tone }}">{{ debt.status_label }}</span>
+      <span class="product-status{% if debt.status_tone %} {{ _tone[debt.status_tone] }}{% endif %}">{{ debt.status_label }}</span>
+      {% if debt.show_progress %}
+      <span class="debt-row-remaining">还剩 {{ debt.remaining_label }} 没对上</span>
+      {% endif %}
     </div>
-  </div>
+  </a>
   {% endfor %}
 </div>
 {% endif %}

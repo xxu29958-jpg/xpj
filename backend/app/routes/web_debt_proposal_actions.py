@@ -27,6 +27,7 @@ from app.routes.web_debt_actions import (
     _STALE_MESSAGE,
     _action_redirect,
     _actor_account_id,
+    _render_action_error,
 )
 from app.routes.web_debts import _render_debt_detail
 from app.schemas import (
@@ -62,7 +63,7 @@ _PROPOSAL_ERROR_MESSAGES = {
 
 def _proposal_error_message(exc: AppError) -> str:
     if exc.error == "state_conflict":
-        return _STALE_MESSAGE
+        return "这份还款刚被对方更新过，你刚才的确认没有生效。"
     return _PROPOSAL_ERROR_MESSAGES.get(exc.error, exc.message)
 
 
@@ -77,7 +78,7 @@ def web_create_repayment_proposal(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -116,11 +117,16 @@ def web_create_repayment_proposal(
             if isinstance(exc, AppError)
             else "请填写正确的还款金额；想说的话最多 500 个字。"
         )
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="proposal_create",
             message=message,
-            success=False,
+            draft={"amount_major": amount_major, "note": note},
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
@@ -140,7 +146,7 @@ def web_withdraw_repayment_proposal(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -162,11 +168,15 @@ def web_withdraw_repayment_proposal(
         )
     except (AppError, ValidationError) as exc:
         message = _proposal_error_message(exc) if isinstance(exc, AppError) else "暂时不能撤回，请刷新后再试。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="proposal_withdraw",
             message=message,
-            success=False,
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
@@ -272,8 +282,8 @@ def _confirm_amount_error_rerender(
     exc: AppError,
     attempted: str,
 ) -> HTMLResponse:
-    """金额事实门禁：非法金额输入 → 422 原地重渲染 (照 web_repayment_drafts 同页范式)，
-    错误锚定到确认金额输入，什么都不写 (不落 redirect-flash 让用户误以为操作已生效)。
+    """确认金额失败原地重渲染：输入错误为 422，OCC conflict 为 409。
+    错误锚定到本次确认语境，什么都不写 (不落 redirect-flash 让用户误以为操作已生效)。
     ``proposal_public_id`` 把错误钉在**本次提交**的 proposal 语境上：提交后在途 proposal
     被处理/换了一条时，错误仍渲染在被提交的 proposal 区域，不隐藏也不挂到新的在途条目。"""
     db.rollback()
@@ -286,7 +296,7 @@ def _confirm_amount_error_rerender(
         confirm_amount_error=_proposal_error_message(exc),
         confirm_amount_value=attempted,
         confirm_error_proposal_id=proposal_public_id,
-        status_code=422,
+        status_code=exc.status_code,
     )
 
 
@@ -306,15 +316,39 @@ def _confirm_business_error_redirect(
     )
 
 
+def _confirm_proposal_command(
+    db: Session,
+    *,
+    selected_id: str,
+    actor_account_id: int,
+    public_id: str,
+    proposal_public_id: str,
+    confirmed_amount: int | None,
+    expected: int,
+    idempotency_key: str,
+) -> None:
+    confirm_repayment_proposal_idempotently(
+        db,
+        tenant_id=selected_id,
+        actor_account_id=actor_account_id,
+        public_id=public_id,
+        proposal_public_id=proposal_public_id,
+        payload=MemberRepaymentProposalConfirmRequest(
+            confirmed_amount_cents=confirmed_amount,
+            expected_row_version=expected,
+        ),
+        idempotency_key=(idempotency_key or "").strip() or None,
+    )
+
+
+# D3 uses the shared current field name; the legacy alias remains an explicit N-1 form boundary.
 @router.post("/{public_id}/repayment-proposals/{proposal_public_id}/confirm")
 def web_confirm_repayment_proposal(
     request: Request,
     public_id: str,
     proposal_public_id: str,
     ledger_id: str = Form(default=""),
-    # D3：字段名绑定共享契约常量 (模板侧也从同一常量渲染)，不再是第二个字面量。
     confirmed_amount_major: str = Form(default="", alias=PROPOSAL_CONFIRM_AMOUNT_FIELD),
-    # N-1 兼容：D3 前路由误读的旧字段名仍接受 (新字段非空时忽略)，schema 标记 deprecated。
     amount_major: str = Form(default="", alias=PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY, deprecated=True),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
@@ -354,7 +388,6 @@ def web_confirm_repayment_proposal(
             currency_code=debt.home_currency_code,
         )
     except AppError as exc:
-        # 冲突/非法都走同一条锚定 422；冲突时回填可见输入 (新字段) 的值,与非法输入的回填同义。
         return _confirm_amount_error_rerender(
             request,
             db,
@@ -366,19 +399,28 @@ def web_confirm_repayment_proposal(
             attempted=(confirmed_amount_major or "").strip() or (amount_major or "").strip(),
         )
     try:
-        confirm_repayment_proposal_idempotently(
+        _confirm_proposal_command(
             db,
-            tenant_id=selected_id,
+            selected_id=selected_id,
             actor_account_id=actor_account_id,
             public_id=public_id,
             proposal_public_id=proposal_public_id,
-            payload=MemberRepaymentProposalConfirmRequest(
-                confirmed_amount_cents=confirmed_amount,
-                expected_row_version=expected,
-            ),
-            idempotency_key=(idempotency_key or "").strip() or None,
+            confirmed_amount=confirmed_amount,
+            expected=expected,
+            idempotency_key=idempotency_key,
         )
     except (AppError, ValidationError) as exc:
+        if isinstance(exc, AppError) and exc.error == "state_conflict":
+            return _confirm_amount_error_rerender(
+                request,
+                db,
+                options=options,
+                selected_id=selected_id,
+                public_id=public_id,
+                proposal_public_id=proposal_public_id,
+                exc=exc,
+                attempted=attempted_amount,
+            )
         return _confirm_business_error_redirect(public_id, selected_id, exc)
     return _action_redirect(public_id, selected_id, message="收到啦，谢谢 TA～", success=True)
 
@@ -393,7 +435,7 @@ def web_reject_repayment_proposal(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -415,11 +457,15 @@ def web_reject_repayment_proposal(
         )
     except (AppError, ValidationError) as exc:
         message = _proposal_error_message(exc) if isinstance(exc, AppError) else "暂时不能回复，请刷新后再试。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="proposal_reject",
             message=message,
-            success=False,
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
