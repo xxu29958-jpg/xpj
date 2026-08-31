@@ -60,7 +60,10 @@
   {% endfor %}
     {% if can_write %}
   <div class="confirmed-batch-head">
-    <input class="checkbox" id="check-all" type="checkbox" aria-label="选择本页全部账单">
+    {# 「选择本页全部」无法原生表达 (无表单语义可勾动兄弟 checkbox): 默认 hidden,
+       仅在 bulk-bar.js 完成首次 refresh() 后解除。未增强时它不存在于可视/AX 树,
+       不做只看不用的说谎控件; 逐行 checkbox 始终原生可提交。 #}
+    <input class="checkbox" id="check-all" type="checkbox" aria-label="选择本页全部账单" hidden>
     <span>本页批处理</span>
     <span class="hint">勾选账单后，在页面底部统一更正分类或标签</span>
   </div>

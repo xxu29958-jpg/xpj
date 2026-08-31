@@ -323,5 +323,9 @@
     refresh();
     // Only hide the native fail-open bar after enhancement initialized fully.
     form.dataset.bulkEnhanced = "true";
+    // 「选择本页全部」是 JS-only 能力, 模板侧默认 hidden: 只在增强完整落地后
+    // 现身; 任何更早的初始化失败都让它保持隐藏, 不做可见但无用的说谎控件。
+    // (pending 的全选框无 hidden 属性, 此行对它为无操作。)
+    if (all) all.hidden = false;
   };
 })(window, document);

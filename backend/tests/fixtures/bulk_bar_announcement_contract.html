@@ -3,6 +3,7 @@
 <body>
   <main class="content">
     <header class="page-header">待我处理</header>
+    <input id="check-all" type="checkbox" aria-label="选择本页全部账单" hidden>
     <div class="exp-row" data-expense-id="1">
       <input class="row-check"
              id="check-1"
@@ -61,6 +62,7 @@
     (async () => {
       const wait = () => new Promise((resolve) => setTimeout(resolve, 20));
       const form = document.querySelector("[data-bulk]");
+      const checkAll = document.getElementById("check-all");
       const submitter = document.getElementById("bulk-submit");
       const submit = () => form.dispatchEvent(new SubmitEvent("submit", {
         bubbles: true,
@@ -81,6 +83,10 @@
         };
       };
 
+      const beforeEnhancement = {
+        checkAllHidden: checkAll.hidden,
+        enhanced: form.hasAttribute("data-bulk-enhanced")
+      };
       window.TicketboxWeb.initBulkBar();
       const firstRow = document.getElementById("row-1");
       const firstCheck = document.getElementById("check-1");
@@ -90,6 +96,7 @@
       await wait();
       const batchMode = {
         enhanced: form.hasAttribute("data-bulk-enhanced"),
+        checkAllHidden: checkAll.hidden,
         ariaDisabled: firstRow.getAttribute("aria-disabled"),
         tabIndex: firstRow.getAttribute("tabindex"),
         ariaCurrent: firstRow.getAttribute("aria-current"),
@@ -119,6 +126,7 @@
       submit();
       await wait();
       window.__webConsumerProbe = {
+        beforeEnhancement,
         batchMode,
         cleared,
         successWithUndo,

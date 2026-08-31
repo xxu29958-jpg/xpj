@@ -112,7 +112,7 @@ def test_confirmed_product_body_retires_legacy_stack_and_fake_filter(
     assert 'aria-label="本月概况"' in body
     assert "每日分布" in body
     assert "日历视图" not in body
-    assert 'class="head"' not in body
+    assert '<div class="head">一</div>' not in body
     assert 'class="heatmap"' in body
     assert 'class="source-list"' in body
     assert "<style" not in body

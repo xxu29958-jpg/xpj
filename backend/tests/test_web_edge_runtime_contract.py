@@ -162,9 +162,14 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
         profile_name="edge-bulk-bar-announcement-contract",
     )
 
+    assert probe["beforeEnhancement"] == {
+        "checkAllHidden": True,
+        "enhanced": False,
+    }
     batch_mode = probe["batchMode"]
     assert batch_mode == {
         "enhanced": True,
+        "checkAllHidden": False,
         "ariaDisabled": None,
         "tabIndex": None,
         "ariaCurrent": "true",

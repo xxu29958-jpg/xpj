@@ -81,8 +81,8 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* #218 行结构 (C6 起为唯一 consumer /web/confirmed): 选择槽 (.lrow-sel) 与整行
-   链接 (a.timeline-row-detail) 兄弟并列; 容器只出「选择器 | 链接」两列, 内容
+/* 行结构: 选择槽 (.lrow-sel) 与整行链接 (a.timeline-row-detail) 兄弟并列,
+   /web/confirmed 是唯一 consumer; 容器只出「选择器 | 链接」两列, 内容
    三列网格收在行链接上, 链接内零交互控件。 */
 .timeline-row.lrow {
     grid-template-columns: minmax(0, 1fr);

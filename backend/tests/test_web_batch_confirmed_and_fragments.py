@@ -141,7 +141,10 @@ def test_web_confirmed_batch_markup(
     assert 'action="/web/confirmed/batch-update"' in page.text
     assert f'data-id="{expense_id}"' in page.text
     assert 'data-row-version="' in page.text
-    assert 'id="check-all"' in page.text
+    assert (
+        '<input class="checkbox" id="check-all" type="checkbox" '
+        'aria-label="选择本页全部账单" hidden>'
+    ) in page.text
     assert 'name="reason"' in page.text
     assert 'name="idempotency_key"' in page.text
     assert 'type="checkbox"' in page.text

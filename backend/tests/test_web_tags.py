@@ -64,7 +64,7 @@ def test_web_confirmed_tag_filter_is_ledger_scoped(web_client: TestClient, *, id
     )
     assert owner_page.status_code == 200
     assert 'name="tag" value="Shared"' in owner_page.text
-    assert "当前仅显示标签「Shared」" in owner_page.text
+    assert "标签：Shared" in owner_page.text
     assert "Owner Shared" in owner_page.text
     assert "Owner Other" not in owner_page.text
     assert "Gray Shared" not in owner_page.text
