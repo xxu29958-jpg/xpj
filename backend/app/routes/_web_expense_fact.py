@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import Request
@@ -19,6 +18,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_expense_fact_pager import fact_timeline_page_context
 from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_bill_split import build_split_invite_context
@@ -50,39 +50,6 @@ _FACT_FIELD_LABELS: dict[str, str] = {
 _FACT_FIELD_ORDER = tuple(_FACT_FIELD_LABELS)
 
 _KIND_LABELS = {"confirmed": "首次确认", "correction": "更正"}
-
-_TIMELINE_RETURN_QUERY_KEYS = (
-    "return_to",
-    "return_month",
-    "return_filter",
-    "return_page",
-    "return_tag",
-    "return_query",
-)
-
-
-def timeline_page_url(
-    request: Request,
-    *,
-    expense_id: int,
-    selected_ledger_id: str,
-    page: int,
-    snapshot: int | None = None,
-) -> str:
-    # ``snapshot`` 锚来自服务端 response（非请求回显）：同一历史视图内 page±1
-    # 都钉在同一 rev_snapshot 上；只有重新进入事实页（不带该参数）才取新快照。
-    params: list[tuple[str, str]] = [
-        ("ledger_id", selected_ledger_id),
-        ("rev_page", str(page)),
-    ]
-    if snapshot is not None:
-        params.append(("rev_snapshot", str(snapshot)))
-    for key in _TIMELINE_RETURN_QUERY_KEYS:
-        value = request.query_params.get(key)
-        if value:
-            params.append((key, value))
-    return f"/web/expenses/{expense_id}/edit?{urlencode(params)}#fact-timeline"
-
 
 def _snapshot_time_label(value: object) -> str:
     """Snapshots carry ISO strings (expense_revision_service._json_value)."""
@@ -415,35 +382,11 @@ def web_fact_context(
         member_names=member_names,
     )
     ctx["fact_timeline"] = timeline["entries"]
-    ctx["fact_timeline_page"] = {
-        key: timeline[key]
-        for key in ("page", "page_size", "total", "snapshot_revision", "has_newer", "has_older")
-    }
-    ctx["fact_timeline_page"]["older_remaining"] = max(
-        0,
-        timeline["total"] - timeline["page"] * timeline["page_size"],
-    )
-    ctx["fact_timeline_page"]["newer_url"] = (
-        timeline_page_url(
-            request,
-            expense_id=expense_id,
-            selected_ledger_id=selected_id,
-            page=timeline["page"] - 1,
-            snapshot=timeline["snapshot_revision"],
-        )
-        if timeline["has_newer"]
-        else ""
-    )
-    ctx["fact_timeline_page"]["older_url"] = (
-        timeline_page_url(
-            request,
-            expense_id=expense_id,
-            selected_ledger_id=selected_id,
-            page=timeline["page"] + 1,
-            snapshot=timeline["snapshot_revision"],
-        )
-        if timeline["has_older"]
-        else ""
+    ctx["fact_timeline_page"] = fact_timeline_page_context(
+        request,
+        timeline=timeline,
+        expense_id=expense_id,
+        selected_ledger_id=selected_id,
     )
     return ctx
 

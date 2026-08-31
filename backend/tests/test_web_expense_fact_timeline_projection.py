@@ -9,9 +9,9 @@ from unittest.mock import patch
 from app.routes._web_expense_fact import (
     _timeline_changes,
     build_fact_timeline,
-    timeline_page_url,
     web_fact_context,
 )
+from app.routes._web_expense_fact_pager import timeline_page_url
 from app.schemas import ExpenseRevisionListResponse, ExpenseRevisionResponse
 from app.services.invitation_members import MemberSummary
 
@@ -264,13 +264,12 @@ def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection(
     }
 
 
-def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
-    """同一快照内 page±1 都回传同一 rev_snapshot；上行文案不兼任「刷新到最新」。"""
+class _AnchoredTimelineReader:
+    def __init__(self) -> None:
+        self.kwargs: dict[str, object] = {}
 
-    captured: dict[str, object] = {}
-
-    def fake_list_expense_revisions(*_args, **kwargs):
-        captured.update(kwargs)
+    def __call__(self, *_args, **kwargs) -> ExpenseRevisionListResponse:
+        self.kwargs.update(kwargs)
         snapshot = kwargs["snapshot_revision"]
         # current=140、锚=120：page 2 的不可变前缀（<=120）仍有 page 3 可达。
         effective = 140 if snapshot is None else min(int(snapshot), 140)
@@ -293,6 +292,12 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
             total=effective,
             snapshot_revision=effective,
         )
+
+
+def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
+    """同一快照内 page±1 都回传同一 rev_snapshot；上行文案不兼任「刷新到最新」。"""
+
+    reader = _AnchoredTimelineReader()
 
     class RequestStub:
         query_params = {
@@ -330,7 +335,7 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
         ),
         patch(
             "app.routes._web_expense_fact.list_expense_revisions",
-            side_effect=fake_list_expense_revisions,
+            side_effect=reader,
         ),
     ):
         context = web_fact_context(
@@ -343,8 +348,8 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
             revision_snapshot=120,
         )
 
-    assert captured["current_revision"] == 140
-    assert captured["snapshot_revision"] == 120
+    assert reader.kwargs["current_revision"] == 140
+    assert reader.kwargs["snapshot_revision"] == 120
     pager = context["fact_timeline_page"]
     assert pager["snapshot_revision"] == 120
     assert "rev_page=1" in pager["newer_url"]
