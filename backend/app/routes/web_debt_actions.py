@@ -43,7 +43,7 @@ from app.services.spending_contract_service import accounting_zone
 
 router = APIRouter(prefix="/web/debts", tags=["web"])
 
-_STALE_MESSAGE = "另一端刚更新了这笔欠款。这里已显示最新状态，你填写的内容还在，请确认后再提交。"
+_STALE_MESSAGE = "另一端刚更新了这笔欠款。这次提交没有记录，下面已显示最新状态。"
 
 
 def _action_redirect(
@@ -91,6 +91,7 @@ def _render_action_error(
         action_error=message,
         action_draft=draft,
         action_target_public_id=target_public_id,
+        action_conflict=message == _STALE_MESSAGE,
         status_code=status_code,
     )
 

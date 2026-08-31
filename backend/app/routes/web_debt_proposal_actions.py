@@ -63,7 +63,7 @@ _PROPOSAL_ERROR_MESSAGES = {
 
 def _proposal_error_message(exc: AppError) -> str:
     if exc.error == "state_conflict":
-        return _STALE_MESSAGE
+        return "这份还款刚被对方更新过，你刚才的确认没有生效。"
     return _PROPOSAL_ERROR_MESSAGES.get(exc.error, exc.message)
 
 
@@ -282,8 +282,8 @@ def _confirm_amount_error_rerender(
     exc: AppError,
     attempted: str,
 ) -> HTMLResponse:
-    """金额事实门禁：非法金额输入 → 422 原地重渲染 (照 web_repayment_drafts 同页范式)，
-    错误锚定到确认金额输入，什么都不写 (不落 redirect-flash 让用户误以为操作已生效)。
+    """确认金额失败原地重渲染：输入错误为 422，OCC conflict 为 409。
+    错误锚定到本次确认语境，什么都不写 (不落 redirect-flash 让用户误以为操作已生效)。
     ``proposal_public_id`` 把错误钉在**本次提交**的 proposal 语境上：提交后在途 proposal
     被处理/换了一条时，错误仍渲染在被提交的 proposal 区域，不隐藏也不挂到新的在途条目。"""
     db.rollback()
@@ -296,7 +296,7 @@ def _confirm_amount_error_rerender(
         confirm_amount_error=_proposal_error_message(exc),
         confirm_amount_value=attempted,
         confirm_error_proposal_id=proposal_public_id,
-        status_code=422,
+        status_code=exc.status_code,
     )
 
 
@@ -364,7 +364,7 @@ def web_confirm_repayment_proposal(
             currency_code=debt.home_currency_code,
         )
     except AppError as exc:
-        # 冲突/非法都走同一条锚定 422；冲突时回填可见输入 (新字段) 的值,与非法输入的回填同义。
+        # 双字段/金额解析错误走同页 422；回填可见输入 (新字段) 的值。
         return _confirm_amount_error_rerender(
             request,
             db,
@@ -389,6 +389,17 @@ def web_confirm_repayment_proposal(
             idempotency_key=(idempotency_key or "").strip() or None,
         )
     except (AppError, ValidationError) as exc:
+        if isinstance(exc, AppError) and exc.error == "state_conflict":
+            return _confirm_amount_error_rerender(
+                request,
+                db,
+                options=options,
+                selected_id=selected_id,
+                public_id=public_id,
+                proposal_public_id=proposal_public_id,
+                exc=exc,
+                attempted=attempted_amount,
+            )
         return _confirm_business_error_redirect(public_id, selected_id, exc)
     return _action_redirect(public_id, selected_id, message="收到啦，谢谢 TA～", success=True)
 

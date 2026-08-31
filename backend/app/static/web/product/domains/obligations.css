@@ -320,6 +320,21 @@
 
 /* ===== C3a 往来核心：列表 / 新建 / 详情的产品化表达 ===== */
 
+/* 失败兜底的 attempted 静态记录行: 在 danger/feedback 块内降一档, 仅作记录。 */
+.debt-attempted {
+    display: block;
+    margin-block-start: var(--space-2);
+    font-size: var(--type-caption-size);
+    opacity: .85;
+}
+
+/* 欠我的行内剩余 caption: 安静陈述, 不催不红, 数字等宽。 */
+.debt-row-remaining {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    font-variant-numeric: tabular-nums;
+}
+
 /* 三级页返回链接：安静的导航，不与正文争层级。 */
 .debt-back {
     display: inline-block;
@@ -341,11 +356,6 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--space-2);
-}
-
-/* 只读 lens（欠我的）：行不可点击，取消悬停反馈。 */
-.debt-row--static:hover {
-    background: var(--surface-card);
 }
 
 /* ===== 详情：成员往来卡 ===== */

@@ -299,10 +299,11 @@ def _detail_view(debt) -> dict:
         "is_member": use_member,
         "is_voided": status == "voided",
         "debt_kind": debt.debt_kind,
-        # remaining 在详情走 editorial 拆分英雄(外部 remaining_segments) / 成员卡无金额英雄,
-        # 故详情不需要成串 remaining_label(列表行的 aria-label 才用,见 _debt_view)。
+        # External keeps the editorial split hero; member detail uses one quiet exact
+        # remaining label inside "看看账" rather than inventing another fold.
         "principal_label": _home_amount_label(debt.principal_amount_cents, home),
         "paid_label": _home_amount_label(debt.paid_amount_cents, home),
+        "remaining_label": _home_amount_label(debt.remaining_amount_cents, home),
     }
     if use_member:
         viewer_is_debtor = debt.viewer_is_debtor
@@ -416,6 +417,7 @@ def _render_debt_detail(
     action_error: str | None = None,
     action_draft: dict[str, str] | None = None,
     action_target_public_id: str | None = None,
+    action_conflict: bool = False,
     flash_message: str = "",
     flash_type: str = "",
     status_code: int = 200,
@@ -444,16 +446,24 @@ def _render_debt_detail(
     ctx["can_write"] = can_write
     ctx["debt_open"] = debt.status == "open"
     ctx["action_keys"] = _debt_action_keys() if can_write and debt.status == "open" else {}
+    ctx["can_change_member_kind"] = bool(
+        can_write
+        and debt.status == "open"
+        and detail["is_member"]
+        and debt.ledger_id is not None
+        and debt.viewer_is_debtor is True
+    )
     # slice 2b: member proposal status + sunk 过往 history (read-only; reuses list_repayment_proposals,
     # no new endpoint). Only for the communal member card (use_member) with a resolvable viewer account
     # (loopback ledger with no active owner → account_id None → skip). The viewer here is already a
     # participant (get_participant_debt_response admitted them above), so list never re-404s.
     proposals = None
+    proposal_items = []
     if detail["is_member"] and account_id is not None:
-        items = list_repayment_proposals(
+        proposal_items = list_repayment_proposals(
             db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id
         ).items
-        proposals = _proposal_section(items, debt.viewer_is_debtor)
+        proposals = _proposal_section(proposal_items, debt.viewer_is_debtor)
     ctx["proposals"] = proposals
     ctx["pending_proposal"] = proposals["pending"] if proposals else None
     ctx["viewer_is_debtor"] = debt.viewer_is_debtor
@@ -467,11 +477,55 @@ def _render_debt_detail(
     ctx["confirm_amount_error"] = confirm_amount_error
     ctx["confirm_amount_value"] = confirm_amount_value
     ctx["confirm_error_proposal_id"] = confirm_error_proposal_id
+    submitted_proposal = next(
+        (
+            proposal
+            for proposal in proposal_items
+            if proposal.public_id == confirm_error_proposal_id
+        ),
+        None,
+    )
+    ctx["confirm_amount_attempted_label"] = (
+        f"{ctx['currency_input']['currency_symbol']}{confirm_amount_value}"
+        if status_code == 409 and confirm_amount_value
+        else ""
+    )
+    ctx["confirm_error_proposal_amount_label"] = (
+        _home_amount_label(
+            submitted_proposal.proposed_amount_cents,
+            submitted_proposal.home_currency_code,
+        )
+        if submitted_proposal is not None
+        else ""
+    )
+    action_is_fallback = bool(
+        action_error and not (can_write and debt.status == "open" and ctx["action_keys"])
+    )
+    action_message = action_error or ""
+    if action_is_fallback and action_conflict:
+        action_message = (
+            "这笔欠款刚在另一端结束了，你刚才填写的还款没有记录。"
+            if action_kind == "repayment"
+            else "这笔欠款刚在另一端结束了，你刚才的操作没有记录。"
+        )
+    draft = action_draft or {}
+    attempted_parts: list[str] = []
+    if action_is_fallback and action_kind == "repayment":
+        amount = (draft.get("amount_major") or "").strip()
+        paid_at = (draft.get("paid_at") or "").strip()
+        if amount:
+            attempted_parts.append(
+                f"本次还款 {ctx['currency_input']['currency_symbol']}{amount}"
+            )
+        if paid_at:
+            attempted_parts.append(paid_at)
     ctx["action_form"] = {
         "kind": action_kind or "",
-        "error": action_error or "",
-        "draft": action_draft or {},
+        "error": action_message,
+        "draft": draft,
         "target_public_id": action_target_public_id or "",
+        "fallback": action_is_fallback,
+        "attempted_label": " · ".join(attempted_parts),
     }
     ctx["flash_message"] = flash_message
     ctx["flash_type"] = flash_type if flash_type in ("success", "error") else ""

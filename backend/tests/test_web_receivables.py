@@ -2,8 +2,8 @@
 
 只读 **account-scoped 跨账本** 列出 viewer 作为跨账本 member 债权人的应收 —— bill_split
 成员债住在债务人账本,发起人(债权人)在自己账本欠款页看不到,这页补上。每行 communal
-关系行(债务人名 + 「我帮你垫的…」关系主句 + 进度条 + 状态徽章,永不红),**纯只读非链接**
-(镜像还款捕获审计页);还款由债务人在手机 App 发起、债权人确认。
+关系行(债务人名 + 「我帮你垫的…」关系主句 + exact remaining + 进度条 + 状态徽章,
+永不红),并打开既有 participant-scoped 详情;还款由债务人在手机 App 发起、债权人确认。
 
 uses ``web_client`` (conftest) 绕过 /web loopback 门;plain ``client`` 留门给 remote-403。
 自包含 seed(``create_bill_split_debt`` 直接造成员债,owner=债务人、counterparty=发起人=
@@ -147,6 +147,46 @@ def test_web_receivables_aggregates_across_debtor_ledgers(web_client: TestClient
     assert "小刚" in html  # receivable from another debtor's ledger — cross-ledger aggregated
 
 
+def test_web_receivable_preserves_remaining_and_opens_redacted_detail(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    owner_id = _owner_account_id()
+    debtor_id = _seed_debtor_ledger("阿明", "receiver_detail")
+    public_id = _seed_receivable(
+        creditor_id=owner_id,
+        debtor_id=debtor_id,
+        debtor_ledger="receiver_detail",
+        amount_cents=2_500,
+    )
+    with SessionLocal() as db:
+        debt = db.scalar(select(Debt).where(Debt.public_id == public_id))
+        assert debt is not None
+        db.add(
+            Repayment(
+                debt_id=debt.id,
+                amount_cents=1_000,
+                paid_at=now_utc(),
+                actor_account_id=debtor_id,
+                idempotency_key=str(uuid4()),
+            )
+        )
+        db.commit()
+
+    detail = web_client.get(f"/web/debts/{public_id}?ledger_id=owner")
+    assert detail.status_code == 200
+    assert "阿明" in detail.text
+    assert "receiver_detail" not in detail.text
+    assert f'action="/web/debts/{public_id}/kind"' not in detail.text
+
+    html = _page(web_client)
+    assert "还剩 ¥15.00" in html
+    assert f'href="/web/debts/{public_id}?ledger_id=owner"' in html
+    assert "还剩" in detail.text
+    assert "¥15.00" in detail.text
+
+
 # ── active-first ordering (open before cleared before voided) ─────────────────
 def test_web_receivables_active_first_open_before_cleared_before_voided(
     web_client: TestClient, *, identity
@@ -172,6 +212,7 @@ def test_web_receivables_active_first_open_before_cleared_before_voided(
 # ── _receivable_row_view pure unit (status tone + recede + communal headline) ─
 def _row(**overrides) -> SimpleNamespace:
     base = {
+        "public_id": "dbt_receivable",
         "counterparty_label": "阿明",
         "counterparty_type": "member",
         "viewer_is_debtor": False,  # the viewer is the creditor (by construction of the list)
@@ -179,6 +220,8 @@ def _row(**overrides) -> SimpleNamespace:
         "is_forgiven": False,
         "paid_amount_cents": 0,
         "principal_amount_cents": 2500,
+        "remaining_amount_cents": 2500,
+        "home_currency_code": "CNY",
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -191,6 +234,8 @@ def test_view_open_communal_creditor_headline() -> None:
     assert view["status_tone"] == ""  # neutral, never danger
     assert view["recede"] is False
     assert view["show_progress"] is True
+    assert view["public_id"] == "dbt_receivable"
+    assert view["remaining_label"] == "¥25.00"
     assert "我帮你垫的" in view["member_headline"]  # creditor side (viewer_is_debtor False)
 
 
