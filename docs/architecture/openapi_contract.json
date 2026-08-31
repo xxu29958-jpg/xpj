@@ -1906,6 +1906,36 @@
             ],
             "title": "Regret Score"
           },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
           "split_amount_yuan": {
             "default": [],
             "items": {
@@ -37204,6 +37234,66 @@
                 }
               ],
               "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_page",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Page",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_tag",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Tag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Query",
+              "type": "string"
             }
           }
         ],

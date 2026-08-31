@@ -1,10 +1,11 @@
 {# 事实 hero 带：商家（主体）+ 金额（焦点）+ 关键元数据一行（何时/属于什么/评价）。
    先回答「哪笔钱、在哪、何时、属于什么」；次级字段在 _fact_summary_card。
-   契约：expense（含 fact_revision/source_label/amount_label/fx_meta/is_duplicate）。 #}
-<header class="fact-header">
-  <div class="fact-heading">
-    <span class="dt-eyebrow">流水 · 已确认事实</span>
-    <h1 class="page-title page-title--compact fact-title">{{ expense.merchant or '账单 #' ~ expense.id }}</h1>
+   契约：expense（含 fact_revision/source_label/amount_label/fx_meta/is_duplicate）。
+   商家缺省回退「未填写商家」，不拿 DB id 当页面身份。 #}
+<header class="product-page-header fact-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水 / 账单详情</span>
+    <h1 class="page-title">{{ expense.merchant or '未填写商家' }}</h1>
     <div class="fact-keymeta">
       <span>{{ expense.expense_time or '时间待核对' }}</span>
       <span class="fact-keymeta-sep" aria-hidden="true">·</span>
@@ -15,12 +16,14 @@
       {% endif %}
     </div>
     <div class="fact-statusline">
-      <span class="dt-pill ok">已确认</span>
-      {% if expense.fact_revision and expense.fact_revision > 1 %}
-      <span class="dt-pill">第 {{ expense.fact_revision }} 版</span>
-      {% endif %}
-      {% if expense.is_duplicate %}<span class="dt-pill warn">疑似重复</span>{% endif %}
+      <span class="product-status product-status--success">已确认</span>
+      {% if expense.is_duplicate %}<span class="product-status product-status--warning">疑似重复</span>{% endif %}
       <span class="meta">{{ expense.source_label }}</span>
+      {% if expense.fact_revision and expense.fact_revision > 1 %}
+      {# fact_revision 是 revision/OCC 计数，不朗读数字；只作布尔信号指到
+         承载脉络的变更记录。 #}
+      <a class="meta fact-history-link" href="#fact-timeline">有更正记录，查看变更</a>
+      {% endif %}
     </div>
   </div>
   <div class="fact-hero">

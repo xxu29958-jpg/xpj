@@ -1,9 +1,9 @@
 {# 更正原因卡：更正意图的第一公民（必填）。契约：form_prefix, reason_input, field_errors。 #}
-<div class="dt-card correction-reason-card">
-  <div class="dt-form-row">
+<div class="product-panel product-panel--padded correction-reason-card">
+  <div class="product-field">
     <label for="{{ form_prefix }}-reason">更正原因（必填）</label>
-    <input id="{{ form_prefix }}-reason" type="text" name="reason" value="{{ reason_input }}" maxlength="500" required autofocus placeholder="例如：小票金额看错了 / 商家识别错了" {% if field_errors.get('reason') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-reason-error"{% endif %}>
-    {% if field_errors.get('reason') %}<div id="{{ form_prefix }}-reason-error" class="error-text">{{ field_errors.get('reason') }}</div>{% endif %}
+    <input id="{{ form_prefix }}-reason" class="product-input" type="text" name="reason" value="{{ reason_input }}" maxlength="500" required autofocus placeholder="例如：小票金额看错了 / 商家识别错了" {% if field_errors.get('reason') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-reason-error"{% endif %}>
+    {% if field_errors.get('reason') %}<div id="{{ form_prefix }}-reason-error" class="field-error">{{ field_errors.get('reason') }}</div>{% endif %}
     <div class="meta">这句话会显示在变更记录里，帮助家人（和以后的你）理解为什么改。</div>
   </div>
 </div>

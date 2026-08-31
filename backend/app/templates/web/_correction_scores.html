@@ -1,43 +1,45 @@
 {# 更正专属：评价（值回票价 / 后悔指数）。原生 radiogroup：1–5 分 + 清空，
    键盘方向键/读屏原生成立；空值 = 清空评分（absent/clear/value 三态由
    _web_correction_form._score_change 裁决）；field_errors 行内定位。 #}
-<div class="dt-card">
-  <div class="card-header">
+<div class="product-panel product-panel--padded">
+  <div class="product-panel-header">
     <div>
-      <h2>评价</h2>
-      <div class="meta">1 到 5 分；选「清空」会删除已有评分。</div>
+      <h2 class="product-panel-title">评价</h2>
+      <div class="product-panel-subtitle">1 到 5 分；选「清空」会删除已有评分。</div>
     </div>
   </div>
-  <fieldset class="dt-form-row score-row">
-    <legend>值回票价</legend>
-    <div class="score-seg" role="presentation">
-      {% for score in [1, 2, 3, 4, 5] %}
-      <label class="score-seg-option">
-        <input type="radio" name="value_score" value="{{ score }}" {% if expense.value_score and expense.value_score|string == score|string %}checked{% endif %} {% if field_errors.get('value_score') %}aria-invalid="true"{% endif %}>
-        <span class="score-seg-pill">{{ score }}</span>
-      </label>
-      {% endfor %}
-      <label class="score-seg-option score-seg-clear">
-        <input type="radio" name="value_score" value="" {% if not expense.value_score %}checked{% endif %}>
-        <span class="score-seg-pill">清空</span>
-      </label>
-    </div>
-    {% if field_errors.get('value_score') %}<div class="error-text">{{ field_errors.get('value_score') }}</div>{% endif %}
-  </fieldset>
-  <fieldset class="dt-form-row score-row">
-    <legend>后悔指数</legend>
-    <div class="score-seg" role="presentation">
-      {% for score in [1, 2, 3, 4, 5] %}
-      <label class="score-seg-option">
-        <input type="radio" name="regret_score" value="{{ score }}" {% if expense.regret_score and expense.regret_score|string == score|string %}checked{% endif %} {% if field_errors.get('regret_score') %}aria-invalid="true"{% endif %}>
-        <span class="score-seg-pill">{{ score }}</span>
-      </label>
-      {% endfor %}
-      <label class="score-seg-option score-seg-clear">
-        <input type="radio" name="regret_score" value="" {% if not expense.regret_score %}checked{% endif %}>
-        <span class="score-seg-pill">清空</span>
-      </label>
-    </div>
-    {% if field_errors.get('regret_score') %}<div class="error-text">{{ field_errors.get('regret_score') }}</div>{% endif %}
-  </fieldset>
+  <div class="correction-fields">
+    <fieldset class="product-field score-row">
+      <legend>值回票价</legend>
+      <div class="score-seg" role="presentation">
+        {% for score in [1, 2, 3, 4, 5] %}
+        <label class="score-seg-option">
+          <input type="radio" name="value_score" value="{{ score }}" {% if expense.value_score and expense.value_score|string == score|string %}checked{% endif %} {% if field_errors.get('value_score') %}aria-invalid="true"{% endif %}>
+          <span class="score-seg-pill">{{ score }}</span>
+        </label>
+        {% endfor %}
+        <label class="score-seg-option score-seg-clear">
+          <input type="radio" name="value_score" value="" {% if not expense.value_score %}checked{% endif %}>
+          <span class="score-seg-pill">清空</span>
+        </label>
+      </div>
+      {% if field_errors.get('value_score') %}<div class="field-error">{{ field_errors.get('value_score') }}</div>{% endif %}
+    </fieldset>
+    <fieldset class="product-field score-row">
+      <legend>后悔指数</legend>
+      <div class="score-seg" role="presentation">
+        {% for score in [1, 2, 3, 4, 5] %}
+        <label class="score-seg-option">
+          <input type="radio" name="regret_score" value="{{ score }}" {% if expense.regret_score and expense.regret_score|string == score|string %}checked{% endif %} {% if field_errors.get('regret_score') %}aria-invalid="true"{% endif %}>
+          <span class="score-seg-pill">{{ score }}</span>
+        </label>
+        {% endfor %}
+        <label class="score-seg-option score-seg-clear">
+          <input type="radio" name="regret_score" value="" {% if not expense.regret_score %}checked{% endif %}>
+          <span class="score-seg-pill">清空</span>
+        </label>
+      </div>
+      {% if field_errors.get('regret_score') %}<div class="field-error">{{ field_errors.get('regret_score') }}</div>{% endif %}
+    </fieldset>
+  </div>
 </div>

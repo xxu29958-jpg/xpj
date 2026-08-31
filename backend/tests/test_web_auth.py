@@ -117,6 +117,34 @@ def test_valid_pairing_code_sets_secure_session_cookie(client: TestClient, *, id
     assert _extract_session_cookie(replay) == token
 
 
+def test_blank_browser_name_stores_a_consumer_friendly_device_fact(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    attempt_headers = _pairing_attempt_cookie_header(client)
+    attempt_headers["User-Agent"] = "Mozilla/5.0 Raw Browser Runtime Detail"
+    code = _request_pairing_code(client, identity=identity)
+
+    response = client.post(
+        "/web/auth/login",
+        data={"pairing_code": code, "device_name": ""},
+        headers=attempt_headers,
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    token = _extract_session_cookie(response)
+    with SessionLocal() as db:
+        auth_token = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(token))
+        )
+        assert auth_token is not None
+        device = db.get(Device, auth_token.device_id)
+        assert device is not None
+        assert device.device_name == "浏览器"
+
+
 def test_closed_pairing_attempt_cookie_is_cleared_before_next_login(
     client: TestClient,
     *,

@@ -9,13 +9,13 @@
   <summary class="correction-fold-summary">
     <span class="correction-fold-title">小票明细</span>
     <span class="meta">已记 {{ _filled | length }} 行；展开可调整，与账单字段同一次更正保存；不动则不会产生明细变更。</span>
-    {% if _error_rows %}<span class="error-text">{{ _error_rows | length }} 行需要修正，请检查后重新提交。</span>{% endif %}
+    {% if _error_rows %}<span class="field-error">{{ _error_rows | length }} 行需要修正，请检查后重新提交。</span>{% endif %}
   </summary>
   <div class="correction-fold-body">
     {% if receipt_items.status == 'mismatch_known' %}
-    <div class="dt-alert warn">⚠️ 明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}，请检查明细。</div>
+    <div class="product-feedback product-feedback--warning">明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}，请检查明细。</div>
     {% elif receipt_items.status == 'mismatch_acknowledged' %}
-    <div class="dt-alert info">已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异。</div>
+    <div class="product-feedback">已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异。</div>
     {% endif %}
     {% include "_expense_items_table.html" %}
   </div>

@@ -14,6 +14,11 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.routes._web_expense_helpers import web_edit_context
+from app.routes._web_expense_return_context import (
+    flow_href,
+    resolve_return_to,
+    return_context_params,
+)
 from app.routes.web_common import _web_redirect, templates
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import currency_input_metadata, supported_currency_codes
@@ -35,10 +40,24 @@ def web_correction_context(
     error: str | None = None,
     receipt_item_rows: list[dict] | None = None,
     split_form_rows: list[dict] | None = None,
+    return_to: str = "",
+    return_month: str = "",
+    return_filter: str = "",
+    return_page: str = "",
+    return_tag: str = "",
+    return_query: str = "",
 ) -> dict:
     """Correction form context — reuses the edit view-model so the form posts
     the same field names the pending edit flow already parses."""
 
+    return_values = {
+        "return_to": return_to,
+        "return_month": return_month,
+        "return_filter": return_filter,
+        "return_page": return_page,
+        "return_tag": return_tag,
+        "return_query": return_query,
+    }
     ctx = web_edit_context(
         db,
         request,
@@ -48,6 +67,13 @@ def web_correction_context(
         form_values=form_values,
         field_errors=field_errors,
         conflict=conflict,
+        **return_values,
+    )
+    ctx["flow_return_fields"] = ctx["edit_return_fields"]
+    ctx["fact_href"] = flow_href(
+        f"/web/expenses/{expense_id}/edit",
+        ledger_id=selected_id,
+        **return_values,
     )
     ctx["page_title"] = "更正账单"
     ctx["correction_mode"] = True
@@ -93,6 +119,12 @@ def correction_form_error_response(
     conflict: bool = False,
     receipt_item_rows: list[dict] | None = None,
     split_form_rows: list[dict] | None = None,
+    return_to: str = "",
+    return_month: str = "",
+    return_filter: str = "",
+    return_page: str = "",
+    return_tag: str = "",
+    return_query: str = "",
 ) -> Response:
     """更正表单的错误重渲（保留提交值/行级错误/冲突态）；行在提交与重读
     之间消失时退化为列表页 flash 重定向（与编辑页守卫同一语义）。"""
@@ -110,13 +142,27 @@ def correction_form_error_response(
             error=error,
             receipt_item_rows=receipt_item_rows,
             split_form_rows=split_form_rows,
+            return_to=return_to,
+            return_month=return_month,
+            return_filter=return_filter,
+            return_page=return_page,
+            return_tag=return_tag,
+            return_query=return_query,
         )
     except AppError as exc:
         return _web_redirect(
-            "/web/confirmed",
+            resolve_return_to(return_to, "/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",
+            **return_context_params(
+                return_to,
+                return_month=return_month,
+                return_filter=return_filter,
+                return_page=return_page,
+                return_tag=return_tag,
+                return_query=return_query,
+            ),
         )
     return templates.TemplateResponse(
         request=request,

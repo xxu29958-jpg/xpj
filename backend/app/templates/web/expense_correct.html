@@ -1,32 +1,34 @@
 {% extends "base.html" %}
+{% set product_body_domain = 'transactions' %}
 {% block title %}更正账单 — 小票夹{% endblock %}
-{% block page_styles %}<link rel="stylesheet" href="/static/web/pages/expense-fact.css?v={{ asset_version }}">{% endblock %}
 {% block content %}
 {% set form_prefix = 'correct-' ~ expense.id %}
-{# A1: 显式更正意图（编排壳）—— reason 第一公民，标量/明细/拆账一次提交闭合；
-   字段行与行表格复用与 pending 编辑共享的 partial；无 JS 也可完整提交。 #}
-<header class="fact-header">
-  <div class="fact-heading">
-    <span class="dt-eyebrow">流水 · 更正</span>
-    <h1 class="page-title page-title--compact">更正账单 #{{ expense.id }}</h1>
-    <p class="meta">更正会保留修改记录：保存后，原值与新值都会显示在事实页的变更记录里。</p>
+{# 显式更正意图（编排壳）—— reason 第一公民，标量/明细/拆账一次提交闭合；
+   字段行与行表格由更正专属 partial 承载；无 JS 也可完整提交。
+   return context（flow_return_fields）随表单回填，422/409/成功全程不丢来源。 #}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水 / 更正</span>
+    <h1 class="page-title">更正 {{ expense.merchant or '未填写商家' }}</h1>
+    <p class="product-page-summary">更正会保留修改记录：保存后，原值与新值都会显示在事实页的变更记录里。</p>
   </div>
 </header>
 
 {% if error %}
-<div class="dt-alert danger" role="alert">⚠️ {{ error }}</div>
+<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>
 {% endif %}
 {% if conflict_current %}
-<div class="dt-alert warn" role="status">
+<div class="product-feedback product-feedback--warning" role="status">
   当前权威值：商家 {{ conflict_current.merchant or '未填写' }}，金额 {{ conflict_current.amount_label or '待补' }}，分类 {% if conflict_current.needs_category %}待分类{% else %}{{ conflict_current.category }}{% endif %}。表单已载入最新基本信息，请核对明细和拆账，再重新填写这次想改的内容。
 </div>
 {% endif %}
 
-<form method="post" action="/web/expenses/{{ expense.id }}/corrections" class="edit-form correction-form">
+<form method="post" action="/web/expenses/{{ expense.id }}/corrections" class="correction-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
   <input type="hidden" name="idempotency_key" value="{{ confirm_idempotency_key }}">
+  {% for field_name, field_value in flow_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
 
   {% include "_correction_reason.html" %}
   {% include "_correction_scalars.html" %}
@@ -34,10 +36,10 @@
   {% include "_correction_items.html" %}
   {% include "_correction_splits.html" %}
 
-  <div class="actions correction-actions">
+  <div class="correction-actions">
     <p class="meta correction-actions-note">保存时只记录实际改动的字段与段落，并写入你的更正原因。</p>
-    <button type="submit" class="dt-btn primary">保存更正</button>
-    <a href="/web/expenses/{{ expense.id }}/edit{{ q }}" class="dt-btn link">取消</a>
+    <button type="submit" class="product-button product-button--primary">保存更正</button>
+    <a href="{{ fact_href }}" class="product-button product-button--quiet">返回账单详情</a>
   </div>
 </form>
 {% endblock %}

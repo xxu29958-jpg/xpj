@@ -3,46 +3,46 @@
    契约：split_invite（None 则整卡不渲染）, expense, split_invite.members/
    sent_rows, home_currency_symbol, currency_input, selected_ledger_id。 #}
 {% if split_invite %}
-<div class="dt-card bsplit-invite-card">
-  <div class="card-header">
+<section class="product-panel product-panel--padded bsplit-invite-card" aria-label="找家人分摊">
+  <div class="product-panel-header">
     <div>
-      <h2>找家人分摊</h2>
-      <div class="meta">发一份拆账邀请到家人自己的账本；对方接受后会在 TA 的账本里生成一笔独立账单，不影响这笔账。要只在本账本内记录分摊，请用“家庭拆账”。</div>
+      <h2 class="product-panel-title">找家人分摊</h2>
+      <div class="product-panel-subtitle">发一份拆账邀请到家人自己的账本；对方接受后会在 TA 的账本里生成一笔独立账单，不影响这笔账。要只在本账本内记录分摊，请用「家庭拆账」。</div>
     </div>
   </div>
   {% if not split_invite.members %}
-  <div class="bsplit-invite-note">本账本暂时只有你一个成员，先邀请家人加入，才能发起拆账。</div>
+  <div class="meta">本账本暂时只有你一个成员，先邀请家人加入，才能发起拆账。</div>
   {% else %}
-  <form method="post" action="/web/expenses/{{ expense.id }}/split-invite" class="bsplit-invite-form">
+  <form method="post" action="/web/expenses/{{ expense.id }}/split-invite" class="split-invite-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <div class="bsplit-invite-fields">
-      <label class="bsplit-invite-field">
-        <span class="bsplit-invite-label">分摊给</span>
-        <select name="receiver_account_id" required>
+    <div class="split-invite-fields">
+      <div class="product-field">
+        <label for="split-invite-receiver">分摊给</label>
+        <select id="split-invite-receiver" name="receiver_account_id" required>
           {% for member in split_invite.members %}
           <option value="{{ member.account_id }}">{{ member.account_name }} · {% if member.role == 'owner' %}拥有者{% elif member.role == 'member' %}成员{% else %}只读{% endif %}</option>
           {% endfor %}
         </select>
-      </label>
-      <label class="bsplit-invite-field bsplit-invite-field--amount">
-        <span class="bsplit-invite-label">分摊金额（{{ home_currency_symbol }}）</span>
-        <input type="number" name="amount_yuan" value="{{ split_invite.remaining_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="例如 {{ currency_input.amount_example }}" required>
-      </label>
-      <button type="submit" class="dt-btn primary">发起拆账</button>
+      </div>
+      <div class="product-field">
+        <label for="split-invite-amount">分摊金额（{{ home_currency_symbol }}）</label>
+        <input id="split-invite-amount" type="number" name="amount_yuan" value="{{ split_invite.remaining_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="例如 {{ currency_input.amount_example }}" required>
+      </div>
+      <button type="submit" class="product-button product-button--primary">发起拆账</button>
     </div>
-    <div class="meta">本张账单还可分摊 {{ home_currency_symbol }}{{ split_invite.remaining_yuan }}。</div>
+    <p class="meta">本张账单还可分摊 {{ home_currency_symbol }}{{ split_invite.remaining_yuan }}。</p>
   </form>
   {% endif %}
 
   {% if split_invite.sent_rows %}
-  <table class="dt-table dt-table--compact bsplit-invite-sent">
+  <table class="product-table split-invite-sent">
     <thead>
       <tr>
         <th>已发给</th>
         <th class="amount">金额</th>
         <th>状态</th>
         <th>到期</th>
-        <th></th>
+        <th><span class="sr-only">操作</span></th>
       </tr>
     </thead>
     <tbody>
@@ -51,11 +51,11 @@
         <td>{{ row.receiver_display_name or '—' }}</td>
         <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
         <td>
-          {% if row.status == 'invited' %}<span class="dt-pill">待处理</span>
-          {% elif row.status == 'accepted' %}<span class="dt-pill ok">已接受</span>
-          {% elif row.status == 'rejected' %}<span class="dt-pill muted">已拒绝</span>
-          {% elif row.status == 'cancelled' %}<span class="dt-pill muted">已撤回</span>
-          {% else %}<span class="dt-pill muted">已过期</span>{% endif %}
+          {% if row.status == 'invited' %}<span class="product-status product-status--info">待处理</span>
+          {% elif row.status == 'accepted' %}<span class="product-status product-status--success">已接受</span>
+          {% elif row.status == 'rejected' %}<span class="product-status">已拒绝</span>
+          {% elif row.status == 'cancelled' %}<span class="product-status">已撤回</span>
+          {% else %}<span class="product-status">已过期</span>{% endif %}
         </td>
         <td class="num">{{ row.expires_at or '—' }}</td>
         <td>
@@ -63,7 +63,7 @@
           <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="return_expense_id" value="{{ expense.id }}">
-            <button type="submit" class="dt-btn link" data-confirm="撤回这份拆账邀请？">撤回</button>
+            <button type="submit" class="product-button product-button--quiet product-button--small" data-confirm="撤回这份拆账邀请？">撤回</button>
           </form>
           {% else %}
           <span class="meta">—</span>
@@ -74,5 +74,5 @@
     </tbody>
   </table>
   {% endif %}
-</div>
+</section>
 {% endif %}

@@ -16,6 +16,7 @@ from app.routes._web_expense_helpers import (
     web_save_response,
 )
 from app.routes._web_expense_return_context import (
+    expense_return_query_context,
     resolve_return_to,
     return_context_params,
 )
@@ -52,6 +53,9 @@ def web_edit_get(
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    return_context = expense_return_query_context(
+        return_to, return_month, return_filter, return_page, return_tag, return_query
+    )
     try:
         ctx = web_edit_context(
             db,
@@ -59,12 +63,7 @@ def web_edit_get(
             options,
             selected_id,
             expense_id,
-            return_to=return_to,
-            return_month=return_month,
-            return_filter=return_filter,
-            return_page=return_page,
-            return_tag=return_tag,
-            return_query=return_query,
+            **return_context.as_kwargs(),
         )
     except AppError as exc:
         # A deleted / cross-ledger expense (stale link, switched ledger) must
@@ -76,18 +75,11 @@ def web_edit_get(
                 status_code=exc.status_code,
             )
         return _web_redirect(
-            resolve_return_to(return_to, "/web/confirmed"),
+            resolve_return_to(return_context.return_to, "/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",
-            **return_context_params(
-                return_to,
-                return_month=return_month,
-                return_filter=return_filter,
-                return_page=return_page,
-                return_tag=return_tag,
-                return_query=return_query,
-            ),
+            **return_context_params(**return_context.as_kwargs()),
         )
     # A1: confirmed 账单落地页 = read-first 事实详情（更正走显式命令）；
     # pending 保持原编辑表单。抽屉只服务待确认队列，confirmed 的 fragment
@@ -106,6 +98,7 @@ def web_edit_get(
             expense_id,
             revision_page=rev_page,
             revision_snapshot=rev_snapshot,
+            return_context=return_context,
         )
         return templates.TemplateResponse(request=request, name="expense_fact.html", context=fact_ctx)
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.

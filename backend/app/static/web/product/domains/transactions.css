@@ -943,3 +943,508 @@
         margin-block-start: var(--space-2);
     }
 }
+
+
+/* ── 已确认账单事实详情 + 更正 + 搜索（本片 product 正文） ────────────────
+   只补 product 组件未覆盖的版面规则；token 合同同全栈（type/space/radius/
+   color/motion）。登记的例外：1px hairline 分隔线（token 无 hairline 尺度）、
+   56rem 断点（与 product/detail.css 同一约定）、thead 视觉隐藏的 1px clip
+   （标准 visually-hidden，与 .sr-only 同语义）。 */
+
+/* 行内字段错误：product 栈此前只有块级 .product-feedback，422 的字段级
+   定位（aria-describedby 目标）需要同级安静文本。 */
+.field-error {
+    color: var(--state-danger-fg);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
+
+/* ── 事实 hero：金额焦点贴右，窄屏回落左对齐 ─────────────────────────── */
+.fact-hero {
+    text-align: end;
+}
+
+.fact-amount {
+    font-family: var(--font-numeric);
+    font-size: var(--type-display-size);
+    font-weight: var(--type-display-weight);
+    line-height: var(--type-display-line);
+    font-variant-numeric: tabular-nums;
+}
+
+.fact-keymeta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    color: var(--text-muted);
+    font-size: var(--type-subtitle-size);
+}
+
+.fact-keymeta-sep {
+    color: var(--text-faint);
+}
+
+.fact-statusline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+/* 布尔信号锚：不显示 revision 数字，跳到承载脉络的变更记录。 */
+.fact-history-link {
+    color: var(--brand-primary-strong);
+    text-underline-offset: var(--space-1);
+}
+
+/* ── 次级事实定义列表：桌面双列，窄屏单列 ────────────────────────────── */
+.fact-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3-5) var(--space-7);
+    margin: 0 0 var(--space-5);
+}
+
+.fact-row {
+    display: flex;
+    gap: var(--space-4);
+    min-width: 0;
+}
+
+.fact-row dt {
+    flex: 0 0 var(--space-12);
+    color: var(--text-faint);
+    font-size: var(--type-caption-size);
+}
+
+.fact-row dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.fact-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+/* 「原小票如此」确认行：贴差异警告下方，次级动作，不抢更正主任务。 */
+.fact-ack-form {
+    margin-block-start: var(--space-2);
+}
+
+/* 拆账对账行：账单总额 vs 已拆的安静提示（事实页只读与更正页共用）。 */
+.fact-reconcile {
+    margin-block-end: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-inline-start: var(--space-1) solid var(--brand-primary);
+    border-radius: var(--radius-xs);
+    background: var(--brand-primary-bg);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+/* ── 变更记录时间线：人话 delta，不是 revision 管理器 ────────────────── */
+.fact-timeline-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.fact-timeline-entry {
+    padding: var(--space-4) 0;
+    border-block-start: 1px solid var(--border-card); /* 1px hairline：登记例外 */
+}
+
+.fact-timeline-entry:first-child {
+    border-block-start: none;
+    padding-block-start: 0;
+}
+
+.fact-timeline-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-block-end: var(--space-2);
+}
+
+.fact-timeline-when {
+    font-size: var(--type-caption-size);
+}
+
+.fact-timeline-reason {
+    font-weight: var(--type-title-weight);
+    margin-block-end: var(--space-2);
+}
+
+.fact-timeline-changes {
+    margin: 0;
+}
+
+.fact-timeline-change {
+    display: flex;
+    gap: var(--space-4);
+    padding: var(--space-1) 0;
+    font-size: var(--type-body-size);
+}
+
+.fact-timeline-change dt {
+    flex: 0 0 calc(var(--space-12) + var(--space-3));
+    color: var(--text-faint);
+}
+
+.fact-timeline-change dd {
+    margin: 0;
+}
+
+.fact-change-before {
+    color: var(--text-muted);
+}
+
+.fact-change-arrow {
+    margin: 0 var(--space-2);
+    color: var(--text-faint);
+}
+
+.fact-change-after {
+    font-weight: var(--type-subtitle-weight);
+}
+
+/* items/splits 完整 Before/After 集合：原生 details（no-JS），安静 text-button 风
+   + 旋转 chevron（1.5px 发丝为装饰非布局，同 hairline 例外登记）。 */
+.fact-change-detail {
+    margin: 0 0 var(--space-1) calc(var(--space-12) + var(--space-3) + var(--space-4));
+}
+
+.fact-change-detail summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    list-style: none;
+    width: fit-content;
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+
+.fact-change-detail summary::-webkit-details-marker {
+    display: none;
+}
+
+.fact-change-detail summary::after {
+    content: "";
+    width: var(--space-2);
+    height: var(--space-2);
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.fact-change-detail details[open] summary::after {
+    transform: rotate(45deg);
+}
+
+.fact-change-detail-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4) var(--space-6);
+    padding: var(--space-2) 0 var(--space-3);
+}
+
+.fact-change-set-label {
+    display: block;
+    color: var(--text-faint);
+    font-size: var(--type-caption-size);
+    margin-block-end: var(--space-1);
+}
+
+.fact-change-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.fact-change-rows li {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: var(--type-body-size);
+}
+
+.fact-change-row-facts {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.fact-change-row-empty {
+    color: var(--text-faint);
+}
+
+/* 翻页：服务端渲染链接（no-JS），锚回 #fact-timeline；slot 保持左右槽位稳定。 */
+.fact-timeline-pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    padding-block-start: var(--space-4);
+    border-block-start: 1px solid var(--border-card); /* 1px hairline：登记例外 */
+}
+
+.fact-pager-slot {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.fact-pager-slot--older {
+    text-align: right;
+}
+
+/* ── 更正表单：单任务正流（reason → 字段 → 评价 → 明细 → 拆账 → 保存） ── */
+.correction-form {
+    display: grid;
+    gap: var(--space-5);
+}
+
+.correction-fields {
+    display: grid;
+    gap: var(--space-5);
+}
+
+.correction-frozen-note {
+    margin-block-start: var(--space-4);
+}
+
+/* 明细/拆账原生 details 渐进披露：摘要行承载标题 + 已记行数 + 错误计数。 */
+/* 折叠面板自身不内边距：summary/body 各自管理节奏（.dt-card 是 product
+   栈内别名，其 padding 由本条取消；类名沿用系现有测试断言契约）。 */
+.correction-fold {
+    padding: 0;
+}
+
+.correction-fold-summary {
+    position: relative;
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-4) calc(var(--space-12) + var(--space-5)) var(--space-4) var(--space-5);
+    cursor: pointer;
+    list-style: none;
+}
+
+.correction-fold-summary::-webkit-details-marker {
+    display: none;
+}
+
+.correction-fold-summary::after {
+    content: "展开";
+    position: absolute;
+    inset-block-start: var(--space-4);
+    inset-inline-end: var(--space-5);
+    color: var(--brand-primary);
+    font-size: var(--type-caption-size);
+}
+
+.correction-fold[open] > .correction-fold-summary::after {
+    content: "收起";
+}
+
+.correction-fold-title {
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+}
+
+.correction-fold-body {
+    padding: 0 var(--space-5) var(--space-5);
+    display: grid;
+    gap: var(--space-3);
+}
+
+/* 评价 radiogroup：原生语义 + pill 视觉（radio 透明覆盖，:checked/:focus-visible
+   驱动 pill 态；键盘方向键与读屏走原生 input）。 */
+.score-row {
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.score-row legend {
+    padding: 0;
+    font-size: var(--type-caption-size);
+    color: var(--text-faint);
+}
+
+.score-seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.score-seg-option {
+    position: relative;
+    cursor: pointer;
+}
+
+.score-seg-option input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+}
+
+.score-seg-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--space-9);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-pill);
+    background: var(--surface-card);
+    color: var(--text-muted);
+    font-size: var(--type-body-size);
+    transition: background var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard),
+        border-color var(--motion-fast) var(--ease-standard);
+}
+
+.score-seg-option input:checked + .score-seg-pill {
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+    color: var(--text-on-primary);
+}
+
+.score-seg-option input:focus-visible + .score-seg-pill {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+/* 保存动作收尾于正流（两端一致）。不做 sticky 吸底：sticky 在表单超出视口时
+   会悬浮覆盖途经的编辑字段；折叠后约 1.5 视口、reason 锚点在顶，正流收尾
+   同时保住行动可达与编辑无遮挡。 */
+.correction-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    padding: var(--space-3) 0;
+    border-block-start: 1px solid var(--border-card); /* 1px hairline：登记例外 */
+}
+
+.correction-actions-note {
+    margin: 0;
+}
+
+/* ── 搜索：分组结果面板（行样式 .ledger-search-* 复用上方既有规则） ───── */
+.ledger-search-group {
+    overflow: hidden;
+}
+
+.ledger-search-group-head {
+    margin-block-end: 0;
+    padding: var(--space-5) var(--space-5) var(--space-2);
+}
+
+.ledger-search-none {
+    margin: 0;
+    padding: 0 var(--space-5) var(--space-5);
+}
+
+/* ── 窄屏（56rem，与 detail.css 同约定） ─────────────────────────────── */
+@media (max-width: 56rem) {
+    .fact-hero {
+        text-align: start;
+    }
+
+    .fact-grid,
+    .fact-change-detail-body {
+        grid-template-columns: 1fr;
+    }
+
+    .fact-change-detail {
+        margin-inline-start: 0;
+    }
+
+    /* 凭证是事实的旁证：窄屏上移到明细之前，而不是时间线之后。 */
+    .fact-evidence {
+        order: -1;
+    }
+
+    /* 宽表重组为带标签的行卡（消费 td 的 data-label），不整页横向滚动；
+       表头视觉隐藏、保留读屏（1px clip 为登记例外，同 .sr-only）。 */
+    .correction-form .edit-subtable,
+    .fact-lines-table {
+        display: block;
+    }
+
+    .correction-form .edit-subtable thead,
+    .fact-lines-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .correction-form .edit-subtable tbody,
+    .fact-lines-table tbody {
+        display: grid;
+        gap: var(--space-4);
+    }
+
+    .correction-form .edit-subtable tr,
+    .fact-lines-table tr {
+        display: grid;
+        gap: var(--space-2);
+        padding: var(--space-3);
+        border: 1px solid var(--border-card); /* 1px hairline：登记例外 */
+        border-radius: var(--radius-md);
+        background: var(--surface-card);
+    }
+
+    .correction-form .edit-subtable td,
+    .fact-lines-table td {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2) var(--space-3);
+        min-width: 0;
+    }
+
+    .correction-form .edit-subtable td::before,
+    .fact-lines-table td::before {
+        content: attr(data-label);
+        flex: 0 0 var(--space-12);
+        color: var(--text-faint);
+        font-size: var(--type-caption-size);
+    }
+
+    .correction-form .edit-subtable td > input,
+    .correction-form .edit-subtable td > select {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: auto;
+    }
+
+    .correction-form .edit-subtable td > .field-error,
+    .correction-form .edit-subtable td > .meta {
+        flex-basis: 100%;
+    }
+
+    /* 行卡模式下不渲染空单价/空数量/空分类的无意义标签行。 */
+    .fact-lines-table td.fact-cell-empty {
+        display: none;
+    }
+}

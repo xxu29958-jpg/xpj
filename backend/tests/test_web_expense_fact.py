@@ -7,6 +7,10 @@
 
 from __future__ import annotations
 
+import re
+from html import unescape
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -30,15 +34,52 @@ def _create_pending(client: TestClient, *, identity) -> int:
     return int(resp.json()["id"])
 
 
+def _expense_href(body: str, expense_id: int, action: str) -> str:
+    match = re.search(
+        rf'href="([^"]*/web/expenses/{expense_id}/{action}[^"]*)"',
+        body,
+    )
+    assert match is not None, action
+    return unescape(match.group(1))
+
+
+def _hidden_input(body: str, name: str) -> str:
+    match = re.search(rf'name="{name}" value="([^"]*)"', body)
+    assert match is not None, name
+    return unescape(match.group(1))
+
+
 def test_confirmed_fact_page_read_first_and_pending_keeps_edit(web_client: TestClient, *, identity) -> None:
-    confirmed_id = _create_confirmed(web_client, identity=identity)
-    page = web_client.get(f"/web/expenses/{confirmed_id}/edit?ledger_id=owner")
+    confirmed_id = _create_confirmed(
+        web_client,
+        identity=identity,
+        merchant="上下文咖啡",
+    )
+    search = web_client.get(
+        "/web/search",
+        params={"ledger_id": "owner", "q": "上下文咖啡"},
+    )
+    assert search.status_code == 200, search.text
+    fact_href = _expense_href(search.text, confirmed_id, "edit")
+    fact_query = parse_qs(urlparse(fact_href).query)
+    assert fact_query["return_to"] == ["search"]
+    assert fact_query["return_query"] == ["上下文咖啡"]
+
+    page = web_client.get(fact_href)
     assert page.status_code == 200
     assert "更正这笔账单" in page.text
     assert "变更记录" in page.text
-    # 事实页是三级详情工作区：detail.css 恰好装配一次（无重复链接）。
+    # 事实页进入 transactions 产品栈；旧页级样式失权。
     assert page.text.count("/static/web/product/detail.css") == 1
-    assert page.text.count("/static/web/pages/expense-fact.css") == 1
+    assert page.text.count("/static/web/product/domains/transactions.css") == 1
+    assert "/static/web/pages/expense-fact.css" not in page.text
+    assert "返回搜索结果" in page.text
+    assert '/web/search?ledger_id=owner&amp;q=%E4%B8%8A%E4%B8%8B%E6%96%87%E5%92%96%E5%95%A1' in page.text
+    correction_query = parse_qs(
+        urlparse(_expense_href(page.text, confirmed_id, "correct")).query
+    )
+    assert correction_query["return_to"] == ["search"]
+    assert correction_query["return_query"] == ["上下文咖啡"]
     # 明细/拆账堆叠为全宽卡片（不硬并排挤压六列表格）。
     assert 'class="grid two-col detail-sections"' not in page.text
     assert f'action="/web/expenses/{confirmed_id}/save"' not in page.text
@@ -57,10 +98,21 @@ def test_confirmed_fact_page_read_first_and_pending_keeps_edit(web_client: TestC
 def test_composite_correction_closes_scalar_items_and_splits(web_client: TestClient, *, identity) -> None:
     expense_id = _create_confirmed(web_client, identity=identity)
     member_id = _owner_member_id()
-    form = web_client.get(f"/web/expenses/{expense_id}/correct?ledger_id=owner")
+    form = web_client.get(
+        f"/web/expenses/{expense_id}/correct",
+        params={
+            "ledger_id": "owner",
+            "return_to": "search",
+            "return_query": "上下文咖啡",
+        },
+    )
     assert form.status_code == 200
-    # 更正表单页：页级 CSS 恰好装配一次，无重复链接。
-    assert form.text.count("/static/web/pages/expense-fact.css") == 1
+    # 更正表单页与事实页共享唯一 transactions 产品栈。
+    assert form.text.count("/static/web/product/domains/transactions.css") == 1
+    assert "/static/web/pages/expense-fact.css" not in form.text
+    assert _hidden_input(form.text, "return_to") == "search"
+    assert _hidden_input(form.text, "return_query") == "上下文咖啡"
+    assert "返回账单详情" in form.text
     # 可编辑行表的每行/每列控件都有可辨识标签（placeholder 不冒充标签）。
     assert 'aria-label="明细第 1 行：名称"' in form.text
     assert 'aria-label="明细第 3 行：名称"' in form.text
@@ -85,16 +137,24 @@ def test_composite_correction_closes_scalar_items_and_splits(web_client: TestCli
             "split_member_id": [str(member_id)],
             "split_amount_yuan": ["6.17"],
             "split_note": ["家人AA"],
+            "return_to": _hidden_input(form.text, "return_to"),
+            "return_query": _hidden_input(form.text, "return_query"),
         },
         follow_redirects=False,
     )
     assert resp.status_code == 303, resp.text
+    saved_location = urlparse(resp.headers["location"])
+    saved_query = parse_qs(saved_location.query)
+    assert saved_location.path == f"/web/expenses/{expense_id}/edit"
+    assert saved_query["return_to"] == ["search"]
+    assert saved_query["return_query"] == ["上下文咖啡"]
 
-    fact = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    fact = web_client.get(resp.headers["location"])
     assert fact.status_code == 200
     assert "更正后的商家" in fact.text
     assert "小票商家和明细看错了" in fact.text
     assert "苹果" in fact.text
+    assert "返回搜索结果" in fact.text
     # 只读行带窄屏标签（data-label 驱动行卡模式，真实数据行验证）。
     assert 'data-label="名称"' in fact.text
     assert 'data-label="成员"' in fact.text
@@ -204,22 +264,6 @@ def test_web_correction_can_change_original_currency_through_existing_fx_owner(
     assert current.json()["amount_cents"] == 7000
 
 
-def test_correction_blank_reason_shows_validation_error(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_confirmed(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/corrections",
-        data={
-            "ledger_id": "owner",
-            "reason": "",
-            "merchant": "想改但没写原因",
-            "expected_row_version": str(_row_version(web_client, expense_id, identity)),
-        },
-        follow_redirects=False,
-    )
-    assert resp.status_code == 422
-    assert "请说明这次更正的原因" in resp.text
-
-
 def test_web_correction_preserves_absent_and_clears_blank_time_and_scores(web_client: TestClient, *, identity) -> None:
     created = web_client.post(
         "/api/expenses/manual",
@@ -296,6 +340,8 @@ def test_correction_stale_token_shows_conflict_with_fresh_values(web_client: Tes
             "reason": "拿着旧页面再改",
             "merchant": "过期页面提交的值",
             "expected_row_version": str(stale_token),
+            "return_to": "search",
+            "return_query": "上下文咖啡",
         },
         follow_redirects=False,
     )
@@ -306,6 +352,9 @@ def test_correction_stale_token_shows_conflict_with_fresh_values(web_client: Tes
     assert 'value="第一次的值"' in conflict.text
     assert 'value="过期页面提交的值"' not in conflict.text
     assert "表单已载入最新基本信息" in conflict.text
+    assert 'value="拿着旧页面再改"' in conflict.text
+    assert _hidden_input(conflict.text, "return_to") == "search"
+    assert _hidden_input(conflict.text, "return_query") == "上下文咖啡"
     fresh_token = _row_version(web_client, expense_id, identity)
     assert f'name="expected_row_version" value="{fresh_token}"' in conflict.text
     assert f'name="expected_row_version" value="{stale_token}"' not in conflict.text

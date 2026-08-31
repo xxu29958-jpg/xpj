@@ -1,25 +1,25 @@
 {# 事实页家庭拆账（只读呈现，非表单）。契约：split_rows, can_write, home_currency_symbol。 #}
-<section class="dt-card" aria-label="家庭拆账">
-  <div class="card-header">
+<section class="product-panel product-panel--padded" aria-label="家庭拆账">
+  <div class="product-panel-header">
     <div>
-      <h2>家庭拆账</h2>
-      <div class="meta">家庭分摊记录，不改变入账金额。{% if can_write %}需要修改请使用「更正这笔账单」。{% endif %}</div>
+      <h2 class="product-panel-title">家庭拆账</h2>
+      <div class="product-panel-subtitle">家庭分摊记录，不改变入账金额。{% if can_write %}需要修改请使用「更正这笔账单」。{% endif %}</div>
     </div>
   </div>
   {% if split_rows.total_yuan %}
-  <div class="reconcile-line">
+  <div class="fact-reconcile">
     账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
     {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }} 未分配{% endif %}
-    {% if split_rows.reconcile_state == 'overallocated' %}<span class="error-text">· 已拆超出 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
+    {% if split_rows.reconcile_state == 'overallocated' %}<span class="field-error">· 已拆超出 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
   </div>
   {% endif %}
   {% set visible_splits = split_rows.rows | selectattr('member_id') | list %}
   {% if visible_splits %}
-  <table class="dt-table dt-table--compact fact-lines-table">
+  <table class="product-table fact-lines-table">
     <thead>
       <tr>
         <th>成员</th>
-        <th class="th-w-120">金额</th>
+        <th>金额</th>
         <th>备注</th>
       </tr>
     </thead>

@@ -158,7 +158,7 @@ def web_login_submit(
         redirect = _redirect_login(next=next, error="pairing_attempt_expired")
         _clear_pairing_attempt_cookie(redirect)
         return redirect
-    cleaned_device_name = _clean_device_name(device_name, request)
+    cleaned_device_name = _clean_device_name(device_name)
     remote_id = pairing_rate_limit_key(request)
     try:
         result = pair_device(
@@ -256,14 +256,11 @@ def _safe_next_url(raw: str | None) -> str:
     return _safe_same_site_redirect_path(raw, allowed_roots=("/web",), fallback="")
 
 
-def _clean_device_name(raw: str, request: Request) -> str:
+def _clean_device_name(raw: str) -> str:
     cleaned = (raw or "").strip()
     if cleaned:
         return cleaned[:120]
-    ua = (request.headers.get("user-agent") or "").strip()
-    if ua:
-        return ("浏览器 / " + ua[:100]).strip()
-    return "Web Browser"
+    return "浏览器"
 
 
 def _escape(value: str) -> str:

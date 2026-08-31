@@ -32,6 +32,10 @@ from app.routes._web_correction_sources import (
 )
 from app.routes._web_expense_edit_command import prepare_web_expense_form
 from app.routes._web_expense_form import web_form_error_status
+from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
+    expense_return_form_context,
+)
 from app.routes._web_expense_rows import (
     attach_form_row_error,
     item_replace_payload,
@@ -86,6 +90,7 @@ class CorrectionFormData:
     split_note: list[str]
     expected_row_version: str
     idempotency_key: str
+    return_context: ExpenseReturnContext
 
 
 @dataclass
@@ -109,6 +114,7 @@ def web_correction_idempotency_body(form: CorrectionFormData) -> dict[str, objec
     submitted = asdict(form)
     submitted.pop("expected_row_version")
     submitted.pop("idempotency_key")
+    submitted.pop("return_context")
     return {"web_form": submitted}
 
 
@@ -142,6 +148,7 @@ def correction_form_data(
     split_note: list[str] = Form(default=[]),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     submitted_fields: frozenset[str] = Depends(_submitted_form_field_names),
 ) -> CorrectionFormData:
     """Bind FastAPI form fields without making the HTTP route a giant parser."""
@@ -173,6 +180,7 @@ def correction_form_data(
         split_note=split_note,
         expected_row_version=expected_row_version,
         idempotency_key=idempotency_key,
+        return_context=return_context,
     )
 
 
