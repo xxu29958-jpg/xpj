@@ -101,7 +101,7 @@ def test_web_receivables_remote_returns_403(client: TestClient) -> None:
 def test_web_receivables_empty_renders_premium_empty_state(web_client: TestClient) -> None:
     html = _page(web_client)
     assert "还没有待对上的款" in html
-    assert "dt-card--empty" in html
+    assert "product-state" in html
 
 
 # ── communal open row ────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ def test_web_receivables_cleared_row_receded(web_client: TestClient, *, identity
     html = _page(web_client)
     assert "小红" in html
     assert "已两清" in html  # cleared member status pill
-    assert "debt-card-sunk" in html  # cleared rows recede (永不红)
+    assert "is-receded" in html  # cleared rows recede (永不红)
     assert "两清啦" in html  # cleared communal headline
 
 

@@ -298,6 +298,7 @@ def _detail_view(debt) -> dict:
         "name": name,
         "is_member": use_member,
         "is_voided": status == "voided",
+        "debt_kind": debt.debt_kind,
         # remaining 在详情走 editorial 拆分英雄(外部 remaining_segments) / 成员卡无金额英雄,
         # 故详情不需要成串 remaining_label(列表行的 aria-label 才用,见 _debt_view)。
         "principal_label": _home_amount_label(debt.principal_amount_cents, home),
@@ -411,6 +412,12 @@ def _render_debt_detail(
     confirm_amount_error: str | None = None,
     confirm_amount_value: str | None = None,
     confirm_error_proposal_id: str | None = None,
+    action_kind: str | None = None,
+    action_error: str | None = None,
+    action_draft: dict[str, str] | None = None,
+    action_target_public_id: str | None = None,
+    flash_message: str = "",
+    flash_type: str = "",
     status_code: int = 200,
 ) -> HTMLResponse:
     """详情页唯一渲染入口：GET 与 proposal 确认 422 原地重渲染共用 (照
@@ -460,6 +467,14 @@ def _render_debt_detail(
     ctx["confirm_amount_error"] = confirm_amount_error
     ctx["confirm_amount_value"] = confirm_amount_value
     ctx["confirm_error_proposal_id"] = confirm_error_proposal_id
+    ctx["action_form"] = {
+        "kind": action_kind or "",
+        "error": action_error or "",
+        "draft": action_draft or {},
+        "target_public_id": action_target_public_id or "",
+    }
+    ctx["flash_message"] = flash_message
+    ctx["flash_type"] = flash_type if flash_type in ("success", "error") else ""
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
     if account_id is not None:
         ctx["repayment_facts"] = _fact_rows(
@@ -487,9 +502,19 @@ def web_debt_detail(
     request: Request,
     public_id: str,
     ledger_id: str | None = None,
+    msg: str = "",
+    flash_type: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return _render_debt_detail(request, db, options=options, selected_id=selected_id, public_id=public_id)
+    return _render_debt_detail(
+        request,
+        db,
+        options=options,
+        selected_id=selected_id,
+        public_id=public_id,
+        flash_message=msg,
+        flash_type=flash_type,
+    )

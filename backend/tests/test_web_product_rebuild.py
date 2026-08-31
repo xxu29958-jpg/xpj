@@ -53,40 +53,38 @@ def _assert_shell_chrome_has_no_inline_style(body: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("path", "domain", "primary_href", "page_css"),
+    ("path", "page_level"),
     [
-        ("/web/debts?ledger_id=owner", "obligations", "/web/debts?ledger_id=owner", "/static/web/pages/debts.css"),
+        ("/web/debts?ledger_id=owner", "primary"),
+        ("/web/receivables?ledger_id=owner", "secondary"),
+        ("/web/debts/new?ledger_id=owner", "tertiary"),
     ],
 )
-def test_old_body_primary_pages_keep_legacy_page_css(
+def test_debt_core_pages_use_product_body_and_retire_legacy_css(
     web_client: TestClient,
     path: str,
-    domain: str,
-    primary_href: str,
-    page_css: str,
+    page_level: str,
 ) -> None:
     response = web_client.get(path)
 
     assert response.status_code == 200
     body = response.text
-    assert f'data-domain="{domain}"' in body
-    assert f'data-page="{domain}" data-page-level="primary"' in body
-    assert '<span class="topbar-domain">' in body
+    assert 'data-domain="obligations"' in body
+    assert f'data-page="obligations" data-page-level="{page_level}"' in body
+    assert 'data-body-stack="product"' in body
     assert re.search(
-        rf'href="{re.escape(primary_href)}"[^>]+aria-current="location"', body
+        r'href="/web/debts\?ledger_id=owner"[^>]+aria-current="location"',
+        body,
     )
-
-    # 壳 chrome 走 product 基座…
     assert f"/static/web/product/shell.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/components.css?v={STATIC_ASSET_VERSION}" in body
-    # …正文仍是旧标记: 旧全局栈与本页页级 CSS 必须在场 (S3-R1 防回归钉),
-    # 且对应 domain 模块不得双挂 (类名谱系碰撞 = 行格双失)。
-    for legacy in ("/static/web/web.css", "/static/web/_base.css", "/static/web/_shell.css"):
-        assert legacy in body
-    assert f"{page_css}?v={STATIC_ASSET_VERSION}" in body
-    assert "/static/web/product/domains/" not in body
-
+    assert f"/static/web/product/domains/obligations.css?v={STATIC_ASSET_VERSION}" in body
+    for retired in _RETIRED_GLOBAL_STACK:
+        assert retired not in body
+    assert "/static/web/pages/debts.css" not in body
+    assert "desktop-shell-active" not in body
     assert "<style" not in body
+    assert 'style="' not in body
     _assert_shell_chrome_has_no_inline_style(body)
 
 
@@ -139,15 +137,15 @@ def test_confirmed_product_body_retires_legacy_stack_and_fake_filter(
     _assert_shell_chrome_has_no_inline_style(body)
 
 
-def test_old_body_pages_keep_desktop_hook_and_legacy_drawer_source(
+def test_remaining_old_body_pages_keep_desktop_hook_and_legacy_drawer_source(
     web_client: TestClient,
 ) -> None:
     """S3-R2 (#256): 旧标记页补回 desktop-shell-active body hook (旧 _base/_misc/
     a11y 作用域规则依赖), 且旧 drawer 的样式来源 (components/drawer.css) 在场;
     product drawer 族规则已收窄到 [data-body-stack="product"], 不再吃旧 drawer。"""
-    debts = web_client.get("/web/debts?ledger_id=owner")
-    assert debts.status_code == 200
-    body = debts.text
+    bill_splits = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
+    assert bill_splits.status_code == 200
+    body = bill_splits.text
     body_tag = re.search(r"<body [^>]+>", body)
     assert body_tag is not None
     assert "desktop-shell-active" in body_tag.group(0)

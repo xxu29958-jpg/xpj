@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -12,7 +13,8 @@ import app.routes.web_debt_create as web_debt_create_routes
 import app.routes.web_debts as web_debts_routes
 import app.services.debt_command_service as debt_command_service
 from app.database import SessionLocal
-from app.models import Account, Debt, LedgerMember
+from app.models import Account, Debt, LedgerMember, Repayment
+from app.services.spending_contract_service import accounting_zone
 
 
 def test_web_debt_fact_adapters_delegate_to_shared_commands_and_views() -> None:
@@ -107,12 +109,22 @@ def test_web_repayment_replay_is_idempotent(
     debt = _create_debt(web_client, identity=identity)
     page = web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner")
     assert page.status_code == 200
+    assert 'data-body-stack="product"' in page.text
+    assert "/static/web/product/domains/obligations.css" in page.text
+    assert "/static/web/pages/debts.css" not in page.text
+    assert 'style="' not in page.text
     assert 'name="amount_major"' in page.text
+    assert f'action="/web/debts/{debt["public_id"]}/forgive"' not in page.text
     assert "本次还款（CNY · ¥，最多两位小数）" in page.text
     assert 'min="0.01"' in page.text
     assert 'step="0.01"' in page.text
     key = str(uuid4())
-    form = _form(debt, idempotency_key=key, amount_major="120.50")
+    form = _form(
+        debt,
+        idempotency_key=key,
+        amount_major="120.50",
+        paid_at="2026-07-18",
+    )
 
     first = web_client.post(
         f"/web/debts/{debt['public_id']}/repayments",
@@ -125,12 +137,80 @@ def test_web_repayment_replay_is_idempotent(
 
     assert first.status_code == 200
     assert replay.status_code == 200
+    assert 'id="debt-action-feedback"' in first.text
+    assert 'id="debt-action-feedback"' in replay.text
     assert "还款事实已记录" in first.text
     assert "还款事实已记录" in replay.text
     current = _detail(web_client, identity=identity, public_id=debt["public_id"])
     assert current["paid_amount_cents"] == 12_050
     assert current["remaining_amount_cents"] == 37_950
     assert current["row_version"] == debt["row_version"] + 1
+    with SessionLocal() as db:
+        paid_at = db.scalar(
+            select(Repayment.paid_at)
+            .join(Debt, Debt.id == Repayment.debt_id)
+            .where(Debt.public_id == debt["public_id"])
+        )
+    assert paid_at is not None
+    assert paid_at.astimezone(accounting_zone()).date().isoformat() == "2026-07-18"
+
+
+def test_web_invalid_repayment_rerenders_anchored_and_preserves_draft(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    debt = _create_debt(web_client, identity=identity)
+
+    response = web_client.post(
+        f"/web/debts/{debt['public_id']}/repayments",
+        data=_form(
+            debt,
+            idempotency_key=str(uuid4()),
+            amount_major="not-a-number",
+            paid_at="2026-07-17",
+        ),
+    )
+
+    assert response.status_code == 422
+    assert 'id="debt-action-error-repayment"' in response.text
+    assert 'aria-describedby="debt-action-error-repayment"' in response.text
+    assert 'name="amount_major"' in response.text
+    assert 'value="not-a-number"' in response.text
+    assert 'name="paid_at"' in response.text
+    assert 'value="2026-07-17"' in response.text
+    current = _detail(web_client, identity=identity, public_id=debt["public_id"])
+    assert current["paid_amount_cents"] == 0
+
+
+def test_web_invalid_adjustment_opens_its_panel_and_preserves_draft(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    debt = _create_debt(web_client, identity=identity)
+
+    response = web_client.post(
+        f"/web/debts/{debt['public_id']}/adjustments",
+        data=_form(
+            debt,
+            idempotency_key=str(uuid4()),
+            amount_major="bad-adjustment",
+            reason="这段原因不能丢",
+        ),
+    )
+
+    assert response.status_code == 422
+    panel = re.search(
+        r'<details\b[^>]*\bid="debt-action-panel-adjustment"[^>]*>',
+        response.text,
+    )
+    assert panel is not None
+    assert re.search(r"\bopen\b", panel.group(0))
+    assert 'id="debt-action-error-adjustment"' in response.text
+    assert 'aria-describedby="debt-action-error-adjustment"' in response.text
+    assert 'value="bad-adjustment"' in response.text
+    assert 'value="这段原因不能丢"' in response.text
 
 
 def test_web_adjustment_appends_signed_fact_without_rewriting_principal(
@@ -202,11 +282,16 @@ def test_web_stale_row_version_surfaces_conflict_without_second_fact(
             debt,
             idempotency_key=str(uuid4()),
             amount_major="20.00",
+            paid_at="2026-07-19",
         ),
     )
 
-    assert stale.status_code == 200
-    assert "欠款已在其它端被修改，请刷新后重试" in stale.text
+    assert stale.status_code == 409
+    assert 'id="debt-action-error-repayment"' in stale.text
+    assert "另一端刚更新了这笔欠款" in stale.text
+    assert 'value="20.00"' in stale.text
+    assert 'value="2026-07-19"' in stale.text
+    assert f'name="expected_row_version" value="{debt["row_version"] + 1}"' in stale.text
     current = _detail(web_client, identity=identity, public_id=debt["public_id"])
     assert current["paid_amount_cents"] == 1_000
     assert current["row_version"] == debt["row_version"] + 1
@@ -353,6 +438,10 @@ def test_web_debt_kind_and_repayment_void_restore_canonical_fold(
     )
     assert kind.status_code == 200
     assert "还款类型已更新" in kind.text
+    assert re.search(
+        r'<option(?=[^>]*\bvalue="one_off")(?=[^>]*\bselected\b)[^>]*>',
+        kind.text,
+    )
     classified = _detail(
         web_client,
         identity=identity,
@@ -406,6 +495,10 @@ def test_web_member_creditor_can_forgive_remaining(
     public_id = _seed_member_debt_for_owner_creditor()
     page = web_client.get(f"/web/debts/{public_id}?ledger_id=owner")
     assert page.status_code == 200
+    assert f'action="/web/debts/{public_id}/repayments"' not in page.text
+    assert f'action="/web/debts/{public_id}/adjustments"' not in page.text
+    assert f'action="/web/debts/{public_id}/kind"' not in page.text
+    assert f'action="/web/debts/{public_id}/void"' not in page.text
     assert f"/web/debts/{public_id}/forgive" in page.text
     assert "免除这笔往来" in page.text
     assert "免除剩余往来" not in page.text  # 红线②:成员卡不出现会计框

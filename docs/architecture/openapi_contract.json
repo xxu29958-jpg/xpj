@@ -2956,6 +2956,11 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "paid_at": {
+            "default": "",
+            "title": "Paid At",
+            "type": "string"
           }
         },
         "title": "Body_web_record_repayment_web_debts__public_id__repayments_post",
@@ -36343,6 +36348,26 @@
                 }
               ],
               "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Msg",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
+              "type": "string"
             }
           }
         ],

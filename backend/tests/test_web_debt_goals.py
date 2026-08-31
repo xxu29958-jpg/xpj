@@ -340,7 +340,7 @@ def test_web_debt_goals_voided_member_link_needs_review_never_red(web_client: Te
     assert "移除不再有效的欠款" in resp.text  # review submit
     assert "复核与处理请在手机 App" not in resp.text  # write loop landed on web
     assert "这件事不算了" in resp.text  # voided member link note
-    assert "debt-card-sunk" in resp.text  # voided link recedes
+    assert "dg-sunk" in resp.text  # voided link recedes
     assert "dt-pill danger" not in resp.text  # member voided never red (红线②)
 
 
@@ -355,7 +355,7 @@ def test_web_debt_goals_all_voided_short_circuits(web_client: TestClient) -> Non
     assert resp.status_code == 200
     assert "关联的欠款都已作废" in resp.text  # all-voided short-circuit text
     assert "已还清" not in resp.text and "已处理" not in resp.text  # no count headline
-    assert "debt-card-sunk" in resp.text  # the voided link still listed, receded
+    assert "dg-sunk" in resp.text  # the voided link still listed, receded
 
 
 def test_web_debt_goals_nav_and_planning_group(web_client: TestClient) -> None:

@@ -27,6 +27,7 @@ from app.routes.web_debt_actions import (
     _STALE_MESSAGE,
     _action_redirect,
     _actor_account_id,
+    _render_action_error,
 )
 from app.routes.web_debts import _render_debt_detail
 from app.schemas import (
@@ -77,7 +78,7 @@ def web_create_repayment_proposal(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -116,11 +117,16 @@ def web_create_repayment_proposal(
             if isinstance(exc, AppError)
             else "请填写正确的还款金额；想说的话最多 500 个字。"
         )
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="proposal_create",
             message=message,
-            success=False,
+            draft={"amount_major": amount_major, "note": note},
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
@@ -140,7 +146,7 @@ def web_withdraw_repayment_proposal(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -162,11 +168,15 @@ def web_withdraw_repayment_proposal(
         )
     except (AppError, ValidationError) as exc:
         message = _proposal_error_message(exc) if isinstance(exc, AppError) else "暂时不能撤回，请刷新后再试。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="proposal_withdraw",
             message=message,
-            success=False,
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
@@ -393,7 +403,7 @@ def web_reject_repayment_proposal(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -415,11 +425,15 @@ def web_reject_repayment_proposal(
         )
     except (AppError, ValidationError) as exc:
         message = _proposal_error_message(exc) if isinstance(exc, AppError) else "暂时不能回复，请刷新后再试。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="proposal_reject",
             message=message,
-            success=False,
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,

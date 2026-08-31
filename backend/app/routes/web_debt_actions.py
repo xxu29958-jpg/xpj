@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, time
+
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
@@ -18,7 +21,7 @@ from app.routes.web_common import (
     _web_redirect,
     parse_form_row_version_token,
 )
-from app.routes.web_debts import _web_viewer_account_id
+from app.routes.web_debts import _render_debt_detail, _web_viewer_account_id
 from app.schemas import (
     DebtAdjustmentCreateRequest,
     DebtForgiveCreateRequest,
@@ -36,10 +39,11 @@ from app.services.debt_command_service import (
     void_repayment_idempotently,
 )
 from app.services.debt_service import get_debt_response
+from app.services.spending_contract_service import accounting_zone
 
 router = APIRouter(prefix="/web/debts", tags=["web"])
 
-_STALE_MESSAGE = "欠款已在其它端被修改，请刷新后重试。"
+_STALE_MESSAGE = "另一端刚更新了这笔欠款。这里已显示最新状态，你填写的内容还在，请确认后再提交。"
 
 
 def _action_redirect(
@@ -63,6 +67,49 @@ def _error_message(exc: AppError) -> str:
     return exc.message
 
 
+def _render_action_error(
+    request: Request,
+    db: Session,
+    *,
+    options,
+    selected_id: str,
+    public_id: str,
+    kind: str,
+    message: str,
+    draft: dict[str, str] | None = None,
+    target_public_id: str = "",
+    status_code: int,
+) -> HTMLResponse:
+    db.rollback()
+    return _render_debt_detail(
+        request,
+        db,
+        options=options,
+        selected_id=selected_id,
+        public_id=public_id,
+        action_kind=kind,
+        action_error=message,
+        action_draft=draft,
+        action_target_public_id=target_public_id,
+        status_code=status_code,
+    )
+
+
+def _parse_paid_at(raw: str) -> datetime | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        selected_date = date.fromisoformat(text)
+    except ValueError as exc:
+        raise AppError(
+            "invalid_request",
+            "请选择正确的还款日期。",
+            status_code=422,
+        ) from exc
+    return datetime.combine(selected_date, time.min, tzinfo=accounting_zone())
+
+
 def _actor_account_id(request: Request, db: Session, ledger_id: str) -> int:
     account_id = _web_viewer_account_id(request, db, ledger_id)
     if account_id is None:
@@ -80,12 +127,13 @@ def web_record_repayment(
     public_id: str,
     ledger_id: str = Form(default=""),
     amount_major: str = Form(default=""),
+    paid_at: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -114,6 +162,7 @@ def web_record_repayment(
                 currency_code=debt.home_currency_code,
                 allow_negative=False,
             ),
+            paid_at=_parse_paid_at(paid_at),
             expected_row_version=expected,
         )
         record_repayment_idempotently(
@@ -126,11 +175,16 @@ def web_record_repayment(
         )
     except (AppError, ValidationError) as exc:
         message = _error_message(exc) if isinstance(exc, AppError) else "还款信息不完整，请检查后重试。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="repayment",
             message=message,
-            success=False,
+            draft={"amount_major": amount_major, "paid_at": paid_at},
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
@@ -152,7 +206,7 @@ def web_record_adjustment(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -194,11 +248,16 @@ def web_record_adjustment(
         )
     except (AppError, ValidationError) as exc:
         message = _error_message(exc) if isinstance(exc, AppError) else "请填写调整金额和原因。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="adjustment",
             message=message,
-            success=False,
+            draft={"amount_major": amount_major, "reason": reason},
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
@@ -220,7 +279,7 @@ def web_void_repayment(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -253,11 +312,17 @@ def web_void_repayment(
         )
     except (AppError, ValidationError) as exc:
         message = _error_message(exc) if isinstance(exc, AppError) else "请填写撤销原因。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="repayment_void",
             message=message,
-            success=False,
+            draft={"reason": reason},
+            target_public_id=repayment_public_id,
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
@@ -278,7 +343,7 @@ def web_void_debt(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -310,11 +375,16 @@ def web_void_debt(
         )
     except (AppError, ValidationError) as exc:
         message = _error_message(exc) if isinstance(exc, AppError) else "请填写作废原因。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="void",
             message=message,
-            success=False,
+            draft={"reason": reason},
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
@@ -335,7 +405,7 @@ def web_set_debt_kind(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -367,11 +437,16 @@ def web_set_debt_kind(
         )
     except (AppError, ValidationError) as exc:
         message = _error_message(exc) if isinstance(exc, AppError) else "请选择正确的还款类型。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="kind",
             message=message,
-            success=False,
+            draft={"debt_kind": debt_kind},
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
@@ -391,7 +466,7 @@ def web_forgive_member_debt(
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(
         db,
@@ -419,11 +494,15 @@ def web_forgive_member_debt(
         )
     except (AppError, ValidationError) as exc:
         message = _error_message(exc) if isinstance(exc, AppError) else "暂时不能免除这份往来。"
-        return _action_redirect(
-            public_id,
-            selected_id,
+        return _render_action_error(
+            request,
+            db,
+            options=options,
+            selected_id=selected_id,
+            public_id=public_id,
+            kind="forgive",
             message=message,
-            success=False,
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _action_redirect(
         public_id,
