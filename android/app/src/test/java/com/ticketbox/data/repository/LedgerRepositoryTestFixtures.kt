@@ -315,6 +315,7 @@ internal class StubApi(
         id: Long,
         page: Int,
         pageSize: Int,
+        snapshotRevision: Long?,
     ): com.ticketbox.data.remote.dto.ExpenseRevisionPageDto = ledgerUnsupported()
     override suspend fun updateConfirmedBatch(
         idempotencyKey: String,

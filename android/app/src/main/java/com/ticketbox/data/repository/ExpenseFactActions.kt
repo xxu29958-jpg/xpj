@@ -27,6 +27,8 @@ interface ExpenseFactReadActions {
         id: Long,
         page: Int = 1,
         pageSize: Int = 50,
+        /** null = 进入新服务端快照；翻页必须回传已保存的锚。 */
+        snapshotRevision: Long? = null,
     ): Result<ExpenseRevisionPage>
 }
 

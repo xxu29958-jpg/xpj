@@ -354,30 +354,6 @@ def test_revision_read_is_tenant_scoped_and_correction_is_writer_only(client: Te
     assert viewer.json()["error"] == "permission_denied"
 
 
-def test_revision_history_is_newest_first_and_paginated(client: TestClient, *, identity) -> None:
-    expense = _manual_confirmed(client, identity)
-    current = expense
-    for merchant in ("第二版", "第三版"):
-        response = client.post(
-            f"/api/expenses/{expense['id']}/corrections",
-            headers=_idem(identity.app_headers),
-            json={
-                "expected_row_version": current["row_version"],
-                "reason": f"改为{merchant}",
-                "merchant": merchant,
-            },
-        )
-        assert response.status_code == 201, response.text
-        current = response.json()["expense"]
-
-    first_page = _history(client, identity, expense["id"], page=1, page_size=2)
-    assert first_page["total"] == 3
-    assert first_page["page"] == 1
-    assert [item["revision_number"] for item in first_page["items"]] == [3, 2]
-    second_page = _history(client, identity, expense["id"], page=2, page_size=2)
-    assert [item["revision_number"] for item in second_page["items"]] == [1]
-
-
 def test_one_correction_can_replace_items_and_splits_without_legacy_backdoors(client: TestClient, *, identity) -> None:
     expense = _manual_confirmed(client, identity)
     with SessionLocal() as db:

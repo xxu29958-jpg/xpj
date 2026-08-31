@@ -158,6 +158,8 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     var fetchExpenseCalls = 0
     var fetchRevisionsCalls = 0
     val revisionRequests = mutableListOf<Pair<Int, Int>>()
+    /** 每次 revisions 请求携带的快照锚（null = 进入新快照）。 */
+    val revisionSnapshots = mutableListOf<Long?>()
     var fetchBillSplitSentCalls = 0
     var createBillSplitCalls = 0
     var lastCreateBillSplitArgs: Triple<Long, Long, Long>? = null
@@ -199,6 +201,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
                 page = page,
                 pageSize = pageSize,
                 total = 1,
+                snapshotRevision = 1L,
             ),
         )
     }
@@ -298,9 +301,11 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         id: Long,
         page: Int,
         pageSize: Int,
+        snapshotRevision: Long?,
     ): Result<ExpenseRevisionPage> {
         fetchRevisionsCalls++
         revisionRequests += page to pageSize
+        revisionSnapshots += snapshotRevision
         return revisionsResult(page, pageSize)
     }
 

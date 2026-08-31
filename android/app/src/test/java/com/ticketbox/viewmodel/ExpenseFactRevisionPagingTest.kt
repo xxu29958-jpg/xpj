@@ -37,6 +37,52 @@ internal class ExpenseFactRevisionPagingTest : ExpenseFactViewModelTestBase() {
     }
 
     @Test
+    fun `snapshot anchor pins older paging until an explicit refresh`() = edit { fake ->
+        // 锚=120 时 items/total 都必须属于 revision_number<=120 的前缀（冻结合同）。
+        var serverSnapshot = 120L
+        fake.revisionsResult = { page, pageSize ->
+            Result.success(
+                revisionPage(
+                    page = page,
+                    pageSize = pageSize,
+                    total = serverSnapshot.toInt(),
+                    snapshotRevision = serverSnapshot,
+                ),
+            )
+        }
+
+        val viewModel = viewModel(fake)
+        assertEquals(120L, viewModel.uiState.value.revisionsSnapshotRevision)
+
+        viewModel.loadOlderExpenseRevisions()
+        advanceUntilIdle()
+        viewModel.loadOlderExpenseRevisions()
+        advanceUntilIdle()
+
+        var state = viewModel.uiState.value
+        assertEquals(120, state.revisions.size)
+        assertEquals(1L, state.revisions.last().revisionNumber)
+        assertNull(state.revisionsNextPage)
+        // 首次进入不带锚；之后每一页都钉在服务端返回的同一快照上。
+        assertEquals(listOf(null, 120L, 120L), fake.revisionSnapshots)
+
+        serverSnapshot = 121L
+        viewModel.loadExpenseRevisions()
+        advanceUntilIdle()
+
+        state = viewModel.uiState.value
+        assertEquals(121L, state.revisionsSnapshotRevision)
+        assertEquals(50, state.revisions.size)
+        assertEquals(2, state.revisionsNextPage)
+
+        viewModel.loadOlderExpenseRevisions()
+        advanceUntilIdle()
+
+        // 显式刷新重新取锚（null → 121），随后 older 翻页继续钉新锚。
+        assertEquals(listOf(null, 120L, 120L, null, 121L), fake.revisionSnapshots)
+    }
+
+    @Test
     fun `older page failure preserves loaded history and retry settles the same page`() = edit { fake ->
         var pageTwoAttempts = 0
         fake.revisionsResult = { page, pageSize ->
@@ -218,7 +264,12 @@ internal class ExpenseFactRevisionPagingTest : ExpenseFactViewModelTestBase() {
         assertEquals(ExpenseDetailDataLoadState.Loaded, viewModel.uiState.value.revisionsLoadState)
     }
 
-    private fun revisionPage(page: Int, pageSize: Int, total: Int): ExpenseRevisionPage {
+    private fun revisionPage(
+        page: Int,
+        pageSize: Int,
+        total: Int,
+        snapshotRevision: Long? = null,
+    ): ExpenseRevisionPage {
         val first = total - ((page - 1) * pageSize)
         val last = (first - pageSize + 1).coerceAtLeast(1)
         return ExpenseRevisionPage(
@@ -226,6 +277,8 @@ internal class ExpenseFactRevisionPagingTest : ExpenseFactViewModelTestBase() {
             page = page,
             pageSize = pageSize,
             total = total,
+            // 默认锚=total：items/total 永远属于 revision_number<=锚 的合法前缀。
+            snapshotRevision = snapshotRevision ?: total.toLong(),
         )
     }
 

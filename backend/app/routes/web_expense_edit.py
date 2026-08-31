@@ -45,6 +45,8 @@ def web_edit_get(
     return_tag: str = "",
     return_query: str = "",
     rev_page: int = Query(default=1, ge=1),
+    # A1 P2: 变更记录在同一服务端快照内翻页；缺省 = 重新进入事实页，取新锚。
+    rev_snapshot: int | None = Query(default=None, ge=1),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -103,6 +105,7 @@ def web_edit_get(
             selected_id,
             expense_id,
             revision_page=rev_page,
+            revision_snapshot=rev_snapshot,
         )
         return templates.TemplateResponse(request=request, name="expense_fact.html", context=fact_ctx)
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.

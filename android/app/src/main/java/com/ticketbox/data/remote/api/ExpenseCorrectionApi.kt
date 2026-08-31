@@ -25,6 +25,7 @@ interface ExpenseCorrectionApi {
         @Path("id") id: Long,
         @Query("page") page: Int = 1,
         @Query("page_size") pageSize: Int = 50,
+        @Query("snapshot_revision") snapshotRevision: Long? = null,
     ): ExpenseRevisionPageDto
 
     @POST("api/expenses/confirmed/batch-update")

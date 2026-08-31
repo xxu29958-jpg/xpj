@@ -145,7 +145,8 @@ class ExpenseRepository(
         id: Long,
         page: Int,
         pageSize: Int,
-    ): Result<ExpenseRevisionPage> = correctionRepository.fetchRevisions(id, page, pageSize)
+        snapshotRevision: Long?,
+    ): Result<ExpenseRevisionPage> = correctionRepository.fetchRevisions(id, page, pageSize, snapshotRevision)
 
     override suspend fun correctExpenseAllowingOffline(
         expense: Expense,
