@@ -6,7 +6,7 @@
     <string name="plan_page_month_context">%1$s的预算、目标与固定安排</string>
     <string name="plan_section_month">本月边界</string>
     <string name="plan_budget_title">月度预算</string>
-    <string name="plan_budget_remaining_label">本月还可用</string>
+    <string name="plan_budget_remaining_label">本月预算剩余</string>
     <string name="plan_budget_over_label">本月已超出</string>
     <string name="plan_budget_progress_meta">已用 %1$s / %2$s · %3$d%%</string>
     <string name="plan_budget_loading">正在读取本月预算</string>

@@ -7,7 +7,7 @@ S3 落「壳基座」: base.html / _sidebar_nav.html 重写 + product 设计系�
 本文件只钉壳层与旧栈分流防回归。
 
 218-D S3-R1 翻转 (#256 P1: 收件行整列塌缩): 挂载策略按页面正文标记新旧分流——
-- 正文仍是旧标记的页 (debts/budgets 等): 旧全局栈+页级 CSS 保持在场
+- 正文仍是旧标记的页 (debts 等): 旧全局栈+页级 CSS 保持在场
   (本文件钉死防回归), 对应 domain 模块不双挂 (矿域模块与旧页共享类名谱系
   .exp-row/.timeline-row 等, 双挂则旧规则被盖、新 grid 不认嵌套标记)。
 - 正文已是新标记的页 (overview S2; 收件域两页 S4): 断旧栈, 挂对应 domain 模块。
@@ -56,7 +56,6 @@ def _assert_shell_chrome_has_no_inline_style(body: str) -> None:
     ("path", "domain", "primary_href", "page_css"),
     [
         ("/web/debts?ledger_id=owner", "obligations", "/web/debts?ledger_id=owner", "/static/web/pages/debts.css"),
-        ("/web/budgets?ledger_id=owner", "plans", "/web/budgets?ledger_id=owner", "/static/web/pages/budgets.css"),
     ],
 )
 def test_old_body_primary_pages_keep_legacy_page_css(
@@ -88,6 +87,27 @@ def test_old_body_primary_pages_keep_legacy_page_css(
     assert "/static/web/product/domains/" not in body
 
     assert "<style" not in body
+    _assert_shell_chrome_has_no_inline_style(body)
+
+
+def test_budgets_product_body_retires_legacy_stack(web_client: TestClient) -> None:
+    """计划主入口迁入 product 正文栈，旧预算页样式不再拥有当前 surface。"""
+    response = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-domain="plans"' in body
+    assert 'data-page="plans" data-page-level="primary"' in body
+    assert 'data-body-stack="product"' in body
+    assert f"/static/web/product/domains/plans.css?v={STATIC_ASSET_VERSION}" in body
+    assert f"/static/web/desktop/budgets.js?v={STATIC_ASSET_VERSION}" in body
+    for retired in _RETIRED_GLOBAL_STACK:
+        assert retired not in body
+    assert "/static/web/pages/budgets.css" not in body
+    assert "desktop-shell-active" not in body
+    assert '<span class="product-eyebrow">计划 / 月度预算</span>' in body
+    assert "<style" not in body
+    assert 'style="' not in body
     _assert_shell_chrome_has_no_inline_style(body)
 
 

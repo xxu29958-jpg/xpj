@@ -165,7 +165,7 @@ def test_web_budget_write_and_reject_follow_home_currency_minor_units(
         if currency_code == "CNY":
             assert saved.status_code == 303, saved.text
         else:
-            assert saved.status_code == 200, saved.text
+            assert saved.status_code == 422, saved.text
             assert "服务端币种配置与已持久化的本位币绑定不一致" in saved.text
         with SessionLocal() as db:
             stored = db.scalar(
@@ -181,7 +181,8 @@ def test_web_budget_write_and_reject_follow_home_currency_minor_units(
                 "total_amount_yuan": invalid_input,
             },
         )
-        assert rejected.status_code == 200
+        assert rejected.status_code == 422
+        assert f'value="{invalid_input}"' in rejected.text
         with SessionLocal() as db:
             unchanged = db.scalar(
                 select(Budget.total_amount_cents).where(Budget.tenant_id == "owner").where(Budget.month == "2026-05")

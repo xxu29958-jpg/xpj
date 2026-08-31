@@ -1444,10 +1444,26 @@
             "title": "Category Budget Category",
             "type": "array"
           },
+          "category_budget_remove": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Category Budget Remove",
+            "type": "array"
+          },
           "excluded_categories": {
             "default": "",
             "title": "Excluded Categories",
             "type": "string"
+          },
+          "excluded_category": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Excluded Category",
+            "type": "array"
           },
           "ledger_id": {
             "default": "",

@@ -361,3 +361,327 @@
         flex-direction: column;
     }
 }
+
+/* ── C1 月度预算页 (product 正文栈) ────────────────────────────────────────
+ * 本段只服务 budgets.html 新正文。层级原则:
+ *   hero 回答「本月预算剩余/已超支」一个焦点数字; 进度分母 = 总预算+结转
+ *   (与 Android spentProgress 同口径); 计划背景安静列示, 不再并排六卡。
+ *   分类预算 = 一张表 (编辑列 + 行内执行列); 移除是纯 CSS 可感的 native
+ *   checkbox (:has 勾选态), no-JS 同样成立; 添加行在虚线 add zone 内。
+ */
+
+.budget-hero {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.budget-hero .plan-progress-meta {
+    margin-block-start: 0;
+}
+
+.budget-hero-main {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.budget-hero-label {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.budget-hero-value {
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: var(--type-display-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-display-weight);
+    line-height: var(--type-display-line);
+}
+
+.budget-hero-value .yuan {
+    margin-inline-end: var(--space-1);
+    color: var(--text-muted);
+    font-size: var(--type-headline-size);
+}
+
+.budget-hero--over .budget-hero-value {
+    color: var(--state-danger-fg);
+}
+
+/* 计划背景 (结转/固定支出/非月度预留): 安静的一行事实, 不参与焦点竞争。 */
+.budget-context {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    margin: 0;
+    padding: 0;
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    list-style: none;
+}
+
+.budget-context strong {
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-subtitle-weight);
+}
+
+.budget-fields {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-4);
+}
+
+/* 排除分类: checkbox chips (native 可提交) + 其它自由文本。 */
+fieldset.budget-excluded {
+    display: grid;
+    gap: var(--space-3);
+    margin-inline: 0;
+    padding: 0;
+    border: 0;
+}
+
+fieldset.budget-excluded legend {
+    padding: 0;
+    color: var(--text-default);
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+fieldset.budget-excluded .hint {
+    margin: 0;
+}
+
+.budget-chip-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.budget-chip {
+    position: relative;
+    display: inline-flex;
+}
+
+.budget-chip input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+    opacity: 0;
+}
+
+.budget-chip span {
+    display: inline-flex;
+    min-height: var(--space-8);
+    align-items: center;
+    padding-inline: var(--space-4);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-pill);
+    background: var(--surface-card);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    transition:
+        border-color var(--motion-fast) var(--ease-standard),
+        background var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard);
+}
+
+.budget-chip:hover span {
+    border-color: var(--control-border-hover);
+    color: var(--text-default);
+}
+
+.budget-chip input:checked + span {
+    border-color: var(--brand-primary);
+    background: var(--brand-primary-bg);
+    color: var(--brand-primary-strong);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.budget-chip input:focus-visible + span {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+/* 排除明细 (已配置页只读): 与 chip 同形但不可点, 明示它是事实不是控件。 */
+.budget-chip-static {
+    display: inline-flex;
+    min-height: var(--space-8);
+    align-items: center;
+    padding-inline: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-pill);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+.budget-category {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.budget-section-title {
+    margin: 0;
+    color: var(--text-default);
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+}
+
+/* 分类预算表内输入框纵向收紧, 让单行同时容下编辑列与执行列。 */
+.budget-table .product-input {
+    min-height: var(--space-9);
+    padding-block: var(--space-2);
+}
+
+/* 移除 = 行尾安静 checkbox; 勾选后整行降透明 + 输入划线, no-JS 也可感。 */
+.budget-remove {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-meta);
+    cursor: pointer;
+    font-size: var(--type-caption-size);
+    white-space: nowrap;
+}
+
+.budget-remove input {
+    margin: 0;
+    accent-color: var(--state-danger-fg);
+}
+
+.budget-remove:hover,
+.budget-remove:has(input:checked) {
+    color: var(--state-danger-fg);
+}
+
+.budget-row:has(.budget-remove input:checked) td:not(.budget-remove-cell) {
+    opacity: .55;
+}
+
+.budget-row:has(.budget-remove input:checked) .product-input {
+    text-decoration: line-through;
+}
+
+/* 窄屏行块化后补出的 cell 前缀标签, 桌面表格有表头故隐藏。 */
+.budget-cell-sign {
+    display: none;
+}
+
+/* 添加区: 虚线与已配置表分野, 明示「这里的行尚未保存」。 */
+.budget-add-zone {
+    display: grid;
+    gap: var(--space-3);
+    padding-block-start: var(--space-4);
+    border-block-start: 1px dashed var(--border-input);
+}
+
+.budget-add-title {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-meta-weight);
+}
+
+.budget-add-rows {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.budget-add-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+}
+
+.budget-add-zone [data-budget-add-more] {
+    justify-self: start;
+}
+
+.budget-add-zone .hint {
+    margin: 0;
+}
+
+.budget-actions {
+    display: flex;
+    justify-content: flex-start;
+}
+
+/* 窄屏: 字段单列; 分类预算表行块化 (沿用商家目录先例), 表头视觉隐藏但
+   留在无障碍树; 两个输入列占首行, 执行事实列靠 cell-sign 自报身份。 */
+@media (max-width: 48rem) {
+    .budget-fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .product-table-wrap .budget-table {
+        display: block;
+        min-width: 0;
+    }
+
+    .budget-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .budget-table tbody {
+        display: block;
+    }
+
+    .budget-table tbody tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-2) var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        border-block-end: 1px solid var(--border-card);
+    }
+
+    .budget-table tbody tr:last-child {
+        border-block-end: 0;
+    }
+
+    .budget-table tbody td {
+        display: block;
+        padding: 0;
+        border-block-end: 0;
+    }
+
+    .budget-table tbody td.amount {
+        text-align: start;
+    }
+
+    .budget-cell-sign {
+        display: inline;
+        margin-inline-end: var(--space-2);
+        color: var(--text-meta);
+        font-size: var(--type-caption-size);
+    }
+
+    .budget-table .budget-remove-cell {
+        grid-column: 1 / -1;
+    }
+
+    .budget-add-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* 已保存分类身份: 与可编辑 input 分层的安静行 meta。执行列 (已花/剩余/超支)
+   始终归属这个不可变身份; input 只是要保存的 draft。unchanged / 编辑中 /
+   422 恢复三态同一表达, 零 JS (CSS 无法比较 input 与已保存名, 故常显而非
+   mismatch 才显); 窄屏行块内随 input 自然堆叠, 无需断点规则。 */
+.budget-row-saved {
+    margin-block-start: var(--space-1);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}

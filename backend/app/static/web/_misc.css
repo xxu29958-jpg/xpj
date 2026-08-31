@@ -153,10 +153,6 @@
     box-shadow: none;
 }
 
-/* legacy .budget-progress / .budget-category-* shell 覆盖已删除 ——
-   budgets.html 已迁到 .dt-progress / .dt-card / .dt-form-row (pages/budgets.css). */
-.desktop-shell-active .budget-over { color: var(--state-danger-fg) !important; }
-
 /* legacy .dashboard-card-tile / -label / -num / -hint shell 覆盖已删除 ——
    仪表盘显示已迁到 .dt-card (pages/dashboard.css)。下方 .dashboard-card-setting-*
    保留, 因为 dashboard_cards.html 配置页仍用。 */

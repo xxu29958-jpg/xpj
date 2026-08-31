@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.money_contract import projection_sum_to_int, round_minor_ratio_half_up
+from app.money_contract import projection_sum_to_int
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
@@ -21,6 +22,7 @@ from app.routes.web_common import (
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
 from app.services.budget_service import get_monthly_budget, upsert_monthly_budget
+from app.services.category_service import list_ledger_category_options
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import major_amount_to_minor
 from app.services.spending_contract_service import (
@@ -91,18 +93,22 @@ def _parse_category_budgets(
     amounts: list[str],
     *,
     currency_code: str,
+    removed_indices: set[int] | None = None,
 ) -> list[BudgetCategoryRequest]:
     max_len = max(len(categories), len(amounts))
+    removed = removed_indices or set()
     rows: list[BudgetCategoryRequest] = []
     for index in range(max_len):
+        if index in removed:
+            continue
         category = (categories[index] if index < len(categories) else "").strip()
         amount_text = (amounts[index] if index < len(amounts) else "").strip()
         if not category and not amount_text:
             continue
         if not category or not amount_text:
             raise AppError("invalid_request", "分类预算需要同时填写分类和金额。", status_code=422)
-        rows.append(
-            BudgetCategoryRequest(
+        try:
+            row = BudgetCategoryRequest(
                 category=category,
                 amount_cents=_parse_amount_yuan(
                     amount_text,
@@ -110,7 +116,13 @@ def _parse_category_budgets(
                     label="分类预算金额",
                 ),
             )
-        )
+        except ValidationError as exc:
+            raise AppError(
+                "invalid_request",
+                "分类名称过长，请缩短后再保存。",
+                status_code=422,
+            ) from exc
+        rows.append(row)
     return rows
 
 
@@ -118,43 +130,71 @@ def _category_form_rows(
     budget: BudgetMonthlyResponse,
     *,
     currency_code: str,
-) -> list[dict[str, str]]:
-    rows = [
-        {
-            "category": item.category,
-            "amount_yuan": _amount_yuan(item.amount_cents, currency_code),
-            "spent_yuan": _amount_yuan(item.spent_amount_cents, currency_code),
-            "remaining_yuan": _amount_yuan(item.remaining_amount_cents, currency_code),
-            "overspent_yuan": _amount_yuan(item.overspent_amount_cents, currency_code),
-            "has_overspend": item.overspent_amount_cents > 0,
-            "is_blank": False,
-        }
-        for item in budget.category_budgets
-    ]
-    blank_count = max(2, 5 - len(rows))
+    draft_categories: list[str] | None = None,
+    draft_amounts: list[str] | None = None,
+    removed_indices: set[int] | None = None,
+) -> list[dict]:
+    removed = removed_indices or set()
+    saved = list(budget.category_budgets)
+    if draft_categories is None and draft_amounts is None:
+        pairs = [(item.category, _amount_yuan(item.amount_cents, currency_code)) for item in saved]
+    else:
+        categories = draft_categories or []
+        amounts = draft_amounts or []
+        pairs = [
+            (
+                categories[index] if index < len(categories) else "",
+                amounts[index] if index < len(amounts) else "",
+            )
+            for index in range(max(len(categories), len(amounts)))
+        ]
+        while len(pairs) > len(saved) and not any(value.strip() for value in pairs[-1]):
+            pairs.pop()
+
+    rows: list[dict] = []
+    for index, (category, amount_yuan) in enumerate(pairs):
+        saved_item = saved[index] if index < len(saved) else None
+        rows.append(
+            {
+                "index": index,
+                "category": category,
+                "saved_category": saved_item.category if saved_item is not None else "",
+                "amount_yuan": amount_yuan,
+                "spent_yuan": (
+                    _amount_yuan(saved_item.spent_amount_cents, currency_code) if saved_item is not None else ""
+                ),
+                "remaining_yuan": (
+                    _amount_yuan(saved_item.remaining_amount_cents, currency_code) if saved_item is not None else ""
+                ),
+                "overspent_yuan": (
+                    _amount_yuan(saved_item.overspent_amount_cents, currency_code) if saved_item is not None else ""
+                ),
+                "has_overspend": bool(saved_item is not None and saved_item.overspent_amount_cents > 0),
+                "is_configured": saved_item is not None,
+                "remove_requested": index in removed,
+            }
+        )
+
+    first_blank_index = len(rows)
     rows.extend(
         {
+            "index": first_blank_index + offset,
             "category": "",
+            "saved_category": "",
             "amount_yuan": "",
             "spent_yuan": "",
             "remaining_yuan": "",
             "overspent_yuan": "",
             "has_overspend": False,
-            "is_blank": True,
+            "is_configured": False,
+            "remove_requested": False,
         }
-        for _ in range(blank_count)
+        for offset in range(2)
     )
     return rows
 
 
 def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
-    total = max(
-        projection_sum_to_int(
-            budget.total_amount_cents,
-            label="web_budget.total",
-        ),
-        0,
-    )
     spent = max(
         projection_sum_to_int(
             budget.spent_amount_cents,
@@ -162,18 +202,11 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         ),
         0,
     )
-    percent = (
-        min(
-            100,
-            round_minor_ratio_half_up(
-                spent * 100,
-                total,
-                label="web_budget.percent",
-            ),
-        )
-        if total
-        else 0
+    available = projection_sum_to_int(
+        budget.total_amount_cents + budget.rollover_amount_cents,
+        label="web_budget.available",
     )
+    progress_max = max(available, 0)
     return {
         "ledger_id": budget.ledger_id,
         "month": budget.month,
@@ -182,12 +215,9 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         "rollover_yuan": _amount_yuan(budget.rollover_amount_cents, currency_code),
         "fixed_yuan": _amount_yuan(budget.fixed_amount_cents, currency_code),
         "non_monthly_yuan": _amount_yuan(budget.non_monthly_amount_cents, currency_code),
-        "flex_yuan": _amount_yuan(budget.flex_budget_cents, currency_code),
         "spent_yuan": _amount_yuan(budget.spent_amount_cents, currency_code),
-        "excluded_yuan": _amount_yuan(budget.excluded_amount_cents, currency_code),
         "remaining_yuan": _amount_yuan(budget.remaining_amount_cents, currency_code),
         "overspent_yuan": _amount_yuan(budget.overspent_amount_cents, currency_code),
-        "excluded_categories_text": ", ".join(budget.excluded_categories),
         "excluded_breakdown": [
             {
                 "category": item.category,
@@ -200,7 +230,14 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
             budget,
             currency_code=currency_code,
         ),
-        "spent_percent": percent,
+        "form_total_yuan": (_amount_yuan(budget.total_amount_cents, currency_code) if budget.configured else ""),
+        "form_rollover_yuan": (_amount_yuan(budget.rollover_amount_cents, currency_code) if budget.configured else ""),
+        "form_non_monthly_yuan": (
+            _amount_yuan(budget.non_monthly_amount_cents, currency_code) if budget.configured else ""
+        ),
+        "progress_value_cents": min(spent, progress_max),
+        "progress_max_cents": progress_max,
+        "has_progress_basis": progress_max > 0,
         "is_over_budget": budget.remaining_amount_cents < 0,
     }
 
@@ -214,6 +251,8 @@ def _render_budgets(
     month: str,
     message: str | None = None,
     error: str | None = None,
+    status_code: int = 200,
+    draft: dict | None = None,
 ) -> HTMLResponse:
     timezone_name = _budget_timezone_name()
     budget = get_monthly_budget(
@@ -231,13 +270,39 @@ def _render_budgets(
         selected_month=month,
     )
     ctx["month"] = month
-    ctx["budget"] = _budget_view(
+    budget_view = _budget_view(
         budget,
         currency_code=ctx["home_currency_code"],
     )
+    if draft is not None:
+        budget_view.update(
+            form_total_yuan=draft["total_amount_yuan"],
+            form_rollover_yuan=draft["rollover_amount_yuan"],
+            form_non_monthly_yuan=draft["non_monthly_amount_yuan"],
+        )
+        budget_view["category_rows"] = _category_form_rows(
+            budget,
+            currency_code=ctx["home_currency_code"],
+            draft_categories=draft["category_budget_category"],
+            draft_amounts=draft["category_budget_amount_yuan"],
+            removed_indices=draft["category_budget_remove"],
+        )
+    selected_exclusions = list(draft["excluded_category"]) if draft is not None else list(budget.excluded_categories)
+    category_options = list_ledger_category_options(db, tenant_id=selected_id)
+    category_options.extend(category for category in selected_exclusions if category not in category_options)
+    ctx["budget"] = budget_view
+    ctx["excluded_category_options"] = [
+        {"name": category, "selected": category in selected_exclusions} for category in category_options
+    ]
+    ctx["excluded_categories_other"] = draft["excluded_categories"] if draft is not None else ""
     ctx["message"] = message
     ctx["error"] = error
-    return templates.TemplateResponse(request=request, name="budgets.html", context=ctx)
+    return templates.TemplateResponse(
+        request=request,
+        name="budgets.html",
+        context=ctx,
+        status_code=status_code,
+    )
 
 
 @router.get("", response_class=HTMLResponse)
@@ -270,9 +335,11 @@ def web_budgets_save(
     total_amount_yuan: str = Form(default=""),
     rollover_amount_yuan: str = Form(default=""),
     non_monthly_amount_yuan: str = Form(default=""),
+    excluded_category: list[str] = Form(default=[]),
     excluded_categories: str = Form(default=""),
     category_budget_category: list[str] = Form(default=[]),
     category_budget_amount_yuan: list[str] = Form(default=[]),
+    category_budget_remove: list[int] = Form(default=[]),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -301,11 +368,12 @@ def web_budgets_save(
                 currency_code=presentation_currency,
                 label="非月度预留",
             ),
-            excluded_categories=_split_categories(excluded_categories),
+            excluded_categories=excluded_category + _split_categories(excluded_categories),
             category_budgets=_parse_category_budgets(
                 category_budget_category,
                 category_budget_amount_yuan,
                 currency_code=presentation_currency,
+                removed_indices=set(category_budget_remove),
             ),
         )
         upsert_monthly_budget(
@@ -323,5 +391,16 @@ def web_budgets_save(
             options=options,
             month=_safe_month(target_month, timezone_name),
             error=exc.message,
+            status_code=422,
+            draft={
+                "total_amount_yuan": total_amount_yuan,
+                "rollover_amount_yuan": rollover_amount_yuan,
+                "non_monthly_amount_yuan": non_monthly_amount_yuan,
+                "excluded_category": excluded_category,
+                "excluded_categories": excluded_categories,
+                "category_budget_category": category_budget_category,
+                "category_budget_amount_yuan": category_budget_amount_yuan,
+                "category_budget_remove": set(category_budget_remove),
+            },
         )
     return _web_redirect("/web/budgets", selected_id, month=target_month, msg="预算已保存。")

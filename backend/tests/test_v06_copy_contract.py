@@ -83,3 +83,15 @@ def test_notification_privacy_copy_contract() -> None:
     assert "通知原文不会上传到小票夹服务。" in android_copy
     assert "只上传来源、金额、商家、分类和时间" in android_copy
     assert "Android 通知草稿只上传结构化字段，不上传通知原文。" in owner_index
+
+
+def test_budget_remaining_copy_is_honest_across_web_and_android() -> None:
+    """remaining 是「预算剩余」，不是扣完固定与预留后的 safe-to-spend。"""
+    budgets_web = _read("backend/app/templates/web/budgets.html")
+    android_copy = _android_copy()
+
+    assert "本月预算剩余" in budgets_web
+    assert "本月预算剩余" in android_copy
+    assert "预算剩余 %1$s" in android_copy
+    assert "本月还可用" not in android_copy
+    assert "还可花 %1$s" not in android_copy

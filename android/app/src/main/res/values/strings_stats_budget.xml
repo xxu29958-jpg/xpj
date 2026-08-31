@@ -86,7 +86,7 @@
     <string name="stats_budget_progress_title">月度预算</string>
     <string name="stats_budget_progress_configured">已设置</string>
     <string name="stats_budget_progress_over">已超过预算</string>
-    <string name="stats_budget_progress_remaining">还可花 %1$s</string>
+    <string name="stats_budget_progress_remaining">预算剩余 %1$s</string>
     <string name="stats_budget_progress_percent">%1$d%%</string>
     <string name="stats_budget_progress_hint">预算只用于提醒，不影响账单金额。</string>
     <string name="stats_budget_progress_unavailable_status">暂无预算进度</string>
