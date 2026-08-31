@@ -121,7 +121,7 @@ class ExpenseCorrectionDtoContractTest {
         )
         val page = requireNotNull(
             moshi.adapter(ExpenseRevisionPageDto::class.java).fromJson(
-                """{"items":[$serverRevisionJson],"page":1,"page_size":50,"total":2}""",
+                """{"items":[$serverRevisionJson],"page":1,"page_size":50,"total":2,"snapshot_revision":2}""",
             ),
         )
 
@@ -131,6 +131,7 @@ class ExpenseCorrectionDtoContractTest {
         assertEquals("我", response.revision.actorAccountName)
         assertEquals(2, page.total)
         assertEquals(50, page.pageSize)
+        assertEquals(2L, page.snapshotRevision)
     }
 
     @Test
