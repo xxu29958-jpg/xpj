@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
@@ -13,6 +11,7 @@ from starlette.responses import Response
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_debt_money import parse_web_debt_major_minor
+from app.routes._web_debt_write import _parse_paid_at
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -39,7 +38,6 @@ from app.services.debt_command_service import (
     void_repayment_idempotently,
 )
 from app.services.debt_service import get_debt_response
-from app.services.spending_contract_service import accounting_zone
 
 router = APIRouter(prefix="/web/debts", tags=["web"])
 
@@ -94,21 +92,6 @@ def _render_action_error(
         action_conflict=message == _STALE_MESSAGE,
         status_code=status_code,
     )
-
-
-def _parse_paid_at(raw: str) -> datetime | None:
-    text = (raw or "").strip()
-    if not text:
-        return None
-    try:
-        selected_date = date.fromisoformat(text)
-    except ValueError as exc:
-        raise AppError(
-            "invalid_request",
-            "请选择正确的还款日期。",
-            status_code=422,
-        ) from exc
-    return datetime.combine(selected_date, time.min, tzinfo=accounting_zone())
 
 
 def _actor_account_id(request: Request, db: Session, ledger_id: str) -> int:

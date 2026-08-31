@@ -155,64 +155,6 @@ def test_web_repayment_replay_is_idempotent(
     assert paid_at.astimezone(accounting_zone()).date().isoformat() == "2026-07-18"
 
 
-def test_web_invalid_repayment_rerenders_anchored_and_preserves_draft(
-    web_client: TestClient,
-    *,
-    identity,
-) -> None:
-    debt = _create_debt(web_client, identity=identity)
-
-    response = web_client.post(
-        f"/web/debts/{debt['public_id']}/repayments",
-        data=_form(
-            debt,
-            idempotency_key=str(uuid4()),
-            amount_major="not-a-number",
-            paid_at="2026-07-17",
-        ),
-    )
-
-    assert response.status_code == 422
-    assert 'id="debt-action-error-repayment"' in response.text
-    assert 'aria-describedby="debt-action-error-repayment"' in response.text
-    assert 'name="amount_major"' in response.text
-    assert 'value="not-a-number"' in response.text
-    assert 'name="paid_at"' in response.text
-    assert 'value="2026-07-17"' in response.text
-    current = _detail(web_client, identity=identity, public_id=debt["public_id"])
-    assert current["paid_amount_cents"] == 0
-
-
-def test_web_invalid_adjustment_opens_its_panel_and_preserves_draft(
-    web_client: TestClient,
-    *,
-    identity,
-) -> None:
-    debt = _create_debt(web_client, identity=identity)
-
-    response = web_client.post(
-        f"/web/debts/{debt['public_id']}/adjustments",
-        data=_form(
-            debt,
-            idempotency_key=str(uuid4()),
-            amount_major="bad-adjustment",
-            reason="这段原因不能丢",
-        ),
-    )
-
-    assert response.status_code == 422
-    panel = re.search(
-        r'<details\b[^>]*\bid="debt-action-panel-adjustment"[^>]*>',
-        response.text,
-    )
-    assert panel is not None
-    assert re.search(r"\bopen\b", panel.group(0))
-    assert 'id="debt-action-error-adjustment"' in response.text
-    assert 'aria-describedby="debt-action-error-adjustment"' in response.text
-    assert 'value="bad-adjustment"' in response.text
-    assert 'value="这段原因不能丢"' in response.text
-
-
 def test_web_adjustment_appends_signed_fact_without_rewriting_principal(
     web_client: TestClient,
     *,

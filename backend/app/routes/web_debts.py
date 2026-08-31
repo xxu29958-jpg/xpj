@@ -45,6 +45,14 @@ from app.routes.web_common import (
     _sidebar_counts,
     templates,
 )
+from app.routes.web_debt_presenters import (
+    _action_feedback_context,
+    _communal_ratio,
+    _installment_view,
+    _member_headline,
+    _member_progress_note,
+    _proposal_feedback_context,
+)
 from app.services.debt_service import (
     get_participant_debt_response,
     list_debts,
@@ -73,28 +81,10 @@ _DEBT_KIND_DETAIL_LABELS = {
     "unspecified": "暂不指定",
 }
 
-# ── 成员债 communal 文案 (slice 8e，逐字 port 自 MemberDebtLabels.kt + strings_stats_budget.xml) ──
-_MEMBER_NEAR_RATIO = 0.7  # ratio≥0.7 = 快两清档
-_MEMBER_SOME_RATIO = 0.5  # ratio≤0.5 = 对上一部分档
 # 方向 (viewer-relative，§2.3)：True=债务人、False=债权人、None=第三方。
 _MEMBER_DIRECTION = {True: "你帮我垫的", False: "我帮你垫的", None: "TA 们之间的一件事"}
 _MEMBER_EYEBROW = "一起处理 · {}"
 _MEMBER_EYEBROW_THIRD = "他们的一件事 · {}"
-_MEMBER_HEADLINES = {
-    "i_owe_start": "你帮我垫了，慢慢还给你",
-    "i_owe_early": "你帮我垫的，正在慢慢对上",
-    "i_owe_near": "你帮我垫的，快两清啦",
-    "owed_start": "我帮你垫的，不着急",
-    "owed_early": "我帮你垫的，慢慢来",
-    "owed_near": "我帮你垫的，快两清啦",
-    "cleared": "这件事，我们已经两清啦",
-    "forgiven_debtor": "这份 TA 说不用还啦 ❤️",
-    "forgiven_creditor": "这份不用补了～",
-    "voided": "这件事已经不算了",
-    "third_party_progress": "这件事还在进行中",
-    "third_party_cleared": "这件事，他们已经两清啦",
-}
-_MEMBER_PROGRESS_NOTE = {"none": "还没开始对账", "some": "已经对上一部分", "most": "这件事已对上大半"}
 # 成员债状态徽章：cleared→success，其余(open/voided)→neutral，**永不 danger/红** (红线②)。
 _MEMBER_STATUS = {"open": ("进行中", ""), "cleared": ("已两清", "ok"), "voided": ("已不算", "")}
 
@@ -208,75 +198,6 @@ def _split_debt_views(items) -> tuple[list[dict], list[dict]]:
         (v for v in views if not v["is_member"]), key=lambda v: _STATUS_RANK.get(v["status"], 0)
     )
     return members, externals
-
-
-def _communal_ratio(paid_cents: int, principal_cents: int) -> float:
-    """进度比例 = paid/principal，钳到 [0,1] (服务端冻结值，不读活余额，镜像 communalRatio)。"""
-    if principal_cents <= 0:
-        return 0.0
-    return max(0.0, min(1.0, paid_cents / principal_cents))
-
-
-def _member_headline(viewer_is_debtor: bool | None, status: str, is_forgiven: bool, ratio: float) -> str:
-    """关系主句 (无金额)，逐字镜像 memberDebtHeadlineRes 的分派树。"""
-    if viewer_is_debtor is None:
-        if status == "cleared":
-            return _MEMBER_HEADLINES["third_party_cleared"]
-        if status == "voided":
-            return _MEMBER_HEADLINES["voided"]
-        return _MEMBER_HEADLINES["third_party_progress"]
-    if status == "voided":
-        return _MEMBER_HEADLINES["voided"]
-    if status == "cleared":
-        if is_forgiven and viewer_is_debtor:
-            return _MEMBER_HEADLINES["forgiven_debtor"]
-        if is_forgiven:
-            return _MEMBER_HEADLINES["forgiven_creditor"]
-        return _MEMBER_HEADLINES["cleared"]
-    # open：按进度比例分三档 (viewer_is_debtor 在此已非空)。
-    if ratio <= 0:
-        return _MEMBER_HEADLINES["i_owe_start" if viewer_is_debtor else "owed_start"]
-    if ratio < _MEMBER_NEAR_RATIO:
-        return _MEMBER_HEADLINES["i_owe_early" if viewer_is_debtor else "owed_early"]
-    return _MEMBER_HEADLINES["i_owe_near" if viewer_is_debtor else "owed_near"]
-
-
-def _member_progress_note(ratio: float) -> str:
-    if ratio <= 0:
-        return _MEMBER_PROGRESS_NOTE["none"]
-    if ratio <= _MEMBER_SOME_RATIO:
-        return _MEMBER_PROGRESS_NOTE["some"]
-    return _MEMBER_PROGRESS_NOTE["most"]
-
-
-def _installment_view(debt, home: str) -> dict | None:
-    """§B 外部 installment 债详情的分期卡视图模型；非「进行中 + 已排期 installment」返回 None（不渲染卡）。
-
-    镜像 Android ``DebtInstallmentCard`` + ``shouldShowInstallmentCard``（isOpen && isInstallmentScheduled）：
-    合约还清日（措辞与 ``web_debt_goals._payoff_line`` 的「按分期合约」臂、Android ``debt_installment_payoff``
-    逐字一致——三端同步）/ 已还期数**中性**进度（绝不基于 paid==count 宣称「已还清」，提额调整会让 N/N 而剩余
-    仍 >0，完成由 status==cleared 决定，故卡只对 open 渲染）/ 每期**无息**估算（本金÷期数，floor，标「估算不含手续费」）。
-    """
-    count = debt.installment_count
-    if debt.debt_kind != "installment" or count is None or debt.status != "open":
-        return None
-    period = debt.installment_period_months
-    schedule = (
-        f"共 {count} 期 · 每月一期"
-        if period in (None, 1)
-        else f"共 {count} 期 · 每 {period} 个月一期"
-    )
-    paid = min(debt.installment_paid_count or 0, count)
-    payoff = debt.installment_payoff_date
-    per_period_cents = debt.principal_amount_cents // count
-    return {
-        "schedule_label": schedule,
-        "progress_label": f"已还 {paid} / {count} 期",
-        "payoff_label": (
-            f"按分期合约，预计 {payoff.year} 年 {payoff.month} 月还清" if payoff is not None else None
-        ),
-        "per_period_label": f"每期约 {_home_amount_label(per_period_cents, home)} · 估算不含手续费",
-    }
 
 
 def _detail_view(debt) -> dict:
@@ -403,6 +324,86 @@ def web_debt_new(
     )
 
 
+def _load_debt_detail_state(
+    request: Request,
+    db: Session,
+    *,
+    options,
+    selected_id: str,
+    public_id: str,
+) -> tuple[dict, object, int | None, list]:
+    account_id = _web_viewer_account_id(request, db, selected_id)
+    debt = get_participant_debt_response(
+        db,
+        public_id=public_id,
+        ledger_id=selected_id,
+        account_id=account_id,
+    )
+    ctx = _base_ctx(
+        request,
+        db=db,
+        options=options,
+        selected_ledger_id=selected_id,
+        page_title="欠款详情",
+        sidebar_counts=_sidebar_counts(db, selected_id),
+    )
+    detail = _detail_view(debt)
+    can_write = _debt_write_gate(options, selected_id)
+    action_keys = _debt_action_keys() if can_write and debt.status == "open" else {}
+    proposals = None
+    proposal_items = []
+    if detail["is_member"] and account_id is not None:
+        proposal_items = list_repayment_proposals(
+            db,
+            tenant_id=selected_id,
+            actor_account_id=account_id,
+            public_id=public_id,
+        ).items
+        proposals = _proposal_section(proposal_items, debt.viewer_is_debtor)
+    ctx.update(
+        {
+            "debt": detail,
+            "can_write": can_write,
+            "debt_open": debt.status == "open",
+            "action_keys": action_keys,
+            "can_change_member_kind": bool(
+                can_write
+                and debt.status == "open"
+                and detail["is_member"]
+                and debt.ledger_id is not None
+                and debt.viewer_is_debtor is True
+            ),
+            "proposals": proposals,
+            "pending_proposal": proposals["pending"] if proposals else None,
+            "viewer_is_debtor": debt.viewer_is_debtor,
+            "currency_input": _currency_input_view(debt.home_currency_code),
+            "expected_row_version": debt.row_version,
+        }
+    )
+    return ctx, debt, account_id, proposal_items
+
+
+def _repayment_fact_rows(
+    db: Session,
+    *,
+    selected_id: str,
+    account_id: int | None,
+    public_id: str,
+) -> list[dict]:
+    if account_id is None:
+        return []
+    return _fact_rows(
+        list_repayment_facts(
+            db,
+            tenant_id=selected_id,
+            actor_account_id=account_id,
+            public_id=public_id,
+            page=1,
+            page_size=20,
+        )
+    )
+
+
 def _render_debt_detail(
     request: Request,
     db: Session,
@@ -425,124 +426,46 @@ def _render_debt_detail(
     """详情页唯一渲染入口：GET 与 proposal 确认 422 原地重渲染共用 (照
     ``web_repayment_drafts._render_repayment_drafts`` 同页重渲染范式)，保证错误重渲染
     与正常渲染的页面结构零漂移。"""
-    account_id = _web_viewer_account_id(request, db, selected_id)
-    # Participant-scoped (§5.2): gives the server-authoritative viewer_is_debtor + is_forgiven,
-    # and raises debt_not_found (→ 404 HTML) when the debt isn't in this ledger / viewer.
-    debt = get_participant_debt_response(
-        db, public_id=public_id, ledger_id=selected_id, account_id=account_id
-    )
-    ctx = _base_ctx(
+    ctx, debt, account_id, proposal_items = _load_debt_detail_state(
         request,
-        db=db,
+        db,
         options=options,
-        selected_ledger_id=selected_id,
-        page_title="欠款详情",
-        sidebar_counts=_sidebar_counts(db, selected_id),
+        selected_id=selected_id,
+        public_id=public_id,
     )
-    detail = _detail_view(debt)
-    ctx["debt"] = detail
-    # 写面 (slice C2)：开放中的欠款 + 可写角色才给动作面；每渲染一套幂等键。
-    can_write = _debt_write_gate(options, selected_id)
-    ctx["can_write"] = can_write
-    ctx["debt_open"] = debt.status == "open"
-    ctx["action_keys"] = _debt_action_keys() if can_write and debt.status == "open" else {}
-    ctx["can_change_member_kind"] = bool(
-        can_write
-        and debt.status == "open"
-        and detail["is_member"]
-        and debt.ledger_id is not None
-        and debt.viewer_is_debtor is True
-    )
-    # slice 2b: member proposal status + sunk 过往 history (read-only; reuses list_repayment_proposals,
-    # no new endpoint). Only for the communal member card (use_member) with a resolvable viewer account
-    # (loopback ledger with no active owner → account_id None → skip). The viewer here is already a
-    # participant (get_participant_debt_response admitted them above), so list never re-404s.
-    proposals = None
-    proposal_items = []
-    if detail["is_member"] and account_id is not None:
-        proposal_items = list_repayment_proposals(
-            db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id
-        ).items
-        proposals = _proposal_section(proposal_items, debt.viewer_is_debtor)
-    ctx["proposals"] = proposals
-    ctx["pending_proposal"] = proposals["pending"] if proposals else None
-    ctx["viewer_is_debtor"] = debt.viewer_is_debtor
-    ctx["currency_input"] = _currency_input_view(debt.home_currency_code)
-    ctx["expected_row_version"] = debt.row_version
-    # D3 表单契约：确认金额输入的字段名从共享常量注入 (路由侧以 Form(alias=...) 绑定同一常量)；
-    # confirm_amount_error/value 只在金额校验 422 原地重渲染时有值 (错误锚定到该输入)；
-    # confirm_error_proposal_id 把错误钉在本次提交的 proposal 上 (提交后它被处理/换了在途条目时
-    # 错误仍渲染在该提交的语境，不挂到新的在途 proposal)。
     ctx["proposal_confirm_amount_field"] = PROPOSAL_CONFIRM_AMOUNT_FIELD
-    ctx["confirm_amount_error"] = confirm_amount_error
-    ctx["confirm_amount_value"] = confirm_amount_value
-    ctx["confirm_error_proposal_id"] = confirm_error_proposal_id
-    submitted_proposal = next(
-        (
-            proposal
-            for proposal in proposal_items
-            if proposal.public_id == confirm_error_proposal_id
-        ),
-        None,
-    )
-    ctx["confirm_amount_attempted_label"] = (
-        f"{ctx['currency_input']['currency_symbol']}{confirm_amount_value}"
-        if status_code == 409 and confirm_amount_value
-        else ""
-    )
-    ctx["confirm_error_proposal_amount_label"] = (
-        _home_amount_label(
-            submitted_proposal.proposed_amount_cents,
-            submitted_proposal.home_currency_code,
+    ctx.update(
+        _proposal_feedback_context(
+            proposal_items,
+            confirm_amount_error=confirm_amount_error,
+            confirm_amount_value=confirm_amount_value,
+            confirm_error_proposal_id=confirm_error_proposal_id,
+            currency_symbol=ctx["currency_input"]["currency_symbol"],
+            status_code=status_code,
         )
-        if submitted_proposal is not None
-        else ""
     )
-    action_is_fallback = bool(
-        action_error and not (can_write and debt.status == "open" and ctx["action_keys"])
-    )
-    action_message = action_error or ""
-    if action_is_fallback and action_conflict:
-        action_message = (
-            "这笔欠款刚在另一端结束了，你刚才填写的还款没有记录。"
-            if action_kind == "repayment"
-            else "这笔欠款刚在另一端结束了，你刚才的操作没有记录。"
+    ctx.update(
+        _action_feedback_context(
+            action_keys=ctx["action_keys"],
+            can_write=ctx["can_write"],
+            debt_status=debt.status,
+            action_kind=action_kind,
+            action_error=action_error,
+            action_draft=action_draft,
+            action_target_public_id=action_target_public_id,
+            action_conflict=action_conflict,
+            currency_symbol=ctx["currency_input"]["currency_symbol"],
+            flash_message=flash_message,
+            flash_type=flash_type,
         )
-    draft = action_draft or {}
-    attempted_parts: list[str] = []
-    if action_is_fallback and action_kind == "repayment":
-        amount = (draft.get("amount_major") or "").strip()
-        paid_at = (draft.get("paid_at") or "").strip()
-        if amount:
-            attempted_parts.append(
-                f"本次还款 {ctx['currency_input']['currency_symbol']}{amount}"
-            )
-        if paid_at:
-            attempted_parts.append(paid_at)
-    ctx["action_form"] = {
-        "kind": action_kind or "",
-        "error": action_message,
-        "draft": draft,
-        "target_public_id": action_target_public_id or "",
-        "fallback": action_is_fallback,
-        "attempted_label": " · ".join(attempted_parts),
-    }
-    ctx["flash_message"] = flash_message
-    ctx["flash_type"] = flash_type if flash_type in ("success", "error") else ""
+    )
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
-    if account_id is not None:
-        ctx["repayment_facts"] = _fact_rows(
-            list_repayment_facts(
-                db,
-                tenant_id=selected_id,
-                actor_account_id=account_id,
-                public_id=public_id,
-                page=1,
-                page_size=20,
-            )
-        )
-    else:
-        ctx["repayment_facts"] = []
+    ctx["repayment_facts"] = _repayment_fact_rows(
+        db,
+        selected_id=selected_id,
+        account_id=account_id,
+        public_id=public_id,
+    )
     return templates.TemplateResponse(
         request=request,
         name="debt_detail.html",

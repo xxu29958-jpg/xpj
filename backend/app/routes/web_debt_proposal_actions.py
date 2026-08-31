@@ -316,15 +316,39 @@ def _confirm_business_error_redirect(
     )
 
 
+def _confirm_proposal_command(
+    db: Session,
+    *,
+    selected_id: str,
+    actor_account_id: int,
+    public_id: str,
+    proposal_public_id: str,
+    confirmed_amount: int | None,
+    expected: int,
+    idempotency_key: str,
+) -> None:
+    confirm_repayment_proposal_idempotently(
+        db,
+        tenant_id=selected_id,
+        actor_account_id=actor_account_id,
+        public_id=public_id,
+        proposal_public_id=proposal_public_id,
+        payload=MemberRepaymentProposalConfirmRequest(
+            confirmed_amount_cents=confirmed_amount,
+            expected_row_version=expected,
+        ),
+        idempotency_key=(idempotency_key or "").strip() or None,
+    )
+
+
+# D3 uses the shared current field name; the legacy alias remains an explicit N-1 form boundary.
 @router.post("/{public_id}/repayment-proposals/{proposal_public_id}/confirm")
 def web_confirm_repayment_proposal(
     request: Request,
     public_id: str,
     proposal_public_id: str,
     ledger_id: str = Form(default=""),
-    # D3：字段名绑定共享契约常量 (模板侧也从同一常量渲染)，不再是第二个字面量。
     confirmed_amount_major: str = Form(default="", alias=PROPOSAL_CONFIRM_AMOUNT_FIELD),
-    # N-1 兼容：D3 前路由误读的旧字段名仍接受 (新字段非空时忽略)，schema 标记 deprecated。
     amount_major: str = Form(default="", alias=PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY, deprecated=True),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
@@ -364,7 +388,6 @@ def web_confirm_repayment_proposal(
             currency_code=debt.home_currency_code,
         )
     except AppError as exc:
-        # 双字段/金额解析错误走同页 422；回填可见输入 (新字段) 的值。
         return _confirm_amount_error_rerender(
             request,
             db,
@@ -376,17 +399,15 @@ def web_confirm_repayment_proposal(
             attempted=(confirmed_amount_major or "").strip() or (amount_major or "").strip(),
         )
     try:
-        confirm_repayment_proposal_idempotently(
+        _confirm_proposal_command(
             db,
-            tenant_id=selected_id,
+            selected_id=selected_id,
             actor_account_id=actor_account_id,
             public_id=public_id,
             proposal_public_id=proposal_public_id,
-            payload=MemberRepaymentProposalConfirmRequest(
-                confirmed_amount_cents=confirmed_amount,
-                expected_row_version=expected,
-            ),
-            idempotency_key=(idempotency_key or "").strip() or None,
+            confirmed_amount=confirmed_amount,
+            expected=expected,
+            idempotency_key=idempotency_key,
         )
     except (AppError, ValidationError) as exc:
         if isinstance(exc, AppError) and exc.error == "state_conflict":

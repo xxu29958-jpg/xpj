@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -101,6 +102,67 @@ def test_terminal_conflict_keeps_honest_attempt_receipt(
     )
     assert current.status_code == 200
     assert current.json()["paid_amount_cents"] == 10_000
+
+
+def test_web_invalid_repayment_rerenders_anchored_and_preserves_draft(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    debt = _create_external_debt(web_client, identity=identity)
+    response = web_client.post(
+        f"/web/debts/{debt['public_id']}/repayments",
+        data={
+            "csrf_token": "test-client-bypasses-middleware-check",
+            "ledger_id": "owner",
+            "expected_row_version": str(debt["row_version"]),
+            "idempotency_key": str(uuid4()),
+            "amount_major": "not-a-number",
+            "paid_at": "2026-07-17",
+        },
+    )
+
+    assert response.status_code == 422
+    assert 'id="debt-action-error-repayment"' in response.text
+    assert 'aria-describedby="debt-action-error-repayment"' in response.text
+    assert 'value="not-a-number"' in response.text
+    assert 'value="2026-07-17"' in response.text
+    current = web_client.get(
+        f"/api/debts/{debt['public_id']}",
+        headers=identity.app_headers,
+    )
+    assert current.status_code == 200
+    assert current.json()["paid_amount_cents"] == 0
+
+
+def test_web_invalid_adjustment_opens_its_panel_and_preserves_draft(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    debt = _create_external_debt(web_client, identity=identity)
+    response = web_client.post(
+        f"/web/debts/{debt['public_id']}/adjustments",
+        data={
+            "csrf_token": "test-client-bypasses-middleware-check",
+            "ledger_id": "owner",
+            "expected_row_version": str(debt["row_version"]),
+            "idempotency_key": str(uuid4()),
+            "amount_major": "bad-adjustment",
+            "reason": "这段原因不能丢",
+        },
+    )
+
+    assert response.status_code == 422
+    panel = re.search(
+        r'<details\b[^>]*\bid="debt-action-panel-adjustment"[^>]*>',
+        response.text,
+    )
+    assert panel is not None and re.search(r"\bopen\b", panel.group(0))
+    assert 'id="debt-action-error-adjustment"' in response.text
+    assert 'aria-describedby="debt-action-error-adjustment"' in response.text
+    assert 'value="bad-adjustment"' in response.text
+    assert 'value="这段原因不能丢"' in response.text
 
 
 def test_open_member_debt_owner_can_reach_kind_correction(
