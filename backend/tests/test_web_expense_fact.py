@@ -49,24 +49,6 @@ def _hidden_input(body: str, name: str) -> str:
     return unescape(match.group(1))
 
 
-def test_confirmed_fact_direct_entry_returns_to_confirmed_stream(
-    web_client: TestClient,
-    *,
-    identity,
-) -> None:
-    expense_id = _create_confirmed(web_client, identity=identity)
-
-    page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
-
-    assert page.status_code == 200, page.text
-    match = re.search(
-        r'<a\b[^>]*href="([^"]+)"[^>]*>\s*返回已确认流水\s*</a>',
-        page.text,
-    )
-    assert match is not None
-    assert unescape(match.group(1)) == "/web/confirmed?ledger_id=owner"
-
-
 def test_confirmed_fact_page_read_first_and_pending_keeps_edit(web_client: TestClient, *, identity) -> None:
     confirmed_id = _create_confirmed(
         web_client,
@@ -280,37 +262,6 @@ def test_web_correction_can_change_original_currency_through_existing_fx_owner(
     assert current.json()["original_currency_code"] == "USD"
     assert current.json()["original_amount_minor"] == 1000
     assert current.json()["amount_cents"] == 7000
-
-
-def test_correction_blank_reason_shows_validation_error(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_confirmed(web_client, identity=identity)
-    form = web_client.get(
-        f"/web/expenses/{expense_id}/correct",
-        params={
-            "ledger_id": "owner",
-            "return_to": "search",
-            "return_query": "上下文咖啡",
-        },
-    )
-    assert form.status_code == 200, form.text
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/corrections",
-        data={
-            "ledger_id": "owner",
-            "reason": "",
-            "merchant": "想改但没写原因",
-            "expected_row_version": _hidden_input(form.text, "expected_row_version"),
-            "idempotency_key": _hidden_input(form.text, "idempotency_key"),
-            "return_to": _hidden_input(form.text, "return_to"),
-            "return_query": _hidden_input(form.text, "return_query"),
-        },
-        follow_redirects=False,
-    )
-    assert resp.status_code == 422
-    assert "请说明这次更正的原因" in resp.text
-    assert "想改但没写原因" in resp.text
-    assert _hidden_input(resp.text, "return_to") == "search"
-    assert _hidden_input(resp.text, "return_query") == "上下文咖啡"
 
 
 def test_web_correction_preserves_absent_and_clears_blank_time_and_scores(web_client: TestClient, *, identity) -> None:

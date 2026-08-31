@@ -21,6 +21,7 @@ from app.errors import AppError
 from app.routes._web_expense_fact_pager import fact_timeline_page_context
 from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
     clean_return_to,
     flow_href,
     return_href,
@@ -343,32 +344,13 @@ def web_fact_context(
     revision_snapshot: int | None = None,
     message: str | None = None,
     error: str | None = None,
-    return_to: str = "",
-    return_month: str = "",
-    return_filter: str = "",
-    return_page: str = "",
-    return_tag: str = "",
-    return_query: str = "",
+    return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> dict:
     """Read-first fact page context: base edit view-model + fact extras."""
 
-    return_values = {
-        "return_to": return_to,
-        "return_month": return_month,
-        "return_filter": return_filter,
-        "return_page": return_page,
-        "return_tag": return_tag,
-        "return_query": return_query,
-    }
-    ctx = web_edit_context(
-        db,
-        request,
-        options,
-        selected_id,
-        expense_id,
-        **return_values,
-    )
-    if not clean_return_to(return_to):
+    return_values = return_context.as_kwargs()
+    ctx = web_edit_context(db, request, options, selected_id, expense_id, **return_values)
+    if not clean_return_to(return_context.return_to):
         ctx["edit_return_href"] = return_href(
             "",
             ledger_id=selected_id,

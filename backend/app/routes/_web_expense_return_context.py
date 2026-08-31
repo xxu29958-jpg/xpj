@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from urllib.parse import urlencode
+
+from fastapi import Form
 
 from app.services.web_search_service import MAX_QUERY_LENGTH
 
@@ -35,6 +38,64 @@ _EDIT_KEY_BY_LIST_KEY = {
     "tag": "return_tag",
     "q": "return_query",
 }
+
+
+@dataclass(frozen=True)
+class ExpenseReturnContext:
+    """Browser origin carried through one expense fact/correction journey."""
+
+    return_to: str = ""
+    return_month: str = ""
+    return_filter: str = ""
+    return_page: str = ""
+    return_tag: str = ""
+    return_query: str = ""
+
+    def as_kwargs(self) -> dict[str, str]:
+        return {
+            "return_to": self.return_to,
+            "return_month": self.return_month,
+            "return_filter": self.return_filter,
+            "return_page": self.return_page,
+            "return_tag": self.return_tag,
+            "return_query": self.return_query,
+        }
+
+
+def expense_return_query_context(
+    return_to: str = "",
+    return_month: str = "",
+    return_filter: str = "",
+    return_page: str = "",
+    return_tag: str = "",
+    return_query: str = "",
+) -> ExpenseReturnContext:
+    return ExpenseReturnContext(
+        return_to=return_to,
+        return_month=return_month,
+        return_filter=return_filter,
+        return_page=return_page,
+        return_tag=return_tag,
+        return_query=return_query,
+    )
+
+
+def expense_return_form_context(
+    return_to: str = Form(default=""),
+    return_month: str = Form(default=""),
+    return_filter: str = Form(default=""),
+    return_page: str = Form(default=""),
+    return_tag: str = Form(default=""),
+    return_query: str = Form(default=""),
+) -> ExpenseReturnContext:
+    return ExpenseReturnContext(
+        return_to=return_to,
+        return_month=return_month,
+        return_filter=return_filter,
+        return_page=return_page,
+        return_tag=return_tag,
+        return_query=return_query,
+    )
 
 
 def clean_return_to(raw: str) -> str:

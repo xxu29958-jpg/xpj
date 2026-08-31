@@ -38,7 +38,9 @@ from app.routes._web_correction_page import (
     web_correction_context,
 )
 from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
     edit_context_params,
+    expense_return_query_context,
     resolve_return_to,
     return_context_params,
 )
@@ -56,17 +58,6 @@ from app.services.expense_service import get_expense
 router = APIRouter(prefix="/web", tags=["web"])
 
 
-def _correction_return_kwargs(form: CorrectionFormData) -> dict[str, str]:
-    return {
-        "return_to": form.return_to,
-        "return_month": form.return_month,
-        "return_filter": form.return_filter,
-        "return_page": form.return_page,
-        "return_tag": form.return_tag,
-        "return_query": form.return_query,
-    }
-
-
 def _fact_redirect(
     expense_id: int,
     selected_id: str,
@@ -80,7 +71,7 @@ def _fact_redirect(
         selected_id,
         msg=message,
         flash_type=flash_type,
-        **edit_context_params(**_correction_return_kwargs(form)),
+        **edit_context_params(**form.return_context.as_kwargs()),
     )
 
 
@@ -89,30 +80,18 @@ def web_correct_get(
     expense_id: int,
     request: Request,
     ledger_id: str | None = None,
-    return_to: str = "",
-    return_month: str = "",
-    return_filter: str = "",
-    return_page: str = "",
-    return_tag: str = "",
-    return_query: str = "",
+    return_context: ExpenseReturnContext = Depends(expense_return_query_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return_values = {
-        "return_to": return_to,
-        "return_month": return_month,
-        "return_filter": return_filter,
-        "return_page": return_page,
-        "return_tag": return_tag,
-        "return_query": return_query,
-    }
+    return_values = return_context.as_kwargs()
     try:
         expense = get_expense(db, expense_id, selected_id)
     except AppError as exc:
         return _web_redirect(
-            resolve_return_to(return_to, "/web/confirmed"),
+            resolve_return_to(return_context.return_to, "/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",
@@ -174,7 +153,7 @@ def _correction_error_response(
         conflict=conflict,
         receipt_item_rows=None if parsed.item_sources_stale else parsed.item_form_rows,
         split_form_rows=None if parsed.split_sources_stale else parsed.split_form_rows,
-        **_correction_return_kwargs(form),
+        **form.return_context.as_kwargs(),
     )
 
 
@@ -337,11 +316,11 @@ def _handle_correction_post(
         expense = get_expense(db, expense_id, selected_id)
     except AppError as exc:
         return _web_redirect(
-            resolve_return_to(form.return_to, "/web/confirmed"),
+            resolve_return_to(form.return_context.return_to, "/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",
-            **return_context_params(**_correction_return_kwargs(form)),
+            **return_context_params(**form.return_context.as_kwargs()),
         )
     if expense.status != "confirmed":
         return _fact_redirect(
@@ -352,11 +331,7 @@ def _handle_correction_post(
             flash_type="error",
         )
     key, claimed = _claim_correction_submission(
-        db,
-        request,
-        selected_id=selected_id,
-        expense_id=expense_id,
-        form=form,
+        db, request, selected_id=selected_id, expense_id=expense_id, form=form
     )
     if claimed is not None and claimed.replayed:
         return _fact_redirect(
@@ -366,9 +341,7 @@ def _handle_correction_post(
             message="已记录更正。",
             flash_type="success",
         )
-    parsed = parse_correction_form(
-        db, expense=expense, selected_id=selected_id, form=form
-    )
+    parsed = parse_correction_form(db, expense=expense, selected_id=selected_id, form=form)
     validation_error = _submission_error_response(
         db,
         request,
