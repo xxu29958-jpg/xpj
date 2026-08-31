@@ -302,6 +302,8 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     assert "¥640.00 / ¥800.00" in page.text
     assert "80%" in page.text
     assert "保存目标" in page.text
+    assert "/static/web/pages/goals.css?v=" in page.text
+    assert "/static/web/pages/budgets.css" not in page.text
 
     match = re.search(r"/web/goals/([^/]+)/archive", page.text)
     assert match, page.text[:1000]
