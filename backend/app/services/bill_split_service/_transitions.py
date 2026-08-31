@@ -286,6 +286,8 @@ def _resolve_lost_accept(
 ) -> tuple[BillSplitInvitation, Expense]:
     """Recover after a peer accept won the claim or partial-unique race."""
     inv = get_invitation(db, public_id)
+    if inv.status == "expired":
+        raise AppError("invitation_expired", status_code=410) from cause
     settled = _resolve_settled_accept(db, inv, target_ledger_id)
     if settled is not None:
         return settled
@@ -314,7 +316,7 @@ def reject_invitation(db: Session, *, public_id: str, rejecting_account_id: int)
         # A peer settled the invitation first; same outcome as having read
         # the settled row up front.
         db.rollback()
-        raise AppError("invitation_not_acceptable", status_code=409)
+        _raise_lost_non_accept(db, public_id, "invitation_not_acceptable")
     _audit(
         db,
         inv.sender_ledger_id,
@@ -350,7 +352,7 @@ def cancel_invitation(db: Session, *, public_id: str, sender_account_id: int) ->
     ).rowcount
     if rowcount != 1:
         db.rollback()
-        raise AppError("invitation_not_cancellable", status_code=409)
+        _raise_lost_non_accept(db, public_id, "invitation_not_cancellable")
     _audit(
         db,
         inv.sender_ledger_id,
@@ -362,6 +364,13 @@ def cancel_invitation(db: Session, *, public_id: str, sender_account_id: int) ->
     db.commit()
     db.refresh(inv)
     return inv
+
+
+def _raise_lost_non_accept(db: Session, public_id: str, default_error: str) -> None:
+    """Report the canonical winner after a reject/cancel claim loses."""
+    if get_invitation(db, public_id).status == "expired":
+        raise AppError("invitation_expired", status_code=410)
+    raise AppError(default_error, status_code=409)
 
 
 def _settle_expiry_before_transition(

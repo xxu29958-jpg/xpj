@@ -12,7 +12,7 @@
      由服务端 410 + error tone 诚实反馈;
    - 旧 bsplit-table/dt-pill/inline-form 失权, 视觉唯一 owner =
      product/domains/obligations.css。
-   契约 (route/presenter 提供): bill_split_rows[public_id/sender_display_name/
+   契约 (route/presenter 提供): bill_split_rows[public_id/sender_display_name/sender_context/
    amount_yuan/merchant/expense_time/expires_at/is_expired/accept_choices],
    receipt(amount_label/ledger_name/fact_href)|None, flash_message/flash_type,
    home_currency_symbol, selected_ledger_id。 #}
@@ -50,7 +50,7 @@
         <span class="bsplit-sender">{{ row.sender_display_name }}</span>
         <span class="bsplit-amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</span>
       </div>
-      <div class="bsplit-meta">{{ row.merchant or '一笔账单' }}{% if row.expense_time %} · {{ row.expense_time }}{% endif %}</div>
+      <div class="bsplit-meta">{% if row.sender_context %}{{ row.sender_context }} · {% endif %}{{ row.merchant or '一笔账单' }}{% if row.expense_time %} · {{ row.expense_time }}{% endif %}</div>
       {% if row_expired %}
       <div class="bsplit-deadline">截止时间 {{ row.expires_at }} 已过</div>
       {% else %}

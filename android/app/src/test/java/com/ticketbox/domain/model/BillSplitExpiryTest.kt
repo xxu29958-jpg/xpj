@@ -2,6 +2,7 @@ package com.ticketbox.domain.model
 
 import java.time.Instant
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -58,6 +59,31 @@ class BillSplitExpiryTest {
             expiresAt = "2026-06-11T23:59:59Z",
         )
         assertFalse(row.isInviteLocallyExpired(now))
+    }
+
+    @Test
+    fun sentRowPastExpiryPresentsExpired() {
+        assertEquals(
+            BillSplitStatusValues.EXPIRED,
+            sentRow(expiresAt = "2026-06-11T23:59:59Z").presentedStatus(now),
+        )
+    }
+
+    @Test
+    fun sentRowBeforeExpiryPresentsInvitedAndCancelable() {
+        assertEquals(
+            BillSplitStatusValues.INVITED,
+            sentRow(expiresAt = "2026-06-12T00:00:01Z").presentedStatus(now),
+        )
+    }
+
+    @Test
+    fun settledSentRowPastExpiryKeepsSettledStatus() {
+        val row = sentRow(
+            status = BillSplitStatusValues.ACCEPTED,
+            expiresAt = "2026-06-11T23:59:59Z",
+        )
+        assertEquals(BillSplitStatusValues.ACCEPTED, row.presentedStatus(now))
     }
 
     private fun inboxRow(

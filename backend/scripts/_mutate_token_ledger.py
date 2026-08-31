@@ -84,7 +84,7 @@ RISKS: frozenset[str] = frozenset({"low", "medium", "high"})
 RISK_REVIEW_BY: dict[str, date] = {
     "low": date(2027, 5, 31),
     "medium": date(2026, 11, 30),
-    "high": date(2026, 8, 31),
+    "high": date(2026, 11, 30),
 }
 
 

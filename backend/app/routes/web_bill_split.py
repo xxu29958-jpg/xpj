@@ -1,21 +1,4 @@
-"""ADR-0029 cross-ledger bill split — /web UI surface.
-
-Three pages + four POST handlers:
-
-- ``GET /web/bill-splits/inbox`` — receiver view (account-scoped)
-- ``GET /web/bill-splits/sent`` — sender view (ledger-scoped)
-- ``POST /web/expenses/{id}/split-invite`` — sender creates an invitation
-  from an expense detail page
-- ``POST /web/bill-splits/{public_id}/accept`` — receiver picks
-  ``target_ledger_id`` and accepts
-- ``POST /web/bill-splits/{public_id}/reject`` — receiver declines
-- ``POST /web/bill-splits/{public_id}/cancel`` — sender retracts a still-
-  invited invitation
-
-Account resolution: when public-host session is present, the resolver
-uses session.account_id; in loopback mode (owner console) it falls
-back to the owner Account of the currently-selected ledger.
-"""
+"""Receiver and sender bill-split Web surfaces plus their form actions."""
 
 from __future__ import annotations
 
@@ -62,9 +45,7 @@ _FLASH_TYPES = frozenset({"success", "error", "warning"})
 
 
 def _fmt_local(value) -> str:
-    """Render a snapshot datetime in the accounting timezone (Asia/Shanghai),
-    matching the rest of /web. Without this the template prints the raw
-    ``2026-06-12 03:00:00+00:00`` form, 8h off for Beijing readers."""
+    """Render a snapshot datetime in the accounting timezone."""
     if value is None:
         return ""
     return ensure_utc(value).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
@@ -245,6 +226,10 @@ def web_bill_split_inbox(
     rows = []
     for inv in invitations:
         is_expired = ensure_utc(inv.expires_at) <= presented_at if inv.status == "invited" else False
+        sender_name, sender_context = bsplit.receiver_sender_presentation(
+            inv.sender_display_name,
+            ledger_names.get(inv.sender_ledger_id, ""),
+        )
         choices: list[dict] = []
         if inv.status == "invited" and not is_expired:
             for ledger_id_choice in writer_ledger_ids:
@@ -261,7 +246,8 @@ def web_bill_split_inbox(
                 "public_id": inv.public_id,
                 "status": inv.status,
                 "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
-                "sender_display_name": inv.sender_display_name,
+                "sender_display_name": sender_name,
+                "sender_context": sender_context,
                 "merchant": inv.merchant_snapshot or "",
                 "category": inv.category_suggestion or "",
                 "expense_time": _fmt_local(inv.expense_time_snapshot),

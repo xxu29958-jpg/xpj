@@ -47,9 +47,11 @@
         {{ row.merchant or '一笔账单' }}{% if row.expense_time %} · {{ row.expense_time }}{% endif %}
         · <a class="bsplit-source" href="{{ row.source_href }}">查看来源账单</a>
       </div>
-      {% if row_live %}
-      <div class="bsplit-deadline">对方可在 {{ row.expires_at }} 前接受</div>
-      {% endif %}
+      <div class="bsplit-deadline">
+        {%- if row_live %}对方可在 {{ row.expires_at }} 前接受
+        {%- elif row.status in ('invited', 'expired') %}已于 {{ row.expires_at }} 过期
+        {%- else %}原定截止 {{ row.expires_at }}{% endif %}
+      </div>
     </div>
     <div class="bsplit-row-side">
       {% if row_live %}

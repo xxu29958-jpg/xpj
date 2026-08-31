@@ -81,3 +81,7 @@ fun BillSplitInbox.isInviteLocallyExpired(now: Instant = Instant.now()): Boolean
 
 fun BillSplitSent.isInviteLocallyExpired(now: Instant = Instant.now()): Boolean =
     localInviteExpired(status, expiresAt, now)
+
+/** Mirror an invited row past its deadline as EXPIRED in both sent-row consumers. */
+fun BillSplitSent.presentedStatus(now: Instant = Instant.now()): String =
+    if (isInviteLocallyExpired(now)) BillSplitStatusValues.EXPIRED else status

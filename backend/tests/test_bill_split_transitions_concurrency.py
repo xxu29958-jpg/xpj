@@ -24,6 +24,7 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BillSplitInvitation, Expense, LedgerAuditLog
 from app.services import bill_split_service as bsplit
+from app.services.bill_split_service import _transitions as transition_impl
 from app.services.bill_split_service._transitions import _mark_expired
 from app.services.time_service import now_utc
 from tests.test_bill_split import (
@@ -56,6 +57,88 @@ def _create_invitation_for_race(*, receiver_account_id: int, amount_cents: int =
             amount_cents=amount_cents,
         )
         return inv.public_id
+
+
+def _expire_from_peer(public_id: str) -> None:
+    """Cross the TTL and let the real sweeper win from another session."""
+    _backdate_expiry(public_id)
+    with SessionLocal() as peer:
+        assert bsplit.expire_invitations(peer) == 1
+
+
+def _assert_one_expiry(public_id: str) -> None:
+    with SessionLocal() as db:
+        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
+        assert inv is not None and inv.status == "expired"
+        audits = list(
+            db.scalars(
+                select(LedgerAuditLog)
+                .where(LedgerAuditLog.invitation_public_id == public_id)
+                .where(LedgerAuditLog.action == "bill_split_expired")
+            )
+        )
+        assert len(audits) == 1
+
+
+@pytest.mark.real_db
+def test_accept_lost_to_sweeper_reports_canonical_expiry(monkeypatch, *, identity) -> None:
+    receiver_account_id = _seed_receiver(name="B-accept-expiry", ledger_id="receiver_accept_expiry")
+    public_id = _create_invitation_for_race(receiver_account_id=receiver_account_id)
+    load_member = transition_impl._load_accept_target_member
+
+    monkeypatch.setattr(
+        transition_impl,
+        "_resolve_expired_or_peer_settled_accept",
+        lambda _db, _public_id, _inv, _target_ledger_id: None,
+    )
+
+    def load_then_expire(db, **kwargs):
+        member = load_member(db, **kwargs)
+        _expire_from_peer(public_id)
+        return member
+
+    monkeypatch.setattr(transition_impl, "_load_accept_target_member", load_then_expire)
+
+    with SessionLocal() as db, pytest.raises(AppError) as exc:
+        bsplit.accept_invitation(
+            db,
+            public_id=public_id,
+            accepting_account_id=receiver_account_id,
+            target_ledger_id="receiver_accept_expiry",
+        )
+    assert exc.value.error == "invitation_expired"
+    assert exc.value.status_code == 410
+    _assert_one_expiry(public_id)
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("command", ["reject", "cancel"])
+def test_non_accept_transition_lost_to_sweeper_reports_canonical_expiry(monkeypatch, *, identity, command: str) -> None:
+    receiver_account_id = _seed_receiver(name=f"B-{command}-expiry", ledger_id=f"receiver_{command}_expiry")
+    public_id = _create_invitation_for_race(receiver_account_id=receiver_account_id)
+
+    def expire_after_live_precheck(_db, _public_id, inv):
+        _expire_from_peer(public_id)
+        return inv
+
+    monkeypatch.setattr(transition_impl, "_settle_expiry_before_transition", expire_after_live_precheck)
+
+    with SessionLocal() as db, pytest.raises(AppError) as exc:
+        if command == "reject":
+            bsplit.reject_invitation(
+                db,
+                public_id=public_id,
+                rejecting_account_id=receiver_account_id,
+            )
+        else:
+            bsplit.cancel_invitation(
+                db,
+                public_id=public_id,
+                sender_account_id=_owner_account_id(),
+            )
+    assert exc.value.error == "invitation_expired"
+    assert exc.value.status_code == 410
+    _assert_one_expiry(public_id)
 
 
 @pytest.mark.real_db

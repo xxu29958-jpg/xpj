@@ -33,6 +33,7 @@ import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.isInviteLocallyExpired
+import com.ticketbox.domain.model.presentedStatus
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
@@ -354,20 +355,17 @@ private fun SentRow(
     row: BillSplitSent,
     onCancel: (String) -> Unit,
 ) {
-    // C3b: same local expiry mirror as the inbox row — between expires_at and
-    // the server sweep/command-settle the row is still status=invited; show
-    // 已过期 and hide 撤回 instead of offering a tap the Owner will reject.
-    val locallyExpired = row.isInviteLocallyExpired()
+    // Share the local expiry mirror with the expense fact page; the server
+    // command remains authoritative.
+    val presented = row.presentedStatus()
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         BillSplitPartyAmountRow(name = row.receiverDisplayNameSnapshot ?: "—", amountCents = row.amountCents)
-        val statusLabel = billSplitStatusLabel(
-            if (locallyExpired) BillSplitStatusValues.EXPIRED else row.status,
-        )
+        val statusLabel = billSplitStatusLabel(presented)
         val warnColor = LocalStateTokens.current.warn.fg
         Text(
             text = buildAnnotatedString {
                 append("${row.merchantSnapshot ?: "—"} · ")
-                if (locallyExpired) {
+                if (presented == BillSplitStatusValues.EXPIRED) {
                     withStyle(SpanStyle(color = warnColor)) { append(statusLabel) }
                 } else {
                     append(statusLabel)
@@ -376,7 +374,7 @@ private fun SentRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
+        if (presented == BillSplitStatusValues.INVITED) {
             AppAdaptiveTrailingActionRow {
                 QuietOutlinedButton(
                     text = stringResource(R.string.bill_split_sent_cancel),

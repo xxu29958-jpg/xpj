@@ -168,6 +168,7 @@ def test_inbox_response_omits_sender_internal_ids(client: TestClient, *, identit
     assert "sender_expense_id" not in inbox_dict
     assert "sender_ledger_id" not in inbox_dict
     assert "sender_member_id" not in inbox_dict
+    assert inbox_dict["sender_display_name"] == "未设置姓名的发起人"
 
 
 # -------------------------------------------------------------------------
