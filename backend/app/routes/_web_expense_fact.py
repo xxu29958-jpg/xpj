@@ -57,6 +57,8 @@ _FACT_FIELD_LABELS: dict[str, str] = {
 _FACT_FIELD_ORDER = tuple(_FACT_FIELD_LABELS)
 
 _KIND_LABELS = {"confirmed": "首次确认", "correction": "更正"}
+_FACT_FLASH_TYPES = frozenset({"success", "error", "warning"})
+
 
 def _snapshot_time_label(value: object) -> str:
     """Snapshots carry ISO strings (expense_revision_service._json_value)."""
@@ -343,6 +345,7 @@ def web_fact_context(
     revision_page: int = 1,
     revision_snapshot: int | None = None,
     message: str | None = None,
+    flash_type: str = "",
     error: str | None = None,
     return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> dict:
@@ -376,6 +379,7 @@ def web_fact_context(
     ctx["page_title"] = "账单详情"
     ctx["items_ack_idempotency_key"] = str(uuid4())
     ctx["message"] = message if message is not None else request.query_params.get("msg")
+    ctx["flash_type"] = flash_type if flash_type in _FACT_FLASH_TYPES else ""
     ctx["error"] = error
     ctx["split_invite"] = build_split_invite_context(
         db,

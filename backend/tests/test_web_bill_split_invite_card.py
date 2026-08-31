@@ -9,12 +9,15 @@ coverage gets its own file instead of banking debt. Helpers are local copies
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import update
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Account, Expense, LedgerMember
+from app.models import Account, BillSplitInvitation, Expense, LedgerMember
 from app.routes.web_common import _require_local as _web_require_local
 from app.services import bill_split_service as bsplit
 from app.services.time_service import now_utc
@@ -219,6 +222,41 @@ def test_web_edit_card_lists_sent_invitation_with_cancel(
     assert f'action="/web/bill-splits/{public_id}/cancel"' in body
     assert "撤回" in body
     assert f'name="return_expense_id" value="{expense_id}"' in body
+
+
+def test_web_edit_card_expired_cancel_returns_with_error_tone(
+    web_client: TestClient,
+) -> None:
+    receiver_id = _add_owner_ledger_member(display="家人庚")
+    expense_id = _make_owner_expense()
+    with SessionLocal() as db:
+        inv = bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_id,
+            amount_cents=1500,
+        )
+        public_id = inv.public_id
+        db.execute(
+            update(BillSplitInvitation)
+            .where(BillSplitInvitation.public_id == public_id)
+            .values(expires_at=now_utc() - timedelta(seconds=1))
+        )
+        db.commit()
+
+    response = web_client.post(
+        f"/web/bill-splits/{public_id}/cancel",
+        data={"ledger_id": "owner", "return_expense_id": str(expense_id)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "flash_type=error" in response.headers["location"]
+    followed = web_client.get(response.headers["location"])
+    assert followed.status_code == 200
+    assert "拆账邀请已过期" in followed.text
+    assert 'class="product-feedback product-feedback--error"' in followed.text
 
 
 def test_build_split_invite_context_hidden_for_viewer_render() -> None:

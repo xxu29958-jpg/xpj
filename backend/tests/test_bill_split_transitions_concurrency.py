@@ -44,9 +44,7 @@ def _backdate_expiry(public_id: str) -> None:
         db.commit()
 
 
-def _create_invitation_for_race(
-    *, receiver_account_id: int, amount_cents: int = 2500
-) -> str:
+def _create_invitation_for_race(*, receiver_account_id: int, amount_cents: int = 2500) -> str:
     expense_id = _make_expense_for_owner(amount_cents=5000)
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
@@ -72,9 +70,7 @@ def test_two_sessions_reject_vs_accept_race_does_not_clobber_accepted(*, identit
     session_a = SessionLocal()
     session_b = SessionLocal()
     try:
-        row_b = session_b.scalar(
-            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
-        )
+        row_b = session_b.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
         assert row_b is not None and row_b.status == "invited"
 
         bsplit.accept_invitation(
@@ -97,15 +93,11 @@ def test_two_sessions_reject_vs_accept_race_does_not_clobber_accepted(*, identit
         session_b.close()
 
     with SessionLocal() as db:
-        inv = db.scalar(
-            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
-        )
+        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
         assert inv is not None
         assert inv.status == "accepted"
         assert inv.rejected_at is None
-        received = db.scalar(
-            select(Expense).where(Expense.split_origin_invitation_id == public_id)
-        )
+        received = db.scalar(select(Expense).where(Expense.split_origin_invitation_id == public_id))
         assert received is not None and received.status == "confirmed"
 
 
@@ -122,9 +114,7 @@ def test_two_sessions_cancel_vs_accept_race_does_not_clobber_accepted(*, identit
     session_a = SessionLocal()
     session_b = SessionLocal()
     try:
-        row_b = session_b.scalar(
-            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
-        )
+        row_b = session_b.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
         assert row_b is not None and row_b.status == "invited"
 
         bsplit.accept_invitation(
@@ -147,9 +137,7 @@ def test_two_sessions_cancel_vs_accept_race_does_not_clobber_accepted(*, identit
         session_b.close()
 
     with SessionLocal() as db:
-        inv = db.scalar(
-            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
-        )
+        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
         assert inv is not None
         assert inv.status == "accepted"
         assert inv.cancelled_at is None
@@ -166,9 +154,7 @@ def test_two_sessions_mark_expired_loses_to_settled_invitation(*, identity) -> N
     session_a = SessionLocal()
     session_b = SessionLocal()
     try:
-        row_b = session_b.scalar(
-            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
-        )
+        row_b = session_b.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
         assert row_b is not None and row_b.status == "invited"
 
         bsplit.accept_invitation(
@@ -184,9 +170,7 @@ def test_two_sessions_mark_expired_loses_to_settled_invitation(*, identity) -> N
         session_b.close()
 
     with SessionLocal() as db:
-        inv = db.scalar(
-            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
-        )
+        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
         assert inv is not None
         assert inv.status == "accepted"
         assert inv.expired_at is None
@@ -216,12 +200,54 @@ def test_accept_after_ttl_marks_expired_and_returns_410(*, identity) -> None:
     assert exc.value.status_code == 410
 
     with SessionLocal() as db:
-        inv = db.scalar(
-            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
-        )
+        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
         assert inv is not None
         assert inv.status == "expired"
         assert inv.expired_at is not None
+
+
+def test_reject_after_ttl_marks_expired_and_returns_410(*, identity) -> None:
+    receiver_account_id = _seed_receiver(name="B-ttl-reject", ledger_id="receiver_ttl_reject")
+    public_id = _create_invitation_for_race(receiver_account_id=receiver_account_id)
+    _backdate_expiry(public_id)
+
+    with SessionLocal() as db, pytest.raises(AppError) as exc:
+        bsplit.reject_invitation(
+            db,
+            public_id=public_id,
+            rejecting_account_id=receiver_account_id,
+        )
+    assert exc.value.error == "invitation_expired"
+    assert exc.value.status_code == 410
+
+    with SessionLocal() as db:
+        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
+        assert inv is not None
+        assert inv.status == "expired"
+        assert inv.expired_at is not None
+        assert inv.rejected_at is None
+
+
+def test_cancel_after_ttl_marks_expired_and_returns_410(*, identity) -> None:
+    receiver_account_id = _seed_receiver(name="B-ttl-cancel", ledger_id="receiver_ttl_cancel")
+    public_id = _create_invitation_for_race(receiver_account_id=receiver_account_id)
+    _backdate_expiry(public_id)
+
+    with SessionLocal() as db, pytest.raises(AppError) as exc:
+        bsplit.cancel_invitation(
+            db,
+            public_id=public_id,
+            sender_account_id=_owner_account_id(),
+        )
+    assert exc.value.error == "invitation_expired"
+    assert exc.value.status_code == 410
+
+    with SessionLocal() as db:
+        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
+        assert inv is not None
+        assert inv.status == "expired"
+        assert inv.expired_at is not None
+        assert inv.cancelled_at is None
 
 
 def test_expire_sweeper_expires_overdue_invited_invitation(*, identity) -> None:
@@ -233,9 +259,7 @@ def test_expire_sweeper_expires_overdue_invited_invitation(*, identity) -> None:
         assert bsplit.expire_invitations(db) == 1
 
     with SessionLocal() as db:
-        inv = db.scalar(
-            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
-        )
+        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
         assert inv is not None
         assert inv.status == "expired"
         assert inv.expired_at is not None
@@ -267,9 +291,7 @@ def test_expire_sweeper_does_not_clobber_accepted_row_past_ttl(*, identity) -> N
         assert bsplit.expire_invitations(db) == 0
 
     with SessionLocal() as db:
-        inv = db.scalar(
-            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
-        )
+        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
         assert inv is not None
         assert inv.status == "accepted"
         assert inv.expired_at is None

@@ -46,6 +46,20 @@ class BillSplitExpiryTest {
         assertFalse(inboxRow(expiresAt = "not-a-timestamp").isInviteLocallyExpired(now))
     }
 
+    @Test
+    fun sentInvitationPastExpiryUsesTheSameLocalMirror() {
+        assertTrue(sentRow(expiresAt = "2026-06-11T23:59:59Z").isInviteLocallyExpired(now))
+    }
+
+    @Test
+    fun settledSentInvitationDoesNotDeriveExpiry() {
+        val row = sentRow(
+            status = BillSplitStatusValues.ACCEPTED,
+            expiresAt = "2026-06-11T23:59:59Z",
+        )
+        assertFalse(row.isInviteLocallyExpired(now))
+    }
+
     private fun inboxRow(
         status: String = BillSplitStatusValues.INVITED,
         expiresAt: String,
@@ -64,5 +78,26 @@ class BillSplitExpiryTest {
         expiredAt = null,
         senderAccountId = 1L,
         senderDisplayName = "甲",
+    )
+
+    private fun sentRow(
+        status: String = BillSplitStatusValues.INVITED,
+        expiresAt: String,
+    ): BillSplitSent = BillSplitSent(
+        publicId = "bs-sent-1",
+        status = status,
+        amountCents = 1200L,
+        merchantSnapshot = null,
+        categorySuggestion = null,
+        expenseTimeSnapshot = null,
+        expiresAt = expiresAt,
+        createdAt = "2026-06-01T00:00:00Z",
+        acceptedAt = null,
+        rejectedAt = null,
+        cancelledAt = null,
+        expiredAt = null,
+        receiverAccountId = 2L,
+        receiverDisplayNameSnapshot = "乙",
+        senderExpenseId = 42L,
     )
 }

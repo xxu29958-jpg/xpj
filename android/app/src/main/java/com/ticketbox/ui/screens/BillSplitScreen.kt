@@ -354,14 +354,29 @@ private fun SentRow(
     row: BillSplitSent,
     onCancel: (String) -> Unit,
 ) {
+    // C3b: same local expiry mirror as the inbox row — between expires_at and
+    // the server sweep/command-settle the row is still status=invited; show
+    // 已过期 and hide 撤回 instead of offering a tap the Owner will reject.
+    val locallyExpired = row.isInviteLocallyExpired()
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         BillSplitPartyAmountRow(name = row.receiverDisplayNameSnapshot ?: "—", amountCents = row.amountCents)
+        val statusLabel = billSplitStatusLabel(
+            if (locallyExpired) BillSplitStatusValues.EXPIRED else row.status,
+        )
+        val warnColor = LocalStateTokens.current.warn.fg
         Text(
-            text = "${row.merchantSnapshot ?: "—"} · ${billSplitStatusLabel(row.status)}",
+            text = buildAnnotatedString {
+                append("${row.merchantSnapshot ?: "—"} · ")
+                if (locallyExpired) {
+                    withStyle(SpanStyle(color = warnColor)) { append(statusLabel) }
+                } else {
+                    append(statusLabel)
+                }
+            },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        if (row.status == BillSplitStatusValues.INVITED) {
+        if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
             AppAdaptiveTrailingActionRow {
                 QuietOutlinedButton(
                     text = stringResource(R.string.bill_split_sent_cancel),

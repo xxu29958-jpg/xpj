@@ -137,20 +137,18 @@ def test_confirmed_product_body_retires_legacy_stack_and_fake_filter(
     _assert_shell_chrome_has_no_inline_style(body)
 
 
-def test_remaining_old_body_pages_keep_desktop_hook_and_legacy_drawer_source(
+def test_bill_split_body_uses_product_hook_and_drawer_scope_stays_isolated(
     web_client: TestClient,
 ) -> None:
-    """S3-R2 (#256): 旧标记页补回 desktop-shell-active body hook (旧 _base/_misc/
-    a11y 作用域规则依赖), 且旧 drawer 的样式来源 (components/drawer.css) 在场;
-    product drawer 族规则已收窄到 [data-body-stack="product"], 不再吃旧 drawer。"""
+    """C3b: bill split pages leave the legacy body stack without widening drawer CSS."""
     bill_splits = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
     assert bill_splits.status_code == 200
     body = bill_splits.text
     body_tag = re.search(r"<body [^>]+>", body)
     assert body_tag is not None
-    assert "desktop-shell-active" in body_tag.group(0)
-    assert 'data-body-stack="product"' not in body_tag.group(0)
-    assert "/static/web/components/drawer.css" in body
+    assert "desktop-shell-active" not in body_tag.group(0)
+    assert 'data-body-stack="product"' in body_tag.group(0)
+    assert "/static/web/components/drawer.css" not in body
 
     css = web_client.get("/static/web/product/components.css")
     assert css.status_code == 200
@@ -190,9 +188,7 @@ def test_overview_new_body_mounts_insights_module(web_client: TestClient) -> Non
     body = response.text
     assert 'data-domain="insights"' in body
     assert 'data-page="insights" data-page-level="primary"' in body
-    assert re.search(
-        r'href="/web/overview\?ledger_id=owner"[^>]+aria-current="location"', body
-    )
+    assert re.search(r'href="/web/overview\?ledger_id=owner"[^>]+aria-current="location"', body)
 
     assert f"/static/web/product/shell.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/components.css?v={STATIC_ASSET_VERSION}" in body
@@ -267,22 +263,13 @@ def test_primary_mutations_keep_real_csrf_and_occ_contracts(
     )
     assert created.status_code == 200
     expense_id = created.json()["id"]
-    detail = web_client.get(
-        f"/web/expenses/{expense_id}/edit"
-        "?ledger_id=owner&return_to=confirmed"
-    )
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&return_to=confirmed")
 
     assert detail.status_code == 200
     assert 'data-page="expense-detail" data-page-level="tertiary"' in detail.text
     assert "/static/web/product/detail.css" in detail.text
-    correction_url = (
-        f"/web/expenses/{expense_id}/correct"
-        "?ledger_id=owner&return_to=confirmed"
-    )
-    assert (
-        f'href="/web/expenses/{expense_id}/correct'
-        '?ledger_id=owner&amp;return_to=confirmed"'
-    ) in detail.text
+    correction_url = f"/web/expenses/{expense_id}/correct?ledger_id=owner&return_to=confirmed"
+    assert (f'href="/web/expenses/{expense_id}/correct?ledger_id=owner&amp;return_to=confirmed"') in detail.text
     correction = web_client.get(correction_url)
     assert correction.status_code == 200, correction.text
     assert f'action="/web/expenses/{expense_id}/corrections"' in correction.text

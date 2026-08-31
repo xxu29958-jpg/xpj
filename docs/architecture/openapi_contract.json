@@ -34748,6 +34748,32 @@
               ],
               "title": "Msg"
             }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "accepted",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accepted"
+            }
           }
         ],
         "responses": {
@@ -34812,6 +34838,16 @@
                 }
               ],
               "title": "Msg"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
+              "type": "string"
             }
           }
         ],
@@ -37472,6 +37508,16 @@
             "schema": {
               "default": "",
               "title": "Return Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
               "type": "string"
             }
           },

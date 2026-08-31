@@ -59,19 +59,25 @@ data class BillSplitInbox(
 )
 
 /**
- * Local 已过期 derivation for an invited inbox row, mirroring the /web inbox
- * page (`web_bill_split.py`: ``is_expired = ensure_utc(expires_at) <= now_utc()
+ * Local 已过期 derivation for an invited row, mirroring the /web pages
+ * (`web_bill_split.py`: ``is_expired = ensure_utc(expires_at) <= now_utc()
  * if status == "invited" else False``). A pure UTC-instant comparison — the
- * accounting timezone plays no part. An unparsable [BillSplitInbox.expiresAt]
- * fails open (returns false): the row degrades to its server status instead of
- * locking actions early. Sent rows deliberately get no local derivation on
- * either surface (/web's sent page renders the raw status too); the server
- * sweeper stays the authority that actually flips rows to `expired`.
+ * accounting timezone plays no part. An unparsable expiresAt fails open
+ * (returns false): the row degrades to its server status instead of locking
+ * actions early. C3b 起 sent 行共享同一镜像（过期即隐藏撤回、显示已过期）；
+ * 真正的落锤权威始终是服务端 sweeper 与 command-time settle（accept/reject/
+ * cancel 过期一律先落 expired 再 410），这里只是把已知事实提前呈现。
  */
-fun BillSplitInbox.isInviteLocallyExpired(now: Instant = Instant.now()): Boolean {
+private fun localInviteExpired(status: String, expiresAt: String, now: Instant): Boolean {
     if (status != BillSplitStatusValues.INVITED) return false
     val expiry = runCatching { Instant.parse(expiresAt) }
         .recoverCatching { OffsetDateTime.parse(expiresAt).toInstant() }
         .getOrNull() ?: return false
     return !expiry.isAfter(now)
 }
+
+fun BillSplitInbox.isInviteLocallyExpired(now: Instant = Instant.now()): Boolean =
+    localInviteExpired(status, expiresAt, now)
+
+fun BillSplitSent.isInviteLocallyExpired(now: Instant = Instant.now()): Boolean =
+    localInviteExpired(status, expiresAt, now)

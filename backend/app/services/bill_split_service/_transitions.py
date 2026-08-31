@@ -297,6 +297,7 @@ def reject_invitation(db: Session, *, public_id: str, rejecting_account_id: int)
     inv = get_invitation(db, public_id)
     if rejecting_account_id != inv.receiver_account_id:
         raise AppError("invitation_not_yours", status_code=403)
+    inv = _settle_expiry_before_transition(db, public_id, inv)
     if inv.status != "invited":
         raise AppError("invitation_not_acceptable", status_code=409)
     # Atomic flip (mirrors the accept claim): only reject while still
@@ -333,6 +334,7 @@ def cancel_invitation(db: Session, *, public_id: str, sender_account_id: int) ->
     if sender_account_id != inv.sender_account_id:
         raise AppError("invitation_not_yours", status_code=403)
     _load_writer_member(db, inv.sender_ledger_id, sender_account_id)
+    inv = _settle_expiry_before_transition(db, public_id, inv)
     if inv.status != "invited":
         # Already terminal; accepted invitations cannot be cancelled because
         # the receiver already has a real expense.
@@ -360,6 +362,23 @@ def cancel_invitation(db: Session, *, public_id: str, sender_account_id: int) ->
     db.commit()
     db.refresh(inv)
     return inv
+
+
+def _settle_expiry_before_transition(
+    db: Session,
+    public_id: str,
+    inv: BillSplitInvitation,
+) -> BillSplitInvitation:
+    """Make the command-time TTL boundary authoritative for every action."""
+    if ensure_utc(inv.expires_at) > now_utc():
+        return inv
+    if _mark_expired(db, inv):
+        raise AppError("invitation_expired", status_code=410)
+
+    fresh = get_invitation(db, public_id)
+    if fresh.status == "expired":
+        raise AppError("invitation_expired", status_code=410)
+    return fresh
 
 
 def expire_invitations(db: Session) -> int:
