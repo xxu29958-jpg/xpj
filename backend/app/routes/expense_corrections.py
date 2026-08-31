@@ -61,14 +61,17 @@ def get_expense_revision_history(
     expense_id: int,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
+    snapshot_revision: int | None = Query(default=None, ge=0),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> ExpenseRevisionListResponse:
-    get_expense(db, expense_id, auth.tenant_id)
+    expense = get_expense(db, expense_id, auth.tenant_id)
     return list_expense_revisions(
         db,
         tenant_id=auth.tenant_id,
         expense_id=expense_id,
+        current_revision=expense.fact_revision,
+        snapshot_revision=snapshot_revision,
         page=page,
         page_size=page_size,
     )

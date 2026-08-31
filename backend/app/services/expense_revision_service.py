@@ -288,14 +288,18 @@ def list_expense_revisions(
     *,
     tenant_id: str,
     expense_id: int,
+    current_revision: int,
+    snapshot_revision: int | None,
     page: int,
     page_size: int,
 ) -> ExpenseRevisionListResponse:
     # The parent lookup belongs to the caller so a foreign tenant and a missing
     # expense share the existing expense_not_found contract.
+    effective_snapshot = current_revision if snapshot_revision is None else min(snapshot_revision, current_revision)
     filters = (
         ExpenseRevision.tenant_id == tenant_id,
         ExpenseRevision.expense_id == expense_id,
+        ExpenseRevision.revision_number <= effective_snapshot,
     )
     total = int(db.scalar(select(func.count()).select_from(ExpenseRevision).where(*filters)) or 0)
     rows = list(
@@ -312,4 +316,5 @@ def list_expense_revisions(
         page=page,
         page_size=page_size,
         total=total,
+        snapshot_revision=effective_snapshot,
     )

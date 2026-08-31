@@ -28,9 +28,10 @@ internal class ExpenseCorrectionRepository(
         id: Long,
         page: Int,
         pageSize: Int,
+        snapshotRevision: Long? = null,
     ): Result<ExpenseRevisionPage> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        bound.call { it.expenseRevisions(id, page, pageSize) }.toDomain()
+        bound.call { it.expenseRevisions(id, page, pageSize, snapshotRevision) }.toDomain()
     }
 
     suspend fun correctAllowingOffline(

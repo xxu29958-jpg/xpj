@@ -18,6 +18,8 @@ data class ExpenseRevisionPage(
     val page: Int,
     val pageSize: Int,
     val total: Int,
+    /** 服务端快照锚：本页 items/total 都属于 revision_number <= 该值的前缀。 */
+    val snapshotRevision: Long,
 )
 
 /** One explicit correction intent. Null means the field is unchanged. */

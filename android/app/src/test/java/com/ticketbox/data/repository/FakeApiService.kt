@@ -289,6 +289,7 @@ internal class FakeApiService(
         id: Long,
         page: Int,
         pageSize: Int,
+        snapshotRevision: Long?,
     ): com.ticketbox.data.remote.dto.ExpenseRevisionPageDto = unsupported()
     override suspend fun updateConfirmedBatch(
         idempotencyKey: String,

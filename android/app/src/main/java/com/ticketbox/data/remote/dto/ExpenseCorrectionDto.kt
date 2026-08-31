@@ -143,6 +143,8 @@ data class ExpenseRevisionPageDto(
     @param:Json(name = "page_size")
     val pageSize: Int,
     val total: Int,
+    @param:Json(name = "snapshot_revision")
+    val snapshotRevision: Long,
 )
 
 @JsonClass(generateAdapter = true)

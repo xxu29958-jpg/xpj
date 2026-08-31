@@ -67,11 +67,16 @@ def timeline_page_url(
     expense_id: int,
     selected_ledger_id: str,
     page: int,
+    snapshot: int | None = None,
 ) -> str:
+    # ``snapshot`` 锚来自服务端 response（非请求回显）：同一历史视图内 page±1
+    # 都钉在同一 rev_snapshot 上；只有重新进入事实页（不带该参数）才取新快照。
     params: list[tuple[str, str]] = [
         ("ledger_id", selected_ledger_id),
         ("rev_page", str(page)),
     ]
+    if snapshot is not None:
+        params.append(("rev_snapshot", str(snapshot)))
     for key in _TIMELINE_RETURN_QUERY_KEYS:
         value = request.query_params.get(key)
         if value:
@@ -306,6 +311,8 @@ def build_fact_timeline(
     tenant_id: str,
     expense_id: int,
     home_currency_code: str,
+    current_revision: int,
+    snapshot_revision: int | None = None,
     page: int = 1,
     page_size: int = 50,
     member_names: dict[int, str] | None = None,
@@ -316,6 +323,8 @@ def build_fact_timeline(
         db,
         tenant_id=tenant_id,
         expense_id=expense_id,
+        current_revision=current_revision,
+        snapshot_revision=snapshot_revision,
         page=page,
         page_size=page_size,
     )
@@ -344,6 +353,7 @@ def build_fact_timeline(
         "page": response.page,
         "page_size": response.page_size,
         "total": response.total,
+        "snapshot_revision": response.snapshot_revision,
         "has_newer": response.page > 1,
         "has_older": response.page * response.page_size < response.total,
     }
@@ -357,6 +367,7 @@ def web_fact_context(
     expense_id: int,
     *,
     revision_page: int = 1,
+    revision_snapshot: int | None = None,
     message: str | None = None,
     error: str | None = None,
 ) -> dict:
@@ -398,11 +409,16 @@ def web_fact_context(
         tenant_id=selected_id,
         expense_id=expense_id,
         home_currency_code=ctx["home_currency_code"],
+        current_revision=expense.fact_revision,
+        snapshot_revision=revision_snapshot,
         page=revision_page,
         member_names=member_names,
     )
     ctx["fact_timeline"] = timeline["entries"]
-    ctx["fact_timeline_page"] = {key: timeline[key] for key in ("page", "page_size", "total", "has_newer", "has_older")}
+    ctx["fact_timeline_page"] = {
+        key: timeline[key]
+        for key in ("page", "page_size", "total", "snapshot_revision", "has_newer", "has_older")
+    }
     ctx["fact_timeline_page"]["older_remaining"] = max(
         0,
         timeline["total"] - timeline["page"] * timeline["page_size"],
@@ -413,6 +429,7 @@ def web_fact_context(
             expense_id=expense_id,
             selected_ledger_id=selected_id,
             page=timeline["page"] - 1,
+            snapshot=timeline["snapshot_revision"],
         )
         if timeline["has_newer"]
         else ""
@@ -423,6 +440,7 @@ def web_fact_context(
             expense_id=expense_id,
             selected_ledger_id=selected_id,
             page=timeline["page"] + 1,
+            snapshot=timeline["snapshot_revision"],
         )
         if timeline["has_older"]
         else ""

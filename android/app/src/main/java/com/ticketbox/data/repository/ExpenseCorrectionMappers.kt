@@ -33,6 +33,7 @@ fun ExpenseRevisionPageDto.toDomain(): ExpenseRevisionPage = ExpenseRevisionPage
     page = page,
     pageSize = pageSize,
     total = total,
+    snapshotRevision = snapshotRevision,
 )
 
 fun ExpenseCorrectionDraft.toRequest(expectedRowVersion: Long): ExpenseCorrectionRequestDto {

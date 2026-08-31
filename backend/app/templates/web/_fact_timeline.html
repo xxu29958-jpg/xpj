@@ -1,6 +1,7 @@
 {# 事实页变更记录：人话时间线（newest-first），系统字段已由视图模型折叠。
    契约：fact_timeline（_web_expense_fact.build_fact_timeline 的 entries），
-   fact_timeline_page（page/total/has_newer/has_older/older_remaining/newer_url/older_url）。
+   fact_timeline_page（page/total/snapshot_revision/has_newer/has_older/older_remaining/newer_url/older_url）。
+   翻页链接钉在同一 rev_snapshot 上（服务端快照口径），重新进入事实页才取新锚。
    items/splits 变化附完整 Before/After 集合（原生 details 展开，no-JS），
    只呈现 snapshot 已有字段，不做行级 diff 推断。 #}
 <section class="dt-card fact-timeline" id="fact-timeline" aria-label="变更记录">
@@ -68,7 +69,7 @@
   {% if fact_timeline_page.has_newer or fact_timeline_page.has_older %}
   <nav class="fact-timeline-pager" aria-label="变更记录翻页">
     <span class="fact-pager-slot">
-      {% if fact_timeline_page.has_newer %}<a class="fact-pager-link" href="{{ fact_timeline_page.newer_url }}">← 更新的记录</a>{% endif %}
+      {% if fact_timeline_page.has_newer %}<a class="fact-pager-link" href="{{ fact_timeline_page.newer_url }}">← 较新的记录</a>{% endif %}
     </span>
     <span class="meta">第 {{ fact_timeline_page.page }} 页 · 共 {{ fact_timeline_page.total }} 条</span>
     <span class="fact-pager-slot fact-pager-slot--older">

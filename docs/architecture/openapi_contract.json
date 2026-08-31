@@ -8484,6 +8484,10 @@
             "title": "Page Size",
             "type": "integer"
           },
+          "snapshot_revision": {
+            "title": "Snapshot Revision",
+            "type": "integer"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -8493,7 +8497,8 @@
           "items",
           "page",
           "page_size",
-          "total"
+          "total",
+          "snapshot_revision"
         ],
         "title": "ExpenseRevisionListResponse",
         "type": "object"
@@ -22522,6 +22527,23 @@
               "minimum": 1,
               "title": "Page Size",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "snapshot_revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Snapshot Revision"
             }
           },
           {
@@ -37331,6 +37353,23 @@
               "minimum": 1,
               "title": "Rev Page",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rev_snapshot",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev Snapshot"
             }
           }
         ],

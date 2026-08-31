@@ -57,6 +57,8 @@ data class ExpenseFactUiState(
     val revisionsLoading: Boolean = false,
     val revisionsLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Unknown,
     val revisionsNextPage: Int? = null,
+    /** 当前已加载历史所属的服务端快照锚；null = 尚未加载或最近一次首读失败。 */
+    val revisionsSnapshotRevision: Long? = null,
     val revisionsOlderLoading: Boolean = false,
     val revisionsOlderLoadFailed: Boolean = false,
     val revisionsRefreshFailed: Boolean = false,
