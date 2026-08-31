@@ -118,7 +118,8 @@ def _exercise_zero_fraction_actions(
             amount_major="1.5",
         ),
     )
-    assert decimal_rejected.status_code == 200
+    # Invalid browser writes now rerender in place instead of redirecting.
+    assert decimal_rejected.status_code == 422
     assert f"{currency_code} 金额只能填写整数" in decimal_rejected.text
     unchanged = _detail(
         web_client,
