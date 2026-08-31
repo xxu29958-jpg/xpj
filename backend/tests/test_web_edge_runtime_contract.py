@@ -20,7 +20,6 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _BULK_BAR_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "bulk-bar.js"
-_LEDGER_FILTER_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "ledger-filter.js"
 _BULK_BAR_FIXTURE = _REPO_ROOT / "backend" / "tests" / "fixtures" / "bulk_bar_announcement_contract.html"
 _BULK_EMPTY_RELOAD_FIXTURE = (
     _REPO_ROOT / "backend" / "tests" / "fixtures" / "bulk_bar_empty_reload_contract.html"
@@ -165,6 +164,7 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
 
     batch_mode = probe["batchMode"]
     assert batch_mode == {
+        "enhanced": True,
         "ariaDisabled": None,
         "tabIndex": None,
         "ariaCurrent": "true",
@@ -235,98 +235,3 @@ def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(
         "selectedCount": "1",
     }
     _assert_review_keyboard_behaves_in_real_edge(tmp_path)
-
-
-def _ledger_filter_fixture_html() -> str:
-    script_uri = html.escape(_LEDGER_FILTER_JS.as_uri(), quote=True)
-    return f"""
-<form id="bulk-form"></form>
-<div data-ledger-filter>
-  <button class="lf on" data-cat="">全部</button>
-  <button id="food-filter" class="lf" data-cat="餐饮">餐饮</button>
-</div>
-<div class="ledger-stream">
-  <div id="day-food" class="lday">5 月 4 日</div>
-  <div id="row-food" class="timeline-row" data-cat="餐饮">
-    <input id="check-food" class="row-check" type="checkbox"
-           name="expense_snapshot" value="11:2" form="bulk-form" checked>
-  </div>
-  <div id="row-home" class="timeline-row" data-cat="家庭采购">
-    <input id="check-home" class="row-check" type="checkbox"
-           name="expense_snapshot" value="12:3" form="bulk-form" checked>
-  </div>
-  <div id="day-home" class="lday">5 月 5 日</div>
-  <div id="row-home-next" class="timeline-row" data-cat="家庭采购">
-    <input id="check-home-next" class="row-check" type="checkbox"
-           name="expense_snapshot" value="13:1" form="bulk-form" checked>
-  </div>
-</div>
-<script>
-window.TicketboxWeb = {{
-  refreshCalls: 0,
-  refreshBulkBar: function () {{ this.refreshCalls += 1; }}
-}};
-</script>
-<script src="{script_uri}"></script>
-<script>
-window.addEventListener("load", function () {{
-  document.getElementById("food-filter").click();
-  var filtered = {{
-    hiddenDisplay: document.getElementById("row-home").style.display,
-    hiddenChecked: document.getElementById("check-home").checked,
-    hiddenDisabled: document.getElementById("check-home").disabled,
-    visibleDisabled: document.getElementById("check-food").disabled,
-    emptyDayDisplay: document.getElementById("day-home").style.display,
-    submitted: new FormData(document.getElementById("bulk-form")).getAll("expense_snapshot"),
-    refreshCalls: window.TicketboxWeb.refreshCalls
-  }};
-  document.querySelector('.lf[data-cat=""]').click();
-  window.__webConsumerProbe = {{
-    filtered: filtered,
-    restored: {{
-      hiddenDisplay: document.getElementById("row-home").style.display,
-      hiddenChecked: document.getElementById("check-home").checked,
-      hiddenDisabled: document.getElementById("check-home").disabled,
-      emptyDayDisplay: document.getElementById("day-home").style.display,
-      submitted: new FormData(document.getElementById("bulk-form")).getAll("expense_snapshot"),
-      refreshCalls: window.TicketboxWeb.refreshCalls
-    }}
-  }};
-}});
-</script>
-"""
-
-
-def test_ledger_filter_excludes_hidden_rows_from_native_bulk_snapshot_in_real_edge(
-    tmp_path: Path,
-) -> None:
-    page = _write_fixture(
-        tmp_path,
-        "ledger-filter-native-snapshot-contract.html",
-        _ledger_filter_fixture_html(),
-    )
-    probe = _evaluate_fixture(
-        tmp_path,
-        page=page,
-        width=1024,
-        height=768,
-        profile_name="edge-ledger-filter-native-snapshot-contract",
-    )
-
-    assert probe["filtered"] == {
-        "hiddenDisplay": "none",
-        "hiddenChecked": False,
-        "hiddenDisabled": True,
-        "visibleDisabled": False,
-        "emptyDayDisplay": "none",
-        "submitted": ["11:2"],
-        "refreshCalls": 1,
-    }
-    assert probe["restored"] == {
-        "hiddenDisplay": "",
-        "hiddenChecked": False,
-        "hiddenDisabled": False,
-        "emptyDayDisplay": "",
-        "submitted": ["11:2"],
-        "refreshCalls": 2,
-    }

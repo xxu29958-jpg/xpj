@@ -89,6 +89,7 @@
       const dispatchResult = firstRow.dispatchEvent(blockedClick);
       await wait();
       const batchMode = {
+        enhanced: form.hasAttribute("data-bulk-enhanced"),
         ariaDisabled: firstRow.getAttribute("aria-disabled"),
         tabIndex: firstRow.getAttribute("tabindex"),
         ariaCurrent: firstRow.getAttribute("aria-current"),

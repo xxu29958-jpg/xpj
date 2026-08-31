@@ -17,7 +17,7 @@
     // tabindex 锁已退役，不再有第二套状态机）。drawer.js / review-keyboard.js
     // 的 aria-disabled 检查是纯防御守卫，本文件不再生产该状态。
 
-    // 被类目筛选隐藏的行不参与批选/提交,否则"全选"会误改用户没看见的别类目账单。
+    // 当前不可见的行不参与批选/提交，避免“全选”作用于用户看不见的记录。
     function isVisible(cb) {
       const row = cb.closest(".exp-row, .timeline-row");
       return !row || row.offsetParent !== null;
@@ -71,7 +71,7 @@
       }
     }
 
-    // 暴露给 ledger-filter.js:筛选改变可见行后重算计数 + 重建提交字段。
+    // drawer 等消费者更新行快照后可重算计数并重建提交字段。
     app.refreshBulkBar = refresh;
 
     // 批10: shift-click 范围连选。记最近点击的行 index;按住 shift 点另一行时,把
@@ -321,5 +321,7 @@
 
     bindSubmit();
     refresh();
+    // Only hide the native fail-open bar after enhancement initialized fully.
+    form.dataset.bulkEnhanced = "true";
   };
 })(window, document);

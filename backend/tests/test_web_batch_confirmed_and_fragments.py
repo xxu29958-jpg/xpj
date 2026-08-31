@@ -149,6 +149,10 @@ def test_web_confirmed_batch_markup(
     # 行结构已按 #218 拆开:checkbox(.lrow-sel) 与整行链接(a.timeline-row-detail)
     # 是兄弟节点,行容器 .timeline-row 不再是锚点。
     assert "timeline-row-detail" in page.text
+    assert f'aria-label="选择账单 #{expense_id}"' not in page.text
+    assert "选择账单：Confirmed Bulk Cafe" in page.text
+    assert "批量改分类" in page.text
+    assert "批量改标签" in page.text
     assert ('<button class="dt-btn" type="button" data-bulk-clear>取消选择</button>') in page.text
 
 
