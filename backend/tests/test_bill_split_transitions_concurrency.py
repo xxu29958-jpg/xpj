@@ -26,6 +26,7 @@ from app.models import BillSplitInvitation, Expense, LedgerAuditLog
 from app.services import bill_split_service as bsplit
 from app.services.bill_split_service import _transitions as transition_impl
 from app.services.bill_split_service._transitions import _mark_expired
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests.test_bill_split import (
     _make_expense_for_owner,
@@ -37,6 +38,7 @@ from tests.test_bill_split import (
 def _backdate_expiry(public_id: str) -> None:
     """Force an invitation's TTL into the past directly in the DB."""
     with SessionLocal() as db:
+        resolve_write_capability(db)
         db.execute(
             update(BillSplitInvitation)
             .where(BillSplitInvitation.public_id == public_id)
