@@ -7,7 +7,7 @@ S3 落「壳基座」: base.html / _sidebar_nav.html 重写 + product 设计系�
 本文件只钉壳层与旧栈分流防回归。
 
 218-D S3-R1 翻转 (#256 P1: 收件行整列塌缩): 挂载策略按页面正文标记新旧分流——
-- 正文仍是旧标记的页 (confirmed/debts/budgets 等): 旧全局栈+页级 CSS 保持在场
+- 正文仍是旧标记的页 (debts/budgets 等): 旧全局栈+页级 CSS 保持在场
   (本文件钉死防回归), 对应 domain 模块不双挂 (矿域模块与旧页共享类名谱系
   .exp-row/.timeline-row 等, 双挂则旧规则被盖、新 grid 不认嵌套标记)。
 - 正文已是新标记的页 (overview S2; 收件域两页 S4): 断旧栈, 挂对应 domain 模块。
@@ -55,7 +55,6 @@ def _assert_shell_chrome_has_no_inline_style(body: str) -> None:
 @pytest.mark.parametrize(
     ("path", "domain", "primary_href", "page_css"),
     [
-        ("/web/confirmed?ledger_id=owner", "transactions", "/web/confirmed?ledger_id=owner", "/static/web/pages/confirmed.css"),
         ("/web/debts?ledger_id=owner", "obligations", "/web/debts?ledger_id=owner", "/static/web/pages/debts.css"),
         ("/web/budgets?ledger_id=owner", "plans", "/web/budgets?ledger_id=owner", "/static/web/pages/budgets.css"),
     ],
@@ -92,16 +91,32 @@ def test_old_body_primary_pages_keep_legacy_page_css(
     _assert_shell_chrome_has_no_inline_style(body)
 
 
-def test_old_body_row_grids_have_their_stylesheets(web_client: TestClient) -> None:
-    """行格渲染钉 (S3-R1): confirmed 时间线行 (.timeline-row-detail) 的 grid 规则
-    在 pages/confirmed.css。样式链接或规则缺失 = 整列塌缩回归。
-    (pending 的行格 S4 起迁到 domains/inbox.css, 见收件域用例族。)"""
+def test_confirmed_product_body_retires_legacy_stack_and_fake_filter(
+    web_client: TestClient,
+) -> None:
+    """流水主入口迁入 product 正文栈，并退役只筛当前 50 行的假分类能力。"""
     confirmed = web_client.get("/web/confirmed?ledger_id=owner")
     assert confirmed.status_code == 200
-    assert "/static/web/pages/confirmed.css" in confirmed.text
-    css = web_client.get("/static/web/pages/confirmed.css")
-    assert css.status_code == 200
-    assert ".timeline-row-detail" in css.text
+    body = confirmed.text
+
+    assert 'data-body-stack="product"' in body
+    assert f"/static/web/product/domains/transactions.css?v={STATIC_ASSET_VERSION}" in body
+    for retired in _RETIRED_GLOBAL_STACK:
+        assert retired not in body
+    assert "/static/web/pages/confirmed.css" not in body
+    assert "/static/web/desktop/ledger-filter.js" not in body
+    assert "data-ledger-filter" not in body
+
+    assert '<span class="product-eyebrow">流水 / 已确认</span>' in body
+    assert "ledger-stream" in body
+    assert 'aria-label="本月概况"' in body
+    assert "每日分布" in body
+    assert "日历视图" not in body
+    assert '<div class="head">一</div>' not in body
+    assert 'class="heatmap"' in body
+    assert 'class="source-list"' in body
+    assert "<style" not in body
+    _assert_shell_chrome_has_no_inline_style(body)
 
 
 def test_old_body_pages_keep_desktop_hook_and_legacy_drawer_source(
@@ -110,9 +125,9 @@ def test_old_body_pages_keep_desktop_hook_and_legacy_drawer_source(
     """S3-R2 (#256): 旧标记页补回 desktop-shell-active body hook (旧 _base/_misc/
     a11y 作用域规则依赖), 且旧 drawer 的样式来源 (components/drawer.css) 在场;
     product drawer 族规则已收窄到 [data-body-stack="product"], 不再吃旧 drawer。"""
-    confirmed = web_client.get("/web/confirmed?ledger_id=owner")
-    assert confirmed.status_code == 200
-    body = confirmed.text
+    debts = web_client.get("/web/debts?ledger_id=owner")
+    assert debts.status_code == 200
+    body = debts.text
     body_tag = re.search(r"<body [^>]+>", body)
     assert body_tag is not None
     assert "desktop-shell-active" in body_tag.group(0)

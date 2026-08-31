@@ -1,7 +1,7 @@
 /* /web 桌面账本 · 欠款列表 + 详情 (ADR-0049 债务域 web 面 slice 1/2a + 1B premium)
  *
  * 列表行 (DebtListScreen 镜像)：左对手方名 (三层节奏 名→徽章→muted 本金脚注)，右本位币
- * 剩余 editorial 拆分英雄 (照 confirmed.css .ledger-hero .lh-amt：小货币标/大整数/小数 muted)。
+ * 剩余 editorial 拆分英雄：小货币标 / 大整数 / muted 小数。
  * 详情按角色分轴：外部 = businesslike 会计卡 (display 拆分英雄 + 中性细还款条)，家庭 = communal
  * 关系卡 (无金额关系主句 + 柔化件数条 + 「看看账」展开，永不红)。纯只读。全部尺寸走 token；
  * 裸 px 仅留 1px 发丝线 / 数字光学间距 / chevron 发丝 / 媒体断点 (均注明，非布局尺度)。

@@ -52,8 +52,8 @@ def test_confirmed_tag_filter_shares_list_total_calendar_and_source_cohort(
     assert response.status_code == 200, response.text
     assert "Family Store" in response.text
     assert "Personal Store" not in response.text
-    assert "<b>1</b> 笔" in response.text
-    assert '<span class="int">12</span><span class="dec">.00</span>' in response.text
+    assert "2026-05 共 1 笔，合计 ¥12.00。" in response.text
+    assert '<span class="amt-main">¥12<span class="d">.00</span></span>' in response.text
     with SessionLocal() as db:
         assert confirmed_by_day(db, "owner", "2026-05", tag="家庭") == [
             {

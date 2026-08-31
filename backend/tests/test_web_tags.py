@@ -64,7 +64,7 @@ def test_web_confirmed_tag_filter_is_ledger_scoped(web_client: TestClient, *, id
     )
     assert owner_page.status_code == 200
     assert 'name="tag" value="Shared"' in owner_page.text
-    assert "当前仅显示标签「Shared」" in owner_page.text
+    assert "标签：Shared" in owner_page.text
     assert "Owner Shared" in owner_page.text
     assert "Owner Other" not in owner_page.text
     assert "Gray Shared" not in owner_page.text
@@ -77,6 +77,30 @@ def test_web_confirmed_tag_filter_is_ledger_scoped(web_client: TestClient, *, id
     assert gray_page.status_code == 200
     assert "Gray Shared" in gray_page.text
     assert "Owner Shared" not in gray_page.text
+
+
+def test_web_confirmed_tag_filter_has_a_clear_return_to_the_same_month(
+    web_client: TestClient,
+    *,
+    identity,
+) -> None:
+    _manual(
+        web_client,
+        headers=identity.app_headers,
+        amount_cents=2100,
+        merchant="Owner Shared",
+        tags="Shared",
+    )
+
+    page = web_client.get(
+        "/web/confirmed?ledger_id=owner&month=2026-05&tag=Shared"
+    )
+
+    assert page.status_code == 200
+    assert "标签：Shared" in page.text
+    assert "当前只显示带这个标签的账单。" in page.text
+    assert 'href="/web/confirmed?ledger_id=owner&amp;month=2026-05"' in page.text
+    assert ">清除筛选，查看全部</a>" in page.text
 
 
 def test_web_export_csv_uses_tag_filter(web_client: TestClient, *, identity) -> None:

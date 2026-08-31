@@ -238,9 +238,7 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
             f"/web/confirmed?ledger_id=owner&month={month}"
         )
         assert confirmed.status_code == 200, confirmed.text
-        assert '<span class="int">1234</span>' in confirmed.text
-        assert "笔均 <b>¥1234</b>" in confirmed.text
-        assert "日峰 <b>¥1234</b>" in confirmed.text
+        assert f"{month} 共 1 笔，合计 ¥1234。" in confirmed.text
         assert '<span class="lday-s">¥1234</span>' in confirmed.text
         assert "¥12.34" not in confirmed.text
 

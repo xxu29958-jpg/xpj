@@ -141,7 +141,10 @@ def test_web_confirmed_batch_markup(
     assert 'action="/web/confirmed/batch-update"' in page.text
     assert f'data-id="{expense_id}"' in page.text
     assert 'data-row-version="' in page.text
-    assert 'id="check-all"' in page.text
+    assert (
+        '<input class="checkbox" id="check-all" type="checkbox" '
+        'aria-label="选择本页全部账单" hidden>'
+    ) in page.text
     assert 'name="reason"' in page.text
     assert 'name="idempotency_key"' in page.text
     assert 'type="checkbox"' in page.text
@@ -149,6 +152,10 @@ def test_web_confirmed_batch_markup(
     # 行结构已按 #218 拆开:checkbox(.lrow-sel) 与整行链接(a.timeline-row-detail)
     # 是兄弟节点,行容器 .timeline-row 不再是锚点。
     assert "timeline-row-detail" in page.text
+    assert f'aria-label="选择账单 #{expense_id}"' not in page.text
+    assert "选择账单：Confirmed Bulk Cafe" in page.text
+    assert "批量改分类" in page.text
+    assert "批量改标签" in page.text
     assert ('<button class="dt-btn" type="button" data-bulk-clear>取消选择</button>') in page.text
 
 

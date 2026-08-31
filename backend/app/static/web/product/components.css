@@ -97,8 +97,7 @@ p {
 }
 
 .seg,
-.product-segments,
-.lfilter {
+.product-segments {
     display: flex;
     min-width: 0;
     flex-wrap: wrap;
@@ -108,7 +107,6 @@ p {
 .seg a,
 .seg button,
 .filter-tab,
-.lf,
 .product-segments a,
 .product-segments button {
     display: inline-flex;
@@ -127,7 +125,6 @@ p {
 .seg a:hover,
 .seg button:hover,
 .filter-tab:hover,
-.lf:hover,
 .product-segments a:hover,
 .product-segments button:hover {
     background: var(--surface-sunken);
@@ -137,7 +134,6 @@ p {
 .seg .is-active,
 .seg .active,
 .filter-tab.is-active,
-.lf.on,
 .product-segments [aria-current="page"],
 .product-segments [aria-selected="true"] {
     background: var(--brand-primary-bg);
