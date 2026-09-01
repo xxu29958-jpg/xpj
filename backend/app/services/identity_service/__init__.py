@@ -9,7 +9,8 @@ Split into private sub-modules by responsibility:
 - ``_device``: device + auth_token / upload_link / pairing_code issuance.
 - ``_bootstrap``: first-time ``bootstrap_owner`` ceremony.
 - ``_bootstrap_recovery``: credential rotation after listener exposure.
-- ``_auth``: ``authenticate_session_token`` / ``authenticate_desktop_session_token`` / ``authenticate_web_session_token`` / ``authenticate_upload_link`` + ``_role_for``.
+- ``_auth``: session / Desktop / web / upload-link authentication.
+- ``_credential_state``: current/grace credential lifecycle projection.
 - ``_pair``: ``pair_device`` (consume pairing_code → mint session token).
 
 Also re-exports ``hash_secret`` / ``hash_pairing_code`` / ``new_session_token``
@@ -37,6 +38,9 @@ from app.services.identity_service._bootstrap import (
 )
 from app.services.identity_service._bootstrap_recovery import (
     rotate_exposed_bootstrap_credentials,
+)
+from app.services.identity_service._credential_state import (
+    authenticated_session_credential_state,
 )
 from app.services.identity_service._device import (
     _create_auth_token,
@@ -106,6 +110,7 @@ __all__ = [
     "WebSessionAuthResult",
     # public API
     "active_auth_token_count",
+    "authenticated_session_credential_state",
     "authenticate_desktop_session_token",
     "authenticate_session_principal",
     "authenticate_session_token",

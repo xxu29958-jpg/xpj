@@ -67,6 +67,8 @@ class FakeRuntime:
 class FakePublicConnectivityProvider:
     def __init__(self) -> None:
         self.refresh_modes: list[bool] = []
+        self.product_session_invalidations = 0
+        self.product_session_mutation_events: list[str] = []
 
     def snapshot(self):
         return unknown_public_connectivity_status()
@@ -74,6 +76,15 @@ class FakePublicConnectivityProvider:
     def request_refresh(self, *, full: bool = False) -> int:
         self.refresh_modes.append(full)
         return len(self.refresh_modes)
+
+    def invalidate_product_session(self) -> None:
+        self.product_session_invalidations += 1
+
+    def begin_product_session_mutation(self) -> None:
+        self.product_session_mutation_events.append("begin")
+
+    def end_product_session_mutation(self) -> None:
+        self.product_session_mutation_events.append("end")
 
 
 def _config() -> ManagerConfig:
@@ -570,6 +581,7 @@ def test_pair_stages_activates_and_promotes_with_previous_proof_in_order() -> No
     pending = _pending_for(ledger_id="owner")
     sessions, recoveries, store = _stores(current)
     events: list[tuple[str, str]] = []
+    public_connectivity = FakePublicConnectivityProvider()
 
     def pair(*_args, **_kwargs) -> PendingProductSession:
         events.append(("pair", ""))
@@ -584,6 +596,7 @@ def test_pair_stages_activates_and_promotes_with_previous_proof_in_order() -> No
         _config(),
         product_session_pairer=pair,
         product_session_activator=activate,
+        public_connectivity_provider=public_connectivity,
         **store,
     )
 
@@ -598,6 +611,7 @@ def test_pair_stages_activates_and_promotes_with_previous_proof_in_order() -> No
     assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
     assert sessions[_INSTALLATION_ID].expires_at == _REAL_EXPIRY
     assert recoveries == {}
+    assert public_connectivity.product_session_mutation_events == ["begin", "end"]
 
 
 def test_pair_cross_ledger_skips_previous_and_revokes_old_after_promotion() -> None:
@@ -694,6 +708,7 @@ def test_activation_response_loss_replays_recovery_with_fresh_metadata() -> None
     pending = _pending_for(ledger_id="owner")
     sessions, recoveries, store = _stores(current)
     calls: list[str | None] = []
+    public_connectivity = FakePublicConnectivityProvider()
 
     def activate(_origin, value, previous, **_kwargs) -> ProductSession:
         calls.append(previous)
@@ -706,6 +721,7 @@ def test_activation_response_loss_replays_recovery_with_fresh_metadata() -> None
         _config(),
         product_session_pairer=lambda *_args, **_kwargs: pending,
         product_session_activator=activate,
+        public_connectivity_provider=public_connectivity,
         **store,
     )
 
@@ -715,6 +731,7 @@ def test_activation_response_loss_replays_recovery_with_fresh_metadata() -> None
     assert error.value.status_code == 503
     assert _INSTALLATION_ID in recoveries
     assert sessions[_INSTALLATION_ID] == current
+    assert public_connectivity.product_session_mutation_events == ["begin", "end"]
 
     projection = controller.product_principal()
 
@@ -726,6 +743,7 @@ def test_activation_response_loss_replays_recovery_with_fresh_metadata() -> None
     assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
     assert recoveries == {}
     assert calls == [current.session_token, current.session_token]
+    assert public_connectivity.product_session_mutation_events == ["begin", "end", "begin", "end"]
 
 
 def test_primary_store_failure_leaves_recovery_replayable() -> None:
@@ -733,6 +751,7 @@ def test_primary_store_failure_leaves_recovery_replayable() -> None:
     pending = _pending_for(ledger_id="family")
     sessions, recoveries, store = _stores(current)
     primary_writes = {"count": 0}
+    public_connectivity = FakePublicConnectivityProvider()
 
     def flaky_primary_save(credential_id: str, session: ProductSession) -> None:
         primary_writes["count"] += 1
@@ -746,6 +765,7 @@ def test_primary_store_failure_leaves_recovery_replayable() -> None:
         product_session_pairer=lambda *_args, **_kwargs: pending,
         product_session_activator=_activate_pending,
         product_session_revoker=lambda *_args, **_kwargs: None,
+        public_connectivity_provider=public_connectivity,
         **{**store, "product_session_saver": flaky_primary_save},
     )
 
@@ -756,11 +776,13 @@ def test_primary_store_failure_leaves_recovery_replayable() -> None:
     assert error.value.error == "product_rebind_recovery_pending"
     assert sessions[_INSTALLATION_ID] == current
     assert _INSTALLATION_ID in recoveries
+    assert public_connectivity.product_session_mutation_events == ["begin", "end"]
 
     projection = controller.product_principal()
     assert projection["ledger_id"] == "family"
     assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
     assert recoveries == {}
+    assert public_connectivity.product_session_mutation_events == ["begin", "end", "begin", "end"]
 
 
 def test_activation_failure_keeps_recovery_and_primary_unchanged() -> None:
@@ -828,6 +850,7 @@ def test_switch_two_phase_omits_previous_and_revokes_source_after_promotion() ->
     sessions, recoveries, store = _stores(current)
     events: list[tuple[str, str]] = []
     switch_calls: list[tuple[str, str, str]] = []
+    public_connectivity = FakePublicConnectivityProvider()
 
     def switcher(origin: str, ledger_id: str, token: str, **_kwargs) -> PendingProductSession:
         switch_calls.append((origin, ledger_id, token))
@@ -843,6 +866,7 @@ def test_switch_two_phase_omits_previous_and_revokes_source_after_promotion() ->
         product_ledger_switcher=switcher,
         product_session_activator=activate,
         product_session_revoker=lambda _origin, token, **_kwargs: events.append(("revoke", token)),
+        public_connectivity_provider=public_connectivity,
         **store,
     )
 
@@ -857,6 +881,7 @@ def test_switch_two_phase_omits_previous_and_revokes_source_after_promotion() ->
     assert events == [("activate", "None"), ("revoke", current.session_token)]
     assert sessions[_INSTALLATION_ID].session_token == pending.session.session_token
     assert recoveries == {}
+    assert public_connectivity.product_session_mutation_events == ["begin", "end"]
 
 
 def test_switch_same_ledger_short_circuits_without_backend_calls() -> None:
@@ -882,6 +907,7 @@ def test_switch_same_ledger_short_circuits_without_backend_calls() -> None:
 def test_switch_prepare_401_clears_the_installation_credential() -> None:
     current = _product_session()
     sessions, _recoveries, store = _stores(current)
+    public_connectivity = FakePublicConnectivityProvider()
 
     def denied(*_args, **_kwargs):
         raise ProductDataError("桌面身份已失效", error="invalid_token", status_code=401)
@@ -890,6 +916,7 @@ def test_switch_prepare_401_clears_the_installation_credential() -> None:
         FakeRuntime(),
         _config(),
         product_ledger_switcher=denied,
+        public_connectivity_provider=public_connectivity,
         **store,
     )
 
@@ -898,6 +925,7 @@ def test_switch_prepare_401_clears_the_installation_credential() -> None:
 
     assert error.value.status_code == 401
     assert sessions == {}
+    assert public_connectivity.product_session_mutation_events == ["begin", "end"]
 
 
 def test_switch_revoke_failure_leaves_durable_replacement() -> None:
@@ -927,17 +955,47 @@ def test_unpair_revokes_deletes_and_tolerates_401() -> None:
     current = _product_session()
     sessions, _recoveries, store = _stores(current)
     revoked: list[str] = []
+    public_connectivity = FakePublicConnectivityProvider()
 
     controller = AppController(
         FakeRuntime(),
         _config(),
         product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        public_connectivity_provider=public_connectivity,
         **store,
     )
 
     assert controller.unpair_product_principal() == {"configured": False}
     assert revoked == [current.session_token]
     assert sessions == {}
+    assert public_connectivity.product_session_mutation_events == ["begin", "end"]
+
+
+def test_unpair_retires_public_evidence_when_wincred_delete_fails() -> None:
+    current = _product_session()
+    sessions, _recoveries, store = _stores(current)
+    public_connectivity = FakePublicConnectivityProvider()
+    revoked: list[str] = []
+
+    def fail_delete(_credential_id: str) -> None:
+        raise ProductCredentialError("synthetic WinCred delete failure")
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
+        product_session_deleter=fail_delete,
+        public_connectivity_provider=public_connectivity,
+        **{key: value for key, value in store.items() if key != "product_session_deleter"},
+    )
+
+    with pytest.raises(ProductDataError) as error:
+        controller.unpair_product_principal()
+
+    assert error.value.error == "product_credential_unavailable"
+    assert revoked == [current.session_token]
+    assert sessions[_INSTALLATION_ID] == current
+    assert public_connectivity.product_session_mutation_events == ["begin", "end"]
 
     dead = _product_session()
     sessions2, _recoveries2, store2 = _stores(dead)
@@ -1099,7 +1157,13 @@ def test_superseded_revoke_failure_keeps_retryable_cleanup_record() -> None:
 def test_note_product_bridge_auth_failure_clears_dead_credential() -> None:
     current = _product_session()
     sessions, _recoveries, store = _stores(current)
-    controller = AppController(FakeRuntime(), _config(), **store)
+    public_connectivity = FakePublicConnectivityProvider()
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        public_connectivity_provider=public_connectivity,
+        **store,
+    )
 
     assert controller.note_product_bridge_auth_failure(403, current.session_token) is False
     assert sessions[_INSTALLATION_ID] == current
@@ -1107,6 +1171,28 @@ def test_note_product_bridge_auth_failure_clears_dead_credential() -> None:
     assert controller.note_product_bridge_auth_failure(401, current.session_token) is True
     assert sessions == {}
     assert controller.product_principal() == {"configured": False}
+    assert public_connectivity.product_session_mutation_events == ["begin", "end"]
+
+
+def test_bridge_auth_failure_retires_public_evidence_when_wincred_delete_fails() -> None:
+    current = _product_session()
+    sessions, _recoveries, store = _stores(current)
+    public_connectivity = FakePublicConnectivityProvider()
+
+    def fail_delete(_credential_id: str) -> None:
+        raise ProductCredentialError("synthetic WinCred delete failure")
+
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        product_session_deleter=fail_delete,
+        public_connectivity_provider=public_connectivity,
+        **{key: value for key, value in store.items() if key != "product_session_deleter"},
+    )
+
+    assert controller.note_product_bridge_auth_failure(401, current.session_token) is True
+    assert sessions[_INSTALLATION_ID] == current
+    assert public_connectivity.product_session_mutation_events == ["begin", "end"]
 
 
 def test_bridge_auth_failure_never_wipes_a_fresher_session() -> None:
@@ -1114,13 +1200,20 @@ def test_bridge_auth_failure_never_wipes_a_fresher_session() -> None:
     the store now holds the valid B — the 401 must retire A only, never B."""
     replacement = _product_session(token="tbx-fresh-B", ledger_id="family")
     sessions, _recoveries, store = _stores(replacement)
-    controller = AppController(FakeRuntime(), _config(), **store)
+    public_connectivity = FakePublicConnectivityProvider()
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        public_connectivity_provider=public_connectivity,
+        **store,
+    )
 
     deleted = controller.note_product_bridge_auth_failure(401, "tbx-superseded-A")
 
     assert deleted is False
     assert sessions[_INSTALLATION_ID].session_token == "tbx-fresh-B"
     assert controller.product_principal()["ledger_id"] == "family"
+    assert public_connectivity.product_session_mutation_events == []
 
 
 # ── P2 regression: the owed superseded revoke survives teardown paths ───────
@@ -1802,16 +1895,14 @@ class _FlippingRuntime:
         return self._healthy if self.calls == 1 else self._degraded
 
 
-def test_pair_gate_never_revokes_superseded_that_is_still_the_live_primary() -> None:
-    """P2-2 race: config check passes healthy, reconcile's availability check
-    flips negative and early-returns, leaving an uncommitted ceremony whose
-    superseded IS the live primary at the pair gate."""
+def test_pair_gate_preserves_completed_recovery_while_live_primary_is_predecessor() -> None:
+    """A healthy-to-degraded race must not abandon the only proof of B."""
     healthy = FakeRuntime().status()
     degraded = _DegradedRuntime().status()
     current = _product_session(ledger_id="owner")
     sessions, recoveries, store = _stores(current)
     attempt_id, attempt_secret = new_activation_attempt()
-    recoveries[_INSTALLATION_ID] = RebindRecovery(
+    recovery = RebindRecovery(
         activation_attempt_id=attempt_id,
         activation_attempt_secret=attempt_secret,
         account_name="我",
@@ -1822,12 +1913,13 @@ def test_pair_gate_never_revokes_superseded_that_is_still_the_live_primary() -> 
         activation_expires_at=_STAGED_EXPIRY,
         superseded_session_token=current.session_token,
     )
+    recoveries[_INSTALLATION_ID] = recovery
     revoked: list[str] = []
+    pair_calls: list[tuple[str, str]] = []
 
-    controller = AppController(
-        _FlippingRuntime(healthy, degraded),
-        _config(),
-        product_session_pairer=lambda _origin, _code, *, attempt, **_kwargs: PendingProductSession(
+    def pairer(_origin, _code, *, attempt, **_kwargs) -> PendingProductSession:
+        pair_calls.append(attempt)
+        return PendingProductSession(
             activation_attempt_id=attempt[0],
             activation_attempt_secret=attempt[1],
             session=ProductSession(
@@ -1839,19 +1931,26 @@ def test_pair_gate_never_revokes_superseded_that_is_still_the_live_primary() -> 
                 role="owner",
                 expires_at=_STAGED_EXPIRY,
             ),
-        ),
+        )
+
+    controller = AppController(
+        _FlippingRuntime(healthy, degraded),
+        _config(),
+        product_session_pairer=pairer,
         product_session_activator=_activate_pending,
         product_session_revoker=lambda _origin, token, **_kwargs: revoked.append(token),
         **store,
     )
 
-    projection = controller.pair_product_principal("12345678")
+    with pytest.raises(ProductDataError) as error:
+        controller.pair_product_principal("12345678")
 
-    # The live primary was never at risk: no direct revoke, only the stale
-    # attempt record dropped; the re-pair completed through the normal flow.
-    assert projection["configured"] is True
-    assert current.session_token not in revoked
-    assert recoveries == {}
+    assert error.value.error == "product_rebind_recovery_pending"
+    assert error.value.status_code == 503
+    assert sessions[_INSTALLATION_ID] == current
+    assert recoveries[_INSTALLATION_ID] == recovery
+    assert revoked == []
+    assert pair_calls == []
 
 
 # ── Round-6: pending-TTL contract pin (backend is the TTL authority) ────────

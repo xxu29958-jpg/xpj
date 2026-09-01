@@ -322,11 +322,14 @@ Android 首次绑定后校验 session token 使用。
   "ledger_name": "我的小票夹",
   "device_name": "小米 15 Pro",
   "role": "owner",
-  "scope": "app"
+  "scope": "app",
+  "credential_state": "current"
 }
 ```
 
 > v0.4-alpha1 起新增 `ledger_id`，对应当前会话激活的账本。
+>
+> `credential_state` 为 `current` 或 `grace`。`grace` 仅允许已开始的请求在轮换宽限期内收尾，不能作为新的客户端或公网连接 authority 证明。
 
 ### POST /api/auth/pair
 

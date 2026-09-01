@@ -87,9 +87,9 @@ def test_non_managed_ownership_can_never_be_healthy(ownership: OwnershipState) -
 
 
 def test_stale_healthy_demotes_to_unknown_but_known_violation_remains_unsafe() -> None:
-    stale = _status().current(now=_NOW + timedelta(seconds=61), max_age=timedelta(seconds=60))
+    stale = _status().current(evidence_age=timedelta(seconds=61), max_age=timedelta(seconds=60))
     stale_violation = _status(boundary=BoundaryState.VIOLATION).current(
-        now=_NOW + timedelta(seconds=61),
+        evidence_age=timedelta(seconds=61),
         max_age=timedelta(seconds=60),
     )
 
@@ -102,7 +102,10 @@ def test_stale_healthy_demotes_to_unknown_but_known_violation_remains_unsafe() -
 
 
 def test_current_marks_evidence_at_the_age_boundary_fresh() -> None:
-    current = _status().current(now=_NOW + timedelta(seconds=60), max_age=timedelta(seconds=60))
+    current = _status().current(
+        evidence_age=timedelta(seconds=60),
+        max_age=timedelta(seconds=60),
+    )
 
     assert current.freshness is FreshnessState.FRESH
     assert current.overall is OverallState.HEALTHY

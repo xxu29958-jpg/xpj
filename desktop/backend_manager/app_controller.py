@@ -5,8 +5,8 @@ from __future__ import annotations
 import secrets
 import threading
 import time
-from collections.abc import Callable
-from contextlib import suppress
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 
@@ -338,8 +338,8 @@ class AppController:
         Deletion is conditional on the failed token still being the stored
         one: a request that raced a ledger switch may carry the already
         superseded credential — the fresh session must not be wiped with it.
-        Returns True only when the stored credential was actually cleared
-        (drives whether the bridge renders the rebind recovery page).
+        Returns True when the current credential was proven dead, including a
+        fail-closed WinCred deletion failure (drives the rebind recovery page).
         """
         if status_code != 401:
             return False
@@ -351,20 +351,21 @@ class AppController:
                 failed_token,
             ):
                 return False
-            with suppress(ProductCredentialError):
-                self._product_session_deleter(config.expected_installation_id)
-            # The replacement just died while a superseded revoke was still
-            # owed: attempt it here (best-effort) rather than letting the old
-            # credential live to TTL with no client reference left. The
-            # recovery record itself stays — reconcile owns its lifecycle,
-            # and it may still hold an uncommitted ceremony.
-            recovery = self._load_rebind_recovery(config)
-            if recovery is not None and recovery.superseded_session_token:
-                self._revoke_superseded_session(
-                    config,
-                    self._loopback_origin(config),
-                    recovery.superseded_session_token,
-                )
+            with self._public_session_mutation():
+                with suppress(ProductCredentialError):
+                    self._delete_product_session(config)
+                # The replacement just died while a superseded revoke was still
+                # owed: attempt it here (best-effort) rather than letting the old
+                # credential live to TTL with no client reference left. The
+                # recovery record itself stays — reconcile owns its lifecycle,
+                # and it may still hold an uncommitted ceremony.
+                recovery = self._load_rebind_recovery(config)
+                if recovery is not None and recovery.superseded_session_token:
+                    self._revoke_superseded_session(
+                        config,
+                        self._loopback_origin(config),
+                        recovery.superseded_session_token,
+                    )
         return True
 
     def product_ledgers(self) -> list[dict]:
@@ -403,15 +404,24 @@ class AppController:
     ) -> None:
         """Settle a completed ceremony's owed superseded revoke — or refuse.
 
-        A new pair/switch must never overwrite the single recovery slot while
-        an owed revoke is outstanding (the old credential's only cleanup
-        marker would be lost). P0 guard: only a genuinely orphaned superseded
-        is revoked; when the failed ceremony never displaced A, only the
-        stale attempt record is dropped.
+        A new pair/switch must never overwrite the single recovery slot until
+        its derived successor is the durable primary and every owed revoke is
+        settled. The proof is the only authority that prevents a predecessor
+        accepted during Backend rotation grace from becoming current again.
         """
         existing = self._load_rebind_recovery(config)
         if existing is None or not existing.ledger_id:
             return
+        successor = derive_desktop_pending_token(
+            existing.activation_attempt_secret,
+            existing.activation_attempt_id,
+        )
+        if current is None or not secrets.compare_digest(current.session_token, successor):
+            raise ProductDataError(
+                "已有桌面身份切换尚未完成；服务恢复后会先完成原切换。",
+                error="product_rebind_recovery_pending",
+                status_code=503,
+            )
         owed = existing.superseded_session_token
         owed_is_orphaned = owed and (current is None or not secrets.compare_digest(current.session_token, owed))
         if owed_is_orphaned and not self._revoke_superseded_session(
@@ -531,6 +541,10 @@ class AppController:
             return self._unpair_product_principal()
 
     def _unpair_product_principal(self) -> dict:
+        with self._public_session_mutation():
+            return self._unpair_product_principal_inside_mutation()
+
+    def _unpair_product_principal_inside_mutation(self) -> dict:
         """Revoke the backend token(s), then remove the local WinCred entries.
 
         Owed cleanup settles BEFORE teardown: when a superseded revoke fails
@@ -579,7 +593,7 @@ class AppController:
                 if exc.status_code != 401:
                     raise
             try:
-                self._product_session_deleter(config.expected_installation_id)
+                self._delete_product_session(config)
             except ProductCredentialError as exc:
                 raise self._credential_error(exc) from exc
         return {"configured": False}
@@ -653,6 +667,20 @@ class AppController:
             return self._product_session_loader(config.expected_installation_id)
         except ProductCredentialError as exc:
             raise self._credential_error(exc) from exc
+
+    def _save_product_session(self, config: ManagerConfig, session: ProductSession) -> None:
+        self._product_session_saver(config.expected_installation_id, session)
+
+    def _delete_product_session(self, config: ManagerConfig) -> None:
+        self._product_session_deleter(config.expected_installation_id)
+
+    @contextmanager
+    def _public_session_mutation(self) -> Iterator[None]:
+        self._public_connectivity.begin_product_session_mutation()
+        try:
+            yield
+        finally:
+            self._public_connectivity.end_product_session_mutation()
 
     def _load_rebind_recovery(self, config: ManagerConfig) -> RebindRecovery | None:
         try:
@@ -761,6 +789,21 @@ class AppController:
         recovery: RebindRecovery,
         current: ProductSession | None,
     ) -> ProductSession:
+        with self._public_session_mutation():
+            return self._activate_and_promote_rebind_inside_mutation(
+                config,
+                loopback_origin,
+                recovery,
+                current,
+            )
+
+    def _activate_and_promote_rebind_inside_mutation(
+        self,
+        config: ManagerConfig,
+        loopback_origin: str,
+        recovery: RebindRecovery,
+        current: ProductSession | None,
+    ) -> ProductSession:
         # Only a same-ledger re-pair may prove the predecessor: the backend
         # binds X-Ticketbox-Previous-Session to the staged account AND ledger,
         # so a switch (cross-ledger) must never send it.
@@ -791,10 +834,7 @@ class AppController:
                 status_code=502,
             )
         try:
-            self._product_session_saver(
-                config.expected_installation_id,
-                activated,
-            )
+            self._save_product_session(config, activated)
         except ProductCredentialError as exc:
             raise ProductDataError(
                 "新桌面身份已激活且仍保存在恢复位；Windows 凭据管理器恢复后会自动提升为主身份。",
@@ -865,8 +905,8 @@ class AppController:
     ) -> None:
         if error.status_code != 401:
             return
-        with suppress(ProductCredentialError):
-            self._product_session_deleter(config.expected_installation_id)
+        with self._public_session_mutation(), suppress(ProductCredentialError):
+            self._delete_product_session(config)
 
     @staticmethod
     def _credential_error(error: ProductCredentialError) -> ProductDataError:

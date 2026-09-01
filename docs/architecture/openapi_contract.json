@@ -292,6 +292,15 @@
             "title": "Account Public Id",
             "type": "string"
           },
+          "credential_state": {
+            "default": "current",
+            "enum": [
+              "current",
+              "grace"
+            ],
+            "title": "Credential State",
+            "type": "string"
+          },
           "data_generation": {
             "title": "Data Generation",
             "type": "string"

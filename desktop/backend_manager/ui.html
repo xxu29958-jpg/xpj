@@ -432,6 +432,7 @@
     let actionInFlight = false;
     let latestStatus = null;
     const $ = (id) => document.getElementById(id);
+    const STATUS_REFRESH_DEADLINE_MS = 2000;
     const PUBLIC_CONNECTIVITY_ACTIONS = Object.freeze({
       refresh: {label: "刷新状态", action: "refresh_public_connectivity"},
       full_check: {label: "完整检查", action: "run_full_public_connectivity_check"},
@@ -662,6 +663,8 @@
 
     let productSession = null;
     let productLedgers = [];
+    let productSessionReadFailed = false;
+    let productLedgersReadFailed = false;
     let productBusy = false;
     let ledgerSelectionDirty = false;
     // Ledger memberships can change outside this window; re-read the list on
@@ -669,27 +672,84 @@
     const PRODUCT_LEDGER_REFRESH_TICKS = 12;
     let productLedgerRefreshTick = 0;
 
+    function isPlainObject(value) {
+      return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+    }
+
+    function isNonEmptyText(value) {
+      return typeof value === "string" && value.trim().length > 0;
+    }
+
+    const PRODUCT_ROLES = new Set(["owner", "member", "viewer"]);
+
+    function isProductRole(value) {
+      return typeof value === "string" && PRODUCT_ROLES.has(value);
+    }
+
+    function isProductSessionPayload(payload) {
+      if (!isPlainObject(payload) || typeof payload.configured !== "boolean") return false;
+      if (!payload.configured) return true;
+      return ["account_name", "ledger_id", "ledger_name", "device_name"]
+        .every((key) => isNonEmptyText(payload[key]))
+        && isProductRole(payload.role)
+        && (payload.expires_at === null || typeof payload.expires_at === "string");
+    }
+
+    function isProductLedgersPayload(payload) {
+      return isPlainObject(payload)
+        && Array.isArray(payload.ledgers)
+        && payload.ledgers.every((row) => isPlainObject(row)
+          && isNonEmptyText(row.ledger_id)
+          && isNonEmptyText(row.name)
+          && isProductRole(row.role)
+          && typeof row.is_default === "boolean"
+          && typeof row.is_current === "boolean");
+    }
+
     async function productFetch(path, options = {}) {
       const headers = {"X-Control-Token": window.CONTROL_TOKEN};
       if (options.body) headers["Content-Type"] = "application/json";
       const response = await fetch(path, {...options, headers});
-      const payload = await response.json().catch(() => ({}));
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (_error) {
+        // A received status remains useful for error handling, but a malformed
+        // body is never promoted to a successful product projection.
+      }
       if (!response.ok) {
-        const error = new Error(payload.message || "product");
+        const error = new Error(isPlainObject(payload) && isNonEmptyText(payload.message)
+          ? payload.message
+          : "product");
         error.payload = payload;
         throw error;
       }
+      if (!isPlainObject(payload)) throw new Error("product");
       return payload;
     }
 
     function renderProduct() {
       const configured = Boolean(productSession && productSession.configured);
       const available = Boolean(latestStatus && latestStatus.product_available);
+      const productReadFailed = productSessionReadFailed || (configured && productLedgersReadFailed);
       const liveRow = configured
         ? productLedgers.find((row) => row.ledger_id === productSession.ledger_id)
         : null;
       const membershipLost = configured && productLedgers.length > 0 && !liveRow;
       const showManage = configured && !membershipLost;
+      if (productReadFailed) {
+        $("productHomeLink").hidden = true;
+        $("productPairGroup").hidden = true;
+        $("productManageGroup").hidden = true;
+        $("importExportAction").disabled = true;
+        $("pairAction").disabled = true;
+        $("pairingCodeInput").disabled = true;
+        $("switchAction").disabled = true;
+        $("unpairAction").disabled = true;
+        $("ledgerSelect").disabled = true;
+        $("productState").textContent = "账本状态暂不可验证，请稍后重试。";
+        return;
+      }
       $("productHomeLink").hidden = !(showManage && available);
       $("productPairGroup").hidden = showManage;
       $("productManageGroup").hidden = !showManage;
@@ -733,20 +793,39 @@
       select.disabled = productBusy || !available;
     }
 
-    async function loadProductSession() {
+    async function loadProductSession(options = {}) {
       try {
-        productSession = await productFetch("/api/product/session");
+        const payload = await productFetch("/api/product/session", options);
+        if (!isProductSessionPayload(payload)) throw new Error("product");
+        productSession = payload;
+        productSessionReadFailed = false;
+        if (!productSession || !productSession.configured) {
+          productLedgers = [];
+          productLedgersReadFailed = false;
+          ledgerSelectionDirty = false;
+          $("ledgerSelect").replaceChildren();
+        }
       } catch (_error) {
         productSession = null;
+        productLedgers = [];
+        productSessionReadFailed = true;
+        productLedgersReadFailed = false;
+        ledgerSelectionDirty = false;
+        $("ledgerSelect").replaceChildren();
       }
       renderProduct();
     }
 
-    async function loadProductLedgers() {
-      if (!productSession || !productSession.configured) return;
+    async function loadProductLedgers(options = {}) {
+      if (!productSession || !productSession.configured) {
+        productLedgersReadFailed = false;
+        return;
+      }
       try {
-        const payload = await productFetch("/api/product/ledgers");
+        const payload = await productFetch("/api/product/ledgers", options);
+        if (!isProductLedgersPayload(payload)) throw new Error("product");
         productLedgers = payload.ledgers || [];
+        productLedgersReadFailed = false;
         const select = $("ledgerSelect");
         // Rebuilding options resets select.value to the first row — carry a
         // dirty user selection across the rebuild (or drop it if the ledger
@@ -766,6 +845,9 @@
         if (!ledgerSelectionDirty) select.value = productSession.ledger_id;
       } catch (_error) {
         productLedgers = [];
+        productLedgersReadFailed = true;
+        ledgerSelectionDirty = false;
+        $("ledgerSelect").replaceChildren();
       }
       renderProduct();
     }
@@ -826,19 +908,34 @@
       renderProduct();
     });
 
-    async function refresh() {
+    async function refresh(refreshDeadlineMs = STATUS_REFRESH_DEADLINE_MS) {
       if (refreshInFlight) return;
       refreshInFlight = true;
+      const controller = new AbortController();
+      let timeoutId;
+      const deadline = new Promise((_resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error("status_timeout"));
+          controller.abort();
+        }, refreshDeadlineMs);
+      });
       try {
-        const response = await fetch("/api/status", {headers:{"X-Control-Token": window.CONTROL_TOKEN}});
+        const response = await Promise.race([
+          fetch("/api/status", {
+            headers: {"X-Control-Token": window.CONTROL_TOKEN},
+            signal: controller.signal
+          }),
+          deadline
+        ]);
         if (!response.ok) throw new Error("status");
-        render(await response.json());
-        await loadProductSession();
+        render(await Promise.race([response.json(), deadline]));
+        const requestOptions = {signal: controller.signal};
+        await Promise.race([loadProductSession(requestOptions), deadline]);
         if (productSession && productSession.configured) {
           productLedgerRefreshTick += 1;
           if (productLedgers.length === 0 || productLedgerRefreshTick >= PRODUCT_LEDGER_REFRESH_TICKS) {
             productLedgerRefreshTick = 0;
-            await loadProductLedgers();
+            await Promise.race([loadProductLedgers(requestOptions), deadline]);
           }
         } else {
           productLedgerRefreshTick = 0;
@@ -847,8 +944,10 @@
         latestStatus = null;
         setOverall("error", "管理器离线");
         setMessage("controlError", "管理器状态暂不可用，请稍后重试。");
+        renderPublicConnectivity(null);
         applyActionAvailability(null);
       } finally {
+        clearTimeout(timeoutId);
         refreshInFlight = false;
       }
     }

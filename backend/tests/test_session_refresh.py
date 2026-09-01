@@ -18,6 +18,7 @@ import app.services.session_refresh_service as session_refresh_service
 from app.config import reset_settings_cache
 from app.database import SessionLocal, engine
 from app.models import AuthToken, Device, Ledger, LedgerMember, SessionRefreshAttempt
+from app.services import identity_service
 from app.services.identity_service import authenticate_session_token, hash_secret
 from app.services.time_service import ensure_utc, now_utc
 from tests.pairing_test_support import pairing_payload, session_refresh_payload
@@ -99,8 +100,21 @@ def test_refresh_rotates_token_and_graces_previous(client: TestClient, *, identi
         headers={"Authorization": f"Bearer {old_token}"},
     )
     assert grace_check.status_code == 200, grace_check.text
+    assert grace_check.json()["credential_state"] == "grace"
+
+    current_check = client.get(
+        "/api/auth/check",
+        headers={"Authorization": f"Bearer {new_token}"},
+    )
+    assert current_check.status_code == 200, current_check.text
+    assert current_check.json()["credential_state"] == "current"
 
     with SessionLocal() as db:
+        old_auth = authenticate_session_token(db, old_token, {"app"})
+        new_auth = authenticate_session_token(db, new_token, {"app"})
+        assert identity_service.authenticated_session_credential_state(db, old_auth) == "grace"
+        assert identity_service.authenticated_session_credential_state(db, new_auth) == "current"
+
         old_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(old_token)).one()
         new_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(new_token)).one()
         assert old_row.revoked_at is not None

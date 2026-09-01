@@ -48,6 +48,7 @@ _AUTH_KEYS: Final = frozenset(
         "device_name",
         "role",
         "scope",
+        "credential_state",
     }
 )
 _AUTH_TEXT_LIMITS: Final = {
@@ -61,6 +62,7 @@ _AUTH_TEXT_LIMITS: Final = {
     "device_name": 120,
     "role": 32,
     "scope": 32,
+    "credential_state": 16,
 }
 
 
@@ -102,6 +104,56 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _looks_like_legacy_ipv4_literal(host: str) -> bool:
+    parts = host.split(".")
+    return bool(parts) and all(
+        part.isdecimal()
+        or (
+            part.casefold().startswith("0x")
+            and len(part) > 2
+            and all(character in "0123456789abcdef" for character in part[2:].casefold())
+        )
+        for part in parts
+    )
+
+
+def _canonical_public_host(host: str) -> str | None:
+    candidate = host[:-1] if host.endswith(".") else host
+    if not candidate or candidate.endswith(".") or "%" in candidate:
+        return None
+
+    try:
+        address = ipaddress.ip_address(candidate)
+    except ValueError:
+        if not candidate.isascii():
+            return None
+        candidate = candidate.casefold()
+        if not candidate or len(candidate) > 253:
+            return None
+        labels = candidate.split(".")
+        if any(
+            not label
+            or len(label) > 63
+            or label.startswith("-")
+            or label.endswith("-")
+            or any(not (character.isalnum() or character == "-") for character in label)
+            for label in labels
+        ):
+            return None
+        if _looks_like_legacy_ipv4_literal(candidate):
+            return None
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            return candidate
+
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return None
+    if address.is_loopback or address.is_unspecified:
+        return None
+    return address.compressed
+
+
 def _normalize_public_origin(raw: str | None) -> str | None:
     if raw is None or not raw.strip():
         return None
@@ -110,7 +162,7 @@ def _normalize_public_origin(raw: str | None) -> str | None:
         port = parsed.port
     except (TypeError, ValueError):
         return None
-    hostname = (parsed.hostname or "").strip().casefold()
+    hostname = _canonical_public_host((parsed.hostname or "").strip())
     if (
         parsed.scheme.casefold() != "https"
         or not hostname
@@ -124,19 +176,9 @@ def _normalize_public_origin(raw: str | None) -> str | None:
         or hostname.endswith(".localhost")
     ):
         return None
-    try:
-        ipaddress.ip_address(hostname)
-    except ValueError:
-        pass
-    else:
-        return None
-    try:
-        ascii_host = hostname.encode("idna").decode("ascii")
-    except (UnicodeError, ValueError):
-        return None
-    if not ascii_host or len(ascii_host) > 253 or "." not in ascii_host:
-        return None
-    authority = f"{ascii_host}:{port}" if port is not None else ascii_host
+    authority = f"[{hostname}]" if ":" in hostname else hostname
+    if port not in {None, 443}:
+        authority = f"{authority}:{port}"
     return f"https://{authority}"
 
 
@@ -234,9 +276,9 @@ class BoundedHttpsTransport:
         try:
             payload = json.loads(raw.decode("utf-8"))
         except (UnicodeError, json.JSONDecodeError):
-            raise PublicEndpointProbeError("public endpoint returned invalid JSON") from None
+            return None
         if not isinstance(payload, dict):
-            raise PublicEndpointProbeError("public endpoint JSON schema is invalid")
+            return None
         return payload
 
 
@@ -277,19 +319,23 @@ def _required_auth_text(payload: Mapping[str, object], key: str) -> str | None:
     return value
 
 
-def _auth_matches_session(payload: dict[str, object] | None, session: ProductSession) -> bool:
+def _auth_session_state(payload: dict[str, object] | None, session: ProductSession) -> str | None:
     if payload is None or set(payload) != _AUTH_KEYS or payload.get("status") != "ok":
-        return False
+        return None
     values = {key: _required_auth_text(payload, key) for key in _AUTH_TEXT_LIMITS}
     if any(value is None for value in values.values()) or values["scope"] != "app":
-        return False
-    return (
+        return None
+    metadata_matches = (
         values["account_name"] == session.account_name
         and values["ledger_id"] == session.ledger_id
         and values["ledger_name"] == session.ledger_name
         and values["device_name"] == session.device_name
         and values["role"] == session.role
     )
+    credential_state = values["credential_state"]
+    if not metadata_matches or credential_state not in {"current", "grace"}:
+        return None
+    return credential_state
 
 
 def _public_result(
@@ -303,9 +349,14 @@ def _public_result(
         "/api/auth/check",
         session_token=session.session_token,
     )
-    if response is None or response.redirected or response.status != 200:
+    if response is None or response.redirected or not 200 <= response.status < 300:
         return PublicState.REACHABLE_UNVERIFIED, "public_session_unverified"
-    if not _auth_matches_session(response.payload, session):
+    if response.status != 200:
+        return PublicState.WRONG_PRODUCT, "public_endpoint_wrong_product"
+    auth_state = _auth_session_state(response.payload, session)
+    if auth_state == "grace":
+        return PublicState.REACHABLE_UNVERIFIED, "public_session_unverified"
+    if auth_state != "current":
         return PublicState.WRONG_PRODUCT, "public_endpoint_wrong_product"
     return PublicState.AUTHENTICATED_REACHABLE, "public_authenticated_reachable"
 
@@ -330,20 +381,15 @@ def probe_public_endpoint(
         )
     http = transport or BoundedHttpsTransport(normalized)
     health = _safe_get(http, "/api/health")
-    if health is None or health.redirected or health.status != 200:
-        return PublicEndpointProbeResult(
-            public=PublicState.UNREACHABLE,
-            boundary=BoundaryState.UNKNOWN,
-            code="public_endpoint_unreachable",
-        )
-    if health.payload != {"status": "ok"}:
-        return PublicEndpointProbeResult(
-            public=PublicState.WRONG_PRODUCT,
-            boundary=BoundaryState.UNKNOWN,
-            code="public_endpoint_wrong_product",
-        )
     boundary = _boundary_result(http)
-    public, code = _public_result(http, context.session)
+    if health is None or health.redirected or health.status != 200:
+        public = PublicState.UNREACHABLE
+        code = "public_endpoint_unreachable"
+    elif health.payload != {"status": "ok"}:
+        public = PublicState.WRONG_PRODUCT
+        code = "public_endpoint_wrong_product"
+    else:
+        public, code = _public_result(http, context.session)
     if boundary is BoundaryState.VIOLATION:
         code = "public_boundary_violation"
     return PublicEndpointProbeResult(public=public, boundary=boundary, code=code)

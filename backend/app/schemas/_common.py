@@ -82,6 +82,10 @@ class AuthCheckResponse(BaseModel):
     device_name: str
     role: str
     scope: str
+    # Backward-compatible for existing clients while always emitted by the
+    # current route. A graced app token may finish in-flight work, but it is
+    # not current credential authority for a new connectivity attestation.
+    credential_state: Literal["current", "grace"] = "current"
 
 
 class StatusResponse(BaseModel):

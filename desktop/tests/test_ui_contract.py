@@ -22,12 +22,18 @@ def test_narrow_window_switches_task_workbench_to_one_column() -> None:
     assert ".task-grid { grid-template-columns: 1fr; }" in html
 
 
-def test_status_refresh_is_single_flight() -> None:
+def test_status_refresh_is_single_flight_and_deadline_bounded() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 
     assert "if (refreshInFlight) return" in html
     assert "refreshInFlight = false" in html
-    assert 'fetch("/api/status", {headers:{"X-Control-Token": window.CONTROL_TOKEN}})' in html
+    assert "const STATUS_REFRESH_DEADLINE_MS = 2000" in html
+    assert 'fetch("/api/status", {' in html
+    assert "signal: controller.signal" in html
+    assert 'if (!response.ok) throw new Error("status")' in html
+    assert "render(await Promise.race([response.json(), deadline]))" in html
+    assert "Promise.race([loadProductSession(requestOptions), deadline])" in html
+    assert "Promise.race([loadProductLedgers(requestOptions), deadline])" in html
 
 
 def test_installer_shutdown_state_closes_only_the_manager_window() -> None:

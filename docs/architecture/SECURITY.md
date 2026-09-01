@@ -31,7 +31,7 @@ BootstrapAdmin 初始化时生成的 admin scope token，用于后续管理操�
 - `AuthToken` 用于 Android App 调用账单、图片、统计、规则等接口，通过 `Authorization: Bearer <session_token>` 传递。
 - `UploadLink` 用于 iPhone 快捷指令上传截图，通过完整 URL `POST /u/<upload_key>?tz=...` 传递，不需要额外请求头。
 - `GET /api/settings/server` 只返回非敏感运行状态，不返回 Token、本机路径或数据库路径。
-- `/api/auth/check` 是 Android 校验 session token 的唯一接口。
+- `/api/auth/check` 是 Android 校验 session token 的唯一接口，并显式区分 `current` 与仅供在途请求收尾的 `grace` 凭据状态。
 - `/api/health` 不代表任何凭证有效，且只能匿名返回 `{"status":"ok"}`。
 - 版本、DB、上传目录、Owner Console 等私有运行状态只能通过需 session token 的 `/api/status/private` 返回。
 - 旧版 `APP_TOKEN`、`UPLOAD_TOKEN`、`TENANTS_JSON` 里的 token 请求一律返回 `legacy_auth_removed`（401）。
