@@ -171,6 +171,11 @@ ERROR_MESSAGES = {
     "expense_correction_reason_required": "请说明这次更正的原因。",
     "expense_correction_no_changes": "没有检测到需要保存的更正。",
     "expense_reversal_required": "已确认账单不能移入回收站，请记录退款或冲销事实。",
+    "expense_refund_exceeds_remaining": "退款金额超过这笔账单当前可退金额。",
+    "expense_reversal_active": "这笔账单已经冲销，请先撤销冲销记录。",
+    "expense_refund_exists": "这笔账单已有退款，请先撤销退款记录再冲销。",
+    "expense_offset_not_active": "这条退款或冲销记录已经撤销。",
+    "expense_offset_not_found": "没有找到这条退款或冲销记录。",
     # ADR-0042 request-idempotency (Idempotency-Key header on outbox-routed
     # mutate面). These are protocol-level errors the client/outbox consumes —
     # the user never sees them in normal flow (Android always sends the key).

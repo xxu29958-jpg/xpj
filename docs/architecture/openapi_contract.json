@@ -7428,6 +7428,104 @@
         "title": "ExpenseCorrectionResponse",
         "type": "object"
       },
+      "ExpenseFactBundleResponse": {
+        "properties": {
+          "active_offsets": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseOffsetResponse"
+            },
+            "title": "Active Offsets",
+            "type": "array"
+          },
+          "financial_summary": {
+            "$ref": "#/components/schemas/ExpenseFinancialSummary"
+          },
+          "recent_history": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseOffsetRevisionResponse"
+            },
+            "title": "Recent History",
+            "type": "array"
+          },
+          "root": {
+            "$ref": "#/components/schemas/ExpenseResponse"
+          }
+        },
+        "required": [
+          "root",
+          "financial_summary",
+          "active_offsets"
+        ],
+        "title": "ExpenseFactBundleResponse",
+        "type": "object"
+      },
+      "ExpenseFinancialSummary": {
+        "properties": {
+          "active_refunded_original_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Active Refunded Original Minor",
+            "type": "integer"
+          },
+          "fx_difference_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Fx Difference Cents",
+            "type": "integer"
+          },
+          "gross_home_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Gross Home Amount Cents",
+            "type": "integer"
+          },
+          "gross_original_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Gross Original Minor",
+            "type": "integer"
+          },
+          "lineage_home_net_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Lineage Home Net Cents",
+            "type": "integer"
+          },
+          "remaining_refundable_original_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Remaining Refundable Original Minor",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "confirmed",
+              "partially_refunded",
+              "fully_refunded",
+              "reversed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gross_original_minor",
+          "gross_home_amount_cents",
+          "active_refunded_original_minor",
+          "remaining_refundable_original_minor",
+          "lineage_home_net_cents",
+          "fx_difference_cents",
+          "status"
+        ],
+        "title": "ExpenseFinancialSummary",
+        "type": "object"
+      },
       "ExpenseItemReplaceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -8029,6 +8127,282 @@
           "expected_row_version"
         ],
         "title": "ExpenseOcrRetryRequest",
+        "type": "object"
+      },
+      "ExpenseOffsetCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "accounting_time": {
+            "format": "date-time",
+            "title": "Accounting Time",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "refund",
+              "chargeback",
+              "reversal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "accounting_time",
+          "reason",
+          "expected_row_version"
+        ],
+        "title": "ExpenseOffsetCreateRequest",
+        "type": "object"
+      },
+      "ExpenseOffsetResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accounting_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounting Time"
+          },
+          "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "exchange_rate_to_cny": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate To Cny"
+          },
+          "fact_revision": {
+            "title": "Fact Revision",
+            "type": "integer"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "refund",
+              "chargeback",
+              "reversal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "original_amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Original Amount Minor",
+            "type": "integer"
+          },
+          "original_currency_code": {
+            "title": "Original Currency Code",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "voided"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "voided_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided At"
+          }
+        },
+        "required": [
+          "public_id",
+          "kind",
+          "status",
+          "original_currency_code",
+          "original_amount_minor",
+          "home_currency_code",
+          "amount_cents",
+          "exchange_rate_to_cny",
+          "accounting_time",
+          "category",
+          "reason",
+          "row_version",
+          "fact_revision",
+          "created_at",
+          "updated_at",
+          "voided_at"
+        ],
+        "title": "ExpenseOffsetResponse",
+        "type": "object"
+      },
+      "ExpenseOffsetRevisionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_account_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Account Name"
+          },
+          "actor_device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Device Name"
+          },
+          "after": {
+            "additionalProperties": true,
+            "title": "After",
+            "type": "object"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "change_kind": {
+            "enum": [
+              "created",
+              "correction",
+              "void"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "offset_public_id": {
+            "title": "Offset Public Id",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "public_id",
+          "offset_public_id",
+          "revision_number",
+          "change_kind",
+          "reason",
+          "before",
+          "after",
+          "created_at"
+        ],
+        "title": "ExpenseOffsetRevisionResponse",
         "type": "object"
       },
       "ExpenseRecognizeTextRequest": {
@@ -21605,6 +21979,90 @@
         ]
       }
     },
+    "/api/expenses/{expense_id}/fact-bundle": {
+      "get": {
+        "operationId": "get_expense_fact_bundle_api_expenses__expense_id__fact_bundle_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseFactBundleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Expense Fact Bundle",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
     "/api/expenses/{expense_id}/image": {
       "get": {
         "operationId": "get_expense_image_api_expenses__expense_id__image_get",
@@ -22228,6 +22686,122 @@
           }
         },
         "summary": "Post Retry Ocr",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{expense_id}/offsets": {
+      "post": {
+        "operationId": "post_expense_offset_api_expenses__expense_id__offsets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseOffsetCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseFactBundleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Expense Offset",
         "tags": [
           "expenses"
         ]

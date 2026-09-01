@@ -155,6 +155,13 @@ from app.schemas._expense import (
     PendingDuplicateCandidateResponse,
     UploadResponse,
 )
+from app.schemas._expense_offset import (
+    ExpenseFactBundleResponse,
+    ExpenseFinancialSummary,
+    ExpenseOffsetCreateRequest,
+    ExpenseOffsetResponse,
+    ExpenseOffsetRevisionResponse,
+)
 from app.schemas._expense_revision import (
     ConfirmedExpenseBatchUpdateRequest,
     ConfirmedExpenseBatchUpdateResponse,
@@ -387,6 +394,8 @@ __all__ = [
     "ExpenseConfirmRequest",
     "ExpenseCorrectionRequest",
     "ExpenseCorrectionResponse",
+    "ExpenseFactBundleResponse",
+    "ExpenseFinancialSummary",
     "ExpenseItemReplaceRequest",
     "ExpenseItemRequest",
     "ExpenseItemResponse",
@@ -394,6 +403,9 @@ __all__ = [
     "ExpenseManualCreateRequest",
     "ExpenseMarkNotDuplicateRequest",
     "ExpenseOcrRetryRequest",
+    "ExpenseOffsetCreateRequest",
+    "ExpenseOffsetResponse",
+    "ExpenseOffsetRevisionResponse",
     "ExpenseAcknowledgeItemsMismatchRequest",
     "ExpenseRecognizeTextRequest",
     "ExpenseRejectRequest",

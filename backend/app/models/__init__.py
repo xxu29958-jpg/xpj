@@ -69,6 +69,7 @@ from app.models.debt import (
 )
 from app.models.exchange import ExchangeRate, FxRate
 from app.models.expense import Expense, ExpenseItem, ExpenseSplit
+from app.models.expense_offset import ExpenseOffsetFact, ExpenseOffsetRevision
 from app.models.expense_revision import ExpenseRevision
 from app.models.financial_planning import MonthlyIncomePlan
 from app.models.idempotency import ApiIdempotencyKey
@@ -123,6 +124,8 @@ __all__ = [
     "DuplicateIgnore",
     "Expense",
     "ExpenseItem",
+    "ExpenseOffsetFact",
+    "ExpenseOffsetRevision",
     "ExpenseSplit",
     "ExpenseRevision",
     "ExpenseTag",
