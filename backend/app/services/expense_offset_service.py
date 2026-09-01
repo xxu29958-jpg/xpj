@@ -22,6 +22,7 @@ from app.schemas import (
     ExpenseOffsetResponse,
     ExpenseOffsetRevisionResponse,
 )
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import get_expense
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
@@ -247,6 +248,7 @@ def create_expense_offset(
     if idempotency_key is None:
         raise AppError("server_error", status_code=500)
 
+    authorize_currency_metadata_write(db)
     current = get_expense(db, expense_id, tenant_id)
     _require_confirmed(current)
     now = now_utc()

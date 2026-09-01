@@ -16,6 +16,9 @@ depends_on = None
 
 _FACTS = "expense_offset_facts"
 _REVISIONS = "expense_offset_revisions"
+_CURRENCY_WRITER_FUNCTION = "ticketbox_require_currency_writer"
+_CURRENCY_WRITER_TRIGGER = "trg_currency_writer_expense_offset_facts"
+_CURRENCY_TRUNCATE_TRIGGER = "trg_currency_writer_expense_offset_facts_truncate"
 
 
 def _set_dataset_authority_revision(
@@ -130,6 +133,16 @@ def _create_fact_table() -> None:
         ["tenant_id", "expense_id"],
         unique=True,
         postgresql_where=sa.text("kind = 'reversal' AND status = 'active'"),
+    )
+    op.execute(
+        f"CREATE TRIGGER {_CURRENCY_WRITER_TRIGGER} "
+        f"BEFORE INSERT OR UPDATE OR DELETE ON {_FACTS} FOR EACH ROW "
+        f"EXECUTE FUNCTION {_CURRENCY_WRITER_FUNCTION}()"
+    )
+    op.execute(
+        f"CREATE TRIGGER {_CURRENCY_TRUNCATE_TRIGGER} "
+        f"BEFORE TRUNCATE ON {_FACTS} FOR EACH STATEMENT "
+        f"EXECUTE FUNCTION {_CURRENCY_WRITER_FUNCTION}()"
     )
 
 
@@ -276,6 +289,19 @@ def assert_postcondition(bind: sa.Connection) -> None:
     )
     if not trigger_exists:
         raise RuntimeError("Expense offset revision append-only trigger is missing")
+    writer_triggers = set(
+        bind.scalars(
+            sa.text(
+                "SELECT tgname FROM pg_trigger "
+                "WHERE tgrelid = 'expense_offset_facts'::regclass AND NOT tgisinternal"
+            )
+        )
+    )
+    if {
+        _CURRENCY_WRITER_TRIGGER,
+        _CURRENCY_TRUNCATE_TRIGGER,
+    } - writer_triggers:
+        raise RuntimeError("Expense offset currency writer fence is missing")
     authority_revision = bind.scalar(sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1"))
     if authority_revision != revision:
         raise RuntimeError("dataset authority revision is not aligned with Alembic head")
