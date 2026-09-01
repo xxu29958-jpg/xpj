@@ -19,6 +19,7 @@ from backend_manager.config import (
 )
 from backend_manager.instance_owner import InstanceRegistration
 from backend_manager.manager_startup import ManagerWindowSession, run_manager, run_owned_manager
+from backend_manager.public_connectivity import unknown_public_connectivity_status
 from backend_manager.runtime import RuntimeControlError, RuntimeStatus
 from backend_manager.windows_user_security import show_manager_startup_failure_warning
 
@@ -102,6 +103,26 @@ class FakeRuntime:
 
     def run_monitor(self, _stop_event) -> None:
         pass
+
+
+class RecordingPublicConnectivityProvider:
+    def __init__(self, events: list[str]) -> None:
+        self._events = events
+
+    def request_refresh(self, *, full: bool = False) -> int:
+        self._events.append(f"public-refresh-{full}")
+        return 1
+
+    def snapshot(self):
+        return unknown_public_connectivity_status()
+
+    def run_monitor(self, stop_event) -> None:
+        self._events.append("public-monitor-start")
+        stop_event.wait()
+        self._events.append("public-monitor-stop")
+
+    def shutdown(self) -> None:
+        self._events.append("public-shutdown")
 
 
 def _fake_bootstrap(path: Path) -> str:
@@ -251,6 +272,15 @@ def test_control_server_binds_before_source_start_and_all_exits_close_owned_runt
         lambda: _manager_instance(owner=True),
     )
     monkeypatch.setattr("backend_manager.manager_startup.build_provider", lambda _config: provider)
+    public_connectivity = RecordingPublicConnectivityProvider(events)
+    monkeypatch.setattr(
+        "backend_manager.manager_startup.build_public_connectivity_provider",
+        lambda runtime_provider: (
+            events.append("public-build") or public_connectivity
+            if runtime_provider is provider
+            else (_ for _ in ()).throw(AssertionError("wrong runtime provider"))
+        ),
+    )
     monkeypatch.setattr("backend_manager.manager_startup.ControlServer", Server)
     monkeypatch.setattr(
         "backend_manager.manager_startup.open_app_window",
@@ -263,6 +293,10 @@ def test_control_server_binds_before_source_start_and_all_exits_close_owned_runt
 
     assert main([]) == 0
     assert events.index("control-bind") < events.index("backend-start")
+    assert events.index("control-bind") < events.index("public-refresh-False")
+    assert "public-monitor-start" in events
+    assert "public-monitor-stop" in events
+    assert "public-shutdown" in events
     assert "control-shutdown" in events
     assert "control-close" in events
     assert "runtime-shutdown" in events

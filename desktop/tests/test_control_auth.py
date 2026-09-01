@@ -465,6 +465,84 @@ def test_control_server_rejects_overlapping_actions_but_keeps_status_available(t
     assert first_result == [(200, {"status": "ok"})]
 
 
+def test_public_connectivity_actions_reuse_control_plane_security_and_are_read_only(tmp_path) -> None:
+    calls: list[str] = []
+
+    class Controller:
+        def status(self) -> dict[str, object]:
+            return {"public_connectivity": {"in_progress": True}}
+
+        def refresh_public_connectivity(self) -> None:
+            calls.append("refresh")
+
+        def run_full_public_connectivity_check(self) -> None:
+            calls.append("full_check")
+
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=Controller(),
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    port = server.server_address[1]
+    origin = f"http://127.0.0.1:{port}"
+    authorized = {
+        "X-Control-Token": _TOKEN,
+        "Sec-Fetch-Site": "same-origin",
+        "Origin": origin,
+    }
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        for path, expected in (
+            ("/api/refresh_public_connectivity", "refresh"),
+            ("/api/run_full_public_connectivity_check", "full_check"),
+        ):
+            unauthorized = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            unauthorized.request("POST", path)
+            response = unauthorized.getresponse()
+            assert response.status == 403
+            response.read()
+            unauthorized.close()
+
+            with_body = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            with_body.request("POST", path, body=b"{}", headers=authorized)
+            response = with_body.getresponse()
+            assert response.status == 400
+            response.read()
+            with_body.close()
+
+            allowed = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            allowed.request("POST", path, headers=authorized)
+            response = allowed.getresponse()
+            assert response.status == 200
+            assert json.loads(response.read()) == {
+                "public_connectivity": {"in_progress": True},
+            }
+            allowed.close()
+            assert calls[-1] == expected
+
+        for unsupported in ("install_cloudflared", "restart_cloudflared", "repair_cloudflared"):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            connection.request("POST", f"/api/{unsupported}", headers=authorized)
+            response = connection.getresponse()
+            assert response.status == 404
+            response.read()
+            connection.close()
+        assert calls == ["refresh", "full_check"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_unqualified_data_lifecycle_endpoints_are_not_exposed(tmp_path) -> None:
     calls: list[str] = []
 
@@ -563,6 +641,8 @@ def test_control_server_rejects_every_action_and_reopen_after_shutdown_seal(tmp_
             "open_diagnostics",
             "open_settings",
             "export_diagnostics",
+            "refresh_public_connectivity",
+            "run_full_public_connectivity_check",
         ):
             connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
             connection.request("POST", f"/api/{action}", headers=headers)

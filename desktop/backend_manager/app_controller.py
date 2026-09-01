@@ -39,6 +39,10 @@ from backend_manager.product_recovery import (
     save_rebind_recovery,
 )
 from backend_manager.projection import RuntimeConfigProvider, StaticRuntimeConfigProvider
+from backend_manager.public_connectivity_provider import (
+    CacheOnlyUnknownPublicConnectivityProvider,
+    PublicConnectivityReader,
+)
 from backend_manager.runtime import BackendRuntime, RuntimeControlError, RuntimeStatus
 from backend_manager.web_bff import BridgeContext
 
@@ -165,6 +169,7 @@ class AppController:
         startup_failure_code: str | None = None,
         startup_failure_stage: str | None = None,
         request_shutdown: Callable[[], None] = lambda: None,
+        public_connectivity_provider: PublicConnectivityReader | None = None,
         product_session_pairer: Callable[..., PendingProductSession] = pair_product_session,
         product_ledger_switcher: Callable[..., PendingProductSession] = switch_product_ledger,
         product_session_activator: Callable[..., ProductSession] = activate_product_session,
@@ -191,6 +196,9 @@ class AppController:
         self._startup_failure_code = startup_failure_code
         self._startup_failure_stage = startup_failure_stage
         self._request_shutdown = request_shutdown
+        self._public_connectivity = (
+            public_connectivity_provider or CacheOnlyUnknownPublicConnectivityProvider()
+        )
         self._manager_shutdown_requested = False
         self._lock = threading.RLock()
         self._product_session_pairer = product_session_pairer
@@ -244,6 +252,7 @@ class AppController:
             and snapshot.database_service_state not in {"missing", "unknown"}
         )
         product_available = config is not None and _snapshot_product_available(snapshot)
+        public_connectivity = self._public_connectivity.snapshot().to_projection()
         return {
             "runtime_mode": snapshot.mode,
             "running": snapshot.running,
@@ -259,8 +268,7 @@ class AppController:
             "backend_service_state": snapshot.backend_service_state,
             "database_service_state": snapshot.database_service_state,
             "lan": lan_text,
-            "tunnel": None,
-            "public_endpoint_state": snapshot.mobile_endpoint_state,
+            "public_connectivity": public_connectivity,
             "mobile_endpoint_state": snapshot.mobile_endpoint_state,
             "android_binding_state": snapshot.android_binding_state,
             "iphone_upload_state": snapshot.iphone_upload_state,
@@ -885,6 +893,12 @@ class AppController:
 
     def open_settings(self) -> None:
         self._open_owner_page("settings")
+
+    def refresh_public_connectivity(self) -> None:
+        self._public_connectivity.request_refresh(full=False)
+
+    def run_full_public_connectivity_check(self) -> None:
+        self._public_connectivity.request_refresh(full=True)
 
     def export_diagnostics(self) -> None:
         self._begin_action()

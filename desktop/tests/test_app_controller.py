@@ -15,6 +15,7 @@ from backend_manager.projection import (
     RefreshingInstalledRuntimeConfigProvider,
     UnavailableInstalledRuntimeConfigProvider,
 )
+from backend_manager.public_connectivity import unknown_public_connectivity_status
 from backend_manager.runtime import RuntimeControlError, RuntimeStatus
 
 
@@ -62,6 +63,18 @@ class FakeRuntime:
         pass
 
 
+class FakePublicConnectivityProvider:
+    def __init__(self) -> None:
+        self.refresh_modes: list[bool] = []
+
+    def snapshot(self):
+        return unknown_public_connectivity_status()
+
+    def request_refresh(self, *, full: bool = False) -> int:
+        self.refresh_modes.append(full)
+        return len(self.refresh_modes)
+
+
 def _config() -> ManagerConfig:
     return ManagerConfig(
         runtime=SourceRuntimeConfig(Path("backend"), Path("python.exe"), Path("backend")),
@@ -78,7 +91,12 @@ def _config() -> ManagerConfig:
 
 def test_status_exposes_runtime_capabilities(monkeypatch) -> None:
     monkeypatch.setattr("backend_manager.app_controller.lan_ip", lambda: "192.168.1.8")
-    controller = AppController(FakeRuntime(), _config())
+    public_connectivity = FakePublicConnectivityProvider()
+    controller = AppController(
+        FakeRuntime(),
+        _config(),
+        public_connectivity_provider=public_connectivity,
+    )
 
     status = controller.status()
 
@@ -91,6 +109,14 @@ def test_status_exposes_runtime_capabilities(monkeypatch) -> None:
     assert status["mobile_endpoint_state"] == "public_configured_unverified"
     assert status["android_binding_state"] == "configured_unverified"
     assert status["runtime_access_state"] == "available"
+    assert status["public_connectivity"]["schema"] == "ticketbox-public-connectivity-v1"
+    assert "tunnel" not in status
+    assert "public_endpoint_state" not in status
+
+    controller.refresh_public_connectivity()
+    controller.run_full_public_connectivity_check()
+
+    assert public_connectivity.refresh_modes == [False, True]
 
 
 def test_control_failure_is_returned_then_cleared_after_success() -> None:
@@ -313,7 +339,9 @@ def test_installed_controller_refreshes_projection_for_status_action_and_console
     controller = AppController(provider)
 
     assert controller.status()["port"] == 8101
-    assert controller.status()["public_endpoint_state"] == "public_configured_unverified"
+    refreshed_status = controller.status()
+    assert refreshed_status["mobile_endpoint_state"] == "public_configured_unverified"
+    assert "public_endpoint_state" not in refreshed_status
     controller.start()
     controller.open_console()
 
@@ -332,7 +360,10 @@ def test_installed_refresh_failure_does_not_reuse_stale_projection(tmp_path: Pat
             return config
         raise ConfigError(r"secret path C:\ProgramData\Ticketbox\app\.env")
 
-    provider = RefreshingInstalledRuntimeConfigProvider(config_loader=load, runtime_builder=lambda _config: FakeRuntime())
+    provider = RefreshingInstalledRuntimeConfigProvider(
+        config_loader=load,
+        runtime_builder=lambda _config: FakeRuntime(),
+    )
     controller = AppController(provider)
 
     assert controller.status()["port"] == 8101

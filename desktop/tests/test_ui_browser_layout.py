@@ -19,6 +19,45 @@ _UI_HTML = Path(__file__).resolve().parents[1] / "backend_manager" / "ui.html"
 _STARTUP_SCRIPT = "    refresh();\n    setInterval(refresh, 2500);"
 
 
+def _public_connectivity(*, degraded: bool) -> dict[str, object]:
+    rows = [
+        ("小票夹后端", "unknown" if degraded else "unknown", "公网连接状态未知"),
+        ("Windows 服务", "unknown", "未知"),
+        ("Cloudflare Edge", "unknown", "未知"),
+        ("本机源站", "unknown" if degraded else "healthy", "未知" if degraded else "小票夹源站正常"),
+        ("公网端点", "unconfigured", "未配置公网地址"),
+        ("公开边界", "unknown", "尚未完整检查"),
+        ("最近观察", "stale", "尚无观察"),
+        ("cloudflared 版本", "informational", "未知"),
+        ("所有权", "unknown", "未知"),
+    ]
+    return {
+        "schema": "ticketbox-public-connectivity-v1",
+        "overall": "unknown",
+        "code": "public_connectivity_unknown",
+        "summary": "公网连接状态未知",
+        "next_step": "刷新本机状态，必要时运行完整公网检查。",
+        "ownership": "unknown",
+        "service": "unknown",
+        "connector": "unknown",
+        "origin": "unknown" if degraded else "healthy",
+        "public": "unconfigured",
+        "boundary": "unknown",
+        "freshness": "stale",
+        "managed_action": "unavailable",
+        "observed_at": None,
+        "public_checked_at": None,
+        "in_progress": False,
+        "cloudflared_version": None,
+        "connection_count": None,
+        "service_identity_match": None,
+        "binary_identity_match": None,
+        "tunnel_identity_match": None,
+        "supported_actions": ["refresh", "full_check", "export_diagnostics"],
+        "detail_rows": [{"label": label, "state": state, "text": text} for label, state, text in rows],
+    }
+
+
 def _status(*, degraded: bool) -> dict[str, object]:
     return {
         "runtime_mode": "installed",
@@ -35,8 +74,7 @@ def _status(*, degraded: bool) -> dict[str, object]:
         "backend_service_state": "unknown" if degraded else "running",
         "database_service_state": "unknown" if degraded else "running",
         "lan": "仅本机监听",
-        "tunnel": None,
-        "public_endpoint_state": "local_only" if not degraded else "unknown",
+        "public_connectivity": _public_connectivity(degraded=degraded),
         "mobile_endpoint_state": "local_only" if not degraded else "unknown",
         "android_binding_state": "setup_required" if not degraded else "unknown",
         "iphone_upload_state": "setup_required" if not degraded else "unknown",
@@ -56,6 +94,7 @@ def _status(*, degraded: bool) -> dict[str, object]:
 
 def _probe_script(status: dict[str, object]) -> str:
     return f"""    render({json.dumps(status, ensure_ascii=False)});
+    document.getElementById("publicConnectivityRefreshAction").focus();
     const visibleButtons = [...document.querySelectorAll("button")].filter((button) => {{
       const style = getComputedStyle(button);
       const rect = button.getBoundingClientRect();
@@ -89,6 +128,15 @@ def _probe_script(status: dict[str, object]) -> str:
       primaryAction: document.getElementById("primaryAction").dataset.action,
       primaryText: document.getElementById("primaryAction").textContent.trim(),
       diagnosticsDisabled: document.getElementById("diagnosticExportAction").disabled,
+      publicTitle: document.getElementById("publicConnectivityTitle").textContent,
+      publicSubtitle: document.querySelector(".connectivity-card .card-subtitle").textContent,
+      publicSummary: document.getElementById("publicConnectivitySummary").textContent,
+      publicNextStep: document.getElementById("publicConnectivityNextStep").textContent,
+      publicRows: [...document.querySelectorAll("#publicConnectivityDetails .connectivity-row-label")]
+        .map((row) => row.textContent),
+      publicActions: [...document.querySelectorAll("#publicConnectivityActions button")]
+        .map((button) => button.id),
+      publicFocused: document.activeElement && document.activeElement.id,
       overallText: document.getElementById("overallText").textContent,
       runtimeText: document.getElementById("runtimeLabel").textContent,
       serviceTitle: document.getElementById("serviceTitle").textContent
@@ -126,6 +174,13 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
     script = f"""    (async () => {{
       const healthy = {json.dumps(healthy, ensure_ascii=False)};
       render(healthy);
+      healthy.public_connectivity.in_progress = true;
+      render(healthy);
+      const checking = {{
+        refreshDisabled: document.getElementById("publicConnectivityRefreshAction").disabled,
+        fullDisabled: document.getElementById("publicConnectivityFullCheckAction").disabled,
+        exportDisabled: document.getElementById("publicConnectivityExportAction").disabled
+      }};
       window.fetch = async () => {{ throw new Error("offline"); }};
       let offlineThrew = false;
       try {{ await refresh(); }} catch (_error) {{ offlineThrew = true; }}
@@ -135,7 +190,7 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
         androidDisabled: document.getElementById("androidAction").disabled,
         overallText: document.getElementById("overallText").textContent
       }};
-      document.body.setAttribute("data-behavior-probe", JSON.stringify({{offline}}));
+      document.body.setAttribute("data-behavior-probe", JSON.stringify({{checking, offline}}));
     }})();"""
     page = tmp_path / "manager-behavior.html"
     page.write_text(source.replace(_STARTUP_SCRIPT, script), encoding="utf-8")
@@ -167,6 +222,27 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
     assert probe["unnamedButtons"] == 0
     assert probe["clippedButtons"] == 0
     assert probe["diagnosticsDisabled"] is False
+    assert probe["publicTitle"] == "公网连接"
+    assert probe["publicSubtitle"] == "由 Cloudflare Tunnel 提供"
+    assert probe["publicSummary"] == "公网连接状态未知"
+    assert probe["publicNextStep"] == "刷新本机状态，必要时运行完整公网检查。"
+    assert probe["publicRows"] == [
+        "小票夹后端",
+        "Windows 服务",
+        "Cloudflare Edge",
+        "本机源站",
+        "公网端点",
+        "公开边界",
+        "最近观察",
+        "cloudflared 版本",
+        "所有权",
+    ]
+    assert probe["publicActions"] == [
+        "publicConnectivityRefreshAction",
+        "publicConnectivityFullCheckAction",
+        "publicConnectivityExportAction",
+    ]
+    assert probe["publicFocused"] == "publicConnectivityRefreshAction"
     assert probe["primaryDisabled"] is True
     assert probe["primaryHidden"] is True
     assert probe["restartHidden"] is True
@@ -185,6 +261,11 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
 def test_manager_offline_state_remains_coherent(tmp_path: Path) -> None:
     probe = _render_behavior_probe(tmp_path)
 
+    assert probe["checking"] == {
+        "refreshDisabled": True,
+        "fullDisabled": True,
+        "exportDisabled": False,
+    }
     assert probe["offline"] == {
         "threw": False,
         "primaryDisabled": True,
@@ -701,7 +782,15 @@ def test_product_card_role_follows_live_membership_and_handles_vanished_ledger(t
     assert edge is not None, "Microsoft Edge is required for the live-role rendering gate"
     script = f"""    (async () => {{
       const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
-      const session = {{configured: true, account_name: "我", ledger_id: "owner", ledger_name: "我的小票夹", device_name: "小票夹 Desktop", role: "owner", expires_at: null}};
+      const session = {{
+        configured: true,
+        account_name: "我",
+        ledger_id: "owner",
+        ledger_name: "我的小票夹",
+        device_name: "小票夹 Desktop",
+        role: "owner",
+        expires_at: null
+      }};
       const demotedLedgers = {{ledgers: [
         {{ledger_id: "owner", name: "我的小票夹", role: "viewer", is_default: true, is_current: true}},
         {{ledger_id: "family", name: "家庭账本", role: "member", is_default: false, is_current: false}}

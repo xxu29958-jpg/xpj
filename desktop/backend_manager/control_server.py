@@ -67,6 +67,8 @@ _ACTIONS = (
     "open_diagnostics",
     "open_settings",
     "export_diagnostics",
+    "refresh_public_connectivity",
+    "run_full_public_connectivity_check",
 )
 _ACTION_PATHS = {f"/api/{action}": action for action in _ACTIONS}
 _IDENTITY = {"product": "ticketbox-desktop-manager", "protocol": "v1"}
@@ -311,6 +313,8 @@ class Controller(Protocol):
     def open_diagnostics(self) -> None: ...
     def open_settings(self) -> None: ...
     def export_diagnostics(self) -> None: ...
+    def refresh_public_connectivity(self) -> None: ...
+    def run_full_public_connectivity_check(self) -> None: ...
     def is_manager_shutting_down(self) -> bool: ...
 
 
@@ -926,6 +930,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
             self._send(400, b"request body not allowed", "text/plain; charset=utf-8")
+            return
+        if srv.controller.is_manager_shutting_down():
+            self._send_json({"error": "manager_shutting_down"}, code=409)
             return
         if not srv.action_lock.acquire(blocking=False):
             self._send_json({"error": "operation_in_progress"}, code=409)

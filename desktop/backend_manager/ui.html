@@ -201,6 +201,61 @@
     .task-actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 7px; }
     .task-actions .button { min-height: 34px; padding: 6px 10px; font-size: 12.5px; }
 
+    .connectivity-card {
+      margin-top: 18px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--line-strong);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(49, 95, 149, 0.04), transparent 42%),
+        var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .connectivity-card[data-state="healthy"] { border-left-color: var(--green); }
+    .connectivity-card[data-state="degraded"] { border-left-color: var(--amber); }
+    .connectivity-card[data-state="unsafe"] { border-left-color: var(--red); }
+    .connectivity-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px 14px;
+    }
+    .connectivity-head h2 { margin: 0; font-size: 18px; font-weight: 720; }
+    .card-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .connectivity-badge {
+      flex: 0 0 auto;
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+    .connectivity-copy { padding: 0 20px 16px; }
+    .connectivity-summary { margin: 0; font-size: 15px; font-weight: 700; }
+    .connectivity-next { margin: 6px 0 0; color: var(--muted); line-height: 1.5; }
+    .connectivity-next strong { color: var(--ink); font-size: 12px; }
+    .connectivity-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-subtle);
+    }
+    .connectivity-row {
+      min-width: 0;
+      padding: 11px 14px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .connectivity-row:nth-child(3n) { border-right: 0; }
+    .connectivity-row-label { color: var(--muted); font-size: 11px; }
+    .connectivity-row-value { margin-top: 4px; overflow-wrap: anywhere; font-size: 12.5px; font-weight: 650; }
+    .connectivity-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 20px 18px; }
+    .connectivity-actions .button { min-height: 34px; padding: 6px 11px; font-size: 12.5px; }
+
     .technical {
       margin-top: 18px;
       border-top: 1px solid var(--line);
@@ -209,7 +264,7 @@
     .technical summary { padding: 14px 2px 8px; cursor: pointer; font-weight: 650; color: #4d5750; }
     .technical-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       padding: 2px 0 10px;
     }
@@ -239,6 +294,9 @@
       .service-actions .button-primary { flex: 1; }
       .task-grid { grid-template-columns: 1fr; }
       .task-card { min-height: 164px; }
+      .connectivity-head { align-items: stretch; }
+      .connectivity-grid { grid-template-columns: 1fr; }
+      .connectivity-row, .connectivity-row:nth-child(3n) { border-right: 0; }
       .technical-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .section-meta { display: none; }
     }
@@ -295,6 +353,23 @@
       <span aria-hidden="true">!</span><span id="productErrorText"></span>
     </div>
 
+    <section class="connectivity-card" id="publicConnectivityCard"
+      aria-labelledby="publicConnectivityTitle" aria-busy="false">
+      <div class="connectivity-head">
+        <div>
+          <h2 id="publicConnectivityTitle">公网连接</h2>
+          <p class="card-subtitle">由 Cloudflare Tunnel 提供</p>
+        </div>
+        <span class="connectivity-badge" id="publicConnectivityBadge">状态未知</span>
+      </div>
+      <div class="connectivity-copy" aria-live="polite">
+        <p class="connectivity-summary" id="publicConnectivitySummary">正在读取公网连接状态</p>
+        <p class="connectivity-next"><strong>下一步：</strong><span id="publicConnectivityNextStep">请稍候</span></p>
+      </div>
+      <div class="connectivity-grid" id="publicConnectivityDetails" aria-label="公网连接分层状态"></div>
+      <div class="connectivity-actions" id="publicConnectivityActions" aria-label="公网连接只读操作"></div>
+    </section>
+
     <div class="message message-error" id="controlError" role="alert">
       <span aria-hidden="true">!</span><span id="controlErrorText"></span>
     </div>
@@ -345,7 +420,6 @@
         <div class="technical-item"><div class="technical-label">后端服务</div><div class="technical-value" id="backendService">—</div></div>
         <div class="technical-item"><div class="technical-label">PostgreSQL</div><div class="technical-value" id="databaseService">—</div></div>
         <div class="technical-item"><div class="technical-label">局域网入口</div><div class="technical-value" id="lan">—</div></div>
-        <div class="technical-item"><div class="technical-label">公网入口</div><div class="technical-value" id="tunnel">—</div></div>
       </div>
       <div class="diagnostic-lines" id="log" aria-label="运行诊断"></div>
     </details>
@@ -358,6 +432,26 @@
     let actionInFlight = false;
     let latestStatus = null;
     const $ = (id) => document.getElementById(id);
+    const PUBLIC_CONNECTIVITY_ACTIONS = Object.freeze({
+      refresh: {label: "刷新状态", action: "refresh_public_connectivity"},
+      full_check: {label: "完整检查", action: "run_full_public_connectivity_check"},
+      export_diagnostics: {label: "导出诊断", action: "export_diagnostics"}
+    });
+    const PUBLIC_CONNECTIVITY_ACTION_IDS = Object.freeze({
+      refresh: "publicConnectivityRefreshAction",
+      full_check: "publicConnectivityFullCheckAction",
+      export_diagnostics: "publicConnectivityExportAction"
+    });
+    const PUBLIC_CONNECTIVITY_OVERALL = Object.freeze({
+      unsafe: {label: "存在风险", tone: "unsafe"},
+      offline: {label: "连接离线", tone: "degraded"},
+      connector_unavailable: {label: "连接器不可用", tone: "degraded"},
+      origin_unavailable: {label: "源站不可用", tone: "degraded"},
+      public_unavailable: {label: "公网不可用", tone: "degraded"},
+      degraded: {label: "连接降级", tone: "degraded"},
+      healthy: {label: "已验证", tone: "healthy"},
+      unknown: {label: "状态未知", tone: "unknown"}
+    });
 
     function serviceState(state) {
       const labels = {
@@ -377,6 +471,72 @@
       const box = $(id);
       box.classList.toggle("is-visible", Boolean(text));
       $(`${id}Text`).textContent = text || "";
+    }
+
+    function applyPublicConnectivityActionAvailability(value) {
+      const available = Boolean(value && value.schema === "ticketbox-public-connectivity-v1");
+      const inProgress = available && Boolean(value.in_progress);
+      document.querySelectorAll(".public-connectivity-action").forEach((button) => {
+        const localProbe = button.dataset.publicConnectivityAction !== "export_diagnostics";
+        button.disabled = actionInFlight || !available || (localProbe && inProgress);
+      });
+    }
+
+    function publicConnectivityRow(row) {
+      const item = document.createElement("div");
+      const label = document.createElement("div");
+      const value = document.createElement("div");
+      item.className = "connectivity-row";
+      label.className = "connectivity-row-label";
+      value.className = "connectivity-row-value";
+      label.textContent = row.label;
+      value.textContent = row.text;
+      item.append(label, value);
+      return item;
+    }
+
+    function publicConnectivityAction([key, config]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.id = PUBLIC_CONNECTIVITY_ACTION_IDS[key];
+      button.className = "button public-connectivity-action";
+      button.dataset.publicConnectivityAction = key;
+      button.textContent = config.label;
+      button.addEventListener("click", () => act(config.action, button));
+      return button;
+    }
+
+    function renderPublicConnectivity(value) {
+      const projection = value && value.schema === "ticketbox-public-connectivity-v1"
+        ? value
+        : {
+            overall: "unknown",
+            summary: "公网连接状态未知",
+            next_step: "刷新本机状态，必要时运行完整公网检查。",
+            detail_rows: [],
+            supported_actions: [],
+            in_progress: false
+          };
+      const visual = PUBLIC_CONNECTIVITY_OVERALL[projection.overall]
+        || PUBLIC_CONNECTIVITY_OVERALL.unknown;
+      const card = $("publicConnectivityCard");
+      card.dataset.state = visual.tone;
+      card.setAttribute("aria-busy", String(Boolean(projection.in_progress)));
+      $("publicConnectivityBadge").textContent = visual.label;
+      const summary = $("publicConnectivitySummary");
+      const nextStep = $("publicConnectivityNextStep");
+      summary.textContent = projection.summary || "公网连接状态未知";
+      nextStep.textContent = projection.next_step || "刷新本机状态，必要时运行完整公网检查。";
+      const rows = Array.isArray(projection.detail_rows) ? projection.detail_rows.slice(0, 12) : [];
+      $("publicConnectivityDetails").replaceChildren(...rows.filter((row) => (
+        row && typeof row.label === "string" && typeof row.text === "string"
+      )).map(publicConnectivityRow));
+      const supported = new Set(Array.isArray(projection.supported_actions) ? projection.supported_actions : []);
+      const actions = Object.entries(PUBLIC_CONNECTIVITY_ACTIONS)
+        .filter(([key]) => supported.has(key))
+        .map(publicConnectivityAction);
+      $("publicConnectivityActions").replaceChildren(...actions);
+      applyPublicConnectivityActionAvailability(projection);
     }
 
     function applyActionAvailability(s) {
@@ -402,6 +562,7 @@
       $("androidAction").disabled = actionInFlight || !productAvailable || s.android_binding_state !== "configured_unverified";
       $("iphoneAction").disabled = actionInFlight || !productAvailable || s.iphone_upload_state !== "configured_unverified";
       $("diagnosticExportAction").disabled = actionInFlight;
+      applyPublicConnectivityActionAvailability(hasStatus ? s.public_connectivity : null);
       document.querySelector("main").setAttribute("aria-busy", String(actionInFlight));
     }
 
@@ -481,13 +642,11 @@
         ? "导出已确认流水，留存一份可迁移的数据副本。"
         : "开发环境也可通过导入与导出迁移已确认流水。";
       $("diagnosticState").textContent = s.diagnostic_bundle_file ? `最近导出：${s.diagnostic_bundle_file}` : "导出包不包含令牌、账本内容或原始日志。";
+      renderPublicConnectivity(s.public_connectivity);
 
       $("backendService").textContent = serviceState(s.backend_service_state);
       $("databaseService").textContent = serviceState(s.database_service_state);
       $("lan").textContent = s.lan || "—";
-      $("tunnel").textContent = s.public_endpoint_state === "public_configured_unverified"
-        ? "已配置，待设备验证"
-        : (s.public_endpoint_state === "local_only" ? "未配置" : "未知");
       $("versionLabel").textContent = s.version ? `小票夹 ${s.version}` : "小票夹 Desktop Manager";
       setMessage("controlError", s.control_error);
       setMessage("actionNotice", s.action_notice);
